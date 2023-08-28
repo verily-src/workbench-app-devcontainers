@@ -1,0 +1,13 @@
+{
+  "name": "Rstudio app",
+  "dockerComposeFile": ["../docker-compose.yml"],
+  "service": "app",
+  "shutdownAction": "none",
+  // Open the sub-folder with the source code
+  "workspaceFolder": "/workspace/rstudio"
+  "postCreateCommand": "./post-startup.sh",
+  "remoteUser": "root",
+  "runArgs": [
+    "--cap-add SYS_ADMIN", "--device /dev/fuse"
+  ]
+}

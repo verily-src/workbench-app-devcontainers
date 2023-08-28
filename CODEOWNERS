@@ -1,0 +1,35 @@
+# Specifies which teams and users to request for review.
+#
+# CODEOWNERS pattern syntax is almost the same as that of .gitignore,
+# but lacks support for ! negation and [ ] for pattern ranges.
+#
+# GitHub Docs:
+#   https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/about-code-owners#codeowners-syntax
+#
+# Rules marked as ENFORCED are required, and will be re-applied if removed
+# or overridden.
+#
+# Tips and gotchas:
+#
+# * Adding multiple teams allows any member on any team to approve,
+#   rather than requiring a review from all teams.
+#
+# * Make sure all rules specify more than one user,
+#   as they will be unable to review their own PRs.
+#
+# * Specifying a @user before their team has the effect of
+#   making them the "default" reviewer for that rule.
+#
+# * Do not reference a user by their email unless you are
+#   sure it has been added it to their GitHub account.
+#
+# * Referenced teams must have write access to the repository.
+#
+# * Order is important - only the last matching rule is applied.
+#   For this reason, * should always be the first rule.
+
+# Removed disallowed owners: @verily-src/verily-fte-github-users
+*  @verily-src/terra-dev
+
+# ENFORCED: Workflows required by all repositories are owned by @verily-src/verily-engprod.
+.github/workflows/enforced-*  @verily-src/verily-engprod

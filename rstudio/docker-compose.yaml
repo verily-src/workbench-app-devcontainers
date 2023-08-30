@@ -1,0 +1,12 @@
+version: '2.4'
+services:
+  app:
+    container_name: "application-server"
+    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.2"
+    restart: always
+    volumes:
+      - ..:/workspace:cached
+    ports:
+      - '8787:8787'
+    environment:
+      "DISABLE_AUTH": "true"

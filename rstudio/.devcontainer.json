@@ -7,7 +7,4 @@
   "workspaceFolder": "/workspace/rstudio"
   "postCreateCommand": "../post-startup.sh",
   "remoteUser": "root",
-  "runArgs": [
-    "--cap-add SYS_ADMIN", "--device /dev/fuse", "--security_opt apparmor:unconfined"
-  ]
 }

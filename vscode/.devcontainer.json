@@ -5,6 +5,6 @@
   "shutdownAction": "none",
   // Open the sub-folder with the source code
   "workspaceFolder": "/workspace/vscode",
-  "postCreateCommand": ["../post-startup.sh", "abc", "/config/workspace"],
+  "postCreateCommand": ["../post-startup.sh", "abc", "/config"],
   "remoteUser": "root"
 }

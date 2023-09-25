@@ -1,10 +1,10 @@
 {
-  "name": "Rstudio app",
+  "name": "vscode app",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",
   // Open the sub-folder with the source code
-  "workspaceFolder": "/workspace/rstudio",
-  "postCreateCommand": ["../post-startup.sh", "rstudio", "/home/rstudio"],
+  "workspaceFolder": "/workspace/vscode",
+  "postCreateCommand": ["../post-startup.sh", "abc", "/config"],
   "remoteUser": "root"
 }

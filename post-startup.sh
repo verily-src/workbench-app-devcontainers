@@ -2,8 +2,13 @@
 
 set -e -x
 
-user=rstudio
-workDirectory=/home/$user
+if [ $# -ne 2 ]; then
+  echo "Usage: $0 user workDirectory"
+  exit 1
+fi
+
+user="$1"
+workDirectory="$2"
 #######################################
 # Emit a message with a timestamp
 #######################################

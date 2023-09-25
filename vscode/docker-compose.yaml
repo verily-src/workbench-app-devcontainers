@@ -10,7 +10,7 @@ services:
       - '8443:8443'
     environment:
       USER: "abc"
-      DEFAULT_WORKSPACE: "/config/workspace"
+      DEFAULT_WORKSPACE: "/config"
     networks:
       - app-network
     cap_add:

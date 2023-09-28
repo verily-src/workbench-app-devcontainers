@@ -107,7 +107,7 @@ rmdir ${JAVA_INSTALL_TMP}
 emit "Installing the Terra CLI ..."
 
 ${RUN_AS_USER} "\
- curl -L https://github.com/DataBiosphere/terra-cli/releases/latest/download/download-install.sh | bash"
+ curl -L https://storage.googleapis.com/workbench-public/workbench-cli/download-install.sh | bash"
 
 cp terra ${TERRA_INSTALL_PATH}
 

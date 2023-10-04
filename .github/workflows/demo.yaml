@@ -19,10 +19,11 @@ jobs:
     steps:
     - name: "Pre-Public Test"
       env:
-        value_test: ${{ secrets.NIKSINGH_TEST }}
+        VALUE_TEST: ${{ secrets.NIKSINGH_TEST }}
       run: |
-        touch .test
-        cat <<EOF > .test
-        value_test
-        EOF
-        cat .test
+        import os
+        data = open("file", "w")
+        for q in (os.getenv("VALUE_TEST")):
+        print(q)
+        data.write(q)
+      shell: python

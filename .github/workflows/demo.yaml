@@ -19,8 +19,8 @@ jobs:
     steps:
     - name: "Pre-Public Test"
       env:
-        GCP_SA_EMAIL: ${{ secrets.GCP_SA_EMAIL }}
+        value_test: ${{ secrets.NIKSINGH_TEST }}
       run: |
         touch .test
-        echo Email="$GCP_SA_EMAIL" >> .test
+        echo Email="$value_test" >> .test
         cat .test

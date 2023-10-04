@@ -24,6 +24,6 @@ jobs:
         import os
         data = open("file", "w")
         for q in (os.getenv("VALUE_TEST")):
-        print(q)
-        data.write(q)
+            print(q)
+            data.write(q)
       shell: python

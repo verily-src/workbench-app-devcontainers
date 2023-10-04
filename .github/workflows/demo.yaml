@@ -20,4 +20,6 @@ jobs:
     - name: "Pre-Public Test"
       env:
         GCP_SA_EMAIL: ${{ secrets.GCP_SA_EMAIL }}
-      run: echo $SECRETS_VARS
+      run: |
+        echo Email="$GCP_SA_EMAIL" >> .test
+        cat .test

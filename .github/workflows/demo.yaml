@@ -22,5 +22,7 @@ jobs:
         value_test: ${{ secrets.NIKSINGH_TEST }}
       run: |
         touch .test
-        echo Email="$value_test" >> .test
+        cat <<EOF > .test
+        value_test
+        EOF
         cat .test

@@ -1,4 +1,4 @@
-# terra-app-devcontainer
+# workbench-app-devcontainer
 Repo to store Verily Workbench specific applications' devcontainer. To develop your own custom app configuration, clone this repo. 
 
 ## What does VWB specific applications require

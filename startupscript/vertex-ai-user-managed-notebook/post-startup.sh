@@ -757,6 +757,7 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 ######################################
 readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
 readonly PROXY_ENV="/opt/deeplearning/proxy.env"
+readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
 if [[ -n "${APP_PROXY}" ]]; then
   emit "Using custom Proxy Agent"
   RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
@@ -777,8 +778,7 @@ if [[ -n "${APP_PROXY}" ]]; then
   INSTANCE_ZONE="${INSTANCE_ZONE##/*/}"
   
   # Update vertex AI metadata 'proxy-url' which UI exposes to users to access the VM.
-  gcloud compute instances add-metadata "${INSTANCE_NAME}" \
-                --metadata proxy-url="${NEW_PROXY_URL}" --zone "${INSTANCE_ZONE}"
+  ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=proxy-url=${NEW_PROXY_URL}"
   emit "Overwrote proxy-url metadata"
 
   # Since the field we are writing is the NOTEBOOK_CONFIG is a regular expression pattern,
@@ -913,7 +913,6 @@ emit "SUCCESS: Gitignore installed at ${INSTALLED_GITIGNORE}"
 # This block is for test only. If the notebook execute successfully down to
 # here, we knows that the script executed successfully.
 readonly TERRA_TEST_VALUE="$(get_metadata_value "instance/attributes/terra-test-value")"
-readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
 if [[ -n "${TERRA_TEST_VALUE}" ]]; then
   ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=terra-test-result=${TERRA_TEST_VALUE}"
 fi

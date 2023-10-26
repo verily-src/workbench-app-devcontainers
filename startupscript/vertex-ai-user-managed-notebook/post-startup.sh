@@ -787,7 +787,7 @@ if [[ -n "${APP_PROXY}" ]]; then
 
   cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-  c.ServerApp.allow_origin_pat += "|(^https://${ESCAPED_NEW_PROXY_URL}$)"
+c.ServerApp.allow_origin_pat += "|(^https://${ESCAPED_NEW_PROXY_URL}$)"
 
 EOF
 fi

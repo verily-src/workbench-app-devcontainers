@@ -1,0 +1,10 @@
+{
+  "name": "Jupyter app",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  // Open the sub-folder with the source code
+  "workspaceFolder": "/workspace/jupyter",
+  "postCreateCommand": ["../startupscript/post-startup.sh", "jovyan", "/home/jovyan/work"],
+  "remoteUser": "root"
+}

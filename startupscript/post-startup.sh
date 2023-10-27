@@ -97,7 +97,7 @@ ${RUN_AS_USER} "mv '${JAVA_DIRNAME}' '${USER_HOME_LOCAL_SHARE}'"
 
 # Create a soft link in /usr/bin to the java runtime
 ln -sf "${USER_HOME_LOCAL_SHARE}/${JAVA_DIRNAME}/bin/java" "/usr/bin"
-chown --no-dereference ${user}:${user} "/usr/bin/java"
+chown --no-dereference ${user} "/usr/bin/java"
 
 # Clean up
 popd

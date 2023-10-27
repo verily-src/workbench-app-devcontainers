@@ -1,0 +1,27 @@
+version: '2.4'
+services:
+  app:
+    container_name: "application-server"
+    image: jupyter/scipy-notebook
+    restart: always
+    volumes:
+      - ..:/workspace:cached
+      - work:/home/jovyan/work
+    ports:
+      - '8888:8888'
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+    command: "start-notebook.py --ServerApp.token='' --ServerApp.password='' --ServerApp.root_dir=/home/jovyan/work --ServerApp.allow_origin='*'"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

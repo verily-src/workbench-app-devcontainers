@@ -18,6 +18,7 @@
 #   - instance/attributes/terra-workspace-id: Read by this script to configure the Terra CLI workspace.
 #   - instance/attributes/terra-app-proxy: app proxy url to configure proxy.
 #   - instance/attributes/terra-resource-id: read by this script to retrieve the sam resource id of this VM instance.
+#   - instance/attributes/terra-user-startup-script: Read by this script to optionally run a user-provided startup script.
 #
 # Execution details
 #   The post-startup script runs on Vertex AI notebook VMs during *instance creation*;
@@ -105,6 +106,7 @@ readonly USER_BASHRC="${USER_HOME_DIR}/.bashrc"
 readonly USER_BASH_PROFILE="${USER_HOME_DIR}/.bash_profile"
 
 readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.txt"
+readonly USER_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/user-startup-output.txt"
 readonly TERRA_BOOT_SERVICE_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/boot-output.txt"
 
 # Variables relevant for 3rd party software that gets installed
@@ -751,6 +753,27 @@ EOF
 # Make sure the ~/.bashrc and ~/.bash_profile are owned by the login user
 chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASHRC}"
 chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
+
+###################################
+# Run a user provided startup script
+####################################
+
+# If the user has provided a startup script, run it after workbench setup,
+# but before restarting Jupyter and running tests.
+
+readonly USER_STARTUP_SCRIPT="$(get_metadata_value "instance/attributes/terra-user-startup-script")"
+if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
+  emit "Running user provided startup script..."
+  readonly USER_STARTUP_SCRIPT_FILE="${USER_TERRA_CONFIG_DIR}/user-startup-script.sh"
+
+  # Copy the user's startup script to the user's .terra directory
+  curl -L "${USER_STARTUP_SCRIPT}" >"${USER_STARTUP_SCRIPT_FILE}"
+
+  # Run the user's startup script as the root user so that they may install packages
+  emit "Running user provided startup script, output to ${USER_STARTUP_OUTPUT_FILE}..."
+  chmod +x "${USER_STARTUP_SCRIPT_FILE}"
+  bash -c "${USER_STARTUP_SCRIPT_FILE}" >${USER_STARTUP_OUTPUT_FILE} 2>&1
+fi
 
 #######################################
 # Restart proxy to pick up the new env

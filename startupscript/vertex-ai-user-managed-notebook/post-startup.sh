@@ -36,7 +36,7 @@
 #
 # How to test changes to this file:
 #   Copy this file to a GCS bucket:
-#   - gsutil cp service/src/main/java/bio/terra/workspace/service/resource/controlled/cloud/gcp/ainotebook/post-startup.sh gs://MYBUCKET
+#   - gsutil cp vertex-ai-user-managed-notebook/post-startup.sh gs://MYBUCKET
 #
 #   Create a new VM (JupyterLab provided by JupyterLab service):
 #   - terra resource create gcp-notebook \

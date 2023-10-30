@@ -754,7 +754,7 @@ EOF
 chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASHRC}"
 chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 
-###################################
+####################################
 # Run a user provided startup script
 ####################################
 

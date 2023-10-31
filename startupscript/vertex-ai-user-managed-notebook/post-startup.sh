@@ -646,6 +646,8 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${TERRA_SSH_AGENT_SCRIPT}"
 cat << EOF >"${TERRA_SSH_AGENT_SERVICE}"
 [Unit]
 Description=Run an SSH agent for the Jupyter user
+ConditionFileIsExecutable=${TERRA_SSH_AGENT_SCRIPT}
+After=network.target
 
 [Service]
 ExecStart=${TERRA_SSH_AGENT_SCRIPT}

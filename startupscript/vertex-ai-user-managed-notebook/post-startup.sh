@@ -647,7 +647,7 @@ cat << EOF >"${TERRA_SSH_AGENT_SERVICE}"
 [Unit]
 Description=Run an SSH agent for the Jupyter user
 ConditionFileIsExecutable=${TERRA_SSH_AGENT_SCRIPT}
-After=network.target
+After=home-jupyter.mount
 
 [Service]
 ExecStart=${TERRA_SSH_AGENT_SCRIPT}

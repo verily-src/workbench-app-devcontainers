@@ -768,7 +768,7 @@ if [[ -n "${APP_PROXY}" ]]; then
   NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
 
   # Create a systemd service to start the workbench app proxy.
-  cat << EOF >"${WORKBENCH_PROXY_AGENT_SERVICE}"
+  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
 [Unit]
 Description=Workbench App Proxy Agent Service
 StartLimitIntervalSec=600

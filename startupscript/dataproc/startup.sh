@@ -966,7 +966,7 @@ fi
       ui_base_url=terra-preprod-ui-terra.api.verily.com
     ;;
     verily)
-      ui_base_url=workbench.verily.com/workspaces/
+      ui_base_url=workbench.verily.com
       ;;
     *)
       >&2 echo "ERROR: $TERRA_SERVER is not a known verily server."
@@ -981,7 +981,7 @@ fi
   # Add target blank property to banner links so they open in a new tab
   sed -i "s/class=\"forum\"/class=\"forum\" target=\"_blank\"/g" ${PROXY_AGENT_BANNER}
 
-  # Remove flex stylig from the banner-account css class
+  # Remove flex styling from the banner-account css class
   sed -i '/banner-account {/,/}/{/flex:/d;/-ms-flex:/d;/-webkit-flex:/d;}' ${PROXY_AGENT_BANNER}
 
   # Add css class for #workspace before a#project

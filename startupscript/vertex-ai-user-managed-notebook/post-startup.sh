@@ -133,6 +133,9 @@ readonly TERRA_SSH_AGENT_SCRIPT="${USER_TERRA_CONFIG_DIR}/ssh-agent-start.sh"
 readonly TERRA_SSH_AGENT_SERVICE_NAME="terra-ssh-agent.service"
 readonly TERRA_SSH_AGENT_SERVICE="/etc/systemd/system/${TERRA_SSH_AGENT_SERVICE_NAME}"
 
+readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
+readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+
 # Location of gitignore configuration file for users
 readonly GIT_IGNORE="${USER_HOME_DIR}/gitignore_global"
 
@@ -764,18 +767,26 @@ if [[ -n "${APP_PROXY}" ]]; then
   NEW_PROXY="https://${APP_PROXY}"
   NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
 
-  # Update the proxy.env file with new URLs and backend ID
-  sed -i "s#^PROXY_REGISTRATION_URL=.*#PROXY_REGISTRATION_URL=${NEW_PROXY}#" "${PROXY_ENV}"
-  sed -i "s#^PROXY_URL=.*#PROXY_URL=${NEW_PROXY_URL}#" "${PROXY_ENV}"
-  sed -i "s#^BACKEND_ID=.*#BACKEND_ID=${RESOURCE_ID}#" "${PROXY_ENV}"
+  # Create a systemd service to start the workbench app proxy.
+  cat << EOF >"${WORKBENCH_PROXY_AGENT_SERVICE}"
+[Unit]
+Description=Workbench App Proxy Agent Service
+StartLimitIntervalSec=600
 
-  # With the proxy.env updated, restart the notebooks-proxy-agent
-  systemctl restart notebooks-proxy-agent.service
-  emit "Proxy Agent service restarted"
-  
-  INSTANCE_NAME=$(get_metadata_value "instance/name")
-  INSTANCE_ZONE="/"$(get_metadata_value "instance/zone")
-  INSTANCE_ZONE="${INSTANCE_ZONE##/*/}"
+[Service]
+StartLimitBurst=0
+ExecStart=/opt/bin/proxy-forwarding-agent --proxy=${NEW_PROXY}/ --host=localhost:8080 --backend="${RESOURCE_ID}" --shim-path="websocket-shim" --health-check-path=/api/kernelspecs --health-check-interval-seconds=30
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # Enable and start the startup service
+  systemctl daemon-reload
+  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  emit "Workbench proxy Agent service started"
   
   # Update vertex AI metadata 'proxy-url' which UI exposes to users to access the VM.
   ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=proxy-url=${NEW_PROXY_URL}"

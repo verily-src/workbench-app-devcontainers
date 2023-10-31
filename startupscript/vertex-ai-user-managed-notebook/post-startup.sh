@@ -34,6 +34,11 @@
 #     4- Set the VM guest attribute "notebooks/handle_post_startup_script" to "DONE".
 #        Note that this attribute is set to DONE whether the script runs successfully or not.
 #
+#   The startup script will execute a user provided startup script defined in
+#   the `terra-user-startup-script` instance metadata attribute. Non zero error
+#   codes from the user startup script will cause this script to fail, and the
+#   user is expected to debug failures via the output log in ~/.terra/user-startup-output.txt
+#
 # How to test changes to this file:
 #   Copy this file to a GCS bucket:
 #   - gsutil cp vertex-ai-user-managed-notebook/post-startup.sh gs://MYBUCKET
@@ -758,24 +763,30 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 # Run a user provided startup script
 ####################################
 
-# If the user has provided a startup script, run it after workbench setup,
-# but before restarting Jupyter and running tests.
+# If the user has provided a startup script, run it after workbench setup but
+# before restarting Jupyter and running tests.
 
 readonly USER_STARTUP_SCRIPT="$(get_metadata_value "instance/attributes/terra-user-startup-script")"
 if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
-  emit "Running user provided startup script..."
   readonly USER_STARTUP_SCRIPT_FILE="${USER_TERRA_CONFIG_DIR}/user-startup-script.sh"
 
   # Copy the user's startup script to the user's .terra directory
-  curl -L "${USER_STARTUP_SCRIPT}" >"${USER_STARTUP_SCRIPT_FILE}"
+  emit "Downloading user startup script to ${USER_STARTUP_SCRIPT_FILE}..."
+  if [[ "${USER_STARTUP_SCRIPT}" == gs://* ]]; then
+      # If the URL starts with "gs://", use gsutil to download the file
+      gsutil cp "${USER_STARTUP_SCRIPT}" "${USER_STARTUP_SCRIPT_FILE}"
+  else
+      # Otherwise, use curl to download the file
+      curl -o "${USER_STARTUP_SCRIPT_FILE}" -L "${USER_STARTUP_SCRIPT}"
+  fi
+  chmod +x "${USER_STARTUP_SCRIPT_FILE}"
 
   # Run the user's startup script as the root user so that they may install packages
-  emit "Running user provided startup script, output to ${USER_STARTUP_OUTPUT_FILE}..."
-  chmod +x "${USER_STARTUP_SCRIPT_FILE}"
-  bash -c "${USER_STARTUP_SCRIPT_FILE}" >${USER_STARTUP_OUTPUT_FILE} 2>&1
+  emit "Running user startup script, output to ${USER_STARTUP_OUTPUT_FILE}..."
+  "${USER_STARTUP_SCRIPT_FILE}" > ${USER_STARTUP_OUTPUT_FILE} 2>&1
 fi
 
-#######################################
+######################################
 # Restart proxy to pick up the new env
 ######################################
 readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")

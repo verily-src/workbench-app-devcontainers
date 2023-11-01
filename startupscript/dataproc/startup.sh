@@ -88,6 +88,9 @@ readonly JUPYTER_SERVICE_NAME="jupyter.service"
 readonly JUPYTER_SERVICE="/etc/systemd/system/${JUPYTER_SERVICE_NAME}"
 readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_notebook_config.py"
 
+readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
+readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+
 # Variables relevant for 3rd party software that gets installed
 readonly REQ_JAVA_VERSION=17
 readonly JAVA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/java"
@@ -747,24 +750,23 @@ After=google-guest-agent.service google-startup-scripts.service
 Before=shutdown.target
 
 [Service]
-ExecStart=/bin/bash -c '/usr/bin/proxy-forwarding-agent -proxy ${NEW_PROXY}/ -host localhost:8123 -backend ${RESOURCE_ID} -shim-path websocket-shim -banner-height=40px -inject-banner="$(cat /opt/dataproc/proxy-agent/banner.html)"  -session-cookie-name=_xsrf'
+ExecStart=/bin/bash -c '/usr/bin/proxy-forwarding-agent -proxy ${NEW_PROXY}/ -host localhost:8123 -backend ${RESOURCE_ID} -shim-path websocket-shim -banner-height=40px -inject-banner="\$(cat /opt/dataproc/proxy-agent/banner.html)"  -session-cookie-name=_xsrf'
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-  # Enable and start the startup service
+  # Enable and start the workbench app proxy agent service
   systemctl daemon-reload
   systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
   systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
   emit "Workbench proxy Agent service started"
 
-  # Since the field we are writing is the NOTEBOOK_CONFIG is a regular expression pattern,
-  # we need to be sure to escape regex characters, notably the periods.
-  ESCAPED_NEW_PROXY_URL=$(echo "${NEW_PROXY_URL}" | sed -r "s/\./\\\./g")
   cat << EOF >> "${JUPYTER_CONFIG}"
-c.ServerApp.allow_origin_pat += "|(^https://${ESCAPED_NEW_PROXY_URL}$)"
+c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"
+c.NotebookApp.allow_remote_access= True
+c.NotebookApp.local_hostnames.append('${APP_PROXY}')
 EOF
 
 fi
@@ -980,28 +982,8 @@ fi
 
   # Remove the default GCSContentsManager and set jupyter file tree's root directory to the LOGIN_USER's home directory.
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
+  echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
   
-  cat << EOF >> "${JUPYTER_CONFIG}"
-c.FileContentsManager.root_dir = "${USER_HOME_DIR}"
-EOF
-  if [[ -n "${APP_PROXY}" ]]; then
-  fi
-  
-  
-    # Update vertex AI metadata 'proxy-url' which UI exposes to users to access the VM.
-    ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=proxy-url=${NEW_PROXY_URL}"
-    emit "Overwrote proxy-url metadata"
-
-    # Since the field we are writing is the NOTEBOOK_CONFIG is a regular expression pattern,
-    # we need to be sure to escape regex characters, notably the periods.
-    ESCAPED_NEW_PROXY_URL=$(echo "${NEW_PROXY_URL}" | sed -r "s/\./\\\./g")
-
-    cat << EOF >> "${JUPYTER_CONFIG}"
-
-c.ServerApp.allow_origin_pat += "|(^https://${ESCAPED_NEW_PROXY_URL}$)"
-
-EOF
-  fi
 
   # Restart jupyter to load configurations
   systemctl restart ${JUPYTER_SERVICE_NAME}

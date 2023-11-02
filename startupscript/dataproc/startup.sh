@@ -765,6 +765,7 @@ WantedBy=multi-user.target
 EOF
 
   # Enable and start the workbench app proxy agent service
+  systemctl daemon-reload
   systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
   systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
   emit "Workbench proxy Agent service started"

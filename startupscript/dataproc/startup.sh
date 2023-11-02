@@ -88,6 +88,9 @@ readonly JUPYTER_SERVICE_NAME="jupyter.service"
 readonly JUPYTER_SERVICE="/etc/systemd/system/${JUPYTER_SERVICE_NAME}"
 readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_notebook_config.py"
 
+readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
+readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+
 # Variables relevant for 3rd party software that gets installed
 readonly REQ_JAVA_VERSION=17
 readonly JAVA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/java"
@@ -729,6 +732,54 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 
 
 ###################################
+# Start workbench app proxy agent 
+###################################
+# Add a marker for the Terra-specific customizations
+cat << EOF >> "${JUPYTER_CONFIG}"
+
+### BEGIN: Terra-specific customizations ###
+
+EOF
+
+readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+if [[ -n "${APP_PROXY}" ]]; then
+  emit "Using custom Proxy Agent"
+  RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
+  NEW_PROXY="https://${APP_PROXY}"
+  NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+
+  # Create a systemd service to start the workbench app proxy.
+  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
+[Unit]
+Description=Workbench App Proxy Agent Service
+After=local-fs.target network-online.target
+After=google-guest-agent.service google-startup-scripts.service
+Before=shutdown.target
+
+[Service]
+ExecStart=/bin/bash -c '/usr/bin/proxy-forwarding-agent -proxy ${NEW_PROXY}/ -host localhost:8123 -backend ${RESOURCE_ID} -shim-path websocket-shim -banner-height=40px -inject-banner="\$(cat /opt/dataproc/proxy-agent/banner.html)"  -session-cookie-name=_xsrf'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # Enable and start the workbench app proxy agent service
+  systemctl daemon-reload
+  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  emit "Workbench proxy Agent service started"
+
+
+  cat << EOF >> "${JUPYTER_CONFIG}"
+c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"
+c.NotebookApp.allow_remote_access= True
+c.NotebookApp.local_hostnames.append('${APP_PROXY}')
+EOF
+
+fi
+
+###################################
 # Configure Jupyter systemd service
 ###################################
 
@@ -940,6 +991,13 @@ fi
   # Remove the default GCSContentsManager and set jupyter file tree's root directory to the LOGIN_USER's home directory.
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
+  
+  # Add a marker for the Terra-specific customizations
+  cat << EOF >> "${JUPYTER_CONFIG}"
+
+### END: Terra-specific customizations ###
+
+EOF
 
   # Restart jupyter to load configurations
   systemctl restart ${JUPYTER_SERVICE_NAME}

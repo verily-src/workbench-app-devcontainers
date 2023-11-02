@@ -983,7 +983,6 @@ fi
   # Remove the default GCSContentsManager and set jupyter file tree's root directory to the LOGIN_USER's home directory.
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
-  
 
   # Restart jupyter to load configurations
   systemctl restart ${JUPYTER_SERVICE_NAME}

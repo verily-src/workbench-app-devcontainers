@@ -244,11 +244,11 @@ rm -rf "${USER_HOME_DIR}/tutorials"
 # As described above, have the ~/.bash_profile source the ~/.bashrc
 cat << EOF >> "${USER_BASH_PROFILE}"
 
-### BEGIN: Terra-specific customizations ###
+### BEGIN: VWB-specific customizations ###
 if [[ -e ~/.bashrc ]]; then
   source ~/.bashrc
 fi
-### END: Terra-specific customizations ###
+### END: VWB-specific customizations ###
 
 EOF
 
@@ -266,7 +266,7 @@ EOF
 # Add a marker for the Terra-specific customizations
 cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-### BEGIN: Terra-specific customizations ###
+### BEGIN: VWB-specific customizations ###
 
 EOF
 
@@ -788,25 +788,21 @@ EOF
   systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
   emit "Workbench proxy Agent service started"
   
-  # Update vertex AI metadata 'proxy-url' which UI exposes to users to access the VM.
-  ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=proxy-url=${NEW_PROXY_URL}"
-  emit "Overwrote proxy-url metadata"
-
-  # Since the field we are writing is the NOTEBOOK_CONFIG is a regular expression pattern,
-  # we need to be sure to escape regex characters, notably the periods.
-  ESCAPED_NEW_PROXY_URL=$(echo "${NEW_PROXY_URL}" | sed -r "s/\./\\\./g")
+  # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
+  ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
+  emit "Updating app-proxy-url metadata"
 
   cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-c.ServerApp.allow_origin_pat += "|(^https://${ESCAPED_NEW_PROXY_URL}$)"
+c.ServerApp.allow_origin_pat += "|(^https://${NEW_PROXY_URL}$)"
 
 EOF
 fi
 
-# Indicate the end of Terra customizations of the jupyter_notebook_config.py
+# Indicate the end of VWB customizations of the jupyter_notebook_config.py
 cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-### END: Terra-specific customizations ###
+### END: VWB-specific customizations ###
 EOF
 
 ####################################

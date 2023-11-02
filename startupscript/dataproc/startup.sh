@@ -734,6 +734,13 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 ###################################
 # Start workbench app proxy agent 
 ###################################
+# Add a marker for the Terra-specific customizations
+cat << EOF >> "${JUPYTER_CONFIG}"
+
+### BEGIN: Terra-specific customizations ###
+
+EOF
+
 readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
 if [[ -n "${APP_PROXY}" ]]; then
   emit "Using custom Proxy Agent"
@@ -758,10 +765,10 @@ WantedBy=multi-user.target
 EOF
 
   # Enable and start the workbench app proxy agent service
-  systemctl daemon-reload
   systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
   systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
   emit "Workbench proxy Agent service started"
+
 
   cat << EOF >> "${JUPYTER_CONFIG}"
 c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"
@@ -983,6 +990,13 @@ fi
   # Remove the default GCSContentsManager and set jupyter file tree's root directory to the LOGIN_USER's home directory.
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
+  
+  # Add a marker for the Terra-specific customizations
+  cat << EOF >> "${JUPYTER_CONFIG}"
+
+### END: Terra-specific customizations ###
+
+EOF
 
   # Restart jupyter to load configurations
   systemctl restart ${JUPYTER_SERVICE_NAME}

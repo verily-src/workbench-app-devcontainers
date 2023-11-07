@@ -730,38 +730,6 @@ EOF
 chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASHRC}"
 chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 
-
-###################################
-# Start workbench app proxy agent 
-###################################
-
-readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
-if [[ -n "${APP_PROXY}" ]]; then
-  emit "Using custom Proxy Agent"
-  RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
-  NEW_PROXY="https://${APP_PROXY}"
-  NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
-
-  # Create a systemd service to start the workbench app proxy.
-  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
-[Unit]
-Description=Workbench App Proxy Agent Service
-
-[Service]
-ExecStart=/bin/bash -c '/usr/bin/proxy-forwarding-agent -proxy ${NEW_PROXY}/ -host localhost:8123 -backend ${RESOURCE_ID} -shim-path websocket-shim -banner-height=40px -inject-banner="\$(cat /opt/dataproc/proxy-agent/banner.html)"  -session-cookie-name=_xsrf'
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  # Enable and start the workbench app proxy agent service
-  systemctl daemon-reload
-  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  emit "Workbench proxy Agent service started"
-fi
-
 ###################################
 # Configure Jupyter systemd service
 ###################################
@@ -1004,6 +972,37 @@ systemctl daemon-reload
 
 # The jupyter service will be restarted by the default Dataproc startup script
 # and pick up the modified service configuration and environment variables.
+
+###################################
+# Start workbench app proxy agent 
+###################################
+
+readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+if [[ -n "${APP_PROXY}" ]]; then
+  emit "Using custom Proxy Agent"
+  RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
+  NEW_PROXY="https://${APP_PROXY}"
+  NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+
+  # Create a systemd service to start the workbench app proxy.
+  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
+[Unit]
+Description=Workbench App Proxy Agent Service
+
+[Service]
+ExecStart=/bin/bash -c '/usr/bin/proxy-forwarding-agent -proxy ${NEW_PROXY}/ -host localhost:8123 -backend ${RESOURCE_ID} -shim-path websocket-shim -banner-height=40px -inject-banner="\$(cat /opt/dataproc/proxy-agent/banner.html)"  -session-cookie-name=_xsrf'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # Enable and start the workbench app proxy agent service
+  systemctl daemon-reload
+  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  emit "Workbench proxy Agent service started"
+fi
 
 ####################################################################################
 # Run a set of tests that should be invariant to the workspace or user configuration

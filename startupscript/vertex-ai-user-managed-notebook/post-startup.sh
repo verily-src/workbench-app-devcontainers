@@ -398,31 +398,13 @@ readonly TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-serve
 # If the server environment is a verily server, use the verily download script.
 # Otherwise, install the latest DataBiosphere CLI release.
 if [[ $TERRA_SERVER == *"verily"* ]]; then
-  # Map the CLI server to the appropriate AFS service environment
-  case $TERRA_SERVER in
-    verily-devel)
-      afsservice=terra-devel-axon.api.verily.com
-      ;;
-    verily-autopush)
-      afsservice=terra-autopush-axon.api.verily.com
-      ;;
-    verily-staging)
-      afsservice=terra-staging-axon.api.verily.com
-      ;;
-    verily-preprod)
-      afsservice=terra-preprod-axon.api.verily.com
-      ;;
-    verily)
-      afsservice=terra-axon.api.verily.com
-      ;;
-    *)
-      >&2 echo "ERROR: $TERRA_SERVER is not a known verily server."
+  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+  versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
+  if [[ $exit_code -ne 0 ]]; then
+      >&2 echo "ERROR: $TERRA_SERVER is not a known server"
       exit 1
-      ;;
-  esac
-  # Build AFS service path and fetch the CLI distribution path
-  versionJson="$(curl -s "https://$afsservice/version")"
-  cliDistributionPath=$(echo "$versionJson" | jq -r '.cliDistributionPath')
+  fi
+  cliDistributionPath="$(echo "$versionJson" | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "\
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \

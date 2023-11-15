@@ -399,7 +399,6 @@ if [[ -n "${TERRA_SERVER}" ]]; then
 fi
 
 # If the server environment is a verily server, use the verily download script.
-# Otherwise, install the latest DataBiosphere CLI release.
 if [[ $TERRA_SERVER == *"verily"* ]]; then
   # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
   versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
@@ -413,9 +412,8 @@ if [[ $TERRA_SERVER == *"verily"* ]]; then
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
     cp terra '${TERRA_INSTALL_PATH}'"
 else
-  ${RUN_AS_LOGIN_USER} "\
-    curl -L https://github.com/DataBiosphere/terra-cli/releases/latest/download/download-install.sh | bash && \
-    cp terra '${TERRA_INSTALL_PATH}'"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  exit 1
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
@@ -451,7 +449,7 @@ fi
 # to make porting existing notebooks easier.
 
 # Keep in sync with terra CLI environment variables:
-# https://github.com/DataBiosphere/terra-cli/blob/14cf51dd809573c7ae9a3ef10ddd427fa057cb8f/src/main/java/bio/terra/cli/app/CommandRunner.java#L88
+# https://github.com/verily-src/terra-tool-cli/blob/6c3d1ee2dd54aa62785da4113b83f5eba57d3c7f/src/main/java/bio/terra/cli/app/CommandRunner.java#L89
 
 # *** Variables that are set by Leonardo for Cloud Environments
 # (https://github.com/DataBiosphere/leonardo)

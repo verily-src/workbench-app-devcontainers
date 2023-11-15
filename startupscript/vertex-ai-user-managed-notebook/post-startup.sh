@@ -389,48 +389,32 @@ ${RUN_AS_LOGIN_USER} "\
   chmod +x cromshell && \
   mv cromshell '${CROMSHELL_INSTALL_PATH}'"
 
-# Install & configure the Terra CLI
-emit "Installing the Terra CLI ..."
+# Install & configure the VWB CLI
+emit "Installing the VWB CLI ..."
 
 # Fetch the Terra CLI server environment from the metadata server to install appropriate CLI version
-readonly TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+if [[ -n "${TERRA_SERVER}" ]]; then
+  TERRA_SERVER="verily"
+fi
+readonly TERRA_SERVER
 
 # If the server environment is a verily server, use the verily download script.
-# Otherwise, install the latest DataBiosphere CLI release.
-if [[ $TERRA_SERVER == *"verily"* ]]; then
-  # Map the CLI server to the appropriate AFS service environment
-  case $TERRA_SERVER in
-    verily-devel)
-      afsservice=terra-devel-axon.api.verily.com
-      ;;
-    verily-autopush)
-      afsservice=terra-autopush-axon.api.verily.com
-      ;;
-    verily-staging)
-      afsservice=terra-staging-axon.api.verily.com
-      ;;
-    verily-preprod)
-      afsservice=terra-preprod-axon.api.verily.com
-      ;;
-    verily)
-      afsservice=terra-axon.api.verily.com
-      ;;
-    *)
-      >&2 echo "ERROR: $TERRA_SERVER is not a known verily server."
+if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+  versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
+  if [[ "${exit_code}" -ne 0 ]]; then
+      >&2 echo "ERROR: ${TERRA_SERVER} is not a known server"
       exit 1
-      ;;
-  esac
-  # Build AFS service path and fetch the CLI distribution path
-  versionJson="$(curl -s "https://$afsservice/version")"
-  cliDistributionPath=$(echo "$versionJson" | jq -r '.cliDistributionPath')
+  fi
+  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "\
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
     cp terra '${TERRA_INSTALL_PATH}'"
 else
-  ${RUN_AS_LOGIN_USER} "\
-    curl -L https://github.com/DataBiosphere/terra-cli/releases/latest/download/download-install.sh | bash && \
-    cp terra '${TERRA_INSTALL_PATH}'"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  exit 1
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
@@ -466,7 +450,7 @@ fi
 # to make porting existing notebooks easier.
 
 # Keep in sync with terra CLI environment variables:
-# https://github.com/DataBiosphere/terra-cli/blob/14cf51dd809573c7ae9a3ef10ddd427fa057cb8f/src/main/java/bio/terra/cli/app/CommandRunner.java#L88
+# https://github.com/verily-src/terra-tool-cli/blob/6c3d1ee2dd54aa62785da4113b83f5eba57d3c7f/src/main/java/bio/terra/cli/app/CommandRunner.java#L89
 
 # *** Variables that are set by Leonardo for Cloud Environments
 # (https://github.com/DataBiosphere/leonardo)
@@ -793,7 +777,6 @@ fi
 # Restart proxy to pick up the new env
 ######################################
 readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
-readonly PROXY_ENV="/opt/deeplearning/proxy.env"
 readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
 if [[ -n "${APP_PROXY}" ]]; then
   emit "Using custom Proxy Agent"

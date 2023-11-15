@@ -122,7 +122,7 @@ if [[ $TERRA_SERVER == *"verily"* ]]; then
       >&2 echo "ERROR: ${TERRA_SERVER} is not a known server"
       exit 1
   fi
-  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
+  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "\
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \

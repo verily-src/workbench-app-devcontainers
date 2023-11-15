@@ -115,7 +115,6 @@ if [[ -n "${TERRA_SERVER}" ]]; then
 fi
 
 # If the server environment is a verily server, use the verily download script.
-# Otherwise, install the latest DataBiosphere CLI release.
 if [[ $TERRA_SERVER == *"verily"* ]]; then
   # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
   versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
@@ -129,9 +128,8 @@ if [[ $TERRA_SERVER == *"verily"* ]]; then
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
     cp terra '${TERRA_INSTALL_PATH}'"
 else
-  ${RUN_AS_LOGIN_USER} "\
-    curl -L https://github.com/DataBiosphere/terra-cli/releases/latest/download/download-install.sh | bash && \
-    cp terra '${TERRA_INSTALL_PATH}'"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  exit 1
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM

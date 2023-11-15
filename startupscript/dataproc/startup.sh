@@ -270,9 +270,9 @@ if ! which gcsfuse >/dev/null 2>&1; then
     lsb-release
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s) \
-    && echo "deb https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | tee /etc/apt/sources.list.d/gcsfuse.list \
-    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
+    && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \
+    && curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \
     && apt-get install -y gcsfuse
 else
@@ -361,12 +361,13 @@ TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
 if [[ -n "${TERRA_SERVER}" ]]; then
   TERRA_SERVER="verily"
 fi
+readonly TERRA_SERVER
 
 # If the server environment is a verily server, use the verily download script.
-if [[ $TERRA_SERVER == *"verily"* ]]; then
+if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
   # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
   versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
-  if [[ $exit_code -ne 0 ]]; then
+  if [[ "${exit_code}" -ne 0 ]]; then
       >&2 echo "ERROR: ${TERRA_SERVER} is not a known server"
       exit 1
   fi

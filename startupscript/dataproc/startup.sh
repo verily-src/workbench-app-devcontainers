@@ -32,6 +32,11 @@
 #   https://github.com/DataBiosphere/terra-workspace-manager/tree/main/integration#Run-nightly-only-test-suite-locally
 #   for instruction on how to run the test.
 
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
 # Only run on the dataproc manager node. Exit silently if otherwise.
 readonly ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
 if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
@@ -39,11 +44,6 @@ if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
 # Only run on first startup. A file is created in the exit handler in the case of successful startup execution.
 readonly STARTUP_SCRIPT_COMPLETE="/etc/startup_script_complete"
 if [[ -f "${STARTUP_SCRIPT_COMPLETE}" ]]; then exit 0; fi
-
-set -o errexit
-set -o nounset
-set -o pipefail
-set -o xtrace
 
 # The linux user that JupyterLab will be running as. It's important to do some parts of setup in the
 # user space, such as setting VWB CLI settings which are persisted in the user's $HOME.
@@ -61,7 +61,6 @@ readonly RUN_AS_LOGIN_USER="sudo -u ${LOGIN_USER} bash -l -c"
 readonly RUN_PIP="/opt/conda/miniconda3/bin/pip"
 readonly RUN_PYTHON="/opt/conda/miniconda3/bin/python"
 readonly RUN_JUPYTER="/opt/conda/miniconda3/bin/jupyter"
-readonly RUN_IPYTHON="/opt/conda/miniconda3/bin/ipython"
 
 # Startup script status is propagated out to VM guest attributes
 readonly STATUS_ATTRIBUTE="startup_script/status"
@@ -103,7 +102,6 @@ readonly CROMWELL_INSTALL_DIR="${USER_HOME_LOCAL_SHARE}/java"
 readonly CROMWELL_INSTALL_JAR="${CROMWELL_INSTALL_DIR}/cromwell-${CROMWELL_LATEST_VERSION}.jar"
 
 readonly CROMSHELL_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/cromshell"
-
 
 # We need to set the correct Java installation for the VWB CLI (17) which conflicts with the
 # version that Hail needs (8 or 11).
@@ -272,9 +270,9 @@ if ! which gcsfuse >/dev/null 2>&1; then
     lsb-release
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s) \
-    && echo "deb https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | tee /etc/apt/sources.list.d/gcsfuse.list \
-    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
+    && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \
+    && curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \
     && apt-get install -y gcsfuse
 else
@@ -318,11 +316,11 @@ ${RUN_AS_LOGIN_USER} "mv '${JAVA_DIRNAME}' '${USER_HOME_LOCAL_SHARE}'"
 
 # Create a soft link in ~/.local/bin to the java runtime
 ln -s "${USER_HOME_LOCAL_SHARE}/${JAVA_DIRNAME}/bin/java" "${USER_HOME_LOCAL_BIN}"
-chown --no-dereference ${LOGIN_USER}:${LOGIN_USER} "${USER_HOME_LOCAL_BIN}/java"
+chown --no-dereference "${LOGIN_USER}:${LOGIN_USER}" "${USER_HOME_LOCAL_BIN}/java"
 
 # Clean up
 popd
-rmdir ${JAVA_INSTALL_TMP}
+rmdir "${JAVA_INSTALL_TMP}"
 
 # Download Nextflow and install it
 emit "Installing Nextflow ..."
@@ -359,56 +357,39 @@ ${RUN_AS_LOGIN_USER} "\
 emit "Installing the VWB CLI ..."
 
 # Fetch the VWB CLI server environment from the metadata server to install appropriate CLI version
-readonly TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+if [[ -n "${TERRA_SERVER}" ]]; then
+  TERRA_SERVER="verily"
+fi
+readonly TERRA_SERVER
 
 # If the server environment is a verily server, use the verily download script.
-# Otherwise, install the latest DataBiosphere CLI release.
-if [[ $TERRA_SERVER == *"verily"* ]]; then
-  # Map the CLI server to the appropriate AFS service environment
-  case $TERRA_SERVER in
-    verily-devel)
-      afsservice=terra-devel-axon.api.verily.com
-      ;;
-    verily-autopush)
-      afsservice=terra-autopush-axon.api.verily.com
-      ;;
-    verily-staging)
-      afsservice=terra-staging-axon.api.verily.com
-      ;;
-    verily-preprod)
-      afsservice=terra-preprod-axon.api.verily.com
-      ;;
-    verily)
-      afsservice=terra-axon.api.verily.com
-      ;;
-    *)
-      >&2 echo "ERROR: $TERRA_SERVER is not a known verily server."
+if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+  versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
+  if [[ "${exit_code}" -ne 0 ]]; then
+      >&2 echo "ERROR: ${TERRA_SERVER} is not a known server"
       exit 1
-      ;;
-  esac
-  # Build AFS service path and fetch the CLI distribution path
-  versionJson="$(curl -s "https://$afsservice/version")"
-  cliDistributionPath=$(echo "$versionJson" | jq -r '.cliDistributionPath')
+  fi
+  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "\
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
     cp terra '${TERRA_INSTALL_PATH}'"
 else
-  ${RUN_AS_LOGIN_USER} "\
-    curl -L https://github.com/DataBiosphere/terra-cli/releases/latest/download/download-install.sh | bash && \
-    cp terra '${TERRA_INSTALL_PATH}'"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  exit 1
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
 ${RUN_AS_LOGIN_USER} "terra config set browser MANUAL"
 
 # Set the CLI terra server based on the terra server that created the VM.
-if [[ -n "${TERRA_SERVER}" ]]; then
-  ${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
-fi
+${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
 
 # Log in with app-default-credentials
 ${RUN_AS_LOGIN_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
+
 # Generate the bash completion script
 ${RUN_AS_LOGIN_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
 
@@ -432,7 +413,7 @@ fi
 # to make porting existing notebooks easier.
 
 # Keep in sync with terra CLI environment variables:
-# https://github.com/DataBiosphere/terra-cli/blob/14cf51dd809573c7ae9a3ef10ddd427fa057cb8f/src/main/java/bio/terra/cli/app/CommandRunner.java#L88
+# https://github.com/verily-src/terra-tool-cli/blob/6c3d1ee2dd54aa62785da4113b83f5eba57d3c7f/src/main/java/bio/terra/cli/app/CommandRunner.java#L89
 
 # *** Variables that are set by Leonardo for Cloud Environments
 # (https://github.com/DataBiosphere/leonardo)
@@ -499,7 +480,7 @@ EOF
 
 # Make sure the wrapper script is executable by the login user
 chmod +x "${TERRA_WRAPPER_PATH}"
-chown "${LOGIN_USER}":"${LOGIN_USER}" "${TERRA_WRAPPER_PATH}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${TERRA_WRAPPER_PATH}"
 
 #################
 # bash completion
@@ -639,7 +620,7 @@ done
 echo "SSH agent ${SSH_AGENT_PID} has exited."
 EOF
 chmod +x "${TERRA_SSH_AGENT_SCRIPT}"
-chown ${LOGIN_USER}:${LOGIN_USER} "${TERRA_SSH_AGENT_SCRIPT}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${TERRA_SSH_AGENT_SCRIPT}"
 
 # Create a systemd service file for the ssh-agent
 cat << EOF >"${TERRA_SSH_AGENT_SERVICE}"
@@ -698,7 +679,7 @@ source "${USER_BASHRC}"
 exit 0
 EOF
 chmod +x "${TERRA_BOOT_SCRIPT}"
-chown ${LOGIN_USER}:${LOGIN_USER} "${TERRA_BOOT_SCRIPT}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${TERRA_BOOT_SCRIPT}"
 
 # Create a systemd service to run the boot script on system boot
 cat << EOF >"${TERRA_BOOT_SERVICE}"
@@ -727,8 +708,8 @@ cat << EOF >> "${USER_BASHRC}"
 EOF
 
 # Make sure the ~/.bashrc and ~/.bash_profile are owned by the jupyter user
-chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASHRC}"
-chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASHRC}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 
 
 ###################################
@@ -1015,7 +996,7 @@ emit "--  Checking if installed Java version is ${REQ_JAVA_VERSION} or higher"
 
 # Get the current major version of Java: "11.0.12" => "11"
 readonly INSTALLED_JAVA_VERSION="$(${RUN_AS_LOGIN_USER} "${JAVA_INSTALL_PATH} -version" 2>&1 | awk -F\" '{ split($2,a,"."); print a[1]}')"
-if [[ "${INSTALLED_JAVA_VERSION}" -lt ${REQ_JAVA_VERSION} ]]; then
+if [[ "${INSTALLED_JAVA_VERSION}" -lt "${REQ_JAVA_VERSION}" ]]; then
   >&2 emit "ERROR: Java version detected (${INSTALLED_JAVA_VERSION}) is less than required (${REQ_JAVA_VERSION})"
   exit 1
 fi

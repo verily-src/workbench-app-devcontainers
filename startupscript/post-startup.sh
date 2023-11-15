@@ -1,6 +1,9 @@
 #!/bin/bash
 
-set -e -x
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
 
 if [ $# -ne 2 ]; then
   echo "Usage: $0 user workDirectory"
@@ -34,7 +37,6 @@ readonly USER_BASHRC="${workDirectory}/.bashrc"
 readonly USER_BASH_PROFILE="${workDirectory}/.bash_profile"
 readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.txt"
 
-readonly JAVA_INSTALL_PATH="usr/bin/java"
 readonly JAVA_INSTALL_TMP="${USER_TERRA_CONFIG_DIR}/javatmp"
 
 # Variables for Terra-specific code installed on the VM
@@ -97,33 +99,53 @@ ${RUN_AS_USER} "mv '${JAVA_DIRNAME}' '${USER_HOME_LOCAL_SHARE}'"
 
 # Create a soft link in /usr/bin to the java runtime
 ln -sf "${USER_HOME_LOCAL_SHARE}/${JAVA_DIRNAME}/bin/java" "/usr/bin"
-chown --no-dereference ${user} "/usr/bin/java"
+chown --no-dereference "${user}" "/usr/bin/java"
 
 # Clean up
 popd
-rmdir ${JAVA_INSTALL_TMP}
+rmdir "${JAVA_INSTALL_TMP}"
 
-# Install & configure the Terra CLI
-emit "Installing the Terra CLI ..."
+# Install & configure the VWB CLI
+emit "Installing the VWB CLI ..."
 
-${RUN_AS_USER} "\
- curl -L https://storage.googleapis.com/workbench-public/workbench-cli/download-install.sh | bash"
+# Fetch the VWB CLI server environment from the metadata server to install appropriate CLI version
+TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+if [[ -n "${TERRA_SERVER}" ]]; then
+  TERRA_SERVER="verily"
+fi
 
-cp terra ${TERRA_INSTALL_PATH}
+# If the server environment is a verily server, use the verily download script.
+# Otherwise, install the latest DataBiosphere CLI release.
+if [[ $TERRA_SERVER == *"verily"* ]]; then
+  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+  versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
+  if [[ $exit_code -ne 0 ]]; then
+      >&2 echo "ERROR: ${TERRA_SERVER} is not a known server"
+      exit 1
+  fi
+  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
+
+  ${RUN_AS_LOGIN_USER} "\
+    curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
+    cp terra '${TERRA_INSTALL_PATH}'"
+else
+  ${RUN_AS_LOGIN_USER} "\
+    curl -L https://github.com/DataBiosphere/terra-cli/releases/latest/download/download-install.sh | bash && \
+    cp terra '${TERRA_INSTALL_PATH}'"
+fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
 ${RUN_AS_USER} "terra config set browser MANUAL"
 
 # Set the CLI terra server based on the terra server that created the VM.
-readonly TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
-if [[ -n "${TERRA_SERVER}" ]]; then
- ${RUN_AS_USER} "terra server set --name=${TERRA_SERVER}"
-fi
+${RUN_AS_USER} "terra server set --name=${TERRA_SERVER}"
 
 # Log in with app-default-credentials
 ${RUN_AS_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
+
 # Generate the bash completion script
 ${RUN_AS_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
+
 
 ####################################
 # Shell and notebook environment
@@ -134,6 +156,7 @@ readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-worksp
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
  ${RUN_AS_USER} "terra workspace set --id='${TERRA_WORKSPACE}'"
 fi
+
 
 #################
 # bash completion
@@ -162,6 +185,7 @@ if [[ -d ~/.bash_completion.d ]]; then
  done
 fi
 EOF
+
 
 ###############
 # git setup
@@ -201,16 +225,22 @@ ${RUN_AS_USER} "cd '${TERRA_GIT_REPOS_DIR}' && terra git clone --all"
 #############################
 # Mount buckets
 #############################
-emit "Installing GCS fuse..."
+# Installs gcsfuse if it is not already installed.
+if ! which gcsfuse >/dev/null 2>&1; then
+  emit "Installing gcsfuse..."
+  # install packages needed to install gcsfuse
+  apt-get install -y \
+    fuse \
+    lsb-core
 
-apt-get install -y fuse lsb-core
-
-export GCSFUSE_REPO=gcsfuse-`lsb_release -c -s`
-echo "deb https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | tee /etc/apt/sources.list.d/gcsfuse.list
-curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-
-apt-get update
-apt-get install -y gcsfuse
+  # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
+  export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s) \
+    && echo "deb https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | tee /etc/apt/sources.list.d/gcsfuse.list \
+    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  apt-get update \
+    && apt-get install -y gcsfuse
+else
+  emit "gcsfuse already installed. Skipping installation."
+fi
 
 ${RUN_AS_USER} "terra resource mount"
-

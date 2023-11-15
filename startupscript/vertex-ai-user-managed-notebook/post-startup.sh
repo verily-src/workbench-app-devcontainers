@@ -389,11 +389,14 @@ ${RUN_AS_LOGIN_USER} "\
   chmod +x cromshell && \
   mv cromshell '${CROMSHELL_INSTALL_PATH}'"
 
-# Install & configure the Terra CLI
-emit "Installing the Terra CLI ..."
+# Install & configure the VWB CLI
+emit "Installing the VWB CLI ..."
 
 # Fetch the Terra CLI server environment from the metadata server to install appropriate CLI version
-readonly TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+if [[ -n "${TERRA_SERVER}" ]]; then
+  TERRA_SERVER="verily"
+fi
 
 # If the server environment is a verily server, use the verily download script.
 # Otherwise, install the latest DataBiosphere CLI release.
@@ -401,10 +404,10 @@ if [[ $TERRA_SERVER == *"verily"* ]]; then
   # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
   versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")" || exit_code=$?
   if [[ $exit_code -ne 0 ]]; then
-      >&2 echo "ERROR: $TERRA_SERVER is not a known server"
+      >&2 echo "ERROR: ${TERRA_SERVER} is not a known server"
       exit 1
   fi
-  cliDistributionPath="$(echo "$versionJson" | jq -r '.cliDistributionPath')"
+  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "\
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
@@ -775,7 +778,6 @@ fi
 # Restart proxy to pick up the new env
 ######################################
 readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
-readonly PROXY_ENV="/opt/deeplearning/proxy.env"
 readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
 if [[ -n "${APP_PROXY}" ]]; then
   emit "Using custom Proxy Agent"

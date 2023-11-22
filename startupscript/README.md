@@ -26,7 +26,7 @@ Make your change and push to a branch.
 ```
 terra server set --id=verily-devel
 terra workspace set --id=<your-workspace>
-terra resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup-script=<path-to-the-raw-file-url>
+terra resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup-script=[<path-to-the-raw-file-url>](https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/vertexai/startup.sh)
 ```
 
 * Step 3

@@ -1,10 +1,11 @@
-# (post)startup script
+# Developer guide for (post)startup script
+
 Verily Workbench provisions VMs post-creation to install workbench specific tools (such as CLI, gcsfuse, ssh-keys for git).
 
 Currently there are three flavors of startup.script:
 * vertex AI user-managed notebook
 * dataproc cluster
-* gce instance
+* general gce instance (in the startupscript/ folder)
 
 ## How to test your change?
 
@@ -62,3 +63,11 @@ In the UI, create a custom rstudio app pointing at your personal repo.
 
 * Step 3
 Wait for the notebook to spin up and go to the instance. Check .terra/post-startup-output.txt to see if it succeeds.
+
+
+## General debugging tips
+
+* Check /home/<user>/.terra/post-startup-output.txt to see where the script failed.
+The user is jupyter for vertex AI, dataproc for dataproc cluster, and varies by app for gce instance.
+
+* If the proxy url doesn't work, you can ssh to the VM.

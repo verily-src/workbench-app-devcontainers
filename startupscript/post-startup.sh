@@ -27,7 +27,7 @@ function get_metadata_value() {
    "http://metadata/computeMetadata/v1/${metadata_path}"
 }
 
-readonly RUN_AS_USER="sudo -u ${user} bash -l -c"
+readonly RUN_AS_LOGIN_USER="sudo -u ${user} bash -l -c"
 
 readonly USER_BASH_COMPLETION_DIR="${workDirectory}/.bash_completion.d"
 readonly USER_HOME_LOCAL_SHARE="${workDirectory}/.local/share"
@@ -49,7 +49,7 @@ cd /tmp || exit
 
 # Send stdout and stderr from this script to a file for debugging.
 # Make the .terra directory as the user so that they own it and have correct linux permissions.
-${RUN_AS_USER} "mkdir -p '${USER_TERRA_CONFIG_DIR}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${USER_TERRA_CONFIG_DIR}'"
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 
@@ -58,8 +58,8 @@ apt-get update
 apt install -y jq curl tar
 
 # Create the target directories for installing into the HOME directory
-${RUN_AS_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
-${RUN_AS_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 
 # As described above, have the ~/.bash_profile source the ~/.bashrc
 cat << EOF >> "${USER_BASH_PROFILE}"
@@ -82,11 +82,11 @@ EOF
 emit "Installing Java JDK ..."
 
 # Set up a known clean directory for downloading the TAR and unzipping it.
-${RUN_AS_USER} "mkdir -p '${JAVA_INSTALL_TMP}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${JAVA_INSTALL_TMP}'"
 pushd "${JAVA_INSTALL_TMP}"
 
 # Download the latest Java 17, untar it, and remove the TAR file
-${RUN_AS_USER} "\
+${RUN_AS_LOGIN_USER} "\
  curl -Os https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz && \
  tar xfz jdk-17_linux-x64_bin.tar.gz && \
  rm jdk-17_linux-x64_bin.tar.gz"
@@ -95,7 +95,7 @@ ${RUN_AS_USER} "\
 JAVA_DIRNAME="$(ls)"
 
 # Move it to ~/.local
-${RUN_AS_USER} "mv '${JAVA_DIRNAME}' '${USER_HOME_LOCAL_SHARE}'"
+${RUN_AS_LOGIN_USER} "mv '${JAVA_DIRNAME}' '${USER_HOME_LOCAL_SHARE}'"
 
 # Create a soft link in /usr/bin to the java runtime
 ln -sf "${USER_HOME_LOCAL_SHARE}/${JAVA_DIRNAME}/bin/java" "/usr/bin"
@@ -133,16 +133,16 @@ else
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
-${RUN_AS_USER} "terra config set browser MANUAL"
+${RUN_AS_LOGIN_USER} "terra config set browser MANUAL"
 
 # Set the CLI terra server based on the terra server that created the VM.
-${RUN_AS_USER} "terra server set --name=${TERRA_SERVER}"
+${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
 
 # Log in with app-default-credentials
-${RUN_AS_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
+${RUN_AS_LOGIN_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
 
 # Generate the bash completion script
-${RUN_AS_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
+${RUN_AS_LOGIN_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
 
 
 ####################################
@@ -152,7 +152,7 @@ ${RUN_AS_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
 # Set the CLI terra workspace id using the VM metadata, if set.
 readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
- ${RUN_AS_USER} "terra workspace set --id='${TERRA_WORKSPACE}'"
+ ${RUN_AS_LOGIN_USER} "terra workspace set --id='${TERRA_WORKSPACE}'"
 fi
 
 
@@ -192,14 +192,14 @@ EOF
 emit "Setting up git integration..."
 
 # Create the user SSH directory
-${RUN_AS_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
+${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 
 # Get the user's SSH key from Terra, and if set, write it to the user's .ssh directory
-${RUN_AS_USER} "\
+${RUN_AS_LOGIN_USER} "\
  install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
  terra user ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
- ${RUN_AS_USER} "\
+ ${RUN_AS_LOGIN_USER} "\
    install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
    jq -r '.privateSshKey' '${USER_SSH_DIR}/id_rsa.tmp' > '${USER_SSH_DIR}/id_rsa'"
 fi
@@ -208,16 +208,16 @@ rm -f "${USER_SSH_DIR}/id_rsa.tmp"
 # Set the github known_hosts
 apt-get update
 apt-get install -y openssh-client
-${RUN_AS_USER} "ssh-keyscan -H github.com >> '${USER_SSH_DIR}/known_hosts'"
+${RUN_AS_LOGIN_USER} "ssh-keyscan -H github.com >> '${USER_SSH_DIR}/known_hosts'"
 
 # Create git repos directory
-${RUN_AS_USER} "mkdir -p '${TERRA_GIT_REPOS_DIR}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${TERRA_GIT_REPOS_DIR}'"
 
 # Attempt to clone all the git repo references in the workspace. If the user's ssh key does not exist or doesn't have access
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_USER} "cd '${TERRA_GIT_REPOS_DIR}' && terra git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${TERRA_GIT_REPOS_DIR}' && terra git clone --all"
 
 
 #############################
@@ -241,4 +241,4 @@ else
   emit "gcsfuse already installed. Skipping installation."
 fi
 
-${RUN_AS_USER} "terra resource mount"
+${RUN_AS_LOGIN_USER} "terra resource mount"

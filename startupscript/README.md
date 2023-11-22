@@ -1,0 +1,64 @@
+# (post)startup script
+Verily Workbench provisions VMs post-creation to install workbench specific tools (such as CLI, gcsfuse, ssh-keys for git).
+
+Currently there are three flavors of startup.script:
+* vertex AI user-managed notebook
+* dataproc cluster
+* gce instance
+
+## How to test your change?
+
+### Option 1
+If it's a single line change, you can just create an environment in the devel environment and run the command.
+
+### Option 2 
+If it's a complex change, you can point the VM to your new script and test it end-to-end.
+
+### Vertex AI
+
+* Step 1
+
+Make your change and push to a branch.
+
+* Step 2
+
+```
+terra server set --id=verily-devel
+terra workspace set --id=<your-workspace>
+terra resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup-script=<path-to-the-raw-file-url>
+```
+
+* Step 3
+Go to the UI and wait till the notebook spins up and verify that it is running.
+
+### Dataproc
+
+* Step 1
+
+Make your change and push to a branch.
+
+* Step 2
+
+```
+terra server set --id=verily-devel
+terra workspace set --id=<your-workspace>
+terra resource create dataproc-cluster --name=dataproc --metadata=startup-script-url=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/dataproc/startup.sh
+```
+
+Pick a workspace that you have previously created a dataproc cluster so you can reuse the buckets. 
+
+* Step 3
+Go to the UI and wait till the notebook spins up and verify that it is running.
+
+
+### GCE
+
+* Step 1
+
+Clone this repo and put it in a public repo you own. Make the change
+
+* Step 2
+In the UI, create a custom rstudio app pointing at your personal repo.
+
+* Step 3
+Wait for the notebook to spin up and go to the instance. Check .terra/post-startup-output.txt to see if it succeeds.

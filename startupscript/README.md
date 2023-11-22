@@ -26,7 +26,7 @@ Make your change and push to a branch.
 ```
 terra server set --id=verily-devel
 terra workspace set --id=<your-workspace>
-terra resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup-script=[<path-to-the-raw-file-url>](https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/vertexai/startup.sh)
+terra resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup-script=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/vertex-ai-user-managed-notebook/post-startup.sh
 ```
 
 * Step 3
@@ -43,7 +43,7 @@ Make your change and push to a branch.
 ```
 terra server set --id=verily-devel
 terra workspace set --id=<your-workspace>
-terra resource create dataproc-cluster --name=dataproc --metadata=startup-script-url=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/dataproc/startup.sh
+terra resource create dataproc-cluster --name=dataprocForTesting --metadata=startup-script-url=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/dataproc/startup.sh
 ```
 
 Pick a workspace that you have previously created a dataproc cluster so you can reuse the buckets. 

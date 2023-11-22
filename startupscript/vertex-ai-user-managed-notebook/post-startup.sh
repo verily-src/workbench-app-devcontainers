@@ -394,7 +394,7 @@ emit "Installing the VWB CLI ..."
 
 # Fetch the Terra CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
-if [[ -n "${TERRA_SERVER}" ]]; then
+if [[ -z "${TERRA_SERVER}" ]]; then
   TERRA_SERVER="verily"
 fi
 readonly TERRA_SERVER

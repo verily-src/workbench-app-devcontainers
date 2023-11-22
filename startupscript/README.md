@@ -15,7 +15,7 @@ If it's a single line change, you can just create an environment in the devel en
 ### Option 2 
 If it's a complex change, you can point the VM to your new script and test it end-to-end.
 
-### Vertex AI
+#### Vertex AI
 
 * Step 1
 
@@ -32,7 +32,7 @@ terra resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup
 * Step 3
 Go to the UI and wait till the notebook spins up and verify that it is running.
 
-### Dataproc
+#### Dataproc
 
 * Step 1
 
@@ -52,7 +52,7 @@ Pick a workspace that you have previously created a dataproc cluster so you can 
 Go to the UI and wait till the notebook spins up and verify that it is running.
 
 
-### GCE
+#### GCE
 
 * Step 1
 

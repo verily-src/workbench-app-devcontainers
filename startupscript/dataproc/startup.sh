@@ -72,7 +72,7 @@ readonly USER_BASH_COMPLETION_DIR="${USER_HOME_DIR}/.bash_completion.d"
 readonly USER_HOME_LOCAL_DIR="${USER_HOME_DIR}/.local"
 readonly USER_HOME_LOCAL_BIN="${USER_HOME_DIR}/.local/bin"
 readonly USER_HOME_LOCAL_SHARE="${USER_HOME_DIR}/.local/share"
-readonly USER_TERRA_CONFIG_DIR="${USER_HOME_DIR}/.terra"
+readonly USER_WORKBENCH_CONFIG_DIR="${USER_HOME_DIR}/.vwb"
 readonly USER_SSH_DIR="${USER_HOME_DIR}/.ssh"
 
 # For consistency across these two environments, this startup script writes
@@ -80,8 +80,8 @@ readonly USER_SSH_DIR="${USER_HOME_DIR}/.ssh"
 readonly USER_BASHRC="${USER_HOME_DIR}/.bashrc"
 readonly USER_BASH_PROFILE="${USER_HOME_DIR}/.bash_profile"
 
-readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.txt"
-readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/boot-output.txt"
+readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
+readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/boot-output.txt"
 
 readonly JUPYTER_SERVICE_NAME="jupyter.service"
 readonly JUPYTER_SERVICE="/etc/systemd/system/${JUPYTER_SERVICE_NAME}"
@@ -93,7 +93,7 @@ readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AG
 # Variables relevant for 3rd party software that gets installed
 readonly REQ_JAVA_VERSION=17
 readonly JAVA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/java"
-readonly JAVA_INSTALL_TMP="${USER_TERRA_CONFIG_DIR}/javatmp"
+readonly JAVA_INSTALL_TMP="${USER_WORKBENCH_CONFIG_DIR}/javatmp"
 
 readonly NEXTFLOW_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/nextflow"
 
@@ -107,25 +107,26 @@ readonly CROMSHELL_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/cromshell"
 # version that Hail needs (8 or 11).
 #
 # We can't set up aliases or bash functions in the .bashrc (as they won't be available in Jupyter notebooks).
-# Instead, let's create a wrapper script for the terra command.
-readonly TERRA_COMMAND_PATH="${USER_HOME_LOCAL_BIN}/terra_cli"
-readonly TERRA_WRAPPER_PATH="${USER_HOME_LOCAL_BIN}/terra"
+# Instead, let's create a wrapper script for the vwb command.
+readonly VWB_COMMAND_PATH="${USER_HOME_LOCAL_BIN}/vwb_cli"
+readonly VWB_WRAPPER_PATH="${USER_HOME_LOCAL_BIN}/vwb"
 
 # Variables for VWB-specific code installed on the VM
-readonly TERRA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/terra"
+readonly VWB_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/vwb"
+readonly VWB_LEGACY_PATH="${USER_HOME_LOCAL_BIN}/terra"
 
 readonly WORKBENCH_GIT_REPOS_DIR="${USER_HOME_DIR}/repos"
 
-readonly WORKBENCH_BOOT_SCRIPT="${USER_TERRA_CONFIG_DIR}/instance-boot.sh"
+readonly WORKBENCH_BOOT_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/instance-boot.sh"
 readonly WORKBENCH_BOOT_SERVICE_NAME="workbench-instance-boot.service"
 readonly WORKBENCH_BOOT_SERVICE="/etc/systemd/system/${WORKBENCH_BOOT_SERVICE_NAME}"
 
-readonly WORKBENCH_SSH_AGENT_SCRIPT="${USER_TERRA_CONFIG_DIR}/ssh-agent-start.sh"
+readonly WORKBENCH_SSH_AGENT_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/ssh-agent-start.sh"
 readonly WORKBENCH_SSH_AGENT_SERVICE_NAME="workbench-ssh-agent.service"
 readonly WORKBENCH_SSH_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
 
 # Variables for optional software frameworks
-readonly HAIL_SCRIPT_PATH="${USER_TERRA_CONFIG_DIR}/install-hail.py"
+readonly HAIL_SCRIPT_PATH="${USER_WORKBENCH_CONFIG_DIR}/install-hail.py"
 
 # Location of gitignore configuration file for users
 readonly GIT_IGNORE="${USER_HOME_DIR}/gitignore_global"
@@ -134,8 +135,8 @@ readonly GIT_IGNORE="${USER_HOME_DIR}/gitignore_global"
 cd /tmp || exit
 
 # Send stdout and stderr from this script to a file for debugging.
-# Make the .terra directory as the user so that they own it and have correct linux permissions.
-${RUN_AS_LOGIN_USER} "mkdir -p '${USER_TERRA_CONFIG_DIR}'"
+# Make the .vwb directory as the user so that they own it and have correct linux permissions.
+${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 
@@ -374,44 +375,44 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
 
   ${RUN_AS_LOGIN_USER} "\
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
-    cp terra '${TERRA_INSTALL_PATH}'"
+    cp vwb '${VWB_INSTALL_PATH}'"
 else
   >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
   exit 1
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
-${RUN_AS_LOGIN_USER} "terra config set browser MANUAL"
+${RUN_AS_LOGIN_USER} "vwb config set browser MANUAL"
 
-# Set the CLI terra server based on the terra server that created the VM.
-${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
+# Set the CLI server based on the server that created the VM.
+${RUN_AS_LOGIN_USER} "vwb server set --name=${TERRA_SERVER}"
 
 # Log in with app-default-credentials
-${RUN_AS_LOGIN_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
+${RUN_AS_LOGIN_USER} "vwb auth login --mode=APP_DEFAULT_CREDENTIALS"
 
 # Generate the bash completion script
-${RUN_AS_LOGIN_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
+${RUN_AS_LOGIN_USER} "vwb generate-completion > '${USER_BASH_COMPLETION_DIR}/vwb'"
 
 ####################################
 # Shell and notebook environment
 ####################################
 
-# Set the CLI terra workspace id using the VM metadata, if set.
+# Set the CLI workspace id using the VM metadata, if set.
 readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
-  ${RUN_AS_LOGIN_USER} "terra workspace set --id='${TERRA_WORKSPACE}'"
+  ${RUN_AS_LOGIN_USER} "vwb workspace set --id='${TERRA_WORKSPACE}'"
 fi
 
 # Set variables into the ~/.bashrc such that they are available
 # to terminals, notebooks, and other tools
 #
 # We have new-style variables (eg GOOGLE_CLOUD_PROJECT) which are set here
-# and CLI (terra app execute env).
+# and CLI (vwb app execute env).
 # We also support a few variables set by Leonardo (eg GOOGLE_PROJECT).
 # Those are only set here and NOT in the CLI as they are intended just
 # to make porting existing notebooks easier.
 
-# Keep in sync with terra CLI environment variables:
+# Keep in sync with the CLI environment variables:
 # https://github.com/verily-src/terra-tool-cli/blob/6c3d1ee2dd54aa62785da4113b83f5eba57d3c7f/src/main/java/bio/terra/cli/app/CommandRunner.java#L89
 
 # *** Variables that are set by Leonardo for Cloud Environments
@@ -419,24 +420,24 @@ fi
 
 # OWNER_EMAIL is really the VWB user account email address
 readonly OWNER_EMAIL="$(
-  ${RUN_AS_LOGIN_USER} "terra workspace describe --format=json" | \
+  ${RUN_AS_LOGIN_USER} "vwb workspace describe --format=json" | \
   jq --raw-output ".userEmail")"
 
 # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
 readonly GOOGLE_PROJECT="$(
-  ${RUN_AS_LOGIN_USER} "terra workspace describe --format=json" | \
+  ${RUN_AS_LOGIN_USER} "vwb workspace describe --format=json" | \
   jq --raw-output ".googleProjectId")"
 
 # PET_SA_EMAIL is the pet service account for the VWB user and
 # is specific to the GCP project backing the workspace
 readonly PET_SA_EMAIL="$(
-  ${RUN_AS_LOGIN_USER} "terra auth status --format=json" | \
+  ${RUN_AS_LOGIN_USER} "vwb auth status --format=json" | \
   jq --raw-output ".serviceAccountEmail")"
 
 # These are equivalent environment variables which are set for a
-# command when calling "terra app execute <command>".
+# command when calling "vwb app execute <command>".
 #
-# TERRA_USER_EMAIL is the VWB user account email address.
+# WORKBENCH_USER_EMAIL is the VWB user account email address.
 # GOOGLE_CLOUD_PROJECT is the project id for the GCP project backing the
 # workspace.
 # GOOGLE_SERVICE_ACCOUNT_EMAIL is the pet service account for the VWB user
@@ -452,7 +453,7 @@ export GOOGLE_PROJECT='${GOOGLE_PROJECT}'
 export PET_SA_EMAIL='${PET_SA_EMAIL}'
 
 # Set up a few VWB-specific convenience variables
-export TERRA_USER_EMAIL='${OWNER_EMAIL}'
+export WORKBENCH_USER_EMAIL='${OWNER_EMAIL}'
 export GOOGLE_CLOUD_PROJECT='${GOOGLE_PROJECT}'
 export GOOGLE_SERVICE_ACCOUNT_EMAIL='${PET_SA_EMAIL}'
 EOF
@@ -460,26 +461,30 @@ EOF
 #############################
 # Configure VWB CLI Wrapper
 #############################
-# Create a wrapper script that sets $JAVA_HOME and then executes the 'terra' command.
+# Create a wrapper script that sets $JAVA_HOME and then executes the 'vwb' command.
 
-# Move the installed 'terra' binary to a new location
-mv "${TERRA_WRAPPER_PATH}" "${TERRA_COMMAND_PATH}"
+# Move the installed 'vwb' binary to a new location
+mv "${VWB_WRAPPER_PATH}" "${VWB_COMMAND_PATH}"
 
 # Create the wrapper script
-cat << EOF >> "${TERRA_WRAPPER_PATH}"
+cat << EOF >> "${VWB_WRAPPER_PATH}"
 #!/bin/bash
 
-# Set JAVA_HOME before calling the terra cli
+# Set JAVA_HOME before calling the Workbench cli
 export JAVA_HOME="${USER_HOME_LOCAL_DIR}"
 
-# Execute terra
-"${TERRA_COMMAND_PATH}" "\$@"
+# Execute VWB
+"${VWB_COMMAND_PATH}" "\$@"
 
 EOF
 
 # Make sure the wrapper script is executable by the login user
-chmod +x "${TERRA_WRAPPER_PATH}"
-chown "${LOGIN_USER}:${LOGIN_USER}" "${TERRA_WRAPPER_PATH}"
+chmod +x "${VWB_WRAPPER_PATH}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${VWB_WRAPPER_PATH}"
+
+# Copy 'vwb' to its legacy 'terra' name.
+cp "${VWB_WRAPPER_PATH}" "${VWB_LEGACY_PATH}"
+
 
 #################
 # bash completion
@@ -521,7 +526,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 # Get the user's SSH key from VWB, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
   install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
-  terra user ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
+  vwb user ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
   ${RUN_AS_LOGIN_USER} "\
     install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
@@ -539,7 +544,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && terra git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && vwb git clone --all"
 
 # Setup gitignore to avoid accidental checkin of data.
 
@@ -654,7 +659,7 @@ EOF
 # Setup instance boot service
 #############################
 # Create a script to perform the following steps every time the instance boots:
-# 1. Mount terra workspace resources. This command requires system user home
+# 1. Mount Workbench workspace resources. This command requires system user home
 #    directories to be mounted. We run the startup service after
 #    jupyter.service to meet this requirement.
 
@@ -663,7 +668,7 @@ emit "Setting up VWB boot script and service..."
 # Create the boot script
 cat << EOF >"${WORKBENCH_BOOT_SCRIPT}"
 #!/bin/bash
-# This script is run on instance boot to configure the instance for terra.
+# This script is run on instance boot to configure the instance for Workbench.
 
 # Send stdout and stderr from this script to a file for debugging.
 exec >> "${WORKBENCH_BOOT_SERVICE_OUTPUT_FILE}"
@@ -672,8 +677,8 @@ exec 2>&1
 # Pick up environment from the ~/.bashrc
 source "${USER_BASHRC}"
 
-# Mount terra workspace resources
-"${USER_HOME_LOCAL_BIN}/terra" resource mount
+# Mount Workbench workspace resources
+"${USER_HOME_LOCAL_BIN}/vwb" resource mount
 
 exit 0
 EOF
@@ -683,7 +688,7 @@ chown "${LOGIN_USER}:${LOGIN_USER}" "${WORKBENCH_BOOT_SCRIPT}"
 # Create a systemd service to run the boot script on system boot
 cat << EOF >"${WORKBENCH_BOOT_SERVICE}"
 [Unit]
-Description=Configure environment for terra
+Description=Configure environment for Workbench
 After=jupyter.service
 
 [Service]
@@ -1037,34 +1042,34 @@ emit "SUCCESS: Cromshell installed"
 # Test VWB
 emit "--  Checking if VWB CLI is properly installed"
 
-if [[ ! -e "${TERRA_INSTALL_PATH}" ]]; then
-  >&2 emit "ERROR: VWB CLI not found at ${TERRA_INSTALL_PATH}"
+if [[ ! -e "${VWB_INSTALL_PATH}" ]]; then
+  >&2 emit "ERROR: VWB CLI not found at ${VWB_INSTALL_PATH}"
   exit 1
 fi
 
-readonly INSTALLED_TERRA_VERSION="$(${RUN_AS_LOGIN_USER} "${TERRA_INSTALL_PATH} version")"
+readonly INSTALLED_VWB_VERSION="$(${RUN_AS_LOGIN_USER} "${VWB_INSTALL_PATH} version")"
 
-if [[ -z "${INSTALLED_TERRA_VERSION}" ]]; then
+if [[ -z "${INSTALLED_VWB_VERSION}" ]]; then
   >&2 emit "ERROR: VWB CLI did not execute or did not return a version number"
   exit 1
 fi
 
-emit "--  Checking if the original VWB CLI has been renamed to terra_cli"
+emit "--  Checking if the original VWB CLI has been renamed to vwb_cli"
 
-if [[ ! -e "${TERRA_COMMAND_PATH}" ]]; then
-  >&2 emit "ERROR: VWB CLI was not renamed to ${TERRA_COMMAND_PATH}"
+if [[ ! -e "${VWB_COMMAND_PATH}" ]]; then
+  >&2 emit "ERROR: VWB CLI was not renamed to ${VWB_COMMAND_PATH}"
   exit 1
 fi
 
 emit "--  Checking if the VWB CLI wrapper is properly created"
 
-if [[ ! -e "${TERRA_WRAPPER_PATH}" ]]; then
-  >&2 emit "ERROR: VWB CLI wrapper does not exist ${TERRA_WRAPPER_PATH}"
+if [[ ! -e "${VWB_WRAPPER_PATH}" ]]; then
+  >&2 emit "ERROR: VWB CLI wrapper does not exist ${VWB_WRAPPER_PATH}"
   exit 1
 fi
 
 
-emit "SUCCESS: VWB CLI installed and version detected as ${INSTALLED_TERRA_VERSION}"
+emit "SUCCESS: VWB CLI installed and version detected as ${INSTALLED_VWB_VERSION}"
 
 # SSH
 emit "--  Checking if .ssh directory is properly set up"

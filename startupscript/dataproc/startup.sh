@@ -81,7 +81,7 @@ readonly USER_BASHRC="${USER_HOME_DIR}/.bashrc"
 readonly USER_BASH_PROFILE="${USER_HOME_DIR}/.bash_profile"
 
 readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.txt"
-readonly TERRA_BOOT_SERVICE_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/boot-output.txt"
+readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/boot-output.txt"
 
 readonly JUPYTER_SERVICE_NAME="jupyter.service"
 readonly JUPYTER_SERVICE="/etc/systemd/system/${JUPYTER_SERVICE_NAME}"
@@ -114,15 +114,15 @@ readonly TERRA_WRAPPER_PATH="${USER_HOME_LOCAL_BIN}/terra"
 # Variables for VWB-specific code installed on the VM
 readonly TERRA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/terra"
 
-readonly TERRA_GIT_REPOS_DIR="${USER_HOME_DIR}/repos"
+readonly WORKBENCH_GIT_REPOS_DIR="${USER_HOME_DIR}/repos"
 
-readonly TERRA_BOOT_SCRIPT="${USER_TERRA_CONFIG_DIR}/instance-boot.sh"
-readonly TERRA_BOOT_SERVICE_NAME="terra-instance-boot.service"
-readonly TERRA_BOOT_SERVICE="/etc/systemd/system/${TERRA_BOOT_SERVICE_NAME}"
+readonly WORKBENCH_BOOT_SCRIPT="${USER_TERRA_CONFIG_DIR}/instance-boot.sh"
+readonly WORKBENCH_BOOT_SERVICE_NAME="workbench-instance-boot.service"
+readonly WORKBENCH_BOOT_SERVICE="/etc/systemd/system/${WORKBENCH_BOOT_SERVICE_NAME}"
 
-readonly TERRA_SSH_AGENT_SCRIPT="${USER_TERRA_CONFIG_DIR}/ssh-agent-start.sh"
-readonly TERRA_SSH_AGENT_SERVICE_NAME="terra-ssh-agent.service"
-readonly TERRA_SSH_AGENT_SERVICE="/etc/systemd/system/${TERRA_SSH_AGENT_SERVICE_NAME}"
+readonly WORKBENCH_SSH_AGENT_SCRIPT="${USER_TERRA_CONFIG_DIR}/ssh-agent-start.sh"
+readonly WORKBENCH_SSH_AGENT_SERVICE_NAME="workbench-ssh-agent.service"
+readonly WORKBENCH_SSH_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
 
 # Variables for optional software frameworks
 readonly HAIL_SCRIPT_PATH="${USER_TERRA_CONFIG_DIR}/install-hail.py"
@@ -533,13 +533,13 @@ rm -f "${USER_SSH_DIR}/id_rsa.tmp"
 ${RUN_AS_LOGIN_USER} "ssh-keyscan -H github.com >> '${USER_SSH_DIR}/known_hosts'"
 
 # Create git repos directory
-${RUN_AS_LOGIN_USER} "mkdir -p '${TERRA_GIT_REPOS_DIR}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 
 # Attempt to clone all the git repo references in the workspace. If the user's ssh key does not exist or doesn't have access
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${TERRA_GIT_REPOS_DIR}' && terra git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && terra git clone --all"
 
 # Setup gitignore to avoid accidental checkin of data.
 
@@ -572,7 +572,7 @@ ${RUN_AS_LOGIN_USER} "git config --global core.excludesfile '${GIT_IGNORE}'"
 # Writing to the HOME directory allows for the ssh-agent socket to be accessible
 # from inside Docker containers that have mounted the Jupyter user's HOME directory.
 
-cat << 'EOF' >>"${TERRA_SSH_AGENT_SCRIPT}"
+cat << 'EOF' >>"${WORKBENCH_SSH_AGENT_SCRIPT}"
 #!/bin/bash
 
 set -o nounset
@@ -618,16 +618,16 @@ while [[ -e /proc/"${SSH_AGENT_PID}" ]]; do
 done
 echo "SSH agent ${SSH_AGENT_PID} has exited."
 EOF
-chmod +x "${TERRA_SSH_AGENT_SCRIPT}"
-chown "${LOGIN_USER}:${LOGIN_USER}" "${TERRA_SSH_AGENT_SCRIPT}"
+chmod +x "${WORKBENCH_SSH_AGENT_SCRIPT}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${WORKBENCH_SSH_AGENT_SCRIPT}"
 
 # Create a systemd service file for the ssh-agent
-cat << EOF >"${TERRA_SSH_AGENT_SERVICE}"
+cat << EOF >"${WORKBENCH_SSH_AGENT_SERVICE}"
 [Unit]
 Description=Run an SSH agent for the Jupyter user
 
 [Service]
-ExecStart=${TERRA_SSH_AGENT_SCRIPT}
+ExecStart=${WORKBENCH_SSH_AGENT_SCRIPT}
 User=${LOGIN_USER}
 Restart=always
 
@@ -637,8 +637,8 @@ EOF
 
 # Enable and start the startup service
 systemctl daemon-reload
-systemctl enable "${TERRA_SSH_AGENT_SERVICE_NAME}"
-systemctl start "${TERRA_SSH_AGENT_SERVICE_NAME}"
+systemctl enable "${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
+systemctl start "${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
 
 # Set ssh-agent launch command in ~/.bashrc so everytime
 # user starts a shell, we start the ssh-agent.
@@ -661,12 +661,12 @@ EOF
 emit "Setting up VWB boot script and service..."
 
 # Create the boot script
-cat << EOF >"${TERRA_BOOT_SCRIPT}"
+cat << EOF >"${WORKBENCH_BOOT_SCRIPT}"
 #!/bin/bash
 # This script is run on instance boot to configure the instance for terra.
 
 # Send stdout and stderr from this script to a file for debugging.
-exec >> "${TERRA_BOOT_SERVICE_OUTPUT_FILE}"
+exec >> "${WORKBENCH_BOOT_SERVICE_OUTPUT_FILE}"
 exec 2>&1
 
 # Pick up environment from the ~/.bashrc
@@ -677,17 +677,17 @@ source "${USER_BASHRC}"
 
 exit 0
 EOF
-chmod +x "${TERRA_BOOT_SCRIPT}"
-chown "${LOGIN_USER}:${LOGIN_USER}" "${TERRA_BOOT_SCRIPT}"
+chmod +x "${WORKBENCH_BOOT_SCRIPT}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${WORKBENCH_BOOT_SCRIPT}"
 
 # Create a systemd service to run the boot script on system boot
-cat << EOF >"${TERRA_BOOT_SERVICE}"
+cat << EOF >"${WORKBENCH_BOOT_SERVICE}"
 [Unit]
 Description=Configure environment for terra
 After=jupyter.service
 
 [Service]
-ExecStart=${TERRA_BOOT_SCRIPT}
+ExecStart=${WORKBENCH_BOOT_SCRIPT}
 User=${LOGIN_USER}
 RemainAfterExit=yes
 
@@ -697,8 +697,8 @@ EOF
 
 # Enable and start the service
 systemctl daemon-reload
-systemctl enable "${TERRA_BOOT_SERVICE_NAME}"
-systemctl start "${TERRA_BOOT_SERVICE_NAME}"
+systemctl enable "${WORKBENCH_BOOT_SERVICE_NAME}"
+systemctl start "${WORKBENCH_BOOT_SERVICE_NAME}"
 
 # Indicate the end of VWB customizations of the ~/.bashrc
 cat << EOF >> "${USER_BASHRC}"

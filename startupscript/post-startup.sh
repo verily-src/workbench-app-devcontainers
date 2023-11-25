@@ -39,10 +39,10 @@ readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.
 
 readonly JAVA_INSTALL_TMP="${USER_TERRA_CONFIG_DIR}/javatmp"
 
-# Variables for Terra-specific code installed on the VM
+# Variables for Workbench-specific code installed on the VM
 readonly TERRA_INSTALL_PATH="/usr/bin/terra"
 
-readonly TERRA_GIT_REPOS_DIR="${workDirectory}/repos"
+readonly WORKBENCH_GIT_REPOS_DIR="${workDirectory}/repos"
 
 # Move to the /tmp directory to let any artifacts left behind by this script can be removed.
 cd /tmp || exit
@@ -70,7 +70,7 @@ fi
 
 EOF
 
-# Indicate the start of Terra customizations of the ~/.bashrc
+# Indicate the start of Workbench customizations of the ~/.bashrc
 cat << EOF >> "${USER_BASHRC}"
 
 # Prepend "/usr/bin" (if not already in the path)
@@ -194,7 +194,7 @@ emit "Setting up git integration..."
 # Create the user SSH directory
 ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 
-# Get the user's SSH key from Terra, and if set, write it to the user's .ssh directory
+# Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
  install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
  terra user ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
@@ -211,13 +211,13 @@ apt-get install -y openssh-client
 ${RUN_AS_LOGIN_USER} "ssh-keyscan -H github.com >> '${USER_SSH_DIR}/known_hosts'"
 
 # Create git repos directory
-${RUN_AS_LOGIN_USER} "mkdir -p '${TERRA_GIT_REPOS_DIR}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 
 # Attempt to clone all the git repo references in the workspace. If the user's ssh key does not exist or doesn't have access
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${TERRA_GIT_REPOS_DIR}' && terra git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && terra git clone --all"
 
 
 #############################

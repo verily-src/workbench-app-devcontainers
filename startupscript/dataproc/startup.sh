@@ -971,7 +971,7 @@ fi
     if [[ "${TERRA_SERVER}" == "verily" ]]; then
       ui_base_url="workbench.verily.com"
     else
-      ui_base_url="https://${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
+      ui_base_url="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
     fi
   else
     >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."

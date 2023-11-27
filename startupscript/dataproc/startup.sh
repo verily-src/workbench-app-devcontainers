@@ -7,15 +7,15 @@
 #   Please ensure that changes to shared logic are reflected in both scripts.
 #
 # Description:
-#   Default startup script to setup Terra configurations in a Dataproc cluster manager node.
+#   Default startup script to setup VWB configurations in a Dataproc cluster manager node.
 #
 # Metadata and guest attributes:
 #   This script uses the following GCE metadata and guest attributes for startup orchestration:
 #   - attributes/dataproc-role: Read by the script to determine if it's running on the manager node or a worker node. Possible values are "Master" or "Worker".
 #   - instance/guest-attributes/startup_script/status: Set by this script, storing the status of this script's execution. Possible values are "STARTED", "COMPLETE", or "ERROR".
 #   - instance/guest-attributes/startup_script/message: Set by this script, storing the message of this script's execution. If the status is "ERROR", this message will contain an error message, otherwise it will be empty.
-#   - instance/attributes/terra-cli-server: Read by this script to configure the Terra CLI server.
-#   - instance/attributes/terra-workspace-id: Read by this script to configure the Terra CLI workspace.
+#   - instance/attributes/terra-cli-server: Read by this script to configure the VWB CLI server.
+#   - instance/attributes/terra-workspace-id: Read by this script to configure the VWB CLI workspace.
 #   - instance/attributes/software-framework: Read by this script to optionally install software on the cluster manager node. Currently supported value is: "HAIL".
 #
 # Execution details:
@@ -39,6 +39,11 @@
 #   https://github.com/DataBiosphere/terra-workspace-manager/tree/main/integration#Run-nightly-only-test-suite-locally
 #   for instruction on how to run the test.
 
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
 # Only run on the dataproc manager node. Exit silently if otherwise.
 readonly ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
 if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
@@ -47,13 +52,8 @@ if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
 readonly STARTUP_SCRIPT_COMPLETE="/etc/startup_script_complete"
 if [[ -f "${STARTUP_SCRIPT_COMPLETE}" ]]; then exit 0; fi
 
-set -o errexit
-set -o nounset
-set -o pipefail
-set -o xtrace
-
 # The linux user that JupyterLab will be running as. It's important to do some parts of setup in the
-# user space, such as setting Terra CLI settings which are persisted in the user's $HOME.
+# user space, such as setting VWB CLI settings which are persisted in the user's $HOME.
 readonly LOGIN_USER="dataproc"
 
 # Create an alias for cases when we need to run a shell command as the login user.
@@ -68,7 +68,6 @@ readonly RUN_AS_LOGIN_USER="sudo -u ${LOGIN_USER} bash -l -c"
 readonly RUN_PIP="/opt/conda/miniconda3/bin/pip"
 readonly RUN_PYTHON="/opt/conda/miniconda3/bin/python"
 readonly RUN_JUPYTER="/opt/conda/miniconda3/bin/jupyter"
-readonly RUN_IPYTHON="/opt/conda/miniconda3/bin/ipython"
 
 # Startup script status is propagated out to VM guest attributes
 readonly STATUS_ATTRIBUTE="startup_script/status"
@@ -93,11 +92,14 @@ readonly USER_BASHRC="${USER_HOME_DIR}/.bashrc"
 readonly USER_BASH_PROFILE="${USER_HOME_DIR}/.bash_profile"
 
 readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.txt"
-readonly TERRA_BOOT_SERVICE_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/boot-output.txt"
+readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/boot-output.txt"
 
 readonly JUPYTER_SERVICE_NAME="jupyter.service"
 readonly JUPYTER_SERVICE="/etc/systemd/system/${JUPYTER_SERVICE_NAME}"
 readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_notebook_config.py"
+
+readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
+readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
 
 # Variables relevant for 3rd party software that gets installed
 readonly REQ_JAVA_VERSION=17
@@ -112,8 +114,7 @@ readonly CROMWELL_INSTALL_JAR="${CROMWELL_INSTALL_DIR}/cromwell-${CROMWELL_LATES
 
 readonly CROMSHELL_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/cromshell"
 
-
-# We need to set the correct Java installation for the Terra CLI (17) which conflicts with the
+# We need to set the correct Java installation for the VWB CLI (17) which conflicts with the
 # version that Hail needs (8 or 11).
 #
 # We can't set up aliases or bash functions in the .bashrc (as they won't be available in Jupyter notebooks).
@@ -121,18 +122,18 @@ readonly CROMSHELL_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/cromshell"
 readonly TERRA_COMMAND_PATH="${USER_HOME_LOCAL_BIN}/terra_cli"
 readonly TERRA_WRAPPER_PATH="${USER_HOME_LOCAL_BIN}/terra"
 
-# Variables for Terra-specific code installed on the VM
+# Variables for VWB-specific code installed on the VM
 readonly TERRA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/terra"
 
-readonly TERRA_GIT_REPOS_DIR="${USER_HOME_DIR}/repos"
+readonly WORKBENCH_GIT_REPOS_DIR="${USER_HOME_DIR}/repos"
 
-readonly TERRA_BOOT_SCRIPT="${USER_TERRA_CONFIG_DIR}/instance-boot.sh"
-readonly TERRA_BOOT_SERVICE_NAME="terra-instance-boot.service"
-readonly TERRA_BOOT_SERVICE="/etc/systemd/system/${TERRA_BOOT_SERVICE_NAME}"
+readonly WORKBENCH_BOOT_SCRIPT="${USER_TERRA_CONFIG_DIR}/instance-boot.sh"
+readonly WORKBENCH_BOOT_SERVICE_NAME="workbench-instance-boot.service"
+readonly WORKBENCH_BOOT_SERVICE="/etc/systemd/system/${WORKBENCH_BOOT_SERVICE_NAME}"
 
-readonly TERRA_SSH_AGENT_SCRIPT="${USER_TERRA_CONFIG_DIR}/ssh-agent-start.sh"
-readonly TERRA_SSH_AGENT_SERVICE_NAME="terra-ssh-agent.service"
-readonly TERRA_SSH_AGENT_SERVICE="/etc/systemd/system/${TERRA_SSH_AGENT_SERVICE_NAME}"
+readonly WORKBENCH_SSH_AGENT_SCRIPT="${USER_TERRA_CONFIG_DIR}/ssh-agent-start.sh"
+readonly WORKBENCH_SSH_AGENT_SERVICE_NAME="workbench-ssh-agent.service"
+readonly WORKBENCH_SSH_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
 
 # Variables for optional software frameworks
 readonly HAIL_SCRIPT_PATH="${USER_TERRA_CONFIG_DIR}/install-hail.py"
@@ -237,18 +238,18 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 # As described above, have the ~/.bash_profile source the ~/.bashrc
 cat << EOF >> "${USER_BASH_PROFILE}"
 
-### BEGIN: Terra-specific customizations ###
+### BEGIN: VWB-specific customizations ###
 if [[ -e ~/.bashrc ]]; then
   source ~/.bashrc
 fi
-### END: Terra-specific customizations ###
+### END: VWB-specific customizations ###
 
 EOF
 
-# Indicate the start of Terra customizations of the ~/.bashrc
+# Indicate the start of VWB customizations of the ~/.bashrc
 cat << EOF >> "${USER_BASHRC}"
 
-### BEGIN: Terra-specific customizations ###
+### BEGIN: VWB-specific customizations ###
 
 # Prepend "${USER_HOME_LOCAL_BIN}" (if not already in the path)
 if [[ ":\${PATH}:" != *":${USER_HOME_LOCAL_BIN}:"* ]]; then
@@ -280,9 +281,9 @@ if ! which gcsfuse >/dev/null 2>&1; then
     lsb-release
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  export GCSFUSE_REPO=gcsfuse-$(lsb_release -c -s) \
-    && echo "deb https://packages.cloud.google.com/apt $GCSFUSE_REPO main" | tee /etc/apt/sources.list.d/gcsfuse.list \
-    && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+  export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
+    && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \
+    && curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \
     && apt-get install -y gcsfuse
 else
@@ -294,7 +295,7 @@ readonly DATAPROC_REGION="$(get_metadata_value "instance/attributes/dataproc-reg
 ${RUN_AS_LOGIN_USER} "gcloud config set dataproc/region ${DATAPROC_REGION}"
 
 ###########################################################
-# The Terra CLI requires Java 17 or higher
+# The VWB CLI requires Java 17 or higher
 #
 # Install using a TAR file as that allows for installing
 # it into the Jupyter user HOME directory.
@@ -326,11 +327,11 @@ ${RUN_AS_LOGIN_USER} "mv '${JAVA_DIRNAME}' '${USER_HOME_LOCAL_SHARE}'"
 
 # Create a soft link in ~/.local/bin to the java runtime
 ln -s "${USER_HOME_LOCAL_SHARE}/${JAVA_DIRNAME}/bin/java" "${USER_HOME_LOCAL_BIN}"
-chown --no-dereference ${LOGIN_USER}:${LOGIN_USER} "${USER_HOME_LOCAL_BIN}/java"
+chown --no-dereference "${LOGIN_USER}:${LOGIN_USER}" "${USER_HOME_LOCAL_BIN}/java"
 
 # Clean up
 popd
-rmdir ${JAVA_INSTALL_TMP}
+rmdir "${JAVA_INSTALL_TMP}"
 
 # Download Nextflow and install it
 emit "Installing Nextflow ..."
@@ -363,60 +364,42 @@ ${RUN_AS_LOGIN_USER} "\
   chmod +x cromshell && \
   mv cromshell '${CROMSHELL_INSTALL_PATH}'"
 
-# Install & configure the Terra CLI
-emit "Installing the Terra CLI ..."
+# Install & configure the VWB CLI
+emit "Installing the VWB CLI ..."
 
-# Fetch the Terra CLI server environment from the metadata server to install appropriate CLI version
-readonly TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+# Fetch the VWB CLI server environment from the metadata server to install appropriate CLI version
+TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
+if [[ -z "${TERRA_SERVER}" ]]; then
+  TERRA_SERVER="verily"
+fi
+readonly TERRA_SERVER
 
 # If the server environment is a verily server, use the verily download script.
-# Otherwise, install the latest DataBiosphere CLI release.
-if [[ $TERRA_SERVER == *"verily"* ]]; then
-  # Map the CLI server to the appropriate AFS service environment
-  case $TERRA_SERVER in
-    verily-devel)
-      afsservice=terra-devel-axon.api.verily.com
-      ;;
-    verily-autopush)
-      afsservice=terra-autopush-axon.api.verily.com
-      ;;
-    verily-staging)
-      afsservice=terra-staging-axon.api.verily.com
-      ;;
-    verily-preprod)
-      afsservice=terra-preprod-axon.api.verily.com
-      ;;
-    verily)
-      afsservice=terra-axon.api.verily.com
-      ;;
-    *)
-      >&2 echo "ERROR: $TERRA_SERVER is not a known verily server."
-      exit 1
-      ;;
-  esac
-  # Build AFS service path and fetch the CLI distribution path
-  versionJson="$(curl -s "https://$afsservice/version")"
-  cliDistributionPath=$(echo "$versionJson" | jq -r '.cliDistributionPath')
+if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+  if ! versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")"; then
+    >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
+    exit 1
+  fi
+  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "\
     curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
     cp terra '${TERRA_INSTALL_PATH}'"
 else
-  ${RUN_AS_LOGIN_USER} "\
-    curl -L https://github.com/DataBiosphere/terra-cli/releases/latest/download/download-install.sh | bash && \
-    cp terra '${TERRA_INSTALL_PATH}'"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  exit 1
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
 ${RUN_AS_LOGIN_USER} "terra config set browser MANUAL"
 
 # Set the CLI terra server based on the terra server that created the VM.
-if [[ -n "${TERRA_SERVER}" ]]; then
-  ${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
-fi
+${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
 
 # Log in with app-default-credentials
 ${RUN_AS_LOGIN_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
+
 # Generate the bash completion script
 ${RUN_AS_LOGIN_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
 
@@ -440,12 +423,12 @@ fi
 # to make porting existing notebooks easier.
 
 # Keep in sync with terra CLI environment variables:
-# https://github.com/DataBiosphere/terra-cli/blob/14cf51dd809573c7ae9a3ef10ddd427fa057cb8f/src/main/java/bio/terra/cli/app/CommandRunner.java#L88
+# https://github.com/verily-src/terra-tool-cli/blob/6c3d1ee2dd54aa62785da4113b83f5eba57d3c7f/src/main/java/bio/terra/cli/app/CommandRunner.java#L89
 
 # *** Variables that are set by Leonardo for Cloud Environments
 # (https://github.com/DataBiosphere/leonardo)
 
-# OWNER_EMAIL is really the Terra user account email address
+# OWNER_EMAIL is really the VWB user account email address
 readonly OWNER_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "terra workspace describe --format=json" | \
   jq --raw-output ".userEmail")"
@@ -455,7 +438,7 @@ readonly GOOGLE_PROJECT="$(
   ${RUN_AS_LOGIN_USER} "terra workspace describe --format=json" | \
   jq --raw-output ".googleProjectId")"
 
-# PET_SA_EMAIL is the pet service account for the Terra user and
+# PET_SA_EMAIL is the pet service account for the VWB user and
 # is specific to the GCP project backing the workspace
 readonly PET_SA_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "terra auth status --format=json" | \
@@ -464,29 +447,29 @@ readonly PET_SA_EMAIL="$(
 # These are equivalent environment variables which are set for a
 # command when calling "terra app execute <command>".
 #
-# TERRA_USER_EMAIL is the Terra user account email address.
+# TERRA_USER_EMAIL is the VWB user account email address.
 # GOOGLE_CLOUD_PROJECT is the project id for the GCP project backing the
 # workspace.
-# GOOGLE_SERVICE_ACCOUNT_EMAIL is the pet service account for the Terra user
+# GOOGLE_SERVICE_ACCOUNT_EMAIL is the pet service account for the VWB user
 # and is specific to the GCP project backing the workspace.
 
-emit "Adding Terra environment variables to ~/.bashrc ..."
+emit "Adding VWB environment variables to ~/.bashrc ..."
 
 cat << EOF >> "${USER_BASHRC}"
 
-# Set up a few legacy Terra-specific convenience variables
+# Set up a few legacy VWB-specific convenience variables
 export OWNER_EMAIL='${OWNER_EMAIL}'
 export GOOGLE_PROJECT='${GOOGLE_PROJECT}'
 export PET_SA_EMAIL='${PET_SA_EMAIL}'
 
-# Set up a few Terra-specific convenience variables
+# Set up a few VWB-specific convenience variables
 export TERRA_USER_EMAIL='${OWNER_EMAIL}'
 export GOOGLE_CLOUD_PROJECT='${GOOGLE_PROJECT}'
 export GOOGLE_SERVICE_ACCOUNT_EMAIL='${PET_SA_EMAIL}'
 EOF
 
 #############################
-# Configure Terra CLI Wrapper
+# Configure VWB CLI Wrapper
 #############################
 # Create a wrapper script that sets $JAVA_HOME and then executes the 'terra' command.
 
@@ -507,7 +490,7 @@ EOF
 
 # Make sure the wrapper script is executable by the login user
 chmod +x "${TERRA_WRAPPER_PATH}"
-chown "${LOGIN_USER}":"${LOGIN_USER}" "${TERRA_WRAPPER_PATH}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${TERRA_WRAPPER_PATH}"
 
 #################
 # bash completion
@@ -546,7 +529,7 @@ emit "Setting up git integration..."
 # Create the user SSH directory 
 ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 
-# Get the user's SSH key from Terra, and if set, write it to the user's .ssh directory
+# Get the user's SSH key from VWB, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
   install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
   terra user ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
@@ -561,13 +544,13 @@ rm -f "${USER_SSH_DIR}/id_rsa.tmp"
 ${RUN_AS_LOGIN_USER} "ssh-keyscan -H github.com >> '${USER_SSH_DIR}/known_hosts'"
 
 # Create git repos directory
-${RUN_AS_LOGIN_USER} "mkdir -p '${TERRA_GIT_REPOS_DIR}'"
+${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 
 # Attempt to clone all the git repo references in the workspace. If the user's ssh key does not exist or doesn't have access
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${TERRA_GIT_REPOS_DIR}' && terra git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && terra git clone --all"
 
 # Setup gitignore to avoid accidental checkin of data.
 
@@ -600,7 +583,7 @@ ${RUN_AS_LOGIN_USER} "git config --global core.excludesfile '${GIT_IGNORE}'"
 # Writing to the HOME directory allows for the ssh-agent socket to be accessible
 # from inside Docker containers that have mounted the Jupyter user's HOME directory.
 
-cat << 'EOF' >>"${TERRA_SSH_AGENT_SCRIPT}"
+cat << 'EOF' >>"${WORKBENCH_SSH_AGENT_SCRIPT}"
 #!/bin/bash
 
 set -o nounset
@@ -646,16 +629,16 @@ while [[ -e /proc/"${SSH_AGENT_PID}" ]]; do
 done
 echo "SSH agent ${SSH_AGENT_PID} has exited."
 EOF
-chmod +x "${TERRA_SSH_AGENT_SCRIPT}"
-chown ${LOGIN_USER}:${LOGIN_USER} "${TERRA_SSH_AGENT_SCRIPT}"
+chmod +x "${WORKBENCH_SSH_AGENT_SCRIPT}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${WORKBENCH_SSH_AGENT_SCRIPT}"
 
 # Create a systemd service file for the ssh-agent
-cat << EOF >"${TERRA_SSH_AGENT_SERVICE}"
+cat << EOF >"${WORKBENCH_SSH_AGENT_SERVICE}"
 [Unit]
 Description=Run an SSH agent for the Jupyter user
 
 [Service]
-ExecStart=${TERRA_SSH_AGENT_SCRIPT}
+ExecStart=${WORKBENCH_SSH_AGENT_SCRIPT}
 User=${LOGIN_USER}
 Restart=always
 
@@ -665,8 +648,8 @@ EOF
 
 # Enable and start the startup service
 systemctl daemon-reload
-systemctl enable "${TERRA_SSH_AGENT_SERVICE_NAME}"
-systemctl start "${TERRA_SSH_AGENT_SERVICE_NAME}"
+systemctl enable "${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
+systemctl start "${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
 
 # Set ssh-agent launch command in ~/.bashrc so everytime
 # user starts a shell, we start the ssh-agent.
@@ -686,15 +669,15 @@ EOF
 #    directories to be mounted. We run the startup service after
 #    jupyter.service to meet this requirement.
 
-emit "Setting up Terra boot script and service..."
+emit "Setting up VWB boot script and service..."
 
 # Create the boot script
-cat << EOF >"${TERRA_BOOT_SCRIPT}"
+cat << EOF >"${WORKBENCH_BOOT_SCRIPT}"
 #!/bin/bash
 # This script is run on instance boot to configure the instance for terra.
 
 # Send stdout and stderr from this script to a file for debugging.
-exec >> "${TERRA_BOOT_SERVICE_OUTPUT_FILE}"
+exec >> "${WORKBENCH_BOOT_SERVICE_OUTPUT_FILE}"
 exec 2>&1
 
 # Pick up environment from the ~/.bashrc
@@ -705,17 +688,17 @@ source "${USER_BASHRC}"
 
 exit 0
 EOF
-chmod +x "${TERRA_BOOT_SCRIPT}"
-chown ${LOGIN_USER}:${LOGIN_USER} "${TERRA_BOOT_SCRIPT}"
+chmod +x "${WORKBENCH_BOOT_SCRIPT}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${WORKBENCH_BOOT_SCRIPT}"
 
 # Create a systemd service to run the boot script on system boot
-cat << EOF >"${TERRA_BOOT_SERVICE}"
+cat << EOF >"${WORKBENCH_BOOT_SERVICE}"
 [Unit]
 Description=Configure environment for terra
 After=jupyter.service
 
 [Service]
-ExecStart=${TERRA_BOOT_SCRIPT}
+ExecStart=${WORKBENCH_BOOT_SCRIPT}
 User=${LOGIN_USER}
 RemainAfterExit=yes
 
@@ -725,19 +708,50 @@ EOF
 
 # Enable and start the service
 systemctl daemon-reload
-systemctl enable "${TERRA_BOOT_SERVICE_NAME}"
-systemctl start "${TERRA_BOOT_SERVICE_NAME}"
+systemctl enable "${WORKBENCH_BOOT_SERVICE_NAME}"
+systemctl start "${WORKBENCH_BOOT_SERVICE_NAME}"
 
-# Indicate the end of Terra customizations of the ~/.bashrc
+# Indicate the end of VWB customizations of the ~/.bashrc
 cat << EOF >> "${USER_BASHRC}"
 
-### END: Terra-specific customizations ###
+### END: VWB-specific customizations ###
 EOF
 
 # Make sure the ~/.bashrc and ~/.bash_profile are owned by the jupyter user
-chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASHRC}"
-chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASHRC}"
+chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 
+
+###################################
+# Start workbench app proxy agent 
+###################################
+
+readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+if [[ -n "${APP_PROXY}" ]]; then
+  emit "Using custom Proxy Agent"
+  RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
+  NEW_PROXY="https://${APP_PROXY}"
+  NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+
+  # Create a systemd service to start the workbench app proxy.
+  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
+[Unit]
+Description=Workbench App Proxy Agent Service
+
+[Service]
+ExecStart=/bin/bash -c '/usr/bin/proxy-forwarding-agent -proxy ${NEW_PROXY}/ -host localhost:8123 -backend ${RESOURCE_ID} -shim-path websocket-shim -banner-height=40px -inject-banner="\$(cat /opt/dataproc/proxy-agent/banner.html)"  -session-cookie-name=_xsrf'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # Enable and start the workbench app proxy agent service
+  systemctl daemon-reload
+  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+  emit "Workbench proxy Agent service started"
+fi
 
 ###################################
 # Configure Jupyter systemd service
@@ -1000,10 +1014,30 @@ a#workspace {\
   ###########################
 
   emit "Configuring Jupyter service..."
+  # Add a marker for the VWB-specific customizations
+  cat << EOF >> "${JUPYTER_CONFIG}"
+
+### BEGIN: VWB-specific customizations ###
+
+EOF
 
   # Remove the default GCSContentsManager and set jupyter file tree's root directory to the LOGIN_USER's home directory.
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
+  
+  if [[ -n "${APP_PROXY}" ]]; then
+    cat << EOF >> "${JUPYTER_CONFIG}"
+c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"
+c.NotebookApp.allow_remote_access= True
+c.NotebookApp.local_hostnames.append('${APP_PROXY}')
+EOF
+  fi
+  # Add a marker for the VWB-specific customizations
+  cat << EOF >> "${JUPYTER_CONFIG}"
+
+### END: VWB-specific customizations ###
+
+EOF
 
   # Restart jupyter to load configurations
   systemctl restart ${JUPYTER_SERVICE_NAME}
@@ -1025,7 +1059,7 @@ emit "--  Checking if installed Java version is ${REQ_JAVA_VERSION} or higher"
 
 # Get the current major version of Java: "11.0.12" => "11"
 readonly INSTALLED_JAVA_VERSION="$(${RUN_AS_LOGIN_USER} "${JAVA_INSTALL_PATH} -version" 2>&1 | awk -F\" '{ split($2,a,"."); print a[1]}')"
-if [[ "${INSTALLED_JAVA_VERSION}" -lt ${REQ_JAVA_VERSION} ]]; then
+if [[ "${INSTALLED_JAVA_VERSION}" -lt "${REQ_JAVA_VERSION}" ]]; then
   >&2 emit "ERROR: Java version detected (${INSTALLED_JAVA_VERSION}) is less than required (${REQ_JAVA_VERSION})"
   exit 1
 fi
@@ -1064,37 +1098,37 @@ fi
 
 emit "SUCCESS: Cromshell installed"
 
-# Test Terra
-emit "--  Checking if Terra CLI is properly installed"
+# Test VWB
+emit "--  Checking if VWB CLI is properly installed"
 
 if [[ ! -e "${TERRA_INSTALL_PATH}" ]]; then
-  >&2 emit "ERROR: Terra CLI not found at ${TERRA_INSTALL_PATH}"
+  >&2 emit "ERROR: VWB CLI not found at ${TERRA_INSTALL_PATH}"
   exit 1
 fi
 
 readonly INSTALLED_TERRA_VERSION="$(${RUN_AS_LOGIN_USER} "${TERRA_INSTALL_PATH} version")"
 
 if [[ -z "${INSTALLED_TERRA_VERSION}" ]]; then
-  >&2 emit "ERROR: Terra CLI did not execute or did not return a version number"
+  >&2 emit "ERROR: VWB CLI did not execute or did not return a version number"
   exit 1
 fi
 
-emit "--  Checking if the original Terra CLI has been renamed to terra_cli"
+emit "--  Checking if the original VWB CLI has been renamed to terra_cli"
 
 if [[ ! -e "${TERRA_COMMAND_PATH}" ]]; then
-  >&2 emit "ERROR: Terra CLI was not renamed to ${TERRA_COMMAND_PATH}"
+  >&2 emit "ERROR: VWB CLI was not renamed to ${TERRA_COMMAND_PATH}"
   exit 1
 fi
 
-emit "--  Checking if the Terra CLI wrapper is properly created"
+emit "--  Checking if the VWB CLI wrapper is properly created"
 
 if [[ ! -e "${TERRA_WRAPPER_PATH}" ]]; then
-  >&2 emit "ERROR: Terra CLI wrapper does not exist ${TERRA_WRAPPER_PATH}"
+  >&2 emit "ERROR: VWB CLI wrapper does not exist ${TERRA_WRAPPER_PATH}"
   exit 1
 fi
 
 
-emit "SUCCESS: Terra CLI installed and version detected as ${INSTALLED_TERRA_VERSION}"
+emit "SUCCESS: VWB CLI installed and version detected as ${INSTALLED_TERRA_VERSION}"
 
 # SSH
 emit "--  Checking if .ssh directory is properly set up"

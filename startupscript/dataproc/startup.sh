@@ -986,18 +986,18 @@ fi
   sed -i 's#<banner-title>#<banner-title>\n'"${WORKSPACE_LINK_EL}"' \&gt; #' "${PROXY_AGENT_BANNER}"
 
   # Add target blank property to all banner links so they open in a new tab
-  sed -i "s/class=\"forum\"/class=\"forum\" target=\"_blank\"/g" ${PROXY_AGENT_BANNER}
+  sed -i 's#class="forum"#class="forum" target="_blank"#g' "${PROXY_AGENT_BANNER}"
 
   # Remove flex styling from the banner-account css class to prevent banner content from wrapping
-  sed -i '/banner-account {/,/}/{/flex:/d;/-ms-flex:/d;/-webkit-flex:/d;}' ${PROXY_AGENT_BANNER}
+  sed -i '#banner-account {#,#}#{#flex:#d;#-ms-flex:#d;#-webkit-flex:#d;}' "${PROXY_AGENT_BANNER}"
 
-  # Add css class for #workspace before a#project
+  # Add css class for a#workspace before a#project
   sed -i '/a#project {/i\
 a#workspace {\
   color:white;\
   text-decoration:none;\
   padding:4px;\
-}' ${PROXY_AGENT_BANNER}
+}' "${PROXY_AGENT_BANNER}"
 
   # End banner.html modifications
 

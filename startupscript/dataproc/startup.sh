@@ -25,7 +25,7 @@
 #
 # How to test changes to this file:
 #   Copy this file to a GCS bucket:
-#   - gsutil cp dataproc/startup.sh gs://MYBUCKET
+#   - gsutil cp startupscript/dataproc/startup.sh gs://MYBUCKET
 #
 #   Create a new VM (JupyterLab provided by Dataproc spark):
 #   - terra resource create dataproc-cluster \
@@ -966,36 +966,29 @@ fi
   #################################
 
   # Map the CLI server to the appropriate UI url
-  case $TERRA_SERVER in
-    verily-devel)
-      ui_base_url=terra-devel-ui-terra.api.verily.com
-      ;;
-    verily-autopush)
-      ui_base_url=terra-autopush-ui-terra.api.verily.com
-      ;;
-    verily-staging)
-      ui_base_url=terra-staging-ui-terra.api.verily.com
-      ;;
-    verily-preprod)
-      ui_base_url=terra-preprod-ui-terra.api.verily.com
-    ;;
-    verily)
-      ui_base_url=workbench.verily.com
-      ;;
-    *)
-      >&2 echo "ERROR: $TERRA_SERVER is not a known verily server."
-      exit 1
-      ;;
-  esac
+  if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+    # Map the CLI server to the appropriate UI url
+    if [[ "${TERRA_SERVER}" == "verily" ]]; then
+      ui_base_url="workbench.verily.com"
+    else
+      ui_base_url="https://${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
+    fi
+  else
+    >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."
+    exit 1
+  fi
 
-  # Insert a link element to render
-  readonly WORKSPACE_LINK_EL="<a id=\"workspace\" class=\"forum\" target=\"_blank\" href=\"https://${ui_base_url}/workspaces/${TERRA_WORKSPACE}\">${TERRA_WORKSPACE}</a>"
-  sed -i "s/<banner-title>/<banner-title>\n$WORKSPACE_LINK_EL \&gt; /" ${PROXY_AGENT_BANNER}
+  # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.
+  # Begin banner.html modifications
 
-  # Add target blank property to banner links so they open in a new tab
+  # Insert a workspace link into the banner title
+  readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="https://'"${ui_base_url}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
+  sed -i 's#<banner-title>#<banner-title>\n'"${WORKSPACE_LINK_EL}"' \&gt; #' "${PROXY_AGENT_BANNER}"
+
+  # Add target blank property to all banner links so they open in a new tab
   sed -i "s/class=\"forum\"/class=\"forum\" target=\"_blank\"/g" ${PROXY_AGENT_BANNER}
 
-  # Remove flex styling from the banner-account css class
+  # Remove flex styling from the banner-account css class to prevent banner content from wrapping
   sed -i '/banner-account {/,/}/{/flex:/d;/-ms-flex:/d;/-webkit-flex:/d;}' ${PROXY_AGENT_BANNER}
 
   # Add css class for #workspace before a#project
@@ -1006,8 +999,10 @@ a#workspace {\
   padding:4px;\
 }' ${PROXY_AGENT_BANNER}
 
+  # End banner.html modifications
+
   # restart proxy agent
-  systemctl restart ${PROXY_AGENT_SERVICE}
+  systemctl restart "${PROXY_AGENT_SERVICE}"
 
   ###########################
   # Configure Jupyter service

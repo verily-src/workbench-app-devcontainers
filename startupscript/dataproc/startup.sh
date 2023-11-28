@@ -24,8 +24,15 @@
 #   NOTE: This script is executed before the dataproc startup script that installs software components and jupyter.
 #
 # How to test changes to this file:
-# Currently, the only way is to use swagger to create a new cluster with the startup script gs url passed into the 'startup-script-uri' metadata field.
-#   TODO: Pending CLI support in PF-2865 to create a cluster with a custom startup script via CLI
+#   Copy this file to a GCS bucket:
+#   - gsutil cp startupscript/dataproc/startup.sh gs://MYBUCKET
+#
+#   Create a new VM (JupyterLab provided by Dataproc spark):
+#   - terra resource create dataproc-cluster \
+#       --name=test_dataproc_startup \
+#       --metadata=startup-script-url=gs://MYBUCKET/startup.sh
+#
+#   To test a new command in this script, be sure to run with "sudo" in a JupyterLab Terminal.
 #
 # Integration Tests
 #   Please also make sure integration test `PrivateControlledDataprocClusterStartup` passes. Refer to
@@ -74,6 +81,10 @@ readonly USER_HOME_LOCAL_BIN="${USER_HOME_DIR}/.local/bin"
 readonly USER_HOME_LOCAL_SHARE="${USER_HOME_DIR}/.local/share"
 readonly USER_TERRA_CONFIG_DIR="${USER_HOME_DIR}/.terra"
 readonly USER_SSH_DIR="${USER_HOME_DIR}/.ssh"
+
+# Proxy override variables.
+readonly PROXY_AGENT_BANNER="/opt/dataproc/proxy-agent/banner.html"
+readonly PROXY_AGENT_SERVICE="google-dataproc-component-gateway.service"
 
 # For consistency across these two environments, this startup script writes
 # to the ~/.bashrc, and has the ~/.bash_profile source the ~/.bashrc
@@ -932,11 +943,12 @@ fi
 # Post Dataproc setup tasks:
 # 1. Wait for the Dataproc jupyter optional component to finish setting up.
 # 2. Install Hail if it has been enabled.
-# 3. Configure jupyter service config
+# 3. Configure proxy agent banner and restart proxy agent.
+# 4. Configure jupyter service config
 #    a. Remove Dataproc's GCSContentsManager as we support bucket mounts in local file system.
 #    b. Set jupyter file tree's root directory to the LOGIN_USER's home directory.
-# 4. Restart jupyter service
-#
+# 5. Restart jupyter service
+
 "$(
   while ! systemctl is-active --quiet ${JUPYTER_SERVICE_NAME}; do
     sleep 5
@@ -948,6 +960,53 @@ fi
     emit "Starting Hail install script..."
     ${RUN_PYTHON} ${HAIL_SCRIPT_PATH}
   fi
+
+  #################################
+  # Configure Proxy Agent Overrides
+  #################################
+
+  # Map the CLI server to the appropriate UI url
+  if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+    # Map the CLI server to the appropriate UI url
+    if [[ "${TERRA_SERVER}" == "verily" ]]; then
+      ui_base_url="workbench.verily.com"
+    else
+      ui_base_url="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
+    fi
+  else
+    >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."
+    exit 1
+  fi
+
+  # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.
+  # Begin banner.html modifications
+
+  # Insert a workspace link into the banner title
+  readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="https://'"${ui_base_url}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
+  sed -i 's#<banner-title>#<banner-title>\n'"${WORKSPACE_LINK_EL}"' \&gt; #' "${PROXY_AGENT_BANNER}"
+
+  # Add target blank property to all banner links so they open in a new tab
+  sed -i 's#class="forum"#class="forum" target="_blank"#g' "${PROXY_AGENT_BANNER}"
+
+  # Remove flex styling from the banner-account css class to prevent banner content from wrapping
+  sed -i '#banner-account {#,#}#{#flex:#d;#-ms-flex:#d;#-webkit-flex:#d;}' "${PROXY_AGENT_BANNER}"
+
+  # Add css class for a#workspace before a#project
+  sed -i '/a#project {/i\
+a#workspace {\
+  color:white;\
+  text-decoration:none;\
+  padding:4px;\
+}' "${PROXY_AGENT_BANNER}"
+
+  # End banner.html modifications
+
+  # restart proxy agent
+  systemctl restart "${PROXY_AGENT_SERVICE}"
+
+  ###########################
+  # Configure Jupyter service
+  ###########################
 
   emit "Configuring Jupyter service..."
   # Add a marker for the VWB-specific customizations

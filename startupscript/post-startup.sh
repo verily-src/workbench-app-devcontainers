@@ -125,7 +125,7 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
   cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-  cp terra ${TERRA_INSTALL_PATH}
+  cp terra "${TERRA_INSTALL_PATH}"
 else
   >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
   exit 1

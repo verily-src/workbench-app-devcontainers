@@ -275,10 +275,6 @@ ${RUN_AS_LOGIN_USER} "nbstripout --install --global"
 # Installs gcsfuse if it is not already installed.
 if ! which gcsfuse >/dev/null 2>&1; then
   emit "Installing gcsfuse..."
-  # install packages needed to install gcsfuse
-  apt-get install -y \
-    fuse \
-    lsb-core
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
   export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \

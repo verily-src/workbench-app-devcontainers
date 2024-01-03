@@ -638,6 +638,8 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${WORKBENCH_SSH_AGENT_SCRIPT}"
 cat << EOF >"${WORKBENCH_SSH_AGENT_SERVICE}"
 [Unit]
 Description=Run an SSH agent for the Jupyter user
+ConditionFileIsExecutable=${TERRA_SSH_AGENT_SCRIPT}
+After=home-jupyter.mount
 
 [Service]
 ExecStart=${WORKBENCH_SSH_AGENT_SCRIPT}

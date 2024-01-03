@@ -1,0 +1,15 @@
+{
+  "name": "Your app",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  // Open the sub-folder with the source code. Modify the folder name to your app folder.
+  "workspaceFolder": "/workspace/template",
+  
+  // Features to add to the dev container. More info: https://containers.dev/features.
+  // "features": {},
+  
+  // Use 'postCreateCommand' to run custom workbench post-startup script after the container is created.
+  //"postCreateCommand": ["../startupscript/post-startup.sh", <user>, <workingDirectory>],
+  "remoteUser": "root"
+}

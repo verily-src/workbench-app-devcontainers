@@ -409,9 +409,8 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
   fi
   cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
-  ${RUN_AS_LOGIN_USER} "\
-    curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash && \
-    cp vwb '${VWB_INSTALL_PATH}'"
+  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
+  cp vwb "${VWB_INSTALL_PATH}"
 else
   >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
   exit 1
@@ -562,7 +561,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
   install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
-  vwb user ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
+  vwb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
   ${RUN_AS_LOGIN_USER} "\
     install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \

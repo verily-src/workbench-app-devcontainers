@@ -80,6 +80,7 @@ readonly USER_HOME_LOCAL_DIR="${USER_HOME_DIR}/.local"
 readonly USER_HOME_LOCAL_BIN="${USER_HOME_DIR}/.local/bin"
 readonly USER_HOME_LOCAL_SHARE="${USER_HOME_DIR}/.local/share"
 readonly USER_WORKBENCH_CONFIG_DIR="${USER_HOME_DIR}/.workbench"
+readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${USER_HOME_DIR}/.terra"
 readonly USER_SSH_DIR="${USER_HOME_DIR}/.ssh"
 
 # Proxy override variables.
@@ -148,6 +149,7 @@ cd /tmp || exit
 # Send stdout and stderr from this script to a file for debugging.
 # Make the .wb directory as the user so that they own it and have correct linux permissions.
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
+${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 

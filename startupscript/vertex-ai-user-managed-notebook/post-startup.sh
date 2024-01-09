@@ -37,19 +37,19 @@
 #   The startup script will execute a user provided startup script defined in
 #   the `terra-user-startup-script` instance metadata attribute. Non zero error
 #   codes from the user startup script will cause this script to fail, and the
-#   user is expected to debug failures via the output log in ~/.vwb/user-startup-output.txt
+#   user is expected to debug failures via the output log in ~/.workbench/user-startup-output.txt
 #
 # How to test changes to this file:
 #   Copy this file to a GCS bucket:
 #   - gsutil cp vertex-ai-user-managed-notebook/post-startup.sh gs://MYBUCKET
 #
 #   Create a new VM (JupyterLab provided by JupyterLab service):
-#   - vwb resource create gcp-notebook \
+#   - wb resource create gcp-notebook \
 #       --name="test_post_startup" \
 #       --post-startup-script=gs://MYBUCKET/post-startup.sh
 #
 #   Create a new VM (JupyterLab provided by Docker image):
-#   - vwb resource create gcp-notebook \
+#   - wb resource create gcp-notebook \
 #       --name="test_post_startup" \
 #       --container-repository gcr.io/deeplearning-platform-release/pytorch-gpu \
 #       --post-startup-script=gs://MYBUCKET/post-startup.sh
@@ -93,7 +93,7 @@ readonly USER_HOME_DIR="/home/${LOGIN_USER}"
 readonly USER_BASH_COMPLETION_DIR="${USER_HOME_DIR}/.bash_completion.d"
 readonly USER_HOME_LOCAL_BIN="${USER_HOME_DIR}/.local/bin"
 readonly USER_HOME_LOCAL_SHARE="${USER_HOME_DIR}/.local/share"
-readonly USER_WORKBENCH_CONFIG_DIR="${USER_HOME_DIR}/.vwb"
+readonly USER_WORKBENCH_CONFIG_DIR="${USER_HOME_DIR}/.workbench"
 readonly USER_SSH_DIR="${USER_HOME_DIR}/.ssh"
 
 # When a user opens a Terminal in JupyerLab, documented behavior
@@ -128,8 +128,8 @@ readonly CROMWELL_INSTALL_JAR="${CROMWELL_INSTALL_DIR}/cromwell-${CROMWELL_LATES
 readonly CROMSHELL_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/cromshell"
 
 # Variables for Workbench-specific code installed on the VM
-readonly VWB_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/vwb"
-readonly VWB_LEGACY_PATH="${USER_HOME_LOCAL_BIN}/terra"
+readonly WORKBENCH_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/wb"
+readonly WORKBENCH_LEGACY_PATH="${USER_HOME_LOCAL_BIN}/terra"
 
 readonly WORKBENCH_GIT_REPOS_DIR="${USER_HOME_DIR}/repos"
 
@@ -151,7 +151,7 @@ readonly GIT_IGNORE="${USER_HOME_DIR}/gitignore_global"
 cd /tmp || exit
 
 # Send stdout and stderr from this script to a file for debugging.
-# Make the .vwb directory as the user so that they own it and have correct linux permissions.
+# Make the .wb directory as the user so that they own it and have correct linux permissions.
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
@@ -245,18 +245,18 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_BIN}'"
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 
 # Remove the Vertex AI-installed "tutorials" directory.
-# End users think that they are VWB tutorials which is just confusing.
+# End users think that they are Workbench tutorials which is just confusing.
 emit "Removing the pre-installed Vertex AI tutorials directory"
 rm -rf "${USER_HOME_DIR}/tutorials"
 
 # As described above, have the ~/.bash_profile source the ~/.bashrc
 cat << EOF >> "${USER_BASH_PROFILE}"
 
-### BEGIN: VWB-specific customizations ###
+### BEGIN: Workbench-specific customizations ###
 if [[ -e ~/.bashrc ]]; then
   source ~/.bashrc
 fi
-### END: VWB-specific customizations ###
+### END: Workbench-specific customizations ###
 
 EOF
 
@@ -274,7 +274,7 @@ EOF
 # Add a marker for the Workbench-specific customizations
 cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-### BEGIN: VWB-specific customizations ###
+### BEGIN: Workbench-specific customizations ###
 
 EOF
 
@@ -390,8 +390,8 @@ ${RUN_AS_LOGIN_USER} "\
   chmod +x cromshell && \
   mv cromshell '${CROMSHELL_INSTALL_PATH}'"
 
-# Install & configure the VWB CLI
-emit "Installing the VWB CLI ..."
+# Install & configure the Workbench CLI
+emit "Installing the Workbench CLI ..."
 
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
@@ -410,27 +410,27 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
   cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-  cp vwb "${VWB_INSTALL_PATH}"
+  cp wb "${WORKBENCH_INSTALL_PATH}"
 else
-  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
   exit 1
 fi
 
-# Copy 'vwb' to its legacy 'terra' name.
-cp "${VWB_INSTALL_PATH}" "${VWB_LEGACY_PATH}"
+# Copy 'wb' to its legacy 'terra' name.
+cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
-${RUN_AS_LOGIN_USER} "vwb config set browser MANUAL"
+${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
 
 # Set the CLI server based on the server that created the VM.
 if [[ -n "${TERRA_SERVER}" ]]; then
-  ${RUN_AS_LOGIN_USER} "vwb server set --name=${TERRA_SERVER}"
+  ${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 fi
 
 # Log in with app-default-credentials
-${RUN_AS_LOGIN_USER} "vwb auth login --mode=APP_DEFAULT_CREDENTIALS"
+${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
 # Generate the bash completion script
-${RUN_AS_LOGIN_USER} "vwb generate-completion > '${USER_BASH_COMPLETION_DIR}/vwb'"
+${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
 
 ####################################
 # Shell and notebook environment
@@ -439,14 +439,14 @@ ${RUN_AS_LOGIN_USER} "vwb generate-completion > '${USER_BASH_COMPLETION_DIR}/vwb
 # Set the CLI workspace id using the VM metadata, if set.
 readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
-  ${RUN_AS_LOGIN_USER} "vwb workspace set --id='${TERRA_WORKSPACE}'"
+  ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
 fi
 
 # Set variables into the ~/.bashrc such that they are available
 # to terminals, notebooks, and other tools
 #
 # We have new-style variables (eg GOOGLE_CLOUD_PROJECT) which are set here
-# and CLI (vwb app execute env).
+# and CLI (wb app execute env).
 # We also support a few variables set by Leonardo (eg GOOGLE_PROJECT).
 # Those are only set here and NOT in the CLI as they are intended just
 # to make porting existing notebooks easier.
@@ -459,22 +459,22 @@ fi
 
 # OWNER_EMAIL is really the Workbench user account email address
 readonly OWNER_EMAIL="$(
-  ${RUN_AS_LOGIN_USER} "vwb workspace describe --format=json" | \
+  ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".userEmail")"
 
 # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
 readonly GOOGLE_PROJECT="$(
-  ${RUN_AS_LOGIN_USER} "vwb workspace describe --format=json" | \
+  ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".googleProjectId")"
 
 # PET_SA_EMAIL is the pet service account for the Workbench user and
 # is specific to the GCP project backing the workspace
 readonly PET_SA_EMAIL="$(
-  ${RUN_AS_LOGIN_USER} "vwb auth status --format=json" | \
+  ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
   jq --raw-output ".serviceAccountEmail")"
 
 # These are equivalent environment variables which are set for a
-# command when calling "vwb app execute <command>".
+# command when calling "wb app execute <command>".
 #
 # WORKBENCH_USER_EMAIL is the Workbench user account email address.
 # GOOGLE_CLOUD_PROJECT is the project id for the GCP project backing the
@@ -561,7 +561,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
   install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
-  vwb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
+  wb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
   ${RUN_AS_LOGIN_USER} "\
     install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
@@ -579,7 +579,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && vwb git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && wb git clone --all"
 
 # Create a script for starting the ssh-agent, which will be run as a daemon
 # process on boot.
@@ -692,7 +692,7 @@ exec 2>&1
 source "${USER_BASHRC}"
 
 # Mount Workbench workspace resources
-"${USER_HOME_LOCAL_BIN}/vwb" resource mount
+"${USER_HOME_LOCAL_BIN}/wb" resource mount
 
 exit 0
 EOF
@@ -761,7 +761,7 @@ readonly USER_STARTUP_SCRIPT="$(get_metadata_value "instance/attributes/terra-us
 if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
   readonly USER_STARTUP_SCRIPT_FILE="${USER_WORKBENCH_CONFIG_DIR}/user-startup-script.sh"
 
-  # Copy the user's startup script to the user's .vwb directory
+  # Copy the user's startup script to the user's .workbench directory
   emit "Downloading user startup script to ${USER_STARTUP_SCRIPT_FILE}..."
   if [[ "${USER_STARTUP_SCRIPT}" == gs://* ]]; then
       # If the URL starts with "gs://", use gsutil to download the file
@@ -810,7 +810,7 @@ EOF
   emit "Workbench proxy Agent service started"
   
   # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
-  ${RUN_AS_LOGIN_USER} "vwb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
+  ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
   emit "Updating app-proxy-url metadata"
 
   cat << EOF >> "${NOTEBOOK_CONFIG}"
@@ -820,10 +820,10 @@ c.ServerApp.allow_origin_pat += "|(^https://${NEW_PROXY_URL}$)"
 EOF
 fi
 
-# Indicate the end of VWB customizations of the jupyter_notebook_config.py
+# Indicate the end of Workbench customizations of the jupyter_notebook_config.py
 cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-### END: VWB-specific customizations ###
+### END: Workbench-specific customizations ###
 EOF
 
 ####################################
@@ -885,22 +885,22 @@ fi
 
 emit "SUCCESS: Cromshell installed"
 
-# Test VWB CLI
-emit "--  Checking if VWB CLI is properly installed"
+# Test Workbench CLI
+emit "--  Checking if Workbench CLI is properly installed"
 
-if [[ ! -e "${VWB_INSTALL_PATH}" ]]; then
-  >&2 emit "ERROR: Workbench CLI not found at ${VWB_INSTALL_PATH}"
+if [[ ! -e "${WORKBENCH_INSTALL_PATH}" ]]; then
+  >&2 emit "ERROR: Workbench CLI not found at ${WORKBENCH_INSTALL_PATH}"
   exit 1
 fi
 
-readonly INSTALLED_VWB_VERSION="$(${RUN_AS_LOGIN_USER} "${VWB_INSTALL_PATH} version")"
+readonly INSTALLED_WORKBENCH_VERSION="$(${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} version")"
 
-if [[ -z "${INSTALLED_VWB_VERSION}" ]]; then
+if [[ -z "${INSTALLED_WORKBENCH_VERSION}" ]]; then
   >&2 emit "ERROR: Workbench CLI did not execute or did not return a version number"
   exit 1
 fi
 
-emit "SUCCESS: Workbench CLI installed and version detected as ${INSTALLED_VWB_VERSION}"
+emit "SUCCESS: Workbench CLI installed and version detected as ${INSTALLED_WORKBENCH_VERSION}"
 
 # SSH
 emit "--  Checking if .ssh directory is properly set up"
@@ -942,7 +942,7 @@ emit "SUCCESS: Gitignore installed at ${INSTALLED_GITIGNORE}"
 # here, we knows that the script executed successfully.
 readonly WORKBENCH_TEST_VALUE="$(get_metadata_value "instance/attributes/terra-test-value")"
 if [[ -n "${WORKBENCH_TEST_VALUE}" ]]; then
-  ${RUN_AS_LOGIN_USER} "vwb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=terra-test-result=${WORKBENCH_TEST_VALUE}"
+  ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=terra-test-result=${WORKBENCH_TEST_VALUE}"
 fi
 
 # Let the UI know the script completed

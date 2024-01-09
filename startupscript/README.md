@@ -27,7 +27,7 @@ Make your change and push to a branch.
 - Step 2
 
 ```
-vwb resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup-script=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/vertex-ai-user-managed-notebook/post-startup.sh
+wb resource create gcp-notebook --id=jupyterNotebookForTesting --post-startup-script=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/vertex-ai-user-managed-notebook/post-startup.sh
 ```
 
 - Step 3
@@ -42,7 +42,7 @@ Make your change and push to a branch.
 - Step 2
 
 ```
-vwb resource create dataproc-cluster --name=dataprocForTesting --metadata=startup-script-url=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/dataproc/startup.sh
+wb resource create dataproc-cluster --name=dataprocForTesting --metadata=startup-script-url=https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/<your-branch>/startupscript/dataproc/startup.sh
 ```
 
 Pick a workspace that you have previously created a dataproc cluster so you can reuse the buckets.
@@ -60,11 +60,11 @@ Clone this repo and put it in a public repo you own. Make the change
   In the UI, create a custom rstudio app pointing at your personal repo.
 
 - Step 3
-  Wait for the notebook to spin up and go to the instance. Check .vwb/post-startup-output.txt to see if it succeeds.
+  Wait for the notebook to spin up and go to the instance. Check .workbench/post-startup-output.txt to see if it succeeds.
 
 ## General debugging tips
 
-- Check /home/<user>/.vwb/post-startup-output.txt to see where the script failed.
+- Check /home/<user>/.workbench/post-startup-output.txt to see where the script failed.
   The user is jupyter for vertex AI, dataproc for dataproc cluster, and varies by app for gce instance.
 
 - If the proxy url doesn't work, you can ssh to the VM.

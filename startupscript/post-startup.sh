@@ -32,6 +32,7 @@ readonly RUN_AS_LOGIN_USER="sudo -u ${user} bash -l -c"
 readonly USER_BASH_COMPLETION_DIR="${workDirectory}/.bash_completion.d"
 readonly USER_HOME_LOCAL_SHARE="${workDirectory}/.local/share"
 readonly USER_WORKBENCH_CONFIG_DIR="${workDirectory}/.workbench"
+readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${workDirectory}/.terra"
 readonly USER_SSH_DIR="${workDirectory}/.ssh"
 readonly USER_BASHRC="${workDirectory}/.bashrc"
 readonly USER_BASH_PROFILE="${workDirectory}/.bash_profile"
@@ -51,6 +52,7 @@ cd /tmp || exit
 # Send stdout and stderr from this script to a file for debugging.
 # Make the .workbench directory as the user so that they own it and have correct linux permissions.
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
+${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 

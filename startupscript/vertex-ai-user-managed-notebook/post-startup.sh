@@ -37,19 +37,19 @@
 #   The startup script will execute a user provided startup script defined in
 #   the `terra-user-startup-script` instance metadata attribute. Non zero error
 #   codes from the user startup script will cause this script to fail, and the
-#   user is expected to debug failures via the output log in ~/.terra/user-startup-output.txt
+#   user is expected to debug failures via the output log in ~/.workbench/user-startup-output.txt
 #
 # How to test changes to this file:
 #   Copy this file to a GCS bucket:
 #   - gsutil cp vertex-ai-user-managed-notebook/post-startup.sh gs://MYBUCKET
 #
 #   Create a new VM (JupyterLab provided by JupyterLab service):
-#   - terra resource create gcp-notebook \
+#   - wb resource create gcp-notebook \
 #       --name="test_post_startup" \
 #       --post-startup-script=gs://MYBUCKET/post-startup.sh
 #
 #   Create a new VM (JupyterLab provided by Docker image):
-#   - terra resource create gcp-notebook \
+#   - wb resource create gcp-notebook \
 #       --name="test_post_startup" \
 #       --container-repository gcr.io/deeplearning-platform-release/pytorch-gpu \
 #       --post-startup-script=gs://MYBUCKET/post-startup.sh
@@ -93,7 +93,8 @@ readonly USER_HOME_DIR="/home/${LOGIN_USER}"
 readonly USER_BASH_COMPLETION_DIR="${USER_HOME_DIR}/.bash_completion.d"
 readonly USER_HOME_LOCAL_BIN="${USER_HOME_DIR}/.local/bin"
 readonly USER_HOME_LOCAL_SHARE="${USER_HOME_DIR}/.local/share"
-readonly USER_TERRA_CONFIG_DIR="${USER_HOME_DIR}/.terra"
+readonly USER_WORKBENCH_CONFIG_DIR="${USER_HOME_DIR}/.workbench"
+readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${USER_HOME_DIR}/.terra"
 readonly USER_SSH_DIR="${USER_HOME_DIR}/.ssh"
 
 # When a user opens a Terminal in JupyerLab, documented behavior
@@ -110,14 +111,14 @@ readonly USER_SSH_DIR="${USER_HOME_DIR}/.ssh"
 readonly USER_BASHRC="${USER_HOME_DIR}/.bashrc"
 readonly USER_BASH_PROFILE="${USER_HOME_DIR}/.bash_profile"
 
-readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.txt"
-readonly USER_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/user-startup-output.txt"
-readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/boot-output.txt"
+readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
+readonly USER_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/user-startup-output.txt"
+readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/boot-output.txt"
 
 # Variables relevant for 3rd party software that gets installed
 readonly REQ_JAVA_VERSION=17
 readonly JAVA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/java"
-readonly JAVA_INSTALL_TMP="${USER_TERRA_CONFIG_DIR}/javatmp"
+readonly JAVA_INSTALL_TMP="${USER_WORKBENCH_CONFIG_DIR}/javatmp"
 
 readonly NEXTFLOW_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/nextflow"
 
@@ -128,15 +129,16 @@ readonly CROMWELL_INSTALL_JAR="${CROMWELL_INSTALL_DIR}/cromwell-${CROMWELL_LATES
 readonly CROMSHELL_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/cromshell"
 
 # Variables for Workbench-specific code installed on the VM
-readonly TERRA_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/terra"
+readonly WORKBENCH_INSTALL_PATH="${USER_HOME_LOCAL_BIN}/wb"
+readonly WORKBENCH_LEGACY_PATH="${USER_HOME_LOCAL_BIN}/terra"
 
 readonly WORKBENCH_GIT_REPOS_DIR="${USER_HOME_DIR}/repos"
 
-readonly WORKBENCH_BOOT_SCRIPT="${USER_TERRA_CONFIG_DIR}/instance-boot.sh"
+readonly WORKBENCH_BOOT_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/instance-boot.sh"
 readonly WORKBENCH_BOOT_SERVICE_NAME="workbench-instance-boot.service"
 readonly WORKBENCH_BOOT_SERVICE="/etc/systemd/system/${WORKBENCH_BOOT_SERVICE_NAME}"
 
-readonly WORKBENCH_SSH_AGENT_SCRIPT="${USER_TERRA_CONFIG_DIR}/ssh-agent-start.sh"
+readonly WORKBENCH_SSH_AGENT_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/ssh-agent-start.sh"
 readonly WORKBENCH_SSH_AGENT_SERVICE_NAME="workbench-ssh-agent.service"
 readonly WORKBENCH_SSH_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
 
@@ -150,8 +152,9 @@ readonly GIT_IGNORE="${USER_HOME_DIR}/gitignore_global"
 cd /tmp || exit
 
 # Send stdout and stderr from this script to a file for debugging.
-# Make the .terra directory as the user so that they own it and have correct linux permissions.
-${RUN_AS_LOGIN_USER} "mkdir -p '${USER_TERRA_CONFIG_DIR}'"
+# Make the .wb directory as the user so that they own it and have correct linux permissions.
+${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
+${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 
@@ -244,18 +247,18 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_BIN}'"
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 
 # Remove the Vertex AI-installed "tutorials" directory.
-# End users think that they are VWB tutorials which is just confusing.
+# End users think that they are Workbench tutorials which is just confusing.
 emit "Removing the pre-installed Vertex AI tutorials directory"
 rm -rf "${USER_HOME_DIR}/tutorials"
 
 # As described above, have the ~/.bash_profile source the ~/.bashrc
 cat << EOF >> "${USER_BASH_PROFILE}"
 
-### BEGIN: VWB-specific customizations ###
+### BEGIN: Workbench-specific customizations ###
 if [[ -e ~/.bashrc ]]; then
   source ~/.bashrc
 fi
-### END: VWB-specific customizations ###
+### END: Workbench-specific customizations ###
 
 EOF
 
@@ -273,7 +276,7 @@ EOF
 # Add a marker for the Workbench-specific customizations
 cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-### BEGIN: VWB-specific customizations ###
+### BEGIN: Workbench-specific customizations ###
 
 EOF
 
@@ -389,8 +392,8 @@ ${RUN_AS_LOGIN_USER} "\
   chmod +x cromshell && \
   mv cromshell '${CROMSHELL_INSTALL_PATH}'"
 
-# Install & configure the VWB CLI
-emit "Installing the VWB CLI ..."
+# Install & configure the Workbench CLI
+emit "Installing the Workbench CLI ..."
 
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
@@ -409,45 +412,48 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
   cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-  cp terra "${TERRA_INSTALL_PATH}"    
+  cp wb "${WORKBENCH_INSTALL_PATH}"
 else
-  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
   exit 1
 fi
 
-# Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
-${RUN_AS_LOGIN_USER} "terra config set browser MANUAL"
+# Copy 'wb' to its legacy 'terra' name.
+cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
 
-# Set the CLI terra server based on the terra server that created the VM.
+# Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
+${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
+
+# Set the CLI server based on the server that created the VM.
 if [[ -n "${TERRA_SERVER}" ]]; then
-  ${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
+  ${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 fi
 
 # Log in with app-default-credentials
-${RUN_AS_LOGIN_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
+${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
 # Generate the bash completion script
-${RUN_AS_LOGIN_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
+${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
 
 ####################################
 # Shell and notebook environment
 ####################################
 
-# Set the CLI terra workspace id using the VM metadata, if set.
+# Set the CLI workspace id using the VM metadata, if set.
 readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
-  ${RUN_AS_LOGIN_USER} "terra workspace set --id='${TERRA_WORKSPACE}'"
+  ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
 fi
 
 # Set variables into the ~/.bashrc such that they are available
 # to terminals, notebooks, and other tools
 #
 # We have new-style variables (eg GOOGLE_CLOUD_PROJECT) which are set here
-# and CLI (terra app execute env).
+# and CLI (wb app execute env).
 # We also support a few variables set by Leonardo (eg GOOGLE_PROJECT).
 # Those are only set here and NOT in the CLI as they are intended just
 # to make porting existing notebooks easier.
 
-# Keep in sync with terra CLI environment variables:
+# Keep in sync with Workbench CLI environment variables:
 # https://github.com/verily-src/terra-tool-cli/blob/6c3d1ee2dd54aa62785da4113b83f5eba57d3c7f/src/main/java/bio/terra/cli/app/CommandRunner.java#L89
 
 # *** Variables that are set by Leonardo for Cloud Environments
@@ -455,24 +461,24 @@ fi
 
 # OWNER_EMAIL is really the Workbench user account email address
 readonly OWNER_EMAIL="$(
-  ${RUN_AS_LOGIN_USER} "terra workspace describe --format=json" | \
+  ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".userEmail")"
 
 # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
 readonly GOOGLE_PROJECT="$(
-  ${RUN_AS_LOGIN_USER} "terra workspace describe --format=json" | \
+  ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".googleProjectId")"
 
 # PET_SA_EMAIL is the pet service account for the Workbench user and
 # is specific to the GCP project backing the workspace
 readonly PET_SA_EMAIL="$(
-  ${RUN_AS_LOGIN_USER} "terra auth status --format=json" | \
+  ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
   jq --raw-output ".serviceAccountEmail")"
 
 # These are equivalent environment variables which are set for a
-# command when calling "terra app execute <command>".
+# command when calling "wb app execute <command>".
 #
-# TERRA_USER_EMAIL is the Workbench user account email address.
+# WORKBENCH_USER_EMAIL is the Workbench user account email address.
 # GOOGLE_CLOUD_PROJECT is the project id for the GCP project backing the
 # workspace.
 # GOOGLE_SERVICE_ACCOUNT_EMAIL is the pet service account for the Workbench user
@@ -483,12 +489,13 @@ emit "Adding Workbench environment variables to ~/.bashrc ..."
 cat << EOF >> "${USER_BASHRC}"
 
 # Set up a few legacy Workbench-specific convenience variables
+export TERRA_USER_EMAIL='${OWNER_EMAIL}'
 export OWNER_EMAIL='${OWNER_EMAIL}'
 export GOOGLE_PROJECT='${GOOGLE_PROJECT}'
 export PET_SA_EMAIL='${PET_SA_EMAIL}'
 
 # Set up a few Workbench-specific convenience variables
-export TERRA_USER_EMAIL='${OWNER_EMAIL}'
+export WORKBENCH_USER_EMAIL='${OWNER_EMAIL}'
 export GOOGLE_CLOUD_PROJECT='${GOOGLE_PROJECT}'
 export GOOGLE_SERVICE_ACCOUNT_EMAIL='${PET_SA_EMAIL}'
 EOF
@@ -503,12 +510,13 @@ cat << EOF >> "${NOTEBOOK_CONFIG}"
 import os
 
 # Set up a few legacy Workbench-specific convenience variables
+os.environ['TERRA_USER_EMAIL']='${OWNER_EMAIL}'
 os.environ['OWNER_EMAIL']='${OWNER_EMAIL}'
 os.environ['GOOGLE_PROJECT']='${GOOGLE_PROJECT}'
 os.environ['PET_SA_EMAIL']='${PET_SA_EMAIL}'
 
 # Set up a few Workbench-specific convenience variables
-os.environ['TERRA_USER_EMAIL']='${OWNER_EMAIL}'
+os.environ['WORKBENCH_USER_EMAIL']='${OWNER_EMAIL}'
 os.environ['GOOGLE_CLOUD_PROJECT']='${GOOGLE_PROJECT}'
 os.environ['GOOGLE_SERVICE_ACCOUNT_EMAIL']='${PET_SA_EMAIL}'
 EOF
@@ -555,7 +563,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
   install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
-  terra security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
+  wb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
   ${RUN_AS_LOGIN_USER} "\
     install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
@@ -573,7 +581,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && terra git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && wb git clone --all"
 
 # Create a script for starting the ssh-agent, which will be run as a daemon
 # process on boot.
@@ -667,7 +675,7 @@ EOF
 # Setup instance boot service
 #############################
 # Create a script to perform the following steps every time the instance boots:
-# 1. Mount terra workspace resources. This command requires system user home
+# 1. Mount Workbench workspace resources. This command requires system user home
 #    directories to be mounted. We run the startup service after
 #    jupyter.service to meet this requirement.
 
@@ -676,7 +684,7 @@ emit "Setting up Workbench boot script and service..."
 # Create the boot script
 cat << EOF >"${WORKBENCH_BOOT_SCRIPT}"
 #!/bin/bash
-# This script is run on instance boot to configure the instance for terra.
+# This script is run on instance boot to configure the instance for Workbench.
 
 # Send stdout and stderr from this script to a file for debugging.
 exec >> "${WORKBENCH_BOOT_SERVICE_OUTPUT_FILE}"
@@ -685,8 +693,8 @@ exec 2>&1
 # Pick up environment from the ~/.bashrc
 source "${USER_BASHRC}"
 
-# Mount terra workspace resources
-"${USER_HOME_LOCAL_BIN}/terra" resource mount
+# Mount Workbench workspace resources
+"${USER_HOME_LOCAL_BIN}/wb" resource mount
 
 exit 0
 EOF
@@ -696,7 +704,7 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${WORKBENCH_BOOT_SCRIPT}"
 # Create a systemd service to run the boot script on system boot
 cat << EOF >"${WORKBENCH_BOOT_SERVICE}"
 [Unit]
-Description=Configure environment for terra
+Description=Configure environment for Workbench
 After=jupyter.service
 
 [Service]
@@ -753,9 +761,9 @@ chown ${LOGIN_USER}:${LOGIN_USER} "${USER_BASH_PROFILE}"
 
 readonly USER_STARTUP_SCRIPT="$(get_metadata_value "instance/attributes/terra-user-startup-script")"
 if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
-  readonly USER_STARTUP_SCRIPT_FILE="${USER_TERRA_CONFIG_DIR}/user-startup-script.sh"
+  readonly USER_STARTUP_SCRIPT_FILE="${USER_WORKBENCH_CONFIG_DIR}/user-startup-script.sh"
 
-  # Copy the user's startup script to the user's .terra directory
+  # Copy the user's startup script to the user's .workbench directory
   emit "Downloading user startup script to ${USER_STARTUP_SCRIPT_FILE}..."
   if [[ "${USER_STARTUP_SCRIPT}" == gs://* ]]; then
       # If the URL starts with "gs://", use gsutil to download the file
@@ -804,7 +812,7 @@ EOF
   emit "Workbench proxy Agent service started"
   
   # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
-  ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
+  ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
   emit "Updating app-proxy-url metadata"
 
   cat << EOF >> "${NOTEBOOK_CONFIG}"
@@ -814,10 +822,10 @@ c.ServerApp.allow_origin_pat += "|(^https://${NEW_PROXY_URL}$)"
 EOF
 fi
 
-# Indicate the end of VWB customizations of the jupyter_notebook_config.py
+# Indicate the end of Workbench customizations of the jupyter_notebook_config.py
 cat << EOF >> "${NOTEBOOK_CONFIG}"
 
-### END: VWB-specific customizations ###
+### END: Workbench-specific customizations ###
 EOF
 
 ####################################
@@ -879,22 +887,22 @@ fi
 
 emit "SUCCESS: Cromshell installed"
 
-# Test Workbench
+# Test Workbench CLI
 emit "--  Checking if Workbench CLI is properly installed"
 
-if [[ ! -e "${TERRA_INSTALL_PATH}" ]]; then
-  >&2 emit "ERROR: Workbench CLI not found at ${TERRA_INSTALL_PATH}"
+if [[ ! -e "${WORKBENCH_INSTALL_PATH}" ]]; then
+  >&2 emit "ERROR: Workbench CLI not found at ${WORKBENCH_INSTALL_PATH}"
   exit 1
 fi
 
-readonly INSTALLED_TERRA_VERSION="$(${RUN_AS_LOGIN_USER} "${TERRA_INSTALL_PATH} version")"
+readonly INSTALLED_WORKBENCH_VERSION="$(${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} version")"
 
-if [[ -z "${INSTALLED_TERRA_VERSION}" ]]; then
+if [[ -z "${INSTALLED_WORKBENCH_VERSION}" ]]; then
   >&2 emit "ERROR: Workbench CLI did not execute or did not return a version number"
   exit 1
 fi
 
-emit "SUCCESS: Workbench CLI installed and version detected as ${INSTALLED_TERRA_VERSION}"
+emit "SUCCESS: Workbench CLI installed and version detected as ${INSTALLED_WORKBENCH_VERSION}"
 
 # SSH
 emit "--  Checking if .ssh directory is properly set up"
@@ -934,9 +942,9 @@ emit "SUCCESS: Gitignore installed at ${INSTALLED_GITIGNORE}"
 
 # This block is for test only. If the notebook execute successfully down to
 # here, we knows that the script executed successfully.
-readonly TERRA_TEST_VALUE="$(get_metadata_value "instance/attributes/terra-test-value")"
-if [[ -n "${TERRA_TEST_VALUE}" ]]; then
-  ${RUN_AS_LOGIN_USER} "terra resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=terra-test-result=${TERRA_TEST_VALUE}"
+readonly WORKBENCH_TEST_VALUE="$(get_metadata_value "instance/attributes/terra-test-value")"
+if [[ -n "${WORKBENCH_TEST_VALUE}" ]]; then
+  ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=terra-test-result=${WORKBENCH_TEST_VALUE}"
 fi
 
 # Let the UI know the script completed

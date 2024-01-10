@@ -31,16 +31,18 @@ readonly RUN_AS_LOGIN_USER="sudo -u ${user} bash -l -c"
 
 readonly USER_BASH_COMPLETION_DIR="${workDirectory}/.bash_completion.d"
 readonly USER_HOME_LOCAL_SHARE="${workDirectory}/.local/share"
-readonly USER_TERRA_CONFIG_DIR="${workDirectory}/.terra"
+readonly USER_WORKBENCH_CONFIG_DIR="${workDirectory}/.workbench"
+readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${workDirectory}/.terra"
 readonly USER_SSH_DIR="${workDirectory}/.ssh"
 readonly USER_BASHRC="${workDirectory}/.bashrc"
 readonly USER_BASH_PROFILE="${workDirectory}/.bash_profile"
-readonly POST_STARTUP_OUTPUT_FILE="${USER_TERRA_CONFIG_DIR}/post-startup-output.txt"
+readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
 
-readonly JAVA_INSTALL_TMP="${USER_TERRA_CONFIG_DIR}/javatmp"
+readonly JAVA_INSTALL_TMP="${USER_WORKBENCH_CONFIG_DIR}/javatmp"
 
 # Variables for Workbench-specific code installed on the VM
-readonly TERRA_INSTALL_PATH="/usr/bin/terra"
+readonly WORKBENCH_INSTALL_PATH="/usr/bin/wb"
+readonly WORKBENCH_LEGACY_PATH="/usr/bin/terra"
 
 readonly WORKBENCH_GIT_REPOS_DIR="${workDirectory}/repos"
 
@@ -48,8 +50,9 @@ readonly WORKBENCH_GIT_REPOS_DIR="${workDirectory}/repos"
 cd /tmp || exit
 
 # Send stdout and stderr from this script to a file for debugging.
-# Make the .terra directory as the user so that they own it and have correct linux permissions.
-${RUN_AS_LOGIN_USER} "mkdir -p '${USER_TERRA_CONFIG_DIR}'"
+# Make the .workbench directory as the user so that they own it and have correct linux permissions.
+${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
+${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 
@@ -105,10 +108,10 @@ chown --no-dereference "${user}" "/usr/bin/java"
 popd
 rmdir "${JAVA_INSTALL_TMP}"
 
-# Install & configure the VWB CLI
-emit "Installing the VWB CLI ..."
+# Install & configure the Workbench CLI
+emit "Installing the Workbench CLI ..."
 
-# Fetch the VWB CLI server environment from the metadata server to install appropriate CLI version
+# Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
 if [[ -z "${TERRA_SERVER}" ]]; then
   TERRA_SERVER="verily"
@@ -124,34 +127,37 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
   fi
   cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
 
-  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-  cp terra "${TERRA_INSTALL_PATH}"
+  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash
+  cp wb "${WORKBENCH_INSTALL_PATH}"
 else
-  >&2 echo "ERROR: ${TERRA_SERVER} is not a known VWB server"
+  >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
   exit 1
 fi
 
-# Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
-${RUN_AS_LOGIN_USER} "terra config set browser MANUAL"
+# Copy 'wb' to its legacy 'terra' name.
+cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
 
-# Set the CLI terra server based on the terra server that created the VM.
-${RUN_AS_LOGIN_USER} "terra server set --name=${TERRA_SERVER}"
+# Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
+${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
+
+# Set the CLI server based on the server that created the VM.
+${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 
 # Log in with app-default-credentials
-${RUN_AS_LOGIN_USER} "terra auth login --mode=APP_DEFAULT_CREDENTIALS"
+${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
 
 # Generate the bash completion script
-${RUN_AS_LOGIN_USER} "terra generate-completion > '${USER_BASH_COMPLETION_DIR}/terra'"
+${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
 
 
 ####################################
 # Shell and notebook environment
 ####################################
 
-# Set the CLI terra workspace id using the VM metadata, if set.
+# Set the CLI workspace id using the VM metadata, if set.
 readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
- ${RUN_AS_LOGIN_USER} "terra workspace set --id='${TERRA_WORKSPACE}'"
+ ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
 fi
 
 
@@ -196,7 +202,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
  install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
- terra security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
+ wb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
  ${RUN_AS_LOGIN_USER} "\
    install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
@@ -216,7 +222,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && terra git clone --all"
+${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && wb git clone --all"
 
 
 #############################
@@ -240,4 +246,4 @@ else
   emit "gcsfuse already installed. Skipping installation."
 fi
 
-${RUN_AS_LOGIN_USER} "terra resource mount"
+${RUN_AS_LOGIN_USER} "wb resource mount"

@@ -6,5 +6,14 @@
   // Open the sub-folder with the source code
   "workspaceFolder": "/workspace/rstudio",
   "postCreateCommand": ["../startupscript/post-startup.sh", "rstudio", "/home/rstudio"],
+  "features": {
+   	"ghcr.io/devcontainers/features/git:1": {},
+	"ghcr.io/rocker-org/devcontainer-features/r-packages:1": {
+        	"packages": "shiny,shinydashboard",
+        	"installSystemRequirements": true
+        },
+        "ghcr.io/devcontainers/features/aws-cli:1": {},
+        "ghcr.io/devcontainers/features/java:1": {} 
+   },
   "remoteUser": "root"
 }

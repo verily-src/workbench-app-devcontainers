@@ -12,13 +12,12 @@ fi
 
 user="$1"
 workDirectory="$2"
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 #######################################
 # Emit a message with a timestamp
 #######################################
-function emit() {
- echo "$(date '+%Y-%m-%d %H:%M:%S') $*"
-}
-readonly -f emit
+source ${SCRIPT_DIR}/emit.sh
 
 function get_metadata_value() {
  local metadata_path="${1}"
@@ -82,32 +81,6 @@ if [[ "${PATH}:" != "/usr/bin:"* ]]; then
 fi
 EOF
 
-emit "Installing Java JDK ..."
-
-# Set up a known clean directory for downloading the TAR and unzipping it.
-${RUN_AS_LOGIN_USER} "mkdir -p '${JAVA_INSTALL_TMP}'"
-pushd "${JAVA_INSTALL_TMP}"
-
-# Download the latest Java 17, untar it, and remove the TAR file
-${RUN_AS_LOGIN_USER} "\
- curl -Os https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz && \
- tar xfz jdk-17_linux-x64_bin.tar.gz && \
- rm jdk-17_linux-x64_bin.tar.gz"
-
-# Get the name local directory that was untarred (something like "jdk-17.0.7")
-JAVA_DIRNAME="$(ls)"
-
-# Move it to ~/.local
-${RUN_AS_LOGIN_USER} "mv '${JAVA_DIRNAME}' '${USER_HOME_LOCAL_SHARE}'"
-
-# Create a soft link in /usr/bin to the java runtime
-ln -sf "${USER_HOME_LOCAL_SHARE}/${JAVA_DIRNAME}/bin/java" "/usr/bin"
-chown --no-dereference "${user}" "/usr/bin/java"
-
-# Clean up
-popd
-rmdir "${JAVA_INSTALL_TMP}"
-
 # Install & configure the Workbench CLI
 emit "Installing the Workbench CLI ..."
 
@@ -164,66 +137,12 @@ fi
 #################
 # bash completion
 #################
-#
-# bash_completion is installed on Vertex AI notebooks, but the installed
-# completion scripts are *not* sourced from /etc/profile.
-# If we need it system-wide, we can install it there, but otherwise, let's
-# keep changes localized to the user.
-#
-emit "Configuring bash completion for the VM..."
-
-cat << 'EOF' >> "${USER_BASHRC}"
-
-# Source available global bash tab completion scripts
-if [[ -d /etc/bash_completion.d ]]; then
- for BASH_COMPLETION_SCRIPT in /etc/bash_completion.d/* ; do
-   source "${BASH_COMPLETION_SCRIPT}"
- done
-fi
-
-# Source available user installed bash tab completion scripts
-if [[ -d ~/.bash_completion.d ]]; then
- for BASH_COMPLETION_SCRIPT in ~/.bash_completion.d/* ; do
-   source "${BASH_COMPLETION_SCRIPT}"
- done
-fi
-EOF
-
+source ${SCRIPT_DIR}/bash-completion.sh
 
 ###############
 # git setup
 ###############
-
-emit "Setting up git integration..."
-
-# Create the user SSH directory
-${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
-
-# Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
-${RUN_AS_LOGIN_USER} "\
- install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
- wb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
-if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
- ${RUN_AS_LOGIN_USER} "\
-   install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
-   jq -r '.privateSshKey' '${USER_SSH_DIR}/id_rsa.tmp' > '${USER_SSH_DIR}/id_rsa'"
-fi
-rm -f "${USER_SSH_DIR}/id_rsa.tmp"
-
-# Set the github known_hosts
-apt-get update
-apt-get install -y openssh-client
-${RUN_AS_LOGIN_USER} "ssh-keyscan -H github.com >> '${USER_SSH_DIR}/known_hosts'"
-
-# Create git repos directory
-${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
-
-# Attempt to clone all the git repo references in the workspace. If the user's ssh key does not exist or doesn't have access
-# to the git references, the corresponding git repo cloning will be skipped.
-# Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
-# integration test will ensure that everything in script worked.
-${RUN_AS_LOGIN_USER} "cd '${WORKBENCH_GIT_REPOS_DIR}' && wb git clone --all"
-
+source ${SCRIPT_DIR}/git-setup.sh
 
 #############################
 # Mount buckets

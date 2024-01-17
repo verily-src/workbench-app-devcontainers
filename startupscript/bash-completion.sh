@@ -10,6 +10,7 @@
 #
 # - emit (function)
 # - USER_BASHRC: path to user's ~/.bashrc file
+
 emit "Configuring bash completion for the VM..."
 
 cat << 'EOF' >> "${USER_BASHRC}"

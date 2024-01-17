@@ -230,6 +230,19 @@ ${RUN_AS_LOGIN_USER} "touch '${USER_BASHRC}'"
 
 emit "Resynchronizing apt package index..."
 
+#########################################
+# Add missing gpg keys for apt-get update
+#########################################
+# The dataproc debian images installs mysql-tools from https://repo.mysql.com/apt/debian.
+
+# Retrieve latest key ID for mysql
+readonly MYSQL_KEY="$(curl -s https://repo.mysql.com/apt/debian/conf/distributions | grep -A 4 'Codename: bullseye' | grep 'SignWith' | awk '{print $2}')"
+# Retrieve the gpg key
+gpg --keyserver keyserver.ubuntu.com --recv-keys "${MYSQL_KEY}"
+# Add the key to the trusted list
+readonly MYSQL_KEY_PATH="/etc/apt/trusted.gpg.d/mysql.gpg"
+gpg --export "${MYSQL_KEY}" | sudo tee "${MYSQL_KEY_PATH}" >/dev/null
+
 # The apt package index may not be clean when we run; resynchronize
 apt-get update
 

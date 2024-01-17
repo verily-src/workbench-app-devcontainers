@@ -1,10 +1,15 @@
 #!/bin/bash
 
-# bash_completion is installed on Vertex AI notebooks, but the installed
-# completion scripts are *not* sourced from /etc/profile.
-# If we need it system-wide, we can install it there, but otherwise, let's
-# keep changes localized to the user.
+# bash-completion.sh
 #
+# Writes a block to the user's ~/.bashrc file such that Bash shells pick up
+# any Bash completion scripts that have been installed.
+#
+# Note that this script is intended to be source from the "post-startup.sh" script
+# and is dependent on some functions and variables already being set up:
+#
+# - emit (function)
+# - USER_BASHRC: path to user's ~/.bashrc file
 emit "Configuring bash completion for the VM..."
 
 cat << 'EOF' >> "${USER_BASHRC}"

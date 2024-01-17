@@ -7,7 +7,6 @@
   "workspaceFolder": "/workspace/jupyter",
   "postCreateCommand": ["../startupscript/post-startup.sh", "jovyan", "/home/jovyan/work"],
   "features": {
-  	"ghcr.io/devcontainers/features/git:1": {},
         "ghcr.io/devcontainers/features/aws-cli:1": {},
         "ghcr.io/devcontainers/features/java:1": {}
   },

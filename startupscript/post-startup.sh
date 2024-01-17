@@ -16,7 +16,7 @@ workDirectory="$2"
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 
 # absolute path is more reliable.
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+readonly SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 #######################################
 # Emit a message with a timestamp
 #######################################

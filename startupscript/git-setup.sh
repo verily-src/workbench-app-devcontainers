@@ -1,5 +1,21 @@
 #!/bin/bash
 
+# git-setup.sh
+#
+# Configures workbench user's ssh private key in the app container and clones
+# all the current Workbench workspace's git repo referenced resources into the repos/ 
+# folder.
+#
+# Note that this script is intended to be source from the "post-startup.sh" script
+# and is dependent on some functions and variables already being set up and some packages already installed:
+#
+# - emit (function)
+# - Workbench CLI is installed
+# - git is installed in the image or as a devcontainer feature (ghcr.io/devcontainers/features/git:1)
+# - USER_SSH_DIR: path to ssh directory (~/.ssh)
+# - WORKBENCH_GIT_REPOS_DIR: path to the git repo directory (~/repos)
+# - RUN_AS_LOGIN_USER: run command as app user
+
 emit "Setting up git integration..."
 
 # Create the user SSH directory

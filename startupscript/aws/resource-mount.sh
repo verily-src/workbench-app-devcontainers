@@ -14,6 +14,6 @@ emit "Installing goofys for s3 bucket mounting..."
 apt-get update
 apt-get install -y curl
 
-curl -L "https://github.com/kahing/goofys/releases/download/v0.24.0/goofys" -o goofys
+curl -L "https://github.com/kahing/goofys/releases/latest/download/goofys" -o goofys
 chmod +x goofys
 mv goofys /usr/local/bin/

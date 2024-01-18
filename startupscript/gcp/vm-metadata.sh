@@ -11,3 +11,4 @@ function get_metadata_value() {
    "http://metadata/computeMetadata/v1/instance/attributes/${metadata_path}"
 }
 readonly -f get_metadata_value 
+

@@ -10,10 +10,15 @@
 #
 # - emit (function)
 
-emit "Installing goofys for s3 bucket mounting..."
-apt-get update
-apt-get install -y curl
+if ! which goofys >/dev/null 2>&1; then
 
-curl -L "https://github.com/kahing/goofys/releases/latest/download/goofys" -o goofys
-chmod +x goofys
-mv goofys /usr/local/bin/
+  emit "Installing goofys for s3 bucket mounting..."
+  apt-get update
+  apt-get install -y curl
+
+  curl -L "https://github.com/kahing/goofys/releases/latest/download/goofys" -o goofys
+  chmod +x goofys
+  mv goofys /usr/local/bin/
+else
+  emit "goofys is already installed, skipping installation"
+fi

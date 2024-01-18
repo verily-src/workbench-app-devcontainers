@@ -85,7 +85,7 @@ source ${SCRIPT_DIR}/install-java.sh
 ###################################
 # Install workbench CLI
 ###################################
-source ${SCRIPT_DIR}/install-cli.sh
+source ${SCRIPT_DIR}/install-cli.sh "${cloud}"
 
 #################
 # bash completion

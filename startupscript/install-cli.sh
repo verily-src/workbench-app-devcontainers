@@ -17,6 +17,15 @@
 
 emit "Installing the Workbench CLI ..."
 
+# Check if the cloud parameter is provided
+if [ -z "$1" ]; then
+    echo "Error: Please provide the cloud parameter (gcp or aws)."
+    exit 1
+fi
+
+# Extract the login parameter
+readonly cloud=$1
+
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
 if [[ -z "${TERRA_SERVER}" ]]; then
@@ -49,14 +58,20 @@ ${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
 # Set the CLI server based on the server that created the VM.
 ${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 
-# Log in with app-default-credentials
-${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
 
 # Generate the bash completion script
 ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
 
-# Set the CLI workspace id using the VM metadata, if set.
-readonly TERRA_WORKSPACE="$(get_metadata_value "terra-workspace-id")"
-if [[ -n "${TERRA_WORKSPACE}" ]]; then
- ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
+if [ "$cloud" == "gcp" ]; then
+  # Log in with app-default-credentials
+  emit "Logging into workbench CLI with application default credentials"
+  ${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
+
+  # Set the CLI workspace id using the VM metadata, if set.
+  readonly TERRA_WORKSPACE="$(get_metadata_value "terra-workspace-id")"
+  if [[ -n "${TERRA_WORKSPACE}" ]]; then
+     ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
+  fi
+else
+  emit "Do not log user into workbench CLI. Manual log in is required."
 fi

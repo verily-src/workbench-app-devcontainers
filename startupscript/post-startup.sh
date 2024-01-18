@@ -12,6 +12,7 @@ fi
 
 user="$1"
 workDirectory="$2"
+cloud="gcp"
 
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 
@@ -22,12 +23,7 @@ readonly SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 #######################################
 source ${SCRIPT_DIR}/emit.sh
 
-function get_metadata_value() {
- local metadata_path="${1}"
- curl --retry 5 -s -f \
-   -H "Metadata-Flavor: Google" \
-   "http://metadata/computeMetadata/v1/${metadata_path}"
-}
+source ${SCRIPT_DIR}/${cloud}/vm-metadata.sh
 
 readonly RUN_AS_LOGIN_USER="sudo -u ${user} bash -l -c"
 
@@ -86,58 +82,10 @@ EOF
 
 source ${SCRIPT_DIR}/install-java.sh
 
-# Install & configure the Workbench CLI
-emit "Installing the Workbench CLI ..."
-
-# Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
-TERRA_SERVER="$(get_metadata_value "instance/attributes/terra-cli-server")"
-if [[ -z "${TERRA_SERVER}" ]]; then
-  TERRA_SERVER="verily"
-fi
-readonly TERRA_SERVER
-
-# If the server environment is a verily server, use the verily download script.
-if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
-  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-  if ! versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")"; then
-    >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
-    exit 1
-  fi
-  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
-
-  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-  cp wb "${WORKBENCH_INSTALL_PATH}"
-else
-  >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
-  exit 1
-fi
-
-# Copy 'wb' to its legacy 'terra' name.
-cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
-
-# Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
-${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
-
-# Set the CLI server based on the server that created the VM.
-${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
-
-# Log in with app-default-credentials
-${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
-
-# Generate the bash completion script
-${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
-
-
-####################################
-# Shell and notebook environment
-####################################
-
-# Set the CLI workspace id using the VM metadata, if set.
-readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
-if [[ -n "${TERRA_WORKSPACE}" ]]; then
- ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
-fi
-
+###################################
+# Install workbench CLI
+###################################
+source ${SCRIPT_DIR}/install-cli.sh
 
 #################
 # bash completion
@@ -152,22 +100,4 @@ source ${SCRIPT_DIR}/git-setup.sh
 #############################
 # Mount buckets
 #############################
-# Installs gcsfuse if it is not already installed.
-if ! which gcsfuse >/dev/null 2>&1; then
-  emit "Installing gcsfuse..."
-  # install packages needed to install gcsfuse
-  apt-get install -y \
-    fuse \
-    lsb-core
-
-  # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
-    && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \
-    && curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
-  apt-get update \
-    && apt-get install -y gcsfuse
-else
-  emit "gcsfuse already installed. Skipping installation."
-fi
-
-${RUN_AS_LOGIN_USER} "wb resource mount"
+source ${SCRIPT_DIR}/${cloud}/resource-mount.sh

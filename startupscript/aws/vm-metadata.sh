@@ -21,3 +21,5 @@ function get_metadata_value() {
     --filters "Name=resource-id,Values=$INSTANCE_ID" "Name=key,Values=$tag_key" \
     --query "Tags[0].Value" --output text 2>/dev/null
 }
+readonly -f get_metadata_value 
+

@@ -12,7 +12,7 @@ fi
 
 user="$1"
 workDirectory="$2"
-cloud="gcp"
+cloud=${3:-gcp}
 
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 

@@ -5,7 +5,7 @@
 # Installs goofys for s3 bucket mounting. The script cannot yet mount s3 bucket automatically
 # because workbench CLI requires aws user to manually login.
 #
-# Note that this script is intended to be source from the "post-startup.sh" script
+# Note that this script is intended to be sourced from the "post-startup.sh" script
 # and is dependent on some functions and variables already being set up and some packages already installed:
 #
 # - emit (function)

@@ -10,9 +10,9 @@ if [ $# -ne 2 ]; then
   exit 1
 fi
 
-user="$1"
-workDirectory="$2"
-cloud="gcp"
+readonly USER_NAME="${1}"
+readonly WORK_DIRECTORY="${2}"
+readonly CLOUD="${3:-gcp}"
 
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 
@@ -23,17 +23,17 @@ readonly SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 #######################################
 source ${SCRIPT_DIR}/emit.sh
 
-source ${SCRIPT_DIR}/${cloud}/vm-metadata.sh
+source ${SCRIPT_DIR}/${CLOUD}/vm-metadata.sh
 
-readonly RUN_AS_LOGIN_USER="sudo -u ${user} bash -l -c"
+readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
 
-readonly USER_BASH_COMPLETION_DIR="${workDirectory}/.bash_completion.d"
-readonly USER_HOME_LOCAL_SHARE="${workDirectory}/.local/share"
-readonly USER_WORKBENCH_CONFIG_DIR="${workDirectory}/.workbench"
-readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${workDirectory}/.terra"
-readonly USER_SSH_DIR="${workDirectory}/.ssh"
-readonly USER_BASHRC="${workDirectory}/.bashrc"
-readonly USER_BASH_PROFILE="${workDirectory}/.bash_profile"
+readonly USER_BASH_COMPLETION_DIR="${WORK_DIRECTORY}/.bash_completion.d"
+readonly USER_HOME_LOCAL_SHARE="${WORK_DIRECTORY}/.local/share"
+readonly USER_WORKBENCH_CONFIG_DIR="${WORK_DIRECTORY}/.workbench"
+readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${WORK_DIRECTORY}/.terra"
+readonly USER_SSH_DIR="${WORK_DIRECTORY}/.ssh"
+readonly USER_BASHRC="${WORK_DIRECTORY}/.bashrc"
+readonly USER_BASH_PROFILE="${WORK_DIRECTORY}/.bash_profile"
 readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
 
 readonly JAVA_INSTALL_TMP="${USER_WORKBENCH_CONFIG_DIR}/javatmp"
@@ -42,7 +42,7 @@ readonly JAVA_INSTALL_TMP="${USER_WORKBENCH_CONFIG_DIR}/javatmp"
 readonly WORKBENCH_INSTALL_PATH="/usr/bin/wb"
 readonly WORKBENCH_LEGACY_PATH="/usr/bin/terra"
 
-readonly WORKBENCH_GIT_REPOS_DIR="${workDirectory}/repos"
+readonly WORKBENCH_GIT_REPOS_DIR="${WORK_DIRECTORY}/repos"
 
 # Move to the /tmp directory to let any artifacts left behind by this script can be removed.
 cd /tmp || exit
@@ -85,7 +85,7 @@ source ${SCRIPT_DIR}/install-java.sh
 ###################################
 # Install workbench CLI
 ###################################
-source ${SCRIPT_DIR}/install-cli.sh "${cloud}"
+source ${SCRIPT_DIR}/install-cli.sh "${CLOUD}"
 
 #################
 # bash completion
@@ -100,4 +100,4 @@ source ${SCRIPT_DIR}/git-setup.sh
 #############################
 # Mount buckets
 #############################
-source ${SCRIPT_DIR}/${cloud}/resource-mount.sh
+source ${SCRIPT_DIR}/${CLOUD}/resource-mount.sh

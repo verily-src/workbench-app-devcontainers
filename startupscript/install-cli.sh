@@ -5,7 +5,7 @@
 #
 # Install & configure the Workbench CLI
 #
-# Note that this script is intended to be source from the "post-startup.sh" script
+# Note that this script is intended to be sourced from the "post-startup.sh" script
 # and is dependent on some functions and variables already being set up:
 #
 # - emit (function)
@@ -18,13 +18,13 @@
 emit "Installing the Workbench CLI ..."
 
 # Check if the cloud parameter is provided
-if [ -z "$1" ]; then
+if [[ -z "$1" ]]; then
     echo "Error: Please provide the cloud parameter (gcp or aws)."
     exit 1
 fi
 
 # Extract the login parameter
-readonly cloud=$1
+readonly CLOUD="$1"
 
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
@@ -62,7 +62,7 @@ ${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 # Generate the bash completion script
 ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
 
-if [ "$cloud" == "gcp" ]; then
+if [ "${CLOUD}" == "gcp" ]; then
   # Log in with app-default-credentials
   emit "Logging into workbench CLI with application default credentials"
   ${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"

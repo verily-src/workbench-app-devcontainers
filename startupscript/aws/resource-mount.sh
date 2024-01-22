@@ -11,7 +11,6 @@
 # - emit (function)
 
 if ! which goofys >/dev/null 2>&1; then
-
   emit "Installing goofys for s3 bucket mounting..."
   apt-get update
   apt-get install -y curl

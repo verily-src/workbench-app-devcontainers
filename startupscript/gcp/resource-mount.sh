@@ -13,6 +13,11 @@
 if ! which gcsfuse >/dev/null 2>&1; then
   emit "Installing gcsfuse..."
 
+  # install packages needed to install gcsfuse
+  apt-get install -y \
+    fuse \
+    lsb-core
+
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
   export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
     && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \

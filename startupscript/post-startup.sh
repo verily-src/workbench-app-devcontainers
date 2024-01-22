@@ -6,7 +6,7 @@ set -o pipefail
 set -o xtrace
 
 if [ $# -ne 2 ]; then
-  echo "Usage: $0 user workDirectory"
+  echo "Usage: $0 user workDirectory <gcp/aws>. Default to gcp if not specified."
   exit 1
 fi
 

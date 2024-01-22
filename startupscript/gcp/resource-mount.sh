@@ -4,7 +4,7 @@
 #
 # Installs gcsfuse if it is not already installed and mount resources.
 #
-# Note that this script is intended to be source from the "post-startup.sh" script
+# Note that this script is intended to be sourced from the "post-startup.sh" script
 # and is dependent on some functions and variables already being set:
 #
 # - emit (function)

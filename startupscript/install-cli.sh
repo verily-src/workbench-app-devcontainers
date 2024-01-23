@@ -10,21 +10,13 @@
 #
 # - emit (function)
 # - get_metadata_value (function)
+# - CLOUD: gcp or aws
 # - RUN_AS_LOGIN_USER: run command as app user 
 # - WORKBENCH_INSTALL_PATH: path to install workbench cli
 # - WORKBENCH_LEGACY_PATH: path to the legacy cli name.
 # - USER_BASH_COMPLETION_DIR: path to the bash completion file
 
 emit "Installing the Workbench CLI ..."
-
-# Check if the cloud parameter is provided
-if [[ -z "$1" ]]; then
-    echo "Error: Please provide the cloud parameter (gcp or aws)."
-    exit 1
-fi
-
-# Extract the login parameter
-readonly CLOUD="$1"
 
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "terra-cli-server")"

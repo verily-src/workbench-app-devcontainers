@@ -19,9 +19,9 @@ if ! which gcsfuse >/dev/null 2>&1; then
     lsb-core
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
-    && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \
-    && curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
+  readonly GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
+  echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" > /etc/apt/sources.list.d/gcsfuse.list
+  curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \
     && apt-get install -y gcsfuse
 else

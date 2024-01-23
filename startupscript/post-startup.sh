@@ -83,12 +83,12 @@ EOF
 ##################################################
 # Set up java which is required for workbench CLI 
 ##################################################
-source ${SCRIPT_DIR}/install-java.sh "${USER_NAME}"
+source ${SCRIPT_DIR}/install-java.sh
 
 ###################################
 # Install workbench CLI
 ###################################
-source ${SCRIPT_DIR}/install-cli.sh "${CLOUD}"
+source ${SCRIPT_DIR}/install-cli.sh 
 
 #################
 # bash completion

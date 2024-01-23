@@ -80,7 +80,10 @@ if [[ "${PATH}:" != "/usr/bin:"* ]]; then
 fi
 EOF
 
-source ${SCRIPT_DIR}/install-java.sh
+##################################################
+# Set up java which is required for workbench CLI 
+##################################################
+source ${SCRIPT_DIR}/install-java.sh "${USER_NAME}"
 
 ###################################
 # Install workbench CLI

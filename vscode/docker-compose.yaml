@@ -11,14 +11,9 @@ services:
     environment:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
-    networks:
-      - app-network
     cap_add:
       - SYS_ADMIN
     devices:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-networks:
-  app-network:
-    external: true

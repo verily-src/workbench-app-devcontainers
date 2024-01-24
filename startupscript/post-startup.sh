@@ -51,8 +51,8 @@ cd /tmp || exit
 # Make the .workbench directory as the user so that they own it and have correct linux permissions.
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
 ${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
-exec >> "${POST_STARTUP_OUTPUT_FILE}"
-exec 2>&1
+#exec >> "${POST_STARTUP_OUTPUT_FILE}"
+#exec 2>&1
 
 # The apt package index may not be clean when we run; resynchronize
 apt-get update

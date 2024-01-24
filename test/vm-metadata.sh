@@ -9,7 +9,7 @@ function get_metadata_value() {
     echo "usage: get_metadata_value <tag>"
     exit 1
   fi
-  echo "foo"
+  echo ""
 }
 readonly -f get_metadata_value 
 

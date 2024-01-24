@@ -1,0 +1,11 @@
+{
+    "id": "vscode",
+    "version": "1.0.0",
+    "name": "Vscode",
+    "description": "A Template to run vscode on workbench",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/vscode",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/main/LICENSE",
+    "platforms": [
+        "Any"
+    ]
+}

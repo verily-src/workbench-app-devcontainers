@@ -7,6 +7,7 @@ shopt -s dotglob
 
 SRC_DIR="/tmp/${TEMPLATE_ID}"
 cp -R "${TEMPLATE_ID}" "${SRC_DIR}"
+cp -R startupscript /tmp
 
 pushd "${SRC_DIR}"
 

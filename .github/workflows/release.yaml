@@ -13,7 +13,8 @@ jobs:
           for dir in src/*/; do
             if [ -d "$dir" ]; then
               cp -r startupscript "$dir"
-          fi
+            fi
+          done
       - name: "Publish Templates"
         uses: devcontainers/action@v1
         with:

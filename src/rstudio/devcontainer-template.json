@@ -1,6 +1,6 @@
 {
     "id": "rstudio",
-    "version": "1.0.0",
+    "version": "0.0.1",
     "name": "Rstudio",
     "description": "A Template to run rstudio on workbench",
     "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/rstudio",

@@ -1,0 +1,32 @@
+{
+    "id": "vscode",
+    "version": "0.0.1",
+    "name": "Vscode",
+    "description": "A Template to run vscode on workbench",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/vscode",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/main/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp",
+                "aws",
+                "test"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

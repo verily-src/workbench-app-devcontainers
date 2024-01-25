@@ -5,9 +5,9 @@
   "shutdownAction": "none",
   // Open the sub-folder with the source code
   "workspaceFolder": "/workspace/vscode",
-  "postCreateCommand": ["../startupscript/post-startup.sh", "abc", "/config", "gcp", "true"],
+  "postCreateCommand": ["./startupscript/post-startup.sh", "abc", "/config", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
-  "postStartCommand": "sudo -u abc wb resource mount || true",
+  "postStartCommand": "[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u abc wb resource mount || true",
   "features": {
         "ghcr.io/devcontainers/features/java:1": {},
         "ghcr.io/devcontainers/features/aws-cli:1": {}

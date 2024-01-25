@@ -5,15 +5,18 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-if [ $# -lt 2 ]; then
-  echo "Usage: $0 user workDirectory <gcp/aws>. Default to gcp if not specified."
+CLOUD=gcp
+LOG_IN=true
+
+if [ $# -ne 4 ]; then
+  echo "Usage: $0 user workDirectory <gcp/aws> <true/false>"
   exit 1
 fi
 
 readonly USER_NAME="${1}"
 readonly WORK_DIRECTORY="${2}"
-readonly CLOUD="${3:-gcp}"
-readonly LOG_IN="${4:-false}"
+readonly CLOUD="${3}"
+readonly LOG_IN="${4}"
 
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 

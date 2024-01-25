@@ -5,9 +5,6 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-CLOUD=gcp
-LOG_IN=true
-
 if [ $# -ne 4 ]; then
   echo "Usage: $0 user workDirectory <gcp/aws> <true/false>"
   exit 1

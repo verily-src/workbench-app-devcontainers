@@ -10,7 +10,6 @@
 #
 # - emit (function)
 # - get_metadata_value (function)
-# - CLOUD: gcp or aws
 # - RUN_AS_LOGIN_USER: run command as app user 
 # - WORKBENCH_INSTALL_PATH: path to install workbench cli
 # - WORKBENCH_LEGACY_PATH: path to the legacy cli name.

@@ -13,6 +13,7 @@ fi
 readonly USER_NAME="${1}"
 readonly WORK_DIRECTORY="${2}"
 readonly CLOUD="${3:-gcp}"
+readonly LOG_IN="${4:-false}"
 
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 
@@ -51,8 +52,8 @@ cd /tmp || exit
 # Make the .workbench directory as the user so that they own it and have correct linux permissions.
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
 ${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
-#exec >> "${POST_STARTUP_OUTPUT_FILE}"
-#exec 2>&1
+exec >> "${POST_STARTUP_OUTPUT_FILE}"
+exec 2>&1
 
 # The apt package index may not be clean when we run; resynchronize
 apt-get update
@@ -98,7 +99,9 @@ source ${SCRIPT_DIR}/bash-completion.sh
 ###############
 # git setup
 ###############
-source ${SCRIPT_DIR}/git-setup.sh
+if [[ "${LOG_IN}" == "true" ]]; then
+    source ${SCRIPT_DIR}/git-setup.sh
+fi
 
 #############################
 # Mount buckets

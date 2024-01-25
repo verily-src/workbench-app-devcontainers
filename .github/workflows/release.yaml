@@ -12,9 +12,8 @@ jobs:
         run: |
           for dir in src/*/; do
             if [ -d "$dir" ]; then
-              cp -r startupscripts "$dir"
+              cp -r startupscript "$dir"
           fi
-        done
       - name: "Publish Templates"
         uses: devcontainers/action@v1
         with:

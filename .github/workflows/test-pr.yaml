@@ -11,6 +11,14 @@ jobs:
         templates: [rstudio, vscode]
     steps:
       - uses: actions/checkout@v4
+      - name: "Copy startup scripts"
+        run: |
+          cp test/vm-metadata.sh startupscript/gcp/
+          for dir in src/*/; do
+            if [ -d "$dir" ]; then
+              cp -r startupscript "$dir"
+          fi
+        done
 
       - name: Smoke test for '${{ matrix.templates }}'
         id: smoke_test

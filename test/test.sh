@@ -1,6 +1,5 @@
 #!/bin/bash
 cd $(dirname "$0")
-pwd
 source test-utils.sh
 
 # Template specific tests

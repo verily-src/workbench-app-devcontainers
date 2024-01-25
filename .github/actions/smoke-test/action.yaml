@@ -12,6 +12,7 @@ runs:
       uses: actions/checkout@v3
 
     - name: "Copy startup scripts"
+      shell: bash
       run: |
         cp test/vm-metadata.sh startupscript/gcp/
         for dir in src/*/; do

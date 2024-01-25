@@ -17,8 +17,8 @@ jobs:
           for dir in src/*/; do
             if [ -d "$dir" ]; then
               cp -r startupscript "$dir"
-          fi
-        done
+            fi
+          done
 
       - name: Smoke test for '${{ matrix.templates }}'
         id: smoke_test

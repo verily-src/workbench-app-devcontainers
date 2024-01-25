@@ -15,6 +15,15 @@
                 "test"
             ],
             "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
         }
     },
     "platforms": [

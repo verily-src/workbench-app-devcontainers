@@ -52,6 +52,9 @@ export DOCKER_BUILDKIT=1
 echo "(*) Installing @devcontainer/cli"
 npm install -g @devcontainers/cli
 
+
+docker network create -d bridge app-network
+
 echo "Building Dev Container"
 ID_LABEL="test-container=${TEMPLATE_ID}"
 devcontainer up --id-label ${ID_LABEL} --workspace-folder "${SRC_DIR}"

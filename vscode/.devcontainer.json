@@ -5,7 +5,7 @@
   "shutdownAction": "none",
   // Open the sub-folder with the source code
   "workspaceFolder": "/workspace/vscode",
-  "postCreateCommand": ["../startupscript/post-startup.sh", "abc", "/config"],
+  "postCreateCommand": ["../startupscript/post-startup.sh", "abc", "/config", "${templateOption:imageVariant}"],
   // re-mount bucket files on container start up
   "postStartCommand": "sudo -u abc wb resource mount",
   "features": {

@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-if [ $# -ne 2 ]; then
+if [ $# -lt 2 ]; then
   echo "Usage: $0 user workDirectory <gcp/aws>. Default to gcp if not specified."
   exit 1
 fi

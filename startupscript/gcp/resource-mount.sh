@@ -28,4 +28,6 @@ else
   emit "gcsfuse already installed. Skipping installation."
 fi
 
-${RUN_AS_LOGIN_USER} "wb resource mount"
+if [[ "${LOG_IN}" == "true" ]]; then
+  ${RUN_AS_LOGIN_USER} "wb resource mount"
+fi

@@ -7,8 +7,6 @@ shopt -s dotglob
 
 SRC_DIR="/tmp/${TEMPLATE_ID}"
 cp -R "src/${TEMPLATE_ID}" "${SRC_DIR}"
-cp -R startupscript /tmp
-cp test/vm-metadata.sh /tmp/startupscript/gcp/
 
 pushd "${SRC_DIR}"
 

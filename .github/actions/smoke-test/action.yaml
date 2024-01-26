@@ -16,8 +16,8 @@ runs:
       run: |
         cp test/vm-metadata.sh startupscript/gcp/
         for dir in src/*/; do
-          if [ -d "$dir" ]; then
-            cp -r startupscript "$dir"
+          if [[ -d "${dir}" ]]; then
+            cp -r startupscript "${dir}"
           fi
         done
     - name: Build template

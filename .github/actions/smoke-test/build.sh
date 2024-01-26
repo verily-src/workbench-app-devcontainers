@@ -25,7 +25,7 @@ if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]] ; th
             OPTION_KEY="\${templateOption:$OPTION}"
             OPTION_VALUE=$(jq -r ".options | .${OPTION} | .default" devcontainer-template.json)
 
-            if [ "${OPTION_VALUE}" = "" ] || [ "${OPTION_VALUE}" = "null" ] ; then
+            if [[ "${OPTION_VALUE}" = "" ]] || [[ "${OPTION_VALUE}" = "null" ]] ; then
                 echo "Template '${TEMPLATE_ID}' is missing a default value for option '${OPTION}'"
                 exit 1
             fi

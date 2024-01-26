@@ -11,8 +11,7 @@
             "description": "VM cloud environment",
             "proposals": [
                 "gcp",
-                "aws",
-                "test"
+                "aws"
             ],
             "default": "gcp"
         },

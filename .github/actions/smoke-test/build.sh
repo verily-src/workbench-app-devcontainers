@@ -1,22 +1,24 @@
 #!/bin/bash
-TEMPLATE_ID="$1"
 
-set -e
+set -o errexit 
+set -o nounset
+
+readonly TEMPLATE_ID="$1"
 
 shopt -s dotglob
 
-SRC_DIR="/tmp/${TEMPLATE_ID}"
+readonly SRC_DIR="/tmp/${TEMPLATE_ID}"
 cp -R "src/${TEMPLATE_ID}" "${SRC_DIR}"
 
 pushd "${SRC_DIR}"
 
 # Configure templates only if `devcontainer-template.json` contains the `options` property.
-OPTION_PROPERTY=( $(jq -r '.options' devcontainer-template.json) )
+readonly OPTION_PROPERTY="$(jq -r '.options' devcontainer-template.json)"
 
-if [ "${OPTION_PROPERTY}" != "" ] && [ "${OPTION_PROPERTY}" != "null" ] ; then  
-    OPTIONS=( $(jq -r '.options | keys[]' devcontainer-template.json) )
+if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]] ; then  
+    readonly OPTIONS=( $(jq -r '.options | keys[]' devcontainer-template.json) )
 
-    if [ "${OPTIONS[0]}" != "" ] && [ "${OPTIONS[0]}" != "null" ] ; then
+    if [[ "${OPTIONS[0]}" != "" ]] && [[ "${OPTIONS[0]}" != "null" ]] ; then
         echo "(!) Configuring template options for '${TEMPLATE_ID}'"
         for OPTION in "${OPTIONS[@]}"
         do
@@ -37,9 +39,9 @@ fi
 
 popd
 
-TEST_DIR="test"
+readonly TEST_DIR="test"
 echo "(*) Copying test folder"
-DEST_DIR="${SRC_DIR}/test-project"
+readonly DEST_DIR="${SRC_DIR}/test-project"
 mkdir -p ${DEST_DIR}
 cp -Rp ${TEST_DIR}/* ${DEST_DIR}
 cp test/test-utils/test-utils.sh ${DEST_DIR}
@@ -52,5 +54,5 @@ npm install -g @devcontainers/cli
 docker network create -d bridge app-network
 
 echo "Building Dev Container"
-ID_LABEL="test-container=${TEMPLATE_ID}"
+readonly ID_LABEL="test-container=${TEMPLATE_ID}"
 devcontainer up --id-label ${ID_LABEL} --workspace-folder "${SRC_DIR}"

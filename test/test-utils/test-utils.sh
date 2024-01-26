@@ -2,10 +2,11 @@
 
 FAILED=()
 
-echoStderr()
+function echoStderr()
 {
     echo "$@" 1>&2
 }
+readonly -f echoStderr
 
 check() {
     LABEL=$1
@@ -22,7 +23,7 @@ check() {
 }
 
 reportResults() {
-    if [ ${#FAILED[@]} -ne 0 ]; then
+    if [[ ${#FAILED[@]} -ne 0 ]]; then
         echoStderr -e "\n💥  Failed tests: ${FAILED[@]}"
         exit 1
     else 

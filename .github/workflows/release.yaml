@@ -11,8 +11,8 @@ jobs:
       - name: "Copy startup scripts"
         run: |
           for dir in src/*/; do
-            if [ -d "$dir" ]; then
-              cp -r startupscript "$dir"
+            if [[ -d "${dir}" ]]; then
+              cp -r startupscript "${dir}"
             fi
           done
       - name: "Publish Templates"

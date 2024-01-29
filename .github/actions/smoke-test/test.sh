@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# test.sh
+#
+# Run test/test.sh in docker container using devcontainer exec.
+
 set -o errexit 
 set -o nounset 
 
@@ -25,7 +29,6 @@ devcontainer exec \
   else \
     ls -a; \
   fi'
-devcontainer exec --workspace-folder "${SRC_DIR}" --id-label ${ID_LABEL} /bin/sh -c 'set -e && if [ -f "test-project/test.sh" ]; then cd test-project && if [ "$(id -u)" = "0" ]; then chmod +x test.sh; else sudo chmod +x test.sh; fi && ./test.sh; else ls -a; fi'
 
 # Clean up
 docker rm -f "$(docker container ls -f \"label=${ID_LABEL}\" -q)"

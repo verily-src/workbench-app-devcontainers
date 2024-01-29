@@ -47,6 +47,9 @@ fi
 
 popd
 
+######################
+# Sets up test folder
+######################
 readonly TEST_DIR="test"
 echo "(*) Copying test folder"
 readonly DEST_DIR="${SRC_DIR}/test-project"
@@ -54,13 +57,22 @@ mkdir -p ${DEST_DIR}
 cp -Rp ${TEST_DIR}/* ${DEST_DIR}
 cp test/test-utils/test-utils.sh ${DEST_DIR}
 
+############################
+# Install Devcontainer CLI
+############################
 export DOCKER_BUILDKIT=1
 echo "(*) Installing @devcontainer/cli"
 npm install -g @devcontainers/cli
 
-
+#################################
+# Workbench application specific
+# Creates docker network 
+#################################
 docker network create -d bridge app-network
 
+################################################
+# Starts docker container using devcontainer CLI
+################################################
 echo "Building Dev Container"
 readonly ID_LABEL="test-container=${TEMPLATE_ID}"
 devcontainer up --id-label ${ID_LABEL} --workspace-folder "${SRC_DIR}"

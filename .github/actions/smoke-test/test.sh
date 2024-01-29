@@ -2,7 +2,8 @@
 
 # test.sh
 #
-# Run test/test.sh in docker container using devcontainer exec.
+# Runs test/test.sh in docker container using devcontainer exec.
+# Usage: test.sh <app> where app templates are in src/. 
 
 set -o errexit 
 set -o nounset 

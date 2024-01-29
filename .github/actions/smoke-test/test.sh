@@ -20,7 +20,7 @@ devcontainer exec \
     set -o errexit && \
     if [ -f "test-project/test.sh" ]; then \
       cd test-project && \
-      if [ "$(id -u)" == "0" ]; then \
+      if [ "$(id -u)" = "0" ]; then \
         chmod +x test.sh; \
       else \
         sudo chmod +x test.sh; \
@@ -31,5 +31,5 @@ devcontainer exec \
     fi'
 
 # Clean up
-docker rm -f "$(docker container ls -f \"label=${ID_LABEL}\" -q)"
+docker rm -f "$(docker container ls -f "label=${ID_LABEL}" -q)"
 rm -rf "${SRC_DIR}"

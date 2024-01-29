@@ -18,10 +18,10 @@ devcontainer exec \
   --id-label ${ID_LABEL}
 /bin/sh -c '\
   set -o errexit && \
-  if [[ -f "test-project/test.sh" ]]; then \
+  if [ -f "test-project/test.sh" ]; then \
     cd test-project && \
-    if [[ "$(id -u)" == "0" ]]; then \
-      chmod +x test.sh \
+    if [ "$(id -u)" == "0" ]; then \
+      chmod +x test.sh; \
     else \
       sudo chmod +x test.sh; \
     fi && \

@@ -1,14 +1,13 @@
 #!/bin/bash
 
-FAILED=()
+declare -a FAILED
 
-function echoStderr()
-{
+function echoStderr() {
     echo "$@" 1>&2
 }
 readonly -f echoStderr
 
-check() {
+function check() {
     LABEL=$1
     shift
     echo -e "\n🧪 Testing $LABEL"
@@ -21,8 +20,9 @@ check() {
         return 1
     fi
 }
+readonly -f check
 
-reportResults() {
+function reportResults() {
     if [[ ${#FAILED[@]} -ne 0 ]]; then
         echoStderr -e "\n💥  Failed tests: ${FAILED[@]}"
         exit 1
@@ -31,3 +31,4 @@ reportResults() {
         exit 0
     fi
 }
+readonly -f reportResults

@@ -1,10 +1,19 @@
 #!/bin/bash
 
+# build.sh
+#
+# Populates a devcontainer template with default value and runs a docker container
+# with devcontainer CLI.
+# 
+# Usage: build.sh <app>. The app templates must be located in src/ directory.
+
 set -o errexit 
 set -o nounset
 
 readonly TEMPLATE_ID="$1"
 
+# include hidden files because devcontainer configs
+# are in .devcontainer/ or .devcontainer.json file.
 shopt -s dotglob
 
 readonly SRC_DIR="/tmp/${TEMPLATE_ID}"
@@ -15,17 +24,16 @@ pushd "${SRC_DIR}"
 # Configure templates only if `devcontainer-template.json` contains the `options` property.
 readonly OPTION_PROPERTY="$(jq -r '.options' devcontainer-template.json)"
 
-if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]] ; then  
+if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]]; then  
     readonly OPTIONS=( $(jq -r '.options | keys[]' devcontainer-template.json) )
 
-    if [[ "${OPTIONS[0]}" != "" ]] && [[ "${OPTIONS[0]}" != "null" ]] ; then
+    if [[ "${OPTIONS[0]}" != "" ]] && [[ "${OPTIONS[0]}" != "null" ]]; then
         echo "(!) Configuring template options for '${TEMPLATE_ID}'"
-        for OPTION in "${OPTIONS[@]}"
-        do
+        for OPTION in "${OPTIONS[@]}"; do
             OPTION_KEY="\${templateOption:$OPTION}"
             OPTION_VALUE=$(jq -r ".options | .${OPTION} | .default" devcontainer-template.json)
 
-            if [ "${OPTION_VALUE}" = "" ] || [ "${OPTION_VALUE}" = "null" ] ; then
+            if [[ "${OPTION_VALUE}" == "" ]] || [[ "${OPTION_VALUE}" == "null" ]]; then
                 echo "Template '${TEMPLATE_ID}' is missing a default value for option '${OPTION}'"
                 exit 1
             fi

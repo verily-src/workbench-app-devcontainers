@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # install-r.sh
 # Installs the latest version of R
 #
@@ -28,7 +29,6 @@ readonly R_BIN_DIR='/usr/lib/R/bin'
 readonly OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/install-r-output.txt"
 
 # Send stdout and stderr from this script to a file for debugging.
-# Make the .wb directory as the user so that they own it and have correct linux permissions.
 exec >>"${OUTPUT_FILE}"
 exec 2>&1
 

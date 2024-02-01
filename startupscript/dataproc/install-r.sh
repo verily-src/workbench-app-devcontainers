@@ -4,13 +4,13 @@
 # Installs the latest version of R
 #
 # This script is intended to be executed as a Dataproc cluster initialization
-# action so such that R is installed and configured on all cluster nodes during
+# action to install and configure R on all cluster nodes during
 # creation and autoscaling.
 #
-# This action depends on some user home directory directories being created.
-# Depending on the cluster node type, these directories may not exist. The workbench
-# startup script
-
+# This action requires the `/home/dataproc/.workbench` directory. The workbench
+# startup script creates this directory on the master node, but worker nodes do
+# not have it. So this script will create it if it does not exist.
+#
 # For more information on Initialization actions, see:
 # https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/init-actions
 
@@ -25,6 +25,9 @@ function emit() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') $*"
 }
 readonly -f emit
+
+# Retrieve and set the dataproc node type
+readonly ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
 
 # The linux user that JupyterLab will be running as
 readonly LOGIN_USER='dataproc'
@@ -75,15 +78,17 @@ gpg --armor --export '95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7' |
 apt-get update -y
 apt-get install r-base -y
 
-# Install IRKernel to support interactive R notebooks in Jupyter
-# Note: We set the PATH to ensure that R knows were to find the 'jupyter' binary
+# Install IRKernel on the master node to support interactive R notebooks in Jupyter
+# Note: We set the PATH to ensure that R knows where to find the 'jupyter' binary
 # See IR kernel installation docs:
 # https://irkernel.github.io/installation/
-PATH="${CONDA_BIN_DIR}:${PATH}" "${RUN_R}" -e "\
-install.packages('IRkernel', repos='http://cran.rstudio.com/');
-IRkernel::installspec()"
+if [[ "${ROLE}" == 'Master' ]]; then
+  PATH="${CONDA_BIN_DIR}:${PATH}" "${RUN_R}" -e "\
+  install.packages('IRkernel', repos='http://cran.rstudio.com/');
+  IRkernel::installspec()"
+fi
 
-# Add R to the PATH in user's bashrc
+# Add R to the PATH variable in user's bashrc
 cat <<EOF >>"${USER_BASHRC}"
 # Prepend "${R_BIN_DIR}" (if not already in the path)
 if [[ ":\${PATH}:" != *":${R_BIN_DIR}:"* ]]; then

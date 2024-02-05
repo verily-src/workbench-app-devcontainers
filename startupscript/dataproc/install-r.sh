@@ -49,7 +49,8 @@ readonly OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/install-r-output.txt"
 
 readonly CONDA_DIR='/opt/conda/miniconda3'
 readonly CONDA_BIN_DIR="${CONDA_DIR}/bin"
-readonly R_BIN_DIR='/usr/lib/R/bin'
+readonly R_HOME_DIR='/usr/lib/R'
+readonly R_BIN_DIR="${R_HOME_DIR}/bin"
 readonly RUN_R="${R_BIN_DIR}/R"
 
 # Split stdout and stderr in the rest of this script to an output file for debugging.
@@ -101,7 +102,7 @@ if [[ "${DATAPROC_NODE_ROLE}" == 'Master' ]]; then
   cat <<EOF >"${IR_KERNEL}"
 {
   "argv": [
-    "/usr/lib/R/bin/R",
+    "${RUN_R}",
     "--slave",
     "-e",
     "IRkernel::main()",
@@ -111,7 +112,7 @@ if [[ "${DATAPROC_NODE_ROLE}" == 'Master' ]]; then
   "display_name": "R",
   "language": "R",
   "env": {
-    "R_HOME": "/usr/lib/R",
+    "R_HOME": "${R_HOME_DIR}",
     "SPARK_HOME": "/usr/lib/spark"
   }
 }

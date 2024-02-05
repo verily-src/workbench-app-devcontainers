@@ -13,6 +13,9 @@
 #
 # For more information on Initialization actions, see:
 # https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/init-actions
+#
+# NOTE: This script is hosted and served from the Workbench scripts Google storage bucket.
+# https://storage.googleapis.com/workbench_scripts/install-r.sh
 
 # Configure shell
 set -o errexit  # Exit on error

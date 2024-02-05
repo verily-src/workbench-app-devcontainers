@@ -27,7 +27,7 @@ function emit() {
 readonly -f emit
 
 # Retrieve and set the dataproc node type
-readonly ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
+readonly DATAPROC_NODE_ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
 
 # The linux user that JupyterLab will be running as
 readonly LOGIN_USER='dataproc'
@@ -47,7 +47,8 @@ readonly USER_BASHRC="${USER_HOME_DIR}/.bashrc"
 
 readonly OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/install-r-output.txt"
 
-readonly CONDA_BIN_DIR='/opt/conda/miniconda3/bin'
+readonly CONDA_DIR='/opt/conda/miniconda3'
+readonly CONDA_BIN_DIR="${CONDA_DIR}/bin"
 readonly R_BIN_DIR='/usr/lib/R/bin'
 readonly RUN_R="${R_BIN_DIR}/R"
 
@@ -78,16 +79,6 @@ gpg --armor --export '95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7' |
 apt-get update -y
 apt-get install r-base -y
 
-# Install IRKernel on the master node to support interactive R notebooks in Jupyter
-# Note: We set the PATH to ensure that R knows where to find the 'jupyter' binary
-# See IR kernel installation docs:
-# https://irkernel.github.io/installation/
-if [[ "${ROLE}" == 'Master' ]]; then
-  PATH="${CONDA_BIN_DIR}:${PATH}" "${RUN_R}" -e "\
-  install.packages('IRkernel', repos='http://cran.rstudio.com/');
-  IRkernel::installspec()"
-fi
-
 # Add R to the PATH variable in user's bashrc
 cat <<EOF >>"${USER_BASHRC}"
 # Prepend "${R_BIN_DIR}" (if not already in the path)
@@ -95,3 +86,38 @@ if [[ ":\${PATH}:" != *":${R_BIN_DIR}:"* ]]; then
   export PATH="${R_BIN_DIR}":"\${PATH}"
 fi
 EOF
+
+# Install IRKernel on the master node to support interactive R notebooks in Jupyter
+# Note: We set the PATH to ensure that R knows where to find the 'jupyter' binary
+# See IR kernel installation docs:
+# https://irkernel.github.io/installation/
+if [[ "${DATAPROC_NODE_ROLE}" == 'Master' ]]; then
+  PATH="${CONDA_BIN_DIR}:${PATH}" "${RUN_R}" -e "\
+  install.packages('IRkernel', repos='http://cran.rstudio.com/');
+  IRkernel::installspec()"
+
+  # Point IR jupyter kernel to the newly installed R
+  readonly IR_KERNEL="${CONDA_DIR}/share/jupyter/kernels/ir/kernel.json"
+  cat <<EOF >"${IR_KERNEL}"
+{
+  "argv": [
+    "/usr/lib/R/bin/R",
+    "--slave",
+    "-e",
+    "IRkernel::main()",
+    "--args",
+    "{connection_file}"
+  ],
+  "display_name": "R",
+  "language": "R",
+  "env": {
+    "R_HOME": "/usr/lib/R",
+    "SPARK_HOME": "/usr/lib/spark"
+  }
+}
+EOF
+
+  # Restart jupyter service to pick up the new R kernel
+  readonly JUPYTER_SERVICE_NAME='jupyter.service'
+  systemctl restart "${JUPYTER_SERVICE_NAME}"
+fi

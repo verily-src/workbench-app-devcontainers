@@ -17,11 +17,11 @@ readonly ID_LABEL="test-container=${TEMPLATE_ID}"
 devcontainer exec \
   --workspace-folder "${SRC_DIR}" \
   --id-label "${ID_LABEL}" \
-  /bin/sh -c '\
+  /bin/bash -c '\
     set -o errexit && \
-    if [ -f "test-project/test.sh" ]; then \
+    if [[ -f "test-project/test.sh" ]]; then \
       cd test-project && \
-      if [ "$(id -u)" = "0" ]; then \
+      if [[ "$(id -u)" == "0" ]]; then \
         chmod +x test.sh; \
       else \
         sudo chmod +x test.sh; \

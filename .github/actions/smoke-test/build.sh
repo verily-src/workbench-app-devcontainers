@@ -55,7 +55,7 @@ echo "(*) Copying test folder"
 readonly DEST_DIR="${SRC_DIR}/test-project"
 mkdir -p "${DEST_DIR}"
 cp -Rp "${TEST_DIR}"/* "${DEST_DIR}"
-cp test/test-utils/test-utils.sh ${DEST_DIR}
+cp test/test-utils/test-utils.sh "${DEST_DIR}"
 
 ############################
 # Install Devcontainer CLI

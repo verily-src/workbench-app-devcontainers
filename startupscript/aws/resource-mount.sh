@@ -9,6 +9,8 @@
 # and is dependent on some functions and variables already being set up and some packages already installed:
 #
 # - emit (function)
+# - LOG_IN: whether the user is logged into workbench CLI
+# - RUN_AS_LOGIN_USER: run command as user
 
 if ! which goofys >/dev/null 2>&1; then
   emit "Installing goofys for s3 bucket mounting..."
@@ -20,4 +22,8 @@ if ! which goofys >/dev/null 2>&1; then
   mv goofys /usr/local/bin/
 else
   emit "goofys is already installed, skipping installation"
+fi
+
+if [[ "${LOG_IN}" == "true" ]]; then
+  ${RUN_AS_LOGIN_USER} "wb resource mount"
 fi

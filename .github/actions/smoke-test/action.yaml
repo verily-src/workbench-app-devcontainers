@@ -1,0 +1,31 @@
+name: 'Smoke test'
+inputs:
+  template:
+    description: 'Template to test'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout main
+      id: checkout_release
+      uses: actions/checkout@v3
+
+    - name: "Copy startup scripts"
+      shell: bash
+      run: |
+        cp test/vm-metadata.sh startupscript/gcp/
+        for dir in src/*/; do
+          if [[ -d "${dir}" ]]; then
+            cp -r startupscript "${dir}"
+          fi
+        done
+    - name: Build template
+      id: build_template
+      shell: bash
+      run: .github/actions/smoke-test/build.sh ${{ inputs.template }}
+
+    - name: Test template
+      id: test_template
+      shell: bash
+      run: .github/actions/smoke-test/test.sh  ${{ inputs.template }}

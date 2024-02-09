@@ -1,0 +1,19 @@
+name: "CI - Test Templates"
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        templates: [rstudio, vscode]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke test for '${{ matrix.templates }}'
+        id: smoke_test
+        uses: ./.github/actions/smoke-test
+        with:
+          template: "${{ matrix.templates }}"

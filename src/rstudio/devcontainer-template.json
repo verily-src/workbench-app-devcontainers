@@ -1,0 +1,31 @@
+{
+    "id": "rstudio",
+    "version": "0.0.1",
+    "name": "Rstudio",
+    "description": "A Template to run rstudio on workbench",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/rstudio",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/main/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp",
+                "aws"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

@@ -10,11 +10,11 @@
 #
 # - emit (function)
 # - get_metadata_value (function)
-# - CLOUD: gcp or aws
 # - RUN_AS_LOGIN_USER: run command as app user 
 # - WORKBENCH_INSTALL_PATH: path to install workbench cli
 # - WORKBENCH_LEGACY_PATH: path to the legacy cli name.
 # - USER_BASH_COMPLETION_DIR: path to the bash completion file
+# - LOG_IN: whether to log in to CLI
 
 emit "Installing the Workbench CLI ..."
 
@@ -54,7 +54,8 @@ ${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 # Generate the bash completion script
 ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
 
-if [ "${CLOUD}" == "gcp" ]; then
+
+if [[ "${LOG_IN}" == "true" ]]; then
   # Log in with app-default-credentials
   emit "Logging into workbench CLI with application default credentials"
   ${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
@@ -62,7 +63,7 @@ if [ "${CLOUD}" == "gcp" ]; then
   # Set the CLI workspace id using the VM metadata, if set.
   readonly TERRA_WORKSPACE="$(get_metadata_value "terra-workspace-id")"
   if [[ -n "${TERRA_WORKSPACE}" ]]; then
-     ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
+    ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
   fi
 else
   emit "Do not log user into workbench CLI. Manual log in is required."

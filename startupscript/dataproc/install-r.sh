@@ -30,7 +30,7 @@ function emit() {
 readonly -f emit
 
 # Retrieve and set the dataproc node type
-readonly DATAPROC_NODE_ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
+readonly DATAPROC_NODE_ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
 
 # The linux user that JupyterLab will be running as
 readonly LOGIN_USER='dataproc'
@@ -52,9 +52,13 @@ readonly OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/install-r-output.txt"
 
 readonly CONDA_DIR='/opt/conda/miniconda3'
 readonly CONDA_BIN_DIR="${CONDA_DIR}/bin"
+
 readonly R_HOME_DIR='/usr/lib/R'
 readonly R_BIN_DIR="${R_HOME_DIR}/bin"
 readonly RUN_R="${R_BIN_DIR}/R"
+
+readonly IR_KERNEL="${CONDA_DIR}/share/jupyter/kernels/ir/kernel.json"
+readonly JUPYTER_SERVICE_NAME='jupyter.service'
 
 # Split stdout and stderr in the rest of this script to an output file for debugging.
 # But still output to stdout and stderr so users can also debug via the initialization
@@ -101,7 +105,6 @@ if [[ "${DATAPROC_NODE_ROLE}" == 'Master' ]]; then
   IRkernel::installspec()"
 
   # Point IR jupyter kernel to the newly installed R
-  readonly IR_KERNEL="${CONDA_DIR}/share/jupyter/kernels/ir/kernel.json"
   cat <<EOF >"${IR_KERNEL}"
 {
   "argv": [
@@ -122,6 +125,5 @@ if [[ "${DATAPROC_NODE_ROLE}" == 'Master' ]]; then
 EOF
 
   # Restart jupyter service to pick up the new R kernel
-  readonly JUPYTER_SERVICE_NAME='jupyter.service'
   systemctl restart "${JUPYTER_SERVICE_NAME}"
 fi

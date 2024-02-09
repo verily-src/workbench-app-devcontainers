@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-if [ $# -ne 4 ]; then
+if [[ $# -ne 4 ]]; then
   echo "Usage: $0 user workDirectory <gcp/aws> <true/false>"
   exit 1
 fi

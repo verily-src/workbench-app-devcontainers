@@ -4,7 +4,7 @@ on:
 
 jobs:
   deploy:
-    if: ${{ github.ref == 'refs/heads/main' }}
+    if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +18,9 @@ jobs:
       - name: "Publish Templates"
         uses: devcontainers/action@v1
         with:
-          publish-templates: "true"
+          publish-templates: "false"
           base-path-to-templates: "./src"
           generate-docs: "true"
-          oci-registry-for-templates: "us-central1-docker.pkg.dev/verily-workbench-public/devcontainer-template"
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

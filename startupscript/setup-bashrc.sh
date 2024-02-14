@@ -1,4 +1,6 @@
 #!/bin/bash
+
+# setup-bashrc.sh
 # setup-bashrc.sh
 #
 # Set up customizaiton for user bashrc file.

@@ -57,7 +57,7 @@ exec 2>&1
 
 # The apt package index may not be clean when we run; resynchronize
 apt-get update
-apt install -y jq curl tar
+apt install -y jq curl tar wget
 
 # Create the target directories for installing into the HOME directory
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
@@ -71,10 +71,17 @@ if [[ -e ~/.bashrc ]]; then
 fi
 
 EOF
-##################################################
-# Set up user bashrc with workbench customization
-##################################################
-source ${SCRIPT_DIR}/setup-bashrc.sh
+
+# Indicate the start of Workbench customizations of the ~/.bashrc
+cat << EOF >> "${USER_BASHRC}"
+### BEGIN: Workbench-specific customizations ###
+
+# Prepend "/usr/bin" (if not already in the path)
+if [[ "${PATH}:" != "/usr/bin:"* ]]; then
+  export PATH=/usr/bin:${PATH}
+fi
+
+EOF
 
 ##################################################
 # Set up java which is required for workbench CLI 
@@ -85,6 +92,11 @@ source ${SCRIPT_DIR}/install-java.sh
 # Install workbench CLI
 ###################################
 source ${SCRIPT_DIR}/install-cli.sh 
+
+##################################################
+# Set up user bashrc with workbench customization
+##################################################
+source ${SCRIPT_DIR}/setup-bashrc.sh
 
 #################
 # bash completion

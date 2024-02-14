@@ -18,7 +18,8 @@
 # - CLOUD: aws/gcp
 # - LOG_IN: whether the user is logged into the wb CLI as part of the script
 # - RUN_AS_LOGIN_USER: run command as non-root Unix user (ex: jupyter, dataproc)
-# - must be run after install-cli.sh
+# 
+# This script must be run after install-cli.sh
 
 emit "Customize user bashrc ..."
 

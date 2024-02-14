@@ -1,9 +1,14 @@
 #!/bin/bash
 
 # setup-bashrc.sh
-# setup-bashrc.sh
 #
-# Set up customization for user bashrc file.
+# Set variables into the .bashrc such that they are available to terminals, notebooks, and other tools. 
+# We have new-style variables (eg WORKBENCH_USER_EMAIL) which are set here and CLI (terra app execute env). 
+# We also support a few variables set for legacy reasons (eg GOOGLE_PROJECT). Those are only set here and 
+# NOT in the CLI as they are intended just to make porting existing notebooks easier.
+# 
+# Keep in sync with Workbench CLI environment variables:
+# https://github.com/verily-src/terra-tool-cli/blob/b146951ffc9c4f72f4d9c491a543b5c29bea3650/src/main/java/bio/terra/cli/app/CommandRunner.java#L94
 #
 # Note that this script is intended to be source from the "post-startup.sh" script 
 # and is dependent on some variables and packages already being set up:
@@ -34,6 +39,8 @@ if [[ "${LOG_IN}" == "true" ]]; then
 export TERRA_USER_EMAIL='${OWNER_EMAIL}'
 export OWNER_EMAIL='${OWNER_EMAIL}'
 export PET_SA_EMAIL='${PET_SA_EMAIL}'
+
+# Set up workbench-specific convenience variables
 export WORKBENCH_USER_EMAIL='${OWNER_EMAIL}'
 export GOOGLE_SERVICE_ACCOUNT_EMAIL='${PET_SA_EMAIL}'
 EOF
@@ -53,8 +60,9 @@ if [[ "${CLOUD}" == "gcp" && "${LOG_IN}" == "true" ]]; then
 
   cat << EOF >> "${USER_BASHRC}"
 
-# Set up GCP specific convenience variables
+# Set up GCP specific legacy convenience variables
 export GOOGLE_PROJECT='${GOOGLE_PROJECT}'
+# Set up GCP specific convenience variables
 export GOOGLE_CLOUD_PROJECT='${GOOGLE_PROJECT}'
 EOF
 

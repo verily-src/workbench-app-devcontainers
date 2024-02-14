@@ -15,6 +15,9 @@ function get_metadata_value() {
     exit 1
   fi
   local tag_key=vwbapp:"$1"
+  
+  apt-get update
+  apt-get install -y wget
 
   INSTANCE_ID="$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
   aws ec2 describe-tags \

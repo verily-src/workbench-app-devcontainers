@@ -80,7 +80,6 @@ cat << EOF >> "${USER_BASHRC}"
 if [[ "${PATH}:" != "/usr/bin:"* ]]; then
   export PATH=/usr/bin:${PATH}
 fi
-
 EOF
 
 ##################################################

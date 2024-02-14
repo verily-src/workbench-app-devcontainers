@@ -15,20 +15,17 @@
 
 emit "Customize user bashrc ..."
 
-
 if [[ "${LOG_IN}" == "true" ]]; then
   # OWNER_EMAIL is really the Workbench user account email address
   readonly OWNER_EMAIL="$(
     ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
     jq --raw-output ".userEmail")"
 
-
   # PET_SA_EMAIL is the pet service account for the Workbench user and
   # is specific to the GCP project backing the workspace
   readonly PET_SA_EMAIL="$(
     ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
     jq --raw-output ".serviceAccountEmail")"
-
 
   cat << EOF >> "${USER_BASHRC}"
 # Set up a few legacy Workbench-specific convenience variables
@@ -50,7 +47,7 @@ if [[ "${CLOUD}" == "gcp" && "${LOG_IN}" == "true" ]]; then
     ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
     jq --raw-output ".googleProjectId")"
   
-  emit "Adding Workbench environment variables to ~/.bashrc ..."
+  emit "Adding Workbench GCP-sepcific environment variables to ~/.bashrc ..."
 
   cat << EOF >> "${USER_BASHRC}"
 

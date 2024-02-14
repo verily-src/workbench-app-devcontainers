@@ -10,7 +10,7 @@
 # - USER_BASHRC: path to user's ~/.bashrc file
 # - CLOUD: aws/gcp
 # - LOG_IN: whether the user is logged into the wb CLI as part of the script
-# - RUN_AS_LOGIN_USER: run command as user
+# - RUN_AS_LOGIN_USER: run command as non-root Unix user (ex: jupyter, dataproc)
 # - must be run after install-cli.sh
 
 emit "Customize user bashrc ..."

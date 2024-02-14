@@ -71,15 +71,10 @@ if [[ -e ~/.bashrc ]]; then
 fi
 
 EOF
-
-# Indicate the start of Workbench customizations of the ~/.bashrc
-cat << EOF >> "${USER_BASHRC}"
-
-# Prepend "/usr/bin" (if not already in the path)
-if [[ "${PATH}:" != "/usr/bin:"* ]]; then
-  export PATH=/usr/bin:${PATH}
-fi
-EOF
+##################################################
+# Set up user bashrc with workbench customization
+##################################################
+source ${SCRIPT_DIR}/setup-bashrc.sh
 
 ##################################################
 # Set up java which is required for workbench CLI 

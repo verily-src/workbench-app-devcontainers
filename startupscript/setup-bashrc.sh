@@ -3,7 +3,7 @@
 # setup-bashrc.sh
 # setup-bashrc.sh
 #
-# Set up customizaiton for user bashrc file.
+# Set up customization for user bashrc file.
 #
 # Note that this script is intended to be source from the "post-startup.sh" script 
 # and is dependent on some variables and packages already being set up:

@@ -95,7 +95,7 @@ source ${SCRIPT_DIR}/install-cli.sh
 ##################################################
 # Set up user bashrc with workbench customization
 ##################################################
-source ${SCRIPT_DIR}/setup-bashrc.sh
+source "${SCRIPT_DIR}/setup-bashrc.sh"
 
 #################
 # bash completion

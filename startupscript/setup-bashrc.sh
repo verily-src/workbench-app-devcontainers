@@ -4,13 +4,13 @@
 # Set up customizaiton for user bashrc file.
 #
 # Note that this script is intended to be source from the "post-startup.sh" script 
-# and is dependent on some variables already being set up:
+# and is dependent on some variables and packages already being set up:
 #
 # - emit (function)
-# - USER_BASHRC
-# - CLOUD
-# - LOG_IN
-# - RUN_AS_LOGIN_USER
+# - USER_BASHRC: path to user's ~/.bashrc file
+# - CLOUD: aws/gcp
+# - LOG_IN: whether the user is logged into the wb CLI as part of the script
+# - RUN_AS_LOGIN_USER: run command as user
 # - must be run after install-cli.sh
 
 emit "Customize user bashrc ..."

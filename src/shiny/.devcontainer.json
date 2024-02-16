@@ -23,7 +23,6 @@
     "--network=app-network",
     "--device=/dev/fuse"
   ],
-  "workspaceFolder": "/workspace/shiny",
   "postCreateCommand": ["./startupscript/post-startup.sh", "shiny", "/home/shiny", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
   "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u shiny wb resource mount || true'",

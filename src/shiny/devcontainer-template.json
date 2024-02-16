@@ -3,7 +3,7 @@
     "version": "0.0.1",
     "name": "shiny",
     "description": "A Template to run shiny server on workbench",
-    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/rstudio",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/src/shiny",
     "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/main/LICENSE",
     "options": {
         "cloud": {

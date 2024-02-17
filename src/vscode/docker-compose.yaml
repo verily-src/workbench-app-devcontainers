@@ -5,7 +5,7 @@ services:
     image: "lscr.io/linuxserver/code-server:latest"
     restart: always
     volumes:
-      - ..:/workspace:cached
+      - ./:/workspace:cached
     ports:
       - '8443:8443'
     environment:

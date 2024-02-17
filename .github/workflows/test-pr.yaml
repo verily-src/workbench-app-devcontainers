@@ -8,7 +8,7 @@ jobs:
     continue-on-error: true
     strategy:
       matrix:
-        templates: [rstudio, vscode]
+        templates: [rstudio, vscode, cirrocumulus]
     steps:
       - uses: actions/checkout@v4
 

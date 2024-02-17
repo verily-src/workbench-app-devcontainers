@@ -1,10 +1,10 @@
 {
     "id": "rstudio",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "name": "Rstudio",
     "description": "A Template to run rstudio on workbench",
-    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/rstudio",
-    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/main/LICENSE",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/rstudio",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
     "options": {
         "cloud": {
             "type": "string",

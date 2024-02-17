@@ -1,0 +1,31 @@
+{
+    "id": "cirro",
+    "version": "0.0.1",
+    "name": "Cirrocumulus",
+    "description": "A Template to run cirrocumulus on workbench",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/cirrocumulus",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp",
+                "aws"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

@@ -16,7 +16,7 @@ if ! which gcsfuse >/dev/null 2>&1; then
   # install packages needed to install gcsfuse
   apt-get install -y \
     fuse \
-    lsb-core
+    lsb-release
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
   readonly GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"

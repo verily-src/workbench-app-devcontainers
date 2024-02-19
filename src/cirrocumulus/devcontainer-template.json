@@ -3,7 +3,7 @@
     "version": "0.0.1",
     "name": "Cirrocumulus",
     "description": "A template to run cirrocumulus (https://github.com/lilab-bcb/cirrocumulus) on workbench",
-    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/cirrocumulus",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/cirrocumulus",
     "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
     "options": {
         "cloud": {

@@ -1,0 +1,31 @@
+{
+  "name": "Shiny",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".",
+    "args": {
+      "VARIANT": "4",
+      "BASE_IMAGE": "rocker/shiny"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/devcontainers/features/java:1": {} 
+  },
+  "appPort": [
+    "3838:3838"
+  ],
+  "capAdd": ["SYS_ADMIN"],
+  "securityOpt": ["apparmor:unconfined"],
+  "runArgs": [
+    "--name=application-server",
+    "--network=app-network",
+    "--device=/dev/fuse"
+  ],
+  "postCreateCommand": ["./startupscript/post-startup.sh", "shiny", "/home/shiny", "${templateOption:cloud}", "${templateOption:login}"],
+  // re-mount bucket files on container start up
+  "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u shiny wb resource mount || true'",
+  "overrideCommand": false,
+  "remoteUser": "root"
+}

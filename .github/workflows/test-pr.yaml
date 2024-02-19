@@ -3,30 +3,7 @@ on:
   pull_request:
 
 jobs:
-  detect-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      templates: ${{ steps.filter.outputs.changes }}
-    steps:
-      - uses: dorny/paths-filter@v2
-        id: filter
-        with:
-          filters: |
-            shiny: 
-              - './**/shiny/**'
-              - 'startupscript/**'
-            rstudio: 
-              - './**/rstudio/**'
-              - 'startupscript/**'
-            vscode: 
-              - './**/vscode/**'
-              - 'startupscript/**'
-            cirrocumulus: 
-              - './**/cirrocumulus/**'
-              - 'startupscript/**'
-
   test:
-    needs: [detect-changes]
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:

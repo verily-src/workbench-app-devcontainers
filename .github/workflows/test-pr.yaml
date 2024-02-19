@@ -12,10 +12,18 @@ jobs:
         id: filter
         with:
           filters: |
-            shiny: ./**/shiny/**
-            rstudio: ./**/rstudio/**
-            vscode: ./**/vscode/**
-            cirrocumulus: ./**/cirrocumulus/**
+            shiny: 
+              - './**/shiny/**'
+              - 'startupscript/**'
+            rstudio: 
+              - './**/rstudio/**'
+              - 'startupscript/**'
+            vscode: 
+              - './**/vscode/**'
+              - 'startupscript/**'
+            cirrocumulus: 
+              - './**/cirrocumulus/**'
+              - 'startupscript/**'
 
   test:
     needs: [detect-changes]

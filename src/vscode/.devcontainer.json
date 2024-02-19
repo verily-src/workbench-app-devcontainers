@@ -3,8 +3,7 @@
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",
-  // Open the sub-folder with the source code
-  "workspaceFolder": "/workspace/vscode",
+  "workspaceFolder": "/workspace",
   "postCreateCommand": ["./startupscript/post-startup.sh", "abc", "/config", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
   "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u abc wb resource mount || true'",

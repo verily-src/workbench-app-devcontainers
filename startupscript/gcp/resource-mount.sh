@@ -28,6 +28,8 @@ else
   emit "gcsfuse already installed. Skipping installation."
 fi
 
+sed -i '/user_allow_other/s/^#//g' /etc/fuse.conf
+
 if [[ "${LOG_IN}" == "true" ]]; then
-  ${RUN_AS_LOGIN_USER} "wb resource mount"
+  ${RUN_AS_LOGIN_USER} "wb resource mount --allow-other"
 fi

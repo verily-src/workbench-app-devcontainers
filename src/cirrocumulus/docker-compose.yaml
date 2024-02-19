@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
-      - ./:/workspace:cached    
+      - .:/workspace:cached    
     command: cirro serve --db_uri mongodb://mongo:27017/cirrocumulus -b 0.0.0.0:3000
     ports:
       - '3000:3000'

@@ -1,0 +1,15 @@
+{
+  "name": "cicro-server",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": ["./startupscript/post-startup.sh", "root", "/root", "${templateOption:cloud}", "${templateOption:login}"],
+  // re-mount bucket files on container start up
+  "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u abc wb resource mount || true'",
+  "features": {
+      "ghcr.io/devcontainers/features/aws-cli:1": {},
+      "ghcr.io/devcontainers/features/java:1": {}
+  },
+  "remoteUser": "root"
+}

@@ -1,0 +1,38 @@
+version: '2.4'
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached    
+    command: cirro serve --db_uri mongodb://mongo:27017/cirrocumulus -b 0.0.0.0:3000
+    ports:
+      - '3000:3000'
+    depends_on:
+      - mongo
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+  mongo:
+    image: mongo:latest
+    restart: always
+    volumes:
+      - mongodata:/data/db
+    ports:
+      - '27017:27017'
+    environment:
+      - MONGO_INITDB_DATABASE=cirrocumulus
+    networks:
+      - app-network
+volumes:
+  mongodata:
+networks:
+  app-network:

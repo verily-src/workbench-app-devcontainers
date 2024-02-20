@@ -55,6 +55,7 @@ readonly CONDA_BIN_DIR="${CONDA_DIR}/bin"
 
 readonly R_HOME_DIR='/usr/lib/R'
 readonly R_BIN_DIR="${R_HOME_DIR}/bin"
+readonly R_LIBS_USER_DIR="${USER_HOME_DIR}/.R_libs"
 readonly RUN_R="${R_BIN_DIR}/R"
 
 readonly IR_KERNEL="${CONDA_DIR}/share/jupyter/kernels/ir/kernel.json"
@@ -93,7 +94,27 @@ cat <<EOF >>"${USER_BASHRC}"
 if [[ ":\${PATH}:" != *":${R_BIN_DIR}:"* ]]; then
   export PATH="${R_BIN_DIR}":"\${PATH}"
 fi
+
+# Set R user library directory
+export R_LIBS_USER="${R_LIBS_USER_DIR}"
 EOF
+
+# Create R user library directory
+${RUN_AS_LOGIN_USER} "mkdir -p '${R_LIBS_USER_DIR}'"
+
+# Install tidyverse and its dependencies
+# See: https://blog.zenggyu.com/posts/en/2018-01-29-installing-r-r-packages-e-g-tidyverse-and-rstudio-on-ubuntu-linux/index.html
+sudo apt install -y \
+  libcurl4-openssl-dev \
+  libssl-dev \
+  libxml2-dev \
+  libfontconfig1-dev \
+  libharfbuzz-dev \
+  libfribidi-dev \
+  libfreetype6-dev \
+  libpng-dev \
+  libtiff5-dev \
+  libjpeg-dev
 
 # Install IRKernel on the master node to support interactive R notebooks in Jupyter
 # Note: We set the PATH to ensure that R knows where to find the 'jupyter' binary
@@ -119,6 +140,7 @@ if [[ "${DATAPROC_NODE_ROLE}" == 'Master' ]]; then
   "language": "R",
   "env": {
     "R_HOME": "${R_HOME_DIR}",
+    "R_LIBS_USER": "${R_LIBS_USER_DIR}",
     "SPARK_HOME": "/usr/lib/spark"
   }
 }

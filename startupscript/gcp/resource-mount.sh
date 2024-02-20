@@ -28,7 +28,8 @@ else
   emit "gcsfuse already installed. Skipping installation."
 fi
 
-#sed -i '/user_allow_other/s/^#//g' /etc/fuse.conf
+# Uncomment user_allow_other in the fuse.conf to enable non-root user to mount files with -o allow-other option.
+sed -i '/user_allow_other/s/^#//g' /etc/fuse.conf
 
 if [[ "${LOG_IN}" == "true" ]]; then
   ${RUN_AS_LOGIN_USER} "wb resource mount --allow-other"

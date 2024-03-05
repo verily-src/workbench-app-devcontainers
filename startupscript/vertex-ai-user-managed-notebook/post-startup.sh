@@ -238,13 +238,13 @@ fi
 readonly NOTEBOOK_CONFIG
 emit "Resynchronizing apt package index..."
 
-# The apt package index may not be clean when we run; resynchronize
 # TODO (BENCH-2316): Update apt to point to the new k8s pkg. https://kubernetes.io/blog/2023/08/15/pkgs-k8s-io-introduction/
 # Remove this when deep learning image fix this issue.
 mkdir /etc/apt/keyrings
 chmod 755 /etc/apt/keyrings
 echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+# The apt package index may not be clean when we run; resynchronize
 apt-get update --allow-releaseinfo-change
 
 # Create the target directories for installing into the HOME directory

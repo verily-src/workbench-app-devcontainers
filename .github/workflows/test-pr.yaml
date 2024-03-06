@@ -12,6 +12,9 @@ jobs:
         id: filter
         with:
           filters: |
+            jupyter: 
+              - './**/jupyter/**'
+              - 'startupscript/**'
             shiny: 
               - './**/shiny/**'
               - 'startupscript/**'

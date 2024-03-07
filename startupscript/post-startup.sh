@@ -75,7 +75,7 @@ if [[ -e ~/.bashrc ]]; then
 fi
 
 EOF
-chown "${USER_PRIMARY_GROUP}:${USER_NAME}" "${USER_BASH_PROFILE}"
+chown "${USER_NAME}:${USER_PRIMARY_GROUP}" "${USER_BASH_PROFILE}"
 
 # Indicate the start of Workbench customizations of the ~/.bashrc
 cat << EOF >> "${USER_BASHRC}"

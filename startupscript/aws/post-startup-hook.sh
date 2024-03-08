@@ -42,7 +42,7 @@ ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path
 ###############################################################################
 # Write common environment vars to .profile so they are present in all contexts
 ###############################################################################
-readonly WORKBENCH_WORKSPACE=$(get_metadata_value terra-workspace-id)
+readonly WORKBENCH_WORKSPACE="$(get_metadata_value terra-workspace-id)"
 readonly AWS_CONFIG_FILE="${USER_WORKBENCH_CONFIG_DIR}/aws/${WORKBENCH_WORKSPACE}.conf"
 cat >> "${USER_PROFILE}" << EOM
 ### BEGIN: Workbench AWS-specific customizations ###
@@ -61,18 +61,18 @@ chown "${USER_PRIMARY_GROUP}:${USER_NAME}" "${USER_PROFILE}"
 cat >> "${USER_BASHRC}" << 'EOM'
 
 configure_workspace() {
-  ${WORKBENCH_INSTALL_PATH} workspace set --uuid ${WORKBENCH_WORKSPACE}
-  ${WORKBENCH_INSTALL_PATH} workspace configure-aws --cache-with-aws-vault=true
-  ${WORKBENCH_INSTALL_PATH} resource mount
+  "${WORKBENCH_INSTALL_PATH}" workspace set --uuid "${WORKBENCH_WORKSPACE}"
+  "${WORKBENCH_INSTALL_PATH}" workspace configure-aws --cache-with-aws-vault=true
+  "${WORKBENCH_INSTALL_PATH}" resource mount
 }
 
 configure_ssh() {
   local USER_SSH_DIR="${HOME}/.ssh"
   mkdir -p ${USER_SSH_DIR}
-  local USER_SSH_KEY=$(${WORKBENCH_INSTALL_PATH} security ssh-key get --include-private-key --format=JSON)
-  echo $USER_SSH_KEY | jq -r '.privateSshKey' > ${USER_SSH_DIR}/id_rsa
-  echo $USER_SSH_KEY | jq -r '.publicSshKey' > ${USER_SSH_DIR}/id_rsa.pub
-  chmod 0600 ${USER_SSH_DIR}/id_rsa*
+  local USER_SSH_KEY="$("${WORKBENCH_INSTALL_PATH}" security ssh-key get --include-private-key --format=JSON)"
+  echo "${USER_SSH_KEY}" | jq -r '.privateSshKey' > "${USER_SSH_DIR}"/id_rsa
+  echo "${USER_SSH_KEY}" | jq -r '.publicSshKey' > "${USER_SSH_DIR}"/id_rsa.pub
+  chmod 0600 "${USER_SSH_DIR}"/id_rsa*
   ssh-keyscan -H github.com >> ${USER_SSH_DIR}/known_hosts
 }
 
@@ -101,9 +101,9 @@ EOM
 ##################################
 cat >> "${USER_BASH_PROFILE}" << 'EOM'
 
-if [ $(${WORKBENCH_INSTALL_PATH} auth status --format json | jq .loggedIn) == false ]; then
+if [[ "$("${WORKBENCH_INSTALL_PATH}" auth status --format json | jq .loggedIn)" == false ]]; then
     echo "User must log into Workbench to continue."
-    ${WORKBENCH_INSTALL_PATH} auth login
+    "${WORKBENCH_INSTALL_PATH}" auth login
     configure_workbench
 fi
 EOM

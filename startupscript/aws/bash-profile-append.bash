@@ -1,3 +1,4 @@
+
 # Prompt user to authenticate with Workbench CLI if they are not aleady
 # authenticated  Note the lack of a shebang is intentional.   This file will be
 # appended to the user's .bash_profile file, and is kept separate so that this 

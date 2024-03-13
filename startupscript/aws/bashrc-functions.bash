@@ -1,3 +1,4 @@
+
 # Workbnech helper functions for AWS.  Note the lack of a shebang is 
 # intentional.   This file will be appended to the user's .bashrc file, and is
 # kept separate so that these functions can be linted with shellcheck.
@@ -17,7 +18,7 @@ function configure_ssh() {
   echo "${USER_SSH_KEY}" | jq -r '.privateSshKey' > "${USER_SSH_DIR}"/id_rsa
   echo "${USER_SSH_KEY}" | jq -r '.publicSshKey' > "${USER_SSH_DIR}"/id_rsa.pub
   chmod 0600 "${USER_SSH_DIR}"/id_rsa*
-  ssh-keyscan -H github.com >> "{USER_SSH_DIR}/known_hosts"
+  ssh-keyscan -H github.com >> "${USER_SSH_DIR}/known_hosts"
 }
 readonly -f configure_ssh
 

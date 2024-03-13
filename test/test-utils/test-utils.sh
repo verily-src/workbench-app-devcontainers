@@ -24,7 +24,7 @@ readonly -f check
 
 function reportResults() {
     if [[ ${#FAILED[@]} -ne 0 ]]; then
-        echoStderr -e "\n💥  Failed tests: ${FAILED[@]}"
+        echoStderr -e "\n💥  Failed tests: " "${FAILED[@]}"
         exit 1
     else 
         echo -e "\n💯  All passed!"

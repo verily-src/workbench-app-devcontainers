@@ -22,10 +22,12 @@ cp -R "src/${TEMPLATE_ID}" "${SRC_DIR}"
 pushd "${SRC_DIR}"
 
 # Configure templates only if `devcontainer-template.json` contains the `options` property.
-readonly OPTION_PROPERTY="$(jq -r '.options' devcontainer-template.json)"
+OPTION_PROPERTY="$(jq -r '.options' devcontainer-template.json)"
+readonly OPTION_PROPERTY
 
 if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]]; then  
-    readonly OPTIONS=( $(jq -r '.options | keys[]' devcontainer-template.json) )
+    OPTIONS="( $(jq -r '.options | keys[]' devcontainer-template.json) )"
+    readonly OPTIONS
 
     if [[ "${OPTIONS[0]}" != "" ]] && [[ "${OPTIONS[0]}" != "null" ]]; then
         echo "(!) Configuring template options for '${TEMPLATE_ID}'"
@@ -75,4 +77,4 @@ docker network create -d bridge app-network
 ################################################
 echo "Building Dev Container"
 readonly ID_LABEL="test-container=${TEMPLATE_ID}"
-devcontainer up --id-label ${ID_LABEL} --workspace-folder "${SRC_DIR}"
+devcontainer up --id-label "${ID_LABEL}" --workspace-folder "${SRC_DIR}"

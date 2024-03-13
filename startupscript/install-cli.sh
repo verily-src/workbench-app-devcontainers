@@ -32,7 +32,7 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
     >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
     exit 1
   fi
-  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
+  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
   cp wb "${WORKBENCH_INSTALL_PATH}"
@@ -61,7 +61,8 @@ if [[ "${LOG_IN}" == "true" ]]; then
   ${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
 
   # Set the CLI workspace id using the VM metadata, if set.
-  readonly TERRA_WORKSPACE="$(get_metadata_value "terra-workspace-id")"
+  TERRA_WORKSPACE="$(get_metadata_value "terra-workspace-id")"
+  readonly TERRA_WORKSPACE
   if [[ -n "${TERRA_WORKSPACE}" ]]; then
     ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
   fi

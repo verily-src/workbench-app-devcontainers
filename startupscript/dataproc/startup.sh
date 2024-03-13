@@ -45,8 +45,9 @@ set -o pipefail
 set -o xtrace
 
 # Only run on the dataproc manager node. Exit silently if otherwise.
-readonly ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
+ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
 if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
+readonly ROLE
 
 # Only run on first startup. A file is created in the exit handler in the case of successful startup execution.
 readonly STARTUP_SCRIPT_COMPLETE="/etc/startup_script_complete"
@@ -284,9 +285,9 @@ if ! which gcsfuse >/dev/null 2>&1; then
     lsb-release
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
-    && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \
-    && curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
+  GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
+  echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list
+  curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \
     && apt-get install -y gcsfuse
 else
@@ -294,7 +295,8 @@ else
 fi
 
 # Set gcloud region config property to the region of the Dataproc cluster
-readonly DATAPROC_REGION="$(get_metadata_value "instance/attributes/dataproc-region")"
+DATAPROC_REGION="$(get_metadata_value "instance/attributes/dataproc-region")"
+readonly DATAPROC_REGION
 ${RUN_AS_LOGIN_USER} "gcloud config set dataproc/region ${DATAPROC_REGION}"
 
 ###########################################################
@@ -410,7 +412,8 @@ ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/work
 ####################################
 
 # Set the CLI workspace id using the VM metadata, if set.
-readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
+TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
+readonly TERRA_WORKSPACE
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
   ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
 fi
@@ -431,20 +434,23 @@ fi
 # (https://github.com/DataBiosphere/leonardo)
 
 # OWNER_EMAIL is really the Workbench user account email address
-readonly OWNER_EMAIL="$(
+OWNER_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".userEmail")"
+readonly OWNER_EMAIL
 
 # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
-readonly GOOGLE_PROJECT="$(
+GOOGLE_PROJECT="$(
   ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".googleProjectId")"
+readonly GOOGLE_PROJECT
 
 # PET_SA_EMAIL is the pet service account for the Workbench user and
 # is specific to the GCP project backing the workspace
-readonly PET_SA_EMAIL="$(
+PET_SA_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
   jq --raw-output ".serviceAccountEmail")"
+readonly PET_SA_EMAIL
 
 # These are equivalent environment variables which are set for a
 # command when calling "wb app execute <command>".
@@ -732,7 +738,8 @@ chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 # Start workbench app proxy agent 
 ###################################
 
-readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+readonly APP_PROXY
 if [[ -n "${APP_PROXY}" ]]; then
   emit "Using custom Proxy Agent"
   RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")

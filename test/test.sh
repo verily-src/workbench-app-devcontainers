@@ -1,5 +1,5 @@
 #!/bin/bash
-cd $(dirname "$0")
+cd "$(dirname "$0")" || exit
 source test-utils.sh
 
 # Template specific tests

@@ -25,8 +25,8 @@ pushd "${SRC_DIR}"
 OPTION_PROPERTY="$(jq -r '.options' devcontainer-template.json)"
 readonly OPTION_PROPERTY
 
-if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]]; then  
-    OPTIONS=( "$(jq -r '.options | keys[]' devcontainer-template.json)" )
+if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]]; then
+    IFS=" " read -r -a OPTIONS <<< "$(jq -r '.options | keys[]' devcontainer-template.json)"
     readonly OPTIONS
 
     if [[ "${OPTIONS[0]}" != "" ]] && [[ "${OPTIONS[0]}" != "null" ]]; then

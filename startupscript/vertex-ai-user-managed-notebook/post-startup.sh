@@ -176,8 +176,9 @@ readonly -f emit
 #######################################
 function get_metadata_value() {
   curl --retry 5 -s -f \
-    -H "Metadata-Flavor: Google" \
-    "http://metadata/computeMetadata/v1/$1"
+      -H "Metadata-Flavor: Google" \
+      "http://metadata/computeMetadata/v1/$1" \
+    || echo -n
 }
 
 #######################################
@@ -222,7 +223,7 @@ set_guest_attributes "${STATUS_ATTRIBUTE}" "STARTED"
 
 emit "Determining JupyterLab environment (jupyter.service or docker)"
 
-INSTANCE_CONTAINER="$(get_metadata_value instance/attributes/container)"
+INSTANCE_CONTAINER="$(get_metadata_value "instance/attributes/container")"
 readonly INSTANCE_CONTAINER
 if [[ -n "${INSTANCE_CONTAINER}" ]]; then
   emit "Custom container for JupyterLab detected: ${INSTANCE_CONTAINER}."

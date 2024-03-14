@@ -180,6 +180,7 @@ function get_metadata_value() {
       "http://metadata/computeMetadata/v1/$1" \
     || echo -n
 }
+readonly -f get_metadata_value
 
 #######################################
 # Set guest attributes on GCE. Used here to log completion status of the script.
@@ -195,6 +196,7 @@ function set_guest_attributes() {
     -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${attr_path}"
 }
+readonly -f set_guest_attributes
 
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.
@@ -212,6 +214,7 @@ function exit_handler {
   set_guest_attributes "${MESSAGE_ATTRIBUTE}" "Error on line ${line_no}, command \"${command}\". See ${POST_STARTUP_OUTPUT_FILE} for more information."
   exit "${exit_code}"
 }
+readonly -f exit_handler
 trap 'exit_handler $? $LINENO $BASH_COMMAND' EXIT
 
 #######################################

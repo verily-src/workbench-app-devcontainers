@@ -222,7 +222,7 @@ set_guest_attributes "${STATUS_ATTRIBUTE}" "STARTED"
 
 emit "Determining JupyterLab environment (jupyter.service or docker)"
 
-INSTANCE_CONTAINER="$(get_metadata_value "instance/attributes/container")"
+INSTANCE_CONTAINER="$(get_metadata_value instance/attributes/container)"
 readonly INSTANCE_CONTAINER
 if [[ -n "${INSTANCE_CONTAINER}" ]]; then
   emit "Custom container for JupyterLab detected: ${INSTANCE_CONTAINER}."

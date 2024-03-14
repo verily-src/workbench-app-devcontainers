@@ -82,7 +82,7 @@ For trivial variable assignment this can be done on a single line:
 readonly FOO="foo"
 ```
 
-However, for assingments that involve calling a command, `readonly` can mask error responses; in
+However, for assignments that involve calling a command, `readonly` can mask error responses; in
 these cases the variable should be marked `readonly` as a subsequent step.  This is enforced by
 `shellcheck` rule [SC2155](https://www.shellcheck.net/wiki/SC2155).
 

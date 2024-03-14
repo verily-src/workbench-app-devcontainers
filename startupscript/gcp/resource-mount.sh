@@ -21,6 +21,7 @@ if ! which gcsfuse >/dev/null 2>&1; then
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
   GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
   readonly GCSFUSE_REPO
+
   echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" > /etc/apt/sources.list.d/gcsfuse.list
   curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \

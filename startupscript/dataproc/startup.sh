@@ -45,7 +45,7 @@ set -o pipefail
 set -o xtrace
 
 # Only run on the dataproc manager node. Exit silently if otherwise.
-ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
+ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
 if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
 readonly ROLE
 
@@ -289,6 +289,7 @@ if ! which gcsfuse >/dev/null 2>&1; then
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
   GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
   readonly GCSFUSE_REPO
+
   echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list
   curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \

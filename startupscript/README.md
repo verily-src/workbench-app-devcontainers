@@ -87,7 +87,7 @@ these cases the variable should be marked `readonly` as a subsequent step.  This
 `shellcheck` rule [SC2155](https://www.shellcheck.net/wiki/SC2155).
 
 ```shell
-FOO=$(command)
+FOO="$(command)"
 readonly FOO
 ```
 

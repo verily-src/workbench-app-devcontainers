@@ -6,7 +6,7 @@
   "workspaceFolder": "/workspace",
   "postCreateCommand": ["./startupscript/post-startup.sh", "root", "/root", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
-  "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u abc wb resource mount || true'",
+  "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u abc wb resource mount || true; ./scripts/cirro_scanner.sh'",
   "features": {
       "ghcr.io/devcontainers/features/aws-cli:1": {},
       "ghcr.io/devcontainers/features/java:1": {}

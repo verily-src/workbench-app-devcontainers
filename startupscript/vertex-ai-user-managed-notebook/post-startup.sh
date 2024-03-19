@@ -199,10 +199,10 @@ function retry () {
       echo "Retrying `${command}` in 5 seconds"
       sleep 5
     fi
- done
+  done
 
- # Execute without the if/then protection such that the exit code propagates
- ${command}
+  # Execute without the if/then protection such that the exit code propagates
+  ${command}
 }
 readonly -f retry
 

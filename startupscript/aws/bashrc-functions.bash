@@ -1,6 +1,6 @@
 
-# Workbnech helper functions for AWS.  Note the lack of a shebang is 
-# intentional.   This file will be appended to the user's .bashrc file, and is
+# Workbench helper functions for AWS. Note the lack of a shebang is 
+# intentional. This file will be appended to the user's .bashrc file, and is
 # kept separate so that these functions can be linted with shellcheck.
 
 function configure_workspace() {

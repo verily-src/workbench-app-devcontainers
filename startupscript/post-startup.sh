@@ -123,5 +123,5 @@ source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 # cloud platform specific setup
 ###############################
 if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then
-    source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
+  source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
 fi

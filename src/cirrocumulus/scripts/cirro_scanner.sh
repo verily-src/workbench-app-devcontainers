@@ -19,7 +19,7 @@ fi
 wb resource mount
 
 # Define the function to check if folder path exists in the JSON array
-dataset_exists() {
+function dataset_exists() {
     local url="$1"
     local array_json="$(curl -s localhost:3000/api/datasets)"
     local exists=$(echo "$array_json" | jq -e --arg path "$url" '.[] | select(.url == $path)' | wc -l)

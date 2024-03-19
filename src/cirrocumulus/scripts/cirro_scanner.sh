@@ -31,7 +31,7 @@ readonly -f dataset_exists
 create_dataset() {
     local url="$1"
     local name="$(basename "${url}")"
-    curl -X POST -F "name=$name" -F "url=$url" localhost:3000/api/dataset
+    curl -X POST -F "name=${name}" -F "url=${url}" localhost:3000/api/dataset
 }
 readonly -f create_dataset
 

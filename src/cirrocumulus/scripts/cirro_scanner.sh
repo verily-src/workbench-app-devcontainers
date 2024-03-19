@@ -6,7 +6,7 @@ set -o errexit
 set -o nounset
 set -o pipefail
 if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <true/false>"
+  echo "Usage: $0 <true|false>"
   exit 1
 fi
 

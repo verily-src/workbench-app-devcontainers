@@ -66,12 +66,19 @@ Clone this repo and put it in a public repo you own. Make the change
 
 Shell code in this repo will be checked with `shellcheck` as part of pull request testing.
 
+The `shellcheck` tool [can be installed locally](https://github.com/koalaman/shellcheck?tab=readme-ov-file#installing).
+Additionally, VSCode has a [ShellCheck extension](https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck).
+
 To configure `shellcheck` locally with the same configuration as the PR lint tasks, create a
 `~/.shellcheckrc` file with the following content:
 
 ```shell
 disable=SC1090,SC1091
 ```
+
+This disables checks [SC1090](https://www.shellcheck.net/wiki/SC1090) and
+[SC1091](https://www.shellcheck.net/wiki/SC1091), to work around limitations in
+`shellcheck` around dynamic file handling.
 
 In addition to `shellcheck`-enforced logic, it is highly recommended that variables and functions
 be made `readonly` to prevent overriding or unsetting.

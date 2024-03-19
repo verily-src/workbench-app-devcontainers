@@ -24,13 +24,13 @@
 
 readonly USER_PROFILE="${WORK_DIRECTORY}/.profile"
 readonly AWS_VAULT_INSTALL_PATH="/usr/bin/aws-vault"
+readonly AWS_VAULT_EXE_URL="https://github.com/99designs/aws-vault/releases/download/v7.2.0/aws-vault-linux-amd64"
 
 ##########################################
 # Install aws-vault for credential caching
 ##########################################
 emit "installing aws-vault"
-curl --no-progress-meter --location --output "${AWS_VAULT_INSTALL_PATH}" \
-    https://github.com/99designs/aws-vault/releases/download/v7.2.0/aws-vault-linux-amd64
+curl --no-progress-meter --location --output "${AWS_VAULT_INSTALL_PATH}" "${AWS_VAULT_EXE_URL}"
 chmod 755 "${AWS_VAULT_INSTALL_PATH}"
 
 #####################################
@@ -40,21 +40,20 @@ ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set cache-with-aws-vault 
 ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set wb-path --path ${WORKBENCH_INSTALL_PATH}"
 ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path ${AWS_VAULT_INSTALL_PATH}"
 
-###############################################################################
-# Write common environment vars to .profile so they are present in all contexts
-###############################################################################
+#######################################################################################
+# Write common environment vars to /etc/environment so they are present in all contexts
+#######################################################################################
 WORKBENCH_WORKSPACE="$(get_metadata_value terra-workspace-id)"
 readonly WORKBENCH_WORKSPACE
 AWS_CONFIG_FILE="${USER_WORKBENCH_CONFIG_DIR}/aws/${WORKBENCH_WORKSPACE}.conf"
 readonly AWS_CONFIG_FILE
-cat >> "${USER_PROFILE}" << EOF
-### BEGIN: Workbench AWS-specific customizations ###
-export WORKBENCH_WORKSPACE="${WORKBENCH_WORKSPACE}"
-export WORKBENCH_GIT_REPOS_DIR="${WORKBENCH_GIT_REPOS_DIR}"
-export WORKBENCH_INSTALL_PATH="${WORKBENCH_INSTALL_PATH}"
-export AWS_CONFIG_FILE="${AWS_CONFIG_FILE}"
-export AWS_VAULT_BACKEND="file"
-export AWS_VAULT_FILE_PASSPHRASE=""
+cat >> /etc/environment << EOF
+WORKBENCH_WORKSPACE="${WORKBENCH_WORKSPACE}"
+WORKBENCH_GIT_REPOS_DIR="${WORKBENCH_GIT_REPOS_DIR}"
+WORKBENCH_INSTALL_PATH="${WORKBENCH_INSTALL_PATH}"
+AWS_CONFIG_FILE="${AWS_CONFIG_FILE}"
+AWS_VAULT_BACKEND="file"
+AWS_VAULT_FILE_PASSPHRASE=""
 EOF
 chown "${USER_NAME}:${USER_PRIMARY_GROUP}" "${USER_PROFILE}"
 

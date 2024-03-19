@@ -63,12 +63,18 @@ apt install -y jq curl fuse tar wget
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 
-# Have the ~/.bash_profile source ~/.profile and ~/.bashrc
-cat << EOF >> "${USER_BASH_PROFILE}"
 
-if [[ -e ~/.profile ]]; then
- source ~/.profile
-fi
+# Custom application behavior when opening a terminal window will vary.
+#
+# Some application that run in custom environments will by default run
+# an interactive non-login shell, which sources the ~/.bashrc.
+#
+# Others will open a login shell, which sources the ~/.bash_profile.
+#
+# For consistency across these as many environments as possible, this startup
+# script writes to  ~/.bashrc, and has the ~/.bash_profile source the ~/.bashrc
+
+cat << EOF >> "${USER_BASH_PROFILE}"
 
 if [[ -e ~/.bashrc ]]; then
  source ~/.bashrc

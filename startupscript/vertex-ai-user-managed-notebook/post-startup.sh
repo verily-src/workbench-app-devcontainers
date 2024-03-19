@@ -213,6 +213,9 @@ function retry () {
 }
 readonly -f retry
 
+#################################
+# Download and install Nextflow
+#################################
 function install_nextflow() {
   ${RUN_AS_LOGIN_USER} "curl -s https://get.nextflow.io | bash"
 }
@@ -404,11 +407,9 @@ if [[ -n "${INSTANCE_CONTAINER}" ]]; then
   chown ${LOGIN_USER}:${LOGIN_USER} "${USER_HOME_LOCAL_BIN}/less"
 fi
 
-# Download Nextflow and install it
 emit "Installing Nextflow ..."
 
 retry 5 install_nextflow
-
 ${RUN_AS_LOGIN_USER} "\
   mv nextflow '${NEXTFLOW_INSTALL_PATH}'"
 

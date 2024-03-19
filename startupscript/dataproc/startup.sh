@@ -212,6 +212,47 @@ function exit_handler {
 trap 'exit_handler $? $LINENO $BASH_COMMAND' EXIT
 
 #######################################
+# function to retry command
+#######################################
+function retry () {
+  local retries="$1"
+  local command="$2"
+  local options="$-" # Get the current "set" options
+
+  # Disable set -e
+  if [[ ${options} == *e* ]]; then
+    set +e
+  fi
+
+  # Run the command, and save the exit code
+  ${command}
+  local exit_code=$?
+ 
+  # restore initial options
+  if [[ ${options} == *e* ]]; then
+    set -e
+  fi
+
+  # If the exit code is non-zero (i.e. command failed), and we have not
+  # reached the maximum number of retries, run the command again
+  if [[ ${exit_code} -ne 0 && ${retries} -gt 0 ]]; then
+    retry $((retries - 1)) "${command}"
+  else
+    # Return the exit code from the command
+    return ${exit_code}
+  fi
+}
+readonly -f retry
+
+#################################
+# Download and install Nextflow
+#################################
+function install_nextflow() {
+  ${RUN_AS_LOGIN_USER} "curl -s https://get.nextflow.io | bash"
+}
+readonly -f install_nextflow
+
+#######################################
 ### Begin environment setup 
 #######################################
 
@@ -339,8 +380,8 @@ rmdir "${JAVA_INSTALL_TMP}"
 # Download Nextflow and install it
 emit "Installing Nextflow ..."
 
+retry 5 install_nextflow
 ${RUN_AS_LOGIN_USER} "\
-  curl -s https://get.nextflow.io | bash && \
   mv nextflow '${NEXTFLOW_INSTALL_PATH}'"
 
 # Download Cromwell and install it

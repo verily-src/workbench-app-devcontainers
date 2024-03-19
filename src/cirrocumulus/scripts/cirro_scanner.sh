@@ -8,13 +8,11 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-wb resource mount
-
 # Define the function to check for existing cirrocumulus datasets with the given path.
 function matching_dataset_count() {
     local url="$1"
     curl -s localhost:3000/api/datasets | \
-        jq -e --arg path "$url" '.[] | select(.url == $path)' | \
+        jq -e --arg path "${url}" '.[] | select(.url == ${path})' | \
         wc -l
 }
 readonly -f dataset_exists
@@ -33,7 +31,7 @@ function scan_folders_and_create_datasets() {
     # Search for folders with name *.zarr and create cirro dataset if it doesn't exist
     find /root/workspace -type d -name '*.zarr' | while read -r folder; do
         if [[ "$(matching_dataset_count "${folder}")" -eq "0" ]]; then
-            create_dataset "$folder"
+            create_dataset "${folder}"
         else
             echo "Folder '${folder}' already exists in the cirrocumulus server dataset."
         fi
@@ -41,6 +39,7 @@ function scan_folders_and_create_datasets() {
 }
 readonly -f scan_folders_and_create_datasets
 
+wb resource mount
 # Infinite loop to continuously scan every 5 seconds
 while true; do
     # Call the function to perform the scanning

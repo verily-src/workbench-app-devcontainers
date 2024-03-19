@@ -1,5 +1,20 @@
 #!/bin/bash
 
+# cirro_scanner.sh scans the mounted buckets to find cirro data. Creates a cirro dataset when *.zarr folder
+# is found and is not yet in the existing datasets.
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 <true/false>"
+  exit 1
+fi
+
+readonly LOG_IN="${1}"
+if [[ "${LOG_IN}" == "false" ]]; then
+  echo "user is not logged in"
+  exit 0
+fi
+
+wb resource mount
+
 # Define the function to check if folder path exists in the JSON array
 dataset_exists() {
     local url="$1"

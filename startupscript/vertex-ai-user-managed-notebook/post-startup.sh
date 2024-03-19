@@ -189,29 +189,34 @@ function retry () {
   local options="$-" # Get the current "set" options
 
   # Disable set -e
-  if [[ $options == *e* ]]; then
+  if [[ ${options} == *e* ]]; then
     set +e
   fi
 
   # Run the command, and save the exit code
-  $command
+  ${command}
   local exit_code=$?
  
   # restore initial options
-  if [[ $options == *e* ]]; then
+  if [[ ${options} == *e* ]]; then
     set -e
   fi
 
   # If the exit code is non-zero (i.e. command failed), and we have not
   # reached the maximum number of retries, run the command again
-  if [[ $exit_code -ne 0 && $retries -gt 0 ]]; then
-    retry $(($retries - 1)) "$command"
+  if [[ ${exit_code} -ne 0 && ${retries} -gt 0 ]]; then
+    retry $((${retries} - 1)) "$command"
   else
     # Return the exit code from the command
-    return $exit_code
+    return ${exit_code}
   fi
 }
 readonly -f retry
+
+function install_nextflow() {
+  ${RUN_AS_LOGIN_USER} "curl -s https://get.nextflow.io | bash"
+}
+readonly -f install_nextflow
 #######################################
 # Set guest attributes on GCE. Used here to log completion status of the script.
 # See https://cloud.google.com/compute/docs/metadata/manage-guest-attributes
@@ -402,8 +407,7 @@ fi
 # Download Nextflow and install it
 emit "Installing Nextflow ..."
 
-retry 5 "${RUN_AS_LOGIN_USER} "\
-  curl -s https://get.nextflow.io | bash""
+retry 5 install_nextflow
 
 ${RUN_AS_LOGIN_USER} "\
   mv nextflow '${NEXTFLOW_INSTALL_PATH}'"

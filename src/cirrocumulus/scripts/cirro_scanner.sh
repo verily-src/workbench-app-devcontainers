@@ -42,7 +42,7 @@ function scan_folders_and_create_datasets() {
         if [[ "$(dataset_exists "${folder}")" -eq "0" ]]; then
             create_dataset "$folder"
         else
-            echo "Folder '$folder' already exists in the cirro server dataset."
+            echo "Folder '${folder}' already exists in the cirrocumulus server dataset."
         fi
     done
 }

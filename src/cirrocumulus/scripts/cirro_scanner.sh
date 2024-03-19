@@ -2,35 +2,28 @@
 
 # cirro_scanner.sh scans the mounted buckets to find cirro data. Creates a cirro dataset when *.zarr folder
 # is found and is not yet in the existing cirro datasets.
+# This script expects the user to be logged in to workbench CLI.
+
 set -o errexit
 set -o nounset
 set -o pipefail
-if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <true|false>"
-  exit 1
-fi
-
-readonly LOG_IN="${1}"
-if [[ "${LOG_IN}" == "false" ]]; then
-  echo "user is not logged in"
-  exit 0
-fi
 
 wb resource mount
 
-# Define the function to check if folder path exists in the JSON array
-function dataset_exists() {
+# Define the function to check for existing cirrocumulus datasets with the given path.
+function matching_dataset_count() {
     local url="$1"
-    local array_json="$(curl -s localhost:3000/api/datasets)"
-    local exists=$(echo "$array_json" | jq -e --arg path "$url" '.[] | select(.url == $path)' | wc -l)
-    echo "$exists"
+    curl -s localhost:3000/api/datasets | \
+        jq -e --arg path "$url" '.[] | select(.url == $path)' | \
+        wc -l
 }
 readonly -f dataset_exists
 
 # Create a cirro dataset
-create_dataset() {
+function create_dataset() {
     local url="$1"
-    local name="$(basename "${url}")"
+    local name
+    name="$(basename "${url}")"
     curl -X POST -F "name=${name}" -F "url=${url}" localhost:3000/api/dataset
 }
 readonly -f create_dataset
@@ -39,7 +32,7 @@ readonly -f create_dataset
 function scan_folders_and_create_datasets() {
     # Search for folders with name *.zarr and create cirro dataset if it doesn't exist
     find /root/workspace -type d -name '*.zarr' | while read -r folder; do
-        if [[ "$(dataset_exists "${folder}")" -eq "0" ]]; then
+        if [[ "$(matching_dataset_count "${folder}")" -eq "0" ]]; then
             create_dataset "$folder"
         else
             echo "Folder '${folder}' already exists in the cirrocumulus server dataset."

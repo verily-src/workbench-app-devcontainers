@@ -14,6 +14,9 @@ readonly SRC_DIR="/tmp/${TEMPLATE_ID}"
 echo "Running Smoke Test"
 
 readonly ID_LABEL="test-container=${TEMPLATE_ID}"
+
+# Suppressed expansion is intentional
+# shellcheck disable=SC2016
 devcontainer exec \
   --workspace-folder "${SRC_DIR}" \
   --id-label "${ID_LABEL}" \

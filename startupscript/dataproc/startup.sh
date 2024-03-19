@@ -45,8 +45,9 @@ set -o pipefail
 set -o xtrace
 
 # Only run on the dataproc manager node. Exit silently if otherwise.
-readonly ROLE=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
+ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
 if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
+readonly ROLE
 
 # Only run on first startup. A file is created in the exit handler in the case of successful startup execution.
 readonly STARTUP_SCRIPT_COMPLETE="/etc/startup_script_complete"
@@ -172,9 +173,11 @@ readonly -f emit
 function get_metadata_value() {
   local metadata_path="${1}"
   curl --retry 5 -s -f \
-    -H "Metadata-Flavor: Google" \
-    "http://metadata/computeMetadata/v1/${metadata_path}"
+      -H "Metadata-Flavor: Google" \
+      "http://metadata/computeMetadata/v1/${metadata_path}" \
+    || echo -n
 }
+readonly -f get_metadata_value
 
 #######################################
 # Set guest attributes on GCE. Used here to log completion status of the script.
@@ -284,9 +287,11 @@ if ! which gcsfuse >/dev/null 2>&1; then
     lsb-release
 
   # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  export GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)" \
-    && echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list \
-    && curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
+  GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
+  readonly GCSFUSE_REPO
+
+  echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" | tee /etc/apt/sources.list.d/gcsfuse.list
+  curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
   apt-get update \
     && apt-get install -y gcsfuse
 else
@@ -294,7 +299,8 @@ else
 fi
 
 # Set gcloud region config property to the region of the Dataproc cluster
-readonly DATAPROC_REGION="$(get_metadata_value "instance/attributes/dataproc-region")"
+DATAPROC_REGION="$(get_metadata_value "instance/attributes/dataproc-region")"
+readonly DATAPROC_REGION
 ${RUN_AS_LOGIN_USER} "gcloud config set dataproc/region ${DATAPROC_REGION}"
 
 ###########################################################
@@ -384,7 +390,7 @@ if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
     >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
     exit 1
   fi
-  cliDistributionPath="$(echo ${versionJson} | jq -r '.cliDistributionPath')"
+  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
   cp wb "${WORKBENCH_INSTALL_PATH}"
@@ -410,7 +416,8 @@ ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/work
 ####################################
 
 # Set the CLI workspace id using the VM metadata, if set.
-readonly TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
+TERRA_WORKSPACE="$(get_metadata_value "instance/attributes/terra-workspace-id")"
+readonly TERRA_WORKSPACE
 if [[ -n "${TERRA_WORKSPACE}" ]]; then
   ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
 fi
@@ -431,20 +438,23 @@ fi
 # (https://github.com/DataBiosphere/leonardo)
 
 # OWNER_EMAIL is really the Workbench user account email address
-readonly OWNER_EMAIL="$(
+OWNER_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".userEmail")"
+readonly OWNER_EMAIL
 
 # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
-readonly GOOGLE_PROJECT="$(
+GOOGLE_PROJECT="$(
   ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
   jq --raw-output ".googleProjectId")"
+readonly GOOGLE_PROJECT
 
 # PET_SA_EMAIL is the pet service account for the Workbench user and
 # is specific to the GCP project backing the workspace
-readonly PET_SA_EMAIL="$(
+PET_SA_EMAIL="$(
   ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
   jq --raw-output ".serviceAccountEmail")"
+readonly PET_SA_EMAIL
 
 # These are equivalent environment variables which are set for a
 # command when calling "wb app execute <command>".
@@ -732,7 +742,8 @@ chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 # Start workbench app proxy agent 
 ###################################
 
-readonly APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+readonly APP_PROXY
 if [[ -n "${APP_PROXY}" ]]; then
   emit "Using custom Proxy Agent"
   RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
@@ -795,7 +806,8 @@ EOF
 # If the script executer has set the "software-framework" property to "HAIL",
 # then install Hail after Dataproc optional components are installed.
 
-readonly SOFTWARE_FRAMEWORK="$(get_metadata_value "instance/attributes/software-framework")"
+SOFTWARE_FRAMEWORK="$(get_metadata_value "instance/attributes/software-framework")"
+readonly SOFTWARE_FRAMEWORK
 
 if [[ "${SOFTWARE_FRAMEWORK}" == "HAIL" ]]; then
   emit "Installing Hail..."
@@ -1059,7 +1071,8 @@ systemctl daemon-reload
 emit "--  Checking if installed Java version is ${REQ_JAVA_VERSION} or higher"
 
 # Get the current major version of Java: "11.0.12" => "11"
-readonly INSTALLED_JAVA_VERSION="$(${RUN_AS_LOGIN_USER} "${JAVA_INSTALL_PATH} -version" 2>&1 | awk -F\" '{ split($2,a,"."); print a[1]}')"
+INSTALLED_JAVA_VERSION="$(${RUN_AS_LOGIN_USER} "${JAVA_INSTALL_PATH} -version" 2>&1 | awk -F\" '{ split($2,a,"."); print a[1]}')"
+readonly INSTALLED_JAVA_VERSION
 if [[ "${INSTALLED_JAVA_VERSION}" -lt "${REQ_JAVA_VERSION}" ]]; then
   >&2 emit "ERROR: Java version detected (${INSTALLED_JAVA_VERSION}) is less than required (${REQ_JAVA_VERSION})"
   exit 1
@@ -1070,14 +1083,16 @@ emit "SUCCESS: Java installed and version detected as ${INSTALLED_JAVA_VERSION}"
 # Test nextflow
 emit "--  Checking if Nextflow is properly installed"
 
-readonly INSTALLED_NEXTFLOW_VERSION="$(${RUN_AS_LOGIN_USER} "${NEXTFLOW_INSTALL_PATH} -v" | sed -e 's#nextflow version \(.*\)#\1#')"
+INSTALLED_NEXTFLOW_VERSION="$(${RUN_AS_LOGIN_USER} "${NEXTFLOW_INSTALL_PATH} -v" | sed -e 's#nextflow version \(.*\)#\1#')"
+readonly INSTALLED_NEXTFLOW_VERSION
 
 emit "SUCCESS: Nextflow installed and version detected as ${INSTALLED_NEXTFLOW_VERSION}"
 
 # Test Cromwell
 emit "--  Checking if installed Cromwell version is ${CROMWELL_LATEST_VERSION}"
 
-readonly INSTALLED_CROMWELL_VERSION="$(${RUN_AS_LOGIN_USER} "java -jar ${CROMWELL_INSTALL_JAR} --version" | sed -e 's#cromwell \(.*\)#\1#')"
+INSTALLED_CROMWELL_VERSION="$(${RUN_AS_LOGIN_USER} "java -jar ${CROMWELL_INSTALL_JAR} --version" | sed -e 's#cromwell \(.*\)#\1#')"
+readonly INSTALLED_CROMWELL_VERSION
 if [[ "${INSTALLED_CROMWELL_VERSION}" -ne ${CROMWELL_LATEST_VERSION} ]]; then
   >&2 emit "ERROR: Cromwell version detected (${INSTALLED_CROMWELL_VERSION}) is not equal to expected (${CROMWELL_LATEST_VERSION})"
   exit 1
@@ -1107,7 +1122,8 @@ if [[ ! -e "${WORKBENCH_INSTALL_PATH}" ]]; then
   exit 1
 fi
 
-readonly INSTALLED_WORKBENCH_VERSION="$(${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} version")"
+INSTALLED_WORKBENCH_VERSION="$(${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} version")"
+readonly INSTALLED_WORKBENCH_VERSION
 
 if [[ -z "${INSTALLED_WORKBENCH_VERSION}" ]]; then
   >&2 emit "ERROR: Workbench CLI did not execute or did not return a version number"
@@ -1138,7 +1154,8 @@ if [[ ! -e "${USER_SSH_DIR}" ]]; then
   >&2 emit "ERROR: user SSH directory does not exist"
   exit 1
 fi
-readonly SSH_DIR_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}")"
+SSH_DIR_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}")"
+readonly SSH_DIR_MODE
 if [[ "${SSH_DIR_MODE}" != "700 dataproc dataproc" ]]; then
   >&2 emit "ERROR: user SSH directory permissions are incorrect: ${SSH_DIR_MODE}"
   exit 1
@@ -1147,7 +1164,8 @@ fi
 # If the user didn't have an SSH key configured, then the id_rsa file won't exist.
 # If they do have the file, check the permissions
 if [[ -e "${USER_SSH_DIR}/id_rsa" ]]; then
-  readonly SSH_KEY_FILE_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}/id_rsa")"
+  SSH_KEY_FILE_MODE="$(stat -c "%a %G %U" "${USER_SSH_DIR}/id_rsa")"
+  readonly SSH_KEY_FILE_MODE
   if [[ "${SSH_KEY_FILE_MODE}" != "600 dataproc dataproc" ]]; then
     >&2 emit "ERROR: user SSH key file permissions are incorrect: ${SSH_DIR_MODE}/id_rsa"
     exit 1
@@ -1157,7 +1175,8 @@ fi
 # GIT_IGNORE
 emit "--  Checking if gitignore is properly installed"
 
-readonly INSTALLED_GITIGNORE="$(${RUN_AS_LOGIN_USER} "git config --global core.excludesfile")"
+INSTALLED_GITIGNORE="$(${RUN_AS_LOGIN_USER} "git config --global core.excludesfile")"
+readonly INSTALLED_GITIGNORE
 
 if [[ "${INSTALLED_GITIGNORE}" != "${GIT_IGNORE}" ]]; then
   >&2 emit "ERROR: gitignore not set up at ${GIT_IGNORE}"

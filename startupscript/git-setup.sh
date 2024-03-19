@@ -12,13 +12,15 @@
 # - emit (function)
 # - Workbench CLI is installed
 # - git is installed in the image or as a devcontainer feature (ghcr.io/devcontainers/features/git:1)
-# - USER_SSH_DIR: path to ssh directory (~/.ssh)
+# - WORK_DIRECTORY: home directory for the user that the script is running on behalf of
 # - WORKBENCH_GIT_REPOS_DIR: path to the git repo directory (~/repos)
 # - RUN_AS_LOGIN_USER: run command as app user
 
 emit "Setting up git integration..."
 
 # Create the user SSH directory
+readonly USER_SSH_DIR="${WORK_DIRECTORY}/.ssh"
+readonly WORKBENCH_GIT_REPOS_DIR="${WORK_DIRECTORY}/repos"
 ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory

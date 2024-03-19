@@ -30,7 +30,8 @@ function emit() {
 readonly -f emit
 
 # Retrieve and set the dataproc node type
-readonly DATAPROC_NODE_ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
+DATAPROC_NODE_ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
+readonly DATAPROC_NODE_ROLE
 
 # The linux user that JupyterLab will be running as
 readonly LOGIN_USER='dataproc'

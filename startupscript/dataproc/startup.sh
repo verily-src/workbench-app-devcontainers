@@ -227,7 +227,7 @@ function retry () {
 
     # Sleep a bit in case the problem is a transient network/server issue
     if ((attempt < max_attempts)); then
-      echo "Retrying `${command}` in 5 seconds"
+      echo "Retrying $(command) in 5 seconds"
       sleep 5
     fi
   done

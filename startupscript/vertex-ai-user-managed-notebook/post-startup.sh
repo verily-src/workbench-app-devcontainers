@@ -402,8 +402,10 @@ fi
 # Download Nextflow and install it
 emit "Installing Nextflow ..."
 
+retry 5 "${RUN_AS_LOGIN_USER} "\
+  curl -s https://get.nextflow.io | bash""
+
 ${RUN_AS_LOGIN_USER} "\
-  retry 5 "curl -s https://get.nextflow.io | bash" && \
   mv nextflow '${NEXTFLOW_INSTALL_PATH}'"
 
 # Download Cromwell and install it

@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # cirro_scanner.sh scans the mounted buckets to find cirro data. Creates a cirro dataset when *.zarr folder
-# is found and is not yet in the existing datasets.
+# is found and is not yet in the existing cirro datasets.
+
 if [[ $# -ne 1 ]]; then
   echo "Usage: $0 <true/false>"
   exit 1

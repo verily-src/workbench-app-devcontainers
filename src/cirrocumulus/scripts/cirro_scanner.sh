@@ -12,7 +12,7 @@ set -o pipefail
 function matching_dataset_count() {
     local url="$1"
     curl -s localhost:3000/api/datasets | \
-        jq -e --arg path "${url}" '.[] | select(.url == ${path})' | \
+        jq -e --arg path "${url}" '.[] | select(.url == $path)' | \
         wc -l
 }
 readonly -f matching_dataset_count

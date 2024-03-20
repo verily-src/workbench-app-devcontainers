@@ -15,7 +15,7 @@ function matching_dataset_count() {
         jq -e --arg path "${url}" '.[] | select(.url == ${path})' | \
         wc -l
 }
-readonly -f dataset_exists
+readonly -f matching_dataset_count
 
 # Create a cirro dataset
 function create_dataset() {

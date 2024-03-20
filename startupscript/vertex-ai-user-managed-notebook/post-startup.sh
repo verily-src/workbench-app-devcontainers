@@ -183,6 +183,39 @@ function get_metadata_value() {
 readonly -f get_metadata_value
 
 #######################################
+# function to retry command
+#######################################
+function retry () {
+  local max_attempts="$1"
+  local command="$2"
+
+  local attempt
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    # Run the command and return if success
+    if ${command}; then
+      return
+    fi
+
+    # Sleep a bit in case the problem is a transient network/server issue
+    if ((attempt < max_attempts)); then
+      echo "Retrying $(command) in 5 seconds"
+      sleep 5
+    fi
+  done
+
+  # Execute without the if/then protection such that the exit code propagates
+  ${command}
+}
+readonly -f retry
+
+#################################
+# Download and install Nextflow
+#################################
+function install_nextflow() {
+  ${RUN_AS_LOGIN_USER} "curl -s https://get.nextflow.io | bash"
+}
+readonly -f install_nextflow
+#######################################
 # Set guest attributes on GCE. Used here to log completion status of the script.
 # See https://cloud.google.com/compute/docs/metadata/manage-guest-attributes
 # Arguments:
@@ -372,11 +405,10 @@ if [[ -n "${INSTANCE_CONTAINER}" ]]; then
   chown ${LOGIN_USER}:${LOGIN_USER} "${USER_HOME_LOCAL_BIN}/less"
 fi
 
-# Download Nextflow and install it
 emit "Installing Nextflow ..."
 
+retry 5 install_nextflow
 ${RUN_AS_LOGIN_USER} "\
-  curl -s https://get.nextflow.io | bash && \
   mv nextflow '${NEXTFLOW_INSTALL_PATH}'"
 
 # Download Cromwell and install it

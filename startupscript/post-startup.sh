@@ -20,15 +20,18 @@ readonly LOG_IN="${4}"
 # absolute path is more reliable.
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 readonly SCRIPT_DIR
+readonly CLOUD_SCRIPT_DIR="${SCRIPT_DIR}/${CLOUD}"
 #######################################
 # Emit a message with a timestamp
 #######################################
 source "${SCRIPT_DIR}/emit.sh"
 
-source "${SCRIPT_DIR}/${CLOUD}/vm-metadata.sh"
+source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
 
+USER_PRIMARY_GROUP="$(id --group --name "${USER_NAME}")"
+readonly USER_PRIMARY_GROUP
 readonly USER_BASH_COMPLETION_DIR="${WORK_DIRECTORY}/.bash_completion.d"
 readonly USER_HOME_LOCAL_SHARE="${WORK_DIRECTORY}/.local/share"
 readonly USER_WORKBENCH_CONFIG_DIR="${WORK_DIRECTORY}/.workbench"
@@ -54,13 +57,23 @@ exec 2>&1
 
 # The apt package index may not be clean when we run; resynchronize
 apt-get update
-apt install -y jq curl tar wget
+apt install -y jq curl fuse tar wget
 
 # Create the target directories for installing into the HOME directory
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 
-# As described above, have the ~/.bash_profile source the ~/.bashrc
+
+# Custom application behavior when opening a terminal window will vary.
+#
+# Some application that run in custom environments will by default run
+# an interactive non-login shell, which sources the ~/.bashrc.
+#
+# Others will open a login shell, which sources the ~/.bash_profile.
+#
+# For consistency across these as many environments as possible, this startup
+# script writes to  ~/.bashrc, and has the ~/.bash_profile source the ~/.bashrc
+
 cat << EOF >> "${USER_BASH_PROFILE}"
 
 if [[ -e ~/.bashrc ]]; then
@@ -68,6 +81,7 @@ if [[ -e ~/.bashrc ]]; then
 fi
 
 EOF
+chown "${USER_NAME}:${USER_PRIMARY_GROUP}" "${USER_BASH_PROFILE}"
 
 # Indicate the start of Workbench customizations of the ~/.bashrc
 cat << EOF >> "${USER_BASHRC}"
@@ -109,4 +123,11 @@ fi
 #############################
 # Mount buckets
 #############################
-source "${SCRIPT_DIR}/${CLOUD}/resource-mount.sh"
+source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
+
+###############################
+# cloud platform specific setup
+###############################
+if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then
+  source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
+fi

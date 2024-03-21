@@ -9,6 +9,7 @@
   "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u jovyan wb resource mount || true'",
   "features": {
         "ghcr.io/devcontainers/features/aws-cli:1": {},
+        "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
         "ghcr.io/devcontainers/features/java:1": {} 
    },
   "remoteUser": "root"

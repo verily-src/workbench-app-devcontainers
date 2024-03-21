@@ -8,8 +8,11 @@
   // re-mount bucket files on container start up
   "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u abc wb resource mount || true'",
   "features": {
-        "ghcr.io/devcontainers/features/java:1": {},
-        "ghcr.io/devcontainers/features/aws-cli:1": {}
+        "ghcr.io/devcontainers/features/java:1": {
+          "version": "17"
+        },
+        "ghcr.io/devcontainers/features/aws-cli:1": {},
+        "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
   },
   "remoteUser": "root"
 }

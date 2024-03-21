@@ -9,6 +9,7 @@
   "postStartCommand": "nohup bash -c '[[ ${templateOption:login} == true ]] && ./scripts/cirro_scanner.sh &'",
   "features": {
       "ghcr.io/devcontainers/features/aws-cli:1": {},
+      "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
       "ghcr.io/devcontainers/features/java:1": {}
   },
   "remoteUser": "root"

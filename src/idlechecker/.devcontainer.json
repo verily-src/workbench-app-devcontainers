@@ -1,0 +1,7 @@
+{
+  "name": "idle-checker",
+  "image": "mcr.microsoft.com/devcontainers/base:alpine",
+  "shutdownAction": "none",
+  "postStartCommand": "nohup bash -c './idle-checker.sh &' > /tmp/idle-checker.log 2>&1",
+  "remoteUser": "root"
+}

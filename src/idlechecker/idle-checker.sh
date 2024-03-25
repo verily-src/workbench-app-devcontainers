@@ -30,7 +30,7 @@ function create_tag() {
   echo "Creating tag vwbapp:cpu-utilization/last-active"
   INSTANCE_ID="$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
   aws ec2 create-tags \
-    --resources ${INSTANCE_ID}
+    --resources ${INSTANCE_ID} \
     --tags Key=vwbapp:${LAST_ACTIVE_KEY},Value="$1"
 }
 readonly -f create_tag

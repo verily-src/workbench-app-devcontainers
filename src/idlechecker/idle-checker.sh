@@ -62,7 +62,7 @@ readonly -f set_cpu_last_active
 declare LOAD
 while true; do
   LOAD="$(awk '{print $1}' /proc/loadavg)" # 1-minute average load
-  emit "cpu load is $load"
+  emit "cpu load is ${LOAD}"
   # Check if the LOAD has exceeded the THRESHOLD.  
   # Note the use of awk for comparison of real numbers.  
   if echo "${THRESHOLD}" "${LOAD}" | awk '{if ($1 > $2) exit 0; else exit 1}'; then

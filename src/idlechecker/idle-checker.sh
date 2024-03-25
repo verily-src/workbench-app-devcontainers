@@ -15,7 +15,7 @@
 # - bc https://manpages.ubuntu.com/manpages/trusty/en/man1/bc.1.html
 
 set -o errexit
-
+set -o nounset
 set -o pipefail
 set -o xtrace
 
@@ -38,8 +38,8 @@ readonly -f set_guest_attributes
 
 function create_tag() {
   emit "Creating tag vwbapp:cpu-utilization/last-active"
-  id="$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
   local id
+  id="$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
   aws ec2 create-tags \
     --resources "${id}" \
     --tags Key=vwbapp:${LAST_ACTIVE_KEY},Value="$1"

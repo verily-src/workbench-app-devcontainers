@@ -16,7 +16,7 @@ set -o xtrace
 
 # threshold - threshold for cpu usage, used to determine if instance is idle. If usage goes above this number count resets to zero. By default 0.1 (10 percent)
 readonly threshold="${THRESHOLD:-0.1}"
-readonly LAST_ACTIVE_KEY="cpu-utilization/last-active"
+readonly LAST_ACTIVE_KEY="last-active/cpu"
 
 function set_guest_attributes() {
   echo "Setting cpu-utilization/last-active"

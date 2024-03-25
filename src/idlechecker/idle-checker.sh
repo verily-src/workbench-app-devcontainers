@@ -7,6 +7,7 @@
 #
 # - AWS CLI is installed
 # - CLOUD: cloud platform VM is running on
+# - bc https://manpages.ubuntu.com/manpages/trusty/en/man1/bc.1.html
 
 set -o errexit
 set -o nounset
@@ -35,7 +36,7 @@ function create_tag() {
 readonly -f create_tag
 
 function set_cpu_last_active() {
-  now = $(date +'%s')
+  now=$(date +'%s')
   if [[ "${CLOUD}" == "gcp" ]]; then
     set_guest_attributes "${now}"
   else

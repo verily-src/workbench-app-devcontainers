@@ -4,6 +4,9 @@
   "shutdownAction": "none",
   "postStartCommand": "nohup bash -c './idle-checker.sh &' > /tmp/idle-checker.log 2>&1",
   "features": {
+        "ghcr.io/devcontainers-contrib/features/apt-get-packages:1": {
+          "packages": "bc"
+        },
         "ghcr.io/devcontainers/features/aws-cli:1": {}
    },
   "containerEnv": {

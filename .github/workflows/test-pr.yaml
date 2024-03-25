@@ -41,7 +41,7 @@ jobs:
     needs: [detect-changes]
     runs-on: ubuntu-latest
     continue-on-error: true
-    if : ${{ needs.detect-changes.outputs.templates != [] }}
+    if : ${{ needs.detect-changes.outputs.templates != '[]' }}
     strategy:
       matrix:
         templates: ${{ fromJSON(needs.detect-changes.outputs.templates) }}

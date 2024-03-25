@@ -2,21 +2,18 @@
 
 # idle-checker.sh checks for cpu utilization of the VM and update last active timestamp if the CPU utilization
 # is above a given threshold.
-
-# threshold - threshold for cpu usage, used to determine if instance is idle. If usage goes above this number count resets to zero. By default 0.1 (10 percent)
+#
+# Note that this script is dependent on some variables and packages being set up:
+#
+# - AWS CLI is installed
+# - CLOUD: cloud platform VM is running on
 
 set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
 
-if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <gcp/aws>"
-  exit 1
-fi
-
-readonly CLOUD="${1}"
-
+# threshold - threshold for cpu usage, used to determine if instance is idle. If usage goes above this number count resets to zero. By default 0.1 (10 percent)
 readonly threshold="${THRESHOLD:-0.1}"
 readonly LAST_ACTIVE_KEY="cpu-utilization/last-active"
 

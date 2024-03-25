@@ -6,5 +6,8 @@
   "features": {
         "ghcr.io/devcontainers/features/aws-cli:1": {}
    },
+  "containerEnv": {
+    "CLOUD": "${templateOption:cloud}"
+  },
   "remoteUser": "root"
 }

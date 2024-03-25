@@ -12,7 +12,6 @@
 # - AWS CLI
 
 # - CLOUD: cloud platform VM is running on
-# - bc https://manpages.ubuntu.com/manpages/trusty/en/man1/bc.1.html
 
 set -o errexit
 set -o nounset
@@ -71,7 +70,5 @@ while true; do
   else
     set_cpu_last_active
   fi
-
   sleep 60
-
 done

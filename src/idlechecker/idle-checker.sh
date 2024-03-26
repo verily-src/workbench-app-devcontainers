@@ -11,14 +11,12 @@
 # Software:
 # - AWS CLI
 
-# - CLOUD: cloud platform VM is running on
-
 set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
 
-# threshold - threshold for cpu usage, used to determine if instance is idle. If usage goes above this number count resets to zero. By default 0.1 (10 percent)
+# THRESHOLD- threshold for cpu usage, used to determine if instance is idle. If usage goes above this number count resets to zero. By default 0.1 (10 percent)
 readonly THRESHOLD="${THRESHOLD:-0.1}"
 readonly LAST_ACTIVE_KEY="last-active/cpu"
 
@@ -47,7 +45,7 @@ readonly -f create_tag
 
 function set_cpu_last_active() {
   local now
-  now=$(date +'%s')
+  now="$(date +'%s')"
   if [[ "${CLOUD}" == "gcp" ]]; then
     set_guest_attributes "${now}"
   elif [[ "${CLOUD}" == "aws" ]]; then
@@ -62,7 +60,7 @@ readonly -f set_cpu_last_active
 declare LOAD
 while true; do
   LOAD="$(awk '{print $1}' /proc/loadavg)" # 1-minute average load
-  emit "cpu load is ${LOAD}"
+  emit "CPU load is ${LOAD}"
   # Check if the LOAD has exceeded the THRESHOLD.  
   # Note the use of awk for comparison of real numbers.  
   if echo "${THRESHOLD}" "${LOAD}" | awk '{if ($1 > $2) exit 0; else exit 1}'; then

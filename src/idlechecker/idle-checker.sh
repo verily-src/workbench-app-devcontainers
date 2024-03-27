@@ -26,7 +26,7 @@ function emit() {
 readonly -f emit
 
 function set_guest_attributes() {
-  emit "Setting cpu-utilization/last-active"
+  emit "Setting ${LAST_ACTIVE_KEY}"
   curl -s -X PUT --data "$1" \
     -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${LAST_ACTIVE_KEY}"
@@ -34,7 +34,7 @@ function set_guest_attributes() {
 readonly -f set_guest_attributes
 
 function create_tag() {
-  emit "Creating tag vwbapp:cpu-utilization/last-active"
+  emit "Creating tag vwbapp:${LAST_ACTIVE_KEY}"
   local id
   id="$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
   aws ec2 create-tags \

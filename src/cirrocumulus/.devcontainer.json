@@ -6,7 +6,7 @@
   "workspaceFolder": "/workspace",
   "postCreateCommand": ["./startupscript/post-startup.sh", "root", "/root", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
-  "postStartCommand": "nohup bash -c '[[ ${templateOption:login} == true ]] && ./scripts/cirro_scanner.sh &'",
+  "postStartCommand": "nohup bash -c '[[ ${templateOption:login} == true ]] && ./scripts/cirro_scanner.sh &'  > /tmp/cirro_scanner.log 2>&1",
   "features": {
       "ghcr.io/devcontainers/features/aws-cli:1": {},
       "ghcr.io/dhoeric/features/google-cloud-cli:1": {},

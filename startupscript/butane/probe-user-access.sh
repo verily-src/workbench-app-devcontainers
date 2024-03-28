@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# probe-user-access.sh checks for the last user access forwarded by the agent.
+# probe-user-access.sh checks for the latest user activity on the VM based on
+# cpu load and last forwarded request to the backend.
 #
 # usage: probe-user-access.sh <threshold>. 
 # If threshold is specified, it will be used to determine cpu idlenss. When cpu 

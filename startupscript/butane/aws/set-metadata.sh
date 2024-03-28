@@ -8,7 +8,7 @@ function set_metadata() {
   local key="$1"
   local value="$2"
   
-  echo "Creating tag vwbapp:$key"
+  echo "Creating tag vwbapp:${key} to ${value}"
   local id
   id="$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
 

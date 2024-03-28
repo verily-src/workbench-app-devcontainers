@@ -9,3 +9,4 @@ fi
 curl -s -X PUT --data "$2" \
     -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/$1"
+    

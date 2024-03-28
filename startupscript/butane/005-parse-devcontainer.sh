@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # parse-devcontainer.sh parses the devcontainer templates and sets template variables.
+
 set -o errexit
 set -o nounset
 set -o pipefail

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# git-clone-devcontainer.sh clones a Git repository to the VM. If branch is specified, clone the specific branch.
+# git-clone-devcontainer.sh clones a Git repository to the VM. If branch is specified, clones the specific branch.
 
 set -o errexit
 set -o nounset

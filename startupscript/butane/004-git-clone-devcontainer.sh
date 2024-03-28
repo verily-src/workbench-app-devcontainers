@@ -19,6 +19,7 @@ fi
 
 # To accommodate the use of SSH URLs for public Git repositories, set the following Git configuration:
 git config --global url.https://github.com/.insteadOf git@github.com:
+
 readonly REPO_SRC="$1"
 readonly LOCAL_REPO=/home/core/devcontainer
 if [[ $# -eq 2 ]]; then

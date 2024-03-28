@@ -19,11 +19,11 @@ PORT="$(docker inspect application-server \
   | head -n 1)"
 readonly PORT
 if [[ -z "${port}" ]]; then
-    echo "Error: Port is empty."
+    echo "Error: Application-server port is empty."
     exit 1
-else
-    echo "port is ${port}"
 fi
+
+echo "Proxy agent port should listen at port ${port}"
 
 # shellcheck source=/dev/null
 source /home/core/agent.env
@@ -36,4 +36,4 @@ docker start "proxy-agent" 2>/dev/null \
       --host="${HOSTNAME}":"${PORT}" \
       --compute-platform=EC2 \
       --shim-path="${SHIM_PATH}" \
-      --rewrite-websocket-host "${REWRITE_WEBSOCKET_HOST}"
+      --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}"

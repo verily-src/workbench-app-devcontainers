@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# install-node.sh installs Node.js on the VM.
+# install-node.sh installs Node.js on the VM. Flatcar linux does not support package manager. So
+# instead of installing node.js using package manager, we download the source code and extract it to
+# /opt.
 
 set -o errexit
 set -o nounset

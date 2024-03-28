@@ -19,8 +19,9 @@ if [[ $# -ne 3 ]]; then
 fi
 
 readonly DEVCONTAINER_PATH="$1"
-readonly CLOUD=$2
-readonly LOGIN=$3
+readonly CLOUD="$2"
+readonly LOGIN="$3"
+
 if [[ -d /home/core/devcontainer/startupscript ]]; then
     cp -r /home/core/devcontainer/startupscript "${DEVCONTAINER_PATH}"/startupscript
 fi

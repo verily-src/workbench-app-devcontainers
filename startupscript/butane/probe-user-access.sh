@@ -17,20 +17,20 @@ set -o xtrace
 source /home/core/set-metadata.sh
 
 readonly THRESHOLD="{$1:-0.1}"
-log=$(docker logs proxy-agent 2>&1 | grep 'Forwarded request to backend' | tail -1)
-if [[ -n "${log}" ]]; then
-    timestamp=$(echo "${log}" | awk '{print $1 " " $2}')
-    unix_time=$(date -d "${timestamp}" +"%s")
-    set_metadata "last-active/proxy" "${unix_time}"
+LOG=$(docker logs proxy-agent 2>&1 | grep 'Forwarded request to backend' | tail -1)
+if [[ -n "${LOG}" ]]; then
+    TIMESTAMP=$(echo "${LOG}" | awk '{print $1 " " $2}')
+    UNIX_TIME=$(date -d "${TIMESTAMP}" +"%s")
+    set_metadata "last-active/proxy" "${UNIX_TIME}"
 fi
 
-load="$(awk '{print $1}' /proc/loadavg)" # 1-minute average load
-echo "CPU load is ${load}"
+LOAD="$(awk '{print $1}' /proc/loadavg)" # 1-minute average load
+echo "CPU load is ${LOAD}"
 # Check if the LOAD has exceeded the THRESHOLD.  
 # Note the use of awk for comparison of real numbers.  
-if echo "${THRESHOLD}" "${load}" | awk '{if ($1 > $2) exit 0; else exit 1}'; then
+if echo "${THRESHOLD}" "${LOAD}" | awk '{if ($1 > $2) exit 0; else exit 1}'; then
     echo "Idling.."
 else
-    now="$(date +'%s')"
-    set_metadata "last-active/cpu" "${now}"
+    NOW="$(date +'%s')"
+    set_metadata "last-active/cpu" "${NOW}"
 fi

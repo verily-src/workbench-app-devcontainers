@@ -1,7 +1,6 @@
 #!/bin/bash
 # start-proxy-agent.sh starts the proxy agent on the VM.
 # Note: This scripts requires agent specific environment to be set in /home/core/agent.env on the VM.
-
 set -o errexit
 set -o nounset
 set -o pipefail

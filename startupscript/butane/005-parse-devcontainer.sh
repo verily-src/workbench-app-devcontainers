@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # parse-devcontainer.sh parses the devcontainer templates and sets template variables.
-set -e
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
 
 if [[ $# -ne 1 ]]; then
     echo "usage: $0 <path/to/devcontainer>"

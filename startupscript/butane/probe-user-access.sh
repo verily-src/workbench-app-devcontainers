@@ -6,12 +6,15 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+# shellcheck source=/dev/null
+source /home/core/set-metadata.sh
+
 readonly THRESHOLD="{$1:-0.1}"
 log=$(docker logs proxy-agent 2>&1 | grep 'Forwarded request to backend' | tail -1)
 if [[ -n "${log}" ]]; then
     timestamp=$(echo "${log}" | awk '{print $1 " " $2}')
     unix_time=$(date -d "${timestamp}" +"%s")
-    /home/core/set-tag.sh "last-active/proxy" "${unix_time}"
+    set_metadata "last-active/proxy" "${unix_time}"
 fi
 
 load="$(awk '{print $1}' /proc/loadavg)" # 1-minute average load
@@ -22,5 +25,5 @@ if echo "${THRESHOLD}" "${load}" | awk '{if ($1 > $2) exit 0; else exit 1}'; the
     echo "Idling.."
 else
     now="$(date +'%s')"
-    /home/core/set-tag.sh "last-active/cpu" "${now}"
+    set_metadata "last-active/cpu" "${now}"
 fi

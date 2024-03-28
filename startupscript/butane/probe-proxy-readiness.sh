@@ -3,9 +3,12 @@
 # This script requires docker to be running on the VM.
 set -e
 
+# shellcheck source=/dev/null
+source /home/core/set-metadata.sh
+
 if docker ps -q --filter "name=proxy-agent" | grep -q . && docker ps -q --filter "name=application-server" | grep -q .; then
     echo "Proxy is ready."
-    /home/core/set_guest_attributes.sh "startup_script/status"
+    set_metadata "startup_script/status" "COMPLETE"
 else
     echo "proxy-agent or application-server is not started"
     exit 1

@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # parse-devcontainer.sh parses the devcontainer templates and sets template variables.
-
 set -e
 
 if [[ $# -ne 1 ]]; then

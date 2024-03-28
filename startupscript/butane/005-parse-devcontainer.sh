@@ -18,12 +18,12 @@ if [[ $# -ne 3 ]]; then
     usage
 fi
 
-readonly INPUT=$1
+readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD=$2
 readonly LOGIN=$3
 if [[ -d /home/core/devcontainer/startupscript ]]; then
-    cp -r /home/core/devcontainer/startupscript "${INPUT}"/startupscript
+    cp -r /home/core/devcontainer/startupscript "${DEVCONTAINER_PATH}"/startupscript
 fi
 echo "replacing devcontainer.json templateOptions"
-sed -i "s/\${templateOption:login}/${LOGIN}/g" "${INPUT}"/.devcontainer.json
-sed -i "s/\${templateOption:cloud}/${CLOUD}/g" "${INPUT}"/.devcontainer.json
+sed -i "s/\${templateOption:login}/${LOGIN}/g" "${DEVCONTAINER_PATH}"/.devcontainer.json
+sed -i "s/\${templateOption:cloud}/${CLOUD}/g" "${DEVCONTAINER_PATH}"/.devcontainer.json

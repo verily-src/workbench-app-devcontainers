@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Sets guest attributes on the GCE VM.
 function set_metadata() {
   echo "Setting ${LAST_ACTIVE_KEY}"

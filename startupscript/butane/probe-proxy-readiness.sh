@@ -1,6 +1,8 @@
 #!/bin/bash
+
 # probe-proxy-readiness.sh checks if the proxy is up and running.
 # This script requires docker to be running on the VM.
+
 set -o errexit
 set -o nounset
 set -o pipefail

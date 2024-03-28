@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # probe-user-access.sh checks for the last user access forwarded by the agent.
+
 set -o errexit
 set -o nounset
 set -o pipefail

@@ -1,6 +1,8 @@
 #!/bin/bash
+
 # start-proxy-agent.sh starts the proxy agent on the VM.
 # Note: This scripts requires agent specific environment to be set in /home/core/agent.env on the VM.
+
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -11,7 +13,7 @@ if [[ $# -ne 1 ]]; then
     exit 1
 fi
 
-readonly PROXY_IMAGE=$1
+readonly PROXY_IMAGE="$1"
 port=$(docker inspect application-server | jq -r '.[].NetworkSettings.Ports | to_entries[] | .value[] | select(.HostIp == "0.0.0.0" or .HostIp == "::") | .HostPort' | head -n 1)
 echo "got port: ${port}"
 if [[ -z "${port}" ]]; then

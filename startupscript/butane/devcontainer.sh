@@ -3,6 +3,7 @@
 # devcontainer.sh is a wrapper to run devcontainer.js.
 # Note: this script requires the devcontainer.js to be installed in /home/core/package/devcontainer.js
 # and node to be installed on the VM.
+
 set -o errexit
 set -o nounset
 set -o pipefail

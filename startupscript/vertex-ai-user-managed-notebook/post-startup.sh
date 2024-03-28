@@ -831,8 +831,8 @@ fi
 # Restart proxy to pick up the new env
 ######################################
 readonly IS_NON_GOOGLE_ACCOUNT
-IS_NON_GOOGLE_ACCOUNT="$(curl -X 'GET' "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
-                    -H 'accept: application/json' -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
+                    -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
                   | jq '.value')"
 
 if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then

@@ -6,15 +6,24 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-if [[ $# -ne 1 ]]; then
-    echo "usage: $0 <path/to/devcontainer>"
-    exit 1
+function usage {
+  echo "Usage: $0 <path/to/devcontainer> <gcp/aws> <login>"
+  echo "  devcontainer_path: folder directory of the devcontainer."
+  echo "  cloud: gcp or aws."
+  echo "  login: whether the user is logged into the workbench on startup."
+  exit 1
+}
+
+if [[ $# -ne 3 ]]; then
+    usage
 fi
 
 readonly INPUT=$1
+readonly CLOUD=$2
+readonly LOGIN=$3
 if [[ -d /home/core/devcontainer/startupscript ]]; then
     cp -r /home/core/devcontainer/startupscript "${INPUT}"/startupscript
 fi
 echo "replacing devcontainer.json templateOptions"
-sed -i "s/\${templateOption:login}/false/g" "${INPUT}"/.devcontainer.json
-sed -i "s/\${templateOption:cloud}/aws/g" "${INPUT}"/.devcontainer.json
+sed -i "s/\${templateOption:login}/${LOGIN}/g" "${INPUT}"/.devcontainer.json
+sed -i "s/\${templateOption:cloud}/${CLOUD}/g" "${INPUT}"/.devcontainer.json

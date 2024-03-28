@@ -1,6 +1,11 @@
 #!/bin/bash
 
 # probe-user-access.sh checks for the last user access forwarded by the agent.
+#
+# usage: probe-user-access.sh <threshold>. 
+# If threshold is specified, it will be used to determine cpu idlenss. When cpu 
+# average usage is lower than the threshold, we determine the machine is idle.
+# The default threshold is 0.1 (10 percent).
 
 set -o errexit
 set -o nounset

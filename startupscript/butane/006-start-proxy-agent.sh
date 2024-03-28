@@ -18,7 +18,7 @@ PORT="$(docker inspect application-server \
   | jq -r '.[].NetworkSettings.Ports | to_entries[] | .value[] | select(.HostIp == "0.0.0.0" or .HostIp == "::") | .HostPort' \
   | head -n 1)"
 readonly PORT
-if [[ -z "${port}" ]]; then
+if [[ -z "${PORT}" ]]; then
     echo "Error: Application-server port is empty."
     exit 1
 fi

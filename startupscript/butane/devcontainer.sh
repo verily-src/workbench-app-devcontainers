@@ -23,10 +23,11 @@ fi
 export PATH="/opt/bin:$PATH"
 readonly DEVCONTAINER="node /home/core/package/devcontainer.js"
 readonly CMD="$1"
+readonly FOLDER="$2"
 if [[ "$CMD" == "build" ]]; then
-    $DEVCONTAINER build --workspace-folder "$2"
+    $DEVCONTAINER build --workspace-folder "${FOLDER}"
 elif [[ "$CMD" == "up" ]]; then
-    $DEVCONTAINER up --workspace-folder "$2"
+    $DEVCONTAINER up --workspace-folder "${FOLDER}"
 else
     echo "unknown command ${CMD}"
     exit 1

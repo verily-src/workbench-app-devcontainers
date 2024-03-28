@@ -2,8 +2,8 @@
 
 # set-tag.sh sets a tag on the EC2 instance with the given key and value.
 # It requires docker to be running on the VM.
-
 set -e
+
 if [[ $# -ne 2 ]]; then
     echo "usage: $0 <key> <value>"
     exit 1

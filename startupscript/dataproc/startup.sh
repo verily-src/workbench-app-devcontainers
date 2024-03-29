@@ -1032,20 +1032,21 @@ fi
     if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
       # Map the CLI server to the appropriate UI url
       if [[ "${TERRA_SERVER}" == "verily" ]]; then
-        ui_base_url="workbench.verily.com"
+        UI_BASE_URL="workbench.verily.com"
       else
-        ui_base_url="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
+        UI_BASE_URL="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
       fi
     else
       >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."
       exit 1
     fi
+    readonly UI_BASE_URL
 
     # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.
     # Begin banner.html modifications
 
     # Insert a workspace link into the banner title
-    readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="https://'"${ui_base_url}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
+    readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="https://'"${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
     sed -i 's#<banner-title>#<banner-title>\n'"${WORKSPACE_LINK_EL}"' \&gt; #' "${PROXY_AGENT_BANNER}"
 
     # Add target blank property to all banner links so they open in a new tab

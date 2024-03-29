@@ -827,9 +827,6 @@ if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
   "${USER_STARTUP_SCRIPT_FILE}" > ${USER_STARTUP_OUTPUT_FILE} 2>&1
 fi
 
-######################################
-# Restart proxy to pick up the new env
-######################################
 # TODO(BENCH-2612): use workbench CLI instead to get user profile.
 IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
                     -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
@@ -837,6 +834,11 @@ IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.ver
 readonly IS_NON_GOOGLE_ACCOUNT
 
 if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
+
+###########################################################
+# Start a Proxy Agent to talk to workbench proxy service
+###########################################################
+
   APP_PROXY="$(get_metadata_value "instance/attributes/terra-app-proxy")"
   readonly APP_PROXY
   TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"

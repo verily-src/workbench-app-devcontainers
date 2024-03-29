@@ -8,12 +8,13 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-if [[ $# -ne 1 ]]; then
-    echo "usage: $0 <proxyImage>"
+if [[ $# -ne 2 ]]; then
+    echo "usage: $0 <proxyImage> <GCE/EC2>"
     exit 1
 fi
 
 readonly PROXY_IMAGE="$1"
+readonly COMPUTE_PLATFORM="$2"
 PORT="$(docker inspect application-server \
   | jq -r '.[].NetworkSettings.Ports | to_entries[] | .value[] | select(.HostIp == "0.0.0.0" or .HostIp == "::") | .HostPort' \
   | head -n 1)"
@@ -33,7 +34,8 @@ docker start "proxy-agent" 2>/dev/null \
       --restart=unless-stopped \
       --net=host "${PROXY_IMAGE}" \
       --proxy="${PROXY}" \
+      --backend="${BACKEND}" \
       --host="${HOSTNAME}":"${PORT}" \
-      --compute-platform=EC2 \
+      --compute-platform="${COMPUTE_PLATFORM^^}" \
       --shim-path="${SHIM_PATH}" \
       --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}"

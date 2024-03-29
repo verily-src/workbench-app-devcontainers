@@ -18,6 +18,8 @@ if [[ $# -lt 1 ]]; then
 fi
 
 # To accommodate the use of SSH URLs for public Git repositories, set the following Git configuration:
+# Note: This script is to be run as root on Flatcar Linux. We need to set system config instead of global config because
+# the latter requires $HOME to be set and root is $HOME-less.
 git config --system url.https://github.com/.insteadOf git@github.com:
 
 readonly REPO_SRC="$1"

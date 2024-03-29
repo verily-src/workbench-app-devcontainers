@@ -830,21 +830,24 @@ fi
 ######################################
 # Restart proxy to pick up the new env
 ######################################
-IS_NON_GOOGLE_ACCOUNT=$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
+IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
                     -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-                  | jq '.value')
+                  | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT
 
 if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
-  APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
+  APP_PROXY="$(get_metadata_value "instance/attributes/terra-app-proxy")"
   readonly APP_PROXY
   TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
   readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME
   if [[ -n "${APP_PROXY}" ]]; then
     emit "Using custom Proxy Agent"
-    RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
+    RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
     NEW_PROXY="https://${APP_PROXY}"
     NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+    readonly RESOURCE_ID
+    readonly NEW_PROXY
+    readonly NEW_PROXY_URL
 
     # Create a systemd service to start the workbench app proxy.
     cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
@@ -865,7 +868,7 @@ EOF
     systemctl daemon-reload
     systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
     systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-    emit "Workbench proxy Agent service started"
+    emit "Workbench Proxy Agent service started"
   
     # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
     ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"

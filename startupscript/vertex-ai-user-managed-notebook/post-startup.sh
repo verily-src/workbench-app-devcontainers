@@ -827,21 +827,33 @@ if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
   "${USER_STARTUP_SCRIPT_FILE}" > ${USER_STARTUP_OUTPUT_FILE} 2>&1
 fi
 
-######################################
-# Restart proxy to pick up the new env
-######################################
-APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
-readonly APP_PROXY
-TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
-readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME
-if [[ -n "${APP_PROXY}" ]]; then
-  emit "Using custom Proxy Agent"
-  RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
-  NEW_PROXY="https://${APP_PROXY}"
-  NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+# TODO(BENCH-2612): use workbench CLI instead to get user profile.
+IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
+                    -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+                  | jq '.value')"
+readonly IS_NON_GOOGLE_ACCOUNT
 
-  # Create a systemd service to start the workbench app proxy.
-  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
+if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
+
+###########################################################
+# Start a Proxy Agent to talk to workbench proxy service
+###########################################################
+
+  APP_PROXY="$(get_metadata_value "instance/attributes/terra-app-proxy")"
+  readonly APP_PROXY
+  TERRA_GCP_NOTEBOOK_RESOURCE_NAME="$(get_metadata_value "instance/attributes/terra-gcp-notebook-resource-name")"
+  readonly TERRA_GCP_NOTEBOOK_RESOURCE_NAME
+  if [[ -n "${APP_PROXY}" ]]; then
+    emit "Using custom Proxy Agent"
+    RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
+    NEW_PROXY="https://${APP_PROXY}"
+    NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+    readonly RESOURCE_ID
+    readonly NEW_PROXY
+    readonly NEW_PROXY_URL
+
+    # Create a systemd service to start the workbench app proxy.
+    cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
 [Unit]
 Description=Workbench App Proxy Agent Service
 StartLimitIntervalSec=600
@@ -855,21 +867,22 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-  # Enable and start the startup service
-  systemctl daemon-reload
-  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  emit "Workbench proxy Agent service started"
+    # Enable and start the startup service
+    systemctl daemon-reload
+    systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+    systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+    emit "Workbench Proxy Agent service started"
   
-  # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
-  ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
-  emit "Updating app-proxy-url metadata"
+    # Set vertex AI metadata 'app-proxy-url' which UI exposes to users to access the VM.
+    ${RUN_AS_LOGIN_USER} "wb resource update gcp-notebook --name=${TERRA_GCP_NOTEBOOK_RESOURCE_NAME} --new-metadata=app-proxy-url=${NEW_PROXY_URL}"
+    emit "Updating app-proxy-url metadata"
 
-  cat << EOF >> "${NOTEBOOK_CONFIG}"
+    cat << EOF >> "${NOTEBOOK_CONFIG}"
 
 c.ServerApp.allow_origin_pat += "|(^https://${NEW_PROXY_URL}$)"
 
 EOF
+  fi
 fi
 
 # Indicate the end of Workbench customizations of the jupyter_notebook_config.py

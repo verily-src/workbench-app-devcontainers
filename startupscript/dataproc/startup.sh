@@ -771,21 +771,30 @@ EOF
 chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASHRC}"
 chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 
+# TODO(BENCH-2612): use workbench CLI instead to get user profile.
+IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
+                    -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+                  | jq '.value')"
+readonly IS_NON_GOOGLE_ACCOUNT
 
+if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
 ###################################
 # Start workbench app proxy agent 
 ###################################
 
-APP_PROXY=$(get_metadata_value "instance/attributes/terra-app-proxy")
-readonly APP_PROXY
-if [[ -n "${APP_PROXY}" ]]; then
-  emit "Using custom Proxy Agent"
-  RESOURCE_ID=$(get_metadata_value "instance/attributes/terra-resource-id")
-  NEW_PROXY="https://${APP_PROXY}"
-  NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+  APP_PROXY="$(get_metadata_value "instance/attributes/terra-app-proxy")"
+  readonly APP_PROXY
+  if [[ -n "${APP_PROXY}" ]]; then
+    emit "Using custom Proxy Agent"
+    RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
+    NEW_PROXY="https://${APP_PROXY}"
+    NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
+    readonly RESOURCE_ID
+    readonly NEW_PROXY
+    readonly NEW_PROXY_URL
 
-  # Create a systemd service to start the workbench app proxy.
-  cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
+    # Create a systemd service to start the workbench app proxy.
+    cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
 [Unit]
 Description=Workbench App Proxy Agent Service
 
@@ -797,11 +806,12 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
-  # Enable and start the workbench app proxy agent service
-  systemctl daemon-reload
-  systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-  emit "Workbench proxy Agent service started"
+    # Enable and start the workbench app proxy agent service
+    systemctl daemon-reload
+    systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+    systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+    emit "Workbench Proxy Agent service started"
+  fi
 fi
 
 ###################################
@@ -1012,50 +1022,52 @@ fi
     emit "Starting Hail install script..."
     ${RUN_PYTHON} ${HAIL_SCRIPT_PATH}
   fi
-
-  #################################
-  # Configure Proxy Agent Overrides
-  #################################
-
-  # Map the CLI server to the appropriate UI url
-  if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+  
+  if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "false" ]]; then
+  ######################################################
+  # Configure the original (non-workbench) proxy agent
+  ######################################################
+    emit "Configuring the original Proxy Agent banner for Google account..."
     # Map the CLI server to the appropriate UI url
-    if [[ "${TERRA_SERVER}" == "verily" ]]; then
-      ui_base_url="workbench.verily.com"
+    if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+      # Map the CLI server to the appropriate UI url
+      if [[ "${TERRA_SERVER}" == "verily" ]]; then
+        UI_BASE_URL="workbench.verily.com"
+      else
+        UI_BASE_URL="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
+      fi
     else
-      ui_base_url="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
+      >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."
+      exit 1
     fi
-  else
-    >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."
-    exit 1
-  fi
+    readonly UI_BASE_URL
 
-  # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.
-  # Begin banner.html modifications
+    # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.
+    # Begin banner.html modifications
 
-  # Insert a workspace link into the banner title
-  readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="https://'"${ui_base_url}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
-  sed -i 's#<banner-title>#<banner-title>\n'"${WORKSPACE_LINK_EL}"' \&gt; #' "${PROXY_AGENT_BANNER}"
+    # Insert a workspace link into the banner title
+    readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="https://'"${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
+    sed -i 's#<banner-title>#<banner-title>\n'"${WORKSPACE_LINK_EL}"' \&gt; #' "${PROXY_AGENT_BANNER}"
 
-  # Add target blank property to all banner links so they open in a new tab
-  sed -i 's#class="forum"#class="forum" target="_blank"#g' "${PROXY_AGENT_BANNER}"
+    # Add target blank property to all banner links so they open in a new tab
+    sed -i 's#class="forum"#class="forum" target="_blank"#g' "${PROXY_AGENT_BANNER}"
 
-  # Remove flex styling from the banner-account css class to prevent banner content from wrapping
-  sed -i '#banner-account {#,#}#{#flex:#d;#-ms-flex:#d;#-webkit-flex:#d;}' "${PROXY_AGENT_BANNER}"
+    # Remove flex styling from the banner-account css class to prevent banner content from wrapping
+    sed -i '#banner-account {#,#}#{#flex:#d;#-ms-flex:#d;#-webkit-flex:#d;}' "${PROXY_AGENT_BANNER}"
 
-  # Add css class for a#workspace before a#project
-  sed -i '/a#project {/i\
+    # Add css class for a#workspace before a#project
+    sed -i '/a#project {/i\
 a#workspace {\
   color:white;\
   text-decoration:none;\
   padding:4px;\
 }' "${PROXY_AGENT_BANNER}"
 
-  # End banner.html modifications
+    # End banner.html modifications
 
-  # restart proxy agent
-  systemctl restart "${PROXY_AGENT_SERVICE}"
-
+    # restart proxy agent
+    systemctl restart "${PROXY_AGENT_SERVICE}"
+  fi
   ###########################
   # Configure Jupyter service
   ###########################
@@ -1072,7 +1084,7 @@ EOF
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
   
-  if [[ -n "${APP_PROXY}" ]]; then
+  if [[ -n "${APP_PROXY}" ]] && [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
     cat << EOF >> "${JUPYTER_CONFIG}"
 c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"
 c.NotebookApp.allow_remote_access= True
@@ -1087,7 +1099,7 @@ EOF
 EOF
 
   # Restart jupyter to load configurations
-  systemctl restart ${JUPYTER_SERVICE_NAME}
+  systemctl restart "${JUPYTER_SERVICE_NAME}"
 )" &
 
 # reload systemctl daemon to load the updated jupyter configuration

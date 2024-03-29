@@ -18,7 +18,7 @@ source /home/core/set-metadata.sh
 
 THRESHOLD="${1:-0.1}"
 readonly CONTAINER_NAME="proxy-agent"
-if [[ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" )" == "true"]]; then
+if [[ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}")" == "true" ]]; then
     # Tolerates pipefail here when there's no matching log.
     # example logs: 2024/03/29 16:15:58 Forwarded request to backend
     LOG="$(docker logs "${CONTAINER_NAME}" 2>&1 | grep 'Forwarded request to backend' | tail -1 || true)"

@@ -16,12 +16,20 @@ set -o xtrace
 # shellcheck source=/dev/null
 source /home/core/set-metadata.sh
 
-readonly THRESHOLD="{$1:-0.1}"
-LOG=$(docker logs proxy-agent 2>&1 | grep 'Forwarded request to backend' | tail -1)
-if [[ -n "${LOG}" ]]; then
-    TIMESTAMP=$(echo "${LOG}" | awk '{print $1 " " $2}')
-    UNIX_TIME=$(date -d "${TIMESTAMP}" +"%s")
-    set_metadata "last-active/proxy" "${UNIX_TIME}"
+if [[ $# -eq 1 ]]; then
+    THRESHOLD="$1"
+else
+    THRESHOLD="0.1"
+fi
+readonly THRESHOLD
+readonly CONTAINER_NAME="proxy-agent"
+if [ "$( docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" )" = "true" ]; then
+    LOG="$(docker logs "${CONTAINER_NAME}" 2>&1 | grep 'Forwarded request to backend' | tail -1 || true)"
+    if [[ -n "${LOG}" ]]; then
+        TIMESTAMP=$(echo "${LOG}" | awk '{print $1 " " $2}')
+        UNIX_TIME=$(date -d "${TIMESTAMP}" +"%s")
+        set_metadata "last-active/proxy" "${UNIX_TIME}"
+    fi
 fi
 
 LOAD="$(awk '{print $1}' /proc/loadavg)" # 1-minute average load

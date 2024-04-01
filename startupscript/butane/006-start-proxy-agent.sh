@@ -43,6 +43,7 @@ if [[ -f "/home/core/metadata-utils.sh" ]]; then
         options+=("--debug=true")
     fi
 fi
+
 docker start "proxy-agent" 2>/dev/null \
   || docker run \
       -d \

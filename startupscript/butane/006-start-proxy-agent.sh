@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # start-proxy-agent.sh starts the proxy agent on the VM.
-# Note: This scripts requires agent specific environment to be set in /home/core/agent.env on the VM.
+# Note: This scripts requires agent specific environment to be set in /home/core/agent.env on the VM and
+# get-metadata.sh script to be present in /home/core to get guest attributes for GCE and tag for EC2.
 
 set -o errexit
 set -o nounset
@@ -32,8 +33,17 @@ options=()
 if [[ "${COMPUTE_PLATFORM^^}" == "GCE" ]]; then
     options+=("--backend=${BACKEND}")
 fi
+
+#shellcheck source=/dev/null
+source /home/core/get-metadata.sh
+TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
+readonly TERRA_SERVER
+if [[ "${TERRA_SERVER}" == "verily-devel" ]]; then
+    options+=("--debug=true")
+fi
 docker start "proxy-agent" 2>/dev/null \
   || docker run \
+      -d \
       --name "proxy-agent" \
       --restart=unless-stopped \
       --net=host "${PROXY_IMAGE}" \

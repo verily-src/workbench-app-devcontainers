@@ -2,7 +2,7 @@
 
 # start-proxy-agent.sh starts the proxy agent on the VM.
 # Note: This scripts requires agent specific environment to be set in /home/core/agent.env on the VM and
-# get-metadata.sh script to be present in /home/core to get guest attributes for GCE and tag for EC2.
+# metadata-utils.sh script to be present in /home/core to get guest attributes for GCE and tag for EC2.
 
 set -o errexit
 set -o nounset

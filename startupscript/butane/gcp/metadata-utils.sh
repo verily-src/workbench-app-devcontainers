@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# metadata-utils.sh defines functions for gcp instance attributes and guest attributes.
+# metadata-utils.sh defines functions for gcp instance attributes and guest attributes. This script is intended to be sourced from other scripts
+# to retrieve or modify instance attributes. It is run on the VM host.
 
 # Defines a function to retrieve an instance attributes set on the VM.
 function get_metadata_value() {

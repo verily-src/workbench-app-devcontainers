@@ -41,6 +41,7 @@ readonly TERRA_SERVER
 if [[ "${TERRA_SERVER}" == "verily-devel" ]]; then
     options+=("--debug=true")
 fi
+
 docker start "proxy-agent" 2>/dev/null \
   || docker run \
       -d \

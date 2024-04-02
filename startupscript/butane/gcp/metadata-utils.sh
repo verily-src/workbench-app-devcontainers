@@ -15,3 +15,14 @@ function get_metadata_value() {
     "http://metadata/computeMetadata/v1/instance/attributes/${metadata_path}"
 }
 readonly -f get_metadata_value 
+
+# Sets guest attributes on the GCE VM.
+function set_metadata() {
+    local key="$1"  
+    local value="$2" 
+    echo "Setting metadata ${key} to ${value}"
+    curl -s -X PUT --data "${value}" \
+        -H "Metadata-Flavor: Google" \
+        "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${key}"
+}
+readonly -f set_metadata

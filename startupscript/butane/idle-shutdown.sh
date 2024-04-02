@@ -16,8 +16,7 @@ readonly IDLE_TIMEOUT_SECONDS
 
 # Get the last time the VM was active.
 declare LAST_ACTIVE
-LAST_ACTIVE=$(get_guest_attribute "last-active/boot" || echo "0")
-LAST_ACTIVE_CPU=$(get_guest_attribute "last-active/cpu" || echo "0")
+LAST_ACTIVE=$(get_guest_attribute "last-active/cpu" || echo "0")
 LAST_ACTIVE_PROXY=$(get_guest_attribute "last-active/proxy" || echo "0")
 
 # Compare the last active time from CPU to last boot time.

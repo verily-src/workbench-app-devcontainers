@@ -14,7 +14,7 @@ set -o pipefail
 set -o xtrace
 
 # shellcheck source=/dev/null
-source /home/core/set-metadata.sh
+source /home/core/metadata-utils.sh
 
 THRESHOLD="${1:-0.1}"
 readonly CONTAINER_NAME="proxy-agent"

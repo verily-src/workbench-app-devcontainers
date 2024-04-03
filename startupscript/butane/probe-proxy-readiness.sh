@@ -9,7 +9,7 @@ set -o pipefail
 set -o xtrace
 
 # shellcheck source=/dev/null
-source /home/core/set-metadata.sh
+source /home/core/metadata-utils.sh
 
 if docker ps -q --filter "name=proxy-agent" | grep -q . \
     && docker ps -q --filter "name=application-server" | grep -q .; then

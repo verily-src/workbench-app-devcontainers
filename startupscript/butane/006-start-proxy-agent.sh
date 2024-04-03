@@ -34,14 +34,12 @@ if [[ "${COMPUTE_PLATFORM^^}" == "GCE" ]]; then
     options+=("--backend=${BACKEND}")
 fi
 
-if [[ -f "/home/core/metadata-utils.sh" ]]; then
-    #shellcheck source=/dev/null
-    source /home/core/metadata-utils.sh
-    TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
-    readonly TERRA_SERVER
-    if [[ "${TERRA_SERVER}" == "verily-devel" ]]; then
-        options+=("--debug=true")
-    fi
+#shellcheck source=/dev/null
+source /home/core/metadata-utils.sh
+TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
+readonly TERRA_SERVER
+if [[ "${TERRA_SERVER}" == "verily-devel" ]]; then
+    options+=("--debug=true")
 fi
 
 docker start "proxy-agent" 2>/dev/null \

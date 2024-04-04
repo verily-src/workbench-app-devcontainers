@@ -34,10 +34,6 @@ readonly -f get_guest_attribute
 
 # Sets tags on the EC2 instance with the given key and value.
 function set_metadata() {
-  if [[ -z "$2" ]]; then
-    echo "usage: set_metadata <key> <value>"
-    exit 1
-  fi
   local key="$1"
   local value="$2"
   

@@ -31,10 +31,6 @@ readonly -f get_guest_attribute
 
 # Sets guest attributes on the GCE VM.
 function set_metadata() {
-  if [[ -z "$2" ]]; then
-    echo "usage: set_metadata <key> <value>"
-    exit 1
-  fi
   local key="$1"  
   local value="$2" 
   echo "Setting guest attributes ${key} to ${value}"

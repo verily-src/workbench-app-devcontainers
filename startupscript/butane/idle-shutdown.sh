@@ -9,6 +9,11 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+function emit() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') $*"
+}
+readonly -f emit
+
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 
@@ -25,14 +30,14 @@ if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
     LAST_ACTIVE="${LAST_ACTIVE_PROXY}"
 fi
 readonly LAST_ACTIVE
-echo "Last active time: ${LAST_ACTIVE}"
+emit "Last active time: ${LAST_ACTIVE}"
 
 NOW="$(date +'%s')"
 readonly NOW
 
 # Check if the VM has been idle for longer than the timeout.
 if [[ $((NOW - LAST_ACTIVE)) -gt IDLE_TIMEOUT_SECONDS ]]; then
-    echo "Shutting down the VM due to inactivity."
+    emit "Shutting down the VM. Last active time: ${LAST_ACTIVE}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
     shutdown -h now
 fi
 

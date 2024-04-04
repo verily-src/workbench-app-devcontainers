@@ -37,7 +37,7 @@ readonly NOW
 
 # Check if the VM has been idle for longer than the timeout.
 if [[ $((NOW - LAST_ACTIVE)) -gt IDLE_TIMEOUT_SECONDS ]]; then
-    emit "Shutting down the VM. Last active time: ${LAST_ACTIVE}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
+    emit "Shutting down the VM. Now time: ${NOW}. Last active time: ${LAST_ACTIVE}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
     shutdown -h now
 fi
 

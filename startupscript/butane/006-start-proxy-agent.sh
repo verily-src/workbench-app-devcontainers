@@ -30,7 +30,10 @@ echo "Proxy agent port should listen at port ${PORT}"
 # shellcheck source=/dev/null
 source /home/core/agent.env
 options=()
+OPTIONS=()
 if [[ "${COMPUTE_PLATFORM^^}" == "GCE" ]]; then
+    OPTIONS+=("--backend=${BACKEND}")
+fi
     options+=("--backend=${BACKEND}")
 fi
 
@@ -39,10 +42,21 @@ source /home/core/metadata-utils.sh
 TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
 readonly TERRA_SERVER
 if [[ "${TERRA_SERVER}" == "verily-devel" ]]; then
-    options+=("--debug=true")
+    OPTIONS+=("--debug=true")
 fi
 
 docker start "proxy-agent" 2>/dev/null \
+  || docker run \
+      --detach \
+      --name "proxy-agent" \
+      --restart=unless-stopped \
+      --net=host "${PROXY_IMAGE}" \
+      --proxy="${PROXY}" \
+      --host="${HOSTNAME}":"${PORT}" \
+      --compute-platform="${COMPUTE_PLATFORM^^}" \
+      --shim-path="${SHIM_PATH}" \
+      --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}" \
+      "${OPTIONS[@]}"
   || docker run \
       --detach \
       --name "proxy-agent" \

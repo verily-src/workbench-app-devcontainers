@@ -29,12 +29,9 @@ echo "Proxy agent port should listen at port ${PORT}"
 
 # shellcheck source=/dev/null
 source /home/core/agent.env
-options=()
 OPTIONS=()
 if [[ "${COMPUTE_PLATFORM^^}" == "GCE" ]]; then
     OPTIONS+=("--backend=${BACKEND}")
-fi
-    options+=("--backend=${BACKEND}")
 fi
 
 #shellcheck source=/dev/null
@@ -57,14 +54,3 @@ docker start "proxy-agent" 2>/dev/null \
       --shim-path="${SHIM_PATH}" \
       --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}" \
       "${OPTIONS[@]}"
-  || docker run \
-      --detach \
-      --name "proxy-agent" \
-      --restart=unless-stopped \
-      --net=host "${PROXY_IMAGE}" \
-      --proxy="${PROXY}" \
-      --host="${HOSTNAME}":"${PORT}" \
-      --compute-platform="${COMPUTE_PLATFORM^^}" \
-      --shim-path="${SHIM_PATH}" \
-      --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}" \
-      "${options[@]}"

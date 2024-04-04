@@ -15,8 +15,6 @@ if docker ps -q --filter "name=proxy-agent" | grep -q . \
     && docker ps -q --filter "name=application-server" | grep -q .; then
     echo "Proxy is ready."
     set_metadata "startup_script/status" "COMPLETE"
-    NOW="$(date +'%s')"
-    set_metadata "last-active/app-ready" "${NOW}"
 else
     echo "proxy-agent or application-server is not started"
     exit 1

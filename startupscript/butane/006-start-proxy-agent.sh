@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # start-proxy-agent.sh starts the proxy agent on the VM.
-# Note: This scripts requires agent specific environment to be set in /home/core/agent.env on the VM and
+# Note: This script requires agent-specific environment to be set in /home/core/agent.env on the VM and
 # metadata-utils.sh script to be present in /home/core to get guest attributes for GCE and tag for EC2.
 
 set -o errexit
@@ -44,7 +44,7 @@ fi
 
 docker start "proxy-agent" 2>/dev/null \
   || docker run \
-      -d \
+      --detach \
       --name "proxy-agent" \
       --restart=unless-stopped \
       --net=host "${PROXY_IMAGE}" \

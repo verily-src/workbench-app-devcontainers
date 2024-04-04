@@ -18,9 +18,8 @@ readonly -f emit
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 
-# Get the idle timeout in seconds.
-IDLE_TIMEOUT_SECONDS="$(get_metadata_value "idle-timeout-seconds" || echo "172800")"
-readonly IDLE_TIMEOUT_SECONDS
+# Get the idle timeout in seconds. By default, the VM timeout after 2 days of continued idleness.
+IDLE_TIMEOUT_SECONDS="${1:-172800}"
 
 # Get the last time the VM was active.
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" || echo "0")"

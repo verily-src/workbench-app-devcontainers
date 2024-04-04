@@ -19,15 +19,10 @@ declare LAST_ACTIVE
 LAST_ACTIVE=$(get_guest_attribute "last-active/cpu" || echo "0")
 LAST_ACTIVE_PROXY=$(get_guest_attribute "last-active/proxy" || echo "0")
 
-# Compare the last active time from CPU to last boot time.
-if [[ "${LAST_ACTIVE_CPU}" -gt "${LAST_ACTIVE}" ]]; then
-    LAST_ACTIVE="${LAST_ACTIVE_CPU}"
-fi
-# Compare the last active time from proxy to the last active time.
-if [[ "${LAST_ACTIVE_PROXY}" -gt "${LAST_ACTIVE}" ]]; then
+# get the latest time between the two
+if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
     LAST_ACTIVE="${LAST_ACTIVE_PROXY}"
 fi
-readonly LAST_ACTIVE
 echo "Last active time: ${LAST_ACTIVE}"
 
 NOW=$(date +'%s')

@@ -33,6 +33,7 @@ OPTIONS=()
 if [[ "${COMPUTE_PLATFORM^^}" == "GCE" ]]; then
     OPTIONS+=("--backend=${BACKEND}")
 fi
+readonly OPTIONS
 
 #shellcheck source=/dev/null
 source /home/core/metadata-utils.sh

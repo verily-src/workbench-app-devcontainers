@@ -322,6 +322,9 @@ cat << EOF >> "${NOTEBOOK_CONFIG}"
 
 ### BEGIN: Workbench-specific customizations ###
 
+# Allow users to toggle display of hidden files in file browser
+c.ContentsManager.allow_hidden = True
+
 EOF
 
 # Update the PATH for container JupyterLab

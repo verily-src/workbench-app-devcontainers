@@ -12,7 +12,7 @@ function get_metadata_value() {
   local metadata_path="${1}"
   curl --retry 5 -s -f \
     -H "Metadata-Flavor: Google" \
-    "http://metadata/computeMetadata/v1/instance/attributes/${metadata_path}"
+    "http://metadata/computeMetadata/v1/instance/attributes/${metadata_path}" || echo ""
 }
 readonly -f get_metadata_value 
 
@@ -25,7 +25,7 @@ function get_guest_attribute() {
   local key="${1}"
   curl --retry 5 -s -f \
     -H "Metadata-Flavor: Google" \
-    "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${key}"
+    "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${key}" || echo ""
 }
 readonly -f get_guest_attribute
 

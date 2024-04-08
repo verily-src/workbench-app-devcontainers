@@ -21,6 +21,13 @@ source /home/core/metadata-utils.sh
 # Get the idle timeout in seconds. By default, the VM timeout after 2 days of continued idleness.
 IDLE_TIMEOUT_SECONDS="${1:-172800}"
 
+USER_TIMEOUT_OVERRIDE="$(get_metadata_value "idle-timeout-seconds")"
+readonly USER_TIMEOUT_OVERRIDE
+if [[ -n "${USER_TIMEOUT_OVERRIDE}" ]]; then
+    emit "Overriding idle timeout with user-specified value: ${USER_TIMEOUT_OVERRIDE}"
+    IDLE_TIMEOUT_SECONDS="${USER_TIMEOUT_OVERRIDE}"
+fi
+
 # Get the last time the VM was active.
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" || echo "0")"
 LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" || echo "0")"

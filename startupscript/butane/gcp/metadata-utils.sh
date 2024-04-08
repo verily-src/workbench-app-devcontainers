@@ -3,7 +3,7 @@
 # metadata-utils.sh defines functions for gcp instance attributes and guest attributes. This script is intended to be sourced from other scripts
 # to retrieve or modify instance attributes. It is run on the VM host.
 
-# Retrieves an instance attributes set on the VM.
+# Retrieves an instance attributes set on the VM. If the attribute is not set, it returns an empty string.
 function get_metadata_value() {
   if [[ -z "$1" ]]; then
     echo "usage: get_metadata_value <tag>"
@@ -16,7 +16,7 @@ function get_metadata_value() {
 }
 readonly -f get_metadata_value 
 
-# Retrieves instance guest attributes on GCE VM.
+# Retrieves instance guest attributes on GCE VM. If the attribute is not set, it returns an empty string.
 function get_guest_attribute() {
   if [[ -z "$1" ]]; then
     echo "usage: get_guest_attribute <key>"

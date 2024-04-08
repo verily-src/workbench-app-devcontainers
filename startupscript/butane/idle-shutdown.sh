@@ -29,8 +29,8 @@ if [[ -n "${USER_TIMEOUT_OVERRIDE}" ]]; then
 fi
 
 # Get the last time the VM was active.
-LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" || echo "0")"
-LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" || echo "0")"
+LAST_ACTIVE="$(get_guest_attribute "last-active/cpu")"
+LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy")"
 
 # get the latest time between the two
 if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then

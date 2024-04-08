@@ -4,7 +4,7 @@
 # to retrieve or modify instance tags. It is run on the VM host. AWS CLI is not installed on Flatcar VM by default so
 # we are running the AWS CLI in a container.
 
-# Retrieves an instance tag set on the VM. If the tag is not set, it returns 0.
+# Retrieves an instance tag set on the VM. If the tag is not set, it returns an empty string..
 function get_metadata_value() {
   if [[ -z "$1" ]]; then
     echo "usage: get_metadata_value <tag>"

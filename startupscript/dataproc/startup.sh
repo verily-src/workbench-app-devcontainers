@@ -1078,6 +1078,9 @@ a#workspace {\
 
 ### BEGIN: Workbench-specific customizations ###
 
+# Allow users to toggle display of hidden files in file browser
+c.ContentsManager.allow_hidden = True
+
 EOF
 
   # Remove the default GCSContentsManager and set jupyter file tree's root directory to the LOGIN_USER's home directory.

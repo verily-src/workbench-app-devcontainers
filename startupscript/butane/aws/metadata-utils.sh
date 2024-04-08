@@ -23,7 +23,7 @@ function get_metadata_value() {
     --filters "Name=resource-id,Values=${id}" "Name=key,Values=${tag_key}" \
     --query "Tags[0].Value" --output text 2>/dev/null)"
   if [[ "${tag_value}" == "None" ]]; then
-    echo "0"
+    echo ""
   else
     echo "${tag_value}"
   fi

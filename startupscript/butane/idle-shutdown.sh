@@ -21,8 +21,8 @@ source /home/core/metadata-utils.sh
 
 IDLE_TIMEOUT_SECONDS="$(get_metadata_value "idle-timeout-seconds")"
 readonly IDLE_TIMEOUT_SECONDS
-if [[ -z "${USER_TIMEOUT_OVERRIDE}" ]]; then
-    emit "No user timeout override set. Do not autostop VM."
+if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
+    emit "No idle timeout seconds set. Do not autostop VM."
     exit 0
 fi
 

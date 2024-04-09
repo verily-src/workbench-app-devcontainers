@@ -26,11 +26,18 @@ if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
     exit 0
 fi
 
+UP_TIME="$(awk '{print $1}' /proc/uptime)"
+readonly UP_TIME
+if [[ "${UP_TIME}" -lt "${IDLE_TIMEOUT_SECONDS}" ]]; then
+    emit "The VM has not been up for long enough to shut down. Uptime seconds: ${UP_TIME}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
+    exit 0
+fi
+
 # Get the last time the VM was active. Default to 0 if not set.
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
 LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"
 
-# get the latest time between the two
+# get the latest time among the three
 if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
     LAST_ACTIVE="${LAST_ACTIVE_PROXY}"
 fi

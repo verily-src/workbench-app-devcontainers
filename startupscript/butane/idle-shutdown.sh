@@ -2,8 +2,9 @@
 
 # idle-shutdown.sh shuts down the VM if it has been idle for a certain amount of time. This script is
 # run on the host VM by a systemd timer unit to check for inactivity and shut down the VM. The script
-# will be run n seconds after boot up and run every m minutes. By default, it will start checking system 
-# idleness 48 hours after boot and run every 5 minutes.
+# will be run n seconds after boot up and run every m minutes. During the VM's lifetime, if the metadata
+# for idle-timeout-seconds is set, the VM will be auto shutdown if it has been idled for n seconds. But
+# if the metadata for idle-timeout-seconds is not set, the VM will not be auto shutdown.
 
 set -o errexit
 set -o nounset
@@ -18,12 +19,16 @@ readonly -f emit
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 
-# Get the idle timeout in seconds. By default, the VM timeout after 2 days of continued idleness.
-IDLE_TIMEOUT_SECONDS="${1:-172800}"
+IDLE_TIMEOUT_SECONDS="$(get_metadata_value "idle-timeout-seconds" "")"
+readonly IDLE_TIMEOUT_SECONDS
+if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
+    emit "No idle timeout seconds set. Do not autostop VM."
+    exit 0
+fi
 
-# Get the last time the VM was active.
-LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" || echo "0")"
-LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" || echo "0")"
+# Get the last time the VM was active. Default to 0 if not set.
+LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
+LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"
 
 # get the latest time between the two
 if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then

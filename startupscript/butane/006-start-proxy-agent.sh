@@ -36,7 +36,7 @@ fi
 
 #shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
-TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
+TERRA_SERVER="$(get_metadata_value "terra-cli-server" "")"
 readonly TERRA_SERVER
 if [[ "${TERRA_SERVER}" == "verily-devel" ]]; then
     OPTIONS+=("--debug=true")

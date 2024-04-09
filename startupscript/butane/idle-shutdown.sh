@@ -19,16 +19,16 @@ readonly -f emit
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 
-IDLE_TIMEOUT_SECONDS="$(get_metadata_value "idle-timeout-seconds")"
+IDLE_TIMEOUT_SECONDS="$(get_metadata_value "idle-timeout-seconds" "")"
 readonly IDLE_TIMEOUT_SECONDS
 if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
     emit "No idle timeout seconds set. Do not autostop VM."
     exit 0
 fi
 
-# Get the last time the VM was active.
-LAST_ACTIVE="$(get_guest_attribute "last-active/cpu")"
-LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy")"
+# Get the last time the VM was active. Default to 0 if not set.
+LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
+LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"
 
 # get the latest time between the two
 if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then

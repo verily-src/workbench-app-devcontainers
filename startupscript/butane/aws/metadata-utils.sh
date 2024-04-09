@@ -4,10 +4,10 @@
 # to retrieve or modify instance tags. It is run on the VM host. AWS CLI is not installed on Flatcar VM by default so
 # we are running the AWS CLI in a container.
 
-# Retrieves an instance tag set on the VM. If the tag is not set, it returns an empty string..
+# Retrieves an instance tag set on the VM. If the tag is not set, it returns the default vaule.
 function get_metadata_value() {
-  if [[ -z "$1" ]]; then
-    echo "usage: get_metadata_value <tag>"
+  if [[ $# -lt 2 ]]; then
+    echo "usage: get_metadata_value <tag> <default-value>"
     exit 1
   fi
   local tag_key=vwbapp:"$1"
@@ -23,7 +23,7 @@ function get_metadata_value() {
     --filters "Name=resource-id,Values=${id}" "Name=key,Values=${tag_key}" \
     --query "Tags[0].Value" --output text 2>/dev/null)"
   if [[ "${tag_value}" == "None" ]]; then
-    echo ""
+    echo "${2}"
   else
     echo "${tag_value}"
   fi
@@ -32,7 +32,7 @@ readonly -f get_metadata_value
 
 # guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, we define a no-op function.
 function get_guest_attribute() {
-  get_metadata_value "$1"
+  get_metadata_value "$1" "$2"
 }
 readonly -f get_guest_attribute
 

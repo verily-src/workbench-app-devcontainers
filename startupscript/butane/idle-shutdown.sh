@@ -37,7 +37,7 @@ fi
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
 LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"
 
-# get the latest time between the two 
+# get the latest time between the two
 if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
     LAST_ACTIVE="${LAST_ACTIVE_PROXY}"
 fi

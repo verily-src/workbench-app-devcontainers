@@ -2,8 +2,9 @@
 
 # idle-shutdown.sh shuts down the VM if it has been idle for a certain amount of time. This script is
 # run on the host VM by a systemd timer unit to check for inactivity and shut down the VM. The script
-# will be run n seconds after boot up and run every m minutes. By default, it will start checking system 
-# idleness 48 hours after boot and run every 5 minutes.
+# will be run n seconds after boot up and run every m minutes. During the VM's lifetime, if the metadata
+# for idle-timeout-seconds is set, the VM will be auto shutdown if it has been idled for n seconds. But
+# if the metadata for idle-timeout-seconds is not set, the VM will not be auto shutdown.
 
 set -o errexit
 set -o nounset

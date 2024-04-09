@@ -32,15 +32,15 @@ readonly -f get_metadata_value
 
 # guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, we define a no-op function.
 function get_guest_attribute() {
-  get_metadata_value "$1" "$2"
+  get_metadata_value "${1}" "${2}"
 }
 readonly -f get_guest_attribute
 
 
 # Sets tags on the EC2 instance with the given key and value.
 function set_metadata() {
-  local key="$1"
-  local value="$2"
+  local key="${1}"
+  local value="${2}"
   
   echo "Creating tag vwbapp:${key} to ${value}"
   local token

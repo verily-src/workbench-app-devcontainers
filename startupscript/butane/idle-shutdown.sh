@@ -28,7 +28,7 @@ fi
 
 UP_TIME="$(awk '{print $1}' /proc/uptime)"
 readonly UP_TIME
-if [[ "${UP_TIME}" -lt "${IDLE_TIMEOUT_SECONDS}" ]]; then
+if echo "${UP_TIME}" "${IDLE_TIMEOUT_SECONDS}" | awk '{if ($1 < $2) exit 0; else exit 1}'; then
     emit "The VM has not been up for long enough to shut down. Uptime seconds: ${UP_TIME}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
     exit 0
 fi

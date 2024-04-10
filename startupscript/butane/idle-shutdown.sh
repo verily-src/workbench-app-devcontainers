@@ -26,7 +26,7 @@ if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
     exit 0
 fi
 
-# check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
+# Check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
 # when the uptime is longer than the idle timeout threshold. 
 UP_TIME="$(awk '{print $1}' /proc/uptime)"
 readonly UP_TIME

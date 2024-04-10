@@ -26,6 +26,15 @@ if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
     exit 0
 fi
 
+# Check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
+# when the uptime is longer than the idle timeout threshold. 
+UP_TIME="$(awk '{print $1}' /proc/uptime)"
+readonly UP_TIME
+if echo "${UP_TIME}" "${IDLE_TIMEOUT_SECONDS}" | awk '{if ($1 < $2) exit 0; else exit 1}'; then
+    emit "The VM has not been up for long enough to shut down. Uptime seconds: ${UP_TIME}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
+    exit 0
+fi
+
 # Get the last time the VM was active. Default to 0 if not set.
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
 LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"

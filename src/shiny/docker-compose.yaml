@@ -5,10 +5,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        - BASE_IMAGE=rocker/shiny  
-        # version tag of the rocker/shiny image.
-        - VARIANT=4
     restart: always
     volumes:
       - .:/workspace:cached

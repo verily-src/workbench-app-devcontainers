@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - BASE_IMAGE=rocker/shiny:latest
     restart: always
     volumes:
       - .:/workspace:cached

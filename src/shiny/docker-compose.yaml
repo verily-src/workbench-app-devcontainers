@@ -11,7 +11,7 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/rstudio:cached
+      - work:/home/shiny:cached
     ports:
       - "3838:3838"
     environment:

@@ -2,13 +2,18 @@ version: '2.4'
 services:
   app:
     container_name: "application-server"
-    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.2"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    args:
+      - VARIANT=4
+      - BASE_IMAGE=rocker/shiny  
     restart: always
     volumes:
       - .:/workspace:cached
       - work:/home/rstudio:cached
     ports:
-      - '8787:8787'
+      - "3838:3838"
     environment:
       "DISABLE_AUTH": "true"
     networks:

@@ -11,8 +11,6 @@ services:
       - work:/home/shiny:cached
     ports:
       - "3838:3838"
-    environment:
-      "DISABLE_AUTH": "true"
     networks:
       - app-network
     cap_add:

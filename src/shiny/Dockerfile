@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.5-labs
-ARG VARIANT=4
-ARG BASE_IMAGE=rocker/shiny
-FROM ${BASE_IMAGE}:${VARIANT}
+ARG BASE_IMAGE=rocker/shiny:latest
+FROM ${BASE_IMAGE}
 
 RUN rm -rf /srv/shiny-server/index.html
 

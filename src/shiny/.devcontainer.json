@@ -8,6 +8,7 @@
     "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
     "ghcr.io/devcontainers/features/java:1": {} 
   },
+  "workspaceFolder": "/workspace",
   "postCreateCommand": ["./startupscript/post-startup.sh", "shiny", "/home/shiny", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
   "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u shiny wb resource mount --allow-other || true'",

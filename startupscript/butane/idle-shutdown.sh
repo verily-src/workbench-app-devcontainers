@@ -28,10 +28,13 @@ fi
 
 # Check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
 # when the uptime is longer than the idle timeout threshold. 
-UP_TIME="$(awk '{print $1}' /proc/uptime)"
+UP_TIME="$(awk '{print int($1)}' /proc/uptime)"
 readonly UP_TIME
 if echo "${UP_TIME}" "${IDLE_TIMEOUT_SECONDS}" | awk '{if ($1 < $2) exit 0; else exit 1}'; then
     emit "The VM has not been up for long enough to shut down. Uptime seconds: ${UP_TIME}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
+    NOW="$(date +'%s')"
+    BOOT_TIME="$((NOW - UP_TIME))"
+    set_metadata "notebooks/last-activity" "${BOOT_TIME}"
     exit 0
 fi
 
@@ -45,6 +48,7 @@ if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
 fi
 readonly LAST_ACTIVE
 emit "Last active time: ${LAST_ACTIVE}"
+set_metadata "notebooks/last-activity" "${LAST_ACTIVE}"
 
 NOW="$(date +'%s')"
 readonly NOW

@@ -34,7 +34,7 @@ if echo "${UP_TIME}" "${IDLE_TIMEOUT_SECONDS}" | awk '{if ($1 < $2) exit 0; else
     emit "The VM has not been up for long enough to shut down. Uptime seconds: ${UP_TIME}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
     NOW="$(date +'%s')"
     BOOT_TIME="$((NOW - UP_TIME))"
-    set_metadata "notebooks/last-activity" "${BOOT_TIME}"
+    set_metadata "notebooks/last_activity" "${BOOT_TIME}"
     exit 0
 fi
 
@@ -48,7 +48,7 @@ if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
 fi
 readonly LAST_ACTIVE
 emit "Last active time: ${LAST_ACTIVE}"
-set_metadata "notebooks/last-activity" "${LAST_ACTIVE}"
+set_metadata "notebooks/last_activity" "${LAST_ACTIVE}"
 
 NOW="$(date +'%s')"
 readonly NOW

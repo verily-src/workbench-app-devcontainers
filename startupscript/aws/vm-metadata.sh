@@ -16,9 +16,12 @@ function get_metadata_value() {
   fi
   local tag_key=vwbapp:"$1"
 
-  INSTANCE_ID="$(wget -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
+  local imds_token
+  imds_token="$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)"
+  local instance_id
+  instance_id="$(wget --header "X-aws-ec2-metadata-token: ${imds_token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
   aws ec2 describe-tags \
-    --filters "Name=resource-id,Values=${INSTANCE_ID}" "Name=key,Values=$tag_key" \
+    --filters "Name=resource-id,Values=${instance_id}" "Name=key,Values=${tag_key}" \
     --query "Tags[0].Value" --output text 2>/dev/null
 }
 readonly -f get_metadata_value 

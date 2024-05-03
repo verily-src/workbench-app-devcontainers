@@ -31,20 +31,21 @@ function get_tag() {
 readonly -f get_tag 
 
 # EC2 instance uses tags instead of metadata. But to keep the iterface consistent with GCP, this method retrieves tags set by the user.
+# They are prefixed with vwbusr.
 function get_metadata_value() {
   get_tag "vwbusr" "${1}" "${2}"
 }
 readonly -f get_metadata_value
 
-# guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, we define a no-op function.
-# This method retrieves the attributes that are set from the instance, e.g. scripts running inside the instance.
+# guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, this method retrieves the attributes
+# that are set from the instance, e.g. scripts running inside the instance. They are prefixed with vwbapp.
 function get_guest_attribute() {
   get_tag "vwbapp" "${1}" "${2}"
 }
 readonly -f get_guest_attribute
 
 
-# Sets tags on the EC2 instance with the given key and value.
+# Sets tags on the EC2 instance with the given key and value. Tags set from the instance is prfixed with vwbapp:
 function set_metadata() {
   local key="${1}"
   local value="${2}"

@@ -3,7 +3,7 @@ services:
   app:
     container_name: "application-server"
     image: "linuxserver/libreoffice:7.2.2.2-r2-ls58"
-    restart: always
+    restart: unless-stopped
     ports:
       - '3000:3000'
     networks:

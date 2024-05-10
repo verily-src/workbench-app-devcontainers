@@ -1,0 +1,20 @@
+version: '1.0'
+services:
+  app:
+    container_name: "application-server"
+    image: "libreoffice/online:latest"
+    restart: always
+    ports:
+      - 3000:3000
+      - 3001:3001
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true

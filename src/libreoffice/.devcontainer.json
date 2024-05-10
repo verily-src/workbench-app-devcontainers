@@ -1,0 +1,8 @@
+{
+  "name": "Libreoffice app",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace/libreoffice",
+  "remoteUser": "root"
+}

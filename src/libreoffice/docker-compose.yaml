@@ -13,9 +13,8 @@ services:
     devices:
       - /dev/fuse
     security_opt:
+      - seccomp:unconfined #optional
       - apparmor:unconfined
 networks:
   app-network:
     external: true
-volumes:
-  data: 

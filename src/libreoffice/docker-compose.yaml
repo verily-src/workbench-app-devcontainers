@@ -2,7 +2,7 @@ version: '1.0'
 services:
   app:
     container_name: "application-server"
-    image: "linuxserver/libreoffice:6.4.6"
+    image: "linuxserver/libreoffice:6.4.6.2-r11-ls27"
     restart: always
     ports:
       - 3000:3000

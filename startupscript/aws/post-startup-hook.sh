@@ -12,7 +12,6 @@
 # - aws (cli from ghcr.io/devcontainers/features/aws-cli:1)
 # - emit (function)
 # - CLOUD_SCRIPT_DIR: path where AWS-specific scripts live
-# - RUN_AS_LOGIN_USER: run command as app user
 # - USER_BASH_PROFILE: path to user's ~/.bash_profile file
 # - USER_BASHRC: path to user's ~/.bashrc file
 # - USER_NAME: name of app user

@@ -21,22 +21,10 @@
 # - WORK_DIRECTORY: home directory for the user that the script is running on behalf of
 # - WORKBENCH_INSTALL_PATH: path to CLI executable
 
-readonly AWS_VAULT_INSTALL_PATH="/usr/bin/aws-vault"
-readonly AWS_VAULT_EXE_URL="https://github.com/99designs/aws-vault/releases/download/v7.2.0/aws-vault-linux-amd64"
-
-##########################################
-# Install aws-vault for credential caching
-##########################################
-emit "installing aws-vault"
-curl --no-progress-meter --location --output "${AWS_VAULT_INSTALL_PATH}" "${AWS_VAULT_EXE_URL}"
-chmod 755 "${AWS_VAULT_INSTALL_PATH}"
-
-#####################################
-# Set up aws-vault credential caching
-#####################################
-${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set cache-with-aws-vault true"
-${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set wb-path --path ${WORKBENCH_INSTALL_PATH}"
-${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path ${AWS_VAULT_INSTALL_PATH}"
+########################################################
+# Install and configure aws-vault for credential caching
+########################################################
+"${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
 
 #################################################
 # Write common environment vars to user's .bashrc
@@ -57,12 +45,15 @@ export AWS_VAULT_BACKEND="file"
 export AWS_VAULT_FILE_PASSPHRASE=""
 EOF
 
-#######################################
-# Write VWB helper functions to .bashrc
-#######################################
-cat "${CLOUD_SCRIPT_DIR}/bashrc-functions.bash" >> "${USER_BASHRC}"
+# We should only write these helper scripts if login was deferered.
+if [[ "${LOG_IN}" == "false" ]]; then
+    #######################################
+    # Write VWB helper functions to .bashrc
+    #######################################
+    cat "${CLOUD_SCRIPT_DIR}/bashrc-functions.bash" >> "${USER_BASHRC}"
 
-##################################
-# Write login prompt .bash_profile
-##################################
-cat "${CLOUD_SCRIPT_DIR}/bash-profile-append.bash" >> "${USER_BASH_PROFILE}"
+    ##################################
+    # Write login prompt .bash_profile
+    ##################################
+    cat "${CLOUD_SCRIPT_DIR}/bash-profile-append.bash" >> "${USER_BASH_PROFILE}"
+fi

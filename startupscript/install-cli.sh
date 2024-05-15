@@ -56,9 +56,17 @@ ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/work
 
 
 if [[ "${LOG_IN}" == "true" ]]; then
+
+  # For GCP use "APP_DEFAULT_CREDENTIALS", for AWS use "AWS_IAM" as --mode arg to "wb auth login".
+  LOG_IN_MODE="APP_DEFAULT_CREDENTIALS"
+  if [[ "${CLOUD}" == "aws" ]]; then
+    LOG_IN_MODE="AWS_IAM"
+  fi
+  readonly LOG_IN_MODE
+
   # Log in with app-default-credentials
-  emit "Logging into workbench CLI with application default credentials"
-  ${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
+  emit "Logging into workbench CLI with mode ${LOG_IN_MODE}"
+  ${RUN_AS_LOGIN_USER} "wb auth login --mode=${LOG_IN_MODE}"
 
   # Set the CLI workspace id using the VM metadata, if set.
   TERRA_WORKSPACE="$(get_metadata_value "terra-workspace-id")"

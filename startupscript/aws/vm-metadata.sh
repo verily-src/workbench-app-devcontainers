@@ -14,7 +14,7 @@ function get_metadata_value() {
     echo "usage: get_metadata_value <tag>"
     exit 1
   fi
-  local tag_key=vwbapp:"$1"
+  local tag_key=vwbusr:"$1"
 
   local imds_token
   imds_token="$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)"

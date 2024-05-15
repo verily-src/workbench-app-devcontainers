@@ -37,6 +37,6 @@ export AWS_VAULT_FILE_PASSPHRASE=""
 #####################################
 # Set up aws-vault credential caching
 #####################################
-${RUN_AS_LOGIN_USER} "wb config set cache-with-aws-vault true"
-${RUN_AS_LOGIN_USER} "wb config set wb-path --path ${WORKBENCH_INSTALL_PATH}"
-${RUN_AS_LOGIN_USER} "wb config set aws-vault-path --path ${AWS_VAULT_INSTALL_PATH}"
+${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set cache-with-aws-vault true"
+${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set wb-path --path ${WORKBENCH_INSTALL_PATH}"
+${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path ${AWS_VAULT_INSTALL_PATH}"

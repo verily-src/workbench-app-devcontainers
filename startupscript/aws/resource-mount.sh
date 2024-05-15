@@ -26,7 +26,7 @@ else
 fi
 
 if [[ "${LOG_IN}" == "true" ]]; then
-  "${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
+  source "${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
   ${RUN_AS_LOGIN_USER} "eval $(wb workspace configure-aws)"
   ${RUN_AS_LOGIN_USER} "wb resource mount"
 fi

@@ -23,7 +23,7 @@
 ########################################################
 # Install and configure aws-vault for credential caching
 ########################################################
-"${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
+source "${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
 
 #################################################
 # Write common environment vars to user's .bashrc

@@ -41,15 +41,15 @@ ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path
 #################################################
 # Write common environment vars to user's .bashrc
 #################################################
-WORKBENCH_WORKSPACE="$(get_metadata_value terra-workspace-id)"
-readonly WORKBENCH_WORKSPACE
-AWS_CONFIG_FILE="${USER_WORKBENCH_CONFIG_DIR}/aws/${WORKBENCH_WORKSPACE}.conf"
+WORKBENCH_WORKSPACE_UUID="$(get_metadata_value_unprefixed WorkspaceId)"
+readonly WORKBENCH_WORKSPACE_UUID
+AWS_CONFIG_FILE="${USER_WORKBENCH_CONFIG_DIR}/aws/${WORKBENCH_WORKSPACE_UUID}.conf"
 readonly AWS_CONFIG_FILE
 
 cat > "${USER_BASHRC}" << EOF
 
 # AWS-specific Workbench Configuration Environment Variables
-export WORKBENCH_WORKSPACE="${WORKBENCH_WORKSPACE}"
+export WORKBENCH_WORKSPACE_UUID="${WORKBENCH_WORKSPACE_UUID}"
 export WORKBENCH_GIT_REPOS_DIR="${WORK_DIRECTORY}/repos"
 export WORKBENCH_INSTALL_PATH="${WORKBENCH_INSTALL_PATH}"
 export AWS_CONFIG_FILE="${AWS_CONFIG_FILE}"

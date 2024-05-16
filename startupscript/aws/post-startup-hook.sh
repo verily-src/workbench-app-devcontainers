@@ -41,7 +41,7 @@ ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path
 #################################################
 # Write common environment vars to user's .bashrc
 #################################################
-WORKBENCH_WORKSPACE_UUID="$(get_metadata_value_raw WorkspaceId)"
+WORKBENCH_WORKSPACE_UUID="$(get_metadata_value_unprefixed WorkspaceId)"
 readonly WORKBENCH_WORKSPACE_UUID
 AWS_CONFIG_FILE="${USER_WORKBENCH_CONFIG_DIR}/aws/${WORKBENCH_WORKSPACE_UUID}.conf"
 readonly AWS_CONFIG_FILE

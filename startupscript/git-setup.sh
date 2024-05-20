@@ -50,7 +50,9 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # This loop replaces the logic of "wb git clone --all", which currently does not work without
 # Google Application Default Credentials being available.  This emulates the behavior of the CLI
 # command, continuing with an error message when an individual repo cannot be cloned.
-pushd "${WORKBENCH_GIT_REPOS_DIR}" || exit
+
+# shellcheck disable=SC2164
+pushd "${WORKBENCH_GIT_REPOS_DIR}"
 ${RUN_AS_LOGIN_USER} "wb resource list --type=GIT_REPO --format json" | \
   jq -c .[] | \
   while read -r ITEM; do
@@ -61,4 +63,5 @@ ${RUN_AS_LOGIN_USER} "wb resource list --type=GIT_REPO --format json" | \
         echo "git clone of ${GIT_REPO_URL} failed."
     fi
   done
-popd || exit
+# shellcheck disable=SC2164
+popd

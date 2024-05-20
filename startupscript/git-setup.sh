@@ -46,14 +46,19 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # to the git references, the corresponding git repo cloning will be skipped.
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
-pushd "${WORKBENCH_GIT_REPOS_DIR}" || exit 1
+
+# This loop replaces the logic of "wb git clone --all", which currently does not work without
+# Google Application Default Credentials being available.  This emulates the behavior of the CLI
+# command, continuing with an error message when an individual repo cannot be cloned.
+pushd "${WORKBENCH_GIT_REPOS_DIR}" || exit
 ${RUN_AS_LOGIN_USER} "wb resource list --type=GIT_REPO --format json" | \
   jq -c .[] | \
   while read -r ITEM; do
     GIT_REPO_NAME="$(echo "$ITEM" | jq -r .id)"
     GIT_REPO_URL="$(echo "$ITEM" | jq -r .gitRepoUrl)"
     if [[ ! -d "${GIT_REPO_NAME}" ]]; then
-      ${RUN_AS_LOGIN_USER} "git clone ${GIT_REPO_URL} ${GIT_REPO_NAME}"
+      ${RUN_AS_LOGIN_USER} "git clone ${GIT_REPO_URL} ${GIT_REPO_NAME}" || \
+        echo "git clone of ${GIT_REPO_URL} failed."
     fi
   done
-popd || exit 1
+popd || exit

@@ -27,5 +27,8 @@ fi
 
 if [[ "${LOG_IN}" == "true" ]]; then
   source "${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
-  ${RUN_AS_LOGIN_USER} "source ${HOME}/.bashrc && wb resource mount"
+  ${RUN_AS_LOGIN_USER} "export AWS_VAULT_BACKEND='file' && \
+    export AWS_VAULT_FILE_PASSPHRASE='' && \
+    eval  \$(wb workspace configure-aws) && \
+    wb resource mount"
 fi

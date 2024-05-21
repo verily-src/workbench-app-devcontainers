@@ -6,7 +6,7 @@
   "workspaceFolder": "/workspace",
   "postCreateCommand": ["./startupscript/post-startup.sh", "abc", "/config", "${templateOption:cloud}", "${templateOption:login}"],
   // re-mount bucket files on container start up
-  "postStartCommand": "/bin/bash -c '[[ \"${templateOption:login}\" == \"true\" ]] && sudo -u abc wb resource mount || true'",
+  "postStartCommand": ["./startupscript/remount-on-restart.sh", "abc", "/config", "${templateOption:cloud}", "${templateOption:login}"],
   "features": {
         "ghcr.io/devcontainers/features/java:1": {
           "version": "17"

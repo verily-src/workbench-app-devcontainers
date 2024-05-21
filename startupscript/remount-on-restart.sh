@@ -40,9 +40,9 @@ readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/remount-on-resta
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 
-#######################################
-# Emit a message with a timestamp
-#######################################
+##############################
+# Import utility functions
+##############################
 source "${SCRIPT_DIR}/emit.sh"
 
 #############################

@@ -7,7 +7,7 @@
 # Retrieves an instance tag set on the VM. If the tag is not set, it returns the default vaule.
 function get_tag() {
   if [[ $# -lt 3 ]]; then
-    echo "usage: get_metadata_value <prefix> <tag> <default-value>"
+    echo "usage: get_tag <prefix> <tag> <default-value>"
     exit 1
   fi
   local tag_key="$1":"$2"

@@ -28,7 +28,7 @@ fi
 
 # Check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
 # when the uptime is longer than the idle timeout threshold. 
-UP_TIME="$(awk '{print $1}' /proc/uptime)"
+UP_TIME="$(awk '{print int($1)}' /proc/uptime)"
 readonly UP_TIME
 
 # Get the last time the VM was active. Default to 0 if not set.
@@ -46,6 +46,7 @@ if [[ "${LAST_ACTIVE}" -lt "${UP_TIME}" ]]; then
 fi
 readonly LAST_ACTIVE
 emit "Last active time: ${LAST_ACTIVE}"
+set_metadata "notebooks/last_activity" "${LAST_ACTIVE}"
 
 NOW="$(date +'%s')"
 readonly NOW

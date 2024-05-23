@@ -9,6 +9,7 @@
 # and is dependent on some functions and variables already being set up and some packages already installed:
 #
 # - emit (function)
+# - CLOUD_SCRIPT_DIR: path where AWS-specific scripts live
 # - LOG_IN: whether the user is logged into workbench CLI
 # - RUN_AS_LOGIN_USER: run command as user
 
@@ -25,5 +26,9 @@ else
 fi
 
 if [[ "${LOG_IN}" == "true" ]]; then
-  ${RUN_AS_LOGIN_USER} "wb resource mount"
+  source "${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
+  ${RUN_AS_LOGIN_USER} "export AWS_VAULT_BACKEND='file' && \
+    export AWS_VAULT_FILE_PASSPHRASE='' && \
+    eval  \$(wb workspace configure-aws) && \
+    wb resource mount"
 fi

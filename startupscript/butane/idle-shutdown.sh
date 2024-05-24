@@ -26,11 +26,12 @@ if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
     exit 0
 fi
 
-# Check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
-# when the uptime is longer than the idle timeout threshold. 
+# Check uptime first because on VM reboot, the last active timestamp could still be really old. 
 UP_TIME_SECONDS="$(awk '{print int($1)}' /proc/uptime)"
 readonly UP_TIME_SECONDS
+
 NOW="$(date +'%s')"
+readonly NOW
 LAST_BOOT_TIME="$((NOW - UP_TIME_SECONDS))"
 readonly LAST_BOOT_TIME
 
@@ -50,9 +51,6 @@ fi
 readonly LAST_ACTIVE
 emit "Last active time: ${LAST_ACTIVE}"
 set_metadata "notebooks/last_activity" "${LAST_ACTIVE}"
-
-NOW="$(date +'%s')"
-readonly NOW
 
 # Check if the VM has been idle for longer than the timeout.
 if [[ $((NOW - LAST_ACTIVE)) -gt IDLE_TIMEOUT_SECONDS ]]; then

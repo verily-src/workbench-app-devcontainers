@@ -28,21 +28,24 @@ fi
 
 # Check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
 # when the uptime is longer than the idle timeout threshold. 
-UP_TIME="$(awk '{print int($1)}' /proc/uptime)"
-readonly UP_TIME
+UP_TIME_SECONDS="$(awk '{print int($1)}' /proc/uptime)"
+readonly UP_TIME_SECONDS
+NOW="$(date +'%s')"
+LAST_BOOT_TIME="$((NOW - UP_TIME_SECONDS))"
+readonly LAST_BOOT_TIME
 
 # Get the last time the VM was active. Default to 0 if not set.
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
 LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"
 
-# get the latest time between the two
-if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
+# get the latest time between the two last active timestamps
+if (( LAST_ACTIVE < LAST_ACTIVE_PROXY )); then
     LAST_ACTIVE="${LAST_ACTIVE_PROXY}"
 fi
 # get the latest time between the last boot time and the last active time. The last active timestamp could still be really old when the VM is rebooted and
 # the last active timestamp is not updated yet.
-if [[ "${LAST_ACTIVE}" -lt "${UP_TIME}" ]]; then
-    LAST_ACTIVE="${UP_TIME}"
+if (( LAST_ACTIVE < LAST_BOOT_TIME )); then
+    LAST_ACTIVE="${LAST_BOOT_TIME}"
 fi
 readonly LAST_ACTIVE
 emit "Last active time: ${LAST_ACTIVE}"

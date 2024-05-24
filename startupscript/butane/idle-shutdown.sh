@@ -26,32 +26,31 @@ if [[ -z "${IDLE_TIMEOUT_SECONDS}" ]]; then
     exit 0
 fi
 
-# Check uptime first because on VM reboot, the last active timestamp could still be really old. Only start checking for last active timestamp
-# when the uptime is longer than the idle timeout threshold. 
-UP_TIME="$(awk '{print int($1)}' /proc/uptime)"
-readonly UP_TIME
-if echo "${UP_TIME}" "${IDLE_TIMEOUT_SECONDS}" | awk '{if ($1 < $2) exit 0; else exit 1}'; then
-    emit "The VM has not been up for long enough to shut down. Uptime seconds: ${UP_TIME}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
-    NOW="$(date +'%s')"
-    BOOT_TIME="$((NOW - UP_TIME))"
-    set_metadata "notebooks/last_activity" "${BOOT_TIME}"
-    exit 0
-fi
+# Check uptime first because on VM reboot, the last active timestamp could still be really old. 
+UP_TIME_SECONDS="$(awk '{print int($1)}' /proc/uptime)"
+readonly UP_TIME_SECONDS
+
+NOW="$(date +'%s')"
+readonly NOW
+LAST_BOOT_TIME="$((NOW - UP_TIME_SECONDS))"
+readonly LAST_BOOT_TIME
 
 # Get the last time the VM was active. Default to 0 if not set.
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
 LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"
 
-# get the latest time between the two
-if [[ "${LAST_ACTIVE}" -lt "${LAST_ACTIVE_PROXY}" ]]; then
+# get the latest time between the two last active timestamps
+if (( LAST_ACTIVE < LAST_ACTIVE_PROXY )); then
     LAST_ACTIVE="${LAST_ACTIVE_PROXY}"
+fi
+# get the latest time between the last boot time and the last active time. The last active timestamp could still be really old when the VM is rebooted and
+# the last active timestamp is not updated yet.
+if (( LAST_ACTIVE < LAST_BOOT_TIME )); then
+    LAST_ACTIVE="${LAST_BOOT_TIME}"
 fi
 readonly LAST_ACTIVE
 emit "Last active time: ${LAST_ACTIVE}"
 set_metadata "notebooks/last_activity" "${LAST_ACTIVE}"
-
-NOW="$(date +'%s')"
-readonly NOW
 
 # Check if the VM has been idle for longer than the timeout.
 if [[ $((NOW - LAST_ACTIVE)) -gt IDLE_TIMEOUT_SECONDS ]]; then

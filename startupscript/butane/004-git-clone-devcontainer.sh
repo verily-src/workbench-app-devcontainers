@@ -24,6 +24,8 @@ git config --system url.https://github.com/.insteadOf git@github.com:
 
 readonly REPO_SRC="$1"
 readonly LOCAL_REPO=/home/core/devcontainer
+# Skip on reboot when the devcontainer is already cloned. Because we modify devcontainer template after cloning, pulling
+# will fail.
 if [[ -d "${LOCAL_REPO}/.git" ]]; then
     echo "Git repo already exists, skip cloning..."
 else

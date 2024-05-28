@@ -24,9 +24,13 @@ git config --system url.https://github.com/.insteadOf git@github.com:
 
 readonly REPO_SRC="$1"
 readonly LOCAL_REPO=/home/core/devcontainer
-if [[ $# -eq 2 ]]; then
-    readonly GIT_BRANCH="$2"
-    git clone "${REPO_SRC}" -b "${GIT_BRANCH}" "${LOCAL_REPO}" 2> /dev/null || git -C "${LOCAL_REPO}" pull
+if [[ -d "${LOCAL_REPO}/.git" ]]; then
+    echo "Git repo already exists, skip cloning..."
 else
-    git clone "${REPO_SRC}" "${LOCAL_REPO}" 2> /dev/null || git -C "${LOCAL_REPO}" pull
+    if [[ $# -eq 2 ]]; then
+        readonly GIT_BRANCH="$2"
+        git clone "${REPO_SRC}" -b "${GIT_BRANCH}" "${LOCAL_REPO}"
+    else
+        git clone "${REPO_SRC}" "${LOCAL_REPO}"
+    fi
 fi

@@ -4,7 +4,7 @@
 # kept separate so that these functions can be linted with shellcheck.
 
 function configure_workspace() {
-  "${WORKBENCH_INSTALL_PATH}" workspace set --uuid "${WORKBENCH_WORKSPACE}"
+  "${WORKBENCH_INSTALL_PATH}" workspace set --uuid "${WORKBENCH_WORKSPACE_UUID}"
   "${WORKBENCH_INSTALL_PATH}" workspace configure-aws --cache-with-aws-vault=true
   "${WORKBENCH_INSTALL_PATH}" resource mount
 }

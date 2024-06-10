@@ -4,5 +4,6 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace/libreoffice",
+  "postStartCommand": "/bin/bash -c 'sudo journalctl -f -u devcontainer.service > /tmp/system_logs.log & sleep 10; gsutil cp /tmp/system_logs.log gs://mountbucket-terra-vdevel-clean-pear-6753/debugging'",
   "remoteUser": "root"
 }

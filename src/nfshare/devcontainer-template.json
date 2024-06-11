@@ -1,0 +1,31 @@
+{
+    "id": "nfshared",
+    "version": "0.1.0",
+    "name": "nf shared",
+    "description": "A Template to nf shared on workbench",
+    "documentationURL": "https://github.com/yonghaoy/workbench-app-devcontainers/tree/master/src/libreoffice",
+    "licenseURL": "https://github.com/yonghaoy/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp",
+                "aws"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

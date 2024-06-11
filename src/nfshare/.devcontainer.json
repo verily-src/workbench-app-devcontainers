@@ -1,0 +1,10 @@
+{
+  "name": "nf-shard",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": ["./startupscript/post-startup.sh", "abc", "/config", "${templateOption:cloud}", "${templateOption:login}"],
+  "postStartCommand": "/bin/bash -c 'sudo journalctl -u devcontainer.service > /tmp/system_logs.log & sleep 10; gsutil cp /tmp/system_logs.log gs://mountbucket-terra-vdevel-clean-pear-6753/debugging'",
+  "remoteUser": "root"
+}

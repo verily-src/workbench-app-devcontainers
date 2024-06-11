@@ -1,0 +1,19 @@
+version: '1.0'
+services:
+  app:
+    container_name: "application-server"
+    image: "augustinast/nf-shard:1.0.0"
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true

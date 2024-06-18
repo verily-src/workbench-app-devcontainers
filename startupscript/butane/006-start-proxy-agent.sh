@@ -10,7 +10,7 @@ set -o pipefail
 set -o xtrace
 
 if [[ $# -ne 2 ]]; then
-    echo "usage: $0 <proxyImage> <GCE/EC2>"
+    echo "usage: $0 <proxyImage> <GCP/EC2>"
     exit 1
 fi
 
@@ -30,7 +30,7 @@ echo "Proxy agent port should listen at port ${PORT}"
 # shellcheck source=/dev/null
 source /home/core/agent.env
 OPTIONS=()
-if [[ "${COMPUTE_PLATFORM^^}" == "GCE" ]]; then
+if [[ "${COMPUTE_PLATFORM^^}" == "GCP" ]]; then
     OPTIONS+=("--backend=${BACKEND}")
 fi
 

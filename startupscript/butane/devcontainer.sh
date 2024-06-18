@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# devcontainer.sh is a wrapper to run devcontainer.js.
-# Note: this script requires the devcontainer.js to be installed in /home/core/package/devcontainer.js
-# and Node to be installed on the VM.
+# devcontainer.sh is a wrapper to run devcontainer cli.
+# Note: this script requires Node and the package.json dependencies to be already installed.
 
 set -o errexit
 set -o nounset
@@ -21,7 +20,7 @@ if [[ $# -ne 2 ]]; then
 fi
 
 export PATH="/opt/bin:$PATH"
-readonly DEVCONTAINER="node /home/core/package/devcontainer.js"
+readonly DEVCONTAINER="npx --prefix /home/core devcontainer"
 readonly CMD="$1"
 readonly FOLDER="$2"
 if [[ "$CMD" == "build" ]]; then

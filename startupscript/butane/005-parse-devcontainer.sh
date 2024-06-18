@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# parse-devcontainer.sh parses the devcontainer templates and sets template variables.
+# parse-devcontainer.sh parses the devcontainer templates and sets template variables. config
+# customizations are pushed to cloud metadata.
 
 set -o errexit
 set -o nounset
@@ -23,9 +24,19 @@ readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
 readonly LOGIN="$3"
 
+readonly DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}"/.devcontainer.json
+
 if [[ -d /home/core/devcontainer/startupscript ]]; then
     cp -r /home/core/devcontainer/startupscript "${DEVCONTAINER_PATH}"/startupscript
 fi
 echo "replacing devcontainer.json templateOptions"
-sed -i "s/\${templateOption:login}/${LOGIN}/g" "${DEVCONTAINER_PATH}"/.devcontainer.json
-sed -i "s/\${templateOption:cloud}/${CLOUD}/g" "${DEVCONTAINER_PATH}"/.devcontainer.json
+sed -i "s/\${templateOption:login}/${LOGIN}/g" "${DEVCONTAINER_CONFIG_PATH}"
+sed -i "s/\${templateOption:cloud}/${CLOUD}/g" "${DEVCONTAINER_CONFIG_PATH}"
+
+echo "publishing devcontainer.json to metadata"
+# shellcheck source=/dev/null
+source /home/core/metadata-utils.sh
+readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
+DEVCONTAINER_CUSTOMIZATIONS=$(${JSONC_STRIP_COMMENTS} < devcontainer/src/rstudio/.devcontainer.json | jq .customizations.workbench)
+readonly DEVCONTAINER_CUSTOMIZATIONS
+set_metadata "devcontainer/customizations" "${DEVCONTAINER_CUSTOMIZATIONS}"

@@ -29,7 +29,7 @@ if [[ "$(docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}")" 
     fi
 fi
 
-LOAD="$(awk '{print $1}' /proc/loadavg)" # 1-minute average load
+LOAD="$(awk '{print $3}' /proc/loadavg)" # 15-minute average load
 echo "CPU load is ${LOAD}"
 # Check if the LOAD has exceeded the THRESHOLD.  
 # Note the use of awk for comparison of real numbers.  

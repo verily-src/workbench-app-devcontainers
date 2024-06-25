@@ -4,8 +4,8 @@
   "shutdownAction": "none",
   "postStartCommand": "nohup bash -c './idle-checker.sh &' > /tmp/idle-checker.log 2>&1",
   "features": {
-        "ghcr.io/devcontainers/features/aws-cli:1": {}
-   },
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
+  },
   "containerEnv": {
     "CLOUD": "${templateOption:cloud}"
   },

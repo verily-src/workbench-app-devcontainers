@@ -19,3 +19,7 @@ wget -q -O "${NODE_INSTALL_PATH}" "${NODE_INSTALL_SRC}"
 echo "Installing Node from ${NODE_INSTALL_PATH}" 
 tar -xzf "${NODE_INSTALL_PATH}" -C /opt --strip-components=1
 rm -f "${NODE_INSTALL_PATH}"
+
+echo "Installing node packages"
+export PATH="/opt/bin:$PATH"
+npm --prefix /home/core ci

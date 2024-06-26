@@ -24,5 +24,13 @@
     "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
     "ghcr.io/devcontainers/features/java:1": {}
   },
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "fileUrlSuffix": "/lab/tree/{path}",
+        "folderUrlSuffix": "/lab/tree/{path}"
+      }
+    }
+  }
 }

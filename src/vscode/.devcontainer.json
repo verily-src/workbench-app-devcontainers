@@ -26,5 +26,13 @@
     "ghcr.io/devcontainers/features/aws-cli:1": {},
     "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
   },
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "fileUrlSuffix": "?file=/config/{path}",
+        "folderUrlSuffix": "?folder=/config/{path}"
+      }
+    }
+  }
 }

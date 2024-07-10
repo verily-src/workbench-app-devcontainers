@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "jupyter/scipy-notebook"
+    image: "gcr.io/verily-datascience-admin/custom_python_notebook@sha256:a50027fbcb707dd5af13dfd5ba1e7eafea0d8989b42f2ddaf17f50c70391828f"
     restart: always
     volumes:
       - .:/workspace:cached

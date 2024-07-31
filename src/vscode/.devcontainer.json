@@ -30,6 +30,30 @@
   "customizations": {
     "workbench": {
       "opens": {
+        "extensions": [
+          // Source.
+          ".c",
+          ".cjs",
+          ".cpp",
+          ".go",
+          ".java",
+          ".js",
+          ".mjs",
+          ".php",
+          ".scala",
+          ".sh",
+          ".ts",
+          // Documents
+          ".md",
+          ".html",
+          // Data
+          ".csv",
+          ".json",
+          ".jsonc",
+          ".tsv",
+          ".xml",
+          ".yml"
+        ],
         "fileUrlSuffix": "?file=/config/{path}",
         "folderUrlSuffix": "?folder=/config/{path}"
       }

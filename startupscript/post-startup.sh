@@ -55,9 +55,13 @@ ${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LE
 exec >> "${POST_STARTUP_OUTPUT_FILE}"
 exec 2>&1
 
-# The apt package index may not be clean when we run; resynchronize
-apt-get update
-apt install -y jq curl fuse tar wget
+# Test for apt-get being present.
+which apt-get && true
+if [[ $? -eq 0 ]]; then
+  # The apt package index may not be clean when we run; resynchronize
+  apt-get update
+  apt install -y jq curl fuse tar wget
+fi
 
 # Create the target directories for installing into the HOME directory
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"

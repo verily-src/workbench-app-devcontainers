@@ -13,6 +13,6 @@
 # - USER_PRIMARY_GROUP: name of primary group app user belongs to
 
 # Check if the user name is provided.
-ln -sf "$(which java)" "/usr/bin"
-chown --no-dereference "${USER_NAME}:${USER_PRIMARY_GROUP}" "/usr/bin/java"
+#ln -sf "$(which java)" "/usr/bin"
+#chown --no-dereference "${USER_NAME}:${USER_PRIMARY_GROUP}" "/usr/bin/java"
 

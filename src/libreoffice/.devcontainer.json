@@ -4,26 +4,25 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  // TODO: Enable this once Linux installation is resolved.
-  // "postCreateCommand": [
-  //   "./startupscript/post-startup.sh",
-  //   "abc",
-  //   "/config",
-  //   "${templateOption:cloud}",
-  //   "${templateOption:login}"
-  // ],
-  // // re-mount bucket files on container start up
-  // "postStartCommand": [
-  //   "./startupscript/remount-on-restart.sh",
-  //   "abc",
-  //   "/config",
-  //   "${templateOption:cloud}",
-  //   "${templateOption:login}"
-  // ],
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "abc",
+    "/config",
+    "gcp",
+    "true"
+  ],
+  // re-mount bucket files on container start up
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "abc",
+    "/config",
+    "gcp",
+    "true"
+  ],
   "remoteUser": "root",
   "features": {
-    // TODO: Need to install Java for the CLI, but this feature does not support alpine linux.
-    // "ghcr.io/devcontainers/features/java:1": {
+    "./.devcontainer/features/workbench-cli": {}
+    // "./.devcontainer/features/src/java": {
     //   "version": "17"
     // }
   }

@@ -9,10 +9,11 @@ set -o pipefail
 set -o xtrace
 
 function usage {
-  echo "Usage: $0 <path/to/devcontainer> <gcp/aws> <login>"
+  echo "Usage: $0 <path/to/devcontainer> <cloud> <server> <workspace>"
   echo "  devcontainer_path: folder directory of the devcontainer."
   echo "  cloud: gcp or aws."
-  echo "  login: whether the user is logged into the workbench on startup."
+  echo "  server: Workbench server environment to connect to."
+  echo "  workspace: Workbench workspace ID the environment is part of."
   exit 1
 }
 
@@ -22,21 +23,30 @@ fi
 
 readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
-readonly LOGIN="$3"
+
+# shellcheck source=/dev/null
+source /home/core/metadata-utils.sh
+
+SERVER="$(get_metadata_value "terra-cli-server" "verily")"
+readonly SERVER
+
+WORKSPACE="$(get_metadata_value "terra-workspace-id" "")"
+readonly TERRA_WORKSPACE
 
 readonly DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}"/.devcontainer.json
 
 if [[ -d /home/core/devcontainer/startupscript ]]; then
     cp -r /home/core/devcontainer/startupscript "${DEVCONTAINER_PATH}"/startupscript
 fi
+
 echo "replacing devcontainer.json templateOptions"
-sed -i "s/\${templateOption:login}/${LOGIN}/g" "${DEVCONTAINER_CONFIG_PATH}"
 sed -i "s/\${templateOption:cloud}/${CLOUD}/g" "${DEVCONTAINER_CONFIG_PATH}"
+sed -i "s/\${templateOption:server}/${SERVER}/g" "${DEVCONTAINER_CONFIG_PATH}"
+sed -i "s/\${templateOption:workspace}/${WORKSPACE}/g" "${DEVCONTAINER_CONFIG_PATH}"
 
 echo "publishing devcontainer.json to metadata"
 export PATH="/opt/bin:$PATH"
-# shellcheck source=/dev/null
-source /home/core/metadata-utils.sh
+
 readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
 DEVCONTAINER_CUSTOMIZATIONS=$(${JSONC_STRIP_COMMENTS} < "${DEVCONTAINER_CONFIG_PATH}" | jq .customizations.workbench)
 readonly DEVCONTAINER_CUSTOMIZATIONS

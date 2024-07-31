@@ -6,12 +6,12 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/vscode:cached
+      #- work:/config:cached
     ports:
       - "8443:8443"
     environment:
-      USER: "abc"
-      DEFAULT_WORKSPACE: "/config"
+      # USER: "abc"
+      DEFAULT_WORKSPACE: "/config/workspace"
       SUDO_PASSWORD: "pwd"
     networks:
       - app-network

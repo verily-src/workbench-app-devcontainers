@@ -1,0 +1,51 @@
+{
+  "name": "Workbench CLI",
+  "id": "workbench-cli",
+  "version": "1.0.0",
+  "description": "Installation and initialize of the Verily Workbench CLI",
+  "options": {
+    "user": {
+      "type": "string",
+      "default": "",
+      "description": "User to configure the CLI for"
+    },
+    "user home": {
+      "type": "string",
+      "default": "",
+      "description": "Home directory to configure the user for"
+    },
+    "cloud": {
+      "type": "string",
+      "proposals": ["aws", "gcp"],
+      "default": "gcp",
+      "description": "Underlying cloud infrastructure we are installing on"
+    },
+    "login": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to log in to Workbench CLI"
+    },
+    "mount": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to mount cloud storage buckets"
+    },
+    "workspace": {
+      "type": "string",
+      "default": "",
+      "description": "Workspace ID to apply to the CLI configuration"
+    },
+    "server": {
+      "type": "string",
+      "default": "verily",
+      "description": "The server environment to connect to"
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/java"
+  ],
+  "containerEnv": {
+    "GOOGLE_APPLICATION_CREDENTIALS": "/keys/fresh-turnip.json"
+  }
+}

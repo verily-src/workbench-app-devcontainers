@@ -1,4 +1,4 @@
-version: "1.0"
+version: "2.4"
 services:
   app:
     container_name: "application-server"
@@ -7,6 +7,7 @@ services:
     volumes:
       - .:/workspace:cached
       - work:/config:cached
+      - .:/keys:cached
     ports:
       - "3000:3000"
     networks:

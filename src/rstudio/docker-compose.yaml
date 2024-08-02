@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.2"
+    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.3"
     restart: always
     volumes:
       - .:/workspace:cached

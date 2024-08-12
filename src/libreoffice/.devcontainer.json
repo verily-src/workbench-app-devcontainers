@@ -22,9 +22,6 @@
   // ],
   "remoteUser": "root",
   "features": {
-    // TODO: Need to install Java for the CLI, but this feature does not support alpine linux.
-    // "ghcr.io/devcontainers/features/java:1": {
-    //   "version": "17"
-    // }
+    "./.devcontainer/features/java": {}
   }
 }

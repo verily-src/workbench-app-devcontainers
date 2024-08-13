@@ -54,8 +54,7 @@
           ".xml",
           ".yml"
         ],
-        "fileUrlSuffix": "?file=/config/{path}",
-        "folderUrlSuffix": "?folder=/config/{path}"
+        "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
       }
     }
   }

@@ -17,7 +17,7 @@ fi
 readonly PROXY_IMAGE="$1"
 readonly COMPUTE_PLATFORM="$2"
 PORT="$(docker inspect application-server \
-  | jq -r '.[].NetworkSettings.Ports | try to_entries[] | .value[] | select(.HostIp == "0.0.0.0" or .HostIp == "::") | .HostPort' \
+  | jq -r '.[].NetworkSettings.Ports | to_entries[]? | .value[]? | select(.HostIp == "0.0.0.0" or .HostIp == "::") | .HostPort' \
   | head -n 1)"
 readonly PORT
 if [[ -z "${PORT}" ]]; then

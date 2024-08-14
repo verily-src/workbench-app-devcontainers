@@ -1,0 +1,7 @@
+{
+  "id": "java",
+  "version": "1.0.0",
+  "name": "Java",
+  "description": "Installs Java 17 via the package manger.",
+  "installsAfter": ["ghcr.io/devcontainers/features/common-utils"]
+}

@@ -15,8 +15,13 @@
 
 if ! which goofys >/dev/null 2>&1; then
   emit "Installing goofys for s3 bucket mounting..."
-  apt-get update
-  apt-get install -y curl
+  if type apk > /dev/null 2>&1; then
+    apk update
+    apk add --no-cache curl
+  elif type apt-get > /dev/null 2>&1; then
+    apt-get update
+    apt-get install -y curl
+  fi
 
   curl -L "https://github.com/kahing/goofys/releases/latest/download/goofys" -o goofys
   chmod +x goofys

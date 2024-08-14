@@ -11,21 +11,35 @@
 # - Workbench CLI is installed
  
 if ! which gcsfuse >/dev/null 2>&1; then
-  emit "Installing gcsfuse..."
+  if type apk > /dev/null 2>&1; then
+    emit "Installing gcsfuse from source..."
 
-  # install packages needed to install gcsfuse
-  apt-get install -y \
-    fuse \
-    lsb-release
+    apk add --no-cache fuse git go
 
-  # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
-  GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
-  readonly GCSFUSE_REPO
+    export GOROOT=/usr/lib/go
+    export GOPATH=/go
+    mkdir -p ${GOPATH}/src ${GOPATH}/bin
 
-  echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" > /etc/apt/sources.list.d/gcsfuse.list
-  curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
-  apt-get update \
-    && apt-get install -y gcsfuse
+    go install github.com/googlecloudplatform/gcsfuse/v2@master
+    cp ${GOPATH}/bin/gcsfuse /usr/bin/gcsfuse
+
+  elif type apt-get > /dev/null 2>&1; then
+    emit "Installing gcsfuse from apt package..."
+
+    # install packages needed to install gcsfuse
+    apt-get install -y \
+      fuse \
+      lsb-release
+
+    # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
+    GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
+    readonly GCSFUSE_REPO
+
+    echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" > /etc/apt/sources.list.d/gcsfuse.list
+    curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
+    apt-get update \
+      && apt-get install -y gcsfuse
+  fi
 else
   emit "gcsfuse already installed. Skipping installation."
 fi

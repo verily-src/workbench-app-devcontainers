@@ -4,6 +4,9 @@
 #
 # Installs gcsfuse if it is not already installed and mount resources.
 #
+# Both apt and install-from-source steps are based on gcloud docs here:
+# https://cloud.google.com/storage/docs/gcsfuse-install
+#
 # Note that this script is intended to be sourced from the "post-startup.sh" script
 # and is dependent on some functions and variables already being set:
 #
@@ -31,7 +34,6 @@ if ! which gcsfuse >/dev/null 2>&1; then
       fuse \
       lsb-release
 
-    # Install based on gcloud docs here https://cloud.google.com/storage/docs/gcsfuse-install.
     GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
     readonly GCSFUSE_REPO
 

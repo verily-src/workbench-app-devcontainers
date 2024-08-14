@@ -61,7 +61,7 @@ if type apk > /dev/null 2>&1; then
   apk add --no-cache jq curl fuse tar wget
 elif type apt-get > /dev/null 2>&1; then
   apt-get update
-  apt install -y jq curl fuse tar wgetelif
+  apt install -y jq curl fuse tar wget
 else
   >&2 echo "ERROR: Unable to find a supported package manager"
   exit 1

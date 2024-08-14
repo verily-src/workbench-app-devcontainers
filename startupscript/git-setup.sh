@@ -35,8 +35,13 @@ fi
 rm -f "${USER_SSH_DIR}/id_rsa.tmp"
 
 # Set the github known_hosts
-apt-get update
-apt-get install -y openssh-client
+if type apk > /dev/null 2>&1; then
+  apk update
+  apk add --no-cache openssh-client
+elif type apt-get > /dev/null 2>&1; then
+  apt-get update
+  apt-get install -y openssh-client
+fi
 ${RUN_AS_LOGIN_USER} "ssh-keyscan -H github.com >> '${USER_SSH_DIR}/known_hosts'"
 
 # Create git repos directory

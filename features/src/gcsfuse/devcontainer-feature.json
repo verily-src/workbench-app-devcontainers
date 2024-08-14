@@ -1,0 +1,7 @@
+{
+  "id": "gcsfuse",
+  "version": "1.0.0",
+  "name": "GCSFuse",
+  "description": "Installs GCS Fuse from source.",
+  "installsAfter": ["ghcr.io/devcontainers/features/common-utils"]
+}

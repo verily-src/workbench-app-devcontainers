@@ -28,7 +28,7 @@ function get_tag() {
     echo "${tag_value}"
   fi
 }
-readonly -f get_tag 
+readonly -f get_tag
 
 # EC2 instance uses tags instead of metadata. But to keep the iterface consistent with GCP, this method retrieves tags set by the user.
 # They are prefixed with vwbusr.
@@ -49,17 +49,21 @@ readonly -f get_guest_attribute
 function set_metadata() {
   local key="${1}"
   local value="${2}"
-  
+  # Per the AWS CLI documentation, value is provided within quotes,
+  # with " and \ escaped with a \ prefix.
+  # https://docs.aws.amazon.com/cli/latest/reference/ec2/create-tags.html
+  local escaped="${value//[\"\\]/\\&}"
+
   echo "Creating tag vwbapp:${key} to ${value}"
   local token
   token=$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
 
-  docker run --rm --detach --network host \
+  docker run --rm --network host \
     public.ecr.aws/aws-cli/aws-cli \
     ec2 create-tags \
       --resources "${id}" \
-      --tags Key=vwbapp:"${key}",Value="${value}"
+      --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
 }
 readonly -f set_metadata

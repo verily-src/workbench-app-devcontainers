@@ -49,6 +49,9 @@ readonly -f get_guest_attribute
 function set_metadata() {
   local key="${1}"
   local value="${2}"
+  # Per the AWS CLI documentation, value is provided within quotes,
+  # with " and \ escaped with a \ prefix.
+  # https://docs.aws.amazon.com/cli/latest/reference/ec2/create-tags.html
   local escaped="${value//[\"\\]/\\&}"
 
   echo "Creating tag vwbapp:${key} to ${value}"

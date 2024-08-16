@@ -38,6 +38,6 @@ export PATH="/opt/bin:$PATH"
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
-DEVCONTAINER_CUSTOMIZATIONS=$(${JSONC_STRIP_COMMENTS} < "${DEVCONTAINER_CONFIG_PATH}" | jq -c .customizations.workbench)
+DEVCONTAINER_CUSTOMIZATIONS="$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" | jq -c .customizations.workbench)"
 readonly DEVCONTAINER_CUSTOMIZATIONS
 set_metadata "devcontainer/customizations" "${DEVCONTAINER_CUSTOMIZATIONS}"

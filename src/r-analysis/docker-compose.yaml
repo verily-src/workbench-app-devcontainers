@@ -6,7 +6,7 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/r-analysis:cached
+      - work:/home/rstudio:cached
     ports:
       - "8787:8787"
     environment:

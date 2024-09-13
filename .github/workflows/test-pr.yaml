@@ -22,19 +22,22 @@ jobs:
         id: filter
         with:
           filters: |
-            jupyter: 
+            jupyter:
               - './**/jupyter/**'
               - 'startupscript/**'
-            shiny: 
+            libreoffice:
+              - './**/libreoffice/**'
+              - 'startupscript/**'
+            shiny:
               - './**/shiny/**'
               - 'startupscript/**'
-            rstudio: 
-              - './**/rstudio/**'
+            r-analysis:
+              - './**/r-analysis/**'
               - 'startupscript/**'
-            vscode: 
+            vscode:
               - './**/vscode/**'
               - 'startupscript/**'
-            cirrocumulus: 
+            cirrocumulus:
               - './**/cirrocumulus/**'
               - 'startupscript/**'
   test:

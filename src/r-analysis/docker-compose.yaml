@@ -1,0 +1,26 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.4"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/r-analysis:cached
+    ports:
+      - "8787:8787"
+    environment:
+      "DISABLE_AUTH": "true"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

@@ -21,6 +21,7 @@ jobs:
       - uses: dorny/paths-filter@v2
         id: filter
         with:
+        # BENCH-4080: Re-enable cirrocumulus test
           filters: |
             jupyter:
               - './**/jupyter/**'
@@ -34,9 +35,7 @@ jobs:
             vscode:
               - './**/vscode/**'
               - 'startupscript/**'
-            cirrocumulus:
-              - './**/cirrocumulus/**'
-              - 'startupscript/**'
+
   test:
     needs: [detect-changes]
     runs-on: ubuntu-latest

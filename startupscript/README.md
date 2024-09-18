@@ -57,7 +57,7 @@ Pick a workspace that you have previously created a dataproc cluster so you can 
 Clone this repo and put it in a public repo you own. Make the change
 
 - Step 2
-  In the UI, create a custom rstudio app pointing at your personal repo.
+  In the UI, create a custom r-analysis app pointing at your personal repo.
 
 - Step 3
   Wait for the notebook to spin up and go to the instance. Check .workbench/post-startup-output.txt to see if it succeeds.

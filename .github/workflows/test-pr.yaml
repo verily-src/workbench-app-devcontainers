@@ -21,22 +21,21 @@ jobs:
       - uses: dorny/paths-filter@v2
         id: filter
         with:
+        # BENCH-4080: Re-enable cirrocumulus test
           filters: |
-            jupyter: 
+            jupyter:
               - './**/jupyter/**'
               - 'startupscript/**'
-            shiny: 
+            shiny:
               - './**/shiny/**'
               - 'startupscript/**'
-            rstudio: 
-              - './**/rstudio/**'
+            r-analysis:
+              - './**/r-analysis/**'
               - 'startupscript/**'
-            vscode: 
+            vscode:
               - './**/vscode/**'
               - 'startupscript/**'
-            cirrocumulus: 
-              - './**/cirrocumulus/**'
-              - 'startupscript/**'
+
   test:
     needs: [detect-changes]
     runs-on: ubuntu-latest

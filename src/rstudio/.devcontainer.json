@@ -1,0 +1,32 @@
+{
+  "name": "Rstudio app",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "rstudio",
+    "/home/rstudio",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  // re-mount bucket files on container start up
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "rstudio",
+    "/home/rstudio",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/rocker-org/devcontainer-features/r-packages:1": {
+      "packages": "shiny,shinydashboard",
+      "installSystemRequirements": true
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
+    "ghcr.io/devcontainers/features/java:1": {}
+  },
+  "remoteUser": "root"
+}

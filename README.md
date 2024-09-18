@@ -14,5 +14,5 @@ https://containers.dev/
 
 ## How to use
 
-The `.devcontainer.json` file in the custom app folder (e.g. rstudio/) contains the custom app configuration.
+The `.devcontainer.json` file in the custom app folder (e.g. r-analysis/) contains the custom app configuration.
 `post-startup.sh` contains workbench specific set up.

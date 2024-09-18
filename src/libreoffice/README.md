@@ -1,6 +1,6 @@
-# Rstudio (rstudio)
+# LibreOffice (libreoffice)
 
-A Template to run rstudio on workbench
+A Template to run libreoffice on workbench
 
 ## Options
 
@@ -11,4 +11,4 @@ A Template to run rstudio on workbench
 
 ---
 
-_Note: This file was auto-generated from the [devcontainer-template.json](https://github.com/verily-src/workbench-app-devcontainers/blob/main/src/rstudio/devcontainer-template.json). Add additional notes to a `NOTES.md`._
+_Note: This file was auto-generated from the [devcontainer-template.json](https://github.com/verily-src/workbench-app-devcontainers/blob/main/src/libreoffice/devcontainer-template.json). Add additional notes to a `NOTES.md`._

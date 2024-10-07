@@ -14,7 +14,10 @@ source /home/core/metadata-utils.sh
 if docker ps -q --filter "name=proxy-agent" | grep -q . \
     && docker ps -q --filter "name=application-server" | grep -q .; then
     echo "Proxy is ready."
-    set_metadata "startup_script/status" "COMPLETE"
+    status="$(get_guest_attribute "startup_script/status" "")"
+    if [ "$status" != "ERROR" ]; then
+        set_metadata "startup_script/status" "COMPLETE"
+    fi
 else
     echo "proxy-agent or application-server is not started"
     exit 1

@@ -84,19 +84,6 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 #   $1: The guest attribute domain and key IE startup_script/status
 #   $2  The data to write to the guest attribute
 #######################################
-function set_guest_attributes() {
-  local attr_path="${1}"
-  local attr_value="${2}"
-  if [ -z "${attr_path}" ] || [ -z "${attr_value}" ]; then
-    return
-  fi
-
-  curl -s -X PUT --data "${attr_value}" \
-    -H "Metadata-Flavor: Google" \
-    "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${attr_path}"
-}
-readonly -f set_guest_attributes
-
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.
 function exit_handler {
@@ -105,12 +92,11 @@ function exit_handler {
   local command="${3}"
   # Success! Set the guest attributes and exit cleanly
   if [[ "${exit_code}" -eq 0 ]]; then
-    set_guest_attributes "${STATUS_ATTRIBUTE}" "COMPLETE"
     exit 0
   fi
   # Write error status and message to guest attributes
-  set_guest_attributes "${STATUS_ATTRIBUTE}" "ERROR"
-  set_guest_attributes "${MESSAGE_ATTRIBUTE}" "Error on line ${line_no}, command \"${command}\". See ${POST_STARTUP_OUTPUT_FILE} for more information."
+  set_metadata "${STATUS_ATTRIBUTE}" "ERROR"
+  set_metadata "${MESSAGE_ATTRIBUTE}" "Error on line ${line_no}, command \"${command}\". See ${POST_STARTUP_OUTPUT_FILE} for more information."
   exit "${exit_code}"
 }
 readonly -f exit_handler

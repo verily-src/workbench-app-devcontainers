@@ -30,6 +30,10 @@ source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
 
+# Startup script status is propagated out to VM guest attributes
+readonly STATUS_ATTRIBUTE="startup_script/status"
+readonly MESSAGE_ATTRIBUTE="startup_script/message"
+
 USER_PRIMARY_GROUP="$(id --group --name "${USER_NAME}")"
 readonly USER_PRIMARY_GROUP
 readonly USER_BASH_COMPLETION_DIR="${WORK_DIRECTORY}/.bash_completion.d"
@@ -72,6 +76,31 @@ fi
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
 
+
+#######################################
+# Set guest attributes on GCE. Used here to log completion status of the script.
+# See https://cloud.google.com/compute/docs/metadata/manage-guest-attributes
+# Arguments:
+#   $1: The guest attribute domain and key IE startup_script/status
+#   $2  The data to write to the guest attribute
+#######################################
+# If the script exits without error let the UI know it completed successfully
+# Otherwise if an error occurred write the line and command that failed to guest attributes.
+function exit_handler {
+  local exit_code="${1}"
+  local line_no="${2}"
+  local command="${3}"
+  # Success! Set the guest attributes and exit cleanly
+  if [[ "${exit_code}" -eq 0 ]]; then
+    exit 0
+  fi
+  # Write error status and message to guest attributes
+  set_metadata "${STATUS_ATTRIBUTE}" "ERROR"
+  set_metadata "${MESSAGE_ATTRIBUTE}" "Error on line ${line_no}, command \"${command}\". See ${POST_STARTUP_OUTPUT_FILE} for more information."
+  exit "${exit_code}"
+}
+readonly -f exit_handler
+trap 'exit_handler $? $LINENO $BASH_COMMAND' EXIT
 
 # Custom application behavior when opening a terminal window will vary.
 #

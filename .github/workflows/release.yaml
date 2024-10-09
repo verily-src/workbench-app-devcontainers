@@ -1,13 +1,6 @@
 name: "Release Dev Container Templates & Generate Documentation"
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - 'src/**'
-      - 'startupscript/**'
-      - '.github/workflows/release.yml'
 
 jobs:
   deploy:

@@ -15,7 +15,7 @@ if docker ps -q --filter "name=proxy-agent" | grep -q . \
     && docker ps -q --filter "name=application-server" | grep -q .; then
     echo "Proxy is ready."
     status="$(get_guest_attribute "startup_script/status" "")"
-    if [ "$status" != "ERROR" ]; then
+    if [[ "${status}" != "ERROR" ]]; then
         set_metadata "startup_script/status" "COMPLETE"
     fi
 else

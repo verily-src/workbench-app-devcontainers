@@ -114,7 +114,7 @@ function exit_handler {
   fi
   # Write error status and message to guest attributes
   set_metadata "${STATUS_ATTRIBUTE}" "ERROR"
-  set_metadata "${MESSAGE_ATTRIBUTE}" "Error on line ${line_no}, command \"${command}\". See ${POST_STARTUP_OUTPUT_FILE} for more information."
+  set_metadata "${MESSAGE_ATTRIBUTE}" "There was an error in the VM Startup Script on line ${line_no}, command \"${command}\". Please try recreating the VM. See ${POST_STARTUP_OUTPUT_FILE} for more information."
   exit "${exit_code}"
 }
 readonly -f exit_handler

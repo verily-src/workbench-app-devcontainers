@@ -6,8 +6,7 @@
 # all the current Workbench workspace's git repo referenced resources into the repos/ 
 # folder.
 #
-# Note that this script is intended to be source from the "post-startup.sh" script
-# and is dependent on some functions and variables already being set up and some packages already installed:
+# Note that this script is dependent on some functions and variables already being set up and some packages already installed in "post-startup.sh":
 #
 # - emit (function)
 # - Workbench CLI is installed

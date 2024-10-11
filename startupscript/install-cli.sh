@@ -16,6 +16,11 @@
 # - USER_BASH_COMPLETION_DIR: path to the bash completion file
 # - LOG_IN: whether to log in to CLI
 
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
 emit "Installing the Workbench CLI ..."
 
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version

@@ -16,6 +16,11 @@
 # - WORKBENCH_GIT_REPOS_DIR: path to the git repo directory (~/repos)
 # - RUN_AS_LOGIN_USER: run command as app user
 
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
 emit "Setting up git integration..."
 
 # Create the user SSH directory

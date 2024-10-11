@@ -14,6 +14,7 @@ readonly USER_NAME="${1}"
 readonly WORK_DIRECTORY="${2}"
 readonly CLOUD="${3}"
 readonly LOG_IN="${4}"
+export USER_NAME WORK_DIRECTORY CLOUD LOGIN
 
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 
@@ -21,6 +22,7 @@ readonly LOG_IN="${4}"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 readonly SCRIPT_DIR
 readonly CLOUD_SCRIPT_DIR="${SCRIPT_DIR}/${CLOUD}"
+export SCRIPT_DIR CLOUD_SCRIPT_DIR
 #######################################
 # Emit a message with a timestamp
 #######################################
@@ -29,10 +31,12 @@ source "${SCRIPT_DIR}/emit.sh"
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
+export RUN_AS_LOGIN_USER
 
 # Startup script status is propagated out to VM guest attributes
 readonly STATUS_ATTRIBUTE="startup_script/status"
 readonly MESSAGE_ATTRIBUTE="startup_script/message"
+EXPORT STATUS_ATTRIBUTE MESSAGE_ATTRIBUTE
 
 USER_PRIMARY_GROUP="$(id --group --name "${USER_NAME}")"
 readonly USER_PRIMARY_GROUP
@@ -43,6 +47,7 @@ readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${WORK_DIRECTORY}/.terra"
 readonly USER_BASHRC="${WORK_DIRECTORY}/.bashrc"
 readonly USER_BASH_PROFILE="${WORK_DIRECTORY}/.bash_profile"
 readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
+export USER_PRIMARY_GROUP USER_BASH_COMPLETION_DIR USER_HOME_LOCAL_SHARE USER_WORKBENCH_CONFIG_DIR USER_WORKBENCH_LEGACY_CONFIG_DIR USER_BASHRC USER_BASH_PROFILE POST_STARTUP_OUTPUT_FILE
 
 # Variables for Workbench-specific code installed on the VM
 readonly WORKBENCH_INSTALL_PATH="/usr/bin/wb"
@@ -102,6 +107,32 @@ function exit_handler {
 readonly -f exit_handler
 trap 'exit_handler $? $LINENO $BASH_COMMAND' EXIT
 
+#######################################
+# function to retry command
+#######################################
+function retry () {
+  local max_attempts="$1"
+  local command="$2"
+
+  local attempt
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    # Run the command and return if success
+    if ${command}; then
+      return
+    fi
+
+    # Sleep a bit in case the problem is a transient network/server issue
+    if ((attempt < max_attempts)); then
+      echo "Retrying $(command) in 5 seconds" # send to get_message
+      sleep 5
+    fi
+  done
+
+  # Execute without the if/then protection such that the exit code propagates
+  ${command}
+}
+readonly -f retry
+
 # Custom application behavior when opening a terminal window will vary.
 #
 # Some application that run in custom environments will by default run
@@ -139,7 +170,7 @@ source "${SCRIPT_DIR}/install-java.sh"
 ###################################
 # Install workbench CLI
 ###################################
-source "${SCRIPT_DIR}/install-cli.sh"
+retry 5 "${SCRIPT_DIR}/install-cli.sh"
 
 ##################################################
 # Set up user bashrc with workbench customization
@@ -155,7 +186,7 @@ source "${SCRIPT_DIR}/bash-completion.sh"
 # git setup
 ###############
 if [[ "${LOG_IN}" == "true" ]]; then
-    source "${SCRIPT_DIR}/git-setup.sh"
+    retry 5 "${SCRIPT_DIR}/git-setup.sh"
 fi
 
 #############################

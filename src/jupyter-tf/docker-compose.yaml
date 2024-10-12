@@ -1,0 +1,25 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "tensorflow/tensorflow:2.17.0"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/root/work
+    ports:
+      - "8888:8888"
+    # command: "jupyter lab --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.notebook_dir=/home/root/work --NotebookApp.allow_origin='*'"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

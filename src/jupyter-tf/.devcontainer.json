@@ -4,6 +4,7 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
+  "postStartCommand": "sleep infinity",
   // "postCreateCommand": [
   //   "./startupscript/post-startup.sh",
   //   "root",
@@ -25,8 +26,9 @@
     // },
     // "ghcr.io/devcontainers/features/aws-cli:1": {},
     // "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
-    "ghcr.io/devcontainers/features/python:1": {
+    "./.devcontainer/features/python": {
       "installJupyterlab": true,
+      "jupyterUser": "jupyter",
       "configureJupyterlabAllowOrigin": "*"
     }
   },

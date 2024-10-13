@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "jupyter/pytorch-notebook"
+    image: "cuda12-pytorch-2.4.1"
     restart: always
     volumes:
       - .:/workspace:cached

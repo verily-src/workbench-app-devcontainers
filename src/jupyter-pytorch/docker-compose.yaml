@@ -8,6 +8,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
+              count: all
               capabilities: [gpu]
     restart: always
     volumes:

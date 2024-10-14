@@ -11,16 +11,22 @@ if [[ $# -ne 4 ]]; then
 fi
 
 readonly USER_NAME="${1}"
+export USER_NAME
 readonly WORK_DIRECTORY="${2}"
+export WORK_DIRECTORY
 readonly CLOUD="${3}"
+export CLOUD
 readonly LOG_IN="${4}"
+export LOG_IN
 
 # Gets absolute path of the script directory. 
 # Because the script sometimes cd to other directoy (e.g. /tmp), 
 # absolute path is more reliable.
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 readonly SCRIPT_DIR
+export SCRIPT_DIR
 readonly CLOUD_SCRIPT_DIR="${SCRIPT_DIR}/${CLOUD}"
+export CLOUD_SCRIPT_DIR
 #######################################
 # Emit a message with a timestamp
 #######################################
@@ -29,25 +35,37 @@ source "${SCRIPT_DIR}/emit.sh"
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
+export RUN_AS_LOGIN_USER
 
 # Startup script status is propagated out to VM guest attributes
 readonly STATUS_ATTRIBUTE="startup_script/status"
+export STATUS_ATTRIBUTE
 readonly MESSAGE_ATTRIBUTE="startup_script/message"
+export MESSAGE_ATTRIBUTE
 
 USER_PRIMARY_GROUP="$(id --group --name "${USER_NAME}")"
 readonly USER_PRIMARY_GROUP
+export USER_PRIMARY_GROUP
 readonly USER_BASH_COMPLETION_DIR="${WORK_DIRECTORY}/.bash_completion.d"
+export USER_BASH_COMPLETION_DIR
 readonly USER_HOME_LOCAL_SHARE="${WORK_DIRECTORY}/.local/share"
+export USER_HOME_LOCAL_SHARE
 readonly USER_WORKBENCH_CONFIG_DIR="${WORK_DIRECTORY}/.workbench"
+export USER_WORKBENCH_CONFIG_DIR
 readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${WORK_DIRECTORY}/.terra"
+export USER_WORKBENCH_LEGACY_CONFIG_DIR
 readonly USER_BASHRC="${WORK_DIRECTORY}/.bashrc"
+export USER_BASHRC
 readonly USER_BASH_PROFILE="${WORK_DIRECTORY}/.bash_profile"
+export USER_BASH_PROFILE
 readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
+export POST_STARTUP_OUTPUT_FILE
 
 # Variables for Workbench-specific code installed on the VM
 readonly WORKBENCH_INSTALL_PATH="/usr/bin/wb"
+export WORKBENCH_INSTALL_PATH
 readonly WORKBENCH_LEGACY_PATH="/usr/bin/terra"
-export WORKBENCH_INSTALL_PATH WORKBENCH_LEGACY_PATH
+export WORKBENCH_LEGACY_PATH
 
 # Move to the /tmp directory to let any artifacts left behind by this script can be removed.
 cd /tmp || exit
@@ -96,11 +114,37 @@ function exit_handler {
   fi
   # Write error status and message to guest attributes
   set_metadata "${STATUS_ATTRIBUTE}" "ERROR"
-  set_metadata "${MESSAGE_ATTRIBUTE}" "Error on line ${line_no}, command \"${command}\". See ${POST_STARTUP_OUTPUT_FILE} for more information."
+  set_metadata "${MESSAGE_ATTRIBUTE}" "There was an error in the VM Startup Script on line ${line_no}, command \"${command}\". Please try recreating the VM. See ${POST_STARTUP_OUTPUT_FILE} for more information."
   exit "${exit_code}"
 }
 readonly -f exit_handler
 trap 'exit_handler $? $LINENO $BASH_COMMAND' EXIT
+
+#######################################
+# function to retry command
+#######################################
+function retry () {
+  local max_attempts="$1"
+  local command="$2"
+
+  local attempt
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    # Run the command and return if success
+    if ${command}; then
+      return
+    fi
+
+    # Sleep a bit in case the problem is a transient network/server issue
+    if ((attempt < max_attempts)); then
+      echo "Retrying $(command) in 5 seconds" # send to get_message
+      sleep 5
+    fi
+  done
+
+  # Execute without the if/then protection such that the exit code propagates
+  ${command}
+}
+readonly -f retry
 
 # Custom application behavior when opening a terminal window will vary.
 #
@@ -139,7 +183,7 @@ source "${SCRIPT_DIR}/install-java.sh"
 ###################################
 # Install workbench CLI
 ###################################
-source "${SCRIPT_DIR}/install-cli.sh"
+retry 5 "${SCRIPT_DIR}/install-cli.sh"
 
 ##################################################
 # Set up user bashrc with workbench customization
@@ -155,7 +199,7 @@ source "${SCRIPT_DIR}/bash-completion.sh"
 # git setup
 ###############
 if [[ "${LOG_IN}" == "true" ]]; then
-    source "${SCRIPT_DIR}/git-setup.sh"
+    retry 5 "${SCRIPT_DIR}/git-setup.sh"
 fi
 
 #############################

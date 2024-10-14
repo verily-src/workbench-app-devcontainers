@@ -6,15 +6,20 @@
 # all the current Workbench workspace's git repo referenced resources into the repos/ 
 # folder.
 #
-# Note that this script is intended to be source from the "post-startup.sh" script
-# and is dependent on some functions and variables already being set up and some packages already installed:
+# Note that this script is dependent on some functions and variables already being set up and some packages already installed in "post-startup.sh":
 #
-# - emit (function)
 # - Workbench CLI is installed
 # - git is installed in the image or as a devcontainer feature (ghcr.io/devcontainers/features/git:1)
 # - WORK_DIRECTORY: home directory for the user that the script is running on behalf of
 # - WORKBENCH_GIT_REPOS_DIR: path to the git repo directory (~/repos)
 # - RUN_AS_LOGIN_USER: run command as app user
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
+source "${SCRIPT_DIR}/emit.sh"
 
 emit "Setting up git integration..."
 

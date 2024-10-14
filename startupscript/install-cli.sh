@@ -7,7 +7,6 @@
 #
 # Note that this script is dependent on some functions and variables already being set up in "post-startup.sh":
 #
-# - emit (function)
 # - get_metadata_value (function)
 # - RUN_AS_LOGIN_USER: run command as app user 
 # - WORKBENCH_INSTALL_PATH: path to install workbench cli
@@ -19,6 +18,9 @@ set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
+
+source "${SCRIPT_DIR}/emit.sh"
+source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 # Only install cli if not already installed
 if ! command -v wb &> /dev/null; then

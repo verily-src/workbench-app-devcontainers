@@ -3,6 +3,12 @@ services:
   app:
     container_name: "application-server"
     image: "quay.io/jupyter/pytorch-notebook:latest"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    runtime: nvidia
     restart: always
     volumes:
       - .:/workspace:cached

@@ -4,9 +4,6 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "runArgs": [
-    "--gpus", "all"
-  ],
   "postCreateCommand": [
     "./startupscript/post-startup.sh",
     "jovyan",

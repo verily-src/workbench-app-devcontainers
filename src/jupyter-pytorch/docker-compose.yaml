@@ -7,8 +7,8 @@ services:
       resources:
         reservations:
           devices:
-            - capabilities: [gpu]
-    runtime: nvidia
+            - driver: nvidia
+              capabilities: [gpu]
     restart: always
     volumes:
       - .:/workspace:cached

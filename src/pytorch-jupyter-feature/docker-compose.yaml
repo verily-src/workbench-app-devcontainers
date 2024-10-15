@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "nvcr.io/nvidia/pytorch:latest"
+    image: "nvcr.io/nvidia/pytorch:24.09-py3"
     deploy:
       resources:
         reservations:

@@ -16,7 +16,7 @@ services:
       - work:/home/root/work
     ports:
       - "8888:8888"
-    command: "jupyter lab --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.notebook_dir=/home/root/work --NotebookApp.allow_origin='*'"
+    command: "jupyter lab --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.notebook_dir=/home/root/work --NotebookApp.allow_origin='*' --allow-root"
     networks:
       - app-network
     cap_add:

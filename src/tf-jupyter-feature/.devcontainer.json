@@ -1,0 +1,45 @@
+{
+  "name": "Jupyter app running as feature on pytorch image",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "installJupyterlab": true,
+      "configureJupyterlabAllowOrigin": "*"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          // Source
+          ".ipynb",
+          ".R",
+          ".py",
+          // Documents
+          ".md",
+          ".html",
+          ".latex",
+          ".pdf",
+          // Images
+          ".bmp",
+          ".gif",
+          ".jpeg",
+          ".jpg",
+          ".png",
+          ".svg",
+          // Data
+          ".csv",
+          ".tsv",
+          ".json",
+          ".vl"
+        ],
+        "fileUrlSuffix": "/lab/tree/{path}",
+        "folderUrlSuffix": "/lab/tree/{path}"
+      }
+    }
+  }
+}

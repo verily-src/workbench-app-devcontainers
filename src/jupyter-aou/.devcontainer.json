@@ -1,0 +1,16 @@
+{
+  "name": "Jupyter app for AoU",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": ["./startupscript/post-startup.sh", "jovyan", "/home/jovyan", "${templateOption:cloud}", "${templateOption:login}"],
+  // re-mount bucket files on container start up
+  "postStartCommand":["./startupscript/remount-on-restart.sh", "jovyan", "/home/jovyan", "${templateOption:cloud}", "${templateOption:login}"],
+  "features": {
+        "ghcr.io/devcontainers/features/aws-cli:1": {},
+        "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
+        "ghcr.io/devcontainers/features/java:1": {} 
+   },
+  "remoteUser": "root"
+}

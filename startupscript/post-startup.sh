@@ -123,7 +123,7 @@ fi
 #############################
 # Mount buckets
 #############################
-source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
+# source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 
 ###############################
 # cloud platform specific setup

@@ -1,0 +1,50 @@
+version: '2.4'
+services:
+  app:
+    container_name: "application-server"
+    image: "jupyter/scipy-notebook"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/jovyan/work
+      - gcsfuse-mount:/mnt/gcs
+    ports:
+      - '8888:8888'
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+    command: "start-notebook.py --ServerApp.token='' --ServerApp.password='' --ServerApp.root_dir=/home/jovyan/work --ServerApp.allow_origin='*'"
+    networks:
+      - app-network
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+  wondershaper:
+    container_name: "wondershaper"
+    image: "us.gcr.io/broad-dsp-gcr-public/wondershaper:0.0.1"
+    restart: always
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+  gcsfuse:
+    container_name: "gcsfuse"
+    image: "google/cloud-sdk:latest"
+    restart: always
+    volumes:
+      - gcsfuse-mount:/mnt/gcs
+    entrypoint: >
+      /bin/sh -c "
+      gcsfuse YOUR_BUCKET_NAME /mnt/gcs
+      "
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:
+  gcsfuse-mount:

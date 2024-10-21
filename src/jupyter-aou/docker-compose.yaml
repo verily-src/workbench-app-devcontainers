@@ -2,7 +2,7 @@ version: '2.4'
 services:
   app:
     container_name: "application-server"
-    image: "jupyter/scipy-notebook"
+    image: "gcr.io/deeplearning-platform-release/tf-gpu.2-11.py310"
     restart: always
     volumes:
       - .:/workspace:cached

@@ -19,6 +19,14 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
+    depends_on:
+      - fluentbit
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "127.0.0.1:24224"
+        tag: "appserver.{{.ID}}"
+
 networks:
   app-network:
     external: true

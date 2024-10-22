@@ -1,0 +1,16 @@
+version: "2.4"
+services:
+  fluentbit:
+    image: cr.fluentbit.io/fluent/fluent-bit:2.0-debug
+    container_name: fluent-bit-debug
+    hostname: fluent-bit
+    ports:
+      - "24224:24224"
+    volumes:
+      - fluent-bit:/fluent-bit/etc/
+      - /var/log/journal:/var/log/journal:ro
+      - /var/lib/docker/volumes/r-analysis_work/_data/.workbench/post-startup-output.txt:/logs/post-startup-output.txt:ro
+    command: "/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf"
+    user: root
+volumes:
+  fluent-bit:

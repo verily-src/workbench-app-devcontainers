@@ -3,20 +3,21 @@ services:
   app:
     container_name: "application-server"
     image: "nvcr.io/nvidia/pytorch:24.09-py3"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    user: "jupyter"
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/root/work
+      - work:/home/jupyter/work
     ports:
       - "8888:8888"
-    command: "jupyter lab --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.notebook_dir=/home/root/work --NotebookApp.allow_origin='*'"
+    command: "jupyter lab --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.notebook_dir=/home/jupyter/work --NotebookApp.allow_origin='*'"
     networks:
       - app-network
     cap_add:

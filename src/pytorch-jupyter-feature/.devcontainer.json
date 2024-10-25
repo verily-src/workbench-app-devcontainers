@@ -4,9 +4,29 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
+  // "postCreateCommand": [
+  //   "/Users/rogerwangcs/local_dev/dev/startupscript/post-startup.sh",
+  //   "jupyter",
+  //   "/home/jupyter",
+  //   "${templateOption:cloud}",
+  //   "${templateOption:login}"
+  // ],
   "features": {
-    "ghcr.io/devcontainers/features/python:1": {
+    "ghcr.io/devcontainers/features/common-utils": {
+      // See https://github.com/devcontainers/features/tree/main/src/common-utils
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "installOhMyZshConfig": false,
+      "username": "jupyter"
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    },
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
+    "./.devcontainer/features/jupyter": {
       "installJupyterlab": true,
+      // "cloudPlatform": "${templateOption:cloud}",
+      "cloudPlatform": "gcp",
       "configureJupyterlabAllowOrigin": "*"
     }
   },

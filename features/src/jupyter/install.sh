@@ -942,7 +942,9 @@ if [ "${INSTALL_JUPYTERLAB}" = "true" ]; then
         CONFIG_FILE="$CONFIG_DIR/jupyter_server_config.py"
 
         add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.allow_origin = '${CONFIGURE_JUPYTERLAB_ALLOW_ORIGIN}'"
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.NotebookApp.allow_origin = '${CONFIGURE_JUPYTERLAB_ALLOW_ORIGIN}'"
+        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.root_dir = '/home/${USERNAME}'"
+        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.NotebookApp.token = ''"
+        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.NotebookApp.password = ''"
     fi
 
     # Configure GCP bigquery, gcs, and dataproc plugins

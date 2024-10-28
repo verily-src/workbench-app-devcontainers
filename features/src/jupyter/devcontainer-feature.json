@@ -1,10 +1,7 @@
 {
-  "id": "python",
-  "name": "Python",
+  "id": "jupyter",
+  "name": "Jupyter Server",
   "version": "1.6.5",
-  "dependsOn": {
-    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
-  },
   "documentationURL": "https://github.com/devcontainers/features/tree/main/src/python",
   "description": "Installs the provided version of Python, as well as PIPX, and other common Python utilities.  JupyterLab is conditionally installed with the python feature. Note: May require source code compilation.",
   "options": {

@@ -948,9 +948,9 @@ if [ "${INSTALL_JUPYTERLAB}" = "true" ]; then
     fi
 
     # Configure GCP bigquery, gcs, and dataproc plugins
-    if [ "${CLOUD_PLATFORM}" = "gcp" ]; then
-        install_user_package "${INSTALL_UNDER_ROOT}" "bigquery-jupyter-plugin"
-    fi
+    # if [ "${CLOUD_PLATFORM}" = "gcp" ]; then
+    #     install_user_package "${INSTALL_UNDER_ROOT}" "bigquery-jupyter-plugin"
+    # fi
 fi
 
 # Clean up

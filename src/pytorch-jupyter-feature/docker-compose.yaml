@@ -2,7 +2,8 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "nvcr.io/nvidia/pytorch:24.09-py3"
+    # image: "nvcr.io/nvidia/pytorch:24.09-py3"
+    image: "pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime"
     user: "jupyter"
     # deploy:
     #   resources:
@@ -14,7 +15,6 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/jupyter/work
     ports:
       - "8888:8888"
     command: "jupyter lab"
@@ -29,5 +29,3 @@ services:
 networks:
   app-network:
     external: true
-volumes:
-  work:

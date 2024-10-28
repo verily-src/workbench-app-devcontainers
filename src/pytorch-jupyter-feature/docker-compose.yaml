@@ -17,7 +17,7 @@ services:
       - .:/workspace:cached
     ports:
       - "8888:8888"
-    command: "jupyter lab"
+    command: "/home/jupyter/.local/bin/jupyter lab"
     networks:
       - app-network
     cap_add:

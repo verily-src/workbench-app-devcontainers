@@ -14,8 +14,8 @@
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
-    "jovyan",
-    "/home/jovyan",
+    "jupyter",
+    "/home/jupyter",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],

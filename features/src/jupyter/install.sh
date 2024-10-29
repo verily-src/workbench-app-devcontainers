@@ -7,6 +7,13 @@
 # Docs: https://github.com/microsoft/vscode-dev-containers/blob/main/script-library/docs/python.md
 # Maintainer: The VS Code and Codespaces Teams
 
+# install.sh
+# This install script installs python and jupyter lab. The majority of the
+# script is borrowed from the devcontainer python feature linked above.
+# Workbench specific modifications are wrapped around in:
+# "### BEGIN: Workbench-specific customizations ###" and
+# "### END: Workbench-specific customizations ###"
+
 PYTHON_VERSION="${VERSION:-"latest"}" # 'system' or 'os-provided' checks the base image first, else installs 'latest'
 INSTALL_PYTHON_TOOLS="${INSTALLTOOLS:-"true"}"
 SKIP_VULNERABILITY_PATCHING="${SKIPVULNERABILITYPATCHING:-"false"}"
@@ -17,8 +24,12 @@ OVERRIDE_DEFAULT_VERSION="${OVERRIDEDEFAULTVERSION:-"true"}"
 
 export PIPX_HOME=${PIPX_HOME:-"/usr/local/py-utils"}
 
+### BEGIN: Workbench-specific customizations ###
+# Set the user to the provided feature option `USER`
 USERNAME="${USERNAME:-"${USER:-"automatic"}"}"
+# Set the cloud platform to the provided feature option `CLOUDPLATFORM`
 CLOUD_PLATFORM="${CLOUDPLATFORM:-"gcp"}"
+### END: Workbench-specific customizations ###
 UPDATE_RC="${UPDATE_RC:-"true"}"
 USE_ORYX_IF_AVAILABLE="${USEORYXIFAVAILABLE:-"true"}"
 
@@ -941,17 +952,27 @@ if [ "${INSTALL_JUPYTERLAB}" = "true" ]; then
 
         CONFIG_FILE="$CONFIG_DIR/jupyter_server_config.py"
 
+### BEGIN: Workbench-specific customizations ###
+        # Allow the jupyter server to accept requests forwarded by the proxy agent
         add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.allow_origin = '${CONFIGURE_JUPYTERLAB_ALLOW_ORIGIN}'"
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.root_dir = '/home/${USERNAME}'"
         add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.ip = '0.0.0.0'"
+
+        # Explicitly disable token and password authentication as we are behind a proxy
         add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.token = ''"
         add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.password = ''"
+
+        # Set the root directory and notebook directory to the user's home directory
+        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.root_dir = '/home/${USERNAME}'"
+        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.NotebookApp.notebook_dir = '/home/${USERNAME}'"
     fi
 
-    # Configure GCP bigquery, gcs, and dataproc plugins
+    # If we are in a GCE environment, install the BigQuery Jupyter plugin, which
+    # includes jupyter lab UI plugins for viewing BQ tables, GCS buckets, and
+    # dataproc clusters.
     if [ "${CLOUD_PLATFORM}" = "gcp" ]; then
         install_user_package "${INSTALL_UNDER_ROOT}" "bigquery-jupyter-plugin"
     fi
+### END: Workbench-specific customizations ###
 fi
 
 # Clean up

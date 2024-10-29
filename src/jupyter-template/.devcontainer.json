@@ -1,5 +1,5 @@
 {
-  "name": "Jupyter app running as feature on pytorch image",
+  "name": "Jupyter app devcontainer template with parametrized base image and port",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

@@ -3,20 +3,21 @@ services:
   app:
     container_name: "application-server"
     # image: "nvcr.io/nvidia/pytorch:24.09-py3"
-    image: "pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime"
+    # image: "pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime"
+    image: "${templateOption:containerImage}"
     user: "jupyter"
     # deploy:
     #   resources:
     #     reservations:
     #       devices:
     #         - driver: nvidia
-    #           count: all
+    #           count: ${templateOption:useAccelerator}
     #           capabilities: [gpu]
     restart: always
     volumes:
       - .:/workspace:cached
     ports:
-      - "8888:8888"
+      - "${templateOption:containerPort}:${templateOption:containerPort}"
     command: "/home/jupyter/.local/bin/jupyter lab"
     environment:
       SHELL: "/bin/bash"

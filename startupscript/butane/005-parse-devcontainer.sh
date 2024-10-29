@@ -13,25 +13,40 @@ function usage {
   echo "  devcontainer_path: folder directory of the devcontainer."
   echo "  cloud: gcp or aws."
   echo "  login: whether the user is logged into the workbench on startup."
+  echo "  container_image: the container image to use."
+  echo "  container_port: the port to expose."
   exit 1
 }
 
-if [[ $# -ne 3 ]]; then
+if [[ $# -ne 5 ]]; then
     usage
 fi
 
 readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
 readonly LOGIN="$3"
+readonly CONTAINER_IMAGE="${4:-debian:slim}"
+readonly CONTAINER_PORT="${5:-8080}"
 
-readonly DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}"/.devcontainer.json
+readonly DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
+readonly DEVCONTAINER_DOCKER_COMPOSE_PATH="${DEVCONTAINER_PATH}/docker-compose.yaml"
 
 if [[ -d /home/core/devcontainer/startupscript ]]; then
     cp -r /home/core/devcontainer/startupscript "${DEVCONTAINER_PATH}"/startupscript
 fi
-echo "replacing devcontainer.json templateOptions"
-sed -i "s/\${templateOption:login}/${LOGIN}/g" "${DEVCONTAINER_CONFIG_PATH}"
-sed -i "s/\${templateOption:cloud}/${CLOUD}/g" "${DEVCONTAINER_CONFIG_PATH}"
+
+replace_template_options() {
+    local TEMPLATE_PATH="$1"
+
+    echo "replacing templateOptions in ${TEMPLATE_PATH}"
+    sed -i '' "s|\${templateOption:login}|${LOGIN}/g" "${TEMPLATE_PATH}"
+    sed -i '' "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
+    sed -i '' "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
+    sed -i '' "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
+}
+
+replace_template_options "${DEVCONTAINER_CONFIG_PATH}"
+replace_template_options "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 
 echo "publishing devcontainer.json to metadata"
 export PATH="/opt/bin:$PATH"

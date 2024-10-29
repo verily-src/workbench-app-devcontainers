@@ -25,7 +25,7 @@ fi
 readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
 readonly LOGIN="$3"
-readonly CONTAINER_IMAGE="${4:-debian:slim}"
+readonly CONTAINER_IMAGE="${4:-debian:bullseye}"
 readonly CONTAINER_PORT="${5:-8080}"
 
 readonly DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"

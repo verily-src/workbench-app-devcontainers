@@ -39,10 +39,10 @@ replace_template_options() {
     local TEMPLATE_PATH="$1"
 
     echo "replacing templateOptions in ${TEMPLATE_PATH}"
-    sed -i '' "s|\${templateOption:login}|${LOGIN}/g" "${TEMPLATE_PATH}"
-    sed -i '' "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
-    sed -i '' "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
-    sed -i '' "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:login}|${LOGIN}/g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
 }
 
 replace_template_options "${DEVCONTAINER_CONFIG_PATH}"

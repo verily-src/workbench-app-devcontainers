@@ -57,9 +57,7 @@ function set_metadata() {
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
 
-  docker run --rm --network host \
-    public.ecr.aws/aws-cli/aws-cli \
-    ec2 create-tags \
+  aws ec2 create-tags \
       --resources "${id}" \
       --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
 }

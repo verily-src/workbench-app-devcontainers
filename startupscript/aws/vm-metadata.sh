@@ -7,7 +7,7 @@
 # Note that this script is intended to be sourced from the "post-startup.sh" script
 # and is dependent on some functions and packages already installed.
 #
-# - aws (cli from ghcr.io/devcontainers/features/aws-cli:1) 
+# - aws (cli from ghcr.io/devcontainers/features/aws-cli:1)
 
 # The get_metadata_value function is used to query for tags prefixed with "vwbusr:" attached to the
 # running istance.  Tags intended for use in startup script have this prefix.  However, we have a
@@ -40,7 +40,7 @@ function get_metadata_value() {
   local tag_key=vwbusr:"$1"
   get_metadata_value_unprefixed "${tag_key}"
 }
-readonly -f get_metadata_value 
+readonly -f get_metadata_value
 
 # Sets tags on the EC2 instance with the given key and value. Tags set from the instance is prfixed with vwbapp:
 function set_metadata() {
@@ -57,10 +57,8 @@ function set_metadata() {
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
 
-  docker run --rm --network host \
-    public.ecr.aws/aws-cli/aws-cli \
-    ec2 create-tags \
-      --resources "${id}" \
-      --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
+  aws ec2 create-tags \
+    --resources "${id}" \
+    --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
 }
 readonly -f set_metadata

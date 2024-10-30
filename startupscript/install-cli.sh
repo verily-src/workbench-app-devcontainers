@@ -5,10 +5,8 @@
 #
 # Install & configure the Workbench CLI
 #
-# Note that this script is intended to be sourced from the "post-startup.sh" script
-# and is dependent on some functions and variables already being set up:
+# Note that this script is dependent on some functions and variables already being set up in "post-startup.sh":
 #
-# - emit (function)
 # - get_metadata_value (function)
 # - RUN_AS_LOGIN_USER: run command as app user 
 # - WORKBENCH_INSTALL_PATH: path to install workbench cli
@@ -16,33 +14,44 @@
 # - USER_BASH_COMPLETION_DIR: path to the bash completion file
 # - LOG_IN: whether to log in to CLI
 
-emit "Installing the Workbench CLI ..."
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
 
-# Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
-TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
-if [[ -z "${TERRA_SERVER}" ]]; then
-  TERRA_SERVER="verily"
-fi
-readonly TERRA_SERVER
+source "${SCRIPT_DIR}/emit.sh"
+source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
-# If the server environment is a verily server, use the verily download script.
-if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
-  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-  if ! versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")"; then
-    >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
+# Only install cli if not already installed
+if ! command -v wb &> /dev/null; then
+  emit "Installing the Workbench CLI ..."
+
+  # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
+  TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
+  if [[ -z "${TERRA_SERVER}" ]]; then
+    TERRA_SERVER="verily"
+  fi
+  readonly TERRA_SERVER
+
+  # If the server environment is a verily server, use the verily download script.
+  if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
+    # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+    if ! versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")"; then
+      >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
+      exit 1
+    fi
+    cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
+
+    ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
+    cp wb "${WORKBENCH_INSTALL_PATH}"
+  else
+    >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
     exit 1
   fi
-  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
 
-  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-  cp wb "${WORKBENCH_INSTALL_PATH}"
-else
-  >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
-  exit 1
+  # Copy 'wb' to its legacy 'terra' name.
+  cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
 fi
-
-# Copy 'wb' to its legacy 'terra' name.
-cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
 ${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"

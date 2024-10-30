@@ -358,7 +358,7 @@ pushd "${JAVA_INSTALL_TMP}"
 
 # Download the latest Java 17, untar it, and remove the TAR file
 ${RUN_AS_LOGIN_USER} "\
-  curl -Os https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz && \
+  curl -Os https://download.oracle.com/java/17/archive/jdk-17_linux-x64_bin.tar.gz && \
   tar xfz jdk-17_linux-x64_bin.tar.gz && \
   rm jdk-17_linux-x64_bin.tar.gz"
 

@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-#-------------------------------------------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License. See https://go.microsoft.com/fwlink/?linkid=2090316 for license information.
-#-------------------------------------------------------------------------------------------------------------
-#
-# Docs: https://github.com/microsoft/vscode-dev-containers/blob/main/script-library/docs/python.md
-# Maintainer: The VS Code and Codespaces Teams
 
 # install.sh
-# This install script installs python and jupyter lab. The majority of the
-# script is borrowed from the devcontainer python feature linked above.
+# This install script installs python and jupyter lab.
+# Forked from https://github.com/devcontainers/features/tree/main/src/python
 # Workbench specific modifications are wrapped around in:
 # "### BEGIN: Workbench-specific customizations ###" and
 # "### END: Workbench-specific customizations ###"

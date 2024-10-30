@@ -18,7 +18,6 @@ PYTHON_VERSION="${VERSION:-"latest"}" # 'system' or 'os-provided' checks the bas
 INSTALL_PYTHON_TOOLS="${INSTALLTOOLS:-"true"}"
 SKIP_VULNERABILITY_PATCHING="${SKIPVULNERABILITYPATCHING:-"false"}"
 OPTIMIZE_BUILD_FROM_SOURCE="${OPTIMIZE:-"false"}"
-ENABLE_SHARED_FROM_SOURCE="${ENABLESHARED:-"false"}"
 PYTHON_INSTALL_PATH="${INSTALLPATH:-"/usr/local/python"}"
 OVERRIDE_DEFAULT_VERSION="${OVERRIDEDEFAULTVERSION:-"true"}"
 
@@ -58,7 +57,7 @@ fi
 # Bring in ID, ID_LIKE, VERSION_ID, VERSION_CODENAME
 . /etc/os-release
 # Get an adjusted ID independent of distro variants
-MAJOR_VERSION_ID=$(echo ${VERSION_ID} | cut -d . -f 1)
+MAJOR_VERSION_ID="$(echo "${VERSION_ID}" | cut -d . -f 1)"
 if [ "${ID}" = "debian" ] || [ "${ID_LIKE}" = "debian" ]; then
     ADJUSTED_ID="debian"
 elif [[ "${ID}" = "rhel" || "${ID}" = "fedora" || "${ID}" = "mariner" || "${ID_LIKE}" = *"rhel"* || "${ID_LIKE}" = *"fedora"* || "${ID_LIKE}" = *"mariner"* ]]; then
@@ -82,11 +81,11 @@ if [ "${ADJUSTED_ID}" = "rhel" ] && [ "${VERSION_CODENAME-}" = "centos7" ]; then
 fi
 
 # To find some devel packages, some rhel need to enable specific extra repos, but not on RedHat ubi images...
-INSTALL_CMD_ADDL_REPO=""
-if [ ${ADJUSTED_ID} = "rhel" ] && [ ${ID} != "rhel" ]; then
-    if [ ${MAJOR_VERSION_ID} = "8" ]; then
+INSTALL_CMD_ADDL_REPOS=""
+if [ "${ADJUSTED_ID}" = "rhel" ] && [ "${ID}" != "rhel" ]; then
+    if [ "${MAJOR_VERSION_ID}" = "8" ]; then
         INSTALL_CMD_ADDL_REPOS="--enablerepo powertools"
-    elif [ ${MAJOR_VERSION_ID} = "9" ]; then
+    elif [ "${MAJOR_VERSION_ID}" = "9" ]; then
         INSTALL_CMD_ADDL_REPOS="--enablerepo crb"
     fi
 fi
@@ -115,7 +114,7 @@ clean_up() {
         rhel)
             rm -rf /var/cache/dnf/* /var/cache/yum/*
             rm -rf /tmp/yum.log
-            rm -rf ${GPG_INSTALL_PATH}
+            rm -rf "${GPG_INSTALL_PATH}"
             ;;
     esac
 }
@@ -158,13 +157,13 @@ get_gpg_key_servers() {
     local curl_args=""
     local keyserver_reachable=false  # Flag to indicate if any keyserver is reachable
 
-    if [ ! -z "${KEYSERVER_PROXY}" ]; then
+    if [ -n "${KEYSERVER_PROXY}" ]; then
         curl_args="--proxy ${KEYSERVER_PROXY}"
     fi
 
     for keyserver in "${!keyservers_curl_map[@]}"; do
         local keyserver_curl_url="${keyservers_curl_map[${keyserver}]}"
-        if curl -s ${curl_args} --max-time 5 ${keyserver_curl_url} > /dev/null; then
+        if curl -s "${curl_args}" --max-time 5 "${keyserver_curl_url}" > /dev/null; then
             echo "keyserver ${keyserver}"
             keyserver_reachable=true
         else
@@ -182,12 +181,11 @@ get_gpg_key_servers() {
 receive_gpg_keys() {
     local keys=${!1}
     local keyring_args=""
-    local gpg_cmd="gpg"
-    if [ ! -z "$2" ]; then
-        mkdir -p "$(dirname \"$2\")"
+    if [ -n "$2" ]; then
+        mkdir -p "$(dirname "$2")"
         keyring_args="--no-default-keyring --keyring $2"
     fi
-    if [ ! -z "${KEYSERVER_PROXY}" ]; then
+    if [ -n "${KEYSERVER_PROXY}" ]; then
         keyring_args="${keyring_args} --keyserver-options http-proxy=${KEYSERVER_PROXY}"
     fi
 
@@ -208,7 +206,7 @@ receive_gpg_keys() {
     until [ "${gpg_ok}" = "true" ] || [ "${retry_count}" -eq "5" ];
     do
         echo "(*) Downloading GPG key..."
-        ( echo "${keys}" | xargs -n 1 gpg -q ${keyring_args} --recv-keys) 2>&1 && gpg_ok="true"
+        ( echo "${keys}" | xargs -n 1 gpg -q "${keyring_args}" --recv-keys) 2>&1 && gpg_ok="true"
         if [ "${gpg_ok}" != "true" ]; then
             echo "(*) Failed getting key, retrying in 10s..."
             (( retry_count++ ))
@@ -226,12 +224,11 @@ receive_gpg_keys() {
 receive_gpg_keys_centos7() {
     local keys=${!1}
     local keyring_args=""
-    local gpg_cmd="gpg"
-    if [ ! -z "$2" ]; then
-        mkdir -p "$(dirname \"$2\")"
+    if [ -n "$2" ]; then
+        mkdir -p "$(dirname "$2")"
         keyring_args="--no-default-keyring --keyring $2"
     fi
-    if [ ! -z "${KEYSERVER_PROXY}" ]; then
+    if [ -n "${KEYSERVER_PROXY}" ]; then
         keyring_args="${keyring_args} --keyserver-options http-proxy=${KEYSERVER_PROXY}"
     fi
 
@@ -247,14 +244,15 @@ receive_gpg_keys_centos7() {
     # GPG key download sometimes fails for some reason and retrying fixes it.
     local retry_count=0
     local gpg_ok="false"
-    num_keys=$(echo ${keys} | wc -w)
+    num_keys=$(echo "${keys}" | wc -w)
     set +e
         echo "(*) Downloading GPG keys..."
         until [ "${gpg_ok}" = "true" ] || [ "${retry_count}" -eq "5" ]; do
-            for keyserver in $(echo "$(get_gpg_key_servers)" | sed 's/keyserver //'); do
-                ( echo "${keys}" | xargs -n 1 gpg -q ${keyring_args} --recv-keys --keyserver=${keyserver} ) 2>&1
-                downloaded_keys=$(gpg --list-keys | grep ^pub | wc -l)
-                if [[ ${num_keys} = ${downloaded_keys} ]]; then
+            keyservers=$(get_gpg_key_servers)
+            for keyserver in ${keyservers//keyserver /}; do
+                ( echo "${keys}" | xargs -n 1 gpg -q "${keyring_args}" --recv-keys --keyserver="${keyserver}" ) 2>&1
+                downloaded_keys=$(gpg --list-keys | grep -c ^pub)
+                if [[ ${num_keys} = "${downloaded_keys}" ]]; then
                     gpg_ok="true"
                     break
                 fi
@@ -290,12 +288,12 @@ find_version_from_git_tags() {
             last_part="${escaped_separator}[0-9]+"
         fi
         local regex="${prefix}\\K[0-9]+${escaped_separator}[0-9]+${last_part}$"
-        local version_list="$(git ls-remote --tags ${repository} | grep -oP "${regex}" | tr -d ' ' | tr "${separator}" "." | sort -rV)"
+        local version_list="$(git ls-remote --tags "${repository}" | grep -oP "${regex}" | tr -d ' ' | tr "${separator}" "." | sort -rV)"
         if [ "${requested_version}" = "latest" ] || [ "${requested_version}" = "current" ] || [ "${requested_version}" = "lts" ]; then
-            declare -g ${variable_name}="$(echo "${version_list}" | head -n 1)"
+            declare -g "${variable_name}"="$(echo "${version_list}" | head -n 1)"
         else
             set +e
-            declare -g ${variable_name}="$(echo "${version_list}" | grep -E -m 1 "^${requested_version//./\\.}([\\.\\s]|$)")"
+            declare -g "${variable_name}"="$(echo "${version_list}" | grep -E -m 1 "^${requested_version//./\\.}([\\.\\s]|$)")"
             set -e
         fi
     fi
@@ -317,8 +315,6 @@ find_prev_version_from_git_tags() {
     local separator=${4:-"."}
     # Some tools release versions that omit the last digit (e.g. go)
     local last_part_optional=${5:-"false"}
-    # Some repositories may have tags that include a suffix (e.g. actions/node-versions)
-    local version_suffix_regex=$6
     # Try one break fix version number less if we get a failure. Use "set +e" since "set -e" can cause failures in valid scenarios.
     set +e
         major="$(echo "${current_version}" | grep -oE '^[0-9]+' || echo '')"
@@ -327,21 +323,21 @@ find_prev_version_from_git_tags() {
 
         if [ "${minor}" = "0" ] && [ "${breakfix}" = "0" ]; then
             ((major=major-1))
-            declare -g ${variable_name}="${major}"
+            declare -g "${variable_name}"="${major}"
             # Look for latest version from previous major release
             find_version_from_git_tags "${variable_name}" "${repository}" "${prefix}" "${separator}" "${last_part_optional}"
         # Handle situations like Go's odd version pattern where "0" releases omit the last part
         elif [ "${breakfix}" = "" ] || [ "${breakfix}" = "0" ]; then
             ((minor=minor-1))
-            declare -g ${variable_name}="${major}.${minor}"
+            declare -g "${variable_name}"="${major}.${minor}"
             # Look for latest version from previous minor release
             find_version_from_git_tags "${variable_name}" "${repository}" "${prefix}" "${separator}" "${last_part_optional}"
         else
             ((breakfix=breakfix-1))
             if [ "${breakfix}" = "0" ] && [ "${last_part_optional}" = "true" ]; then
-                declare -g ${variable_name}="${major}.${minor}"
+                declare -g "${variable_name}"="${major}.${minor}"
             else
-                declare -g ${variable_name}="${major}.${minor}.${breakfix}"
+                declare -g "${variable_name}"="${major}.${minor}.${breakfix}"
             fi
         fi
     set -e
@@ -396,12 +392,12 @@ pkg_mgr_update() {
             ;;
         rhel)
             if [ ${PKG_MGR_CMD} = "microdnf" ]; then
-                if [ "$(ls /var/cache/yum/* 2>/dev/null | wc -l)" = 0 ]; then
+                if ! find /var/cache/yum -type f -print -quit 2>/dev/null; then
                     echo "Running ${PKG_MGR_CMD} makecache ..."
                     ${PKG_MGR_CMD} makecache
                 fi
             else
-                if [ "$(ls /var/cache/${PKG_MGR_CMD}/* 2>/dev/null | wc -l)" = 0 ]; then
+                if [ "$(find /var/cache/${PKG_MGR_CMD} -type f 2>/dev/null | wc -l)" = 0 ]; then
                     echo "Running ${PKG_MGR_CMD} check-update ..."
                     set +e
                     ${PKG_MGR_CMD} check-update
@@ -440,7 +436,7 @@ add_symlink() {
     fi
 
     if [ "${OVERRIDE_DEFAULT_VERSION}" = "true" ]; then
-        if [[ $(ls -l ${CURRENT_PATH}) != *"-> ${INSTALL_PATH}"* ]] ; then
+        if [[ $(ls -l "${CURRENT_PATH}") != *"-> ${INSTALL_PATH}"* ]] ; then
             rm "${CURRENT_PATH}"
             ln -s -r "${INSTALL_PATH}" "${CURRENT_PATH}"
         fi
@@ -461,7 +457,7 @@ install_openssl3() {
         tar xzf ${tgz_filename}
         cd openssl-${openssl3_version}
         ./config --libdir=lib
-        make -j $(nproc)
+        make -j "$(nproc)"
         make install_dev
     )
     rm -rf /tmp/openssl3
@@ -483,7 +479,7 @@ install_cpython() {
     if [ -d "${INSTALL_PATH}" ]; then
         echo "(!) Python version ${VERSION} already exists."
     else
-        mkdir -p /tmp/python-src ${INSTALL_PATH}
+        mkdir -p /tmp/python-src "${INSTALL_PATH}"
         cd /tmp/python-src
         cpython_tgz_filename="Python-${VERSION}.tgz"
         cpython_tgz_url="https://www.python.org/ftp/python/${VERSION}/${cpython_tgz_filename}"
@@ -549,12 +545,13 @@ install_from_source() {
         config_args=" ${config_args} --enable-shared"
         # need double-$: LDFLAGS ends up in Makefile $$ becomes $ when evaluated.
         # backslash needed for shell that Make calls escape the $.
+        # shellcheck disable=SC2016
         export LDFLAGS="${LDFLAGS} -Wl,-rpath="'\$$ORIGIN'"/../lib"
     fi
     if [ -n "${ADDL_CONFIG_ARGS}" ]; then
         config_args="${config_args} ${ADDL_CONFIG_ARGS}"
     fi
-    ./configure --prefix="${INSTALL_PATH}" --with-ensurepip=install ${config_args}
+    ./configure --prefix="${INSTALL_PATH}" --with-ensurepip=install "${config_args}"
     make -j 8
     make install
 
@@ -626,11 +623,11 @@ add_user_jupyter_config() {
 install_python() {
     version=$1
     # If the os-provided versions are "good enough", detect that and bail out.
-    if [ ${version} = "os-provided" ] || [ ${version} = "system" ]; then
+    if [ "${version}" = "os-provided" ] || [ "${version}" = "system" ]; then
         if [ ${ADJUSTED_ID} = "debian" ]; then
             check_packages python3 python3-doc python3-pip python3-venv python3-dev python3-tk
         else
-            if [ ${ID} != "mariner" ]; then
+            if [ "${ID}" != "mariner" ]; then
                 check_packages python3 python3-pip python3-devel python3-tkinter
             else
                 check_packages python3 python3-pip python3-devel
@@ -655,12 +652,12 @@ install_python() {
 
         should_install_from_source=false
     elif [ ${ADJUSTED_ID} = "debian" ] && [ "$(dpkg --print-architecture)" = "amd64" ] && [ "${USE_ORYX_IF_AVAILABLE}" = "true" ] && type oryx > /dev/null 2>&1; then
-        install_using_oryx $version || should_install_from_source=true
+        install_using_oryx "$version" || should_install_from_source=true
     else
         should_install_from_source=true
     fi
     if [ "${should_install_from_source}" = "true" ]; then
-        install_from_source $version
+        install_from_source "$version"
     fi
 }
 
@@ -672,7 +669,7 @@ import sys
 import sysconfig
 sys.prefix == sys.base_prefix and print(sysconfig.get_path("stdlib", sysconfig.get_default_scheme()))'
     )
-    if [ -f ${python_stdlib_dir}/EXTERNALLY-MANAGED ]; then
+    if [ -f "${python_stdlib_dir}"/EXTERNALLY-MANAGED ]; then
         return 0
     else
         return 1
@@ -694,7 +691,7 @@ if [ "${USERNAME}" = "auto" ] || [ "${USERNAME}" = "automatic" ]; then
     USERNAME=""
     POSSIBLE_USERS=("vscode" "node" "codespace" "$(awk -v val=1000 -F ":" '$3==val{print $1}' /etc/passwd)")
     for CURRENT_USER in "${POSSIBLE_USERS[@]}"; do
-        if id -u ${CURRENT_USER} > /dev/null 2>&1; then
+        if id -u "${CURRENT_USER}" > /dev/null 2>&1; then
             USERNAME=${CURRENT_USER}
             break
         fi
@@ -702,7 +699,7 @@ if [ "${USERNAME}" = "auto" ] || [ "${USERNAME}" = "automatic" ]; then
     if [ "${USERNAME}" = "" ]; then
         USERNAME=root
     fi
-elif [ "${USERNAME}" = "none" ] || ! id -u ${USERNAME} > /dev/null 2>&1; then
+elif [ "${USERNAME}" = "none" ] || ! id -u "${USERNAME}" > /dev/null 2>&1; then
     USERNAME=root
 fi
 
@@ -761,13 +758,13 @@ case ${ADJUSTED_ID} in
                 curl"
         fi
         # Mariner does not have tk-devel package available, RedHat ubi8 and ubi9 do not have tk-devel
-        if [ ${ID} != "mariner" ] && [ ${ID} != "rhel" ]; then
+        if [ "${ID}" != "mariner" ] && [ "${ID}" != "rhel" ]; then
             REQUIRED_PKGS="${REQUIRED_PKGS} \
                 tk-devel"
         fi
         # Redhat ubi8 and ubi9 do not have some packages by default, only add them
         # if we're not on RedHat ...
-        if [ ${ID} != "rhel" ]; then
+        if [ "${ID}" != "rhel" ]; then
             REQUIRED_PKGS="${REQUIRED_PKGS} \
                 gdbm-devel \
                 readline-devel \
@@ -777,34 +774,35 @@ case ${ADJUSTED_ID} in
         ;;
 esac
 
-check_packages ${REQUIRED_PKGS}
+check_packages "${REQUIRED_PKGS}"
 
 # Install Python from source if needed
 if [ "${PYTHON_VERSION}" != "none" ]; then
-    if ! cat /etc/group | grep -e "^python:" > /dev/null 2>&1; then
+    if ! grep -q -e "^python:" /etc/group; then
         groupadd -r python
     fi
+
     usermod -a -G python "${USERNAME}"
 
     CURRENT_PATH="${PYTHON_INSTALL_PATH}/current"
 
-    install_python ${PYTHON_VERSION}
+    install_python "${PYTHON_VERSION}"
 
     # Additional python versions to be installed but not be set as default.
-    if [ ! -z "${ADDITIONAL_VERSIONS}" ]; then
+    if [ -n "${ADDITIONAL_VERSIONS}" ]; then
         OLD_INSTALL_PATH="${INSTALL_PATH}"
         OLDIFS=$IFS
         IFS=","
-            read -a additional_versions <<< "$ADDITIONAL_VERSIONS"
+            read -r -a additional_versions <<< "$ADDITIONAL_VERSIONS"
             for version in "${additional_versions[@]}"; do
                 OVERRIDE_DEFAULT_VERSION="false"
-                install_python $version
+                install_python "$version"
             done
         INSTALL_PATH="${OLD_INSTALL_PATH}"
         IFS=$OLDIFS
     fi
 
-    if [ ${PYTHON_VERSION} != "os-provided" ] && [ ${PYTHON_VERSION} != "system" ]; then
+    if [ "${PYTHON_VERSION}" != "os-provided" ] && [ "${PYTHON_VERSION}" != "system" ]; then
         updaterc "if [[ \"\${PATH}\" != *\"${CURRENT_PATH}/bin\"* ]]; then export PATH=${CURRENT_PATH}/bin:\${PATH}; fi"
         PATH="${INSTALL_PATH}/bin:${PATH}"
     fi
@@ -829,13 +827,13 @@ if [[ "${INSTALL_PYTHON_TOOLS}" = "true" ]] && [[ -n "${PYTHON_SRC}" ]]; then
     PATH="${PATH}:${PIPX_BIN_DIR}"
 
     # Create pipx group, dir, and set sticky bit
-    if ! cat /etc/group | grep -e "^pipx:" > /dev/null 2>&1; then
+    if ! grep -q -e "^pipx:" /etc/group; then
         groupadd -r pipx
     fi
-    usermod -a -G pipx ${USERNAME}
+    usermod -a -G pipx "${USERNAME}"
     umask 0002
-    mkdir -p ${PIPX_BIN_DIR}
-    chown -R "${USERNAME}:pipx" ${PIPX_HOME}
+    mkdir -p "${PIPX_BIN_DIR}"
+    chown -R "${USERNAME}:pipx" "${PIPX_HOME}"
     chmod -R g+r+w "${PIPX_HOME}"
     find "${PIPX_HOME}" -type d -print0 | xargs -0 -n 1 chmod g+s
 
@@ -850,7 +848,7 @@ if [[ "${INSTALL_PYTHON_TOOLS}" = "true" ]] && [[ -n "${PYTHON_SRC}" ]]; then
     export PIP_CACHE_DIR=/tmp/pip-tmp/cache
     PIPX_DIR=""
     if ! type pipx > /dev/null 2>&1; then
-        if python_is_externally_managed ${PYTHON_SRC}; then
+        if python_is_externally_managed "${PYTHON_SRC}"; then
             check_packages pipx
         else
             pip3 install --disable-pip-version-check --no-cache-dir --user pipx 2>&1
@@ -859,8 +857,8 @@ if [[ "${INSTALL_PYTHON_TOOLS}" = "true" ]] && [[ -n "${PYTHON_SRC}" ]]; then
         fi
     fi
     for util in "${DEFAULT_UTILS[@]}"; do
-        if ! type ${util} > /dev/null 2>&1; then
-            "${PIPX_DIR}pipx" install --system-site-packages --pip-args '--no-cache-dir --force-reinstall' ${util}
+        if ! type "${util}" > /dev/null 2>&1; then
+            "${PIPX_DIR}pipx" install --system-site-packages --pip-args '--no-cache-dir --force-reinstall' "${util}"
         else
             echo "${util} already installed. Skipping."
         fi
@@ -872,10 +870,10 @@ if [[ "${INSTALL_PYTHON_TOOLS}" = "true" ]] && [[ -n "${PYTHON_SRC}" ]]; then
         RUN_TIME_PY_VER_DETECT=$(${PYTHON_SRC} --version 2>&1)
         PY_MAJOR_MINOR_VER=${RUN_TIME_PY_VER_DETECT:7:4};
         if [[ ${VULNERABLE_VERSIONS[*]} =~ $PY_MAJOR_MINOR_VER ]]; then
-            rm -rf  ${PIPX_HOME}/shared/lib/"python${PY_MAJOR_MINOR_VER}"/site-packages/setuptools-65.5.0.dist-info
+            rm -rf  "${PIPX_HOME}/shared/lib/python${PY_MAJOR_MINOR_VER}"/site-packages/setuptools-65.5.0.dist-info
             if [[ -e "/usr/local/lib/python${PY_MAJOR_MINOR_VER}/ensurepip/_bundled/setuptools-65.5.0-py3-none-any.whl" ]]; then
                 # remove the vulnerable setuptools-65.5.0-py3-none-any.whl file
-                rm /usr/local/lib/python${PY_MAJOR_MINOR_VER}/ensurepip/_bundled/setuptools-65.5.0-py3-none-any.whl
+                rm /usr/local/lib/python"${PY_MAJOR_MINOR_VER}"/ensurepip/_bundled/setuptools-65.5.0-py3-none-any.whl
                 # create and change to the setuptools_downloaded directory
                 mkdir -p /tmp/setuptools_downloaded
                 cd /tmp/setuptools_downloaded
@@ -886,7 +884,7 @@ if [[ "${INSTALL_PYTHON_TOOLS}" = "true" ]] && [[ -n "${PYTHON_SRC}" ]]; then
                 # create a directory to store unpacked contents of the source distribution
                 mkdir -p /tmp/setuptools_src_dist
                 # extract the contents inside the new directory
-                tar -xzf $filename -C /tmp/setuptools_src_dist
+                tar -xzf "$filename" -C /tmp/setuptools_src_dist
                 # move to the setuptools-* directory inside /setuptools_src_dist
                 cd /tmp/setuptools_src_dist/setuptools-65.5.1/
                 # look for setup.py file in the current directory and create a wheel file
@@ -894,7 +892,7 @@ if [[ "${INSTALL_PYTHON_TOOLS}" = "true" ]] && [[ -n "${PYTHON_SRC}" ]]; then
                 # move inside the dist directory in pwd
                 cd dist
                 # copy this file to the ensurepip/_bundled directory
-                cp setuptools-65.5.1-py3-none-any.whl /usr/local/lib/python${PY_MAJOR_MINOR_VER}/ensurepip/_bundled/
+                cp setuptools-65.5.1-py3-none-any.whl /usr/local/lib/python"${PY_MAJOR_MINOR_VER}"/ensurepip/_bundled/
                 # replace the version in __init__.py file with the installed version
                 sed -i 's/_SETUPTOOLS_VERSION = \"65\.5\.0\"/_SETUPTOOLS_VERSION = "65.5.1"/g' /usr/local/lib/"python${PY_MAJOR_MINOR_VER}"/ensurepip/__init__.py
                 # cleanup created dir's
@@ -923,7 +921,7 @@ if [ "${INSTALL_JUPYTERLAB}" = "true" ]; then
     fi
 
     install_user_package $INSTALL_UNDER_ROOT jupyterlab
-    install_user_package $INSTALL_UNDER_ROOT jupyterlab-git
+    install_user_package "$INSTALL_UNDER_ROOT" jupyterlab-git
 
     if [ "$INSTALL_UNDER_ROOT" = false ]; then
         # JupyterLab would have installed into /home/${USERNAME}/.local/bin
@@ -932,13 +930,13 @@ if [ "${INSTALL_JUPYTERLAB}" = "true" ]; then
         SEARCH_STR="Defaults secure_path="
         REPLACE_STR="Defaults secure_path=/home/${USERNAME}/.local/bin"
 
-        if grep -qs ${SEARCH_STR} ${SUDOERS_FILE}; then
+        if grep -qs "${SEARCH_STR}" "${SUDOERS_FILE}"; then
             # string found and file is present
             sed -i "s|${SEARCH_STR}|${REPLACE_STR}:|g" "${SUDOERS_FILE}"
         else
             # either string is not found, or file is not present
             # In either case take same action, note >> places at end of file
-            echo "${REPLACE_STR}:${PATH}" >> ${SUDOERS_FILE}
+            echo "${REPLACE_STR}:${PATH}" >> "${SUDOERS_FILE}"
         fi
     fi
 
@@ -954,16 +952,16 @@ if [ "${INSTALL_JUPYTERLAB}" = "true" ]; then
 
 ### BEGIN: Workbench-specific customizations ###
         # Allow the jupyter server to accept requests forwarded by the proxy agent
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.allow_origin = '${CONFIGURE_JUPYTERLAB_ALLOW_ORIGIN}'"
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.ip = '0.0.0.0'"
+        add_user_jupyter_config "$CONFIG_DIR" "$CONFIG_FILE" "c.ServerApp.allow_origin = '${CONFIGURE_JUPYTERLAB_ALLOW_ORIGIN}'"
+        add_user_jupyter_config "$CONFIG_DIR" "$CONFIG_FILE" "c.ServerApp.ip = '0.0.0.0'"
 
         # Explicitly disable token and password authentication as we are behind a proxy
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.token = ''"
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.password = ''"
+        add_user_jupyter_config "$CONFIG_DIR" "$CONFIG_FILE" "c.ServerApp.token = ''"
+        add_user_jupyter_config "$CONFIG_DIR" "$CONFIG_FILE" "c.ServerApp.password = ''"
 
         # Set the root directory and notebook directory to the user's home directory
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.ServerApp.root_dir = '/home/${USERNAME}'"
-        add_user_jupyter_config $CONFIG_DIR $CONFIG_FILE "c.NotebookApp.notebook_dir = '/home/${USERNAME}'"
+        add_user_jupyter_config "$CONFIG_DIR" "$CONFIG_FILE" "c.ServerApp.root_dir = '/home/${USERNAME}'"
+        add_user_jupyter_config "$CONFIG_DIR" "$CONFIG_FILE" "c.NotebookApp.notebook_dir = '/home/${USERNAME}'"
     fi
 
     # If we are in a GCE environment, install the BigQuery Jupyter plugin, which

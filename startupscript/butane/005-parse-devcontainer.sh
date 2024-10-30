@@ -18,7 +18,8 @@ function usage {
   exit 1
 }
 
-if [[ $# -ne 5 ]]; then
+# Check that the required arguments are provided: devcontainer_path, cloud, login
+if [[ $# -lt 3 ]]; then
     usage
 fi
 
@@ -45,6 +46,7 @@ replace_template_options() {
     sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
 }
 
+# Substitute template options in devcontainer.json and docker-compose.yaml
 replace_template_options "${DEVCONTAINER_CONFIG_PATH}"
 replace_template_options "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 

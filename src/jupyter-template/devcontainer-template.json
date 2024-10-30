@@ -17,6 +17,16 @@
       "description": "Whether to log in to workbench CLI",
       "proposals": ["true", "false"],
       "default": "false"
+    },
+    "containerImage": {
+      "type": "string",
+      "description": "The container image to use",
+      "default": "debian:bullseye"
+    },
+    "containerPort": {
+      "type": "number",
+      "description": "The port to expose the container on",
+      "default": 8888
     }
   },
   "platforms": ["Any"]

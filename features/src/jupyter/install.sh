@@ -43,6 +43,7 @@ ADDITIONAL_VERSIONS="${ADDITIONALVERSIONS:-""}"
 # IFS="," read -r -a DEFAULT_UTILS <<< "${TOOLSTOINSTALL:-flake8,autopep8,black,yapf,mypy,pydocstyle,pycodestyle,bandit,pipenv,virtualenv,pytest}"
 IFS="," read -r -a DEFAULT_UTILS <<< "${TOOLSTOINSTALL:-"virtualenv"}"
 
+# shellcheck disable=SC2034
 PYTHON_SOURCE_GPG_KEYS="64E628F8D684696D B26995E310250568 2D347EA6AA65421D FB9921286F5E1540 3A5CA953F73C700D 04C367C218ADD4FF 0EDDC5F26A45C816 6AF053F07D9DC8D2 C9BE28DEE6DF025C 126EB563A74B06BF D9866941EA5BBD71 ED9D77D5 A821E680E5FA6305"
 
 KEYSERVER_PROXY="${HTTPPROXY:-"${HTTP_PROXY:-""}"}"
@@ -288,7 +289,14 @@ find_version_from_git_tags() {
             last_part="${escaped_separator}[0-9]+"
         fi
         local regex="${prefix}\\K[0-9]+${escaped_separator}[0-9]+${last_part}$"
-        local version_list="$(git ls-remote --tags "${repository}" | grep -oP "${regex}" | tr -d ' ' | tr "${separator}" "." | sort -rV)"
+        local version_list
+        version_list=$(
+            git ls-remote --tags "${repository}" |
+            grep -oP "${regex}" |
+            tr -d ' ' |
+            tr "${separator}" "." |
+            sort -rV
+        )
         if [ "${requested_version}" = "latest" ] || [ "${requested_version}" = "current" ] || [ "${requested_version}" = "lts" ]; then
             declare -g "${variable_name}"="$(echo "${version_list}" | head -n 1)"
         else
@@ -354,7 +362,11 @@ oryx_install() {
     check_packages jq
     # Soft match if full version not specified
     if [ "$(echo "${requested_version}" | grep -o "." | wc -l)" != "2" ]; then
-        local version_list="$(oryx platforms --json | jq -r ".[] | select(.Name == \"${platform}\") | .Versions | sort | reverse | @tsv" | tr '\t' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$')"
+        local version_list
+        version_list=$(
+            oryx platforms --json | jq -r ".[] | select(.Name == \"${platform}\") | .Versions | sort | reverse | @tsv" |
+            tr '\t' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$'
+        )
         if [ "${requested_version}" = "latest" ] || [ "${requested_version}" = "current" ] || [ "${requested_version}" = "lts" ]; then
             requested_version="$(echo "${version_list}" | head -n 1)"
         else
@@ -663,12 +675,12 @@ install_python() {
 
 python_is_externally_managed() {
     local _python_cmd=$1
-    local python_stdlib_dir=$(
-        ${_python_cmd} -c '
+local python_stdlib_dir
+python_stdlib_dir=$(${_python_cmd} -c '
 import sys
 import sysconfig
-sys.prefix == sys.base_prefix and print(sysconfig.get_path("stdlib", sysconfig.get_default_scheme()))'
-    )
+print(sysconfig.get_path("stdlib", sysconfig.get_default_scheme()) if sys.prefix == sys.base_prefix else "")
+')
     if [ -f "${python_stdlib_dir}"/EXTERNALLY-MANAGED ]; then
         return 0
     else

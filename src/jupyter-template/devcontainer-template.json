@@ -1,5 +1,5 @@
 {
-  "id": "jupyter",
+  "id": "jupyter-template",
   "version": "0.0.2",
   "name": "Jupyter",
   "description": "A Template to run Jupyter lab",

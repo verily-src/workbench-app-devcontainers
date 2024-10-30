@@ -17,7 +17,7 @@ readonly TEMPLATE_ID="$1"
 shopt -s dotglob
 
 readonly SRC_DIR="/tmp/${TEMPLATE_ID}"
-cp -R "src/${TEMPLATE_ID}" "${SRC_DIR}"
+cp -a "src/${TEMPLATE_ID}" "${SRC_DIR}"
 
 pushd "${SRC_DIR}"
 

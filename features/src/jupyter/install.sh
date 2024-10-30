@@ -786,7 +786,9 @@ case ${ADJUSTED_ID} in
         ;;
 esac
 
-check_packages "${REQUIRED_PKGS}"
+# REQUIRED_PKGS is a list of packages, so we need them to be split to separate arguments
+# shellcheck disable=SC2086
+check_packages ${REQUIRED_PKGS}
 
 # Install Python from source if needed
 if [ "${PYTHON_VERSION}" != "none" ]; then

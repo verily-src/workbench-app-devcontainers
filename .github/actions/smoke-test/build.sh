@@ -4,10 +4,10 @@
 #
 # Populates a devcontainer template with default value and runs a docker container
 # with devcontainer CLI.
-# 
+#
 # Usage: build.sh <app>. The app templates must be located in src/ directory.
 
-set -o errexit 
+set -o errexit
 set -o nounset
 
 readonly TEMPLATE_ID="$1"
@@ -17,7 +17,7 @@ readonly TEMPLATE_ID="$1"
 shopt -s dotglob
 
 readonly SRC_DIR="/tmp/${TEMPLATE_ID}"
-cp -R "src/${TEMPLATE_ID}" "${SRC_DIR}"
+cp -LR "src/${TEMPLATE_ID}" "${SRC_DIR}"
 
 pushd "${SRC_DIR}"
 
@@ -26,7 +26,10 @@ OPTION_PROPERTY="$(jq -r '.options' devcontainer-template.json)"
 readonly OPTION_PROPERTY
 
 if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]]; then
-    IFS=" " read -r -a OPTIONS <<< "$(jq -r '.options | keys[]' devcontainer-template.json)"
+    OPTIONS=()
+    while IFS= read -r line; do
+        OPTIONS+=("$line")
+    done < <(jq -r '.options | keys[]' devcontainer-template.json)
     readonly OPTIONS
 
     if [[ "${OPTIONS[0]}" != "" ]] && [[ "${OPTIONS[0]}" != "null" ]]; then
@@ -68,7 +71,7 @@ npm install -g @devcontainers/cli
 
 #################################
 # Workbench application specific
-# Creates docker network 
+# Creates docker network
 #################################
 docker network create -d bridge app-network
 

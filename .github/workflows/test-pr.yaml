@@ -23,6 +23,9 @@ jobs:
         with:
         # BENCH-4080: Re-enable cirrocumulus test
           filters: |
+            jupyter-template:
+              - './**/jupyter-template/**'
+              - 'startupscript/**'
             jupyter:
               - './**/jupyter/**'
               - 'startupscript/**'

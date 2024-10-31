@@ -777,6 +777,7 @@ IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.ver
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT
 
+APP_PROXY=""
 if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
 ###################################
 # Start workbench app proxy agent 
@@ -1086,7 +1087,7 @@ EOF
   # Remove the default GCSContentsManager and set jupyter file tree's root directory to the LOGIN_USER's home directory.
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
-  
+
   if [[ -n "${APP_PROXY}" ]] && [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
     cat << EOF >> "${JUPYTER_CONFIG}"
 c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"

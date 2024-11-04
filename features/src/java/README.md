@@ -7,7 +7,7 @@ Installs Java 17 via the package manger.
 
 ```json
 "features": {
-    "ghcr.io/rogerwangcs/java:1": {}
+    "./.devcontainer/features/src/java:1": {}
 }
 ```
 

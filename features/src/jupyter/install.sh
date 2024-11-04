@@ -24,7 +24,7 @@ export PIPX_HOME=${PIPX_HOME:-"/usr/local/py-utils"}
 ### BEGIN: Workbench-specific customizations ###
 # Set the user to the provided feature option `USER`
 USERNAME="${USERNAME:-"${USER:-"automatic"}"}"
-# Set the cloud platform to the provided feature option `CLOUDPLATFORM
+# Set the cloud platform to the provided feature option `CLOUDPLATFORM`
 CLOUD_PLATFORM="${CLOUDPLATFORM:-"gcp"}"
 ### END: Workbench-specific customizations ###
 UPDATE_RC="${UPDATE_RC:-"true"}"
@@ -738,8 +738,10 @@ case ${ADJUSTED_ID} in
             libxml2-dev \
             libxmlsec1-dev \
             make \
+            sudo \
             tar \
             uuid-dev \
+            vim \
             xz-utils \
             zlib1g-dev"
         ;;
@@ -757,8 +759,10 @@ case ${ADJUSTED_ID} in
             ncurses-devel \
             openssl-devel \
             shadow-utils \
+            sudo \
             sqlite-devel \
             tar \
+            vim \
             which \
             xz-devel \
             xz \

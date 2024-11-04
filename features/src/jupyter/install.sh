@@ -675,7 +675,7 @@ import sysconfig
 print(sysconfig.get_path("stdlib", sysconfig.get_default_scheme()) if sys.prefix == sys.base_prefix else "")
 ')
     if [ -f "${python_stdlib_dir}"/EXTERNALLY-MANAGED ]; then
-        return 0
+        return 1
     else
         return 1
     fi

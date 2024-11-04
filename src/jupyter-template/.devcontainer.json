@@ -20,12 +20,8 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/common-utils": {
-      // See https://github.com/devcontainers/features/tree/main/src/common-utils
-      "installZsh": false,
-      "installOhMyZsh": false,
-      "installOhMyZshConfig": false,
-      "username": "jupyter"
+    "./.devcontainer/features/setup-user": {
+      "user": "jupyter"
     },
     "ghcr.io/devcontainers/features/java:1": {
       "version": "17"

@@ -1,0 +1,13 @@
+{
+  "id": "setup-user",
+  "name": "Setup User",
+  "version": "1.0.0",
+  "description": "Create or update a linux environment user with sudo access.",
+  "options": {
+    "user": {
+      "type": "string",
+      "default": "automatic",
+      "description": "Name of the linux user to setup"
+    }
+  }
+}

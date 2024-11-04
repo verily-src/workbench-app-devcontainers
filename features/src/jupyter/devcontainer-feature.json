@@ -1,8 +1,7 @@
 {
   "id": "jupyter",
   "name": "Jupyter Server",
-  "version": "1.6.5",
-  "documentationURL": "https://github.com/devcontainers/features/tree/main/src/python",
+  "version": "1.0.0",
   "description": "Installs the provided version of Python, as well as PIPX, and other common Python utilities.  JupyterLab is conditionally installed with the python feature. Note: May require source code compilation.",
   "options": {
     "version": {

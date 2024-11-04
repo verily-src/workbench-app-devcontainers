@@ -33,8 +33,7 @@ CONFIGURE_JUPYTERLAB_ALLOW_ORIGIN="${CONFIGUREJUPYTERLABALLOWORIGIN:-""}"
 ADDITIONAL_VERSIONS="${ADDITIONALVERSIONS:-""}"
 
 # Comma-separated list of additional tools to be installed via pipx.
-# IFS="," read -r -a DEFAULT_UTILS <<< "${TOOLSTOINSTALL:-flake8,autopep8,black,yapf,mypy,pydocstyle,pycodestyle,bandit,pipenv,virtualenv,pytest}"
-IFS="," read -r -a DEFAULT_UTILS <<< "${TOOLSTOINSTALL:-"virtualenv"}"
+IFS="," read -r -a DEFAULT_UTILS <<< "${TOOLSTOINSTALL:-""}"
 
 # shellcheck disable=SC2034
 PYTHON_SOURCE_GPG_KEYS="64E628F8D684696D B26995E310250568 2D347EA6AA65421D FB9921286F5E1540 3A5CA953F73C700D 04C367C218ADD4FF 0EDDC5F26A45C816 6AF053F07D9DC8D2 C9BE28DEE6DF025C 126EB563A74B06BF D9866941EA5BBD71 ED9D77D5 A821E680E5FA6305"
@@ -734,7 +733,6 @@ case ${ADJUSTED_ID} in
             libxmlsec1-dev \
             make \
             tar \
-            tk-dev \
             uuid-dev \
             xz-utils \
             zlib1g-dev"
@@ -761,11 +759,6 @@ case ${ADJUSTED_ID} in
         if ! type curl >/dev/null 2>&1; then
             REQUIRED_PKGS="${REQUIRED_PKGS} \
                 curl"
-        fi
-        # Mariner does not have tk-devel package available, RedHat ubi8 and ubi9 do not have tk-devel
-        if [ "${ID}" != "mariner" ] && [ "${ID}" != "rhel" ]; then
-            REQUIRED_PKGS="${REQUIRED_PKGS} \
-                tk-devel"
         fi
         # Redhat ubi8 and ubi9 do not have some packages by default, only add them
         # if we're not on RedHat ...

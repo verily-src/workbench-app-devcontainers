@@ -81,8 +81,5 @@
     "PIPX_HOME": "/usr/local/py-utils",
     "PIPX_BIN_DIR": "/usr/local/py-utils/bin",
     "PATH": "/usr/local/python/current/bin:/usr/local/py-utils/bin:${PATH}"
-  },
-  "installsAfter": [
-    "ghcr.io/devcontainers/features/common-utils"
-  ]
+  }
 }

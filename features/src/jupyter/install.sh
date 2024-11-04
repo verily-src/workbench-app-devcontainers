@@ -7,6 +7,11 @@
 # "### BEGIN: Workbench-specific customizations ###" and
 # "### END: Workbench-specific customizations ###"
 
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
 PYTHON_VERSION="${VERSION:-"latest"}" # 'system' or 'os-provided' checks the base image first, else installs 'latest'
 INSTALL_PYTHON_TOOLS="${INSTALLTOOLS:-"true"}"
 SKIP_VULNERABILITY_PATCHING="${SKIPVULNERABILITYPATCHING:-"false"}"
@@ -19,7 +24,7 @@ export PIPX_HOME=${PIPX_HOME:-"/usr/local/py-utils"}
 ### BEGIN: Workbench-specific customizations ###
 # Set the user to the provided feature option `USER`
 USERNAME="${USERNAME:-"${USER:-"automatic"}"}"
-# Set the cloud platform to the provided feature option `CLOUDPLATFORM`
+# Set the cloud platform to the provided feature option `CLOUDPLATFORM
 CLOUD_PLATFORM="${CLOUDPLATFORM:-"gcp"}"
 ### END: Workbench-specific customizations ###
 UPDATE_RC="${UPDATE_RC:-"true"}"
@@ -720,6 +725,7 @@ case ${ADJUSTED_ID} in
             curl \
             dirmngr \
             gcc \
+            git \
             gnupg2 \
             libbz2-dev \
             libffi-dev \
@@ -743,6 +749,7 @@ case ${ADJUSTED_ID} in
             ca-certificates \
             findutils \
             gcc \
+            git \
             gnupg2 \
             libffi-devel \
             libxml2-devel \

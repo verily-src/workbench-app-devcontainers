@@ -34,6 +34,13 @@
       "configureJupyterlabAllowOrigin": "*"
     }
   },
+  "overrideFeatureInstallOrder": [
+    "./.devcontainer/features/setup-user",
+    "ghcr.io/devcontainers/features/java:1",
+    "ghcr.io/devcontainers/features/aws-cli:1",
+    "ghcr.io/dhoeric/features/google-cloud-cli:1",
+    "./.devcontainer/features/jupyter"
+  ],
   "remoteUser": "root",
   "customizations": {
     "workbench": {

@@ -1,9 +1,9 @@
 {
-  "id": "jupyter-template",
-  "version": "0.0.2",
-  "name": "Jupyter",
-  "description": "A Template to run Jupyter lab",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/jupyter-template",
+  "id": "predefined-template",
+  "version": "0.0.1",
+  "name": "Predefined Jupyter",
+  "description": "A Template to run Jupyter lab on a predefined Workbench provided container image",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/predefined-template",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {
     "cloud": {
@@ -17,6 +17,16 @@
       "description": "Whether to log in to workbench CLI",
       "proposals": ["true", "false"],
       "default": "false"
+    },
+    "containerImage": {
+      "type": "string",
+      "description": "The container image to use",
+      "default": "debian:bullseye"
+    },
+    "containerPort": {
+      "type": "number",
+      "description": "The port to expose the container on",
+      "default": 8888
     }
   },
   "platforms": ["Any"]

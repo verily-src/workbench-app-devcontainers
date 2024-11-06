@@ -1,5 +1,5 @@
 {
-  "name": "Jupyter app devcontainer template with parametrized base image and port",
+  "name": "Predefined Workbench Application devcontainer template",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

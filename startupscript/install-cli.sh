@@ -8,7 +8,7 @@
 # Note that this script is dependent on some functions and variables already being set up in "post-startup.sh":
 #
 # - get_metadata_value (function)
-# - RUN_AS_LOGIN_USER: run command as app user 
+# - RUN_AS_LOGIN_USER: run command as app user
 # - WORKBENCH_INSTALL_PATH: path to install workbench cli
 # - WORKBENCH_LEGACY_PATH: path to the legacy cli name.
 # - USER_BASH_COMPLETION_DIR: path to the bash completion file
@@ -22,16 +22,16 @@ set -o xtrace
 source "${SCRIPT_DIR}/emit.sh"
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
+# Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
+TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
+if [[ -z "${TERRA_SERVER}" ]]; then
+  TERRA_SERVER="verily"
+fi
+readonly TERRA_SERVER
+
 # Only install cli if not already installed
 if ! command -v wb &> /dev/null; then
   emit "Installing the Workbench CLI ..."
-
-  # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
-  TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
-  if [[ -z "${TERRA_SERVER}" ]]; then
-    TERRA_SERVER="verily"
-  fi
-  readonly TERRA_SERVER
 
   # If the server environment is a verily server, use the verily download script.
   if [[ "${TERRA_SERVER}" == *"verily"* ]]; then

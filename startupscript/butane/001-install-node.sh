@@ -15,6 +15,7 @@ readonly NODE_INSTALL_PATH="/home/core/node-v18.16.1-linux-x64.tar.gz"
 
 echo "Downloading Node from ${NODE_INSTALL_SRC}" 
 wget -q -O "${NODE_INSTALL_PATH}" "${NODE_INSTALL_SRC}"
+echo "59582f51570d0857de6333620323bdeee5ae36107318f86ce5eca24747cabf5b  node-v18.16.1-linux-x64.tar.gz" | sha256sum -c
 
 echo "Installing Node from ${NODE_INSTALL_PATH}" 
 tar -xzf "${NODE_INSTALL_PATH}" -C /opt --strip-components=1

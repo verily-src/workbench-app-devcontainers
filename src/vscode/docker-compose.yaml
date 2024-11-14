@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "lscr.io/linuxserver/code-server:latest"
+    image: "us-central1-docker.pkg.dev/wb-smart-sprout-2090/ar1/vscode-server:latest"
     restart: always
     volumes:
       - .:/workspace:cached

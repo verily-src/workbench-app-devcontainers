@@ -1,7 +1,7 @@
 
-# Predefined Jupyter (predefined-template)
+# Prebuilt Jupyter Template (prebuilt-jupyter-template)
 
-A Template to run Jupyter lab on a predefined Workbench provided container image
+A Template to run Jupyter lab on a prebuilt Workbench provided container image
 
 ## Options
 

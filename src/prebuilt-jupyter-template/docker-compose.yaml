@@ -9,9 +9,6 @@ services:
       - .:/workspace:cached
     ports:
       - "${templateOption:containerPort}:${templateOption:containerPort}"
-    command: "/home/jupyter/.local/bin/jupyter lab"
-    environment:
-      SHELL: "/bin/bash"
     networks:
       - app-network
     cap_add:

@@ -1,9 +1,9 @@
 {
-  "id": "predefined-template",
+  "id": "prebuilt-template",
   "version": "0.0.1",
-  "name": "Predefined Jupyter",
-  "description": "A Template to run Jupyter lab on a predefined Workbench provided container image",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/predefined-template",
+  "name": "Workbench Prebuilt JupyterLab Template",
+  "description": "Prebuilt Workbench JupyterLab devcontainer template",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/prebuilt-jupyter-template",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {
     "cloud": {

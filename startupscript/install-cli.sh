@@ -22,6 +22,20 @@ set -o xtrace
 source "${SCRIPT_DIR}/emit.sh"
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
+get_axon_version_url() {
+  case "$1" in
+    "verily") echo "https://terra-axon.api.verily.com/version" ;;
+    "verily-devel") echo "https://terra-devel-axon.api.verily.com/version" ;;
+    "verily-autopush") echo "https://terra-autopush-axon.api.verily.com/version" ;;
+    "verily-staging") echo "https://terra-staging-axon.api.verily.com/version" ;;
+    "verily-preprod") echo "https://terra-preprod-axon.api.verily.com/version" ;;
+    "dev-stable") echo "https://workbench-dev.verily.com/api/axon/version" ;;
+    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/axon/version" ;;
+    "test") echo "https://workbench-test.verily.com/api/axon/version" ;;
+    *) echo echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"; exit 1 ;;
+  esac
+}
+
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
 if [[ -z "${TERRA_SERVER}" ]]; then
@@ -33,21 +47,16 @@ readonly TERRA_SERVER
 if ! command -v wb &> /dev/null; then
   emit "Installing the Workbench CLI ..."
 
-  # If the server environment is a verily server, use the verily download script.
-  if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
-    # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-    if ! versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")"; then
-      >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
-      exit 1
-    fi
-    cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
-
-    ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-    cp wb "${WORKBENCH_INSTALL_PATH}"
-  else
-    >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
+  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+  if ! versionJson="$(curl -s "$(get_axon_version_url "${TERRA_SERVER}")")"; then
+    >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
     exit 1
   fi
+  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
+  cliVwersion="$(echo "${versionJson}" | jq -r '.latestSupportedCli')"
+
+  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${cliVwersion} bash"
+  cp wb "${WORKBENCH_INSTALL_PATH}"
 
   # Copy 'wb' to its legacy 'terra' name.
   cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"

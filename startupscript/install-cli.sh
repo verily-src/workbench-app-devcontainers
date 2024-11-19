@@ -56,7 +56,7 @@ if ! command -v wb &> /dev/null; then
   readonly AXON_VERSION_URL
 
   if ! VERSION_JSON="$(curl -s "${AXON_VERSION_URL}")"; then
-    >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
+    >&2 echo "ERROR: Failed to get version file from ${AXON_VERSION_URL}"
     exit 1
   fi
   readonly VERSION_JSON

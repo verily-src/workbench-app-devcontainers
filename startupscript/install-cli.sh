@@ -22,6 +22,22 @@ set -o xtrace
 source "${SCRIPT_DIR}/emit.sh"
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
+# Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
+function get_axon_version_url() {
+  case "$1" in
+    "verily") echo "https://terra-axon.api.verily.com/version" ;;
+    "verily-devel") echo "https://terra-devel-axon.api.verily.com/version" ;;
+    "verily-autopush") echo "https://terra-autopush-axon.api.verily.com/version" ;;
+    "verily-staging") echo "https://terra-staging-axon.api.verily.com/version" ;;
+    "verily-preprod") echo "https://terra-preprod-axon.api.verily.com/version" ;;
+    "dev-stable") echo "https://workbench-dev.verily.com/api/axon/version" ;;
+    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/axon/version" ;;
+    "test") echo "https://workbench-test.verily.com/api/axon/version" ;;
+    *) return 1 ;;
+  esac
+}
+readonly -f get_axon_version_url
+
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "terra-cli-server")"
 if [[ -z "${TERRA_SERVER}" ]]; then
@@ -33,21 +49,26 @@ readonly TERRA_SERVER
 if ! command -v wb &> /dev/null; then
   emit "Installing the Workbench CLI ..."
 
-  # If the server environment is a verily server, use the verily download script.
-  if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
-    # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-    if ! versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")"; then
-      >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
-      exit 1
-    fi
-    cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
-
-    ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-    cp wb "${WORKBENCH_INSTALL_PATH}"
-  else
+  if ! AXON_VERSION_URL="$(get_axon_version_url "${TERRA_SERVER}")"; then
     >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
     exit 1
   fi
+  readonly AXON_VERSION_URL
+
+  if ! VERSION_JSON="$(curl -s "${AXON_VERSION_URL}")"; then
+    >&2 echo "ERROR: Failed to get version file from ${AXON_VERSION_URL}"
+    exit 1
+  fi
+  readonly VERSION_JSON
+
+  CLI_DISTRIBUTION_PATH="$(echo "${VERSION_JSON}" | jq -r '.cliDistributionPath')"
+  readonly CLI_DISTRIBUTION_PATH
+
+  CLI_VERSION="$(echo "${VERSION_JSON}" | jq -r '.latestSupportedCli')"
+  readonly CLI_VERSION
+
+  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${CLI_DISTRIBUTION_PATH#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${CLI_VERSION} bash"
+  cp wb "${WORKBENCH_INSTALL_PATH}"
 
   # Copy 'wb' to its legacy 'terra' name.
   cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
@@ -59,10 +80,8 @@ ${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
 # Set the CLI server based on the server that created the VM.
 ${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 
-
 # Generate the bash completion script
 ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
-
 
 if [[ "${LOG_IN}" == "true" ]]; then
 

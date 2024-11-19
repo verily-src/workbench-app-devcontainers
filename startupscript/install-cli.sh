@@ -22,6 +22,7 @@ set -o xtrace
 source "${SCRIPT_DIR}/emit.sh"
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
+# Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
 function get_axon_version_url() {
   case "$1" in
     "verily") echo "https://terra-axon.api.verily.com/version" ;;
@@ -32,7 +33,7 @@ function get_axon_version_url() {
     "dev-stable") echo "https://workbench-dev.verily.com/api/axon/version" ;;
     "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/axon/version" ;;
     "test") echo "https://workbench-test.verily.com/api/axon/version" ;;
-    *) echo echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"; exit 1 ;;
+    *) return 1 ;;
   esac
 }
 readonly -f get_axon_version_url
@@ -48,8 +49,13 @@ readonly TERRA_SERVER
 if ! command -v wb &> /dev/null; then
   emit "Installing the Workbench CLI ..."
 
-  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-  if ! VERSION_JSON="$(curl -s "$(get_axon_version_url "${TERRA_SERVER}")")"; then
+  if ! AXON_VERSION_URL="$(get_axon_version_url "${TERRA_SERVER}")"; then
+    >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
+    exit 1
+  fi
+  readonly AXON_VERSION_URL
+
+  if ! VERSION_JSON="$(curl -s "${AXON_VERSION_URL}")"; then
     >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
     exit 1
   fi

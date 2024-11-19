@@ -22,7 +22,7 @@ set -o xtrace
 source "${SCRIPT_DIR}/emit.sh"
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
-get_axon_version_url() {
+function get_axon_version_url() {
   case "$1" in
     "verily") echo "https://terra-axon.api.verily.com/version" ;;
     "verily-devel") echo "https://terra-devel-axon.api.verily.com/version" ;;

@@ -35,6 +35,7 @@ function get_axon_version_url() {
     *) echo echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"; exit 1 ;;
   esac
 }
+readonly -f get_axon_version_url
 
 # Fetch the Workbench CLI server environment from the metadata server to install appropriate CLI version
 TERRA_SERVER="$(get_metadata_value "terra-cli-server")"

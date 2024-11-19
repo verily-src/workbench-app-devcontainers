@@ -49,14 +49,19 @@ if ! command -v wb &> /dev/null; then
   emit "Installing the Workbench CLI ..."
 
   # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-  if ! versionJson="$(curl -s "$(get_axon_version_url "${TERRA_SERVER}")")"; then
+  if ! VERSION_JSON="$(curl -s "$(get_axon_version_url "${TERRA_SERVER}")")"; then
     >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
     exit 1
   fi
-  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
-  cliVwersion="$(echo "${versionJson}" | jq -r '.latestSupportedCli')"
+  readonly VERSION_JSON
 
-  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${cliVwersion} bash"
+  CLI_DISTRIBUTION_PATH="$(echo "${VERSION_JSON}" | jq -r '.cliDistributionPath')"
+  readonly CLI_DISTRIBUTION_PATH
+
+  CLI_VERSION="$(echo "${VERSION_JSON}" | jq -r '.latestSupportedCli')"
+  readonly CLI_VERSION
+
+  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${CLI_DISTRIBUTION_PATH#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${CLI_VERSION} bash"
   cp wb "${WORKBENCH_INSTALL_PATH}"
 
   # Copy 'wb' to its legacy 'terra' name.
@@ -69,10 +74,8 @@ ${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
 # Set the CLI server based on the server that created the VM.
 ${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
 
-
 # Generate the bash completion script
 ${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
-
 
 if [[ "${LOG_IN}" == "true" ]]; then
 

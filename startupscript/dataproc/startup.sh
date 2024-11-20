@@ -194,6 +194,22 @@ function set_guest_attributes() {
     "http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/${attr_path}"
 }
 
+# Map the CLI server to appropriate service path
+function get_service_url() {
+  case "$1" in
+    "verily") echo "https://terra-$2.api.verily.com" ;;
+    "verily-devel") echo "https://terra-devel-$2.api.verily.com" ;;
+    "verily-autopush") echo "https://terra-autopush-$2.api.verily.com" ;;
+    "verily-staging") echo "https://terra-staging-$2.api.verily.com" ;;
+    "verily-preprod") echo "https://terra-preprod-$2.api.verily.com" ;;
+    "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
+    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
+    "test") echo "https://workbench-test.verily.com/api/$2" ;;
+    *) return 1 ;;
+  esac
+}
+readonly -f get_service_url
+
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.
 function exit_handler {
@@ -417,30 +433,16 @@ if [[ -z "${TERRA_SERVER}" ]]; then
 fi
 readonly TERRA_SERVER
 
-# Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-function get_axon_version_url() {
-  case "$1" in
-    "verily") echo "https://terra-axon.api.verily.com/version" ;;
-    "verily-devel") echo "https://terra-devel-axon.api.verily.com/version" ;;
-    "verily-autopush") echo "https://terra-autopush-axon.api.verily.com/version" ;;
-    "verily-staging") echo "https://terra-staging-axon.api.verily.com/version" ;;
-    "verily-preprod") echo "https://terra-preprod-axon.api.verily.com/version" ;;
-    "dev-stable") echo "https://workbench-dev.verily.com/api/axon/version" ;;
-    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/axon/version" ;;
-    "test") echo "https://workbench-test.verily.com/api/axon/version" ;;
-    *) return 1 ;;
-  esac
-}
-readonly -f get_axon_version_url
-
-if ! AXON_VERSION_URL="$(get_axon_version_url "${TERRA_SERVER}")"; then
+if ! AXON_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "axon")"; then
   >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
   exit 1
 fi
-readonly AXON_VERSION_URL
+readonly AXON_SERVICE_URL
+USER_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "user")"
+readonly USER_SERVICE_URL
 
-if ! VERSION_JSON="$(curl -s "${AXON_VERSION_URL}")"; then
-  >&2 echo "ERROR: Failed to get version file from ${AXON_VERSION_URL}"
+if ! VERSION_JSON="$(curl -s "${AXON_SERVICE_URL}/version")"; then
+  >&2 echo "ERROR: Failed to get version file from ${AXON_SERVICE_URL}"
   exit 1
 fi
 readonly VERSION_JSON
@@ -793,7 +795,7 @@ chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASHRC}"
 chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 
 # TODO(BENCH-2612): use workbench CLI instead to get user profile.
-IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
+IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_account" \
                     -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT

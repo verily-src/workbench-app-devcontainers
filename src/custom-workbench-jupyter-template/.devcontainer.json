@@ -1,5 +1,5 @@
 {
-  "name": "Prebuilt Workbench JupyterLab devcontainer template",
+  "name": "Custom Workbench JupyterLab devcontainer template",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

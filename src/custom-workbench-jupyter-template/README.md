@@ -1,7 +1,7 @@
 
-# Prebuilt Jupyter Template (prebuilt-jupyter-template)
+# Custom Workbench JupyterLab App Template (custom-workbench-jupyter-template)
 
-A Template to run Jupyter lab on a prebuilt Workbench provided container image
+A template used to serve the Workbench custom JupyterLab app.
 
 ## Options
 

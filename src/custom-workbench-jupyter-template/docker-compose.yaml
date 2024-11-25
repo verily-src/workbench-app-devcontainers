@@ -1,0 +1,22 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "${templateOption:containerImage}"
+    user: "jupyter"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - "${templateOption:containerPort}:${templateOption:containerPort}"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true

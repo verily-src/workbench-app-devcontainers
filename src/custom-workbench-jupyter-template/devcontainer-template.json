@@ -1,0 +1,33 @@
+{
+  "id": "custom-workbench-jupyter-template",
+  "description": "A template used to serve the Workbench JupyterLab container image",
+  "version": "0.0.1",
+  "name": "Workbench Prebuilt JupyterLab Template",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/custom-workbench-jupyter-template",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    },
+    "containerImage": {
+      "type": "string",
+      "description": "The container image to use",
+      "default": "debian:bullseye"
+    },
+    "containerPort": {
+      "type": "number",
+      "description": "The port to expose the container on",
+      "default": 8888
+    }
+  },
+  "platforms": ["Any"]
+}

@@ -80,7 +80,6 @@ apply_gpu_runtime() {
     /^[[:space:]]*app:/ {                 # Match the line containing "app:" (can be indented)
         print $0;                         # Print the "app:" line as-is
         system("cat " gpu_config_path);   # Insert the GPU runtime block by reading from the specified file
-        next;                             # Skip further processing of this line to avoid duplicate printing
     }
     {
         print $0;                         # For all other lines, print them unchanged

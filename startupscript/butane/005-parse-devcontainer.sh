@@ -55,7 +55,7 @@ fi
 # can be accessed by the devcontainer.json, but avoid creating a subdirectory
 # if the target directory already contains the files.
 if [[ -d "${DEVCONTAINER_STARTUPSCRIPT_PATH}" ]]; then
-    rsync -a --ignore-existing "${DEVCONTAINER_STARTUPSCRIPT_PATH}" "${DEVCONTAINER_PATH}/startupscript/"
+    rsync -a --ignore-existing "${DEVCONTAINER_STARTUPSCRIPT_PATH}" "${DEVCONTAINER_PATH}"
 fi
 
 replace_template_options() {

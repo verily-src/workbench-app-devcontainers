@@ -31,6 +31,9 @@ readonly ACCELERATOR="${4:-nvidia}"
 readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
 readonly CONTAINER_PORT="${6:-8080}"
 
+readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
+readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
+
 readonly DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
 readonly DEVCONTAINER_DOCKER_COMPOSE_PATH="${DEVCONTAINER_PATH}/docker-compose.yaml"
 
@@ -48,12 +51,12 @@ else
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 fi
 
-# Copy devcontainer post startup scripts into the devcontainer folder so they
-# can be accessed by the devcontainer.json
-if [[ -d '/home/core/devcontainer/startupscript' ]]; then
-    cp -r '/home/core/devcontainer/startupscript' "${DEVCONTAINER_PATH}/startupscript"
+# Copy devcontainer post-startup scripts into the devcontainer folder so they
+# can be accessed by the devcontainer.json, but avoid creating a subdirectory
+# if the target directory already contains the files.
+if [[ -d "${DEVCONTAINER_STARTUPSCRIPT_PATH}" ]]; then
+    rsync -a --ignore-existing "${DEVCONTAINER_STARTUPSCRIPT_PATH}" "${DEVCONTAINER_PATH}/startupscript/"
 fi
-readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
 
 replace_template_options() {
     local TEMPLATE_PATH="$1"

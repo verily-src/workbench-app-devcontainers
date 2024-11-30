@@ -1,5 +1,6 @@
 # FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
-FROM debian:bookworm
+# FROM debian:bookworm
+FROM ubuntu:jammy
 
 # Fix: https://github.com/hadolint/hadolint/wiki/DL4006
 # Fix: https://github.com/koalaman/shellcheck/wiki/SC3014
@@ -23,6 +24,7 @@ USER root
 RUN apt-get update --yes && \
     apt-get install -yq --no-install-recommends \
     # basic necessities
+    locales \
     aria2 \
     bzip2 \
     curl \
@@ -144,10 +146,23 @@ RUN python3 -m pip install \
 RUN python3.12 -m pip install \
     tensorflow==2.17.0
 
+# Install jupyterlab extensions
+RUN python3 -m pip install \
+    jupyterlab-git==0.50.2 \
+    ipywidgets==8.1.5 \
+    jupyterlab-widgets==3.0.13 \
+    jupytext==1.16.4 \
+    pygments==2.18.0 \
+    nbdime==4.0.2
+
 # Clean up the pip cache
 RUN rm -rf /root/.cache/pip
 
-# Configure Jupyter Server
+######################################
+# Configure Jupyter Server and Start #
+######################################
+
+# Set the Jupyter configuration directory
 ENV JUPYTER_CONFIG_DIR $JUPYTER_USER_HOME_DIR/.jupyter
 RUN mkdir -p $JUPYTER_CONFIG_DIR
 COPY jupyter_server_config.py $JUPYTER_CONFIG_DIR
@@ -159,6 +174,6 @@ RUN chown -R $JUPYTER_USER:users $JUPYTER_USER_HOME_DIR
 USER $JUPYTER_USER
 WORKDIR $JUPYTER_USER_HOME_DIR
 
-# Expose the Jupyter port and start the JupyterLab server
+# Expose the application port and start the server
 EXPOSE 8888
 ENTRYPOINT ["jupyter", "lab"]

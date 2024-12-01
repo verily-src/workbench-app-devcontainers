@@ -1,6 +1,6 @@
-# FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
-# FROM debian:bookworm
-FROM ubuntu:jammy
+# Use latest CUDA base image that supports both Pytorch and TensorFlow
+# Source: https://hub.docker.com/layers/nvidia/cuda/11.8.0-cudnn8-runtime-ubuntu22.04/images/sha256-f6913f3c02f297877f6859d12ff330043c0be668fdad86868c29a239a5a82151
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 # Fix: https://github.com/hadolint/hadolint/wiki/DL4006
 # Fix: https://github.com/koalaman/shellcheck/wiki/SC3014
@@ -12,7 +12,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV DEBIAN_FRONTEND noninteractive
 ENV LC_ALL en_US.UTF-8
 
-ENV PYTHON_VERSION 3.12
+ENV PYTHON_VERSION 3.10
 
 ###############################
 # Install System Dependencies #
@@ -71,7 +71,7 @@ RUN apt-get update --yes && \
     "python${PYTHON_VERSION}-distutils"
 
 # Set the default python version
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+RUN update-alternatives --install /usr/bin/python3 python3 "/usr/bin/python${PYTHON_VERSION}" 1
 
 # Generate locales
 # Then install texlive (latex), dependency for nbconvert
@@ -138,13 +138,19 @@ RUN python3 -m pip install \
     ipykernel==6.29.5 \
     bigquery_jupyter_plugin==0.0.1
 
-# Install Pytorch
-RUN python3 -m pip install \
-    torch --index-url https://download.pytorch.org/whl/cu121
+# Install PyTorch, TorchVision, and TorchAudio with CUDA 11.8 support, but do
+# not include CUDA libraries as they are already provided by the base image.
+RUN python3 -m pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 \
+    --index-url https://download.pytorch.org/whl/cu118 \
+    --no-deps
 
-# Install TensorFlow
-RUN python3.12 -m pip install \
-    tensorflow==2.17.0
+# Install TensorFlow with CUDA 11.8 support
+RUN python3 -m pip install \
+    tensorflow==2.14.0
+
+# Configure CUDA library paths
+RUN sudo ln -s /usr/local/cuda-11.8 /usr/local/cuda \
+    && ldconfig
 
 # Install jupyterlab extensions
 RUN python3 -m pip install \

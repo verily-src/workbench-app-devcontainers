@@ -125,9 +125,10 @@ RUN echo "$JUPYTER_USER ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/$JUPYTER_USER 
 # Install python packages #
 ###########################
 
-# Install pip and upgrade it
-RUN python3 -m ensurepip --upgrade
-RUN python3 -m pip install --upgrade pip
+RUN python3 -m venv /venv
+RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
+    python3 get-pip.py && \
+    rm get-pip.py
 
 # Install Python dependencies
 RUN python3 -m pip install \
@@ -140,7 +141,7 @@ RUN python3 -m pip install \
 
 # Install PyTorch, TorchVision, and TorchAudio with CUDA 11.8 support, but do
 # not include CUDA libraries as they are already provided by the base image.
-RUN python3 -m pip install torch==2.2.1 torchvision==0.17.1 torchaudio==2.2.1 \
+RUN pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 \
     --index-url https://download.pytorch.org/whl/cu118 \
     --no-deps
 

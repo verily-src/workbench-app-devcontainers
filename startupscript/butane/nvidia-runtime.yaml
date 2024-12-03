@@ -1,0 +1,11 @@
+# Name: nvidia-runtime.yaml
+# Description: This snippet is used to reserve all GPUs on the host machine for the NVIDIA runtime.
+# Start of snippet from startupscript/butane/nvidia-runtime.yaml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+# End of snippet from startupscript/butane/nvidia-runtime.yaml

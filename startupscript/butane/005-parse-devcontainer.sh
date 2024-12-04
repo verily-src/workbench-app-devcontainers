@@ -27,7 +27,7 @@ fi
 readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
 readonly LOGIN="$3"
-readonly ACCELERATOR="${4:-nvidia}"
+readonly ACCELERATOR="$4"
 readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
 readonly CONTAINER_PORT="${6:-8080}"
 
@@ -94,8 +94,8 @@ apply_gpu_runtime() {
 replace_template_options "${DEVCONTAINER_CONFIG_PATH}"
 replace_template_options "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 
-# apply gpu runtime block if accelerator is nvidia
-if [[ "${ACCELERATOR}" == "nvidia" ]]; then
+# apply gpu runtime block if accelerator is nvidia and cloud is gcp
+if [[ "${ACCELERATOR}" == "nvidia" && "${CLOUD}" == "gcp" ]]; then
     apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}"
 fi
 

@@ -205,6 +205,8 @@ function get_service_url() {
     "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
     "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
     "test") echo "https://workbench-test.verily.com/api/$2" ;;
+    "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
+    "prod") echo "https://workbench-prod.verily.com/api/$2" ;;
     *) return 1 ;;
   esac
 }

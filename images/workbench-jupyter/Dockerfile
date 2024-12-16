@@ -177,6 +177,7 @@ COPY jupyter_server_config.py $JUPYTER_CONFIG_DIR
 # Copy the `container-post-startup-hook.sh` script to the user's home directory
 RUN mkdir -p "${JUPYTER_USER_HOME_DIR}/.workbench"
 COPY container-post-startup-hook.sh "${JUPYTER_USER_HOME_DIR}/.workbench/container-post-startup-hook.sh"
+RUN chmod +x "${JUPYTER_USER_HOME_DIR}/.workbench/container-post-startup-hook.sh"
 
 # Make sure the JUPYTER_USER owns the home directory
 RUN chown -R $JUPYTER_USER:users $JUPYTER_USER_HOME_DIR

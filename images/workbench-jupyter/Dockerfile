@@ -189,4 +189,4 @@ WORKDIR $JUPYTER_USER_HOME_DIR
 # to start the Jupyter server
 # The jupyter server will via the `container-post-startup-hook.sh` script
 EXPOSE 8888
-ENTRYPOINT ["/bin/bash", "-c", "${JUPYTER_USER_HOME_DIR}/.workbench/container-post-startup-hook.sh"]
+ENTRYPOINT ["jupyter", "lab"]

@@ -4,9 +4,6 @@
 # workbench-jupyter starts the Jupyter notebook server here so that JupyterLab picks up the
 # correct environment variables set by the Mikey `post-startup.sh` script.
 
-# Kill existing JupyterLab processes
+# Kill existing JupyterLab process to pick up new gcloud environment variables
+# such that the GCP integration plugins work correctly.
 pkill -f jupyter-lab
-
-# Start JupyterLab
-cd /home/jupyter || exit 1
-sudo -u jupyter bash -l -c "jupyter lab"

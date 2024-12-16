@@ -4,10 +4,12 @@
 
 
 # Retrieve the instance zone.
-function get_instance_zone() {
+function get_instance_region() {
   curl --retry 5 -s -f \
     -H "Metadata-Flavor: Google" \
-    "http://metadata.google.internal/computeMetadata/v1/instance/zone" | cut -d'/' -f4
+    "http://metadata.google.internal/computeMetadata/v1/instance/zone" | \
+    awk -F'/' '{print $4}' | \
+    sed 's/-[^-]*$//'
 }
 readonly -f get_instance_zone
 

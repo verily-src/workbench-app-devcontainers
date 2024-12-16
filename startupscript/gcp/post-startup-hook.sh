@@ -9,7 +9,7 @@
 # script and is dependent on some functions and variables already being set up
 # and some packages already installed:
 #
-# - get_instance_zone (function)
+# - get_instance_region (function)
 # - CLOUD_SCRIPT_DIR: path where GCP-specific scripts live
 # - USER_BASH_PROFILE: path to user's ~/.bash_profile file
 # - USER_BASHRC: path to user's ~/.bashrc file
@@ -23,5 +23,5 @@
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 # Set the gcloud zone config to the VM's zone
-INSTANCE_ZONE="$(get_instance_zone)"
-gcloud config set compute/zone "${INSTANCE_ZONE}"
+INSTANCE_ZONE="$(get_instance_region)"
+gcloud config set compute/region "${INSTANCE_ZONE}"

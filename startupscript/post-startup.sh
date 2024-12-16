@@ -27,11 +27,14 @@ readonly SCRIPT_DIR
 export SCRIPT_DIR
 readonly CLOUD_SCRIPT_DIR="${SCRIPT_DIR}/${CLOUD}"
 export CLOUD_SCRIPT_DIR
-#######################################
+#################################
 # Emit a message with a timestamp
-#######################################
+#################################
 source "${SCRIPT_DIR}/emit.sh"
 
+#################################
+# Cloud metadata server utilities
+#################################
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"

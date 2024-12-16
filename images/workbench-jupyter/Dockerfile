@@ -174,15 +174,15 @@ ENV JUPYTER_CONFIG_DIR $JUPYTER_USER_HOME_DIR/.jupyter
 RUN mkdir -p $JUPYTER_CONFIG_DIR
 COPY jupyter_server_config.py $JUPYTER_CONFIG_DIR
 
+# Copy the `container-post-startup-hook.sh` script to the user's home directory
+RUN mkdir -p "${JUPYTER_USER_HOME_DIR}/.workbench"
+COPY container-post-startup-hook.sh "${JUPYTER_USER_HOME_DIR}/.workbench/container-post-startup-hook.sh"
+
 # Make sure the JUPYTER_USER owns the home directory
 RUN chown -R $JUPYTER_USER:users $JUPYTER_USER_HOME_DIR
-
 # Set the working directory to the user's home directory
 USER $JUPYTER_USER
 WORKDIR $JUPYTER_USER_HOME_DIR
-
-# Copy the `container-post-startup-hook.sh` script to the user's home directory
-COPY container-post-startup-hook.sh "${JUPYTER_USER_HOME_DIR}/.workbench/container-post-startup-hook.sh"
 
 # Expose the application port and execute the `container-post-startup-hook.sh` script
 # to start the Jupyter server

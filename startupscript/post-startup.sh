@@ -19,8 +19,8 @@ export CLOUD
 readonly LOG_IN="${4}"
 export LOG_IN
 
-# Gets absolute path of the script directory. 
-# Because the script sometimes cd to other directoy (e.g. /tmp), 
+# Gets absolute path of the script directory.
+# Because the script sometimes cd to other directoy (e.g. /tmp),
 # absolute path is more reliable.
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 readonly SCRIPT_DIR
@@ -60,6 +60,10 @@ readonly USER_BASH_PROFILE="${WORK_DIRECTORY}/.bash_profile"
 export USER_BASH_PROFILE
 readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
 export POST_STARTUP_OUTPUT_FILE
+# The container-post-startup-hook.sh file is sourced and executed at the end of this script.
+# Can be defined by custom containers to run additional setup that depend on this script.
+readonly CONTAINER_POST_STARTUP_HOOK="${USER_WORKBENCH_CONFIG_DIR}/container-post-startup-hook.sh"
+export CONTAINER_POST_STARTUP_HOOK
 
 # Variables for Workbench-specific code installed on the VM
 readonly WORKBENCH_INSTALL_PATH="/usr/bin/wb"
@@ -176,7 +180,7 @@ fi
 EOF
 
 ##################################################
-# Set up java which is required for workbench CLI 
+# Set up java which is required for workbench CLI
 ##################################################
 source "${SCRIPT_DIR}/install-java.sh"
 
@@ -212,4 +216,12 @@ source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 ###############################
 if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then
   source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
+fi
+
+#######################################
+# Container specific post startup setup
+#######################################
+if [[ -f "${CONTAINER_POST_STARTUP_HOOK}" ]]; then
+  # shellcheck source=/dev/null
+  source "${CONTAINER_POST_STARTUP_HOOK}"
 fi

@@ -181,6 +181,11 @@ RUN chown -R $JUPYTER_USER:users $JUPYTER_USER_HOME_DIR
 USER $JUPYTER_USER
 WORKDIR $JUPYTER_USER_HOME_DIR
 
-# Expose the application port and start the server
+# Copy the `container-post-startup-hook.sh` script to the user's home directory
+COPY container-post-startup-hook.sh "${JUPYTER_USER_HOME_DIR}/.workbench/container-post-startup-hook.sh"
+
+# Expose the application port and execute the `container-post-startup-hook.sh` script
+# to start the Jupyter server
+# The jupyter server will via the `container-post-startup-hook.sh` script
 EXPOSE 8888
-ENTRYPOINT ["jupyter", "lab"]
+ENTRYPOINT ["/bin/bash", "-c", "${JUPYTER_USER_HOME_DIR}/.workbench/container-post-startup-hook.sh"]

@@ -2,7 +2,7 @@
 
 # vm-metadata.sh
 
-# Retrieve the instance zone.
+# Retrieve instance zone of the GCE VM and extract the region.
 function get_instance_region() {
   curl --retry 5 -s -f \
     -H "Metadata-Flavor: Google" \

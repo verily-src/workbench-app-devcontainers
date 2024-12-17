@@ -11,7 +11,7 @@ function get_instance_region() {
     awk -F'/' '{print $4}' | \
     sed 's/-[^-]*$//'
 }
-readonly -f get_instance_zone
+readonly -f get_instance_region
 
 # Defines a function to retrieve an instance attributes set on the VM.
 

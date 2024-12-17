@@ -10,18 +10,8 @@
 # and some packages already installed:
 #
 # - get_instance_region (function)
-# - CLOUD_SCRIPT_DIR: path where GCP-specific scripts live
-# - USER_BASH_PROFILE: path to user's ~/.bash_profile file
-# - USER_BASHRC: path to user's ~/.bashrc file
-# - USER_NAME: name of app user
-# - USER_PRIMARY_GROUP: name of primary group app user belongs to
-# - USER_WORKBENCH_CONFIG_DIR: user's WB configuration directory
-# - WORK_DIRECTORY: home directory for the user that the script is running on behalf of
-# - WORKBENCH_INSTALL_PATH: path to CLI executable
+# - RUN_AS_LOGIN_USER: command prefix to run a command as the login user
 
-# shellcheck source=/dev/null
-source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
-
-# Set the gcloud zone config to the VM's zone
-INSTANCE_ZONE="$(get_instance_region)"
-gcloud config set compute/region "${INSTANCE_ZONE}"
+# Set the gcloud region config to the VM's zone
+INSTANCE_REGION="$(get_instance_region)"
+${RUN_AS_LOGIN_USER} "gcloud config set compute/region '${INSTANCE_REGION}'"

@@ -2,7 +2,12 @@
 
 # vm-metadata.sh
 
-# Defines a dummy function.
+# Defines dummy functions sourced during testing.
+
+function get_instance_region() {
+  echo "us-central1"
+}
+readonly -f get_instance_region
 
 function get_metadata_value() {
   if [[ -z "$1" ]]; then
@@ -11,5 +16,5 @@ function get_metadata_value() {
   fi
   echo ""
 }
-readonly -f get_metadata_value 
+readonly -f get_metadata_value
 

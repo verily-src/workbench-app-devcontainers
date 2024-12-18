@@ -2,8 +2,7 @@
 
 # vm-metadata.sh
 
-
-# Retrieve the instance zone.
+# Retrieve instance zone of the GCE VM and extract the region.
 function get_instance_region() {
   curl --retry 5 -s -f \
     -H "Metadata-Flavor: Google" \
@@ -13,8 +12,7 @@ function get_instance_region() {
 }
 readonly -f get_instance_region
 
-# Defines a function to retrieve an instance attributes set on the VM.
-
+# Retrieves an instance attributes on the VM.
 function get_metadata_value() {
   if [[ -z "$1" ]]; then
     echo "usage: get_metadata_value <tag>"

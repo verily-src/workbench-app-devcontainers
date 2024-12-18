@@ -81,8 +81,8 @@ cd /tmp || exit
 # Make the .workbench directory as the user so that they own it and have correct linux permissions.
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
 ${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
-exec >> "${POST_STARTUP_OUTPUT_FILE}"
-exec 2>&1
+exec > >(tee -a "${POST_STARTUP_OUTPUT_FILE}")  # Append output to the file and print to terminal
+exec 2> >(tee -a "${POST_STARTUP_OUTPUT_FILE}" >&2)  # Append errors to the file and print to terminal
 
 # The apt package index may not be clean when we run; resynchronize
 if type apk > /dev/null 2>&1; then

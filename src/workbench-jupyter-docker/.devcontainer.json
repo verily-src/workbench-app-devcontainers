@@ -4,13 +4,7 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": [
-    "./startupscript/post-startup.sh",
-    "jupyter",
-    "/home/jupyter",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
+  "postCreateCommand": "./startupscript/post-startup.sh jupyter /home/jupyter ${templateOption:cloud} ${templateOption:login} && ./startupscript/setup-docker.sh",
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",

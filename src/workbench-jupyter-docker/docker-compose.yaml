@@ -7,8 +7,12 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      # Mount docker socket so application can access the docker daemon in the host
+      # mount Host machine's docker.sock to container's docker.sock
       - /var/run/docker.sock:/var/run/docker.sock
+      # mount Host machine's /etc/group to container's /etc/host-group
+      - /etc/group:/etc/host-group
+      # mount Host machine's default docker config dir to container's jupyter user docker config dir
+      - /etc/docker:/home/jupyter/.docker
     ports:
       - "8888:8888"
     networks:

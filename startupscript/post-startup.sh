@@ -170,8 +170,8 @@ cat << EOF >> "${USER_BASHRC}"
 ### BEGIN: Workbench-specific customizations ###
 
 # Prepend "/usr/bin" (if not already in the path)
-if [[ "${PATH}:" != "/usr/bin:"* ]]; then
-  export PATH=/usr/bin:${PATH}
+if [[ "\${PATH}:" != "/usr/bin:"* ]]; then
+  export PATH=/usr/bin:\${PATH}
 fi
 EOF
 

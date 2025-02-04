@@ -15,7 +15,6 @@ services:
       - /etc/docker:/home/jupyter/.docker
     ports:
       - "8888:8888"
-      - "8000:8000"
     networks:
       - app-network
     cap_add:

@@ -3,7 +3,7 @@ services:
   app:
     container_name: "application-server"
     image: "us-central1-docker.pkg.dev/verily-workbench-public/apps/workbench-jupyter:latest"
-    user: "jupyter"
+    user: "jupyter:${DOCKER_GID}"
     restart: always
     volumes:
       - .:/workspace:cached
@@ -15,6 +15,7 @@ services:
       - /etc/docker:/home/jupyter/.docker
     ports:
       - "8888:8888"
+      - "8000:8000"
     networks:
       - app-network
     cap_add:

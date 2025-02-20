@@ -1,0 +1,33 @@
+{
+  "id": "gatk-demo-template",
+  "version": "0.0.1",
+  "name": "GATK on Jupyter Demo",
+  "description": "A Template to run Jupyter lab with GATK installed",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/gatk-demo-template",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    },
+    "containerImage": {
+      "type": "string",
+      "description": "The container image to use",
+      "default": "us-central1-docker.pkg.dev/wb-fulgent-broccoli-5942/gatk-demo-repo/test1:2025022"
+    },
+    "containerPort": {
+      "type": "number",
+      "description": "The port to expose the container on",
+      "default": 8888
+    }
+  },
+  "platforms": ["Any"]
+}

@@ -2,13 +2,13 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "${templateOption:containerImage}"
+    image: "us-central1-docker.pkg.dev/vwb-dev-sparkly-eggplant-5788/gatk-demo-repo/test1:20250224"
     user: "jupyter"
     restart: always
     volumes:
       - .:/workspace:cached
     ports:
-      - "${templateOption:containerPort}:${templateOption:containerPort}"
+      - "8888:8888"
     networks:
       - app-network
     cap_add:

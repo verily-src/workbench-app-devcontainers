@@ -35,5 +35,5 @@ if [[ "${LOG_IN}" == "true" ]]; then
   ${RUN_AS_LOGIN_USER} "export AWS_VAULT_BACKEND='file' && \
     export AWS_VAULT_FILE_PASSPHRASE='' && \
     eval  \$(wb workspace configure-aws) && \
-    wb resource mount"
+    wb resource mount || echo 'Resource mounting failed.'"
 fi

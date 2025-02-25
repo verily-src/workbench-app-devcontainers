@@ -231,6 +231,24 @@ function set_guest_attributes() {
 }
 readonly -f set_guest_attributes
 
+# Map the CLI server to appropriate service path
+function get_service_url() {
+  case "$1" in
+    "verily") echo "https://terra-$2.api.verily.com" ;;
+    "verily-devel") echo "https://terra-devel-$2.api.verily.com" ;;
+    "verily-autopush") echo "https://terra-autopush-$2.api.verily.com" ;;
+    "verily-staging") echo "https://terra-staging-$2.api.verily.com" ;;
+    "verily-preprod") echo "https://terra-preprod-$2.api.verily.com" ;;
+    "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
+    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
+    "test") echo "https://workbench-test.verily.com/api/$2" ;;
+    "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
+    "prod") echo "https://workbench-prod.verily.com/api/$2" ;;
+    *) return 1 ;;
+  esac
+}
+readonly -f get_service_url
+
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.
 function exit_handler {
@@ -376,7 +394,7 @@ pushd "${JAVA_INSTALL_TMP}"
 
 # Download the latest Java 17, untar it, and remove the TAR file
 ${RUN_AS_LOGIN_USER} "\
-  curl -Os https://download.oracle.com/java/17/latest/jdk-17_linux-x64_bin.tar.gz && \
+  curl -Os https://download.oracle.com/java/17/archive/jdk-17_linux-x64_bin.tar.gz && \
   tar xfz jdk-17_linux-x64_bin.tar.gz && \
   rm jdk-17_linux-x64_bin.tar.gz"
 
@@ -448,21 +466,28 @@ if [[ -z "${TERRA_SERVER}" ]]; then
 fi
 readonly TERRA_SERVER
 
-# If the server environment is a verily server, use the verily download script.
-if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
-  # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
-  if ! versionJson="$(curl -s "https://${TERRA_SERVER/verily/terra}-axon.api.verily.com/version")"; then
-    >&2 echo "ERROR: Failed to get version file from ${TERRA_SERVER}"
-    exit 1
-  fi
-  cliDistributionPath="$(echo "${versionJson}" | jq -r '.cliDistributionPath')"
-
-  ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${cliDistributionPath#gs://}/download-install.sh | TERRA_CLI_SERVER=${TERRA_SERVER} bash"
-  cp wb "${WORKBENCH_INSTALL_PATH}"
-else
+if ! AXON_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "axon")"; then
   >&2 echo "ERROR: ${TERRA_SERVER} is not a known Workbench server"
   exit 1
 fi
+readonly AXON_SERVICE_URL
+USER_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "user")"
+readonly USER_SERVICE_URL
+
+if ! VERSION_JSON="$(curl -s "${AXON_SERVICE_URL}/version")"; then
+  >&2 echo "ERROR: Failed to get version file from ${AXON_SERVICE_URL}"
+  exit 1
+fi
+readonly VERSION_JSON
+
+CLI_DISTRIBUTION_PATH="$(echo "${VERSION_JSON}" | jq -r '.cliDistributionPath')"
+readonly CLI_DISTRIBUTION_PATH
+
+CLI_VERSION="$(echo "${VERSION_JSON}" | jq -r '.latestSupportedCli')"
+readonly CLI_VERSION
+
+${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${CLI_DISTRIBUTION_PATH#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${CLI_VERSION} bash"
+cp wb "${WORKBENCH_INSTALL_PATH}"
 
 # Copy 'wb' to its legacy 'terra' name.
 cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
@@ -831,7 +856,7 @@ if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
 fi
 
 # TODO(BENCH-2612): use workbench CLI instead to get user profile.
-IS_NON_GOOGLE_ACCOUNT="$(curl "https://${TERRA_SERVER/verily/terra}-user.api.verily.com/api/profile?path=non_google_account" \
+IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_account" \
                     -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT

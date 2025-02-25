@@ -2,15 +2,16 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.4"
+    image: "${templateOption:containerImage}"
+    user: "jupyter"
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/rstudio:cached
     ports:
-      - "8787:8787"
+      - "${templateOption:containerPort}:${templateOption:containerPort}"
+    command: "/home/jupyter/.local/bin/jupyter lab"
     environment:
-      "DISABLE_AUTH": "true"
+      SHELL: "/bin/bash"
     networks:
       - app-network
     cap_add:
@@ -22,5 +23,3 @@ services:
 networks:
   app-network:
     external: true
-volumes:
-  work:

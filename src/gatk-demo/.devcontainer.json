@@ -1,33 +1,54 @@
 {
-  "id": "gatk-demo-template",
-  "version": "0.0.1",
-  "name": "GATK on Jupyter Demo",
-  "description": "A Template to run Jupyter lab with GATK installed",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/gatk-demo-template",
-  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
-  "options": {
-    "cloud": {
-      "type": "string",
-      "description": "VM cloud environment",
-      "proposals": ["gcp", "aws"],
-      "default": "gcp"
-    },
-    "login": {
-      "type": "string",
-      "description": "Whether to log in to workbench CLI",
-      "proposals": ["true", "false"],
-      "default": "false"
-    },
-    "containerImage": {
-      "type": "string",
-      "description": "The container image to use",
-      "default": "us-central1-docker.pkg.dev/vwb-dev-sparkly-eggplant-5788/gatk-demo-repo/test1:20250224"
-    },
-    "containerPort": {
-      "type": "number",
-      "description": "The port to expose the container on",
-      "default": 8888
+  "name": "JupyterLab with GATK installed",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "jupyter",
+    "/home/jupyter",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  // re-mount bucket files on container start up
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "jupyter",
+    "/home/jupyter",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          // Source
+          ".ipynb",
+          ".R",
+          ".py",
+          // Documents
+          ".md",
+          ".html",
+          ".latex",
+          ".pdf",
+          // Images
+          ".bmp",
+          ".gif",
+          ".jpeg",
+          ".jpg",
+          ".png",
+          ".svg",
+          // Data
+          ".csv",
+          ".tsv",
+          ".json",
+          ".vl"
+        ],
+        "fileUrlSuffix": "/lab/tree/{path}",
+        "folderUrlSuffix": "/lab/tree/{path}"
+      }
     }
-  },
-  "platforms": ["Any"]
+  }
 }

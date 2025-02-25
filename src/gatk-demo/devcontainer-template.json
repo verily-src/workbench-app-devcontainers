@@ -21,7 +21,7 @@
     "containerImage": {
       "type": "string",
       "description": "The container image to use",
-      "default": "us-central1-docker.pkg.dev/vwb-dev-sparkly-eggplant-5788/gatk-demo-repo/test1:20250224"
+      "default": "us-central1-docker.pkg.dev/vwb-dev-sparkly-eggplant-5788/gatk-demo-repo/test1:20250225"
     },
     "containerPort": {
       "type": "number",

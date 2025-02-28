@@ -16,7 +16,7 @@
 INSTANCE_REGION="$(get_instance_region)"
 
 # Check if gcloud is logged in and set the region if it is
-ACCOUNT="$(gcloud config get-value account 2>/dev/null | tr -d '[:space:]')"
+ACCOUNT="$(${RUN_AS_LOGIN_USER} "gcloud config get-value account 2>/dev/null" | tr -d '[:space:]')"
 if [[ "$ACCOUNT" != "(unset)" && -n "$ACCOUNT" ]]; then
   ${RUN_AS_LOGIN_USER} "gcloud config set compute/region '${INSTANCE_REGION}'"
 else

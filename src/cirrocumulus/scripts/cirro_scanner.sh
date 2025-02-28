@@ -39,7 +39,7 @@ function scan_folders_and_create_datasets() {
 }
 readonly -f scan_folders_and_create_datasets
 
-wb resource mount
+wb resource mount || echo 'Resource mounting failed.'
 
 # Infinite loop to continuously scan every 5 seconds
 while true; do

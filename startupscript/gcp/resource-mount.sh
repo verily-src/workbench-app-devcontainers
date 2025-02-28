@@ -12,7 +12,7 @@
 #
 # - emit (function)
 # - Workbench CLI is installed
- 
+
 if ! which gcsfuse >/dev/null 2>&1; then
   if type apk > /dev/null 2>&1; then
     emit "Installing gcsfuse from source..."
@@ -50,5 +50,5 @@ fi
 sed -i '/user_allow_other/s/^#//g' /etc/fuse.conf
 
 if [[ "${LOG_IN}" == "true" ]]; then
-  ${RUN_AS_LOGIN_USER} "wb resource mount --allow-other"
+  ${RUN_AS_LOGIN_USER} "wb resource mount --allow-other || echo 'Resource mounting failed.'"
 fi

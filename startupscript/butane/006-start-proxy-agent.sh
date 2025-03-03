@@ -54,4 +54,5 @@ docker start "proxy-agent" 2>/dev/null \
       --compute-platform="${COMPUTE_PLATFORM^^}" \
       --shim-path="${SHIM_PATH}" \
       --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}" \
+      --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}" \
       "${OPTIONS[@]}"

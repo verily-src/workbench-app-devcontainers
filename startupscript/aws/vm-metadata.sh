@@ -25,7 +25,10 @@ function get_metadata_value_unprefixed() {
   imds_token="$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)"
   local instance_id
   instance_id="$(wget --header "X-aws-ec2-metadata-token: ${imds_token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)"
+  local region
+  region="$(wget --header "X-aws-ec2-metadata-token: ${imds_token}" -q -O - http://169.254.169.254/latest/meta-data/placement/region)"
   aws ec2 describe-tags \
+    --region "${region}" \
     --filters "Name=resource-id,Values=${instance_id}" "Name=key,Values=$1" \
     --query "Tags[0].Value" --output text 2>/dev/null
 }
@@ -56,8 +59,11 @@ function set_metadata() {
   token=$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
+  local region
+  region="$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/placement/region)"
 
   aws ec2 create-tags \
+    --region "${region}" \
     --resources "${id}" \
     --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
 }

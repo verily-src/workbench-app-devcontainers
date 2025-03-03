@@ -78,7 +78,7 @@ if [[ "${CLOUD}" == "aws" && "${LOG_IN}" == "true" ]]; then
   # Create a symlink to this workspace's AWS config file to use as the target for AWS_CONFIG_FILE.
   readonly AWS_CONFIG_SYMLINK="${USER_WORKBENCH_CONFIG_DIR}/workspace.conf"
   ${RUN_AS_LOGIN_USER} "eval \$(wb workspace configure-aws) && \
-    ln -s \${AWS_CONFIG_FILE} ${AWS_CONFIG_SYMLINK}"
+    ln -sf \${AWS_CONFIG_FILE} ${AWS_CONFIG_SYMLINK}"
 
   emit "Adding Workbench AWS-sepcific environment variables to ~/.bashrc ..."
 
@@ -91,5 +91,3 @@ export AWS_VAULT_FILE_PASSPHRASE=""
 EOF
 
 fi
-
-

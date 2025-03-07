@@ -802,8 +802,17 @@ IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_a
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT
 
+ENABLE_VWB_PROXY="$(get_metadata_value "instance/attributes/enable-dataproc-vwb-proxy")"
+readonly ENABLE_VWB_PROXY
+if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]] || [[ "${ENABLE_VWB_PROXY}" == "true" ]]; then
+  USE_VWB_PROXY="true"
+else
+  USE_VWB_PROXY="false"
+fi
+readonly USE_VWB_PROXY
+
 APP_PROXY=""
-if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
+if [[ "${USE_VWB_PROXY}" == "true" ]]; then
 ###################################
 # Start workbench app proxy agent 
 ###################################
@@ -1049,7 +1058,7 @@ fi
     ${RUN_PYTHON} ${HAIL_SCRIPT_PATH}
   fi
   
-  if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "false" ]]; then
+  if [[ "${USE_VWB_PROXY}" == "false" ]]; then
   ######################################################
   # Configure the original (non-workbench) proxy agent
   ######################################################
@@ -1113,7 +1122,7 @@ EOF
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
 
-  if [[ -n "${APP_PROXY}" ]] && [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
+  if [[ -n "${APP_PROXY}" ]] && [[ "${USE_VWB_PROXY}" == "true" ]]; then
     cat << EOF >> "${JUPYTER_CONFIG}"
 c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"
 c.NotebookApp.allow_remote_access= True

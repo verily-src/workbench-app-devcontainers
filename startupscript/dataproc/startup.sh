@@ -208,18 +208,20 @@ function get_service_url() {
 }
 readonly -f get_service_url
 
+# Get the app proxy url for the env.
 function get_app_proxy_url() {
-  local env=$1
-  case "$env" in
-    verily)
+  local env="${1}"
+  case "${env}" in
+    "verily")
       env="prod"
       ;;
-    dev-stable)
+    "dev-stable")
       env="dev"
       ;;
   esac
   echo "https://workbench-app-${env}.verily.com"
 }
+readonly -f get_app_proxy_url
 
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.

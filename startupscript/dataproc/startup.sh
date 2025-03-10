@@ -1080,7 +1080,7 @@ fi
   # Configure the original (non-workbench) proxy agent
   ######################################################
     emit "Configuring the original Proxy Agent banner for Google account..."
-    UI_BASE_URL=$(get_ui_url "${TERRA_SERVER}")
+    UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
     readonly UI_BASE_URL
 
     # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.

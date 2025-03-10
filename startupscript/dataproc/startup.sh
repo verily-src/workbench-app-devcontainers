@@ -834,7 +834,7 @@ if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
 # Start workbench app proxy agent 
 ###################################
 
-  APP_PROXY="$(get_app_proxy_url "${TERRA_SERVER}")"
+  APP_PROXY="$(get_app_proxy_uri "${TERRA_SERVER}")"
   readonly APP_PROXY
   if [[ -n "${APP_PROXY}" ]]; then
     emit "Using custom Proxy Agent"

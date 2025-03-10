@@ -209,7 +209,7 @@ function get_service_url() {
 readonly -f get_service_url
 
 # Get the app proxy url for the env.
-function get_app_proxy_url() {
+function get_app_proxy_uri() {
   local env="${1}"
   case "${env}" in
     "verily")
@@ -221,7 +221,22 @@ function get_app_proxy_url() {
   esac
   echo "https://workbench-app-${env}.verily.com"
 }
-readonly -f get_app_proxy_url
+readonly -f get_app_proxy_uri
+
+# Get workbench frontend url
+function get_ui_uri() {
+  local env="${1}"
+  if [[ "${env}" == "verily" || "${env}" == "prod" ]]; then
+    echo "https://workbench.verily.com"
+  elif [[ "${env}" == "dev-stable" ]]; then
+    echo "https://workbench-dev.verily.com"
+  else [[ "${env}" == "dev-unstable" || "${env}" == "test" || "${env}" == "staging" ]]
+    echo "https://workbench-${env}.verily.com"
+  else
+    echo "https://workbench.verily.com"
+  fi
+}
+readonly -f get_ui_uri
 
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.
@@ -1065,18 +1080,7 @@ fi
   # Configure the original (non-workbench) proxy agent
   ######################################################
     emit "Configuring the original Proxy Agent banner for Google account..."
-    # Map the CLI server to the appropriate UI url
-    if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
-      # Map the CLI server to the appropriate UI url
-      if [[ "${TERRA_SERVER}" == "verily" ]]; then
-        UI_BASE_URL="workbench.verily.com"
-      else
-        UI_BASE_URL="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
-      fi
-    else
-      >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."
-      exit 1
-    fi
+    UI_BASE_URL=$(get_ui_url "${TERRA_SERVER}")
     readonly UI_BASE_URL
 
     # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.

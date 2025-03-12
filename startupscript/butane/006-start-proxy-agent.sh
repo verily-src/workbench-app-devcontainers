@@ -38,7 +38,7 @@ fi
 source /home/core/metadata-utils.sh
 TERRA_SERVER="$(get_metadata_value "terra-cli-server" "")"
 readonly TERRA_SERVER
-if [[ "${TERRA_SERVER}" == "verily-devel" ]]; then
+if [[ "${TERRA_SERVER}" == "dev-stable" ]]; then
     OPTIONS+=("--debug=true")
 fi
 readonly OPTIONS

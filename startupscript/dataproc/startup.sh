@@ -219,7 +219,7 @@ function get_app_proxy_uri() {
       env="dev"
       ;;
   esac
-  echo "https://workbench-app-${env}.verily.com/api/proxy/"
+  echo "https://workbench-app-${env}.verily.com/"
 }
 readonly -f get_app_proxy_uri
 
@@ -839,7 +839,7 @@ if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
   if [[ -n "${APP_PROXY}" ]]; then
     emit "Using custom Proxy Agent"
     RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
-    NEW_PROXY="${APP_PROXY}"
+    NEW_PROXY="${APP_PROXY}/api/proxy"
     NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
     readonly RESOURCE_ID
     readonly NEW_PROXY

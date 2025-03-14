@@ -219,7 +219,7 @@ function get_app_proxy_uri() {
       env="dev"
       ;;
   esac
-  echo "https://workbench-app-${env}.verily.com"
+  echo "https://workbench-app-${env}.verily.com/api/proxy/"
 }
 readonly -f get_app_proxy_uri
 

@@ -197,20 +197,46 @@ function set_guest_attributes() {
 # Map the CLI server to appropriate service path
 function get_service_url() {
   case "$1" in
-    "verily") echo "https://terra-$2.api.verily.com" ;;
-    "verily-devel") echo "https://terra-devel-$2.api.verily.com" ;;
-    "verily-autopush") echo "https://terra-autopush-$2.api.verily.com" ;;
-    "verily-staging") echo "https://terra-staging-$2.api.verily.com" ;;
-    "verily-preprod") echo "https://terra-preprod-$2.api.verily.com" ;;
+    "verily") echo "https://workbench.verily.com/api/$2" ;;
     "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
     "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
     "test") echo "https://workbench-test.verily.com/api/$2" ;;
     "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
-    "prod") echo "https://workbench-prod.verily.com/api/$2" ;;
+    "prod") echo "https://workbench.verily.com/api/$2" ;;
     *) return 1 ;;
   esac
 }
 readonly -f get_service_url
+
+# Get the app proxy url for the env.
+function get_app_proxy_uri() {
+  local env="${1}"
+  case "${env}" in
+    "verily")
+      env="prod"
+      ;;
+    "dev-stable")
+      env="dev"
+      ;;
+  esac
+  echo "https://workbench-app-${env}.verily.com/"
+}
+readonly -f get_app_proxy_uri
+
+# Get workbench frontend url
+function get_ui_uri() {
+  local env="${1}"
+  if [[ "${env}" == "verily" || "${env}" == "prod" ]]; then
+    echo "https://workbench.verily.com"
+  elif [[ "${env}" == "dev-stable" ]]; then
+    echo "https://workbench-dev.verily.com"
+  else [[ "${env}" == "dev-unstable" || "${env}" == "test" || "${env}" == "staging" ]]
+    echo "https://workbench-${env}.verily.com"
+  else
+    echo "https://workbench.verily.com"
+  fi
+}
+readonly -f get_ui_uri
 
 # If the script exits without error let the UI know it completed successfully
 # Otherwise if an error occurred write the line and command that failed to guest attributes.
@@ -798,7 +824,7 @@ chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 
 # TODO(BENCH-2612): use workbench CLI instead to get user profile.
 IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_account" \
-                    -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+                    -H "accept: application/json" -H "Authorization: Bearer $(wb auth print-access-token)" \
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT
 
@@ -808,12 +834,12 @@ if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
 # Start workbench app proxy agent 
 ###################################
 
-  APP_PROXY="$(get_metadata_value "instance/attributes/terra-app-proxy")"
+  APP_PROXY="$(get_app_proxy_uri "${TERRA_SERVER}")"
   readonly APP_PROXY
   if [[ -n "${APP_PROXY}" ]]; then
     emit "Using custom Proxy Agent"
     RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
-    NEW_PROXY="https://${APP_PROXY}"
+    NEW_PROXY="${APP_PROXY}/api/proxy"
     NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
     readonly RESOURCE_ID
     readonly NEW_PROXY
@@ -1054,18 +1080,7 @@ fi
   # Configure the original (non-workbench) proxy agent
   ######################################################
     emit "Configuring the original Proxy Agent banner for Google account..."
-    # Map the CLI server to the appropriate UI url
-    if [[ "${TERRA_SERVER}" == *"verily"* ]]; then
-      # Map the CLI server to the appropriate UI url
-      if [[ "${TERRA_SERVER}" == "verily" ]]; then
-        UI_BASE_URL="workbench.verily.com"
-      else
-        UI_BASE_URL="${TERRA_SERVER/verily/terra}-ui-terra.api.verily.com"
-      fi
-    else
-      >&2 echo "ERROR: ${TERRA_SERVER} is not a known verily server."
-      exit 1
-    fi
+    UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
     readonly UI_BASE_URL
 
     # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.

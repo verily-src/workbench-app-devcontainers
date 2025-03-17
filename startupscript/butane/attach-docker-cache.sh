@@ -10,6 +10,7 @@ set -o pipefail
 set -o xtrace
 
 function attach {
+  # Increase the levels of indirection for xtrace
   PS4="++ "
   set -o errexit
   set -o nounset
@@ -17,7 +18,8 @@ function attach {
   set -o xtrace
 
   local DISK_NAME="${1}"
-  local DISK_UUID="$(blkid -o value -s UUID "${DISK_NAME}")"
+  local DISK_UUID
+  DISK_UUID="$(blkid -o value -s UUID "${DISK_NAME}")"
   local MOUNTPOINT="/dc/${DISK_UUID}"
   local DOCKER_ROOT="/var/lib/docker"
 

@@ -22,6 +22,7 @@ function attach {
   mount -o ro "${1}" "/dc/${id}"
 
   # Copy the overlay2 directories to the docker cache
+  # shellcheck disable=SC2016
   find_args=(
       "/dc/${id}/overlay2" -maxdepth 1 -mindepth 1 -type d
 
@@ -29,22 +30,20 @@ function attach {
       # we will copy directly in the next step
       ! -name "l"
 
-      # If the directory already exists, skip the remaining steps
-      # shellcheck disable=SC2016
+      # If the directory already exists, skip the remaining steps. Pass the file
+      # name as a shell parameter to avoid malicious injection.
       -execdir bash -c '[ ! -d "/var/lib/docker/overlay2/${1}" ] || (echo "Skipping existing directory ${1}"; exit 1)' shell "{}" \;
 
       # Copy the layer's metadata, preserving all file permissions. diff will be
       # handled in the next step, while work and merged are temporary
       # directories that we do not want to include
-      # shellcheck disable=SC2016
-      -execdir bash -c 'rsync -a --exclude="diff" --exclude "work" --exclude "merged" "${1}" /var/lib/docker/overlay2/' shell "{}" \;
+      -execdir rsync -a --exclude="diff" --exclude "work" --exclude "merged" "{}" /var/lib/docker/overlay2/ \;
 
       # The diff directory contains the actual data. Since overlayfs is able to
       # understand symlinks, we can just symlink the diff directory to the read-only
       # cache. We cannot simply symlink the entire directory, since docker needs
       # to create read-write work and merged directories to merge the layers
-      # shellcheck disable=SC2016
-      -execdir bash -c 'ln -s "/dc/${2}/overlay2/${1}/diff" "/var/lib/docker/overlay2/${1}/diff"' shell "{}" "${id}" \;
+      -execdir ln -s "/dc/${id}/overlay2/{}/diff" "/var/lib/docker/overlay2/{}/diff" \;
   )
   find "${find_args[@]}"
 

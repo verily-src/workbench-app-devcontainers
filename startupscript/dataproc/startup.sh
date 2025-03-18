@@ -173,7 +173,7 @@ readonly -f emit
 function get_metadata_value() {
   local metadata_path="${1}"
   curl --retry 5 -s -f \
-    -H "Metadata-Flavor: Google" \
+      -H "Metadata-Flavor: Google" \
       "http://metadata/computeMetadata/v1/${metadata_path}" \
     || echo -n
 }
@@ -914,7 +914,7 @@ EOF
     systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
     # Start the service in non-blocking mode to allow startup script to continue without waiting
     systemctl --no-block start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-    emit "Workbench Proxy Agent started"
+    emit "Workbench Proxy Agent service started"
 else
   emit "Using Google Proxy"
 fi
@@ -1129,9 +1129,9 @@ fi
   fi
 
   if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "false" ]]; then
-    ######################################################
-    # Configure the original (non-workbench) proxy agent
-    ######################################################
+  ######################################################
+  # Configure the original (non-workbench) proxy agent
+  ######################################################
     emit "Configuring the original Proxy Agent banner for Google account..."
     UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
     readonly UI_BASE_URL

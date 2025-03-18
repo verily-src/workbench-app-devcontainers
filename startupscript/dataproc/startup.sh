@@ -831,8 +831,8 @@ readonly IS_NON_GOOGLE_ACCOUNT
 ENABLE_VWB_PROXY="$(get_metadata_value "instance/attributes/enable-dataproc-vwb-proxy")"
 readonly ENABLE_VWB_PROXY
 # Retrieve Workbench proxy agent image
-PROXY_IMAGE="$(get_metadata_value "instance/attributes/proxy-image")"
-readonly PROXY_IMAGE
+PROXY_AGENT_IMAGE="$(get_metadata_value "instance/attributes/proxy-agent-image")"
+readonly PROXY_AGENT_IMAGE
 APP_PROXY="$(get_app_proxy_uri "${TERRA_SERVER}")"
 readonly APP_PROXY
 RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
@@ -851,7 +851,7 @@ PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY="GOOGLE_AGENT_WITH_VWB_PROXY"
 
 # Decide proxy type
 PROXY_TYPE=""
-if [[ ${ENABLE_VWB_PROXY} == "true" && -n "${PROXY_IMAGE}" ]]; then
+if [[ ${ENABLE_VWB_PROXY} == "true" && -n "${PROXY_AGENT_IMAGE}" ]]; then
   PROXY_TYPE="${PROXY_TYPE_VWB}"
 elif [[ ${IS_NON_GOOGLE_ACCOUNT} == "true" ]]; then
   PROXY_TYPE="${PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY}"
@@ -880,7 +880,7 @@ ExecStart=/bin/bash -c '/usr/bin/docker run \\
       --detach \\
       --name "proxy-agent" \\
       --restart=unless-stopped \\
-      --net=host "${PROXY_IMAGE}" \\
+      --net=host "${PROXY_AGENT_IMAGE}" \\
       --proxy="${PROXY_SERVICE_URL}" \\
       --host="localhost:8123" \\
       --compute-platform="GCP" \\

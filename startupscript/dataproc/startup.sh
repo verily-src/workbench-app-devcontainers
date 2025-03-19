@@ -888,7 +888,7 @@ ExecStart=/bin/bash -c '/usr/bin/docker run \\
       --rewrite-websocket-host="true" \\
       --backend="${RESOURCE_ID}" \\
       --session-cookie-name="_xsrf" \\
-      --inject-banner="\$(cat /opt/dataproc/proxy-agent/banner.html)" \\
+      --inject-banner="\$(cat ${PROXY_AGENT_BANNER})" \\
       --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}"'
 
 [Install]

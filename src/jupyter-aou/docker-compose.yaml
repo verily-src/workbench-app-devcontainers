@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "${templateOption:containerImage}"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter@sha256:bd995ffb80b8b1b14f122b6ceb9e66c2037bbb9b182b4501c61b944cef4220a2"
     user: "jupyter"
     restart: always
     volumes:
@@ -21,7 +21,7 @@ services:
       - wondershaper
   wondershaper:
     container_name: "wondershaper"
-    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper:dd9df1811b9d15f4f8d95b6e515a2371e12d238240b8ef7359be77d961e79e3a"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:dd9df1811b9d15f4f8d95b6e515a2371e12d238240b8ef7359be77d961e79e3a"
     restart: always
     network_mode: "host"
     cap_add:

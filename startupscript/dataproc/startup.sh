@@ -197,13 +197,13 @@ function set_guest_attributes() {
 # Map the CLI server to appropriate service path
 function get_service_url() {
   case "$1" in
-    "verily") echo "https://workbench.verily.com/api/$2" ;;
-    "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
-    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
-    "test") echo "https://workbench-test.verily.com/api/$2" ;;
-    "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
-    "prod") echo "https://workbench.verily.com/api/$2" ;;
-    *) return 1 ;;
+  "verily") echo "https://workbench.verily.com/api/$2" ;;
+  "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
+  "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
+  "test") echo "https://workbench-test.verily.com/api/$2" ;;
+  "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
+  "prod") echo "https://workbench.verily.com/api/$2" ;;
+  *) return 1 ;;
   esac
 }
 readonly -f get_service_url
@@ -212,14 +212,14 @@ readonly -f get_service_url
 function get_app_proxy_uri() {
   local env="${1}"
   case "${env}" in
-    "verily")
-      env="prod"
-      ;;
-    "dev-stable")
-      env="dev"
-      ;;
+  "verily")
+    env="prod"
+    ;;
+  "dev-stable")
+    env="dev"
+    ;;
   esac
-  echo "https://workbench-app-${env}.verily.com/"
+  echo "workbench-app-${env}.verily.com"
 }
 readonly -f get_app_proxy_uri
 
@@ -230,7 +230,7 @@ function get_ui_uri() {
     echo "https://workbench.verily.com"
   elif [[ "${env}" == "dev-stable" ]]; then
     echo "https://workbench-dev.verily.com"
-  else [[ "${env}" == "dev-unstable" || "${env}" == "test" || "${env}" == "staging" ]]
+  elif [[ "${env}" == "dev-unstable" || "${env}" == "test" || "${env}" == "staging" ]]; then
     echo "https://workbench-${env}.verily.com"
   else
     echo "https://workbench.verily.com"
@@ -293,7 +293,7 @@ function install_nextflow() {
 readonly -f install_nextflow
 
 #######################################
-### Begin environment setup 
+### Begin environment setup
 #######################################
 
 # Let the UI know the script has started
@@ -627,7 +627,7 @@ EOF
 
 emit "Setting up git integration..."
 
-# Create the user SSH directory 
+# Create the user SSH directory
 ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
@@ -824,29 +824,79 @@ chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 
 # TODO(BENCH-2612): use workbench CLI instead to get user profile.
 IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_account" \
-                    -H "accept: application/json" -H "Authorization: Bearer $(wb auth print-access-token)" \
+                    -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT
 
-APP_PROXY=""
-if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
+ENABLE_VWB_PROXY="$(get_metadata_value "instance/attributes/enable-dataproc-vwb-proxy")"
+readonly ENABLE_VWB_PROXY
+# Retrieve Workbench proxy agent image
+PROXY_AGENT_IMAGE="$(get_metadata_value "instance/attributes/proxy-agent-image")"
+readonly PROXY_AGENT_IMAGE
+APP_PROXY="$(get_app_proxy_uri "${TERRA_SERVER}")"
+readonly APP_PROXY
+RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
+readonly RESOURCE_ID
+# Retrieve app proxy user facing URL
+APP_PROXY_URL="https://${RESOURCE_ID}.${APP_PROXY}"
+readonly APP_PROXY_URL
+# Retrieve app proxy service facing URL
+PROXY_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "proxy")/"
+readonly PROXY_SERVICE_URL
+
+# Define constants for proxy types
+PROXY_TYPE_VWB="VWB_PROXY"
+PROXY_TYPE_GOOGLE="GOOGLE_PROXY"
+PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY="GOOGLE_AGENT_WITH_VWB_PROXY"
+
+# Decide proxy type
+PROXY_TYPE=""
+if [[ ${ENABLE_VWB_PROXY} == "true" && -n "${PROXY_AGENT_IMAGE}" ]]; then
+  PROXY_TYPE="${PROXY_TYPE_VWB}"
+elif [[ ${IS_NON_GOOGLE_ACCOUNT} == "true" ]]; then
+  PROXY_TYPE="${PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY}"
+else
+  PROXY_TYPE="${PROXY_TYPE_GOOGLE}"
+fi
+
+if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
 ###################################
 # Start workbench app proxy agent 
 ###################################
+    if [[ "${PROXY_TYPE}" == "${PROXY_TYPE_VWB}" ]]; then
+      emit "Using Workbench Proxy"
+      ENABLE_MONITORING_SCRIPT="$(get_metadata_value "instance/attributes/enable-dataproc-monitoring-script")"
+      readonly ENABLE_MONITORING_SCRIPT
 
-  APP_PROXY="$(get_app_proxy_uri "${TERRA_SERVER}")"
-  readonly APP_PROXY
-  if [[ -n "${APP_PROXY}" ]]; then
-    emit "Using custom Proxy Agent"
-    RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
-    NEW_PROXY="${APP_PROXY}/api/proxy"
-    NEW_PROXY_URL="${RESOURCE_ID}.${APP_PROXY}"
-    readonly RESOURCE_ID
-    readonly NEW_PROXY
-    readonly NEW_PROXY_URL
+      cat <<EOF >"${WORKBENCH_PROXY_AGENT_SERVICE}"
+[Unit]
+Description=Workbench Docker Proxy Agent
+After=docker.service
+Requires=docker.service
 
-    # Create a systemd service to start the workbench app proxy.
-    cat << EOF > "${WORKBENCH_PROXY_AGENT_SERVICE}"
+[Service]
+ExecStartPre=/bin/bash -c 'while [ ! -f ${PROXY_AGENT_BANNER} ]; do sleep 5; done'
+ExecStart=/bin/bash -c '/usr/bin/docker run \\
+      --detach \\
+      --name "proxy-agent" \\
+      --restart=unless-stopped \\
+      --net=host "${PROXY_AGENT_IMAGE}" \\
+      --proxy="${PROXY_SERVICE_URL}" \\
+      --host="localhost:8123" \\
+      --compute-platform="GCP" \\
+      --shim-path="websocket-shim" \\
+      --rewrite-websocket-host="true" \\
+      --backend="${RESOURCE_ID}" \\
+      --session-cookie-name="_xsrf" \\
+      --inject-banner="\$(cat ${PROXY_AGENT_BANNER})" \\
+      --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}"'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    else
+      emit "Using Google Proxy Agent with Workbench Proxy"
+      cat <<EOF >"${WORKBENCH_PROXY_AGENT_SERVICE}"
 [Unit]
 Description=Workbench App Proxy Agent Service
 
@@ -857,13 +907,16 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
+    fi
 
     # Enable and start the workbench app proxy agent service
     systemctl daemon-reload
     systemctl enable "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-    systemctl start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+    # Start the service in non-blocking mode to allow startup script to continue without waiting
+    systemctl --no-block start "${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
     emit "Workbench Proxy Agent service started"
-  fi
+else
+  emit "Using Google Proxy"
 fi
 
 ###################################
@@ -1074,7 +1127,7 @@ fi
     emit "Starting Hail install script..."
     ${RUN_PYTHON} ${HAIL_SCRIPT_PATH}
   fi
-  
+
   if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "false" ]]; then
   ######################################################
   # Configure the original (non-workbench) proxy agent
@@ -1128,11 +1181,11 @@ EOF
   sed -i -e "/c.GCSContentsManager/d" -e "/CombinedContentsManager/d" "${JUPYTER_CONFIG}"
   echo "c.FileContentsManager.root_dir = '${USER_HOME_DIR}'" >> "${JUPYTER_CONFIG}"
 
-  if [[ -n "${APP_PROXY}" ]] && [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then
+  if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
     cat << EOF >> "${JUPYTER_CONFIG}"
-c.NotebookApp.allow_origin_pat += "|(https?://)?(https://${NEW_PROXY_URL})"
+c.NotebookApp.allow_origin_pat += "|(https?://)?(${APP_PROXY_URL})"
 c.NotebookApp.allow_remote_access= True
-c.NotebookApp.local_hostnames.append('${APP_PROXY}')
+c.NotebookApp.local_hostnames.append('${PROXY_SERVICE_URL}')
 EOF
   fi
   # Add a marker for the Workbench-specific customizations

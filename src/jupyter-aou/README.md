@@ -1,7 +1,7 @@
 
-# Jupyter (jupyter)
+# Jupyter App for AoU (jupyter-aou)
 
-A Template to run jupyter on workbench
+A template used to serve the JupyterLab container image for AoU
 
 ## Options
 

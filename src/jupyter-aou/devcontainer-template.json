@@ -1,7 +1,7 @@
 {
   "id": "jupyter-aou",
   "name": "Jupyter App for AoU",
-  "description": "A used to serve the JupyterLab container image for AoU",
+  "description": "A template used to serve the JupyterLab container image for AoU",
   "version": "0.0.1",
   "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/jupyter-aou",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",

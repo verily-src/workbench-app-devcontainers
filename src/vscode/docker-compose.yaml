@@ -9,6 +9,7 @@ services:
       - work:/home/vscode:cached
     ports:
       - "8443:8443"
+      - "8822:22"
     environment:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"

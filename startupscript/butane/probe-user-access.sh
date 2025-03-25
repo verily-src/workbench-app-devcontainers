@@ -39,3 +39,10 @@ else
     NOW="$(date +'%s')"
     set_metadata "last-active/cpu" "${NOW}"
 fi
+
+if ps auxwww | grep sshd-session | grep -v grep | grep '@'; then
+  echo "Detect an active ssh session"
+  NOW="$(date +'%s')"
+  set_metadata "last-active/ssh" "${NOW}"
+fi
+

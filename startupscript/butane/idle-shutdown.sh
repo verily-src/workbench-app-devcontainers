@@ -38,11 +38,17 @@ readonly LAST_BOOT_TIME
 # Get the last time the VM was active. Default to 0 if not set.
 LAST_ACTIVE="$(get_guest_attribute "last-active/cpu" "0")"
 LAST_ACTIVE_PROXY="$(get_guest_attribute "last-active/proxy" "0")"
+LAST_ACTIVE_SSH="$(get_guest_attribute "last-active/ssh" "0")"
 
-# get the latest time between the two last active timestamps
+# get the latest active timestamps
 if (( LAST_ACTIVE < LAST_ACTIVE_PROXY )); then
     LAST_ACTIVE="${LAST_ACTIVE_PROXY}"
 fi
+
+if (( LAST_ACTIVE < LAST_ACTIVE_SSH )); then
+    LAST_ACTIVE="${LAST_ACTIVE_SSH}"
+fi
+
 # get the latest time between the last boot time and the last active time. The last active timestamp could still be really old when the VM is rebooted and
 # the last active timestamp is not updated yet.
 if (( LAST_ACTIVE < LAST_BOOT_TIME )); then

@@ -38,6 +38,9 @@ jobs:
             vscode:
               - './**/vscode/**'
               - 'startupscript/**'
+            jupyter-aou:
+              - './**/jupyter-aou/**'
+              - 'startupscript/**'
 
   test:
     needs: [detect-changes]

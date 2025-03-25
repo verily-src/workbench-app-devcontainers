@@ -39,3 +39,9 @@ else
     NOW="$(date +'%s')"
     set_metadata "last-active/cpu" "${NOW}"
 fi
+
+if pgrep -af 'sshd-session.*@'; then
+  echo "Detect an active ssh session"
+  NOW="$(date +'%s')"
+  set_metadata "last-active/ssh" "${NOW}"
+fi

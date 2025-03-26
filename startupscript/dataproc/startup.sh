@@ -102,6 +102,7 @@ readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_notebook_config.py"
 
 readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
 readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
+readonly WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/start-vwb-proxy-agent.sh"
 
 # Variables relevant for 3rd party software that gets installed
 readonly REQ_JAVA_VERSION=17
@@ -838,16 +839,18 @@ readonly APP_PROXY
 RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
 readonly RESOURCE_ID
 # Retrieve app proxy user facing URL
-APP_PROXY_URL="https://${RESOURCE_ID}.${APP_PROXY}"
-readonly APP_PROXY_URL
+readonly APP_PROXY_URL="https://${RESOURCE_ID}.${APP_PROXY}"
 # Retrieve app proxy service facing URL
 PROXY_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "proxy")/"
 readonly PROXY_SERVICE_URL
+# Retrieve Portal URL
+UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
+readonly UI_BASE_URL
 
 # Define constants for proxy types
-PROXY_TYPE_VWB="VWB_PROXY"
-PROXY_TYPE_GOOGLE="GOOGLE_PROXY"
-PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY="GOOGLE_AGENT_WITH_VWB_PROXY"
+readonly PROXY_TYPE_VWB="VWB_PROXY"
+readonly PROXY_TYPE_GOOGLE="GOOGLE_PROXY"
+readonly PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY="GOOGLE_AGENT_WITH_VWB_PROXY"
 
 # Decide proxy type
 PROXY_TYPE=""
@@ -868,6 +871,52 @@ if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
       ENABLE_MONITORING_SCRIPT="$(get_metadata_value "instance/attributes/enable-dataproc-monitoring-script")"
       readonly ENABLE_MONITORING_SCRIPT
 
+      readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="'"${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
+
+      # Define Workbench Proxy Agent startup script
+      cat <<EOF >"${WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT}"
+#!/bin/bash
+set -o errexit
+set -o nounset
+
+# Insert a workspace link into the banner title
+sed -i 's#<banner-title>#<banner-title>\n${WORKSPACE_LINK_EL} \&gt; #' "${PROXY_AGENT_BANNER}"
+
+# Add target blank property to all banner links so they open in a new tab
+sed -i 's#class="forum"#class="forum" target="_blank"#g' "${PROXY_AGENT_BANNER}"
+sed -i 's#id="signout"#id="signout" target="_blank"#g' "${PROXY_AGENT_BANNER}"
+
+# Remove flex styling from the banner-account css class to prevent banner content from wrapping
+sed -i '/banner-account {/,/}/{/flex:/d;/-ms-flex:/d;/-webkit-flex:/d;}' "${PROXY_AGENT_BANNER}"
+
+# Add css class for a#workspace before a#project
+sed -i '/a#project {/i\
+a#workspace {\
+  color:white;\
+  text-decoration:none;\
+  padding:4px;\
+}' "${PROXY_AGENT_BANNER}"
+
+# Start Docker proxy agent
+/usr/bin/docker run \
+  --detach \
+  --name "proxy-agent" \
+  --restart=unless-stopped \
+  --net=host "${PROXY_AGENT_IMAGE}" \
+  --proxy="${PROXY_SERVICE_URL}" \
+  --host="localhost:8123" \
+  --compute-platform="GCP" \
+  --shim-path="websocket-shim" \
+  --rewrite-websocket-host="true" \
+  --backend="${RESOURCE_ID}" \
+  --session-cookie-name="_xsrf" \
+  --inject-banner="\$(cat ${PROXY_AGENT_BANNER})" \
+  --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}"
+EOF
+      # Grant execute permission to the startup script
+      chmod +x "${WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT}"
+
+      # Create a systemd service to run the startup script
       cat <<EOF >"${WORKBENCH_PROXY_AGENT_SERVICE}"
 [Unit]
 Description=Workbench Docker Proxy Agent
@@ -876,20 +925,8 @@ Requires=docker.service
 
 [Service]
 ExecStartPre=/bin/bash -c 'while [ ! -f ${PROXY_AGENT_BANNER} ]; do sleep 5; done'
-ExecStart=/bin/bash -c '/usr/bin/docker run \\
-      --detach \\
-      --name "proxy-agent" \\
-      --restart=unless-stopped \\
-      --net=host "${PROXY_AGENT_IMAGE}" \\
-      --proxy="${PROXY_SERVICE_URL}" \\
-      --host="localhost:8123" \\
-      --compute-platform="GCP" \\
-      --shim-path="websocket-shim" \\
-      --rewrite-websocket-host="true" \\
-      --backend="${RESOURCE_ID}" \\
-      --session-cookie-name="_xsrf" \\
-      --inject-banner="\$(cat ${PROXY_AGENT_BANNER})" \\
-      --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}"'
+ExecStart=${WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT}
+Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
@@ -1128,14 +1165,11 @@ fi
     ${RUN_PYTHON} ${HAIL_SCRIPT_PATH}
   fi
 
-  if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "false" ]]; then
+  if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_VWB}" && "${IS_NON_GOOGLE_ACCOUNT}" == "false" ]]; then
   ######################################################
   # Configure the original (non-workbench) proxy agent
   ######################################################
     emit "Configuring the original Proxy Agent banner for Google account..."
-    UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
-    readonly UI_BASE_URL
-
     # The banner.html file contains <style> wrapper tags and a series of CSS styles, and a set of html link elements that we want to modify.
     # Begin banner.html modifications
 

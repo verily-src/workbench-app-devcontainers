@@ -824,21 +824,28 @@ chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASHRC}"
 chown "${LOGIN_USER}:${LOGIN_USER}" "${USER_BASH_PROFILE}"
 
 # TODO(BENCH-2612): use workbench CLI instead to get user profile.
-readonly IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_account" \
+IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_account" \
                     -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
                   | jq '.value')"
+readonly IS_NON_GOOGLE_ACCOUNT
 
-readonly ENABLE_VWB_PROXY="$(get_metadata_value "instance/attributes/enable-dataproc-vwb-proxy")"
+ENABLE_VWB_PROXY="$(get_metadata_value "instance/attributes/enable-dataproc-vwb-proxy")"
+readonly ENABLE_VWB_PROXY
 # Retrieve Workbench proxy agent image
-readonly PROXY_AGENT_IMAGE="$(get_metadata_value "instance/attributes/proxy-agent-image")"
-readonly APP_PROXY="$(get_app_proxy_uri "${TERRA_SERVER}")"
-readonly RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
+PROXY_AGENT_IMAGE="$(get_metadata_value "instance/attributes/proxy-agent-image")"
+readonly PROXY_AGENT_IMAGE
+APP_PROXY="$(get_app_proxy_uri "${TERRA_SERVER}")"
+readonly APP_PROXY
+RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-id")"
+readonly RESOURCE_ID
 # Retrieve app proxy user facing URL
 readonly APP_PROXY_URL="https://${RESOURCE_ID}.${APP_PROXY}"
 # Retrieve app proxy service facing URL
-readonly PROXY_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "proxy")/"
+PROXY_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "proxy")/"
+readonly PROXY_SERVICE_URL
 # Retrieve Portal URL
-readonly UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
+UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
+readonly UI_BASE_URL
 
 # Define constants for proxy types
 readonly PROXY_TYPE_VWB="VWB_PROXY"
@@ -861,9 +868,10 @@ if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
 ###################################
     if [[ "${PROXY_TYPE}" == "${PROXY_TYPE_VWB}" ]]; then
       emit "Using Workbench Proxy"
-      readonly ENABLE_MONITORING_SCRIPT="$(get_metadata_value "instance/attributes/enable-dataproc-monitoring-script")"
+      ENABLE_MONITORING_SCRIPT="$(get_metadata_value "instance/attributes/enable-dataproc-monitoring-script")"
+      readonly ENABLE_MONITORING_SCRIPT
 
-      readonly WORKSPACE_LINK_EL="<a id="workspace" class="forum" target="_blank" href="${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}">${TERRA_WORKSPACE}</a>"
+      readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="'"${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
 
       # Define Workbench Proxy Agent startup script
       cat <<EOF >"${WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT}"

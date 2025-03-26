@@ -837,7 +837,6 @@ readonly RESOURCE_ID="$(get_metadata_value "instance/attributes/terra-resource-i
 readonly APP_PROXY_URL="https://${RESOURCE_ID}.${APP_PROXY}"
 # Retrieve app proxy service facing URL
 readonly PROXY_SERVICE_URL="$(get_service_url "${TERRA_SERVER}" "proxy")/"
-readonly PROXY_SERVICE_URL
 # Retrieve Portal URL
 readonly UI_BASE_URL=$(get_ui_uri "${TERRA_SERVER}")
 

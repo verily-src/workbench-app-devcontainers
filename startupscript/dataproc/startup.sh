@@ -879,26 +879,36 @@ if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
 set -o errexit
 set -o nounset
 
-# Insert a workspace link into the banner title
-sed -i 's#<banner-title>#<banner-title>\n${WORKSPACE_LINK_EL} \&gt; #' "${PROXY_AGENT_BANNER}"
-
+# Banner modifications is idempotent to allow multiple re-runs (reboot/service restart on failure)
 # Add target blank property to all banner links so they open in a new tab
-sed -i 's#class="forum"#class="forum" target="_blank"#g' "${PROXY_AGENT_BANNER}"
-sed -i 's#id="signout"#id="signout" target="_blank"#g' "${PROXY_AGENT_BANNER}"
+if ! grep -q 'class="forum" target="_blank"' "${PROXY_AGENT_BANNER}"; then
+  sed -i 's#class="forum"#class="forum" target="_blank"#g' "${PROXY_AGENT_BANNER}"
+fi
+if ! grep -q 'id="signout" target="_blank"' "${PROXY_AGENT_BANNER}"; then
+  sed -i 's#id="signout"#id="signout" target="_blank"#g' "${PROXY_AGENT_BANNER}"
+fi
+
+# Insert a workspace link into the banner title
+if ! grep -q 'id="workspace"' "${PROXY_AGENT_BANNER}"; then
+  sed -i 's#<banner-title>#<banner-title>\n${WORKSPACE_LINK_EL} \&gt; #' "${PROXY_AGENT_BANNER}"
+fi
 
 # Remove flex styling from the banner-account css class to prevent banner content from wrapping
 sed -i '/banner-account {/,/}/{/flex:/d;/-ms-flex:/d;/-webkit-flex:/d;}' "${PROXY_AGENT_BANNER}"
 
 # Add css class for a#workspace before a#project
-sed -i '/a#project {/i\
+if ! grep -q 'a#workspace {' "${PROXY_AGENT_BANNER}"; then
+  sed -i '/a#project {/i\
 a#workspace {\
   color:white;\
   text-decoration:none;\
   padding:4px;\
 }' "${PROXY_AGENT_BANNER}"
+fi
 
 # Start Docker proxy agent
-/usr/bin/docker run \
+docker start "proxy-agent" 2>/dev/null \
+  || docker run \
   --detach \
   --name "proxy-agent" \
   --restart=unless-stopped \

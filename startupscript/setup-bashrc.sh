@@ -43,6 +43,7 @@ if [[ "${LOG_IN}" == "true" ]]; then
 export TERRA_USER_EMAIL='${OWNER_EMAIL}'
 export OWNER_EMAIL='${OWNER_EMAIL}'
 export PET_SA_EMAIL='${PET_SA_EMAIL}'
+export FOO='BAR'
 
 # Set up workbench-specific convenience variables
 export WORKBENCH_USER_EMAIL='${OWNER_EMAIL}'

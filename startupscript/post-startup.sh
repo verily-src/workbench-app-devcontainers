@@ -213,3 +213,9 @@ source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then
   source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
 fi
+
+#################################
+# CUSTOM POST-STARTUP SCRIPT DEMO
+#################################
+export CUSTOM_ENV_VAR_MESSAGE="This is a custom environment variable!"
+

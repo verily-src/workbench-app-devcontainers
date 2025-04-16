@@ -213,4 +213,3 @@ source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then
   source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
 fi
-

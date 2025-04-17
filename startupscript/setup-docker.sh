@@ -30,7 +30,7 @@ tee /etc/host-group < /tmp/host-group.modified > /dev/null
 # create a matching docker group in the container and add the user to it
 DOCKER_GID=$(grep '^docker:' "/etc/host-group" | cut -d: -f3)
 if ! getent group docker; then
-    groupadd -g $DOCKER_GID docker
+    groupadd -g "$DOCKER_GID" docker
 fi
 usermod -aG docker jupyter
 

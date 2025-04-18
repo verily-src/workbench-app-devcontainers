@@ -202,6 +202,14 @@ if [[ "${LOG_IN}" == "true" ]]; then
     retry 5 "${SCRIPT_DIR}/git-setup.sh"
 fi
 
+##############################
+# passwordless setup
+##############################
+echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/"${USER_NAME}"
+chmod 440 /etc/sudoers.d/${USER_NAME}
+
+echo "User ${USER_NAME} has been given passwordless sudo access."
+
 #############################
 # Mount buckets
 #############################

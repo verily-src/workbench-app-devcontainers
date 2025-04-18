@@ -210,7 +210,7 @@ sudoers_d_file="/etc/sudoers.d/${USER_NAME}"
 
 # Check if there's an old rule in the main sudoers file that requires a password
 if grep -q "^${USER_NAME} ALL=(ALL:ALL) ALL" "${sudoers_file}"; then
-  echo "Found password-requiring rule for $user in /etc/sudoers. Commenting it out."
+  echo "Found password-requiring rule for ${USER_NAME} in /etc/sudoers. Commenting it out."
   
   # Comment out the old rule in /etc/sudoers
   sed -i "s/^${USER_NAME} ALL=(ALL:ALL) ALL/# ${USER_NAME} ALL=(ALL:ALL) ALL/" "${sudoers_file}"

@@ -202,25 +202,6 @@ if [[ "${LOG_IN}" == "true" ]]; then
     retry 5 "${SCRIPT_DIR}/git-setup.sh"
 fi
 
-##############################
-# passwordless setup
-##############################
-sudoers_file="/etc/sudoers"
-sudoers_d_file="/etc/sudoers.d/${USER_NAME}"
-
-# Check if there's an old rule in the main sudoers file that requires a password
-if grep -q "^${USER_NAME} ALL=(ALL:ALL) ALL" "${sudoers_file}"; then
-  echo "Found password-requiring rule for ${USER_NAME} in /etc/sudoers. Commenting it out."
-  
-  # Comment out the old rule in /etc/sudoers
-  sed -i "s/^${USER_NAME} ALL=(ALL:ALL) ALL/# ${USER_NAME} ALL=(ALL:ALL) ALL/" "${sudoers_file}"
-fi
-
-echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > "${sudoers_d_file}"
-chmod 440 /etc/sudoers.d/"${USER_NAME}"
-
-echo "User ${USER_NAME} has been given passwordless sudo access."
-
 #############################
 # Mount buckets
 #############################

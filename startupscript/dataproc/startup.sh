@@ -910,6 +910,8 @@ fi
 docker start "proxy-agent" 2>/dev/null \
   || docker run \
   --detach \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   --name "proxy-agent" \
   --restart=unless-stopped \
   --net=host "${PROXY_AGENT_IMAGE}" \

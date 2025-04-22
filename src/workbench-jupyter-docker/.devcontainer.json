@@ -4,6 +4,8 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
+  // Get the host's docker group ID and propagate it into the .env file, which
+  // allows it to be used within docker-compose.yaml.
   "initializeCommand": "DOCKER_GID=`getent group docker | cut -d: -f3` && echo \"DOCKER_GID=${DOCKER_GID}\" > .env",
   "postCreateCommand": "./startupscript/post-startup.sh jupyter /home/jupyter ${templateOption:cloud} ${templateOption:login} && ./startupscript/setup-docker.sh",
   // re-mount bucket files on container start up

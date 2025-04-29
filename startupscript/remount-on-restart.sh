@@ -46,6 +46,13 @@ exec 2>&1
 source "${SCRIPT_DIR}/emit.sh"
 
 #############################
+# CLI login
+#############################
+if [[ "${LOG_IN}" == "true" ]] && wb auth status 2>&1 | grep -q "NO USER LOGGED IN"; then
+  wb auth login --mode=APP_DEFAULT_CREDENTIALS
+fi
+
+#############################
 # Mount buckets
 #############################
 # shellcheck disable=SC2034

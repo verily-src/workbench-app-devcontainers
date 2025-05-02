@@ -41,6 +41,11 @@ readonly TERRA_SERVER
 if [[ "${TERRA_SERVER}" == "dev-stable" ]]; then
     OPTIONS+=("--debug=true")
 fi
+PROXY_WS_TUNNEL="$(get_metadata_value "proxy-websocket-tunnel-enabled" "")"
+if [[ "${PROXY_WS_TUNNEL}" == "TRUE" ]]; then
+    OPTIONS+=("--websocket-transport=true")
+fi
+readonly PROXY_WS_TUNNEL
 readonly OPTIONS
 
 docker start "proxy-agent" 2>/dev/null \

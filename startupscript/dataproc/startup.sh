@@ -102,7 +102,7 @@ readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_notebook_config.py"
 
 readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
 readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
-readonly WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/start-vwb-proxy-agent.sh"
+readonly WORKBENCH_PROXY_AGENT_STARTUP_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/start-vwb-proxy-agent.sh"
 
 # Variables relevant for 3rd party software that gets installed
 readonly REQ_JAVA_VERSION=17
@@ -871,10 +871,18 @@ if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
       ENABLE_MONITORING_SCRIPT="$(get_metadata_value "instance/attributes/enable-dataproc-monitoring-script")"
       readonly ENABLE_MONITORING_SCRIPT
 
+      OPTIONS=()
+      PROXY_WS_TUNNEL="$(get_metadata_value "proxy-websocket-tunnel-enabled" "")"
+      if [[ "${PROXY_WS_TUNNEL}" == "TRUE" ]]; then
+          OPTIONS+=("--websocket-transport=true")
+      fi
+      readonly PROXY_WS_TUNNEL
+      readonly OPTIONS
+
       readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="'"${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
 
       # Define Workbench Proxy Agent startup script
-      cat <<EOF >"${WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT}"
+      cat <<EOF >"${WORKBENCH_PROXY_AGENT_STARTUP_SCRIPT}"
 #!/bin/bash
 set -o errexit
 set -o nounset
@@ -923,10 +931,11 @@ docker start "proxy-agent" 2>/dev/null \
   --backend="${RESOURCE_ID}" \
   --session-cookie-name="_xsrf" \
   --inject-banner="\$(cat ${PROXY_AGENT_BANNER})" \
-  --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}"
+  --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}" \
+  ${OPTIONS[@]}
 EOF
       # Grant execute permission to the startup script
-      chmod +x "${WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT}"
+      chmod +x "${WORKBENCH_PROXY_AGENT_STARTUP_SCRIPT}"
 
       # Create a systemd service to run the startup script
       cat <<EOF >"${WORKBENCH_PROXY_AGENT_SERVICE}"
@@ -937,7 +946,7 @@ Requires=docker.service
 
 [Service]
 ExecStartPre=/bin/bash -c 'while [ ! -f ${PROXY_AGENT_BANNER} ]; do sleep 5; done'
-ExecStart=${WORKBECNH_PROXY_AGENT_STARTUP_SCRIPT}
+ExecStart=${WORKBENCH_PROXY_AGENT_STARTUP_SCRIPT}
 Restart=on-failure
 
 [Install]

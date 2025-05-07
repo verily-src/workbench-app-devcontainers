@@ -9,6 +9,7 @@ services:
       - .:/workspace
     networks:
       - app-network
+    command: sleep infinity
 networks:
   app-network:
     external: true

@@ -6,6 +6,7 @@
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
     "./startupscript/post-startup.sh",
+    "chmod +x ./startupscript/gradio.sh",
     "./startupscript/gradio.sh"
   ],
   "remoteUser": "root",

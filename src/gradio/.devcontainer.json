@@ -2,6 +2,7 @@
   "name": "Gradio app",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
+  "forwardPorts": [8080],
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
     "./startupscript/post-startup.sh",

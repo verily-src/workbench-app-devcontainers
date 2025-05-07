@@ -1,0 +1,28 @@
+{
+  "name": "Gradio Demo FHIR Search",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "git clone git@github.com:verily-src/verily1.git workspace/verily1",
+    "cd workspace/verily1",
+    "git checkout fhir-agent",
+    "cd tools/mlinfra/langchain/app_demo",
+    "pip install -r requirements.txt",
+    "python main.py"
+  ],
+  "postStartCommand": [
+    "cd workspace/verily1",
+    "cd tools/mlinfra/langchain/app_demo",
+    "python main.py"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"]
+    }
+  },
+  "features": {
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+  }
+}

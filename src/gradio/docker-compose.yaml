@@ -1,0 +1,21 @@
+version: "2.4"
+services:
+  app:
+    container_name: "gradio-demo"
+    image: "python:3.10"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - "8888:8888"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true

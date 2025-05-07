@@ -4,7 +4,7 @@ services:
     container_name: "application-server"
     image: "python:3.10"
     ports:
-      - "8888:8888"
+      - "8080:8080"
     volumes:
       - .:/workspace
     networks:

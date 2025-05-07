@@ -9,13 +9,11 @@
     "cd workspace/verily1",
     "git checkout fhir-agent",
     "cd tools/mlinfra/langchain/app_demo",
-    "pip install -r requirements.txt",
-    "python main.py"
+    "pip install -r requirements.txt"
   ],
   "postStartCommand": [
     "cd workspace/verily1",
-    "cd tools/mlinfra/langchain/app_demo",
-    "python main.py"
+    "cd tools/mlinfra/langchain/app_demo"
   ],
   "remoteUser": "root",
   "customizations": {

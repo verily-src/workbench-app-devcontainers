@@ -8,10 +8,6 @@
     "./startupscript/post-startup.sh",
     "./startupscript/gradio.sh"
   ],
-  "postStartCommand": [
-    "cd workspace/verily1",
-    "cd tools/mlinfra/langchain/app_demo"
-  ],
   "remoteUser": "root",
   "customizations": {
     "vscode": {

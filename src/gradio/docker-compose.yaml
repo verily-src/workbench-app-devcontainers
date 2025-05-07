@@ -9,7 +9,7 @@ services:
       - .:/workspace
     networks:
       - app-network
-    command: "python /workspace/verily1/tools/mlinfra/langchain/app_demo/main.py --gradio_remote"
+    command: "python verily1/tools/mlinfra/langchain/app_demo/main.py --gradio_remote"
 networks:
   app-network:
     external: true

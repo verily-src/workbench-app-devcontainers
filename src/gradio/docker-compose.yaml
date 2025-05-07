@@ -1,19 +1,16 @@
 version: "2.4"
 services:
-  app:
-    container_name: "application-server"
-    image: "python:3.10"
-    restart: always
-    volumes:
-      - .:/workspace:cached
+  gradio:
+    image: python:3.10
     ports:
       - "8888:8888"
+    volumes:
+      - .:/workspace
     networks:
       - app-network
+    command: python /workspace/verily1/tools/mlinfra/langchain/app_demo/main.py
     cap_add:
       - SYS_ADMIN
-    devices:
-      - /dev/fuse
     security_opt:
       - apparmor:unconfined
 networks:

@@ -1,7 +1,7 @@
 {
-  "name": "Gradio Demo FHIR Search",
+  "name": "gradio-dev",
   "dockerComposeFile": "docker-compose.yaml",
-  "service": "app",
+  "service": "gradio",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
     "./startupscript/post-startup.sh",

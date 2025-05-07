@@ -4,7 +4,7 @@
   "service": "app",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
-    "./startupscript/git-setup.sh",
+    "./startupscript/post-startup.sh",
     "git clone git@github.com:verily-src/verily1.git workspace/verily1",
     "cd workspace/verily1",
     "git checkout fhir-agent",
@@ -17,12 +17,16 @@
     "cd tools/mlinfra/langchain/app_demo",
     "python main.py"
   ],
+  "remoteUser": "root",
   "customizations": {
     "vscode": {
       "extensions": ["ms-python.python"]
     }
   },
   "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    },
     "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
   }
 }

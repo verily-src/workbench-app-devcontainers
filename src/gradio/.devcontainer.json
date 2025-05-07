@@ -6,11 +6,7 @@
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
     "./startupscript/post-startup.sh",
-    "git clone git@github.com:verily-src/verily1.git workspace/verily1",
-    "cd workspace/verily1",
-    "git checkout fhir-agent",
-    "cd tools/mlinfra/langchain/app_demo",
-    "pip install -r requirements.txt"
+    "./startupscript/gradio.sh"
   ],
   "postStartCommand": [
     "cd workspace/verily1",

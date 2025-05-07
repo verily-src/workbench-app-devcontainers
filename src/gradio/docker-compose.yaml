@@ -1,7 +1,7 @@
 version: "2.4"
 services:
   app:
-    container_name: "gradio-demo"
+    container_name: "application-server"
     image: "python:3.10"
     restart: always
     volumes:

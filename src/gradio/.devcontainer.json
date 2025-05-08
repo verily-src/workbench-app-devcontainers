@@ -13,6 +13,9 @@
     }
   },
   "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    },
     "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
   }
 }

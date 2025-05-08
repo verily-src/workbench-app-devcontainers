@@ -10,4 +10,4 @@ done
 echo "Starting app..."
 cd /home/vscode/repos/verily1/tools/mlinfra/langchain/app_demo
 pip install -r requirements.txt
-python main.py --gradio_remote 2>&1
+python main.py --gradio_remote | tee output.log

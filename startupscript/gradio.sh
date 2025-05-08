@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Wait until main.py exists
-while [ ! -f "/home/vscode/repos/verily1/tools/mlinfra/langchain/app_demo" ]; do
+while [ ! -d "/home/vscode/repos/verily1/tools/mlinfra/langchain/app_demo" ]; do
   echo "Waiting for app_demo subdir in verily1 repo..."
   sleep 1
 done

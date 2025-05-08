@@ -4,7 +4,7 @@
   "service": "app",
   "forwardPorts": [8080],
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "./startupscript/post-startup.sh && chmod +x startupscript/gradio.sh && ./startupscript/gradio.sh && python verily1/tools/mlinfra/langchain/app_demo/main.py --gradio_remote",
+  "postCreateCommand": "set -e && ./startupscript/post-startup.sh gradio /home/gradio gcp true && chmod +x startupscript/gradio.sh && ./startupscript/gradio.sh && python verily1/tools/mlinfra/langchain/app_demo/main.py --gradio_remote",
   "postStartCommand": "python verily1/tools/mlinfra/langchain/app_demo/main.py --gradio_remote",
   "remoteUser": "root",
   "customizations": {

@@ -10,7 +10,7 @@ services:
       - .:/workspace:cached
     networks:
       - app-network
-    command: sleep infinity
+    command: "bash /workspace/startupscript/gradio.sh"
 networks:
   app-network:
     external: true

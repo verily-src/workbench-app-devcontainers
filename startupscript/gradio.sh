@@ -1,11 +1,13 @@
 #!/bin/bash
-set -e
 
-echo "Cloning repo into /workspace/verily1..."
-git clone git@github.com:verily-src/verily1.git verily1
+# Wait until main.py exists
+while [ ! -f "/home/vscode/repos/verily1/tools/mlinfra/langchain/app_demo" ]; do
+  echo "Waiting for app_demo subdir in verily1 repo..."
+  sleep 1
+done
 
-cd verily1
-git checkout fhir-agent
-
-# Install Python dependencies
-pip install -r tools/mlinfra/langchain/app_demo/requirements.txt
+# Start the Gradio app
+echo "Starting app..."
+cd /home/vscode/repos/verily1/tools/mlinfra/langchain/app_demo
+pip install -r requirements.txt
+python main.py --gradio_remote

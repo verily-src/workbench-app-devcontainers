@@ -4,8 +4,7 @@
   "service": "app",
   "forwardPorts": [8080],
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "set -e && ./startupscript/post-startup.sh vscode /home/vscode gcp true && git config --global --add safe.directory /home/vscode/repos/verily1 && cd /home/vscode/repos/verily1 && git checkout fhir-agent && cd tools/mlinfra/langchain/app_demo && pip install -r requirements.txt  && python main.py --gradio_remote",
-  "postStartCommand": "cd /home/vscode/repos/verily1/tools/mlinfra/langchain/app_demo && python main.py --gradio_remote",
+  "postCreateCommand": "set -e && ./startupscript/post-startup.sh vscode /home/vscode gcp true && git config --global --add safe.directory /home/vscode/repos/verily1 && cd /home/vscode/repos/verily1 && git checkout fhir-agent",
   "remoteUser": "root",
   "customizations": {
     "vscode": {

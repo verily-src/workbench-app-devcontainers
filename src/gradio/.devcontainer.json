@@ -4,7 +4,7 @@
   "service": "app",
   "forwardPorts": [8080],
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "set -e && ./startupscript/post-startup.sh vscode /home/vscode gcp true && git config --global --add safe.directory /home/vscode/repos/verily1 && cd /home/vscode/repos/verily1 && git checkout fhir-agent",
+  "postCreateCommand": "set -e && ./startupscript/post-startup.sh vscode /home/vscode gcp true && git config --global --add safe.directory /home/vscode/repos/verily1 && chown -R vscode /home/vscode/repos/verily1 && cd /home/vscode/repos/verily1 && git checkout fhir-agent",
   "remoteUser": "root",
   "customizations": {
     "vscode": {

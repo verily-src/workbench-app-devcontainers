@@ -1,0 +1,12 @@
+#!/bin/bash
+
+if [ ! -f /ready ]; then
+    printf "Waiting for setup to complete..."
+    until [ -f /ready ]; do sleep 3; printf "." ; done
+    printf "\n"
+fi
+
+if [ "$1" == "-c" ]; then 
+    shift
+fi
+/usr/bin/wb $@

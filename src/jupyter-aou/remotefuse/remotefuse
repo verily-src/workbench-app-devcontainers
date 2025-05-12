@@ -1,0 +1,47 @@
+#!/bin/bash
+
+if [ "$1" == "-c" ]; then
+    shift
+fi
+
+eval "ORIG_ARGS=($1)"
+
+readonly COMMAND="${ORIG_ARGS[0]}"
+case "$COMMAND" in
+    gcsfuse|goofys)
+        ;;
+    fusermount)
+        if [ "${ORIG_ARGS[1]}" != "-u" ]; then
+            echo "Error: remotefuse fusermount must be called with -u option."
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Usage: remotefuse {gcsfuse|goofys|fusermount -u} [args...]"
+        exit 1
+        ;;
+esac
+
+ORIG_ARGS=("${ORIG_ARGS[@]:1}")
+readonly ORIG_ARGS
+
+readonly PATH_MATCHER="^.+\/workspace\/(.+)$"
+ARGS=()
+for ARG in "${ORIG_ARGS[@]}"; do
+    # Look for a workbench path in the arguments and replace it with one under
+    # /home/remotefuse/workbench.
+    # e.g. /home/jupyter/workbench/abc/def will be replaced with
+    # /home/remotefuse/workbench/abc/def
+    #
+    # $PATH_MATCHER cannot be quoted, otherwise it will treat it as string
+    # matching.
+    if [[ "$ARG" =~ $PATH_MATCHER ]]; then
+        MOUNT_PATH="/home/remotefuse/workspace/${BASH_REMATCH[1]}"
+        ARGS+=("$MOUNT_PATH")
+    else
+        ARGS+=("$ARG")
+    fi
+done
+readonly ARGS
+
+${COMMAND} "${ARGS[@]}"

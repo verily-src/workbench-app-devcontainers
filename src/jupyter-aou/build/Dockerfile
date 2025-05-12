@@ -26,3 +26,8 @@ RUN jupyter labextension disable @jupyterlab/filebrowser-extension:download && \
 # Install all extensions we built
 RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \
     /tmp/extensions/install.sh
+
+USER root
+COPY remotefuse /opt/remotefuse
+RUN chmod +x /opt/remotefuse/*
+USER $JUPYTER_USER

@@ -48,13 +48,13 @@ source "${SCRIPT_DIR}/emit.sh"
 #############################
 # CLI login
 #############################
-if [[ "${LOG_IN}" == "true" ]] && wb auth status 2>&1 | grep -q "NO USER LOGGED IN"; then
-  wb auth login --mode=APP_DEFAULT_CREDENTIALS
+readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
+if [[ "${LOG_IN}" == "true" ]] && ${RUN_AS_LOGIN_USER} "wb auth status 2>&1" | grep -q "NO USER LOGGED IN"; then
+  ${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
 fi
 
 #############################
 # Mount buckets
 #############################
 # shellcheck disable=SC2034
-readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
 source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"

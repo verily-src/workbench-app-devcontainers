@@ -872,7 +872,7 @@ if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
       readonly ENABLE_MONITORING_SCRIPT
 
       OPTIONS=()
-      PROXY_WS_TUNNEL="$(get_metadata_value "proxy-websocket-tunnel-enabled" "")"
+      PROXY_WS_TUNNEL="$(get_metadata_value "instance/attributes/proxy-websocket-tunnel-enabled" "")"
       if [[ "${PROXY_WS_TUNNEL}" == "TRUE" ]]; then
           OPTIONS+=("--websocket-transport=true")
       fi

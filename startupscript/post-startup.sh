@@ -48,6 +48,8 @@ readonly USER_PRIMARY_GROUP
 export USER_PRIMARY_GROUP
 readonly USER_BASH_COMPLETION_DIR="${WORK_DIRECTORY}/.bash_completion.d"
 export USER_BASH_COMPLETION_DIR
+readonly USER_HOME_LOCAL_BIN="${WORK_DIRECTORY}/.local/bin"
+export USER_HOME_LOCAL_BIN
 readonly USER_HOME_LOCAL_SHARE="${WORK_DIRECTORY}/.local/share"
 export USER_HOME_LOCAL_SHARE
 readonly USER_WORKBENCH_CONFIG_DIR="${WORK_DIRECTORY}/.workbench"
@@ -93,7 +95,7 @@ fi
 # Create the target directories for installing into the HOME directory
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"
-
+${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_BIN}'"
 
 #######################################
 # Set guest attributes on GCE. Used here to log completion status of the script.
@@ -201,6 +203,11 @@ source "${SCRIPT_DIR}/bash-completion.sh"
 if [[ "${LOG_IN}" == "true" ]]; then
     retry 5 "${SCRIPT_DIR}/git-setup.sh"
 fi
+
+###################################
+# Install Workflow tools
+###################################
+source "${SCRIPT_DIR}/install-workflow-tools.sh"
 
 #############################
 # Mount buckets

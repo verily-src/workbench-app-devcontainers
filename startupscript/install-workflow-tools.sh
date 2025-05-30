@@ -52,14 +52,9 @@ mv nextflow "${USER_HOME_LOCAL_BIN}"
 # Install dsub
 #######################################
 function install_dsub() {
-  ${RUN_AS_LOGIN_USER} "pip install dsub"
+  ${RUN_AS_LOGIN_USER} "pip install --user dsub"
 }
 
 emit "Installing dsub ..."
-# Install in Python venv due to conflicting lib versions
-${RUN_AS_LOGIN_USER} "python -m venv dsub_libs"
-${RUN_AS_LOGIN_USER} "source dsub_libs/bin/activate"
 retry 5 install_dsub
-${RUN_AS_LOGIN_USER} "deactivate"
-
 

@@ -51,10 +51,23 @@ mv nextflow "${USER_HOME_LOCAL_BIN}"
 #######################################
 # Install dsub
 #######################################
+emit "Installing dsub ..."
+
+readonly VENV_PATH="${WORK_DIRECTORY}/.venv"
+readonly DSUB_VENV_PATH="${VENV_PATH}/dsub_libs"
+mkdir -p VENV_PATH
+
 function install_dsub() {
-  ${RUN_AS_LOGIN_USER} "pip install --user dsub"
+  ${RUN_AS_LOGIN_USER} "${DSUB_VENV_PATH}/bin/pip install dsub"
 }
 
-emit "Installing dsub ..."
+apt install -y python3-venv
+PYTHON_COMMAND=$(command -v python3)
+${RUN_AS_LOGIN_USER} "${PYTHON_COMMAND} -m venv ${DSUB_VENV_PATH}"
 retry 5 install_dsub
 
+# Add convenience variable & alias
+cat << EOF >> "${USER_BASHRC}"
+export DSUB_VENV_PATH='${DSUB_VENV_PATH}'
+alias dsub_activate='source ${DSUB_VENV_PATH}/bin/activate'
+EOF

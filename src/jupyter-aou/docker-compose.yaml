@@ -2,7 +2,10 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter@sha256:bd995ffb80b8b1b14f122b6ceb9e66c2037bbb9b182b4501c61b944cef4220a2"
+    build:
+      context: ./build
+      platforms:
+        - "linux/amd64"
     user: "jupyter"
     restart: always
     volumes:

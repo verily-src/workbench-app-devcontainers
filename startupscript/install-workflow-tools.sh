@@ -10,7 +10,6 @@
 # - RUN_AS_LOGIN_USER: run command as app user
 # - retry: Retry a command multiple times
 # - USER_BASHRC: path to user's ~/.bashrc file
-# - USER_HOME_LOCAL_BIN: path to user's .local/bin dir
 # - USER_HOME_LOCAL_SHARE: path to user's .local/share dir
 
 set -o errexit
@@ -46,7 +45,7 @@ function install_nextflow() {
 
 emit "Installing Nextflow ..."
 retry 5 install_nextflow
-mv nextflow "${USER_HOME_LOCAL_BIN}"
+mv nextflow "/usr/local/bin"
 
 #######################################
 # Install dsub
@@ -55,7 +54,7 @@ emit "Installing dsub ..."
 
 readonly VENV_PATH="${WORK_DIRECTORY}/.venv"
 readonly DSUB_VENV_PATH="${VENV_PATH}/dsub_libs"
-mkdir -p VENV_PATH
+${RUN_AS_LOGIN_USER} "mkdir -p ${VENV_PATH}"
 
 function install_dsub() {
   ${RUN_AS_LOGIN_USER} "${DSUB_VENV_PATH}/bin/pip install dsub"

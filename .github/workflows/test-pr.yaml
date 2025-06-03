@@ -44,7 +44,7 @@ jobs:
 
   test:
     needs: [detect-changes]
-    runs-on: ubuntu-4-core
+    runs-on: ubuntu-latest
     continue-on-error: true
     if : ${{ needs.detect-changes.outputs.templates != '[]' }}
     strategy:
@@ -52,6 +52,25 @@ jobs:
         templates: ${{ fromJSON(needs.detect-changes.outputs.templates) }}
     steps:
       - uses: actions/checkout@v4
+
+      # Free up disk space by removing unnecessary files, if needed
+      - name: Maximize build disk space
+        if: ${{ matrix.templates == 'jupyter-aou' }}
+        uses: easimon/maximize-build-space@v10
+        with:
+          # This is the amount of space left over, not allocated to the LVM
+          # volume. We already checked out the repo so we don't need much
+          root-reserve-mb: 512
+          build-mount-path: /var/lib/docker
+          remove-dotnet: true
+          remove-android: true
+          remove-haskell: true
+          remove-codeql: true
+          remove-docker-images: true
+
+      - name: Restart docker
+        if: ${{ matrix.templates == 'jupyter-aou' }}
+        run: sudo service docker restart
 
       - name: Smoke test for '${{ matrix.templates }}'
         id: smoke_test

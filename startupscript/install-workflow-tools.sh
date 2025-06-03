@@ -9,7 +9,7 @@
 # - LOGIN_USER
 # - RUN_AS_LOGIN_USER: run command as app user
 # - retry: Retry a command multiple times
-# - USER_BASHRC: path to user's ~/.bashrc file
+# - USER_BASHENV: path to user's ~/.bash_env file
 # - USER_HOME_LOCAL_SHARE: path to user's .local/share dir
 
 set -o errexit
@@ -32,7 +32,7 @@ retry 5 install_cromwell
 ${RUN_AS_LOGIN_USER} "mkdir -p '${CROMWELL_INSTALL_PATH}'"
 mv cromwell.jar "${CROMWELL_INSTALL_PATH}"
 # Add convenience variable
-cat << EOF >> "${USER_BASHRC}"
+cat << EOF >> "${USER_BASHENV}"
 export CROMWELL_JAR='${CROMWELL_INSTALL_PATH}/cromwell.jar'
 EOF
 
@@ -66,7 +66,7 @@ ${RUN_AS_LOGIN_USER} "${PYTHON_COMMAND} -m venv ${DSUB_VENV_PATH}"
 retry 5 install_dsub
 
 # Add convenience variable & alias
-cat << EOF >> "${USER_BASHRC}"
+cat << EOF >> "${USER_BASHENV}"
 export DSUB_VENV_PATH='${DSUB_VENV_PATH}'
 alias dsub_activate='source ${DSUB_VENV_PATH}/bin/activate'
 EOF

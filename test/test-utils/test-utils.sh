@@ -32,3 +32,12 @@ function reportResults() {
     fi
 }
 readonly -f reportResults
+
+function sourceBashEnv() {
+  for dir in /home/*; do
+    if [[ -f "${dir}/.bash_env" ]]; then
+      echo "Source ${dir}/.bash_env"
+      source "${dir}/.bash_env"
+    fi
+  done
+}

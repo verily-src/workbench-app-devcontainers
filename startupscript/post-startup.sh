@@ -56,6 +56,8 @@ readonly USER_WORKBENCH_LEGACY_CONFIG_DIR="${WORK_DIRECTORY}/.terra"
 export USER_WORKBENCH_LEGACY_CONFIG_DIR
 readonly USER_BASHRC="${WORK_DIRECTORY}/.bashrc"
 export USER_BASHRC
+readonly USER_BASHENV="${WORK_DIRECTORY}/.bash_env"
+export USER_BASHENV
 readonly USER_BASH_PROFILE="${WORK_DIRECTORY}/.bash_profile"
 export USER_BASH_PROFILE
 readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/post-startup-output.txt"
@@ -159,6 +161,10 @@ cat << EOF >> "${USER_BASH_PROFILE}"
 
 if [[ -e ~/.bashrc ]]; then
  source ~/.bashrc
+fi
+
+if [[ -e ~/.bash_env ]]; then
+ source ~/.bash_env
 fi
 
 EOF

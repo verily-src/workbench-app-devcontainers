@@ -1,6 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")" || exit
 source test-utils.sh
+sourceBashEnv
 
 # Template specific tests
 check "gcsfuse" which gcsfuse

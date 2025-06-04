@@ -163,10 +163,6 @@ if [[ -e ~/.bashrc ]]; then
  source ~/.bashrc
 fi
 
-if [[ -e ~/.bash_env ]]; then
- source ~/.bash_env
-fi
-
 EOF
 chown "${USER_NAME}:${USER_PRIMARY_GROUP}" "${USER_BASH_PROFILE}"
 
@@ -178,6 +174,11 @@ cat << EOF >> "${USER_BASHRC}"
 if [[ "\${PATH}:" != "/usr/bin:"* ]]; then
   export PATH=/usr/bin:\${PATH}
 fi
+
+if [[ -e ~/.bash_env ]]; then
+ source ~/.bash_env
+fi
+
 EOF
 
 ##################################################

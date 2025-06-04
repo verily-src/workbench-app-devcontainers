@@ -234,16 +234,12 @@ readonly -f set_guest_attributes
 # Map the CLI server to appropriate service path
 function get_service_url() {
   case "$1" in
-    "verily") echo "https://terra-$2.api.verily.com" ;;
-    "verily-devel") echo "https://terra-devel-$2.api.verily.com" ;;
-    "verily-autopush") echo "https://terra-autopush-$2.api.verily.com" ;;
-    "verily-staging") echo "https://terra-staging-$2.api.verily.com" ;;
-    "verily-preprod") echo "https://terra-preprod-$2.api.verily.com" ;;
+    "verily") echo "https://workbench.verily.com/api/$2" ;;
     "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
     "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
     "test") echo "https://workbench-test.verily.com/api/$2" ;;
     "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
-    "prod") echo "https://workbench-prod.verily.com/api/$2" ;;
+    "prod") echo "https://workbench.verily.com/api/$2" ;;
     *) return 1 ;;
   esac
 }

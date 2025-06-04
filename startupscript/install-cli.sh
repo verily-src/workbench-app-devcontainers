@@ -25,16 +25,12 @@ source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 # Map the CLI server to appropriate AFS service path and fetch the CLI distribution path
 function get_axon_version_url() {
   case "$1" in
-    "verily") echo "https://terra-axon.api.verily.com/version" ;;
-    "verily-devel") echo "https://terra-devel-axon.api.verily.com/version" ;;
-    "verily-autopush") echo "https://terra-autopush-axon.api.verily.com/version" ;;
-    "verily-staging") echo "https://terra-staging-axon.api.verily.com/version" ;;
-    "verily-preprod") echo "https://terra-preprod-axon.api.verily.com/version" ;;
+    "verily") echo "https://workbench.verily.com/api/axon/version" ;;
     "dev-stable") echo "https://workbench-dev.verily.com/api/axon/version" ;;
     "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/axon/version" ;;
     "test") echo "https://workbench-test.verily.com/api/axon/version" ;;
     "staging") echo "https://workbench-staging.verily.com/api/axon/version" ;;
-    "prod") echo "https://workbench-prod.verily.com/api/axon/version" ;;
+    "prod") echo "https://workbench.verily.com/api/axon/version" ;;
     *) return 1 ;;
   esac
 }

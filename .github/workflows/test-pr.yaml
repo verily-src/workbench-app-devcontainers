@@ -77,3 +77,6 @@ jobs:
         uses: ./.github/actions/smoke-test
         with:
           template: "${{ matrix.templates }}"
+
+      - name: Print disk space
+        run: df -h

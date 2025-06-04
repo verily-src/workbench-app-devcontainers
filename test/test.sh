@@ -9,7 +9,7 @@ check "wb cli" which wb
 check "fuse.conf user_allow_other" grep -qE "^[[:space:]]*[^#]*user_allow_other" "/etc/fuse.conf"
 check "cromwell" test -e "${CROMWELL_JAR}"
 check "nextflow" which nextflow
-check "dsub" test -e "${DSUB_VENV_PATH}/bin/dsub"
+check "dsub" which dsub
 
 # Report result
 reportResults

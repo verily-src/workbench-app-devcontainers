@@ -70,3 +70,6 @@ cat << EOF >> "${USER_BASHENV}"
 export DSUB_VENV_PATH='${DSUB_VENV_PATH}'
 alias dsub_activate='source ${DSUB_VENV_PATH}/bin/activate'
 EOF
+
+# Add dsub to PATH
+ln -s "${DSUB_VENV_PATH}/bin/dsub" /usr/local/bin/dsub

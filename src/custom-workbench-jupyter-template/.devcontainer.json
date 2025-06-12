@@ -3,9 +3,9 @@
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/home/jupyter",
   "postCreateCommand": [
-    "./startupscript/post-startup.sh",
+    "/workspace/startupscript/post-startup.sh",
     "jupyter",
     "/home/jupyter",
     "${templateOption:cloud}",
@@ -13,7 +13,7 @@
   ],
   // re-mount bucket files on container start up
   "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
+    "/workspace/startupscript/remount-on-restart.sh",
     "jupyter",
     "/home/jupyter",
     "${templateOption:cloud}",

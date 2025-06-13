@@ -1,10 +1,20 @@
 #!/bin/bash
+set -o errexit
 
 if [ "$1" == "-c" ]; then
     shift
 fi
 
-eval "ORIG_ARGS=($1)"
+# SSH commands are passed as a single string, so we need to split it into an
+# array. Arguments are expected to be a JSON array
+readarray -t ESCAPED_ARGS < <(jq -c '.[]' <<< "$1")
+readonly ESCAPED_ARGS
+
+# ESCAPED_ARGS are escaped JSON strings, so we need to unescape them
+ORIG_ARGS=()
+for ARG in "${ESCAPED_ARGS[@]}"; do
+    ORIG_ARGS+=("$(jq -r <<< "$ARG")")
+done
 
 readonly COMMAND="${ORIG_ARGS[0]}"
 case "$COMMAND" in

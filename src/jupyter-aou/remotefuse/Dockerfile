@@ -2,13 +2,12 @@ FROM debian:latest
 
 RUN apt-get update --yes && \
     apt-get install -yq --no-install-recommends \
-    # jq \
+    jq \
     openssh-server \
     sudo \
     curl \
     lsb-release \
     inotify-tools \
-    # tar \
     wget \
     locales \
     # gcloud CLI dependencies

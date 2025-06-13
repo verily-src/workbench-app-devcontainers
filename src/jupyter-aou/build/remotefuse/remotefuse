@@ -1,2 +1,11 @@
 #!/bin/bash
-LC_ALL=C.UTF-8 /usr/bin/ssh -i /home/jupyter/.ssh/remotefuse -T -o "StrictHostKeyChecking no" remotefuse@remotefuse "${@@Q}"
+set -o errexit
+
+# SSH passes arguments as a single string, so we will encode it as a JSON array.
+# First escape each argument, then join them into a JSON array.
+ARGS="$(for ARG in "$@"; do
+    printf "%s" "$ARG" | jq -Rs
+done | jq -jsc)"
+readonly ARGS
+
+LC_ALL=C.UTF-8 /usr/bin/ssh -i /home/jupyter/.ssh/remotefuse -T -o "StrictHostKeyChecking no" remotefuse@remotefuse "$ARGS"

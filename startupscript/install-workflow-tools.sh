@@ -8,9 +8,10 @@
 #
 # - LOGIN_USER
 # - RUN_AS_LOGIN_USER: run command as app user
-# - retry: Retry a command multiple times
 # - USER_BASHENV: path to user's ~/.bash_env file
 # - USER_HOME_LOCAL_SHARE: path to user's .local/share dir
+# - CLOUD: cloud environment, aws or gcp
+# - retry: Retry a command multiple times
 
 set -o errexit
 set -o nounset
@@ -50,8 +51,6 @@ mv nextflow "/usr/local/bin"
 #######################################
 # Install dsub
 #######################################
-emit "Installing dsub ..."
-
 readonly VENV_PATH="${WORK_DIRECTORY}/.venv"
 readonly DSUB_VENV_PATH="${VENV_PATH}/dsub_libs"
 ${RUN_AS_LOGIN_USER} "mkdir -p ${VENV_PATH}"
@@ -60,16 +59,21 @@ function install_dsub() {
   ${RUN_AS_LOGIN_USER} "${DSUB_VENV_PATH}/bin/pip install dsub"
 }
 
-apt install -y python3-venv
-PYTHON_COMMAND=$(command -v python3)
-${RUN_AS_LOGIN_USER} "${PYTHON_COMMAND} -m venv ${DSUB_VENV_PATH}"
-retry 5 install_dsub
+# dsub only supported with GCP
+if [[ "${CLOUD}" == "gcp" ]]; then
+  emit "Installing dsub ..."
 
-# Add convenience variable & alias
-cat << EOF >> "${USER_BASHENV}"
-export DSUB_VENV_PATH='${DSUB_VENV_PATH}'
-alias dsub_activate='source ${DSUB_VENV_PATH}/bin/activate'
+  apt install -y python3-venv
+  PYTHON_COMMAND=$(command -v python3)
+  ${RUN_AS_LOGIN_USER} "${PYTHON_COMMAND} -m venv ${DSUB_VENV_PATH}"
+  retry 5 install_dsub
+
+  # Add convenience variable & alias
+  cat << EOF >> "${USER_BASHENV}"
+  export DSUB_VENV_PATH='${DSUB_VENV_PATH}'
+  alias dsub_activate='source ${DSUB_VENV_PATH}/bin/activate'
 EOF
 
-# Add dsub to PATH
-ln -s "${DSUB_VENV_PATH}/bin/dsub" /usr/local/bin/dsub
+  # Add dsub to PATH
+  ln -s "${DSUB_VENV_PATH}/bin/dsub" /usr/local/bin/dsub
+fi

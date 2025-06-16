@@ -28,11 +28,14 @@ systemctl mask docker
 systemctl stop docker
 
 # Remove any extraneous files. We only need to keep the images and the overlay2
-# directories.
+# directories for the image content, as well as buildkit and engine-id for
+# caching docker build layers (e.g. for devcontainer features).
 find /var/lib/docker \
+    -mindepth 1 -maxdepth 1 \
     ! -name image \
     ! -name overlay2 \
-    -mindepth 1 -maxdepth 1 \
+    ! -name buildkit \
+    ! -name engine-id \
     -exec rm -rf {} +
 
 # shellcheck source=/dev/null

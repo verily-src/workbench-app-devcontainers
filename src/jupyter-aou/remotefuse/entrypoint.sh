@@ -24,6 +24,13 @@ process_key() {
     rm -f /ssh-keys/remotefuse.pub
 }
 
+watch_keys() {
+    inotifywait -m -e create -e moved_to /ssh-keys |
+        while read -r REPLY; do
+            process_key
+        done
+}
+
 readonly SSH_DIR="/home/remotefuse/.ssh"
 
 # SSH Key setup
@@ -33,10 +40,9 @@ chown -R remotefuse:users "$SSH_DIR"
 chmod 600 "$SSH_DIR/authorized_keys"
 
 process_key
-
 service ssh start
 
-inotifywait -m -e create -e moved_to /ssh-keys |
-    while read -r; do
-        process_key
-    done
+# Keep the container running, but in the background so that interrupts can be
+# caught
+watch_keys &
+wait $!

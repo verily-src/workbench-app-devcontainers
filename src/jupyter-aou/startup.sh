@@ -19,10 +19,12 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '/home/${USER_NAME}/.ssh'"
 ${RUN_AS_LOGIN_USER} "ssh-keygen -q -f '/home/${USER_NAME}/.ssh/remotefuse' -N ''"
 cp "/home/${USER_NAME}/.ssh/remotefuse.pub" /ssh-keys/remotefuse.pub
 
+set +o errexit
+
 chown -R ${USER_NAME}:users "/home/${USER_NAME}/workspace"
 
 # Modify the startup script so that /opt/remotefuse always takes priority over
 # /usr/bin
 sed -i 's/export PATH=\/usr\/bin:/export PATH=\/opt\/remotefuse:\/usr\/bin:/g' /workspace/startupscript/post-startup.sh || true
 
-sed -i '/^# If not running interactively/,/esac/d' "/home/${USER_NAME}/.bashrc" || true
+sed -i '/^# If not running interactively/,/esac/d' "/home/${USER_NAME}/.bashrc"

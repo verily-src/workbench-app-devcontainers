@@ -44,9 +44,6 @@ services:
       - SYS_ADMIN
     devices:
       - /dev/fuse
-    environment:
-      CLOUD: ${templateOption:cloud}
-      LOG_IN: ${templateOption:login}
 networks:
   app-network:
     external: true

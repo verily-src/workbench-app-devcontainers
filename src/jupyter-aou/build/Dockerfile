@@ -1,5 +1,5 @@
 # Build the custom extension
-FROM us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder@sha256:8ebcd0253a7fcba6fc0a90dfaf1a190c59ae2f9d7ce3be156e30e7a5eddc9c86 AS extension-builder
+FROM us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder@sha256:70ba6449275a581059f2f851f44bb8e4a1e5d42e73ec512af362e9de0618cf2f AS extension-builder
 
 COPY extension /extension
 # Original extension is https://github.com/QuantStack/jupyterlab-snippets;
@@ -11,7 +11,7 @@ ADD https://github.com/darpan097/jupyterlab-snippets.git#a27c8429d2cfaf7aa9e4cad
 
 RUN /build.sh /extension /dist
 
-FROM us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter@sha256:bd995ffb80b8b1b14f122b6ceb9e66c2037bbb9b182b4501c61b944cef4220a2
+FROM us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter@sha256:6375f16454add4980acf83c75b70f6c7fce8668a674d2260a1ff0d20886ce60e
 
 COPY snippets $JUPYTER_USER_HOME_DIR/.local/share/jupyter/snippets
 

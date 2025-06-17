@@ -48,6 +48,9 @@ fi
 readonly PROXY_WS_TUNNEL
 readonly OPTIONS
 
+# Pull the latest proxy agent
+docker pull "${PROXY_IMAGE}"
+
 docker start "proxy-agent" 2>/dev/null \
   || docker run \
       --detach \

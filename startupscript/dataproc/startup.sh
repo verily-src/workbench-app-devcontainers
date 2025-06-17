@@ -917,11 +917,13 @@ fi
 # Pull the latest proxy agent
 docker pull "${PROXY_AGENT_IMAGE}"
 
+# Remove any existing proxy agent container
+docker rm -f "proxy-agent" 2>/dev/null || true
+
 # Start Docker proxy agent
 # The data proc proxy agent contain logs are sent to Google Cloud logging.
 # See https://docs.docker.com/engine/logging/drivers/gcplogs/.
-docker start "proxy-agent" 2>/dev/null \
-  || docker run \
+docker run \
   --detach \
   --name "proxy-agent" \
   --restart=unless-stopped \

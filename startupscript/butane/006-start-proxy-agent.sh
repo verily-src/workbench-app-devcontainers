@@ -51,18 +51,20 @@ readonly OPTIONS
 # Pull the latest proxy agent
 docker pull "${PROXY_IMAGE}"
 
-docker start "proxy-agent" 2>/dev/null \
-  || docker run \
-      --detach \
-      --log-opt max-size=10m \
-      --log-opt max-file=3 \
-      --name "proxy-agent" \
-      --restart=unless-stopped \
-      --net=host "${PROXY_IMAGE}" \
-      --proxy="${PROXY}" \
-      --host="${HOSTNAME}":"${PORT}" \
-      --compute-platform="${COMPUTE_PLATFORM^^}" \
-      --shim-path="${SHIM_PATH}" \
-      --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}" \
-      --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}" \
-      "${OPTIONS[@]}"
+# Remove any existing proxy agent container
+docker rm -f "proxy-agent" 2>/dev/null || true
+
+docker run \
+  --detach \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
+  --name "proxy-agent" \
+  --restart=unless-stopped \
+  --net=host "${PROXY_IMAGE}" \
+  --proxy="${PROXY}" \
+  --host="${HOSTNAME}":"${PORT}" \
+  --compute-platform="${COMPUTE_PLATFORM^^}" \
+  --shim-path="${SHIM_PATH}" \
+  --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}" \
+  --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}" \
+  "${OPTIONS[@]}"

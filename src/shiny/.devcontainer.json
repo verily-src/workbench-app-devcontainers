@@ -3,12 +3,12 @@
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "features": {
-    "ghcr.io/devcontainers/features/java:1": {
+    "ghcr.io/devcontainers/features/java:1.6.3": {
       "version": "17"
     },
-    "ghcr.io/devcontainers/features/common-utils:2": {},
-    "ghcr.io/devcontainers/features/aws-cli:1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+    "ghcr.io/devcontainers/features/common-utils:2.5.3": {},
+    "ghcr.io/devcontainers/features/aws-cli:1.1.1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {}
   },
   "workspaceFolder": "/workspace",
   "postCreateCommand": [

@@ -20,4 +20,4 @@ https://containers.dev/
 The `.devcontainer.json` file in the custom app folder (e.g. r-analysis/) contains the custom app configuration.
 `post-startup.sh` contains workbench specific set up.
 
-Please visit https://support.workbench.verily.com/docs/guides/cloud_apps/create_custom_apps for details about using a dev container specification to create a custom app in Workbench.
+Please visit https://support.workbench.verily.com/docs/guides/cloud_apps/create_custom_apps/ for details about using a dev container specification to create a custom app in Workbench.

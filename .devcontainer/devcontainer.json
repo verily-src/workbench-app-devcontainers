@@ -1,7 +1,4 @@
 {
-	"image": "mcr.microsoft.com/devcontainers/javascript-node:1-18-bullseye",
-	"features": {
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {}
-	},
-	"postCreateCommand": "npm install -g @devcontainers/cli"
+	"image": "gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-acc",
+	"privileged": true
 }

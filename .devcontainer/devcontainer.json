@@ -3,5 +3,8 @@
 	"image": "gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-acc",
 	"privileged": true,
 	"postCreateCommand": "apt-get update && apt-get install -y golang python3 python3-pip",
-	"remoteUser": "root"
+	"remoteUser": "root",
+	"runArgs": [
+    	"--network=app-network",
+	],
 }

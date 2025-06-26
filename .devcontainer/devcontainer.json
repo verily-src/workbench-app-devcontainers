@@ -6,7 +6,8 @@
 	"features": {
 		"ghcr.io/coder/devcontainer-features/code-server:1": {
 			"port": 8080,
-			"host": "0.0.0.0"
+			"host": "0.0.0.0",
+			"auth": "none"
 		}
 	},
 	"forwardPorts": [

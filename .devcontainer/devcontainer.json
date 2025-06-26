@@ -9,12 +9,12 @@
 			"auth": "none"
 		}
 	},
-	"forwardPorts": [
-		8080
-	],
 	"runArgs": [
 		"--name",
 		"application-server"
+	],
+	"forwardPorts": [
+		8080
 	],
 	"customizations": {
 		"vscode": {

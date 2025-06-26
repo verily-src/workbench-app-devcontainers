@@ -2,10 +2,8 @@
 	"name": "PEP CLI (ACC)",
 	"image": "gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-acc",
 	"privileged": true,
-	"postCreateCommand": "apt-get update && apt-get install -y golang python3 python3-pip nodejs npm",
 	"remoteUser": "root",
-	"runArgs": [
-		"--network=app-network"
-	],
-	"initializeCommand": "docker network inspect app-network >/dev/null 2>&1 || docker network create app-network"
+	"forwardPorts": [
+		3000
+	]
 }

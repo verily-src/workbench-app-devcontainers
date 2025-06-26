@@ -12,6 +12,10 @@
 	"forwardPorts": [
 		8080
 	],
+	"runArgs": [
+		"--name",
+		"application-server"
+	],
 	"customizations": {
 		"vscode": {
 			"extensions": [

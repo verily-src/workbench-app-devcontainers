@@ -6,5 +6,6 @@
 	"remoteUser": "root",
 	"runArgs": [
 		"--network=app-network"
-	]
+	],
+	"initializeCommand": "docker network inspect app-network >/dev/null 2>&1 || docker network create app-network"
 }

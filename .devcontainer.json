@@ -1,0 +1,24 @@
+{
+	"name": "PEP CLI (ACC)",
+	"image": "gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-acc",
+	"privileged": true,
+	"features": {
+		"ghcr.io/coder/devcontainer-features/code-server:1": {
+			"port": 8080,
+			"host": "0.0.0.0",
+			"auth": "none"
+		}
+	},
+	"forwardPorts": [
+		8080
+	],
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				// Add any VS Code extensions you want to be installed in the container
+				"ms-python.python",
+				"ms-vscode.cpptools"
+			]
+		}
+	}
+}

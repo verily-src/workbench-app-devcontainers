@@ -2,7 +2,6 @@
 	"name": "PEP CLI (ACC)",
 	"image": "gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-acc",
 	"privileged": true,
-	"remoteUser": "root",
 	"features": {
 		"ghcr.io/coder/devcontainer-features/code-server:1": {
 			"port": 8080,

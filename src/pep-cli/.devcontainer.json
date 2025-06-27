@@ -23,6 +23,12 @@
       "port": 8080,
       "host": "0.0.0.0",
       "auth": "none"
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.22"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
     }
   },
   "remoteUser": "root",

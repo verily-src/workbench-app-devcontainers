@@ -11,7 +11,10 @@
 	},
 	"runArgs": [
 		"--name",
-		"application-server"
+		"application-server",
+		"--network", 
+		"app-network",
+		"-p", "8080:8080"
 	],
 	"forwardPorts": [
 		8080

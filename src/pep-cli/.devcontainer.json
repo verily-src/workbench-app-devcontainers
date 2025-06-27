@@ -4,7 +4,7 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "./startupscript/post-startup.sh root /config \"${templateOption:cloud}\" \"${templateOption:login}\"",
+  "postCreateCommand": "./startupscript/post-startup.sh root /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh abc",
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
@@ -14,13 +14,16 @@
     "${templateOption:login}"
   ],
   "features": {
+    "ghcr.io/devcontainers/features/java:1.6.3": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1.1.1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {},
     "ghcr.io/coder/devcontainer-features/code-server:1": {
       "port": 8080,
       "host": "0.0.0.0",
       "auth": "none"
-    },
-    "ghcr.io/devcontainers/features/aws-cli:1.1.1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {}
+    }
   },
   "remoteUser": "root",
   "customizations": {

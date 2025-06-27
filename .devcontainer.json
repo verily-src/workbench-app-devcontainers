@@ -20,5 +20,6 @@
 				"ms-vscode.cpptools"
 			]
 		}
-	}
+	},
+        "runArgs": ["--name","application-server"]
 }

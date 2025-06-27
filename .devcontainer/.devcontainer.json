@@ -9,6 +9,21 @@
             "auth": "none"
         }
     },
+    "postStartCommand": [
+        "./startupscript/remount-on-restart.sh",
+        "abc",
+        "/config",
+        "${templateOption:cloud}",
+        "${templateOption:login}"
+    ],
+    "runArgs": [
+        "--name",
+        "application-server",
+        "--network",
+        "app-network",
+        "-p",
+        "8080:8080"
+    ],
     "forwardPorts": [
         8080
     ],

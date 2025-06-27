@@ -34,7 +34,16 @@ readonly CONTAINER_PORT="${6:-8080}"
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
 
-readonly DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
+if [[ -f "${DEVCONTAINER_PATH}/.devcontainer.json" ]]; then
+  DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
+elif [[ -f "${DEVCONTAINER_PATH}/.devcontainer/devcontainer.json" ]]; then
+  DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer/devcontainer.json"
+else
+  echo "No devcontainer config file found." >&2
+  exit 1
+fi
+readonly DEVCONTAINER_CONFIG_PATH
+
 readonly DEVCONTAINER_DOCKER_COMPOSE_PATH="${DEVCONTAINER_PATH}/docker-compose.yaml"
 
 # On first run, copy existing .devcontainer.json and docker-compose.yaml to template files
@@ -45,10 +54,12 @@ if [[ ! -f "${DEVCONTAINER_CONFIG_PATH}.template" ]]; then
 else
     cp "${DEVCONTAINER_CONFIG_PATH}.template" "${DEVCONTAINER_CONFIG_PATH}"
 fi
-if [[ ! -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" ]]; then
+if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
+  if [[ ! -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" ]]; then
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template"
-else
+  else
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
+  fi
 fi
 
 # Copy devcontainer post-startup scripts into the devcontainer folder so they
@@ -92,7 +103,9 @@ apply_gpu_runtime() {
 
 # Substitute template options in devcontainer.json and docker-compose.yaml
 replace_template_options "${DEVCONTAINER_CONFIG_PATH}"
-replace_template_options "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
+if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
+    replace_template_options "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
+fi
 
 # apply gpu runtime block if accelerator is nvidia and cloud is gcp
 if [[ "${ACCELERATOR}" == "nvidia" && "${CLOUD}" == "gcp" ]]; then

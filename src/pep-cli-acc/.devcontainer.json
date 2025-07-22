@@ -33,11 +33,6 @@
   },
   "remoteUser": "root",
   "customizations": {
-    "vscode": {
-      "extensions": [
-        "GitHub.copilot"
-      ]
-    },
     "workbench": {
       "opens": {
         "extensions": [

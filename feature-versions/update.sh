@@ -12,7 +12,7 @@ readonly STATE_FILE
 STATE="$(cat "$STATE_FILE")"
 readonly STATE
 
-for FEATURE in "$(echo $STATE | jq -r 'keys | .[]')"; do
+for FEATURE in $(echo "$STATE" | jq -r 'keys | .[]'); do
     echo "Processing feature: $FEATURE"
     INSTALLED="$FEATURE$(jq -r --arg feat "$FEATURE" '.[$feat].installed' <<< "$STATE")"
     LATEST="$(devcontainer features info manifest "$FEATURE" --output-format=json | jq -r '.canonicalId')"

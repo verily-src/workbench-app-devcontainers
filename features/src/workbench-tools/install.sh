@@ -11,6 +11,16 @@ set -o xtrace
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
+WORKDIR="$(mktemp -d)"
+readonly WORKDIR
+
+function cleanup() {
+    rm -rf "${WORKDIR:?}"
+    rm -rf "/var/lib/apt/lists/*"
+}
+
+trap 'cleanup' EXIT
+
 function apt_get_update() {
     if [ "$(find /var/lib/apt/lists/* | wc -l)" = "0" ]; then
         echo "Running apt-get update..."
@@ -38,7 +48,7 @@ function build_samtool() {
         liblzma-dev \
         libcurl4-openssl-dev
 
-    rm -rf "$WORKDIR/$1"
+    rm -rf "${WORKDIR:?}/$1"
     mkdir -p "$WORKDIR/$1"
     pushd "$WORKDIR/$1"
 
@@ -65,7 +75,7 @@ function build_regenie() {
     local -r SHA256="$4"
     local -r URL="https://github.com/rgcgithub/regenie/releases/download/v$VERSION/regenie_v$VERSION.gz_$VARIANT.zip"
 
-    rm -rf "$WORKDIR/$NAME"
+    rm -rf "${WORKDIR:?}/$NAME"
     mkdir -p "$WORKDIR/$NAME"
     pushd "$WORKDIR/$NAME"
 
@@ -83,26 +93,25 @@ function build_regenie() {
 
 function retry() {
   local -r max_attempts="$1"
-  local -r command="$2"
-  shift 2
-  local -r arguments="$@"
+  shift
+  local -r command=("$@")
 
   local attempt
   for ((attempt = 1; attempt < max_attempts; attempt++)); do
     # Run the command and return if success
-    if "$command" "${arguments[@]}"; then
+    if "${command[@]}"; then
       return
     fi
 
     # Sleep a bit in case the problem is a transient network/server issue
     if ((attempt < max_attempts)); then
-      echo "Retrying $command in 5 seconds" # send to get_message
+      echo "Retrying ${command[@]} in 5 seconds" # send to get_message
       sleep 5
     fi
   done
 
   # Execute without the if/then protection such that the exit code propagates
-  "$command" "${arguments[@]}"
+  "${command[@]}"
 }
 readonly -f retry
 
@@ -121,6 +130,7 @@ function install() {
 }
 
 function install_python() {
+    return 3
     # Only install python3 with the package manager if it is not already
     # installed. python may have been installed with other methods (e.g. conda).
     if ! type python3 > /dev/null 2>&1; then
@@ -152,7 +162,7 @@ function install_bgen() {
 
     check_packages zlib1g-dev
 
-    rm -rf "$WORKDIR/bgen"
+    rm -rf "${WORKDIR:?}/bgen"
     mkdir -p "$WORKDIR/bgen"
     pushd "$WORKDIR/bgen"
 
@@ -183,7 +193,7 @@ function install_plink() {
     local -r SHA256="52571583a4b1a648ed598322e0df0e71ce5d817a23c3c37b2291bd21b408a955"
     local -r URL="https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_$VERSION.zip"
 
-    rm -rf "$WORKDIR/plink"
+    rm -rf "${WORKDIR:?}/plink"
     mkdir -p "$WORKDIR/plink"
     pushd "$WORKDIR/plink"
 
@@ -204,7 +214,7 @@ function install_plink2() {
     local -r SHA256="6339963e7af3fb186e8d3b0590731c10af106372c5545fa1e9b706778f592a6f"
     local -r URL="https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_$VERSION.zip"
 
-    rm -rf "$WORKDIR/plink2"
+    rm -rf "${WORKDIR:?}/plink2"
     mkdir -p "$WORKDIR/plink2"
     pushd "$WORKDIR/plink2"
 
@@ -225,7 +235,7 @@ function install_vcftools() {
     local -r SHA256="b9e0e1c3e86533178edb35e02c6c4de9764324ea0973bebfbb747018c2d2a42c"
     local -r URL="https://github.com/vcftools/vcftools/releases/download/v$VERSION/vcftools-$VERSION.tar.gz"
 
-    rm -rf "$WORKDIR/vcftools"
+    rm -rf "${WORKDIR:?}/vcftools"
     mkdir -p "$WORKDIR/vcftools"
     pushd "$WORKDIR/vcftools"
 
@@ -273,7 +283,7 @@ function install_vep() {
         libmysqlclient-dev \
         libcrypto++-dev
 
-    rm -rf "$WORKDIR/ensembl-vep"
+    rm -rf "${WORKDIR:?}/ensembl-vep"
     mkdir -p "$WORKDIR/ensembl-vep"
     pushd "$WORKDIR/ensembl-vep"
 
@@ -318,16 +328,6 @@ if ! type apt-get > /dev/null 2>&1; then
     echo "Error: unable to find a supported package manager."
     exit 1
 fi
-
-WORKDIR="$(mktemp -d)"
-readonly WORKDIR
-
-function cleanup() {
-    rm -rf "$WORKDIR"
-    rm -rf "/var/lib/apt/lists/*"
-}
-
-trap 'cleanup' EXIT
 
 check_packages \
     ca-certificates \

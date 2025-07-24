@@ -73,6 +73,12 @@ fi
 # Copy devcontainer features into the devcontainer folder, ignoring existing
 # files.
 if [[ -d "${DEVCONTAINER_FEATURES_PATH}" ]]; then
+    if [[ -L "${DEVCONTAINER_PATH}/.devcontainer/features" ]]; then
+        # If the features directory is a symlink, remove it to allow rsync to copy
+        # the contents.
+        # TODO(PHP-80324): Clean up when no longer needed
+        rm "${DEVCONTAINER_PATH}/.devcontainer/features"
+    fi
     mkdir -p "${DEVCONTAINER_PATH}/.devcontainer/features"
     # Append a trailing slash to the source path to ensure rsync copies the
     # contents rather than the directory itself.

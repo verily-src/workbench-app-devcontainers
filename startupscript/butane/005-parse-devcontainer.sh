@@ -32,6 +32,7 @@ readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
 readonly CONTAINER_PORT="${6:-8080}"
 
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
+readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'
 readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
 
 if [[ -f "${DEVCONTAINER_PATH}/.devcontainer.json" ]]; then
@@ -67,6 +68,15 @@ fi
 # if the target directory already contains the files.
 if [[ -d "${DEVCONTAINER_STARTUPSCRIPT_PATH}" ]]; then
     rsync -a --ignore-existing "${DEVCONTAINER_STARTUPSCRIPT_PATH}" "${DEVCONTAINER_PATH}"
+fi
+
+# Copy devcontainer features into the devcontainer folder, ignoring existing
+# files.
+if [[ -d "${DEVCONTAINER_FEATURES_PATH}" ]]; then
+    mkdir -p "${DEVCONTAINER_PATH}/.devcontainer/features"
+    # Append a trailing slash to the source path to ensure rsync copies the
+    # contents rather than the directory itself.
+    rsync -a --ignore-existing "${DEVCONTAINER_FEATURES_PATH}/" "${DEVCONTAINER_PATH}/.devcontainer/features"
 fi
 
 replace_template_options() {

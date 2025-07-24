@@ -125,27 +125,26 @@ trap 'exit_handler $? $LINENO $BASH_COMMAND' EXIT
 # function to retry command
 #######################################
 function retry() {
-  local max_attempts="$1"
-  local command="$2"
-  shift 2
-  local arguments="$@"
+  local -r max_attempts="$1"
+  shift
+  local -r command=("$@")
 
   local attempt
   for ((attempt = 1; attempt < max_attempts; attempt++)); do
     # Run the command and return if success
-    if "$command" "${arguments[@]}"; then
+    if "${command[@]}"; then
       return
     fi
 
     # Sleep a bit in case the problem is a transient network/server issue
     if ((attempt < max_attempts)); then
-      echo "Retrying $command in 5 seconds" # send to get_message
+      echo "Retrying ${command[*]} in 5 seconds" # send to get_message
       sleep 5
     fi
   done
 
   # Execute without the if/then protection such that the exit code propagates
-  "$command" "${arguments[@]}"
+  "${command[@]}"
 }
 readonly -f retry
 

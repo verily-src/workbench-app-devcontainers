@@ -105,7 +105,7 @@ function retry() {
 
     # Sleep a bit in case the problem is a transient network/server issue
     if ((attempt < max_attempts)); then
-      echo "Retrying ${command[@]} in 5 seconds" # send to get_message
+      echo "Retrying ${command[*]} in 5 seconds" # send to get_message
       sleep 5
     fi
   done
@@ -130,7 +130,6 @@ function install() {
 }
 
 function install_python() {
-    return 3
     # Only install python3 with the package manager if it is not already
     # installed. python may have been installed with other methods (e.g. conda).
     if ! type python3 > /dev/null 2>&1; then

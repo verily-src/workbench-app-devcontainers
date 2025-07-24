@@ -6,22 +6,59 @@
 set -o errexit
 set -o nounset
 set -o pipefail
-set -o xtrace
 
 function usage {
-  echo "Usage: $0 <additonal_images>"
-  echo "  additional_images: additional docker images to cache."
+  echo "Usage: $0 [-d path] [image...]"
+  echo "  -d path: optionally provide a path to a docker-compose directory to build."
+  echo "  image: optionally provide additional docker images to cache."
   exit 1
 }
 
-if [[ "$1" == "-h" || "$1" == "--help" || "$1" == "help" ]]; then
-  usage
+while getopts ":hd:" opt; do
+  case "$opt" in
+    h )
+      usage
+      exit 0
+      ;;
+    d )
+      DOCKER_DIR="$OPTARG"
+      readonly DOCKER_DIR
+      ;;
+    \? )
+      echo "Invalid option: -$OPTARG" >&2
+      usage
+      exit 1
+      ;;
+    : )
+      echo "Option -$OPTARG requires an argument." >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+
+if [[ ! -z "${DOCKER_DIR+x}" ]] && [[ ! -d "${DOCKER_DIR}" ]]; then
+  echo "Error: path '${DOCKER_DIR}' does not exist." >&2
+  exit 1
 fi
+
+set -o xtrace
 
 # Pull any requested images
 for image in "$@"; do
   docker image pull "${image}"
 done
+
+if [[ ! -z "${DOCKER_DIR+x}" ]]; then
+    # Build all sidecars
+    pushd "${DOCKER_DIR}"
+    SIDECARS=($(docker-compose config --services | sed '/^app$/d'))
+    readonly SIDECARS
+    docker compose build "${SIDECARS[@]}"
+    popd
+fi
 
 # Stop docker and prevent it from starting again
 systemctl mask docker

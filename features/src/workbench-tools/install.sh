@@ -83,9 +83,9 @@ function install() {
     local -r NAME="$1"
     local -r INSTALL_FUNC="install_$NAME"
 
-    printf "\nStarting installation for $NAME\n\n"
+    printf "\nStarting installation for %s\n\n" "$NAME"
     $INSTALL_FUNC
-    printf "\nInstallation for $NAME completed successfully.\n\n"
+    printf "\nInstallation for %s completed successfully.\n\n" "$NAME"
 }
 
 function install_python() {
@@ -208,7 +208,9 @@ function install_vcftools() {
     rm -rf /usr/local/bin/vcftools_perl5
     mv src/perl /usr/local/lib/vcftools_perl5
     export PERL5LIB="${PERL5LIB:-}:/usr/local/lib/vcftools_perl5"
-    echo 'export PERL5LIB=$PERL5LIB:/usr/local/lib/vcftools_perl5' > /etc/profile.d/vcftools_perl.sh
+    # We want this to output $PERL5LIB without expansion
+    # shellcheck disable=SC2016
+    echo 'export PERL5LIB=${PERL5LIB:-}:/usr/local/lib/vcftools_perl5' > /etc/profile.d/vcftools_perl.sh
 
     popd
 

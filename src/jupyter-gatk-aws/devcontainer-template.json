@@ -21,7 +21,7 @@
       "containerImage": {
         "type": "string",
         "description": "The container image to use",
-        "default": "public.ecr.aws/aws-genomics/broadinstitute/gatk:4.2.6.1-corretto-11"
+        "default": "public.ecr.aws/sdgeorge/cyverse-images/jupyter-rna:test"
       },
       "containerPort": {
         "type": "number",

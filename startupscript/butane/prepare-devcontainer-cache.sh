@@ -11,7 +11,6 @@ function usage {
   echo "Usage: $0 [-d path] [image...]"
   echo "  -d path: optionally provide a path to a docker-compose directory to build."
   echo "  image: optionally provide additional docker images to cache."
-  exit 1
 }
 
 while getopts ":hd:" opt; do
@@ -39,7 +38,7 @@ done
 
 shift $((OPTIND - 1))
 
-if [[ ! -z "${DOCKER_DIR+x}" ]] && [[ ! -d "${DOCKER_DIR}" ]]; then
+if [[ -n "${DOCKER_DIR+x}" ]] && [[ ! -d "${DOCKER_DIR}" ]]; then
   echo "Error: path '${DOCKER_DIR}' does not exist." >&2
   exit 1
 fi
@@ -51,12 +50,12 @@ for image in "$@"; do
   docker image pull "${image}"
 done
 
-if [[ ! -z "${DOCKER_DIR+x}" ]]; then
+if [[ -n "${DOCKER_DIR+x}" ]]; then
     # Build all sidecars
     pushd "${DOCKER_DIR}"
-    SIDECARS=($(docker-compose config --services | sed '/^app$/d'))
-    readonly SIDECARS
-    docker compose build "${SIDECARS[@]}"
+    while IFS='' read -r service; do
+        docker compose build "${service}"
+    done < <(docker-compose config --services | sed '/^app$/d')
     popd
 fi
 

@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "639879951631.dkr.ecr.us-west-2.amazonaws.com/aws_wf_testing:4.2.6.1-corretto-11"
+    image: "public.ecr.aws/aws-genomics/broadinstitute/gatk:4.2.6.1-corretto-11"
     user: "jupyter"
     restart: always
     volumes:

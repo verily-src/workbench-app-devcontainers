@@ -21,7 +21,7 @@
       "containerImage": {
         "type": "string",
         "description": "The container image to use",
-        "default": "639879951631.dkr.ecr.us-west-2.amazonaws.com/aws_wf_testing:4.2.6.1-corretto-11"
+        "default": "public.ecr.aws/aws-genomics/broadinstitute/gatk:4.2.6.1-corretto-11"
       },
       "containerPort": {
         "type": "number",

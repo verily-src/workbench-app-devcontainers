@@ -52,12 +52,6 @@ fi
 
 popd
 
-#########################
-# Copy in features folder
-#########################
-mkdir -p "${SRC_DIR}/.devcontainer/features"
-rsync -a --ignore-existing "features/src/" "${SRC_DIR}/.devcontainer/features"
-
 ######################
 # Sets up test folder
 ######################

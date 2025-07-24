@@ -8,9 +8,6 @@
   "postCreateCommand": "./startup.sh && ./startupscript/post-startup.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\"",
   // re-mount bucket files on container start up
   "postStartCommand": "./startup.sh && ./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\"",
-  "features": {
-    "./.devcontainer/features/workbench-tools": {}
-  },
   "remoteUser": "root",
   "customizations": {
     "workbench": {

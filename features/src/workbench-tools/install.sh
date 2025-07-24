@@ -38,6 +38,7 @@ function build_samtool() {
         liblzma-dev \
         libcurl4-openssl-dev
 
+    rm -rf "$WORKDIR/$1"
     mkdir -p "$WORKDIR/$1"
     pushd "$WORKDIR/$1"
 
@@ -64,6 +65,7 @@ function build_regenie() {
     local -r SHA256="$4"
     local -r URL="https://github.com/rgcgithub/regenie/releases/download/v$VERSION/regenie_v$VERSION.gz_$VARIANT.zip"
 
+    rm -rf "$WORKDIR/$NAME"
     mkdir -p "$WORKDIR/$NAME"
     pushd "$WORKDIR/$NAME"
 
@@ -79,13 +81,43 @@ function build_regenie() {
     popd
 }
 
+function retry() {
+  local -r max_attempts="$1"
+  local -r command="$2"
+  shift 2
+  local -r arguments="$@"
+
+  local attempt
+  for ((attempt = 1; attempt < max_attempts; attempt++)); do
+    # Run the command and return if success
+    if "$command" "${arguments[@]}"; then
+      return
+    fi
+
+    # Sleep a bit in case the problem is a transient network/server issue
+    if ((attempt < max_attempts)); then
+      echo "Retrying $command in 5 seconds" # send to get_message
+      sleep 5
+    fi
+  done
+
+  # Execute without the if/then protection such that the exit code propagates
+  "$command" "${arguments[@]}"
+}
+readonly -f retry
+
 function install() {
     local -r NAME="$1"
     local -r INSTALL_FUNC="install_$NAME"
 
     printf "\nStarting installation for %s\n\n" "$NAME"
-    $INSTALL_FUNC
-    printf "\nInstallation for %s completed successfully.\n\n" "$NAME"
+    if retry 5 "$INSTALL_FUNC"; then
+        printf "\nInstallation for %s completed successfully.\n\n" "$NAME"
+    else
+        retval=$?
+        printf "\nInstallation for %s failed.\n\n" "$NAME"
+        return $retval
+    fi
 }
 
 function install_python() {
@@ -120,6 +152,7 @@ function install_bgen() {
 
     check_packages zlib1g-dev
 
+    rm -rf "$WORKDIR/bgen"
     mkdir -p "$WORKDIR/bgen"
     pushd "$WORKDIR/bgen"
 
@@ -150,6 +183,7 @@ function install_plink() {
     local -r SHA256="52571583a4b1a648ed598322e0df0e71ce5d817a23c3c37b2291bd21b408a955"
     local -r URL="https://s3.amazonaws.com/plink1-assets/plink_linux_x86_64_$VERSION.zip"
 
+    rm -rf "$WORKDIR/plink"
     mkdir -p "$WORKDIR/plink"
     pushd "$WORKDIR/plink"
 
@@ -170,8 +204,9 @@ function install_plink2() {
     local -r SHA256="6339963e7af3fb186e8d3b0590731c10af106372c5545fa1e9b706778f592a6f"
     local -r URL="https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_$VERSION.zip"
 
-    mkdir -p "$WORKDIR/plink"
-    pushd "$WORKDIR/plink"
+    rm -rf "$WORKDIR/plink2"
+    mkdir -p "$WORKDIR/plink2"
+    pushd "$WORKDIR/plink2"
 
     curl -sSL "$URL" -o "plink2_linux_x86_64_$VERSION.zip"
     if [ "$SHA256" != "$(sha256sum "plink2_linux_x86_64_$VERSION.zip" | awk '{print $1}')" ]; then
@@ -190,6 +225,7 @@ function install_vcftools() {
     local -r SHA256="b9e0e1c3e86533178edb35e02c6c4de9764324ea0973bebfbb747018c2d2a42c"
     local -r URL="https://github.com/vcftools/vcftools/releases/download/v$VERSION/vcftools-$VERSION.tar.gz"
 
+    rm -rf "$WORKDIR/vcftools"
     mkdir -p "$WORKDIR/vcftools"
     pushd "$WORKDIR/vcftools"
 
@@ -237,7 +273,9 @@ function install_vep() {
         libmysqlclient-dev \
         libcrypto++-dev
 
-    pushd "$WORKDIR"
+    rm -rf "$WORKDIR/ensembl-vep"
+    mkdir -p "$WORKDIR/ensembl-vep"
+    pushd "$WORKDIR/ensembl-vep"
 
     PERL_MM_USE_DEFAULT=1 cpan App::cpanminus
     cpanm \

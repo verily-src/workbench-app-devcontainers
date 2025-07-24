@@ -26,21 +26,27 @@ jobs:
             jupyter-template:
               - './**/jupyter-template/**'
               - 'startupscript/**'
+              - 'features/src/workbench-tools/**'
             jupyter:
               - './**/jupyter/**'
               - 'startupscript/**'
+              - 'features/src/workbench-tools/**'
             shiny:
               - './**/shiny/**'
               - 'startupscript/**'
+              - 'features/src/workbench-tools/**'
             r-analysis:
               - './**/r-analysis/**'
               - 'startupscript/**'
+              - 'features/src/workbench-tools/**'
             vscode:
               - './**/vscode/**'
               - 'startupscript/**'
+              - 'features/src/workbench-tools/**'
             jupyter-aou:
               - './**/jupyter-aou/**'
               - 'startupscript/**'
+              - 'features/src/workbench-tools/**'
 
   test:
     needs: [detect-changes]

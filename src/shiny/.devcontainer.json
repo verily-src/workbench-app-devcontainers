@@ -8,7 +8,8 @@
     },
     "ghcr.io/devcontainers/features/common-utils:2.5.3": {},
     "ghcr.io/devcontainers/features/aws-cli:1.1.1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {}
+    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {},
+    "./.devcontainer/features/workbench-tools": {}
   },
   "workspaceFolder": "/workspace",
   "postCreateCommand": [

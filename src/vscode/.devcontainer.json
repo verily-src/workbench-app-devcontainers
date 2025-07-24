@@ -19,8 +19,7 @@
       "version": "17"
     },
     "ghcr.io/devcontainers/features/aws-cli:1.1.1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {},
-    "./.devcontainer/features/workbench-tools": {}
+    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {}
   },
   "remoteUser": "root",
   "customizations": {

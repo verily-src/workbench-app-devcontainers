@@ -21,7 +21,7 @@ for FEATURE in $(echo "$STATE" | jq -r 'keys | .[]'); do
         echo "Updating $FEATURE from $INSTALLED to $LATEST"
 
         pushd "$SRC_DIR"
-        find . -name ".devcontainer.json" -print0 | xargs -0L1 -I "{}" sed -i '' "s|\"$INSTALLED\"|\"$LATEST\"|g" "{}"
+        find . -name ".devcontainer.json" -print0 | xargs -0L1 sed -i "s|\"$INSTALLED\"|\"$LATEST\"|g"
         popd
 
         LATEST_TAG="@$(echo "$LATEST" | cut -d'@' -f2)"

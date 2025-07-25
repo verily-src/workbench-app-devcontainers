@@ -1,0 +1,22 @@
+{
+  "ghcr.io/devcontainers/features/aws-cli": {
+    "tag": "1",
+    "installed": ":1.1.1"
+  },
+  "ghcr.io/devcontainers/features/java": {
+    "tag": "1",
+    "installed": ":1.6.3"
+  },
+  "ghcr.io/dhoeric/features/google-cloud-cli": {
+    "tag": "1",
+    "installed": ":1.0.1"
+  },
+  "ghcr.io/rocker-org/devcontainer-features/r-packages": {
+    "tag": "1",
+    "installed": ":1.1.0"
+  },
+  "ghcr.io/devcontainers/features/common-utils": {
+    "tag": "2",
+    "installed": ":2.5.3"
+  }
+}

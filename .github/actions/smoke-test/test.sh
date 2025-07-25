@@ -16,7 +16,7 @@ echo "Running Smoke Test"
 readonly ID_LABEL="test-container=${TEMPLATE_ID}"
 
 
-# We intentionally don't want to expand $(id -u)
+# Suppressed expansion is intentional
 # shellcheck disable=SC2016
 SCRIPT="$(printf '\
     set -o errexit && \
@@ -30,15 +30,13 @@ SCRIPT="$(printf '\
       ./test.sh %q; \
     else \
       ls -a; \
-    fi' "$TEMPLATE_ID")"
+    fi' "${TEMPLATE_ID}")"
 readonly SCRIPT
 
-# Suppressed expansion is intentional
-# shellcheck disable=SC2016
 devcontainer exec \
   --workspace-folder "${SRC_DIR}" \
   --id-label "${ID_LABEL}" \
-  /bin/bash -c "$SCRIPT"
+  /bin/bash -c "${SCRIPT}"
 
 # Clean up
 docker rm -f "$(docker container ls -f "label=${ID_LABEL}" -q)"

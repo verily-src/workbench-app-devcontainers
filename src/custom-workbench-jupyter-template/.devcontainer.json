@@ -19,6 +19,9 @@
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
+  "features": {
+    "./.devcontainer/features/workbench-tools": {}
+  },
   "remoteUser": "root",
   "customizations": {
     "workbench": {

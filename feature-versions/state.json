@@ -1,0 +1,22 @@
+{
+  "ghcr.io/devcontainers/features/aws-cli": {
+    "tag": "1",
+    "installed": "@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18"
+  },
+  "ghcr.io/devcontainers/features/java": {
+    "tag": "1",
+    "installed": "@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286"
+  },
+  "ghcr.io/dhoeric/features/google-cloud-cli": {
+    "tag": "1",
+    "installed": "@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f"
+  },
+  "ghcr.io/rocker-org/devcontainer-features/r-packages": {
+    "tag": "1",
+    "installed": "@sha256:1a4ec64c4d2060e78e9c812bd3b3622c7e008465d566a2781c0e2b17a82592e5"
+  },
+  "ghcr.io/devcontainers/features/common-utils": {
+    "tag": "2",
+    "installed": "@sha256:3cf7ca93154faf9bdb128f3009cf1d1a91750ec97cc52082cf5d4edef5451f85"
+  }
+}

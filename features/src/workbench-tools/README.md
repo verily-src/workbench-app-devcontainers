@@ -7,12 +7,31 @@ Installs common tools for Workbench Apps. Currently it only supports Debian-base
 
 ```json
 "features": {
-    "./.devcontainer/features/src/workbench:1": {}
+    "ghcr.io/verily-src/workbench-app-devcontainers/workbench-tools:1": {}
 }
 ```
 
+## Options
 
+| Options Id | Description | Type | Default Value |
+|-----|-----|-----|-----|
+| installFromSource | Install tools that require building from source. This may take a long time. | boolean | false |
 
+## Versions
+
+- *bcftools==1.22
+- bedtools: package manager version, currently 2.30.0
+- *bgenix==1.1.7
+- *htslib==1.22.1
+- plink==20250615
+- plink2==20250707
+- *samtools==1.22.1
+- *vcftools==0.1.17
+- REGENIE==4.1 (both regenie and the _mkl version)
+- *VEP==114.2
+
+_*: These need to be built from source and will only be included if
+`installFromSource` is set to `true`._
 
 
 ---

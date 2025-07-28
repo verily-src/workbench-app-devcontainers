@@ -8,6 +8,8 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+readonly INSTALL_FROM_SOURCE="${INSTALLFROMSOURCE:-"false"}"
+
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
@@ -342,15 +344,18 @@ check_packages \
     bedtools
 
 install python
-install bcftools
-install bgen # depends on python
 install plink
 install plink2
-install samtools
-install htslib # includes bgzip and tabix
-install vcftools
 install regenie
 install regenie_mkl
-install vep
+
+if [[ "${INSTALL_FROM_SOURCE}" = "true" ]]; then
+    install bcftools
+    install samtools
+    install htslib # includes bgzip and tabix
+    install bgen # depends on python
+    install vcftools
+    install vep
+fi
 
 echo "Done!"

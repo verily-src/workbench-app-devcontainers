@@ -1,7 +1,7 @@
 
-# Vscode (vscode)
+# PEP Acceptance Image with VScode Server 
 
-A Template to run vscode on workbench
+A Template to run a vscode server on workbench.
 
 ## Options
 

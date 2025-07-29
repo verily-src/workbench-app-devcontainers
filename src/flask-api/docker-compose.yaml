@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "flask-api-server"
-    image: us-central1-docker.pkg.dev/vwb-dev-sleek-haricot-1095/exfil-test-repo/test1:20250728"
+    image: "us-central1-docker.pkg.dev/vwb-dev-sleek-haricot-1095/exfil-test-repo/test1:20250728"
     user: "jupyter"
     restart: always
     volumes:

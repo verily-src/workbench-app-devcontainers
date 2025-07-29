@@ -2,15 +2,21 @@ version: "2.4"
 services:
   app:
     container_name: "flask-api-server"
-    build: .
-    user: "root"
+    image: us-central1-docker.pkg.dev/vwb-dev-sleek-haricot-1095/exfil-test-repo/test1:20250728"
+    user: "jupyter"
     restart: always
     volumes:
       - .:/workspace:cached
     ports:
-      - "5000:5000"
+      - "8888:8888"
     networks:
       - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
 networks:
   app-network:
-    external: false
+    external: true

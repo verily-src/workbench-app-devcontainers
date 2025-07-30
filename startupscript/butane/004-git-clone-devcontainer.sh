@@ -29,10 +29,9 @@ readonly LOCAL_REPO=/home/core/devcontainer
 if [[ -d "${LOCAL_REPO}/.git" ]]; then
     echo "Git repo already exists, skip cloning..."
 else
+    git clone "${REPO_SRC}" "${LOCAL_REPO}"
     if [[ $# -eq 2 ]]; then
         readonly GIT_BRANCH="$2"
-        git clone "${REPO_SRC}" -b "${GIT_BRANCH}" "${LOCAL_REPO}"
-    else
-        git clone "${REPO_SRC}" "${LOCAL_REPO}"
+        git switch "${GIT_BRANCH}"
     fi
 fi

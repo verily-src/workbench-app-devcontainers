@@ -32,6 +32,8 @@ else
     git clone "${REPO_SRC}" "${LOCAL_REPO}"
     if [[ $# -eq 2 ]]; then
         readonly GIT_BRANCH="$2"
-        git switch "${GIT_BRANCH}"
+        pushd "${LOCAL_REPO}"
+        git switch --detach "${GIT_BRANCH}"
+        popd
     fi
 fi

@@ -7,6 +7,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+export PATH="/opt/bin:$PATH"
+
 function usage {
   echo "Usage: $0 [-d path] [image...]"
   echo "  -d path: optionally provide a path to a docker-compose directory to build."
@@ -54,7 +56,7 @@ if [[ -n "${DOCKER_DIR+x}" ]]; then
     # Build all sidecars
     pushd "${DOCKER_DIR}"
     while IFS='' read -r service; do
-        docker compose build "${service}"
+        docker-compose build "${service}"
     done < <(docker-compose config --services | sed '/^app$/d')
     popd
 fi

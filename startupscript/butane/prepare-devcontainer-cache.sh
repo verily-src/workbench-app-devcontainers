@@ -54,8 +54,8 @@ if [[ -n "${DOCKER_DIR+x}" ]]; then
     # Build all sidecars
     pushd "${DOCKER_DIR}"
     while IFS='' read -r service; do
-        docker compose build "${service}"
-    done < <(docker-compose config --services | sed '/^app$/d')
+        /opt/bin/docker-compose build "${service}"
+    done < <(/opt/bin/docker-compose config --services | sed '/^app$/d')
     popd
 fi
 

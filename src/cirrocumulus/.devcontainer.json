@@ -13,7 +13,7 @@
   ],
   // re-mount bucket files on container start up
   "postStartCommand": [
-    "nohup bash -c '[[ ${templateOption:login} == true ]] && ./scripts/cirro_scanner.sh &'"
+    "nohup bash -c '[[ ${templateOption:login} == true ]] && ./workspace/scripts/cirro_scanner.sh > /root/.workbench/logs/cirro_scanner.log 2>&1 &'"
   ],
   "features": {
     "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18": {},

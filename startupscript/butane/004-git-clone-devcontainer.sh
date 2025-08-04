@@ -31,9 +31,18 @@ if [[ -d "${LOCAL_REPO}/.git" ]]; then
 else
     git clone "${REPO_SRC}" "${LOCAL_REPO}"
     if [[ $# -eq 2 ]]; then
-        readonly GIT_BRANCH="$2"
+        readonly GIT_REF="$2"
         pushd "${LOCAL_REPO}"
-        git switch --detach "${GIT_BRANCH}"
+        if git show-ref --verify --quiet "refs/heads/${GIT_REF}"; then
+          # this is a local branch
+          git switch --detach "${GIT_REF}"
+        elif git show-ref --verify --quiet "refs/remotes/origin/${GIT_REF}"; then
+          # this is a remote branch
+          git switch --detach "origin/${GIT_REF}"
+        else
+          # this is a commit hash
+          git switch --detach "${GIT_REF}"
+        fi
         popd
     fi
 fi

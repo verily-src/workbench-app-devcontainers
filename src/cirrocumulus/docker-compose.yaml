@@ -2,9 +2,7 @@ version: '2.4'
 services:
   app:
     container_name: "application-server"
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: "cumulusprod/cumulus:1.0.0"
     restart: always
     volumes:
       - .:/workspace:cached    

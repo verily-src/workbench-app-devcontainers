@@ -29,6 +29,7 @@ mkdir -p "${WB_CONTEXT_DIR}"
 
 # Get the server from metadata and build container with server configuration
 SERVER="$(get_metadata_value "terra-cli-server" "")"
+readonly SERVER
 echo "Using server: ${SERVER}"
 
 (
@@ -45,5 +46,6 @@ echo "Logging in to Workbench CLI with mode ${WB_LOGIN_MODE}"
 
 # Set the default workspace context
 WORKSPACE="$(get_metadata_value "terra-workspace-id" "")"
+readonly WORKSPACE
 echo "Setting Workbench workspace to ${WORKSPACE}"
 /home/core/wb.sh workspace set --id "${WORKSPACE}"

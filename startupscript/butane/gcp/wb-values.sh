@@ -13,17 +13,9 @@
 # - WB_CONTEXT_DIR: Directory mounted into container for data persistence
 # - WB_LOGIN_MODE: Authentication method for GCP services
 
-# Base workbench directory
+# shellcheck disable=SC2034
 readonly WB_ROOT="/home/core/wb"
-
-# Dockerfile location for building the wb container
 readonly WB_DOCKERFILE="${WB_ROOT}/Dockerfile"
-
-# Docker image name for the workbench container
 readonly WB_IMAGE_NAME="wb"
-
-# Context directory mounted into container for persistence
 readonly WB_CONTEXT_DIR="${WB_ROOT}/context"
-
-# Authentication mode for GCP services
 readonly WB_LOGIN_MODE="APP_DEFAULT_CREDENTIALS"

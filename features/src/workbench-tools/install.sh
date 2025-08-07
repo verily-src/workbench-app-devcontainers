@@ -212,8 +212,8 @@ function install_plink() {
 
 function install_plink2() {
     local -r VERSION="20250707"
-    local -r SHA256="6339963e7af3fb186e8d3b0590731c10af106372c5545fa1e9b706778f592a6f"
-    local -r URL="https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_$VERSION.zip"
+    local -r SHA256="330e15a1e9de9742811e5bb1eb098ed9eeb78d58d97533622798b2dbcc62fac2"
+    local -r URL="https://s3.amazonaws.com/plink2-assets/alpha6/plink2_linux_x86_64_$VERSION.zip"
 
     rm -rf "${WORKDIR:?}/plink2"
     mkdir -p "$WORKDIR/plink2"

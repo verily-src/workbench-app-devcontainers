@@ -2,7 +2,7 @@
 
 # resource-mount.sh
 #
-# Installs goofys for s3 bucket mounting. The script cannot yet mount s3 bucket automatically
+# Installs goofys and mountpoint-s3 for s3 bucket mounting. The script cannot yet mount s3 bucket automatically
 # because workbench CLI requires aws user to manually login.
 #
 # Note that this script is intended to be sourced from the "post-startup.sh" script
@@ -13,22 +13,11 @@
 # - LOG_IN: whether the user is logged into workbench CLI
 # - RUN_AS_LOGIN_USER: run command as user
 
-if ! which goofys >/dev/null 2>&1; then
-  emit "Installing goofys for s3 bucket mounting..."
-  if type apk > /dev/null 2>&1; then
-    apk update
-    apk add --no-cache curl
-  elif type apt-get > /dev/null 2>&1; then
-    apt-get update
-    apt-get install -y curl
-  fi
+# Install goofys
+source "${CLOUD_SCRIPT_DIR}/install-goofys.sh"
 
-  curl -L "https://github.com/kahing/goofys/releases/latest/download/goofys" -o goofys
-  chmod +x goofys
-  mv goofys /usr/local/bin/
-else
-  emit "goofys is already installed, skipping installation"
-fi
+# Install mountpoint-s3
+source "${CLOUD_SCRIPT_DIR}/install-mountpoint-s3.sh"
 
 if [[ "${LOG_IN}" == "true" ]]; then
   source "${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"

@@ -1,0 +1,18 @@
+{
+  "id": "workbench-tools",
+  "version": "1.0.0",
+  "name": "Workbench Tools",
+  "description": "Installs common tools for Workbench Apps. Currently it only supports Debian-based systems (e.g. Ubuntu) on x86_64.",
+  "options": {
+      "installFromSource": {
+        "type": "boolean",
+        "default": false,
+        "description": "Install tools that require building from source. This may take a long time."
+      }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/python",
+    "ghcr.io/devcontainers/features/conda"
+  ]
+}

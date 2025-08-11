@@ -29,10 +29,20 @@ readonly LOCAL_REPO=/home/core/devcontainer
 if [[ -d "${LOCAL_REPO}/.git" ]]; then
     echo "Git repo already exists, skip cloning..."
 else
+    git clone "${REPO_SRC}" "${LOCAL_REPO}"
     if [[ $# -eq 2 ]]; then
-        readonly GIT_BRANCH="$2"
-        git clone "${REPO_SRC}" -b "${GIT_BRANCH}" "${LOCAL_REPO}"
-    else
-        git clone "${REPO_SRC}" "${LOCAL_REPO}"
+        readonly GIT_REF="$2"
+        pushd "${LOCAL_REPO}"
+        if git show-ref --verify --quiet "refs/heads/${GIT_REF}"; then
+          # this is a local branch
+          git switch --detach "${GIT_REF}"
+        elif git show-ref --verify --quiet "refs/remotes/origin/${GIT_REF}"; then
+          # this is a remote branch
+          git switch --detach "origin/${GIT_REF}"
+        else
+          # this is a commit hash
+          git switch --detach "${GIT_REF}"
+        fi
+        popd
     fi
 fi

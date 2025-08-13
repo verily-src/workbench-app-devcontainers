@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "us-central1-docker.pkg.dev/wb-quick-seed-877/nemo-demo-repo/test1:20250812"
+    image: "nvcr.io/nvidia/nemo:24.09"
     user: "jupyter"
     restart: always
     volumes:

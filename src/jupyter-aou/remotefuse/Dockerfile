@@ -1,4 +1,4 @@
-FROM debian:latest
+FROM debian:12-slim
 
 RUN apt-get update --yes && \
     apt-get install -yq --no-install-recommends \

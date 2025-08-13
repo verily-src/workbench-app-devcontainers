@@ -15,4 +15,4 @@ FROM nvcr.io/nvidia/nemo:24.09
 # Start JupyterLab by default
 # CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--LabApp.token=''"]
 # Make sure python points to python3
-RUN sudo ln -s /usr/bin/python3 /usr/bin/python
+# RUN sudo ln -s /usr/bin/python3 /usr/bin/python

@@ -19,5 +19,5 @@ services:
       - apparmor:unconfined
     # command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --LabApp.token=''
   networks:
-  app-network:
-    external: true
+    app-network:
+      external: true

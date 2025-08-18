@@ -1,0 +1,42 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "us-central1-docker.pkg.dev/verily-workbench-public/apps/workbench-jupyter:latest"
+    user: "jupyter:${DOCKER_GID}"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      # mount Host machine's docker.sock to container's docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock
+      # mount Host machine's /etc/group to container's /etc/host-group
+      - /etc/group:/etc/host-group
+      # mount Host machine's default docker config dir to container's jupyter user docker config dir
+      - /etc/docker:/home/jupyter/.docker
+    ports:
+      - "8888:8888"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    
+  parabricks:
+    image: "nvcr.io/nvidia/clara/clara-parabricks:4.5.1-1"
+    container_name: parabricks_service
+    volumes:
+      - .:/data # Mount the SAME shared volume
+    command: tail -f /dev/null # Keep the container running
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+networks:
+  app-network:
+    external: true

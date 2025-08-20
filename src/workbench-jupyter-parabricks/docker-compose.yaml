@@ -27,6 +27,7 @@ services:
   parabricks:
     image: "nvcr.io/nvidia/clara/clara-parabricks:4.5.1-1"
     container_name: parabricks_service
+    restart: always
     volumes:
       - .:/data # Mount the SAME shared volume
     command: tail -f /dev/null # Keep the container running

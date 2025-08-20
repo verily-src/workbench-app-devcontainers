@@ -44,7 +44,7 @@ fi
 readonly TERRA_SERVER
 
 # Only install cli if not already installed
-if ! command -v wb &> /dev/null; then
+if ! command -v /usr/bin/wb &> /dev/null; then
   emit "Installing the Workbench CLI ..."
 
   if ! AXON_VERSION_URL="$(get_axon_version_url "${TERRA_SERVER}")"; then
@@ -66,24 +66,24 @@ if ! command -v wb &> /dev/null; then
   readonly CLI_VERSION
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${CLI_DISTRIBUTION_PATH#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${CLI_VERSION} bash"
-  cp wb "${WORKBENCH_INSTALL_PATH}"
+  cp /usr/bin/wb "${WORKBENCH_INSTALL_PATH}"
 
   # Copy 'wb' to its legacy 'terra' name.
   cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
-${RUN_AS_LOGIN_USER} "wb config set browser MANUAL"
+${RUN_AS_LOGIN_USER} "/usr/bin/wb config set browser MANUAL"
 
 # Set the CLI server based on the server that created the VM.
-${RUN_AS_LOGIN_USER} "wb server set --name=${TERRA_SERVER}"
+${RUN_AS_LOGIN_USER} "/usr/bin/wb server set --name=${TERRA_SERVER}"
 
 # Generate the bash completion script
-${RUN_AS_LOGIN_USER} "wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
+${RUN_AS_LOGIN_USER} "/usr/bin/wb generate-completion > '${USER_BASH_COMPLETION_DIR}/workbench'"
 
 if [[ "${LOG_IN}" == "true" ]]; then
 
-  # For GCP use "APP_DEFAULT_CREDENTIALS", for AWS use "AWS_IAM" as --mode arg to "wb auth login".
+  # For GCP use "APP_DEFAULT_CREDENTIALS", for AWS use "AWS_IAM" as --mode arg to "/usr/bin/wb auth login".
   LOG_IN_MODE="APP_DEFAULT_CREDENTIALS"
   if [[ "${CLOUD}" == "aws" ]]; then
     LOG_IN_MODE="AWS_IAM"
@@ -92,13 +92,13 @@ if [[ "${LOG_IN}" == "true" ]]; then
 
   # Log in with app-default-credentials
   emit "Logging into workbench CLI with mode ${LOG_IN_MODE}"
-  ${RUN_AS_LOGIN_USER} "wb auth login --mode=${LOG_IN_MODE}"
+  ${RUN_AS_LOGIN_USER} "/usr/bin/wb auth login --mode=${LOG_IN_MODE}"
 
   # Set the CLI workspace id using the VM metadata, if set.
   TERRA_WORKSPACE="$(get_metadata_value "terra-workspace-id")"
   readonly TERRA_WORKSPACE
   if [[ -n "${TERRA_WORKSPACE}" ]]; then
-    ${RUN_AS_LOGIN_USER} "wb workspace set --id='${TERRA_WORKSPACE}'"
+    ${RUN_AS_LOGIN_USER} "/usr/bin/wb workspace set --id='${TERRA_WORKSPACE}'"
   fi
 else
   emit "Do not log user into workbench CLI. Manual log in is required."

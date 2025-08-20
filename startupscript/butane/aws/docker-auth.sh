@@ -16,7 +16,9 @@ set -o xtrace
 source '/home/core/docker-repositories.sh'
 
 # Docker config file location
-DOCKER_CONFIG_DIR="${HOME}/.docker"
+# Use /root as fallback if HOME is not set (e.g., running as root non-
+# interactively during systemd startup)
+DOCKER_CONFIG_DIR="${HOME:-/root}/.docker"
 DOCKER_CONFIG_FILE="${DOCKER_CONFIG_DIR}/config.json"
 
 # Create Docker config directory if it doesn't exist

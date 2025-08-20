@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM mcr.microsoft.com/vscode/devcontainers/python:3.10-buster
+FROM python:3
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

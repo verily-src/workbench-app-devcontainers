@@ -66,7 +66,7 @@ if ! command -v /usr/bin/wb &> /dev/null; then
   readonly CLI_VERSION
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${CLI_DISTRIBUTION_PATH#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${CLI_VERSION} bash"
-  cp /usr/bin/wb "${WORKBENCH_INSTALL_PATH}"
+  cp wb "${WORKBENCH_INSTALL_PATH}"
 
   # Copy 'wb' to its legacy 'terra' name.
   cp "${WORKBENCH_INSTALL_PATH}" "${WORKBENCH_LEGACY_PATH}"

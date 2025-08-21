@@ -1,8 +1,8 @@
 {
-  "id": "jupyter",
+  "id": "NeMo jupyter",
   "version": "0.0.2",
   "name": "Jupyter",
-  "description": "A Template to run jupyter on workbench",
+  "description": "A NeMo container with Jupyter - GCP only for now",
   "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/jupyter",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {

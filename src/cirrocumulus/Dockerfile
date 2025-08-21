@@ -6,5 +6,4 @@ ENV PYTHONUNBUFFERED=1
 
 # Install any needed packages specified in requirements.txt
 RUN python -m pip install --upgrade pip && \
-    python -m pip install scipy==1.10.1 && \
     python -m pip install cirrocumulus

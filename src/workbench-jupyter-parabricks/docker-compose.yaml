@@ -29,8 +29,8 @@ services:
     container_name: parabricks_service
     restart: always
     volumes:
-      - .:/data # Mount the SAME shared volume
-    command: tail -f /dev/null # Keep the container running
+      - .:/data # Mount the same shared volume
+    command: tail -f /dev/null 
     deploy:
       resources:
         reservations:

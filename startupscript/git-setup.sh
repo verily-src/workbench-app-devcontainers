@@ -31,7 +31,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
  install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
- /usr/bin/wb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
+ ${WORKBENCH_INSTALL_PATH} security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
  ${RUN_AS_LOGIN_USER} "\
    install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
@@ -57,13 +57,13 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # Keep this as last thing in script. There will be integration test for git cloning (PF-1660). If this is last thing, then
 # integration test will ensure that everything in script worked.
 
-# This loop replaces the logic of "/usr/bin/wb git clone --all", which currently does not work without
+# This loop replaces the logic of "wb git clone --all", which currently does not work without
 # Google Application Default Credentials being available.  This emulates the behavior of the CLI
 # command, continuing with an error message when an individual repo cannot be cloned.
 
 # shellcheck disable=SC2164
 pushd "${WORKBENCH_GIT_REPOS_DIR}"
-${RUN_AS_LOGIN_USER} "/usr/bin/wb resource list --type=GIT_REPO --format json" | \
+${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} resource list --type=GIT_REPO --format json" | \
   jq -c .[] | \
   while read -r ITEM; do
     GIT_REPO_NAME="$(echo "$ITEM" | jq -r .id)"

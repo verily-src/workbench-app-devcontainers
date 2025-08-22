@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "nvcr.io/nvidia/nemo:24.09"
+    image: "nvcr.io/nvidia/nemo:25.07"
     user: root
     restart: always
     volumes:

@@ -27,14 +27,14 @@ emit "Customize user bashrc ..."
 if [[ "${LOG_IN}" == "true" ]]; then
   # OWNER_EMAIL is really the Workbench user account email address
   OWNER_EMAIL="$(
-    ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
+    ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' workspace describe --format=json" | \
     jq --raw-output ".userEmail")"
   readonly OWNER_EMAIL
 
   # PET_SA_EMAIL is the pet service account for the Workbench user and
   # is specific to the GCP project backing the workspace
   PET_SA_EMAIL="$(
-    ${RUN_AS_LOGIN_USER} "wb auth status --format=json" | \
+    ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth status --format=json" | \
     jq --raw-output ".serviceAccountEmail")"
   readonly PET_SA_EMAIL
 
@@ -57,7 +57,7 @@ if [[ "${CLOUD}" == "gcp" && "${LOG_IN}" == "true" ]]; then
 
   # GOOGLE_PROJECT is the project id for the GCP project backing the workspace
   GOOGLE_PROJECT="$(
-    ${RUN_AS_LOGIN_USER} "wb workspace describe --format=json" | \
+    ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' workspace describe --format=json" | \
     jq --raw-output ".googleProjectId")"
   readonly GOOGLE_PROJECT
   
@@ -77,7 +77,7 @@ if [[ "${CLOUD}" == "aws" && "${LOG_IN}" == "true" ]]; then
 
   # Create a symlink to this workspace's AWS config file to use as the target for AWS_CONFIG_FILE.
   readonly AWS_CONFIG_SYMLINK="${USER_WORKBENCH_CONFIG_DIR}/workspace.conf"
-  ${RUN_AS_LOGIN_USER} "eval \$(wb workspace configure-aws) && \
+  ${RUN_AS_LOGIN_USER} "eval \$('${WORKBENCH_INSTALL_PATH}' workspace configure-aws) && \
     ln -sf \${AWS_CONFIG_FILE} ${AWS_CONFIG_SYMLINK}"
 
   emit "Adding Workbench AWS-sepcific environment variables to ~/.bashrc ..."

@@ -50,5 +50,5 @@ fi
 sed -i '/user_allow_other/s/^#//g' /etc/fuse.conf
 
 if [[ "${LOG_IN}" == "true" ]]; then
-  ${RUN_AS_LOGIN_USER} "wb resource mount --allow-other || echo 'Resource mounting failed.'"
+  ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' resource mount --allow-other || echo 'Resource mounting failed.'"
 fi

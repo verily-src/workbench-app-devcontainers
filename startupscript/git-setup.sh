@@ -31,7 +31,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p ${USER_SSH_DIR} --mode 0700"
 # Get the user's SSH key from Workbench, and if set, write it to the user's .ssh directory
 ${RUN_AS_LOGIN_USER} "\
  install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa.tmp' && \
- wb security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
+ '${WORKBENCH_INSTALL_PATH}' security ssh-key get --include-private-key --format=JSON >> '${USER_SSH_DIR}/id_rsa.tmp' || true"
 if [[ -s "${USER_SSH_DIR}/id_rsa.tmp" ]]; then
  ${RUN_AS_LOGIN_USER} "\
    install --mode 0600 /dev/null '${USER_SSH_DIR}/id_rsa' && \
@@ -63,7 +63,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 
 # shellcheck disable=SC2164
 pushd "${WORKBENCH_GIT_REPOS_DIR}"
-${RUN_AS_LOGIN_USER} "wb resource list --type=GIT_REPO --format json" | \
+${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' resource list --type=GIT_REPO --format json" | \
   jq -c .[] | \
   while read -r ITEM; do
     GIT_REPO_NAME="$(echo "$ITEM" | jq -r .id)"

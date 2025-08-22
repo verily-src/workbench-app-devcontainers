@@ -49,8 +49,8 @@ source "${SCRIPT_DIR}/emit.sh"
 # CLI login
 #############################
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
-if [[ "${LOG_IN}" == "true" ]] && ${RUN_AS_LOGIN_USER} "wb auth status 2>&1" | grep -q "NO USER LOGGED IN"; then
-  ${RUN_AS_LOGIN_USER} "wb auth login --mode=APP_DEFAULT_CREDENTIALS"
+if [[ "${LOG_IN}" == "true" ]] && ${RUN_AS_LOGIN_USER} "'{$WORKBENCH_INSTALL_PATH}' auth status 2>&1" | grep -q "NO USER LOGGED IN"; then
+  ${RUN_AS_LOGIN_USER} "'{$WORKBENCH_INSTALL_PATH}' auth login --mode=APP_DEFAULT_CREDENTIALS"
 fi
 
 #############################

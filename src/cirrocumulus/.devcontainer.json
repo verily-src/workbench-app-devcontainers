@@ -12,13 +12,7 @@
     "${templateOption:login}"
   ],
   // re-mount bucket files on container start up
-  "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
-    "root",
-    "/root",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
+  "postStartCommand": "chmod +x /workspace/scripts/cirro_scanner.sh && nohup /workspace/scripts/cirro_scanner.sh > /root/.workbench/logs/cirro_scanner.log 2>&1 &",
   "features": {
     "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
     "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {}

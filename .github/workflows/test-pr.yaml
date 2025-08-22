@@ -50,6 +50,10 @@ jobs:
               - 'startupscript/**'
               - 'test/**'
               - 'features/src/workbench-tools/**'
+            nemo_jupyter:
+              - './**/nemo_jupyter/**'
+              - 'startupscript/**'
+              - 'test/**'
 
   test:
     needs: [detect-changes]

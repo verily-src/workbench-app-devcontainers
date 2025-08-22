@@ -34,7 +34,7 @@ source "${SCRIPT_DIR}/emit.sh"
 
 source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
-readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
+readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -c"
 export RUN_AS_LOGIN_USER
 
 # Startup script status is propagated out to VM guest attributes

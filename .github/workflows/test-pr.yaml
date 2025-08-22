@@ -68,7 +68,7 @@ jobs:
 
       # Free up disk space by removing unnecessary files, if needed
       - name: Maximize build disk space
-        if: ${{ matrix.templates == 'jupyter-aou' }}
+        if: ${{ matrix.templates == 'jupyter-aou' || matrix.templates == 'nemo_jupyter' }}
         uses: easimon/maximize-build-space@v10
         with:
           # This is the amount of space left over, not allocated to the LVM
@@ -82,7 +82,7 @@ jobs:
           remove-docker-images: true
 
       - name: Restart docker
-        if: ${{ matrix.templates == 'jupyter-aou' }}
+        if: ${{ matrix.templates == 'jupyter-aou' || matrix.templates == 'nemo_jupyter' }}
         run: sudo service docker restart
 
       - name: Smoke test for '${{ matrix.templates }}'

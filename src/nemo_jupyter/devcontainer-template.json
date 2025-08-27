@@ -1,7 +1,7 @@
 {
   "id": "NeMo jupyter",
   "version": "0.0.2",
-  "name": "Jupyter",
+  "name": "jupyterlab-on-nemo",
   "description": "A NeMo container with Jupyter - GCP only for now",
   "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/jupyter",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",

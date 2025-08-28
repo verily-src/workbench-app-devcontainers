@@ -27,7 +27,5 @@ RUN jupyter labextension disable @jupyterlab/filebrowser-extension:download && \
 RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \
     /tmp/extensions/install.sh
 
-USER root
-COPY remotefuse /opt/remotefuse
-RUN chmod +x /opt/remotefuse/*
+# TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227
 USER $JUPYTER_USER

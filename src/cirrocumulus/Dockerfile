@@ -5,4 +5,4 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Install any needed packages specified in requirements.txt
-RUN python -m pip install --upgrade pip && python -m pip install cirrocumulus==1.1.59.post1
+RUN python -m pip install --upgrade pip && python -m pip install cirrocumulus==1.1.60

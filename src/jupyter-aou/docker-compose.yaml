@@ -10,15 +10,17 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - /tmp/wb-mount:/home/jupyter/workspace:slave
-      - ssh-keys:/ssh-keys
     ports:
       - "8888:8888"
     networks:
       - app-network
     depends_on:
       - wondershaper
-      - remotefuse
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    # TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227
   wondershaper:
     container_name: "wondershaper"
     image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:dd9df1811b9d15f4f8d95b6e515a2371e12d238240b8ef7359be77d961e79e3a"
@@ -26,26 +28,6 @@ services:
     network_mode: "host"
     cap_add:
       - NET_ADMIN
-  remotefuse:
-    container_name: "remotefuse"
-    build:
-      context: ./remotefuse
-      platforms:
-        - "linux/amd64"
-    restart: always
-    working_dir: /workspace
-    volumes:
-      - .:/workspace:cached
-      - ssh-keys:/ssh-keys
-      - /tmp/wb-mount:/home/remotefuse/workspace:shared
-    networks:
-      - app-network
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse
 networks:
   app-network:
     external: true
-volumes:
-  ssh-keys:

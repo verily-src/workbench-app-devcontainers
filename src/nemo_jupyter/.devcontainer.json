@@ -17,7 +17,9 @@
   ],
   "features": {
     "ghcr.io/roul/devcontainer-features/mise:1": {},
-    "ghcr.io/roul/devcontainer-features/mise-java:1": {},
+    "ghcr.io/roul/devcontainer-features/mise-java:1": {
+      "version": "17"
+    },
     "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {}
   },
   "remoteUser": "root",

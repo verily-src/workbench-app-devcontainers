@@ -17,6 +17,6 @@
   },
   "ghcr.io/devcontainers/features/common-utils": {
     "tag": "2",
-    "installed": "@sha256:3cf7ca93154faf9bdb128f3009cf1d1a91750ec97cc52082cf5d4edef5451f85"
+    "installed": "@sha256:00fd45550f578d9d515044d9e2226e908dbc3d7aa6fcb9dee4d8bdb60be114cf"
   }
 }

@@ -88,9 +88,12 @@ case "${COMMAND}" in
         ;;
 
     get)
-        # 'docker pull' or 'docker push' calls this command.
-        # It reads the server URL from stdin.
-        read -r server_url
+        # 'docker pull' or 'docker push' calls this command. It reads the server
+        # URL from stdin.  Note that when called from the docker daemon, the
+        # daemon will close the pipe immediately. This will result in the read
+        # command returning a non-zero status despite the input being available.
+        # We handle this by using '|| true' to allow the script to continue.
+        read -r server_url || true
         get_credentials "${server_url}"
         ;;
 

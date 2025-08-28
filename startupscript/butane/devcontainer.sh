@@ -19,7 +19,6 @@ if [[ $# -ne 2 ]]; then
     usage
 fi
 
-export PATH="/opt/bin:$PATH"
 readonly DEVCONTAINER="npx --prefix /home/core devcontainer"
 readonly CMD="$1"
 readonly FOLDER="$2"

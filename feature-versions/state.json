@@ -18,5 +18,13 @@
   "ghcr.io/devcontainers/features/common-utils": {
     "tag": "2",
     "installed": "@sha256:00fd45550f578d9d515044d9e2226e908dbc3d7aa6fcb9dee4d8bdb60be114cf"
+  },
+  "ghcr.io/roul/devcontainer-features/mise":{
+    "tag":"1",
+    "installed": "@sha256:bcbd34b34176b6255d5aa5b881f1addc99bb3eed6049c841cb201f63fca132e4"
+  },
+  "ghcr.io/roul/devcontainer-features/mise-java":{
+    "tag":"1",
+    "installed": "@sha256:94d54e5f176cdd9914dcdeb45ef151c733c00bc8cc3e21f94622ff03255cecb8"
   }
 }

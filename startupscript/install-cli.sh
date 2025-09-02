@@ -44,7 +44,7 @@ fi
 readonly TERRA_SERVER
 
 # Only install cli if not already installed
-if ! command -v '${WORKBENCH_INSTALL_PATH}'&> /dev/null; then
+if ! command -v "${WORKBENCH_INSTALL_PATH}" &> /dev/null; then
   emit "Installing the Workbench CLI ..."
 
   if ! AXON_VERSION_URL="$(get_axon_version_url "${TERRA_SERVER}")"; then

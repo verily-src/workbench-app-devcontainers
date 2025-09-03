@@ -27,7 +27,7 @@ emit "Customize user bashrc ..."
 if [[ "${LOG_IN}" == "true" ]]; then
   # OWNER_EMAIL is really the Workbench user account email address
   OWNER_EMAIL="$(
-    ${RUN_AS_LOGIN_USER} "''${WORKBENCH_INSTALL_PATH}'' workspace describe --format=json" | \
+    ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' workspace describe --format=json" | \
     jq --raw-output ".userEmail")"
   readonly OWNER_EMAIL
 

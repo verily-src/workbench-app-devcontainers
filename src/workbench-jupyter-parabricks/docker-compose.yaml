@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "us-central1-docker.pkg.dev/wb-quick-seed-877/parabricks-demo-repo/test2:20250903"
+    image: "us-central1-docker.pkg.dev/wb-quick-seed-877/parabricks-demo-repo-v2/test1:20250903"
     user: root
     restart: always
     volumes:
@@ -17,7 +17,7 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --LabApp.token=''
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --LabApp.token=''
 networks:
   app-network:
     external: true

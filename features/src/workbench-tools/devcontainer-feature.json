@@ -4,6 +4,11 @@
   "name": "Workbench Tools",
   "description": "Installs common tools for Workbench Apps. Currently it only supports Debian-based systems (e.g. Ubuntu) on x86_64.",
   "options": {
+      "cloud": {
+          "type": "string",
+          "default": "",
+          "description": "Cloud provider to install CLI tools for. If set to \"gcp\", installFromSource will default to true."
+      },
       "installFromSource": {
         "type": "boolean",
         "default": false,

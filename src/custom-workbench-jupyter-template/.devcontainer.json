@@ -20,7 +20,9 @@
     "${templateOption:login}"
   ],
   "features": {
-    "./.devcontainer/features/workbench-tools": {}
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}"
+    }
   },
   "remoteUser": "root",
   "customizations": {

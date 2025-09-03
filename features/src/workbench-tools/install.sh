@@ -8,7 +8,12 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-readonly INSTALL_FROM_SOURCE="${INSTALLFROMSOURCE:-"false"}"
+readonly CLOUD="${CLOUD:-""}"
+INSTALL_FROM_SOURCE="${INSTALLFROMSOURCE:-"false"}"
+if [[ "$CLOUD" = "gcp" ]]; then
+    INSTALL_FROM_SOURCE="true"
+fi
+readonly INSTALL_FROM_SOURCE
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC

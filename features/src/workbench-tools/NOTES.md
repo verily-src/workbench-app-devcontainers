@@ -12,4 +12,4 @@
 - *VEP==114.2
 
 _*: These need to be built from source and will only be included if
-`installFromSource` is set to `true`._
+`installFromSource` is set to `true` or `cloud` is set to `gcp`._

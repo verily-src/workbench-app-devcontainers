@@ -9,7 +9,9 @@
   // re-mount bucket files on container start up
   "postStartCommand": "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\"",
   "features": {
-    "./.devcontainer/features/workbench-tools": {}
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}"
+    }
   },
   "remoteUser": "root",
   "customizations": {

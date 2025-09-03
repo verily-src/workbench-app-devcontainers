@@ -14,21 +14,14 @@ RUN apt-get update && \
 RUN useradd -m -s /bin/bash jupyter && \
     echo "jupyter ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/jupyter
 
-# Set environment variables (optional, for consistency)
-ENV JUPYTER_USER=jupyter
-ENV JUPYTER_USER_HOME_DIR=/home/jupyter
+RUN mkdir -p /home/jupyter/workspace && \
+    chown -R jupyter:jupyter /home/jupyter
 
 # Install Jupyter Lab using pip
 RUN pip3 install jupyterlab
-
-# Set working directory to jupyter's home
-WORKDIR /home/jupyter
 
 # Expose the port Jupyter Lab will run on
 EXPOSE 8888
 
 # Switch to jupyter user for running Jupyter
-USER jupyter
-
-# Optional: Start Jupyter Lab (if you want to run it directly)
-# CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
+USER root

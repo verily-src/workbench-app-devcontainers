@@ -2,8 +2,8 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-  build:
-    context: .
+    build:
+      context: .
     user: root
     restart: always
     volumes:

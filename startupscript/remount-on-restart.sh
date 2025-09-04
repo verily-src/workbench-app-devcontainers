@@ -15,7 +15,6 @@ if [[ $# -ne 4 ]]; then
 fi
 
 readonly WORKBENCH_INSTALL_PATH="${WORKBENCH_INSTALL_PATH:-/usr/bin/wb}"
-export WORKBENCH_INSTALL_PATH
 
 readonly USER_NAME="${1}"
 readonly WORK_DIRECTORY="${2}"

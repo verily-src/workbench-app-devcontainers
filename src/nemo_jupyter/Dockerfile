@@ -15,6 +15,8 @@ RUN mkdir -p /workspace \
  && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
  && chown -R ${NB_UID}:${NB_GID} /opt/conda || true
 
+RUN rm -rf /var/lib/apt/lists/*
+
 # Environment and working directory
 ENV HOME=${WORKDIR}
 WORKDIR ${WORKDIR}

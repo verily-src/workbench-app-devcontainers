@@ -7,11 +7,11 @@
   // Get the host's docker group ID and propagate it into the .env file, which
   // allows it to be used within docker-compose.yaml.
   // "initializeCommand": "DOCKER_GID=`getent group docker | cut -d: -f3` && echo \"DOCKER_GID=${DOCKER_GID}\" > .env",
-  "postCreateCommand": "apt update && apt install -y sudo && ./startupscript/post-startup.sh root /workspace ${templateOption:cloud} ${templateOption:login} && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> /root/.bashrc",  // re-mount bucket files on container start up
+  "postCreateCommand": "apt update && apt install -y sudo && ./startupscript/post-startup.sh jupyter /home/jupyter ${templateOption:cloud} ${templateOption:login} && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> /home/jupyter/.bashrc",  // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
-    "root",
-    "/workspace",
+    "jupyter",
+    "/home/jupyter",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],

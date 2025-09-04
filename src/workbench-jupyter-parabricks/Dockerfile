@@ -27,6 +27,7 @@ RUN mkdir -p /workspace \
 ENV HOME=${WORKDIR}
 WORKDIR ${WORKDIR}
 
+ENV PATH="${WORKDIR}/.local/bin:${PATH}"
 # Switch to non-root user
 USER ${NB_USER}
 

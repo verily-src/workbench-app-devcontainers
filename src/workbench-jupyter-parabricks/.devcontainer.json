@@ -18,9 +18,9 @@
   ],
   "features": {
     "ghcr.io/roul/devcontainer-features/mise@sha256:bcbd34b34176b6255d5aa5b881f1addc99bb3eed6049c841cb201f63fca132e4": {},
-    "ghcr.io/roul/devcontainer-features/mise-java@sha256:94d54e5f176cdd9914dcdeb45ef151c733c00bc8cc3e21f94622ff03255cecb8": {
-      "version": "17"
-    },
+    "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {
+          "version": "17"
+        },
     "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {}
   },
   "remoteUser": "root",

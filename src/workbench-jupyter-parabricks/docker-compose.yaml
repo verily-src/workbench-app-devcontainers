@@ -2,7 +2,8 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "us-central1-docker.pkg.dev/wb-quick-seed-877/parabricks-demo-repo-v2/test1:20250903"
+    build:
+      context: .
     user: root
     restart: always
     volumes:

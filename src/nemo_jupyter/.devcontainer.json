@@ -7,15 +7,16 @@
   // Get the host's docker group ID and propagate it into the .env file, which
   // allows it to be used within docker-compose.yaml.
   // "initializeCommand": "DOCKER_GID=`getent group docker | cut -d: -f3` && echo \"DOCKER_GID=${DOCKER_GID}\" > .env",
-  "postCreateCommand": "apt update && apt install -y sudo && ./startupscript/post-startup.sh root /workspace ${templateOption:cloud} ${templateOption:login} && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> /root/.bashrc",  // re-mount bucket files on container start up
+  "postCreateCommand": "apt update && apt install -y sudo && ./startupscript/post-startup.sh jupyter /home/jupyter ${templateOption:cloud} ${templateOption:login} && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> /home/jupyter/.bashrc && ./sudo-passwordless.sh jupyter",  // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
-    "root",
-    "/workspace",
+    "jupyter",
+    "/home/jupyter",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
   "features": {
+    "ghcr.io/roul/devcontainer-features/mise@sha256:bcbd34b34176b6255d5aa5b881f1addc99bb3eed6049c841cb201f63fca132e4": {},
     "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {
       "version": "17"
     },

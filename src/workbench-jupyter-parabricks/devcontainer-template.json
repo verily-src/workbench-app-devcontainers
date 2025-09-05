@@ -1,8 +1,8 @@
 {
-  "id": "custom-workbench-jupyter-parabricks-template",
+  "id": "Jupyterlab on Parabricks",
   "description": "A template used to serve the Workbench JupyterLab container image plus NVIDIA Parabricks",
   "version": "0.0.1",
-  "name": "Workbench Prebuilt JupyterLab Template running alongside NVIDIA Parabricks",
+  "name": "NVIDIA Parabricks container with Jupyterlab installed",
   "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/custom-workbench-jupyter-template",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {

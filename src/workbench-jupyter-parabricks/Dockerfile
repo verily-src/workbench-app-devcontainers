@@ -12,7 +12,11 @@ USER root
 RUN rm -rf /var/lib/apt/lists/*
 
 # Only create the user, not the group—GID 1000 already exists as 'ubuntu'
-RUN groupadd --gid ${NB_GID} ${NB_USER} && useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER}
+RUN \
+groupadd --gid ${NB_GID} ${NB_USER} && useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER} \
+    && chsh -s /bin/bash ${NB_USER} \
+    && echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
+    && chmod 0440 /etc/sudoers.d/${NB_USER}
 
 # Fix ownership for common dirs
 RUN mkdir -p /workspace \
@@ -29,7 +33,3 @@ USER ${NB_USER}
 
 # Install Jupyter Lab using pip
 RUN pip3 install jupyterlab
-
-# Expose the port Jupyter Lab will run on
-EXPOSE 8888
-# Set the entrypoint to launch Jupyter Lab

@@ -13,7 +13,8 @@ RUN rm -rf /var/lib/apt/lists/*
 
 # Only create the user, not the group—GID 1000 already exists as 'ubuntu'
 RUN \
-groupadd --gid ${NB_GID} ${NB_USER} && useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER} \
+    mkdir -p /etc/sudoers.d/ \
+    && groupadd --gid ${NB_GID} ${NB_USER} && useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER} \
     && chsh -s /bin/bash ${NB_USER} \
     && echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
     && chmod 0440 /etc/sudoers.d/${NB_USER}

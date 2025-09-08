@@ -2,8 +2,9 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "nvcr.io/nvidia/nemo:24.09"
-    user: root
+    build:
+      context: .
+    user: jupyter
     restart: always
     volumes:
       - .:/workspace:cached
@@ -17,7 +18,7 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --LabApp.token=''
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --LabApp.token=''
 networks:
   app-network:
     external: true

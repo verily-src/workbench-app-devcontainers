@@ -29,6 +29,10 @@ RUN mkdir -p /workspace \
  && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
  && chown -R ${NB_UID}:${NB_GID} /opt/conda || true
 
+# Create a Jupyter config file to force the terminal to use bash
+RUN mkdir -p ~/.jupyter/ && \
+    echo "c.ServerApp.terminado_settings = {'shell_command': ['/bin/bash']}" > ~/.jupyter/jupyter_server_config.py
+
 # Environment and working directory
 ENV HOME=${WORKDIR}
 WORKDIR ${WORKDIR}

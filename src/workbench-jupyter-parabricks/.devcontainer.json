@@ -7,7 +7,7 @@
   // Get the host's docker group ID and propagate it into the .env file, which
   // allows it to be used within docker-compose.yaml.
   "initializeCommand": "DOCKER_GID=`getent group docker | cut -d: -f3` && echo \"DOCKER_GID=${DOCKER_GID}\" > .env",
-  "postCreateCommand": "apt update && apt install -y sudo && ./startupscript/post-startup.sh jupyter /home/jupyter ${templateOption:cloud} ${templateOption:login} && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> /home/jupyter/.bashrc && ./sudo-passwordless.sh jupyter",
+  "postCreateCommand": "apt update && apt install -y sudo && ./startupscript/post-startup.sh jupyter /home/jupyter ${templateOption:cloud} ${templateOption:login} && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> /home/jupyter/.bashrc",
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
@@ -20,7 +20,8 @@
     "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {
           "version": "17"
         },
-    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {}
+    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
+    "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18":{}
   },
   "remoteUser": "root",
   "customizations": {

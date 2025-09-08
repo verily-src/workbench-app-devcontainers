@@ -38,10 +38,11 @@ WORKDIR ${WORKDIR}
 ENV PATH="${WORKDIR}/.local/bin:${PATH}"
 # Switch to non-root user
 USER ${NB_USER}
+ENV SHELL=/bin/bash
 
 # Create a Jupyter config file to force the terminal to use bash
-RUN mkdir -p ~/.jupyter/ && \
-    echo "c.ServerApp.terminado_settings = {'shell_command': ['/bin/bash']}" > ~/.jupyter/jupyter_server_config.py
+# RUN mkdir -p ~/.jupyter/ && \
+#     echo "c.ServerApp.terminado_settings = {'shell_command': ['/bin/bash']}" > ~/.jupyter/jupyter_server_config.py
 
 # Install Jupyter Lab using pip
 RUN pip3 install jupyterlab

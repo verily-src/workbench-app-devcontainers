@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "639879951631.dkr.ecr.us-east-1.amazonaws.com/jczerk/test-repo:app"
+    image: "639879951631.dkr.ecr.us-east-1.amazonaws.com/jczerk/demo-test-app:latest"
     restart: always
     volumes:
       - .:/workspace:cached

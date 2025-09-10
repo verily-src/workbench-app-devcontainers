@@ -54,6 +54,10 @@ jobs:
               - './**/nemo_jupyter/**'
               - 'startupscript/**'
               - 'test/**'
+            workbench-jupyter-parabricks:
+              - './**/workbench-jupyter-parabricks/**'
+              - 'startupscript/**'
+              - 'test/**'
 
   test:
     needs: [detect-changes]

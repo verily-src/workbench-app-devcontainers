@@ -3,7 +3,8 @@ services:
   app:
     container_name: "application-server"
     build:
-      context: .
+      context: ../workbench-jupyter-parabricks-aou
+      target: parabricks-aou
     user: jupyter
     restart: always
     volumes:

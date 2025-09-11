@@ -1,5 +1,5 @@
 # Use the official NVIDIA Clara Parabricks container as the base image
-FROM nvcr.io/nvidia/clara/clara-parabricks:4.5.1-1
+FROM nvcr.io/nvidia/clara/clara-parabricks:4.5.1-1 AS base
 
 #  Set the default shell for subsequent commands to bash.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -19,17 +19,12 @@ RUN \
     mkdir -p /etc/sudoers.d/ \
     # Create the user and set their shell directly in one step.
     # This avoids potential errors with 'groupadd' and makes 'chsh' redundant.
-    && groupadd --gid ${NB_GID} ${NB_USER} && useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER} \
-    # Grant password-less sudo access to the new user
-    && echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
-    && chmod 0440 /etc/sudoers.d/${NB_USER}
+    && groupadd --gid ${NB_GID} ${NB_USER} && useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER}
 
 # Fix ownership for common dirs
 RUN mkdir -p /workspace \
  && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
  && chown -R ${NB_UID}:${NB_GID} /opt/conda || true
-
-
 
 # Environment and working directory
 ENV HOME=${WORKDIR}
@@ -40,9 +35,16 @@ ENV PATH="${WORKDIR}/.local/bin:${PATH}"
 USER ${NB_USER}
 ENV SHELL=/bin/bash
 
-# Create a Jupyter config file to force the terminal to use bash
-# RUN mkdir -p ~/.jupyter/ && \
-#     echo "c.ServerApp.terminado_settings = {'shell_command': ['/bin/bash']}" > ~/.jupyter/jupyter_server_config.py
-
 # Install Jupyter Lab using pip
 RUN pip3 install jupyterlab
+
+# Capture the build before granting sudo and save as the aou target
+FROM base AS parabricks-aou
+
+FROM base as parabricks
+
+# Grant password-less sudo access to the user
+USER root
+RUN echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
+    && chmod 0440 /etc/sudoers.d/${NB_USER}
+USER ${NB_USER}

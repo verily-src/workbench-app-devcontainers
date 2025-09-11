@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/nemo:25.07.nemotron-nano-v2
+FROM nvcr.io/nvidia/nemo:25.07.nemotron-nano-v2 AS base
 
 ARG NB_USER=jupyter
 ARG NB_UID=1010
@@ -23,4 +23,15 @@ ENV HOME=${WORKDIR}
 WORKDIR ${WORKDIR}
 
 # Switch to non-root user
+USER ${NB_USER}
+
+# Capture the build before granting sudo and save as the aou target
+FROM base AS nemo-aou
+
+FROM base AS nemo
+
+# Grant password-less sudo access to the user
+USER root
+RUN echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
+    && chmod 0440 /etc/sudoers.d/${NB_USER}
 USER ${NB_USER}

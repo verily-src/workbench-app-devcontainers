@@ -3,7 +3,8 @@ services:
   app:
     container_name: "application-server"
     build:
-      context: .
+      context: ../nemo_jupyter
+      target: nemo-aou
     user: jupyter
     restart: always
     volumes:

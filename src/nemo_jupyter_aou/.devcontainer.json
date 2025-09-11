@@ -1,5 +1,5 @@
 {
-  "name": "Workbench NeMo devcontainer template",
+  "name": "Workbench NeMo for AoU",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

@@ -16,63 +16,80 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      templates: ${{ steps.filter.outputs.changes }}
+      apps: ${{ steps.output.outputs.apps }}
     steps:
       - uses: dorny/paths-filter@v2
         id: filter
         with:
+          list-files: json
         # BENCH-4080: Re-enable cirrocumulus test
           filters: |
+            common: &common
+              - '.github/workflows/test-pr.yaml'
+              - '.github/actions/smoke-test/**'
+              - 'startupscript/**'
+              - 'test/**'
+              - 'features/src/workbench-tools/**'
             jupyter-template:
-              - './**/jupyter-template/**'
-              - 'startupscript/**'
-              - 'test/**'
+              - *common
+              - './src/jupyter-template/**'
             jupyter:
-              - './**/jupyter/**'
-              - 'startupscript/**'
-              - 'test/**'
+              - *common
+              - './src/jupyter/**'
             shiny:
-              - './**/shiny/**'
-              - 'test/**'
-              - 'startupscript/**'
+              - *common
+              - './src/shiny/**'
             r-analysis:
-              - './**/r-analysis/**'
-              - 'startupscript/**'
-              - 'test/**'
-              - 'features/src/workbench-tools/**'
+              - *common
+              - './src/r-analysis/**'
             vscode:
-              - './**/vscode/**'
-              - 'startupscript/**'
-              - 'test/**'
-              - 'features/src/workbench-tools/**'
+              - *common
+              - './src/vscode/**'
             jupyter-aou:
-              - './**/jupyter-aou/**'
-              - 'startupscript/**'
-              - 'test/**'
-              - 'features/src/workbench-tools/**'
+              - *common
+              - './src/jupyter-aou/**'
             nemo_jupyter:
-              - './**/nemo_jupyter/**'
-              - 'startupscript/**'
-              - 'test/**'
+              - *common
+              - './src/nemo_jupyter/**'
+            nemo_jupyter_aou:
+              - *common
+              - './src/nemo_jupyter_aou/**'
             workbench-jupyter-parabricks:
-              - './**/workbench-jupyter-parabricks/**'
-              - 'startupscript/**'
-              - 'test/**'
+              - *common
+              - './src/workbench-jupyter-parabricks/**'
+            workbench-jupyter-parabricks-aou:
+              - *common
+              - './src/workbench-jupyter-parabricks-aou/**'
+      - name: Output changed templates as JSON object
+        id: output
+        run: |
+          MAXIMIZE_BUILD_SPACE='["jupyter-aou", "nemo_jupyter", "nemo_jupyter_aou"]'
+          CHANGED_TEMPLATES='${{ steps.filter.outputs.changes }}'
+
+          # output to github output
+          echo "apps<<EOF" >> $GITHUB_OUTPUT
+          jq -n \
+              --argjson changed "$CHANGED_TEMPLATES" \
+              --argjson maximize "$MAXIMIZE_BUILD_SPACE" \
+              '[$changed[] as $t | select($t != "common") | { template: $t, maximize_build_space: $maximize | (index($t) != null) }]' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
 
   test:
+    name: "Smoke test '${{ matrix.app.template }}'"
     needs: [detect-changes]
     runs-on: ubuntu-latest
     continue-on-error: true
     if : ${{ needs.detect-changes.outputs.templates != '[]' }}
     strategy:
       matrix:
-        templates: ${{ fromJSON(needs.detect-changes.outputs.templates) }}
+        app: ${{ fromJSON(needs.detect-changes.outputs.apps) }}
     steps:
       - uses: actions/checkout@v4
 
       # Free up disk space by removing unnecessary files, if needed
       - name: Maximize build disk space
-        if: ${{ matrix.templates == 'jupyter-aou' || matrix.templates == 'nemo_jupyter' }}
+        if: ${{ matrix.app.maximize_build_space }}
         uses: easimon/maximize-build-space@v10
         with:
           # This is the amount of space left over, not allocated to the LVM
@@ -86,11 +103,11 @@ jobs:
           remove-docker-images: true
 
       - name: Restart docker
-        if: ${{ matrix.templates == 'jupyter-aou' || matrix.templates == 'nemo_jupyter' }}
+        if: ${{ matrix.app.maximize_build_space }}
         run: sudo service docker restart
 
-      - name: Smoke test for '${{ matrix.templates }}'
+      - name: Smoke test for '${{ matrix.app.template }}'
         id: smoke_test
         uses: ./.github/actions/smoke-test
         with:
-          template: "${{ matrix.templates }}"
+          template: "${{ matrix.app.template }}"

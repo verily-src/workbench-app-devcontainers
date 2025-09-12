@@ -1,5 +1,5 @@
 {
-  "name": "Workbench JupyterLab with docker support devcontainer template plus NVIDIA Parabricks",
+  "name": "Workbench JupyterLab with on NVIDIA Parabricks for AoU",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

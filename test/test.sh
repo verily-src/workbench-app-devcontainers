@@ -25,7 +25,9 @@ readonly HAS_WORKBENCH_TOOLS
 check "gcsfuse" which gcsfuse
 check "wb cli" which wb
 check "fuse.conf user_allow_other" grep -qE "^[[:space:]]*[^#]*user_allow_other" "/etc/fuse.conf"
-check "cromwell" test -e "${CROMWELL_JAR}"
+if [[ "$TEMPLATE_ID" != "nemo_jupyter" ]] && [[ "$TEMPLATE_ID" != "nemo_jupyter_aou" ]]; then
+    check "cromwell" test -e "${CROMWELL_JAR}"
+fi
 check "nextflow" which nextflow
 check "dsub" which dsub
 

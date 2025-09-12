@@ -24,9 +24,7 @@ RUN groupadd --gid ${NB_GID} ${NB_USER} \
     # Fix ownership for common dirs
     && mkdir -p /workspace \
     && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
-    && chown -R ${NB_UID}:${NB_GID} /opt/conda || true \
-    # Add alias for weightsbiases
-    && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> ${WORKDIR}/.bashrc
+    && chown -R ${NB_UID}:${NB_GID} /opt/conda || true
 
 # Environment and working directory
 ENV HOME=${WORKDIR}

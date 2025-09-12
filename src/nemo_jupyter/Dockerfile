@@ -19,7 +19,7 @@ RUN useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} 
     && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
     && chown -R ${NB_UID}:${NB_GID} /opt/conda || true \
     # Add alias for weightsbiases
-    && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> ${WORKDIR}/.bashrc
+    && printf 'alias weightsbiases="/usr/local/bin/wb"\nalias wb="/usr/bin/wb"\n' >> ${WORKDIR}/.bashrc
 
 # Environment and working directory
 ENV HOME=${WORKDIR}

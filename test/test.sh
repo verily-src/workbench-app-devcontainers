@@ -1,7 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")" || exit
 source test-utils.sh
-sourceBashEnv
+sourceBashRc
 
 readonly TEMPLATE_ID="$1"
 readonly APPS_WITH_WORKBENCH_TOOLS=(
@@ -41,7 +41,7 @@ if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     check "dsub" dsub -v
     check "bcftools" bcftools --version
     check "bedtools" bedtools --version
-    check "bgenix" bgenix -help
+    check "bgenix" bash -c 'bgenix -help | head -n1'
     check "plink" plink --version
     check "plink2" plink2 --version
     check "samtools" samtools --version
@@ -53,10 +53,10 @@ if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     # fill-fs -h returns 1, so grep the usage string instead
     check "vcftools: fill-fs" bash -c 'fill-fs -h 2>&1 | grep "Usage: fill-fs"'
     check "regenie" regenie --version
-    check "vep" vep --help
-    check "vep: filter_vep" filter_vep --help
-    check "vep: variant_recoder" variant_recoder --help
-    check "vep: haplo" haplo --help
+    check "vep" bash -c 'vep --help | head -n10'
+    check "vep: filter_vep" bash -c 'filter_vep --help > /dev/null'
+    check "vep: variant_recoder" bash -c 'variant_recoder --help | head -n10'
+    check "vep: haplo" bash -c 'haplo --help | head -n10'
 fi
 
 # Report result

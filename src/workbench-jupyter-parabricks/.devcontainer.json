@@ -4,7 +4,13 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "apt update && apt install -y sudo && ./startupscript/post-startup.sh jupyter /home/jupyter ${templateOption:cloud} ${templateOption:login} && printf 'alias weightsbiases=\"/usr/local/bin/wb\"\\nalias wb=\"/usr/bin/wb\"\\n' >> /home/jupyter/.bashrc",
+  "postCreateCommand": [
+      "./startupscript/post-startup.sh",
+      "jupyter",
+      "/home/jupyter",
+      "${templateOption:cloud}",
+      "${templateOption:login}"
+  ],
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",

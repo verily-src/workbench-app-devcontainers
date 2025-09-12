@@ -7,16 +7,19 @@ ARG WORKDIR=/home/${NB_USER}
 
 USER root
 
+# Install sudo
+RUN apt-get update \
+    && apt-get install -yq sudo \
+    && rm -rf /var/lib/apt/lists/*
+
 # Only create the user, not the group—GID 1000 already exists as 'ubuntu'
-RUN useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER}
-
-# Fix ownership for common dirs
-RUN mkdir -p /workspace \
- && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
- && chown -R ${NB_UID}:${NB_GID} /opt/conda || true
-
-# This folder caused java installation issues, removing it resolves this
-RUN rm -rf /var/lib/apt/lists/*
+RUN useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER} \
+    # Fix ownership for common dirs
+    && mkdir -p /workspace \
+    && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
+    && chown -R ${NB_UID}:${NB_GID} /opt/conda || true \
+    # Add alias for weightsbiases
+    && echo -e \"alias weightsbiases='/usr/local/bin/wb'\\nalias wb='/usr/bin/wb'\" >> ${WORKDIR}/.bashrc
 
 # Environment and working directory
 ENV HOME=${WORKDIR}

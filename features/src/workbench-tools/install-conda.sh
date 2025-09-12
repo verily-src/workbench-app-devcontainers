@@ -3,6 +3,10 @@
 # install-conda.sh installs conda and mamba into the devcontainer.
 # Installation steps taken from https://github.com/rocker-org/devcontainer-features/blob/main/src/miniforge/install.sh
 
+set -o errexit
+
+readonly CONDA_DIR="/opt/conda"
+
 install_miniforge() {
     local conda_dir=$1
     local download_url

@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "us-central1-docker.pkg.dev/verily-workbench-public/apps/workbench-jupyter:latest"
+    image: "jupyter/scipy-notebook"
     user: "jupyter:${DOCKER_GID}"
     restart: always
     volumes:

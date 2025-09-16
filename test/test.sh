@@ -3,26 +3,12 @@ cd "$(dirname "$0")" || exit
 source test-utils.sh
 
 readonly TEMPLATE_ID="$1"
-readonly APPS_WITH_WORKBENCH_TOOLS=(
-    "custom-workbench-jupyter-template"
-    "jupyter-aou"
-    "nemo_jupyter"
-    "nemo_jupyter_aou"
-    "r-analysis"
-    "vscode"
-    "workbench-jupyter-parabricks"
-    "workbench-jupyter-parabricks-aou"
-)
+readonly TEST_USER="$2"
+readonly HAS_WORKBENCH_TOOLS="$3"
 
-HAS_WORKBENCH_TOOLS="false"
-for APP in "${APPS_WITH_WORKBENCH_TOOLS[@]}"; do
-    if [[ "$APP" == "$TEMPLATE_ID" ]]; then
-        HAS_WORKBENCH_TOOLS="true"
-        break
-    fi
-done
-readonly HAS_WORKBENCH_TOOLS
-
+function check() {
+    check_user "${TEST_USER}" "$@"
+}
 
 # Template specific tests
 check "gcsfuse" gcsfuse -v
@@ -32,15 +18,16 @@ check "fuse.conf user_allow_other" grep -qE "^[[:space:]]*[^#]*user_allow_other"
 # The workbench-tools feature should install these
 if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     check "python3" python3 --version
+    check "python3: venv" 'python3 -c "import venv"'
     check "pip3" pip3 --version
     if [[ "$TEMPLATE_ID" != "nemo_jupyter" ]] && [[ "$TEMPLATE_ID" != "nemo_jupyter_aou" ]]; then
         check "cromwell" cromwell --version
     fi
     check "nextflow" nextflow -v
-    check "dsub" dsub -v
+    check "dsub" "which dsub && dsub -v"
     check "bcftools" bcftools --version
     check "bedtools" bedtools --version
-    check "bgenix" 'bgenix -help | head -n1'
+    check "bgenix" "bgenix -help | head -n1"
     check "plink" plink --version
     check "plink2" plink2 --version
     check "samtools" samtools --version-only
@@ -52,10 +39,10 @@ if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     # fill-fs -h returns 1, so grep the usage string instead
     check "vcftools: fill-fs" 'set +o pipefail; fill-fs -h 2>&1 | grep "Usage: fill-fs"'
     check "regenie" regenie --version
-    check "vep" 'vep --help | head -n10'
-    check "vep: filter_vep" 'filter_vep --help > /dev/null'
-    check "vep: variant_recoder" 'variant_recoder --help | head -n10'
-    check "vep: haplo" 'haplo --help | head -n10'
+    check "vep" "vep --help | head -n10"
+    check "vep: filter_vep" "filter_vep --help > /dev/null"
+    check "vep: variant_recoder" "variant_recoder --help | head -n10"
+    check "vep: haplo" "haplo --help | head -n10"
 fi
 
 # Report result

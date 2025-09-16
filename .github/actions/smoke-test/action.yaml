@@ -3,6 +3,15 @@ inputs:
   template:
     description: 'Template to test'
     required: true
+  user:
+    description: 'Username of container user'
+    required: true
+  workbench_tools:
+    description: 'Whether to test workbench tools'
+    required: true
+  options:
+    description: 'JSON string of additional options for building the app'
+    required: true
 
 runs:
   using: composite
@@ -23,9 +32,11 @@ runs:
     - name: Build template
       id: build_template
       shell: bash
-      run: .github/actions/smoke-test/build.sh ${{ inputs.template }}
+      env:
+        OPTIONS: ${{ inputs.options }}
+      run: .github/actions/smoke-test/build.sh "${{ inputs.template }}" "$OPTIONS"
 
     - name: Test template
       id: test_template
       shell: bash
-      run: .github/actions/smoke-test/test.sh  ${{ inputs.template }}
+      run: .github/actions/smoke-test/test.sh "${{ inputs.template }}" "${{ inputs.user }}" "${{ inputs.workbench_tools }}"

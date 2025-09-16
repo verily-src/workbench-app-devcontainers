@@ -46,80 +46,6 @@ function check_packages() {
     fi
 }
 
-function retry() {
-  local -r max_attempts="$1"
-  shift
-  local -r command=("$@")
-
-  local attempt
-  for ((attempt = 1; attempt < max_attempts; attempt++)); do
-    # Run the command and return if success
-    if "${command[@]}"; then
-      return
-    fi
-
-    # Sleep a bit in case the problem is a transient network/server issue
-    if ((attempt < max_attempts)); then
-      echo "Retrying ${command[*]} in 5 seconds" # send to get_message
-      sleep 5
-    fi
-  done
-
-  # Execute without the if/then protection such that the exit code propagates
-  "${command[@]}"
-}
-readonly -f retry
-
-function install() {
-    local -r NAME="$1"
-    local -r INSTALL_FUNC="install_$NAME"
-
-    printf "\nStarting installation for %s\n\n" "$NAME"
-    if retry 5 "$INSTALL_FUNC"; then
-        printf "\nInstallation for %s completed successfully.\n\n" "$NAME"
-    else
-        retval=$?
-        printf "\nInstallation for %s failed.\n\n" "$NAME"
-        return $retval
-    fi
-}
-
-function install_bgen() {
-    local -r VERSION="v1.1.7"
-    local -r SHA256="f6c50a321ece9b92a7b8054bbbdbcfa4ddc159a98c3f4e81ec9f2852695d880b"
-    local -r URL="https://enkre.net/cgi-bin/code/bgen/tarball/$VERSION/bgen.tar.gz"
-
-    check_packages zlib1g-dev
-
-    rm -rf "${WORKDIR:?}/bgen"
-    mkdir -p "$WORKDIR/bgen"
-    pushd "$WORKDIR/bgen"
-
-    if ! curl -sSLf "$URL" -o "bgen.tar.gz"; then
-        echo "Error: failed to download bgen."
-        return 1
-    fi
-    if [ "$SHA256" != "$(sha256sum "bgen.tar.gz" | awk '{print $1}')" ]; then
-        echo "Error: SHA256 checksum mismatch for bgen."
-        return 1
-    fi
-
-    tar -xf "bgen.tar.gz"
-    pushd "bgen"
-
-    # Use python3 since python may not exist
-    sed -i 's|^#!/usr/bin/env python$|#!/usr/bin/env python3|' ./waf
-
-    # Build with C++11 standard
-    sed -i "/-std=c++11/! s/cfg.env.CXXFLAGS = \[ /\0'-std=c++11', /" ./wscript
-
-    ./waf configure
-    ./waf install
-    popd
-
-    popd
-}
-
 echo "Starting workbench tools installation..."
 
 if ! type apt-get &>/dev/null; then
@@ -134,6 +60,7 @@ check_packages \
     curl \
     git \
     sed \
+    sudo \
     tar
 
 if ! mamba --version &>/dev/null; then
@@ -150,11 +77,13 @@ CONDA_PACKAGES_1=(
 )
 
 CONDA_PACKAGES_2=(
-    "python"
+    "python=3.9"
     "pip"
+    "perl==5.32.1"
     "bedtools"
+    "conda-forge::bgenix"
     "conda-forge::cromwell"
-    "ensembl-vep"
+    "ensembl-vep>=115.1"
     "nextflow"
     "plink"
     "plink2"
@@ -170,9 +99,6 @@ mkdir -p "${WORKBENCH_TOOLS_DIR}"
 mamba create --prefix "${WORKBENCH_TOOLS_DIR}/1" -c bioconda -y "${CONDA_PACKAGES_1[@]}"
 mamba create --prefix "${WORKBENCH_TOOLS_DIR}/2" -c bioconda -y "${CONDA_PACKAGES_2[@]}"
 
-# Vcf perl modules are not installed by default
-cp -LR "${WORKBENCH_TOOLS_DIR}/2/anaconda/envs/_build/lib/perl5/site_perl/5.22.0/." "${WORKBENCH_TOOLS_DIR}/2/lib/perl5/site_perl/5.22.0/"
-
 # Force the perl and python scripts to use the correct perl/python
 find -L "${WORKBENCH_TOOLS_DIR}/2/bin" -type f -executable -exec \
     sed -i --follow-symlinks \
@@ -180,19 +106,27 @@ find -L "${WORKBENCH_TOOLS_DIR}/2/bin" -type f -executable -exec \
         -e "1s|^#\!/usr/bin/env python\\r\?$|#\!${WORKBENCH_TOOLS_DIR}/2/bin/python|" {} \;
 
 # Make the login user the owner of the conda environment
-chown -R "${USERNAME}:conda" "${WORKBENCH_TOOLS_DIR}"
+chown -R "${USERNAME}:" "${WORKBENCH_TOOLS_DIR}"
 
-# Set PATH to include workbench-tools binaries
-# shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
-printf 'export PATH="%s:$PATH"\n' "${WORKBENCH_TOOLS_DIR}/1/bin:${WORKBENCH_TOOLS_DIR}/2/bin" >> "${USER_HOME_DIR}/.bashrc"
+{
+    # Set PATH to include workbench-tools binaries
+    # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
+    printf 'export PATH="%s:$PATH"\n' "${WORKBENCH_TOOLS_DIR}/1/bin:${WORKBENCH_TOOLS_DIR}/2/bin"
 
-# Set CROMWELL_JAR environment variable
-printf 'export CROMWELL_JAR="%s"\n' "${WORKBENCH_TOOLS_DIR}/2/share/cromwell/cromwell.jar" >> "${USER_HOME_DIR}/.bashrc"
+    # Set CROMWELL_JAR environment variable
+    printf 'export CROMWELL_JAR="%s"\n' "${WORKBENCH_TOOLS_DIR}/2/share/cromwell/cromwell.jar"
+
+    # Make dsub a function that includes the correct PYTHONPATH. NeMo sets
+    # PYTHONPATH so we need to override it here. We use a function instead of an
+    # alias because aliases are not expanded in non-interactive shells.
+    # shellcheck disable=SC2016 # we want $PYTHONPATH to be evaluated at runtime
+    printf 'function dsub() (PYTHONPATH="%s/2/lib/python3.9/site-packages:${PYTHONPATH:-}" "%s/2/bin/dsub" "$@")\n' "${WORKBENCH_TOOLS_DIR}" "${WORKBENCH_TOOLS_DIR}" 
+} >> "${USER_HOME_DIR}/.bashrc"
+
+# Allow .bashrc to be sourced in non-interactive shells
+sed -i '/^# If not running interactively/,/esac/d' "${USER_HOME_DIR}/.bashrc" || true
 
 # Make sure the login user is the owner of their .bashrc
-chown -R "${USERNAME}:${USERNAME}" "${USER_HOME_DIR}/.bashrc"
-
-install bgen # depends on python
+chown -R "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"
 
 echo "Done!"
-

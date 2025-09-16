@@ -2,8 +2,15 @@
 
 # install-conda.sh installs conda and mamba into the devcontainer.
 # Installation steps taken from https://github.com/rocker-org/devcontainer-features/blob/main/src/miniforge/install.sh
+#
+# This script is expected to be sourced from install.sh, with USERNAME and
+# USER_HOME_DIR variables set. When it completes, conda will be installed for
+# the specified user and also added to the current shell.
 
 set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
 
 readonly CONDA_DIR="/opt/conda"
 
@@ -14,19 +21,15 @@ install_miniforge() {
 
     check_packages curl ca-certificates
     mkdir -p /tmp/miniforge
-    pushd /tmp/miniforge
-    curl -sLo miniforge.sh "${download_url}"
-    chmod +x miniforge.sh
-    /bin/bash miniforge.sh -b -p "${conda_dir}"
-    popd
+    (
+        cd /tmp/miniforge
+        curl -sLo miniforge.sh "${download_url}"
+        chmod +x miniforge.sh
+        /bin/bash miniforge.sh -b -p "${conda_dir}"
+    )
     rm -rf /tmp/miniforge
     "${conda_dir}/bin/conda" clean -yaf
 }
-
-if ! grep -e "^conda:" "/etc/group" >/dev/null 2>&1; then
-    groupadd -r conda
-fi
-usermod -a -G conda "${USERNAME}"
 
 check_packages curl ca-certificates
 
@@ -44,9 +47,9 @@ CONDA_SCRIPT="${CONDA_DIR}/etc/profile.d/conda.sh"
 source "${CONDA_SCRIPT}"
 conda config --set env_prompt '({name})'
 
-echo "source ${CONDA_SCRIPT}" >>"/${USER_HOME_DIR}/.bashrc"
-chown -R "${USERNAME}:${USERNAME}" "/${USER_HOME_DIR}/.bashrc"
+echo "source ${CONDA_SCRIPT}" >> "${USER_HOME_DIR}/.bashrc"
+chown -R "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"
 
-chown -R "${USERNAME}:conda" "${CONDA_DIR}"
+chown -R "${USERNAME}:" "${CONDA_DIR}"
 chmod -R g+r+w "${CONDA_DIR}"
 find "${CONDA_DIR}" -type d -print0 | xargs -n 1 -0 chmod g+s

@@ -11,7 +11,7 @@ function check() {
     LABEL=$1
     shift
     echo -e "\n🧪 Testing $LABEL"
-    if "$@"; then 
+    if bash -c "set -o pipefail; sourceBashRc; $*"; then 
         echo "✅  Passed!"
         return 0
     else
@@ -41,3 +41,5 @@ function sourceBashRc() {
     fi
   done
 }
+readonly -f sourceBashRc
+export -f sourceBashRc

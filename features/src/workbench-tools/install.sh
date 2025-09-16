@@ -183,7 +183,7 @@ find -L "${WORKBENCH_TOOLS_DIR}/2/bin" -type f -executable -exec \
 chown -R "${USERNAME}:conda" "${WORKBENCH_TOOLS_DIR}"
 
 # Set PATH to include workbench-tools binaries
-# shellcheck disable=SC2016 we want $PATH to be evaluated at runtime
+# shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
 printf 'export PATH="%s:$PATH"\n' "${WORKBENCH_TOOLS_DIR}/1/bin:${WORKBENCH_TOOLS_DIR}/2/bin" >> "${USER_HOME_DIR}/.bashrc"
 
 # Set CROMWELL_JAR environment variable

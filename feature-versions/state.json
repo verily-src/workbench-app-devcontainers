@@ -1,22 +1,42 @@
 {
   "ghcr.io/devcontainers/features/aws-cli": {
     "tag": "1",
-    "installed": "@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18"
+    "installed": "sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18",
+    "filter": ".*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/java": {
     "tag": "1",
-    "installed": "@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286"
+    "installed": "sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286",
+    "filter": ".*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/dhoeric/features/google-cloud-cli": {
     "tag": "1",
-    "installed": "@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f"
+    "installed": "sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f",
+    "filter": ".*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/rocker-org/devcontainer-features/r-packages": {
     "tag": "1",
-    "installed": "@sha256:1a4ec64c4d2060e78e9c812bd3b3622c7e008465d566a2781c0e2b17a82592e5"
+    "installed": "sha256:1a4ec64c4d2060e78e9c812bd3b3622c7e008465d566a2781c0e2b17a82592e5",
+    "filter": ".*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/common-utils": {
     "tag": "2",
-    "installed": "@sha256:00fd45550f578d9d515044d9e2226e908dbc3d7aa6fcb9dee4d8bdb60be114cf"
+    "installed": "sha256:00fd45550f578d9d515044d9e2226e908dbc3d7aa6fcb9dee4d8bdb60be114cf",
+    "filter": ".*\\/\\.devcontainer\\.json"
+  },
+  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
+    "tag": "ov-prod",
+    "installed": "sha256:534566080902a5b52d7c21d09cd3a487a160241f90f574a623a95a03b5e50386",
+    "filter": ".*\\/docker-compose.yaml"
+  },
+  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
+    "tag": "ov-prod",
+    "installed": "sha256:10896c245e1329f6fcbc37c7253d654d3b7dd65cf4c50975b27fe55e40dcc69f",
+    "filter": ".*\\/Dockerfile"
+  },
+  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
+    "tag": "ov-prod",
+    "installed": "sha256:c18c4f2069f123d2436f28e2e51363a69b109ae4151c6d53d0a7348b5e437263",
+    "filter": ".*\\/Dockerfile"
   }
 }

@@ -1,0 +1,28 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "lscr.io/linuxserver/code-server:4.100.3"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/vscode:cached
+    ports:
+      - "8443:8443"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

@@ -38,8 +38,7 @@ ENV SHELL=/bin/bash
 # Install Jupyter Lab using pip
 RUN pip3 install jupyterlab
 
-# Capture the build before granting sudo and save as the aou target
-FROM base AS parabricks-aou
+### BEGIN parabricks ###
 
 FROM base as parabricks
 
@@ -48,3 +47,23 @@ USER root
 RUN echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
     && chmod 0440 /etc/sudoers.d/${NB_USER}
 USER ${NB_USER}
+
+### END parabricks ###
+
+### BEGIN parabricks-aou ###
+
+FROM base AS parabricks-aou
+
+USER root
+
+COPY --from=extension-builder /dist/snippets $WORKDIR/.local/share/jupyter/snippets
+
+# Install all extensions we built
+RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \
+    /tmp/extensions/setup.sh
+
+# TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227
+
+USER ${NB_USER}
+
+### END parabricks-aou ###

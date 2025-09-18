@@ -7,20 +7,21 @@ function echoStderr() {
 }
 readonly -f echoStderr
 
-function check() {
-    LABEL=$1
-    shift
-    echo -e "\n🧪 Testing $LABEL"
-    if "$@"; then 
+function check_user() {
+    local test_user="$1"
+    local label="$2"
+    shift 2
+    echo -e "\n🧪 Testing $label"
+    if sudo -u "$test_user" bash -l -c "${SETUP_TEST}; $*"; then 
         echo "✅  Passed!"
         return 0
     else
-        echoStderr "❌ $LABEL check failed."
-        FAILED+=("$LABEL")
+        echoStderr "❌ $label check failed."
+        FAILED+=("$label")
         return 1
     fi
 }
-readonly -f check
+readonly -f check_user
 
 function reportResults() {
     if [[ ${#FAILED[@]} -ne 0 ]]; then
@@ -33,11 +34,8 @@ function reportResults() {
 }
 readonly -f reportResults
 
-function sourceBashEnv() {
-  for dir in /home/*; do
-    if [[ -f "${dir}/.bash_env" ]]; then
-      echo "Source ${dir}/.bash_env"
-      source "${dir}/.bash_env"
-    fi
-  done
-}
+readonly SETUP_TEST="\
+    set -o pipefail && \
+    set -o errexit && \
+    set -o nounset"
+readonly SETUP_TEST

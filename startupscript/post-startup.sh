@@ -209,11 +209,6 @@ if [[ "${LOG_IN}" == "true" ]]; then
     retry 5 "${SCRIPT_DIR}/git-setup.sh"
 fi
 
-###################################
-# Install Workflow tools
-###################################
-source "${SCRIPT_DIR}/install-workflow-tools.sh"
-
 #############################
 # Mount buckets
 #############################

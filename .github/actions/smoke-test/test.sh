@@ -9,6 +9,8 @@ set -o errexit
 set -o nounset 
 
 readonly TEMPLATE_ID="$1" 
+readonly TEST_USER="$2"
+readonly WORKBENCH_TOOLS="$3"
 readonly SRC_DIR="/tmp/${TEMPLATE_ID}"
 
 echo "Running Smoke Test"
@@ -27,10 +29,10 @@ SCRIPT="$(printf '\
       else \
         sudo chmod +x test.sh; \
       fi && \
-      ./test.sh %q; \
+      ./test.sh %q %q %q; \
     else \
       ls -a; \
-    fi' "${TEMPLATE_ID}")"
+    fi' "${TEMPLATE_ID}" "${TEST_USER}" "${WORKBENCH_TOOLS}")"
 readonly SCRIPT
 
 devcontainer exec \

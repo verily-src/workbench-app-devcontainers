@@ -9,15 +9,22 @@
           "default": "",
           "description": "Cloud provider to install CLI tools for. If set to \"gcp\", installFromSource will default to true."
       },
-      "installFromSource": {
-        "type": "boolean",
-        "default": false,
-        "description": "Install tools that require building from source. This may take a long time."
+      "username": {
+          "type": "string",
+          "default": "root",
+          "description": "Username of the container user."
+      },
+      "userHomeDir": {
+          "type": "string",
+          "default": "/root",
+          "description": "Home directory of the container user."
       }
   },
   "installsAfter": [
     "ghcr.io/devcontainers/features/common-utils",
     "ghcr.io/devcontainers/features/python",
-    "ghcr.io/devcontainers/features/conda"
+    "ghcr.io/devcontainers/features/anaconda",
+    "ghcr.io/devcontainers/features/conda",
+    "ghcr.io/rocker-org/devcontainer-features/miniforge"
   ]
 }

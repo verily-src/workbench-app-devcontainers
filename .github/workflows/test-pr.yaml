@@ -14,64 +14,109 @@ jobs:
           SHELLCHECK_OPTS: -e SC1090 -e SC1091
 
   detect-changes:
+    name: "Detect changes"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        common_filters:
+          - 
+            - '.github/workflows/test-pr.yaml'
+            - '.github/actions/smoke-test/**'
+            - 'startupscript/**'
+            - 'test/**'
+        config:
+          # BENCH-4080: Re-enable cirrocumulus test
+          - jupyter-template:
+              user: jupyter
+            jupyter:
+              user: jovyan
+            shiny:
+              user: shiny
+            r-analysis:
+              user: rstudio
+              workbench_tools: true
+            vscode:
+              user: abc
+              workbench_tools: true
+            workbench-jupyter:
+              template: custom-workbench-jupyter-template
+              user: jupyter
+              maximize_build_space: true
+              workbench_tools: true
+              options:
+                containerImage: 'us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter:ov-dev-stable'
+            jupyter-aou:
+              user: jupyter
+              maximize_build_space: true
+              workbench_tools: true
+            nemo_jupyter:
+              user: jupyter
+              maximize_build_space: true
+              workbench_tools: true
+            nemo_jupyter_aou:
+              user: jupyter
+              maximize_build_space: true
+              workbench_tools: true
+              filters:
+                - 'src/nemo_jupyter/**'
+            workbench-jupyter-parabricks:
+              user: jupyter
+              workbench_tools: true
+            workbench-jupyter-parabricks-aou:
+              user: jupyter
+              workbench_tools: true
+              filters:
+                - 'src/workbench-jupyter-parabricks/**'
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:
+      - name: Build filters
+        id: build-filters
+        run: |
+          CONFIG='${{ toJson(matrix.config) }}'
+          COMMON='${{ toJson(matrix.common_filters) }}'
+
+          echo "filters<<EOF" >> $GITHUB_OUTPUT
+          jq -n \
+            --argjson config "$CONFIG" \
+            --argjson common "$COMMON" \
+            '[$config
+              | to_entries
+              | .[]
+              | .value as $v
+              | .value = $common
+              | .value += ["src/" + ($v.template // .key) + "/**"]
+              | .value += if $v.workbench_tools then ["features/src/workbench-tools/**"] else [] end
+              | .value += ($v.filters // [])
+            ] | from_entries' | yq -P >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       - uses: dorny/paths-filter@v2
         id: filter
         with:
           list-files: json
-        # BENCH-4080: Re-enable cirrocumulus test
-          filters: |
-            common: &common
-              - '.github/workflows/test-pr.yaml'
-              - '.github/actions/smoke-test/**'
-              - 'startupscript/**'
-              - 'test/**'
-              - 'features/src/workbench-tools/**'
-            jupyter-template:
-              - *common
-              - './src/jupyter-template/**'
-            jupyter:
-              - *common
-              - './src/jupyter/**'
-            shiny:
-              - *common
-              - './src/shiny/**'
-            r-analysis:
-              - *common
-              - './src/r-analysis/**'
-            vscode:
-              - *common
-              - './src/vscode/**'
-            jupyter-aou:
-              - *common
-              - './src/jupyter-aou/**'
-            nemo_jupyter:
-              - *common
-              - './src/nemo_jupyter/**'
-            nemo_jupyter_aou:
-              - *common
-              - './src/nemo_jupyter_aou/**'
-            workbench-jupyter-parabricks:
-              - *common
-              - './src/workbench-jupyter-parabricks/**'
-            workbench-jupyter-parabricks-aou:
-              - *common
-              - './src/workbench-jupyter-parabricks-aou/**'
+          filters: ${{ steps.build-filters.outputs.filters }}
       - name: Output changed templates as JSON object
         id: output
         run: |
-          MAXIMIZE_BUILD_SPACE='["jupyter-aou", "nemo_jupyter", "nemo_jupyter_aou"]'
           CHANGED_TEMPLATES='${{ steps.filter.outputs.changes }}'
+          CONFIG='${{ toJson(matrix.config) }}'
 
           # output to github output
           echo "apps<<EOF" >> $GITHUB_OUTPUT
           jq -n \
               --argjson changed "$CHANGED_TEMPLATES" \
-              --argjson maximize "$MAXIMIZE_BUILD_SPACE" \
-              '[$changed[] as $t | select($t != "common") | { template: $t, maximize_build_space: $maximize | (index($t) != null) }]' >> $GITHUB_OUTPUT
+              --argjson config "$CONFIG" \
+              '[$changed[] as $t 
+                | $config[$t]
+                | select(. != null)
+                | {
+                    template: (.template // $t),
+                    user,
+                    maximize_build_space: (.maximize_build_space // false),
+                    workbench_tools: (.workbench_tools // false),
+                    options: (.options // {}),
+                  }
+              ]' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
 
@@ -111,3 +156,6 @@ jobs:
         uses: ./.github/actions/smoke-test
         with:
           template: "${{ matrix.app.template }}"
+          user: "${{ matrix.app.user }}"
+          workbench_tools: "${{ matrix.app.workbench_tools }}"
+          options: "${{ toJSON(matrix.app.options) }}"

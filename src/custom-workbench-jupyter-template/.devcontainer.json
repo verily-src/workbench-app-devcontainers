@@ -21,7 +21,9 @@
   ],
   "features": {
     "./.devcontainer/features/workbench-tools": {
-      "cloud": "${templateOption:cloud}"
+      "cloud": "${templateOption:cloud}",
+      "username": "jupyter",
+      "userHomeDir": "/home/jupyter"
     }
   },
   "remoteUser": "root",

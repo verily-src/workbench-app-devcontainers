@@ -11,6 +11,7 @@ set -o errexit
 set -o nounset
 
 readonly TEMPLATE_ID="$1"
+readonly INPUT_OPTIONS="$2"
 
 # include hidden files because devcontainer configs
 # are in .devcontainer/ or .devcontainer.json file.
@@ -36,11 +37,15 @@ if [[ "${OPTION_PROPERTY}" != "" ]] && [[ "${OPTION_PROPERTY}" != "null" ]]; the
         echo "(!) Configuring template options for '${TEMPLATE_ID}'"
         for OPTION in "${OPTIONS[@]}"; do
             OPTION_KEY="\${templateOption:$OPTION}"
-            OPTION_VALUE=$(jq -r ".options | .${OPTION} | .default" devcontainer-template.json)
+            OPTION_VALUE="$(jq -r ".${OPTION}" <<< "$INPUT_OPTIONS")"
 
             if [[ "${OPTION_VALUE}" == "" ]] || [[ "${OPTION_VALUE}" == "null" ]]; then
-                echo "Template '${TEMPLATE_ID}' is missing a default value for option '${OPTION}'"
-                exit 1
+                OPTION_VALUE=$(jq -r ".options | .${OPTION} | .default" devcontainer-template.json)
+
+                if [[ "${OPTION_VALUE}" == "" ]] || [[ "${OPTION_VALUE}" == "null" ]]; then
+                    echo "Template '${TEMPLATE_ID}' is missing a default value for option '${OPTION}'"
+                    exit 1
+                fi
             fi
 
             echo "(!) Replacing '${OPTION_KEY}' with '${OPTION_VALUE}'"

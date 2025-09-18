@@ -26,6 +26,7 @@ source '/home/core/wb/values.sh'
 # - Volume mount for persistence (-v)
 # - Pass all script arguments to container ("${@}")
 docker run \
+    --rm \
     --network host \
     -v "${WB_CONTEXT_DIR}:/workbench_context:rw" \
     "${WB_IMAGE_NAME}" "${@}"

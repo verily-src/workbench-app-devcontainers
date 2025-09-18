@@ -11,7 +11,9 @@
   "postStartCommand": "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\"",
   "features": {
     "./.devcontainer/features/workbench-tools": {
-      "cloud": "${templateOption:cloud}"
+      "cloud": "${templateOption:cloud}",
+      "username": "jupyter",
+      "userHomeDir": "/home/jupyter"
     }
   },
   "remoteUser": "root",

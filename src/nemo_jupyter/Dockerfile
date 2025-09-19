@@ -28,8 +28,7 @@ WORKDIR ${WORKDIR}
 # Switch to non-root user
 USER ${NB_USER}
 
-# Capture the build before granting sudo and save as the aou target
-FROM base AS nemo-aou
+### BEGIN nemo ###
 
 FROM base AS nemo
 
@@ -38,3 +37,24 @@ USER root
 RUN echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
     && chmod 0440 /etc/sudoers.d/${NB_USER}
 USER ${NB_USER}
+
+### END nemo ###
+
+### BEGIN nemo-aou ###
+
+FROM base AS nemo-aou
+
+COPY --from=extension-builder --chown=${NB_UID}:${NB_GID} \
+    /dist/snippets $WORKDIR/.local/share/jupyter/snippets
+
+USER root
+
+# Install all extensions we built
+RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \
+    /tmp/extensions/setup.sh
+
+# TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227
+
+USER ${NB_USER}
+
+### END nemo-aou ###

@@ -1,9 +1,12 @@
-version: "2.4"
+include:
+  - ../aou-common/aou-common-compose.yaml
 services:
   app:
     container_name: "application-server"
     build:
       context: ../workbench-jupyter-parabricks
+      additional_contexts:
+        extension-builder: service:aou-common-extension-builder
       target: parabricks-aou
     user: jupyter
     restart: always

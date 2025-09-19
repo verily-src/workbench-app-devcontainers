@@ -1,0 +1,10 @@
+# This docker-compose file is meant to be included to build common AoU image
+# dependencies. Use the .devcontainer.json "runServices" property to prevent it
+# from starting automatically.
+#
+# Paths are relative to the primary docker-compose.yaml file.
+
+services:
+  aou-common-extension-builder:
+    build:
+      context: ../aou-common/extension-builder

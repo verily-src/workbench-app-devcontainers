@@ -1,7 +1,8 @@
 {
   "name": "Jupyter App for AoU",
-  "dockerComposeFile": "docker-compose.yaml",
+  "dockerComposeFile": ["docker-compose.yaml", "../aou-common/aou-common-compose.yaml"],
   "service": "app",
+  "runServices": ["app", "wondershaper"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "initializeCommand": "umount -f /tmp/wb-mount/*; rm -rf /tmp/wb-mount/*",

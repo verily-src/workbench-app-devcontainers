@@ -54,9 +54,10 @@ USER ${NB_USER}
 
 FROM base AS parabricks-aou
 
-USER root
+COPY --from=extension-builder --chown=${NB_UID}:${NB_GID} \
+    /dist/snippets $WORKDIR/.local/share/jupyter/snippets
 
-COPY --from=extension-builder /dist/snippets $WORKDIR/.local/share/jupyter/snippets
+USER root
 
 # Install all extensions we built
 RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \

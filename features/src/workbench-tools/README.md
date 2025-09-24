@@ -15,7 +15,9 @@ Installs common tools for Workbench Apps. Currently it only supports Debian-base
 
 | Options Id | Description | Type | Default Value |
 |-----|-----|-----|-----|
-| installFromSource | Install tools that require building from source. This may take a long time. | boolean | false |
+| cloud | Cloud provider to install CLI tools for. If set to "gcp", installFromSource will default to true. | string | - |
+| username | Username of the container user. | string | root |
+| userHomeDir | Home directory of the container user. | string | /root |
 
 ## Versions
 
@@ -31,7 +33,7 @@ Installs common tools for Workbench Apps. Currently it only supports Debian-base
 - *VEP==114.2
 
 _*: These need to be built from source and will only be included if
-`installFromSource` is set to `true`._
+`installFromSource` is set to `true` or `cloud` is set to `gcp`._
 
 
 ---

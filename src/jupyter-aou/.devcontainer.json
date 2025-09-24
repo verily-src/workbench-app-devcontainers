@@ -1,7 +1,8 @@
 {
   "name": "Jupyter App for AoU",
-  "dockerComposeFile": "docker-compose.yaml",
+  "dockerComposeFile": ["docker-compose.yaml", "../aou-common/aou-common-compose.yaml"],
   "service": "app",
+  "runServices": ["app", "wondershaper"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "initializeCommand": "umount -f /tmp/wb-mount/*; rm -rf /tmp/wb-mount/*",
@@ -9,7 +10,11 @@
   // re-mount bucket files on container start up
   "postStartCommand": "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\"",
   "features": {
-    "./.devcontainer/features/workbench-tools": {}
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "jupyter",
+      "userHomeDir": "/home/jupyter"
+    }
   },
   "remoteUser": "root",
   "customizations": {

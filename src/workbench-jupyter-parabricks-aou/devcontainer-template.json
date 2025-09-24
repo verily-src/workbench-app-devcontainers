@@ -1,0 +1,23 @@
+{
+  "id": "Jupyterlab on Parabricks",
+  "description": "A template used to serve the Workbench JupyterLab container image plus NVIDIA Parabricks",
+  "version": "0.0.1",
+  "name": "NVIDIA Parabricks container with Jupyterlab installed",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/custom-workbench-jupyter-template",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

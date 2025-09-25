@@ -36,7 +36,21 @@ USER ${NB_USER}
 ENV SHELL=/bin/bash
 
 # Install Jupyter Lab using pip
-RUN pip3 install jupyterlab
+RUN pip3 install jupyterlab && \
+    # Install NVIDIA Rapids
+    pip3 install \
+        --extra-index-url=https://pypi.nvidia.com \
+        "cudf-cu12==25.8.*" \
+        "dask-cudf-cu12==25.8.*" \
+        "cuml-cu12==25.8.*" \
+        "cugraph-cu12==25.8.*" \
+        "nx-cugraph-cu12==25.8.*" \
+        "cuxfilter-cu12==25.8.*" \
+        "cucim-cu12==25.8.*" \
+        "pylibraft-cu12==25.8.*" \
+        "raft-dask-cu12==25.8.*" \
+        "cuvs-cu12==25.8.*" \
+        "nx-cugraph-cu12==25.8.*"
 
 ### BEGIN parabricks ###
 

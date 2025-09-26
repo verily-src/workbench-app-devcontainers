@@ -1,0 +1,25 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "rapidsai/rapids:23.12-cuda11.8-runtime-ubuntu22.04-py3.10"
+    user: root
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - "8888:8888"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --LabApp.token=''
+networks:
+  app-network:
+    external: true

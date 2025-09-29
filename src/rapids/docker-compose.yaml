@@ -1,8 +1,10 @@
 version: "2.4"
 services:
   app:
+    build:
+      context: ./
+    image: rapids_jupyter:latest
     container_name: "application-server"
-    image: "rapidsai/rapids:23.12-cuda11.8-runtime-ubuntu22.04-py3.10"
     user: root
     restart: always
     volumes:

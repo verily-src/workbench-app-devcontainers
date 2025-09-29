@@ -1,0 +1,23 @@
+{
+  "name": "RAPIDS Jupyter",
+  "dockerComposeFile": [
+    "docker-compose.yaml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-toolsai.jupyter",
+        "ms-python.python",
+        "ms-vscode.live-server"
+      ]
+    }
+  },
+  "portsAttributes": {
+    "8888": {
+      "label": "Jupyter Lab",
+      "onAutoForward": "notify"
+    }
+  }
+}

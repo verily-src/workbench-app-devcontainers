@@ -1,7 +1,54 @@
-FROM nvcr.io/nvidia/rapidsai/notebooks:25.08-cuda12.9-py3.13
-WORKDIR /workspace
+FROM nvcr.io/nvidia/rapidsai/notebooks:25.08-cuda12.9-py3.13 as base
 
-# Install additional Python packages
+#######################################################
+# Base container setup - user creation and permissions
+#######################################################
+
+ARG NB_USER=jupyter
+ARG NB_UID=1010
+ARG NB_GID=1000
+ARG WORKDIR=/home/${NB_USER}
+
+USER root
+
+# Install sudo
+RUN apt-get update \
+    && apt-get install -yq sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Only create the user, not the group—GID 1000 already exists as 'ubuntu'
+RUN useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER} \
+    # Fix ownership for common dirs
+    && mkdir -p /workspace \
+    && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
+    && chown -R ${NB_UID}:${NB_GID} /opt/conda || true \
+    # Add alias for weightsbiases
+    && printf 'alias weightsbiases="/usr/local/bin/wb"\nalias wb="/usr/bin/wb"\n' >> ${WORKDIR}/.bashrc
+
+# Environment and working directory
+ENV HOME=${WORKDIR}
+WORKDIR ${WORKDIR}
+
+# Switch to non-root user for base image completion
+USER ${NB_USER}
+
+##############################################
+# RAPIDS-specific customizations
+##############################################
+
+FROM base as rapids
+
+USER root
+
+# Grant password-less sudo access to the user
+RUN echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
+    && chmod 0440 /etc/sudoers.d/${NB_USER}
+
+##############################################
+# Python package installation for scRNA-seq
+##############################################
+
+# Install additional Python packages for single-cell RNA analysis
 RUN pip install --no-cache-dir \
     anndata==0.11.4 \
     array-api-compat==1.12.0 \
@@ -63,14 +110,13 @@ RUN pip install --no-cache-dir \
     torch==2.8.0 \
     triton==3.4.0
 
+# Switch back to non-root user for final configuration
+USER ${NB_USER}
+
 # (Optional) Install any additional dependencies here
 # RUN apt-get update && apt-get install -y <package-name>
 
 # (Optional) Copy local files into the container
 # COPY . /workspace
 
-# (Optional) Set environment variables
-# ENV VARIABLE_NAME=value
 
-# (Optional) Define the command to run when the container starts
-# CMD ["bash"]

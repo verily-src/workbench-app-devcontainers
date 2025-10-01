@@ -28,21 +28,50 @@ readonly LOCAL_REPO=/home/core/devcontainer
 # will fail.
 if [[ -d "${LOCAL_REPO}/.git" ]]; then
     echo "Git repo already exists, skip cloning..."
+    exit 0
+fi
+
+if ! git ls-remote ${REPO_SRC} &> /dev/null; then
+  set +o xtrace
+  # private repo or repo does not exist
+  response=$(curl https://workbench-dev.verily.com/api/ecm/api/oauth/v1/github/access-token \
+  -w "\n%{http_code}" \
+  -H "Authorization: Bearer $(/home/core/wb.sh auth print-access-token)")
+  http_code=$(echo "${response}" | tail -n1)
+  if [[ ${http_code} -eq 404 ]]; then
+    # github account not linked
+    exit 1
+  elif [[ ${http_code} -eq 401 ]]; then
+    # authorization issues
+    exit 2
+  elif [[ ${http_code} -ne 200 ]]; then
+    # Failed to clone Git repository with http status: $response
+    exit 3
+  fi
+
+  token=$(echo "${response}" | head -n1)
+  # Insert token into url
+  repo_auth_url=$(echo "${REPO_SRC}" | sed "s/:\/\//:\/\/${token}@/")
+
+  git clone "${repo_auth_url}" "${LOCAL_REPO}"
+
+  set -o xtrace
 else
-    git clone "${REPO_SRC}" "${LOCAL_REPO}"
-    if [[ $# -eq 2 ]]; then
-        readonly GIT_REF="$2"
-        pushd "${LOCAL_REPO}"
-        if git show-ref --verify --quiet "refs/heads/${GIT_REF}"; then
-          # this is a local branch
-          git switch --detach "${GIT_REF}"
-        elif git show-ref --verify --quiet "refs/remotes/origin/${GIT_REF}"; then
-          # this is a remote branch
-          git switch --detach "origin/${GIT_REF}"
-        else
-          # this is a commit hash
-          git switch --detach "${GIT_REF}"
-        fi
-        popd
+  git clone "${REPO_SRC}" "${LOCAL_REPO}"
+fi
+
+if [[ $# -eq 2 ]]; then
+    readonly GIT_REF="$2"
+    pushd "${LOCAL_REPO}"
+    if git show-ref --verify --quiet "refs/heads/${GIT_REF}"; then
+      # this is a local branch
+      git switch --detach "${GIT_REF}"
+    elif git show-ref --verify --quiet "refs/remotes/origin/${GIT_REF}"; then
+      # this is a remote branch
+      git switch --detach "origin/${GIT_REF}"
+    else
+      # this is a commit hash
+      git switch --detach "${GIT_REF}"
     fi
+    popd
 fi

@@ -1,12 +1,10 @@
 version: "2.4"
 services:
   app:
-    build:
-      context: ./
-    image: rapids_jupyter:latest
     container_name: "application-server"
-    user: root
+    image: nvcr.io/nvidia/rapidsai/notebooks:25.08-cuda12.9-py3.13
     restart: always
+    working_dir: /workspace
     volumes:
       - .:/workspace:cached
     ports:
@@ -21,7 +19,8 @@ services:
       - apparmor:unconfined
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
-    command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--LabApp.token=''"]
+    entrypoint: ["/home/rapids/entrypoint.sh"]
+    command: python -m jupyter lab --allow-root --ip=0.0.0.0 --port=8888 --no-browser --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/workspace
 networks:
   app-network:
     external: true

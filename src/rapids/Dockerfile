@@ -113,6 +113,9 @@ RUN pip install --no-cache-dir \
 # Switch back to non-root user for final configuration
 USER ${NB_USER}
 
+# Expose the Jupyter port
+EXPOSE 8888
+
 # (Optional) Install any additional dependencies here
 # RUN apt-get update && apt-get install -y <package-name>
 

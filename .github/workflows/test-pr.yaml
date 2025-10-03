@@ -64,9 +64,11 @@ jobs:
                 - 'src/nemo_jupyter/**'
             workbench-jupyter-parabricks:
               user: jupyter
+              maximize_build_space: true
               workbench_tools: true
             workbench-jupyter-parabricks-aou:
               user: jupyter
+              maximize_build_space: true
               workbench_tools: true
               filters:
                 - 'src/aou-common/**'

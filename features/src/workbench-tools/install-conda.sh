@@ -46,6 +46,8 @@ CONDA_SCRIPT="${CONDA_DIR}/etc/profile.d/conda.sh"
 # shellcheck source=/dev/null
 source "${CONDA_SCRIPT}"
 conda config --set env_prompt '({name})'
+chown -R "${USERNAME}:" "${USER_HOME_DIR}/.conda" || true
+chown "${USERNAME}:" "${USER_HOME_DIR}/.condarc" || true
 
 echo "source ${CONDA_SCRIPT}" >> "${USER_HOME_DIR}/.bashrc"
 chown -R "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"

@@ -28,12 +28,7 @@
       "installSystemRequirements": true
     },
     "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
-    "./.devcontainer/features/workbench-tools": {
-      "cloud": "${templateOption:cloud}",
-      "username": "rstudio",
-      "userHomeDir": "/home/rstudio"
-    }
+    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {}
   },
   "remoteUser": "root"
 }

@@ -5,34 +5,6 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-create_user() {
-  # if the user is not root, create a user with the same UID/GID
-  # as the user running the container
-  if [ "$(id -u)" != "0" ]; then
-    # create a user with the same UID/GID as the user running the container
-    # if the user already exists, do nothing
-    if ! id -u "${USER}" >/dev/null 2>&1; then
-      # use the USER environment variable if it is set
-      # otherwise, use the default user name "rstudio"
-      if [ -z "${USER}" ]; then
-        USER=rstudio
-      fi
-      # create the user
-      useradd -m -s /bin/bash -u "$(id -u)" -g "$(id -g)" "${USER}"
-      # give the user sudo privileges
-      echo "${USER} ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-      # set the user's password to the value of the PASSWORD environment
-      # variable, if it is set
-      if [ -n "${PASSWORD}" ]; then
-        echo "${USER}:${PASSWORD}" | chpasswd
-      fi
-    fi
-  fi
-}
-
-create_user
-
-
 if [[ $# -ne 4 ]]; then
   echo "Usage: $0 user workDirectory <gcp/aws> <true/false>"
   exit 1

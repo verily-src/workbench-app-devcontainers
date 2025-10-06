@@ -14,8 +14,8 @@
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
-    "rstudio",
-    "/home/rstudio",
+    "root",
+    "/root",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],

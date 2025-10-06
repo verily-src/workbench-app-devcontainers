@@ -6,8 +6,8 @@
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
     "./startupscript/post-startup.sh",
-    "rstudio",
-    "/home/rstudio",
+    "root",
+    "/root",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],

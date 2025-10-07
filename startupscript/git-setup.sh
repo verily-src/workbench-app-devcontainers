@@ -64,7 +64,7 @@ ${RUN_AS_LOGIN_USER} "mkdir -p '${WORKBENCH_GIT_REPOS_DIR}'"
 # shellcheck disable=SC2164
 pushd "${WORKBENCH_GIT_REPOS_DIR}"
 ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' resource list --type=GIT_REPO --format json" | \
-  jq -c .[] | \
+  sed -n '/{/,$p' | jq -c .[] | \
   while read -r ITEM; do
     GIT_REPO_NAME="$(echo "$ITEM" | jq -r .id)"
     GIT_REPO_URL="$(echo "$ITEM" | jq -r .gitRepoUrl)"

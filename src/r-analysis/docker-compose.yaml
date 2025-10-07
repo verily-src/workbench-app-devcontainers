@@ -2,7 +2,8 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "353631943781.dkr.ecr.us-west-2.amazonaws.com/verily-cedar-small:latest"
+    build:
+      context: .
     restart: always
     volumes:
       - .:/workspace:cached

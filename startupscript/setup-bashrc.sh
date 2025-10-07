@@ -28,14 +28,14 @@ if [[ "${LOG_IN}" == "true" ]]; then
   # OWNER_EMAIL is really the Workbench user account email address
   OWNER_EMAIL="$(
     ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' workspace describe --format=json" | \
-    jq --raw-output ".userEmail")"
+    sed -n '/{/,$p' | jq --raw-output ".userEmail")"
   readonly OWNER_EMAIL
 
   # PET_SA_EMAIL is the pet service account for the Workbench user and
   # is specific to the GCP project backing the workspace
   PET_SA_EMAIL="$(
     ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth status --format=json" | \
-    jq --raw-output ".serviceAccountEmail")"
+    sed -n '/{/,$p' | jq --raw-output ".serviceAccountEmail")"
   readonly PET_SA_EMAIL
 
   cat << EOF >> "${USER_BASHRC}"

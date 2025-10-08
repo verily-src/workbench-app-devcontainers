@@ -3,22 +3,6 @@
 useradd --create-home --shell /bin/bash rstudio
 chown -R rstudio:rstudio /home/rstudio
 
-S6_OVERLAY_VERSION=3.1.6.2
-wget -O /tmp/s6-overlay.tar.gz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.gz" \
-    && wget -O /tmp/s6-overlay-arch.tar.gz "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.gz" \
-    && tar -C / -xzf /tmp/s6-overlay.tar.gz \
-    && tar -C / -xzf /tmp/s6-overlay-arch.tar.gz
-
-
-mkdir -p /etc/s6-overlay/s6-rc.d/rstudio \
-    && echo '#!/usr/bin/with-contenv bash' > /etc/s6-overlay/s6-rc.d/rstudio/run \
-    && echo 'exec /usr/lib/rstudio-server/bin/rserver --server-daemonize=0' >> /etc/s6-overlay/s6-rc.d/rstudio/run \
-    && chmod +x /etc/s6-overlay/s6-rc.d/rstudio/run \
-    && echo "longrun" > /etc/s6-overlay/s6-rc.d/rstudio/type
-
-/init
-
-
 set -o errexit
 set -o nounset
 set -o pipefail

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+useradd --create-home --shell /bin/bash rstudio
+chown -R rstudio:rstudio /home/rstudio
+
 set -o errexit
 set -o nounset
 set -o pipefail

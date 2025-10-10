@@ -11,6 +11,7 @@ services:
       - "8787:8787"
     environment:
       "DISABLE_AUTH": "true"
+      USER: rstudio # Added this line here
     networks:
       - app-network
     cap_add:

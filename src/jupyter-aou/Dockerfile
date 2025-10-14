@@ -7,4 +7,7 @@ COPY --from=extension-builder --chown=$JUPYTER_USER \
 RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \
     /tmp/extensions/setup.sh
 
+COPY --from=load-envs --chown=$JUPYTER_USER \
+    /dist/load-env /dist/load-env.sh $JUPYTER_USER_HOME_DIR
+
 # TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227

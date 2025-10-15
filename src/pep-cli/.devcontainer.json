@@ -29,6 +29,11 @@
     },
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.12"
+    }, 
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "root",
+      "userHomeDir": "/config"
     }
   },
   "remoteUser": "root",

@@ -53,7 +53,7 @@ USER root
 RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \
     /tmp/extensions/setup.sh
 
-COPY --from=load-envs --chown=$JUPYTER_USER \
+COPY --from=load-envs --chown=$NB_USER \
     /dist/load-env /dist/load-env.sh $HOME
 
 RUN echo "source $HOME/load-env.sh" >> $HOME/.bashrc

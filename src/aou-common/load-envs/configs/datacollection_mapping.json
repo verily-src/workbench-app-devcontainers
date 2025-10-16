@@ -1,5 +1,6 @@
 [
   {
+    "TEST": true,
     "uuid": "7078aec8-8e43-441d-9c9a-e7c016a2fb6d",
     "env": "prod",
     "accessTier": "controlled"

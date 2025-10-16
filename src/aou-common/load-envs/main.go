@@ -63,7 +63,7 @@ func main() {
 		log.Fatalf("Failed to get CDR configuration: %v", err)
 	}
 
-	log.Printf("Using CDR version: %s (public release: %d, access tier: %s)", cdrVersion.Name, cdrVersion.PublicReleaseNumber, accessTier.ShortName)
+	log.Printf("Using CDR version: %s (env: %s, version: %s, access tier: %s)", cdrVersion.Name, mappings[aouVersion.DataCollectionId].CdrEnv, cdrVersion.DCVersionName, accessTier.ShortName)
 
 	// Build and print environment variables
 	PrintEnvironmentVariables(cdrVersion, accessTier)
@@ -123,29 +123,22 @@ func GetCdrConfiguration(mappings map[uuid.UUID]DataCollectionMapping, aouVersio
 		return nil, nil, fmt.Errorf("access tier not found: %s", mapping.AccessTier)
 	}
 
-	// Parse the public release number from the version string (e.g., "cdrv8" -> 8)
-	var publicReleaseNumber int
-	if _, err := fmt.Sscanf(aouVersion.Version, "cdrv%d", &publicReleaseNumber); err != nil {
-		return nil, nil, fmt.Errorf("invalid version string format: %s (expected format: cdrv{N})", aouVersion.Version)
-	}
-
 	// Find the CDR version by public release number and access tier
 	for _, v := range cdrConfig.CdrVersions {
-		if v.AccessTier == mapping.AccessTier && v.PublicReleaseNumber == publicReleaseNumber {
+		if v.AccessTier == mapping.AccessTier && v.DCVersionName == aouVersion.Version {
 			return accessTier, &v, nil
 		}
 	}
 
-	return nil, nil, fmt.Errorf("CDR version not found: %s (public release: %d, access tier: %s)", aouVersion.Version, publicReleaseNumber, mapping.AccessTier)
+	return nil, nil, fmt.Errorf("CDR version not found: %s (env: %s, access tier: %s)", aouVersion.Version, mapping.CdrEnv, mapping.AccessTier)
 }
 
 // PrintEnvironmentVariables builds and prints environment variables in .env format
 func PrintEnvironmentVariables(cdrVersion *envvars.CdrVersion, accessTier *envvars.AccessTier) {
 	envVars := envvars.GetBaseEnvironmentVariables(
 		*workspaceUfid,
-		fmt.Sprintf("cloned-%s-%s", *workspaceUfid, "mybucket"),
+		accessTier,
 		cdrVersion,
-		accessTier.DatasetsBucket,
 	)
 
 	for key, value := range envVars {

@@ -2,15 +2,9 @@ package envvars
 
 // AccessTier represents an access tier configuration
 type AccessTier struct {
-	AccessTierID         int    `json:"accessTierId"`
 	ShortName            string `json:"shortName"`
-	DisplayName          string `json:"displayName"`
-	ServicePerimeter     string `json:"servicePerimeter"`
-	AuthDomainName       string `json:"authDomainName"`
-	AuthDomainGroupEmail string `json:"authDomainGroupEmail"`
 	DatasetsBucket       string `json:"datasetsBucket"`
-	EnableUserWorkflows  bool   `json:"enableUserWorkflows"`
-	VwbTierGroupName     string `json:"vwbTierGroupName"`
+	ArtifactRegistryRepo string `json:"artifactRegistryRepo"`
 }
 
 // CdrConfig represents the configuration for CDR versions and access tiers
@@ -21,49 +15,33 @@ type CdrConfig struct {
 
 // CdrVersion represents a CDR (Curated Data Repository) version with all associated metadata
 type CdrVersion struct {
-	CdrVersionID                         int64  `json:"cdrVersionId"`
-	IsDefault                            *bool  `json:"isDefault"`
 	Name                                 string `json:"name"`
 	AccessTier                           string `json:"accessTier"`
-	ArchivalStatus                       int16  `json:"archivalStatus"`
 	BigqueryProject                      string `json:"bigqueryProject"`
 	BigqueryDataset                      string `json:"bigqueryDataset"`
-	CreationTime                         string `json:"creationTime"`
-	NumParticipants                      int    `json:"numParticipants"`
-	CdrDbName                            string `json:"cdrDbName"`
-	WgsBigqueryDataset                   string `json:"wgsBigqueryDataset"`
-	WgsFilterSetName                     string `json:"wgsFilterSetName"`
-	HasFitbitData                        *bool  `json:"hasFitbitData"`
-	HasCopeSurveyData                    *bool  `json:"hasCopeSurveyData"`
-	HasFitbitSleepData                   *bool  `json:"hasFitbitSleepData"`
-	HasFitbitDeviceData                  *bool  `json:"hasFitbitDeviceData"`
-	HasSurveyConductData                 *bool  `json:"hasSurveyConductData"`
-	HasMHWBAndETMData                    *bool  `json:"hasMHWBAndETMData"`
-	TanagraEnabled                       *bool  `json:"tanagraEnabled"`
-	StorageBasePath                      string `json:"storageBasePath"`
-	WgsVcfMergedStoragePath              string `json:"wgsVcfMergedStoragePath"`
-	WgsHailStoragePath                   string `json:"wgsHailStoragePath"`
-	WgsCramManifestPath                  string `json:"wgsCramManifestPath"`
-	MicroarrayHailStoragePath            string `json:"microarrayHailStoragePath"`
-	MicroarrayVcfSingleSampleStoragePath string `json:"microarrayVcfSingleSampleStoragePath"`
-	MicroarrayVcfManifestPath            string `json:"microarrayVcfManifestPath"`
-	MicroarrayIdatManifestPath           string `json:"microarrayIdatManifestPath"`
-	WgsVdsPath                           string `json:"wgsVdsPath"`
-	WgsExomeMultiHailPath                string `json:"wgsExomeMultiHailPath"`
-	WgsExomeSplitHailPath                string `json:"wgsExomeSplitHailPath"`
-	WgsExomeVcfPath                      string `json:"wgsExomeVcfPath"`
-	WgsAcafThresholdMultiHailPath        string `json:"wgsAcafThresholdMultiHailPath"`
-	WgsAcafThresholdSplitHailPath        string `json:"wgsAcafThresholdSplitHailPath"`
-	WgsAcafThresholdVcfPath              string `json:"wgsAcafThresholdVcfPath"`
-	WgsClinvarMultiHailPath              string `json:"wgsClinvarMultiHailPath"`
-	WgsClinvarSplitHailPath              string `json:"wgsClinvarSplitHailPath"`
-	WgsClinvarVcfPath                    string `json:"wgsClinvarVcfPath"`
-	WgsLongReadsManifestPath             string `json:"wgsLongReadsManifestPath"`
-	WgsLongReadsHailGRCh38               string `json:"wgsLongReadsHailGRCh38"`
-	WgsLongReadsHailT2T                  string `json:"wgsLongReadsHailT2T"`
-	WgsLongReadsJointVcfGRCh38           string `json:"wgsLongReadsJointVcfGRCh38"`
-	WgsLongReadsJointVcfT2T              string `json:"wgsLongReadsJointVcfT2T"`
-	WgsCMRGVcfPath                       string `json:"wgsCMRGVcfPath"`
-	VwbTemplateID                        string `json:"vwbTemplateId"`
-	PublicReleaseNumber                  int    `json:"publicReleaseNumber"`
+	DCVersionName                        string `json:"dcVersionName"`
+	StorageBasePath                      string `json:"storageBasePath" env:"CDR_STORAGE_PATH,basepath"`
+	WgsVcfMergedStoragePath              string `json:"wgsVcfMergedStoragePath" env:"WGS_VCF_MERGED_STORAGE_PATH"`
+	WgsHailStoragePath                   string `json:"wgsHailStoragePath" env:"WGS_HAIL_STORAGE_PATH"`
+	WgsCramManifestPath                  string `json:"wgsCramManifestPath" env:"WGS_CRAM_MANIFEST_PATH"`
+	MicroarrayHailStoragePath            string `json:"microarrayHailStoragePath" env:"MICROARRAY_HAIL_STORAGE_PATH"`
+	MicroarrayVcfSingleSampleStoragePath string `json:"microarrayVcfSingleSampleStoragePath" env:"MICROARRAY_VCF_SINGLE_SAMPLE_STORAGE_PATH"`
+	MicroarrayVcfManifestPath            string `json:"microarrayVcfManifestPath" env:"MICROARRAY_VCF_MANIFEST_PATH"`
+	MicroarrayIdatManifestPath           string `json:"microarrayIdatManifestPath" env:"MICROARRAY_IDAT_MANIFEST_PATH"`
+	WgsVdsPath                           string `json:"wgsVdsPath" env:"WGS_VDS_PATH"`
+	WgsExomeMultiHailPath                string `json:"wgsExomeMultiHailPath" env:"WGS_EXOME_MULTI_HAIL_PATH"`
+	WgsExomeSplitHailPath                string `json:"wgsExomeSplitHailPath" env:"WGS_EXOME_SPLIT_HAIL_PATH"`
+	WgsExomeVcfPath                      string `json:"wgsExomeVcfPath" env:"WGS_EXOME_VCF_PATH"`
+	WgsAcafThresholdMultiHailPath        string `json:"wgsAcafThresholdMultiHailPath" env:"WGS_ACAF_THRESHOLD_MULTI_HAIL_PATH"`
+	WgsAcafThresholdSplitHailPath        string `json:"wgsAcafThresholdSplitHailPath" env:"WGS_ACAF_THRESHOLD_SPLIT_HAIL_PATH"`
+	WgsAcafThresholdVcfPath              string `json:"wgsAcafThresholdVcfPath" env:"WGS_ACAF_THRESHOLD_VCF_PATH"`
+	WgsClinvarMultiHailPath              string `json:"wgsClinvarMultiHailPath" env:"WGS_CLINVAR_MULTI_HAIL_PATH"`
+	WgsClinvarSplitHailPath              string `json:"wgsClinvarSplitHailPath" env:"WGS_CLINVAR_SPLIT_HAIL_PATH"`
+	WgsClinvarVcfPath                    string `json:"wgsClinvarVcfPath" env:"WGS_CLINVAR_VCF_PATH"`
+	WgsLongReadsManifestPath             string `json:"wgsLongReadsManifestPath" env:"LONG_READS_MANIFEST_PATH"`
+	WgsLongReadsHailGRCh38               string `json:"wgsLongReadsHailGRCh38" env:"WGS_LONGREADS_HAIL_GRCH38_PATH"`
+	WgsLongReadsHailT2T                  string `json:"wgsLongReadsHailT2T" env:"WGS_LONGREADS_HAIL_T2T_PATH"`
+	WgsLongReadsJointVcfGRCh38           string `json:"wgsLongReadsJointVcfGRCh38" env:"WGS_LONGREADS_JOINT_SNP_INDEL_VCF_GRCH38_PATH"`
+	WgsLongReadsJointVcfT2T              string `json:"wgsLongReadsJointVcfT2T" env:"WGS_LONGREADS_JOINT_SNP_INDEL_VCF_T2T_PATH"`
+	WgsCMRGVcfPath                       string `json:"wgsCMRGVcfPath" env:"WGS_CMRG_VCF_PATH"`
 }

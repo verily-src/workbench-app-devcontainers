@@ -2,7 +2,7 @@
   "accessTiers": [
     {
       "shortName": "registered",
-      "datasetsBucket": ""
+      "datasetsBucket": "",
       "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-workbench-test/aou-rw-gar-remote-repo-docker-test"
     },
     {

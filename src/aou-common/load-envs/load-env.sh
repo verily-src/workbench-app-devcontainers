@@ -29,7 +29,7 @@ function get_env_vars() {
 
     export AUTH_TOKEN="$(wb auth print-access-token)"
 
-    ./load-env -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}")
+    ./load-env -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}"
 }
 
 ENV_VARS="$(get_env_file)"

@@ -1,11 +1,5 @@
 [
   {
-    "TEST": true,
-    "uuid": "7078aec8-8e43-441d-9c9a-e7c016a2fb6d",
-    "env": "prod",
-    "accessTier": "controlled"
-  },
-  {
     "uuid": "505eb5d3-5b17-42d2-82ed-d3c223ed9e02",
     "env": "test",
     "accessTier": "registered"

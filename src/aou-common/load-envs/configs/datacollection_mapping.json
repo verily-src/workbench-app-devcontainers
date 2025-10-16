@@ -1,0 +1,37 @@
+[
+  {
+    "uuid": "7078aec8-8e43-441d-9c9a-e7c016a2fb6d",
+    "env": "prod",
+    "accessTier": "controlled"
+  },
+  {
+    "uuid": "505eb5d3-5b17-42d2-82ed-d3c223ed9e02",
+    "env": "test",
+    "accessTier": "registered"
+  },
+  {
+    "uuid": "7d7b32f1-3481-4e60-b496-4b6175833f3f",
+    "env": "test",
+    "accessTier": "controlled"
+  },
+  {
+    "uuid": "7bb6ae49-0891-4ae8-8f39-3fdacc45f2e8",
+    "env": "stable",
+    "accessTier": "registered"
+  },
+  {
+    "uuid": "91613bc6-3e48-4f22-a6d1-4a80338e1fb5",
+    "env": "stable",
+    "accessTier": "controlled"
+  },
+  {
+    "uuid": "698c6700-afbe-454a-b73a-c675e629336c",
+    "env": "prod",
+    "accessTier": "registered"
+  },
+  {
+    "uuid": "3d83ef80-77d7-43e8-a479-52946619b769",
+    "env": "prod",
+    "accessTier": "controlled"
+  }
+]

@@ -1,11 +1,9 @@
 FROM golang:1.23-bookworm
 WORKDIR /source
-RUN --mount=type=bind,source=./load-env,target=/source/load-env,rw \
+RUN --mount=type=bind,source=.,target=/source,rw \
     mkdir -p /dist && \
-    cd /source/load-env && \
     go build -v -o /dist/load-env .
 
-COPY envs /dist/.envs
 COPY load-env.sh /dist/load-env.sh
 RUN chmod +x /dist/load-env.sh
 

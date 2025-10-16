@@ -29,7 +29,7 @@ function get_env_file() {
 
     export AUTH_TOKEN="$(wb auth print-access-token)"
 
-    ENV_FILE="$(go run ./load-env -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}" -envs ./envs)"
+    ENV_FILE="$(./load-env -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}" -envs ./.envs)"
     readonly ENV_FILE
 
     if [ ! -e "${ENV_FILE}" ]; then

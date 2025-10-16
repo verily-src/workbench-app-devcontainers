@@ -27,9 +27,10 @@ function get_env_vars() {
     WSM_API_URL="$(jq -r '.server.workspaceManagerUri' "${CONTEXT_PATH}")"
     readonly WSM_API_URL
 
-    export AUTH_TOKEN="$(wb auth print-access-token)"
+    local auth_token
+    auth_token="$(wb auth print-access-token)"
 
-    ./load-env -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}"
+    AUTH_TOKEN="$auth_token" ./load-env -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}"
 }
 
 ENV_VARS="$(get_env_file)"

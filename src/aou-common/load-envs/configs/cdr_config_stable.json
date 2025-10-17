@@ -1,0 +1,30 @@
+{
+  "accessTiers": [
+    {
+      "shortName": "registered",
+      "datasetsBucket": "",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-rw-stable/aou-rw-gar-remote-repo-docker-stable"
+    },
+    {
+      "shortName": "controlled",
+      "datasetsBucket": "",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-rw-stable/aou-rw-gar-remote-repo-docker-stable"
+    }
+  ],
+  "cdrVersions": [
+    {
+      "name": "Synthetic Dataset v8",
+      "bigqueryProject": "wb-ardent-leek-9025",
+      "bigqueryDataset": "SR2023Q3R2",
+      "accessTier": "registered",
+      "dcVersionName": "cdrv8"
+    },
+    {
+      "name": "Synthetic Dataset in the Controlled Tier v8",
+      "bigqueryProject": "wb-agile-corn-797",
+      "bigqueryDataset": "aou_test_data_SC2023Q3R2",
+      "accessTier": "controlled",
+      "dcVersionName": "cdrv8"
+    }
+  ]
+}

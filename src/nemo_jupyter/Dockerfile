@@ -53,6 +53,11 @@ USER root
 RUN --mount=type=bind,from=extension-builder,source=/dist,target=/tmp/extensions \
     /tmp/extensions/setup.sh
 
+COPY --from=load-envs --chown=$NB_USER \
+    /dist/load-env /dist/load-env.sh $HOME
+
+RUN echo "source $HOME/load-env.sh" >> $HOME/.bashrc
+
 # TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227
 
 USER ${NB_USER}

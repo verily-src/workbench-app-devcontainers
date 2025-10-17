@@ -20,7 +20,7 @@ type CdrVersion struct {
 	BigqueryProject                      string `json:"bigqueryProject"`
 	BigqueryDataset                      string `json:"bigqueryDataset"`
 	DCVersionName                        string `json:"dcVersionName"`
-	StorageBasePath                      string `json:"storageBasePath" env:"CDR_STORAGE_PATH,basepath"`
+	StorageBasePath                      string `json:"storageBasePath"`
 	WgsVcfMergedStoragePath              string `json:"wgsVcfMergedStoragePath" env:"WGS_VCF_MERGED_STORAGE_PATH"`
 	WgsHailStoragePath                   string `json:"wgsHailStoragePath" env:"WGS_HAIL_STORAGE_PATH"`
 	WgsCramManifestPath                  string `json:"wgsCramManifestPath" env:"WGS_CRAM_MANIFEST_PATH"`

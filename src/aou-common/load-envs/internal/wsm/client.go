@@ -79,11 +79,26 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// DescribeWorkspace request
+	DescribeWorkspace(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListFolders request
 	ListFolders(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// EnumerateResources request
 	EnumerateResources(ctx context.Context, workspaceIdParam WorkspaceIdParam, params *EnumerateResourcesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) DescribeWorkspace(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDescribeWorkspaceRequest(c.Server, workspaceIdParam)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) ListFolders(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -108,6 +123,40 @@ func (c *Client) EnumerateResources(ctx context.Context, workspaceIdParam Worksp
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewDescribeWorkspaceRequest generates requests for DescribeWorkspace
+func NewDescribeWorkspaceRequest(server string, workspaceIdParam WorkspaceIdParam) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "workspaceId", runtime.ParamLocationPath, workspaceIdParam)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/workspaces/v1/%s/describe", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewListFoldersRequest generates requests for ListFolders
@@ -295,11 +344,39 @@ func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithRes
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// DescribeWorkspaceWithResponse request
+	DescribeWorkspaceWithResponse(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*DescribeWorkspaceResp, error)
+
 	// ListFoldersWithResponse request
 	ListFoldersWithResponse(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*ListFoldersResp, error)
 
 	// EnumerateResourcesWithResponse request
 	EnumerateResourcesWithResponse(ctx context.Context, workspaceIdParam WorkspaceIdParam, params *EnumerateResourcesParams, reqEditors ...RequestEditorFn) (*EnumerateResourcesResp, error)
+}
+
+type DescribeWorkspaceResp struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *WorkspaceDescription
+	JSON403      *PermissionDenied
+	JSON404      *NotFound
+	JSON500      *ServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r DescribeWorkspaceResp) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DescribeWorkspaceResp) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
 }
 
 type ListFoldersResp struct {
@@ -351,6 +428,15 @@ func (r EnumerateResourcesResp) StatusCode() int {
 	return 0
 }
 
+// DescribeWorkspaceWithResponse request returning *DescribeWorkspaceResp
+func (c *ClientWithResponses) DescribeWorkspaceWithResponse(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*DescribeWorkspaceResp, error) {
+	rsp, err := c.DescribeWorkspace(ctx, workspaceIdParam, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDescribeWorkspaceResp(rsp)
+}
+
 // ListFoldersWithResponse request returning *ListFoldersResp
 func (c *ClientWithResponses) ListFoldersWithResponse(ctx context.Context, workspaceIdParam WorkspaceIdParam, reqEditors ...RequestEditorFn) (*ListFoldersResp, error) {
 	rsp, err := c.ListFolders(ctx, workspaceIdParam, reqEditors...)
@@ -367,6 +453,53 @@ func (c *ClientWithResponses) EnumerateResourcesWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseEnumerateResourcesResp(rsp)
+}
+
+// ParseDescribeWorkspaceResp parses an HTTP response from a DescribeWorkspaceWithResponse call
+func ParseDescribeWorkspaceResp(rsp *http.Response) (*DescribeWorkspaceResp, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DescribeWorkspaceResp{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WorkspaceDescription
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest PermissionDenied
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest ServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseListFoldersResp parses an HTTP response from a ListFoldersWithResponse call

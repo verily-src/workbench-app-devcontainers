@@ -60,18 +60,14 @@ func buildCdrEnvVars(cdrVersion *CdrVersion, basePath string) map[string]string 
 
 // GetBaseEnvironmentVariables returns the base environment variables for a workspace
 func GetBaseEnvironmentVariables(
-	workspaceUfid string,
+	workspaceUfid, gcpProject string,
 	accessTier *AccessTier,
 	cdrVersion *CdrVersion,
 ) map[string]string {
 	customEnvironmentVariables := make(map[string]string)
 
 	customEnvironmentVariables[workspaceUfidKey] = workspaceUfid
-
-	// This variable is already made available by Leonardo, but it's only exported in certain
-	// notebooks contexts; this ensures it is always exported. See RW-7096.
-	customEnvironmentVariables[workspaceBucketKey] = fmt.Sprintf("gs://cloned-%s-%s", workspaceUfid, "mybucket")
-
+	customEnvironmentVariables[workspaceBucketKey] = fmt.Sprintf("gs://cloned-%s-%s", "mybucket", gcpProject)
 	customEnvironmentVariables[artifactRegistryRepoKey] = accessTier.ArtifactRegistryRepo
 
 	// Add CDR environment variables

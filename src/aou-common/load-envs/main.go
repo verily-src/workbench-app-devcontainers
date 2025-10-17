@@ -21,9 +21,14 @@ var (
 	workspaceManagerURL = flag.String("wsm-url", "", "Base Workspace Manager URL")
 )
 
+// DataCollectionMapping defines the mapping from AoU data collection UUIDs to
+// CDR environments and access tiers
 type DataCollectionMapping struct {
-	UUID       string `json:"uuid"`
-	CdrEnv     string `json:"env"`
+	// The UUID of the AoU data collection
+	DataCollectionUUID string `json:"dataCollectionUuid"`
+	// The CDR environment (test, stable, prod) for this data collection
+	CdrEnv string `json:"cdrEnv"`
+	// The access tier short name (registered, controlled) for this data collection
 	AccessTier string `json:"accessTier"`
 }
 
@@ -52,7 +57,17 @@ func main() {
 		log.Fatalf("Failed to load data collection mappings: %v", err)
 	}
 
-	aouVersion, err := GetAoUVersion(ctx, authToken, mappings)
+	client, err := GetWsmClient(authToken)
+	if err != nil {
+		log.Fatalf("Failed to create WSM client: %v", err)
+	}
+
+	gcpProject, err := GetGcpProject(ctx, client)
+	if err != nil {
+		log.Fatalf("Failed to get GCP project: %v", err)
+	}
+
+	aouVersion, err := GetAoUVersion(ctx, client, mappings)
 	if err != nil {
 		log.Fatalf("Failed to get AoU version: %v", err)
 	}
@@ -66,7 +81,7 @@ func main() {
 	log.Printf("Using CDR version: %s (env: %s, version: %s, access tier: %s)", cdrVersion.Name, mappings[aouVersion.DataCollectionId].CdrEnv, cdrVersion.DCVersionName, accessTier.ShortName)
 
 	// Build and print environment variables
-	PrintEnvironmentVariables(cdrVersion, accessTier)
+	PrintEnvironmentVariables(gcpProject, cdrVersion, accessTier)
 }
 
 // LoadDataCollectionMappings loads and parses the data collection mappings into a map
@@ -78,9 +93,9 @@ func LoadDataCollectionMappings() (map[uuid.UUID]DataCollectionMapping, error) {
 
 	mappings := make(map[uuid.UUID]DataCollectionMapping, len(mappingsList))
 	for _, mapping := range mappingsList {
-		id, err := uuid.Parse(mapping.UUID)
+		id, err := uuid.Parse(mapping.DataCollectionUUID)
 		if err != nil {
-			return nil, fmt.Errorf("invalid UUID in data collection mapping: %s", mapping.UUID)
+			return nil, fmt.Errorf("invalid UUID in data collection mapping: %s", mapping.DataCollectionUUID)
 		}
 		mappings[id] = mapping
 	}
@@ -134,9 +149,10 @@ func GetCdrConfiguration(mappings map[uuid.UUID]DataCollectionMapping, aouVersio
 }
 
 // PrintEnvironmentVariables builds and prints environment variables in .env format
-func PrintEnvironmentVariables(cdrVersion *envvars.CdrVersion, accessTier *envvars.AccessTier) {
+func PrintEnvironmentVariables(gcpProject string, cdrVersion *envvars.CdrVersion, accessTier *envvars.AccessTier) {
 	envVars := envvars.GetBaseEnvironmentVariables(
 		*workspaceUfid,
+		gcpProject,
 		accessTier,
 		cdrVersion,
 	)
@@ -151,12 +167,21 @@ type AoUVersion struct {
 	Version          string
 }
 
-func GetAoUVersion(ctx context.Context, authToken string, mappings map[uuid.UUID]DataCollectionMapping) (AoUVersion, error) {
-	client, err := GetWsmClient(authToken)
+// GetGcpProject retrieves the GCP project associated with the specified
+// workspace
+func GetGcpProject(ctx context.Context, client *wsm.ClientWithResponses) (string, error) {
+	workspace, err := DescribeWsmWorkspace(ctx, client, "~"+*workspaceUfid)
 	if err != nil {
-		return AoUVersion{}, err
+		return "", err
 	}
 
+	return workspace.GcpContext.ProjectId, nil
+}
+
+// GetAoUVersion retrieves the AoU data collection version by inspecting the
+// lineage of resources in the specified workspace and comparing them to the
+// known AoU data collection UUIDs.
+func GetAoUVersion(ctx context.Context, client *wsm.ClientWithResponses, mappings map[uuid.UUID]DataCollectionMapping) (AoUVersion, error) {
 	resources, err := ListWsmResources(ctx, client, "~"+*workspaceUfid)
 	if err != nil {
 		return AoUVersion{}, err
@@ -183,6 +208,9 @@ func GetAoUVersion(ctx context.Context, authToken string, mappings map[uuid.UUID
 	return aouVersion, nil
 }
 
+// GetVersionForResource retrieves the version string for a given resource by
+// traversing its folder hierarchy to find the root folder, whose name is used
+// as the version string.
 func GetVersionForResource(
 	ctx context.Context,
 	client *wsm.ClientWithResponses,
@@ -224,6 +252,7 @@ func GetVersionForResource(
 	return folder.DisplayName, nil
 }
 
+// GetRootFolder recursively walks up the parent folders given a leaf folder ID
 func GetRootFolder(leafFolderId uuid.UUID, folders map[uuid.UUID]*wsm.Folder) (*wsm.Folder, error) {
 	folder, ok := folders[leafFolderId]
 	if !ok {
@@ -268,6 +297,24 @@ func GetWsmClient(authToken string) (*wsm.ClientWithResponses, error) {
 	return client, nil
 }
 
+func DescribeWsmWorkspace(
+	ctx context.Context,
+	client *wsm.ClientWithResponses,
+	workspaceId string,
+) (*wsm.WorkspaceDescription, error) {
+	wsmRsp, err := client.DescribeWorkspaceWithResponse(ctx, workspaceId)
+	if err != nil {
+		return nil, fmt.Errorf("describing workspace from WSM: %v", err)
+	}
+
+	if statusCode := wsmRsp.StatusCode(); statusCode != http.StatusOK {
+		log.Printf("call to GET workspace %v from WSM returned: %v", workspaceId, statusCode)
+		return nil, fmt.Errorf("request to WSM failed with status: %v", statusCode)
+	}
+
+	return wsmRsp.JSON200, nil
+}
+
 func ListWsmFolders(
 	ctx context.Context,
 	client *wsm.ClientWithResponses,
@@ -277,7 +324,6 @@ func ListWsmFolders(
 	if err != nil {
 		return nil, fmt.Errorf("getting folders from WSM: %v", err)
 	}
-	log.Printf("query to WSM service returned %v for workspace ID %v", wsmRsp.Status(), workspaceId)
 
 	if statusCode := wsmRsp.StatusCode(); statusCode != http.StatusOK {
 		log.Printf("call to GET folder list for %v from WSM returned: %v", workspaceId, statusCode)
@@ -298,7 +344,6 @@ func ListWsmResources(
 	if err != nil {
 		return nil, fmt.Errorf("getting resources from WSM: %v", err)
 	}
-	log.Printf("query to WSM service returned %v for workspace ID %v", wsmRsp.Status(), workspaceId)
 
 	if statusCode := wsmRsp.StatusCode(); statusCode != http.StatusOK {
 		log.Printf("call to GET resource list for %v from WSM returned: %v", workspaceId, statusCode)

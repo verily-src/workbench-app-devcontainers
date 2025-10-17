@@ -34,6 +34,12 @@ type FolderList struct {
 	Folders []Folder `json:"folders"`
 }
 
+// GcpContext The GCP cloud context associated with a workspace.
+type GcpContext struct {
+	// ProjectId The ID of the GCP project associated with the workspace.
+	ProjectId string `json:"projectId"`
+}
+
 // ResourceDescription defines model for ResourceDescription.
 type ResourceDescription struct {
 	Metadata ResourceMetadata `json:"metadata"`
@@ -75,6 +81,12 @@ type ResourceType string
 
 // StewardshipType Enum containing valid stewardship types. Used for enumeration
 type StewardshipType string
+
+// WorkspaceDescription defines model for WorkspaceDescription.
+type WorkspaceDescription struct {
+	// GcpContext The GCP cloud context associated with a workspace.
+	GcpContext *GcpContext `json:"gcpContext,omitempty"`
+}
 
 // WorkspaceId The UUID of the workspace
 type WorkspaceId = openapi_types.UUID

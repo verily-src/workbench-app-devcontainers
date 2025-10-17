@@ -1,0 +1,32 @@
+[
+  {
+    "dataCollectionUuid": "505eb5d3-5b17-42d2-82ed-d3c223ed9e02",
+    "cdrEnv": "test",
+    "accessTier": "registered"
+  },
+  {
+    "dataCollectionUuid": "7d7b32f1-3481-4e60-b496-4b6175833f3f",
+    "cdrEnv": "test",
+    "accessTier": "controlled"
+  },
+  {
+    "dataCollectionUuid": "7bb6ae49-0891-4ae8-8f39-3fdacc45f2e8",
+    "cdrEnv": "stable",
+    "accessTier": "registered"
+  },
+  {
+    "dataCollectionUuid": "91613bc6-3e48-4f22-a6d1-4a80338e1fb5",
+    "cdrEnv": "stable",
+    "accessTier": "controlled"
+  },
+  {
+    "dataCollectionUuid": "698c6700-afbe-454a-b73a-c675e629336c",
+    "cdrEnv": "prod",
+    "accessTier": "registered"
+  },
+  {
+    "dataCollectionUuid": "3d83ef80-77d7-43e8-a479-52946619b769",
+    "cdrEnv": "prod",
+    "accessTier": "controlled"
+  }
+]

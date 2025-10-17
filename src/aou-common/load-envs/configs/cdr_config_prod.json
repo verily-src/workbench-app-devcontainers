@@ -1,0 +1,46 @@
+{
+  "accessTiers": [
+    {
+      "shortName": "registered",
+      "datasetsBucket": "",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-rw-prod/aou-rw-gar-remote-repo-docker-prod"
+    },
+    {
+      "shortName": "controlled",
+      "datasetsBucket": "gs://vwb-aou-datasets-controlled/",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-rw-prod/aou-rw-gar-remote-repo-docker-prod"
+    }
+  ],
+  "cdrVersions": [
+    {
+      "name": "All of Us Registered Tier Dataset v8",
+      "bigqueryProject": "wb-affable-acorn-7941",
+      "bigqueryDataset": "R2024Q3R5",
+      "accessTier": "registered",
+      "dcVersionName": "cdrv8"
+    },
+    {
+      "name": "All of Us Controlled Tier Dataset v8",
+      "bigqueryProject": "wb-silky-artichoke-2408",
+      "bigqueryDataset": "C2024Q3R5",
+      "accessTier": "controlled",
+      "storageBasePath": "v8",
+      "wgsCramManifestPath": "wgs/cram/manifest.csv",
+      "microarrayHailStoragePath": "microarray/hail.mt",
+      "microarrayVcfManifestPath": "microarray/vcf/manifest.csv",
+      "microarrayIdatManifestPath": "microarray/idat/manifest.csv",
+      "wgsVdsPath": "wgs/short_read/snpindel/vds/hail.vds",
+      "wgsExomeMultiHailPath": "wgs/short_read/snpindel/exome/multiMT/hail.mt",
+      "wgsExomeSplitHailPath": "wgs/short_read/snpindel/exome/splitMT/hail.mt",
+      "wgsExomeVcfPath": "wgs/short_read/snpindel/exome/vcf",
+      "wgsAcafThresholdMultiHailPath": "wgs/short_read/snpindel/acaf_threshold/multiMT/hail.mt",
+      "wgsAcafThresholdSplitHailPath": "wgs/short_read/snpindel/acaf_threshold/splitMT/hail.mt",
+      "wgsAcafThresholdVcfPath": "wgs/short_read/snpindel/acaf_threshold/vcf",
+      "wgsClinvarMultiHailPath": "wgs/short_read/snpindel/clinvar/multiMT/hail.mt",
+      "wgsClinvarSplitHailPath": "wgs/short_read/snpindel/clinvar/splitMT/hail.mt",
+      "wgsClinvarVcfPath": "wgs/short_read/snpindel/clinvar/vcf",
+      "wgsCMRGVcfPath": "wgs/short_read/snpindel/cmrg",
+      "dcVersionName": "cdrv8"
+    }
+  ]
+}

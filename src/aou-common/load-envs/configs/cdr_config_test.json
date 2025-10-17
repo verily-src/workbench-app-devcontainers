@@ -1,0 +1,34 @@
+{
+  "accessTiers": [
+    {
+      "shortName": "registered",
+      "datasetsBucket": "",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-workbench-test/aou-rw-gar-remote-repo-docker-test"
+    },
+    {
+      "shortName": "controlled",
+      "datasetsBucket": "gs://cdrv1genomic-vwb-dev-buoyant-apple-6238/",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-workbench-test/aou-rw-gar-remote-repo-docker-test"
+    }
+  ],
+  "cdrVersions": [
+    {
+      "name": "Synthetic Dataset v4",
+      "bigqueryProject": "vwb-dev-rapid-kale-4145",
+      "bigqueryDataset": "aou_synthetic_SR2023Q3R2",
+      "accessTier": "registered",
+      "dcVersionName": "cdrv8"
+    },
+    {
+      "name": "Synthetic Dataset in the Controlled Tier v8",
+      "bigqueryProject": "vwb-dev-buoyant-apple-6238",
+      "bigqueryDataset": "aou_test_data_SC2023Q3R2",
+      "storageBasePath": "v8",
+      "wgsVcfMergedStoragePath": "wgs/vcf/merged",
+      "wgsCramManifestPath": "wgs/cram/manifest.csv",
+      "microarrayVcfSingleSampleStoragePath": "microarray/vcf/single_sample",
+      "accessTier": "controlled",
+      "dcVersionName": "cdrv8"
+    }
+  ]
+}

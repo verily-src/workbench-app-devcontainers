@@ -17,7 +17,7 @@
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
     "root",
-    "/config",
+    "/root",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],

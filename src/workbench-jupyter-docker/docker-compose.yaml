@@ -17,12 +17,9 @@ services:
       - "8888:8888"
     networks:
       - app-network
-    cap_add:
-      - SYS_ADMIN
+    privileged: true
     devices:
       - /dev/fuse
-    security_opt:
-      - apparmor:unconfined
 networks:
   app-network:
     external: true

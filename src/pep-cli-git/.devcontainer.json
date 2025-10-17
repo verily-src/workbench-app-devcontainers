@@ -4,15 +4,7 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": [
-    "./startupscript/post-startup.sh",
-    "root",
-    "/root",
-    "${templateOption:cloud}",
-    "${templateOption:login};", 
-    "./sudo-passwordless.sh",
-    "root"
-  ],
+  "postCreateCommand": "./startupscript/post-startup.sh root /root \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh root",
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",

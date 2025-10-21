@@ -21,7 +21,6 @@ services:
     environment:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
-      SUDO_PASSWORD: "pwd"
     networks:
       - app-network
     cap_add:

@@ -70,9 +70,9 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/config/go"
 ENV GOPRIVATE="github.com/verily-src/*"
 
-# Add abc user to docker group (will be created when docker.sock is mounted)
-RUN groupadd -g 999 docker || true && \
-    usermod -aG docker abc || true
+# Copy docker group setup script
+COPY docker-setup.sh /etc/cont-init.d/50-docker-setup
+RUN chmod +x /etc/cont-init.d/50-docker-setup
 
 # Configure git to use SSH instead of HTTPS for GitHub
 RUN git config --system url."git@github.com:".insteadOf "https://github.com/"

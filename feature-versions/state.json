@@ -26,17 +26,17 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "ov-prod",
-    "installed": "sha256:afc51a1bb4adde992ccf70e94ca8794c7f046bf2a49a40416e53f016afbcdcef",
+    "installed": "sha256:62729a7b680e39fb40200b8d9ffe319c875df3a576286dcfdbaf1a2ad032c7d5",
     "filter": ".*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "ov-prod",
-    "installed": "sha256:86d20af5d771f51fb8b0bf57b965c4085b05946a786ed64c2b30ccb0a404ad6d",
+    "installed": "sha256:f9f28fbf1a232e774ff8656273a83b9fb52264b03c487c155b9f90d861597b24",
     "filter": ".*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "ov-prod",
-    "installed": "sha256:d2ade6e50501a9094bd076df697b3dac16affc9346fc9ecc7c0b721d8bfbf34a",
+    "installed": "sha256:b6a95eba39f94cba3c5acc578d6250289f2ebccb28fcfb8e5a944d179bc5cb51",
     "filter": ".*\\/Dockerfile"
   }
 }

@@ -62,7 +62,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 
 # Install uv (Python package manager)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
-    mv /root/.cargo/bin/uv /usr/local/bin/
+    mv $HOME/.local/bin/uv /usr/local/bin/ && \
+    mv $HOME/.local/bin/uvx /usr/local/bin/
 
 # Set up environment variables
 ENV PATH="/usr/local/go/bin:${PATH}"

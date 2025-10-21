@@ -1,0 +1,38 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/config:cached
+      # Mount Docker socket for Docker-in-Docker access
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount host machine's /etc/group to container for Docker group access
+      - /etc/group:/etc/host-group:ro
+      # Mount host machine's Docker config
+      - /etc/docker:/etc/docker:ro
+    ports:
+      - "8443:8443"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+      # Add Docker GID from host
+      DOCKER_GID: "${DOCKER_GID}"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

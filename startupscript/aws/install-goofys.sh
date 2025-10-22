@@ -29,7 +29,7 @@ elif type apt-get > /dev/null 2>&1; then
 fi
 
 # Download specific version
-curl -L "https://github.com/kahing/goofys/releases/download/${GOOFYS_VERSION}/goofys" -o goofys
+curl -L "https://storage.googleapis.com/bkt-workbench-artifacts/mirror/goofys-${GOOFYS_VERSION}" -o goofys
 
 # Verify SHA256 hash
 SHA256_OUTPUT=$(sha256sum goofys)

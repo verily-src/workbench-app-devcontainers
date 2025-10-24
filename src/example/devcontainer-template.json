@@ -1,0 +1,23 @@
+{
+  "id": "example",
+  "description": "An example app containing a JupyterLab image",
+  "version": "0.0.1",
+  "name": "Workbench Example App",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/example",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

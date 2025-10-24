@@ -1,0 +1,22 @@
+services:
+  app:
+    container_name: "application-server"
+    image: "quay.io/jupyter/base-notebook"
+    environment:
+      - "NOTEBOOK_ARGS=--LabApp.token=''"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - 8888:8888
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true

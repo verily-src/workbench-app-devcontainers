@@ -73,6 +73,8 @@ jobs:
               filters:
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
+            example:
+              user: jovyan
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:

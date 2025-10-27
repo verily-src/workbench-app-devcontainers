@@ -34,8 +34,11 @@ if [[ -d "${LOCAL_REPO}/.git" ]]; then
 fi
 
 PRIVATE_DEVCONTAINER_ENABLED="$(get_metadata_value "private-devcontainer-enabled" "")"
-# Check if repo is private by attempting to list files
-if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" = "TRUE" ]] && ! git ls-remote "${REPO_SRC}" &> /dev/null; then
+# Check if repo is private
+repo_src_trimmed="${REPO_SRC%.git}"
+api_url=$(echo "${repo_src_trimmed}" | sed -E 's|https://github.com/(.*)$|https://api.github.com/repos/\1|')
+private_status=$(curl --retry 5 -s "${api_url}" | jq -r ".status")
+if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 ]]; then
   # disable logs to not expose access token
   set +o xtrace
 
@@ -60,8 +63,10 @@ if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" = "TRUE" ]] && ! git ls-remote "${REPO_S
   repo_auth_url=$(echo "${REPO_SRC}" | sed "s/:\/\//:\/\/${token}@/")
 
   # Clone the private repo
+  set +o errexit
   response=$(git clone "${repo_auth_url}" "${LOCAL_REPO}" 2>&1)
   git_status=$?
+  set -o errexit
   if [[ ${git_status} -ne 0 ]]; then
     set_metadata "startup_script/status" "ERROR"
     set_metadata "startup_script/message" "Failed to clone the devcontainer GitHub repo. ERROR: ${response}"
@@ -72,8 +77,10 @@ if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" = "TRUE" ]] && ! git ls-remote "${REPO_S
   set -o xtrace
 else
   # GitHub repo is public
+  set +o errexit
   response=$(git clone "${REPO_SRC}" "${LOCAL_REPO}" 2>&1)
   git_status=$?
+  set -o errexit
   if [[ ${git_status} -ne 0 ]]; then
     set_metadata "startup_script/status" "ERROR"
     set_metadata "startup_script/message" "Failed to clone the devcontainer GitHub repo. ERROR: ${response}"

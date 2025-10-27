@@ -34,9 +34,12 @@ if [[ -d "${LOCAL_REPO}/.git" ]]; then
 fi
 
 PRIVATE_DEVCONTAINER_ENABLED="$(get_metadata_value "private-devcontainer-enabled" "")"
+# Replace ssh URL with HTTPS URL
+https_url="${REPO_SRC/git@github.com:/https://github.com/}"
+# Create GitHub API URL
+api_url="https://api.github.com/repos/${https_url/https:\/\/github.com\//}"
+api_url="${api_url%.git}"
 # Check if repo is private
-repo_src_trimmed="${REPO_SRC%.git}"
-api_url=$(echo "${repo_src_trimmed}" | sed -E 's|https://github.com/(.*)$|https://api.github.com/repos/\1|')
 private_status=$(curl --retry 5 -s "${api_url}" | jq -r ".status")
 if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 ]]; then
   # disable logs to not expose access token
@@ -60,7 +63,7 @@ if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 
 
   token=$(echo "${response}" | head -n1)
   # Insert token into url
-  repo_auth_url=$(echo "${REPO_SRC}" | sed "s/:\/\//:\/\/${token}@/")
+  repo_auth_url=$(echo "${https_url}" | sed "s/:\/\//:\/\/${token}@/")
 
   # Clone the private repo
   set +o errexit

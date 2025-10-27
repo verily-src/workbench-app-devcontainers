@@ -36,7 +36,7 @@ fi
 PRIVATE_DEVCONTAINER_ENABLED="$(get_metadata_value "private-devcontainer-enabled" "")"
 # Check if repo is private by attempting to list files
 if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" = "TRUE" ]] && ! git ls-remote "${REPO_SRC}" &> /dev/null; then
-  # disable logs
+  # disable logs to not expose access token
   set +o xtrace
 
   # Retrieve GitHub access token

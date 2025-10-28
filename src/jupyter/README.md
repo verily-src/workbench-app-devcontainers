@@ -1,7 +1,7 @@
 
-# Jupyter (jupyter)
+# Workbench Example Jupyter App (jupyter)
 
-A Template to run jupyter on workbench
+An example app containing a JupyterLab image
 
 ## Options
 
@@ -14,4 +14,4 @@ A Template to run jupyter on workbench
 
 ---
 
-_Note: This file was auto-generated from the [devcontainer-template.json](https://github.com/verily-src/workbench-app-devcontainers/blob/main/src/jupyter/devcontainer-template.json).  Add additional notes to a `NOTES.md`._
+_Note: This file was auto-generated from the [devcontainer-template.json](devcontainer-template.json).  Add additional notes to a `NOTES.md`._

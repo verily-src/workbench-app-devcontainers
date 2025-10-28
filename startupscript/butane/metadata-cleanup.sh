@@ -15,4 +15,4 @@ source /home/core/metadata-utils.sh
 
 set_metadata "notebooks/last_activity" ""
 set_metadata "startup_script/status" ""
-
+set_metadata "startup_script/message" ""

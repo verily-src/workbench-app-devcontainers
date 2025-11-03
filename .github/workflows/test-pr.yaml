@@ -25,13 +25,10 @@ jobs:
             - 'startupscript/**'
             - 'test/**'
         config:
-          # BENCH-4080: Re-enable cirrocumulus test
           - jupyter-template:
               user: jupyter
             jupyter:
               user: jovyan
-            shiny:
-              user: shiny
             r-analysis:
               user: rstudio
               workbench_tools: true

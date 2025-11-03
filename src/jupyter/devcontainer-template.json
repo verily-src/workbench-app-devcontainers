@@ -1,8 +1,8 @@
 {
   "id": "jupyter",
-  "version": "0.0.2",
-  "name": "Jupyter",
-  "description": "A Template to run jupyter on workbench",
+  "description": "An example app containing a JupyterLab image",
+  "version": "0.0.1",
+  "name": "Workbench Example Jupyter App",
   "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/jupyter",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {

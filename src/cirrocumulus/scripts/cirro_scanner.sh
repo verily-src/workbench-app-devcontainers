@@ -29,7 +29,7 @@ readonly -f create_dataset
 # Define the function to perform the scanning
 function scan_folders_and_create_datasets() {
     # Search for folders with name *.zarr and create cirro dataset if it doesn't exist
-    find /root/workspace -type d -name '*.zarr' | while read -r folder; do
+    find /root/workspace \( -type d -name '*.zarr' -o -type f -name '*.h5ad' \) | while read -r folder; do
         if [[ "$(matching_dataset_count "${folder}")" -eq "0" ]]; then
             create_dataset "${folder}"
         else

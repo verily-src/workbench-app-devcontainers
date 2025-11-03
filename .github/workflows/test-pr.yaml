@@ -25,7 +25,9 @@ jobs:
             - 'startupscript/**'
             - 'test/**'
         config:
-          - jupyter:
+          - jupyter-template:
+              user: jupyter
+            jupyter:
               user: jovyan
             r-analysis:
               user: rstudio

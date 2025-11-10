@@ -33,6 +33,8 @@ if [[ -d "${LOCAL_REPO}/.git" ]]; then
     exit 0
 fi
 
+trap 'rm -rf ${LOCAL_REPO}' ERR
+
 PRIVATE_DEVCONTAINER_ENABLED="$(get_metadata_value "private-devcontainer-enabled" "")"
 # Replace ssh URL with HTTPS URL
 https_url="${REPO_SRC/git@github.com:/https://github.com/}"

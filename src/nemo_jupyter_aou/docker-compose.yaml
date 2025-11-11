@@ -26,7 +26,7 @@ services:
     command: jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --LabApp.token=''
   wondershaper:
     container_name: "wondershaper"
-    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:43d43080cfcf8323d029c16eab45bec4de6cd97f7e98fbe9455f012286463c64"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:26306f112e7476101cabf3c44a0cb0c59d4c1998790a4d8eb3f2ed6dad37e901"
     restart: always
     network_mode: "host"
     cap_add:

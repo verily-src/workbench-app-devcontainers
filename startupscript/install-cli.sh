@@ -29,7 +29,6 @@ function get_axon_version_url() {
     "dev-stable") echo "https://workbench-dev.verily.com/api/axon/version" ;;
     "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/axon/version" ;;
     "test") echo "https://workbench-test.verily.com/api/axon/version" ;;
-    "staging") echo "https://workbench-staging.verily.com/api/axon/version" ;;
     "prod") echo "https://workbench.verily.com/api/axon/version" ;;
     *) return 1 ;;
   esac

@@ -202,7 +202,6 @@ function get_service_url() {
   "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
   "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
   "test") echo "https://workbench-test.verily.com/api/$2" ;;
-  "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
   "prod") echo "https://workbench.verily.com/api/$2" ;;
   *) return 1 ;;
   esac
@@ -231,7 +230,7 @@ function get_ui_uri() {
     echo "https://workbench.verily.com"
   elif [[ "${env}" == "dev-stable" ]]; then
     echo "https://workbench-dev.verily.com"
-  elif [[ "${env}" == "dev-unstable" || "${env}" == "test" || "${env}" == "staging" ]]; then
+  elif [[ "${env}" == "dev-unstable" || "${env}" == "test" ]]; then
     echo "https://workbench-${env}.verily.com"
   else
     echo "https://workbench.verily.com"

@@ -59,7 +59,7 @@ if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 
   SERVER="$(get_metadata_value "terra-cli-server" "")"
   readonly SERVER
   if [[ -z "${SERVER}" ]]; then
-    SERVER="dev-stable"
+    SERVER="prod"
   fi
   if ! ECM_SERVICE_URL="$(get_service_url "${SERVER}" "ecm")"; then
     exit 1

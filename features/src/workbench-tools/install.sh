@@ -26,7 +26,7 @@ readonly WORKBENCH_TOOLS_DIR="/opt/workbench-tools"
 
 function cleanup() {
     rm -rf "${WORKDIR:?}"
-    rm -rf "/var/lib/apt/lists/*"
+    rm -rf /var/lib/apt/lists/*
 }
 
 trap 'cleanup' EXIT

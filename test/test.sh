@@ -15,6 +15,12 @@ check "gcsfuse" gcsfuse -v
 check "wb cli" wb version
 check "fuse.conf user_allow_other" grep -qE "^[[:space:]]*[^#]*user_allow_other" "/etc/fuse.conf"
 
+# Jupyter AoU specific packages
+if [[ "$TEMPLATE_ID" == "jupyter-aou" ]]; then
+    check "pip: hail installed" 'pip3 show hail'
+    check "pip: igv-jupyter installed" 'pip3 show igv-jupyter'
+fi
+
 # The workbench-tools feature should install these
 if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     check "python3" python3 --version

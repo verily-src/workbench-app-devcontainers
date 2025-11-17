@@ -12,4 +12,7 @@ COPY --from=load-envs --chown=$JUPYTER_USER \
 
 RUN echo "source $JUPYTER_USER_HOME_DIR/load-env.sh" >> $JUPYTER_USER_HOME_DIR/.bashrc
 
+# Install Jupyter AoU-specific Python packages
+RUN pip install --no-cache-dir hail igv-jupyter
+
 # TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227

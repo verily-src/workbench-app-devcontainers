@@ -828,8 +828,6 @@ IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_a
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT
 
-ENABLE_VWB_PROXY="$(get_metadata_value "instance/attributes/enable-dataproc-vwb-proxy")"
-readonly ENABLE_VWB_PROXY
 # Retrieve Workbench proxy agent image
 PROXY_AGENT_IMAGE="$(get_metadata_value "instance/attributes/proxy-agent-image")"
 readonly PROXY_AGENT_IMAGE
@@ -853,7 +851,7 @@ readonly PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY="GOOGLE_AGENT_WITH_VWB_PROXY"
 
 # Decide proxy type
 PROXY_TYPE=""
-if [[ ${ENABLE_VWB_PROXY} == "true" && -n "${PROXY_AGENT_IMAGE}" ]]; then
+if [[ -n "${PROXY_AGENT_IMAGE}" ]]; then
   PROXY_TYPE="${PROXY_TYPE_VWB}"
 elif [[ ${IS_NON_GOOGLE_ACCOUNT} == "true" ]]; then
   PROXY_TYPE="${PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY}"
@@ -867,8 +865,6 @@ if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
 ###################################
     if [[ "${PROXY_TYPE}" == "${PROXY_TYPE_VWB}" ]]; then
       emit "Using Workbench Proxy"
-      ENABLE_MONITORING_SCRIPT="$(get_metadata_value "instance/attributes/enable-dataproc-monitoring-script")"
-      readonly ENABLE_MONITORING_SCRIPT
 
       readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="'"${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
 
@@ -927,7 +923,7 @@ docker run \
   --backend="${RESOURCE_ID}" \
   --session-cookie-name="_xsrf" \
   --inject-banner="\$(cat ${PROXY_AGENT_BANNER})" \
-  --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}" \
+  --enable-monitoring-script=true \
   --websocket-transport=true
 EOF
       # Grant execute permission to the startup script

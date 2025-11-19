@@ -61,6 +61,6 @@ docker run \
   --compute-platform="${COMPUTE_PLATFORM^^}" \
   --shim-path="${SHIM_PATH}" \
   --rewrite-websocket-host="${REWRITE_WEBSOCKET_HOST}" \
-  --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}" \
+  --enable-monitoring-script=true \
   --websocket-transport=true \
   "${OPTIONS[@]}"

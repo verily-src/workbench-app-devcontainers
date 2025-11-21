@@ -3,18 +3,19 @@
 
 # Map the server to appropriate service path
 function get_service_url() {
-  SERVER="$(get_metadata_value "terra-cli-server" "")"
-  if [[ -z "${SERVER}" ]]; then
-    SERVER="dev-stable"
+  if [[ $# -lt 2 ]]; then
+    echo "usage: get_service_url <service> <server>" >&2
+    return 1
   fi
-  readonly SERVER
 
+  local SERVICE="$1"
+  local SERVER="$2"
 
   case "${SERVER}" in
-    "dev-stable") echo "https://workbench-dev.verily.com/api/${SERVER}" ;;
-    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/${SERVER}" ;;
-    "test") echo "https://workbench-test.verily.com/api/${SERVER}" ;;
-    "prod") echo "https://workbench.verily.com/api/${SERVER}" ;;
+    "dev-stable") echo "https://workbench-dev.verily.com/api/${SERVICE}" ;;
+    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/${SERVICE}" ;;
+    "test") echo "https://workbench-test.verily.com/api/${SERVICE}" ;;
+    "prod") echo "https://workbench.verily.com/api/${SERVICE}" ;;
     *) return 1 ;;
   esac
 }

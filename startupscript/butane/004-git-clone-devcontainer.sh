@@ -46,7 +46,8 @@ api_url="${api_url%.git}"
 private_status=$(curl --retry 5 -s "${api_url}" | jq -r ".status")
 if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 ]]; then
   # Get ECM service URL
-  if ! ECM_SERVICE_URL="$(get_service_url "ecm")"; then
+  SERVER="$(get_metadata_value "terra-cli-server" "prod")"
+  if ! ECM_SERVICE_URL="$(get_service_url "ecm" "${SERVER}")"; then
     exit 1
   fi
 

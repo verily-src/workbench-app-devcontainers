@@ -17,19 +17,7 @@ if [[ $# -lt 1 ]]; then
     usage
 fi
 
-
-# Map the server to appropriate service path
-function get_service_url() {
-  case "$1" in
-    "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
-    "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
-    "test") echo "https://workbench-test.verily.com/api/$2" ;;
-    "prod") echo "https://workbench.verily.com/api/$2" ;;
-    *) return 1 ;;
-  esac
-}
-readonly -f get_service_url
-
+source /home/core/service-utils.sh
 source /home/core/metadata-utils.sh
 
 # To accommodate the use of SSH URLs for public Git repositories, set the following Git configuration:
@@ -58,12 +46,8 @@ api_url="${api_url%.git}"
 private_status=$(curl --retry 5 -s "${api_url}" | jq -r ".status")
 if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 ]]; then
   # Get ECM service URL
-  SERVER="$(get_metadata_value "terra-cli-server" "")"
-  readonly SERVER
-  if [[ -z "${SERVER}" ]]; then
-    SERVER="prod"
-  fi
-  if ! ECM_SERVICE_URL="$(get_service_url "${SERVER}" "ecm")"; then
+  SERVER="$(get_metadata_value "terra-cli-server" "prod")"
+  if ! ECM_SERVICE_URL="$(get_service_url "ecm" "${SERVER}")"; then
     exit 1
   fi
 

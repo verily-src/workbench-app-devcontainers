@@ -2,10 +2,14 @@
 
 # git-clone-devcontainer.sh clones a Git repository to the VM. If branch is specified, clones the specific branch.
 
+
 set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
+
+# Remove git credentials on exit
+trap 'rm -f ~/.git-credentials' EXIT
 
 function usage {
   echo "Usage: $0 <git_url> [branch_name]"
@@ -70,13 +74,11 @@ if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 
     exit 1
   fi
 
-  token=$(echo "${response}" | head -n1)
-  # Insert token into url
-  repo_auth_url=$(echo "${https_url}" | sed "s/:\/\//:\/\/${token}@/")
-
   # Clone the private repo
   set +o errexit
-  response=$(git clone "${repo_auth_url}" "${LOCAL_REPO}" 2>&1)
+  token=$(echo "${response}" | head -n1)
+  echo "https://${token}@github.com" > ~/.git-credentials
+  response=$(git clone "${https_url}" "${LOCAL_REPO}" 2>&1)
   git_status=$?
   set -o errexit
   if [[ ${git_status} -ne 0 ]]; then
@@ -113,5 +115,9 @@ if [[ $# -eq 2 ]]; then
       # this is a commit hash
       git switch --detach "${GIT_REF}"
     fi
+
+    # Init & update submodules
+    GIT_TERMINAL_PROMPT=0 git submodule update --init --recursive
+    
     popd
 fi

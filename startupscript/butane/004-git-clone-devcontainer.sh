@@ -20,6 +20,25 @@ fi
 source /home/core/service-utils.sh
 source /home/core/metadata-utils.sh
 
+# Run a git command with error handling
+# Args:
+#   $1+: Git command and arguments
+function run_git_command {
+  local response
+  local git_status
+
+  set +o errexit
+  response=$(GIT_TERMINAL_PROMPT=0 "$@" 2>&1)
+  git_status=$?
+  set -o errexit
+
+  if [[ ${git_status} -ne 0 ]]; then
+    set_metadata "startup_script/status" "ERROR"
+    set_metadata "startup_script/message" "Failed to clone devcontainer GitHub repo. ERROR: ${response}"
+    return 1
+  fi
+}
+
 # To accommodate the use of SSH URLs for public Git repositories, set the following Git configuration:
 # Note: This script is to be run as root on Flatcar Linux. We need to set system config instead of global config because
 # the latter requires $HOME to be set and root is $HOME-less.
@@ -34,16 +53,20 @@ if [[ -d "${LOCAL_REPO}/.git" ]]; then
     exit 0
 fi
 
+# Remove devcontainer repo on error
 trap 'rm -rf ${LOCAL_REPO}' ERR
+# Remove git credentials file on exit
+GIT_CREDENTIALS_FILE="/tmp/.git-credentials"
+trap 'rm -f ${GIT_CREDENTIALS_FILE}' EXIT
 
 PRIVATE_DEVCONTAINER_ENABLED="$(get_metadata_value "private-devcontainer-enabled" "")"
-# Replace ssh URL with HTTPS URL
-https_url="${REPO_SRC/git@github.com:/https://github.com/}"
+# Replace GitHub SSH URL with HTTPS URL
+HTTPS_URL="${REPO_SRC/git@github.com:/https://github.com/}"
 # Create GitHub API URL
-api_url="https://api.github.com/repos/${https_url/https:\/\/github.com\//}"
-api_url="${api_url%.git}"
+GITHUB_API_URL="https://api.github.com/repos/${HTTPS_URL/https:\/\/github.com\//}"
+GITHUB_API_URL="${GITHUB_API_URL%.git}"
 # Check if repo is private
-private_status=$(curl --retry 5 -s "${api_url}" | jq -r ".status")
+private_status=$(curl -s -o /dev/null -w "%{http_code}" "${GITHUB_API_URL}")
 if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 ]]; then
   # Get ECM service URL
   SERVER="$(get_metadata_value "terra-cli-server" "prod")"
@@ -70,48 +93,35 @@ if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 
     exit 1
   fi
 
-  token=$(echo "${response}" | head -n1)
-  # Insert token into url
-  repo_auth_url=$(echo "${https_url}" | sed "s/:\/\//:\/\/${token}@/")
-
-  # Clone the private repo
-  set +o errexit
-  response=$(git clone "${repo_auth_url}" "${LOCAL_REPO}" 2>&1)
-  git_status=$?
-  set -o errexit
-  if [[ ${git_status} -ne 0 ]]; then
-    set_metadata "startup_script/status" "ERROR"
-    set_metadata "startup_script/message" "Failed to clone the devcontainer GitHub repo. ERROR: ${response}"
-    exit 1
-  fi
+  TOKEN=$(echo "${response}" | head -n1)
+  USERNAME=$(curl -H "Authorization: Bearer ${TOKEN}" https://api.github.com/user | jq --raw-output ".login")
+  echo "https://${USERNAME}:${TOKEN}@github.com" > "${GIT_CREDENTIALS_FILE}"
+  git config --system credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
 
   # re-enable logs
   set -o xtrace
-else
-  # GitHub repo is public
-  set +o errexit
-  response=$(git clone "${REPO_SRC}" "${LOCAL_REPO}" 2>&1)
-  git_status=$?
-  set -o errexit
-  if [[ ${git_status} -ne 0 ]]; then
-    set_metadata "startup_script/status" "ERROR"
-    set_metadata "startup_script/message" "Failed to clone the devcontainer GitHub repo. ERROR: ${response}"
-    exit 1
-  fi
 fi
+
+# Clone the private or public repo
+run_git_command git clone "${HTTPS_URL}" "${LOCAL_REPO}"
 
 if [[ $# -eq 2 ]]; then
     readonly GIT_REF="$2"
     pushd "${LOCAL_REPO}"
     if git show-ref --verify --quiet "refs/heads/${GIT_REF}"; then
       # this is a local branch
-      git switch --detach "${GIT_REF}"
+      run_git_command git switch --detach "${GIT_REF}"
     elif git show-ref --verify --quiet "refs/remotes/origin/${GIT_REF}"; then
       # this is a remote branch
-      git switch --detach "origin/${GIT_REF}"
+      run_git_command git switch --detach "origin/${GIT_REF}"
     else
-      # this is a commit hash
-      git switch --detach "${GIT_REF}"
+      # this is a commit hash or tag
+      run_git_command git switch --detach "${GIT_REF}"
     fi
     popd
 fi
+
+# Init & update submodules
+pushd "${LOCAL_REPO}"
+run_git_command git submodule update --init --recursive
+popd

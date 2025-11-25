@@ -2,25 +2,28 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "us-central1-docker.pkg.dev/verily-workbench-public/apps/workbench-jupyter:latest"
-    user: "jupyter:${DOCKER_GID}"
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: always
     volumes:
       - .:/workspace:cached
+      - work:/config:cached
       # mount Host machine's docker.sock to container's docker.sock
       - /var/run/docker.sock:/var/run/docker.sock
       # mount Host machine's /etc/group to container's /etc/host-group
       - /etc/group:/etc/host-group
-      # mount Host machine's default docker config dir to container's jupyter user docker config dir
-      - /etc/docker:/home/jupyter/.docker
+      # mount Host machine's default docker config dir to container's abc user docker config dir
+      - /etc/docker:/config/.docker
     ports:
-      - "8888:8888"
+      - "8443:8443"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
     networks:
       - app-network
     cap_add:
       - SYS_ADMIN
-      - NET_ADMIN
-      - SYS_RESOURCE
     devices:
       - /dev/fuse
     security_opt:
@@ -28,3 +31,5 @@ services:
 networks:
   app-network:
     external: true
+volumes:
+  work:

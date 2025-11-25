@@ -36,24 +36,6 @@ function log_event() {
     echo "VM state recorded successfully: ${response_body}"
 }
 
-# Record devcontainer start event
-function record_devcontainer_start() {
-    if [[ $# -lt 3 ]]; then
-        echo "usage: record_devcontainer_start <wsm_url> <workspace_id> <resource_id>" >&2
-        return 1
-    fi
-
-    local payload
-    payload=$(cat <<EOF
-{
-    "event": "DEVCONTAINER_START",
-    "isSuccess": true
-}
-EOF
-)
-    log_event "$1" "$2" "$3" "$payload"
-}
-
 # Record devcontainer end event
 function record_devcontainer_end() {
     if [[ $# -lt 4 || ("$4" != "true" && "$4" != "false") ]]; then

@@ -117,8 +117,8 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
     replace_template_options "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 fi
 
-# apply gpu runtime block if accelerator is nvidia and cloud is gcp
-if [[ "${ACCELERATOR}" == "nvidia" && "${CLOUD}" == "gcp" ]]; then
+# apply gpu runtime block if accelerator is nvidia
+if [[ "${ACCELERATOR}" == "nvidia" ]]; then
     apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}"
 fi
 

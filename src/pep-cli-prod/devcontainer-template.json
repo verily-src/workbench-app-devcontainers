@@ -1,0 +1,31 @@
+{
+  "id": "pepcli",
+  "version": "0.0.2",
+  "name": "PEP CLI (PROD)",
+  "description": "A Template to run pepcli on workbench",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/vscode",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": [
+        "gcp",
+        "aws"
+      ],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": [
+        "true",
+        "false"
+      ],
+      "default": "false"
+    }
+  },
+  "platforms": [
+    "Any"
+  ]
+}

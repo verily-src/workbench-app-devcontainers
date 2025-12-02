@@ -1,0 +1,71 @@
+{
+  "name": "PEP CLI (PROD)",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "./startupscript/post-startup.sh root /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh root",
+  // re-mount bucket files on container start up
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "root",
+    "/config",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/java:1.6.3": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1.1.1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {},
+    "ghcr.io/coder/devcontainer-features/code-server:1": {
+      "port": 8080,
+      "host": "0.0.0.0",
+      "auth": "none"
+    },
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.22"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    }, 
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "root",
+      "userHomeDir": "/config"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          // Source.
+          ".c",
+          ".cjs",
+          ".cpp",
+          ".go",
+          ".java",
+          ".js",
+          ".mjs",
+          ".php",
+          ".scala",
+          ".sh",
+          ".ts",
+          // Documents
+          ".md",
+          ".html",
+          // Data
+          ".csv",
+          ".json",
+          ".jsonc",
+          ".tsv",
+          ".xml",
+          ".yml"
+        ],
+        "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+      }
+    }
+  }
+}

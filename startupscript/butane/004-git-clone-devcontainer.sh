@@ -27,12 +27,7 @@ function run_git_command {
   local response
   local git_status
 
-  set +o errexit
-  response=$(GIT_TERMINAL_PROMPT=0 "$@" 2>&1)
-  git_status=$?
-  set -o errexit
-
-  if [[ ${git_status} -ne 0 ]]; then
+  if ! response=$(GIT_TERMINAL_PROMPT=0 "$@" 2>&1); then
     set_metadata "startup_script/status" "ERROR"
     set_metadata "startup_script/message" "Failed to clone devcontainer GitHub repo. ERROR: ${response}"
     return 1

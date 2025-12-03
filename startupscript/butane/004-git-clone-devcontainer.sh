@@ -122,6 +122,7 @@ if [[ $# -eq 2 ]]; then
 fi
 
 # Init & update submodules
-pushd "${LOCAL_REPO}"
-run_git_command git submodule update --init --recursive
-popd
+(
+  cd "${LOCAL_REPO}"
+  run_git_command git submodule update --init --recursive
+)

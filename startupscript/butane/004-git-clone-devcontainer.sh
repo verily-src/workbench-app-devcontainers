@@ -25,7 +25,6 @@ source /home/core/metadata-utils.sh
 #   $1+: Git command and arguments
 function run_git_command {
   local response
-  local git_status
 
   if ! response=$(GIT_TERMINAL_PROMPT=0 "$@" 2>&1); then
     set_metadata "startup_script/status" "ERROR"

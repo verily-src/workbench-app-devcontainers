@@ -30,11 +30,12 @@ class PortMonitorHandler(APIHandler):
                 return
 
             logger.info('Port monitor API called')
-            ports = self._get_listening_ports()
+            ports, warning = self._get_listening_ports()
             logger.info(f'Found {len(ports)} listening ports: {sorted(ports)}')
-            self.finish(json.dumps({
-                'ports': list(ports)
-            }))
+            response = {'ports': list(ports)}
+            if warning:
+                response['warning'] = warning
+            self.finish(json.dumps(response))
         except Exception as e:
             logger.error(f'Error getting listening ports: {e}', exc_info=True)
             self.set_status(500)
@@ -42,9 +43,14 @@ class PortMonitorHandler(APIHandler):
                 'error': str(e)
             }))
 
-    def _get_listening_ports(self) -> Set[int]:
-        """Get list of listening ports using lsof (user-owned only)"""
+    def _get_listening_ports(self) -> tuple[Set[int], str]:
+        """Get list of listening ports using lsof (user-owned only)
+
+        Returns:
+            tuple: (set of port numbers, warning message or None)
+        """
         ports = set()
+        warning = None
 
         try:
             # Use lsof to find listening TCP ports owned by current user
@@ -77,9 +83,10 @@ class PortMonitorHandler(APIHandler):
             if e.returncode != 1:
                 raise
         except FileNotFoundError:
-            pass
+            logger.warning('lsof command not found, cannot detect listening ports')
+            warning = 'lsof not installed'
 
-        return ports
+        return ports, warning
 
 
 def setup_handlers(web_app):

@@ -1,0 +1,15 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v4.5.1
+_src_path: https://github.com/jupyterlab/extension-template
+author_email: workbench-support@verily.com
+author_name: Workbench
+has_ai_rules: false
+has_binder: false
+has_settings: false
+kind: frontend
+labextension_name: server-proxy-notif
+project_short_description: Notify server proxy ports
+python_name: server_proxy_notif
+repository: https://github.com/verily-src/workbench-app-devcontainers
+test: false
+

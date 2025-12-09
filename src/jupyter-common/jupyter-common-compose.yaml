@@ -1,0 +1,10 @@
+# This docker-compose file is meant to be included to build common Jupyter image
+# dependencies. Use the .devcontainer.json "runServices" property to prevent it
+# from starting automatically.
+#
+# Paths are relative to the primary docker-compose.yaml file.
+
+services:
+  jupyter-common-extension-builder:
+    build:
+      context: ../jupyter-common/extension-builder

@@ -42,11 +42,14 @@ jobs:
               workbench_tools: true
               options:
                 containerImage: 'us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter:ov-dev-stable'
+              filters:
+                - 'src/jupyter-common/**'
             jupyter-aou:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
               filters:
+                - 'src/jupyter-common/**'
                 - 'src/aou-common/**'
             nemo_jupyter:
               user: jupyter

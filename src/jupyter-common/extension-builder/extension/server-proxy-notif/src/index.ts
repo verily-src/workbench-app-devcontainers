@@ -117,17 +117,21 @@ class PortMonitor {
   private _notifyNewPort(port: number): void {
     const proxyUrl = `/proxy/${port}/`;
 
-    Notification.emit(`Port opened at :${port}. View at ${proxyUrl}`, 'info', {
-      autoClose: 10000,
-      actions: [
-        {
-          label: 'Open',
-          callback: () => {
-            window.open(proxyUrl, '_blank');
+    Notification.emit(
+      `Your application running on port ${port} is available at ${proxyUrl}`,
+      'info',
+      {
+        autoClose: 10000,
+        actions: [
+          {
+            label: 'Open in Browser',
+            callback: () => {
+              window.open(proxyUrl, '_blank');
+            }
           }
-        }
-      ]
-    });
+        ]
+      }
+    );
 
     console.log(
       `New server detected on port ${port}. Proxy available at: ${proxyUrl}`
@@ -148,13 +152,15 @@ const plugin: JupyterFrontEndPlugin<void> = {
     // Create and start port monitor
     const serverSettings = ServerConnection.makeSettings();
     const portMonitor = new PortMonitor(serverSettings);
-    portMonitor.start().then(started => {
-      if (started) {
-        console.log(
-          'Port monitoring started - checking for newly opened ports every 3 seconds'
-        );
-      }
-    });
+    setTimeout(() => {
+      portMonitor.start().then(started => {
+        if (started) {
+          console.log(
+            'Port monitoring started - checking for newly opened ports every 3 seconds'
+          );
+        }
+      });
+    }, 30000); // Delay start to allow server to initialize
   }
 };
 

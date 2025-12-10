@@ -1,6 +1,6 @@
 {
   "name": "Jupyter App for AoU",
-  "dockerComposeFile": ["docker-compose.yaml", "../aou-common/aou-common-compose.yaml"],
+  "dockerComposeFile": ["docker-compose.yaml", "../jupyter-common/jupyter-common-compose.yaml", "../aou-common/aou-common-compose.yaml"],
   "service": "app",
   "runServices": ["app", "wondershaper"],
   "shutdownAction": "none",

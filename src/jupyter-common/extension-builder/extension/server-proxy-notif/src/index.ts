@@ -11,7 +11,7 @@ import { ServerConnection } from '@jupyterlab/services';
  */
 class PortMonitor {
   private _knownPorts: Set<number> = new Set();
-  private _pollInterval: number = 3000; // Poll every 3 seconds
+  private _pollInterval: number = 10000; // Poll every 10 seconds
   private _intervalId: number | null = null;
   private _serverSettings: ServerConnection.ISettings;
 
@@ -115,6 +115,10 @@ class PortMonitor {
    * Show notification for a new port
    */
   private _notifyNewPort(port: number): void {
+    if (port > 30000) {
+      // Ignore high-numbered ports (likely internal)
+      return;
+    }
     const proxyUrl = `/proxy/${port}/`;
 
     Notification.emit(
@@ -152,15 +156,13 @@ const plugin: JupyterFrontEndPlugin<void> = {
     // Create and start port monitor
     const serverSettings = ServerConnection.makeSettings();
     const portMonitor = new PortMonitor(serverSettings);
-    setTimeout(() => {
-      portMonitor.start().then(started => {
-        if (started) {
-          console.log(
-            'Port monitoring started - checking for newly opened ports every 3 seconds'
-          );
-        }
-      });
-    }, 30000); // Delay start to allow server to initialize
+    portMonitor.start().then(started => {
+      if (started) {
+        console.log(
+          'Port monitoring started - checking for newly opened ports every 3 seconds'
+        );
+      }
+    });
   }
 };
 

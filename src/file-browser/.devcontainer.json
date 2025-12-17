@@ -1,5 +1,5 @@
 {
-  "name": "chromium app",
+  "name": "file-browser app",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

@@ -2,17 +2,17 @@ version: '2.4'
 services:
   app:
     container_name: "application-server"
-    image: "lscr.io/linuxserver/chromium:latest"
+    image: "filebrowser/filebrowser:latest"
     restart: always
+    user: "1000:1000"
     volumes:
-      - .:/workspace:cached
+      - .:/srv:cached
+      - filebrowser_db:/database
+      - filebrowser_config:/config
     ports:
-      - '3000:3000'
-      - '3001:3001'
+      - '8080:80'
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
+      - FB_NOAUTH=true
     networks:
       - app-network
     cap_add:
@@ -24,3 +24,6 @@ services:
 networks:
   app-network:
     external: true
+volumes:
+  filebrowser_db:
+  filebrowser_config:

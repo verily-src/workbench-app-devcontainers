@@ -5,7 +5,7 @@ services:
     image: "lscr.io/linuxserver/libreoffice:latest"
     restart: always
     volumes:
-      - ..:/workspace:cached
+      - .:/workspace:cached
     ports:
       - '3000:3000'
       - '3001:3001'
@@ -20,7 +20,7 @@ services:
     devices:
       - /dev/fuse
     security_opt:
-      - seccomp:unconfined
+      - apparmor:unconfined
 networks:
   app-network:
     external: true

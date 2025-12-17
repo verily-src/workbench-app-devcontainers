@@ -1,0 +1,26 @@
+version: '2.4'
+services:
+  app:
+    container_name: "application-server"
+    image: "lscr.io/linuxserver/chromium:latest"
+    restart: always
+    volumes:
+      - ..:/workspace:cached
+    ports:
+      - '3000:3000'
+      - '3001:3001'
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - seccomp:unconfined
+networks:
+  app-network:
+    external: true

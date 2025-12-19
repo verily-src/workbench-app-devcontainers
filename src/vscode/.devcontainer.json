@@ -24,6 +24,9 @@
       "cloud": "${templateOption:cloud}",
       "username": "abc",
       "userHomeDir": "/config"
+    },
+    "./.devcontainer/features/postgres-client": {
+      "version": "16"
     }
   },
   "remoteUser": "root",

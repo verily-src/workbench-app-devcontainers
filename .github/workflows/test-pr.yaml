@@ -32,14 +32,17 @@ jobs:
             r-analysis:
               user: rstudio
               workbench_tools: true
+              postgres_client: true
             vscode:
               user: abc
               workbench_tools: true
+              postgres_client: true
             workbench-jupyter:
               template: custom-workbench-jupyter-template
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               options:
                 containerImage: 'us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter:ov-dev-stable'
               filters:
@@ -48,6 +51,7 @@ jobs:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               filters:
                 - 'src/jupyter-common/**'
                 - 'src/aou-common/**'
@@ -55,10 +59,12 @@ jobs:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
             nemo_jupyter_aou:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               filters:
                 - 'src/aou-common/**'
                 - 'src/nemo_jupyter/**'
@@ -66,10 +72,12 @@ jobs:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
             workbench-jupyter-parabricks-aou:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               filters:
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
@@ -93,6 +101,7 @@ jobs:
               | .value = $common
               | .value += ["src/" + ($v.template // .key) + "/**"]
               | .value += if $v.workbench_tools then ["features/src/workbench-tools/**"] else [] end
+              | .value += if $v.postgres_client then ["features/src/postgres-client/**"] else [] end
               | .value += ($v.filters // [])
             ] | from_entries' | yq -P >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -112,7 +121,7 @@ jobs:
           jq -n \
               --argjson changed "$CHANGED_TEMPLATES" \
               --argjson config "$CONFIG" \
-              '[$changed[] as $t 
+              '[$changed[] as $t
                 | $config[$t]
                 | select(. != null)
                 | {
@@ -120,6 +129,7 @@ jobs:
                     user,
                     maximize_build_space: (.maximize_build_space // false),
                     workbench_tools: (.workbench_tools // false),
+                    postgres_client: (.postgres_client // false),
                     options: (.options // {}),
                   }
               ]' >> $GITHUB_OUTPUT
@@ -164,4 +174,5 @@ jobs:
           template: "${{ matrix.app.template }}"
           user: "${{ matrix.app.user }}"
           workbench_tools: "${{ matrix.app.workbench_tools }}"
+          postgres_client: "${{ matrix.app.postgres_client }}"
           options: "${{ toJSON(matrix.app.options) }}"

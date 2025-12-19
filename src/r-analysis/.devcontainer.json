@@ -33,6 +33,9 @@
       "cloud": "${templateOption:cloud}",
       "username": "rstudio",
       "userHomeDir": "/home/rstudio"
+    },
+    "./.devcontainer/features/postgres-client": {
+      "version": "16"
     }
   },
   "remoteUser": "root"

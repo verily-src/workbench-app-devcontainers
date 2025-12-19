@@ -1,0 +1,27 @@
+{
+  "id": "wb-mcp-server",
+  "version": "1.0.0",
+  "name": "Workbench MCP Server",
+  "description": "Installs a local MCP (Model Context Protocol) server that wraps the wb CLI, enabling AI assistants to interact with Workbench. The server runs locally without authentication and can be used with Claude CLI, Gemini CLI, or other MCP clients.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user."
+    },
+    "port": {
+      "type": "string",
+      "default": "3000",
+      "description": "Port for the MCP server to listen on."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/go"
+  ]
+}

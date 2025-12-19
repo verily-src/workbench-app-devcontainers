@@ -27,6 +27,10 @@
     },
     "./.devcontainer/features/postgres-client": {
       "version": "16"
+    },
+    "./.devcontainer/features/wb-mcp-server": {
+      "username": "abc",
+      "userHomeDir": "/config"
     }
   },
   "remoteUser": "root",

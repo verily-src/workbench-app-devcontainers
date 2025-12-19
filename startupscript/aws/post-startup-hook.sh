@@ -30,6 +30,11 @@ fi
 ########################################################
 source "${CLOUD_SCRIPT_DIR}/configure-aws-vault.sh"
 
+###############################################################################
+# Install or upgrade the postgres client for use with Aurora Postgres instances
+###############################################################################
+source "${CLOUD_SCRIPT_DIR}/install-postgres-client.bash"
+
 #################################################
 # Write common environment vars to user's .bashrc
 #################################################

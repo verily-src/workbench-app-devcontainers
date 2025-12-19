@@ -9,6 +9,9 @@ inputs:
   workbench_tools:
     description: 'Whether to test workbench tools'
     required: true
+  postgres_client:
+    description: 'Whether to test postgres client'
+    required: true
   options:
     description: 'JSON string of additional options for building the app'
     required: true
@@ -39,4 +42,4 @@ runs:
     - name: Test template
       id: test_template
       shell: bash
-      run: .github/actions/smoke-test/test.sh "${{ inputs.template }}" "${{ inputs.user }}" "${{ inputs.workbench_tools }}"
+      run: .github/actions/smoke-test/test.sh "${{ inputs.template }}" "${{ inputs.user }}" "${{ inputs.workbench_tools }}" "${{ inputs.postgres_client }}"

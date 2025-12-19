@@ -5,6 +5,7 @@ source test-utils.sh
 readonly TEMPLATE_ID="$1"
 readonly TEST_USER="$2"
 readonly HAS_WORKBENCH_TOOLS="$3"
+readonly HAS_POSTGRES_CLIENT="$4"
 
 function check() {
     check_user "${TEST_USER}" "$@"
@@ -43,6 +44,13 @@ if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     check "vep: filter_vep" "filter_vep --help > /dev/null"
     check "vep: variant_recoder" "variant_recoder --help | head -n10"
     check "vep: haplo" "haplo --help | head -n10"
+fi
+
+# The postgres-client feature should install these
+if [[ "${HAS_POSTGRES_CLIENT}" == "true" ]]; then
+    check "psql" psql --version
+    check "pg_dump" pg_dump --version
+    check "pg_restore" pg_restore --version
 fi
 
 # Report result

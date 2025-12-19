@@ -1,0 +1,14 @@
+{
+  "id": "postgres-client",
+  "version": "1.0.0",
+  "name": "PostgreSQL Client",
+  "description": "Installs the PostgreSQL client tools (psql, pg_dump, pg_restore) from the official PostgreSQL repository.",
+  "options": {
+    "version": {
+      "type": "string",
+      "default": "16",
+      "description": "PostgreSQL client version to install (e.g., 16, 15, 14)."
+    }
+  },
+  "installsAfter": ["ghcr.io/devcontainers/features/common-utils"]
+}

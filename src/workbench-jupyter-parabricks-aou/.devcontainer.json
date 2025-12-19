@@ -30,6 +30,9 @@
       "cloud": "${templateOption:cloud}",
       "username": "jupyter",
       "userHomeDir": "/home/jupyter"
+    },
+    "./.devcontainer/features/postgres-client": {
+      "version": "16"
     }
   },
   "remoteUser": "root",

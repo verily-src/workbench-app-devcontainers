@@ -25,7 +25,41 @@ https://containers.dev/
 
 ## Developing a New App
 
-To create a custom app for Workbench:
+### Quick Start (Recommended)
+
+The fastest way to create a custom app is using the `create-custom-app.sh` script:
+
+```bash
+./scripts/create-custom-app.sh <app-name> <docker-image> <port> [username] [home-dir]
+```
+
+**Example** (this created the current example app):
+```bash
+./scripts/create-custom-app.sh example quay.io/jupyter/base-notebook 8888 jovyan /home/jovyan
+```
+
+This script generates a complete app structure in `src/<app-name>/` with:
+- `.devcontainer.json` - Devcontainer configuration
+- `docker-compose.yaml` - Docker Compose setup with ttyd terminal
+- `devcontainer-template.json` - Template metadata
+- `README.md` - App-specific documentation
+
+**Arguments:**
+- `app-name`: Name of your custom app (e.g., `my-jupyter-app`)
+- `docker-image`: Docker image to use (e.g., `jupyter/base-notebook`, `rocker/rstudio`)
+- `port`: Port your app exposes (e.g., `8888` for Jupyter, `8787` for RStudio)
+- `username`: (Optional) User inside container (default: `root`)
+- `home-dir`: (Optional) Home directory (default: `/root` or `/home/<username>`)
+
+After running the script:
+1. Review and customize the generated files in `src/<app-name>/`
+2. Test your app: `cd test && ./test.sh <app-name>`
+3. Commit and push to your forked repository
+4. Create a custom app in Workbench UI using your repository
+
+### Manual Setup (Advanced)
+
+If you need more control, you can manually create a custom app:
 
 1. **Fork this repository** to your own GitHub account or organization
 
@@ -53,8 +87,6 @@ To create a custom app for Workbench:
    - Set `postCreateCommand` to run `post-startup.sh` with parameters: `[username, home_dir, ${templateOption:cloud}]`
    - Include any needed features from `features/src/` (e.g., `workbench-tools`)
    - Use template option `${templateOption:cloud}` to specify the cloud provider (GCP or AWS)
-
-   You can use the script `./scripts/create-custom-app.sh` to generate a basic devcontainer structure from these parameters.
 
 5. **Test your app**:
    - Run the test script: `cd test && ./test.sh <your-app-name>`

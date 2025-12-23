@@ -3,19 +3,19 @@ services:
     # The container name must be "application-server"
     container_name: "application-server"
     # This can be either a pre-existing image or built from a Dockerfile
-    image: "quay.io/jupyter/base-notebook"
+    image: "${templateOption:image}"
     # build:
     #   context: .
     environment:
-      NOTEBOOK_ARGS: "--ServerApp.token='' --ServerApp.password='' --ServerApp.root_dir=/home/jovyan/work --ServerApp.allow_origin='*'"
+      NOTEBOOK_ARGS: "--ServerApp.token='' --ServerApp.password='' --ServerApp.root_dir=${templateOption:homeDir}/work --ServerApp.allow_origin='*'"
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/jovyan/work
+      - work:${templateOption:homeDir}/work
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:
-      - 8888:8888
+      - ${templateOption:port}:${templateOption:port}
     # The service must be connected to the "app-network" Docker network
     networks:
       - app-network

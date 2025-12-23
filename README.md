@@ -1,6 +1,17 @@
 # workbench-app-devcontainer
 
-Repo to store Verily Workbench-specific applications' devcontainer specifications. To develop your own custom app configuration, clone this repo.
+Repo to store Verily Workbench-specific applications' devcontainer specifications. To develop your own custom app configuration, fork this repo.
+
+## Repository Structure
+
+- **`src/`**: Contains devcontainer app templates for various applications (Jupyter, R/RStudio, VSCode, etc.)
+  - Each subdirectory represents a complete app template with `.devcontainer.json`, `docker-compose.yaml`, and startup scripts
+  - Example: `src/example/` - A reference implementation showing the basic structure
+- **`features/src/`**: Contains reusable devcontainer features that can be included in app templates
+  - `workbench-tools/` - Bioinformatics tools (plink, plink2, regenie, bcftools, samtools, etc.)
+  - `java/`, `jupyter/` - Language/framework-specific features
+- **`startupscript/`**: VM provisioning scripts that run after container creation
+- **`test/`**: Integration tests to verify app templates
 
 ## Workbench-specific application requirements
 
@@ -12,11 +23,117 @@ Repo to store Verily Workbench-specific applications' devcontainer specification
 
 https://containers.dev/
 
+## Developing a New App
+
+To create a custom app for Workbench:
+
+1. **Fork this repository** to your own GitHub account or organization
+
+2. **Create a new directory** under `src/` for your app (e.g., `src/my-custom-app/`)
+
+3. **Add required files** to your app directory:
+   - `.devcontainer.json` - The devcontainer specification that defines your app configuration
+   - `docker-compose.yaml` - Docker Compose configuration (must follow Workbench requirements above)
+   - `startup.sh` - App-specific startup script (if needed)
+
+4. **Configure your `.devcontainer.json`**:
+
+   At a bare minimum, you need to specify:
+
+   - **Docker image**: The base container image your app runs on (e.g., `jupyter/base-notebook`, `rocker/rstudio`)
+   - **Port**: The port your application exposes (e.g., `8888` for Jupyter, `8787` for RStudio). This port is exposed on the bridge network so Workbench can reach your app
+   - **Default user**: The username that your application runs as inside the container (e.g., `jovyan` for Jupyter, `rstudio` for RStudio). If your app doesn't have a specific user, you can use `root`
+   - **Home directory**: The default working directory for the user. In most cases, this is `/home/$(whoami)` (e.g., `/home/jovyan`, `/home/rstudio`). If the default user is `root`, the home directory is typically `/root`. Note: VSCode is a unique case where the home directory is `/config`
+
+   **Important**: The home directory is where Workbench mounts cloud storage buckets and clones GitHub repositories. These will be located at:
+   - Cloud storage buckets: `${homedir}/workspaces`
+   - GitHub repositories: `${homedir}/repos`
+
+   Additional configuration:
+   - Set `postCreateCommand` to run `post-startup.sh` with parameters: `[username, home_dir, ${templateOption:cloud}]`
+   - Include any needed features from `features/src/` (e.g., `workbench-tools`)
+   - Use template option `${templateOption:cloud}` to specify the cloud provider (GCP or AWS)
+
+   You can use the script `./scripts/create-custom-app.sh` to generate a basic devcontainer structure from these parameters.
+
+5. **Test your app**:
+   - Run the test script: `cd test && ./test.sh <your-app-name>`
+   - Create a custom app in Workbench UI pointing to your forked repo and branch
+
+6. **Reference the example app** at [src/example](https://github.com/verily-src/workbench-app-devcontainer/tree/main/src/example) to see a basic implementation
+
+For detailed guidance, visit https://support.workbench.verily.com/docs/guides/cloud_apps/create_custom_apps/
+
+## Running Linux Distros on Workbench
+
+Linux distributions (Ubuntu, Debian, RHEL, etc.) typically don't have a web UI or exposed port by default. Since Workbench apps must be accessible via a browser, you need to add a web-based interface to your Linux distro container.
+
+### Recommended Approaches
+
+#### Option 1: JupyterLab (Recommended for Data Science & General Use)
+
+JupyterLab provides a full-featured web interface with built-in terminal access, file browser, text editor, and notebook support.
+
+**Examples**: See the NeMo and Parabricks apps (`src/nemo_jupyter/` and `src/workbench-jupyter-parabricks/`) which use JupyterLab to provide web access to specialized NVIDIA CUDA Linux environments.
+
+To add JupyterLab to your Linux distro, use the `features/src/jupyter` feature with `installJupyterlab: true` and configure the container command:
+
+```yaml
+# docker-compose.yaml
+services:
+  app:
+    container_name: "application-server"
+    image: "ubuntu:22.04"
+    command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--LabApp.token=''"]
+    ports:
+      - 8888:8888
+    # ... rest of configuration
+```
+
+#### Option 2: ttyd (Lightweight Terminal-Only Access)
+
+If you only need terminal access without the full JupyterLab interface, use [ttyd](https://github.com/tsl0922/ttyd) - a lightweight web-based terminal.
+
+To add ttyd to your Linux distro, use the `features/src/ttyd` feature and configure the container command:
+
+```yaml
+# docker-compose.yaml
+services:
+  app:
+    container_name: "application-server"
+    image: "ubuntu:22.04"
+    command: ["ttyd", "-p", "7681", "bash"]
+    ports:
+      - 7681:7681
+    # ... rest of configuration
+```
+
+#### Option 3: VS Code Server (Full IDE Experience)
+
+For a full IDE experience, use the [vscode-server feature](https://github.com/devcontainers-extra/features/tree/main/src/vscode-server) which provides VS Code in the browser with built-in terminal access.
+
+## Debugging and Local Development
+
+To run and debug your app locally:
+
+1. **Install the devcontainer CLI**: Follow the installation instructions at https://code.visualstudio.com/docs/devcontainers/devcontainer-cli
+
+2. **Build your app**:
+   ```bash
+   cd src/<your-app-name>
+   devcontainer build --workspace-folder .
+   ```
+
+3. **Start your app**:
+   ```bash
+   devcontainer up --workspace-folder .
+   ```
+
+4. **Access your app**: Once the container is running, you can access it at `localhost:<port>` where `<port>` is the port you specified in your configuration (e.g., `localhost:8888` for Jupyter)
+
 ## How to use
 
 The `.devcontainer.json` file in the custom app folder (e.g. r-analysis/) contains the custom app configuration.
 `post-startup.sh` contains workbench specific set up.
 
 Please visit https://support.workbench.verily.com/docs/guides/cloud_apps/create_custom_apps/ for details about using a dev container specification to create a custom app in Workbench.
-
-For an example app, see [src/jupyter](https://github.com/verily-src/workbench-app-devcontainer/tree/main/src/jupyter).

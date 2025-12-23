@@ -98,9 +98,6 @@ services:
     # Workbench UI.
     ports:
       - ${PORT}:${PORT}
-    # Start ttyd with writable mode (-W flag) for interactive terminal
-    # Container runs as root for capabilities, but terminal runs as configured user
-    command: ["ttyd", "-W", "-p", "${PORT}", "su", "-", "${USERNAME}"]
     # The service must be connected to the "app-network" Docker network
     networks:
       - app-network

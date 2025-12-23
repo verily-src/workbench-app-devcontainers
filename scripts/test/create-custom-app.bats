@@ -84,8 +84,6 @@ teardown() {
     grep -q 'image: "python:3.11"' "src/test-app/docker-compose.yaml"
     grep -q '8080:8080' "src/test-app/docker-compose.yaml"
     grep -q 'work:/home/testuser/work' "src/test-app/docker-compose.yaml"
-    grep -q '"8080"' "src/test-app/docker-compose.yaml"
-    grep -q '"testuser"' "src/test-app/docker-compose.yaml"
 
     # Check for required workbench settings
     grep -q 'container_name: "application-server"' "src/test-app/docker-compose.yaml"

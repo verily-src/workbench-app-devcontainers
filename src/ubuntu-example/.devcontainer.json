@@ -1,0 +1,28 @@
+{
+  "name": "ubuntu-example",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "vscode",
+    "/home/vscode",
+    "${templateOption:cloud}"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "vscode",
+    "/home/vscode",
+    "${templateOption:cloud}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
+    "ghcr.io/ar90n/devcontainer-features/ttyd:1": {}
+  },
+  "remoteUser": "root"
+}

@@ -1,0 +1,14 @@
+{
+  "id": "ubuntu-example",
+  "version": "1.0.0",
+  "name": "ubuntu-example",
+  "description": "Custom Workbench app: ubuntu-example (Image: mcr.microsoft.com/devcontainers/base:ubuntu, Port: 7681, User: vscode)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    }
+  }
+}

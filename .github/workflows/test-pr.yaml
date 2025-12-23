@@ -27,8 +27,6 @@ jobs:
         config:
           - jupyter-template:
               user: jupyter
-            jupyter:
-              user: jovyan
             r-analysis:
               user: rstudio
               workbench_tools: true

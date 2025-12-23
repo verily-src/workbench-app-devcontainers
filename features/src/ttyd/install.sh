@@ -4,10 +4,10 @@ set -o errexit -o nounset -o pipefail -o xtrace
 # ttyd feature install script
 # Installs ttyd - a simple tool for sharing terminal over the web
 
-readonly VERSION="${VERSION:-"latest"}"
-readonly PORT="${PORT:-"7681"}"
+readonly TTYD_VERSION="${VERSION:-"latest"}"
+readonly TTYD_PORT="${PORT:-"7681"}"
 
-echo "Installing ttyd ${VERSION}..."
+echo "Installing ttyd ${TTYD_VERSION}..."
 
 # Check for root
 if [ "$(id -u)" -ne 0 ]; then
@@ -44,16 +44,21 @@ case "${ARCH}" in
 esac
 
 # Get latest version if needed
-if [ "${VERSION}" = "latest" ]; then
-    TTYD_VERSION=$(curl -sL https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+if [ "${TTYD_VERSION}" = "latest" ]; then
+    TTYD_RELEASE_VERSION=$(curl -sL https://api.github.com/repos/tsl0922/ttyd/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || echo "")
+    # Fallback to a known version if API call fails
+    if [ -z "${TTYD_RELEASE_VERSION}" ]; then
+        echo "Warning: Could not fetch latest version from GitHub API, using fallback version 1.7.7"
+        TTYD_RELEASE_VERSION="1.7.7"
+    fi
 else
-    TTYD_VERSION="${VERSION}"
+    TTYD_RELEASE_VERSION="${TTYD_VERSION}"
 fi
 
-echo "Installing ttyd version ${TTYD_VERSION} for ${ARCH}..."
+echo "Installing ttyd version ${TTYD_RELEASE_VERSION} for ${ARCH}..."
 
 # Download and install ttyd
-DOWNLOAD_URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ARCH}"
+DOWNLOAD_URL="https://github.com/tsl0922/ttyd/releases/download/${TTYD_RELEASE_VERSION}/ttyd.${ARCH}"
 curl -sL "${DOWNLOAD_URL}" -o /usr/local/bin/ttyd
 chmod +x /usr/local/bin/ttyd
 
@@ -68,6 +73,6 @@ if [ "${ADJUSTED_ID}" = "debian" ]; then
     rm -rf /var/lib/apt/lists/*
 fi
 
-echo "ttyd ${TTYD_VERSION} installed successfully!"
-echo "Default port: ${PORT}"
-echo "To run: ttyd -p ${PORT} bash"
+echo "ttyd ${TTYD_RELEASE_VERSION} installed successfully!"
+echo "Default port: ${TTYD_PORT}"
+echo "To run: ttyd -p ${TTYD_PORT} bash"

@@ -1,16 +1,14 @@
-name: "CI - Test Scripts and Features"
+name: "CI - Test Scripts"
 on:
   pull_request:
     paths:
       - 'scripts/**'
-      - 'features/**'
       - '.github/workflows/test-scripts.yaml'
   push:
     branches:
       - master
     paths:
       - 'scripts/**'
-      - 'features/**'
       - '.github/workflows/test-scripts.yaml'
 
 jobs:
@@ -29,15 +27,3 @@ jobs:
         run: |
           cd scripts/test
           bats create-custom-app.bats
-
-  test-ttyd-feature:
-    name: "Test ttyd feature"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install devcontainer CLI
-        run: npm install -g @devcontainers/cli
-
-      - name: Run ttyd feature tests
-        run: devcontainer features test --features ttyd --base-image mcr.microsoft.com/devcontainers/base:ubuntu .

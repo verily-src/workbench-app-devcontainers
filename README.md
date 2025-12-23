@@ -94,7 +94,18 @@ services:
 
 If you only need terminal access without the full JupyterLab interface, use [ttyd](https://github.com/tsl0922/ttyd) - a lightweight web-based terminal.
 
-To add ttyd to your Linux distro, use the `features/src/ttyd` feature and configure the container command:
+To add ttyd to your Linux distro, add the [ttyd feature](https://github.com/ar90n/devcontainer-features/tree/main/src/ttyd) to your `.devcontainer.json`:
+
+```json
+// .devcontainer.json
+{
+  "features": {
+    "ghcr.io/ar90n/devcontainer-features/ttyd:1": {}
+  }
+}
+```
+
+Then configure the container command in your `docker-compose.yaml`:
 
 ```yaml
 # docker-compose.yaml

@@ -1,0 +1,20 @@
+{
+  "id": "example",
+  "version": "1.0.0",
+  "name": "example",
+  "description": "Custom Workbench app: example (Image: quay.io/jupyter/base-notebook, Port: 8888, User: jovyan)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

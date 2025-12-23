@@ -1,37 +1,14 @@
 {
   "id": "example",
-  "description": "An example app template showing the basic structure for a Workbench app",
   "version": "1.0.0",
-  "name": "Workbench Example App",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/example",
-  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "name": "example",
+  "description": "Custom Workbench app: example (Image: quay.io/jupyter/base-notebook, Port: 8888, User: jovyan)",
   "options": {
-    "image": {
-      "type": "string",
-      "default": "quay.io/jupyter/base-notebook",
-      "description": "Docker image to use for the application"
-    },
-    "port": {
-      "type": "string",
-      "default": "8888",
-      "description": "Port the application exposes"
-    },
-    "username": {
-      "type": "string",
-      "default": "jovyan",
-      "description": "Default user inside the container"
-    },
-    "homeDir": {
-      "type": "string",
-      "default": "/home/jovyan",
-      "description": "Home directory for the user (where cloud storage and repos are mounted)"
-    },
     "cloud": {
       "type": "string",
-      "description": "Cloud provider",
-      "proposals": ["gcp", "aws"],
-      "default": "gcp"
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
     }
-  },
-  "platforms": ["Any"]
+  }
 }

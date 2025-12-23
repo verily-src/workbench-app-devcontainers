@@ -1,34 +1,45 @@
-# Workbench Example App
+# example
 
-An example app template showing the basic structure for a Workbench custom app. This template demonstrates how to use template variables to make your app configurable.
+Custom Workbench application based on quay.io/jupyter/base-notebook.
 
-## Template Variables
+## Configuration
 
-This example uses template variables (`${templateOption:*}`) to make the app configurable. When users create a custom app from this template in the Workbench UI, they can customize these values:
+- **Image**: quay.io/jupyter/base-notebook
+- **Port**: 8888
+- **User**: jovyan
+- **Home Directory**: /home/jovyan
 
-| Option | Description | Type | Default Value |
-|-----|-----|-----|-----|
-| image | Docker image to use for the application | string | quay.io/jupyter/base-notebook |
-| port | Port the application exposes | string | 8888 |
-| username | Default user inside the container | string | jovyan |
-| homeDir | Home directory for the user (where cloud storage and repos are mounted) | string | /home/jovyan |
-| cloud | Cloud provider | string | gcp |
+## Access
 
-## Key Concepts
+This app uses [ttyd](https://github.com/tsl0922/ttyd) to provide web-based terminal access.
 
-- **Template variables** are replaced when the app is created
-- **Home directory** is where Workbench mounts cloud storage buckets (`${homeDir}/workspaces`) and GitHub repos (`${homeDir}/repos`)
-- **Port** must be exposed on the bridge network for Workbench to reach the app
-- **Username** determines the identity inside the container
+Once deployed in Workbench, access your terminal at the app URL (port 8888).
 
-## Using This Template
+For local testing:
+1. Create Docker network: `docker network create app-network`
+2. Run the app: `devcontainer up --workspace-folder .`
+3. Access at: `http://localhost:8888`
 
-You can generate a similar app structure using the script:
+## Customization
+
+Edit the following files to customize your app:
+
+- `.devcontainer.json` - Devcontainer configuration and features
+- `docker-compose.yaml` - Docker Compose configuration (change the `command` to customize ttyd options)
+- `devcontainer-template.json` - Template options and metadata
+
+## Testing
+
+To test this app template:
 
 ```bash
-./scripts/create-custom-app.sh my-app jupyter/base-notebook 8888 jovyan /home/jovyan
+cd test
+./test.sh example
 ```
 
----
+## Usage
 
-_Note: This file was auto-generated from the [devcontainer-template.json](devcontainer-template.json).  Add additional notes to a `NOTES.md`._
+1. Fork the repository
+2. Modify the configuration files as needed
+3. In Workbench UI, create a custom app pointing to your forked repository
+4. Select this app template (example)

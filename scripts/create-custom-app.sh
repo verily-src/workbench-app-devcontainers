@@ -73,8 +73,7 @@ cat > "${REPO_ROOT}/${APP_DIR}/.devcontainer.json" <<EOF
       "version": "17"
     },
     "ghcr.io/devcontainers/features/aws-cli:1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
-    "ghcr.io/ar90n/devcontainer-features/ttyd:1": {}
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
   },
   "remoteUser": "root"
 }

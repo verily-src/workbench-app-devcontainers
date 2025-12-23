@@ -3,19 +3,20 @@ services:
     # The container name must be "application-server"
     container_name: "application-server"
     # This can be either a pre-existing image or built from a Dockerfile
-    image: "${templateOption:image}"
+    image: "quay.io/jupyter/base-notebook"
     # build:
     #   context: .
-    environment:
-      NOTEBOOK_ARGS: "--ServerApp.token='' --ServerApp.password='' --ServerApp.root_dir=${templateOption:homeDir}/work --ServerApp.allow_origin='*'"
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:${templateOption:homeDir}/work
+      - work:/home/jovyan/work
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:
-      - ${templateOption:port}:${templateOption:port}
+      - 8888:8888
+    # Start ttyd with writable mode (-W flag) for interactive terminal
+    # Container runs as root for capabilities, but terminal runs as configured user
+    command: ["ttyd", "-W", "-p", "8888", "su", "-", "jovyan"]
     # The service must be connected to the "app-network" Docker network
     networks:
       - app-network

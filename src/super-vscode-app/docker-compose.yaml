@@ -1,14 +1,16 @@
-version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "us-central1-docker.pkg.dev/wb-beamish-jalapeno-2198/navid-repo/base-image:2.4.1"
+    image: "us-central1-docker.pkg.dev/vwb-dev-genial-pecan-2179/navid-repo/base-image:2.4.1"
     restart: always
+    entrypoint: /bin/bash
+    command: >
+      -c "/usr/bin/workstation-startup || true; runuser user -c 'sleep infinity'"
     volumes:
       - .:/workspace:cached
-      - work:/home/vscode:cached
+      - work:/home/user:cached
     ports:
-      - "8080:8080"
+      - "8080:80"
     networks:
       - app-network
     cap_add:
@@ -16,7 +18,7 @@ services:
     devices:
       - /dev/fuse
     security_opt:
-      - apparmor:unconfined
+      - apparmor=unconfined
 networks:
   app-network:
     external: true

@@ -35,7 +35,9 @@ check_packages curl ca-certificates
 
 # Ensure that login shells get the correct path if the user updated the PATH using ENV.
 rm -f /etc/profile.d/00-restore-env.sh
-echo "export PATH=${PATH//$(sh -lc 'echo $PATH')/\$PATH}" >/etc/profile.d/00-restore-env.sh
+# Skip the login shell PATH check to avoid issues with problematic bash profiles
+# Just preserve the current PATH
+echo "export PATH=${PATH}" >/etc/profile.d/00-restore-env.sh
 chmod +x /etc/profile.d/00-restore-env.sh
 
 # Install the miniforge

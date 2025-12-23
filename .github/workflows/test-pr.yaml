@@ -25,10 +25,10 @@ jobs:
             - 'startupscript/**'
             - 'test/**'
         config:
-          - jupyter-template:
-              user: jupyter
-            jupyter:
+          - example:
               user: jovyan
+            jupyter-template:
+              user: jupyter
             r-analysis:
               user: rstudio
               workbench_tools: true
@@ -81,6 +81,8 @@ jobs:
               filters:
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
+            ubuntu-example:
+              user: vscode
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:

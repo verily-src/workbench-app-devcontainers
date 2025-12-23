@@ -1,0 +1,205 @@
+#!/bin/bash
+# Script to create a custom Workbench app devcontainer structure
+# Usage: ./create-custom-app.sh <app-name> <docker-image> <port> [username] [home-dir]
+
+set -o errexit -o nounset -o pipefail -o xtrace
+
+# Parse arguments
+if [ $# -lt 3 ]; then
+  echo "Usage: $0 <app-name> <docker-image> <port> [username] [home-dir]"
+  echo ""
+  echo "Arguments:"
+  echo "  app-name      - Name of your custom app (e.g., my-jupyter-app)"
+  echo "  docker-image  - Docker image to use (e.g., jupyter/base-notebook)"
+  echo "  port          - Port your app exposes (e.g., 8888)"
+  echo "  username      - (Optional) User inside container (default: root)"
+  echo "  home-dir      - (Optional) Home directory (default: /root or /home/<username>)"
+  echo ""
+  echo "Example:"
+  echo "  $0 my-jupyter jupyter/base-notebook 8888 jovyan /home/jovyan"
+  exit 1
+fi
+
+readonly APP_NAME="$1"
+readonly DOCKER_IMAGE="$2"
+readonly PORT="$3"
+readonly USERNAME="${4:-root}"
+
+# Calculate home directory if not provided
+if [ $# -ge 5 ]; then
+  readonly HOME_DIR="$5"
+else
+  if [ "$USERNAME" = "root" ]; then
+    readonly HOME_DIR="/root"
+  else
+    readonly HOME_DIR="/home/$USERNAME"
+  fi
+fi
+readonly -f
+
+readonly APP_DIR="src/${APP_NAME}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly REPO_ROOT
+
+# Create app directory
+echo "Creating app directory: ${APP_DIR}"
+mkdir -p "${REPO_ROOT}/${APP_DIR}"
+
+# Generate .devcontainer.json
+echo "Generating .devcontainer.json"
+cat > "${REPO_ROOT}/${APP_DIR}/.devcontainer.json" <<EOF
+{
+  "name": "${APP_NAME}",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "${USERNAME}",
+    "${HOME_DIR}",
+    "\${templateOption:cloud}",
+    "\${templateOption:login}"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "${USERNAME}",
+    "${HOME_DIR}",
+    "\${templateOption:cloud}",
+    "\${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+  },
+  "remoteUser": "root"
+}
+EOF
+
+# Generate docker-compose.yaml
+echo "Generating docker-compose.yaml"
+cat > "${REPO_ROOT}/${APP_DIR}/docker-compose.yaml" <<EOF
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    # This can be either a pre-existing image or built from a Dockerfile
+    image: "${DOCKER_IMAGE}"
+    # build:
+    #   context: .
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:${HOME_DIR}/work
+    # The port specified here will be forwarded and accessible from the
+    # Workbench UI.
+    ports:
+      - ${PORT}:${PORT}
+    # The service must be connected to the "app-network" Docker network
+    networks:
+      - app-network
+    # SYS_ADMIN and fuse are required to mount workspace resources into the
+    # container.
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true
+EOF
+
+# Generate devcontainer-template.json
+echo "Generating devcontainer-template.json"
+cat > "${REPO_ROOT}/${APP_DIR}/devcontainer-template.json" <<EOF
+{
+  "id": "${APP_NAME}",
+  "version": "1.0.0",
+  "name": "${APP_NAME}",
+  "description": "Custom Workbench app: ${APP_NAME} (Image: ${DOCKER_IMAGE}, Port: ${PORT}, User: ${USERNAME})",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}
+EOF
+
+# Generate README
+echo "Generating README.md"
+cat > "${REPO_ROOT}/${APP_DIR}/README.md" <<EOF
+# ${APP_NAME}
+
+Custom Workbench application based on ${DOCKER_IMAGE}.
+
+## Configuration
+
+- **Image**: ${DOCKER_IMAGE}
+- **Port**: ${PORT}
+- **User**: ${USERNAME}
+- **Home Directory**: ${HOME_DIR}
+
+## Access
+
+Once deployed in Workbench, access your terminal at the app URL (port ${PORT}).
+
+For local testing:
+1. Create Docker network: \`docker network create app-network\`
+2. Run the app: \`devcontainer up --workspace-folder .\`
+3. Access at: \`http://localhost:${PORT}\`
+
+## Customization
+
+Edit the following files to customize your app:
+
+- \`.devcontainer.json\` - Devcontainer configuration and features
+- \`docker-compose.yaml\` - Docker Compose configuration (change the \`command\` to customize ttyd options)
+- \`devcontainer-template.json\` - Template options and metadata
+
+## Testing
+
+To test this app template:
+
+\`\`\`bash
+cd test
+./test.sh ${APP_NAME}
+\`\`\`
+
+## Usage
+
+1. Fork the repository
+2. Modify the configuration files as needed
+3. In Workbench UI, create a custom app pointing to your forked repository
+4. Select this app template (${APP_NAME})
+EOF
+
+echo ""
+echo "✓ Custom app created successfully at: ${APP_DIR}"
+echo ""
+echo "Next steps:"
+echo "  1. Review and customize the generated files in ${APP_DIR}"
+echo "  2. Test your app: cd test && ./test.sh ${APP_NAME}"
+echo "  3. Commit and push to your forked repository"
+echo "  4. Create a custom app in Workbench UI using your repository"

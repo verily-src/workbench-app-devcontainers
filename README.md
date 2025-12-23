@@ -164,8 +164,8 @@ services:
   app:
     container_name: "application-server"
     image: "mcr.microsoft.com/devcontainers/base:ubuntu"
-    # Container runs as root for SYS_ADMIN capabilities, but terminal runs as vscode user
-    command: ["ttyd", "-W", "-p", "7681", "su", "-", "vscode"]
+    user: vscode
+    command: ["ttyd", "-W", "-p", "7681", "bash"]
     ports:
       - 7681:7681
     cap_add:
@@ -179,9 +179,6 @@ services:
 
 **Important**:
 - The `-W` flag makes the terminal writable (interactive). Without it, the terminal will be read-only.
-- The container runs as root (needed for SYS_ADMIN and /dev/fuse capabilities), but the terminal session runs as the `vscode` user via `su - vscode`.
-
-**Tip**: Use `mcr.microsoft.com/devcontainers/base:ubuntu` instead of plain `ubuntu:22.04` - it comes with a pre-configured `vscode` user and common development tools.
 
 #### Option 3: VS Code Server (Full IDE Experience)
 

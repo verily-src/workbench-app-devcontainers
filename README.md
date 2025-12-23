@@ -44,6 +44,25 @@ This script generates a complete app structure in `src/<app-name>/` with:
 - `devcontainer-template.json` - Template metadata
 - `README.md` - App-specific documentation
 
+**Using a Dockerfile instead of a Docker image:**
+
+If you don't have a pre-built Docker image and only have a Dockerfile:
+
+1. Run the script with an empty image parameter:
+   ```bash
+   ./scripts/create-custom-app.sh my-app "" 8888 myuser /home/myuser
+   ```
+
+2. In the generated `src/my-app/docker-compose.yaml`, uncomment the `build` section:
+   ```yaml
+   build:
+     context: .
+   ```
+
+3. Add your `Dockerfile` to `src/my-app/`
+
+4. Remove the `image:` line from the `docker-compose.yaml`
+
 **Arguments:**
 - `app-name`: Name of your custom app (e.g., `my-jupyter-app`)
 - `docker-image`: Docker image to use (e.g., `jupyter/base-notebook`, `rocker/rstudio`)

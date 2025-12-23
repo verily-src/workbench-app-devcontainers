@@ -11,8 +11,6 @@ Custom Workbench application based on quay.io/jupyter/base-notebook.
 
 ## Access
 
-This app uses [ttyd](https://github.com/tsl0922/ttyd) to provide web-based terminal access.
-
 Once deployed in Workbench, access your terminal at the app URL (port 8888).
 
 For local testing:

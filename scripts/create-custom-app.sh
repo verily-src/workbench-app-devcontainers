@@ -60,13 +60,15 @@ cat > "${REPO_ROOT}/${APP_DIR}/.devcontainer.json" <<EOF
     "./startupscript/post-startup.sh",
     "${USERNAME}",
     "${HOME_DIR}",
-    "\${templateOption:cloud}"
+    "\${templateOption:cloud}",
+    "\${templateOption:login}"
   ],
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
     "${USERNAME}",
     "${HOME_DIR}",
-    "\${templateOption:cloud}"
+    "\${templateOption:cloud}",
+    "\${templateOption:login}"
   ],
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
@@ -134,6 +136,12 @@ cat > "${REPO_ROOT}/${APP_DIR}/devcontainer-template.json" <<EOF
       "enum": ["gcp", "aws"],
       "default": "gcp",
       "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
     }
   }
 }

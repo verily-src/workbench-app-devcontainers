@@ -8,13 +8,15 @@
     "./startupscript/post-startup.sh",
     "jovyan",
     "/home/jovyan",
-    "${templateOption:cloud}"
+    "${templateOption:cloud}",
+    "${templateOption:login}"
   ],
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
     "jovyan",
     "/home/jovyan",
-    "${templateOption:cloud}"
+    "${templateOption:cloud}",
+    "${templateOption:login}"
   ],
   "features": {
     "ghcr.io/devcontainers/features/java:1": {

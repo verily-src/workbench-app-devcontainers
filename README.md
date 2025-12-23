@@ -112,12 +112,25 @@ Then configure the container command in your `docker-compose.yaml`:
 services:
   app:
     container_name: "application-server"
-    image: "ubuntu:22.04"
-    command: ["ttyd", "-p", "7681", "bash"]
+    image: "mcr.microsoft.com/devcontainers/base:ubuntu"
+    # Container runs as root for SYS_ADMIN capabilities, but terminal runs as vscode user
+    command: ["ttyd", "-W", "-p", "7681", "su", "-", "vscode"]
     ports:
       - 7681:7681
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
     # ... rest of configuration
 ```
+
+**Important**:
+- The `-W` flag makes the terminal writable (interactive). Without it, the terminal will be read-only.
+- The container runs as root (needed for SYS_ADMIN and /dev/fuse capabilities), but the terminal session runs as the `vscode` user via `su - vscode`.
+
+**Tip**: Use `mcr.microsoft.com/devcontainers/base:ubuntu` instead of plain `ubuntu:22.04` - it comes with a pre-configured `vscode` user and common development tools.
 
 #### Option 3: VS Code Server (Full IDE Experience)
 
@@ -129,18 +142,36 @@ To run and debug your app locally:
 
 1. **Install the devcontainer CLI**: Follow the installation instructions at https://code.visualstudio.com/docs/devcontainers/devcontainer-cli
 
-2. **Build your app**:
+2. **Create the Docker network**: Workbench apps require an external Docker network named `app-network`
    ```bash
-   cd src/<your-app-name>
-   devcontainer build --workspace-folder .
+   docker network create app-network
    ```
 
-3. **Start your app**:
+3. **Comment out Workbench-specific commands**: For local testing, you should comment out the `postCreateCommand` and `postStartCommand` in your `.devcontainer.json` since these scripts are designed to run in the Workbench environment and may fail locally:
+   ```json
+   {
+     // "postCreateCommand": [
+     //   "./startupscript/post-startup.sh",
+     //   "username",
+     //   "/home/username",
+     //   "gcp"
+     // ],
+     // "postStartCommand": [
+     //   "./startupscript/remount-on-restart.sh",
+     //   "username",
+     //   "/home/username",
+     //   "gcp"
+     // ]
+   }
+   ```
+
+4. **Run your app**:
    ```bash
+   cd src/<your-app-name>
    devcontainer up --workspace-folder .
    ```
 
-4. **Access your app**: Once the container is running, you can access it at `localhost:<port>` where `<port>` is the port you specified in your configuration (e.g., `localhost:8888` for Jupyter)
+5. **Access your app**: Once the container is running, you can access it at `localhost:<port>` where `<port>` is the port you specified in your configuration (e.g., `localhost:8888` for Jupyter, `localhost:7681` for ttyd)
 
 ## How to use
 

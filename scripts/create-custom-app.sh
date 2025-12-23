@@ -58,14 +58,14 @@ cat > "${REPO_ROOT}/${APP_DIR}/.devcontainer.json" <<EOF
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
     "./startupscript/post-startup.sh",
-    "\${templateOption:username}",
-    "\${templateOption:homeDir}",
+    "${USERNAME}",
+    "${HOME_DIR}",
     "\${templateOption:cloud}"
   ],
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
-    "\${templateOption:username}",
-    "\${templateOption:homeDir}",
+    "${USERNAME}",
+    "${HOME_DIR}",
     "\${templateOption:cloud}"
   ],
   "features": {
@@ -73,7 +73,8 @@ cat > "${REPO_ROOT}/${APP_DIR}/.devcontainer.json" <<EOF
       "version": "17"
     },
     "ghcr.io/devcontainers/features/aws-cli:1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
+    "ghcr.io/ar90n/devcontainer-features/ttyd:1": {}
   },
   "remoteUser": "root"
 }
@@ -87,17 +88,20 @@ services:
     # The container name must be "application-server"
     container_name: "application-server"
     # This can be either a pre-existing image or built from a Dockerfile
-    image: "\${templateOption:image}"
+    image: "${DOCKER_IMAGE}"
     # build:
     #   context: .
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:\${templateOption:homeDir}/work
+      - work:${HOME_DIR}/work
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:
-      - \${templateOption:port}:\${templateOption:port}
+      - ${PORT}:${PORT}
+    # Start ttyd with writable mode (-W flag) for interactive terminal
+    # Container runs as root for capabilities, but terminal runs as configured user
+    command: ["ttyd", "-W", "-p", "${PORT}", "su", "-", "${USERNAME}"]
     # The service must be connected to the "app-network" Docker network
     networks:
       - app-network
@@ -127,28 +131,8 @@ cat > "${REPO_ROOT}/${APP_DIR}/devcontainer-template.json" <<EOF
   "id": "${APP_NAME}",
   "version": "1.0.0",
   "name": "${APP_NAME}",
-  "description": "Custom Workbench app: ${APP_NAME}",
+  "description": "Custom Workbench app: ${APP_NAME} (Image: ${DOCKER_IMAGE}, Port: ${PORT}, User: ${USERNAME})",
   "options": {
-    "image": {
-      "type": "string",
-      "default": "${DOCKER_IMAGE}",
-      "description": "Docker image to use for the application"
-    },
-    "port": {
-      "type": "string",
-      "default": "${PORT}",
-      "description": "Port the application exposes"
-    },
-    "username": {
-      "type": "string",
-      "default": "${USERNAME}",
-      "description": "Default user inside the container"
-    },
-    "homeDir": {
-      "type": "string",
-      "default": "${HOME_DIR}",
-      "description": "Home directory for the user"
-    },
     "cloud": {
       "type": "string",
       "enum": ["gcp", "aws"],
@@ -173,12 +157,23 @@ Custom Workbench application based on ${DOCKER_IMAGE}.
 - **User**: ${USERNAME}
 - **Home Directory**: ${HOME_DIR}
 
+## Access
+
+This app uses [ttyd](https://github.com/tsl0922/ttyd) to provide web-based terminal access.
+
+Once deployed in Workbench, access your terminal at the app URL (port ${PORT}).
+
+For local testing:
+1. Create Docker network: \`docker network create app-network\`
+2. Run the app: \`devcontainer up --workspace-folder .\`
+3. Access at: \`http://localhost:${PORT}\`
+
 ## Customization
 
 Edit the following files to customize your app:
 
-- \`.devcontainer.json\` - Devcontainer configuration
-- \`docker-compose.yaml\` - Docker Compose configuration
+- \`.devcontainer.json\` - Devcontainer configuration and features
+- \`docker-compose.yaml\` - Docker Compose configuration (change the \`command\` to customize ttyd options)
 - \`devcontainer-template.json\` - Template options and metadata
 
 ## Testing

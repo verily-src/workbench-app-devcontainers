@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# oem-postinst - Flatcar OS Update Post-Install Hook
+#
+# This script runs after update-engine writes a new partition during OS updates.
+# It notifies users that a manual reboot is required to complete the update.
+#
+# Reference: https://www.flatcar.org/docs/latest/setup/releases/update-strategies/#configure-a-post-install-update-hook
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
+# shellcheck source=/dev/null
+source /home/core/metadata-utils.sh
+
+# Set metadata to notify the UI that a reboot is required
+# The UI can poll this metadata and display a notification to the user
+set_metadata "os_update/reboot_required" "true"
+set_metadata "os_update/timestamp" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+echo "Metadata set successfully: reboot required after OS update"

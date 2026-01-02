@@ -56,4 +56,4 @@ else
   echo "Metadata cleared successfully"
 fi
 
-echo "check-for-newer-update.sh completed"
+echo "check-for-newer-os-update.sh completed"

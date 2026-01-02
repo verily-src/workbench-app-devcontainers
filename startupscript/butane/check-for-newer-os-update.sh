@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# check-for-newer-os-pdate.sh - Flatcar Double-Update Workaround and Metadata Cleanup
+# check-for-newer-os-update.sh - Flatcar Double-Update Workaround and Metadata Cleanup
 #
 # This script handles two scenarios:
 # 1. Prevents the "double update" problem when automatic reboots are disabled

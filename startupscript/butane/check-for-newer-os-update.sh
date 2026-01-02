@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# check-for-newer-update.sh - Flatcar Double-Update Workaround and Metadata Cleanup
+# check-for-newer-os-pdate.sh - Flatcar Double-Update Workaround and Metadata Cleanup
 #
 # This script handles two scenarios:
 # 1. Prevents the "double update" problem when automatic reboots are disabled
@@ -18,8 +18,6 @@
 # Metadata Cleanup:
 # After the user reboots, the metadata still shows reboot_required=true. This script
 # detects that the reboot has happened and clears the metadata.
-#
-# Reference: https://www.flatcar.org/docs/latest/setup/releases/update-strategies/#double-update-workaround
 
 set -o errexit
 set -o nounset

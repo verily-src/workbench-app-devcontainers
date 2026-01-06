@@ -58,25 +58,32 @@ The MCP server exposes the following tools:
 
 1. After the feature is installed, the MCP server binary is available at `/opt/wb-mcp-server/wb-mcp-server`
 
-2. Configure Claude CLI by editing `~/.config/claude/config.json`:
+2. Add the MCP server using the Claude CLI command:
+
+```bash
+claude mcp add --transport stdio wb -- /opt/wb-mcp-server/wb-mcp-server
+```
+
+Alternatively, manually configure by editing `~/.claude.json` or `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "wb": {
+      "type": "stdio",
       "command": "/opt/wb-mcp-server/wb-mcp-server"
     }
   }
 }
 ```
 
-3. Start Claude CLI, and it will automatically connect to the MCP server:
+3. Verify the server is configured:
 
 ```bash
-claude
+claude mcp list
 ```
 
-4. Claude can now interact with your Workbench environment:
+4. Start Claude, and it will automatically connect to the MCP server. Claude can now interact with your Workbench environment:
 
 ```
 You: List all my workspaces
@@ -88,7 +95,41 @@ Claude: [calls wb_resource_list tool] Here are the resources...
 
 ## Usage with Gemini CLI
 
-Configure the Gemini CLI similarly by adding the MCP server to its configuration file.
+1. After the feature is installed, the MCP server binary is available at `/opt/wb-mcp-server/wb-mcp-server`
+
+2. Add the MCP server using the Gemini CLI command:
+
+```bash
+gemini mcp add --scope user wb /opt/wb-mcp-server/wb-mcp-server
+```
+
+Alternatively, manually configure by editing `~/.gemini/settings.json` or `.gemini/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "wb": {
+      "command": "/opt/wb-mcp-server/wb-mcp-server"
+    }
+  }
+}
+```
+
+3. Verify the server is configured:
+
+```bash
+gemini mcp list
+```
+
+4. Start Gemini, and it will automatically connect to the MCP server. Gemini can now interact with your Workbench environment:
+
+```
+You: List all my workspaces
+Gemini: [calls wb_workspace_list tool] Here are your workspaces...
+
+You: What resources are in my current workspace?
+Gemini: [calls wb_resource_list tool] Here are the resources...
+```
 
 ## Usage with Other MCP Clients
 

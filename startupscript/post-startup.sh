@@ -27,51 +27,20 @@ echo "=== VARIABLES SET: USER=${USER_NAME}, WORK_DIR=${WORK_DIRECTORY}, CLOUD=${
 # Gets absolute path of the script directory.
 # Because the script sometimes cd to other directoy (e.g. /tmp),
 # absolute path is more reliable.
-echo "=== DETERMINING SCRIPT DIRECTORY ==="
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 readonly SCRIPT_DIR
 export SCRIPT_DIR
 readonly CLOUD_SCRIPT_DIR="${SCRIPT_DIR}/${CLOUD}"
 export CLOUD_SCRIPT_DIR
-echo "=== SCRIPT_DIR=${SCRIPT_DIR}, CLOUD_SCRIPT_DIR=${CLOUD_SCRIPT_DIR} ==="
-
-# Verify the cloud script directory exists
-if [[ -d "${CLOUD_SCRIPT_DIR}" ]]; then
-  echo "=== CLOUD_SCRIPT_DIR exists and is accessible ==="
-  ls -la "${CLOUD_SCRIPT_DIR}"
-else
-  echo "=== ERROR: CLOUD_SCRIPT_DIR does not exist! ==="
-  exit 1
-fi
-
 #######################################
 # Emit a message with a timestamp
 #######################################
-echo "=== SOURCING emit.sh ==="
-if [[ -f "${SCRIPT_DIR}/emit.sh" ]]; then
-  source "${SCRIPT_DIR}/emit.sh"
-  echo "=== emit.sh SOURCED SUCCESSFULLY ==="
-else
-  echo "=== ERROR: emit.sh not found at ${SCRIPT_DIR}/emit.sh ==="
-  exit 1
-fi
+source "${SCRIPT_DIR}/emit.sh"
 
-echo "=== SOURCING vm-metadata.sh from ${CLOUD_SCRIPT_DIR} ==="
-if [[ -f "${CLOUD_SCRIPT_DIR}/vm-metadata.sh" ]]; then
-  source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
-  echo "=== vm-metadata.sh SOURCED SUCCESSFULLY ==="
-  echo "=== Verifying functions are defined ==="
-  declare -f get_instance_region
-  declare -f get_metadata_value
-  declare -f set_metadata
-else
-  echo "=== ERROR: vm-metadata.sh not found at ${CLOUD_SCRIPT_DIR}/vm-metadata.sh ==="
-  exit 1
-fi
+source "${CLOUD_SCRIPT_DIR}/vm-metadata.sh"
 
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
 export RUN_AS_LOGIN_USER
-echo "=== RUN_AS_LOGIN_USER set to: ${RUN_AS_LOGIN_USER} ==="
 
 # Startup script status is propagated out to VM guest attributes
 readonly STATUS_ATTRIBUTE="startup_script/status"
@@ -79,11 +48,9 @@ export STATUS_ATTRIBUTE
 readonly MESSAGE_ATTRIBUTE="startup_script/message"
 export MESSAGE_ATTRIBUTE
 
-echo "=== GETTING PRIMARY GROUP FOR USER ${USER_NAME} ==="
 USER_PRIMARY_GROUP="$(id --group --name "${USER_NAME}")"
 readonly USER_PRIMARY_GROUP
 export USER_PRIMARY_GROUP
-echo "=== USER_PRIMARY_GROUP=${USER_PRIMARY_GROUP} ==="
 readonly USER_BASH_COMPLETION_DIR="${WORK_DIRECTORY}/.bash_completion.d"
 export USER_BASH_COMPLETION_DIR
 readonly USER_HOME_LOCAL_SHARE="${WORK_DIRECTORY}/.local/share"
@@ -227,40 +194,28 @@ EOF
 ##################################################
 # Set up java which is required for workbench CLI
 ##################################################
-echo "=== SETTING UP JAVA ==="
 source "${SCRIPT_DIR}/install-java.sh"
-echo "=== JAVA SETUP COMPLETE ==="
 
 ###################################
 # Install workbench CLI
 ###################################
-echo "=== INSTALLING WORKBENCH CLI ==="
 retry 5 "${SCRIPT_DIR}/install-cli.sh"
-echo "=== WORKBENCH CLI INSTALLATION COMPLETE ==="
 
 ##################################################
 # Set up user bashrc with workbench customization
 ##################################################
-echo "=== SETTING UP USER BASHRC ==="
 source "${SCRIPT_DIR}/setup-bashrc.sh"
-echo "=== USER BASHRC SETUP COMPLETE ==="
 
 #################
 # bash completion
 #################
-echo "=== SETTING UP BASH COMPLETION ==="
 source "${SCRIPT_DIR}/bash-completion.sh"
-echo "=== BASH COMPLETION SETUP COMPLETE ==="
 
 ###############
 # git setup
 ###############
 if [[ "${LOG_IN}" == "true" ]]; then
-    echo "=== SETTING UP GIT ==="
     retry 5 "${SCRIPT_DIR}/git-setup.sh"
-    echo "=== GIT SETUP COMPLETE ==="
-else
-    echo "=== SKIPPING GIT SETUP (LOG_IN=${LOG_IN}) ==="
 fi
 
 #############################
@@ -275,13 +230,6 @@ source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 ###############################
 # cloud platform specific setup
 ###############################
-echo "=== CHECKING FOR CLOUD-SPECIFIC POST-STARTUP HOOK ==="
 if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then
-  echo "=== SOURCING ${CLOUD_SCRIPT_DIR}/post-startup-hook.sh ==="
   source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
-  echo "=== POST-STARTUP-HOOK.SH COMPLETE ==="
-else
-  echo "=== NO POST-STARTUP-HOOK.SH FOUND, SKIPPING ==="
 fi
-
-echo "=== POST-STARTUP.SH COMPLETED SUCCESSFULLY ==="

@@ -91,13 +91,14 @@ CONDA_PACKAGES_2=(
     "vcftools"
 )
 
-if [[ "${CLOUD}" == "gcp" ]]; then
-    CONDA_PACKAGES_2+=("dsub")
-fi
-
 mkdir -p "${WORKBENCH_TOOLS_DIR}"
 mamba create --prefix "${WORKBENCH_TOOLS_DIR}/1" -c bioconda -y "${CONDA_PACKAGES_1[@]}"
 mamba create --prefix "${WORKBENCH_TOOLS_DIR}/2" -c bioconda -y "${CONDA_PACKAGES_2[@]}"
+
+# Install dsub via pip if on GCP. The conda version is outdated.
+if [[ "${CLOUD}" == "gcp" ]]; then
+    "${WORKBENCH_TOOLS_DIR}/2/bin/pip" install dsub
+fi
 
 # Force the perl and python scripts to use the correct perl/python
 find -L "${WORKBENCH_TOOLS_DIR}/2/bin" -type f -executable -exec \

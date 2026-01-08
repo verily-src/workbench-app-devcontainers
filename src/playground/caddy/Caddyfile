@@ -1,0 +1,9 @@
+{
+    debug
+    admin 0.0.0.0:2019
+}
+
+http://localhost:8080 {
+    @app path /_app /_app/*
+    reverse_proxy @app playground:8080
+}

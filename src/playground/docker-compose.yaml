@@ -1,0 +1,69 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    image: "caddy:2.11-alpine"
+    restart: always
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+    ports:
+      - 8080:8080
+      - 2019:2019
+    networks:
+      - app-network
+      - playground
+
+  playground:
+    build:
+      context: ./playground
+    user: "playground:${DOCKER_GID}"
+    restart: always
+    environment:
+      PORT: "8080"
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      DB_NAME: "playground"
+      DB_USER: "playground_user"
+      DB_PASSWORD: "playground_password"
+      CADDY_HOST: "app"
+      CADDY_PORT: "2019"
+    #volumes:
+      # mount Host machine's docker.sock to container's docker.sock
+      #- /var/run/docker.sock:/var/run/docker.sock
+      # mount Host machine's /etc/group to container's /etc/host-group
+      #- /etc/group:/etc/host-group
+    networks:
+      - playground-apps
+      - playground
+
+  db:
+    image: "postgres:18-alpine"
+    restart: always
+    environment:
+      POSTGRES_USER: "playground_user"
+      POSTGRES_PASSWORD: "playground_password"
+      POSTGRES_DB: "playground"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - playground
+
+  hello:
+    build:
+      context: ./hello
+    restart: always
+    networks:
+      - playground
+
+volumes:
+  caddy_data:
+  pg_data:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    #external: true
+  playground:
+  playground-apps:

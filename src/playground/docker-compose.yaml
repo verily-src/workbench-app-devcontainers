@@ -9,14 +9,14 @@ services:
       - caddy_data:/data
     ports:
       - 8080:8080
-      - 2019:2019
     networks:
       - app-network
-      - playground
+      - playground-apps
 
   playground:
     build:
       context: ./playground
+    container_name: "playground"
     user: "playground:${DOCKER_GID:-20}"
     restart: always
     environment:
@@ -26,7 +26,7 @@ services:
       DB_NAME: "playground"
       DB_USER: "playground_user"
       DB_PASSWORD: "playground_password"
-      CADDY_HOST: "app"
+      CADDY_HOST: "application-server"
       CADDY_PORT: "2019"
     volumes:
       # mount Host machine's docker.sock to container's docker.sock
@@ -50,13 +50,6 @@ services:
       POSTGRES_DB: "playground"
     volumes:
       - pg_data:/var/lib/postgresql/data
-    networks:
-      - playground
-
-  hello:
-    build:
-      context: ./hello
-    restart: always
     networks:
       - playground
 

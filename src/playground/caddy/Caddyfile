@@ -4,11 +4,9 @@
 }
 
 http://localhost:8080 {
-    reverse_proxy playground:8080
-}
-
-http://*.localhost:8080 {
     # Dynamic routes will be added here via API
     route {
+        # Default route to playground UI
+        reverse_proxy playground:8080
     }
 }

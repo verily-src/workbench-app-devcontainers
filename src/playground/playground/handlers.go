@@ -257,8 +257,8 @@ func deleteAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 	}
 }
 
-// startAppHandler starts a stopped container
-func startAppHandler(dockerService *DockerService) http.HandlerFunc {
+// startAppHandler starts a stopped container, or creates it if it doesn't exist
+func startAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		idStr := r.PathValue("id")
 		if idStr == "" {
@@ -275,6 +275,48 @@ func startAppHandler(dockerService *DockerService) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), DockerTimeout)
 		defer cancel()
 
+		// Get app from database
+		app, err := db.GetApp(ctx, id)
+		if handleDBError(w, err, "get app") {
+			return
+		}
+
+		// Check container status
+		status, err := dockerService.docker.GetContainerStatus(ctx, id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to check container status: %v", err))
+			return
+		}
+
+		// If container doesn't exist, create it
+		if status == "not_found" {
+			log.Printf("Container not found for app %d, creating...", id)
+
+			// Update status to pending in DB
+			if err := dockerService.UpdateStatus(ctx, id, "pending"); err != nil {
+				log.Printf("Warning: Failed to update status to pending: %v", err)
+			}
+
+			// Trigger async container creation
+			dockerService.SetupContainerAsync(app, caddyService)
+
+			writeJSON(w, http.StatusAccepted, map[string]string{
+				"status": "creating",
+				"message": "Container is being created in the background",
+			})
+			return
+		}
+
+		// If container is already running, return success
+		if status == "running" {
+			writeJSON(w, http.StatusOK, map[string]string{
+				"status": "already_running",
+				"message": "Container is already running",
+			})
+			return
+		}
+
+		// Otherwise, start the stopped container
 		if err := dockerService.StartContainer(ctx, id); err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to start container: %v", err))
 			return

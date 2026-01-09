@@ -68,21 +68,21 @@ func (s *DockerService) SetupContainerAsync(app *App, caddyService *CaddyService
 		)
 		if err != nil {
 			log.Printf("Error generating devcontainer config for app %d: %v", app.ID, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.UpdateStatus(ctx, app.ID, "failed")
 			return
 		}
 
 		// Generate docker-compose.yaml and Dockerfile
 		if err := s.docker.GenerateDockerCompose(appDir, app.AppName, app.Port, app.ID, app.Dockerfile); err != nil {
 			log.Printf("Error generating docker-compose for app %d: %v", app.ID, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.UpdateStatus(ctx, app.ID, "failed")
 			return
 		}
 
 		// Build and start container (long-running operation)
 		if err := s.docker.BuildAndStart(ctx, appDir); err != nil {
 			log.Printf("Error building and starting container for app %d: %v", app.ID, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.UpdateStatus(ctx, app.ID, "failed")
 			return
 		}
 
@@ -91,7 +91,7 @@ func (s *DockerService) SetupContainerAsync(app *App, caddyService *CaddyService
 		// Sync with Caddy
 		if err := caddyService.SyncApp(ctx, app.ID, app.AppName, app.Port); err != nil {
 			log.Printf("Error syncing app %d with Caddy: %v", app.ID, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.UpdateStatus(ctx, app.ID, "failed")
 			return
 		}
 
@@ -100,8 +100,8 @@ func (s *DockerService) SetupContainerAsync(app *App, caddyService *CaddyService
 	}()
 }
 
-// updateStatus updates app status in database
-func (s *DockerService) updateStatus(ctx context.Context, appID int, status string) error {
+// UpdateStatus updates app status in database
+func (s *DockerService) UpdateStatus(ctx context.Context, appID int, status string) error {
 	query := `UPDATE apps SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
 	_, err := s.db.ExecContext(ctx, query, status, appID)
 	if err != nil {
@@ -124,7 +124,7 @@ func (s *DockerService) UpdateContainerAsync(app *App, oldAppName string, oldPor
 		defer s.removeCancelFunc(app.ID)
 
 		// Update status to pending
-		s.updateStatus(ctx, app.ID, "pending")
+		s.UpdateStatus(ctx, app.ID, "pending")
 
 		appDir := fmt.Sprintf("%s/app-%d", s.docker.appsBaseDir, app.ID)
 
@@ -142,20 +142,20 @@ func (s *DockerService) UpdateContainerAsync(app *App, oldAppName string, oldPor
 			app.OptionalFeatures,
 		); err != nil {
 			log.Printf("Error regenerating devcontainer config for app %d: %v", app.ID, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.UpdateStatus(ctx, app.ID, "failed")
 			return
 		}
 
 		if err := s.docker.GenerateDockerCompose(appDir, app.AppName, app.Port, app.ID, app.Dockerfile); err != nil {
 			log.Printf("Error regenerating docker-compose for app %d: %v", app.ID, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.UpdateStatus(ctx, app.ID, "failed")
 			return
 		}
 
 		// Rebuild and restart (long-running operation)
 		if err := s.docker.BuildAndStart(ctx, appDir); err != nil {
 			log.Printf("Error rebuilding and starting container for app %d: %v", app.ID, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.UpdateStatus(ctx, app.ID, "failed")
 			return
 		}
 
@@ -165,12 +165,12 @@ func (s *DockerService) UpdateContainerAsync(app *App, oldAppName string, oldPor
 		if oldAppName != app.AppName || oldPort != app.Port {
 			if err := caddyService.UpdateApp(ctx, app.ID, oldAppName, app.AppName, oldPort, app.Port); err != nil {
 				log.Printf("Error syncing app %d with Caddy: %v", app.ID, err)
-				s.updateStatus(ctx, app.ID, "failed")
+				s.UpdateStatus(ctx, app.ID, "failed")
 				return
 			}
 		} else {
 			// No Caddy update needed, just update status to active
-			s.updateStatus(ctx, app.ID, "active")
+			s.UpdateStatus(ctx, app.ID, "active")
 		}
 
 		log.Printf("App %d (%s) fully updated and active", app.ID, app.AppName)

@@ -20,11 +20,11 @@ func NewCaddyService(caddy *CaddyClient, db *sql.DB) *CaddyService {
 
 // SyncAllApps syncs all apps from database to Caddy on startup
 func (s *CaddyService) SyncAllApps(ctx context.Context) error {
-	// Clear all Caddy routes
-	if err := s.caddy.DeleteAllRoutes(ctx); err != nil {
-		return fmt.Errorf("failed to clear Caddy routes: %w", err)
+	// Reset Caddy routes to default (clears all and adds back playground UI route)
+	if err := s.caddy.ResetRoutes(ctx); err != nil {
+		return fmt.Errorf("failed to reset Caddy routes: %w", err)
 	}
-	log.Println("Cleared all Caddy routes")
+	log.Println("Reset Caddy routes to default")
 
 	// Get all apps from database
 	query := `SELECT id, app_name, port FROM apps ORDER BY id`

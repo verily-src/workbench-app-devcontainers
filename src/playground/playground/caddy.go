@@ -75,10 +75,10 @@ type CaddyRoute struct {
 	Match  []CaddyMatcher `json:"match"`
 }
 
-// CaddyHandler represents the reverse proxy handler
+// CaddyHandler represents a handler (reverse_proxy, etc)
 type CaddyHandler struct {
 	Handler   string          `json:"handler"`
-	Upstreams []CaddyUpstream `json:"upstreams"`
+	Upstreams []CaddyUpstream `json:"upstreams,omitempty"`
 }
 
 // CaddyUpstream represents an upstream server
@@ -92,7 +92,9 @@ type CaddyMatcher struct {
 	Host []string `json:"host,omitempty"`
 }
 
-// AddRoute adds a new route to Caddy for an app using subdomain
+// AddRoute adds a new route to Caddy for an app using path-based routing
+// Routes are inserted at the beginning (index 0) so they're evaluated before the default UI route
+// The full path is proxied to the container since apps are configured with BASE_URL
 func (c *CaddyClient) AddRoute(ctx context.Context, appID int, appName string, port int) error {
 	containerName := fmt.Sprintf("app-%d", appID)
 	route := CaddyRoute{
@@ -106,15 +108,12 @@ func (c *CaddyClient) AddRoute(ctx context.Context, appID int, appName string, p
 		},
 		Match: []CaddyMatcher{
 			{
-				Host: []string{
-					fmt.Sprintf("%s.localhost", appName),
-					fmt.Sprintf("%s.localhost:%s", appName, c.publicPort),
-				},
+				Path: []string{fmt.Sprintf("/%s", appName), fmt.Sprintf("/%s/*", appName)},
 			},
 		},
 	}
 
-	return c.doRequest(ctx, "POST", "/config/apps/http/servers/srv0/routes/1/handle/0/routes", route)
+	return c.doRequest(ctx, "PUT", "/config/apps/http/servers/srv0/routes/0/handle/0/routes/0", route)
 }
 
 // DeleteRoute removes a route from Caddy by app name
@@ -131,13 +130,13 @@ func (c *CaddyClient) DeleteRoute(ctx context.Context, appName string) error {
 	}
 
 	// Delete the route at the found index
-	path := fmt.Sprintf("/config/apps/http/servers/srv0/routes/1/handle/0/routes/%d", routeIndex)
+	path := fmt.Sprintf("/config/apps/http/servers/srv0/routes/0/handle/0/routes/%d", routeIndex)
 	return c.doRequest(ctx, "DELETE", path, nil)
 }
 
 // findRouteIndex searches for a route by app name and returns its index
 func (c *CaddyClient) findRouteIndex(ctx context.Context, appName string) (int, error) {
-	url := fmt.Sprintf("%s/config/apps/http/servers/srv0/routes/1/handle/0/routes", c.baseURL)
+	url := fmt.Sprintf("%s/config/apps/http/servers/srv0/routes/0/handle/0/routes", c.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -160,12 +159,11 @@ func (c *CaddyClient) findRouteIndex(ctx context.Context, appName string) (int, 
 		return -1, fmt.Errorf("failed to decode routes: %w", err)
 	}
 
-	// Search for the route matching this app name (by subdomain)
-	hostPattern1 := fmt.Sprintf("%s.localhost", appName)
-	hostPattern2 := fmt.Sprintf("%s.localhost:%s", appName, c.publicPort)
+	// Search for the route matching this app name (by path)
+	pathPattern := fmt.Sprintf("/%s", appName)
 	for i, route := range routes {
-		if len(route.Match) > 0 && len(route.Match[0].Host) > 0 {
-			if route.Match[0].Host[0] == hostPattern1 || route.Match[0].Host[0] == hostPattern2 {
+		if len(route.Match) > 0 && len(route.Match[0].Path) > 0 {
+			if route.Match[0].Path[0] == pathPattern {
 				return i, nil
 			}
 		}
@@ -189,10 +187,22 @@ func (c *CaddyClient) UpdateRoute(ctx context.Context, appID int, oldAppName, ne
 	return nil
 }
 
-// DeleteAllRoutes clears all Caddy routes
-func (c *CaddyClient) DeleteAllRoutes(ctx context.Context) error {
-	routes := []CaddyRoute{}
-	return c.doRequest(ctx, "PATCH", "/config/apps/http/servers/srv0/routes/1/handle/0/routes", routes)
+// ResetRoutes clears all Caddy routes and adds back the default playground UI route
+func (c *CaddyClient) ResetRoutes(ctx context.Context) error {
+	// Create default route for playground UI
+	defaultRoute := CaddyRoute{
+		Handle: []CaddyHandler{
+			{
+				Handler: "reverse_proxy",
+				Upstreams: []CaddyUpstream{
+					{Dial: "playground:8080"},
+				},
+			},
+		},
+	}
+
+	routes := []CaddyRoute{defaultRoute}
+	return c.doRequest(ctx, "PATCH", "/config/apps/http/servers/srv0/routes/0/handle/0/routes", routes)
 }
 
 // HealthCheck verifies Caddy API is accessible

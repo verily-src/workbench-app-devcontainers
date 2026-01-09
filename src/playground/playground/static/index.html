@@ -391,7 +391,7 @@
             table.style.display = 'table';
 
             tbody.innerHTML = apps.map(app => {
-                const appUrl = `http://${app.app_name}.localhost`;
+                const appUrl = `/${app.app_name}`;
                 return `
                 <tr>
                     <td>${app.id}</td>

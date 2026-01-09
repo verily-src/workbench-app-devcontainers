@@ -139,7 +139,7 @@ func main() {
 	mux.HandleFunc("DELETE /_app/{id}", deleteAppHandler(db, dockerService, caddyService))
 
 	// Container control endpoints
-	mux.HandleFunc("POST /_app/{id}/start", startAppHandler(dockerService))
+	mux.HandleFunc("POST /_app/{id}/start", startAppHandler(db, dockerService, caddyService))
 	mux.HandleFunc("POST /_app/{id}/stop", stopAppHandler(dockerService))
 
 	// Start the HTTP server on the configured port

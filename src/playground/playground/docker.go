@@ -97,24 +97,23 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: %s
+    environment:
+      - BASE_URL=/%s
     networks:
-      - app-network
-      - playground_playground
+      - playground_playground-apps
     cap_add:
       - SYS_ADMIN
     devices:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-    volumes_from:
-      - container:playground-playground-1:ro
+    volumes:
+      - ../../startupscript:/workspace/startupscript:ro
 
 networks:
-  app-network:
+  playground_playground-apps:
     external: true
-  playground_playground:
-    external: true
-`, containerName)
+`, containerName, appName)
 
 	composePath := filepath.Join(appDir, "docker-compose.yaml")
 	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {

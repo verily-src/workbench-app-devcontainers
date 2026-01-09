@@ -1,0 +1,245 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+)
+
+type DockerClient struct {
+	appsBaseDir string
+}
+
+func NewDockerClient(baseDir string) *DockerClient {
+	return &DockerClient{
+		appsBaseDir: baseDir,
+	}
+}
+
+// GenerateDevcontainerConfig creates .devcontainer.json for an app
+func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, userHomeDir string, optionalFeatures []string) (string, error) {
+	appDir := filepath.Join(d.appsBaseDir, fmt.Sprintf("app-%d", appID))
+
+	// Create app directory
+	if err := os.MkdirAll(appDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create app directory: %w", err)
+	}
+
+	// Check if wb CLI feature is requested
+	hasWB := false
+	for _, feature := range optionalFeatures {
+		if feature == "wb" {
+			hasWB = true
+			break
+		}
+	}
+
+	// Build features object
+	var features map[string]interface{}
+	var optionalCommands string
+
+	if hasWB {
+		// Use WB features (includes java, aws-cli, gcloud)
+		features = WBFeatures
+
+		// Add postCreateCommand and postStartCommand
+		postCreate := fmt.Sprintf(PostCreateCommandTemplate, username, userHomeDir)
+		postStart := fmt.Sprintf(PostStartCommandTemplate, username, userHomeDir)
+		optionalCommands = postCreate + postStart
+	} else {
+		// No features
+		features = make(map[string]interface{})
+		optionalCommands = ""
+	}
+
+	featuresJSON, err := json.MarshalIndent(features, "  ", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal features: %w", err)
+	}
+
+	// Generate .devcontainer.json
+	devcontainerContent := fmt.Sprintf(
+		DevcontainerTemplate,
+		appName,
+		userHomeDir,
+		string(featuresJSON),
+		username,
+		optionalCommands,
+	)
+
+	devcontainerPath := filepath.Join(appDir, ".devcontainer.json")
+	if err := os.WriteFile(devcontainerPath, []byte(devcontainerContent), 0644); err != nil {
+		return "", fmt.Errorf("failed to write .devcontainer.json: %w", err)
+	}
+
+	return appDir, nil
+}
+
+// GenerateDockerCompose creates docker-compose.yaml for an app
+func (d *DockerClient) GenerateDockerCompose(appDir, appName string, port, appID int, dockerfile string) error {
+	// Write Dockerfile
+	dockerfilePath := filepath.Join(appDir, "Dockerfile")
+	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0644); err != nil {
+		return fmt.Errorf("failed to write Dockerfile: %w", err)
+	}
+
+	// Generate docker-compose.yaml (minimal - devcontainer will handle the rest)
+	// Use unique container name per app to avoid conflicts
+	containerName := fmt.Sprintf("app-%d", appID)
+	composeContent := fmt.Sprintf(`version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: %s
+    networks:
+      - app-network
+      - playground_playground
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    volumes_from:
+      - container:playground-playground-1:ro
+
+networks:
+  app-network:
+    external: true
+  playground_playground:
+    external: true
+`, containerName)
+
+	composePath := filepath.Join(appDir, "docker-compose.yaml")
+	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
+		return fmt.Errorf("failed to write docker-compose.yaml: %w", err)
+	}
+
+	return nil
+}
+
+// BuildAndStart builds the devcontainer and starts the container
+func (d *DockerClient) BuildAndStart(ctx context.Context, appDir string) error {
+	// Build with devcontainer CLI
+	buildCmd := exec.CommandContext(ctx, "devcontainer", "build", "--workspace-folder", appDir)
+	buildCmd.Dir = appDir
+
+	output, err := buildCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("devcontainer build failed: %w, output: %s", err, string(output))
+	}
+
+	// Start container with devcontainer CLI
+	upCmd := exec.CommandContext(ctx, "devcontainer", "up", "--workspace-folder", appDir)
+	upCmd.Dir = appDir
+
+	output, err = upCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("devcontainer up failed: %w, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// Start starts an existing stopped container
+func (d *DockerClient) Start(ctx context.Context, appID int) error {
+	containerName := fmt.Sprintf("app-%d", appID)
+
+	// Start container using docker CLI
+	startCmd := exec.CommandContext(ctx, "docker", "start", containerName)
+
+	output, err := startCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker start failed: %w, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// StopContainer stops the container without removing it
+func (d *DockerClient) StopContainer(ctx context.Context, appID int) error {
+	containerName := fmt.Sprintf("app-%d", appID)
+
+	// Stop container using docker CLI
+	stopCmd := exec.CommandContext(ctx, "docker", "stop", containerName)
+
+	output, err := stopCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker stop failed: %w, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// GetContainerStatus returns the status of a container (running, exited, etc.)
+func (d *DockerClient) GetContainerStatus(ctx context.Context, appID int) (string, error) {
+	containerName := fmt.Sprintf("app-%d", appID)
+
+	// Get container status using docker inspect
+	inspectCmd := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Status}}", containerName)
+
+	output, err := inspectCmd.CombinedOutput()
+	if err != nil {
+		// Container doesn't exist
+		return "not_found", nil
+	}
+
+	status := string(output)
+	status = status[:len(status)-1] // Remove trailing newline
+	return status, nil
+}
+
+// Stop stops the container and removes it
+func (d *DockerClient) Stop(ctx context.Context, appID int, appDir string) error {
+	containerName := fmt.Sprintf("app-%d", appID)
+
+	// Stop container using docker CLI
+	stopCmd := exec.CommandContext(ctx, "docker", "stop", containerName)
+	stopCmd.Dir = appDir
+
+	output, err := stopCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker stop failed: %w, output: %s", err, string(output))
+	}
+
+	// Remove container
+	rmCmd := exec.CommandContext(ctx, "docker", "rm", containerName)
+	rmCmd.Dir = appDir
+
+	output, err = rmCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker rm failed: %w, output: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// Cleanup removes app directory and associated resources
+func (d *DockerClient) Cleanup(ctx context.Context, appID int) error {
+	appDir := filepath.Join(d.appsBaseDir, fmt.Sprintf("app-%d", appID))
+
+	// Stop container first (best effort)
+	_ = d.Stop(ctx, appID, appDir)
+
+	// Remove directory
+	if err := os.RemoveAll(appDir); err != nil {
+		return fmt.Errorf("failed to remove app directory: %w", err)
+	}
+
+	return nil
+}
+
+// HealthCheck verifies Docker is accessible
+func (d *DockerClient) HealthCheck(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "docker", "info")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker not accessible: %w", err)
+	}
+	return nil
+}

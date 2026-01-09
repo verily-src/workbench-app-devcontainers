@@ -17,7 +17,7 @@ services:
   playground:
     build:
       context: ./playground
-    user: "playground:${DOCKER_GID}"
+    user: "playground:${DOCKER_GID:-20}"
     restart: always
     environment:
       PORT: "8080"
@@ -28,11 +28,15 @@ services:
       DB_PASSWORD: "playground_password"
       CADDY_HOST: "app"
       CADDY_PORT: "2019"
-    #volumes:
+    volumes:
       # mount Host machine's docker.sock to container's docker.sock
-      #- /var/run/docker.sock:/var/run/docker.sock
-      # mount Host machine's /etc/group to container's /etc/host-group
+      - /var/run/docker.sock:/var/run/docker.sock
+      # mount Host machine's/etc/group to container's /etc/host-group (Linux only)
       #- /etc/group:/etc/host-group
+      # mount apps directory for devcontainer builds
+      - ./apps:/workspace/apps
+      # mount startup scripts from parent directory
+      - ../../startupscript:/workspace/startupscript
     networks:
       - playground-apps
       - playground
@@ -64,6 +68,6 @@ networks:
   # The Docker network must be named "app-network". This is an external network
   # that is created outside of this docker-compose file.
   app-network:
-    #external: true
+    external: true
   playground:
   playground-apps:

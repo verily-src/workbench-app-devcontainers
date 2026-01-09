@@ -1,0 +1,312 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+// writeJSON writes a JSON response
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("Error encoding JSON: %v", err)
+	}
+}
+
+// writeError writes an error response
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, ErrorResponse{Error: message})
+}
+
+// handleDBError handles common database errors and writes appropriate HTTP responses
+// Returns true if the error was handled, false otherwise
+func handleDBError(w http.ResponseWriter, err error, operation string) bool {
+	if err == nil {
+		return false
+	}
+
+	errMsg := err.Error()
+
+	// Check for not found errors
+	if strings.Contains(errMsg, "not found") {
+		writeError(w, http.StatusNotFound, "App not found")
+		return true
+	}
+
+	// Check for duplicate/conflict errors
+	if strings.Contains(errMsg, "already exists") || strings.Contains(errMsg, "duplicate key") || strings.Contains(errMsg, "unique constraint") {
+		writeError(w, http.StatusConflict, errMsg)
+		return true
+	}
+
+	// Generic internal server error
+	log.Printf("Error %s: %v", operation, err)
+	writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to %s", operation))
+	return true
+}
+
+// healthHandler handles health check requests
+func healthHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), HealthCheckTimeout)
+		defer cancel()
+
+		if err := db.conn.PingContext(ctx); err != nil {
+			log.Printf("Health check failed: %v", err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"status": "unhealthy",
+				"error":  "database unavailable",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "healthy"})
+	}
+}
+
+// createAppHandler handles POST /_app
+func createAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req AppCreateRequest
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid JSON format")
+			return
+		}
+
+		if err := ValidateAppCreate(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), WriteTimeout)
+		defer cancel()
+
+		// Create app in DB with status='pending'
+		app, err := db.CreateApp(ctx, &req)
+		if handleDBError(w, err, "create app") {
+			return
+		}
+
+		// Start async container build (30 minute timeout handled internally)
+		// This returns immediately - container builds in background
+		dockerService.SetupContainerAsync(app, caddyService)
+
+		// Return app immediately with status='pending'
+		// Client can poll GET /_app/{id} to check when status becomes 'active' or 'failed'
+		writeJSON(w, http.StatusCreated, app)
+	}
+}
+
+// getAppHandler handles GET /_app/{id}
+func getAppHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract ID from path parameter
+		idStr := r.PathValue("id")
+		if idStr == "" {
+			writeError(w, http.StatusBadRequest, "Missing app ID")
+			return
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid app ID format")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
+		defer cancel()
+
+		app, err := db.GetApp(ctx, id)
+		if handleDBError(w, err, "get app") {
+			return
+		}
+
+		writeJSON(w, http.StatusOK, app)
+	}
+}
+
+// listAppsHandler handles GET /_app
+func listAppsHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
+		defer cancel()
+
+		apps, err := db.ListApps(ctx)
+		if handleDBError(w, err, "list apps") {
+			return
+		}
+
+		// Handle empty list
+		if apps == nil {
+			apps = []*App{}
+		}
+
+		response := AppListResponse{
+			Apps:  apps,
+			Total: len(apps),
+		}
+
+		writeJSON(w, http.StatusOK, response)
+	}
+}
+
+// updateAppHandler handles PUT /_app/{id}
+func updateAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract ID from path parameter
+		idStr := r.PathValue("id")
+		if idStr == "" {
+			writeError(w, http.StatusBadRequest, "Missing app ID")
+			return
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid app ID format")
+			return
+		}
+
+		var req AppCreateRequest
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid JSON format")
+			return
+		}
+
+		if err := ValidateAppCreate(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), WriteTimeout)
+		defer cancel()
+
+		// Get old app to compare
+		oldApp, err := db.GetApp(ctx, id)
+		if handleDBError(w, err, "get app") {
+			return
+		}
+
+		// Update app in DB
+		app, err := db.UpdateApp(ctx, id, &req)
+		if handleDBError(w, err, "update app") {
+			return
+		}
+
+		// Start async container rebuild (30 minute timeout handled internally)
+		// This returns immediately - container rebuilds in background
+		dockerService.UpdateContainerAsync(app, oldApp.AppName, oldApp.Port, caddyService)
+
+		// Return app immediately with status='pending'
+		// Status will be updated to 'active' or 'failed' when rebuild completes
+		app.Status = "pending"
+		writeJSON(w, http.StatusOK, app)
+	}
+}
+
+// deleteAppHandler handles DELETE /_app/{id}
+func deleteAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract ID from path parameter
+		idStr := r.PathValue("id")
+		if idStr == "" {
+			writeError(w, http.StatusBadRequest, "Missing app ID")
+			return
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid app ID format")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), WriteTimeout)
+		defer cancel()
+
+		// Get app first
+		app, err := db.GetApp(ctx, id)
+		if handleDBError(w, err, "get app") {
+			return
+		}
+
+		// Remove from Caddy first (best effort)
+		if err := caddyService.RemoveApp(ctx, app.AppName); err != nil {
+			log.Printf("Warning: Failed to remove Caddy route: %v", err)
+			// Continue with DB delete anyway
+		}
+
+		// Stop and remove container (best effort)
+		if err := dockerService.RemoveContainer(ctx, app.ID); err != nil {
+			log.Printf("Warning: Failed to remove container: %v", err)
+		}
+
+		// Delete from database
+		err = db.DeleteApp(ctx, id)
+		if handleDBError(w, err, "delete app") {
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// startAppHandler starts a stopped container
+func startAppHandler(dockerService *DockerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		if idStr == "" {
+			writeError(w, http.StatusBadRequest, "Missing app ID")
+			return
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid app ID format")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), DockerTimeout)
+		defer cancel()
+
+		if err := dockerService.StartContainer(ctx, id); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to start container: %v", err))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "started"})
+	}
+}
+
+// stopAppHandler stops a running container
+func stopAppHandler(dockerService *DockerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		if idStr == "" {
+			writeError(w, http.StatusBadRequest, "Missing app ID")
+			return
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid app ID format")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), DockerTimeout)
+		defer cancel()
+
+		if err := dockerService.StopContainer(ctx, id); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to stop container: %v", err))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+	}
+}

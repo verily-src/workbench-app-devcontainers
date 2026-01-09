@@ -36,7 +36,7 @@ services:
       # mount apps directory for devcontainer builds
       - ./apps:/workspace/apps
       # mount startup scripts from parent directory
-      - ../../startupscript:/workspace/startupscript
+      - ./startupscript:/workspace/startupscript
     networks:
       - playground-apps
       - playground

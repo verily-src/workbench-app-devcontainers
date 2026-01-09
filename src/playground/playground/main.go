@@ -133,14 +133,18 @@ func main() {
 
 	// CRUD endpoints
 	mux.HandleFunc("POST /_app", createAppHandler(db, dockerService, caddyService))
-	mux.HandleFunc("GET /_app/{id}", getAppHandler(db))
-	mux.HandleFunc("GET /_app", listAppsHandler(db))
+	mux.HandleFunc("GET /_app/{id}", getAppHandler(db, dockerService))
+	mux.HandleFunc("GET /_app", listAppsHandler(db, dockerService))
 	mux.HandleFunc("PUT /_app/{id}", updateAppHandler(db, dockerService, caddyService))
 	mux.HandleFunc("DELETE /_app/{id}", deleteAppHandler(db, dockerService, caddyService))
 
 	// Container control endpoints
 	mux.HandleFunc("POST /_app/{id}/start", startAppHandler(db, dockerService, caddyService))
 	mux.HandleFunc("POST /_app/{id}/stop", stopAppHandler(dockerService))
+
+	// Logs endpoints
+	mux.HandleFunc("GET /_app/{id}/logs", appLogsHandler(dockerService))
+	mux.HandleFunc("GET /_app/logs", playgroundLogsHandler(dockerService))
 
 	// Start the HTTP server on the configured port
 	log.Printf("Server starting on port %s...", port)

@@ -105,7 +105,7 @@ func createAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 }
 
 // getAppHandler handles GET /_app/{id}
-func getAppHandler(db *DB) http.HandlerFunc {
+func getAppHandler(db *DB, dockerService *DockerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Extract ID from path parameter
 		idStr := r.PathValue("id")
@@ -128,12 +128,15 @@ func getAppHandler(db *DB) http.HandlerFunc {
 			return
 		}
 
+		// Enrich with container status
+		dockerService.EnrichWithContainerStatus(ctx, app)
+
 		writeJSON(w, http.StatusOK, app)
 	}
 }
 
 // listAppsHandler handles GET /_app
-func listAppsHandler(db *DB) http.HandlerFunc {
+func listAppsHandler(db *DB, dockerService *DockerService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
 		defer cancel()
@@ -147,6 +150,9 @@ func listAppsHandler(db *DB) http.HandlerFunc {
 		if apps == nil {
 			apps = []*App{}
 		}
+
+		// Enrich with container statuses
+		dockerService.EnrichWithContainerStatuses(ctx, apps)
 
 		response := AppListResponse{
 			Apps:  apps,
@@ -350,5 +356,65 @@ func stopAppHandler(dockerService *DockerService) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+	}
+}
+
+// appLogsHandler retrieves logs from an app container
+func appLogsHandler(dockerService *DockerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := r.PathValue("id")
+		if idStr == "" {
+			writeError(w, http.StatusBadRequest, "Missing app ID")
+			return
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid app ID format")
+			return
+		}
+
+		// Get tail parameter (default 100 lines)
+		tail := 100
+		if tailStr := r.URL.Query().Get("tail"); tailStr != "" {
+			if t, err := strconv.Atoi(tailStr); err == nil && t > 0 {
+				tail = t
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
+		defer cancel()
+
+		logs, err := dockerService.docker.GetContainerLogs(ctx, id, tail)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get logs: %v", err))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"logs": logs})
+	}
+}
+
+// playgroundLogsHandler retrieves logs from the playground container
+func playgroundLogsHandler(dockerService *DockerService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get tail parameter (default 100 lines)
+		tail := 100
+		if tailStr := r.URL.Query().Get("tail"); tailStr != "" {
+			if t, err := strconv.Atoi(tailStr); err == nil && t > 0 {
+				tail = t
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
+		defer cancel()
+
+		logs, err := dockerService.docker.GetPlaygroundLogs(ctx, tail)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get playground logs: %v", err))
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"logs": logs})
 	}
 }

@@ -10,13 +10,50 @@ import (
 )
 
 type DockerClient struct {
-	appsBaseDir string
+	appsBaseDir         string
+	startupScriptMount  string
 }
 
 func NewDockerClient(baseDir string) *DockerClient {
 	return &DockerClient{
 		appsBaseDir: baseDir,
 	}
+}
+
+// GetStartupScriptMount inspects the playground container to find the startupscript mount
+func (d *DockerClient) GetStartupScriptMount(ctx context.Context) (string, error) {
+	// If already cached, return it
+	if d.startupScriptMount != "" {
+		return d.startupScriptMount, nil
+	}
+
+	// Inspect the playground container to find mounts
+	cmd := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{json .Mounts}}", "playground")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect playground container: %w, output: %s", err, string(output))
+	}
+
+	// Parse mounts
+	var mounts []struct {
+		Type        string `json:"Type"`
+		Source      string `json:"Source"`
+		Destination string `json:"Destination"`
+	}
+
+	if err := json.Unmarshal(output, &mounts); err != nil {
+		return "", fmt.Errorf("failed to parse mounts: %w", err)
+	}
+
+	// Find the startupscript mount
+	for _, mount := range mounts {
+		if mount.Destination == "/workspace/startupscript" {
+			d.startupScriptMount = mount.Source
+			return mount.Source, nil
+		}
+	}
+
+	return "", fmt.Errorf("startupscript mount not found in playground container")
 }
 
 // GenerateDevcontainerConfig creates .devcontainer.json for an app
@@ -79,11 +116,17 @@ func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, 
 }
 
 // GenerateDockerCompose creates docker-compose.yaml for an app
-func (d *DockerClient) GenerateDockerCompose(appDir, appName string, port, appID int, dockerfile string) error {
+func (d *DockerClient) GenerateDockerCompose(ctx context.Context, appDir, appName string, port, appID int, dockerfile string) error {
 	// Write Dockerfile
 	dockerfilePath := filepath.Join(appDir, "Dockerfile")
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0644); err != nil {
 		return fmt.Errorf("failed to write Dockerfile: %w", err)
+	}
+
+	// Get startup script mount from playground container
+	startupScriptMount, err := d.GetStartupScriptMount(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get startup script mount: %w", err)
 	}
 
 	// Generate docker-compose.yaml (minimal - devcontainer will handle the rest)
@@ -108,12 +151,12 @@ services:
     security_opt:
       - apparmor:unconfined
     volumes:
-      - ../../startupscript:/workspace/startupscript:ro
+      - %s:/workspace/startupscript:ro
 
 networks:
   playground_playground-apps:
     external: true
-`, containerName, appName)
+`, containerName, appName, startupScriptMount)
 
 	composePath := filepath.Join(appDir, "docker-compose.yaml")
 	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {
@@ -241,4 +284,28 @@ func (d *DockerClient) HealthCheck(ctx context.Context) error {
 		return fmt.Errorf("docker not accessible: %w", err)
 	}
 	return nil
+}
+
+// GetLogs retrieves logs from a container
+func (d *DockerClient) GetLogs(ctx context.Context, containerName string, tail int) (string, error) {
+	args := []string{"logs", "--tail", fmt.Sprintf("%d", tail), containerName}
+	cmd := exec.CommandContext(ctx, "docker", args...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs for %s: %w", containerName, err)
+	}
+
+	return string(output), nil
+}
+
+// GetContainerLogs retrieves logs from an app container
+func (d *DockerClient) GetContainerLogs(ctx context.Context, appID int, tail int) (string, error) {
+	containerName := fmt.Sprintf("app-%d", appID)
+	return d.GetLogs(ctx, containerName, tail)
+}
+
+// GetPlaygroundLogs retrieves logs from the playground container
+func (d *DockerClient) GetPlaygroundLogs(ctx context.Context, tail int) (string, error) {
+	return d.GetLogs(ctx, "playground", tail)
 }

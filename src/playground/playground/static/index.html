@@ -81,6 +81,13 @@
             margin-right: 5px;
         }
 
+        .btn:disabled,
+        .btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
         .apps-table {
             background: white;
             border-radius: 8px;
@@ -132,6 +139,23 @@
         .status-failed {
             background: #f8d7da;
             color: #721c24;
+        }
+
+        .container-status-running {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .container-status-exited,
+        .container-status-stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .container-status-not_found,
+        .container-status-unknown {
+            background: #e2e3e5;
+            color: #383d41;
         }
 
         .modal {
@@ -268,7 +292,10 @@
     <div class="container">
         <div class="header">
             <h1>Playground Apps Manager</h1>
-            <button class="btn btn-success" onclick="openCreateModal()">+ Create New App</button>
+            <div>
+                <button class="btn" onclick="viewPlaygroundLogs()">View Playground Logs</button>
+                <button class="btn btn-success" onclick="openCreateModal()">+ Create New App</button>
+            </div>
         </div>
 
         <div id="error-message" class="error" style="display: none;"></div>
@@ -288,6 +315,7 @@
                         <th>Port</th>
                         <th>Features</th>
                         <th>Status</th>
+                        <th>Container</th>
                         <th>Link</th>
                         <th>Actions</th>
                     </tr>
@@ -349,6 +377,22 @@
         </div>
     </div>
 
+    <!-- Logs Modal -->
+    <div id="logs-modal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2 id="logs-title">Logs</h2>
+                <span class="close" onclick="closeLogsModal()">&times;</span>
+            </div>
+            <div style="padding: 20px;">
+                <pre id="logs-content" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow: auto; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px; white-space: pre-wrap; word-wrap: break-word;">Loading logs...</pre>
+                <div style="margin-top: 15px;">
+                    <button class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let apps = [];
         let pollInterval = null;
@@ -392,6 +436,15 @@
 
             tbody.innerHTML = apps.map(app => {
                 const appUrl = `/${app.app_name}`;
+                const containerStatus = app.container_status || 'unknown';
+                const containerStatusLabel = containerStatus.replace('_', ' ');
+
+                // Determine button states based on container status
+                const isRunning = containerStatus === 'running';
+                const canStart = !isRunning && containerStatus !== 'unknown';
+                const canStop = isRunning;
+                const canOpen = isRunning;
+
                 return `
                 <tr>
                     <td>${app.id}</td>
@@ -400,10 +453,12 @@
                     <td>${app.port}</td>
                     <td class="features-list">${app.optional_features?.join(', ') || 'None'}</td>
                     <td><span class="status status-${app.status}">${app.status.toUpperCase()}</span></td>
-                    <td><a href="${appUrl}" target="_blank" class="btn btn-small">Open</a></td>
+                    <td><span class="status container-status-${containerStatus}">${containerStatusLabel.toUpperCase()}</span></td>
+                    <td><a href="${appUrl}" target="_blank" class="btn btn-small ${!canOpen ? 'disabled' : ''}">Open</a></td>
                     <td>
-                        <button class="btn btn-success btn-small" onclick="startApp(${app.id})">Start</button>
-                        <button class="btn btn-secondary btn-small" onclick="stopApp(${app.id})">Stop</button>
+                        <button class="btn btn-success btn-small" onclick="startApp(${app.id})" ${!canStart ? 'disabled' : ''}>Start</button>
+                        <button class="btn btn-secondary btn-small" onclick="stopApp(${app.id})" ${!canStop ? 'disabled' : ''}>Stop</button>
+                        <button class="btn btn-small" onclick="viewAppLogs(${app.id}, '${app.app_name}')">Logs</button>
                         <button class="btn btn-small" onclick="editApp(${app.id})">Edit</button>
                         <button class="btn btn-danger btn-small" onclick="deleteApp(${app.id}, '${app.app_name}')">Delete</button>
                     </td>
@@ -516,6 +571,50 @@
             }
         }
 
+        async function viewAppLogs(id, appName) {
+            const logsModal = document.getElementById('logs-modal');
+            const logsTitle = document.getElementById('logs-title');
+            const logsContent = document.getElementById('logs-content');
+
+            logsTitle.textContent = `Logs - ${appName}`;
+            logsContent.textContent = 'Loading logs...';
+            logsModal.style.display = 'block';
+
+            try {
+                const response = await fetch(`/_app/${id}/logs?tail=200`);
+                if (!response.ok) throw new Error('Failed to fetch logs');
+
+                const data = await response.json();
+                logsContent.textContent = data.logs || 'No logs available';
+            } catch (error) {
+                logsContent.textContent = `Error loading logs: ${error.message}`;
+            }
+        }
+
+        async function viewPlaygroundLogs() {
+            const logsModal = document.getElementById('logs-modal');
+            const logsTitle = document.getElementById('logs-title');
+            const logsContent = document.getElementById('logs-content');
+
+            logsTitle.textContent = 'Playground Logs';
+            logsContent.textContent = 'Loading logs...';
+            logsModal.style.display = 'block';
+
+            try {
+                const response = await fetch('/_app/logs?tail=200');
+                if (!response.ok) throw new Error('Failed to fetch playground logs');
+
+                const data = await response.json();
+                logsContent.textContent = data.logs || 'No logs available';
+            } catch (error) {
+                logsContent.textContent = `Error loading logs: ${error.message}`;
+            }
+        }
+
+        function closeLogsModal() {
+            document.getElementById('logs-modal').style.display = 'none';
+        }
+
         function startPolling() {
             // Poll every 5 seconds for status updates
             pollInterval = setInterval(async () => {
@@ -542,9 +641,13 @@
 
         // Close modal when clicking outside
         window.onclick = function(event) {
-            const modal = document.getElementById('app-modal');
-            if (event.target === modal) {
+            const appModal = document.getElementById('app-modal');
+            const logsModal = document.getElementById('logs-modal');
+            if (event.target === appModal) {
                 closeModal();
+            }
+            if (event.target === logsModal) {
+                closeLogsModal();
             }
         }
     </script>

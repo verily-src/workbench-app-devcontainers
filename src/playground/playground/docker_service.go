@@ -73,7 +73,7 @@ func (s *DockerService) SetupContainerAsync(app *App, caddyService *CaddyService
 		}
 
 		// Generate docker-compose.yaml and Dockerfile
-		if err := s.docker.GenerateDockerCompose(appDir, app.AppName, app.Port, app.ID, app.Dockerfile); err != nil {
+		if err := s.docker.GenerateDockerCompose(ctx, appDir, app.AppName, app.Port, app.ID, app.Dockerfile); err != nil {
 			log.Printf("Error generating docker-compose for app %d: %v", app.ID, err)
 			s.UpdateStatus(ctx, app.ID, "failed")
 			return
@@ -146,7 +146,7 @@ func (s *DockerService) UpdateContainerAsync(app *App, oldAppName string, oldPor
 			return
 		}
 
-		if err := s.docker.GenerateDockerCompose(appDir, app.AppName, app.Port, app.ID, app.Dockerfile); err != nil {
+		if err := s.docker.GenerateDockerCompose(ctx, appDir, app.AppName, app.Port, app.ID, app.Dockerfile); err != nil {
 			log.Printf("Error regenerating docker-compose for app %d: %v", app.ID, err)
 			s.UpdateStatus(ctx, app.ID, "failed")
 			return
@@ -208,4 +208,22 @@ func (s *DockerService) StopContainer(ctx context.Context, appID int) error {
 
 	log.Printf("Container stopped for app %d", appID)
 	return nil
+}
+
+// EnrichWithContainerStatus adds container status to an app
+func (s *DockerService) EnrichWithContainerStatus(ctx context.Context, app *App) {
+	status, err := s.docker.GetContainerStatus(ctx, app.ID)
+	if err != nil {
+		log.Printf("Warning: Failed to get container status for app %d: %v", app.ID, err)
+		app.ContainerStatus = "unknown"
+		return
+	}
+	app.ContainerStatus = status
+}
+
+// EnrichWithContainerStatuses adds container status to multiple apps
+func (s *DockerService) EnrichWithContainerStatuses(ctx context.Context, apps []*App) {
+	for _, app := range apps {
+		s.EnrichWithContainerStatus(ctx, app)
+	}
 }

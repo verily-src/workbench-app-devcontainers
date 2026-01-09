@@ -17,7 +17,7 @@ services:
     build:
       context: ./playground
     container_name: "playground"
-    user: "playground:${DOCKER_GID:-20}"
+    user: "playground:${DOCKER_GID}"
     restart: always
     environment:
       PORT: "8080"
@@ -31,8 +31,8 @@ services:
     volumes:
       # mount Host machine's docker.sock to container's docker.sock
       - /var/run/docker.sock:/var/run/docker.sock
-      # mount Host machine's/etc/group to container's /etc/host-group (Linux only)
-      #- /etc/group:/etc/host-group
+      # mount Host machine's /etc/group to container's /etc/host-group
+      - /etc/group:/etc/host-group
       # mount apps directory for devcontainer builds
       - ./apps:/workspace/apps
       # mount startup scripts from parent directory

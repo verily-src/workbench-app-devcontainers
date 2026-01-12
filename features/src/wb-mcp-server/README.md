@@ -1,211 +1,131 @@
-# Workbench MCP Server Feature
+# Workbench MCP Server
 
-This dev container feature installs a local MCP (Model Context Protocol) server that wraps the Workbench CLI (`wb`), enabling AI assistants like Claude and Gemini to interact with your Workbench environment.
-
-## What is MCP?
-
-The Model Context Protocol (MCP) is an open standard developed by Anthropic that allows AI assistants to securely connect to external tools and data sources. This feature creates a local MCP server that exposes Workbench CLI functionality to AI assistants.
-
-## Features
-
-- **Zero Authentication**: The MCP server runs locally and doesn't require authentication (assumes `wb` is already authenticated)
-- **Full wb CLI Access**: Exposes common Workbench operations as MCP tools
-- **Easy Integration**: Works with Claude CLI, Gemini CLI, and any other MCP-compatible client
-- **Standalone Binary**: Compiled Go binary with no runtime dependencies
+MCP server that exposes Workbench APIs for AI agents to discover data, explore schemas, and build cohorts programmatically.
 
 ## Installation
 
-Add this feature to your `.devcontainer.json`:
+Add to your `devcontainer.json`:
 
 ```json
 {
   "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/wb-mcp-server:1": {
-      "username": "vscode",
-      "userHomeDir": "/home/vscode"
-    }
+    "ghcr.io/verily-src/workbench-app-devcontainers/wb-mcp-server:latest": {}
   }
 }
 ```
 
-Or use it locally:
+Rebuild your devcontainer. The server installs at `/opt/wb-mcp-server/wb-mcp-server`.
 
-```json
-{
-  "features": {
-    "./features/src/wb-mcp-server": {
-      "username": "vscode",
-      "userHomeDir": "/home/vscode"
-    }
-  }
-}
-```
+## Setup
 
-## Available Tools
-
-The MCP server exposes the following tools:
-
-1. **wb_status** - Get current workspace and server status
-2. **wb_workspace_list** - List all Workbench workspaces
-3. **wb_resource_list** - List resources in the current workspace
-4. **wb_resource_describe** - Describe a specific resource
-5. **wb_folder_tree** - Display folder structure as a tree
-6. **wb_app_list** - List all applications in the workspace
-7. **wb_app_describe** - Describe a specific application
-8. **wb_execute** - Execute any custom wb command
-
-## Usage with Claude CLI
-
-1. After the feature is installed, the MCP server binary is available at `/opt/wb-mcp-server/wb-mcp-server`
-
-2. Add the MCP server using the Claude CLI command:
+### With Claude CLI
 
 ```bash
 claude mcp add --transport stdio wb -- /opt/wb-mcp-server/wb-mcp-server
 ```
 
-Alternatively, manually configure by editing `~/.claude.json` or `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "wb": {
-      "type": "stdio",
-      "command": "/opt/wb-mcp-server/wb-mcp-server"
-    }
-  }
-}
-```
-
-3. Verify the server is configured:
-
-```bash
-claude mcp list
-```
-
-4. Start Claude, and it will automatically connect to the MCP server. Claude can now interact with your Workbench environment:
-
-```
-You: List all my workspaces
-Claude: [calls wb_workspace_list tool] Here are your workspaces...
-
-You: What resources are in my current workspace?
-Claude: [calls wb_resource_list tool] Here are the resources...
-```
-
-## Usage with Gemini CLI
-
-1. After the feature is installed, the MCP server binary is available at `/opt/wb-mcp-server/wb-mcp-server`
-
-2. Add the MCP server using the Gemini CLI command:
+### With Gemini CLI
 
 ```bash
 gemini mcp add --scope user wb /opt/wb-mcp-server/wb-mcp-server
 ```
 
-Alternatively, manually configure by editing `~/.gemini/settings.json` or `.gemini/settings.json`:
+## Quick Examples
 
-```json
-{
-  "mcpServers": {
-    "wb": {
-      "command": "/opt/wb-mcp-server/wb-mcp-server"
-    }
-  }
-}
-```
-
-3. Verify the server is configured:
-
-```bash
-gemini mcp list
-```
-
-4. Start Gemini, and it will automatically connect to the MCP server. Gemini can now interact with your Workbench environment:
+### Find Available Data
 
 ```
-You: List all my workspaces
-Gemini: [calls wb_workspace_list tool] Here are your workspaces...
-
-You: What resources are in my current workspace?
-Gemini: [calls wb_resource_list tool] Here are the resources...
+"List all data collections I can access"
 ```
 
-## Usage with Other MCP Clients
+Uses `workspace_list_data_collections` to find data collection workspaces.
 
-The server implements the standard MCP protocol over stdio. Any MCP-compatible client can connect by running:
+### Explore Schema
 
-```bash
-/opt/wb-mcp-server/wb-mcp-server
+```
+"What entities are in the AoU_2024 underlay? Show me the person entity attributes"
 ```
 
-The server reads JSON-RPC requests from stdin and writes responses to stdout.
+Uses `underlay_list_entities` and `underlay_get_entity`.
 
-## Manual Testing
+### Create Simple Cohort
 
-You can test the server manually:
-
-```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | /opt/wb-mcp-server/wb-mcp-server
+```
+"Create a cohort called 'seniors' with patients over 65 from the AoU_2024 data collection (workspace ID: abc-123) in my workspace (xyz-456)"
 ```
 
-## Environment Variables
+Uses `filter_build_attribute` and `cohort_create_in_workspace`.
 
-After installation, these environment variables are available:
+### Create Complex Cohort
 
-- `WB_MCP_SERVER_BIN`: Path to the MCP server binary
-- `WB_MCP_CONFIG`: Path to the example MCP configuration file
+```
+"Create a cohort of diabetic seniors: patients over 65 with Type 2 Diabetes (concept 201826) from AoU_2024. Data collection: abc-123, target workspace: xyz-456, name: 'diabetic-seniors'"
+```
 
-## Prerequisites
+Uses `filter_build_attribute`, `filter_build_relationship`, `filter_build_boolean_logic`, and `cohort_create_in_workspace`.
 
-- The `wb` CLI must be installed and authenticated in the container
-- The user running the MCP server must have access to `wb` commands
+## How It Works
 
-## Options
+### Authentication
+- Auto-fetches bearer token from `wb auth print-access-token`
+- Refreshes every 55 minutes
+- Gets API URLs from `wb status`
 
-- **username** (default: `root`): Container user that will run the MCP server
-- **userHomeDir** (default: `/root`): Home directory of the container user
-- **port** (default: `3000`): Reserved for future use (currently stdio-based)
+### Data Collections
+Data collection workspaces contain underlays (data models):
+- Data collection workspace ID = underlay ID
+- Property `"terra-type": "data-collection"`
+- Property `"terra-dx-underlay-name"` = underlay name (e.g., "AoU_2024")
 
-## Security Notes
+### Cohort Creation Flow
+1. User has READ access to data collection workspace
+2. User has WRITER access to target workspace
+3. Server creates:
+   - Study in Data Explorer (if doesn't exist)
+   - Cohort in that study
+   - Controlled resource in workspace
 
-- This MCP server is designed for **local use only**
-- It does not implement authentication (relies on local `wb` authentication)
-- Do not expose this server to untrusted networks
-- The server runs with the same permissions as the user who starts it
+### Filter Structure
+Filters use Data Explorer's filter format:
+- **Attribute**: `age > 65`, `gender = 'male'`
+- **Relationship**: `persons who have condition = diabetes`
+- **Boolean Logic**: Combine with AND/OR/NOT
+- **Hierarchy**: All descendants of concept
+
+Filter builders output correct JSON for you.
 
 ## Troubleshooting
 
-### Server not found
-
-Make sure the feature is installed and the binary exists:
-
+### "Error: failed to get access token"
 ```bash
-ls -l /opt/wb-mcp-server/wb-mcp-server
+wb auth login
 ```
 
-### wb command not found
-
-Ensure the Workbench CLI is installed and authenticated:
-
+### "API error (403)"
+Check permissions:
 ```bash
-wb status
+wb workspace describe <workspace-id>
+```
+Need READER on data collections, WRITER on target workspace.
+
+### "Error: underlayName parameter is required"
+First find underlay names:
+```
+"List my data collections and show their underlay names"
 ```
 
-### Permission denied
-
-Check that the binary is executable:
-
+### Server not responding
+Test directly:
 ```bash
-chmod +x /opt/wb-mcp-server/wb-mcp-server
+/opt/wb-mcp-server/wb-mcp-server
+```
+Then send:
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/list"}
 ```
 
-## Development
+## Requirements
 
-The MCP server is written in Go and built during feature installation. Source code:
-
-- `main.go`: Server implementation
-- `go.mod`: Go module definition
-- `install.sh`: Installation script
-
-To modify the server, edit `main.go` and rebuild your dev container.
+- Workbench CLI (`wb`) installed
+- Authenticated (`wb auth login`)
+- Access to data collections and workspaces

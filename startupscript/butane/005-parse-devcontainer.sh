@@ -13,7 +13,6 @@ function usage {
   echo "  devcontainer_path: folder directory of the devcontainer."
   echo "  cloud: gcp or aws."
   echo "  login: whether the user is logged into the workbench on startup."
-  echo "  accelerator: the accelerator to use. E.g: nvidia"
   echo "  container_image: the container image to use."
   echo "  container_port: the port to expose."
   exit 1
@@ -27,7 +26,6 @@ fi
 readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
 readonly LOGIN="$3"
-readonly ACCELERATOR="$4"
 readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
 readonly CONTAINER_PORT="${6:-8080}"
 

@@ -33,7 +33,6 @@ readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'
 readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
 readonly GPU_STATE_FILE="/home/core/gpu-state"
-readonly FORCE_DEVCONTAINER_REBUILD_FILE="/tmp/force-devcontainer-rebuild"
 
 if [[ -f "${DEVCONTAINER_PATH}/.devcontainer.json" ]]; then
   DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
@@ -100,32 +99,29 @@ detect_gpu() {
 
 handle_gpu_state_changed() {
     local current_state="$1"
+    local rebuild=false
 
-    # If no previous state file exists, this is first run
+    # Check if this is first run or if state changed
     if [[ ! -f "${GPU_STATE_FILE}" ]]; then
-        echo "${current_state}" > "${GPU_STATE_FILE}"
         echo "First run, GPU state: ${current_state} (0=present, 1=absent)"
-        # Mark for rebuild on first run to ensure correct initial state
-        touch "${FORCE_DEVCONTAINER_REBUILD_FILE}"
-        return 0
-    fi
-
-    local previous_state
-    previous_state="$(cat "${GPU_STATE_FILE}")"
-
-    # Update the state file with current state
-    echo "${current_state}" > "${GPU_STATE_FILE}"
-
-    # Check if state changed
-    if [[ "${current_state}" != "${previous_state}" ]]; then
-        echo "GPU state changed from ${previous_state} to ${current_state} (0=present, 1=absent)"
-        # Set marker to force container rebuild
-        touch "${FORCE_DEVCONTAINER_REBUILD_FILE}"
+        rebuild=true
     else
-        echo "GPU state unchanged: ${current_state} (0=present, 1=absent)"
-        # Clear marker if it exists
-        rm -f "${FORCE_DEVCONTAINER_REBUILD_FILE}"
+        local previous_state
+        previous_state="$(cat "${GPU_STATE_FILE}")"
+
+        if [[ "${current_state}" != "${previous_state}" ]]; then
+            echo "GPU state changed from ${previous_state} to ${current_state} (0=present, 1=absent)"
+            rebuild=true
+        fi
     fi
+
+    # Rebuild container if needed
+    if [[ "${rebuild}" == "true" ]]; then
+        docker rm -f application-server
+    fi
+
+    # Update state file
+    echo "${current_state}" > "${GPU_STATE_FILE}"
 }
 
 apply_gpu_runtime() {

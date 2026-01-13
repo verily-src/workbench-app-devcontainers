@@ -7,6 +7,8 @@ services:
     volumes:
       - .:/workspace:cached
       - work:/home/rstudio:cached
+    tmpfs:
+      - /home/rstudio/workspace:uid=1000,gid=1000
     ports:
       - "8787:8787"
     environment:

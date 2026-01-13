@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playground Apps Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #1a1a1a;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+
+        .btn:disabled,
+        .btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .apps-table {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .container-status-running {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .container-status-exited,
+        .container-status-stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .container-status-not_found,
+        .container-status-unknown {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 30px;
+            border-radius: 8px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            font-size: 24px;
+            color: #1a1a1a;
+        }
+
+        .close {
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close:hover {
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        textarea {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6c757d;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .features-list {
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .code-block {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Playground Apps Manager</h1>
+            <div>
+                <a href="/_shell" target="_blank" class="btn">Open Shell</a>
+                <button class="btn" onclick="viewPlaygroundLogs()">View Playground Logs</button>
+                <button class="btn btn-success" onclick="openCreateModal()">+ Create New App</button>
+            </div>
+        </div>
+
+        <div id="error-message" class="error" style="display: none;"></div>
+
+        <div class="apps-table">
+            <div id="loading" class="loading">Loading apps...</div>
+            <div id="empty-state" class="empty-state" style="display: none;">
+                <h3>No apps yet</h3>
+                <p>Create your first app to get started</p>
+            </div>
+            <table id="apps-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Username</th>
+                        <th>Port</th>
+                        <th>Features</th>
+                        <th>Status</th>
+                        <th>Container</th>
+                        <th>Link</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="apps-tbody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div id="app-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Create New App</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modal-error" class="error" style="display: none;"></div>
+            <form id="app-form" onsubmit="saveApp(event)">
+                <input type="hidden" id="app-id">
+
+                <div class="form-group" id="examples-section">
+                    <label>Examples</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" class="btn btn-small btn-secondary" onclick="loadExample('ttyd')">ttyd</button>
+                        <button type="button" class="btn btn-small btn-secondary" onclick="loadExample('jupyterlab')">JupyterLab</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="app-name">App Name *</label>
+                    <input type="text" id="app-name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="username">Username *</label>
+                    <input type="text" id="username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="user-home">User Home Directory *</label>
+                    <input type="text" id="user-home" required placeholder="/home/username">
+                </div>
+
+                <div class="form-group">
+                    <label for="port">Port *</label>
+                    <input type="number" id="port" required min="1024" max="65535">
+                </div>
+
+                <div class="form-group">
+                    <label for="dockerfile">Dockerfile *</label>
+                    <textarea id="dockerfile" required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Optional Features</label>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="feature-wb" value="wb">
+                        <label for="feature-wb" style="margin-bottom: 0;">Workbench CLI <em style="color: #6c757d;">~4 min build time</em></label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="feature-workbench-tools" value="workbench-tools">
+                        <label for="feature-workbench-tools" style="margin-bottom: 0;">Workbench Tools (bcftools, bedtools, plink, plink2, samtools, VEP, REGENIE) <em style="color: #6c757d;">~8 min build time</em></label>
+                    </div>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 10px; margin-bottom: 0;">
+                        💡 Tip: Click "View Playground Logs" to watch build progress in real-time
+                    </p>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">Save App</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Logs Modal -->
+    <div id="logs-modal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2 id="logs-title">Logs</h2>
+                <span class="close" onclick="closeLogsModal()">&times;</span>
+            </div>
+            <div style="padding: 20px;">
+                <pre id="logs-content" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; max-height: 500px; overflow: auto; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 13px; white-space: pre-wrap; word-wrap: break-word;">Loading logs...</pre>
+                <div style="margin-top: 15px; display: flex; align-items: center; gap: 15px;">
+                    <div class="checkbox-group" style="margin-bottom: 0;">
+                        <input type="checkbox" id="auto-refresh-logs" onchange="toggleAutoRefresh()">
+                        <label for="auto-refresh-logs" style="margin-bottom: 0;">Auto-refresh (every 3 seconds)</label>
+                    </div>
+                    <button class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let apps = [];
+        let pollInterval = null;
+        let currentLogsContext = null; // { type: 'app', id: 123, name: 'app-name' } or { type: 'playground' }
+        let logsRefreshInterval = null;
+
+        // Load apps on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadApps();
+            startPolling();
+        });
+
+        async function loadApps() {
+            try {
+                const response = await fetch('/_app');
+                if (!response.ok) throw new Error('Failed to load apps');
+
+                const data = await response.json();
+                // Handle both array response and object response with apps field
+                apps = Array.isArray(data) ? data : (data.apps || []);
+                renderApps();
+            } catch (error) {
+                showError('Failed to load apps: ' + error.message);
+            }
+        }
+
+        function renderApps() {
+            const loading = document.getElementById('loading');
+            const emptyState = document.getElementById('empty-state');
+            const table = document.getElementById('apps-table');
+            const tbody = document.getElementById('apps-tbody');
+
+            loading.style.display = 'none';
+
+            if (apps.length === 0) {
+                emptyState.style.display = 'block';
+                table.style.display = 'none';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            table.style.display = 'table';
+
+            tbody.innerHTML = apps.map(app => {
+                const appUrl = `/${app.app_name}`;
+                const containerStatus = app.container_status || 'unknown';
+                const containerStatusLabel = containerStatus.replace('_', ' ');
+
+                // Determine button states based on container status
+                const isRunning = containerStatus === 'running';
+                const canStart = !isRunning && containerStatus !== 'unknown';
+                const canStop = isRunning;
+                const canOpen = isRunning;
+
+                return `
+                <tr>
+                    <td>${app.id}</td>
+                    <td><strong>${app.app_name}</strong></td>
+                    <td>${app.username}</td>
+                    <td>${app.port}</td>
+                    <td class="features-list">${app.optional_features?.join(', ') || 'None'}</td>
+                    <td><span class="status status-${app.status}">${app.status.toUpperCase()}</span></td>
+                    <td><span class="status container-status-${containerStatus}">${containerStatusLabel.toUpperCase()}</span></td>
+                    <td><a href="${appUrl}" target="_blank" class="btn btn-small ${!canOpen ? 'disabled' : ''}">Open</a></td>
+                    <td>
+                        <button class="btn btn-success btn-small" onclick="startApp(${app.id})" ${!canStart ? 'disabled' : ''}>Start</button>
+                        <button class="btn btn-secondary btn-small" onclick="stopApp(${app.id})" ${!canStop ? 'disabled' : ''}>Stop</button>
+                        <button class="btn btn-small" onclick="viewAppLogs(${app.id}, '${app.app_name}')">Logs</button>
+                        <button class="btn btn-small" onclick="editApp(${app.id})">Edit</button>
+                        <button class="btn btn-danger btn-small" onclick="deleteApp(${app.id}, '${app.app_name}')">Delete</button>
+                    </td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        function openCreateModal() {
+            document.getElementById('modal-title').textContent = 'Create New App';
+            document.getElementById('app-form').reset();
+            document.getElementById('app-id').value = '';
+            document.getElementById('examples-section').style.display = 'block';
+            document.getElementById('modal-error').style.display = 'none';
+            document.getElementById('app-modal').style.display = 'block';
+        }
+
+        function loadExample(type) {
+            const examples = {
+                ttyd: {
+                    name: 'ttyd',
+                    username: 'root',
+                    userHome: '/root',
+                    port: 7681,
+                    dockerfile: `FROM tsl0922/ttyd:latest
+
+# Install sudo
+RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*
+
+# Start ttyd with base-path from environment variable
+CMD sh -c "ttyd --writable --port 7681 --base-path=$APP_NAME bash"`
+                },
+                jupyterlab: {
+                    name: 'jupyterlab',
+                    username: 'jovyan',
+                    userHome: '/home/jovyan',
+                    port: 8888,
+                    dockerfile: `FROM quay.io/jupyter/base-notebook
+
+USER root
+
+# Ensure the jovyan user has proper ownership of home directory
+RUN chown -R jovyan:users /home/jovyan && \\
+    mkdir -p /home/jovyan/.local/share/jupyter && \\
+    chown -R jovyan:users /home/jovyan/.local
+
+USER jovyan
+
+# Start JupyterLab with base_url from environment variable
+CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.password='' --ServerApp.base_url=$APP_NAME"]`
+                }
+            };
+
+            const example = examples[type];
+            if (!example) return;
+
+            document.getElementById('app-name').value = example.name;
+            document.getElementById('username').value = example.username;
+            document.getElementById('user-home').value = example.userHome;
+            document.getElementById('port').value = example.port;
+            document.getElementById('dockerfile').value = example.dockerfile;
+            document.getElementById('feature-wb').checked = false;
+            document.getElementById('feature-workbench-tools').checked = false;
+        }
+
+        async function editApp(id) {
+            const app = apps.find(a => a.id === id);
+            if (!app) return;
+
+            document.getElementById('modal-title').textContent = 'Edit App';
+            document.getElementById('app-id').value = app.id;
+            document.getElementById('app-name').value = app.app_name;
+            document.getElementById('username').value = app.username;
+            document.getElementById('user-home').value = app.user_home_directory;
+            document.getElementById('port').value = app.port;
+            document.getElementById('dockerfile').value = app.dockerfile;
+            document.getElementById('feature-wb').checked = app.optional_features?.includes('wb') || false;
+            document.getElementById('feature-workbench-tools').checked = app.optional_features?.includes('workbench-tools') || false;
+            document.getElementById('examples-section').style.display = 'none';
+            document.getElementById('modal-error').style.display = 'none';
+
+            document.getElementById('app-modal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('app-modal').style.display = 'none';
+        }
+
+        async function saveApp(event) {
+            event.preventDefault();
+
+            // Hide any previous errors
+            const errorDiv = document.getElementById('modal-error');
+            errorDiv.style.display = 'none';
+
+            const id = document.getElementById('app-id').value;
+            const features = [];
+            if (document.getElementById('feature-wb').checked) features.push('wb');
+            if (document.getElementById('feature-workbench-tools').checked) features.push('workbench-tools');
+
+            const data = {
+                app_name: document.getElementById('app-name').value,
+                username: document.getElementById('username').value,
+                user_home_directory: document.getElementById('user-home').value,
+                port: parseInt(document.getElementById('port').value),
+                dockerfile: document.getElementById('dockerfile').value,
+                optional_features: features
+            };
+
+            try {
+                const url = id ? `/_app/${id}` : '/_app';
+                const method = id ? 'PUT' : 'POST';
+
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error);
+                }
+
+                closeModal();
+                await loadApps();
+                showSuccess(id ? 'App updated successfully' : 'App created successfully');
+            } catch (error) {
+                errorDiv.textContent = 'Failed to save app: ' + error.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        async function deleteApp(id, name) {
+            if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+
+            try {
+                const response = await fetch(`/_app/${id}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Failed to delete app');
+
+                await loadApps();
+                showSuccess('App deleted successfully');
+            } catch (error) {
+                showError('Failed to delete app: ' + error.message);
+            }
+        }
+
+        async function controlApp(id, action) {
+            try {
+                const response = await fetch(`/_app/${id}/${action}`, { method: 'POST' });
+                if (!response.ok) throw new Error(`Failed to ${action} app`);
+
+                await loadApps();
+                showSuccess(`App ${action}ed successfully`);
+            } catch (error) {
+                showError(`Failed to ${action} app: ` + error.message);
+            }
+        }
+
+        async function startApp(id) {
+            await controlApp(id, 'start');
+        }
+
+        async function stopApp(id) {
+            await controlApp(id, 'stop');
+        }
+
+        async function viewLogs(context, isRefresh = false) {
+            currentLogsContext = context;
+
+            const logsModal = document.getElementById('logs-modal');
+            const logsTitle = document.getElementById('logs-title');
+            const logsContent = document.getElementById('logs-content');
+
+            logsTitle.textContent = context.title;
+
+            // Show "Loading logs..." on initial load, but not on refresh
+            if (!isRefresh) {
+                logsContent.textContent = 'Loading logs...';
+            }
+
+            logsModal.style.display = 'block';
+
+            const wasScrolledToBottom = logsContent.scrollTop + logsContent.clientHeight >= logsContent.scrollHeight - 10;
+
+            try {
+                const response = await fetch(context.url);
+                if (!response.ok) throw new Error('Failed to fetch logs');
+
+                const data = await response.json();
+                logsContent.textContent = data.logs || 'No logs available';
+
+                // On initial load, always scroll to bottom. On refresh, only if user was at bottom
+                if (!isRefresh || wasScrolledToBottom) {
+                    logsContent.scrollTop = logsContent.scrollHeight;
+                }
+            } catch (error) {
+                logsContent.textContent = `Error loading logs: ${error.message}`;
+            }
+        }
+
+        async function viewAppLogs(id, appName) {
+            await viewLogs({
+                type: 'app',
+                id: id,
+                name: appName,
+                title: `Logs - ${appName}`,
+                url: `/_app/${id}/logs?tail=500`
+            });
+        }
+
+        async function viewPlaygroundLogs() {
+            await viewLogs({
+                type: 'playground',
+                title: 'Playground Logs',
+                url: '/_app/logs?tail=500'
+            });
+        }
+
+        async function refreshLogs() {
+            if (!currentLogsContext) return;
+            await viewLogs(currentLogsContext, true);
+        }
+
+        function toggleAutoRefresh() {
+            const checkbox = document.getElementById('auto-refresh-logs');
+
+            if (checkbox.checked) {
+                // Start auto-refresh
+                logsRefreshInterval = setInterval(async () => {
+                    if (currentLogsContext) {
+                        await refreshLogs();
+                    }
+                }, 3000); // Refresh every 3 seconds
+            } else {
+                // Stop auto-refresh
+                if (logsRefreshInterval) {
+                    clearInterval(logsRefreshInterval);
+                    logsRefreshInterval = null;
+                }
+            }
+        }
+
+        function closeLogsModal() {
+            document.getElementById('logs-modal').style.display = 'none';
+            currentLogsContext = null;
+
+            // Stop auto-refresh when closing modal
+            if (logsRefreshInterval) {
+                clearInterval(logsRefreshInterval);
+                logsRefreshInterval = null;
+            }
+
+            // Uncheck auto-refresh checkbox
+            document.getElementById('auto-refresh-logs').checked = false;
+        }
+
+        function startPolling() {
+            // Poll every 5 seconds for status updates
+            pollInterval = setInterval(async () => {
+                const hasPending = apps.some(app => app.status === 'pending');
+                if (hasPending) {
+                    await loadApps();
+                }
+            }, 5000);
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            // You could add a success message div similar to error
+            console.log(message);
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const appModal = document.getElementById('app-modal');
+            const logsModal = document.getElementById('logs-modal');
+            if (event.target === appModal) {
+                closeModal();
+            }
+            if (event.target === logsModal) {
+                closeLogsModal();
+            }
+        }
+    </script>
+</body>
+</html>

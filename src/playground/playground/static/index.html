@@ -345,6 +345,7 @@
                     <div style="display: flex; gap: 10px;">
                         <button type="button" class="btn btn-small btn-secondary" onclick="loadExample('ttyd')">ttyd</button>
                         <button type="button" class="btn btn-small btn-secondary" onclick="loadExample('jupyterlab')">JupyterLab</button>
+                        <button type="button" class="btn btn-small btn-secondary" onclick="loadExample('rstudio')">RStudio</button>
                     </div>
                 </div>
 
@@ -540,6 +541,18 @@ USER jovyan
 
 # Start JupyterLab with base_url from environment variable
 CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.password='' --ServerApp.base_url=$APP_NAME"]`
+                },
+                rstudio: {
+                    name: 'rstudio',
+                    username: 'rstudio',
+                    userHome: '/home/rstudio',
+                    port: 8787,
+                    stripPrefix: true,
+                    dockerfile: `FROM ghcr.io/rocker-org/devcontainer/tidyverse:4.5
+
+ENV DISABLE_AUTH=true
+
+CMD sh -c "echo \\"www-root-path=$APP_NAME/\\" >> /etc/rstudio/disable_auth_rserver.conf && exec /init"`
                 }
             };
 

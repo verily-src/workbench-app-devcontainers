@@ -13,7 +13,6 @@ function usage {
   echo "  devcontainer_path: folder directory of the devcontainer."
   echo "  cloud: gcp or aws."
   echo "  login: whether the user is logged into the workbench on startup."
-  echo "  accelerator: the accelerator to use. E.g: nvidia"
   echo "  container_image: the container image to use."
   echo "  container_port: the port to expose."
   exit 1
@@ -27,13 +26,13 @@ fi
 readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
 readonly LOGIN="$3"
-readonly ACCELERATOR="$4"
 readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
 readonly CONTAINER_PORT="${6:-8080}"
 
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'
 readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
+readonly GPU_STATE_FILE="/home/core/gpu-state"
 
 if [[ -f "${DEVCONTAINER_PATH}/.devcontainer.json" ]]; then
   DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
@@ -89,6 +88,42 @@ replace_template_options() {
     sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
 }
 
+detect_gpu() {
+    # Detect NVIDIA GPUs
+    if nvidia-smi > /dev/null 2>&1; then
+        return 0  # GPU detected
+    else
+        return 1  # No GPU detected
+    fi
+}
+
+handle_gpu_state_changed() {
+    local current_state="$1"
+    local rebuild=false
+
+    # Check if this is first run or if state changed
+    if [[ ! -f "${GPU_STATE_FILE}" ]]; then
+        echo "First run, GPU state: ${current_state} (0=present, 1=absent)"
+        rebuild=true
+    else
+        local previous_state
+        previous_state="$(cat "${GPU_STATE_FILE}")"
+
+        if [[ "${current_state}" != "${previous_state}" ]]; then
+            echo "GPU state changed from ${previous_state} to ${current_state} (0=present, 1=absent)"
+            rebuild=true
+        fi
+    fi
+
+    # Rebuild container if needed
+    if [[ "${rebuild}" == "true" ]]; then
+        docker rm -f application-server
+    fi
+
+    # Update state file
+    echo "${current_state}" > "${GPU_STATE_FILE}"
+}
+
 apply_gpu_runtime() {
     local DOCKER_COMPOSE_PATH="$1"
     local GPU_RUNTIME_BLOCK_PATH="$2"
@@ -117,9 +152,15 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
     replace_template_options "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 fi
 
-# apply gpu runtime block if accelerator is nvidia
-if [[ "${ACCELERATOR}" == "nvidia" ]]; then
+gpu_exists=$(detect_gpu; echo $?)
+handle_gpu_state_changed "${gpu_exists}"
+
+# Apply GPU runtime configuration if GPU is present
+if [[ "${gpu_exists}" == "0" ]]; then
+    echo "NVIDIA GPU detected, applying GPU runtime configuration"
     apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}"
+else
+    echo "No NVIDIA GPU detected, skipping GPU runtime configuration"
 fi
 
 echo 'publishing devcontainer.json to metadata'

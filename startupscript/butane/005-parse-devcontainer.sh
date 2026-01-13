@@ -91,7 +91,7 @@ replace_template_options() {
 
 detect_gpu() {
     # Detect NVIDIA GPUs
-    if lspci | grep -i nvidia > /dev/null 2>&1; then
+    if nvidia-smi > /dev/null 2>&1; then
         return 0  # GPU detected
     else
         return 1  # No GPU detected

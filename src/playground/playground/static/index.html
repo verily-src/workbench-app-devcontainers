@@ -369,6 +369,13 @@
                 </div>
 
                 <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="strip-prefix">
+                        <label for="strip-prefix" style="margin-bottom: 0;">Strip path prefix <em style="color: #6c757d;">(for apps that don't handle base paths)</em></label>
+                    </div>
+                </div>
+
+                <div class="form-group">
                     <label for="dockerfile">Dockerfile *</label>
                     <textarea id="dockerfile" required></textarea>
                 </div>
@@ -460,7 +467,7 @@
             table.style.display = 'table';
 
             tbody.innerHTML = apps.map(app => {
-                const appUrl = `/${app.app_name}`;
+                const appUrl = `/${app.app_name}/`;
                 const containerStatus = app.container_status || 'unknown';
                 const containerStatusLabel = containerStatus.replace('_', ' ');
 
@@ -508,19 +515,18 @@
                     username: 'root',
                     userHome: '/root',
                     port: 7681,
+                    stripPrefix: true,
                     dockerfile: `FROM tsl0922/ttyd:latest
 
 # Install sudo
-RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*
-
-# Start ttyd with base-path from environment variable
-CMD sh -c "ttyd --writable --port 7681 --base-path=$APP_NAME bash"`
+RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*`
                 },
                 jupyterlab: {
                     name: 'jupyterlab',
                     username: 'jovyan',
                     userHome: '/home/jovyan',
                     port: 8888,
+                    stripPrefix: false,
                     dockerfile: `FROM quay.io/jupyter/base-notebook
 
 USER root
@@ -545,6 +551,7 @@ CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.passwor
             document.getElementById('user-home').value = example.userHome;
             document.getElementById('port').value = example.port;
             document.getElementById('dockerfile').value = example.dockerfile;
+            document.getElementById('strip-prefix').checked = example.stripPrefix || false;
             document.getElementById('feature-wb').checked = false;
             document.getElementById('feature-workbench-tools').checked = false;
         }
@@ -559,6 +566,7 @@ CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.passwor
             document.getElementById('username').value = app.username;
             document.getElementById('user-home').value = app.user_home_directory;
             document.getElementById('port').value = app.port;
+            document.getElementById('strip-prefix').checked = app.strip_prefix || false;
             document.getElementById('dockerfile').value = app.dockerfile;
             document.getElementById('feature-wb').checked = app.optional_features?.includes('wb') || false;
             document.getElementById('feature-workbench-tools').checked = app.optional_features?.includes('workbench-tools') || false;
@@ -589,6 +597,7 @@ CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.passwor
                 username: document.getElementById('username').value,
                 user_home_directory: document.getElementById('user-home').value,
                 port: parseInt(document.getElementById('port').value),
+                strip_prefix: document.getElementById('strip-prefix').checked,
                 dockerfile: document.getElementById('dockerfile').value,
                 optional_features: features
             };

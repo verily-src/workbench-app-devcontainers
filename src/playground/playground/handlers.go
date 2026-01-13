@@ -13,7 +13,7 @@ import (
 // setupContainer creates devcontainer configuration and builds the container
 // Should be called with 'go' to run asynchronously
 // If a build is already in progress for this app, it will be cancelled
-func setupContainer(app *App, dockerService *DockerService, caddyService *CaddyService) {
+func setupContainer(app *App, db *DB, dockerService *DockerService, caddyService *CaddyService) {
 	// Create context with 30 minute timeout
 	ctx, cancel := context.WithTimeout(context.Background(), DockerBuildTimeout)
 	defer cancel()
@@ -25,14 +25,14 @@ func setupContainer(app *App, dockerService *DockerService, caddyService *CaddyS
 	// Build container (common Docker operations)
 	if err := dockerService.BuildContainer(ctx, app, false); err != nil {
 		log.Printf("Error building container for app %d: %v", app.ID, err)
-		dockerService.UpdateStatus(ctx, app.ID, "failed")
+		db.UpdateAppStatus(ctx, app.ID, "failed")
 		return
 	}
 
 	// Sync with Caddy
-	if err := caddyService.SyncApp(ctx, app.ID, app.AppName, app.Port); err != nil {
+	if err := caddyService.SyncApp(ctx, app.ID, app.AppName, app.Port, app.StripPrefix); err != nil {
 		log.Printf("Error syncing app %d with Caddy: %v", app.ID, err)
-		dockerService.UpdateStatus(ctx, app.ID, "failed")
+		db.UpdateAppStatus(ctx, app.ID, "failed")
 		return
 	}
 
@@ -43,40 +43,36 @@ func setupContainer(app *App, dockerService *DockerService, caddyService *CaddyS
 // updateContainer rebuilds container when app is updated
 // Should be called with 'go' to run asynchronously
 // If a build is already in progress for this app, it will be cancelled
-func updateContainer(app *App, oldAppName string, oldPort int, dockerService *DockerService, caddyService *CaddyService) {
+func updateContainer(oldApp, newApp *App, db *DB, dockerService *DockerService, caddyService *CaddyService) {
 	// Create context with 30 minute timeout
 	ctx, cancel := context.WithTimeout(context.Background(), DockerBuildTimeout)
 	defer cancel()
 
 	// Cancel any previous build and register this one
-	dockerService.CancelAndRegisterBuild(app.ID, cancel)
-	defer dockerService.RemoveCancelFunc(app.ID)
+	dockerService.CancelAndRegisterBuild(newApp.ID, cancel)
+	defer dockerService.RemoveCancelFunc(newApp.ID)
 
 	// Update status to pending
-	dockerService.UpdateStatus(ctx, app.ID, "pending")
+	db.UpdateAppStatus(ctx, newApp.ID, "pending")
 
 	// Build container (common Docker operations, including stopping existing container)
-	if err := dockerService.BuildContainer(ctx, app, true); err != nil {
-		log.Printf("Error rebuilding container for app %d: %v", app.ID, err)
-		dockerService.UpdateStatus(ctx, app.ID, "failed")
+	if err := dockerService.BuildContainer(ctx, newApp, true); err != nil {
+		log.Printf("Error rebuilding container for app %d: %v", newApp.ID, err)
+		db.UpdateAppStatus(ctx, newApp.ID, "failed")
 		return
 	}
 
-	log.Printf("Container updated for app %d (%s)", app.ID, app.AppName)
+	log.Printf("Container updated for app %d (%s)", newApp.ID, newApp.AppName)
 
-	// Sync with Caddy if name or port changed
-	if oldAppName != app.AppName || oldPort != app.Port {
-		if err := caddyService.UpdateApp(ctx, app.ID, oldAppName, app.AppName, oldPort, app.Port); err != nil {
-			log.Printf("Error syncing app %d with Caddy: %v", app.ID, err)
-			dockerService.UpdateStatus(ctx, app.ID, "failed")
-			return
-		}
-	} else {
-		// No Caddy update needed, just update status to active
-		dockerService.UpdateStatus(ctx, app.ID, "active")
+	// Sync with Caddy if name, port, or stripPrefix changed
+	if err := caddyService.UpdateApp(ctx, oldApp, newApp); err != nil {
+		log.Printf("Error syncing app %d with Caddy: %v", newApp.ID, err)
+		db.UpdateAppStatus(ctx, newApp.ID, "failed")
+		return
 	}
+	db.UpdateAppStatus(ctx, newApp.ID, "active")
 
-	log.Printf("App %d (%s) fully updated and active", app.ID, app.AppName)
+	log.Printf("App %d (%s) fully updated and active", newApp.ID, newApp.AppName)
 }
 
 // writeJSON writes a JSON response
@@ -180,7 +176,7 @@ func createAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 
 		// Start async container build (30 minute timeout handled internally)
 		// This returns immediately - container builds in background
-		go setupContainer(app, dockerService, caddyService)
+		go setupContainer(app, db, dockerService, caddyService)
 
 		// Return app immediately with status='pending'
 		// Client can poll GET /_app/{id} to check when status becomes 'active' or 'failed'
@@ -278,7 +274,7 @@ func updateAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 
 		// Start async container rebuild (30 minute timeout handled internally)
 		// This returns immediately - container rebuilds in background
-		go updateContainer(app, oldApp.AppName, oldApp.Port, dockerService, caddyService)
+		go updateContainer(oldApp, app, db, dockerService, caddyService)
 
 		// Return app immediately with status='pending'
 		// Status will be updated to 'active' or 'failed' when rebuild completes
@@ -356,15 +352,15 @@ func startAppHandler(db *DB, dockerService *DockerService, caddyService *CaddySe
 			log.Printf("Container not found for app %d, creating...", id)
 
 			// Update status to pending in DB
-			if err := dockerService.UpdateStatus(ctx, id, "pending"); err != nil {
+			if err := db.UpdateAppStatus(ctx, id, "pending"); err != nil {
 				log.Printf("Warning: Failed to update status to pending: %v", err)
 			}
 
 			// Trigger async container creation
-			go setupContainer(app, dockerService, caddyService)
+			go setupContainer(app, db, dockerService, caddyService)
 
 			writeJSON(w, http.StatusAccepted, map[string]string{
-				"status": "creating",
+				"status":  "creating",
 				"message": "Container is being created in the background",
 			})
 			return
@@ -373,7 +369,7 @@ func startAppHandler(db *DB, dockerService *DockerService, caddyService *CaddySe
 		// If container is already running, return success
 		if status == "running" {
 			writeJSON(w, http.StatusOK, map[string]string{
-				"status": "already_running",
+				"status":  "already_running",
 				"message": "Container is already running",
 			})
 			return

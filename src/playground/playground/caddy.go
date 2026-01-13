@@ -75,10 +75,11 @@ type CaddyRoute struct {
 	Match  []CaddyMatcher `json:"match"`
 }
 
-// CaddyHandler represents a handler (reverse_proxy, etc)
+// CaddyHandler represents a handler (reverse_proxy, rewrite, etc)
 type CaddyHandler struct {
-	Handler   string          `json:"handler"`
-	Upstreams []CaddyUpstream `json:"upstreams,omitempty"`
+	Handler         string          `json:"handler"`
+	Upstreams       []CaddyUpstream `json:"upstreams,omitempty"`
+	StripPathPrefix string          `json:"strip_path_prefix,omitempty"`
 }
 
 // CaddyUpstream represents an upstream server
@@ -95,17 +96,29 @@ type CaddyMatcher struct {
 // AddRoute adds a new route to Caddy for an app using path-based routing
 // Routes are inserted at the beginning (index 0) so they're evaluated before the default UI route
 // The full path is proxied to the container since apps are configured with APP_NAME
-func (c *CaddyClient) AddRoute(ctx context.Context, appID int, appName string, port int) error {
+func (c *CaddyClient) AddRoute(ctx context.Context, appID int, appName string, port int, stripPrefix bool) error {
 	containerName := fmt.Sprintf("app-%d", appID)
-	route := CaddyRoute{
-		Handle: []CaddyHandler{
-			{
-				Handler: "reverse_proxy",
-				Upstreams: []CaddyUpstream{
-					{Dial: fmt.Sprintf("%s:%d", containerName, port)},
-				},
-			},
+
+	handlers := []CaddyHandler{}
+
+	// Add rewrite handler if stripPrefix is enabled
+	if stripPrefix {
+		handlers = append(handlers, CaddyHandler{
+			Handler:          "rewrite",
+			StripPathPrefix:  fmt.Sprintf("/%s", appName),
+		})
+	}
+
+	// Add reverse_proxy handler
+	handlers = append(handlers, CaddyHandler{
+		Handler: "reverse_proxy",
+		Upstreams: []CaddyUpstream{
+			{Dial: fmt.Sprintf("%s:%d", containerName, port)},
 		},
+	})
+
+	route := CaddyRoute{
+		Handle: handlers,
 		Match: []CaddyMatcher{
 			{
 				Path: []string{fmt.Sprintf("/%s", appName), fmt.Sprintf("/%s/*", appName)},
@@ -173,14 +186,14 @@ func (c *CaddyClient) findRouteIndex(ctx context.Context, appName string) (int, 
 }
 
 // UpdateRoute updates a route (delete old, add new)
-func (c *CaddyClient) UpdateRoute(ctx context.Context, appID int, oldAppName, newAppName string, newPort int) error {
+func (c *CaddyClient) UpdateRoute(ctx context.Context, appID int, oldAppName, newAppName string, newPort int, stripPrefix bool) error {
 	// Delete old route first to avoid duplicates
 	if err := c.DeleteRoute(ctx, oldAppName); err != nil {
 		return fmt.Errorf("failed to delete old route: %w", err)
 	}
 
 	// Add new route
-	if err := c.AddRoute(ctx, appID, newAppName, newPort); err != nil {
+	if err := c.AddRoute(ctx, appID, newAppName, newPort, stripPrefix); err != nil {
 		return fmt.Errorf("failed to add new route: %w", err)
 	}
 

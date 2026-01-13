@@ -83,16 +83,6 @@ func (s *DockerService) BuildContainer(ctx context.Context, app *App, stopExisti
 	return nil
 }
 
-// UpdateStatus updates app status in database (delegates to DB layer)
-func (s *DockerService) UpdateStatus(ctx context.Context, appID int, status string) error {
-	if err := s.db.UpdateAppStatus(ctx, appID, status); err != nil {
-		log.Printf("Error updating status for app %d: %v", appID, err)
-		return err
-	}
-	return nil
-}
-
-
 // RemoveContainer stops and removes container
 func (s *DockerService) RemoveContainer(ctx context.Context, appID int) error {
 	if err := s.docker.Cleanup(ctx, appID); err != nil {

@@ -26,7 +26,7 @@ func (s *CaddyService) SyncAllApps(ctx context.Context) error {
 	log.Println("Reset Caddy routes to default")
 
 	// Get all apps from database using DB layer
-	apps, err := s.db.GetAppsForCaddySync(ctx)
+	apps, err := s.db.ListApps(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get apps for sync: %w", err)
 	}
@@ -36,15 +36,15 @@ func (s *CaddyService) SyncAllApps(ctx context.Context) error {
 	// Add app routes first (so they are evaluated before default routes)
 	for _, app := range apps {
 		// Add route to Caddy
-		if err := s.caddy.AddRoute(ctx, app.ID, app.AppName, app.Port); err != nil {
+		if err := s.caddy.AddRoute(ctx, app.ID, app.AppName, app.Port, app.StripPrefix); err != nil {
 			log.Printf("Error adding route for app %d (%s): %v", app.ID, app.AppName, err)
-			s.updateStatus(ctx, app.ID, "failed")
+			s.db.UpdateAppStatus(ctx, app.ID, "failed")
 			errorCount++
 			continue
 		}
 
 		// Update status to active
-		if err := s.updateStatus(ctx, app.ID, "active"); err != nil {
+		if err := s.db.UpdateAppStatus(ctx, app.ID, "active"); err != nil {
 			log.Printf("Warning: Failed to update status for app %d: %v", app.ID, err)
 		}
 		syncedCount++
@@ -55,18 +55,18 @@ func (s *CaddyService) SyncAllApps(ctx context.Context) error {
 }
 
 // SyncApp synchronizes an app with Caddy and updates status
-func (s *CaddyService) SyncApp(ctx context.Context, appID int, appName string, port int) error {
+func (s *CaddyService) SyncApp(ctx context.Context, appID int, appName string, port int, stripPrefix bool) error {
 	// Add route to Caddy
-	if err := s.caddy.AddRoute(ctx, appID, appName, port); err != nil {
+	if err := s.caddy.AddRoute(ctx, appID, appName, port, stripPrefix); err != nil {
 		// Update status to 'failed'
-		if updateErr := s.updateStatus(ctx, appID, "failed"); updateErr != nil {
+		if updateErr := s.db.UpdateAppStatus(ctx, appID, "failed"); updateErr != nil {
 			log.Printf("Warning: Failed to update status to 'failed' for app %d: %v", appID, updateErr)
 		}
 		return fmt.Errorf("failed to add Caddy route: %w", err)
 	}
 
 	// Update status to 'active'
-	if err := s.updateStatus(ctx, appID, "active"); err != nil {
+	if err := s.db.UpdateAppStatus(ctx, appID, "active"); err != nil {
 		// Caddy route was added but status update failed
 		// Log error but don't fail the operation
 		log.Printf("Warning: Caddy route added but status update failed for app %d: %v", appID, err)
@@ -75,39 +75,34 @@ func (s *CaddyService) SyncApp(ctx context.Context, appID int, appName string, p
 	return nil
 }
 
-// updateStatus updates app status in database (delegates to DB layer)
-func (s *CaddyService) updateStatus(ctx context.Context, appID int, status string) error {
-	return s.db.UpdateAppStatus(ctx, appID, status)
-}
-
 // RemoveApp removes Caddy route for an app
 func (s *CaddyService) RemoveApp(ctx context.Context, appName string) error {
 	return s.caddy.DeleteRoute(ctx, appName)
 }
 
 // UpdateApp updates Caddy route when app changes
-func (s *CaddyService) UpdateApp(ctx context.Context, appID int, oldName, newName string, oldPort, newPort int) error {
+func (s *CaddyService) UpdateApp(ctx context.Context, oldApp, newApp *App) error {
 	// If nothing changed, no need to update
-	if oldName == newName && oldPort == newPort {
+	if oldApp.AppName == newApp.AppName && oldApp.Port == newApp.Port && oldApp.StripPrefix == newApp.StripPrefix {
 		return nil
 	}
 
 	// Update status to pending during update
-	if err := s.updateStatus(ctx, appID, "pending"); err != nil {
-		log.Printf("Warning: Failed to update status to 'pending' for app %d: %v", appID, err)
+	if err := s.db.UpdateAppStatus(ctx, newApp.ID, "pending"); err != nil {
+		log.Printf("Warning: Failed to update status to 'pending' for app %d: %v", newApp.ID, err)
 	}
 
 	// Update Caddy route (delete old, add new)
-	if err := s.caddy.UpdateRoute(ctx, appID, oldName, newName, newPort); err != nil {
-		if updateErr := s.updateStatus(ctx, appID, "failed"); updateErr != nil {
-			log.Printf("Warning: Failed to update status to 'failed' for app %d: %v", appID, updateErr)
+	if err := s.caddy.UpdateRoute(ctx, newApp.ID, oldApp.AppName, newApp.AppName, newApp.Port, newApp.StripPrefix); err != nil {
+		if updateErr := s.db.UpdateAppStatus(ctx, newApp.ID, "failed"); updateErr != nil {
+			log.Printf("Warning: Failed to update status to 'failed' for app %d: %v", newApp.ID, updateErr)
 		}
 		return err
 	}
 
 	// Update status to active
-	if err := s.updateStatus(ctx, appID, "active"); err != nil {
-		log.Printf("Warning: Caddy route updated but status update failed for app %d: %v", appID, err)
+	if err := s.db.UpdateAppStatus(ctx, newApp.ID, "active"); err != nil {
+		log.Printf("Warning: Caddy route updated but status update failed for app %d: %v", newApp.ID, err)
 	}
 
 	return nil

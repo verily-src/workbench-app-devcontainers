@@ -59,10 +59,23 @@ check_packages \
     curl \
     git
 
-# Check if Node.js is installed (Gemini CLI is typically distributed via npm)
+# Check if Node.js is installed and version is >= 20 (required for Gemini CLI)
+NODE_VERSION_REQUIRED=20
+INSTALL_NODE=false
+
 if ! command -v node &> /dev/null; then
-    echo "Node.js is not installed. Installing Node.js LTS..."
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
+    echo "Node.js is not installed. Installing Node.js 20..."
+    INSTALL_NODE=true
+else
+    NODE_MAJOR_VERSION=$(node --version | cut -d'.' -f1 | sed 's/v//')
+    if [ "$NODE_MAJOR_VERSION" -lt "$NODE_VERSION_REQUIRED" ]; then
+        echo "Node.js version $NODE_MAJOR_VERSION detected, but Gemini CLI requires Node.js >= $NODE_VERSION_REQUIRED. Upgrading..."
+        INSTALL_NODE=true
+    fi
+fi
+
+if [ "$INSTALL_NODE" = true ]; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get install -y nodejs
 fi
 
@@ -71,14 +84,14 @@ mkdir -p "${GEMINI_INSTALL_DIR}"
 
 # Install Gemini CLI globally via npm
 if [[ "${VERSION}" == "latest" ]]; then
-    npm install -g @google/generative-ai-cli
+    npm install -g @google/gemini-cli
 else
-    npm install -g "@google/generative-ai-cli@${VERSION}"
+    npm install -g "@google/gemini-cli@${VERSION}"
 fi
 
 # Create a symlink in /usr/local/bin if it doesn't exist
 if ! command -v gemini &> /dev/null; then
-    GEMINI_BIN="$(npm root -g)/@google/generative-ai-cli/bin/gemini"
+    GEMINI_BIN="$(npm root -g)/@google/gemini-cli/bin/gemini"
     if [[ -f "${GEMINI_BIN}" ]]; then
         ln -sf "${GEMINI_BIN}" /usr/local/bin/gemini
     else
@@ -92,17 +105,7 @@ if ! command -v gemini &> /dev/null; then
     fi
 fi
 
-# Create Gemini config directory for the user
-GEMINI_CONFIG_DIR="${USER_HOME_DIR}/.config/gemini"
-mkdir -p "${GEMINI_CONFIG_DIR}"
-chown -R "${USERNAME}:" "${GEMINI_CONFIG_DIR}"
-
-# Add Gemini environment variables to .bashrc
-{
-    echo ""
-    echo "# Gemini CLI"
-    echo "export GEMINI_CONFIG_DIR=\"${GEMINI_CONFIG_DIR}\""
-} >> "${USER_HOME_DIR}/.bashrc"
+# Gemini CLI will create its config directory automatically when first run
 
 # Make sure the login user is the owner of their .bashrc
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"

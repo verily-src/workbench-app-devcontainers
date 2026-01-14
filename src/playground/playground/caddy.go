@@ -181,9 +181,6 @@ func (c *CaddyClient) adaptCaddyfile(ctx context.Context, caddyfile string) (jso
 	// Extract the first route from srv0
 	if servers, ok := config.Apps.HTTP.Servers["srv0"]; ok {
 		if len(servers.Routes) > 0 {
-			fmt.Println(wrappedCaddyfile)
-			fmt.Println(string(body))
-			fmt.Println(string(servers.Routes[0]))
 			return servers.Routes[0], nil
 		}
 	}

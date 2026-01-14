@@ -135,6 +135,18 @@ EOF
 # Make the directory and files accessible to the user
 chown -R "${USERNAME}:" "${WB_MCP_DIR}"
 
+# Auto-configure Claude CLI if available
+if command -v claude &> /dev/null; then
+    echo "Found Claude CLI, attempting to add MCP server..."
+    su - "${USERNAME}" -c "claude mcp add wb ${WB_MCP_BIN}" 2>/dev/null || true
+fi
+
+# Auto-configure Gemini CLI if available
+if command -v gemini &> /dev/null; then
+    echo "Found Gemini CLI, attempting to add MCP server..."
+    su - "${USERNAME}" -c "gemini mcp add wb ${WB_MCP_BIN}" 2>/dev/null || true
+fi
+
 # Add environment variables and PATH to .bashrc
 {
     echo ""

@@ -19,8 +19,6 @@ services:
       - app-network
     cap_add:
       - SYS_ADMIN
-      - NET_ADMIN
-      - SYS_RESOURCE
     devices:
       - /dev/fuse
     security_opt:

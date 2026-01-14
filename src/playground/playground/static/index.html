@@ -382,7 +382,7 @@
 
                 <div class="form-group">
                     <label for="dockerfile">Dockerfile *</label>
-                    <textarea id="dockerfile" required></textarea>
+                    <textarea id="dockerfile" required spellcheck="false"></textarea>
                     <p style="font-size: 12px; color: #6c757d; margin-top: 8px; margin-bottom: 0;">
                         Supports template variables: <code>{{.AppName}}</code>, <code>{{.ContainerName}}</code>, <code>{{.Port}}</code>
                     </p>
@@ -402,7 +402,7 @@
 
                     <div class="form-group" style="margin-bottom: 0;">
                         <label for="caddy-config">Caddy Configuration (Caddyfile Template) *</label>
-                        <textarea id="caddy-config" required oninput="onCaddyConfigChange()"></textarea>
+                        <textarea id="caddy-config" required oninput="onCaddyConfigChange()" spellcheck="false"></textarea>
                         <div style="margin-top: 8px;">
                             <button type="button" class="btn btn-small btn-secondary" onclick="resetCaddyTemplate()">Reset to Default</button>
                             <p style="font-size: 12px; color: #6c757d; margin-top: 8px; margin-bottom: 0;">
@@ -599,7 +599,7 @@ CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.passwor
 
 ENV DISABLE_AUTH=true
 
-CMD sh -c "echo \\"www-root-path=/{{.AppName}}/\\" >> /etc/rstudio/disable_auth_rserver.conf && exec /init"`
+RUN echo "www-root-path=/{{.AppName}}/" >> /etc/rstudio/disable_auth_rserver.conf`
                 }
             };
 
@@ -883,18 +883,6 @@ CMD sh -c "echo \\"www-root-path=/{{.AppName}}/\\" >> /etc/rstudio/disable_auth_
         function showSuccess(message) {
             // You could add a success message div similar to error
             console.log(message);
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const appModal = document.getElementById('app-modal');
-            const logsModal = document.getElementById('logs-modal');
-            if (event.target === appModal) {
-                closeModal();
-            }
-            if (event.target === logsModal) {
-                closeLogsModal();
-            }
         }
     </script>
 </body>

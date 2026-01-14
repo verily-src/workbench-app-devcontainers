@@ -1,0 +1,28 @@
+{
+  "id": "gemini",
+  "version": "1.0.0",
+  "name": "Gemini CLI",
+  "description": "Installs Google Gemini CLI for AI assistance with MCP support. Currently it only supports Debian-based systems (e.g. Ubuntu) on x86_64.",
+  "options": {
+      "version": {
+          "type": "string",
+          "default": "latest",
+          "description": "Version of Gemini CLI to install. Defaults to 'latest'."
+      },
+      "username": {
+          "type": "string",
+          "default": "root",
+          "description": "Username of the container user."
+      },
+      "userHomeDir": {
+          "type": "string",
+          "default": "/root",
+          "description": "Home directory of the container user."
+      }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/python",
+    "ghcr.io/devcontainers/features/node"
+  ]
+}

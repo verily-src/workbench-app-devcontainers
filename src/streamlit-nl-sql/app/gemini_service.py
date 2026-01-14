@@ -1,7 +1,7 @@
 """Vertex AI Gemini integration for natural language to SQL conversion."""
 
 import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
 from typing import Dict, Optional, List
 import json
 import re

@@ -1,6 +1,6 @@
 """Vertex AI Gemini integration for natural language to SQL conversion."""
 
-from google.cloud import aiplatform
+import vertexai
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 from typing import Dict, Optional, List
 import json
@@ -19,7 +19,7 @@ class GeminiNLToSQL:
             config: Application configuration
         """
         self.config = config
-        aiplatform.init(project=config.project_id, location=config.location)
+        vertexai.init(project=config.project_id, location=config.location)
         self.model = GenerativeModel(config.gemini_model)
         self.generation_config = GenerationConfig(
             temperature=config.temperature,

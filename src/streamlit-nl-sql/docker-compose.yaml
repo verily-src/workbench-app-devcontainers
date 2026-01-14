@@ -5,28 +5,14 @@ services:
     # Build from Dockerfile
     build:
       context: .
-      dockerfile: Dockerfile
     user: "streamlit"
     restart: always
     volumes:
       - .:/workspace:cached
-      - streamlit_cache:/home/streamlit/.streamlit
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:
       - 8501:8501
-    # Streamlit command with security settings
-    command: >
-      streamlit run /home/streamlit/app/main.py
-      --server.port=8501
-      --server.address=0.0.0.0
-      --server.headless=true
-      --browser.gatherUsageStats=false
-      --server.enableCORS=false
-      --server.enableXsrfProtection=true
-    environment:
-      PYTHONUNBUFFERED: "1"
-      STREAMLIT_SERVER_FILE_WATCHER_TYPE: "none"
     # The service must be connected to the "app-network" Docker network
     networks:
       - app-network
@@ -38,9 +24,6 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-
-volumes:
-  streamlit_cache:
 
 networks:
   # The Docker network must be named "app-network". This is an external network

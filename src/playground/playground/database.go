@@ -52,7 +52,7 @@ func InitSchema(db *DB) error {
 		dockerfile TEXT NOT NULL,
 		port INTEGER NOT NULL,
 		optional_features JSONB DEFAULT '[]'::jsonb,
-		strip_prefix BOOLEAN DEFAULT FALSE,
+		caddy_config TEXT NOT NULL,
 		status VARCHAR(20) NOT NULL DEFAULT 'pending',
 		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 		updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -60,9 +60,6 @@ func InitSchema(db *DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_apps_app_name ON apps(app_name);
 	CREATE INDEX IF NOT EXISTS idx_apps_username ON apps(username);
-
-	-- Add strip_prefix column if it doesn't exist (for existing databases)
-	ALTER TABLE apps ADD COLUMN IF NOT EXISTS strip_prefix BOOLEAN DEFAULT FALSE;
 	`
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -80,9 +77,9 @@ func InitSchema(db *DB) error {
 // CreateApp creates a new app in the database
 func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error) {
 	query := `
-		INSERT INTO apps (app_name, username, user_home_directory, dockerfile, port, optional_features, strip_prefix, status)
+		INSERT INTO apps (app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-		RETURNING id, app_name, username, user_home_directory, dockerfile, port, optional_features, strip_prefix, status, created_at, updated_at
+		RETURNING id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
 	`
 
 	// Marshal optional_features to JSON
@@ -101,7 +98,7 @@ func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error
 		req.Dockerfile,
 		req.Port,
 		featuresJSON,
-		req.StripPrefix,
+		req.CaddyConfig,
 	).Scan(
 		&app.ID,
 		&app.AppName,
@@ -110,7 +107,7 @@ func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error
 		&app.Dockerfile,
 		&app.Port,
 		&featuresStr,
-		&app.StripPrefix,
+		&app.CaddyConfig,
 		&app.Status,
 		&app.CreatedAt,
 		&app.UpdatedAt,
@@ -135,7 +132,7 @@ func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error
 // GetApp retrieves a single app by ID
 func (db *DB) GetApp(ctx context.Context, id int) (*App, error) {
 	query := `
-		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, strip_prefix, status, created_at, updated_at
+		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
 		FROM apps
 		WHERE id = $1
 	`
@@ -151,7 +148,7 @@ func (db *DB) GetApp(ctx context.Context, id int) (*App, error) {
 		&app.Dockerfile,
 		&app.Port,
 		&featuresStr,
-		&app.StripPrefix,
+		&app.CaddyConfig,
 		&app.Status,
 		&app.CreatedAt,
 		&app.UpdatedAt,
@@ -175,7 +172,7 @@ func (db *DB) GetApp(ctx context.Context, id int) (*App, error) {
 // ListApps retrieves all apps from the database
 func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
 	query := `
-		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, strip_prefix, status, created_at, updated_at
+		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
 		FROM apps
 		ORDER BY created_at DESC
 	`
@@ -200,7 +197,7 @@ func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
 			&app.Dockerfile,
 			&app.Port,
 			&featuresStr,
-			&app.StripPrefix,
+			&app.CaddyConfig,
 			&app.Status,
 			&app.CreatedAt,
 			&app.UpdatedAt,
@@ -228,9 +225,9 @@ func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
 func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*App, error) {
 	query := `
 		UPDATE apps
-		SET app_name = $1, username = $2, user_home_directory = $3, dockerfile = $4, port = $5, optional_features = $6, strip_prefix = $7, updated_at = CURRENT_TIMESTAMP
+		SET app_name = $1, username = $2, user_home_directory = $3, dockerfile = $4, port = $5, optional_features = $6, caddy_config = $7, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $8
-		RETURNING id, app_name, username, user_home_directory, dockerfile, port, optional_features, strip_prefix, status, created_at, updated_at
+		RETURNING id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
 	`
 
 	// Marshal optional_features to JSON
@@ -249,7 +246,7 @@ func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*Ap
 		req.Dockerfile,
 		req.Port,
 		featuresJSON,
-		req.StripPrefix,
+		req.CaddyConfig,
 		id,
 	).Scan(
 		&app.ID,
@@ -259,7 +256,7 @@ func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*Ap
 		&app.Dockerfile,
 		&app.Port,
 		&featuresStr,
-		&app.StripPrefix,
+		&app.CaddyConfig,
 		&app.Status,
 		&app.CreatedAt,
 		&app.UpdatedAt,

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"text/template"
 	"time"
 )
 
@@ -93,39 +95,127 @@ type CaddyMatcher struct {
 	Host []string `json:"host,omitempty"`
 }
 
-// AddRoute adds a new route to Caddy for an app using path-based routing
+// CaddyAdaptResponse represents the response from the /adapt endpoint
+type CaddyAdaptResponse struct {
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}
+
+// CaddyConfig represents the full Caddy configuration returned by /adapt
+type CaddyConfig struct {
+	Apps CaddyApps `json:"apps"`
+}
+
+// CaddyApps represents the apps section of Caddy config
+type CaddyApps struct {
+	HTTP CaddyHTTP `json:"http"`
+}
+
+// CaddyHTTP represents the HTTP app configuration
+type CaddyHTTP struct {
+	Servers map[string]CaddyServer `json:"servers"`
+}
+
+// CaddyServer represents a server configuration
+type CaddyServer struct {
+	Routes []json.RawMessage `json:"routes"`
+}
+
+// renderCaddyTemplate renders a Caddyfile template with the given variables
+func renderCaddyTemplate(templateStr string, vars CaddyTemplateVars) (string, error) {
+	tmpl, err := template.New("caddy").Parse(templateStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, vars); err != nil {
+		return "", fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// adaptCaddyfile converts a Caddyfile to Caddy JSON using the /adapt endpoint
+func (c *CaddyClient) adaptCaddyfile(ctx context.Context, caddyfile string) (json.RawMessage, error) {
+	// Wrap the Caddyfile in a site block
+	wrappedCaddyfile := fmt.Sprintf(":80 {\n%s\n}", caddyfile)
+
+	url := fmt.Sprintf("%s/adapt", c.baseURL)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(wrappedCaddyfile))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "text/caddyfile")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("caddy adapt request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Parse the response
+	var adaptResp CaddyAdaptResponse
+	if err := json.Unmarshal(body, &adaptResp); err != nil {
+		return nil, fmt.Errorf("failed to parse adapt response: %w", err)
+	}
+
+	// Check for errors
+	if adaptResp.Error != "" {
+		return nil, fmt.Errorf("caddyfile configuration error: %s", adaptResp.Error)
+	}
+
+	// Parse the result
+	var config CaddyConfig
+	if err := json.Unmarshal(adaptResp.Result, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse caddy config: %w", err)
+	}
+
+	// Extract the first route from srv0
+	if servers, ok := config.Apps.HTTP.Servers["srv0"]; ok {
+		if len(servers.Routes) > 0 {
+			fmt.Println(wrappedCaddyfile)
+			fmt.Println(string(body))
+			fmt.Println(string(servers.Routes[0]))
+			return servers.Routes[0], nil
+		}
+	}
+
+	return nil, fmt.Errorf("no routes found in adapted configuration")
+}
+
+// AddRoute adds a new route to Caddy for an app using Caddyfile template
 // Routes are inserted at the beginning (index 0) so they're evaluated before the default UI route
-// The full path is proxied to the container since apps are configured with APP_NAME
-func (c *CaddyClient) AddRoute(ctx context.Context, appID int, appName string, port int, stripPrefix bool) error {
+func (c *CaddyClient) AddRoute(ctx context.Context, appID int, appName string, port int, caddyConfig string) error {
 	containerName := fmt.Sprintf("app-%d", appID)
 
-	handlers := []CaddyHandler{}
-
-	// Add rewrite handler if stripPrefix is enabled
-	if stripPrefix {
-		handlers = append(handlers, CaddyHandler{
-			Handler:          "rewrite",
-			StripPathPrefix:  fmt.Sprintf("/%s", appName),
-		})
+	// Prepare template variables
+	vars := CaddyTemplateVars{
+		AppName:       appName,
+		ContainerName: containerName,
+		Port:          port,
 	}
 
-	// Add reverse_proxy handler
-	handlers = append(handlers, CaddyHandler{
-		Handler: "reverse_proxy",
-		Upstreams: []CaddyUpstream{
-			{Dial: fmt.Sprintf("%s:%d", containerName, port)},
-		},
-	})
-
-	route := CaddyRoute{
-		Handle: handlers,
-		Match: []CaddyMatcher{
-			{
-				Path: []string{fmt.Sprintf("/%s", appName), fmt.Sprintf("/%s/*", appName)},
-			},
-		},
+	// Render the template
+	renderedCaddyfile, err := renderCaddyTemplate(caddyConfig, vars)
+	if err != nil {
+		return fmt.Errorf("failed to render Caddyfile template: %w", err)
 	}
 
+	// Adapt Caddyfile to Caddy JSON
+	route, err := c.adaptCaddyfile(ctx, renderedCaddyfile)
+	if err != nil {
+		return fmt.Errorf("failed to adapt Caddyfile: %w", err)
+	}
+
+	// PUT the route to Caddy
 	return c.doRequest(ctx, "PUT", "/config/apps/http/servers/srv0/routes/0/handle/0/routes/0", route)
 }
 
@@ -186,14 +276,14 @@ func (c *CaddyClient) findRouteIndex(ctx context.Context, appName string) (int, 
 }
 
 // UpdateRoute updates a route (delete old, add new)
-func (c *CaddyClient) UpdateRoute(ctx context.Context, appID int, oldAppName, newAppName string, newPort int, stripPrefix bool) error {
+func (c *CaddyClient) UpdateRoute(ctx context.Context, appID int, oldAppName, newAppName string, newPort int, caddyConfig string) error {
 	// Delete old route first to avoid duplicates
 	if err := c.DeleteRoute(ctx, oldAppName); err != nil {
 		return fmt.Errorf("failed to delete old route: %w", err)
 	}
 
 	// Add new route
-	if err := c.AddRoute(ctx, appID, newAppName, newPort, stripPrefix); err != nil {
+	if err := c.AddRoute(ctx, appID, newAppName, newPort, caddyConfig); err != nil {
 		return fmt.Errorf("failed to add new route: %w", err)
 	}
 

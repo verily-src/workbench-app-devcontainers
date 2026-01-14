@@ -18,6 +18,13 @@ const (
 	FeatureWorkbenchTools = "workbench-tools"
 )
 
+// CaddyTemplateVars holds variables for rendering Caddy templates
+type CaddyTemplateVars struct {
+	AppName       string
+	ContainerName string
+	Port          int
+}
+
 // DevcontainerTemplate for generating .devcontainer.json
 const DevcontainerTemplate = `{
   "name": "%s",
@@ -48,8 +55,6 @@ const DockerComposeTemplate = `services:
       context: .
       dockerfile: Dockerfile
     container_name: %s
-    environment:
-      - APP_NAME=/%s
     networks:
       - playground_playground-apps
     cap_add:

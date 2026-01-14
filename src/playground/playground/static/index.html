@@ -229,7 +229,8 @@
         textarea {
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             resize: vertical;
-            min-height: 120px;
+            min-height: 200px;
+            font-size: 13px;
         }
 
         .checkbox-group {
@@ -241,6 +242,16 @@
 
         .checkbox-group input[type="checkbox"] {
             width: auto;
+        }
+
+        .checkbox-group input[type="checkbox"]:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .checkbox-group input[type="checkbox"]:disabled + label {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         .form-actions {
@@ -370,16 +381,37 @@
                 </div>
 
                 <div class="form-group">
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="strip-prefix">
-                        <label for="strip-prefix" style="margin-bottom: 0;">Strip path prefix <em style="color: #6c757d;">(for apps that don't handle base paths)</em></label>
-                    </div>
-                </div>
-
-                <div class="form-group">
                     <label for="dockerfile">Dockerfile *</label>
                     <textarea id="dockerfile" required></textarea>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 8px; margin-bottom: 0;">
+                        Supports template variables: <code>{{.AppName}}</code>, <code>{{.ContainerName}}</code>, <code>{{.Port}}</code>
+                    </p>
                 </div>
+
+                <details class="form-group" style="border: 1px solid #dee2e6; padding: 15px; border-radius: 4px;">
+                    <summary style="cursor: pointer; font-weight: 600; margin-bottom: 15px; user-select: none;">
+                        Advanced Configuration
+                    </summary>
+
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="strip-prefix" onchange="onStripPrefixChange()">
+                            <label for="strip-prefix" style="margin-bottom: 0;">Strip path prefix <em style="color: #6c757d;">(for apps that don't handle base paths)</em></label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="caddy-config">Caddy Configuration (Caddyfile Template) *</label>
+                        <textarea id="caddy-config" required oninput="onCaddyConfigChange()"></textarea>
+                        <div style="margin-top: 8px;">
+                            <button type="button" class="btn btn-small btn-secondary" onclick="resetCaddyTemplate()">Reset to Default</button>
+                            <p style="font-size: 12px; color: #6c757d; margin-top: 8px; margin-bottom: 0;">
+                                Available variables: <code>{{.AppName}}</code>, <code>{{.ContainerName}}</code>, <code>{{.Port}}</code>
+                                • <a href="https://caddyserver.com/docs/caddyfile" target="_blank" rel="noopener noreferrer">Caddyfile Docs</a>
+                            </p>
+                        </div>
+                    </div>
+                </details>
 
                 <div class="form-group">
                     <label>Optional Features</label>
@@ -429,6 +461,18 @@
         let pollInterval = null;
         let currentLogsContext = null; // { type: 'app', id: 123, name: 'app-name' } or { type: 'playground' }
         let logsRefreshInterval = null;
+
+        // Caddy template constants
+        const DEFAULT_CADDY_TEMPLATE = `@{{.AppName}} path /{{.AppName}} /{{.AppName}}/*
+route @{{.AppName}} {
+\treverse_proxy {{.ContainerName}}:{{.Port}}
+}`;
+
+        const STRIP_PREFIX_CADDY_TEMPLATE = `@{{.AppName}} path /{{.AppName}} /{{.AppName}}/*
+route @{{.AppName}} {
+\turi strip_prefix /{{.AppName}}
+\treverse_proxy {{.ContainerName}}:{{.Port}}
+}`;
 
         // Load apps on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -506,6 +550,9 @@
             document.getElementById('app-id').value = '';
             document.getElementById('examples-section').style.display = 'block';
             document.getElementById('modal-error').style.display = 'none';
+            // Set default Caddy template
+            document.getElementById('caddy-config').value = DEFAULT_CADDY_TEMPLATE;
+            onCaddyConfigChange(); // Update checkbox state
             document.getElementById('app-modal').style.display = 'block';
         }
 
@@ -516,7 +563,7 @@
                     username: 'root',
                     userHome: '/root',
                     port: 7681,
-                    stripPrefix: true,
+                    caddyConfig: STRIP_PREFIX_CADDY_TEMPLATE,
                     dockerfile: `FROM tsl0922/ttyd:latest
 
 # Install sudo
@@ -527,7 +574,7 @@ RUN apt-get update && apt-get install -y sudo && rm -rf /var/lib/apt/lists/*`
                     username: 'jovyan',
                     userHome: '/home/jovyan',
                     port: 8888,
-                    stripPrefix: false,
+                    caddyConfig: DEFAULT_CADDY_TEMPLATE,
                     dockerfile: `FROM quay.io/jupyter/base-notebook
 
 USER root
@@ -539,20 +586,20 @@ RUN chown -R jovyan:users /home/jovyan && \\
 
 USER jovyan
 
-# Start JupyterLab with base_url from environment variable
-CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.password='' --ServerApp.base_url=$APP_NAME"]`
+# Start JupyterLab with base_url
+CMD ["sh", "-c", "start-notebook.sh --NotebookApp.token='' --NotebookApp.password='' --ServerApp.base_url=/{{.AppName}}"]`
                 },
                 rstudio: {
                     name: 'rstudio',
                     username: 'rstudio',
                     userHome: '/home/rstudio',
                     port: 8787,
-                    stripPrefix: true,
+                    caddyConfig: STRIP_PREFIX_CADDY_TEMPLATE,
                     dockerfile: `FROM ghcr.io/rocker-org/devcontainer/tidyverse:4.5
 
 ENV DISABLE_AUTH=true
 
-CMD sh -c "echo \\"www-root-path=$APP_NAME/\\" >> /etc/rstudio/disable_auth_rserver.conf && exec /init"`
+CMD sh -c "echo \\"www-root-path=/{{.AppName}}/\\" >> /etc/rstudio/disable_auth_rserver.conf && exec /init"`
                 }
             };
 
@@ -564,7 +611,8 @@ CMD sh -c "echo \\"www-root-path=$APP_NAME/\\" >> /etc/rstudio/disable_auth_rser
             document.getElementById('user-home').value = example.userHome;
             document.getElementById('port').value = example.port;
             document.getElementById('dockerfile').value = example.dockerfile;
-            document.getElementById('strip-prefix').checked = example.stripPrefix || false;
+            document.getElementById('caddy-config').value = example.caddyConfig;
+            onCaddyConfigChange(); // Update checkbox state
             document.getElementById('feature-wb').checked = false;
             document.getElementById('feature-workbench-tools').checked = false;
         }
@@ -579,7 +627,8 @@ CMD sh -c "echo \\"www-root-path=$APP_NAME/\\" >> /etc/rstudio/disable_auth_rser
             document.getElementById('username').value = app.username;
             document.getElementById('user-home').value = app.user_home_directory;
             document.getElementById('port').value = app.port;
-            document.getElementById('strip-prefix').checked = app.strip_prefix || false;
+            document.getElementById('caddy-config').value = app.caddy_config || DEFAULT_CADDY_TEMPLATE;
+            onCaddyConfigChange(); // Update checkbox state
             document.getElementById('dockerfile').value = app.dockerfile;
             document.getElementById('feature-wb').checked = app.optional_features?.includes('wb') || false;
             document.getElementById('feature-workbench-tools').checked = app.optional_features?.includes('workbench-tools') || false;
@@ -591,6 +640,55 @@ CMD sh -c "echo \\"www-root-path=$APP_NAME/\\" >> /etc/rstudio/disable_auth_rser
 
         function closeModal() {
             document.getElementById('app-modal').style.display = 'none';
+        }
+
+        function resetCaddyTemplate() {
+            const stripPrefix = document.getElementById('strip-prefix').checked;
+            document.getElementById('caddy-config').value = stripPrefix ? STRIP_PREFIX_CADDY_TEMPLATE : DEFAULT_CADDY_TEMPLATE;
+            onCaddyConfigChange(); // Update checkbox state
+        }
+
+        function isCustomTemplate(template) {
+            const trimmed = template.trim();
+            return trimmed !== DEFAULT_CADDY_TEMPLATE.trim() &&
+                   trimmed !== STRIP_PREFIX_CADDY_TEMPLATE.trim();
+        }
+
+        function onCaddyConfigChange() {
+            const textarea = document.getElementById('caddy-config');
+            const checkbox = document.getElementById('strip-prefix');
+            const currentTemplate = textarea.value.trim();
+
+            // Disable checkbox if using custom template
+            if (isCustomTemplate(currentTemplate)) {
+                checkbox.disabled = true;
+                checkbox.checked = false;
+            } else {
+                checkbox.disabled = false;
+                // Update checkbox state based on template
+                checkbox.checked = currentTemplate === STRIP_PREFIX_CADDY_TEMPLATE.trim();
+            }
+        }
+
+        function onStripPrefixChange() {
+            const textarea = document.getElementById('caddy-config');
+            const currentTemplate = textarea.value.trim();
+            const stripPrefix = document.getElementById('strip-prefix').checked;
+
+            // Only update if template matches one of the defaults
+            if (currentTemplate === DEFAULT_CADDY_TEMPLATE.trim()) {
+                if (stripPrefix) {
+                    textarea.value = STRIP_PREFIX_CADDY_TEMPLATE;
+                }
+            } else if (currentTemplate === STRIP_PREFIX_CADDY_TEMPLATE.trim()) {
+                if (!stripPrefix) {
+                    textarea.value = DEFAULT_CADDY_TEMPLATE;
+                }
+            }
+            // If custom template, do nothing (shouldn't reach here as checkbox is disabled)
+
+            // Update checkbox state in case template was changed
+            onCaddyConfigChange();
         }
 
         async function saveApp(event) {
@@ -610,7 +708,7 @@ CMD sh -c "echo \\"www-root-path=$APP_NAME/\\" >> /etc/rstudio/disable_auth_rser
                 username: document.getElementById('username').value,
                 user_home_directory: document.getElementById('user-home').value,
                 port: parseInt(document.getElementById('port').value),
-                strip_prefix: document.getElementById('strip-prefix').checked,
+                caddy_config: document.getElementById('caddy-config').value,
                 dockerfile: document.getElementById('dockerfile').value,
                 optional_features: features
             };

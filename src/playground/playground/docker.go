@@ -153,7 +153,7 @@ func (d *DockerClient) GenerateDockerCompose(ctx context.Context, appDir, appNam
 	// Generate docker-compose.yaml (minimal - devcontainer will handle the rest)
 	// Use unique container name per app to avoid conflicts
 	containerName := fmt.Sprintf("app-%d", appID)
-	composeContent := fmt.Sprintf(DockerComposeTemplate, containerName, appName, startupScriptMount)
+	composeContent := fmt.Sprintf(DockerComposeTemplate, containerName, startupScriptMount)
 
 	composePath := filepath.Join(appDir, "docker-compose.yaml")
 	if err := os.WriteFile(composePath, []byte(composeContent), 0644); err != nil {

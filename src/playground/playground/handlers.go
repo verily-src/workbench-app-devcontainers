@@ -30,7 +30,7 @@ func setupContainer(app *App, db *DB, dockerService *DockerService, caddyService
 	}
 
 	// Sync with Caddy
-	if err := caddyService.SyncApp(ctx, app.ID, app.AppName, app.Port, app.StripPrefix); err != nil {
+	if err := caddyService.SyncApp(ctx, app.ID, app.AppName, app.Port, app.CaddyConfig); err != nil {
 		log.Printf("Error syncing app %d with Caddy: %v", app.ID, err)
 		db.UpdateAppStatus(ctx, app.ID, "failed")
 		return

@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
 	"sync"
+	"text/template"
 )
 
 type DockerService struct {
@@ -44,6 +46,29 @@ func (s *DockerService) RemoveCancelFunc(appID int) {
 	s.cancelFuncsLock.Unlock()
 }
 
+// renderDockerfileTemplate renders the Dockerfile template with variables
+func (s *DockerService) renderDockerfileTemplate(dockerfileTemplate string, appID int, appName string, port int) (string, error) {
+	// Prepare template variables
+	vars := CaddyTemplateVars{
+		AppName:       appName,
+		ContainerName: fmt.Sprintf("app-%d", appID),
+		Port:          port,
+	}
+
+	// Parse and execute template
+	tmpl, err := template.New("dockerfile").Parse(dockerfileTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse Dockerfile template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, vars); err != nil {
+		return "", fmt.Errorf("failed to execute Dockerfile template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
 // BuildContainer generates devcontainer configuration and builds the container
 // This is a synchronous operation that should be called from an async context
 // stopExisting: if true, stops the existing container before rebuilding
@@ -69,8 +94,14 @@ func (s *DockerService) BuildContainer(ctx context.Context, app *App, stopExisti
 		return fmt.Errorf("failed to generate devcontainer config: %w", err)
 	}
 
+	// Render Dockerfile template
+	renderedDockerfile, err := s.renderDockerfileTemplate(app.Dockerfile, app.ID, app.AppName, app.Port)
+	if err != nil {
+		return fmt.Errorf("failed to render Dockerfile template: %w", err)
+	}
+
 	// Generate docker-compose.yaml and Dockerfile
-	if err := s.docker.GenerateDockerCompose(ctx, generatedDir, app.AppName, app.Port, app.ID, app.Dockerfile); err != nil {
+	if err := s.docker.GenerateDockerCompose(ctx, generatedDir, app.AppName, app.Port, app.ID, renderedDockerfile); err != nil {
 		return fmt.Errorf("failed to generate docker-compose: %w", err)
 	}
 

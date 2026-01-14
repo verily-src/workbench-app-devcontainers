@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"strings"
+	"text/template"
 )
 
 // ValidateAppCreate validates the request to create an app
@@ -64,6 +65,16 @@ func ValidateAppCreate(req *AppCreateRequest) error {
 		}
 	}
 
+	// Validate caddy_config
+	if err := validateAppTemplate(req.CaddyConfig); err != nil {
+		return err
+	}
+
+	// Validate dockerfile as template
+	if err := validateAppTemplate(req.Dockerfile); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -78,4 +89,26 @@ func isValidAppName(name string) bool {
 		}
 	}
 	return len(name) > 0
+}
+
+func validateAppTemplate(templateStr string) error {
+	// Validate template syntax by parsing it
+	tmpl, err := template.New("app_template").Parse(templateStr)
+	if err != nil {
+		return errors.New("template has invalid template syntax: " + err.Error())
+	}
+
+	// Verify template can execute with dummy data
+	vars := CaddyTemplateVars{
+		AppName:       "test",
+		ContainerName: "test-container",
+		Port:          8080,
+	}
+
+	var buf strings.Builder
+	if err := tmpl.Execute(&buf, vars); err != nil {
+		return errors.New("template execution failed: " + err.Error())
+	}
+
+	return nil
 }

@@ -11,7 +11,7 @@ type App struct {
 	Dockerfile        string    `json:"dockerfile"`
 	Port              int       `json:"port"`
 	OptionalFeatures  []string  `json:"optional_features"`
-	StripPrefix       bool      `json:"strip_prefix"`      // Whether to strip path prefix in Caddy
+	CaddyConfig       string    `json:"caddy_config"`      // Caddyfile template for routing
 	Status            string    `json:"status"`            // pending, active, or failed
 	ContainerStatus   string    `json:"container_status"`  // running, exited, stopped, not_found
 	CreatedAt         time.Time `json:"created_at"`
@@ -27,7 +27,7 @@ type AppCreateRequest struct {
 	DockerImage       string   `json:"docker_image,omitempty"`
 	Port              int      `json:"port"`
 	OptionalFeatures  []string `json:"optional_features"`
-	StripPrefix       bool     `json:"strip_prefix"`
+	CaddyConfig       string   `json:"caddy_config"`
 }
 
 // AppListResponse represents the response for listing apps

@@ -53,7 +53,6 @@ trap 'rm -rf ${LOCAL_REPO}' ERR
 GIT_CREDENTIALS_FILE="/tmp/.git-credentials"
 trap 'rm -f ${GIT_CREDENTIALS_FILE}' EXIT
 
-PRIVATE_DEVCONTAINER_ENABLED="$(get_metadata_value "private-devcontainer-enabled" "")"
 # Replace GitHub SSH URL with HTTPS URL
 HTTPS_URL="${REPO_SRC/git@github.com:/https://github.com/}"
 # Create GitHub API URL
@@ -61,7 +60,7 @@ GITHUB_API_URL="https://api.github.com/repos/${HTTPS_URL/https:\/\/github.com\//
 GITHUB_API_URL="${GITHUB_API_URL%.git}"
 # Check if repo is private
 private_status=$(curl -s -o /dev/null -w "%{http_code}" "${GITHUB_API_URL}")
-if [[ "${PRIVATE_DEVCONTAINER_ENABLED}" == "TRUE" && "${private_status}" == 404 ]]; then
+if [[ "${private_status}" == 404 ]]; then
   # Get ECM service URL
   SERVER="$(get_metadata_value "terra-cli-server" "prod")"
   if ! ECM_SERVICE_URL="$(get_service_url "ecm" "${SERVER}")"; then

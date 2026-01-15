@@ -1,0 +1,39 @@
+include:
+  - ../aou-common/aou-common-compose.yaml
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      additional_contexts:
+        load-envs: service:aou-common-load-envs
+    restart: always
+    ports: 
+      - "8787:8787"
+    volumes:
+      - .:/workspace:cached
+      - work:/home/rstudio:cached
+    tmpfs:
+      - /home/rstudio/workspace:uid=1000,gid=1000
+    environment:
+      "DISABLE_AUTH": "true"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+  wondershaper:
+    container_name: "wondershaper"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:1aee5cd4032d4888f382e3b11c0b775479ccaf55d97943f64049f90cfba05fac"
+    restart: always
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

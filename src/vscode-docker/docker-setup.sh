@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bash
+# shellcheck shell=bash
 
 # Get the GID of the Docker socket
 if [ -S /var/run/docker.sock ]; then
@@ -6,19 +7,19 @@ if [ -S /var/run/docker.sock ]; then
     echo "Docker socket found with GID: ${DOCKER_SOCK_GID}"
 
     # Create docker group with the correct GID if it doesn't exist
-    if ! getent group ${DOCKER_SOCK_GID} > /dev/null 2>&1; then
+    if ! getent group "${DOCKER_SOCK_GID}" > /dev/null 2>&1; then
         echo "Creating docker-host group with GID ${DOCKER_SOCK_GID}"
-        groupadd -g ${DOCKER_SOCK_GID} docker-host
+        groupadd -g "${DOCKER_SOCK_GID}" docker-host
     else
-        EXISTING_GROUP=$(getent group ${DOCKER_SOCK_GID} | cut -d: -f1)
+        EXISTING_GROUP=$(getent group "${DOCKER_SOCK_GID}" | cut -d: -f1)
         echo "Group with GID ${DOCKER_SOCK_GID} already exists: ${EXISTING_GROUP}"
     fi
 
     # Add abc user to the docker group
-    GROUP_NAME=$(getent group ${DOCKER_SOCK_GID} | cut -d: -f1)
+    GROUP_NAME=$(getent group "${DOCKER_SOCK_GID}" | cut -d: -f1)
     if ! groups abc | grep -q "\b${GROUP_NAME}\b"; then
         echo "Adding abc user to ${GROUP_NAME} group"
-        usermod -aG ${GROUP_NAME} abc
+        usermod -aG "${GROUP_NAME}" abc
         echo "abc user groups: $(groups abc)"
     else
         echo "abc user is already in ${GROUP_NAME} group"

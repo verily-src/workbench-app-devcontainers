@@ -4,25 +4,12 @@ services:
   app:
     container_name: "application-server"
     build:
-      context: ./nginx
-    restart: always
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/static:/usr/share/nginx/html/aou-static:ro
-    networks:
-      - app-network
-    depends_on:
-      - rstudio
-  rstudio:
-    build:
-      context: ../r-analysis
+      context: .
       additional_contexts:
         load-envs: service:aou-common-load-envs
-      target: r-analysis-aou
     restart: always
+    ports: 
+      - "8787:8787"
     volumes:
       - .:/workspace:cached
       - work:/home/rstudio:cached

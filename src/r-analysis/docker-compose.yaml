@@ -1,9 +1,7 @@
 services:
   app:
     container_name: "application-server"
-    build:
-      context: .
-      target: r-analysis
+    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.5"
     restart: always
     volumes:
       - .:/workspace:cached

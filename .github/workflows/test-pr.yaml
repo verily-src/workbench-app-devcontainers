@@ -39,7 +39,6 @@ jobs:
               postgres_client: true
               filters:
                 - 'src/aou-common/**'
-                - 'src/r-analysis/**'
             vscode:
               user: abc
               workbench_tools: true

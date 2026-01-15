@@ -4,11 +4,11 @@ services:
   app:
     container_name: "application-server"
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: src/bq-monitoring-dashboard/Dockerfile
     restart: always
     volumes:
-      - ../..:/workspace:cached
+      - .:/workspace:cached
       - work:/home/streamlit/work
     ports:
       - 8501:8501

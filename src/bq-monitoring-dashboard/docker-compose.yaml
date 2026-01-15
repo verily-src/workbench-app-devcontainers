@@ -1,0 +1,33 @@
+version: "2.4"
+
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/streamlit/work
+    ports:
+      - 8501:8501
+    networks:
+      - app-network
+    # Required for gcsfuse (GCS bucket mounting)
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp_credentials.json
+      - DEFAULT_WORKSPACE=/config
+
+volumes:
+  work:
+
+networks:
+  app-network:
+    external: true

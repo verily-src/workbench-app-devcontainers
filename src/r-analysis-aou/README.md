@@ -1,7 +1,7 @@
 
-# R Analysis Environment (r-analysis)
+# R Analysis Environment for AoU (r-analysis-aou)
 
-A Template to run R Analysis Environment on Workbench
+A Template to run R Analysis Environment on Workbench for AoU
 
 ## Options
 

@@ -1,7 +1,7 @@
 {
-  "name": "R Analysis Environment",
+  "name": "R Analysis Environment for AoU",
   "dockerComposeFile": "docker-compose.yaml",
-  "service": "app",
+  "service": "rstudio",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [

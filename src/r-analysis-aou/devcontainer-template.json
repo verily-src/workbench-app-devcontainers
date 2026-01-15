@@ -1,9 +1,9 @@
 {
-  "id": "r-analysis",
+  "id": "r-analysis-aou",
   "version": "0.0.2",
-  "name": "R Analysis Environment",
-  "description": "A Template to run the R Analysis Environment on workbench",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/r-analysis",
+  "name": "R Analysis Environment for AoU",
+  "description": "A Template to run the R Analysis Environment on workbench for AoU",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/r-analysis-aou",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {
     "cloud": {

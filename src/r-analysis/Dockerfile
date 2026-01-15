@@ -2,9 +2,6 @@ FROM ghcr.io/rocker-org/devcontainer/tidyverse:4.5 AS base
 
 ENV DISABLE_AUTH=true
 
-# TODO REMOVE ME
-RUN echo "www-root-path=/{{.AppName}}/" >> /etc/rstudio/disable_auth_rserver.conf
-
 ARG USER=rstudio
 
 ### BEGIN r-analysis ###

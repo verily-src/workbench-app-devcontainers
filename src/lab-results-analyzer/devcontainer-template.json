@@ -1,0 +1,20 @@
+{
+  "id": "lab-results-analyzer",
+  "version": "1.0.0",
+  "name": "lab-results-analyzer",
+  "description": "Custom Workbench app: lab-results-analyzer (Image: jupyter/scipy-notebook, Port: 8888, User: jovyan)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

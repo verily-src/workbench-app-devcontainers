@@ -6,14 +6,38 @@ A JupyterLab-based Workbench application for analyzing lab results data and gene
 
 ## Features
 
-This app includes a sample Jupyter notebook (`Lab_Results_Analysis.ipynb`) that:
-- Creates a sample dataset with lab results (Patient ID, Lab Type, Lab Value, Lab Date)
+This app includes a Jupyter notebook (`Lab_Results_Analysis.ipynb`) that:
+- **Reads data from Workbench data collections** (GCS buckets) or mounted workspace paths
+- Supports multiple file formats: CSV, Parquet, JSON, Excel
 - Generates comprehensive distribution reports for each field:
   - **Patient ID**: Distribution of tests per patient with visualizations
   - **Lab Type**: Frequency analysis with bar charts and pie charts
   - **Lab Value**: Statistical analysis with histograms, box plots, and density plots
   - **Lab Date**: Temporal analysis with timeline plots and monthly/weekly distributions
 - Provides summary statistics for all fields
+- Falls back to sample data generation if no data source is configured
+
+## Data Source Configuration
+
+The notebook can read data from:
+
+1. **GCS Bucket** (Recommended): Direct access to Google Cloud Storage buckets
+   - Set `GCS_BUCKET` and `FILE_NAME` in the notebook
+   - Example: `GCS_BUCKET = "my-bucket"`, `FILE_NAME = "data/lab_results.csv"`
+
+2. **Mounted Workspace Path**: Access data from mounted workspace resources
+   - Set `USE_MOUNTED_PATH = True` and `MOUNTED_FILE_PATH`
+   - Example: `MOUNTED_FILE_PATH = "/home/jovyan/workspaces/my-workspace/data/lab_results.csv"`
+
+3. **Sample Data**: If no configuration is provided, generates sample data for testing
+
+### Required Data Columns
+
+Your data file should have these columns (case-insensitive):
+- `Patient ID` (or `patient_id`, `PatientID`, etc.)
+- `Lab Type` (or `lab_type`, `LabType`, etc.)
+- `Lab Value` (or `lab_value`, `LabValue`, etc.)
+- `Lab Date` (or `lab_date`, `LabDate`, etc.) - should be in a date format
 
 ## Configuration
 

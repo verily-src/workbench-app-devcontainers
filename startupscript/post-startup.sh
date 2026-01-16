@@ -212,6 +212,10 @@ fi
 #############################
 # Mount buckets
 #############################
+
+# Uncomment user_allow_other in the fuse.conf to enable non-root user to mount files with -o allow-other option.
+sed -i '/user_allow_other/s/^#//g' /etc/fuse.conf
+
 source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 
 ###############################

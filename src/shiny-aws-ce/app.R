@@ -26,7 +26,7 @@ load_aws_data <- function() {
 
     # Core cost data
     cost_by_category <- read_csv(file.path(data_dir, "cost_by_category.csv"), show_col_types = FALSE)
-    daily_cost_trends <- read_csv(file.path(data_dir, "daily_cost_trends.csv"), show_col_types = FALSE)
+    #daily_cost_trends <- read_csv(file.path(data_dir, "daily_cost_trends.csv"), show_col_types = FALSE)
     cost_by_region <- read_csv(file.path(data_dir, "cost_by_region.csv"), show_col_types = FALSE)
     top_services <- read_csv(file.path(data_dir, "top_services.csv"), show_col_types = FALSE)
     service_usage_lines <- read_csv(file.path(data_dir, "service_usage_lines.csv"), show_col_types = FALSE)
@@ -107,8 +107,8 @@ load_aws_data <- function() {
     }
 
     # Process dates
-    daily_cost_trends$date <- as.Date(daily_cost_trends$date)
-    daily_cost_trends <- daily_cost_trends %>% dplyr::arrange(date, category)
+    #daily_cost_trends$date <- as.Date(daily_cost_trends$date)
+    #daily_cost_trends <- daily_cost_trends %>% dplyr::arrange(date, category)
 
     # Clean and filter data
     ec2_instance_types <- ec2_instance_types %>%
@@ -124,7 +124,7 @@ load_aws_data <- function() {
 
     list(
       cost_by_category = cost_by_category,
-      daily_cost_trends = daily_cost_trends,
+      #daily_cost_trends = daily_cost_trends,
       cost_by_region = cost_by_region,
       top_services = top_services,
       service_usage_lines = service_usage_lines,
@@ -464,10 +464,10 @@ ui <- dashboardPage(
 server <- function(input, output, session) {
 
   # Global date filtering
-  global_filtered_daily_data <- reactive({
-    aws_data$daily_cost_trends %>%
-      dplyr::filter(date >= input$global_date_range[1], date <= input$global_date_range[2])
-  })
+  #global_filtered_daily_data <- reactive({
+  #  aws_data$daily_cost_trends %>%
+  #    dplyr::filter(date >= input$global_date_range[1], date <= input$global_date_range[2])
+  #})
 
   global_filtered_cost_data <- reactive({
     # Filter cost data based on date if date column exists

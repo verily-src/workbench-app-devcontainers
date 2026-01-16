@@ -20,7 +20,7 @@
   // re-mount bucket files on container start up and run CSV copy script
   "postStartCommand": [
     "bash", "-c",
-    "./startupscript/remount-on-restart.sh shiny /home/shiny ${templateOption:cloud} ${templateOption:login} && chmod +x /workspace/scripts/copy-csv-files.sh && nohup /workspace/scripts/copy-csv-files.sh > /root/.workbench/logs/copy-csv-files.log 2>&1 &"
+    "./startupscript/remount-on-restart.sh shiny /home/shiny ${templateOption:cloud} ${templateOption:login} && chmod +x /workspace/scripts/copy-csv-files.sh && su - shiny -c 'nohup /workspace/scripts/copy-csv-files.sh > home/shiny/.workbench/logs/copy-csv-files.log 2>&1 &'"
   ],
   "overrideCommand": false,
   "remoteUser": "root"

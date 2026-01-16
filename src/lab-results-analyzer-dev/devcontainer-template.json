@@ -1,0 +1,20 @@
+{
+  "id": "lab-results-analyzer-dev",
+  "version": "1.0.0",
+  "name": "lab-results-analyzer-dev",
+  "description": "Development version of Lab Results Analyzer - for iterative feature development (Image: jupyter/scipy-notebook, Port: 8888, User: jovyan)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

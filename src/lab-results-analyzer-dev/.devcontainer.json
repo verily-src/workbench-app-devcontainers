@@ -1,0 +1,42 @@
+{
+  "name": "lab-results-analyzer-dev",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "bash",
+    "-c",
+    "./startupscript/post-startup.sh jovyan /home/jovyan \"${templateOption:cloud}\" \"${templateOption:login}\" && chmod +x /workspace/setup-notebook.sh 2>/dev/null || true && /workspace/setup-notebook.sh 2>/dev/null || curl -s -o /home/jovyan/Lab_Results_Analysis.ipynb https://raw.githubusercontent.com/SIVerilyDP/workbench-app-devcontainers/master/src/lab-results-analyzer-dev/Lab_Results_Analysis.ipynb && chown jovyan:users /home/jovyan/Lab_Results_Analysis.ipynb || true"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "jovyan",
+    "/home/jovyan",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          ".ipynb",
+          ".py",
+          ".md",
+          ".csv",
+          ".json"
+        ],
+        "fileUrlSuffix": "/lab/tree/{path}",
+        "folderUrlSuffix": "/lab/tree/{path}"
+      }
+    }
+  }
+}

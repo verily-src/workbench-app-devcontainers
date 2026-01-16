@@ -1,16 +1,14 @@
 {
   "id": "lab-results-analyzer",
   "version": "1.0.0",
-  "name": "Lab Results Analyzer",
-  "description": "A JupyterLab-based template for analyzing lab results data and generating distribution reports",
-  "documentationURL": "https://github.com/SIVerilyDP/workbench-app-devcontainers/tree/master/src/lab-results-analyzer",
-  "licenseURL": "https://github.com/SIVerilyDP/workbench-app-devcontainers/blob/master/LICENSE",
+  "name": "lab-results-analyzer",
+  "description": "Custom Workbench app: lab-results-analyzer (Image: jupyter/scipy-notebook, Port: 8888, User: jovyan)",
   "options": {
     "cloud": {
       "type": "string",
-      "description": "VM cloud environment",
-      "proposals": ["gcp", "aws"],
-      "default": "gcp"
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
     },
     "login": {
       "type": "string",
@@ -18,6 +16,5 @@
       "proposals": ["true", "false"],
       "default": "false"
     }
-  },
-  "platforms": ["Any"]
+  }
 }

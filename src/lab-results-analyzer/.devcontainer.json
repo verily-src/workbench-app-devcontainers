@@ -5,11 +5,9 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
-    "./startupscript/post-startup.sh",
-    "jovyan",
-    "/home/jovyan",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
+    "bash",
+    "-c",
+    "./startupscript/post-startup.sh jovyan /home/jovyan \"${templateOption:cloud}\" \"${templateOption:login}\" && chmod +x /workspace/setup-notebook.sh 2>/dev/null || true && /workspace/setup-notebook.sh 2>/dev/null || curl -s -o /home/jovyan/Lab_Results_Analysis.ipynb https://raw.githubusercontent.com/SIVerilyDP/workbench-app-devcontainers/master/src/lab-results-analyzer/Lab_Results_Analysis.ipynb && chown jovyan:users /home/jovyan/Lab_Results_Analysis.ipynb || true"
   ],
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",

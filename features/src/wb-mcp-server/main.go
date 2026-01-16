@@ -2688,6 +2688,10 @@ func handleRequest(req JSONRPCRequest) JSONRPCResponse {
 				ServerInfo:      ServerInfo{Name: "wb-mcp-server", Version: "2.0.0"},
 			},
 		}
+	case "notifications/initialized":
+		// Client sends this notification after receiving initialize response
+		// No response needed for notifications
+		return JSONRPCResponse{}
 	case "tools/list":
 		return JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: ListToolsResult{Tools: wbTools}}
 	case "tools/call":
@@ -2724,7 +2728,10 @@ func main() {
 		}
 
 		response := handleRequest(req)
-		responseBytes, _ := json.Marshal(response)
-		fmt.Println(string(responseBytes))
+		// Only send response if there's a result or error (skip empty responses for notifications)
+		if response.Result != nil || response.Error != nil {
+			responseBytes, _ := json.Marshal(response)
+			fmt.Println(string(responseBytes))
+		}
 	}
 }

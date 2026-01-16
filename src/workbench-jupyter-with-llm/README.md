@@ -1,5 +1,5 @@
 
-# Navid Workbench Jupyter (navid-workbench-jupyter)
+# Workbench Jupyter with LLM tools
 
 Workbench JupyterLab with integrated AI assistance through Gemini CLI, Claude CLI, and MCP server support for enhanced development capabilities.
 

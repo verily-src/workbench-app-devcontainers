@@ -67,9 +67,9 @@ function scan_and_copy_csvs() {
 readonly -f scan_and_copy_csvs
 
 # Mount workspace resources if wb command is available
-if command -v wb &> /dev/null; then
-    wb resource mount || echo 'Resource mounting failed or not applicable.'
-fi
+#if command -v wb &> /dev/null; then
+#    wb resource mount || echo 'Resource mounting failed or not applicable.'
+#fi
 
 # Infinite loop to continuously scan every 5 seconds
 while true; do

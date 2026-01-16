@@ -27,14 +27,14 @@ load_aws_data <- function() {
     # Core cost data
     cost_by_category <- read_csv(file.path(data_dir, "cost_by_category.csv"), show_col_types = FALSE)
     #daily_cost_trends <- read_csv(file.path(data_dir, "daily_cost_trends.csv"), show_col_types = FALSE)
-    cost_by_region <- read_csv(file.path(data_dir, "cost_by_region.csv"), show_col_types = FALSE)
+    #cost_by_region <- read_csv(file.path(data_dir, "cost_by_region.csv"), show_col_types = FALSE)
     top_services <- read_csv(file.path(data_dir, "top_services.csv"), show_col_types = FALSE)
     service_usage_lines <- read_csv(file.path(data_dir, "service_usage_lines.csv"), show_col_types = FALSE)
 
     # Compute data
     ec2_instance_types <- read_csv(file.path(data_dir, "ec2_instance_types.csv"), show_col_types = FALSE)
     ec2_families <- read_csv(file.path(data_dir, "ec2_families.csv"), show_col_types = FALSE)
-    ec2_cost_by_region <- read_csv(file.path(data_dir, "ec2_cost_by_region.csv"), show_col_types = FALSE)
+    #ec2_cost_by_region <- read_csv(file.path(data_dir, "ec2_cost_by_region.csv"), show_col_types = FALSE)
 
     # Daily granular EC2 instance data (with dates for trending, now includes service info)
     ec2_instance_daily_file <- file.path(data_dir, "ec2_instance_daily.csv")
@@ -51,9 +51,9 @@ load_aws_data <- function() {
     ebs_by_region <- read_csv(file.path(data_dir, "ebs_by_region.csv"), show_col_types = FALSE)
 
     # EC2 Other data
-    ec2_other_categories <- read_csv(file.path(data_dir, "ec2_other_categories.csv"), show_col_types = FALSE)
-    ec2_other_usage_lines <- read_csv(file.path(data_dir, "ec2_other_usage_lines.csv"), show_col_types = FALSE)
-    ec2_other_usage_summary <- read_csv(file.path(data_dir, "ec2_other_usage_summary.csv"), show_col_types = FALSE)
+    #ec2_other_categories <- read_csv(file.path(data_dir, "ec2_other_categories.csv"), show_col_types = FALSE)
+    #ec2_other_usage_lines <- read_csv(file.path(data_dir, "ec2_other_usage_lines.csv"), show_col_types = FALSE)
+    #ec2_other_usage_summary <- read_csv(file.path(data_dir, "ec2_other_usage_summary.csv"), show_col_types = FALSE)
 
     # Workspace data
     workspaces_ec2 <- read_csv(file.path(data_dir, "workspaces_ec2.csv"), show_col_types = FALSE)
@@ -125,18 +125,18 @@ load_aws_data <- function() {
     list(
       cost_by_category = cost_by_category,
       #daily_cost_trends = daily_cost_trends,
-      cost_by_region = cost_by_region,
+      #cost_by_region = cost_by_region,
       top_services = top_services,
       service_usage_lines = service_usage_lines,
       ec2_instance_types = ec2_instance_types,
       ec2_instance_daily = ec2_instance_daily,
       ec2_families = ec2_families,
-      ec2_cost_by_region = ec2_cost_by_region,
+      #ec2_cost_by_region = ec2_cost_by_region,
       s3_buckets = s3_buckets,
       ebs_by_region = ebs_by_region,
-      ec2_other_categories = ec2_other_categories,
-      ec2_other_usage_lines = ec2_other_usage_lines,
-      ec2_other_usage_summary = ec2_other_usage_summary,
+      #ec2_other_categories = ec2_other_categories,
+      #ec2_other_usage_lines = ec2_other_usage_lines,
+      #ec2_other_usage_summary = ec2_other_usage_summary,
       workspaces_ec2 = workspaces_ec2,
       workspaces_omics = workspaces_omics,
       s3_daily_costs = s3_daily_costs,
@@ -348,34 +348,34 @@ ui <- dashboardPage(
       ),
 
       # EC2-Other Usage Tab
-      tabItem(tabName = "ec2_other",
-        fluidRow(
-          valueBoxOutput("ec2_other_total_cost"),
-          valueBoxOutput("ec2_other_categories_count"),
-          valueBoxOutput("ec2_other_usage_types_count")
-        ),
+      #tabItem(tabName = "ec2_other",
+      #  fluidRow(
+      #    valueBoxOutput("ec2_other_total_cost"),
+      #    valueBoxOutput("ec2_other_categories_count"),
+      #    valueBoxOutput("ec2_other_usage_types_count")
+      #  ),
 
-        fluidRow(
-          box(
-            title = "EC2-Other Cost by Category", status = "primary", solidHeader = TRUE,
-            width = 6, height = "400px",
-            withSpinner(plotlyOutput("ec2_other_categories_plot", height = "350px"))
-          ),
-          box(
-            title = "Top EC2-Other Usage Types", status = "primary", solidHeader = TRUE,
-            width = 6, height = "400px",
-            withSpinner(plotlyOutput("ec2_other_usage_plot", height = "350px"))
-          )
-        ),
+      #  fluidRow(
+      #    box(
+      #      title = "EC2-Other Cost by Category", status = "primary", solidHeader = TRUE,
+      #      width = 6, height = "400px",
+      #      withSpinner(plotlyOutput("ec2_other_categories_plot", height = "350px"))
+      #    ),
+      #    box(
+      #      title = "Top EC2-Other Usage Types", status = "primary", solidHeader = TRUE,
+      #      width = 6, height = "400px",
+      #      withSpinner(plotlyOutput("ec2_other_usage_plot", height = "350px"))
+      #    )
+      #  ),
 
-        fluidRow(
-          box(
-            title = "EC2-Other Usage Details", status = "info", solidHeader = TRUE,
-            width = 12, height = "400px",
-            withSpinner(DT::dataTableOutput("ec2_other_table"))
-          )
-        )
-      ),
+      #  fluidRow(
+      #    box(
+      #      title = "EC2-Other Usage Details", status = "info", solidHeader = TRUE,
+      #      width = 12, height = "400px",
+      #      withSpinner(DT::dataTableOutput("ec2_other_table"))
+      #    )
+      #  )
+      #),
 
       # Workspaces Tab
       tabItem(tabName = "workspaces",
@@ -832,48 +832,48 @@ server <- function(input, output, session) {
     }
   })
 
-  output$ec2_region_plot <- renderPlotly({
-    if (nrow(aws_data$ec2_cost_by_region) > 0) {
-      # Aggregate EC2 cost by region (sum across dates) for selected date range
-      region_data <- aws_data$ec2_cost_by_region %>%
-        dplyr::mutate(date = as.Date(period_start)) %>%
-        dplyr::filter(date >= input$global_date_range[1], date <= input$global_date_range[2]) %>%
-        dplyr::group_by(region) %>%
-        dplyr::summarise(total_cost = sum(amount_usd, na.rm = TRUE), .groups = "drop") %>%
-        dplyr::filter(total_cost > 0) %>%  # Remove zero-cost regions
-        dplyr::arrange(desc(total_cost))
+  #output$ec2_region_plot <- renderPlotly({
+  #  if (nrow(aws_data$ec2_cost_by_region) > 0) {
+  #    # Aggregate EC2 cost by region (sum across dates) for selected date range
+  #    region_data <- aws_data$ec2_cost_by_region %>%
+  #      dplyr::mutate(date = as.Date(period_start)) %>%
+  #      dplyr::filter(date >= input$global_date_range[1], date <= input$global_date_range[2]) %>%
+  #      dplyr::group_by(region) %>%
+  #      dplyr::summarise(total_cost = sum(amount_usd, na.rm = TRUE), .groups = "drop") %>%
+  #      dplyr::filter(total_cost > 0) %>%  # Remove zero-cost regions
+  #      dplyr::arrange(desc(total_cost))
 
       # Show all regions with costs, but if too many, show top 20
-      if (nrow(region_data) > 20) {
-        region_data <- region_data %>% dplyr::slice_head(n = 20)
-        title_suffix <- " (Top 20)"
-      } else {
-        title_suffix <- " (All Regions)"
-      }
+  #    if (nrow(region_data) > 20) {
+  #      region_data <- region_data %>% dplyr::slice_head(n = 20)
+  #      title_suffix <- " (Top 20)"
+  #    } else {
+  #      title_suffix <- " (All Regions)"
+  #    }
 
-      if (nrow(region_data) > 0) {
-        plot_ly(region_data, x = ~total_cost, y = ~reorder(region, total_cost),
-                type = 'bar', orientation = 'h',
-                hovertemplate = paste0(
-                  "Region: %{y}<br>",
-                  "Total Cost: $%{x:,.2f}<br>",
-                  "<extra></extra>"
-                )) %>%
-        layout(
-          title = paste0("EC2 Cost by Region", title_suffix, " - Filtered by Date Range"),
-          xaxis = list(title = "Total Cost (USD)"),
-          yaxis = list(title = "Region"),
-          margin = list(l = 200, r = 50, t = 80, b = 50)
-        )
-      } else {
-        plot_ly() %>%
-          layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
-      }
-    } else {
-      plot_ly() %>%
-        layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
-    }
-  })
+  #    if (nrow(region_data) > 0) {
+  #      plot_ly(region_data, x = ~total_cost, y = ~reorder(region, total_cost),
+  #              type = 'bar', orientation = 'h',
+  #              hovertemplate = paste0(
+  #                "Region: %{y}<br>",
+  #                "Total Cost: $%{x:,.2f}<br>",
+  #                "<extra></extra>"
+  #              )) %>%
+  #      layout(
+  #        title = paste0("EC2 Cost by Region", title_suffix, " - Filtered by Date Range"),
+  #        xaxis = list(title = "Total Cost (USD)"),
+  #        yaxis = list(title = "Region"),
+  #        margin = list(l = 200, r = 50, t = 80, b = 50)
+  #      )
+  #    } else {
+  #      plot_ly() %>%
+  #        layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
+  #    }
+  #  } else {
+  #    plot_ly() %>%
+  #      layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
+  #  }
+  #})
 
   output$ec2_instance_trends_plot <- renderPlotly({
     if (nrow(aws_data$ec2_instance_daily) > 0) {
@@ -1348,150 +1348,150 @@ server <- function(input, output, session) {
   })
 
   # EC2-Other Tab Outputs
-  output$ec2_other_total_cost <- renderValueBox({
-    if (nrow(aws_data$ec2_other_usage_lines) > 0) {
-      date_range <- input$global_date_range
-      total_cost <- aws_data$ec2_other_usage_lines %>%
-        dplyr::mutate(period_start = as.Date(period_start)) %>%
-        dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
-        dplyr::summarise(total_cost = sum(amount_usd, na.rm = TRUE)) %>%
-        dplyr::pull(total_cost)
-    } else {
-      total_cost <- 0
-    }
-    valueBox(
-      value = paste0("$", format(round(total_cost, 0), big.mark = ",")),
-      subtitle = "EC2-Other Total Cost (Filtered)",
-      icon = icon("cogs"),
-      color = "blue"
-    )
-  })
+  #output$ec2_other_total_cost <- renderValueBox({
+  #  if (nrow(aws_data$ec2_other_usage_lines) > 0) {
+  #    date_range <- input$global_date_range
+  #    total_cost <- aws_data$ec2_other_usage_lines %>%
+  #      dplyr::mutate(period_start = as.Date(period_start)) %>%
+  #      dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
+  #      dplyr::summarise(total_cost = sum(amount_usd, na.rm = TRUE)) %>%
+  #      dplyr::pull(total_cost)
+  #  } else {
+  #    total_cost <- 0
+  #  }
+  #  valueBox(
+  #    value = paste0("$", format(round(total_cost, 0), big.mark = ",")),
+  #    subtitle = "EC2-Other Total Cost (Filtered)",
+  #    icon = icon("cogs"),
+  #    color = "blue"
+  #  )
+  #})
 
-  output$ec2_other_categories_count <- renderValueBox({
-    if (nrow(aws_data$ec2_other_usage_lines) > 0) {
-      date_range <- input$global_date_range
-      count <- aws_data$ec2_other_usage_lines %>%
-        dplyr::mutate(period_start = as.Date(period_start)) %>%
-        dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
-        dplyr::distinct(category) %>%
-        nrow()
-    } else {
-      count <- 0
-    }
-    valueBox(
-      value = count,
-      subtitle = "Categories (Filtered)",
-      icon = icon("list"),
-      color = "green"
-    )
-  })
+  #output$ec2_other_categories_count <- renderValueBox({
+  #  if (nrow(aws_data$ec2_other_usage_lines) > 0) {
+  #    date_range <- input$global_date_range
+  #    count <- aws_data$ec2_other_usage_lines %>%
+  #      dplyr::mutate(period_start = as.Date(period_start)) %>%
+  #      dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
+  #      dplyr::distinct(category) %>%
+  #      nrow()
+  #  } else {
+  #    count <- 0
+  #  }
+  #  valueBox(
+  #    value = count,
+  #    subtitle = "Categories (Filtered)",
+  #    icon = icon("list"),
+  #    color = "green"
+  #  )
+  #})
 
-  output$ec2_other_usage_types_count <- renderValueBox({
-    if (nrow(aws_data$ec2_other_usage_lines) > 0) {
-      date_range <- input$global_date_range
-      count <- aws_data$ec2_other_usage_lines %>%
-        dplyr::mutate(period_start = as.Date(period_start)) %>%
-        dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
-        dplyr::distinct(usage_type) %>%
-        nrow()
-    } else {
-      count <- 0
-    }
-    valueBox(
-      value = count,
-      subtitle = "Usage Types (Filtered)",
-      icon = icon("tags"),
-      color = "yellow"
-    )
-  })
+  #output$ec2_other_usage_types_count <- renderValueBox({
+  #  if (nrow(aws_data$ec2_other_usage_lines) > 0) {
+  #    date_range <- input$global_date_range
+  #    count <- aws_data$ec2_other_usage_lines %>%
+  #      dplyr::mutate(period_start = as.Date(period_start)) %>%
+  #      dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
+  #      dplyr::distinct(usage_type) %>%
+  #      nrow()
+  #  } else {
+  #    count <- 0
+  #  }
+  #  valueBox(
+  #    value = count,
+  #    subtitle = "Usage Types (Filtered)",
+  #    icon = icon("tags"),
+  #    color = "yellow"
+  #  )
+  #})
 
-  output$ec2_other_categories_plot <- renderPlotly({
-    if (nrow(aws_data$ec2_other_usage_lines) > 0) {
-      # Filter by date range and aggregate by category
-      date_range <- input$global_date_range
+  #output$ec2_other_categories_plot <- renderPlotly({
+  #  if (nrow(aws_data$ec2_other_usage_lines) > 0) {
+  #    # Filter by date range and aggregate by category
+  #    date_range <- input$global_date_range
 
-      filtered_data <- aws_data$ec2_other_usage_lines %>%
-        dplyr::mutate(period_start = as.Date(period_start)) %>%
-        dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
-        dplyr::group_by(category) %>%
-        dplyr::summarise(amount_usd = sum(amount_usd, na.rm = TRUE), .groups = "drop") %>%
-        dplyr::filter(amount_usd > 0)
+  #    filtered_data <- aws_data$ec2_other_usage_lines %>%
+  #      dplyr::mutate(period_start = as.Date(period_start)) %>%
+  #      dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
+  #      dplyr::group_by(category) %>%
+  #      dplyr::summarise(amount_usd = sum(amount_usd, na.rm = TRUE), .groups = "drop") %>%
+  #      dplyr::filter(amount_usd > 0)
 
-      if (nrow(filtered_data) > 0) {
-        plot_ly(filtered_data, labels = ~category, values = ~amount_usd, type = 'pie') %>%
-          layout(title = "EC2-Other Cost by Category (Filtered by Date Range)")
-      } else {
-        plot_ly() %>%
-          add_text(x = 0.5, y = 0.5, text = "No EC2-Other data for selected date range") %>%
-          layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
-      }
-    } else {
-      plot_ly() %>%
-        add_text(x = 0.5, y = 0.5, text = "No EC2-Other categories data available") %>%
-        layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
-    }
-  })
+  #    if (nrow(filtered_data) > 0) {
+  #      plot_ly(filtered_data, labels = ~category, values = ~amount_usd, type = 'pie') %>%
+  #        layout(title = "EC2-Other Cost by Category (Filtered by Date Range)")
+  #    } else {
+  #      plot_ly() %>%
+  #        add_text(x = 0.5, y = 0.5, text = "No EC2-Other data for selected date range") %>%
+  #        layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
+  #    }
+  #  } else {
+  #    plot_ly() %>%
+  #      add_text(x = 0.5, y = 0.5, text = "No EC2-Other categories data available") %>%
+  #      layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
+  #  }
+  #})
 
-  output$ec2_other_usage_plot <- renderPlotly({
-    if (nrow(aws_data$ec2_other_usage_lines) > 0) {
-      # Filter by date range and aggregate by usage_type
-      date_range <- input$global_date_range
+  #output$ec2_other_usage_plot <- renderPlotly({
+  #  if (nrow(aws_data$ec2_other_usage_lines) > 0) {
+  #    # Filter by date range and aggregate by usage_type
+  #    date_range <- input$global_date_range
 
-      filtered_data <- aws_data$ec2_other_usage_lines %>%
-        dplyr::mutate(period_start = as.Date(period_start)) %>%
-        dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
-        dplyr::group_by(usage_type) %>%
-        dplyr::summarise(amount_usd = sum(amount_usd, na.rm = TRUE), .groups = "drop") %>%
-        dplyr::filter(amount_usd > 0) %>%
-        dplyr::arrange(desc(amount_usd)) %>%
-        dplyr::slice_head(n = 15)
+  #    filtered_data <- aws_data$ec2_other_usage_lines %>%
+  #      dplyr::mutate(period_start = as.Date(period_start)) %>%
+  #      dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
+  #      dplyr::group_by(usage_type) %>%
+  #      dplyr::summarise(amount_usd = sum(amount_usd, na.rm = TRUE), .groups = "drop") %>%
+  #      dplyr::filter(amount_usd > 0) %>%
+  #      dplyr::arrange(desc(amount_usd)) %>%
+  #      dplyr::slice_head(n = 15)
 
-      if (nrow(filtered_data) > 0) {
-        plot_ly(filtered_data, x = ~amount_usd, y = ~reorder(usage_type, amount_usd),
-                type = 'bar', orientation = 'h') %>%
-          layout(
-            title = "Top EC2-Other Usage Types (Filtered by Date Range)",
-            xaxis = list(title = "Cost (USD)"),
-            yaxis = list(title = "Usage Type"),
-            margin = list(l = 150)
-          )
-      } else {
-        plot_ly() %>%
-          add_text(x = 0.5, y = 0.5, text = "No EC2-Other data for selected date range") %>%
-          layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
-      }
-    } else {
-      plot_ly() %>%
-        add_text(x = 0.5, y = 0.5, text = "No EC2-Other usage data available") %>%
-        layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
-    }
-  })
+  #    if (nrow(filtered_data) > 0) {
+  #      plot_ly(filtered_data, x = ~amount_usd, y = ~reorder(usage_type, amount_usd),
+  #              type = 'bar', orientation = 'h') %>%
+  #        layout(
+  #          title = "Top EC2-Other Usage Types (Filtered by Date Range)",
+  #          xaxis = list(title = "Cost (USD)"),
+  #          yaxis = list(title = "Usage Type"),
+  #          margin = list(l = 150)
+  #        )
+  #    } else {
+  #      plot_ly() %>%
+  #        add_text(x = 0.5, y = 0.5, text = "No EC2-Other data for selected date range") %>%
+  #        layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
+  #    }
+  #  } else {
+  #    plot_ly() %>%
+  #      add_text(x = 0.5, y = 0.5, text = "No EC2-Other usage data available") %>%
+  #      layout(xaxis = list(visible = FALSE), yaxis = list(visible = FALSE))
+  #  }
+  #})
 
-  output$ec2_other_table <- DT::renderDataTable({
-    if (nrow(aws_data$ec2_other_usage_lines) > 0) {
-      date_range <- input$global_date_range
-      filtered_data <- aws_data$ec2_other_usage_lines %>%
-        dplyr::mutate(period_start = as.Date(period_start)) %>%
-        dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
-        dplyr::arrange(desc(amount_usd))
+  #output$ec2_other_table <- DT::renderDataTable({
+  #  if (nrow(aws_data$ec2_other_usage_lines) > 0) {
+  #    date_range <- input$global_date_range
+  #    filtered_data <- aws_data$ec2_other_usage_lines %>%
+  #      dplyr::mutate(period_start = as.Date(period_start)) %>%
+  #      dplyr::filter(period_start >= date_range[1], period_start <= date_range[2]) %>%
+  #      dplyr::arrange(desc(amount_usd))
 
-      if (nrow(filtered_data) > 0) {
-        filtered_data
-      } else {
-        data.frame(Message = "No EC2-Other data for selected date range")
-      }
-    } else {
-      data.frame(Message = "No EC2-Other usage details available")
-    }
-  }, extensions = 'Buttons',
-  options = list(
-    pageLength = 15,
-    scrollX = TRUE,
-    dom = 'Bfrtip',
-    buttons = list(
-      list(extend = 'csv', filename = 'ec2_other_usage_details', text = 'Download CSV')
-    )
-  ))
+  #    if (nrow(filtered_data) > 0) {
+  #      filtered_data
+  #    } else {
+  #      data.frame(Message = "No EC2-Other data for selected date range")
+  #    }
+  #  } else {
+  #    data.frame(Message = "No EC2-Other usage details available")
+  #  }
+  #}, extensions = 'Buttons',
+  #options = list(
+  #  pageLength = 15,
+  #  scrollX = TRUE,
+  #  dom = 'Bfrtip',
+  #  buttons = list(
+  #    list(extend = 'csv', filename = 'ec2_other_usage_details', text = 'Download CSV')
+  #  )
+  #))
 
   # Workspaces Tab Outputs
   output$workspace_total_cost <- renderValueBox({

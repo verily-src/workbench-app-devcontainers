@@ -49,6 +49,10 @@ conda config --set env_prompt '({name})'
 chown -R "${USERNAME}:" "${USER_HOME_DIR}/.conda" || true
 chown "${USERNAME}:" "${USER_HOME_DIR}/.condarc" || true
 
+# Ensure home directory and .bashrc exist
+mkdir -p "${USER_HOME_DIR}"
+touch "${USER_HOME_DIR}/.bashrc"
+
 echo "source ${CONDA_SCRIPT}" >> "${USER_HOME_DIR}/.bashrc"
 chown -R "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"
 

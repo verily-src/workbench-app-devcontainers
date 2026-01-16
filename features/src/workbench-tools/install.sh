@@ -109,6 +109,10 @@ find -L "${WORKBENCH_TOOLS_DIR}/2/bin" -type f -executable -exec \
 # Make the login user the owner of the conda environment
 chown -R "${USERNAME}:" "${WORKBENCH_TOOLS_DIR}"
 
+# Ensure home directory and .bashrc exist
+mkdir -p "${USER_HOME_DIR}"
+touch "${USER_HOME_DIR}/.bashrc"
+
 {
     # Set PATH to include workbench-tools binaries
     # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime

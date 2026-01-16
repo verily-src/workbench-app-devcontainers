@@ -5,7 +5,7 @@ set -o pipefail
 
 # Define source and destination directories
 readonly SOURCE_DIR="/root/workspace"
-readonly DEST_DIR="/srv/shiny-server/verily_cost"
+readonly DEST_DIR="/srv/shiny-server/aws-cost-explorer/verily_cost"
 
 # Define the function to check if a file with the same name and size exists in the destination
 function file_needs_copy() {

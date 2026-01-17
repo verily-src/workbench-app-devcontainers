@@ -1,0 +1,23 @@
+{
+  "id": "shiny-aws-ce",
+  "version": "0.0.1",
+  "name": "shiny-aws-ce",
+  "description": "A Template to run AWS Cost Explorer Shiny dashboard on workbench",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/shiny-aws-ce",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["aws", "gcp"],
+      "default": "aws"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

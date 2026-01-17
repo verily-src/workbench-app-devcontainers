@@ -1,0 +1,27 @@
+{
+  "name": "Shiny AWS Cost Explorer",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "features": {
+    "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/common-utils@sha256:00fd45550f578d9d515044d9e2226e908dbc3d7aa6fcb9dee4d8bdb60be114cf": {},
+    "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18": {}
+  },
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "shiny",
+    "/home/shiny",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  // re-mount bucket files on container start up and run CSV copy script
+  "postStartCommand": [
+    "bash", "-c",
+    "./startupscript/remount-on-restart.sh shiny /home/shiny ${templateOption:cloud} ${templateOption:login} && chmod +x /workspace/scripts/copy-csv-files.sh && nohup /workspace/scripts/copy-csv-files.sh > /root/.workbench/logs/copy-csv-files.log 2>&1 &"
+  ],
+  "overrideCommand": false,
+  "remoteUser": "root"
+}

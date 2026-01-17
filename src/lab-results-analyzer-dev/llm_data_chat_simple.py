@@ -24,7 +24,21 @@ FILE_NAME = "MUP_DPR_RY25_P04_V10_DY23_Geo.csv"
 print("Initializing...")
 creds, project = default()
 vertexai.init(project=project, location="us-central1")
-model = GenerativeModel("gemini-1.5-pro")
+
+# Try different model names
+model = None
+for model_name in ["gemini-pro", "gemini-1.5-pro", "gemini-1.0-pro", "text-bison@001"]:
+    try:
+        model = GenerativeModel(model_name)
+        test_response = model.generate_content("test")
+        print(f"✅ Using model: {model_name}")
+        break
+    except:
+        continue
+
+if model is None:
+    print("❌ Could not initialize model. Please check API access.")
+    sys.exit(1)
 
 # Load data
 print("Loading data...")

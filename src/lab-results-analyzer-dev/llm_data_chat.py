@@ -46,10 +46,43 @@ credentials, project_id = default()
 region = "us-central1"
 
 vertexai.init(project=project_id, location=region)
-model = GenerativeModel("gemini-1.5-pro")
 
-print(f"✅ Vertex AI initialized (Project: {project_id}, Region: {region})")
-print(f"✅ Using Gemini 1.5 Pro model")
+# Try different model names (Vertex AI uses different naming)
+model_names = [
+    "gemini-1.5-pro",
+    "gemini-pro",
+    "gemini-1.0-pro",
+    "text-bison@001",  # Fallback to text-bison if Gemini not available
+]
+
+model = None
+for model_name in model_names:
+    try:
+        print(f"🔍 Trying model: {model_name}...")
+        model = GenerativeModel(model_name)
+        # Test with a simple prompt
+        test_response = model.generate_content("Say hello")
+        print(f"✅ Vertex AI initialized (Project: {project_id}, Region: {region})")
+        print(f"✅ Using model: {model_name}")
+        break
+    except Exception as e:
+        print(f"   ⚠️  {model_name} not available: {str(e)[:100]}")
+        continue
+
+if model is None:
+    print("\n❌ Could not initialize any model. Trying alternative approach...")
+    # Try using the full resource name
+    try:
+        full_model_name = f"projects/{project_id}/locations/{region}/publishers/google/models/gemini-pro"
+        model = GenerativeModel(full_model_name)
+        print(f"✅ Using model: {full_model_name}")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        print("\n💡 Troubleshooting:")
+        print("   1. Make sure Generative AI API is enabled")
+        print("   2. Check if Gemini models are available in your region")
+        print("   3. Try a different region (e.g., us-east1)")
+        sys.exit(1)
 
 # Load data from GCS
 print(f"\n📥 Loading data from GCS...")

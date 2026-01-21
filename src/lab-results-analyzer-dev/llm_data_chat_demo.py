@@ -121,7 +121,7 @@ print(f"📋 Columns: {', '.join(df.columns)}")
 # Create data context for LLM
 data_context = f"""
 Dataset Information:
-- File: {csv_file}
+- File: gs://{GCS_BUCKET}/{FILE_NAME}
 - Rows: {len(df)}
 - Columns: {len(df.columns)}
 - Column names: {', '.join(df.columns)}

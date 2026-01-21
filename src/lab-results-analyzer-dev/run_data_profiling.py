@@ -24,9 +24,12 @@ FILE_FORMAT = "csv"  # File format
 # ============================================================================
 # OpenAI secret configuration
 PROJECT_ID = "wb-smart-cabbage-5940"  # Your GCP project ID
-SECRET_NAME = "si-ops-openai-api-key"  # Secret name (without path)
-SECRET_VERSION = "latest"  # Use "latest" or "live" depending on your setup
+TEAM_ALIAS = "php-product-"  # Your team alias (with trailing dash)
+SECRET_VERSION = "live"  # Use "latest" or "live" depending on your setup
 USE_OPENAI = True  # Set to False to skip OpenAI integration
+
+# Secret name is constructed as: {team_alias}openai-api-key
+# Full path: projects/{PROJECT_ID}/secrets/{TEAM_ALIAS}openai-api-key/versions/{SECRET_VERSION}
 
 print("="*70)
 print("📊 Data Profiling Analysis - Auto-run")
@@ -112,12 +115,27 @@ except Exception as e:
 # OpenAI Integration Functions
 # ============================================================================
 
-def get_openai_key_from_secret(project_id, secret_name, secret_version="latest"):
-    """Retrieve OpenAI API key from Google Cloud Secret Manager."""
+def get_openai_key_from_secret(project_id, team_alias, secret_version="live"):
+    """Retrieve OpenAI API key from Google Cloud Secret Manager.
+    
+    Args:
+        project_id: GCP project ID
+        team_alias: Team alias (e.g., "php-product-") - should end with dash
+        secret_version: Secret version ("live" or "latest")
+    
+    Returns:
+        API key as string
+    """
     try:
+        # Construct secret name: {team_alias}openai-api-key
+        secret_name = f"{team_alias}openai-api-key"
         secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/{secret_version}"
+        
         print(f"\n🔐 Retrieving OpenAI API key from Secret Manager...")
-        print(f"   Secret path: {secret_path}")
+        print(f"   Project: {project_id}")
+        print(f"   Team Alias: {team_alias}")
+        print(f"   Secret Name: {secret_name}")
+        print(f"   Secret Path: {secret_path}")
         
         secret_client = secretmanager.SecretManagerServiceClient()
         response = secret_client.access_secret_version(name=secret_path)
@@ -130,6 +148,7 @@ def get_openai_key_from_secret(project_id, secret_name, secret_version="latest")
         print("💡 Make sure:")
         print("   - Service account has access to the secret")
         print("   - Secret path is correct")
+        print("   - Team alias is correct (should end with dash, e.g., 'php-product-')")
         print("   - You're in the correct GCP project")
         raise
 
@@ -189,7 +208,7 @@ def get_data_summary_with_openai(client, df, sample_rows=5):
 # Initialize OpenAI if enabled
 if USE_OPENAI:
     try:
-        openai_key = get_openai_key_from_secret(PROJECT_ID, SECRET_NAME, SECRET_VERSION)
+        openai_key = get_openai_key_from_secret(PROJECT_ID, TEAM_ALIAS, SECRET_VERSION)
         openai_client = initialize_openai_client(openai_key)
     except Exception as e:
         print(f"⚠️  OpenAI integration disabled due to error: {e}")

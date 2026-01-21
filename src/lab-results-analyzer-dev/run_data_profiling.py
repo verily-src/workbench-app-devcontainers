@@ -19,6 +19,15 @@ GCS_BUCKET = "my-gcs-experimentation-bucker-wb-steady-parsnip-7109"  # Your data
 FILE_NAME = "MUP_DPR_RY25_P04_V10_DY23_Geo.csv"   # Your data file
 FILE_FORMAT = "csv"  # File format
 
+# ============================================================================
+# CONFIGURATION: OpenAI API Key from Secret Manager
+# ============================================================================
+# OpenAI secret configuration
+PROJECT_ID = "wb-smart-cabbage-5940"  # Your GCP project ID
+SECRET_NAME = "si-ops-openai-api-key"  # Secret name (without path)
+SECRET_VERSION = "latest"  # Use "latest" or "live" depending on your setup
+USE_OPENAI = True  # Set to False to skip OpenAI integration
+
 print("="*70)
 print("📊 Data Profiling Analysis - Auto-run")
 print("="*70)
@@ -49,6 +58,20 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "ydata-profiling"])
     from ydata_profiling import ProfileReport
     print("✅ ydata-profiling installed successfully!")
+
+# Install OpenAI and Secret Manager packages if needed
+openai_client = None
+if USE_OPENAI:
+    try:
+        from google.cloud import secretmanager
+        import openai
+        print("✅ google-cloud-secret-manager and openai are available")
+    except ImportError:
+        print("ℹ️  Installing google-cloud-secret-manager and openai...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "google-cloud-secret-manager", "openai"])
+        from google.cloud import secretmanager
+        import openai
+        print("✅ Packages installed successfully!")
 
 # Fix: Patch numpy.asarray to handle copy parameter compatibility
 import numpy as np
@@ -84,6 +107,95 @@ try:
     print("✅ Word cloud generation disabled")
 except Exception as e:
     print(f"ℹ️  Could not disable word cloud: {e}")
+
+# ============================================================================
+# OpenAI Integration Functions
+# ============================================================================
+
+def get_openai_key_from_secret(project_id, secret_name, secret_version="latest"):
+    """Retrieve OpenAI API key from Google Cloud Secret Manager."""
+    try:
+        secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/{secret_version}"
+        print(f"\n🔐 Retrieving OpenAI API key from Secret Manager...")
+        print(f"   Secret path: {secret_path}")
+        
+        secret_client = secretmanager.SecretManagerServiceClient()
+        response = secret_client.access_secret_version(name=secret_path)
+        api_key = response.payload.data.decode("UTF-8")
+        
+        print("✅ OpenAI API key retrieved successfully!")
+        return api_key
+    except Exception as e:
+        print(f"❌ Error retrieving OpenAI API key: {e}")
+        print("💡 Make sure:")
+        print("   - Service account has access to the secret")
+        print("   - Secret path is correct")
+        print("   - You're in the correct GCP project")
+        raise
+
+def initialize_openai_client(api_key):
+    """Initialize OpenAI client with API key."""
+    try:
+        client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://us.api.openai.com/v1/",
+        )
+        print("✅ OpenAI client initialized successfully!")
+        return client
+    except Exception as e:
+        print(f"❌ Error initializing OpenAI client: {e}")
+        raise
+
+def get_data_summary_with_openai(client, df, sample_rows=5):
+    """Use OpenAI to generate a natural language summary of the data."""
+    try:
+        # Create a summary of the data
+        data_summary = f"""
+        Dataset Overview:
+        - Rows: {len(df)}
+        - Columns: {len(df.columns)}
+        - Column names: {', '.join(df.columns.tolist())}
+        - Data types: {df.dtypes.to_dict()}
+        - Missing values: {df.isnull().sum().to_dict()}
+        
+        Sample data (first {sample_rows} rows):
+        {df.head(sample_rows).to_string()}
+        """
+        
+        print("\n🤖 Generating AI-powered data summary...")
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a data analyst. Provide concise, insightful summaries of datasets."
+                },
+                {
+                    "role": "user",
+                    "content": f"Analyze this dataset and provide a brief summary highlighting key characteristics, data quality issues, and interesting patterns:\n\n{data_summary}"
+                }
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        ai_summary = response.choices[0].message.content
+        print("✅ AI summary generated!")
+        return ai_summary
+    except Exception as e:
+        print(f"⚠️  Error generating AI summary: {e}")
+        return None
+
+# Initialize OpenAI if enabled
+if USE_OPENAI:
+    try:
+        openai_key = get_openai_key_from_secret(PROJECT_ID, SECRET_NAME, SECRET_VERSION)
+        openai_client = initialize_openai_client(openai_key)
+    except Exception as e:
+        print(f"⚠️  OpenAI integration disabled due to error: {e}")
+        print("   Continuing with data profiling only...")
+        USE_OPENAI = False
+        openai_client = None
 
 # ============================================================================
 # Load Data from GCS Bucket
@@ -175,8 +287,42 @@ except Exception as e:
     print(f"ℹ️  Could not open browser automatically: {e}")
     print(f"   Please open the file manually: {report_path}")
 
+# ============================================================================
+# Optional: Generate AI-Powered Summary
+# ============================================================================
+
+if USE_OPENAI and openai_client is not None:
+    try:
+        print("\n" + "="*70)
+        print("🤖 Generating AI-Powered Data Summary...")
+        print("="*70)
+        
+        ai_summary = get_data_summary_with_openai(openai_client, df)
+        
+        if ai_summary:
+            print("\n" + "="*70)
+            print("📝 AI-Generated Summary:")
+            print("="*70)
+            print(ai_summary)
+            print("="*70)
+            
+            # Save AI summary to file
+            summary_file = "ai_data_summary.txt"
+            with open(summary_file, "w") as f:
+                f.write("AI-Powered Data Summary\n")
+                f.write("="*70 + "\n\n")
+                f.write(ai_summary)
+            print(f"\n💾 AI summary saved to: {summary_file}")
+    except Exception as e:
+        print(f"⚠️  Could not generate AI summary: {e}")
+        print("   This is optional - data profiling report is still complete.")
+
 print("\n" + "="*70)
 print("✅ Profiling Report Complete!")
 print(f"📄 Report saved as: {report_file}")
+if USE_OPENAI and openai_client is not None:
+    print("🤖 OpenAI integration: Active")
+else:
+    print("🤖 OpenAI integration: Disabled")
 print("="*70)
 

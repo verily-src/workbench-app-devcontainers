@@ -17,7 +17,23 @@ except ImportError:
     import openai
 
 # Use this stanza when working in VWB Sandbox workspaces. Comment out if using prod data.
-project_id = "wb-smart-cabbage-5940"
+# project_id = "wb-smart-cabbage-5940"  # Project name
+# Or use numeric project ID if needed:
+# project_id = "579784059968"  # Numeric project ID (from error message)
+
+# Auto-detect project ID from environment (recommended)
+import subprocess
+import os
+
+# Try to get project ID from Workbench environment
+try:
+    project_id = subprocess.check_output("wb status --format=json | jq -r '.workspace.googleProjectId'", shell=True, text=True).strip()
+    print(f"✅ Auto-detected project ID: {project_id}")
+except:
+    # Fallback to hardcoded project ID
+    project_id = "wb-smart-cabbage-5940"
+    print(f"⚠️  Using hardcoded project ID: {project_id}")
+    print(f"   (If you see errors, try using numeric project ID: 579784059968)")
 
 # Then choose your team alias.
 team_alias = "php-product-"

@@ -223,16 +223,127 @@ Return ONLY executable Python code, no markdown, no explanations."""
         print(f"❌ Gemini REST error: {e}")
         return None
 
+def generate_fallback_code(question):
+    """Fallback rule-based code generation if LLM fails."""
+    q_lower = question.lower()
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+    all_cols = list(df.columns)
+    
+    def find_column(q, cols):
+        for col in cols:
+            if col.lower() in q.lower():
+                return col
+        return None
+    
+    # Data completeness
+    if any(w in q_lower for w in ['completeness', 'complete', 'missing', 'null', 'na', 'empty', 'data quality']):
+        return '''
+missing = df.isnull().sum()
+completeness = ((len(df) - missing) / len(df) * 100).round(2)
+completeness_df = pd.DataFrame({
+    'Column': df.columns,
+    'Missing Count': missing.values,
+    'Completeness %': completeness.values
+}).sort_values('Completeness %')
+print("="*70)
+print("📊 Data Completeness Report")
+print("="*70)
+print(completeness_df.to_string(index=False))
+print(f"\\nOverall: {completeness.mean():.2f}% average completeness")
+print("="*70)
+''', 'Data completeness analysis'
+    
+    # Summary/Statistics
+    elif any(w in q_lower for w in ['summary', 'statistics', 'describe', 'overview', 'characterize']):
+        return '''
+print("="*70)
+print("📊 Dataset Summary")
+print("="*70)
+print(f"Shape: {len(df):,} rows × {len(df.columns)} columns")
+print(f"\\nColumns: {list(df.columns)}")
+if len(numeric_cols) > 0:
+    print(f"\\nNumeric Summary:\\n{df[numeric_cols].describe()}")
+missing = df.isnull().sum()
+if missing.sum() > 0:
+    print(f"\\nMissing Values:\\n{missing[missing > 0]}")
+else:
+    print("\\n✅ No missing values")
+print("="*70)
+''', 'Dataset summary'
+    
+    # Histogram
+    elif any(w in q_lower for w in ['histogram', 'distribution', 'dist', 'hist']):
+        col = find_column(question, numeric_cols) or (numeric_cols[0] if numeric_cols else None)
+        if col:
+            return f'''
+plt.figure(figsize=(12, 6))
+df["{col}"].hist(bins=30, edgecolor='black', alpha=0.7)
+plt.title(f"Distribution of {col}", fontsize=14, fontweight='bold')
+plt.xlabel("{col}", fontsize=12)
+plt.ylabel("Frequency", fontsize=12)
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.savefig("output.png", dpi=150, bbox_inches='tight')
+plt.show()
+print(f"✅ Histogram saved as output.png")
+''', f'Histogram of {col}'
+        return 'print("❌ No numeric columns")', 'No numeric columns'
+    
+    # Correlation
+    elif any(w in q_lower for w in ['correlation', 'correlate', 'heatmap']):
+        if len(numeric_cols) > 1:
+            return '''
+plt.figure(figsize=(12, 10))
+corr = df[numeric_cols].corr()
+sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', center=0, square=True)
+plt.title("Correlation Heatmap", fontsize=14, fontweight='bold')
+plt.tight_layout()
+plt.savefig("output.png", dpi=150, bbox_inches='tight')
+plt.show()
+print("✅ Correlation heatmap saved as output.png")
+''', 'Correlation heatmap'
+        return 'print("❌ Need 2+ numeric columns")', 'Not enough columns'
+    
+    # Top values
+    elif any(w in q_lower for w in ['top', 'highest', 'maximum', 'max']):
+        col = find_column(question, all_cols) or all_cols[0]
+        num = 10
+        import re
+        if re.search(r'\d+', question):
+            num = int(re.search(r'\d+', question).group())
+        return f'''
+print(f"Top {num} values in '{col}':")
+if "{col}" in {numeric_cols}:
+    print(df.nlargest({num}, "{col}")[["{col}"]].to_string())
+else:
+    print(df["{col}"].value_counts().head({num}).to_string())
+''', f'Top {num} values in {col}'
+    
+    # Default
+    return '''
+print("I can help with: completeness, summary, histogram, correlation, top values")
+print("Try: 'show data completeness' or 'create histogram'")
+''', 'Help'
+
 def ask_llm(question):
-    """Ask LLM to generate code."""
+    """Ask LLM to generate code, with fallback to rule-based."""
+    code = None
+    explanation = None
+    
+    # Try LLM first
     if USE_OPENAI:
         print("🤖 Using OpenAI GPT-4...")
         code = call_openai(question)
     elif USE_GEMINI:
         print("🤖 Using Gemini via REST API...")
         code = call_gemini_rest(question)
-    else:
-        return None
+    
+    # If LLM fails, use fallback
+    if not code:
+        print("⚠️  LLM not available, using intelligent fallback...")
+        code, explanation = generate_fallback_code(question)
+        print(f"💡 {explanation}")
     
     if not code:
         return None
@@ -281,12 +392,18 @@ while True:
         print("🔍 Executing...\n")
         
         try:
+            # Get column info for fallback functions
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+            
             exec(code, {
                 'df': df,
                 'pd': pd,
                 'np': np,
                 'plt': plt,
-                'sns': sns
+                'sns': sns,
+                'numeric_cols': numeric_cols,
+                'categorical_cols': categorical_cols
             })
             print("\n✅ Executed successfully!")
             if os.path.exists('output.png'):

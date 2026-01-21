@@ -6,15 +6,38 @@ Supports both OpenAI and Gemini (via REST API with Google auth)
 
 import sys
 import os
+import subprocess
+
+# Auto-install required packages
+def install_package(package):
+    """Install package if not available."""
+    try:
+        __import__(package)
+    except ImportError:
+        print(f"Installing {package}...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
+
+# Install dependencies
+for pkg in ['pandas', 'numpy', 'matplotlib', 'seaborn', 'requests']:
+    install_package(pkg)
+
+# Now import
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import json
 import re
-import subprocess
 from pathlib import Path
 import requests
+
+# Install google-cloud-storage if needed
+try:
+    from google.cloud import storage
+except ImportError:
+    print("Installing google-cloud-storage...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "google-cloud-storage"])
+    from google.cloud import storage
 
 print("="*70)
 print("🤖 LLM-Powered Data Chat")
@@ -48,35 +71,52 @@ else:
             print("⚠️  No API key provided. Will try Gemini REST API...")
             USE_GEMINI = True
 
-# Get CSV file
-if len(sys.argv) > 1:
-    csv_file = sys.argv[1]
-else:
-    csv_file = input("\n📁 Enter CSV file path: ").strip()
-    if not csv_file:
-        csv_files = list(Path('.').glob('*.csv'))
-        if csv_files:
-            print(f"\nFound CSV files:")
-            for i, f in enumerate(csv_files, 1):
-                print(f"  {i}. {f}")
-            choice = input(f"\nSelect (1-{len(csv_files)}) or enter path: ").strip()
-            if choice.isdigit() and 1 <= int(choice) <= len(csv_files):
-                csv_file = str(csv_files[int(choice)-1])
-            else:
-                csv_file = choice if choice else str(csv_files[0])
-        else:
-            print("❌ No CSV files found.")
-            sys.exit(1)
+# Configuration - Same as notebook
+GCS_BUCKET = "my-gcs-experimentation-bucker-wb-steady-parsnip-7109"
+FILE_NAME = "MUP_DPR_RY25_P04_V10_DY23_Geo.csv"
+FILE_FORMAT = "csv"
 
-# Load data
-print(f"\n📥 Loading: {csv_file}")
-try:
-    df = pd.read_csv(csv_file)
-    print(f"✅ Loaded: {len(df)} rows × {len(df.columns)} columns")
-    print(f"📋 Columns: {', '.join(df.columns)}")
-except Exception as e:
-    print(f"❌ Error: {e}")
-    sys.exit(1)
+# Load data from GCS - Same approach as notebook
+print(f"\n📥 Loading data from GCS...")
+def load_data_from_gcs(bucket_name, file_name, file_format="csv"):
+    """Load data from GCS bucket - same function as notebook."""
+    try:
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(file_name)
+        
+        print(f"📥 Reading file from GCS: gs://{bucket_name}/{file_name}")
+        
+        # Download to temporary file
+        temp_file = f"/tmp/{os.path.basename(file_name)}"
+        blob.download_to_filename(temp_file)
+        print(f"✅ File downloaded to: {temp_file}")
+        
+        # Read based on file format
+        if file_format.lower() == "csv":
+            df = pd.read_csv(temp_file)
+        elif file_format.lower() == "parquet":
+            df = pd.read_parquet(temp_file)
+        elif file_format.lower() == "json":
+            df = pd.read_json(temp_file)
+        elif file_format.lower() == "excel":
+            df = pd.read_excel(temp_file)
+        else:
+            raise ValueError(f"Unsupported file format: {file_format}")
+        
+        # Clean up temp file
+        os.remove(temp_file)
+        print(f"✅ Data loaded successfully: {len(df)} rows, {len(df.columns)} columns")
+        return df
+        
+    except Exception as e:
+        print(f"❌ Error loading from GCS: {e}")
+        raise
+
+# Load data from GCS (same as notebook)
+bucket_name = GCS_BUCKET.replace("gs://", "").strip()
+df = load_data_from_gcs(bucket_name, FILE_NAME, FILE_FORMAT)
+print(f"📋 Columns: {', '.join(df.columns)}")
 
 # Create data context for LLM
 data_context = f"""

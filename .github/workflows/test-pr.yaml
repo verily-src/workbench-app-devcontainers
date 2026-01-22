@@ -37,6 +37,9 @@ jobs:
               user: abc
               workbench_tools: true
               postgres_client: true
+            vscode-docker:
+              user: abc
+              workbench_tools: true
             workbench-jupyter:
               template: custom-workbench-jupyter-template
               user: jupyter

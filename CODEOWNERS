@@ -31,5 +31,7 @@
 # Removed disallowed owners: @verily-src/verily-fte-github-users
 *  @verily-src/terra-dev @verily-src/terra-solutions-team
 
+src/vscode-docker/  @verily-src/php-ml-ops-infra
+
 # ENFORCED: Workflows required by all repositories are owned by @verily-src/verily-engprod.
 .github/workflows/enforced-*  @verily-src/verily-engprod

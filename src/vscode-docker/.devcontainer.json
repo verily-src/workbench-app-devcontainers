@@ -1,0 +1,63 @@
+{
+  "name": "vscode-docker app",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand":
+    "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\"",
+  // re-mount bucket files on container start up
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "abc",
+    "/config",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "abc",
+      "userHomeDir": "/config"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          // Source.
+          ".c",
+          ".cjs",
+          ".cpp",
+          ".go",
+          ".java",
+          ".js",
+          ".mjs",
+          ".php",
+          ".py",
+          ".scala",
+          ".sh",
+          ".ts",
+          // Documents
+          ".md",
+          ".html",
+          // Data
+          ".csv",
+          ".json",
+          ".jsonc",
+          ".tsv",
+          ".xml",
+          ".yml",
+          ".yaml"
+        ],
+        "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+      }
+    }
+  }
+}

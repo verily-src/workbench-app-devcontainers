@@ -20,7 +20,7 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/common-utils@sha256:6d22e5475de578a8dadf19ce15c0ed09d82d8e3006b851dae7fe59a959c9b787": {
+    "ghcr.io/devcontainers/features/common-utils@sha256:9ddad2e4f71f172cc0bf28461e70948218f70f8ad6cd936b5c8dbe0a8acf6b45": {
       // See https://github.com/devcontainers/features/tree/main/src/common-utils
       "installZsh": false,
       "installOhMyZsh": false,

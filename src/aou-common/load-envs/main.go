@@ -73,7 +73,7 @@ func main() {
 	}
 
 	// Get CDR configuration (access tier and version)
-	accessTier, cdrVersion, err := GetCdrConfiguration(mappings, aouVersion)
+	accessTier, cdrVersion, err := GetCdrConfiguration(mappings, *aouVersion)
 	if err != nil {
 		log.Fatalf("Failed to get CDR configuration: %v", err)
 	}
@@ -181,31 +181,13 @@ func GetGcpProject(ctx context.Context, client *wsm.ClientWithResponses) (string
 // GetAoUVersion retrieves the AoU data collection version by inspecting the
 // lineage of resources in the specified workspace and comparing them to the
 // known AoU data collection UUIDs.
-func GetAoUVersion(ctx context.Context, client *wsm.ClientWithResponses, mappings map[uuid.UUID]DataCollectionMapping) (AoUVersion, error) {
+func GetAoUVersion(ctx context.Context, client *wsm.ClientWithResponses, mappings map[uuid.UUID]DataCollectionMapping) (*AoUVersion, error) {
 	resources, err := ListWsmResources(ctx, client, "~"+*workspaceUfid)
 	if err != nil {
-		return AoUVersion{}, err
+		return nil, err
 	}
 
-	sourceResourceLineage, err := FirstAoUResource(resources, mappings)
-	if err != nil {
-		return AoUVersion{}, err
-	}
-
-	version, err := GetVersionForResource(
-		ctx,
-		client,
-		sourceResourceLineage.SourceResourceId,
-		sourceResourceLineage.SourceWorkspaceId.String())
-	if err != nil {
-		return AoUVersion{}, err
-	}
-
-	aouVersion := AoUVersion{
-		DataCollectionId: sourceResourceLineage.SourceWorkspaceId,
-		Version:          version,
-	}
-	return aouVersion, nil
+	return GetVersionFromAoUResource(ctx, client, resources, mappings)
 }
 
 // GetVersionForResource retrieves the version string for a given resource by
@@ -239,7 +221,7 @@ func GetVersionForResource(
 		}
 
 		if resource.Metadata.FolderId == nil {
-			continue
+			return "", fmt.Errorf("failed to get AoU resource folder")
 		}
 
 		folder, err = GetRootFolder(*resource.Metadata.FolderId, folders)
@@ -270,21 +252,28 @@ func GetRootFolder(leafFolderId uuid.UUID, folders map[uuid.UUID]*wsm.Folder) (*
 	return folder, nil
 }
 
-func FirstAoUResource(resources *wsm.ResourceList, mappings map[uuid.UUID]DataCollectionMapping) (wsm.ResourceLineageEntry, error) {
+// GetVersionFromAoUResource retrieves the version from the aou resource's parent folder.
+// Returns eagerly as soon as a version is found as there should only be one DC version per workspace.
+func GetVersionFromAoUResource(ctx context.Context, client *wsm.ClientWithResponses, resources *wsm.ResourceList, mappings map[uuid.UUID]DataCollectionMapping) (*AoUVersion, error) {
 	for _, resource := range resources.Resources {
 		lineage := resource.Metadata.ResourceLineage
 
 		for _, lineageEntry := range *lineage {
-			// Return the first lineage entry whose source workspace ID is
-			// present in the mappings. There should not be multiple versions
-			// of the AoU data collection in the same workspace.
 			if _, ok := mappings[lineageEntry.SourceWorkspaceId]; ok {
-				return lineageEntry, nil
+				version, err := GetVersionForResource(
+					ctx,
+					client,
+					lineageEntry.SourceResourceId,
+					lineageEntry.SourceWorkspaceId.String())
+				if err != nil {
+					continue
+				}
+				return &AoUVersion{DataCollectionId: lineageEntry.SourceWorkspaceId, Version: version}, nil
 			}
 		}
 	}
 
-	return wsm.ResourceLineageEntry{}, fmt.Errorf("no AoU resources in workspace")
+	return nil, fmt.Errorf("no AoU resources in workspace")
 }
 
 func GetWsmClient(authToken string) (*wsm.ClientWithResponses, error) {

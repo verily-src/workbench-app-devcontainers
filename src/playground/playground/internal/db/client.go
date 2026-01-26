@@ -1,4 +1,4 @@
-package main
+package db
 
 import (
 	"context"
@@ -10,15 +10,17 @@ import (
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
+
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/models"
 )
 
-// DB wraps the database connection
-type DB struct {
+// Client wraps the database connection
+type Client struct {
 	conn *sql.DB
 }
 
-// InitDB initializes the database connection
-func InitDB(connStr string) (*DB, error) {
+// NewClient initializes the database connection
+func NewClient(connStr string) (*Client, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
@@ -38,11 +40,11 @@ func InitDB(connStr string) (*DB, error) {
 	}
 
 	log.Println("Database connection established successfully")
-	return &DB{conn: db}, nil
+	return &Client{conn: db}, nil
 }
 
 // InitSchema initializes the database schema
-func InitSchema(db *DB) error {
+func (c *Client) InitSchema() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS apps (
 		id SERIAL PRIMARY KEY,
@@ -65,7 +67,7 @@ func InitSchema(db *DB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if _, err := db.conn.ExecContext(ctx, schema); err != nil {
+	if _, err := c.conn.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
@@ -74,7 +76,7 @@ func InitSchema(db *DB) error {
 }
 
 // CreateApp creates a new app in the database
-func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error) {
+func (c *Client) CreateApp(ctx context.Context, req *models.AppCreateRequest) (*models.App, error) {
 	query := `
 		INSERT INTO apps (app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
@@ -87,10 +89,10 @@ func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error
 		return nil, fmt.Errorf("failed to marshal optional_features: %w", err)
 	}
 
-	var app App
+	var app models.App
 	var featuresStr string
 
-	if err := db.conn.QueryRowContext(ctx, query,
+	if err := c.conn.QueryRowContext(ctx, query,
 		req.AppName,
 		req.Username,
 		req.UserHomeDirectory,
@@ -127,17 +129,17 @@ func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error
 }
 
 // GetApp retrieves a single app by ID
-func (db *DB) GetApp(ctx context.Context, id int) (*App, error) {
+func (c *Client) GetApp(ctx context.Context, id int) (*models.App, error) {
 	query := `
 		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
 		FROM apps
 		WHERE id = $1
 	`
 
-	var app App
+	var app models.App
 	var featuresStr string
 
-	if err := db.conn.QueryRowContext(ctx, query, id).Scan(
+	if err := c.conn.QueryRowContext(ctx, query, id).Scan(
 		&app.ID,
 		&app.AppName,
 		&app.Username,
@@ -164,23 +166,23 @@ func (db *DB) GetApp(ctx context.Context, id int) (*App, error) {
 }
 
 // ListApps retrieves all apps from the database
-func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
+func (c *Client) ListApps(ctx context.Context) ([]*models.App, error) {
 	query := `
 		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
 		FROM apps
 		ORDER BY created_at DESC
 	`
 
-	rows, err := db.conn.QueryContext(ctx, query)
+	rows, err := c.conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list apps: %w", err)
 	}
 	defer rows.Close()
 
-	var apps []*App
+	var apps []*models.App
 
 	for rows.Next() {
-		var app App
+		var app models.App
 		var featuresStr string
 
 		if err := rows.Scan(
@@ -215,7 +217,7 @@ func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
 }
 
 // UpdateApp updates an existing app
-func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*App, error) {
+func (c *Client) UpdateApp(ctx context.Context, id int, req *models.AppCreateRequest) (*models.App, error) {
 	query := `
 		UPDATE apps
 		SET app_name = $1, username = $2, user_home_directory = $3, dockerfile = $4, port = $5, optional_features = $6, caddy_config = $7, updated_at = CURRENT_TIMESTAMP
@@ -229,10 +231,10 @@ func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*Ap
 		return nil, fmt.Errorf("failed to marshal optional_features: %w", err)
 	}
 
-	var app App
+	var app models.App
 	var featuresStr string
 
-	if err := db.conn.QueryRowContext(ctx, query,
+	if err := c.conn.QueryRowContext(ctx, query,
 		req.AppName,
 		req.Username,
 		req.UserHomeDirectory,
@@ -272,10 +274,10 @@ func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*Ap
 }
 
 // DeleteApp deletes an app by ID
-func (db *DB) DeleteApp(ctx context.Context, id int) error {
+func (c *Client) DeleteApp(ctx context.Context, id int) error {
 	query := `DELETE FROM apps WHERE id = $1`
 
-	result, err := db.conn.ExecContext(ctx, query, id)
+	result, err := c.conn.ExecContext(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete app: %w", err)
 	}
@@ -293,15 +295,20 @@ func (db *DB) DeleteApp(ctx context.Context, id int) error {
 }
 
 // UpdateAppStatus updates the status of an app
-func (db *DB) UpdateAppStatus(ctx context.Context, appID int, status string) error {
+func (c *Client) UpdateAppStatus(ctx context.Context, appID int, status string) error {
 	query := `UPDATE apps SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
-	if _, err := db.conn.ExecContext(ctx, query, status, appID); err != nil {
+	if _, err := c.conn.ExecContext(ctx, query, status, appID); err != nil {
 		return fmt.Errorf("failed to update app status: %w", err)
 	}
 	return nil
 }
 
+// Ping checks if the database connection is alive
+func (c *Client) Ping(ctx context.Context) error {
+	return c.conn.PingContext(ctx)
+}
+
 // Close closes the database connection
-func (db *DB) Close() error {
-	return db.conn.Close()
+func (c *Client) Close() error {
+	return c.conn.Close()
 }

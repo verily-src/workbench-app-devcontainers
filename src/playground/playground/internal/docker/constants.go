@@ -1,17 +1,13 @@
-package main
+package docker
 
 import "time"
 
-// Context timeout durations for different operation types
 const (
-	HealthCheckTimeout = 2 * time.Second
-	ReadTimeout        = 5 * time.Second
-	WriteTimeout       = 10 * time.Second
-	DockerTimeout      = 30 * time.Second // Timeout for Docker start/stop operations
+	// BuildTimeout is the timeout for async build operations
+	BuildTimeout = 30 * time.Minute
 
-	// Docker configuration
-	DockerBuildTimeout = 30 * time.Minute // 30 minute timeout for async build operations
-	AppsBaseDir        = "/workspace/apps"
+	// AppsBaseDir is the base directory for app containers
+	AppsBaseDir = "/workspace/apps"
 
 	// Optional feature names
 	FeatureWB             = "wb"
@@ -20,13 +16,25 @@ const (
 	// Container status values
 	ContainerStatusNotFound = "not_found"
 	ContainerStatusUnknown  = "unknown"
+
+	// WorkbenchToolsFeaturePath is the source path for the workbench-tools feature
+	WorkbenchToolsFeaturePath = "/workspace/features/src/workbench-tools"
 )
 
-// CaddyTemplateVars holds variables for rendering Caddy templates
-type CaddyTemplateVars struct {
+// TemplateVars holds variables for rendering templates
+type TemplateVars struct {
 	AppName       string
 	ContainerName string
 	Port          int
+}
+
+// WBFeatures defines the devcontainer features required for wb CLI
+var WBFeatures = map[string]any{
+	"ghcr.io/devcontainers/features/java:1": map[string]string{
+		"version": "17",
+	},
+	"ghcr.io/devcontainers/features/aws-cli:1":    map[string]any{},
+	"ghcr.io/dhoeric/features/google-cloud-cli:1": map[string]any{},
 }
 
 // DevcontainerTemplate for generating .devcontainer.json
@@ -38,18 +46,6 @@ const DevcontainerTemplate = `{
   "features": %s,
   "remoteUser": "root"%s
 }`
-
-// WBFeatures defines the devcontainer features required for wb CLI
-var WBFeatures = map[string]any{
-	"ghcr.io/devcontainers/features/java:1": map[string]string{
-		"version": "17",
-	},
-	"ghcr.io/devcontainers/features/aws-cli:1":    map[string]any{},
-	"ghcr.io/dhoeric/features/google-cloud-cli:1": map[string]any{},
-}
-
-// WorkbenchToolsFeaturePath is the source path for the workbench-tools feature
-const WorkbenchToolsFeaturePath = "/workspace/features/src/workbench-tools"
 
 // DockerComposeTemplate for generating docker-compose.yaml for apps
 const DockerComposeTemplate = `services:

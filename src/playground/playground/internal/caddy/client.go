@@ -1,4 +1,4 @@
-package main
+package caddy
 
 import (
 	"bytes"
@@ -12,16 +12,16 @@ import (
 	"time"
 )
 
-// CaddyClient handles interactions with Caddy Admin API
-type CaddyClient struct {
+// Client handles interactions with Caddy Admin API
+type Client struct {
 	baseURL    string
 	publicPort string
 	client     *http.Client
 }
 
-// NewCaddyClient creates a new Caddy client
-func NewCaddyClient(host, adminPort, publicPort string) *CaddyClient {
-	return &CaddyClient{
+// NewClient creates a new Caddy client
+func NewClient(host, adminPort, publicPort string) *Client {
+	return &Client{
 		baseURL:    fmt.Sprintf("http://%s:%s", host, adminPort),
 		publicPort: publicPort,
 		client: &http.Client{
@@ -36,7 +36,7 @@ func NewCaddyClient(host, adminPort, publicPort string) *CaddyClient {
 }
 
 // doRequest executes a Caddy API request and handles errors
-func (c *CaddyClient) doRequest(ctx context.Context, method, path string, payload any) error {
+func (c *Client) doRequest(ctx context.Context, method, path string, payload any) error {
 	url := fmt.Sprintf("%s%s", c.baseURL, path)
 
 	var body io.Reader
@@ -71,58 +71,58 @@ func (c *CaddyClient) doRequest(ctx context.Context, method, path string, payloa
 	return nil
 }
 
-// CaddyRoute represents a Caddy route configuration
-type CaddyRoute struct {
-	Handle []CaddyHandler `json:"handle"`
-	Match  []CaddyMatcher `json:"match"`
+// route represents a Caddy route configuration
+type route struct {
+	Handle []handler `json:"handle"`
+	Match  []matcher `json:"match"`
 }
 
-// CaddyHandler represents a handler (reverse_proxy, rewrite, etc)
-type CaddyHandler struct {
-	Handler         string          `json:"handler"`
-	Upstreams       []CaddyUpstream `json:"upstreams,omitempty"`
-	StripPathPrefix string          `json:"strip_path_prefix,omitempty"`
+// handler represents a handler (reverse_proxy, rewrite, etc)
+type handler struct {
+	Handler         string     `json:"handler"`
+	Upstreams       []upstream `json:"upstreams,omitempty"`
+	StripPathPrefix string     `json:"strip_path_prefix,omitempty"`
 }
 
-// CaddyUpstream represents an upstream server
-type CaddyUpstream struct {
+// upstream represents an upstream server
+type upstream struct {
 	Dial string `json:"dial"`
 }
 
-// CaddyMatcher represents path and host matching rules
-type CaddyMatcher struct {
+// matcher represents path and host matching rules
+type matcher struct {
 	Path []string `json:"path,omitempty"`
 	Host []string `json:"host,omitempty"`
 }
 
-// CaddyAdaptResponse represents the response from the /adapt endpoint
-type CaddyAdaptResponse struct {
+// adaptResponse represents the response from the /adapt endpoint
+type adaptResponse struct {
 	Result json.RawMessage `json:"result,omitempty"`
 	Error  string          `json:"error,omitempty"`
 }
 
-// CaddyConfig represents the full Caddy configuration returned by /adapt
-type CaddyConfig struct {
-	Apps CaddyApps `json:"apps"`
+// caddyConfig represents the full Caddy configuration returned by /adapt
+type caddyConfig struct {
+	Apps caddyApps `json:"apps"`
 }
 
-// CaddyApps represents the apps section of Caddy config
-type CaddyApps struct {
-	HTTP CaddyHTTP `json:"http"`
+// caddyApps represents the apps section of Caddy config
+type caddyApps struct {
+	HTTP httpApp `json:"http"`
 }
 
-// CaddyHTTP represents the HTTP app configuration
-type CaddyHTTP struct {
-	Servers map[string]CaddyServer `json:"servers"`
+// httpApp represents the HTTP app configuration
+type httpApp struct {
+	Servers map[string]server `json:"servers"`
 }
 
-// CaddyServer represents a server configuration
-type CaddyServer struct {
+// server represents a server configuration
+type server struct {
 	Routes []json.RawMessage `json:"routes"`
 }
 
-// renderCaddyTemplate renders a Caddyfile template with the given variables
-func renderCaddyTemplate(templateStr string, vars CaddyTemplateVars) (string, error) {
+// renderTemplate renders a Caddyfile template with the given variables
+func renderTemplate(templateStr string, vars templateVars) (string, error) {
 	tmpl, err := template.New("caddy").Parse(templateStr)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
@@ -137,7 +137,7 @@ func renderCaddyTemplate(templateStr string, vars CaddyTemplateVars) (string, er
 }
 
 // adaptCaddyfile converts a Caddyfile to Caddy JSON using the /adapt endpoint
-func (c *CaddyClient) adaptCaddyfile(ctx context.Context, caddyfile string) (json.RawMessage, error) {
+func (c *Client) adaptCaddyfile(ctx context.Context, caddyfile string) (json.RawMessage, error) {
 	// Wrap the Caddyfile in a site block
 	wrappedCaddyfile := fmt.Sprintf(":80 {\n%s\n}", caddyfile)
 
@@ -162,7 +162,7 @@ func (c *CaddyClient) adaptCaddyfile(ctx context.Context, caddyfile string) (jso
 	}
 
 	// Parse the response
-	var adaptResp CaddyAdaptResponse
+	var adaptResp adaptResponse
 	if err := json.Unmarshal(body, &adaptResp); err != nil {
 		return nil, fmt.Errorf("failed to parse adapt response: %w", err)
 	}
@@ -173,7 +173,7 @@ func (c *CaddyClient) adaptCaddyfile(ctx context.Context, caddyfile string) (jso
 	}
 
 	// Parse the result
-	var config CaddyConfig
+	var config caddyConfig
 	if err := json.Unmarshal(adaptResp.Result, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse caddy config: %w", err)
 	}
@@ -188,36 +188,36 @@ func (c *CaddyClient) adaptCaddyfile(ctx context.Context, caddyfile string) (jso
 	return nil, fmt.Errorf("no routes found in adapted configuration")
 }
 
-// AddRoute adds a new route to Caddy for an app using Caddyfile template
+// addRoute adds a new route to Caddy for an app using Caddyfile template
 // Routes are inserted at the beginning (index 0) so they're evaluated before the default UI route
-func (c *CaddyClient) AddRoute(ctx context.Context, appID int, appName string, port int, caddyConfig string) error {
+func (c *Client) addRoute(ctx context.Context, appID int, appName string, port int, caddyConfigStr string) error {
 	containerName := fmt.Sprintf("app-%d", appID)
 
 	// Prepare template variables
-	vars := CaddyTemplateVars{
+	vars := templateVars{
 		AppName:       appName,
 		ContainerName: containerName,
 		Port:          port,
 	}
 
 	// Render the template
-	renderedCaddyfile, err := renderCaddyTemplate(caddyConfig, vars)
+	renderedCaddyfile, err := renderTemplate(caddyConfigStr, vars)
 	if err != nil {
 		return fmt.Errorf("failed to render Caddyfile template: %w", err)
 	}
 
 	// Adapt Caddyfile to Caddy JSON
-	route, err := c.adaptCaddyfile(ctx, renderedCaddyfile)
+	r, err := c.adaptCaddyfile(ctx, renderedCaddyfile)
 	if err != nil {
 		return fmt.Errorf("failed to adapt Caddyfile: %w", err)
 	}
 
 	// PUT the route to Caddy
-	return c.doRequest(ctx, "PUT", "/config/apps/http/servers/srv0/routes/0/handle/0/routes/0", route)
+	return c.doRequest(ctx, "PUT", "/config/apps/http/servers/srv0/routes/0/handle/0/routes/0", r)
 }
 
-// DeleteRoute removes a route from Caddy by app name
-func (c *CaddyClient) DeleteRoute(ctx context.Context, appName string) error {
+// deleteRoute removes a route from Caddy by app name
+func (c *Client) deleteRoute(ctx context.Context, appName string) error {
 	// First, find the route index by getting current config
 	routeIndex, err := c.findRouteIndex(ctx, appName)
 	if err != nil {
@@ -235,7 +235,7 @@ func (c *CaddyClient) DeleteRoute(ctx context.Context, appName string) error {
 }
 
 // findRouteIndex searches for a route by app name and returns its index
-func (c *CaddyClient) findRouteIndex(ctx context.Context, appName string) (int, error) {
+func (c *Client) findRouteIndex(ctx context.Context, appName string) (int, error) {
 	url := fmt.Sprintf("%s/config/apps/http/servers/srv0/routes/0/handle/0/routes", c.baseURL)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -254,16 +254,16 @@ func (c *CaddyClient) findRouteIndex(ctx context.Context, appName string) (int, 
 		return -1, fmt.Errorf("caddy API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var routes []CaddyRoute
+	var routes []route
 	if err := json.NewDecoder(resp.Body).Decode(&routes); err != nil {
 		return -1, fmt.Errorf("failed to decode routes: %w", err)
 	}
 
 	// Search for the route matching this app name (by path)
 	pathPattern := fmt.Sprintf("/%s", appName)
-	for i, route := range routes {
-		if len(route.Match) > 0 && len(route.Match[0].Path) > 0 {
-			if route.Match[0].Path[0] == pathPattern {
+	for i, r := range routes {
+		if len(r.Match) > 0 && len(r.Match[0].Path) > 0 {
+			if r.Match[0].Path[0] == pathPattern {
 				return i, nil
 			}
 		}
@@ -272,35 +272,35 @@ func (c *CaddyClient) findRouteIndex(ctx context.Context, appName string) (int, 
 	return -1, nil // Not found
 }
 
-// UpdateRoute updates a route (delete old, add new)
-func (c *CaddyClient) UpdateRoute(ctx context.Context, appID int, oldAppName, newAppName string, newPort int, caddyConfig string) error {
+// updateRoute updates a route (delete old, add new)
+func (c *Client) updateRoute(ctx context.Context, appID int, oldAppName, newAppName string, newPort int, caddyConfigStr string) error {
 	// Delete old route first to avoid duplicates
-	if err := c.DeleteRoute(ctx, oldAppName); err != nil {
+	if err := c.deleteRoute(ctx, oldAppName); err != nil {
 		return fmt.Errorf("failed to delete old route: %w", err)
 	}
 
 	// Add new route
-	if err := c.AddRoute(ctx, appID, newAppName, newPort, caddyConfig); err != nil {
+	if err := c.addRoute(ctx, appID, newAppName, newPort, caddyConfigStr); err != nil {
 		return fmt.Errorf("failed to add new route: %w", err)
 	}
 
 	return nil
 }
 
-// ResetRoutes clears all Caddy routes and adds back the shell and default playground UI routes
-func (c *CaddyClient) ResetRoutes(ctx context.Context) error {
-	routes := []CaddyRoute{
+// resetRoutes clears all Caddy routes and adds back the shell and default playground UI routes
+func (c *Client) resetRoutes(ctx context.Context) error {
+	routes := []route{
 		// Create shell route for playground ttyd
 		{
-			Handle: []CaddyHandler{
+			Handle: []handler{
 				{
 					Handler: "reverse_proxy",
-					Upstreams: []CaddyUpstream{
+					Upstreams: []upstream{
 						{Dial: "playground:7681"},
 					},
 				},
 			},
-			Match: []CaddyMatcher{
+			Match: []matcher{
 				{
 					Path: []string{"/_shell", "/_shell/*"},
 				},
@@ -309,10 +309,10 @@ func (c *CaddyClient) ResetRoutes(ctx context.Context) error {
 
 		// Create default route for playground UI
 		{
-			Handle: []CaddyHandler{
+			Handle: []handler{
 				{
 					Handler: "reverse_proxy",
-					Upstreams: []CaddyUpstream{
+					Upstreams: []upstream{
 						{Dial: "playground:8080"},
 					},
 				},
@@ -323,7 +323,7 @@ func (c *CaddyClient) ResetRoutes(ctx context.Context) error {
 	return c.doRequest(ctx, "PATCH", "/config/apps/http/servers/srv0/routes/0/handle/0/routes", routes)
 }
 
-// HealthCheck verifies Caddy API is accessible
-func (c *CaddyClient) HealthCheck(ctx context.Context) error {
+// healthCheck verifies Caddy API is accessible
+func (c *Client) healthCheck(ctx context.Context) error {
 	return c.doRequest(ctx, "GET", "/config/", nil)
 }

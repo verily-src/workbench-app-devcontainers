@@ -8,14 +8,19 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/caddy"
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/db"
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/docker"
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/models"
 )
 
 // setupContainer creates devcontainer configuration and builds the container
 // Should be called with 'go' to run asynchronously
 // If a build is already in progress for this app, it will be cancelled
-func setupContainer(app *App, db *DB, dockerService *DockerService, caddyService *CaddyService) {
+func setupContainer(app *models.App, dbClient *db.Client, dockerService *docker.Service, caddyService *caddy.Service) {
 	// Create context with 30 minute timeout
-	ctx, cancel := context.WithTimeout(context.Background(), DockerBuildTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), docker.BuildTimeout)
 	defer cancel()
 
 	// Cancel any previous build and register this one
@@ -25,14 +30,14 @@ func setupContainer(app *App, db *DB, dockerService *DockerService, caddyService
 	// Build container (common Docker operations)
 	if err := dockerService.BuildContainer(ctx, app, false); err != nil {
 		log.Printf("Error building container for app %d: %v", app.ID, err)
-		db.UpdateAppStatus(ctx, app.ID, "failed")
+		dbClient.UpdateAppStatus(ctx, app.ID, "failed")
 		return
 	}
 
 	// Sync with Caddy
 	if err := caddyService.SyncApp(ctx, app.ID, app.AppName, app.Port, app.CaddyConfig); err != nil {
 		log.Printf("Error syncing app %d with Caddy: %v", app.ID, err)
-		db.UpdateAppStatus(ctx, app.ID, "failed")
+		dbClient.UpdateAppStatus(ctx, app.ID, "failed")
 		return
 	}
 
@@ -43,9 +48,9 @@ func setupContainer(app *App, db *DB, dockerService *DockerService, caddyService
 // updateContainer rebuilds container when app is updated
 // Should be called with 'go' to run asynchronously
 // If a build is already in progress for this app, it will be cancelled
-func updateContainer(oldApp, newApp *App, db *DB, dockerService *DockerService, caddyService *CaddyService) {
+func updateContainer(oldApp, newApp *models.App, dbClient *db.Client, dockerService *docker.Service, caddyService *caddy.Service) {
 	// Create context with 30 minute timeout
-	ctx, cancel := context.WithTimeout(context.Background(), DockerBuildTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), docker.BuildTimeout)
 	defer cancel()
 
 	// Cancel any previous build and register this one
@@ -53,12 +58,12 @@ func updateContainer(oldApp, newApp *App, db *DB, dockerService *DockerService, 
 	defer dockerService.RemoveCancelFunc(newApp.ID)
 
 	// Update status to pending
-	db.UpdateAppStatus(ctx, newApp.ID, "pending")
+	dbClient.UpdateAppStatus(ctx, newApp.ID, "pending")
 
 	// Build container (common Docker operations, including stopping existing container)
 	if err := dockerService.BuildContainer(ctx, newApp, true); err != nil {
 		log.Printf("Error rebuilding container for app %d: %v", newApp.ID, err)
-		db.UpdateAppStatus(ctx, newApp.ID, "failed")
+		dbClient.UpdateAppStatus(ctx, newApp.ID, "failed")
 		return
 	}
 
@@ -67,10 +72,10 @@ func updateContainer(oldApp, newApp *App, db *DB, dockerService *DockerService, 
 	// Sync with Caddy if name, port, or stripPrefix changed
 	if err := caddyService.UpdateApp(ctx, oldApp, newApp); err != nil {
 		log.Printf("Error syncing app %d with Caddy: %v", newApp.ID, err)
-		db.UpdateAppStatus(ctx, newApp.ID, "failed")
+		dbClient.UpdateAppStatus(ctx, newApp.ID, "failed")
 		return
 	}
-	db.UpdateAppStatus(ctx, newApp.ID, "active")
+	dbClient.UpdateAppStatus(ctx, newApp.ID, "active")
 
 	log.Printf("App %d (%s) fully updated and active", newApp.ID, newApp.AppName)
 }
@@ -101,7 +106,7 @@ func getAppIDFromPath(r *http.Request) (int, error) {
 
 // writeError writes an error response
 func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, ErrorResponse{Error: message})
+	writeJSON(w, status, models.ErrorResponse{Error: message})
 }
 
 // handleDBError handles common database errors and writes appropriate HTTP responses
@@ -132,12 +137,12 @@ func handleDBError(w http.ResponseWriter, err error, operation string) bool {
 }
 
 // healthHandler handles health check requests
-func healthHandler(db *DB) http.HandlerFunc {
+func healthHandler(dbClient *db.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), HealthCheckTimeout)
 		defer cancel()
 
-		if err := db.conn.PingContext(ctx); err != nil {
+		if err := dbClient.Ping(ctx); err != nil {
 			log.Printf("Health check failed: %v", err)
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 				"status": "unhealthy",
@@ -151,9 +156,9 @@ func healthHandler(db *DB) http.HandlerFunc {
 }
 
 // createAppHandler handles POST /_app
-func createAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
+func createAppHandler(dbClient *db.Client, dockerService *docker.Service, caddyService *caddy.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req AppCreateRequest
+		var req models.AppCreateRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "Invalid JSON format")
@@ -169,14 +174,14 @@ func createAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 		defer cancel()
 
 		// Create app in DB with status='pending'
-		app, err := db.CreateApp(ctx, &req)
+		app, err := dbClient.CreateApp(ctx, &req)
 		if handleDBError(w, err, "create app") {
 			return
 		}
 
 		// Start async container build (30 minute timeout handled internally)
 		// This returns immediately - container builds in background
-		go setupContainer(app, db, dockerService, caddyService)
+		go setupContainer(app, dbClient, dockerService, caddyService)
 
 		// Return app immediately with status='pending'
 		// Client can poll GET /_app/{id} to check when status becomes 'active' or 'failed'
@@ -185,7 +190,7 @@ func createAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 }
 
 // getAppHandler handles GET /_app/{id}
-func getAppHandler(db *DB, dockerService *DockerService) http.HandlerFunc {
+func getAppHandler(dbClient *db.Client, dockerService *docker.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := getAppIDFromPath(r)
 		if err != nil {
@@ -196,7 +201,7 @@ func getAppHandler(db *DB, dockerService *DockerService) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
 		defer cancel()
 
-		app, err := db.GetApp(ctx, id)
+		app, err := dbClient.GetApp(ctx, id)
 		if handleDBError(w, err, "get app") {
 			return
 		}
@@ -209,25 +214,25 @@ func getAppHandler(db *DB, dockerService *DockerService) http.HandlerFunc {
 }
 
 // listAppsHandler handles GET /_app
-func listAppsHandler(db *DB, dockerService *DockerService) http.HandlerFunc {
+func listAppsHandler(dbClient *db.Client, dockerService *docker.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
 		defer cancel()
 
-		apps, err := db.ListApps(ctx)
+		apps, err := dbClient.ListApps(ctx)
 		if handleDBError(w, err, "list apps") {
 			return
 		}
 
 		// Handle empty list
 		if apps == nil {
-			apps = []*App{}
+			apps = []*models.App{}
 		}
 
 		// Enrich with container statuses
 		dockerService.EnrichWithContainerStatuses(ctx, apps)
 
-		response := AppListResponse{
+		response := models.AppListResponse{
 			Apps:  apps,
 			Total: len(apps),
 		}
@@ -237,7 +242,7 @@ func listAppsHandler(db *DB, dockerService *DockerService) http.HandlerFunc {
 }
 
 // updateAppHandler handles PUT /_app/{id}
-func updateAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
+func updateAppHandler(dbClient *db.Client, dockerService *docker.Service, caddyService *caddy.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := getAppIDFromPath(r)
 		if err != nil {
@@ -245,7 +250,7 @@ func updateAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 			return
 		}
 
-		var req AppCreateRequest
+		var req models.AppCreateRequest
 
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "Invalid JSON format")
@@ -261,20 +266,20 @@ func updateAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 		defer cancel()
 
 		// Get old app to compare
-		oldApp, err := db.GetApp(ctx, id)
+		oldApp, err := dbClient.GetApp(ctx, id)
 		if handleDBError(w, err, "get app") {
 			return
 		}
 
 		// Update app in DB
-		app, err := db.UpdateApp(ctx, id, &req)
+		app, err := dbClient.UpdateApp(ctx, id, &req)
 		if handleDBError(w, err, "update app") {
 			return
 		}
 
 		// Start async container rebuild (30 minute timeout handled internally)
 		// This returns immediately - container rebuilds in background
-		go updateContainer(oldApp, app, db, dockerService, caddyService)
+		go updateContainer(oldApp, app, dbClient, dockerService, caddyService)
 
 		// Return app immediately with status='pending'
 		// Status will be updated to 'active' or 'failed' when rebuild completes
@@ -284,7 +289,7 @@ func updateAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 }
 
 // deleteAppHandler handles DELETE /_app/{id}
-func deleteAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
+func deleteAppHandler(dbClient *db.Client, dockerService *docker.Service, caddyService *caddy.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := getAppIDFromPath(r)
 		if err != nil {
@@ -296,7 +301,7 @@ func deleteAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 		defer cancel()
 
 		// Get app first
-		app, err := db.GetApp(ctx, id)
+		app, err := dbClient.GetApp(ctx, id)
 		if handleDBError(w, err, "get app") {
 			return
 		}
@@ -313,7 +318,7 @@ func deleteAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 		}
 
 		// Delete from database
-		err = db.DeleteApp(ctx, id)
+		err = dbClient.DeleteApp(ctx, id)
 		if handleDBError(w, err, "delete app") {
 			return
 		}
@@ -323,7 +328,7 @@ func deleteAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyS
 }
 
 // startAppHandler starts a stopped container, or creates it if it doesn't exist
-func startAppHandler(db *DB, dockerService *DockerService, caddyService *CaddyService) http.HandlerFunc {
+func startAppHandler(dbClient *db.Client, dockerService *docker.Service, caddyService *caddy.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := getAppIDFromPath(r)
 		if err != nil {
@@ -335,29 +340,29 @@ func startAppHandler(db *DB, dockerService *DockerService, caddyService *CaddySe
 		defer cancel()
 
 		// Get app from database
-		app, err := db.GetApp(ctx, id)
+		app, err := dbClient.GetApp(ctx, id)
 		if handleDBError(w, err, "get app") {
 			return
 		}
 
 		// Check container status
-		status, err := dockerService.docker.GetContainerStatus(ctx, id)
+		status, err := dockerService.GetContainerStatus(ctx, id)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to check container status: %v", err))
 			return
 		}
 
 		// If container doesn't exist, create it
-		if status == "not_found" {
+		if status == docker.ContainerStatusNotFound {
 			log.Printf("Container not found for app %d, creating...", id)
 
 			// Update status to pending in DB
-			if err := db.UpdateAppStatus(ctx, id, "pending"); err != nil {
+			if err := dbClient.UpdateAppStatus(ctx, id, "pending"); err != nil {
 				log.Printf("Warning: Failed to update status to pending: %v", err)
 			}
 
 			// Trigger async container creation
-			go setupContainer(app, db, dockerService, caddyService)
+			go setupContainer(app, dbClient, dockerService, caddyService)
 
 			writeJSON(w, http.StatusAccepted, map[string]string{
 				"status":  "creating",
@@ -386,7 +391,7 @@ func startAppHandler(db *DB, dockerService *DockerService, caddyService *CaddySe
 }
 
 // stopAppHandler stops a running container
-func stopAppHandler(dockerService *DockerService) http.HandlerFunc {
+func stopAppHandler(dockerService *docker.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := getAppIDFromPath(r)
 		if err != nil {
@@ -407,7 +412,7 @@ func stopAppHandler(dockerService *DockerService) http.HandlerFunc {
 }
 
 // appLogsHandler retrieves logs from an app container
-func appLogsHandler(dockerService *DockerService) http.HandlerFunc {
+func appLogsHandler(dockerService *docker.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := getAppIDFromPath(r)
 		if err != nil {
@@ -426,7 +431,7 @@ func appLogsHandler(dockerService *DockerService) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
 		defer cancel()
 
-		logs, err := dockerService.docker.GetContainerLogs(ctx, id, tail)
+		logs, err := dockerService.GetContainerLogs(ctx, id, tail)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get logs: %v", err))
 			return
@@ -437,7 +442,7 @@ func appLogsHandler(dockerService *DockerService) http.HandlerFunc {
 }
 
 // playgroundLogsHandler retrieves logs from the playground container
-func playgroundLogsHandler(dockerService *DockerService) http.HandlerFunc {
+func playgroundLogsHandler(dockerService *docker.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Get tail parameter (default 100 lines)
 		tail := 100
@@ -450,7 +455,7 @@ func playgroundLogsHandler(dockerService *DockerService) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), ReadTimeout)
 		defer cancel()
 
-		logs, err := dockerService.docker.GetPlaygroundLogs(ctx, tail)
+		logs, err := dockerService.GetPlaygroundLogs(ctx, tail)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get playground logs: %v", err))
 			return

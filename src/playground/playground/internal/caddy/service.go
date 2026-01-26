@@ -1,26 +1,29 @@
-package main
+package caddy
 
 import (
 	"context"
 	"fmt"
 	"log"
+
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/db"
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/models"
 )
 
-// CaddyService handles Caddy operations and status updates
-type CaddyService struct {
-	caddy *CaddyClient
-	db    *DB
+// Service handles Caddy operations and status updates
+type Service struct {
+	client *Client
+	db     *db.Client
 }
 
-// NewCaddyService creates a new Caddy service
-func NewCaddyService(caddy *CaddyClient, db *DB) *CaddyService {
-	return &CaddyService{caddy: caddy, db: db}
+// NewService creates a new Caddy service
+func NewService(client *Client, dbClient *db.Client) *Service {
+	return &Service{client: client, db: dbClient}
 }
 
 // SyncAllApps syncs all apps from database to Caddy on startup
-func (s *CaddyService) SyncAllApps(ctx context.Context) error {
+func (s *Service) SyncAllApps(ctx context.Context) error {
 	// Reset Caddy routes to default (clears all and adds back playground UI route)
-	if err := s.caddy.ResetRoutes(ctx); err != nil {
+	if err := s.client.resetRoutes(ctx); err != nil {
 		return fmt.Errorf("failed to reset Caddy routes: %w", err)
 	}
 	log.Println("Reset Caddy routes to default")
@@ -36,7 +39,7 @@ func (s *CaddyService) SyncAllApps(ctx context.Context) error {
 	// Add app routes first (so they are evaluated before default routes)
 	for _, app := range apps {
 		// Add route to Caddy
-		if err := s.caddy.AddRoute(ctx, app.ID, app.AppName, app.Port, app.CaddyConfig); err != nil {
+		if err := s.client.addRoute(ctx, app.ID, app.AppName, app.Port, app.CaddyConfig); err != nil {
 			log.Printf("Error adding route for app %d (%s): %v", app.ID, app.AppName, err)
 			s.db.UpdateAppStatus(ctx, app.ID, "failed")
 			errorCount++
@@ -55,9 +58,9 @@ func (s *CaddyService) SyncAllApps(ctx context.Context) error {
 }
 
 // SyncApp synchronizes an app with Caddy and updates status
-func (s *CaddyService) SyncApp(ctx context.Context, appID int, appName string, port int, caddyConfig string) error {
+func (s *Service) SyncApp(ctx context.Context, appID int, appName string, port int, caddyConfig string) error {
 	// Add route to Caddy
-	if err := s.caddy.AddRoute(ctx, appID, appName, port, caddyConfig); err != nil {
+	if err := s.client.addRoute(ctx, appID, appName, port, caddyConfig); err != nil {
 		// Update status to 'failed'
 		if updateErr := s.db.UpdateAppStatus(ctx, appID, "failed"); updateErr != nil {
 			log.Printf("Warning: Failed to update status to 'failed' for app %d: %v", appID, updateErr)
@@ -76,12 +79,12 @@ func (s *CaddyService) SyncApp(ctx context.Context, appID int, appName string, p
 }
 
 // RemoveApp removes Caddy route for an app
-func (s *CaddyService) RemoveApp(ctx context.Context, appName string) error {
-	return s.caddy.DeleteRoute(ctx, appName)
+func (s *Service) RemoveApp(ctx context.Context, appName string) error {
+	return s.client.deleteRoute(ctx, appName)
 }
 
 // UpdateApp updates Caddy route when app changes
-func (s *CaddyService) UpdateApp(ctx context.Context, oldApp, newApp *App) error {
+func (s *Service) UpdateApp(ctx context.Context, oldApp, newApp *models.App) error {
 	// If nothing changed, no need to update
 	if oldApp.AppName == newApp.AppName && oldApp.Port == newApp.Port && oldApp.CaddyConfig == newApp.CaddyConfig {
 		return nil
@@ -93,7 +96,7 @@ func (s *CaddyService) UpdateApp(ctx context.Context, oldApp, newApp *App) error
 	}
 
 	// Update Caddy route (delete old, add new)
-	if err := s.caddy.UpdateRoute(ctx, newApp.ID, oldApp.AppName, newApp.AppName, newApp.Port, newApp.CaddyConfig); err != nil {
+	if err := s.client.updateRoute(ctx, newApp.ID, oldApp.AppName, newApp.AppName, newApp.Port, newApp.CaddyConfig); err != nil {
 		if updateErr := s.db.UpdateAppStatus(ctx, newApp.ID, "failed"); updateErr != nil {
 			log.Printf("Warning: Failed to update status to 'failed' for app %d: %v", newApp.ID, updateErr)
 		}
@@ -106,4 +109,9 @@ func (s *CaddyService) UpdateApp(ctx context.Context, oldApp, newApp *App) error
 	}
 
 	return nil
+}
+
+// HealthCheck verifies Caddy API is accessible
+func (s *Service) HealthCheck(ctx context.Context) error {
+	return s.client.healthCheck(ctx)
 }

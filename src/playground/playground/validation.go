@@ -5,10 +5,13 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/docker"
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/models"
 )
 
 // ValidateAppCreate validates the request to create an app
-func ValidateAppCreate(req *AppCreateRequest) error {
+func ValidateAppCreate(req *models.AppCreateRequest) error {
 	appName := strings.TrimSpace(req.AppName)
 
 	if appName == "" {
@@ -43,8 +46,8 @@ func ValidateAppCreate(req *AppCreateRequest) error {
 
 	// Validate optional features
 	validFeatures := map[string]bool{
-		FeatureWB:             true,
-		FeatureWorkbenchTools: true,
+		docker.FeatureWB:             true,
+		docker.FeatureWorkbenchTools: true,
 	}
 	for _, feature := range req.OptionalFeatures {
 		if !validFeatures[feature] {
@@ -81,7 +84,7 @@ func validateAppTemplate(templateStr string) error {
 	}
 
 	// Verify template can execute with dummy data
-	vars := CaddyTemplateVars{
+	vars := docker.TemplateVars{
 		AppName:       "test",
 		ContainerName: "test-container",
 		Port:          8080,

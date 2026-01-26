@@ -8,6 +8,19 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
+
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/caddy"
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/db"
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/docker"
+)
+
+// Timeout constants for different operation types
+const (
+	HealthCheckTimeout = 2 * time.Second
+	ReadTimeout        = 5 * time.Second
+	WriteTimeout       = 10 * time.Second
+	DockerTimeout      = 30 * time.Second
 )
 
 //go:embed static/*
@@ -61,49 +74,47 @@ func main() {
 	)
 
 	// Initialize database connection
-	db, err := InitDB(connStr)
+	dbClient, err := db.NewClient(connStr)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer db.Close()
+	defer dbClient.Close()
 
 	// Initialize database schema
-	if err := InitSchema(db); err != nil {
+	if err := dbClient.InitSchema(); err != nil {
 		log.Fatalf("Failed to initialize schema: %v", err)
 	}
 
-	// Initialize Docker client
-	dockerClient := NewDockerClient(AppsBaseDir, cloud)
+	// Ensure apps base directory exists
+	if err := os.MkdirAll(docker.AppsBaseDir, 0755); err != nil {
+		log.Fatalf("Failed to create apps directory: %v", err)
+	}
+
+	// Initialize Docker service
+	dockerClient := docker.NewClient(docker.AppsBaseDir, cloud)
+	dockerService := docker.NewService(dockerClient)
 
 	// Health check Docker
 	ctx, cancel := context.WithTimeout(context.Background(), HealthCheckTimeout)
-	if err := dockerClient.HealthCheck(ctx); err != nil {
+	if err := dockerService.HealthCheck(ctx); err != nil {
 		log.Fatalf("Docker not accessible: %v", err)
 	}
 	log.Println("Docker connection verified")
 	cancel()
 
-	// Ensure apps base directory exists
-	if err := os.MkdirAll(AppsBaseDir, 0755); err != nil {
-		log.Fatalf("Failed to create apps directory: %v", err)
-	}
-
-	// Initialize Caddy client
-	caddyClient := NewCaddyClient(caddyHost, caddyPort, port)
+	// Initialize Caddy service
+	caddyClient := caddy.NewClient(caddyHost, caddyPort, port)
+	caddyService := caddy.NewService(caddyClient, dbClient)
 
 	// Health check Caddy
 	ctx, cancel = context.WithTimeout(context.Background(), ReadTimeout)
-	if err := caddyClient.HealthCheck(ctx); err != nil {
+	if err := caddyService.HealthCheck(ctx); err != nil {
 		log.Printf("Warning: Caddy unreachable: %v", err)
 		log.Println("Apps will be created with status='failed'")
 	} else {
 		log.Println("Caddy connection verified")
 	}
 	cancel()
-
-	// Initialize services
-	dockerService := NewDockerService(dockerClient, db)
-	caddyService := NewCaddyService(caddyClient, db)
 
 	// Sync all apps from database to Caddy on startup
 	syncCtx, syncCancel := context.WithTimeout(context.Background(), WriteTimeout)
@@ -136,17 +147,17 @@ func main() {
 	})
 
 	// Health check endpoint
-	mux.HandleFunc("GET /_app/health", healthHandler(db))
+	mux.HandleFunc("GET /_app/health", healthHandler(dbClient))
 
 	// CRUD endpoints
-	mux.HandleFunc("POST /_app", createAppHandler(db, dockerService, caddyService))
-	mux.HandleFunc("GET /_app/{id}", getAppHandler(db, dockerService))
-	mux.HandleFunc("GET /_app", listAppsHandler(db, dockerService))
-	mux.HandleFunc("PUT /_app/{id}", updateAppHandler(db, dockerService, caddyService))
-	mux.HandleFunc("DELETE /_app/{id}", deleteAppHandler(db, dockerService, caddyService))
+	mux.HandleFunc("POST /_app", createAppHandler(dbClient, dockerService, caddyService))
+	mux.HandleFunc("GET /_app/{id}", getAppHandler(dbClient, dockerService))
+	mux.HandleFunc("GET /_app", listAppsHandler(dbClient, dockerService))
+	mux.HandleFunc("PUT /_app/{id}", updateAppHandler(dbClient, dockerService, caddyService))
+	mux.HandleFunc("DELETE /_app/{id}", deleteAppHandler(dbClient, dockerService, caddyService))
 
 	// Container control endpoints
-	mux.HandleFunc("POST /_app/{id}/start", startAppHandler(db, dockerService, caddyService))
+	mux.HandleFunc("POST /_app/{id}/start", startAppHandler(dbClient, dockerService, caddyService))
 	mux.HandleFunc("POST /_app/{id}/stop", stopAppHandler(dockerService))
 
 	// Logs endpoints

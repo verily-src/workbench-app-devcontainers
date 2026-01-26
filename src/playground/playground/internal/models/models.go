@@ -1,4 +1,4 @@
-package main
+package models
 
 import "time"
 
@@ -11,9 +11,9 @@ type App struct {
 	Dockerfile        string    `json:"dockerfile"`
 	Port              int       `json:"port"`
 	OptionalFeatures  []string  `json:"optional_features"`
-	CaddyConfig       string    `json:"caddy_config"`      // Caddyfile template for routing
-	Status            string    `json:"status"`            // pending, active, or failed
-	ContainerStatus   string    `json:"container_status"`  // running, exited, stopped, not_found
+	CaddyConfig       string    `json:"caddy_config"`     // Caddyfile template for routing
+	Status            string    `json:"status"`           // pending, active, or failed
+	ContainerStatus   string    `json:"container_status"` // running, exited, stopped, not_found
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }

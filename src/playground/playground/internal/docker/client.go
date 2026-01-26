@@ -1,4 +1,4 @@
-package main
+package docker
 
 import (
 	"context"
@@ -12,24 +12,26 @@ import (
 	"strings"
 )
 
-type DockerClient struct {
+// Client handles Docker operations
+type Client struct {
 	appsBaseDir        string
 	startupScriptMount string
 	cloud              string
 }
 
-func NewDockerClient(baseDir, cloud string) *DockerClient {
-	return &DockerClient{
+// NewClient creates a new Docker client
+func NewClient(baseDir, cloud string) *Client {
+	return &Client{
 		appsBaseDir: baseDir,
 		cloud:       cloud,
 	}
 }
 
-// GetStartupScriptMount inspects the playground container to find the startupscript mount
-func (d *DockerClient) getStartupScriptMount(ctx context.Context) (string, error) {
+// getStartupScriptMount inspects the playground container to find the startupscript mount
+func (c *Client) getStartupScriptMount(ctx context.Context) (string, error) {
 	// If already cached, return it
-	if d.startupScriptMount != "" {
-		return d.startupScriptMount, nil
+	if c.startupScriptMount != "" {
+		return c.startupScriptMount, nil
 	}
 
 	// Inspect the playground container to find mounts
@@ -53,7 +55,7 @@ func (d *DockerClient) getStartupScriptMount(ctx context.Context) (string, error
 	// Find the startupscript mount
 	for _, mount := range mounts {
 		if mount.Destination == "/workspace/startupscript" {
-			d.startupScriptMount = mount.Source
+			c.startupScriptMount = mount.Source
 			return mount.Source, nil
 		}
 	}
@@ -61,9 +63,9 @@ func (d *DockerClient) getStartupScriptMount(ctx context.Context) (string, error
 	return "", fmt.Errorf("startupscript mount not found in playground container")
 }
 
-// GenerateDevcontainerConfig creates .devcontainer.json for an app
-func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, userHomeDir string, optionalFeatures []string) (string, error) {
-	appDir := filepath.Join(d.appsBaseDir, fmt.Sprintf("app-%d", appID))
+// generateDevcontainerConfig creates .devcontainer.json for an app
+func (c *Client) generateDevcontainerConfig(appID int, appName, username, userHomeDir string, optionalFeatures []string) (string, error) {
+	appDir := filepath.Join(c.appsBaseDir, fmt.Sprintf("app-%d", appID))
 
 	// Create app directory
 	if err := os.MkdirAll(appDir, 0755); err != nil {
@@ -83,8 +85,8 @@ func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, 
 		maps.Copy(features, WBFeatures)
 
 		// Add postCreateCommand and postStartCommand
-		postCreate := fmt.Sprintf(PostCreateCommandTemplate, username, userHomeDir, d.cloud)
-		postStart := fmt.Sprintf(PostStartCommandTemplate, username, userHomeDir, d.cloud)
+		postCreate := fmt.Sprintf(PostCreateCommandTemplate, username, userHomeDir, c.cloud)
+		postStart := fmt.Sprintf(PostStartCommandTemplate, username, userHomeDir, c.cloud)
 		optionalCommands = postCreate + postStart
 	}
 
@@ -111,7 +113,7 @@ func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, 
 
 		// Add workbench-tools feature to features map with relative path
 		features["./.devcontainer/features/workbench-tools"] = map[string]string{
-			"cloud":       d.cloud,
+			"cloud":       c.cloud,
 			"username":    username,
 			"userHomeDir": userHomeDir,
 		}
@@ -139,8 +141,8 @@ func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, 
 	return appDir, nil
 }
 
-// GenerateDockerCompose creates docker-compose.yaml for an app
-func (d *DockerClient) GenerateDockerCompose(ctx context.Context, appDir, appName string, port, appID int, dockerfile string) error {
+// generateDockerCompose creates docker-compose.yaml for an app
+func (c *Client) generateDockerCompose(ctx context.Context, appDir, appName string, port, appID int, dockerfile string) error {
 	// Write Dockerfile
 	dockerfilePath := filepath.Join(appDir, "Dockerfile")
 	if err := os.WriteFile(dockerfilePath, []byte(dockerfile), 0644); err != nil {
@@ -148,7 +150,7 @@ func (d *DockerClient) GenerateDockerCompose(ctx context.Context, appDir, appNam
 	}
 
 	// Get startup script mount from playground container
-	startupScriptMount, err := d.GetStartupScriptMount(ctx)
+	startupScriptMount, err := c.getStartupScriptMount(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get startup script mount: %w", err)
 	}
@@ -166,8 +168,8 @@ func (d *DockerClient) GenerateDockerCompose(ctx context.Context, appDir, appNam
 	return nil
 }
 
-// BuildAndStart builds the devcontainer and starts the container
-func (d *DockerClient) BuildAndStart(ctx context.Context, appDir string) error {
+// buildAndStart builds the devcontainer and starts the container
+func (c *Client) buildAndStart(ctx context.Context, appDir string) error {
 	// Build with devcontainer CLI
 	buildCmd := exec.CommandContext(ctx, "devcontainer", "build", "--workspace-folder", appDir)
 	buildCmd.Dir = appDir
@@ -191,8 +193,8 @@ func (d *DockerClient) BuildAndStart(ctx context.Context, appDir string) error {
 	return nil
 }
 
-// Start starts an existing stopped container
-func (d *DockerClient) Start(ctx context.Context, appID int) error {
+// start starts an existing stopped container
+func (c *Client) start(ctx context.Context, appID int) error {
 	containerName := fmt.Sprintf("app-%d", appID)
 
 	// Start container using docker CLI
@@ -206,8 +208,8 @@ func (d *DockerClient) Start(ctx context.Context, appID int) error {
 	return nil
 }
 
-// StopContainer stops the container without removing it
-func (d *DockerClient) StopContainer(ctx context.Context, appID int) error {
+// stopContainer stops the container without removing it
+func (c *Client) stopContainer(ctx context.Context, appID int) error {
 	containerName := fmt.Sprintf("app-%d", appID)
 
 	// Stop container using docker CLI
@@ -221,8 +223,8 @@ func (d *DockerClient) StopContainer(ctx context.Context, appID int) error {
 	return nil
 }
 
-// GetContainerStatus returns the status of a container (running, exited, etc.)
-func (d *DockerClient) GetContainerStatus(ctx context.Context, appID int) (string, error) {
+// getContainerStatus returns the status of a container (running, exited, etc.)
+func (c *Client) getContainerStatus(ctx context.Context, appID int) (string, error) {
 	containerName := fmt.Sprintf("app-%d", appID)
 
 	// Get container status using docker inspect
@@ -237,8 +239,8 @@ func (d *DockerClient) GetContainerStatus(ctx context.Context, appID int) (strin
 	return strings.TrimSpace(string(output)), nil
 }
 
-// Stop stops the container and removes it
-func (d *DockerClient) Stop(ctx context.Context, appID int, appDir string) error {
+// stop stops the container and removes it
+func (c *Client) stop(ctx context.Context, appID int, appDir string) error {
 	containerName := fmt.Sprintf("app-%d", appID)
 
 	// Stop container using docker CLI
@@ -262,12 +264,12 @@ func (d *DockerClient) Stop(ctx context.Context, appID int, appDir string) error
 	return nil
 }
 
-// Cleanup removes app directory and associated resources
-func (d *DockerClient) Cleanup(ctx context.Context, appID int) error {
-	appDir := filepath.Join(d.appsBaseDir, fmt.Sprintf("app-%d", appID))
+// cleanup removes app directory and associated resources
+func (c *Client) cleanup(ctx context.Context, appID int) error {
+	appDir := filepath.Join(c.appsBaseDir, fmt.Sprintf("app-%d", appID))
 
 	// Stop container first (best effort)
-	_ = d.Stop(ctx, appID, appDir)
+	_ = c.stop(ctx, appID, appDir)
 
 	// Remove directory
 	if err := os.RemoveAll(appDir); err != nil {
@@ -277,8 +279,8 @@ func (d *DockerClient) Cleanup(ctx context.Context, appID int) error {
 	return nil
 }
 
-// HealthCheck verifies Docker is accessible
-func (d *DockerClient) HealthCheck(ctx context.Context) error {
+// healthCheck verifies Docker is accessible
+func (c *Client) healthCheck(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "docker", "info")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker not accessible: %w", err)
@@ -286,8 +288,8 @@ func (d *DockerClient) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// GetLogs retrieves logs from a container
-func (d *DockerClient) GetLogs(ctx context.Context, containerName string, tail int) (string, error) {
+// getLogs retrieves logs from a container
+func (c *Client) getLogs(ctx context.Context, containerName string, tail int) (string, error) {
 	args := []string{"logs", "--tail", fmt.Sprintf("%d", tail), containerName}
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
@@ -299,13 +301,18 @@ func (d *DockerClient) GetLogs(ctx context.Context, containerName string, tail i
 	return string(output), nil
 }
 
-// GetContainerLogs retrieves logs from an app container
-func (d *DockerClient) GetContainerLogs(ctx context.Context, appID int, tail int) (string, error) {
+// getContainerLogs retrieves logs from an app container
+func (c *Client) getContainerLogs(ctx context.Context, appID int, tail int) (string, error) {
 	containerName := fmt.Sprintf("app-%d", appID)
-	return d.GetLogs(ctx, containerName, tail)
+	return c.getLogs(ctx, containerName, tail)
 }
 
-// GetPlaygroundLogs retrieves logs from the playground container
-func (d *DockerClient) GetPlaygroundLogs(ctx context.Context, tail int) (string, error) {
-	return d.GetLogs(ctx, "playground", tail)
+// getPlaygroundLogs retrieves logs from the playground container
+func (c *Client) getPlaygroundLogs(ctx context.Context, tail int) (string, error) {
+	return c.getLogs(ctx, "playground", tail)
+}
+
+// getAppsBaseDir returns the base directory for apps
+func (c *Client) getAppsBaseDir() string {
+	return c.appsBaseDir
 }

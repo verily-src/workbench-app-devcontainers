@@ -238,6 +238,10 @@ func GetVersionForResource(
 			continue
 		}
 
+		if resource.Metadata.FolderId == nil {
+			continue
+		}
+
 		folder, err = GetRootFolder(*resource.Metadata.FolderId, folders)
 		if err != nil {
 			return "", fmt.Errorf("failed to get root folder: %v", err)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"text/template"
 )
@@ -32,22 +33,8 @@ func ValidateAppCreate(req *AppCreateRequest) error {
 		return errors.New("user_home_directory is required")
 	}
 
-	// Validate that either dockerfile or docker_image is provided (but not both)
-	hasDockerfile := strings.TrimSpace(req.Dockerfile) != ""
-	hasDockerImage := strings.TrimSpace(req.DockerImage) != ""
-
-	if !hasDockerfile && !hasDockerImage {
-		return errors.New("either dockerfile or docker_image is required")
-	}
-
-	if hasDockerfile && hasDockerImage {
-		return errors.New("provide either dockerfile or docker_image, not both")
-	}
-
-	// If docker_image is provided, convert to dockerfile format
-	if hasDockerImage {
-		req.Dockerfile = "FROM " + strings.TrimSpace(req.DockerImage)
-		req.DockerImage = "" // Clear docker_image after conversion
+	if strings.TrimSpace(req.Dockerfile) == "" {
+		return errors.New("dockerfile is required")
 	}
 
 	if req.Port < 1 || req.Port > 65535 {
@@ -78,17 +65,12 @@ func ValidateAppCreate(req *AppCreateRequest) error {
 	return nil
 }
 
+// validAppNamePattern matches only ASCII letters, digits, hyphens, and underscores
+var validAppNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 // isValidAppName checks if app name contains only valid characters
 func isValidAppName(name string) bool {
-	for _, char := range name {
-		if !((char >= 'a' && char <= 'z') ||
-			(char >= 'A' && char <= 'Z') ||
-			(char >= '0' && char <= '9') ||
-			char == '-' || char == '_') {
-			return false
-		}
-	}
-	return len(name) > 0
+	return validAppNamePattern.MatchString(name)
 }
 
 func validateAppTemplate(templateStr string) error {

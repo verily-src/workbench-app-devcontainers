@@ -65,8 +65,7 @@ func InitSchema(db *DB) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := db.conn.ExecContext(ctx, schema)
-	if err != nil {
+	if _, err := db.conn.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
@@ -91,7 +90,7 @@ func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error
 	var app App
 	var featuresStr string
 
-	err = db.conn.QueryRowContext(ctx, query,
+	if err := db.conn.QueryRowContext(ctx, query,
 		req.AppName,
 		req.Username,
 		req.UserHomeDirectory,
@@ -111,9 +110,7 @@ func (db *DB) CreateApp(ctx context.Context, req *AppCreateRequest) (*App, error
 		&app.Status,
 		&app.CreatedAt,
 		&app.UpdatedAt,
-	)
-
-	if err != nil {
+	); err != nil {
 		// Check for duplicate key error
 		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
 			return nil, fmt.Errorf("app_name '%s' already exists", req.AppName)
@@ -140,7 +137,7 @@ func (db *DB) GetApp(ctx context.Context, id int) (*App, error) {
 	var app App
 	var featuresStr string
 
-	err := db.conn.QueryRowContext(ctx, query, id).Scan(
+	if err := db.conn.QueryRowContext(ctx, query, id).Scan(
 		&app.ID,
 		&app.AppName,
 		&app.Username,
@@ -152,12 +149,9 @@ func (db *DB) GetApp(ctx context.Context, id int) (*App, error) {
 		&app.Status,
 		&app.CreatedAt,
 		&app.UpdatedAt,
-	)
-
-	if err == sql.ErrNoRows {
+	); err == sql.ErrNoRows {
 		return nil, fmt.Errorf("app not found")
-	}
-	if err != nil {
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to get app: %w", err)
 	}
 
@@ -189,7 +183,7 @@ func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
 		var app App
 		var featuresStr string
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&app.ID,
 			&app.AppName,
 			&app.Username,
@@ -201,8 +195,7 @@ func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
 			&app.Status,
 			&app.CreatedAt,
 			&app.UpdatedAt,
-		)
-		if err != nil {
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan app: %w", err)
 		}
 
@@ -214,7 +207,7 @@ func (db *DB) ListApps(ctx context.Context) ([]*App, error) {
 		apps = append(apps, &app)
 	}
 
-	if err = rows.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
@@ -239,7 +232,7 @@ func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*Ap
 	var app App
 	var featuresStr string
 
-	err = db.conn.QueryRowContext(ctx, query,
+	if err := db.conn.QueryRowContext(ctx, query,
 		req.AppName,
 		req.Username,
 		req.UserHomeDirectory,
@@ -260,12 +253,9 @@ func (db *DB) UpdateApp(ctx context.Context, id int, req *AppCreateRequest) (*Ap
 		&app.Status,
 		&app.CreatedAt,
 		&app.UpdatedAt,
-	)
-
-	if err == sql.ErrNoRows {
+	); err == sql.ErrNoRows {
 		return nil, fmt.Errorf("app not found")
-	}
-	if err != nil {
+	} else if err != nil {
 		// Check for duplicate key error
 		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
 			return nil, fmt.Errorf("app_name '%s' already exists", req.AppName)
@@ -305,8 +295,7 @@ func (db *DB) DeleteApp(ctx context.Context, id int) error {
 // UpdateAppStatus updates the status of an app
 func (db *DB) UpdateAppStatus(ctx context.Context, appID int, status string) error {
 	query := `UPDATE apps SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
-	_, err := db.conn.ExecContext(ctx, query, status, appID)
-	if err != nil {
+	if _, err := db.conn.ExecContext(ctx, query, status, appID); err != nil {
 		return fmt.Errorf("failed to update app status: %w", err)
 	}
 	return nil

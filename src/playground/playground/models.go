@@ -23,8 +23,7 @@ type AppCreateRequest struct {
 	AppName           string   `json:"app_name"`
 	Username          string   `json:"username"`
 	UserHomeDirectory string   `json:"user_home_directory"`
-	Dockerfile        string   `json:"dockerfile,omitempty"`
-	DockerImage       string   `json:"docker_image,omitempty"`
+	Dockerfile        string   `json:"dockerfile"`
 	Port              int      `json:"port"`
 	OptionalFeatures  []string `json:"optional_features"`
 	CaddyConfig       string   `json:"caddy_config"`

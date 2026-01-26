@@ -9,21 +9,24 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 type DockerClient struct {
 	appsBaseDir        string
 	startupScriptMount string
+	cloud              string
 }
 
-func NewDockerClient(baseDir string) *DockerClient {
+func NewDockerClient(baseDir, cloud string) *DockerClient {
 	return &DockerClient{
 		appsBaseDir: baseDir,
+		cloud:       cloud,
 	}
 }
 
 // GetStartupScriptMount inspects the playground container to find the startupscript mount
-func (d *DockerClient) GetStartupScriptMount(ctx context.Context) (string, error) {
+func (d *DockerClient) getStartupScriptMount(ctx context.Context) (string, error) {
 	// If already cached, return it
 	if d.startupScriptMount != "" {
 		return d.startupScriptMount, nil
@@ -80,8 +83,8 @@ func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, 
 		maps.Copy(features, WBFeatures)
 
 		// Add postCreateCommand and postStartCommand
-		postCreate := fmt.Sprintf(PostCreateCommandTemplate, username, userHomeDir)
-		postStart := fmt.Sprintf(PostStartCommandTemplate, username, userHomeDir)
+		postCreate := fmt.Sprintf(PostCreateCommandTemplate, username, userHomeDir, d.cloud)
+		postStart := fmt.Sprintf(PostStartCommandTemplate, username, userHomeDir, d.cloud)
 		optionalCommands = postCreate + postStart
 	}
 
@@ -108,7 +111,7 @@ func (d *DockerClient) GenerateDevcontainerConfig(appID int, appName, username, 
 
 		// Add workbench-tools feature to features map with relative path
 		features["./.devcontainer/features/workbench-tools"] = map[string]string{
-			"cloud":       "gcp",
+			"cloud":       d.cloud,
 			"username":    username,
 			"userHomeDir": userHomeDir,
 		}
@@ -228,12 +231,10 @@ func (d *DockerClient) GetContainerStatus(ctx context.Context, appID int) (strin
 	output, err := inspectCmd.CombinedOutput()
 	if err != nil {
 		// Container doesn't exist
-		return "not_found", nil
+		return ContainerStatusNotFound, nil
 	}
 
-	status := string(output)
-	status = status[:len(status)-1] // Remove trailing newline
-	return status, nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 // Stop stops the container and removes it

@@ -12,7 +12,7 @@ import (
 type DockerService struct {
 	docker          *DockerClient
 	db              *DB
-	cancelFuncsLock sync.RWMutex
+	cancelFuncsLock sync.Mutex
 	cancelFuncs     map[int]context.CancelFunc
 }
 
@@ -24,26 +24,32 @@ func NewDockerService(docker *DockerClient, db *DB) *DockerService {
 	}
 }
 
-// CancelAndRegisterBuild cancels any ongoing build for the app and registers the new cancel function
-func (s *DockerService) CancelAndRegisterBuild(appID int, newCancelFunc context.CancelFunc) {
+// replaceCancelFunc sets the cancel function for an app and returns the old
+// one if it exists
+func (s *DockerService) replaceCancelFunc(appID int, newCancelFunc context.CancelFunc) (oldCancelFunc context.CancelFunc, exists bool) {
 	s.cancelFuncsLock.Lock()
 	defer s.cancelFuncsLock.Unlock()
 
+	oldCancel, exists := s.cancelFuncs[appID]
+	s.cancelFuncs[appID] = newCancelFunc
+
+	return oldCancel, exists
+}
+
+// CancelAndRegisterBuild cancels any ongoing build for the app and registers the new cancel function
+func (s *DockerService) CancelAndRegisterBuild(appID int, newCancelFunc context.CancelFunc) {
 	// Cancel previous build if one exists
-	if oldCancel, exists := s.cancelFuncs[appID]; exists {
+	if oldCancel, exists := s.replaceCancelFunc(appID, newCancelFunc); exists {
 		log.Printf("Cancelling previous build for app %d", appID)
 		oldCancel()
 	}
-
-	// Register new cancel function
-	s.cancelFuncs[appID] = newCancelFunc
 }
 
 // RemoveCancelFunc removes the cancel function after build completes or fails
 func (s *DockerService) RemoveCancelFunc(appID int) {
 	s.cancelFuncsLock.Lock()
+	defer s.cancelFuncsLock.Unlock()
 	delete(s.cancelFuncs, appID)
-	s.cancelFuncsLock.Unlock()
 }
 
 // renderDockerfileTemplate renders the Dockerfile template with variables
@@ -152,7 +158,7 @@ func (s *DockerService) EnrichWithContainerStatus(ctx context.Context, app *App)
 	status, err := s.docker.GetContainerStatus(ctx, app.ID)
 	if err != nil {
 		log.Printf("Warning: Failed to get container status for app %d: %v", app.ID, err)
-		app.ContainerStatus = "unknown"
+		app.ContainerStatus = ContainerStatusUnknown
 		return
 	}
 	app.ContainerStatus = status

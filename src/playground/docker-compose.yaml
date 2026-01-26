@@ -33,6 +33,7 @@ services:
       DB_PASSWORD: "playground_password"
       CADDY_HOST: "application-server"
       CADDY_PORT: "2019"
+      CLOUD: "${templateOption:cloud}"
     volumes:
       # mount Host machine's docker.sock to container's docker.sock
       - /var/run/docker.sock:/var/run/docker.sock

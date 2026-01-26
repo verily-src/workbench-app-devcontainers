@@ -16,6 +16,10 @@ const (
 	// Optional feature names
 	FeatureWB             = "wb"
 	FeatureWorkbenchTools = "workbench-tools"
+
+	// Container status values
+	ContainerStatusNotFound = "not_found"
+	ContainerStatusUnknown  = "unknown"
 )
 
 // CaddyTemplateVars holds variables for rendering Caddy templates
@@ -77,7 +81,7 @@ const PostCreateCommandTemplate = `,
     "/workspace/startupscript/post-startup.sh",
     "%s",
     "%s",
-    "gcp",
+    "%s",
     "true"
   ]`
 
@@ -87,6 +91,6 @@ const PostStartCommandTemplate = `,
     "/workspace/startupscript/remount-on-restart.sh",
     "%s",
     "%s",
-    "gcp",
+    "%s",
     "true"
   ]`

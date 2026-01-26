@@ -37,6 +37,12 @@ func main() {
 		caddyPort = "2019"
 	}
 
+	// Cloud environment
+	cloud := os.Getenv("CLOUD")
+	if cloud == "" {
+		cloud = "gcp"
+	}
+
 	// Log the configuration
 	log.Printf("Configuration loaded:")
 	log.Printf("  PORT: %s", port)
@@ -46,6 +52,7 @@ func main() {
 	log.Printf("  DB_USER: %s", dbUser)
 	log.Printf("  CADDY_HOST: %s", caddyHost)
 	log.Printf("  CADDY_PORT: %s", caddyPort)
+	log.Printf("  CLOUD: %s", cloud)
 
 	// Build PostgreSQL connection string
 	connStr := fmt.Sprintf(
@@ -66,7 +73,7 @@ func main() {
 	}
 
 	// Initialize Docker client
-	dockerClient := NewDockerClient(AppsBaseDir)
+	dockerClient := NewDockerClient(AppsBaseDir, cloud)
 
 	// Health check Docker
 	ctx, cancel := context.WithTimeout(context.Background(), HealthCheckTimeout)

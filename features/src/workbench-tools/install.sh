@@ -31,6 +31,14 @@ function cleanup() {
 
 trap 'cleanup' EXIT
 
+# Fix expired Yarn GPP key if Yarn repository exists
+if [ -f /etc/apt/sources.list.d/yarn.list ] || grep -q "dl.yarnpkg.com" /etc/apt/sources.list.d/* 2>/dev/null; then
+    echo "Updating Yarn GPG key..."
+    rm -f /etc/apt/sources.list.d/yarn.list
+    curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | gpg --dearmor -o /usr/share/keyrings/yarn-archive-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/yarn-archive-keyring.gpg] https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
+fi
+
 function apt_get_update() {
     if [ "$(find /var/lib/apt/lists/* | wc -l)" = "0" ]; then
         echo "Running apt-get update..."

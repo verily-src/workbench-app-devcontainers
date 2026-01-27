@@ -77,7 +77,7 @@ CONDA_PACKAGES_1=(
 )
 
 CONDA_PACKAGES_2=(
-    "python=3.12"
+    "python=3.9"
     "pip"
     "perl==5.32.1"
     "bedtools"
@@ -130,11 +130,17 @@ chown -R "${USERNAME}:" "${WORKBENCH_TOOLS_DIR}"
     # Set CROMWELL_JAR environment variable
     printf 'export CROMWELL_JAR="%s"\n' "${WORKBENCH_TOOLS_DIR}/2/share/cromwell/cromwell.jar"
 
+    # Prepend workbench-tools Python site-packages to PYTHONPATH to prevent conflicts
+    # with base image Python environments (e.g., NeMo's Python 3.12). This ensures
+    # workbench-tools packages and their dependencies are found first.
+    # shellcheck disable=SC2016 # we want $PYTHONPATH to be evaluated at runtime
+    printf 'export PYTHONPATH="%s/2/lib/python3.9/site-packages:${PYTHONPATH:-}"\n' "${WORKBENCH_TOOLS_DIR}"
+
     # Make dsub a function that includes the correct PYTHONPATH. NeMo sets
     # PYTHONPATH so we need to override it here. We use a function instead of an
     # alias because aliases are not expanded in non-interactive shells.
     # shellcheck disable=SC2016 # we want $PYTHONPATH to be evaluated at runtime
-    printf 'function dsub() (PYTHONPATH="%s/2/lib/python3.12/site-packages:${PYTHONPATH:-}" "%s/2/bin/dsub" "$@")\n' "${WORKBENCH_TOOLS_DIR}" "${WORKBENCH_TOOLS_DIR}" 
+    printf 'function dsub() (PYTHONPATH="%s/2/lib/python3.9/site-packages:${PYTHONPATH:-}" "%s/2/bin/dsub" "$@")\n' "${WORKBENCH_TOOLS_DIR}" "${WORKBENCH_TOOLS_DIR}" 
 } >> "${USER_HOME_DIR}/.bashrc"
 
 # Allow .bashrc to be sourced in non-interactive shells

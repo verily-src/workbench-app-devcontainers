@@ -44,20 +44,20 @@ if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     check "vep: filter_vep" "filter_vep --help > /dev/null"
     check "vep: variant_recoder" "variant_recoder --help | head -n10"
     check "vep: haplo" "haplo --help | head -n10"
-    # Python packages
-    check "python: google-cloud-storage" 'python3 -c "import google.cloud.storage"'
-    check "python: ipykernel" 'python3 -c "import ipykernel"'
-    check "python: ipywidgets" 'python3 -c "import ipywidgets"'
-    check "python: jupyter" 'python3 -c "import jupyter"'
-    check "python: openai" 'python3 -c "import openai"'
-    check "python: matplotlib" 'python3 -c "import matplotlib"'
-    check "python: numpy" 'python3 -c "import numpy"'
-    check "python: plotly" 'python3 -c "import plotly"'
-    check "python: pandas" 'python3 -c "import pandas"'
-    check "python: seaborn" 'python3 -c "import seaborn"'
-    check "python: scikit-learn" 'python3 -c "import sklearn"'
-    check "python: scipy" 'python3 -c "import scipy"'
-    check "python: tqdm" 'python3 -c "import tqdm"'
+    # Python packages (use conda python directly)
+    check "python: google-cloud-storage" '/opt/workbench-tools/2/bin/python3 -c "import google.cloud.storage"'
+    check "python: ipykernel" '/opt/workbench-tools/2/bin/python3 -c "import ipykernel"'
+    check "python: ipywidgets" '/opt/workbench-tools/2/bin/python3 -c "import ipywidgets"'
+    check "python: jupyter" '/opt/workbench-tools/2/bin/python3 -c "import jupyter"'
+    check "python: openai" '/opt/workbench-tools/2/bin/python3 -c "import openai"'
+    check "python: matplotlib" '/opt/workbench-tools/2/bin/python3 -c "import matplotlib"'
+    check "python: numpy" '/opt/workbench-tools/2/bin/python3 -c "import numpy"'
+    check "python: plotly" '/opt/workbench-tools/2/bin/python3 -c "import plotly"'
+    check "python: pandas" '/opt/workbench-tools/2/bin/python3 -c "import pandas"'
+    check "python: seaborn" '/opt/workbench-tools/2/bin/python3 -c "import seaborn"'
+    check "python: scikit-learn" '/opt/workbench-tools/2/bin/python3 -c "import sklearn"'
+    check "python: scipy" '/opt/workbench-tools/2/bin/python3 -c "import scipy"'
+    check "python: tqdm" '/opt/workbench-tools/2/bin/python3 -c "import tqdm"'
 fi
 
 # The postgres-client feature should install these

@@ -1,0 +1,38 @@
+%YAML 1.1
+---
+# scExploreR Browser Configuration Template
+#
+# This file configures the scExploreR multi-dataset browser.
+# Replace the example paths below with paths to your own datasets.
+#
+# Your workspace GCS buckets are mounted at:
+#   /home/rstudio/workspace/<bucket-name>/
+#
+# Store your pre-processed single-cell objects (.rds or .h5ad files)
+# in your workspace bucket, then update the paths below.
+
+datasets:
+    # Example Dataset 1
+    my_dataset_1:
+        # Path to your Seurat, SingleCellExperiment, or Anndata object
+        object: /home/rstudio/workspace/my-bucket/data/seurat_object.rds
+        # Path to the config file (created using scExploreR::run_config_app)
+        config: /home/rstudio/workspace/my-bucket/data/seurat_config.yaml
+
+    # Example Dataset 2
+    # my_dataset_2:
+    #     object: /home/rstudio/workspace/my-bucket/data/another_object.rds
+    #     config: /home/rstudio/workspace/my-bucket/data/another_config.yaml
+
+# Optional: Deployment name shown in the app
+deployment_name: "My scExploreR Instance"
+
+# Optional: Admin contact information
+admin:
+    name: "Your Name"
+    email: "your.email@example.com"
+    slack_channel: null
+    other: null
+
+# Optional: RStudio Pandoc path (usually not needed)
+# RSTUDIO_PANDOC: "/usr/lib/rstudio-server/bin/pandoc"

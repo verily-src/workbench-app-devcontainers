@@ -1,0 +1,3 @@
+[submodule "src/scexplorer/scExploreR"]
+	path = src/scexplorer/scExploreR
+	url = https://github.com/amc-heme/scExploreR.git

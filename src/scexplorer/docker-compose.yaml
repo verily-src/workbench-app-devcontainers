@@ -1,0 +1,30 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/rstudio:cached
+    tmpfs:
+      - /home/rstudio/workspace:uid=1000,gid=1000
+    ports:
+      - "3838:3838"
+    environment:
+      "DISABLE_AUTH": "true"
+      "SCEXPLORER_CONFIG": "/workspace/config.yaml"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

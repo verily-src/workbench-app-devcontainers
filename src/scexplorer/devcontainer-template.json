@@ -1,0 +1,23 @@
+{
+  "id": "scexplorer",
+  "version": "1.0.0",
+  "name": "scExploreR - Single Cell Data Explorer",
+  "description": "Interactive Shiny application for exploring single-cell omics data (Seurat, SingleCellExperiment, Anndata)",
+  "documentationURL": "https://github.com/amc-heme/scExploreR",
+  "licenseURL": "https://github.com/amc-heme/scExploreR/blob/main/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "default": "false"
+    }
+  },
+  "platforms": [
+    "GCP"
+  ]
+}

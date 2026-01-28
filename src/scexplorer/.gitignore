@@ -1,0 +1,19 @@
+# User configuration
+config.yaml
+
+# R package build artifacts
+*.Rcheck/
+*.Rproj.user/
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Temporary files
+*.tmp
+*.log
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -89,6 +89,19 @@ CONDA_PACKAGES_2=(
     "plink2"
     "regenie"
     "vcftools"
+    "conda-forge::google-cloud-storage"
+    "conda-forge::ipykernel"
+    "conda-forge::ipywidgets"
+    "conda-forge::jupyter"
+    "conda-forge::openai"
+    "conda-forge::matplotlib"
+    "conda-forge::numpy"
+    "conda-forge::plotly"
+    "conda-forge::pandas"
+    "conda-forge::seaborn"
+    "conda-forge::scikit-learn"
+    "conda-forge::scipy"
+    "conda-forge::tqdm"
 )
 
 mkdir -p "${WORKBENCH_TOOLS_DIR}"
@@ -116,6 +129,12 @@ chown -R "${USERNAME}:" "${WORKBENCH_TOOLS_DIR}"
 
     # Set CROMWELL_JAR environment variable
     printf 'export CROMWELL_JAR="%s"\n' "${WORKBENCH_TOOLS_DIR}/2/share/cromwell/cromwell.jar"
+
+    # Prepend workbench-tools Python site-packages to PYTHONPATH to prevent conflicts
+    # with base image Python environments (e.g., NeMo's Python 3.12). This ensures
+    # workbench-tools packages and their dependencies are found first.
+    # shellcheck disable=SC2016 # we want $PYTHONPATH to be evaluated at runtime
+    printf 'export PYTHONPATH="%s/2/lib/python3.9/site-packages:${PYTHONPATH:-}"\n' "${WORKBENCH_TOOLS_DIR}"
 
     # Make dsub a function that includes the correct PYTHONPATH. NeMo sets
     # PYTHONPATH so we need to override it here. We use a function instead of an

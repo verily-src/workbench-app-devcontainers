@@ -1,0 +1,314 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+
+	_ "github.com/lib/pq" // PostgreSQL driver
+
+	"github.com/verily-src/workbench-app-devcontainers/src/playground/playground/internal/models"
+)
+
+// Client wraps the database connection
+type Client struct {
+	conn *sql.DB
+}
+
+// NewClient initializes the database connection
+func NewClient(connStr string) (*Client, error) {
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Configure connection pool
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	// Test connection with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	log.Println("Database connection established successfully")
+	return &Client{conn: db}, nil
+}
+
+// InitSchema initializes the database schema
+func (c *Client) InitSchema() error {
+	schema := `
+	CREATE TABLE IF NOT EXISTS apps (
+		id SERIAL PRIMARY KEY,
+		app_name VARCHAR(255) NOT NULL UNIQUE,
+		username VARCHAR(255) NOT NULL,
+		user_home_directory TEXT NOT NULL,
+		dockerfile TEXT NOT NULL,
+		port INTEGER NOT NULL,
+		optional_features JSONB DEFAULT '[]'::jsonb,
+		caddy_config TEXT NOT NULL,
+		status VARCHAR(20) NOT NULL DEFAULT 'pending',
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_apps_app_name ON apps(app_name);
+	CREATE INDEX IF NOT EXISTS idx_apps_username ON apps(username);
+	`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if _, err := c.conn.ExecContext(ctx, schema); err != nil {
+		return fmt.Errorf("failed to initialize schema: %w", err)
+	}
+
+	log.Println("Database schema initialized successfully")
+	return nil
+}
+
+// CreateApp creates a new app in the database
+func (c *Client) CreateApp(ctx context.Context, req *models.AppCreateRequest) (*models.App, error) {
+	query := `
+		INSERT INTO apps (app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+		RETURNING id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
+	`
+
+	// Marshal optional_features to JSON
+	featuresJSON, err := json.Marshal(req.OptionalFeatures)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal optional_features: %w", err)
+	}
+
+	var app models.App
+	var featuresStr string
+
+	if err := c.conn.QueryRowContext(ctx, query,
+		req.AppName,
+		req.Username,
+		req.UserHomeDirectory,
+		req.Dockerfile,
+		req.Port,
+		featuresJSON,
+		req.CaddyConfig,
+	).Scan(
+		&app.ID,
+		&app.AppName,
+		&app.Username,
+		&app.UserHomeDirectory,
+		&app.Dockerfile,
+		&app.Port,
+		&featuresStr,
+		&app.CaddyConfig,
+		&app.Status,
+		&app.CreatedAt,
+		&app.UpdatedAt,
+	); err != nil {
+		// Check for duplicate key error
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			return nil, fmt.Errorf("app_name '%s' already exists", req.AppName)
+		}
+		return nil, fmt.Errorf("failed to create app: %w", err)
+	}
+
+	// Unmarshal optional_features from JSON
+	if err := json.Unmarshal([]byte(featuresStr), &app.OptionalFeatures); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal optional_features: %w", err)
+	}
+
+	return &app, nil
+}
+
+// GetApp retrieves a single app by ID
+func (c *Client) GetApp(ctx context.Context, id int) (*models.App, error) {
+	query := `
+		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
+		FROM apps
+		WHERE id = $1
+	`
+
+	var app models.App
+	var featuresStr string
+
+	if err := c.conn.QueryRowContext(ctx, query, id).Scan(
+		&app.ID,
+		&app.AppName,
+		&app.Username,
+		&app.UserHomeDirectory,
+		&app.Dockerfile,
+		&app.Port,
+		&featuresStr,
+		&app.CaddyConfig,
+		&app.Status,
+		&app.CreatedAt,
+		&app.UpdatedAt,
+	); err == sql.ErrNoRows {
+		return nil, fmt.Errorf("app not found")
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to get app: %w", err)
+	}
+
+	// Unmarshal optional_features from JSON
+	if err := json.Unmarshal([]byte(featuresStr), &app.OptionalFeatures); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal optional_features: %w", err)
+	}
+
+	return &app, nil
+}
+
+// ListApps retrieves all apps from the database
+func (c *Client) ListApps(ctx context.Context) ([]*models.App, error) {
+	query := `
+		SELECT id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
+		FROM apps
+		ORDER BY created_at DESC
+	`
+
+	rows, err := c.conn.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list apps: %w", err)
+	}
+	defer rows.Close()
+
+	var apps []*models.App
+
+	for rows.Next() {
+		var app models.App
+		var featuresStr string
+
+		if err := rows.Scan(
+			&app.ID,
+			&app.AppName,
+			&app.Username,
+			&app.UserHomeDirectory,
+			&app.Dockerfile,
+			&app.Port,
+			&featuresStr,
+			&app.CaddyConfig,
+			&app.Status,
+			&app.CreatedAt,
+			&app.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan app: %w", err)
+		}
+
+		// Unmarshal optional_features from JSON
+		if err := json.Unmarshal([]byte(featuresStr), &app.OptionalFeatures); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal optional_features: %w", err)
+		}
+
+		apps = append(apps, &app)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return apps, nil
+}
+
+// UpdateApp updates an existing app
+func (c *Client) UpdateApp(ctx context.Context, id int, req *models.AppCreateRequest) (*models.App, error) {
+	query := `
+		UPDATE apps
+		SET app_name = $1, username = $2, user_home_directory = $3, dockerfile = $4, port = $5, optional_features = $6, caddy_config = $7, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $8
+		RETURNING id, app_name, username, user_home_directory, dockerfile, port, optional_features, caddy_config, status, created_at, updated_at
+	`
+
+	// Marshal optional_features to JSON
+	featuresJSON, err := json.Marshal(req.OptionalFeatures)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal optional_features: %w", err)
+	}
+
+	var app models.App
+	var featuresStr string
+
+	if err := c.conn.QueryRowContext(ctx, query,
+		req.AppName,
+		req.Username,
+		req.UserHomeDirectory,
+		req.Dockerfile,
+		req.Port,
+		featuresJSON,
+		req.CaddyConfig,
+		id,
+	).Scan(
+		&app.ID,
+		&app.AppName,
+		&app.Username,
+		&app.UserHomeDirectory,
+		&app.Dockerfile,
+		&app.Port,
+		&featuresStr,
+		&app.CaddyConfig,
+		&app.Status,
+		&app.CreatedAt,
+		&app.UpdatedAt,
+	); err == sql.ErrNoRows {
+		return nil, fmt.Errorf("app not found")
+	} else if err != nil {
+		// Check for duplicate key error
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			return nil, fmt.Errorf("app_name '%s' already exists", req.AppName)
+		}
+		return nil, fmt.Errorf("failed to update app: %w", err)
+	}
+
+	// Unmarshal optional_features from JSON
+	if err := json.Unmarshal([]byte(featuresStr), &app.OptionalFeatures); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal optional_features: %w", err)
+	}
+
+	return &app, nil
+}
+
+// DeleteApp deletes an app by ID
+func (c *Client) DeleteApp(ctx context.Context, id int) error {
+	query := `DELETE FROM apps WHERE id = $1`
+
+	result, err := c.conn.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete app: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("app not found")
+	}
+
+	return nil
+}
+
+// UpdateAppStatus updates the status of an app
+func (c *Client) UpdateAppStatus(ctx context.Context, appID int, status string) error {
+	query := `UPDATE apps SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	if _, err := c.conn.ExecContext(ctx, query, status, appID); err != nil {
+		return fmt.Errorf("failed to update app status: %w", err)
+	}
+	return nil
+}
+
+// Ping checks if the database connection is alive
+func (c *Client) Ping(ctx context.Context) error {
+	return c.conn.PingContext(ctx)
+}
+
+// Close closes the database connection
+func (c *Client) Close() error {
+	return c.conn.Close()
+}

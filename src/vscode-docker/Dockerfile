@@ -26,24 +26,27 @@ RUN install -m 0755 -d /etc/apt/keyrings && \
     $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
     tee /etc/apt/sources.list.d/docker.list > /dev/null && \
     apt-get update && \
-    apt-get install -y docker-ce-cli docker-compose-plugin && \
+    apt-get install -y docker-ce-cli=5:29.2.0-1~ubuntu.24.04~noble docker-compose-plugin=5.0.2-1~ubuntu.24.04~noble && \
     rm -rf /var/lib/apt/lists/*
 
-# Install kubectl
-RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+# Install kubectl (version 1.35.0)
+RUN curl -LO "https://dl.k8s.io/release/v1.35.0/bin/linux/amd64/kubectl" && \
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
     rm kubectl
 
-# Install minikube
-RUN curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && \
+# Install minikube (version 1.37.0)
+RUN curl -LO https://storage.googleapis.com/minikube/releases/v1.37.0/minikube-linux-amd64 && \
     install minikube-linux-amd64 /usr/local/bin/minikube && \
     rm minikube-linux-amd64
 
-# Install helm
-RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# Install helm (version 3.20.0)
+RUN curl -LO https://get.helm.sh/helm-v3.20.0-linux-amd64.tar.gz && \
+    tar -zxvf helm-v3.20.0-linux-amd64.tar.gz && \
+    mv linux-amd64/helm /usr/local/bin/helm && \
+    rm -rf linux-amd64 helm-v3.20.0-linux-amd64.tar.gz
 
-# Install skaffold
-RUN curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/latest/skaffold-linux-amd64 && \
+# Install skaffold (version 2.17.1)
+RUN curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.17.1/skaffold-linux-amd64 && \
     install skaffold /usr/local/bin/ && \
     rm skaffold
 
@@ -52,16 +55,16 @@ RUN wget https://go.dev/dl/go1.23.5.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.23.5.linux-amd64.tar.gz && \
     rm go1.23.5.linux-amd64.tar.gz
 
-# Install gh (GitHub CLI)
+# Install gh (GitHub CLI version 2.86.0)
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
     chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
     apt-get update && \
-    apt-get install -y gh && \
+    apt-get install -y gh=2.86.0 && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv (Python package manager)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+# Install uv (Python package manager version 0.9.27)
+RUN curl -LsSf https://astral.sh/uv/0.9.27/install.sh | sh && \
     mv $HOME/.local/bin/uv /usr/local/bin/ && \
     mv $HOME/.local/bin/uvx /usr/local/bin/
 
@@ -69,6 +72,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/config/go"
 ENV GOPRIVATE="github.com/verily-src/*"
+ENV SUDO_PASSWORD="pwd"
 
 # Copy docker group setup script
 COPY docker-setup.sh /etc/cont-init.d/50-docker-setup

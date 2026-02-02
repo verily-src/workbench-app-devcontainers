@@ -1,0 +1,9 @@
+{
+  "name": "Playground Apps Manager",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "initializeCommand": "DOCKER_GID=`getent group docker | cut -d: -f3` && echo \"DOCKER_GID=${DOCKER_GID}\" > .env && mkdir -p apps && chmod 777 apps",
+  "remoteUser": "root"
+}

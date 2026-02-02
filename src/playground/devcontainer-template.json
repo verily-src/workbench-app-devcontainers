@@ -1,0 +1,6 @@
+{
+  "id": "playground",
+  "version": "1.0.0",
+  "name": "Playground Apps Manager",
+  "description": "Web-based manager for creating and deploying custom devcontainer applications"
+}

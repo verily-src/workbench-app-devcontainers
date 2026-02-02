@@ -1,0 +1,12 @@
+{
+    debug
+    admin 0.0.0.0:2019
+}
+
+http://:8080 {
+    # Dynamic routes will be added here via API
+    route {
+        # Default route to playground UI
+        reverse_proxy playground:8080
+    }
+}

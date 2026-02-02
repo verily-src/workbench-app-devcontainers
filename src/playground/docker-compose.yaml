@@ -1,0 +1,80 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    image: "caddy:2.11-alpine"
+    restart: always
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+      - playground-apps
+
+  playground:
+    build:
+      context: ./playground
+    container_name: "playground"
+    user: "playground:${DOCKER_GID}"
+    restart: always
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      DB_NAME: "playground"
+      DB_USER: "playground_user"
+      DB_PASSWORD: "playground_password"
+      CADDY_HOST: "application-server"
+      CADDY_PORT: "2019"
+      CLOUD: "${templateOption:cloud}"
+    volumes:
+      # mount Host machine's docker.sock to container's docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock
+      # mount Host machine's /etc/group to container's /etc/host-group
+      - /etc/group:/etc/host-group
+      # mount apps directory for devcontainer builds
+      - ./apps:/workspace/apps
+      # mount startup scripts from parent directory
+      - ./startupscript:/workspace/startupscript
+      # mount features directory for devcontainer features
+      - ../../features:/workspace/features:ro
+    networks:
+      - playground-apps
+      - playground
+
+  db:
+    image: "postgres:18-alpine"
+    restart: always
+    environment:
+      POSTGRES_USER: "playground_user"
+      POSTGRES_PASSWORD: "playground_password"
+      POSTGRES_DB: "playground"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - playground
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  caddy_data:
+  pg_data:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true
+  playground:
+  playground-apps:

@@ -1,0 +1,37 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    # This can be either a pre-existing image or built from a Dockerfile
+    image: "sosedoff/pgweb"
+    # build:
+    #   context: .
+    command: ["pgweb", "--sessions", "--bind=0.0.0.0", "--listen=8081"]
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/root/work
+    # The port specified here will be forwarded and accessible from the
+    # Workbench UI.
+    ports:
+      - 8081:8081
+    # The service must be connected to the "app-network" Docker network
+    networks:
+      - app-network
+    # SYS_ADMIN and fuse are required to mount workspace resources into the
+    # container.
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

@@ -43,4 +43,4 @@ fi
 
 # Start pgweb in foreground (keeps container alive)
 echo "Starting pgweb server on port 8081..."
-exec pgweb --sessions --bind=0.0.0.0 --listen=8081 --bookmarks-dir=/root/.pgweb/bookmarks
+exec pgweb --sessions --bind=0.0.0.0 --listen=8081 --bookmarks-dir=/root/.pgweb/bookmarks --debug

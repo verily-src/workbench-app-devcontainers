@@ -156,13 +156,12 @@ refresh_bookmarks() {
 
       # Create RW bookmark
       cat > "$BOOKMARK_DIR/${RESOURCE_ID} (Write-Read).toml" <<EOF
-[connection]
 host = "$RW_ENDPOINT"
 port = $PORT
 user = "$RW_USER"
 password = "$RW_TOKEN"
 database = "$DB_NAME"
-ssl = "require"
+sslmode = "require"
 EOF
       echo "    Created bookmark: ${RESOURCE_ID} (Write-Read)"
     elif [[ "$CAN_WRITE" == "false" ]]; then
@@ -192,13 +191,12 @@ EOF
 
       # Create RO bookmark
       cat > "$BOOKMARK_DIR/${RESOURCE_ID} (Read-Only).toml" <<EOF
-[connection]
 host = "$RO_ENDPOINT"
 port = $PORT
 user = "$RO_USER"
 password = "$RO_TOKEN"
 database = "$DB_NAME"
-ssl = "require"
+sslmode = "require"
 EOF
       echo "    Created bookmark: ${RESOURCE_ID} (Read-Only)"
     fi

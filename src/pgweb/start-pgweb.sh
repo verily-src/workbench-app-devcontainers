@@ -3,9 +3,8 @@ set -e
 
 echo "Starting pgweb with auto-refreshing IAM bookmarks..."
 
-# Create bookmarks directory with proper permissions
-mkdir -p /home/pgweb/.pgweb/bookmarks
-chown -R pgweb:pgweb /home/pgweb/.pgweb
+# Create bookmarks directory
+mkdir -p /root/.pgweb/bookmarks
 
 # Make sure refresh script is executable
 chmod +x /workspace/refresh-bookmarks.sh
@@ -19,4 +18,4 @@ sleep 2
 
 # Start pgweb in foreground (keeps container alive)
 echo "Starting pgweb server on port 8081..."
-exec pgweb --sessions --bind=0.0.0.0 --listen=8081
+exec pgweb --sessions --bind=0.0.0.0 --listen=8081 --bookmarks-dir=/root/.pgweb/bookmarks

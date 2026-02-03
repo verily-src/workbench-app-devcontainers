@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-BOOKMARK_DIR="/home/pgweb/.pgweb/bookmarks"
+BOOKMARK_DIR="/root/.pgweb/bookmarks"
 REFRESH_INTERVAL=600  # 10 minutes (IAM tokens last 15 min)
 
 # Create bookmark directory if it doesn't exist

@@ -6,7 +6,9 @@ services:
     image: "sosedoff/pgweb"
     # build:
     #   context: .
-    command: ["pgweb", "--sessions", "--bind=0.0.0.0", "--listen=8081"]
+    # Override the default entrypoint to use our custom script
+    entrypoint: []
+    command: ["/bin/bash", "/workspace/start-pgweb.sh"]
     restart: always
     volumes:
       - .:/workspace:cached

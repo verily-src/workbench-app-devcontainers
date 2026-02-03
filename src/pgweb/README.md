@@ -14,17 +14,40 @@ Custom Workbench application for querying PostgreSQL databases using pgweb - a l
 
 Once deployed in Workbench, access the pgweb UI at the app URL (port 8081).
 
-You'll see an interactive login form where you can enter your database connection details:
-- **Host**: Your Aurora cluster endpoint (e.g., `mycluster.cluster-xxx.us-east-1.rds.amazonaws.com`)
-- **Port**: `5432` (default PostgreSQL port)
+## Automatic Database Discovery
+
+The app automatically discovers all Aurora databases in your Workbench workspace and creates pre-configured connection bookmarks with fresh IAM authentication tokens.
+
+### How It Works
+
+1. **Auto-Discovery**: Every 10 minutes, the app queries `wb resource list` to find all Aurora databases
+2. **IAM Token Generation**: For each database, generates fresh IAM authentication tokens for both read-write (RW) and read-only (RO) users
+3. **Bookmark Creation**: Creates pgweb bookmarks for each database connection
+4. **Always Fresh**: Tokens refresh every 10 minutes (they expire after 15), so connections never expire
+
+### Using Bookmarks
+
+When you open pgweb, you'll see bookmarks for each database in your workspace:
+- `aurora-demo-db-20260115 (Write-Read)` - Read-write connection
+- `aurora-demo-db-20260115 (Read-Only)` - Read-only connection
+- `dc-database (Write-Read)` - Read-write connection (referenced database)
+- `dc-database (Read-Only)` - Read-only connection (referenced database)
+
+Click any bookmark to connect instantly - no need to enter credentials!
+
+### Manual Connections
+
+You can also use the interactive login form to enter connection details manually:
+- **Host**: Your Aurora cluster endpoint
+- **Port**: `5432`
 - **Username**: Your database username
 - **Password**: Your database password (works with IAM temporary passwords)
 - **Database**: Your database name
-- **SSL Mode**: `require` (recommended for Aurora)
+- **SSL Mode**: `require`
 
 ## Aurora PostgreSQL with IAM Authentication
 
-This app works well with Aurora PostgreSQL IAM authentication. The sessions mode allows you to enter temporary IAM passwords directly in the web form, avoiding URL encoding issues.
+This app is optimized for Aurora PostgreSQL with IAM authentication. The automatic bookmark system handles token refresh transparently, and manual connections support entering temporary IAM passwords directly without URL encoding issues.
 
 For local testing:
 1. Create Docker network: `docker network create app-network`

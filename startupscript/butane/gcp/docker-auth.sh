@@ -1,7 +1,7 @@
 #!/bin/bash
 # Script to extract Artifact Registry regions from image URLs in files and authenticate with docker
-# Usage: ./docker-auth.sh [path] [default-regions]
-#   path: optional subdirectory under /home/core/devcontainer
+# Usage: ./docker-auth.sh <path> [default-regions]
+#   path: subdirectory under /home/core/devcontainer (required)
 #   default-regions: comma-separated list of regions to always include (defaults to us-central1)
 
 set -o errexit
@@ -9,8 +9,14 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-# Use /home/core/devcontainer as prefix for the input
-DEVCONTAINER_PATH="/home/core/devcontainer${1:+/$1}"
+# Validate required parameter
+if [ $# -lt 1 ] || [ -z "${1:-}" ]; then
+    echo "Error: path parameter is required" >&2
+    echo "Usage: $0 <path> [default-regions]" >&2
+    exit 1
+fi
+
+DEVCONTAINER_PATH="/home/core/devcontainer/$1"
 
 # Default regions to always include (comma-separated)
 DEFAULT_REGIONS="${2:-us-central1}"

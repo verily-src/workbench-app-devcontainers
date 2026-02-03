@@ -206,6 +206,13 @@ EOF
 
   BOOKMARK_COUNT=$(ls -1 "$BOOKMARK_DIR"/*.toml 2>/dev/null | wc -l)
   echo "$(date): Refresh complete. Created $BOOKMARK_COUNT bookmarks."
+
+  # Write touchfile with refresh status
+  cat > "$BOOKMARK_DIR/.last_refresh" <<EOF
+timestamp=$(date -Iseconds)
+bookmark_count=$BOOKMARK_COUNT
+status=success
+EOF
 }
 
 # Main loop
@@ -216,7 +223,15 @@ echo "Refresh interval: $REFRESH_INTERVAL seconds"
 while true; do
   START_TIME=$(date +%s)
 
-  refresh_bookmarks || echo "$(date): ERROR: Bookmark refresh failed"
+  if ! refresh_bookmarks; then
+    echo "$(date): ERROR: Bookmark refresh failed"
+    # Write error status to touchfile
+    cat > "$BOOKMARK_DIR/.last_refresh" <<EOF
+timestamp=$(date -Iseconds)
+bookmark_count=0
+status=failed
+EOF
+  fi
 
   # Calculate elapsed time and adjust sleep to maintain 10-minute cycle
   END_TIME=$(date +%s)

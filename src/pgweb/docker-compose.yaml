@@ -9,6 +9,7 @@ services:
     # Override the default entrypoint to use our custom script
     entrypoint: []
     command: ["/bin/bash", "/workspace/start-pgweb.sh"]
+    user: "root"
     restart: always
     volumes:
       - .:/workspace:cached

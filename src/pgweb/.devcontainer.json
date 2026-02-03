@@ -19,11 +19,15 @@
     "${templateOption:login}"
   ],
   "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "upgradePackages": false
+    },
     "ghcr.io/devcontainers/features/java:1": {
       "version": "17"
     },
-    "ghcr.io/devcontainers/features/aws-cli:1": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
   },
   "remoteUser": "root"
 }

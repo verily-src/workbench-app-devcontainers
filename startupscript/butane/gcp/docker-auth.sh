@@ -56,7 +56,7 @@ LOCATIONS=$(echo -e "${LOCATIONS}\n${DEFAULT_REGIONS_NEWLINE}" | sort -u)
 echo "Getting access token..." >&2
 
 TOKEN=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" -H "Metadata-Flavor: Google")
-ACCESS=$(echo ${TOKEN} | grep -oP '(?<="access_token":")[^"]*')
+ACCESS=$(echo "${TOKEN}" | grep -oP '(?<="access_token":")[^"]*')
 
 # Login to each registry
 echo "Logging into artifact registries..." >&2

@@ -67,7 +67,7 @@ echo "Logging into artifact registries..." >&2
 echo "$LOCATIONS" | while read -r location; do
     [ -z "$location" ] && continue
     echo "  Logging into: ${location}-docker.pkg.dev" >&2
-    docker login -u oauth2accesstoken -p "${ACCESS}" "https://${location}-docker.pkg.dev" > /dev/null 2>&1
+    echo "${ACCESS}" | docker login -u oauth2accesstoken --password-stdin "https://${location}-docker.pkg.dev"
 done
 
 # Re-enable xtrace

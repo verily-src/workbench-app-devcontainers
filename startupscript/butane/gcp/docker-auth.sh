@@ -7,7 +7,6 @@
 set -o errexit
 set -o nounset
 set -o pipefail
-set -o xtrace
 
 # Validate required parameter
 if [ $# -lt 1 ] || [ -z "${1:-}" ]; then
@@ -32,7 +31,7 @@ else
     # Extract unique registry hostnames and then get locations
     REGISTRIES=$(grep -r -h -o -E '[a-z0-9-]+-docker\.pkg\.dev/[^[:space:]"'\'']*' "$DEVCONTAINER_PATH" 2>/dev/null | \
         cut -d'/' -f1 | \
-        sort -u)
+        sort -u || true)
 
     if [ -n "$REGISTRIES" ]; then
         echo "Found registries:" >&2
@@ -56,9 +55,6 @@ LOCATIONS=$(echo -e "${LOCATIONS}\n${DEFAULT_REGIONS_NEWLINE}" | sort -u)
 # Get access token from metadata server
 echo "Getting access token..." >&2
 
-# Temporarily disable xtrace to avoid logging sensitive credentials
-set +o xtrace
-
 TOKEN=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" -H "Metadata-Flavor: Google")
 ACCESS=$(echo ${TOKEN} | grep -oP '(?<="access_token":")[^"]*')
 
@@ -69,8 +65,5 @@ echo "$LOCATIONS" | while read -r location; do
     echo "  Logging into: ${location}-docker.pkg.dev" >&2
     echo "${ACCESS}" | docker login -u oauth2accesstoken --password-stdin "https://${location}-docker.pkg.dev"
 done
-
-# Re-enable xtrace
-set -o xtrace
 
 echo "Done!" >&2

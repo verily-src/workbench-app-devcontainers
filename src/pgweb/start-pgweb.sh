@@ -6,10 +6,10 @@ echo "Starting pgweb with auto-refreshing IAM bookmarks..."
 # Create bookmarks directory
 mkdir -p /root/.pgweb/bookmarks
 
-# Wait for Workbench CLI to be initialized (postCreateCommand completes)
+# Wait for Workbench CLI to be installed and authenticated (postCreateCommand completes)
 # This ensures wb is installed, configured, and authenticated
 echo "Waiting for Workbench CLI initialization..."
-while [ ! -f /root/.workbench/context.json ]; do
+while ! /usr/bin/wb auth status >/dev/null 2>&1; do
   sleep 2
 done
 echo "Workbench CLI is ready!"

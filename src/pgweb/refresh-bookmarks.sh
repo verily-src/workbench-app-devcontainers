@@ -63,13 +63,13 @@ refresh_bookmarks() {
   echo "$(date): Refreshing pgweb bookmarks from Workbench resources..."
 
   # Get current workspace ID
-  CURRENT_WORKSPACE=$(wb workspace describe --format json | jq -r '.id')
+  CURRENT_WORKSPACE=$(/usr/bin/wb workspace describe --format json | jq -r '.id')
 
   # Get list of all accessible workspaces for UUID->ID lookup
-  ALL_WORKSPACES=$(wb workspace list --format json)
+  ALL_WORKSPACES=$(/usr/bin/wb workspace list --format json)
 
   # Get list of Aurora databases from Workbench
-  RESOURCES=$(wb resource list --format json)
+  RESOURCES=$(/usr/bin/wb resource list --format json)
 
   # Clear old bookmarks
   rm -f "$BOOKMARK_DIR"/*.toml
@@ -107,7 +107,7 @@ refresh_bookmarks() {
     CAN_WRITE=false
     if [[ "$RESOURCE_TYPE" == "AWS_AURORA_DATABASE" ]]; then
       # Controlled resource - check workspace role
-      WORKSPACE_INFO=$(wb workspace describe --workspace "$CONTROLLED_WORKSPACE" --format json)
+      WORKSPACE_INFO=$(/usr/bin/wb workspace describe --workspace "$CONTROLLED_WORKSPACE" --format json)
       HIGHEST_ROLE=$(echo "$WORKSPACE_INFO" | jq -r '.highestRole')
       echo "    User role in controlled workspace: $HIGHEST_ROLE"
       if [[ "$HIGHEST_ROLE" == "OWNER" || "$HIGHEST_ROLE" == "WRITER" ]]; then
@@ -116,7 +116,7 @@ refresh_bookmarks() {
     else
       # Referenced resource - try to get WRITE_READ credentials to check access
       echo "    Checking write access for referenced resource..."
-      if wb resource credentials --id "$RESOURCE_ID" --scope WRITE_READ --format json >/dev/null 2>&1; then
+      if /usr/bin/wb resource credentials --id "$RESOURCE_ID" --scope WRITE_READ --format json >/dev/null 2>&1; then
         CAN_WRITE=true
         echo "    User has write access to referenced resource"
       else
@@ -138,7 +138,7 @@ refresh_bookmarks() {
       echo "    Getting Workbench credentials for RW access..."
 
       # Get temporary AWS credentials from Workbench
-      WB_CREDS=$(wb resource credentials --id "$RESOURCE_ID" --scope WRITE_READ --format json)
+      WB_CREDS=$(/usr/bin/wb resource credentials --id "$RESOURCE_ID" --scope WRITE_READ --format json)
       AWS_ACCESS_KEY_ID=$(echo "$WB_CREDS" | jq -r '.AccessKeyId')
       AWS_SECRET_ACCESS_KEY=$(echo "$WB_CREDS" | jq -r '.SecretAccessKey')
       AWS_SESSION_TOKEN=$(echo "$WB_CREDS" | jq -r '.SessionToken')
@@ -174,7 +174,7 @@ EOF
       echo "    Getting Workbench credentials for RO access..."
 
       # Get temporary AWS credentials from Workbench
-      WB_CREDS=$(wb resource credentials --id "$RESOURCE_ID" --scope READ_ONLY --format json)
+      WB_CREDS=$(/usr/bin/wb resource credentials --id "$RESOURCE_ID" --scope READ_ONLY --format json)
       AWS_ACCESS_KEY_ID=$(echo "$WB_CREDS" | jq -r '.AccessKeyId')
       AWS_SECRET_ACCESS_KEY=$(echo "$WB_CREDS" | jq -r '.SecretAccessKey')
       AWS_SESSION_TOKEN=$(echo "$WB_CREDS" | jq -r '.SessionToken')

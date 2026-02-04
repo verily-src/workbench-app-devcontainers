@@ -2,10 +2,11 @@
 set -e
 
 BOOKMARK_DIR="/root/.pgweb/bookmarks"
+BOOKMARK_BASE="/root/.pgweb"
 REFRESH_INTERVAL=600  # 10 minutes (IAM tokens last 15 min)
 
-# Create bookmark directory if it doesn't exist
-mkdir -p "$BOOKMARK_DIR"
+# Create base directory if it doesn't exist
+mkdir -p "$BOOKMARK_BASE"
 
 # Helper function to find workspace ID from UUID
 get_workspace_id_from_uuid() {
@@ -62,6 +63,11 @@ find_controlled_resource() {
 refresh_bookmarks() {
   echo "$(date): Refreshing pgweb bookmarks from Workbench resources..."
 
+  # Create temporary directory for new bookmarks (using PID for uniqueness)
+  TEMP_DIR="/root/.pgweb/bookmarks.tmp.$$"
+  rm -rf "$TEMP_DIR"
+  mkdir -p "$TEMP_DIR"
+
   # Get current workspace ID
   CURRENT_WORKSPACE=$(/usr/bin/wb workspace describe --format json | jq -r '.id')
 
@@ -70,9 +76,6 @@ refresh_bookmarks() {
 
   # Get list of Aurora databases from Workbench
   RESOURCES=$(/usr/bin/wb resource list --format json)
-
-  # Clear old bookmarks
-  rm -f "$BOOKMARK_DIR"/*.toml
 
   # Process each resource
   echo "$RESOURCES" | jq -c '.[]' | while read -r resource; do
@@ -154,8 +157,8 @@ refresh_bookmarks() {
                    --username "$RW_USER" \
                    --region "$REGION")
 
-      # Create RW bookmark
-      cat > "$BOOKMARK_DIR/${RESOURCE_ID} (Write-Read).toml" <<EOF
+      # Create RW bookmark in temp directory
+      cat > "$TEMP_DIR/${RESOURCE_ID} (Write-Read).toml" <<EOF
 host = "$RW_ENDPOINT"
 port = $PORT
 user = "$RW_USER"
@@ -189,8 +192,8 @@ EOF
                    --username "$RO_USER" \
                    --region "$REGION")
 
-      # Create RO bookmark
-      cat > "$BOOKMARK_DIR/${RESOURCE_ID} (Read-Only).toml" <<EOF
+      # Create RO bookmark in temp directory
+      cat > "$TEMP_DIR/${RESOURCE_ID} (Read-Only).toml" <<EOF
 host = "$RO_ENDPOINT"
 port = $PORT
 user = "$RO_USER"
@@ -202,44 +205,31 @@ EOF
     fi
   done
 
-  BOOKMARK_COUNT=$(ls -1 "$BOOKMARK_DIR"/*.toml 2>/dev/null | wc -l)
+  BOOKMARK_COUNT=$(ls -1 "$TEMP_DIR"/*.toml 2>/dev/null | wc -l)
   echo "$(date): Refresh complete. Created $BOOKMARK_COUNT bookmarks."
 
   # Write touchfile with refresh status
-  cat > "$BOOKMARK_DIR/.last_refresh" <<EOF
+  cat > "$TEMP_DIR/.last_refresh" <<EOF
 timestamp=$(date -Iseconds)
 bookmark_count=$BOOKMARK_COUNT
 status=success
 EOF
+
+  # Atomically update symlink to point to new bookmark directory
+  ln -sfn "$(basename "$TEMP_DIR")" "$BOOKMARK_DIR"
+
+  # Cleanup old bookmark directories (all except current)
+  find "$BOOKMARK_BASE" -maxdepth 1 -type d -name "bookmarks.tmp.*" ! -name "bookmarks.tmp.$$" -exec rm -rf {} \;
 }
 
-# Main loop
-echo "Starting pgweb bookmark refresh service..."
-echo "Bookmark directory: $BOOKMARK_DIR"
-echo "Refresh interval: $REFRESH_INTERVAL seconds"
-
-while true; do
-  START_TIME=$(date +%s)
-
-  if ! refresh_bookmarks; then
-    echo "$(date): ERROR: Bookmark refresh failed"
-    # Write error status to touchfile
-    cat > "$BOOKMARK_DIR/.last_refresh" <<EOF
+# Run single refresh
+if ! refresh_bookmarks; then
+  echo "$(date): ERROR: Bookmark refresh failed"
+  # Write error status to touchfile
+  cat > "$BOOKMARK_DIR/.last_refresh" <<EOF
 timestamp=$(date -Iseconds)
 bookmark_count=0
 status=failed
 EOF
-  fi
-
-  # Calculate elapsed time and adjust sleep to maintain 10-minute cycle
-  END_TIME=$(date +%s)
-  ELAPSED=$((END_TIME - START_TIME))
-  SLEEP_TIME=$((REFRESH_INTERVAL - ELAPSED))
-
-  if [ $SLEEP_TIME -gt 0 ]; then
-    echo "$(date): Refresh took ${ELAPSED}s. Sleeping for ${SLEEP_TIME}s to maintain ${REFRESH_INTERVAL}s cycle..."
-    sleep "$SLEEP_TIME"
-  else
-    echo "$(date): WARNING: Refresh took ${ELAPSED}s, longer than ${REFRESH_INTERVAL}s interval!"
-  fi
-done
+  exit 1
+fi

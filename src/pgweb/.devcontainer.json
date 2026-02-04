@@ -11,13 +11,7 @@
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
-  "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
-    "root",
-    "/root",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
+  "postStartCommand": "/workspace/start-bookmark-refresh.sh",
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": false,

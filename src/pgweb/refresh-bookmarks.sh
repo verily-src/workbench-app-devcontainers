@@ -1,235 +1,188 @@
 #!/bin/bash
 set -e
 
-BOOKMARK_DIR="/root/.pgweb/bookmarks"
-BOOKMARK_BASE="/root/.pgweb"
-REFRESH_INTERVAL=600  # 10 minutes (IAM tokens last 15 min)
+# Allow overriding via environment for local testing
+readonly WB_EXE="${WB_EXE:-/usr/bin/wb}"
+readonly PGWEB_BASE="${PGWEB_BASE:-/root/.pgweb}"
+readonly BOOKMARK_DIR="${PGWEB_BASE}/bookmarks"
 
 # Create base directory if it doesn't exist
-mkdir -p "$BOOKMARK_BASE"
+mkdir -p "${PGWEB_BASE}"
 
-# Helper function to find workspace ID from UUID
-get_workspace_id_from_uuid() {
-  local uuid="$1"
-  echo "$ALL_WORKSPACES" | jq -r --arg uuid "$uuid" '.[] | select(.uuid == $uuid) | .id'
+# Helper function to get credentials and generate IAM auth token
+generate_iam_token() {
+  local resource_id="${1}"
+  local scope="${2}"
+  local endpoint="${3}"
+  local port="${4}"
+  local username="${5}"
+  local region="${6}"
+
+  # Get credentials from Workbench
+  local wb_creds
+  # shellcheck disable=SC2312
+  wb_creds=$(${WB_EXE} resource credentials --id "${resource_id}" --scope "${scope}" --format json 2>/dev/null) || return 1
+  readonly wb_creds
+
+  # Extract AWS credentials
+  local access_key secret_key session_token
+  # shellcheck disable=SC2312
+  access_key=$(echo "${wb_creds}" | jq -r '.AccessKeyId')
+  # shellcheck disable=SC2312
+  secret_key=$(echo "${wb_creds}" | jq -r '.SecretAccessKey')
+  # shellcheck disable=SC2312
+  session_token=$(echo "${wb_creds}" | jq -r '.SessionToken')
+  readonly access_key secret_key session_token
+
+  # Generate IAM token
+  AWS_ACCESS_KEY_ID="${access_key}" \
+  AWS_SECRET_ACCESS_KEY="${secret_key}" \
+  AWS_SESSION_TOKEN="${session_token}" \
+  aws rds generate-db-auth-token \
+    --hostname "${endpoint}" \
+    --port "${port}" \
+    --username "${username}" \
+    --region "${region}"
 }
 
-# Recursively follow references using embedded referencedResource data
-find_controlled_resource() {
-  local resource_json="$1"
-  local source_workspace_uuid="$2"
+# Helper function to create bookmark TOML file
+create_bookmark() {
+  local output_file="${1}"
+  local endpoint="${2}"
+  local port="${3}"
+  local username="${4}"
+  local password="${5}"
+  local database="${6}"
 
-  local resource_type=$(echo "$resource_json" | jq -r '.resourceType')
-
-  # If it's a controlled resource, return it and the workspace ID
-  if [[ "$resource_type" == "AWS_AURORA_DATABASE" ]]; then
-    # If we have a source workspace UUID, look up its ID
-    if [[ -n "$source_workspace_uuid" && "$source_workspace_uuid" != "null" ]]; then
-      local workspace_id=$(get_workspace_id_from_uuid "$source_workspace_uuid")
-      if [[ -z "$workspace_id" ]]; then
-        echo "ERROR: Could not find workspace ID for UUID: $source_workspace_uuid" >&2
-        return 1
-      fi
-      echo "$workspace_id|$resource_json"
-    else
-      # Use current workspace
-      echo "$CURRENT_WORKSPACE|$resource_json"
-    fi
-    return
-  fi
-
-  # If it's a reference, use the embedded referencedResource data
-  if [[ "$resource_type" == "AWS_AURORA_DATABASE_REFERENCE" ]]; then
-    local referenced_resource=$(echo "$resource_json" | jq -r '.referencedResource')
-
-    if [[ -z "$referenced_resource" || "$referenced_resource" == "null" ]]; then
-      echo "ERROR: Reference has no embedded referencedResource data" >&2
-      return 1
-    fi
-
-    # Get the source workspace UUID - this is where the controlled resource lives
-    local next_workspace_uuid=$(echo "$resource_json" | jq -r '.sourceWorkspaceId')
-
-    # Recursively check the referenced resource, passing the workspace UUID
-    find_controlled_resource "$referenced_resource" "$next_workspace_uuid"
-    return
-  fi
-
-  # Unknown type
-  echo "ERROR: Unknown resource type: $resource_type" >&2
-  return 1
+  cat > "${output_file}" <<EOF
+host = "${endpoint}"
+port = ${port}
+user = "${username}"
+password = "${password}"
+database = "${database}"
+sslmode = "require"
+EOF
 }
 
 refresh_bookmarks() {
+  # shellcheck disable=SC2312
   echo "$(date): Refreshing pgweb bookmarks from Workbench resources..."
 
   # Create temporary directory for new bookmarks (using PID for uniqueness)
-  TEMP_DIR="/root/.pgweb/bookmarks.tmp.$$"
-  rm -rf "$TEMP_DIR"
-  mkdir -p "$TEMP_DIR"
-
-  # Get current workspace ID
-  CURRENT_WORKSPACE=$(/usr/bin/wb workspace describe --format json | jq -r '.id')
-
-  # Get list of all accessible workspaces for UUID->ID lookup
-  ALL_WORKSPACES=$(/usr/bin/wb workspace list --format json)
+  local TEMP_DIR="${PGWEB_BASE}/bookmarks.tmp.$$"
+  readonly TEMP_DIR
+  rm -rf "${TEMP_DIR}"
+  mkdir -p "${TEMP_DIR}"
 
   # Get list of Aurora databases from Workbench
-  RESOURCES=$(/usr/bin/wb resource list --format json)
+  local RESOURCES
+  # shellcheck disable=SC2312
+  RESOURCES=$(${WB_EXE} resource list --format json)
+  readonly RESOURCES
 
   # Process each resource
-  echo "$RESOURCES" | jq -c '.[]' | while read -r resource; do
-    RESOURCE_TYPE=$(echo "$resource" | jq -r '.resourceType')
+  # shellcheck disable=SC2312
+  echo "${RESOURCES}" | jq -c '.[]' | while read -r resource; do
+    local RESOURCE_TYPE
+    # shellcheck disable=SC2312
+    RESOURCE_TYPE=$(echo "${resource}" | jq -r '.resourceType')
 
     # Skip non-Aurora resources
-    if [[ ! "$RESOURCE_TYPE" =~ AURORA_DATABASE ]]; then
+    if [[ ! "${RESOURCE_TYPE}" =~ AURORA_DATABASE ]]; then
       continue
     fi
 
-    RESOURCE_ID=$(echo "$resource" | jq -r '.id')
-    echo "  Processing: $RESOURCE_ID (type: $RESOURCE_TYPE)"
+    local RESOURCE_ID
+    # shellcheck disable=SC2312
+    RESOURCE_ID=$(echo "${resource}" | jq -r '.id')
+    echo "  Processing: ${RESOURCE_ID} (type: ${RESOURCE_TYPE})"
 
-    # Find the controlled resource by following reference chain
-    if [[ "$RESOURCE_TYPE" == "AWS_AURORA_DATABASE_REFERENCE" ]]; then
-      echo "    Following reference chain..."
-
-      # Use embedded referencedResource data
-      CONTROLLED_INFO=$(find_controlled_resource "$resource" "")
-      CONTROLLED_WORKSPACE=$(echo "$CONTROLLED_INFO" | cut -d'|' -f1)
-      DB_DATA=$(echo "$CONTROLLED_INFO" | cut -d'|' -f2-)
+    # Extract database details from top level (controlled) or referencedResource (reference)
+    local DB_DATA
+    if [[ "${RESOURCE_TYPE}" == "AWS_AURORA_DATABASE" ]]; then
+      DB_DATA="${resource}"
     else
-      # Already a controlled resource
-      CONTROLLED_WORKSPACE="$CURRENT_WORKSPACE"
-      DB_DATA="$resource"
+      # shellcheck disable=SC2312
+      DB_DATA=$(echo "${resource}" | jq -r '.referencedResource')
     fi
 
-    echo "    Controlled resource workspace: $CONTROLLED_WORKSPACE"
+    # Extract database connection info
+    local DB_NAME RO_ENDPOINT RO_USER RW_ENDPOINT RW_USER PORT REGION
+    # shellcheck disable=SC2312
+    DB_NAME=$(echo "${DB_DATA}" | jq -r '.databaseName')
+    # shellcheck disable=SC2312
+    RO_ENDPOINT=$(echo "${DB_DATA}" | jq -r '.roEndpoint')
+    # shellcheck disable=SC2312
+    RO_USER=$(echo "${DB_DATA}" | jq -r '.roUser')
+    # shellcheck disable=SC2312
+    RW_ENDPOINT=$(echo "${DB_DATA}" | jq -r '.rwEndpoint')
+    # shellcheck disable=SC2312
+    RW_USER=$(echo "${DB_DATA}" | jq -r '.rwUser')
+    # shellcheck disable=SC2312
+    PORT=$(echo "${DB_DATA}" | jq -r '.port')
+    # shellcheck disable=SC2312
+    REGION=$(echo "${DB_DATA}" | jq -r '.region // "us-east-1"')
 
-    # For permissions, use credentials from the resource in the CURRENT workspace
-    # Don't try to access the controlled workspace if it's a reference (may not have access)
-    CAN_WRITE=false
-    if [[ "$RESOURCE_TYPE" == "AWS_AURORA_DATABASE" ]]; then
-      # Controlled resource - check workspace role
-      WORKSPACE_INFO=$(/usr/bin/wb workspace describe --workspace "$CONTROLLED_WORKSPACE" --format json)
-      HIGHEST_ROLE=$(echo "$WORKSPACE_INFO" | jq -r '.highestRole')
-      echo "    User role in controlled workspace: $HIGHEST_ROLE"
-      if [[ "$HIGHEST_ROLE" == "OWNER" || "$HIGHEST_ROLE" == "WRITER" ]]; then
-        CAN_WRITE=true
-      fi
-    else
-      # Referenced resource - try to get WRITE_READ credentials to check access
-      echo "    Checking write access for referenced resource..."
-      if /usr/bin/wb resource credentials --id "$RESOURCE_ID" --scope WRITE_READ --format json >/dev/null 2>&1; then
-        CAN_WRITE=true
-        echo "    User has write access to referenced resource"
-      else
-        echo "    User has read-only access to referenced resource"
-      fi
+    # Validate all required fields are present
+    if [[ -z "${DB_NAME}" || "${DB_NAME}" == "null" ]] || \
+       [[ -z "${RO_ENDPOINT}" || "${RO_ENDPOINT}" == "null" ]] || \
+       [[ -z "${RO_USER}" || "${RO_USER}" == "null" ]] || \
+       [[ -z "${RW_ENDPOINT}" || "${RW_ENDPOINT}" == "null" ]] || \
+       [[ -z "${RW_USER}" || "${RW_USER}" == "null" ]] || \
+       [[ -z "${PORT}" || "${PORT}" == "null" ]]; then
+      echo "    Missing required database fields, skipping"
+      continue
     fi
 
-    # Extract database info
-    DB_NAME=$(echo "$DB_DATA" | jq -r '.databaseName')
-    RW_ENDPOINT=$(echo "$DB_DATA" | jq -r '.rwEndpoint')
-    RW_USER=$(echo "$DB_DATA" | jq -r '.rwUser')
-    RO_ENDPOINT=$(echo "$DB_DATA" | jq -r '.roEndpoint')
-    RO_USER=$(echo "$DB_DATA" | jq -r '.roUser')
-    PORT=$(echo "$DB_DATA" | jq -r '.port')
-    REGION=$(echo "$DB_DATA" | jq -r '.region // "us-east-1"')
-
-    # Generate IAM token for RW user (only if user has write permissions)
-    if [[ "$CAN_WRITE" == "true" && -n "$RW_ENDPOINT" && "$RW_ENDPOINT" != "null" ]]; then
-      echo "    Getting Workbench credentials for RW access..."
-
-      # Get temporary AWS credentials from Workbench
-      WB_CREDS=$(/usr/bin/wb resource credentials --id "$RESOURCE_ID" --scope WRITE_READ --format json)
-      AWS_ACCESS_KEY_ID=$(echo "$WB_CREDS" | jq -r '.AccessKeyId')
-      AWS_SECRET_ACCESS_KEY=$(echo "$WB_CREDS" | jq -r '.SecretAccessKey')
-      AWS_SESSION_TOKEN=$(echo "$WB_CREDS" | jq -r '.SessionToken')
-
-      echo "    Generating RW token for $RW_USER@$RW_ENDPOINT..."
-      # Generate RDS IAM auth token using those credentials
-      RW_TOKEN=$(AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
-                 AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
-                 AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
-                 aws rds generate-db-auth-token \
-                   --hostname "$RW_ENDPOINT" \
-                   --port "$PORT" \
-                   --username "$RW_USER" \
-                   --region "$REGION")
-
-      # Create RW bookmark in temp directory
-      cat > "$TEMP_DIR/${RESOURCE_ID} (Write-Read).toml" <<EOF
-host = "$RW_ENDPOINT"
-port = $PORT
-user = "$RW_USER"
-password = "$RW_TOKEN"
-database = "$DB_NAME"
-sslmode = "require"
-EOF
-      echo "    Created bookmark: ${RESOURCE_ID} (Write-Read)"
-    elif [[ "$CAN_WRITE" == "false" ]]; then
-      echo "    Skipping RW bookmark (user has read-only permissions)"
-    fi
-
-    # Generate IAM token for RO user (always create RO bookmark)
-    if [[ -n "$RO_ENDPOINT" && "$RO_ENDPOINT" != "null" ]]; then
-      echo "    Getting Workbench credentials for RO access..."
-
-      # Get temporary AWS credentials from Workbench
-      WB_CREDS=$(/usr/bin/wb resource credentials --id "$RESOURCE_ID" --scope READ_ONLY --format json)
-      AWS_ACCESS_KEY_ID=$(echo "$WB_CREDS" | jq -r '.AccessKeyId')
-      AWS_SECRET_ACCESS_KEY=$(echo "$WB_CREDS" | jq -r '.SecretAccessKey')
-      AWS_SESSION_TOKEN=$(echo "$WB_CREDS" | jq -r '.SessionToken')
-
-      echo "    Generating RO token for $RO_USER@$RO_ENDPOINT..."
-      # Generate RDS IAM auth token using those credentials
-      RO_TOKEN=$(AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
-                 AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
-                 AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
-                 aws rds generate-db-auth-token \
-                   --hostname "$RO_ENDPOINT" \
-                   --port "$PORT" \
-                   --username "$RO_USER" \
-                   --region "$REGION")
-
-      # Create RO bookmark in temp directory
-      cat > "$TEMP_DIR/${RESOURCE_ID} (Read-Only).toml" <<EOF
-host = "$RO_ENDPOINT"
-port = $PORT
-user = "$RO_USER"
-password = "$RO_TOKEN"
-database = "$DB_NAME"
-sslmode = "require"
-EOF
+    # Try to create READ_ONLY bookmark
+    echo "    Checking read access..."
+    local RO_TOKEN
+    # shellcheck disable=SC2310,SC2311,SC2312
+    if RO_TOKEN=$(generate_iam_token "${RESOURCE_ID}" "READ_ONLY" "${RO_ENDPOINT}" "${PORT}" "${RO_USER}" "${REGION}"); then
+      echo "    Read access confirmed"
+      echo "    Creating read-only bookmark..."
+      create_bookmark "${TEMP_DIR}/${RESOURCE_ID} (Read-Only).toml" "${RO_ENDPOINT}" "${PORT}" "${RO_USER}" "${RO_TOKEN}" "${DB_NAME}"
       echo "    Created bookmark: ${RESOURCE_ID} (Read-Only)"
+    else
+      echo "    No read access to ${RESOURCE_ID}, skipping"
+      continue
+    fi
+
+    # Try to create WRITE_READ bookmark
+    echo "    Checking write access..."
+    local RW_TOKEN
+    # shellcheck disable=SC2310,SC2311,SC2312
+    if RW_TOKEN=$(generate_iam_token "${RESOURCE_ID}" "WRITE_READ" "${RW_ENDPOINT}" "${PORT}" "${RW_USER}" "${REGION}"); then
+      echo "    Write access confirmed"
+      echo "    Creating write-read bookmark..."
+      create_bookmark "${TEMP_DIR}/${RESOURCE_ID} (Write-Read).toml" "${RW_ENDPOINT}" "${PORT}" "${RW_USER}" "${RW_TOKEN}" "${DB_NAME}"
+      echo "    Created bookmark: ${RESOURCE_ID} (Write-Read)"
+    else
+      echo "    No write access, skipping write-read bookmark"
     fi
   done
 
-  BOOKMARK_COUNT=$(ls -1 "$TEMP_DIR"/*.toml 2>/dev/null | wc -l)
-  echo "$(date): Refresh complete. Created $BOOKMARK_COUNT bookmarks."
-
-  # Write touchfile with refresh status
-  cat > "$TEMP_DIR/.last_refresh" <<EOF
-timestamp=$(date -Iseconds)
-bookmark_count=$BOOKMARK_COUNT
-status=success
-EOF
+  # Count bookmarks - must use find since the while loop runs in a subshell (due to pipe),
+  # so a counter variable incremented in the loop would not be visible here
+  local BOOKMARK_COUNT
+  # shellcheck disable=SC2312
+  BOOKMARK_COUNT=$(find "${TEMP_DIR}" -name "*.toml" -type f 2>/dev/null | wc -l)
+  readonly BOOKMARK_COUNT
+  # shellcheck disable=SC2312
+  echo "$(date): Refresh complete. Created ${BOOKMARK_COUNT} bookmarks."
 
   # Atomically update symlink to point to new bookmark directory
-  ln -sfn "$(basename "$TEMP_DIR")" "$BOOKMARK_DIR"
+  # shellcheck disable=SC2312
+  ln -sfn "$(basename "${TEMP_DIR}")" "${BOOKMARK_DIR}"
 
   # Cleanup old bookmark directories (all except current)
-  find "$BOOKMARK_BASE" -maxdepth 1 -type d -name "bookmarks.tmp.*" ! -name "bookmarks.tmp.$$" -exec rm -rf {} \;
+  find "${PGWEB_BASE}" -maxdepth 1 -type d -name "bookmarks.tmp.*" ! -name "bookmarks.tmp.$$" -exec rm -rf {} \;
 }
 
 # Run single refresh
+# shellcheck disable=SC2310
 if ! refresh_bookmarks; then
+  # shellcheck disable=SC2312
   echo "$(date): ERROR: Bookmark refresh failed"
-  # Write error status to touchfile
-  cat > "$BOOKMARK_DIR/.last_refresh" <<EOF
-timestamp=$(date -Iseconds)
-bookmark_count=0
-status=failed
-EOF
   exit 1
 fi

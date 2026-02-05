@@ -15,6 +15,7 @@ echo "Running initial bookmark refresh..."
 
 # Start background loop for continuous refresh (detached from parent)
 echo "Starting background bookmark refresh service (every 10 minutes)..."
+# shellcheck disable=SC2016
 nohup bash -c '
   while true; do
     sleep 600  # 10 minutes
@@ -23,4 +24,4 @@ nohup bash -c '
 ' >> /root/.pgweb/refresh.log 2>&1 &
 
 REFRESH_PID=$!
-echo "Bookmark refresh service configured (background PID: $REFRESH_PID)"
+echo "Bookmark refresh service configured (background PID: ${REFRESH_PID})"

@@ -8,7 +8,7 @@ services:
     #   context: .
     # Override the default entrypoint to use our custom script
     entrypoint: []
-    command: ["pgweb", "--sessions", "--bind=0.0.0.0", "--listen=8081", "--bookmarks-dir=/root/.pgweb/bookmarks", "--lock-session"]
+    command: ["pgweb", "--sessions", "--bind=0.0.0.0", "--listen=8081", "--bookmarks-dir=/root/.pgweb/bookmarks"]
     user: "root"
     restart: always
     volumes:

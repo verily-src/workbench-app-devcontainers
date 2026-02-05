@@ -21,23 +21,30 @@ The app automatically discovers all Aurora databases in your Workbench workspace
 ### How It Works
 
 1. **Auto-Discovery**: Every 10 minutes, the app queries `wb resource list` to find all Aurora databases
-2. **IAM Token Generation**: For each database, generates fresh IAM authentication tokens for both read-write (RW) and read-only (RO) users
-3. **Bookmark Creation**: Creates pgweb bookmarks for each database connection
-4. **Always Fresh**: Tokens refresh every 10 minutes (they expire after 15), so connections never expire
+2. **Access-Based Credentials**: For each database, attempts to get credentials based on your workspace permissions:
+   - **Read-Only**: Always attempted first - if successful, creates a read-only bookmark
+   - **Write-Read**: Only attempted if you have write access - creates a write-read bookmark if successful
+3. **IAM Token Generation**: Generates fresh IAM authentication tokens for each access level you have
+4. **Bookmark Creation**: Creates pgweb bookmarks only for the access levels you're granted
+5. **Always Fresh**: Tokens refresh every 10 minutes (they expire after 15), so connections never expire
+
+**Note**: You'll only see bookmarks for databases you have access to. If you only have read-only access to a database, you'll only see the read-only bookmark. If a database is removed from the workspace or your access is revoked, its bookmarks will disappear on the next refresh.
 
 ### Using Bookmarks
 
-When you open pgweb, you'll see bookmarks for each database in your workspace:
-- `aurora-demo-db-20260115 (Write-Read)` - Read-write connection
+When you open pgweb, you'll see bookmarks for databases you have access to. Examples:
+
 - `aurora-demo-db-20260115 (Read-Only)` - Read-only connection
-- `dc-database (Write-Read)` - Read-write connection (referenced database)
-- `dc-database (Read-Only)` - Read-only connection (referenced database)
+- `aurora-demo-db-20260115 (Write-Read)` - Read-write connection (only if you have write access)
+- `dc-database (Read-Only)` - Read-only connection to referenced database
+- `dc-database (Write-Read)` - Read-write connection (only if you have write access)
 
 Click any bookmark to connect instantly - no need to enter credentials!
 
 ### Manual Connections
 
 You can also use the interactive login form to enter connection details manually:
+
 - **Host**: Your Aurora cluster endpoint
 - **Port**: `5432`
 - **Username**: Your database username
@@ -49,7 +56,22 @@ You can also use the interactive login form to enter connection details manually
 
 This app is optimized for Aurora PostgreSQL with IAM authentication. The automatic bookmark system handles token refresh transparently, and manual connections support entering temporary IAM passwords directly without URL encoding issues.
 
-For local testing:
+## Local Testing
+
+For local testing of the bookmark refresh script:
+
+```bash
+# Test with custom paths (useful for local development)
+WB_EXE="$(which wb)" PGWEB_BASE=/tmp/pgweb ./src/pgweb/refresh-bookmarks.sh
+```
+
+Environment variables:
+
+- `WB_EXE` - Path to wb executable (default: `/usr/bin/wb`)
+- `PGWEB_BASE` - Base directory for pgweb config (default: `/root/.pgweb`)
+
+For full devcontainer testing:
+
 1. Create Docker network: `docker network create app-network`
 2. Run the app: `devcontainer up --workspace-folder .`
 3. Access at: `http://localhost:8081`

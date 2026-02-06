@@ -2,16 +2,16 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "353631943781.dkr.ecr.eu-west-2.amazonaws.com/verily-cedar-small:latest"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BASE_IMAGE=rocker/shiny:4.5.0
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/rstudio:cached
     ports:
-      - "8787:8787"
-    environment:
-      "DISABLE_AUTH": "true"
-      USER: rstudio # Added this line here
+      - "3838:3838"
     networks:
       - app-network
     cap_add:

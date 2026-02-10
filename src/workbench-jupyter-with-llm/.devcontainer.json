@@ -33,6 +33,11 @@
     "./.devcontainer/features/wb-mcp-server": {
       "username": "jupyter",
       "userHomeDir": "/home/jupyter"
+    },
+    "./.devcontainer/features/llm-context": {
+      "username": "jupyter",
+      "userHomeDir": "/home/jupyter",
+      "autorun": true
     }
   },
   "remoteUser": "root",

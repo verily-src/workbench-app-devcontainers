@@ -1,0 +1,40 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    # This can be either a pre-existing image or built from a Dockerfile
+    image: "jupyter/scipy-notebook"
+    # build:
+    #   context: .
+    user: "jovyan"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/jovyan/work
+    # The port specified here will be forwarded and accessible from the
+    # Workbench UI.
+    ports:
+      - 8888:8888
+    command: "start-notebook.sh --ip=0.0.0.0 --port=8888 --no-browser --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.allow_origin='*'"
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+    # The service must be connected to the "app-network" Docker network
+    networks:
+      - app-network
+    # SYS_ADMIN and fuse are required to mount workspace resources into the
+    # container.
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

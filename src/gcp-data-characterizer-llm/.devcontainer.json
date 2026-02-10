@@ -5,25 +5,30 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
-    "./run-startup-if-present.sh",
-    "root",
-    "/root",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
+    "bash",
+    "-c",
+    "./startupscript/post-startup.sh root /root \"${templateOption:cloud}\" \"${templateOption:login}\""
   ],
   "postStartCommand": [
-    "./run-remount-if-present.sh",
+    "./startupscript/remount-on-restart.sh",
     "root",
     "/root",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/java:1": {
-      "version": "17"
-    },
+    "ghcr.io/devcontainers/features/java:1": {"version": "17"},
     "ghcr.io/devcontainers/features/aws-cli:1": {},
     "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
   },
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [".py", ".md", ".csv", ".html", ".json"],
+        "fileUrlSuffix": "/?path={path}",
+        "folderUrlSuffix": "/?path={path}"
+      }
+    }
+  }
 }

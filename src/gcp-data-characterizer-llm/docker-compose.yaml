@@ -1,15 +1,16 @@
 services:
   app:
+    # The container name must be "application-server" (Workbench requirement)
     container_name: "application-server"
-    build:
-      context: .
+    # Pre-built image only (no build: section) - matches lab-results-analyzer-dev for reliable startup
+    image: "python:3.11-slim"
     restart: always
     volumes:
       - .:/workspace:cached
       - work:/root/work
     ports:
       - 8501:8501
-    command: ["sh", "-c", "set -e; if [ -f /workspace/app.py ]; then cd /workspace; elif [ -f /workspace/src/gcp-data-characterizer-llm/app.py ]; then cd /workspace/src/gcp-data-characterizer-llm; else echo 'ERROR: app.py not found'; exit 1; fi; exec streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false"]
+    command: ["bash", "-c", "if [ -f /workspace/requirements.txt ]; then cd /workspace; elif [ -f /workspace/src/gcp-data-characterizer-llm/requirements.txt ]; then cd /workspace/src/gcp-data-characterizer-llm; else echo 'ERROR: requirements.txt not found'; exit 1; fi && pip install -q --no-cache-dir -r requirements.txt && exec streamlit run app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false"]
     networks:
       - app-network
     cap_add:

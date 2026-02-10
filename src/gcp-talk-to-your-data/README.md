@@ -1,88 +1,62 @@
 # gcp-talk-to-your-data
 
-Exact copy of **lab-results-analyzer-dev** for use as a base app on Workbench (JupyterLab, port 8888). You can add GCP data characterization and "talk to your data" features on top of this working setup.
+JupyterLab app on Workbench (port 8888) with **GCP data source auto-discovery**, **automated data profiling**, and **Talk to your data** (LLM) using your own API key.
 
 ## Features
 
-This app includes a Jupyter notebook (`Lab_Results_Analysis.ipynb`) that:
-- **Reads data from Workbench data collections** (GCS buckets) or mounted workspace paths
-- Supports multiple file formats: CSV, Parquet, JSON, Excel
-- Generates comprehensive distribution reports for each field:
-  - **Patient ID**: Distribution of tests per patient with visualizations
-  - **Lab Type**: Frequency analysis with bar charts and pie charts
-  - **Lab Value**: Statistical analysis with histograms, box plots, and density plots
-  - **Lab Date**: Temporal analysis with timeline plots and monthly/weekly distributions
-- Provides summary statistics for all fields
-- Falls back to sample data generation if no data source is configured
+### 1. Auto-detect GCP data sources
+- **Authenticates with GCP** using Application Default Credentials (Workbench provides these; no API key needed for GCP).
+- **Discovers** your GCS buckets and BigQuery datasets/tables in the Workbench-related GCP project.
+- Run the discovery cell in the notebook to list buckets and datasets; then pick a source to load.
 
-## Data Source Configuration
+### 2a. Automated data profiling report
+- After you **pick a data source** (GCS file or BigQuery table) and load it, the notebook generates a **ydata-profiling** report.
+- The report includes distributions, null %, min/max where applicable, and other per-column statistics.
+- You can view it in the notebook or save it as HTML.
 
-The notebook can read data from:
+### 2b. Talk to your data (LLM)
+- You **provide your LLM API key** when you run the “Talk to your data” section (the key is not stored).
+- Once the key is set, you can **ask any question** about the loaded data; the app sends the schema and a sample to the LLM and returns the answer.
+- Supports **OpenAI** or any **OpenAI-compatible** API (e.g. Azure). Use your preferred model (e.g. gpt-4o-mini).
 
-1. **GCS Bucket** (Recommended): Direct access to Google Cloud Storage buckets
-   - Set `GCS_BUCKET` and `FILE_NAME` in the notebook
-   - Example: `GCS_BUCKET = "my-bucket"`, `FILE_NAME = "data/lab_results.csv"`
+## Main notebook
 
-2. **Mounted Workspace Path**: Access data from mounted workspace resources
-   - Set `USE_MOUNTED_PATH = True` and `MOUNTED_FILE_PATH`
-   - Example: `MOUNTED_FILE_PATH = "/home/jovyan/workspaces/my-workspace/data/lab_results.csv"`
+- **`GCP_Data_Profiling_and_Chat.ipynb`** – Run this for the full flow:
+  1. Setup & install dependencies (google-cloud-*, ydata-profiling, openai).
+  2. Authenticate with GCP and discover buckets + BigQuery datasets/tables.
+  3. Pick a data source (set variables for GCS bucket/path or BQ project/dataset/table) and load into a DataFrame.
+  4. Generate the ydata-profiling report.
+  5. Talk to your data: enter your LLM API key when prompted, then ask questions.
 
-3. **Sample Data**: If no configuration is provided, generates sample data for testing
+Supporting file:
+- **`gcp_tools.py`** – GCP discovery, load from GCS/BigQuery, and LLM `talk_to_data()` helper.
 
-### Required Data Columns
+## Other files
 
-Your data file should have these columns (case-insensitive):
-- `Patient ID` (or `patient_id`, `PatientID`, etc.)
-- `Lab Type` (or `lab_type`, `LabType`, etc.)
-- `Lab Value` (or `lab_value`, `LabValue`, etc.)
-- `Lab Date` (or `lab_date`, `LabDate`, etc.) - should be in a date format
+- **`Lab_Results_Analysis.ipynb`** – Original lab results analysis notebook (still available).
+- **`requirements.txt`** – Python dependencies (installed at container startup).
 
 ## Configuration
 
-- **Image**: jupyter/scipy-notebook (includes pandas, numpy, matplotlib, seaborn)
+- **Image**: jupyter/scipy-notebook
 - **Port**: 8888
 - **User**: jovyan
-- **Home Directory**: /home/jovyan
+- **GCP**: Uses ADC (no key needed). Ensure your Workbench workspace has access to the desired GCP project/buckets/datasets.
 
 ## Access
 
-Once deployed in Workbench:
-1. Access JupyterLab at the app URL (port 8888)
-2. Open the `Lab_Results_Analysis.ipynb` notebook
-3. Run all cells to see the distribution reports
+1. In Workbench, open the app (JupyterLab at port 8888).
+2. Open **GCP_Data_Profiling_and_Chat.ipynb** (in your home directory or under `/workspace`).
+3. Run cells in order: setup → discover sources → set source variables and load → profiling → talk to your data (paste API key when prompted).
 
-For local testing:
-1. Create Docker network: `docker network create app-network`
-2. Run the app: `devcontainer up --workspace-folder .`
-3. Access at: `http://localhost:8888`
+## Workbench parameters
 
-## Customization
-
-Edit the following files to customize your app:
-
-- `.devcontainer.json` - Devcontainer configuration and features
-- `docker-compose.yaml` - Docker Compose configuration (change the `command` to customize ttyd options)
-- `devcontainer-template.json` - Template options and metadata
-
-## Testing
-
-To test this app template:
-
-```bash
-cd test
-./test.sh lab-results-analyzer-dev
-```
-
-## Usage
-
-1. Fork the repository
-2. Modify the configuration files as needed
-3. In Workbench UI, create a custom app pointing to your forked repository
-4. Select this app template (lab-results-analyzer-dev)
+| Parameter | Value |
+|-----------|--------|
+| Repository folder path to .devcontainer.json | `src/gcp-talk-to-your-data` |
+| Template | gcp-talk-to-your-data |
 
 ## Development
 
-This is a development version of the lab-results-analyzer app. Use this copy to:
-- Iteratively add new features
-- Test experimental changes
-- Develop enhancements without affecting the original app
+- `.devcontainer.json` – postCreateCommand installs `requirements.txt` and copies the new notebook and `gcp_tools.py` to the user’s home.
+- Add or change discovery/profiling/LLM behavior in `gcp_tools.py` and the notebook.

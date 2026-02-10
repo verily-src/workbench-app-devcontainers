@@ -128,6 +128,12 @@ After the app is created, you can open a workspace that uses this custom app.
 2. **Build failure:** The first time the app runs, Workbench builds the Docker image. If the build fails (e.g. a Python dependency error), the app won’t start. Having a colleague with access to build logs check for errors can help.
 3. **Port 8501:** Ensure nothing else in the workspace is using port 8501. The app is configured to use 8501 for Streamlit.
 
+**Container appears then disappears (e.g. `angry_shaw` then gone):** The app container is likely exiting (crash or missing app.py path) and then being removed. To capture logs:
+- **Next time:** As soon as you see a new container with `docker ps -a`, run `docker logs <container-name>` immediately.
+- **If the image is still on the VM:** Run `docker images` to find the app image, then run the container manually (without `--rm`) so it stays after exit:  
+  `docker run --name debug-app <image-id>`  
+  After it exits, run `docker logs debug-app` to see the error.
+
 ---
 
 ## Local testing (optional)

@@ -115,6 +115,21 @@ After the app is created, you can open a workspace that uses this custom app.
 
 ---
 
+## Troubleshooting: App not starting / no errors
+
+**Symptoms:** App shows as not starting in Workbench, and no errors are shown. You may see "no permission to view logs" in GCP Console when opening the VM.
+
+**What we changed:**
+- The app now uses **wrapper scripts** (`run-startup-if-present.sh`, `run-remount-if-present.sh`) so that if the Workbench `startupscript/` folder is not available (e.g. when only the app folder is mounted), the container still starts instead of failing on a missing script.
+- Commit and push these changes, then **recreate or restart the app** in Workbench so it uses the updated image and config.
+
+**If it still doesn’t start:**
+1. **GCP logs:** "No permission to view logs" usually means the VM’s logs are in a project or bucket you don’t have access to. Ask your Workbench/GCP admin for **Logs Viewer** (or **Compute Engine** log access) on the workspace project so you can see serial console or container logs.
+2. **Build failure:** The first time the app runs, Workbench builds the Docker image. If the build fails (e.g. a Python dependency error), the app won’t start. Having a colleague with access to build logs check for errors can help.
+3. **Port 8501:** Ensure nothing else in the workspace is using port 8501. The app is configured to use 8501 for Streamlit.
+
+---
+
 ## Local testing (optional)
 
 To run the app locally with the devcontainer CLI:

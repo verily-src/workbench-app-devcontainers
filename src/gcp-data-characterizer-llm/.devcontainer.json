@@ -5,14 +5,14 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
-    "./startupscript/post-startup.sh",
+    "./run-startup-if-present.sh",
     "root",
     "/root",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
   "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
+    "./run-remount-if-present.sh",
     "root",
     "/root",
     "${templateOption:cloud}",

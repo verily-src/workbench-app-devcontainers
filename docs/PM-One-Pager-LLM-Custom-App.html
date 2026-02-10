@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Product Manager One-Pager: LLM Custom Apps on Workbench</title>
+  <style>
+    @media print { body { max-width: 100%; font-size: 10pt; } .page-break { page-break-after: always; } }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      line-height: 1.4;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px 28px;
+      color: #1a1a1a;
+      font-size: 11pt;
+    }
+    h1 {
+      font-size: 1.35em;
+      margin: 0 0 4px 0;
+      color: #0d47a1;
+      border-bottom: 2px solid #0d47a1;
+      padding-bottom: 6px;
+    }
+    .subtitle { font-size: 0.95em; color: #444; margin: 0 0 16px 0; }
+    h2 { font-size: 1.05em; margin: 14px 0 6px 0; color: #1565c0; }
+    p { margin: 0 0 8px 0; }
+    ul, ol { margin: 4px 0 10px 0; padding-left: 20px; }
+    li { margin-bottom: 3px; }
+    .repo {
+      background: #f5f5f5;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.95em;
+      margin: 8px 0;
+      word-break: break-all;
+    }
+    .step { margin-bottom: 10px; }
+    .step-num { font-weight: 700; color: #1565c0; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.95em; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+    th { background: #e3f2fd; }
+    .note { background: #fff8e1; padding: 8px 10px; border-left: 3px solid #ffa000; margin: 8px 0; font-size: 0.95em; }
+    .footer { margin-top: 16px; font-size: 0.9em; color: #666; }
+  </style>
+</head>
+<body>
+
+  <h1>How Product Managers Can Create an LLM-Integrated Custom App on Workbench</h1>
+  <p class="subtitle">Use dev containers to build tools that read from your data collections and analyze data with LLMs.</p>
+
+  <h2>1. Repository and concept</h2>
+  <p>Custom apps on Verily Workbench are defined as <strong>dev containers</strong> in this repository. Fork it, add or use an existing app template, then point Workbench at your fork.</p>
+  <p><strong>Exact repository address:</strong></p>
+  <div class="repo">https://github.com/verily-src/workbench-app-devcontainers</div>
+  <p>Fork this repo to your GitHub org or account. Your app code (e.g. Jupyter notebooks, Python scripts) will live in a folder under <code>src/</code> (e.g. <code>src/lab-results-analyzer-dev</code> or <code>src/data-profiling-dashboard</code>).</p>
+
+  <h2>2. Step-by-step: Get the GCP Data Characterizer with LLM app running</h2>
+
+  <p><strong>Part A — Fork and add the app to your repo</strong></p>
+  <ol>
+    <li>Open <strong>https://github.com/verily-src/workbench-app-devcontainers</strong> in your browser.</li>
+    <li>Click <strong>Fork</strong> (top right). Choose your GitHub user or organization and confirm. You now have a copy, e.g. <code>https://github.com/&lt;your-org&gt;/workbench-app-devcontainers</code>.</li>
+    <li>Clone your fork on your machine:
+      <div class="repo">git clone https://github.com/&lt;your-org&gt;/workbench-app-devcontainers.git<br>cd workbench-app-devcontainers</div>
+    </li>
+    <li>Add the <strong>GCP Data Characterizer with LLM</strong> app into your fork:
+      <ul>
+        <li>If you have the app folder <code>src/gcp-data-characterizer-llm</code> from this repo, copy it into your fork’s <code>src/</code> directory.</li>
+        <li>Or run from your fork root: <code>./scripts/create-custom-app.sh gcp-data-characterizer-llm python:3.11-slim 8501 root /root</code>, then replace the generated files with the full app (Dockerfile, app.py, lib/, etc.).</li>
+      </ul>
+    </li>
+    <li>Commit and push to GitHub:
+      <div class="repo">git add src/gcp-data-characterizer-llm<br>git commit -m "Add GCP Data Characterizer with LLM custom app"<br>git push origin master</div>
+      (Use <code>main</code> instead of <code>master</code> if that’s your default branch.)
+    </li>
+  </ol>
+
+  <p><strong>Part B — Create and use the app in Workbench</strong></p>
+  <ol start="6">
+    <li>In Verily Workbench, create a <strong>Workspace</strong> (or use an existing one) and attach your <strong>Data Collection</strong> (GCS bucket) if you need it for GCS files.</li>
+    <li>In that workspace, go to <strong>Apps → Create App → Custom</strong> (or the equivalent path in your Workbench UI).</li>
+    <li>Enter <strong>Repository URL</strong>: your fork, e.g. <code>https://github.com/&lt;your-org&gt;/workbench-app-devcontainers</code>.</li>
+    <li>Enter <strong>Branch</strong>: the branch you pushed (e.g. <code>master</code> or <code>main</code>).</li>
+    <li>Set <strong>Template path</strong> to <code>src/gcp-data-characterizer-llm</code>. Workbench will use the <code>.devcontainer.json</code> and <code>docker-compose.yaml</code> in that folder.</li>
+    <li>Select the template <strong>“GCP Data Characterizer with LLM”</strong> if prompted, and choose options (e.g. Cloud: <strong>GCP</strong>). Create the app.</li>
+    <li>Once the app is running, open the app URL (port <strong>8501</strong>). You should see the Streamlit UI.</li>
+    <li>In the app:
+      <ul>
+        <li><strong>Sidebar → Data source:</strong> Choose <strong>GCS file</strong> or <strong>BigQuery table</strong>, pick bucket/dataset/table, then click <strong>Load from GCS</strong> or <strong>Load from BigQuery</strong>.</li>
+        <li><strong>Overview</strong> tab: preview the loaded data.</li>
+        <li><strong>Data profiling &amp; histograms</strong> tab: view metrics and histograms per column.</li>
+        <li><strong>Talk to your data</strong> tab: In the sidebar, enter your <strong>LLM API key</strong> (and optional base URL/model). Then type questions in the chat to ask about the data.</li>
+      </ul>
+    </li>
+  </ol>
+
+  <h2>3. Creating any custom app in Workbench (generic)</h2>
+  <div class="step"><span class="step-num">Step 1.</span> In Workbench, create a <strong>Workspace</strong> and attach your <strong>Data Collection</strong> (the GCS bucket that holds your datasets).</div>
+  <div class="step"><span class="step-num">Step 2.</span> In that workspace, go to <strong>Apps → Create App → Custom</strong>.</div>
+  <div class="step"><span class="step-num">Step 3.</span> Enter your repository URL (your fork of the repo above, e.g. <code>https://github.com/&lt;your-org&gt;/workbench-app-devcontainers</code>) and branch (e.g. <code>master</code> or <code>main</code>).</div>
+  <div class="step"><span class="step-num">Step 4.</span> Set <strong>Template path</strong> to the folder that contains your app, e.g. <code>src/gcp-data-characterizer-llm</code> or <code>src/data-profiling-dashboard</code>. Workbench will use the <code>.devcontainer.json</code> and <code>docker-compose.yaml</code> in that folder.</div>
+  <div class="step"><span class="step-num">Step 5.</span> Create and start the app. Once the app is running, open it at the shown URL to use your tools.</div>
+
+  <h2>4. Accessing data from your data collections</h2>
+  <p>Workbench runs your app in a GCP environment with access to the workspace. Data collections appear as <strong>GCS buckets</strong>. Your app can read them using the Google Cloud Storage client (no extra mount step required for direct API access).</p>
+  <ul>
+    <li>In the Workbench UI, note the <strong>bucket name</strong> for your data collection (it may be normalized, e.g. with a <code>-wb-...</code> suffix).</li>
+    <li>In your app code (notebook or Python script), set the bucket and object name, then use the <code>google-cloud-storage</code> library to download or read files (e.g. CSV, Parquet).</li>
+  </ul>
+  <p><strong>Example (Python):</strong> Install <code>google-cloud-storage</code> (e.g. <code>pip install google-cloud-storage</code>). Use <code>storage.Client()</code>, <code>bucket.blob(file_name).download_to_filename(path)</code>, then load with pandas. No API keys are needed; the app uses the VM’s default credentials.</p>
+  <p class="note"><strong>Note:</strong> If your data collection is attached to the workspace where the app runs, the app’s service account is granted access to that bucket. Use the exact bucket name shown in Workbench for that collection.</p>
+
+  <h2>5. Building tools inside Workbench to analyze your data</h2>
+  <p>You can add any analysis you want inside the same app:</p>
+  <ul>
+    <li><strong>Jupyter notebooks</strong> – Place <code>.ipynb</code> files in your app folder. The dev container can copy them to the user’s home directory at startup so they appear in JupyterLab. Use them to load from GCS, profile data (e.g. ydata-profiling), and visualize.</li>
+    <li><strong>Python scripts</strong> – Add <code>.py</code> scripts that load from your GCS bucket, run analytics or profiling, and write reports (e.g. HTML). Users can run them from the JupyterLab terminal or by double-clicking in the file browser if the image supports it.</li>
+    <li><strong>LLM integration</strong> – To use an LLM (e.g. OpenAI) from your app, store the API key in <strong>Google Cloud Secret Manager</strong> and have your code fetch it at runtime (e.g. with <code>google-cloud-secret-manager</code>). Ensure the app’s service account has “Secret Manager Secret Accessor” (or equivalent) on that secret. Then use the key to call the LLM API for summaries, Q&amp;A, or code generation over your data.</li>
+  </ul>
+  <p>Existing templates in the repo (e.g. <code>src/lab-results-analyzer-dev</code>, <code>src/data-profiling-dashboard</code>) show a full flow: GCS → load data → profiling report; the dev variant also includes optional OpenAI integration via Secret Manager.</p>
+
+  <h2>6. Quick reference</h2>
+  <table>
+    <tr><th>What</th><th>Where / How</th></tr>
+    <tr><td>Repo (exact address)</td><td>https://github.com/verily-src/workbench-app-devcontainers</td></tr>
+    <tr><td>Your app code</td><td>Under <code>src/&lt;app-name&gt;/</code> (e.g. <code>src/data-profiling-dashboard</code>)</td></tr>
+    <tr><td>Data access</td><td>GCS bucket for your data collection; use <code>google-cloud-storage</code> in the app</td></tr>
+    <tr><td>LLM API key</td><td>Store in Secret Manager; use <code>google-cloud-secret-manager</code> in the app to read it</td></tr>
+    <tr><td>Template path in WB</td><td><code>src/&lt;app-folder-name&gt;</code> (e.g. <code>src/data-profiling-dashboard</code>)</td></tr>
+  </table>
+
+  <p class="footer">Workbench custom apps use dev containers from the repository above. For more detail, see the README and WORKBENCH_DEVCONTAINERS_GUIDE.md in the repo. Workbench docs: support.workbench.verily.com</p>
+
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "id": "data-profiling-dashboard",
+  "version": "1.0.0",
+  "name": "data-profiling-dashboard",
+  "description": "Data Profiling Dashboard - Load data from GCS, run ydata-profiling report, view in JupyterLab. Use in any Workbench workspace. (Image: jupyter/scipy-notebook, Port: 8888)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

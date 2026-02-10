@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create a Verily Workbench Custom App Using an LLM</title>
+  <style>
+    @media print { body { max-width: 100%; font-size: 10pt; } .page-break { page-break-after: always; } }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      line-height: 1.4;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px 28px;
+      color: #1a1a1a;
+      font-size: 11pt;
+    }
+    h1 {
+      font-size: 1.35em;
+      margin: 0 0 4px 0;
+      color: #0d47a1;
+      border-bottom: 2px solid #0d47a1;
+      padding-bottom: 6px;
+    }
+    .subtitle { font-size: 0.95em; color: #444; margin: 0 0 16px 0; }
+    h2 { font-size: 1.05em; margin: 14px 0 6px 0; color: #1565c0; }
+    h3 { font-size: 1em; margin: 12px 0 4px 0; color: #1976d2; }
+    p { margin: 0 0 8px 0; }
+    ul, ol { margin: 4px 0 10px 0; padding-left: 20px; }
+    li { margin-bottom: 3px; }
+    .repo, .prompt-box, .code-block {
+      background: #f5f5f5;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.9em;
+      margin: 8px 0;
+      word-break: break-all;
+      white-space: pre-wrap;
+    }
+    .prompt-box { font-size: 0.85em; max-height: 60vh; overflow: auto; border: 1px solid #ccc; }
+    .step { margin-bottom: 10px; }
+    .step-num { font-weight: 700; color: #1565c0; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.95em; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+    th { background: #e3f2fd; }
+    .note { background: #fff8e1; padding: 8px 10px; border-left: 3px solid #ffa000; margin: 8px 0; font-size: 0.95em; }
+    .footer { margin-top: 16px; font-size: 0.9em; color: #666; }
+    hr { border: none; border-top: 1px solid #ccc; margin: 16px 0; }
+  </style>
+</head>
+<body>
+
+  <h1>Step-by-Step: Create a Verily Workbench Custom App Using an LLM</h1>
+  <p class="subtitle">For product managers (or anyone without deep devcontainer experience) who want to create a custom app by using their favourite LLM to generate the app code.</p>
+
+  <h2>Overview</h2>
+  <ol>
+    <li>You have a <strong>fork</strong> of the Workbench devcontainer repo (e.g. <code>https://github.com/YOUR_ORG/workbench-app-devcontainers</code>).</li>
+    <li>You give your <strong>LLM</strong> a single, detailed <strong>prompt</strong> that includes the original repo link, its rules, and the exact app you want.</li>
+    <li>The LLM generates the <strong>app folder</strong> (e.g. a new folder under <code>src/</code> with the right config and code).</li>
+    <li>You <strong>add that folder</strong> to your fork, <strong>push</strong>, then <strong>create the app in Workbench</strong> using the repo and path.</li>
+  </ol>
+  <p>The example below is a <strong>sample lab data + basic reports</strong> app so you can copy-paste and adapt.</p>
+
+  <hr>
+
+  <h2>Step 1: Fork the repository (if you haven’t already)</h2>
+  <ol>
+    <li>Open <strong>https://github.com/verily-src/workbench-app-devcontainers</strong></li>
+    <li>Click <strong>Fork</strong> and choose your GitHub user or organization.</li>
+    <li>Note your fork URL, e.g. <code>https://github.com/YOUR_ORG/workbench-app-devcontainers</code></li>
+  </ol>
+
+  <hr>
+
+  <h2>Step 2: Copy the prompt below into your LLM</h2>
+  <p>Open your favourite LLM (ChatGPT, Claude, Cursor, etc.) and paste the <strong>entire prompt</strong> below. Replace <code>YOUR_ORG</code> with your GitHub org/username and <code>your-app-name</code> with the app name you want (e.g. <code>sample-lab-reports</code>). The LLM will generate the app files for you.</p>
+
+  <h3>Prompt to paste into your LLM</h3>
+  <div class="prompt-box"><code>I need you to create a Verily Workbench custom app. Use the official repo as the only source of truth for structure and rules.
+
+**Repository (read this for requirements and patterns):**
+https://github.com/verily-src/workbench-app-devcontainers
+
+Important rules from that repo:
+- Custom apps live under src/&lt;app-name&gt;/.
+- Each app MUST have: .devcontainer.json, docker-compose.yaml, and devcontainer-template.json.
+- In docker-compose.yaml: use a PRE-BUILT image only (no build:). The working apps use image: "jupyter/scipy-notebook". The container name MUST be "application-server". Port must be exposed (e.g. 8888). The service MUST use network app-network (external: true) and include: cap_add: SYS_ADMIN, devices: /dev/fuse, security_opt: apparmor:unconfined.
+- In .devcontainer.json: use the same pattern as src/lab-results-analyzer-dev: postCreateCommand with ./startupscript/post-startup.sh (user and home dir), postStartCommand with ./startupscript/remount-on-restart.sh, workspaceFolder /workspace, and the same features (java, aws-cli, google-cloud-cli). Include workbench customizations with fileUrlSuffix "/lab/tree/{path}".
+- The repo is cloned so that the FULL repo (including startupscript/) is available when the container runs; postCreateCommand runs from the repo root context.
+
+**App I want you to create:**
+App name: **your-app-name** (use a folder name like sample-lab-reports).
+
+**Behavior:**
+1. The app is a JupyterLab app (same base as lab-results-analyzer-dev: jupyter/scipy-notebook, port 8888, user jovyan).
+2. It provides a single Jupyter notebook that:
+   - **Generates sample lab data:** Create a pandas DataFrame with exactly 10 columns of synthetic lab-like data (e.g. patient_id, lab_type, lab_value, lab_date, result_unit, specimen_type, ordering_provider, facility, encounter_id, and one more of your choice). Use realistic-looking sample data (e.g. 500–1000 rows), with some missing values (nulls) so we can report null%.
+   - **Produces a basic report** that shows, for each column:
+     - Distribution (e.g. value counts for categorical columns, or histogram for numeric)
+     - Null count and null % (for all columns)
+     - Min and max where applicable (numeric columns)
+   - The notebook should run top-to-bottom and display the report in the notebook (tables and simple plots). Use pandas, matplotlib/seaborn or similar; no external APIs.
+
+**Deliverables:**
+Generate the following files for the new app under src/your-app-name/:
+
+1. **.devcontainer.json** – Same structure as lab-results-analyzer-dev but name and (if needed) postCreateCommand curl URL updated to your-app-name. Use user jovyan, home /home/jovyan. Do NOT use a custom Dockerfile or build step.
+
+2. **docker-compose.yaml** – Same as lab-results-analyzer-dev: image jupyter/scipy-notebook, container_name application-server, port 8888, user jovyan, volumes .:/workspace and work:/home/jovyan/work, command for start-notebook.sh, app-network, cap_add/devices/security_opt as above.
+
+3. **devcontainer-template.json** – id and name set to your-app-name, description mentioning sample lab data and basic reports (distribution, null%, min/max).
+
+4. **README.md** – Short description: app name, that it generates sample lab data (10 columns) and basic reports (distribution, null%, min/max).
+
+5. **Sample_Lab_Report.ipynb** – One Jupyter notebook that:
+   - Generates the 10-column sample lab DataFrame (with some nulls).
+   - For each column: show null count and null %, and for numeric columns min/max.
+   - For each column: show distribution (value_counts or histogram).
+   - Use markdown cells to explain steps. Keep it simple and runnable in order.
+
+6. **postCreateCommand in .devcontainer.json** – Should copy or make the notebook available in the user's home so it opens in JupyterLab. Use the same pattern as lab-results-analyzer-dev: e.g. curl to raw GitHub for Sample_Lab_Report.ipynb from https://raw.githubusercontent.com/YOUR_ORG/workbench-app-devcontainers/master/src/your-app-name/Sample_Lab_Report.ipynb, or copy from /workspace if present, and chown to jovyan:users.
+
+Use YOUR_ORG and your-app-name consistently (e.g. sample-lab-reports). Do not add a Dockerfile or build step. Output the full contents of each file so I can save them into my fork.</code></div>
+
+  <hr>
+
+  <h2>Step 3: Replace placeholders in the prompt</h2>
+  <p>Before sending the prompt to the LLM, replace:</p>
+  <table>
+    <tr><th>Placeholder</th><th>Replace with</th></tr>
+    <tr><td><code>YOUR_ORG</code></td><td>Your GitHub organization or username (e.g. SIVerilyDP)</td></tr>
+    <tr><td><code>your-app-name</code></td><td>The app folder name (e.g. sample-lab-reports)</td></tr>
+  </table>
+  <p>Use the <strong>same</strong> app name in the prompt everywhere (folder path, .devcontainer name, devcontainer-template id/name, and in the curl URL).</p>
+
+  <hr>
+
+  <h2>Step 4: Get the files from the LLM and add them to your fork</h2>
+  <ol>
+    <li>Run the prompt in your LLM.</li>
+    <li>The LLM should return the contents of: <code>src/&lt;your-app-name&gt;/.devcontainer.json</code>, <code>docker-compose.yaml</code>, <code>devcontainer-template.json</code>, <code>README.md</code>, and <code>Sample_Lab_Report.ipynb</code> (or the notebook filename the LLM uses).</li>
+    <li>On your machine, clone your fork (if needed) and create the app folder:</li>
+  </ol>
+  <div class="code-block">git clone https://github.com/YOUR_ORG/workbench-app-devcontainers.git
+cd workbench-app-devcontainers
+mkdir -p src/&lt;your-app-name&gt;</div>
+  <ol start="4">
+    <li>Save each file the LLM produced into the correct path under <code>src/&lt;your-app-name&gt;/</code>. If the LLM gave a different notebook name, update the postCreateCommand in <code>.devcontainer.json</code> to match.</li>
+    <li>Commit and push:</li>
+  </ol>
+  <div class="code-block">git add src/&lt;your-app-name&gt;
+git commit -m "Add custom app: &lt;your-app-name&gt; (sample lab data + basic reports)"
+git push origin master</div>
+
+  <hr>
+
+  <h2>Step 5: Create the app in Workbench</h2>
+  <ol>
+    <li>In <strong>Verily Workbench</strong>, open your workspace (or create one).</li>
+    <li>Go to <strong>Apps → Create App → Custom</strong> (or the equivalent in your Workbench UI).</li>
+    <li>Enter:
+      <ul>
+        <li><strong>Repository URL:</strong> <code>https://github.com/YOUR_ORG/workbench-app-devcontainers</code></li>
+        <li><strong>Branch:</strong> <code>master</code> (or your default branch)</li>
+        <li><strong>Repository folder path to the .devcontainer.json file:</strong> <code>src/&lt;your-app-name&gt;</code> (e.g. <code>src/sample-lab-reports</code>)</li>
+      </ul>
+    </li>
+    <li>If prompted, choose the template that matches your app name (e.g. <strong>sample-lab-reports</strong>).</li>
+    <li>Set options (e.g. <strong>Cloud: GCP</strong>) and create the app.</li>
+    <li>Wait for the app to start (JupyterLab on port <strong>8888</strong>). Open the app URL and run the notebook to generate sample data and view the reports (distribution, null%, min/max).</li>
+  </ol>
+
+  <hr>
+
+  <h2>Step 6: If something doesn’t work</h2>
+  <ul>
+    <li><strong>App doesn’t start:</strong> Ensure your app uses a <strong>pre-built image</strong> only (<code>image: "jupyter/scipy-notebook"</code>) and <strong>no</strong> <code>build:</code> in <code>docker-compose.yaml</code>. Check that <code>container_name</code> is <code>application-server</code>, and that <code>postCreateCommand</code> uses <code>./startupscript/post-startup.sh</code> with the same pattern as <code>lab-results-analyzer-dev</code>.</li>
+    <li><strong>Notebook not found:</strong> Confirm the notebook filename matches the name used in the postCreateCommand (e.g. curl URL or copy from <code>/workspace</code>).</li>
+    <li><strong>Wrong repo/branch:</strong> Double-check Repository URL, Branch, and the folder path (<code>src/&lt;your-app-name&gt;</code>).</li>
+  </ul>
+
+  <hr>
+
+  <h2>Quick reference: parameters for Workbench</h2>
+  <table>
+    <tr><th>Parameter</th><th>Value</th></tr>
+    <tr><td><strong>Repository URL</strong></td><td><code>https://github.com/YOUR_ORG/workbench-app-devcontainers</code></td></tr>
+    <tr><td><strong>Branch</strong></td><td><code>master</code> (or your default)</td></tr>
+    <tr><td><strong>Repository folder path to .devcontainer.json</strong></td><td><code>src/&lt;your-app-name&gt;</code> (e.g. <code>src/sample-lab-reports</code>)</td></tr>
+    <tr><td><strong>Template</strong></td><td>Same as your app name (e.g. <code>sample-lab-reports</code>)</td></tr>
+  </table>
+
+  <hr>
+
+  <h2>Summary</h2>
+  <ol>
+    <li>Fork <strong>verily-src/workbench-app-devcontainers</strong>.</li>
+    <li>Paste the <strong>prompt</strong> (Step 2) into your LLM, with <code>YOUR_ORG</code> and <code>your-app-name</code> set.</li>
+    <li>Save the generated files into <code>src/&lt;your-app-name&gt;/</code> in your fork.</li>
+    <li>Push to GitHub.</li>
+    <li>In Workbench, create a custom app with your fork URL, branch, and path <code>src/&lt;your-app-name&gt;</code>.</li>
+    <li>Open the app and run the notebook to get sample lab data and basic reports (distribution, null%, min/max).</li>
+  </ol>
+  <p>Using this flow, a product manager can create a custom app by describing it to an LLM and following these steps, without writing devcontainer or Docker details by hand.</p>
+
+  <p class="footer">For more detail, see the README and Create-Custom-App-With-LLM.md in the repo. Workbench docs: support.workbench.verily.com</p>
+
+</body>
+</html>

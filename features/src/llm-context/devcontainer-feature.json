@@ -1,0 +1,34 @@
+{
+  "id": "llm-context",
+  "version": "1.0.0",
+  "name": "LLM Context Generator",
+  "description": "Generates CLAUDE.md context file for LLMs (Claude Code, etc.) with Workbench workspace information",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/features/src/llm-context",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username for the container user"
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory for the container user"
+    },
+    "autorun": {
+      "type": "boolean",
+      "default": true,
+      "description": "Automatically generate context on container start"
+    }
+  },
+  "containerEnv": {
+    "LLM_CONTEXT_ENABLED": "true"
+  },
+  "installsAfter": [
+    "ghcr.io/verily-src/workbench-app-devcontainers/workbench-tools"
+  ],
+  "dependsOn": {
+    "ghcr.io/verily-src/workbench-app-devcontainers/workbench-tools": {}
+  },
+  "postStartCommand": "if [ \"${AUTORUN}\" = \"true\" ]; then /opt/llm-context/generate-context.sh || true; fi"
+}

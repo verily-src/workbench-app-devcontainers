@@ -17,6 +17,11 @@
       "description": "Whether to log in to workbench CLI",
       "proposals": ["true", "false"],
       "default": "false"
+    },
+    "dataSubdir": {
+      "type": "string",
+      "description": "Subdirectory within the mounted workspace to find CSV files (e.g., 'verily/dry_run')",
+      "default": ""
     }
   },
   "platforms": ["Any"]

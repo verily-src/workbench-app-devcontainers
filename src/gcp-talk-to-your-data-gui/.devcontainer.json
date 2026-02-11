@@ -4,8 +4,8 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": ["bash", "-c", "([ -f ./startupscript/post-startup.sh ] && ./startupscript/post-startup.sh root /root \"${templateOption:cloud}\" \"${templateOption:login}\") || true"],
-  "postStartCommand": ["bash", "-c", "([ -f ./startupscript/remount-on-restart.sh ] && ./startupscript/remount-on-restart.sh root /root \"${templateOption:cloud}\" \"${templateOption:login}\") || true"],
+  "postCreateCommand": "true",
+  "postStartCommand": "true",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {"version": "17"},
     "ghcr.io/devcontainers/features/aws-cli:1": {},

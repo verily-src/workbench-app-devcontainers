@@ -1,9 +1,9 @@
 {
   "id": "llm-context",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "LLM Context Generator",
-  "description": "Generates CLAUDE.md context file for LLMs (Claude Code, etc.) with Workbench workspace information",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/features/src/llm-context",
+  "description": "Generates ~/CLAUDE.md context file for LLMs (Claude Code, Gemini, etc.) with Workbench workspace information. Claude Code auto-discovers this file on startup.",
+  "documentationURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/llm-context-feature/features/src/llm-context",
   "options": {
     "username": {
       "type": "string",
@@ -12,13 +12,8 @@
     },
     "userHomeDir": {
       "type": "string",
-      "default": "/root",
-      "description": "Home directory for the container user"
-    },
-    "autorun": {
-      "type": "boolean",
-      "default": true,
-      "description": "Automatically generate context on container start"
+      "default": "",
+      "description": "Home directory for the container user (auto-detected if empty)"
     }
   },
   "containerEnv": {
@@ -26,9 +21,5 @@
   },
   "installsAfter": [
     "ghcr.io/verily-src/workbench-app-devcontainers/workbench-tools"
-  ],
-  "dependsOn": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/workbench-tools": {}
-  },
-  "postStartCommand": "if [ \"${AUTORUN}\" = \"true\" ]; then /opt/llm-context/generate-context.sh || true; fi"
+  ]
 }

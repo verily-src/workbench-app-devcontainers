@@ -1,6 +1,7 @@
 # GCP and data profiling for gcp-talk-to-your-data
 google-cloud-storage>=2.10.0
 google-cloud-bigquery>=3.11.0
+google-cloud-secret-manager>=2.16.0
 db-dtypes>=1.1.0
 ydata-profiling>=4.5.0
 openai>=1.0.0

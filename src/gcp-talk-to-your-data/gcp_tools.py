@@ -71,6 +71,22 @@ def load_from_bigquery(
     return client.query(query).to_dataframe()
 
 
+def get_openai_key_from_secret_manager(project_id: str, team_alias: str) -> str:
+    """
+    Fetch the OpenAI API key from Google Cloud Secret Manager.
+    Use for company-provided keys (e.g. VWB Sandbox or prod).
+    - project_id: GCP project that holds the secret (e.g. 'wb-smart-cabbage-5940' for VWB Sandbox).
+    - team_alias: Team prefix for the secret name (e.g. 'ml-platform-test-', 'compbio-').
+      The secret name must be: {team_alias}openai-api-key
+    Returns the API key string, or raises on error.
+    """
+    from google.cloud import secretmanager
+    name = f"projects/{project_id}/secrets/{team_alias}openai-api-key/versions/live"
+    client = secretmanager.SecretManagerServiceClient()
+    response = client.access_secret_version(name=name)
+    return response.payload.data.decode("UTF-8")
+
+
 def data_summary_for_llm(df: pd.DataFrame) -> tuple[str, str]:
     """Return (data_summary, schema_and_sample) for LLM context."""
     data_summary = (

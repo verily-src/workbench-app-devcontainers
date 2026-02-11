@@ -108,19 +108,13 @@ chmod +x "${LLM_CONTEXT_DIR}/run-context-generator.sh"
 chown -R "${USERNAME}:" "${LLM_CONTEXT_DIR}" 2>/dev/null || true
 chown -R "${USERNAME}:" "${USER_WORKBENCH_DIR}" 2>/dev/null || true
 
-# Add aliases and auto-run trigger to bashrc
+# Add aliases to bashrc (context generation is triggered by postStartCommand, not bashrc)
 {
     echo ""
     echo "# LLM Context Generator"
     echo "export LLM_CONTEXT_ENABLED=true"
     echo "alias generate-llm-context='${GENERATE_SCRIPT}'"
     echo "alias refresh-context='${GENERATE_SCRIPT}'"
-    echo ""
-    echo "# Auto-generate context on first interactive shell (if not already done)"
-    echo 'if [[ -z "${LLM_CONTEXT_GENERATED:-}" ]] && [[ -f /opt/llm-context/run-context-generator.sh ]]; then'
-    echo '    export LLM_CONTEXT_GENERATED=1'
-    echo '    /opt/llm-context/run-context-generator.sh &'
-    echo 'fi'
 } >> "${USER_HOME_DIR}/.bashrc"
 
 # Make sure the login user is the owner of their .bashrc
@@ -134,9 +128,8 @@ echo ""
 echo "Installed to: ${LLM_CONTEXT_DIR}"
 echo "User home: ${USER_HOME_DIR}"
 echo ""
-echo "Context will auto-generate when:"
-echo "  1. A terminal is opened (via .bashrc)"
-echo "  2. You run 'generate-llm-context' or 'refresh-context'"
+echo "Context will be generated via postStartCommand after startup completes."
+echo "Manual refresh: run 'generate-llm-context' or 'refresh-context'"
 echo ""
 echo "Claude Code will auto-discover ~/CLAUDE.md"
 echo "=========================================="

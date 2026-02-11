@@ -116,10 +116,34 @@ install_skills() {
     cat > "${SKILLS_DIR}/CUSTOM_APP.md" << 'SKILL_EOF'
 # Creating Custom Workbench Apps
 
-**Practical guide for creating simple, reliable Workbench apps.**
+## ⚡ Which Approach Do You Need?
 
-> **When to use this guide:** For simple apps (Flask APIs, static sites, custom tools).
-> For apps needing Workbench CLI, gcloud, or Jupyter, see the [full-featured approach](https://github.com/verily-src/workbench-app-devcontainers).
+```
+Do you need Jupyter notebooks?
+├── YES → Use workbench-jupyter base image (see "Full-Featured" below)
+└── NO
+    └── Do you need Workbench CLI (wb) or gcloud?
+        ├── YES → Use workbench-tools feature (see "Full-Featured" below)
+        └── NO → Use MINIMAL PATTERN (this guide) ✅
+```
+
+**Most custom apps should use the MINIMAL PATTERN.** It's simpler and less error-prone.
+
+---
+
+## ✅ Pre-Deploy Checklist
+
+Before deploying, verify:
+
+- [ ] Container is named `application-server`
+- [ ] Connected to `app-network` (external: true)
+- [ ] HTTP server binds to `0.0.0.0` (not `localhost`)
+- [ ] Port is exposed (usually 8080)
+- [ ] No syntax errors in `.devcontainer.json` (valid JSON, no trailing commas)
+- [ ] `devcontainer-template.json` exists with valid `id` and `name`
+- [ ] Test locally with `docker compose up` before deploying
+
+---
 
 ## TL;DR - The Minimal Pattern That Works
 
@@ -515,13 +539,25 @@ generate_claude_md() {
     cat > "${CLAUDE_FILE}" << EOF
 # Workbench Context
 
-You are working inside **Verily Workbench**, a secure cloud-based research environment for biomedical data analysis.
+You are working inside **Verily Workbench**, a secure cloud-based research environment.
+
+---
+
+## ⚡ Quick Rules (Read This First)
+
+| If the user asks... | Do this |
+|---------------------|---------|
+| About the workspace (name, ID, role, description) | **Use this file** → See "Current Workspace" below |
+| For a resource path (bucket, dataset) | **Use this file** → See "Resource Paths" below |
+| To query data, list files, or run operations | **Use MCP tools** or CLI |
+
+**Simple rule:** Static info → this file. Actions → MCP/CLI.
 
 ---
 
 ## What is Verily Workbench?
 
-Verily Workbench is a platform that enables researchers to:
+Verily Workbench enables researchers to:
 - Access and analyze biomedical data (clinical, genomics, wearables, imaging)
 - Run computational workflows at scale (WDL, Nextflow)
 - Collaborate securely with governance and policy enforcement
@@ -529,21 +565,89 @@ Verily Workbench is a platform that enables researchers to:
 
 ---
 
-## Current Workspace
+## 📍 Current Workspace
+
+> **Answer "What workspace am I in?" with this section.**
 
 | Property | Value |
 |----------|-------|
 | **Name** | ${ws_name} |
 | **ID** | \`${ws_id}\` |
-| **Cloud Platform** | ${ws_cloud} |
-| **Project/Account** | \`${project_display}\` |
+| **Description** | ${ws_desc} |
+| **Cloud** | ${ws_cloud} |
+| **Project** | \`${project_display}\` |
 | **Your Role** | ${ws_role} |
 | **User** | ${ws_user} |
 | **Organization** | ${ws_org:-"—"} |
 | **Server** | ${ws_server:-"—"} |
 
-### Description
-${ws_desc}
+**Example response:** *"You're in **${ws_name}** (\`${ws_id}\`), a ${ws_cloud} workspace where you have ${ws_role} access."*
+
+---
+
+## 🗂️ Resource Paths (Use for "What's the path for X?")
+
+\`\`\`json
+${embedded_json}
+\`\`\`
+
+**How to use:**
+- \`resourcePaths["my-bucket"]\` → \`gs://actual-bucket-name\`
+- Environment variable: \`\$WORKBENCH_my_bucket\`
+
+---
+
+## ⚠️ Data Persistence Warning
+
+> **LOCAL FILES ARE LOST WHEN THE APP STOPS.** Always save important work to cloud buckets.
+
+### Available Buckets
+${bucket_list}
+
+### Quick Save Commands
+\`\`\`bash
+gsutil cp file.ipynb gs://BUCKET/notebooks/           # Single file
+gsutil -m cp -r ./results/ gs://BUCKET/results/       # Directory
+\`\`\`
+
+**🤖 Proactively ask users:** *"Want me to save this to a bucket so it persists?"*
+
+---
+
+## 🔍 Data Exploration (Most Common Tasks)
+
+### Find Resources
+\`\`\`bash
+wb resource list                    # List all
+wb resource describe <name>         # Details
+env | grep WORKBENCH_               # Environment variables
+\`\`\`
+
+### Preview BigQuery Data
+\`\`\`bash
+bq ls PROJECT:DATASET                              # List tables
+bq show --schema PROJECT:DATASET.TABLE             # Schema
+bq head -n 10 PROJECT:DATASET.TABLE                # Sample rows
+\`\`\`
+
+### Browse GCS Files
+\`\`\`bash
+gsutil ls gs://BUCKET/                             # List
+gsutil cat gs://BUCKET/file.txt | head             # Preview
+\`\`\`
+
+---
+
+## 🔧 MCP Tools vs CLI
+
+| Use MCP Tools For | Use CLI For |
+|-------------------|-------------|
+| \`list_resources\`, \`get_resource\` | Complex operations |
+| \`query_bigquery\` | \`wb workflow logs\` |
+| \`run_workflow\` | \`wb resource delete\` |
+| Structured responses | Full feature coverage |
+
+**Prefer MCP when available** — it's faster and returns structured data.
 
 ---
 
@@ -667,100 +771,20 @@ gs://your-bucket/
 
 ---
 
-## 🔍 Data Exploration Cheatsheet
+## Python Examples
 
-This is the **most important section** for quickly discovering and accessing data.
-
-### Step 1: Find Your Resources
-\`\`\`bash
-wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
-\`\`\`
-
-### Step 2: Use Environment Variables (Easiest!)
-Every resource is available as an environment variable:
-\`\`\`bash
-# Pattern: \$WORKBENCH_<resource_name>
-echo \$WORKBENCH_my_bucket      # → gs://actual-bucket-name
-env | grep WORKBENCH_           # List all
-\`\`\`
-
-### Step 3: Get Cloud Paths
-\`\`\`bash
-wb resource describe <resource-name> --format=json
-# Look for: bucketName, projectId, datasetId, gitRepoUrl
-\`\`\`
-
-### Step 4: Preview Data Quickly
-
-**BigQuery:**
-\`\`\`bash
-bq head -n 10 <project>:<dataset>.<table>     # Quick preview
-bq show --schema <project>:<dataset>.<table>  # Column names/types
-bq show --format=prettyjson <project>:<dataset>.<table> | jq '{rows: .numRows}'  # Row count
-\`\`\`
-
-**GCS:**
-\`\`\`bash
-gsutil ls gs://<bucket>/                       # List files
-gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
-\`\`\`
-
-### 🤖 LLM Quick Patterns
-
-| Question | Command |
-|----------|---------|
-| "What data is available?" | \`wb resource list\` |
-| "What tables in dataset?" | \`bq ls <project>:<dataset>\` |
-| "What columns in table?" | \`bq show --schema <project>:<dataset>.<table>\` |
-| "How big is this table?" | \`bq show --format=prettyjson ... \\| jq '{rows: .numRows}'\` |
-| "Show sample data" | \`bq head -n 5 <project>:<dataset>.<table>\` |
-
----
-
-## How to Discover Data (Detailed)
-
-### List Resources
-\`\`\`bash
-wb resource list
-wb resource list --format=json
-wb resource describe <resource-name>
-\`\`\`
-
-### Explore GCS Buckets
-\`\`\`bash
-gsutil ls gs://<bucket>/
-gsutil ls -l gs://<bucket>/path/
-gsutil cat gs://<bucket>/path/file.txt
-\`\`\`
-
-### Explore BigQuery
-\`\`\`bash
-bq ls <project>:<dataset>
-bq show <project>:<dataset>.<table>
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
-\`\`\`
-
----
-
-## How to Query Data
-
-### BigQuery (CLI)
-\`\`\`bash
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 100'
-\`\`\`
-
-### BigQuery (Python)
 \`\`\`python
+# BigQuery
 from google.cloud import bigquery
 client = bigquery.Client()
 df = client.query("SELECT * FROM \\\`project.dataset.table\\\` LIMIT 100").to_dataframe()
-\`\`\`
 
-### GCS Files (Python)
-\`\`\`python
+# GCS Files
 import pandas as pd
 df = pd.read_parquet('gs://bucket/path/file.parquet')
-df = pd.read_csv('gs://bucket/path/file.csv')
+
+# Save to GCS
+df.to_parquet('gs://bucket/output.parquet')
 \`\`\`
 
 ---
@@ -795,33 +819,6 @@ wb resource create bq-dataset --name my-dataset --description "My dataset"
 # Reference external GCS bucket
 wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucket
 \`\`\`
-
----
-
-## MCP vs CLI: When to Use Each
-
-This app has **two interfaces** to Workbench functionality:
-
-| Interface | Best For | Pros | Cons |
-|-----------|----------|------|------|
-| **MCP Tools** | LLM operations | Structured responses, no shell needed, faster | Limited tool set |
-| **CLI (\`wb\`)** | Complex operations, fallback | Full feature coverage, human-friendly | Requires shell execution, text parsing |
-
-### 🤖 LLM Decision Guide
-
-1. **Prefer MCP tools** when the operation is supported — they return structured data and don't require shell execution
-2. **Fall back to CLI** when MCP doesn't have the tool, or for complex/chained operations
-3. **Use cloud CLIs directly** (\`gsutil\`, \`bq\`, \`gcloud\`) for low-level cloud operations
-
-### Example: Same Operation, Two Ways
-
-**List resources:**
-- MCP: Use \`list_resources\` tool → returns JSON array
-- CLI: Run \`wb resource list --format=json\` → parse stdout
-
-**Query BigQuery:**
-- MCP: Use \`query_bigquery\` tool with SQL parameter → returns results
-- CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → parse output
 
 ---
 
@@ -921,25 +918,6 @@ When users ask about specific topics, **read these skill files** for detailed gu
 | Creating custom apps | \`~/.workbench/skills/CUSTOM_APP.md\` |
 
 **How to use:** When the topic comes up, read the skill file first.
-
----
-
-## Quick Reference (Machine-Readable)
-
-Use this JSON for exact resource paths and environment variables:
-
-\`\`\`json
-${embedded_json}
-\`\`\`
-
-**Usage:**
-- \`resourcePaths["my-bucket"]\` → exact GCS/BQ path
-- \`envVars["WORKBENCH_my_bucket"]\` → environment variable value
-
-To refresh after workspace changes:
-\`\`\`bash
-~/.workbench/generate-context.sh
-\`\`\`
 
 ---
 

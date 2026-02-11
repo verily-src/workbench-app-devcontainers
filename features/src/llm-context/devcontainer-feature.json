@@ -1,25 +1,22 @@
 {
   "id": "llm-context",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "name": "LLM Context Generator",
   "description": "Generates ~/CLAUDE.md context file for LLMs (Claude Code, Gemini, etc.) with Workbench workspace information. Claude Code auto-discovers this file on startup.",
-  "documentationURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/llm-context-feature/features/src/llm-context",
   "options": {
     "username": {
       "type": "string",
       "default": "root",
-      "description": "Username for the container user"
+      "description": "Username of the container user."
     },
     "userHomeDir": {
       "type": "string",
-      "default": "",
-      "description": "Home directory for the container user (auto-detected if empty)"
+      "default": "/root",
+      "description": "Home directory of the container user."
     }
   },
-  "containerEnv": {
-    "LLM_CONTEXT_ENABLED": "true"
-  },
   "installsAfter": [
-    "ghcr.io/verily-src/workbench-app-devcontainers/workbench-tools"
+    "ghcr.io/devcontainers/features/common-utils",
+    "./.devcontainer/features/workbench-tools"
   ]
 }

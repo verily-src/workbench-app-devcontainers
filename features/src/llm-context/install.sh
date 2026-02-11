@@ -108,13 +108,14 @@ chmod +x "${LLM_CONTEXT_DIR}/run-context-generator.sh"
 chown -R "${USERNAME}:" "${LLM_CONTEXT_DIR}" 2>/dev/null || true
 chown -R "${USERNAME}:" "${USER_WORKBENCH_DIR}" 2>/dev/null || true
 
-# Add aliases to bashrc (context generation is triggered by postStartCommand, not bashrc)
+# Add aliases and environment to bashrc (context generation is triggered by postStartCommand, not bashrc)
 {
     echo ""
     echo "# LLM Context Generator"
     echo "export LLM_CONTEXT_ENABLED=true"
-    echo "alias generate-llm-context='${GENERATE_SCRIPT}'"
-    echo "alias refresh-context='${GENERATE_SCRIPT}'"
+    echo "export LLM_CONTEXT_HOME=\"${USER_HOME_DIR}\""
+    echo "alias generate-llm-context='${GENERATE_SCRIPT} ${USER_HOME_DIR}'"
+    echo "alias refresh-context='${GENERATE_SCRIPT} ${USER_HOME_DIR}'"
 } >> "${USER_HOME_DIR}/.bashrc"
 
 # Make sure the login user is the owner of their .bashrc

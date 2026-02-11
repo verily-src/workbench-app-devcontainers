@@ -48,12 +48,27 @@
 
 set -e
 
+# Determine user home directory
+# Priority: 1) $LLM_CONTEXT_HOME, 2) first arg, 3) $HOME
+if [[ -n "${LLM_CONTEXT_HOME:-}" ]]; then
+    USER_HOME="${LLM_CONTEXT_HOME}"
+elif [[ -n "${1:-}" ]]; then
+    USER_HOME="$1"
+else
+    # Find the primary non-root user's home (typically jupyter)
+    if [[ -d "/home/jupyter" ]]; then
+        USER_HOME="/home/jupyter"
+    else
+        USER_HOME="${HOME}"
+    fi
+fi
+
 # Configuration
-CONTEXT_DIR="${HOME}/.workbench"
+CONTEXT_DIR="${USER_HOME}/.workbench"
 SKILLS_DIR="${CONTEXT_DIR}/skills"
 CLAUDE_FILE="${CONTEXT_DIR}/CLAUDE.md"
 # Visible symlink in home directory for Claude Code auto-discovery
-VISIBLE_CLAUDE_SYMLINK="${HOME}/CLAUDE.md"
+VISIBLE_CLAUDE_SYMLINK="${USER_HOME}/CLAUDE.md"
 
 # Colors for output
 RED='\033[0;31m'

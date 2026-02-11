@@ -61,9 +61,11 @@ When installed, this feature:
 "postStartCommand": [
   "bash",
   "-c",
-  "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\" && /opt/llm-context/generate-context.sh"
+  "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\" && /opt/llm-context/generate-context.sh /home/jupyter"
 ]
 ```
+
+**Note**: Pass the user home directory (e.g., `/home/jupyter`) as an argument because `postStartCommand` runs as root, not as the container user.
 
 This ensures context is generated AFTER authentication and workspace setup complete.
 

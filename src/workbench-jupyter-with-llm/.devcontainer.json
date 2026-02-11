@@ -36,8 +36,7 @@
     },
     "./.devcontainer/features/llm-context": {
       "username": "jupyter",
-      "userHomeDir": "/home/jupyter",
-      "autorun": true
+      "userHomeDir": "/home/jupyter"
     }
   },
   "remoteUser": "root",

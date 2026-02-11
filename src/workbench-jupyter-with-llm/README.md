@@ -22,7 +22,7 @@ This template includes the following integrated features:
 - **Gemini CLI** - Google Gemini AI assistant with MCP support
 - **Claude CLI** - Anthropic Claude AI assistant (from ghcr.io/anthropics/devcontainer-features/claude-code:1.0)
 - **WB MCP Server** - Workbench Model Context Protocol server for AI tool integration with workspace context
-- **LLM Context Generator** - Automatically generates `~/CLAUDE.md` with workspace context for Claude Code
+- **LLM Context Generator** - Devcontainer feature that auto-generates `~/CLAUDE.md` with workspace context for Claude Code
 
 All AI assistants are pre-configured to work with the Workbench MCP server for enhanced workspace awareness.
 

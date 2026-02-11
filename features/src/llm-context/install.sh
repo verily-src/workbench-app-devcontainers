@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-# install.sh - Installs the LLM Context Generator for Workbench apps
-#
+# install.sh installs the LLM Context Generator in the devcontainer.
 # This feature generates a CLAUDE.md file that provides LLMs (like Claude Code)
 # with context about the current Workbench workspace, resources, and tools.
 # Claude Code auto-discovers ~/CLAUDE.md on startup.
@@ -13,41 +12,59 @@ set -o xtrace
 
 # Options from devcontainer-feature.json (converted to uppercase)
 readonly USERNAME="${USERNAME:-"root"}"
-USER_HOME_DIR="${USERHOMEDIR:-""}"
-if [[ -z "${USER_HOME_DIR}" ]]; then
-    if [[ "${USERNAME}" == "root" ]]; then
-        USER_HOME_DIR="/root"
-    else
-        USER_HOME_DIR="/home/${USERNAME}"
-    fi
+USER_HOME_DIR="${USERHOMEDIR:-"/home/${USERNAME}"}"
+if [[ "${USER_HOME_DIR}" == "/home/root" ]]; then
+    USER_HOME_DIR="/root"
 fi
 readonly USER_HOME_DIR
-
-echo "Installing LLM Context Generator for user: ${USERNAME} (home: ${USER_HOME_DIR})"
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
+WORKDIR="$(mktemp -d)"
+readonly WORKDIR
+
 readonly LLM_CONTEXT_DIR="/opt/llm-context"
 readonly GENERATE_SCRIPT="${LLM_CONTEXT_DIR}/generate-context.sh"
+
+function cleanup() {
+    rm -rf "${WORKDIR:?}"
+    rm -rf /var/lib/apt/lists/*
+}
+
+trap 'cleanup' EXIT
+
+function apt_get_update() {
+    if [ "$(find /var/lib/apt/lists/* | wc -l)" = "0" ]; then
+        echo "Running apt-get update..."
+        apt-get update -y
+    fi
+}
+
+# Checks if packages are installed and installs them if not
+function check_packages() {
+    if ! dpkg -s "$@" > /dev/null 2>&1; then
+        apt_get_update
+        apt-get -y install --no-install-recommends "$@"
+    fi
+}
+
+echo "Starting LLM Context Generator installation..."
+echo "User: ${USERNAME}, Home: ${USER_HOME_DIR}"
 
 # Save the directory where the feature files are located
 FEATURE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly FEATURE_DIR
 
-echo "Starting LLM Context Generator installation..."
-echo "Feature directory: ${FEATURE_DIR}"
-
-# Install jq if not present (required for JSON processing)
-if ! command -v jq &> /dev/null; then
-    echo "Installing jq..."
-    if command -v apt-get &> /dev/null; then
-        apt-get update && apt-get install -y --no-install-recommends jq
-    elif command -v apk &> /dev/null; then
-        apk add --no-cache jq
-    else
-        echo "WARNING: Could not install jq. Please install it manually."
-    fi
+# Check for supported package manager
+if type apt-get &>/dev/null; then
+    # Install jq if not present (required for JSON processing)
+    check_packages jq
+elif type apk &>/dev/null; then
+    # Alpine Linux
+    apk add --no-cache jq
+else
+    echo "Warning: Could not install jq. Please install it manually."
 fi
 
 # Create installation directory
@@ -92,20 +109,21 @@ chown -R "${USERNAME}:" "${LLM_CONTEXT_DIR}" 2>/dev/null || true
 chown -R "${USERNAME}:" "${USER_WORKBENCH_DIR}" 2>/dev/null || true
 
 # Add aliases and auto-run trigger to bashrc
-cat >> "${USER_HOME_DIR}/.bashrc" << 'BASHRC_EOF'
+{
+    echo ""
+    echo "# LLM Context Generator"
+    echo "export LLM_CONTEXT_ENABLED=true"
+    echo "alias generate-llm-context='${GENERATE_SCRIPT}'"
+    echo "alias refresh-context='${GENERATE_SCRIPT}'"
+    echo ""
+    echo "# Auto-generate context on first interactive shell (if not already done)"
+    echo 'if [[ -z "${LLM_CONTEXT_GENERATED:-}" ]] && [[ -f /opt/llm-context/run-context-generator.sh ]]; then'
+    echo '    export LLM_CONTEXT_GENERATED=1'
+    echo '    /opt/llm-context/run-context-generator.sh &'
+    echo 'fi'
+} >> "${USER_HOME_DIR}/.bashrc"
 
-# LLM Context Generator
-export LLM_CONTEXT_ENABLED=true
-alias generate-llm-context='/opt/llm-context/generate-context.sh'
-alias refresh-context='/opt/llm-context/generate-context.sh'
-
-# Auto-generate context on first interactive shell (if not already done)
-if [[ -z "${LLM_CONTEXT_GENERATED:-}" ]] && [[ -f /opt/llm-context/run-context-generator.sh ]]; then
-    export LLM_CONTEXT_GENERATED=1
-    /opt/llm-context/run-context-generator.sh &
-fi
-BASHRC_EOF
-
+# Make sure the login user is the owner of their .bashrc
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc" 2>/dev/null || true
 
 echo ""

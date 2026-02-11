@@ -1,0 +1,10 @@
+{
+  "id": "gcp-talk-to-your-data-gui",
+  "version": "1.0.0",
+  "name": "GCP Talk to Your Data (GUI)",
+  "description": "Streamlit GUI to connect to GCP data (GCS/BigQuery) and talk to your data with an LLM. Port 8501.",
+  "options": {
+    "cloud": {"type": "string", "enum": ["gcp", "aws"], "default": "gcp", "description": "Cloud provider (gcp or aws)"},
+    "login": {"type": "string", "description": "Whether to log in to workbench CLI", "proposals": ["true", "false"], "default": "false"}
+  }
+}

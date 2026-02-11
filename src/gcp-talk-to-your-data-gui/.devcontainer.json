@@ -1,0 +1,15 @@
+{
+  "name": "gcp-talk-to-your-data-gui",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": ["bash", "-c", "([ -f ./startupscript/post-startup.sh ] && ./startupscript/post-startup.sh root /root \"${templateOption:cloud}\" \"${templateOption:login}\") || true"],
+  "postStartCommand": ["bash", "-c", "([ -f ./startupscript/remount-on-restart.sh ] && ./startupscript/remount-on-restart.sh root /root \"${templateOption:cloud}\" \"${templateOption:login}\") || true"],
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {"version": "17"},
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+  },
+  "remoteUser": "root"
+}

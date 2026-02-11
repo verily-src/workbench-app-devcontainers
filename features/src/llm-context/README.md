@@ -52,8 +52,20 @@ When installed, this feature:
 
 ## When Context Gets Generated
 
-1. **On first terminal open** - Via `.bashrc` trigger (runs in background)
+1. **Automatically on app start** - Via `postStartCommand` (after bucket mounting completes)
 2. **Manually** - Run `generate-llm-context` or `refresh-context`
+
+**Important**: Add the context generation to your `postStartCommand` in `.devcontainer.json`:
+
+```json
+"postStartCommand": [
+  "bash",
+  "-c",
+  "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\" && /opt/llm-context/generate-context.sh"
+]
+```
+
+This ensures context is generated AFTER authentication and workspace setup complete.
 
 ## MCP Integration
 

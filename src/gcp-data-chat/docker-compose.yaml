@@ -1,0 +1,21 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8080:8080"
+    # Optional: set these to auto-fetch OpenAI key from Secret Manager on startup
+    # environment:
+    #   OPENAI_SECRET_PROJECT: "wb-smart-cabbage-5940"
+    #   OPENAI_SECRET_NAME: "si-ops-openai-api-key"
+    #   OPENAI_SECRET_VERSION: "latest"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    name: app-network
+    driver: bridge

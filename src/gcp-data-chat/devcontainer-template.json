@@ -1,0 +1,8 @@
+{
+  "id": "gcp-data-chat",
+  "description": "Talk to your GCP data (GCS, BigQuery) using AI with a modern web GUI. Ask questions in plain language, get answers, charts, and histograms.",
+  "version": "1.0.0",
+  "name": "GCP Data Chat",
+  "options": {},
+  "platforms": ["Any"]
+}

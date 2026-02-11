@@ -1,0 +1,8 @@
+{
+  "name": "GCP Data Chat",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/app",
+  "remoteUser": "root"
+}

@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCP Data Chat</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Code highlighting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#4285F4" stroke-width="2"/><path d="M8 12h8M12 8v8" stroke="#4285F4" stroke-width="2" stroke-linecap="round"/></svg>
+        <span class="topbar-title">GCP Data Chat</span>
+      </div>
+      <span class="topbar-subtitle">Talk to your GCP data using AI</span>
+    </div>
+    <div class="topbar-right">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-text" id="statusText">Initializing...</span>
+    </div>
+  </header>
+
+  <!-- Step Progress Bar -->
+  <nav class="step-nav">
+    <div class="step-item active" data-step="1" onclick="goToStep(1)">
+      <div class="step-circle">1</div>
+      <div class="step-label">Configure</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" data-step="2" onclick="goToStep(2)">
+      <div class="step-circle">2</div>
+      <div class="step-label">Connect Data</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" data-step="3" onclick="goToStep(3)">
+      <div class="step-circle">3</div>
+      <div class="step-label">Chat with Data</div>
+    </div>
+  </nav>
+
+  <!-- Main Content Area -->
+  <main class="main-content">
+
+    <!-- ===== STEP 1: Configure ===== -->
+    <section class="step-panel" id="step1" style="display:block;">
+      <div class="step-header">
+        <h2>Step 1: Configure Your Environment</h2>
+        <p>Set your GCP project and OpenAI API key to get started.</p>
+      </div>
+
+      <div class="cards-row">
+        <!-- GCP Project Card -->
+        <div class="card">
+          <div class="card-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#4285F4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <h3>GCP Project</h3>
+          </div>
+          <p class="card-desc">Your Google Cloud project ID. Auto-detected from Workbench credentials when available.</p>
+          <div class="form-group">
+            <label for="gcpProject">Project ID</label>
+            <input type="text" id="gcpProject" placeholder="e.g. wb-smart-cabbage-5940">
+            <span class="hint" id="projectHint"></span>
+          </div>
+          <button class="btn btn-primary" onclick="setProject()">Set Project</button>
+          <div class="feedback" id="projectFeedback"></div>
+        </div>
+
+        <!-- API Key Card -->
+        <div class="card">
+          <div class="card-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" stroke="#34A853" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <h3>OpenAI API Key</h3>
+          </div>
+          <p class="card-desc">Required for the AI chat feature. Load from Secret Manager or paste directly.</p>
+
+          <div class="tab-group">
+            <button class="tab-btn active" onclick="switchKeyTab('secret')">Secret Manager</button>
+            <button class="tab-btn" onclick="switchKeyTab('paste')">Paste Key</button>
+          </div>
+
+          <!-- Secret Manager tab -->
+          <div class="key-tab" id="keyTabSecret" style="display:block;">
+            <div class="form-group">
+              <label for="smProject">Secret Manager Project</label>
+              <input type="text" id="smProject" value="wb-smart-cabbage-5940" placeholder="GCP project with the secret">
+            </div>
+            <div class="form-group">
+              <label for="smSecret">Secret Name</label>
+              <input type="text" id="smSecret" value="si-ops-openai-api-key" placeholder="e.g. si-ops-openai-api-key">
+            </div>
+            <div class="form-group">
+              <label for="smVersion">Version</label>
+              <input type="text" id="smVersion" value="latest" placeholder="latest">
+            </div>
+            <button class="btn btn-primary" onclick="fetchKey()">
+              <span class="btn-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              </span>
+              Load Key from Secret Manager
+            </button>
+          </div>
+
+          <!-- Paste tab -->
+          <div class="key-tab" id="keyTabPaste" style="display:none;">
+            <div class="form-group">
+              <label for="pasteKey">API Key</label>
+              <input type="password" id="pasteKey" placeholder="sk-...">
+            </div>
+            <button class="btn btn-primary" onclick="pasteKey()">Save Key</button>
+          </div>
+
+          <div class="feedback" id="keyFeedback"></div>
+        </div>
+      </div>
+
+      <!-- Model config -->
+      <div class="card" style="max-width: 480px;">
+        <div class="card-header">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="#5F6368" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="#5F6368" stroke-width="2"/></svg>
+          <h3>Model Settings</h3>
+        </div>
+        <div class="form-group">
+          <label for="modelName">LLM Model</label>
+          <input type="text" id="modelName" value="gpt-4o-mini" placeholder="gpt-4o-mini">
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="useUsEndpoint" checked>
+            Use US endpoint (required for company keys)
+          </label>
+        </div>
+      </div>
+
+      <div class="step-actions">
+        <div></div>
+        <button class="btn btn-next" onclick="goToStep(2)">Next: Connect Data &rarr;</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 2: Connect Data ===== -->
+    <section class="step-panel" id="step2" style="display:none;">
+      <div class="step-header">
+        <h2>Step 2: Connect to Your Data</h2>
+        <p>Browse your GCP resources and load a dataset.</p>
+      </div>
+
+      <!-- Source type toggle -->
+      <div class="source-toggle">
+        <button class="source-btn active" id="btnGCS" onclick="switchSource('gcs')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Google Cloud Storage
+        </button>
+        <button class="source-btn" id="btnBQ" onclick="switchSource('bigquery')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="2"/></svg>
+          BigQuery
+        </button>
+      </div>
+
+      <div class="cards-row">
+        <!-- GCS Panel -->
+        <div class="card source-panel" id="panelGCS" style="display:block;">
+          <h3>Browse GCS</h3>
+          <div class="form-group">
+            <label for="gcsBucket">Bucket</label>
+            <div class="input-with-btn">
+              <select id="gcsBucket" onchange="onBucketChange()"><option value="">-- Select or discover buckets --</option></select>
+              <button class="btn btn-sm" onclick="discoverBuckets()">Discover</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="gcsPrefix">Prefix / folder (optional)</label>
+            <div class="input-with-btn">
+              <input type="text" id="gcsPrefix" placeholder="e.g. data/raw/">
+              <button class="btn btn-sm" onclick="discoverBlobs()">Browse</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="gcsBlob">File</label>
+            <select id="gcsBlob"><option value="">-- Select a file --</option></select>
+          </div>
+          <div class="form-group">
+            <label for="gcsFormat">Format</label>
+            <select id="gcsFormat">
+              <option value="csv">CSV</option>
+              <option value="parquet">Parquet</option>
+              <option value="json">JSON</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-load" onclick="loadGCS()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Load Data
+          </button>
+        </div>
+
+        <!-- BigQuery Panel -->
+        <div class="card source-panel" id="panelBQ" style="display:none;">
+          <h3>Browse BigQuery</h3>
+          <div class="form-group">
+            <label for="bqProject">Project</label>
+            <input type="text" id="bqProject" placeholder="GCP project ID">
+          </div>
+          <div class="form-group">
+            <label for="bqDataset">Dataset</label>
+            <div class="input-with-btn">
+              <select id="bqDataset" onchange="onDatasetChange()"><option value="">-- Select or discover datasets --</option></select>
+              <button class="btn btn-sm" onclick="discoverDatasets()">Discover</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="bqTable">Table</label>
+            <div class="input-with-btn">
+              <select id="bqTable"><option value="">-- Select a table --</option></select>
+              <button class="btn btn-sm" onclick="discoverTables()">Discover</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="bqLimit">Row limit</label>
+            <input type="number" id="bqLimit" value="50000" min="100" step="1000">
+          </div>
+          <button class="btn btn-primary btn-load" onclick="loadBQ()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Load Data
+          </button>
+        </div>
+
+        <!-- Data Preview (appears after loading) -->
+        <div class="card card-wide" id="previewCard" style="display:none;">
+          <div class="card-header">
+            <h3>Data Preview</h3>
+            <span class="badge" id="previewBadge"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="previewTable">
+              <thead id="previewHead"></thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="feedback" id="loadFeedback"></div>
+
+      <div class="step-actions">
+        <button class="btn btn-back" onclick="goToStep(1)">&larr; Back</button>
+        <button class="btn btn-next" onclick="goToStep(3)" id="btnToChat" disabled>Next: Chat with Data &rarr;</button>
+      </div>
+    </section>
+
+    <!-- ===== STEP 3: Chat ===== -->
+    <section class="step-panel" id="step3" style="display:none;">
+      <div class="step-header">
+        <h2>Step 3: Chat with Your Data</h2>
+        <p id="chatSourceInfo">Ask questions in plain language. Request charts, histograms, summaries, or any analysis.</p>
+      </div>
+
+      <div class="chat-container">
+        <!-- Chat messages area -->
+        <div class="chat-messages" id="chatMessages">
+          <div class="chat-welcome">
+            <div class="welcome-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="#4285F4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h3>Ready to chat with your data!</h3>
+            <p>Try asking questions like:</p>
+            <div class="suggestion-chips">
+              <button class="chip" onclick="askSuggestion(this)">What columns are in this table?</button>
+              <button class="chip" onclick="askSuggestion(this)">Show me a summary of the data</button>
+              <button class="chip" onclick="askSuggestion(this)">What are the data types?</button>
+              <button class="chip" onclick="askSuggestion(this)">Show me a histogram of all numeric columns</button>
+              <button class="chip" onclick="askSuggestion(this)">What is the distribution of values?</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat input -->
+        <div class="chat-input-area">
+          <div class="chat-input-row">
+            <textarea id="chatInput" placeholder="Ask a question about your data..." rows="1" onkeydown="handleChatKey(event)" oninput="autoResize(this)"></textarea>
+            <button class="btn btn-send" id="btnSend" onclick="sendMessage()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="chat-input-footer">
+            <button class="btn btn-text" onclick="clearChat()">Clear chat</button>
+            <span class="chat-model-label" id="chatModelLabel">gpt-4o-mini</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-actions">
+        <button class="btn btn-back" onclick="goToStep(2)">&larr; Back to Data</button>
+        <div></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Loading overlay -->
+  <div class="loading-overlay" id="loadingOverlay" style="display:none;">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Loading...</div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

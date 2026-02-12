@@ -108,7 +108,7 @@ chmod +x "${LLM_CONTEXT_DIR}/run-context-generator.sh"
 chown -R "${USERNAME}:" "${LLM_CONTEXT_DIR}" 2>/dev/null || true
 chown -R "${USERNAME}:" "${USER_WORKBENCH_DIR}" 2>/dev/null || true
 
-# Add aliases and environment to bashrc (context generation is triggered by postStartCommand, not bashrc)
+# Add aliases and environment to bashrc
 {
     echo ""
     echo "# LLM Context Generator"
@@ -120,6 +120,58 @@ chown -R "${USERNAME}:" "${USER_WORKBENCH_DIR}" 2>/dev/null || true
 
 # Make sure the login user is the owner of their .bashrc
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc" 2>/dev/null || true
+
+# Create a stub CLAUDE.md that Claude Code will find immediately
+# This tells Claude basic info and how to get full context
+cat > "${USER_HOME_DIR}/CLAUDE.md" << 'STUB_EOF'
+# Workbench Context (Stub)
+
+You are in a **Verily Workbench** app. Full workspace context is not yet generated.
+
+## ⚡ FIRST: Generate Full Context
+
+Run this command to get complete workspace information:
+
+```bash
+generate-llm-context
+```
+
+This will create the full context with:
+- Workspace name, ID, and your role
+- All resources (buckets, datasets, repos)
+- Resource paths for quick lookup
+- Data persistence guidance
+- Available MCP tools
+
+## While You Wait
+
+You can also use these tools:
+
+```bash
+# Check current workspace
+wb workspace describe
+
+# List resources
+wb resource list
+
+# Check authentication
+wb auth status
+```
+
+## MCP Tools Available
+
+The Workbench MCP server is available with tools like:
+- `list_resources` - List workspace resources
+- `get_resource` - Get resource details
+- `query_bigquery` - Run SQL queries
+
+---
+
+*Run `generate-llm-context` to replace this stub with full context.*
+STUB_EOF
+
+chown "${USERNAME}:" "${USER_HOME_DIR}/CLAUDE.md" 2>/dev/null || true
+echo "Created stub CLAUDE.md at ${USER_HOME_DIR}/CLAUDE.md"
 
 echo ""
 echo "=========================================="

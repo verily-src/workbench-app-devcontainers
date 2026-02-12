@@ -233,3 +233,18 @@ source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then
   source "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh"
 fi
+
+###############################
+# LLM Context Generation
+###############################
+# Generate context file for LLMs (Claude Code, Gemini, etc.)
+# This runs AFTER auth and resource mounting are complete
+if [[ -f "/opt/llm-context/generate-context.sh" ]]; then
+  echo "=== GENERATING LLM CONTEXT ==="
+  # Run as the login user so files are owned correctly
+  ${RUN_AS_LOGIN_USER} "/opt/llm-context/generate-context.sh '${WORK_DIRECTORY}'" || {
+    echo "Warning: LLM context generation failed (non-fatal)"
+    true  # Don't fail the script if context generation fails
+  }
+  echo "=== LLM CONTEXT GENERATION COMPLETE ==="
+fi

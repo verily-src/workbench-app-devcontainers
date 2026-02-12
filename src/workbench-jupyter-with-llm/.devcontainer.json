@@ -8,7 +8,7 @@
   "postCreateCommand": [
     "bash",
     "-c",
-    "./startupscript/post-startup.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\" && echo '' >> /home/jupyter/.bashrc && echo '# Unset GOOGLE_CLOUD_PROJECT for Gemini CLI compatibility' >> /home/jupyter/.bashrc && echo 'unset GOOGLE_CLOUD_PROJECT' >> /home/jupyter/.bashrc && /opt/llm-context/generate-context.sh /home/jupyter 2>/dev/null || true"
+    "./startupscript/post-startup.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\" && echo '' >> /home/jupyter/.bashrc && echo '# Unset GOOGLE_CLOUD_PROJECT for Gemini CLI compatibility' >> /home/jupyter/.bashrc && echo 'unset GOOGLE_CLOUD_PROJECT' >> /home/jupyter/.bashrc"
   ],
   // re-mount bucket files on container start up, then generate LLM context
   "postStartCommand": [

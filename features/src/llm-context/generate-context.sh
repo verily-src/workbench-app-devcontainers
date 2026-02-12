@@ -48,27 +48,12 @@
 
 set -e
 
-# Determine user home directory
-# Priority: 1) $LLM_CONTEXT_HOME, 2) first arg, 3) $HOME
-if [[ -n "${LLM_CONTEXT_HOME:-}" ]]; then
-    USER_HOME="${LLM_CONTEXT_HOME}"
-elif [[ -n "${1:-}" ]]; then
-    USER_HOME="$1"
-else
-    # Find the primary non-root user's home (typically jupyter)
-    if [[ -d "/home/jupyter" ]]; then
-        USER_HOME="/home/jupyter"
-    else
-        USER_HOME="${HOME}"
-    fi
-fi
-
 # Configuration
-CONTEXT_DIR="${USER_HOME}/.workbench"
+CONTEXT_DIR="${HOME}/.workbench"
 SKILLS_DIR="${CONTEXT_DIR}/skills"
 CLAUDE_FILE="${CONTEXT_DIR}/CLAUDE.md"
 # Visible symlink in home directory for Claude Code auto-discovery
-VISIBLE_CLAUDE_SYMLINK="${USER_HOME}/CLAUDE.md"
+VISIBLE_CLAUDE_SYMLINK="${HOME}/CLAUDE.md"
 
 # Colors for output
 RED='\033[0;31m'
@@ -131,82 +116,10 @@ install_skills() {
     cat > "${SKILLS_DIR}/CUSTOM_APP.md" << 'SKILL_EOF'
 # Creating Custom Workbench Apps
 
-## ⚡ Which Approach Do You Need?
+**Practical guide for creating simple, reliable Workbench apps.**
 
-```
-Do you need Jupyter notebooks?
-├── YES → Use workbench-jupyter base image (see "Full-Featured" below)
-└── NO
-    └── Do you need Workbench CLI (wb) or gcloud?
-        ├── YES → Use workbench-tools feature (see "Full-Featured" below)
-        └── NO → Use MINIMAL PATTERN (this guide) ✅
-```
-
-**Most custom apps should use the MINIMAL PATTERN.** It's simpler and less error-prone.
-
----
-
-## ✅ Pre-Deploy Checklist
-
-**🤖 LLM INSTRUCTION: Before suggesting deployment, verify ALL items below. Read the user's files and check each one.**
-
-### Critical (App Won't Start Without These)
-
-| Check | File | What to Look For |
-|-------|------|------------------|
-| ✅ Container name | `docker-compose.yaml` | `container_name: "application-server"` |
-| ✅ Network config | `docker-compose.yaml` | `networks: [app-network]` and `app-network: {external: true}` |
-| ✅ Port exposed | `Dockerfile` | `EXPOSE 8080` (or your port) |
-| ✅ Port mapped | `docker-compose.yaml` | `ports: ["8080:8080"]` |
-| ✅ HTTP binds correctly | App code | `host='0.0.0.0'` (NOT `localhost` or `127.0.0.1`) |
-| ✅ Template exists | `devcontainer-template.json` | Has `id` and `name` fields |
-
-### Common Mistakes (Check These Too)
-
-| Check | File | Issue |
-|-------|------|-------|
-| ⚠️ Valid JSON | `.devcontainer.json` | No trailing commas, no comments in JSON |
-| ⚠️ Build context | `docker-compose.yaml` | `context: ../..` if app is in `src/app-name/` |
-| ⚠️ Dockerfile path | `docker-compose.yaml` | `dockerfile: src/YOUR-APP/Dockerfile` |
-| ⚠️ Long-running process | `Dockerfile` CMD | Must run server, not a script that exits |
-| ⚠️ Dependencies installed | `Dockerfile` | All pip/npm packages in requirements |
-
-### Validation Commands (Run Before Deploy)
-
-```bash
-# 1. Check JSON syntax
-python3 -c "import json; json.load(open('.devcontainer.json'))" && echo "✅ Valid JSON"
-
-# 2. Check docker-compose syntax  
-docker compose config > /dev/null && echo "✅ Valid docker-compose"
-
-# 3. Test locally
-docker network create app-network 2>/dev/null || true
-docker compose build && docker compose up
-```
-
-### 🤖 LLM Response Template
-
-When user asks to create/validate an app, respond with:
-
-```
-## App Validation Results
-
-| Check | Status | Details |
-|-------|--------|---------|
-| Container name | ✅/❌ | Found: "xxx" |
-| Network config | ✅/❌ | ... |
-| Port exposed | ✅/❌ | ... |
-| ... | ... | ... |
-
-### Issues Found
-1. [Issue description and fix]
-
-### Ready to Deploy?
-[Yes/No and next steps]
-```
-
----
+> **When to use this guide:** For simple apps (Flask APIs, static sites, custom tools).
+> For apps needing Workbench CLI, gcloud, or Jupyter, see the [full-featured approach](https://github.com/verily-src/workbench-app-devcontainers).
 
 ## TL;DR - The Minimal Pattern That Works
 
@@ -469,6 +382,117 @@ Everything else is optional convenience that often breaks.
 
 **When in doubt, simplify.**
 SKILL_EOF
+
+    # Create APP_TEMPLATES.md skill (full version, embedded)
+    log_info "Creating APP_TEMPLATES.md skill..."
+    cat > "${SKILLS_DIR}/APP_TEMPLATES.md" << 'TEMPLATES_SKILL_EOF'
+# App Templates for Workbench
+
+**Pre-built, ready-to-deploy application templates with workspace resource integration.**
+
+> **When to use this:** User wants an app that visualizes data, serves an API, processes files, or creates dashboards using their workspace resources.
+
+---
+
+## Available Templates
+
+| Template | Best For | Port | Key Features |
+|----------|----------|------|--------------|
+| **flask-api** | REST APIs, backend services, data processing | 8080 | JSON endpoints, file upload, BQ queries |
+| **streamlit-dashboard** | Data visualization, interactive exploration | 8501 | Charts, file browser, BigQuery explorer |
+| **rshiny-dashboard** | R statistical analysis, R-based visualizations | 3838 | Shiny UI, plotly, ggplot2, tidyverse |
+| **file-processor** | File upload, validation, transformation | 8080 | Drag-drop UI, auto-save to GCS, schema validation |
+
+---
+
+## Template Selection Guide
+
+### Quick Decision Matrix
+
+| User Says... | Recommend |
+|--------------|-----------|
+| "dashboard", "visualize", "charts", "explore data" | `streamlit-dashboard` |
+| "API", "endpoint", "backend", "REST", "service" | `flask-api` |
+| "R", "statistical", "ggplot", "tidyverse" | `rshiny-dashboard` |
+| "upload", "process files", "validate", "CSV" | `file-processor` |
+| "something custom", "from scratch" | → Use `CUSTOM_APP.md` skill |
+
+---
+
+## Template Location
+
+All templates are at:
+```
+https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
+```
+
+---
+
+## How to Use a Template
+
+### Option 1: Deploy Directly
+```
+Repository: https://github.com/aculotti-verily/wb-app-mcp-and-context.git
+Branch: templates-only
+Folder: src/templates/<template-name>
+```
+
+### Option 2: Copy and Customize
+1. Copy the template folder to user's repo
+2. Modify application code in `app/`
+3. Update `devcontainer-template.json` with new name/description
+4. Push to GitHub and deploy
+
+---
+
+## Template Summaries
+
+### flask-api (Port 8080)
+- REST API with Flask
+- Pre-built endpoints: `/health`, `/resources`, `/buckets/<name>/files`, `/bigquery/query`
+- Easy to add custom endpoints
+
+### streamlit-dashboard (Port 8501)
+- Interactive dashboard with tabs
+- GCS file browser, BigQuery explorer, visualization
+- Easy to add new tabs/charts
+
+### rshiny-dashboard (Port 3838)
+- R-based Shiny dashboard
+- Includes: shiny, shinydashboard, plotly, ggplot2, dplyr, tidyr
+- bigrquery and googleCloudStorageR for data access
+
+### file-processor (Port 8080)
+- Drag-drop file upload UI
+- Processes CSV, JSON, Excel
+- Auto-save to GCS buckets
+- Schema validation
+
+---
+
+## Workspace Resource Integration
+
+All templates auto-detect workspace resources via environment variables:
+
+```python
+# Python
+import os
+bucket = os.environ.get("WORKBENCH_my_bucket")
+```
+
+```r
+# R
+bucket <- Sys.getenv("WORKBENCH_my_bucket")
+```
+
+---
+
+## When Templates Don't Fit
+
+If no template matches:
+1. Check if a template can be extended (usually yes)
+2. If truly custom, read `~/.workbench/skills/CUSTOM_APP.md`
+TEMPLATES_SKILL_EOF
 }
 
 # Fetch workspace information
@@ -602,25 +626,13 @@ generate_claude_md() {
     cat > "${CLAUDE_FILE}" << EOF
 # Workbench Context
 
-You are working inside **Verily Workbench**, a secure cloud-based research environment.
-
----
-
-## ⚡ Quick Rules (Read This First)
-
-| If the user asks... | Do this |
-|---------------------|---------|
-| About the workspace (name, ID, role, description) | **Use this file** → See "Current Workspace" below |
-| For a resource path (bucket, dataset) | **Use this file** → See "Resource Paths" below |
-| To query data, list files, or run operations | **Use MCP tools** or CLI |
-
-**Simple rule:** Static info → this file. Actions → MCP/CLI.
+You are working inside **Verily Workbench**, a secure cloud-based research environment for biomedical data analysis.
 
 ---
 
 ## What is Verily Workbench?
 
-Verily Workbench enables researchers to:
+Verily Workbench is a platform that enables researchers to:
 - Access and analyze biomedical data (clinical, genomics, wearables, imaging)
 - Run computational workflows at scale (WDL, Nextflow)
 - Collaborate securely with governance and policy enforcement
@@ -628,89 +640,21 @@ Verily Workbench enables researchers to:
 
 ---
 
-## 📍 Current Workspace
-
-> **Answer "What workspace am I in?" with this section.**
+## Current Workspace
 
 | Property | Value |
 |----------|-------|
 | **Name** | ${ws_name} |
 | **ID** | \`${ws_id}\` |
-| **Description** | ${ws_desc} |
-| **Cloud** | ${ws_cloud} |
-| **Project** | \`${project_display}\` |
+| **Cloud Platform** | ${ws_cloud} |
+| **Project/Account** | \`${project_display}\` |
 | **Your Role** | ${ws_role} |
 | **User** | ${ws_user} |
 | **Organization** | ${ws_org:-"—"} |
 | **Server** | ${ws_server:-"—"} |
 
-**Example response:** *"You're in **${ws_name}** (\`${ws_id}\`), a ${ws_cloud} workspace where you have ${ws_role} access."*
-
----
-
-## 🗂️ Resource Paths (Use for "What's the path for X?")
-
-\`\`\`json
-${embedded_json}
-\`\`\`
-
-**How to use:**
-- \`resourcePaths["my-bucket"]\` → \`gs://actual-bucket-name\`
-- Environment variable: \`\$WORKBENCH_my_bucket\`
-
----
-
-## ⚠️ Data Persistence Warning
-
-> **LOCAL FILES ARE LOST WHEN THE APP STOPS.** Always save important work to cloud buckets.
-
-### Available Buckets
-${bucket_list}
-
-### Quick Save Commands
-\`\`\`bash
-gsutil cp file.ipynb gs://BUCKET/notebooks/           # Single file
-gsutil -m cp -r ./results/ gs://BUCKET/results/       # Directory
-\`\`\`
-
-**🤖 Proactively ask users:** *"Want me to save this to a bucket so it persists?"*
-
----
-
-## 🔍 Data Exploration (Most Common Tasks)
-
-### Find Resources
-\`\`\`bash
-wb resource list                    # List all
-wb resource describe <name>         # Details
-env | grep WORKBENCH_               # Environment variables
-\`\`\`
-
-### Preview BigQuery Data
-\`\`\`bash
-bq ls PROJECT:DATASET                              # List tables
-bq show --schema PROJECT:DATASET.TABLE             # Schema
-bq head -n 10 PROJECT:DATASET.TABLE                # Sample rows
-\`\`\`
-
-### Browse GCS Files
-\`\`\`bash
-gsutil ls gs://BUCKET/                             # List
-gsutil cat gs://BUCKET/file.txt | head             # Preview
-\`\`\`
-
----
-
-## 🔧 MCP Tools vs CLI
-
-| Use MCP Tools For | Use CLI For |
-|-------------------|-------------|
-| \`list_resources\`, \`get_resource\` | Complex operations |
-| \`query_bigquery\` | \`wb workflow logs\` |
-| \`run_workflow\` | \`wb resource delete\` |
-| Structured responses | Full feature coverage |
-
-**Prefer MCP when available** — it's faster and returns structured data.
+### Description
+${ws_desc}
 
 ---
 
@@ -834,20 +778,100 @@ gs://your-bucket/
 
 ---
 
-## Python Examples
+## 🔍 Data Exploration Cheatsheet
 
+This is the **most important section** for quickly discovering and accessing data.
+
+### Step 1: Find Your Resources
+\`\`\`bash
+wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
+\`\`\`
+
+### Step 2: Use Environment Variables (Easiest!)
+Every resource is available as an environment variable:
+\`\`\`bash
+# Pattern: \$WORKBENCH_<resource_name>
+echo \$WORKBENCH_my_bucket      # → gs://actual-bucket-name
+env | grep WORKBENCH_           # List all
+\`\`\`
+
+### Step 3: Get Cloud Paths
+\`\`\`bash
+wb resource describe <resource-name> --format=json
+# Look for: bucketName, projectId, datasetId, gitRepoUrl
+\`\`\`
+
+### Step 4: Preview Data Quickly
+
+**BigQuery:**
+\`\`\`bash
+bq head -n 10 <project>:<dataset>.<table>     # Quick preview
+bq show --schema <project>:<dataset>.<table>  # Column names/types
+bq show --format=prettyjson <project>:<dataset>.<table> | jq '{rows: .numRows}'  # Row count
+\`\`\`
+
+**GCS:**
+\`\`\`bash
+gsutil ls gs://<bucket>/                       # List files
+gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
+\`\`\`
+
+### 🤖 LLM Quick Patterns
+
+| Question | Command |
+|----------|---------|
+| "What data is available?" | \`wb resource list\` |
+| "What tables in dataset?" | \`bq ls <project>:<dataset>\` |
+| "What columns in table?" | \`bq show --schema <project>:<dataset>.<table>\` |
+| "How big is this table?" | \`bq show --format=prettyjson ... \\| jq '{rows: .numRows}'\` |
+| "Show sample data" | \`bq head -n 5 <project>:<dataset>.<table>\` |
+
+---
+
+## How to Discover Data (Detailed)
+
+### List Resources
+\`\`\`bash
+wb resource list
+wb resource list --format=json
+wb resource describe <resource-name>
+\`\`\`
+
+### Explore GCS Buckets
+\`\`\`bash
+gsutil ls gs://<bucket>/
+gsutil ls -l gs://<bucket>/path/
+gsutil cat gs://<bucket>/path/file.txt
+\`\`\`
+
+### Explore BigQuery
+\`\`\`bash
+bq ls <project>:<dataset>
+bq show <project>:<dataset>.<table>
+bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
+\`\`\`
+
+---
+
+## How to Query Data
+
+### BigQuery (CLI)
+\`\`\`bash
+bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 100'
+\`\`\`
+
+### BigQuery (Python)
 \`\`\`python
-# BigQuery
 from google.cloud import bigquery
 client = bigquery.Client()
 df = client.query("SELECT * FROM \\\`project.dataset.table\\\` LIMIT 100").to_dataframe()
+\`\`\`
 
-# GCS Files
+### GCS Files (Python)
+\`\`\`python
 import pandas as pd
 df = pd.read_parquet('gs://bucket/path/file.parquet')
-
-# Save to GCS
-df.to_parquet('gs://bucket/output.parquet')
+df = pd.read_csv('gs://bucket/path/file.csv')
 \`\`\`
 
 ---
@@ -882,6 +906,33 @@ wb resource create bq-dataset --name my-dataset --description "My dataset"
 # Reference external GCS bucket
 wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucket
 \`\`\`
+
+---
+
+## MCP vs CLI: When to Use Each
+
+This app has **two interfaces** to Workbench functionality:
+
+| Interface | Best For | Pros | Cons |
+|-----------|----------|------|------|
+| **MCP Tools** | LLM operations | Structured responses, no shell needed, faster | Limited tool set |
+| **CLI (\`wb\`)** | Complex operations, fallback | Full feature coverage, human-friendly | Requires shell execution, text parsing |
+
+### 🤖 LLM Decision Guide
+
+1. **Prefer MCP tools** when the operation is supported — they return structured data and don't require shell execution
+2. **Fall back to CLI** when MCP doesn't have the tool, or for complex/chained operations
+3. **Use cloud CLIs directly** (\`gsutil\`, \`bq\`, \`gcloud\`) for low-level cloud operations
+
+### Example: Same Operation, Two Ways
+
+**List resources:**
+- MCP: Use \`list_resources\` tool → returns JSON array
+- CLI: Run \`wb resource list --format=json\` → parse stdout
+
+**Query BigQuery:**
+- MCP: Use \`query_bigquery\` tool with SQL parameter → returns results
+- CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → parse output
 
 ---
 
@@ -954,21 +1005,39 @@ wb app describe <name>         # App details
 
 ## Creating Custom Apps
 
-**Two approaches depending on complexity:**
+> **IMPORTANT: When a user asks to create an app, turn code into an app, or build something deployable, follow this decision process:**
 
-### Simple Apps (Recommended)
-Workbench custom apps need exactly **three things**:
-1. Container named \`application-server\`
-2. Connected to \`app-network\` (external Docker network)
-3. HTTP server on a port
+### Step 1: Check Against Templates First
 
-⚠️ **Avoid complexity:** Devcontainer features and startup scripts often fail.
+**Read \`~/.workbench/skills/APP_TEMPLATES.md\`** and ask:
+- Does a pre-built template match their needs?
+- Can a template be easily extended?
 
-**📖 For detailed guide:** \`Read ~/.workbench/skills/CUSTOM_APP.md\`
+| User's Goal | Recommended Template |
+|-------------|---------------------|
+| REST API, backend service | \`flask-api\` |
+| Data dashboard, visualization | \`streamlit-dashboard\` |
+| R analysis, statistical work | \`rshiny-dashboard\` |
+| File upload, processing | \`file-processor\` |
 
-### Full-Featured Apps
-For apps needing Workbench CLI, gcloud, etc.:
-📦 https://github.com/verily-src/workbench-app-devcontainers
+### Step 2: If No Template Fits
+
+**Read \`~/.workbench/skills/CUSTOM_APP.md\`** for:
+- Building from scratch
+- Minimal working pattern
+- Common pitfalls to avoid
+
+### Step 3: Present Options to User
+
+Always explain:
+1. **Template option**: "There's a pre-built X template that does Y. We can customize it."
+2. **From-scratch option**: "Or we can build something custom from the ground up."
+
+Let the user decide based on their specific needs.
+
+### Quick Reference
+- **Templates**: https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
+- **Full-featured apps**: https://github.com/verily-src/workbench-app-devcontainers
 
 ---
 
@@ -976,11 +1045,31 @@ For apps needing Workbench CLI, gcloud, etc.:
 
 When users ask about specific topics, **read these skill files** for detailed guidance:
 
-| Topic | Skill File |
-|-------|------------|
-| Creating custom apps | \`~/.workbench/skills/CUSTOM_APP.md\` |
+| Topic | Skill File | When to Use |
+|-------|------------|-------------|
+| Pre-built app templates | \`~/.workbench/skills/APP_TEMPLATES.md\` | User wants dashboard, API, file processor |
+| Building apps from scratch | \`~/.workbench/skills/CUSTOM_APP.md\` | User needs full control or custom solution |
 
-**How to use:** When the topic comes up, read the skill file first.
+**Always read BOTH skills when app creation comes up**, then recommend the best approach.
+
+---
+
+## Quick Reference (Machine-Readable)
+
+Use this JSON for exact resource paths and environment variables:
+
+\`\`\`json
+${embedded_json}
+\`\`\`
+
+**Usage:**
+- \`resourcePaths["my-bucket"]\` → exact GCS/BQ path
+- \`envVars["WORKBENCH_my_bucket"]\` → environment variable value
+
+To refresh after workspace changes:
+\`\`\`bash
+~/.workbench/generate-context.sh
+\`\`\`
 
 ---
 

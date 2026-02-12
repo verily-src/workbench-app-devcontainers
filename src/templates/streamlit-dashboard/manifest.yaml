@@ -1,0 +1,39 @@
+id: streamlit-dashboard
+name: Streamlit Dashboard
+description: Interactive data dashboard with Streamlit
+version: 1.0.0
+
+capabilities:
+  - data-visualization
+  - interactive-ui
+  - file-upload
+  - bigquery-access
+  - gcs-access
+  - charts-and-graphs
+
+inputs:
+  - name: app_name
+    type: string
+    required: true
+    default: "my-dashboard"
+  
+  - name: dashboard_title
+    type: string
+    required: false
+    default: "Data Dashboard"
+  
+  - name: gcs_buckets
+    type: list[resource]
+    resource_type: GCS_BUCKET
+    required: false
+    description: GCS buckets to access
+  
+  - name: bq_datasets
+    type: list[resource]
+    resource_type: BQ_DATASET
+    required: false
+    description: BigQuery datasets to access
+
+complexity: simple
+estimated_build_time: 3min
+port: 8501

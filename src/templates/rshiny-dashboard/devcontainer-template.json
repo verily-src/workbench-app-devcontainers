@@ -1,0 +1,23 @@
+{
+  "id": "rshiny-dashboard",
+  "version": "1.0.0",
+  "name": "RShiny Dashboard",
+  "description": "Interactive R-based dashboard with Shiny for statistical analysis and visualization",
+  "documentationURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/master/src/templates/rshiny-dashboard",
+  "licenseURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

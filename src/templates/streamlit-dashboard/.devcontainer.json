@@ -1,0 +1,35 @@
+{
+  "name": "Streamlit Dashboard",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "bash", "-c",
+    "./startupscript/post-startup.sh appuser /home/appuser \"${templateOption:cloud}\" \"${templateOption:login}\""
+  ],
+  "postStartCommand": [
+    "bash", "-c",
+    "./startupscript/remount-on-restart.sh appuser /home/appuser \"${templateOption:cloud}\" \"${templateOption:login}\""
+  ],
+  "features": {
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "appuser",
+      "userHomeDir": "/home/appuser"
+    },
+    "./.devcontainer/features/llm-context": {
+      "username": "appuser",
+      "userHomeDir": "/home/appuser"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "proxyTargetPort": 8501,
+      "opens": {
+        "extensions": [".py", ".json", ".yaml", ".md", ".csv"]
+      }
+    }
+  }
+}

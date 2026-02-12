@@ -1,0 +1,35 @@
+{
+  "name": "RShiny Dashboard",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "bash", "-c",
+    "./startupscript/post-startup.sh shiny /home/shiny \"${templateOption:cloud}\" \"${templateOption:login}\""
+  ],
+  "postStartCommand": [
+    "bash", "-c",
+    "./startupscript/remount-on-restart.sh shiny /home/shiny \"${templateOption:cloud}\" \"${templateOption:login}\""
+  ],
+  "features": {
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "shiny",
+      "userHomeDir": "/home/shiny"
+    },
+    "./.devcontainer/features/llm-context": {
+      "username": "shiny",
+      "userHomeDir": "/home/shiny"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "proxyTargetPort": 3838,
+      "opens": {
+        "extensions": [".R", ".Rmd", ".json", ".yaml", ".md", ".csv"]
+      }
+    }
+  }
+}

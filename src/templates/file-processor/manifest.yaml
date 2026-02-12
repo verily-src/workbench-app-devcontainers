@@ -1,0 +1,33 @@
+id: file-processor
+name: File Processor
+description: Upload, validate, and transform files with GCS integration
+version: 1.0.0
+
+capabilities:
+  - file-upload
+  - file-validation
+  - data-transformation
+  - gcs-access
+  - csv-processing
+  - json-processing
+
+inputs:
+  - name: app_name
+    type: string
+    required: true
+    default: "file-processor"
+  
+  - name: validation_schema
+    type: object
+    required: false
+    description: JSON schema for file validation
+  
+  - name: output_bucket
+    type: resource
+    resource_type: GCS_BUCKET
+    required: false
+    description: Bucket to store processed files
+
+complexity: simple
+estimated_build_time: 3min
+port: 8080

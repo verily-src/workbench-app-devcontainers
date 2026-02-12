@@ -148,15 +148,63 @@ Do you need Jupyter notebooks?
 
 ## ✅ Pre-Deploy Checklist
 
-Before deploying, verify:
+**🤖 LLM INSTRUCTION: Before suggesting deployment, verify ALL items below. Read the user's files and check each one.**
 
-- [ ] Container is named `application-server`
-- [ ] Connected to `app-network` (external: true)
-- [ ] HTTP server binds to `0.0.0.0` (not `localhost`)
-- [ ] Port is exposed (usually 8080)
-- [ ] No syntax errors in `.devcontainer.json` (valid JSON, no trailing commas)
-- [ ] `devcontainer-template.json` exists with valid `id` and `name`
-- [ ] Test locally with `docker compose up` before deploying
+### Critical (App Won't Start Without These)
+
+| Check | File | What to Look For |
+|-------|------|------------------|
+| ✅ Container name | `docker-compose.yaml` | `container_name: "application-server"` |
+| ✅ Network config | `docker-compose.yaml` | `networks: [app-network]` and `app-network: {external: true}` |
+| ✅ Port exposed | `Dockerfile` | `EXPOSE 8080` (or your port) |
+| ✅ Port mapped | `docker-compose.yaml` | `ports: ["8080:8080"]` |
+| ✅ HTTP binds correctly | App code | `host='0.0.0.0'` (NOT `localhost` or `127.0.0.1`) |
+| ✅ Template exists | `devcontainer-template.json` | Has `id` and `name` fields |
+
+### Common Mistakes (Check These Too)
+
+| Check | File | Issue |
+|-------|------|-------|
+| ⚠️ Valid JSON | `.devcontainer.json` | No trailing commas, no comments in JSON |
+| ⚠️ Build context | `docker-compose.yaml` | `context: ../..` if app is in `src/app-name/` |
+| ⚠️ Dockerfile path | `docker-compose.yaml` | `dockerfile: src/YOUR-APP/Dockerfile` |
+| ⚠️ Long-running process | `Dockerfile` CMD | Must run server, not a script that exits |
+| ⚠️ Dependencies installed | `Dockerfile` | All pip/npm packages in requirements |
+
+### Validation Commands (Run Before Deploy)
+
+```bash
+# 1. Check JSON syntax
+python3 -c "import json; json.load(open('.devcontainer.json'))" && echo "✅ Valid JSON"
+
+# 2. Check docker-compose syntax  
+docker compose config > /dev/null && echo "✅ Valid docker-compose"
+
+# 3. Test locally
+docker network create app-network 2>/dev/null || true
+docker compose build && docker compose up
+```
+
+### 🤖 LLM Response Template
+
+When user asks to create/validate an app, respond with:
+
+```
+## App Validation Results
+
+| Check | Status | Details |
+|-------|--------|---------|
+| Container name | ✅/❌ | Found: "xxx" |
+| Network config | ✅/❌ | ... |
+| Port exposed | ✅/❌ | ... |
+| ... | ... | ... |
+
+### Issues Found
+1. [Issue description and fix]
+
+### Ready to Deploy?
+[Yes/No and next steps]
+```
 
 ---
 

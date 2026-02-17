@@ -167,16 +167,27 @@ jobs:
           # This is the amount of space left over, not allocated to the LVM
           # volume. We already checked out the repo so we don't need much
           root-reserve-mb: 512
-          build-mount-path: /var/lib/docker
+          build-mount-path: /mnt/build
           remove-dotnet: true
           remove-android: true
           remove-haskell: true
           remove-codeql: true
           remove-docker-images: true
 
-      - name: Restart docker
+      - name: Reconfigure docker and containerd to use new build space
         if: ${{ matrix.app.maximize_build_space }}
-        run: sudo service docker restart
+        run: |
+          sudo mkdir -p /mnt/build/docker
+          echo '{"data-root": "/mnt/build/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo mkdir -p /mnt/build/containerd
+          sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+          sudo sed -i "s|root = '/var/lib/containerd'|root = '/mnt/build/containerd'|" /etc/containerd/config.toml
+
+      - name: Restart docker and containerd
+        if: ${{ matrix.app.maximize_build_space }}
+        run: |
+          sudo systemctl restart containerd
+          sudo systemctl restart docker
 
       - name: Smoke test for '${{ matrix.app.template }}'
         id: smoke_test

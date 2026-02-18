@@ -1003,6 +1003,45 @@ wb app describe <name>         # App details
 
 ---
 
+## ⚠️ Workbench App URLs (CRITICAL)
+
+**When generating URLs for apps, proxies, or any web content running inside this Workbench app, you MUST use this exact format:**
+
+\`\`\`
+https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
+\`\`\`
+
+### Correct Examples
+\`\`\`
+https://workbench.verily.com/app/abc123-def456/proxy/8080/
+https://workbench.verily.com/app/abc123-def456/proxy/8501/index.html
+https://workbench.verily.com/app/abc123-def456/proxy/3000/api/data
+\`\`\`
+
+### ❌ WRONG Formats (These will fail with "Bad Request")
+\`\`\`
+https://abc123-def456.workbench-app.verily.com/  ← WRONG
+https://workbench-app.verily.com/abc123-def456/  ← WRONG
+http://localhost:8080/                            ← WRONG (not accessible externally)
+https://abc123-def456/workbench.verily.com/       ← WRONG
+\`\`\`
+
+### How to Get the Current App UUID
+\`\`\`bash
+# The app UUID is in your current URL or can be found via:
+echo \$WORKBENCH_APP_ID   # If available as env var
+\`\`\`
+
+### When to Use This
+- Opening HTML files in a new tab
+- Running Flask/Streamlit/Shiny apps
+- Any code that serves content on a port
+- Generating clickable links for users
+
+**Always construct URLs using the proxy format above, never localhost or custom domain patterns.**
+
+---
+
 ## Creating Custom Apps
 
 > **IMPORTANT: When a user asks to create an app, turn code into an app, or build something deployable, follow this decision process:**

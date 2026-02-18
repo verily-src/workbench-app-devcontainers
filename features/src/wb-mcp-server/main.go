@@ -373,6 +373,27 @@ var wbTools = []Tool{
 			Properties: map[string]interface{}{},
 		},
 	},
+	{
+		Name:        "workspace_list_data_collections",
+		Description: `List all data collections in the current workspace and their associated resources.
+
+Use this when a user asks:
+- "What data collections exist in my workspace?"
+- "Show me resources grouped by data collection"
+- "Which resources came from which data collections?"
+
+This tool automatically:
+1. Gets all resources and identifies their sourceWorkspaceId (where they were cloned from)
+2. Looks up each source workspace to get the actual data collection name
+3. Groups resources by their source data collection
+4. Shows resources created directly in this workspace (no source)
+
+Returns a structured list of data collections with their resources, types, and cloud paths.`,
+		InputSchema: InputSchema{
+			Type:       "object",
+			Properties: map[string]interface{}{},
+		},
+	},
 
 	{
 		Name:        "group_create",
@@ -2403,6 +2424,126 @@ func handleCallTool(params CallToolParams) CallToolResult {
 
 	case "folder_list_tree":
 		output, err = executeWbCommand([]string{"folder", "tree"})
+
+	case "workspace_list_data_collections":
+		// Get all resources with their metadata (includes sourceWorkspaceId)
+		resourcesOutput, resourcesErr := executeWbCommand([]string{"resource", "list", "--format=json"})
+		if resourcesErr != nil {
+			err = fmt.Errorf("failed to list resources: %w", resourcesErr)
+			break
+		}
+
+		// Parse resources
+		var resources []map[string]interface{}
+		if jsonErr := json.Unmarshal([]byte(resourcesOutput), &resources); jsonErr != nil {
+			// Try parsing as object with "resources" key
+			var resourceResponse map[string]interface{}
+			if err2 := json.Unmarshal([]byte(resourcesOutput), &resourceResponse); err2 == nil {
+				if r, ok := resourceResponse["resources"].([]interface{}); ok {
+					for _, item := range r {
+						if m, ok := item.(map[string]interface{}); ok {
+							resources = append(resources, m)
+						}
+					}
+				}
+			}
+		}
+
+		// Collect unique sourceWorkspaceIds
+		sourceWorkspaceIds := make(map[string]bool)
+		for _, resource := range resources {
+			if sourceId, ok := resource["sourceWorkspaceId"].(string); ok && sourceId != "" {
+				sourceWorkspaceIds[sourceId] = true
+			}
+		}
+
+		// Look up each source workspace to get the data collection name
+		dataCollectionNames := make(map[string]string) // sourceWorkspaceId -> display name
+		for sourceId := range sourceWorkspaceIds {
+			wsOutput, wsErr := executeWbCommand([]string{"workspace", "describe", "--workspace=" + sourceId, "--format=json"})
+			if wsErr == nil {
+				var wsInfo map[string]interface{}
+				if json.Unmarshal([]byte(wsOutput), &wsInfo) == nil {
+					// Try to get display name, fall back to id
+					if displayName, ok := wsInfo["displayName"].(string); ok && displayName != "" {
+						dataCollectionNames[sourceId] = displayName
+					} else if name, ok := wsInfo["name"].(string); ok && name != "" {
+						dataCollectionNames[sourceId] = name
+					} else if id, ok := wsInfo["id"].(string); ok {
+						dataCollectionNames[sourceId] = id
+					} else {
+						dataCollectionNames[sourceId] = sourceId
+					}
+				} else {
+					dataCollectionNames[sourceId] = sourceId
+				}
+			} else {
+				// If we can't access the source workspace, use the ID
+				dataCollectionNames[sourceId] = sourceId + " (inaccessible)"
+			}
+		}
+
+		// Group resources by data collection (sourceWorkspaceId)
+		dataCollections := make(map[string]map[string]interface{})
+		localResources := []map[string]interface{}{}
+
+		for _, resource := range resources {
+			resourceInfo := map[string]interface{}{
+				"name": resource["name"],
+				"type": resource["resourceType"],
+			}
+
+			// Add cloud path if available
+			if metadata, ok := resource["metadata"].(map[string]interface{}); ok {
+				if bucket, ok := metadata["bucketName"].(string); ok {
+					resourceInfo["path"] = "gs://" + bucket
+				} else if dataset, ok := metadata["datasetId"].(string); ok {
+					if project, ok := metadata["projectId"].(string); ok {
+						resourceInfo["path"] = project + ":" + dataset
+					}
+				} else if gcsBucket, ok := metadata["gcsBucketName"].(string); ok {
+					resourceInfo["path"] = "gs://" + gcsBucket
+				}
+			}
+
+			// Check if resource came from a data collection (has sourceWorkspaceId)
+			if sourceId, ok := resource["sourceWorkspaceId"].(string); ok && sourceId != "" {
+				collectionName := dataCollectionNames[sourceId]
+				if dataCollections[collectionName] == nil {
+					dataCollections[collectionName] = map[string]interface{}{
+						"sourceWorkspaceId": sourceId,
+						"resources":         []map[string]interface{}{},
+					}
+				}
+				resources := dataCollections[collectionName]["resources"].([]map[string]interface{})
+				dataCollections[collectionName]["resources"] = append(resources, resourceInfo)
+			} else {
+				localResources = append(localResources, resourceInfo)
+			}
+		}
+
+		// Count resources in collections
+		resourcesInCollections := 0
+		for _, dc := range dataCollections {
+			if res, ok := dc["resources"].([]map[string]interface{}); ok {
+				resourcesInCollections += len(res)
+			}
+		}
+
+		// Build output
+		result := map[string]interface{}{
+			"dataCollections": dataCollections,
+			"localResources":  localResources,
+			"summary": map[string]interface{}{
+				"totalDataCollections":   len(dataCollections),
+				"totalResources":         len(resources),
+				"resourcesFromCollections": resourcesInCollections,
+				"resourcesCreatedLocally": len(localResources),
+			},
+		}
+
+		outputBytes, _ := json.MarshalIndent(result, "", "  ")
+		output = string(outputBytes)
 
 	case "group_create":
 		groupId := params.Arguments["groupId"].(string)

@@ -216,9 +216,12 @@ https://workbench.verily.com/app/abc123-def456/proxy/8501/dashboard
 ```
 https://abc123-def456.workbench-app.verily.com/  ← WRONG
 http://localhost:8080/                            ← WRONG
+file:///home/jupyter/dashboard.html               ← WRONG (JS blocked)
 ```
 
 **Always use the proxy URL format. Never use localhost or custom domain patterns.**
+
+> **📊 Building dashboards or HTML visualizations?** See the "Workbench URLs, Dashboards & Interactive Content" section in `~/CLAUDE.md` for how to serve HTML files with JavaScript (requires HTTP server).
 
 ---
 

@@ -1003,42 +1003,110 @@ wb app describe <name>         # App details
 
 ---
 
-## ⚠️ Workbench App URLs (CRITICAL)
+## ⚠️ Workbench URLs, Dashboards & Interactive Content (CRITICAL)
 
-**When generating URLs for apps, proxies, or any web content running inside this Workbench app, you MUST use this exact format:**
+**Use this section when a user wants to:**
+- **Build a dashboard** or data visualization
+- **Create interactive charts** (Plotly, D3.js, Bokeh, Chart.js)
+- **Run HTML files** with JavaScript
+- **Launch web apps** (Flask, Streamlit, Shiny, FastAPI)
+- **Display any content** that needs to run in a browser
+
+### The Correct URL Format
+
+**All web content MUST be accessed via the Workbench proxy URL:**
 
 \`\`\`
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 \`\`\`
 
-### Correct Examples
+### ✅ Correct Examples
 \`\`\`
 https://workbench.verily.com/app/abc123-def456/proxy/8080/
 https://workbench.verily.com/app/abc123-def456/proxy/8501/index.html
-https://workbench.verily.com/app/abc123-def456/proxy/3000/api/data
+https://workbench.verily.com/app/abc123-def456/proxy/8000/dashboard.html
 \`\`\`
 
-### ❌ WRONG Formats (These will fail with "Bad Request")
+### ❌ WRONG Formats (These will fail)
 \`\`\`
-https://abc123-def456.workbench-app.verily.com/  ← WRONG
-https://workbench-app.verily.com/abc123-def456/  ← WRONG
-http://localhost:8080/                            ← WRONG (not accessible externally)
-https://abc123-def456/workbench.verily.com/       ← WRONG
+https://abc123-def456.workbench-app.verily.com/  ← WRONG: Bad Request error
+http://localhost:8080/                            ← WRONG: Not accessible externally
+file:///home/jupyter/dashboard.html               ← WRONG: JavaScript blocked by browser
 \`\`\`
 
-### How to Get the Current App UUID
+### Why \`file://\` URLs Don't Work for Interactive Content
+
+**You cannot open HTML files directly using \`file://\` paths.** The browser blocks JavaScript execution for security reasons. This affects:
+- HTML dashboards with charts (Plotly, D3.js, Chart.js)
+- Interactive visualizations
+- Any HTML with \`<script>\` tags
+- Single-page applications
+
+### The Solution: Serve via HTTP Server
+
+**Step 1: Start a simple HTTP server**
 \`\`\`bash
-# The app UUID is in your current URL or can be found via:
-echo \$WORKBENCH_APP_ID   # If available as env var
+# Navigate to your HTML files
+cd /path/to/your/html/files
+
+# Start Python HTTP server (always available in Workbench)
+python3 -m http.server 8000
 \`\`\`
 
-### When to Use This
-- Opening HTML files in a new tab
-- Running Flask/Streamlit/Shiny apps
-- Any code that serves content on a port
-- Generating clickable links for users
+**Step 2: Access via Workbench proxy URL**
+\`\`\`
+https://workbench.verily.com/app/[APP_UUID]/proxy/8000/your-file.html
+\`\`\`
 
-**Always construct URLs using the proxy format above, never localhost or custom domain patterns.**
+### 📊 How to Build Dashboards & Visualizations
+
+**When a user asks to "build a dashboard", "create a visualization", "show me a chart", or "display data interactively":**
+
+\`\`\`python
+# 1. Create the HTML file with your visualization
+html_content = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <h1>Data Dashboard</h1>
+    <div id="chart"></div>
+    <script>
+        // Your visualization code here
+        var data = [{x: [1, 2, 3], y: [4, 5, 6], type: 'bar'}];
+        Plotly.newPlot('chart', data);
+    </script>
+</body>
+</html>
+'''
+
+with open('dashboard.html', 'w') as f:
+    f.write(html_content)
+
+print("✅ Dashboard created! Now run in terminal:")
+print("   python3 -m http.server 8000")
+print("")
+print("Then access at:")
+print("   https://workbench.verily.com/app/[APP_UUID]/proxy/8000/dashboard.html")
+\`\`\`
+
+### Common Ports by Use Case
+| Content Type | Suggested Port | Command |
+|--------------|---------------|---------|
+| HTML dashboards | 8000 | \`python3 -m http.server 8000\` |
+| Streamlit apps | 8501 | \`streamlit run app.py\` |
+| Flask/FastAPI | 8080 | \`flask run --port 8080\` |
+| Shiny apps | 3838 | (configured in app) |
+
+### Pro Tips
+1. **Keep server running** - The HTTP server must stay running in a terminal
+2. **Use background mode** - \`python3 -m http.server 8000 &\` to run in background
+3. **Check if port is in use** - \`lsof -i :8000\` before starting
+4. **Kill existing server** - \`kill \$(lsof -t -i :8000)\` if port is occupied
+5. **Get App UUID** - Check your browser URL or run \`echo \$WORKBENCH_APP_ID\`
 
 ---
 

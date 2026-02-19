@@ -2459,7 +2459,7 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			break
 		}
 
-		// Step 1: List all resources to get resource IDs
+		// List all resources (same API call as workspace_list_resources which works)
 		resourcesUrl := fmt.Sprintf("%s/api/workspaces/v1/%s/resources?offset=0&limit=1000", workspaceBaseURL, workspaceUuid)
 		resourcesResp, apiErr := makeAPIRequest("GET", resourcesUrl, nil)
 		if apiErr != nil {
@@ -2478,67 +2478,23 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			resourcesList = []interface{}{}
 		}
 
-		// Step 2: For each resource, get detailed info with lineage
-		// Build a map of resource ID -> detailed resource info (with lineage)
-		detailedResources := []map[string]interface{}{}
+		// Extract sourceWorkspaceIds from resourceLineage (which is an ARRAY inside metadata)
 		sourceWorkspaceIds := make(map[string]bool)
-
 		for _, r := range resourcesList {
 			resource, ok := r.(map[string]interface{})
 			if !ok {
 				continue
 			}
-
-			// Get resource metadata to find the resource ID
 			metadata, ok := resource["metadata"].(map[string]interface{})
 			if !ok {
 				continue
 			}
-			resourceId, ok := metadata["resourceId"].(string)
-			if !ok {
-				// Try alternative field names
-				if rid, ok := metadata["id"].(string); ok {
-					resourceId = rid
-				} else if rid, ok := resource["id"].(string); ok {
-					resourceId = rid
-				} else {
-					continue
-				}
-			}
-
-			// Get detailed resource info (includes lineage)
-			detailUrl := fmt.Sprintf("%s/api/workspaces/v1/%s/resources/%s", workspaceBaseURL, workspaceUuid, resourceId)
-			detailResp, detailErr := makeAPIRequest("GET", detailUrl, nil)
-			if detailErr != nil {
-				// If we can't get details, use what we have from the list
-				detailedResources = append(detailedResources, resource)
-				continue
-			}
-
-			var detailedResource map[string]interface{}
-			if json.Unmarshal(detailResp, &detailedResource) == nil {
-				detailedResources = append(detailedResources, detailedResource)
-
-				// Extract sourceWorkspaceId from resourceLineage
-				if lineage, ok := detailedResource["resourceLineage"].(map[string]interface{}); ok {
-					if sourceId, ok := lineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
+			// resourceLineage is an array inside metadata
+			if lineageArray, ok := metadata["resourceLineage"].([]interface{}); ok && len(lineageArray) > 0 {
+				if firstLineage, ok := lineageArray[0].(map[string]interface{}); ok {
+					if sourceId, ok := firstLineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
 						sourceWorkspaceIds[sourceId] = true
 					}
-				}
-			} else {
-				detailedResources = append(detailedResources, resource)
-			}
-		}
-
-		// Also check the original list for any lineage info we might have missed
-		for _, r := range resourcesList {
-			resource, ok := r.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if lineage, ok := resource["resourceLineage"].(map[string]interface{}); ok {
-				if sourceId, ok := lineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
-					sourceWorkspaceIds[sourceId] = true
 				}
 			}
 		}
@@ -2569,43 +2525,49 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			}
 		}
 
-		// Group resources by data collection (using resourceLineage.sourceWorkspaceId)
+		// Group resources by data collection (using resourceLineage array inside metadata)
 		dataCollections := make(map[string]map[string]interface{})
 		localResources := []map[string]interface{}{}
 
-		for _, resource := range detailedResources {
-			// Get metadata from the resource
+		for _, r := range resourcesList {
+			resource, ok := r.(map[string]interface{})
+			if !ok {
+				continue
+			}
 			metadata, _ := resource["metadata"].(map[string]interface{})
+			if metadata == nil {
+				continue
+			}
 
 			resourceInfo := map[string]interface{}{}
 
 			// Extract name and type from metadata
-			if metadata != nil {
-				if name, ok := metadata["name"].(string); ok {
-					resourceInfo["name"] = name
-				}
-				if resType, ok := metadata["resourceType"].(string); ok {
-					resourceInfo["type"] = resType
-				}
-				// GCS bucket path
-				if bucket, ok := metadata["bucketName"].(string); ok {
-					resourceInfo["path"] = "gs://" + bucket
-				} else if gcsBucket, ok := metadata["gcsBucketName"].(string); ok {
-					resourceInfo["path"] = "gs://" + gcsBucket
-				}
-				// BigQuery dataset path
-				if dataset, ok := metadata["datasetId"].(string); ok {
-					if project, ok := metadata["projectId"].(string); ok {
-						resourceInfo["path"] = project + ":" + dataset
-					}
+			if name, ok := metadata["name"].(string); ok {
+				resourceInfo["name"] = name
+			}
+			if resType, ok := metadata["resourceType"].(string); ok {
+				resourceInfo["type"] = resType
+			}
+			// GCS bucket path
+			if bucket, ok := metadata["bucketName"].(string); ok {
+				resourceInfo["path"] = "gs://" + bucket
+			} else if gcsBucket, ok := metadata["gcsBucketName"].(string); ok {
+				resourceInfo["path"] = "gs://" + gcsBucket
+			}
+			// BigQuery dataset path
+			if dataset, ok := metadata["datasetId"].(string); ok {
+				if project, ok := metadata["projectId"].(string); ok {
+					resourceInfo["path"] = project + ":" + dataset
 				}
 			}
 
-			// Check resourceLineage for source workspace ID
+			// Check resourceLineage array for source workspace ID
 			var sourceId string
-			if lineage, ok := resource["resourceLineage"].(map[string]interface{}); ok {
-				if sid, ok := lineage["sourceWorkspaceId"].(string); ok && sid != "" {
-					sourceId = sid
+			if lineageArray, ok := metadata["resourceLineage"].([]interface{}); ok && len(lineageArray) > 0 {
+				if firstLineage, ok := lineageArray[0].(map[string]interface{}); ok {
+					if sid, ok := firstLineage["sourceWorkspaceId"].(string); ok && sid != "" {
+						sourceId = sid
+					}
 				}
 			}
 
@@ -2639,7 +2601,7 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			"localResources":  localResources,
 			"summary": map[string]interface{}{
 				"totalDataCollections":     len(dataCollections),
-				"totalResources":           len(detailedResources),
+				"totalResources":           len(resourcesList),
 				"resourcesFromCollections": resourcesInCollections,
 				"resourcesCreatedLocally":  len(localResources),
 			},

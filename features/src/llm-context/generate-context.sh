@@ -687,12 +687,13 @@ Data collections are curated datasets in the Workbench catalog. When added to a 
 
 Use the **MCP server** to find which data collection a resource came from:
 
-1. **Use the MCP \`get_resource\` tool** to get full resource metadata including lineage
-2. The \`resourceLineage\` array contains:
+1. **Use the MCP \`workspace_list_data_collections\` tool** to get resources grouped by data collection
+2. Or use \`workspace_list_resources\` with workspaceId to get full resource metadata
+3. The \`resourceLineage\` object contains:
    - \`sourceWorkspaceId\`: UUID of the data collection
    - \`sourceResourceId\`: UUID of the original resource
 
-**Example:** Ask "Use get_resource to get lineage for resource 'clinical-bq-dataset'"
+**Example:** Ask "Use workspace_list_data_collections to show me which data collections my resources came from"
 
 The response includes:
 \`\`\`json
@@ -927,11 +928,11 @@ This app has **two interfaces** to Workbench functionality:
 ### Example: Same Operation, Two Ways
 
 **List resources:**
-- MCP: Use \`list_resources\` tool → returns JSON array
+- MCP: Use \`workspace_list_resources\` tool → returns JSON array
 - CLI: Run \`wb resource list --format=json\` → parse stdout
 
 **Query BigQuery:**
-- MCP: Use \`query_bigquery\` tool with SQL parameter → returns results
+- MCP: Use \`bq_execute\` tool with query parameter → returns results
 - CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → parse output
 
 ---
@@ -942,10 +943,11 @@ The Workbench MCP server exposes these tools for programmatic LLM access:
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
-| \`list_resources\` | \`wb resource list\` | List all resources in the workspace |
-| \`get_resource\` | \`wb resource describe <name>\` | Get details about a specific resource |
-| \`query_bigquery\` | \`bq query\` | Run SQL queries against BigQuery |
-| \`run_workflow\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
+| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
+| \`workspace_list_data_collections\` | N/A | List data collections and their resources |
+| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
+| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
+| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
 | \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
 | \`build_cohort\` | *(UI only)* | Create a cohort using Data Explorer |
 | \`export_cohort\` | *(UI only)* | Export cohort data to a bucket |

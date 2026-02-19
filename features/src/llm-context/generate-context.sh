@@ -147,8 +147,7 @@ This generates all required files in \`src/my-app/\` with correct structure.
 
 \`\`\`
 your-repo/
-├── .devcontainer/
-│   └── devcontainer.json      ← MUST be in .devcontainer/ folder!
+├── .devcontainer.json         ← MUST be at repo ROOT (not in a folder!)
 ├── docker-compose.yaml
 ├── Dockerfile
 ├── devcontainer-template.json
@@ -156,7 +155,7 @@ your-repo/
     └── your_app.py
 \`\`\`
 
-**⚠️ CRITICAL:** The \`devcontainer.json\` file MUST be inside a \`.devcontainer/\` folder, NOT at the repo root!
+**⚠️ CRITICAL:** Workbench expects \`.devcontainer.json\` at the **repo ROOT**, NOT inside a \`.devcontainer/\` folder!
 
 ### 2. Container Requirements
 
@@ -169,30 +168,25 @@ Workbench custom apps need exactly **three things**:
 
 ## The Working Pattern (Copy This)
 
-### File 1: \`.devcontainer/devcontainer.json\`
+### File 1: \`.devcontainer.json\`
 
-**Location:** \`.devcontainer/devcontainer.json\` (NOT at root!)
+**Location:** Repo ROOT (same level as docker-compose.yaml)
 
 \`\`\`json
 {
   "name": "Your App Name",
-  "dockerComposeFile": "../docker-compose.yaml",
+  "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/app",
-  "remoteUser": "root",
-  "customizations": {
-    "workbench": {
-      "proxyTargetPort": 8080
-    }
-  }
+  "remoteUser": "root"
 }
 \`\`\`
 
 **⚠️ CRITICAL settings:**
-- \`"dockerComposeFile": "../docker-compose.yaml"\` - Must go UP one level since we're in \`.devcontainer/\`
-- \`"proxyTargetPort": 8080\` - REQUIRED for Workbench to know which port to proxy
+- \`"dockerComposeFile": "docker-compose.yaml"\` - Same directory (both at root)
 - \`"workspaceFolder": "/app"\` - Should match WORKDIR in Dockerfile
+- File MUST be named \`.devcontainer.json\` at repo root
 
 ### File 2: \`docker-compose.yaml\`
 
@@ -260,9 +254,8 @@ CMD ["python", "app.py"]
 
 Before deploying, verify:
 
-- [ ] \`devcontainer.json\` is in \`.devcontainer/\` folder (NOT at root)
-- [ ] \`dockerComposeFile\` path starts with \`../\` (goes up from .devcontainer/)
-- [ ] \`proxyTargetPort\` is set in customizations.workbench
+- [ ] \`.devcontainer.json\` is at repo ROOT (NOT in a folder!)
+- [ ] \`dockerComposeFile\` is \`"docker-compose.yaml"\` (same directory)
 - [ ] \`container_name\` is exactly \`"application-server"\`
 - [ ] Network is \`app-network\` with \`external: true\`
 - [ ] Flask/server binds to \`0.0.0.0\` (not \`localhost\`)
@@ -315,8 +308,8 @@ if __name__ == '__main__':
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| App fails to create | \`devcontainer.json\` at root | Move to \`.devcontainer/devcontainer.json\` |
-| Proxy can't reach app | Missing \`proxyTargetPort\` | Add to \`customizations.workbench\` |
+| App fails to create / No container | \`devcontainer.json\` in wrong location | Move to repo ROOT as \`.devcontainer.json\` |
+| App fails to create | \`devcontainer.json\` in \`.devcontainer/\` folder | Workbench needs it at ROOT, not in folder |
 | "Bad Request" error | Wrong URL format | Use \`workbench.verily.com/app/UUID/proxy/PORT/\` |
 | Server not accessible | Bound to \`localhost\` | Change to \`host='0.0.0.0'\` |
 | Container restart loop | Process exits immediately | Ensure server runs continuously |

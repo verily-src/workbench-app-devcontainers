@@ -2426,7 +2426,7 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"folder", "tree"})
 
 	case "workspace_list_data_collections":
-		// Get current workspace UUID first
+		// Get current workspace from wb status
 		statusOutput, statusErr := executeWbCommand([]string{"status", "--format=json"})
 		if statusErr != nil {
 			err = fmt.Errorf("failed to get workspace status: %w", statusErr)
@@ -2442,9 +2442,20 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			err = fmt.Errorf("no workspace set - run 'wb workspace set <id>' first")
 			break
 		}
-		workspaceUuid, ok := workspace["id"].(string)
-		if !ok {
-			err = fmt.Errorf("could not get workspace UUID")
+		// Get either userFacingId or id from the workspace status
+		workspaceId := ""
+		if ufid, ok := workspace["userFacingId"].(string); ok && ufid != "" {
+			workspaceId = ufid
+		} else if id, ok := workspace["id"].(string); ok {
+			workspaceId = id
+		} else {
+			err = fmt.Errorf("could not get workspace ID from status")
+			break
+		}
+		// Resolve to UUID using the same method as other working tools
+		workspaceUuid, resolveErr := resolveWorkspaceId(workspaceId)
+		if resolveErr != nil {
+			err = fmt.Errorf("could not resolve workspace ID: %w", resolveErr)
 			break
 		}
 

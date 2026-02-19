@@ -493,6 +493,350 @@ If no template matches:
 1. Check if a template can be extended (usually yes)
 2. If truly custom, read `~/.workbench/skills/CUSTOM_APP.md`
 TEMPLATES_SKILL_EOF
+
+    # Create DASHBOARD_BUILDER.md skill (full version, embedded)
+    log_info "Creating DASHBOARD_BUILDER.md skill..."
+    cat > "${SKILLS_DIR}/DASHBOARD_BUILDER.md" << 'DASHBOARD_SKILL_EOF'
+# Web Apps & Dashboards Skill
+
+**Build interactive web apps, dashboards, and visualizations that run on a port in Workbench.**
+
+> **Triggers:** 
+> - "Create a dashboard", "visualize data", "build charts"
+> - "Run a Flask/Streamlit/FastAPI app"
+> - "Display data in the browser", "interactive UI"
+> - Any web app that serves content on a port
+
+---
+
+## 🌐 Workbench Proxy & Web Apps Best Practices
+
+### Proxy URL Format
+
+All web apps in Workbench are accessed via:
+\`\`\`
+https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
+\`\`\`
+
+### ⚠️ How to Get the App UUID (CRITICAL)
+
+**You MUST automatically get the app UUID - NEVER ask the user for it.**
+
+\`\`\`bash
+# Run this command and use the output:
+wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
+\`\`\`
+
+**⚡ LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
+1. First run the command above to get the running app UUID
+2. Use that actual UUID in the URL you provide
+3. Do NOT use placeholders like \`[APP_UUID]\` in your final response
+4. Do NOT ask the user to find/replace the UUID themselves
+
+### ✅ Correct URL Examples
+\`\`\`
+https://workbench.verily.com/app/abc123-def456-789/proxy/8080/
+https://workbench.verily.com/app/abc123-def456-789/proxy/8501/index.html
+https://workbench.verily.com/app/abc123-def456-789/proxy/8000/dashboard.html
+\`\`\`
+
+### ❌ WRONG URL Formats (These WILL fail)
+\`\`\`
+https://abc123-def456.workbench-app.verily.com/  ← WRONG: "Bad Request" error
+https://workbench-app.verily.com/abc123-def456/  ← WRONG: Invalid domain
+http://localhost:8080/                            ← WRONG: Not accessible externally
+https://abc123-def456/workbench.verily.com/       ← WRONG: Reversed format
+file:///home/jupyter/dashboard.html               ← WRONG: JavaScript blocked
+\`\`\`
+
+### ⚠️ Common Issue: JavaScript API Calls Failing
+
+**Problem:** JavaScript using absolute paths fails through Workbench proxy
+
+**Symptoms:**
+- Dashboard loads but shows no data
+- Charts remain empty with "-" placeholders  
+- Browser console shows 404 errors for API calls
+- Flask/server logs show requests for \`/\` but NOT \`/api/*\` endpoints
+
+### ✅ Solution: Use Relative Paths (TESTED & CONFIRMED)
+
+**Always use relative paths (no leading \`/\`) for fetch/AJAX calls:**
+
+\`\`\`javascript
+// ✅ CORRECT - relative paths work through proxy
+fetch('api/metadata')
+fetch('api/data?filter=value')
+
+// ❌ WRONG - absolute paths fail
+fetch('/api/metadata')  
+fetch('/api/data?filter=value')
+\`\`\`
+
+### Why Absolute Paths Fail
+
+\`\`\`
+User visits: https://workbench.verily.com/app/UUID/proxy/8080/
+
+Absolute path: fetch('/api/data')
+  → Browser resolves to: https://workbench.verily.com/api/data ❌ (404!)
+
+Relative path: fetch('api/data')  
+  → Browser resolves to: https://workbench.verily.com/app/UUID/proxy/8080/api/data ✅
+\`\`\`
+
+### Alternative: Embed Data in HTML (For Static Dashboards)
+
+If you don't need dynamic filtering, embed data directly in the template:
+
+**Python (Flask):**
+\`\`\`python
+@app.route('/')
+def index():
+    data = get_data_from_bigquery()
+    return render_template('dashboard.html', data_json=json.dumps(data))
+\`\`\`
+
+**HTML Template:**
+\`\`\`html
+<script>
+const data = {{ data_json|safe }};
+// Use data directly, no fetch calls needed
+renderChart(data);
+</script>
+\`\`\`
+
+**When to use:** Static dashboards, large datasets that don't change, or when filters can be client-side only.
+
+### Testing Checklist
+
+Before deploying any web app:
+
+- [ ] **Relative paths** - All \`fetch()\` calls use \`'api/...'\` not \`'/api/...'\`
+- [ ] **Test locally** - \`curl http://localhost:PORT/api/endpoint\` returns data
+- [ ] **Server logs** - Verify API requests arrive: \`tail -f server.log\`
+- [ ] **Browser DevTools** - Network tab shows 200 status for API calls
+- [ ] **App UUID obtained** - Not using placeholder \`[APP_UUID]\`
+
+---
+
+## Workflow
+
+### Step 1: Understand Requirements
+
+Ask the user:
+1. **Data source?** BigQuery table, CSV in bucket, or local file?
+2. **Visualizations?** Charts (bar, line, scatter), tables, filters?
+3. **Interactivity?** Static display or dynamic filtering?
+
+### Step 2: Auto-Detect Environment
+
+**Always run these commands first:**
+
+\`\`\`bash
+# Get app UUID (REQUIRED for final URL)
+APP_UUID=\$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
+echo "App UUID: \$APP_UUID"
+
+# Verify Python
+python3 --version
+
+# Check working directory
+pwd
+\`\`\`
+
+### Step 3: Install Dependencies
+
+\`\`\`bash
+pip install flask flask-cors pandas plotly google-cloud-bigquery db-dtypes
+\`\`\`
+
+> **Note:** \`db-dtypes\` is required for BigQuery to properly convert data types for pandas.
+
+### Step 4: Create Dashboard Structure
+
+\`\`\`
+dashboard/
+├── app.py              # Flask server
+├── templates/
+│   └── index.html      # Dashboard HTML
+└── static/
+    └── style.css       # Optional styling
+\`\`\`
+
+---
+
+## Working Template: BigQuery Dashboard
+
+**app.py:**
+\`\`\`python
+from flask import Flask, render_template, jsonify
+from flask_cors import CORS
+from google.cloud import bigquery
+
+app = Flask(__name__)
+CORS(app)
+
+_data_cache = None
+
+def get_bigquery_data():
+    global _data_cache
+    if _data_cache is not None:
+        return _data_cache
+    
+    client = bigquery.Client()
+    query = """
+    SELECT *
+    FROM \\\`YOUR_PROJECT.YOUR_DATASET.YOUR_TABLE\\\`
+    LIMIT 1000
+    """
+    df = client.query(query).to_dataframe()
+    _data_cache = df.to_dict(orient='records')
+    return _data_cache
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('api/data')  # NO leading slash!
+def get_data():
+    try:
+        data = get_bigquery_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('api/metadata')
+def get_metadata():
+    try:
+        data = get_bigquery_data()
+        return jsonify({
+            "columns": list(data[0].keys()) if data else [],
+            "row_count": len(data)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    # CRITICAL: host='0.0.0.0' required for Workbench proxy access
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+\`\`\`
+
+**templates/index.html:**
+\`\`\`html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Data Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .chart { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .error { color: #d32f2f; padding: 20px; background: #ffebee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Data Dashboard</h1>
+        <div id="metadata" class="chart"><div id="metadata-content">Loading...</div></div>
+        <div id="chart1" class="chart"><div id="chart-content">Loading...</div></div>
+    </div>
+    <script>
+        // CRITICAL: Use relative paths (no leading slash!)
+        async function loadData() {
+            try {
+                const response = await fetch('api/data');  // Relative!
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+                
+                const cols = Object.keys(data[0]);
+                const numCol = cols.find(c => typeof data[0][c] === 'number') || cols[1];
+                
+                Plotly.newPlot('chart-content', [{
+                    x: data.slice(0,20).map(r => r[cols[0]]),
+                    y: data.slice(0,20).map(r => r[numCol]),
+                    type: 'bar'
+                }]);
+            } catch (e) {
+                document.getElementById('chart-content').innerHTML = '<div class="error">Error: ' + e.message + '</div>';
+            }
+        }
+        loadData();
+    </script>
+</body>
+</html>
+\`\`\`
+
+---
+
+## Step 5: Test & Launch
+
+\`\`\`bash
+# Get app UUID
+APP_UUID=\$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
+
+# Start server
+cd dashboard
+nohup python3 app.py > server.log 2>&1 &
+
+# Test locally
+curl -s http://localhost:8080/api/metadata | jq .
+
+echo "Dashboard at: https://workbench.verily.com/app/\${APP_UUID}/proxy/8080/"
+\`\`\`
+
+---
+
+## ⚠️ Critical Flask Configuration
+
+\`\`\`python
+# ❌ WRONG - proxy cannot reach your app
+app.run(host='localhost', port=8080)
+
+# ✅ CORRECT - accessible through Workbench proxy
+app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+\`\`\`
+
+**Required settings:**
+- \`host='0.0.0.0'\` - Allows external connections (not just localhost)
+- \`threaded=True\` - Handles concurrent users
+- \`debug=False\` - Security (don't expose debug info)
+
+**Restart after code changes:**
+\`\`\`bash
+pkill -f "python3 app.py"
+python3 app.py &
+\`\`\`
+
+**Browser not showing changes?** Hard refresh: \`Ctrl+Shift+R\` or \`Cmd+Shift+R\`
+
+---
+
+## Troubleshooting Checklist
+
+| Issue | Check | Fix |
+|-------|-------|-----|
+| Data doesn't load | Path format | Change \`fetch('/api/...')\` to \`fetch('api/...')\` |
+| 404 errors | Server running? | \`ps aux | grep python\` |
+| CORS error | CORS setup | Ensure \`CORS(app)\` is added |
+| BQ error | Auth | Check \`gcloud auth list\` |
+| Blank page | Console errors | Check browser DevTools |
+| Works locally, fails via URL | Host binding | Change \`localhost\` to \`0.0.0.0\` |
+| Gateway timeout | Server/UUID | Check server running + correct UUID |
+| Address in use | Port conflict | \`kill \$(lsof -t -i :8080)\` |
+| Changes not showing | Cache/restart | Hard refresh + restart server |
+
+---
+
+## Common Pitfalls
+
+- ❌ \`fetch('/api/data')\` — **Use** \`fetch('api/data')\` (no leading slash)
+- ❌ \`host='localhost'\` — **Use** \`host='0.0.0.0'\` (allows proxy access)
+- ❌ Placeholder \`[APP_UUID]\` — **Always get real UUID** with \`wb app list\`
+- ❌ Forgetting to restart server after code changes
+- ❌ Not checking server logs when debugging
+DASHBOARD_SKILL_EOF
 }
 
 # Fetch workspace information
@@ -1005,176 +1349,78 @@ wb app describe <name>         # App details
 
 ---
 
-## ⚠️ Workbench URLs, Dashboards & Interactive Content (CRITICAL)
+## ⚠️ Workbench Web Apps & Proxy URLs (CRITICAL)
 
-**Use this section when a user wants to:**
-- **Build a dashboard** or data visualization
-- **Create interactive charts** (Plotly, D3.js, Bokeh, Chart.js)
-- **Run HTML files** with JavaScript
-- **Launch web apps** (Flask, Streamlit, Shiny, FastAPI)
-- **Display any content** that needs to run in a browser
+> **🚨 STOP! If user wants a dashboard, chart, Flask app, HTML page, or ANY web UI:**
+> **→ READ \`~/.workbench/skills/DASHBOARD_BUILDER.md\` FIRST!**
+> 
+> That skill contains critical configuration, working templates, and troubleshooting for all interactive web content.
 
-### The Correct URL Format
+### Quick Reference
 
-**All web content MUST be accessed via the Workbench proxy URL:**
-
+**Proxy URL format (all web content):**
 \`\`\`
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 \`\`\`
 
-### ⚠️ How to Get the App UUID (IMPORTANT)
-
-**You MUST automatically get the app UUID - NEVER ask the user for it.**
-
-**Option 1 (Preferred):** Run this command and use the output:
+**Get App UUID automatically (NEVER ask user for it):**
 \`\`\`bash
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 \`\`\`
 
-**Option 2:** Check if environment variable is set:
-\`\`\`bash
-echo \$WORKBENCH_APP_ID
+### ⚠️ JavaScript Relative Paths (Critical for Dashboards)
+
+**All fetch() calls in JavaScript MUST use relative paths:**
+\`\`\`javascript
+// ✅ CORRECT - works through Workbench proxy
+fetch('api/data')
+
+// ❌ WRONG - absolute path breaks through proxy (404 error!)
+fetch('/api/data')
 \`\`\`
 
-**Option 3:** Parse from browser URL (if user provides it):
-The URL \`https://workbench.verily.com/app/abc123-def456/lab\` contains UUID \`abc123-def456\`
+**Why:** \`fetch('/api/data')\` resolves to \`workbench.verily.com/api/data\` (wrong!)  
+**Should be:** \`workbench.verily.com/app/UUID/proxy/PORT/api/data\`
 
-**⚡ LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
-1. First run Option 1 command to get the running app UUID
-2. Use that actual UUID in the URL you provide
-3. Do NOT use placeholders like [APP_UUID] in your final response
-4. Do NOT ask the user to find/replace the UUID themselves
-
-### ✅ Correct Examples
-\`\`\`
-https://workbench.verily.com/app/abc123-def456/proxy/8080/
-https://workbench.verily.com/app/abc123-def456/proxy/8501/index.html
-https://workbench.verily.com/app/abc123-def456/proxy/8000/dashboard.html
-\`\`\`
-
-### ❌ WRONG Formats (These will fail)
-\`\`\`
-https://abc123-def456.workbench-app.verily.com/  ← WRONG: Bad Request error
-http://localhost:8080/                            ← WRONG: Not accessible externally
-file:///home/jupyter/dashboard.html               ← WRONG: JavaScript blocked by browser
-\`\`\`
-
-### Why \`file://\` URLs Don't Work for Interactive Content
-
-**You cannot open HTML files directly using \`file://\` paths.** The browser blocks JavaScript execution for security reasons. This affects:
-- HTML dashboards with charts (Plotly, D3.js, Chart.js)
-- Interactive visualizations
-- Any HTML with \`<script>\` tags
-- Single-page applications
-
-### The Solution: Serve via HTTP Server
-
-**Step 1: Start a simple HTTP server**
-\`\`\`bash
-# Navigate to your HTML files
-cd /path/to/your/html/files
-
-# Start Python HTTP server (always available in Workbench)
-python3 -m http.server 8000
-\`\`\`
-
-**Step 2: Access via Workbench proxy URL**
-\`\`\`
-https://workbench.verily.com/app/[APP_UUID]/proxy/8000/your-file.html
-\`\`\`
-
-### 📊 How to Build Dashboards & Visualizations
-
-**When a user asks to "build a dashboard", "create a visualization", "show me a chart", or "display data interactively":**
-
-\`\`\`python
-# 1. Create the HTML file with your visualization
-html_content = '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>My Dashboard</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-</head>
-<body>
-    <h1>Data Dashboard</h1>
-    <div id="chart"></div>
-    <script>
-        // Your visualization code here
-        var data = [{x: [1, 2, 3], y: [4, 5, 6], type: 'bar'}];
-        Plotly.newPlot('chart', data);
-    </script>
-</body>
-</html>
-'''
-
-with open('dashboard.html', 'w') as f:
-    f.write(html_content)
-
-print("✅ Dashboard created!")
-
-# Get the app UUID automatically
-import subprocess
-result = subprocess.run(
-    ["bash", "-c", "wb app list --format=json | jq -r '.[] | select(.status == \"RUNNING\") | .id' | head -1"],
-    capture_output=True, text=True
-)
-app_uuid = result.stdout.strip()
-
-print("\\nNow run in terminal:")
-print("   python3 -m http.server 8000")
-print("")
-print("Then access at:")
-print(f"   https://workbench.verily.com/app/{app_uuid}/proxy/8000/dashboard.html")
-\`\`\`
-
-### Common Ports by Use Case
-| Content Type | Suggested Port | Command |
-|--------------|---------------|---------|
-| HTML dashboards | 8000 | \`python3 -m http.server 8000\` |
-| Streamlit apps | 8501 | \`streamlit run app.py\` |
+### Common Ports
+| Content Type | Port | Example Command |
+|--------------|------|-----------------|
 | Flask/FastAPI | 8080 | \`flask run --port 8080\` |
-| Shiny apps | 3838 | (configured in app) |
+| Streamlit | 8501 | \`streamlit run app.py\` |
+| Static HTML | 8000 | \`python3 -m http.server 8000\` |
+| R Shiny | 3838 | (configured in app) |
 
-### Pro Tips
-1. **Keep server running** - The HTTP server must stay running in a terminal
-2. **Use background mode** - \`python3 -m http.server 8000 &\` to run in background
-3. **Check if port is in use** - \`lsof -i :8000\` before starting
-4. **Kill existing server** - \`kill \$(lsof -t -i :8000)\` if port is occupied
+### ❌ Wrong URL Formats
+\`\`\`
+https://UUID.workbench-app.verily.com/     ← Bad Request error
+http://localhost:8080/                     ← Not accessible externally  
+file:///home/jupyter/dashboard.html        ← JavaScript blocked
+\`\`\`
 
 ---
 
 ## Creating Custom Apps
 
-> **IMPORTANT: When a user asks to create an app, turn code into an app, or build something deployable, follow this decision process:**
+> **When a user asks to create an app, turn code into an app, or build something deployable:**
 
-### Step 1: Check Against Templates First
+### Step 1: Determine the Type
 
-**Read \`~/.workbench/skills/APP_TEMPLATES.md\`** and ask:
-- Does a pre-built template match their needs?
-- Can a template be easily extended?
+| User Wants... | Read This Skill |
+|---------------|-----------------|
+| Dashboard, visualization, Flask app, web UI | \`DASHBOARD_BUILDER.md\` |
+| Deployable custom app from scratch | \`CUSTOM_APP.md\` |
 
-| User's Goal | Recommended Template |
-|-------------|---------------------|
-| REST API, backend service | \`flask-api\` |
-| Data dashboard, visualization | \`streamlit-dashboard\` |
-| R analysis, statistical work | \`rshiny-dashboard\` |
-| File upload, processing | \`file-processor\` |
+### Step 2: Use the Appropriate Skill
 
-### Step 2: If No Template Fits
+**For dashboards/web UIs** → \`~/.workbench/skills/DASHBOARD_BUILDER.md\`
+- Working Flask templates with BigQuery
+- Critical proxy URL configuration
+- Tested troubleshooting guides
 
-**Read \`~/.workbench/skills/CUSTOM_APP.md\`** for:
-- Building from scratch
-- Minimal working pattern
-- Common pitfalls to avoid
-
-### Step 3: Present Options to User
-
-Always explain:
-1. **Template option**: "There's a pre-built X template that does Y. We can customize it."
-2. **From-scratch option**: "Or we can build something custom from the ground up."
-
-Let the user decide based on their specific needs.
+**For deployable apps** → \`~/.workbench/skills/CUSTOM_APP.md\`
+- Minimal devcontainer pattern
+- Docker configuration
+- Deployment checklist
 
 ### Quick Reference
 - **Templates**: https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
@@ -1188,10 +1434,23 @@ When users ask about specific topics, **read these skill files** for detailed gu
 
 | Topic | Skill File | When to Use |
 |-------|------------|-------------|
-| Pre-built app templates | \`~/.workbench/skills/APP_TEMPLATES.md\` | User wants dashboard, API, file processor |
-| Building apps from scratch | \`~/.workbench/skills/CUSTOM_APP.md\` | User needs full control or custom solution |
+| **🚨 Dashboards, HTML, Flask, Web UIs** | \`~/.workbench/skills/DASHBOARD_BUILDER.md\` | **READ THIS FIRST** for any: dashboard, chart, visualization, Flask app, Streamlit, HTML page, web UI, interactive display, Plotly, or anything running on a port |
+| Building custom apps | \`~/.workbench/skills/CUSTOM_APP.md\` | User wants to build a deployable app from scratch |
 
-**Always read BOTH skills when app creation comes up**, then recommend the best approach.
+### ⚡ Skill Trigger Guide
+
+**ALWAYS read \`DASHBOARD_BUILDER.md\` FIRST when user says ANY of these:**
+- "create a dashboard"
+- "visualize data" / "show me a chart" / "display data"
+- "build a Flask app" / "run Flask" / "Flask server"
+- "Streamlit" / "Plotly" / "interactive chart"
+- "run on port" / "serve HTML" / "web page"
+- "show in browser" / "open in new tab"
+- Any request to display data interactively
+
+**Read CUSTOM_APP.md when:**
+- "build a deployable app" / "create a custom app"
+- "API service" / "backend" / "from scratch"
 
 ---
 

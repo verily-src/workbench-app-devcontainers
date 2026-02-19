@@ -2426,51 +2426,126 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"folder", "tree"})
 
 	case "workspace_list_data_collections":
-		// Get all resources with their metadata (includes sourceWorkspaceId)
-		resourcesOutput, resourcesErr := executeWbCommand([]string{"resource", "list", "--format=json"})
-		if resourcesErr != nil {
-			err = fmt.Errorf("failed to list resources: %w", resourcesErr)
+		// Get current workspace UUID first
+		statusOutput, statusErr := executeWbCommand([]string{"status", "--format=json"})
+		if statusErr != nil {
+			err = fmt.Errorf("failed to get workspace status: %w", statusErr)
+			break
+		}
+		var statusData map[string]interface{}
+		if jsonErr := json.Unmarshal([]byte(statusOutput), &statusData); jsonErr != nil {
+			err = fmt.Errorf("failed to parse status: %w", jsonErr)
+			break
+		}
+		workspace, ok := statusData["workspace"].(map[string]interface{})
+		if !ok {
+			err = fmt.Errorf("no workspace set - run 'wb workspace set <id>' first")
+			break
+		}
+		workspaceUuid, ok := workspace["id"].(string)
+		if !ok {
+			err = fmt.Errorf("could not get workspace UUID")
 			break
 		}
 
-		// Parse resources
-		var resources []map[string]interface{}
-		if jsonErr := json.Unmarshal([]byte(resourcesOutput), &resources); jsonErr != nil {
-			// Try parsing as object with "resources" key
-			var resourceResponse map[string]interface{}
-			if err2 := json.Unmarshal([]byte(resourcesOutput), &resourceResponse); err2 == nil {
-				if r, ok := resourceResponse["resources"].([]interface{}); ok {
-					for _, item := range r {
-						if m, ok := item.(map[string]interface{}); ok {
-							resources = append(resources, m)
-						}
+		// Step 1: List all resources to get resource IDs
+		resourcesUrl := fmt.Sprintf("%s/api/workspaces/v1/%s/resources?offset=0&limit=1000", workspaceBaseURL, workspaceUuid)
+		resourcesResp, apiErr := makeAPIRequest("GET", resourcesUrl, nil)
+		if apiErr != nil {
+			err = fmt.Errorf("failed to list resources via API: %w", apiErr)
+			break
+		}
+
+		// Parse resources list
+		var resourcesData map[string]interface{}
+		if jsonErr := json.Unmarshal(resourcesResp, &resourcesData); jsonErr != nil {
+			err = fmt.Errorf("failed to parse resources: %w", jsonErr)
+			break
+		}
+		resourcesList, ok := resourcesData["resources"].([]interface{})
+		if !ok {
+			resourcesList = []interface{}{}
+		}
+
+		// Step 2: For each resource, get detailed info with lineage
+		// Build a map of resource ID -> detailed resource info (with lineage)
+		detailedResources := []map[string]interface{}{}
+		sourceWorkspaceIds := make(map[string]bool)
+
+		for _, r := range resourcesList {
+			resource, ok := r.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Get resource metadata to find the resource ID
+			metadata, ok := resource["metadata"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			resourceId, ok := metadata["resourceId"].(string)
+			if !ok {
+				// Try alternative field names
+				if rid, ok := metadata["id"].(string); ok {
+					resourceId = rid
+				} else if rid, ok := resource["id"].(string); ok {
+					resourceId = rid
+				} else {
+					continue
+				}
+			}
+
+			// Get detailed resource info (includes lineage)
+			detailUrl := fmt.Sprintf("%s/api/workspaces/v1/%s/resources/%s", workspaceBaseURL, workspaceUuid, resourceId)
+			detailResp, detailErr := makeAPIRequest("GET", detailUrl, nil)
+			if detailErr != nil {
+				// If we can't get details, use what we have from the list
+				detailedResources = append(detailedResources, resource)
+				continue
+			}
+
+			var detailedResource map[string]interface{}
+			if json.Unmarshal(detailResp, &detailedResource) == nil {
+				detailedResources = append(detailedResources, detailedResource)
+
+				// Extract sourceWorkspaceId from resourceLineage
+				if lineage, ok := detailedResource["resourceLineage"].(map[string]interface{}); ok {
+					if sourceId, ok := lineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
+						sourceWorkspaceIds[sourceId] = true
 					}
 				}
+			} else {
+				detailedResources = append(detailedResources, resource)
 			}
 		}
 
-		// Collect unique sourceWorkspaceIds
-		sourceWorkspaceIds := make(map[string]bool)
-		for _, resource := range resources {
-			if sourceId, ok := resource["sourceWorkspaceId"].(string); ok && sourceId != "" {
-				sourceWorkspaceIds[sourceId] = true
+		// Also check the original list for any lineage info we might have missed
+		for _, r := range resourcesList {
+			resource, ok := r.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if lineage, ok := resource["resourceLineage"].(map[string]interface{}); ok {
+				if sourceId, ok := lineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
+					sourceWorkspaceIds[sourceId] = true
+				}
 			}
 		}
 
 		// Look up each source workspace to get the data collection name
 		dataCollectionNames := make(map[string]string) // sourceWorkspaceId -> display name
 		for sourceId := range sourceWorkspaceIds {
-			wsOutput, wsErr := executeWbCommand([]string{"workspace", "describe", "--workspace=" + sourceId, "--format=json"})
+			// Use API to get workspace details
+			wsUrl := fmt.Sprintf("%s/api/workspaces/v1/%s", workspaceBaseURL, sourceId)
+			wsResp, wsErr := makeAPIRequest("GET", wsUrl, nil)
 			if wsErr == nil {
 				var wsInfo map[string]interface{}
-				if json.Unmarshal([]byte(wsOutput), &wsInfo) == nil {
+				if json.Unmarshal(wsResp, &wsInfo) == nil {
 					// Try to get display name, fall back to id
 					if displayName, ok := wsInfo["displayName"].(string); ok && displayName != "" {
 						dataCollectionNames[sourceId] = displayName
-					} else if name, ok := wsInfo["name"].(string); ok && name != "" {
-						dataCollectionNames[sourceId] = name
-					} else if id, ok := wsInfo["id"].(string); ok {
-						dataCollectionNames[sourceId] = id
+					} else if userFacingId, ok := wsInfo["userFacingId"].(string); ok && userFacingId != "" {
+						dataCollectionNames[sourceId] = userFacingId
 					} else {
 						dataCollectionNames[sourceId] = sourceId
 					}
@@ -2483,31 +2558,48 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			}
 		}
 
-		// Group resources by data collection (sourceWorkspaceId)
+		// Group resources by data collection (using resourceLineage.sourceWorkspaceId)
 		dataCollections := make(map[string]map[string]interface{})
 		localResources := []map[string]interface{}{}
 
-		for _, resource := range resources {
-			resourceInfo := map[string]interface{}{
-				"name": resource["name"],
-				"type": resource["resourceType"],
-			}
+		for _, resource := range detailedResources {
+			// Get metadata from the resource
+			metadata, _ := resource["metadata"].(map[string]interface{})
 
-			// Add cloud path if available
-			if metadata, ok := resource["metadata"].(map[string]interface{}); ok {
+			resourceInfo := map[string]interface{}{}
+
+			// Extract name and type from metadata
+			if metadata != nil {
+				if name, ok := metadata["name"].(string); ok {
+					resourceInfo["name"] = name
+				}
+				if resType, ok := metadata["resourceType"].(string); ok {
+					resourceInfo["type"] = resType
+				}
+				// GCS bucket path
 				if bucket, ok := metadata["bucketName"].(string); ok {
 					resourceInfo["path"] = "gs://" + bucket
-				} else if dataset, ok := metadata["datasetId"].(string); ok {
-					if project, ok := metadata["projectId"].(string); ok {
-						resourceInfo["path"] = project + ":" + dataset
-					}
 				} else if gcsBucket, ok := metadata["gcsBucketName"].(string); ok {
 					resourceInfo["path"] = "gs://" + gcsBucket
 				}
+				// BigQuery dataset path
+				if dataset, ok := metadata["datasetId"].(string); ok {
+					if project, ok := metadata["projectId"].(string); ok {
+						resourceInfo["path"] = project + ":" + dataset
+					}
+				}
 			}
 
-			// Check if resource came from a data collection (has sourceWorkspaceId)
-			if sourceId, ok := resource["sourceWorkspaceId"].(string); ok && sourceId != "" {
+			// Check resourceLineage for source workspace ID
+			var sourceId string
+			if lineage, ok := resource["resourceLineage"].(map[string]interface{}); ok {
+				if sid, ok := lineage["sourceWorkspaceId"].(string); ok && sid != "" {
+					sourceId = sid
+				}
+			}
+
+			// Group by data collection or mark as local
+			if sourceId != "" {
 				collectionName := dataCollectionNames[sourceId]
 				if dataCollections[collectionName] == nil {
 					dataCollections[collectionName] = map[string]interface{}{
@@ -2515,8 +2607,8 @@ func handleCallTool(params CallToolParams) CallToolResult {
 						"resources":         []map[string]interface{}{},
 					}
 				}
-				resources := dataCollections[collectionName]["resources"].([]map[string]interface{})
-				dataCollections[collectionName]["resources"] = append(resources, resourceInfo)
+				resList := dataCollections[collectionName]["resources"].([]map[string]interface{})
+				dataCollections[collectionName]["resources"] = append(resList, resourceInfo)
 			} else {
 				localResources = append(localResources, resourceInfo)
 			}
@@ -2535,10 +2627,10 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			"dataCollections": dataCollections,
 			"localResources":  localResources,
 			"summary": map[string]interface{}{
-				"totalDataCollections":   len(dataCollections),
-				"totalResources":         len(resources),
+				"totalDataCollections":     len(dataCollections),
+				"totalResources":           len(detailedResources),
 				"resourcesFromCollections": resourcesInCollections,
-				"resourcesCreatedLocally": len(localResources),
+				"resourcesCreatedLocally":  len(localResources),
 			},
 		}
 

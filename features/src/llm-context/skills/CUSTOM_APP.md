@@ -1,88 +1,90 @@
 # Creating Custom Workbench Apps
 
-**Practical guide for creating simple, reliable Workbench apps.**
-
 > **Official Reference:** https://github.com/verily-src/workbench-app-devcontainers
-> 
-> **Quick Start Script:** Use `./scripts/create-custom-app.sh` for auto-generated app structure!
 
 ---
 
-## 🚀 Quick Start (Recommended)
+## ⚠️ Choose Your Pattern First
 
-The official repo has a script that generates a complete app structure:
+There are **TWO valid patterns** for Workbench custom apps:
 
-```bash
-# Clone the official repo
-git clone https://github.com/verily-src/workbench-app-devcontainers.git
-cd workbench-app-devcontainers
+| Pattern | Use When | Complexity |
+|---------|----------|------------|
+| **Simple (Standalone)** | Self-contained apps, no `wb` CLI needed | Minimal |
+| **Full-Featured (Monorepo)** | Need `wb` CLI, bucket mounting, features | Requires monorepo structure |
 
-# Run the quick start script
-./scripts/create-custom-app.sh my-app quay.io/jupyter/base-notebook 8888 jovyan /home/jovyan
-```
-
-This generates all required files in `src/my-app/` with correct structure.
-
-**Arguments:**
-- `app-name`: Name of your app
-- `docker-image`: Base image (e.g., `python:3.11-slim`, `jupyter/base-notebook`)
-- `port`: Port your app exposes (e.g., `8080`, `8888`)
-- `username`: User inside container (default: `root`)
-- `home-dir`: Home directory (default: `/root`)
+**Most dashboards and simple apps should use Pattern 1.**
 
 ---
 
-## ⚠️ Critical Requirements
+## Pattern 1: Simple Standalone App (Recommended for Dashboards)
 
-### 1. File Structure (MUST follow this exactly)
+Use this for Flask, Streamlit, or any self-contained app.
 
+### Working Examples
+- https://github.com/aculotti-verily/simple-dashboard-app
+- https://github.com/aculotti-verily/r-shiny-demo-app
+
+### File Structure
 ```
 your-repo/
-├── .devcontainer.json         ← MUST be at repo ROOT (not in a folder!)
+├── .devcontainer.json         ← At repo ROOT!
 ├── docker-compose.yaml
-├── Dockerfile
 ├── devcontainer-template.json
-└── app/
-    └── your_app.py
+├── requirements.txt           ← (or package.json, etc.)
+└── app.py                     ← Your application code
 ```
-
-**⚠️ CRITICAL:** Workbench expects `.devcontainer.json` at the **repo ROOT**, NOT inside a `.devcontainer/` folder!
-
-### 2. Container Requirements
-
-Workbench custom apps need exactly **three things**:
-1. Container named `application-server`
-2. Connected to `app-network` (external Docker network)
-3. HTTP server on a port
-
----
-
-## The Working Pattern (Copy This)
 
 ### File 1: `.devcontainer.json`
 
-**Location:** Repo ROOT (same level as docker-compose.yaml)
-
 ```json
 {
-  "name": "Your App Name",
+  "name": "My App",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",
-  "workspaceFolder": "/app",
+  "workspaceFolder": "/workspace",
   "remoteUser": "root"
 }
 ```
 
-**⚠️ CRITICAL settings:**
-- `"dockerComposeFile": "docker-compose.yaml"` - Same directory (both at root)
-- `"workspaceFolder": "/app"` - Should match WORKDIR in Dockerfile
-- File MUST be named `.devcontainer.json` at repo root
+**Key points:**
+- NO `postCreateCommand` or `postStartCommand`
+- NO `features` section
+- File MUST be at repo ROOT (not in a folder)
 
 ### File 2: `docker-compose.yaml`
 
-**Location:** Repository root
+**Option A: Use image directly + install deps in command (simplest)**
+```yaml
+services:
+  app:
+    container_name: "application-server"
+    image: "python:3.11-slim"
+    restart: always
+    working_dir: /workspace
+    command: >
+      bash -c "pip install -r requirements.txt &&
+               python app.py"
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
 
+networks:
+  app-network:
+    external: true
+```
+
+**Option B: Build from Dockerfile (if you need custom setup)**
 ```yaml
 services:
   app:
@@ -91,72 +93,122 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: always
-    ports:
-      - "8080:8080"
     volumes:
-      - .:/app:cached
+      - .:/workspace:cached
+    ports:
+      - 8080:8080
     networks:
       - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
 
 networks:
   app-network:
     external: true
 ```
 
-**⚠️ CRITICAL settings:**
-- `container_name: "application-server"` - Workbench looks for this exact name
-- `networks: app-network` with `external: true` - Required for Workbench connectivity
-- `volumes: - .:/app:cached` - Mounts code for live updates
-
-### File 3: `Dockerfile`
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 8080
-
-# CRITICAL: Must bind to 0.0.0.0 for Workbench proxy
-CMD ["python", "app.py"]
-```
-
-### File 4: `devcontainer-template.json`
-
+### File 3: `devcontainer-template.json`
 ```json
 {
-  "id": "your-app-name",
-  "description": "Your app description",
+  "id": "my-app",
   "version": "1.0.0",
-  "name": "Your App Name",
+  "name": "My App",
+  "description": "Description of my app",
   "options": {},
   "platforms": ["Any"]
 }
 ```
 
+### ⚠️ Critical Requirements
+
+- [ ] `.devcontainer.json` at repo ROOT (not in `.devcontainer/` folder!)
+- [ ] `container_name: "application-server"` (exact name)
+- [ ] `networks: app-network` with `external: true`
+- [ ] Server binds to `0.0.0.0` (not `localhost`)
+- [ ] Include `cap_add`, `devices`, and `security_opt` sections
+
 ---
 
-## Common Mistakes Checklist
+## Pattern 2: Full-Featured App (Monorepo)
 
-Before deploying, verify:
+Use this when you need:
+- Workbench CLI (`wb`)
+- Automatic bucket mounting
+- Pre-authenticated `gcloud`/`aws`
+- Devcontainer features
 
-- [ ] `.devcontainer.json` is at repo ROOT (NOT in a folder!)
-- [ ] `dockerComposeFile` is `"docker-compose.yaml"` (same directory)
-- [ ] `container_name` is exactly `"application-server"`
-- [ ] Network is `app-network` with `external: true`
-- [ ] Flask/server binds to `0.0.0.0` (not `localhost`)
-- [ ] Volume mount included for code updates
+### How to Use
+1. **Fork** https://github.com/verily-src/workbench-app-devcontainers
+2. Run the quick start script:
+   ```bash
+   ./scripts/create-custom-app.sh my-app python:3.11-slim 8080 root /root
+   ```
+3. Customize the generated app in `src/my-app/`
+4. Push to your fork
+5. Create custom app in Workbench pointing to `src/my-app`
+
+### Structure (in monorepo)
+```
+your-fork/
+├── .devcontainer/
+│   └── features/           ← Symlinks to features/src/
+├── features/
+│   └── src/
+│       └── workbench-tools/
+├── startupscript/
+│   ├── post-startup.sh
+│   └── remount-on-restart.sh
+└── src/
+    └── my-app/
+        ├── .devcontainer.json
+        ├── docker-compose.yaml
+        └── devcontainer-template.json
+```
+
+### App's `.devcontainer.json` (Pattern 2)
+```json
+{
+  "name": "my-app",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "root",
+    "/root",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "root",
+    "/root",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "root",
+      "userHomeDir": "/root"
+    }
+  },
+  "remoteUser": "root"
+}
+```
+
+**When using Pattern 2, the Folder field in Workbench UI should be `src/my-app`**
 
 ---
 
 ## ⚠️ Workbench App URLs (CRITICAL)
 
-**When accessing your app, you MUST use this format:**
+**When accessing your app, MUST use this format:**
 
 ```
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
@@ -167,7 +219,7 @@ https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 ```
 
-### ❌ WRONG Formats (Will fail)
+### ❌ WRONG Formats
 ```
 https://abc123-def456.workbench-app.verily.com/  ← WRONG
 http://localhost:8080/                            ← WRONG
@@ -175,8 +227,22 @@ http://localhost:8080/                            ← WRONG
 
 ---
 
-## Flask App Example
+## Common Errors and Fixes
 
+| Error | Cause | Fix |
+|-------|-------|-----|
+| App fails to create / No container | `.devcontainer.json` in wrong location | Move to repo ROOT |
+| App fails to create | Missing `startupscript/` in monorepo | Use Pattern 1, or fork official repo |
+| Container restart loop | Process exits immediately | Ensure server runs continuously |
+| Server not accessible | Bound to `localhost` | Change to `host='0.0.0.0'` |
+| "Bad Request" error | Wrong URL format | Use proxy URL format |
+| Features not found | Using Pattern 2 without monorepo structure | Use Pattern 1 for standalone apps |
+
+---
+
+## Flask App Example (Pattern 1)
+
+**app.py:**
 ```python
 from flask import Flask
 from flask_cors import CORS
@@ -189,30 +255,56 @@ def index():
     return '<h1>Hello Workbench!</h1>'
 
 if __name__ == '__main__':
-    # CRITICAL: host='0.0.0.0' required for Workbench proxy
     app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+```
+
+**requirements.txt:**
+```
+flask>=3.0.0
+flask-cors>=4.0.0
 ```
 
 ---
 
-## Common Errors and Fixes
+## Streamlit Example (Pattern 1)
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| App fails to create / No container | `devcontainer.json` in wrong location | Move to repo ROOT as `.devcontainer.json` |
-| App fails to create | `devcontainer.json` in `.devcontainer/` folder | Workbench needs it at ROOT, not in folder |
-| "Bad Request" error | Wrong URL format | Use `workbench.verily.com/app/UUID/proxy/PORT/` |
-| Server not accessible | Bound to `localhost` | Change to `host='0.0.0.0'` |
-| Container restart loop | Process exits immediately | Ensure server runs continuously |
+**docker-compose.yaml:**
+```yaml
+services:
+  app:
+    container_name: "application-server"
+    image: "python:3.11-slim"
+    restart: always
+    working_dir: /workspace
+    command: >
+      bash -c "pip install -r requirements.txt &&
+               streamlit run app.py --server.port=8501 --server.address=0.0.0.0"
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - 8501:8501
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+networks:
+  app-network:
+    external: true
+```
 
 ---
 
 ## Deployment
 
-In Workbench UI, create custom app with:
+In Workbench UI:
 - **Repository:** `https://github.com/YOUR-ORG/YOUR-REPO.git`
 - **Branch:** `main`
-- **Folder:** `.` (root) or `src/YOUR-APP-NAME` if in monorepo
+- **Folder:** `.` (Pattern 1) or `src/my-app` (Pattern 2)
 
 ---
 
@@ -223,35 +315,38 @@ In Workbench UI, create custom app with:
 docker network create app-network
 
 # Build and run
-docker compose build
-docker compose up
+docker compose up --build
 
-# Access at http://localhost:8080
+# Access at http://localhost:PORT
 ```
 
 ---
 
 ## Reference Implementations
 
-All examples: https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
-
-| App | Description | Port |
-|-----|-------------|------|
-| `playground/` | Simple multi-service example | 8080 |
-| `vscode/` | VS Code Server | 8443 |
-| `r-analysis/` | RStudio | 8787 |
-| `workbench-jupyter/` | JupyterLab with tools | 8888 |
+| App | Pattern | Port | Description |
+|-----|---------|------|-------------|
+| [simple-dashboard-app](https://github.com/aculotti-verily/simple-dashboard-app) | 1 | 8501 | Streamlit dashboard |
+| [r-shiny-demo-app](https://github.com/aculotti-verily/r-shiny-demo-app) | 1 | 8080 | RShiny with Caddy |
+| [playground](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/playground) | 1 | 8080 | Multi-service example |
+| [workbench-jupyter](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/workbench-jupyter-docker) | 2 | 8888 | Full JupyterLab |
+| [r-analysis](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/r-analysis) | 2 | 8787 | RStudio with features |
 
 ---
 
-## When to Use Features
+## Decision Flowchart
 
-Sometimes you need the full-featured approach:
-
-| Need | Solution |
-|------|----------|
-| Workbench CLI (`wb`) | Use `workbench-tools` feature |
-| LLM/MCP integration | Use `wb-mcp-server` feature |
-| Pre-authenticated gcloud | Use `workbench-tools` feature |
-
-**If you need these, use the full `workbench-app-devcontainers` repo as your base.**
+```
+Do you need wb CLI, bucket mounting, or gcloud auth?
+  │
+  ├── NO → Use Pattern 1 (Simple Standalone)
+  │         - Create single repo
+  │         - .devcontainer.json at ROOT
+  │         - No features, no startup scripts
+  │
+  └── YES → Use Pattern 2 (Full-Featured Monorepo)
+            - Fork verily-src/workbench-app-devcontainers
+            - Run ./scripts/create-custom-app.sh
+            - App goes in src/my-app/
+            - Folder field = "src/my-app"
+```

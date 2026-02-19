@@ -6,24 +6,14 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
-      - .:/workspace:cached
-      - app-data:/home/appuser/data
+      - .:/app:cached
     ports:
       - "8080:8080"
     environment:
       - FLASK_ENV=production
-      - PYTHONUNBUFFERED=1
+      - FLASK_APP=app/main.py
     networks:
       - app-network
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse
-    security_opt:
-      - apparmor:unconfined
-
-volumes:
-  app-data:
 
 networks:
   app-network:

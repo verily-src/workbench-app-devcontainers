@@ -6,8 +6,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     volumes:
-      - .:/workspace:cached
-      - app-data:/home/appuser/data
+      - .:/app:cached
     ports:
       - "8501:8501"
     environment:
@@ -16,15 +15,6 @@ services:
       - STREAMLIT_SERVER_HEADLESS=true
     networks:
       - app-network
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse
-    security_opt:
-      - apparmor:unconfined
-
-volumes:
-  app-data:
 
 networks:
   app-network:

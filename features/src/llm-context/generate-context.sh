@@ -1022,6 +1022,29 @@ wb app describe <name>         # App details
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 \`\`\`
 
+### ⚠️ How to Get the App UUID (IMPORTANT)
+
+**You MUST automatically get the app UUID - NEVER ask the user for it.**
+
+**Option 1 (Preferred):** Run this command and use the output:
+\`\`\`bash
+wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
+\`\`\`
+
+**Option 2:** Check if environment variable is set:
+\`\`\`bash
+echo \$WORKBENCH_APP_ID
+\`\`\`
+
+**Option 3:** Parse from browser URL (if user provides it):
+The URL \`https://workbench.verily.com/app/abc123-def456/lab\` contains UUID \`abc123-def456\`
+
+**⚡ LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
+1. First run Option 1 command to get the running app UUID
+2. Use that actual UUID in the URL you provide
+3. Do NOT use placeholders like [APP_UUID] in your final response
+4. Do NOT ask the user to find/replace the UUID themselves
+
 ### ✅ Correct Examples
 \`\`\`
 https://workbench.verily.com/app/abc123-def456/proxy/8080/
@@ -1088,11 +1111,21 @@ html_content = '''
 with open('dashboard.html', 'w') as f:
     f.write(html_content)
 
-print("✅ Dashboard created! Now run in terminal:")
+print("✅ Dashboard created!")
+
+# Get the app UUID automatically
+import subprocess
+result = subprocess.run(
+    ["bash", "-c", "wb app list --format=json | jq -r '.[] | select(.status == \"RUNNING\") | .id' | head -1"],
+    capture_output=True, text=True
+)
+app_uuid = result.stdout.strip()
+
+print("\\nNow run in terminal:")
 print("   python3 -m http.server 8000")
 print("")
 print("Then access at:")
-print("   https://workbench.verily.com/app/[APP_UUID]/proxy/8000/dashboard.html")
+print(f"   https://workbench.verily.com/app/{app_uuid}/proxy/8000/dashboard.html")
 \`\`\`
 
 ### Common Ports by Use Case
@@ -1108,7 +1141,6 @@ print("   https://workbench.verily.com/app/[APP_UUID]/proxy/8000/dashboard.html"
 2. **Use background mode** - \`python3 -m http.server 8000 &\` to run in background
 3. **Check if port is in use** - \`lsof -i :8000\` before starting
 4. **Kill existing server** - \`kill \$(lsof -t -i :8000)\` if port is occupied
-5. **Get App UUID** - Check your browser URL or run \`echo \$WORKBENCH_APP_ID\`
 
 ---
 

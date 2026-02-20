@@ -9,7 +9,7 @@ set -o nounset
 set -o pipefail
 
 # Validate required parameter
-if [ $# -lt 1 ] || [ -z "${1:-}" ]; then
+if [ $# -lt 1 ]; then
     echo "Error: path parameter is required" >&2
     echo "Usage: $0 <path> [default-regions]" >&2
     exit 1

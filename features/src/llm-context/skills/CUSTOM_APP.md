@@ -9,14 +9,14 @@
 
 | Pattern | Use When | Example |
 |---------|----------|---------|
-| **Minimal (Standalone)** | Simple apps, no cloud resources | `clinical-abstraction-demo` |
+| **Minimal (Standalone)** | Simple apps, no cloud resources | `example` app in official repo |
 | **Full-Featured (Monorepo)** | Need `wb` CLI, bucket mounting | Fork official repo |
 
 ---
 
 ## Pattern 1: Minimal Standalone App
 
-Based on working examples: `clinical-abstraction-demo`, `simple-dashboard-app`
+Based on the `example` app in the [official repo](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/example).
 
 ### File Structure
 ```
@@ -43,7 +43,7 @@ your-repo/
 
 ### File 2: `docker-compose.yaml`
 
-**Minimal (from clinical-abstraction-demo):**
+**Minimal pattern:**
 ```yaml
 services:
   app:
@@ -62,7 +62,7 @@ networks:
     external: true
 ```
 
-**Alternative: Use image directly (from simple-dashboard-app):**
+**Alternative: Use image directly (no Dockerfile):**
 ```yaml
 services:
   app:
@@ -125,7 +125,7 @@ CMD ["python", "app.py"]
 
 ## Pattern 2: Multi-Container with Caddy Proxy
 
-Based on `r-shiny-demo-app` - useful when your app needs a reverse proxy.
+Useful when your app needs a reverse proxy. See the [r-analysis](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/r-analysis) app for an RStudio example with startup scripts.
 
 ```yaml
 services:
@@ -255,13 +255,15 @@ docker compose up --build
 
 ## Reference Implementations
 
-| App | Pattern | Source |
-|-----|---------|--------|
-| clinical-abstraction-demo | Minimal | [PeterSu92/workbench-app-devcontainers](https://github.com/PeterSu92/workbench-app-devcontainers/tree/yp_ac_clin/src/clinical-abstraction-demo) |
-| simple-dashboard-app | Image + command | [aculotti-verily/simple-dashboard-app](https://github.com/aculotti-verily/simple-dashboard-app) |
-| r-shiny-demo-app | Caddy proxy | [aculotti-verily/r-shiny-demo-app](https://github.com/aculotti-verily/r-shiny-demo-app) |
-| playground | Minimal | [verily-src/workbench-app-devcontainers](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/playground) |
-| shiny-aws-ce | Full-featured | [verily-src/workbench-app-devcontainers](https://github.com/verily-src/workbench-app-devcontainers/tree/nbense/BENCH-6958/src/shiny-aws-ce) |
+All examples are from the official repo: [verily-src/workbench-app-devcontainers](https://github.com/verily-src/workbench-app-devcontainers)
+
+| App | Pattern | Description |
+|-----|---------|-------------|
+| [example](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/example) | Minimal | Reference implementation using ttyd terminal |
+| [workbench-jupyter](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/workbench-jupyter) | Full-featured | JupyterLab with Workbench integration |
+| [r-analysis](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/r-analysis) | Full-featured | RStudio with startup scripts |
+| [workbench-vscode](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/workbench-vscode) | Full-featured | VS Code Server in browser |
+| [playground](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/playground) | Minimal | Simple base environment |
 
 ---
 

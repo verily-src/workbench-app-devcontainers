@@ -1521,29 +1521,37 @@ WORKFLOW:
 }
 
 func initializeConfig() error {
+	// Default to production Verily URLs
+	workspaceBaseURL = "https://workbench.verily.com/api/wsm"
+	dataExplorerURL = "https://workbench.verily.com/api/de"
+
 	cmd := exec.Command("wb", "status", "--format=json")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Fallback to production Verily URLs
-		workspaceBaseURL = "https://workbench.verily.com/api/wsm"
-		dataExplorerURL = "https://workbench.verily.com/api/de"
+		fmt.Fprintf(os.Stderr, "Warning: wb status failed, using default URLs: %v\n", err)
 	} else {
 		var status map[string]interface{}
-		if err := json.Unmarshal(output, &status); err == nil {
-			if server, ok := status["server"].(map[string]interface{}); ok {
-				// Get workspaceManagerUri from wb status output
-				if wsURL, ok := server["workspaceManagerUri"].(string); ok {
-					workspaceBaseURL = wsURL
-					// Derive dataExplorerUri from workspaceManagerUri
-					// Pattern: replace /api/wsm with /api/de
-					dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
-				} else {
-					// Fallback to production Verily URLs
-					workspaceBaseURL = "https://workbench.verily.com/api/wsm"
-					dataExplorerURL = "https://workbench.verily.com/api/de"
-				}
+		if err := json.Unmarshal(output, &status); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to parse wb status JSON, using default URLs: %v\n", err)
+		} else if server, ok := status["server"].(map[string]interface{}); ok {
+			// Get workspaceManagerUri from wb status output
+			if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
+				workspaceBaseURL = wsURL
+				// Derive dataExplorerUri from workspaceManagerUri
+				// Pattern: replace /api/wsm with /api/de
+				dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
 			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
 		}
+	}
+
+	// Final safety check - ensure URLs are never empty
+	if workspaceBaseURL == "" {
+		workspaceBaseURL = "https://workbench.verily.com/api/wsm"
+	}
+	if dataExplorerURL == "" {
+		dataExplorerURL = "https://workbench.verily.com/api/de"
 	}
 
 	fmt.Fprintf(os.Stderr, "Initialized - Workspace: %s, DataExplorer: %s\n", workspaceBaseURL, dataExplorerURL)

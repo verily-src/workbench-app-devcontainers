@@ -275,3 +275,68 @@ All examples are from the official repo: [verily-src/workbench-app-devcontainers
 | No container created | Check Workbench logs, GitHub access |
 | Container restart loop | App crashes on startup (check `docker logs`) |
 | "Bad Request" | Wrong URL format |
+
+---
+
+## 🔧 Troubleshooting (SSH into VM)
+
+When an app fails to start, SSH into the VM and run these commands:
+
+### 1. Check Startup Scripts & Logs
+```bash
+# View devcontainer service logs (MOST IMPORTANT)
+sudo journalctl -u devcontainer.service --no-pager | tail -100
+
+# Check failure count
+cat /tmp/devcontainer-failure-count 2>/dev/null
+
+# Check error message set by Workbench
+curl -s -H "Metadata-Flavor: Google" \
+  http://metadata.google.internal/computeMetadata/v1/instance/guest-attributes/startup_script/message
+```
+
+### 2. Check Startup Script Directory
+```bash
+# Workbench startup scripts live here
+ls -la /home/core/
+
+# Key scripts to check:
+# - git-clone-devcontainer.sh  (clones your repo)
+# - docker-auth.sh             (sets up Docker registry auth)
+# - parse-devcontainer.sh      (parses .devcontainer.json)
+# - devcontainer.sh            (builds and runs container)
+```
+
+### 3. Check Systemd Services
+```bash
+# View the devcontainer service definition
+systemctl cat devcontainer.service
+
+# Check service status
+systemctl status devcontainer.service
+systemctl status proxy-readiness.service
+
+# List all relevant services
+systemctl list-units --type=service | grep -i "devcontainer\|docker"
+```
+
+### 4. Check Container Status
+```bash
+# List all containers (including stopped)
+docker ps -a
+
+# Check container logs
+docker logs application-server 2>&1 | tail -50
+
+# Check if repo was cloned
+ls -la /home/core/devcontainer/
+```
+
+### 5. Common Issues Found in Logs
+
+| Log Message | Cause | Fix |
+|-------------|-------|-----|
+| `docker-auth.sh: path parameter is required` | Workbench startup bug | Wait for fix or manual startup |
+| `Failed to clone devcontainer GitHub repo` | GitHub access issue | Check repo permissions |
+| `Container exited with code 1` | App crash | Check `docker logs application-server` |
+| `proxy-agent or application-server is not started` | Container never started | Check earlier logs |

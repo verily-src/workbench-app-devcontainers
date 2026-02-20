@@ -402,28 +402,27 @@ SKILL_EOF
 
 ---
 
-## Template Location
+## App Examples Location
 
-All templates are at:
+Official app examples are at:
 ```
-https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
+https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
 ```
 
 ---
 
-## How to Use a Template
+## How to Create a Custom App
 
-### Option 1: Deploy Directly
-```
-Repository: https://github.com/aculotti-verily/wb-app-mcp-and-context.git
-Branch: templates-only
-Folder: src/templates/<template-name>
+### Option 1: Use Quick Start Script
+```bash
+# Fork the official repo, then:
+./scripts/create-custom-app.sh my-app python:3.11-slim 8080
 ```
 
 ### Option 2: Copy and Customize
-1. Copy the template folder to user's repo
-2. Modify application code in `app/`
-3. Update `devcontainer-template.json` with new name/description
+1. Fork https://github.com/verily-src/workbench-app-devcontainers
+2. Copy an existing app folder from `src/` (e.g., `example/`)
+3. Modify the configuration and code
 4. Push to GitHub and deploy
 
 ---
@@ -1406,8 +1405,8 @@ file:///home/jupyter/dashboard.html        ← JavaScript blocked
 - Deployment checklist
 
 ### Quick Reference
-- **Templates**: https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
-- **Full-featured apps**: https://github.com/verily-src/workbench-app-devcontainers
+- **Official app examples**: https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
+- **Quick start script**: https://github.com/verily-src/workbench-app-devcontainers/blob/master/scripts/create-custom-app.sh
 
 ---
 

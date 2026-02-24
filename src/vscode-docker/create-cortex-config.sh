@@ -58,15 +58,10 @@ if [[ -n "${GCP_PROJECT_ID}" ]]; then
   cat > "${CORTEX_CONFIG_PATH}" << EOF
 # Cortex configuration
 # Generated on $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-gcp:
-  project_id: ${GCP_PROJECT_ID}
+gcp_project_id: ${GCP_PROJECT_ID}
+gcp_region: ${GCP_REGION:-UNKNOWN}
+profiles_repo: shared-artifacts-a2hhlz
 EOF
-
-  if [[ -n "${GCP_REGION}" ]]; then
-    cat >> "${CORTEX_CONFIG_PATH}" << EOF
-  region: ${GCP_REGION}
-EOF
-  fi
 
   echo "cortex.yaml created successfully at ${CORTEX_CONFIG_PATH}"
   cat "${CORTEX_CONFIG_PATH}"
@@ -77,9 +72,10 @@ else
 # Cortex configuration
 # Generated on $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 # WARNING: Could not automatically determine GCP project ID
-gcp:
-  project_id: "UNKNOWN"
-  # Please update this file with the correct project ID
+gcp_project_id: "UNKNOWN"
+gcp_region: "UNKNOWN"
+profiles_repo: shared-artifacts-a2hhlz
+# Please update this file with the correct values
 EOF
   echo "cortex.yaml created with placeholder at ${CORTEX_CONFIG_PATH}"
 fi

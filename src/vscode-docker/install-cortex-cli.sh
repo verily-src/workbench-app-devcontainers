@@ -56,8 +56,9 @@ if [[ ! -d "cortex/tools/cortex-cli" ]]; then
   exit 1
 fi
 
-# Install cortex-cli
-if go install ./cortex/tools/cortex-cli; then
+# Install cortex-cli as user abc (where SSH keys are configured)
+echo "Installing cortex-cli as user abc (root doesn't have SSH keys)..."
+if su - abc -c "export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPATH}/bin:\${PATH} && cd ${VERILY1_PATH} && go install ./cortex/tools/cortex-cli"; then
   echo "cortex-cli installed successfully to ${GOPATH}/bin/cortex-cli"
 
   # Verify installation

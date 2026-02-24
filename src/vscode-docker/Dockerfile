@@ -68,8 +68,8 @@ RUN curl -LsSf https://astral.sh/uv/0.9.27/install.sh | sh && \
     mv $HOME/.local/bin/uvx /usr/local/bin/
 
 # Set up environment variables
-ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/config/go"
+ENV PATH="/usr/local/go/bin:${GOPATH}/bin:${PATH}"
 ENV GOPRIVATE="github.com/verily-src/*"
 ENV SUDO_PASSWORD="pwd"
 

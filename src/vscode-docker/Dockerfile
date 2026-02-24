@@ -58,8 +58,9 @@ RUN wget https://go.dev/dl/go1.23.5.linux-amd64.tar.gz && \
 # Install gh (GitHub CLI version 2.86.0)
 ARG GH_CLI_VERSION=2.86.0
 RUN curl -L "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_amd64.tar.gz" -o gh.tar.gz && \
-    tar -xf gh.tar.gz --strip-components=1 -C /usr/local bin/gh && \
-    rm gh.tar.gz
+    tar -xzf gh.tar.gz && \
+    mv gh_${GH_CLI_VERSION}_linux_amd64/bin/gh /usr/local/bin/ && \
+    rm -rf gh.tar.gz gh_${GH_CLI_VERSION}_linux_amd64
 
 # Install uv (Python package manager version 0.9.27)
 RUN curl -LsSf https://astral.sh/uv/0.9.27/install.sh | sh && \

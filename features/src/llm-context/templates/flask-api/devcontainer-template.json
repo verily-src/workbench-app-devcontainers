@@ -1,0 +1,23 @@
+{
+  "id": "flask-api",
+  "version": "1.0.0",
+  "name": "Flask REST API",
+  "description": "REST API with Flask for data processing and backend services",
+  "documentationURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/master/src/templates/flask-api",
+  "licenseURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

@@ -5,7 +5,7 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand":
-    "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\"",
+    "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\"; bash ./create-cortex-config.sh /config",
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",

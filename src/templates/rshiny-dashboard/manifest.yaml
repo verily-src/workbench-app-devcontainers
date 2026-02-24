@@ -1,0 +1,39 @@
+id: rshiny-dashboard
+name: RShiny Dashboard
+description: Interactive R-based dashboard with Shiny
+version: 1.0.0
+
+capabilities:
+  - data-visualization
+  - interactive-ui
+  - statistical-analysis
+  - r-language
+  - bigquery-access
+  - gcs-access
+
+inputs:
+  - name: app_name
+    type: string
+    required: true
+    default: "my-shiny-app"
+  
+  - name: dashboard_title
+    type: string
+    required: false
+    default: "R Shiny Dashboard"
+  
+  - name: gcs_buckets
+    type: list[resource]
+    resource_type: GCS_BUCKET
+    required: false
+    description: GCS buckets to access
+  
+  - name: bq_datasets
+    type: list[resource]
+    resource_type: BQ_DATASET
+    required: false
+    description: BigQuery datasets to access
+
+complexity: simple
+estimated_build_time: 5min
+port: 3838

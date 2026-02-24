@@ -1,0 +1,32 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - uploads:/app/uploads
+      - processed:/app/processed
+    ports:
+      - "8080:8080"
+    environment:
+      - MAX_UPLOAD_SIZE=100MB
+      - PYTHONUNBUFFERED=1
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  uploads:
+  processed:
+
+networks:
+  app-network:
+    external: true

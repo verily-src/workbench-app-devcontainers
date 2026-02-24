@@ -48,27 +48,12 @@
 
 set -e
 
-# Determine user home directory
-# Priority: 1) $LLM_CONTEXT_HOME, 2) first arg, 3) $HOME
-if [[ -n "${LLM_CONTEXT_HOME:-}" ]]; then
-    USER_HOME="${LLM_CONTEXT_HOME}"
-elif [[ -n "${1:-}" ]]; then
-    USER_HOME="$1"
-else
-    # Find the primary non-root user's home (typically jupyter)
-    if [[ -d "/home/jupyter" ]]; then
-        USER_HOME="/home/jupyter"
-    else
-        USER_HOME="${HOME}"
-    fi
-fi
-
 # Configuration
-CONTEXT_DIR="${USER_HOME}/.workbench"
+CONTEXT_DIR="${HOME}/.workbench"
 SKILLS_DIR="${CONTEXT_DIR}/skills"
 CLAUDE_FILE="${CONTEXT_DIR}/CLAUDE.md"
 # Visible symlink in home directory for Claude Code auto-discovery
-VISIBLE_CLAUDE_SYMLINK="${USER_HOME}/CLAUDE.md"
+VISIBLE_CLAUDE_SYMLINK="${HOME}/CLAUDE.md"
 
 # Colors for output
 RED='\033[0;31m'
@@ -131,145 +116,128 @@ install_skills() {
     cat > "${SKILLS_DIR}/CUSTOM_APP.md" << 'SKILL_EOF'
 # Creating Custom Workbench Apps
 
-## ⚡ Which Approach Do You Need?
+**Practical guide for creating simple, reliable Workbench apps.**
 
-```
-Do you need Jupyter notebooks?
-├── YES → Use workbench-jupyter base image (see "Full-Featured" below)
-└── NO
-    └── Do you need Workbench CLI (wb) or gcloud?
-        ├── YES → Use workbench-tools feature (see "Full-Featured" below)
-        └── NO → Use MINIMAL PATTERN (this guide) ✅
-```
-
-**Most custom apps should use the MINIMAL PATTERN.** It's simpler and less error-prone.
+> **Official Reference:** https://github.com/verily-src/workbench-app-devcontainers
+> 
+> **Quick Start Script:** Use \`./scripts/create-custom-app.sh\` for auto-generated app structure!
 
 ---
 
-## ✅ Pre-Deploy Checklist
+## 🚀 Quick Start (Recommended)
 
-**🤖 LLM INSTRUCTION: Before suggesting deployment, verify ALL items below. Read the user's files and check each one.**
+The official repo has a script that generates a complete app structure:
 
-### Critical (App Won't Start Without These)
+\`\`\`bash
+# Clone the official repo
+git clone https://github.com/verily-src/workbench-app-devcontainers.git
+cd workbench-app-devcontainers
 
-| Check | File | What to Look For |
-|-------|------|------------------|
-| ✅ Container name | `docker-compose.yaml` | `container_name: "application-server"` |
-| ✅ Network config | `docker-compose.yaml` | `networks: [app-network]` and `app-network: {external: true}` |
-| ✅ Port exposed | `Dockerfile` | `EXPOSE 8080` (or your port) |
-| ✅ Port mapped | `docker-compose.yaml` | `ports: ["8080:8080"]` |
-| ✅ HTTP binds correctly | App code | `host='0.0.0.0'` (NOT `localhost` or `127.0.0.1`) |
-| ✅ Template exists | `devcontainer-template.json` | Has `id` and `name` fields |
+# Run the quick start script
+./scripts/create-custom-app.sh my-app quay.io/jupyter/base-notebook 8888 jovyan /home/jovyan
+\`\`\`
 
-### Common Mistakes (Check These Too)
-
-| Check | File | Issue |
-|-------|------|-------|
-| ⚠️ Valid JSON | `.devcontainer.json` | No trailing commas, no comments in JSON |
-| ⚠️ Build context | `docker-compose.yaml` | `context: ../..` if app is in `src/app-name/` |
-| ⚠️ Dockerfile path | `docker-compose.yaml` | `dockerfile: src/YOUR-APP/Dockerfile` |
-| ⚠️ Long-running process | `Dockerfile` CMD | Must run server, not a script that exits |
-| ⚠️ Dependencies installed | `Dockerfile` | All pip/npm packages in requirements |
-
-### Validation Commands (Run Before Deploy)
-
-```bash
-# 1. Check JSON syntax
-python3 -c "import json; json.load(open('.devcontainer.json'))" && echo "✅ Valid JSON"
-
-# 2. Check docker-compose syntax  
-docker compose config > /dev/null && echo "✅ Valid docker-compose"
-
-# 3. Test locally
-docker network create app-network 2>/dev/null || true
-docker compose build && docker compose up
-```
-
-### 🤖 LLM Response Template
-
-When user asks to create/validate an app, respond with:
-
-```
-## App Validation Results
-
-| Check | Status | Details |
-|-------|--------|---------|
-| Container name | ✅/❌ | Found: "xxx" |
-| Network config | ✅/❌ | ... |
-| Port exposed | ✅/❌ | ... |
-| ... | ... | ... |
-
-### Issues Found
-1. [Issue description and fix]
-
-### Ready to Deploy?
-[Yes/No and next steps]
-```
+This generates all required files in \`src/my-app/\` with correct structure.
 
 ---
 
-## TL;DR - The Minimal Pattern That Works
+## ⚠️ Critical Requirements
+
+### 1. File Structure (MUST follow this exactly)
+
+\`\`\`
+your-repo/
+├── .devcontainer.json         ← MUST be at repo ROOT (not in a folder!)
+├── docker-compose.yaml
+├── Dockerfile
+├── devcontainer-template.json
+└── app/
+    └── your_app.py
+\`\`\`
+
+**⚠️ CRITICAL:** Workbench expects \`.devcontainer.json\` at the **repo ROOT**, NOT inside a \`.devcontainer/\` folder!
+
+### 2. Container Requirements
 
 Workbench custom apps need exactly **three things**:
-1. Container named `application-server`
-2. Connected to `app-network` (external Docker network)
+1. Container named \`application-server\`
+2. Connected to \`app-network\` (external Docker network)
 3. HTTP server on a port
-
-**That's it.** Everything else is optional (and often causes problems).
 
 ---
 
-## The Minimal Working Pattern (Copy This)
+## The Working Pattern (Copy This)
 
-### File 1: `.devcontainer.json`
-```json
+### File 1: \`.devcontainer.json\`
+
+**Location:** Repo ROOT (same level as docker-compose.yaml)
+
+\`\`\`json
 {
   "name": "Your App Name",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/app",
   "remoteUser": "root"
 }
-```
+\`\`\`
 
-### File 2: `docker-compose.yaml`
-```yaml
+**⚠️ CRITICAL settings:**
+- \`"dockerComposeFile": "docker-compose.yaml"\` - Same directory (both at root)
+- \`"workspaceFolder": "/app"\` - Should match WORKDIR in Dockerfile
+- File MUST be named \`.devcontainer.json\` at repo root
+
+### File 2: \`docker-compose.yaml\`
+
+**Location:** Repository root
+
+\`\`\`yaml
 services:
   app:
     container_name: "application-server"
     build:
-      context: ../..
-      dockerfile: src/YOUR-APP-NAME/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     restart: always
     ports:
       - "8080:8080"
+    volumes:
+      - .:/app:cached
     networks:
       - app-network
 
 networks:
   app-network:
     external: true
-```
+\`\`\`
 
-### File 3: `Dockerfile`
-```dockerfile
+**⚠️ CRITICAL settings:**
+- \`container_name: "application-server"\` - Workbench looks for this exact name
+- \`networks: app-network\` with \`external: true\` - Required for Workbench connectivity
+- \`volumes: - .:/app:cached\` - Mounts code for live updates
+
+### File 3: \`Dockerfile\`
+
+\`\`\`dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY src/YOUR-APP-NAME/app/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/YOUR-APP-NAME/app/ .
+COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "your_app.py"]
-```
+# CRITICAL: Must bind to 0.0.0.0 for Workbench proxy
+CMD ["python", "app.py"]
+\`\`\`
 
-### File 4: `devcontainer-template.json`
-```json
+### File 4: \`devcontainer-template.json\`
+
+\`\`\`json
 {
   "id": "your-app-name",
   "description": "Your app description",
@@ -278,197 +246,579 @@ CMD ["python", "your_app.py"]
   "options": {},
   "platforms": ["Any"]
 }
-```
+\`\`\`
 
 ---
 
-## Directory Structure
+## Common Mistakes Checklist
 
-```
-src/YOUR-APP-NAME/
-├── .devcontainer.json
-├── devcontainer-template.json
-├── docker-compose.yaml
-├── Dockerfile
-├── README.md
-└── app/
-    ├── your_app.py
-    ├── requirements.txt
-    └── (other files)
-```
+Before deploying, verify:
+
+- [ ] \`.devcontainer.json\` is at repo ROOT (NOT in a folder!)
+- [ ] \`dockerComposeFile\` is \`"docker-compose.yaml"\` (same directory)
+- [ ] \`container_name\` is exactly \`"application-server"\`
+- [ ] Network is \`app-network\` with \`external: true\`
+- [ ] Flask/server binds to \`0.0.0.0\` (not \`localhost\`)
+- [ ] Volume mount included for code updates
 
 ---
 
-## What NOT To Do (Lessons Learned)
+## ⚠️ Workbench App URLs (CRITICAL)
 
-### DON'T use complex base images unless needed
-❌ `workbench-jupyter` base image - Has its own startup config that conflicts with CMD overrides
-✅ `python:3.11-slim` - Clean, simple, no surprises
+**When accessing your app, you MUST use this format:**
 
-### DON'T use devcontainer features
-❌ Features like `ghcr.io/dhoeric/features/google-cloud-cli` - Uses deprecated `apt-key`, fails on newer Debian
-❌ Features like `workbench-tools` - Expect specific system packages
-✅ Install what you need directly in the Dockerfile
+\`\`\`
+https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
+\`\`\`
 
-### DON'T use postCreateCommand/postStartCommand
-❌ `./startupscript/post-startup.sh` - Expects specific user/home structure, may fail
-✅ Self-contained Dockerfile with everything built in
+### Get App UUID:
+\`\`\`bash
+wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
+\`\`\`
 
-### DON'T use supervisor for multiple processes (unless truly needed)
-❌ Supervisor + Jupyter + Flask - Complex, many failure points
-✅ Single process serving everything (Flask can serve static files)
-
-### DON'T fight with Jupyter config
-❌ Overriding CMD on workbench-jupyter image - Causes `root_dir`/`file_to_run` conflicts
-✅ Don't use Jupyter at all if you don't need it
+### ❌ WRONG Formats (Will fail)
+\`\`\`
+https://abc123-def456.workbench-app.verily.com/  ← WRONG
+http://localhost:8080/                            ← WRONG
+\`\`\`
 
 ---
 
-## Flask App: Serve Static Files Directly
+## Flask App Example
 
-If your app has a Flask backend + static HTML, just have Flask serve everything:
-
-```python
-import os
+\`\`\`python
 from flask import Flask
 from flask_cors import CORS
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, static_folder=SCRIPT_DIR, static_url_path='/static')
+app = Flask(__name__)
 CORS(app)
 
 @app.route('/')
-def serve_index():
-    return app.send_static_file('index.html')
-
-# ... your other routes ...
+def index():
+    return '<h1>Hello Workbench!</h1>'
 
 if __name__ == '__main__':
+    # CRITICAL: host='0.0.0.0' required for Workbench proxy
     app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
-```
-
-**No separate HTTP server needed. No supervisor. One process.**
+\`\`\`
 
 ---
 
 ## Common Errors and Fixes
 
-### Error: `apt-key: command not found`
-**Cause:** Devcontainer feature uses deprecated apt-key on newer Debian
-**Fix:** Remove the feature from .devcontainer.json, install directly in Dockerfile if needed
-
-### Error: `root_dir and file_to_run are incompatible`
-**Cause:** Overriding CMD on workbench-jupyter base image conflicts with its config
-**Fix:** Don't use workbench-jupyter. Use python:3.11-slim instead
-
-### Error: `supports_credentials in conjunction with origin '*'`
-**Cause:** Flask-CORS config conflict
-**Fix:** Just use `CORS(app)` with no options
-
-### Error: Container restart loop
-**Cause:** Main process exits immediately
-**Fix:** Make sure your CMD runs a long-lived process (Flask server, not a script that exits)
-
-### Error: `Application-server port is empty`
-**Cause:** Container not exposing port correctly, or app crashing before binding
-**Fix:** Check `docker logs application-server` to see the actual error
+| Error | Cause | Fix |
+|-------|-------|-----|
+| App fails to create / No container | \`devcontainer.json\` in wrong location | Move to repo ROOT as \`.devcontainer.json\` |
+| App fails to create | \`devcontainer.json\` in \`.devcontainer/\` folder | Workbench needs it at ROOT, not in folder |
+| "Bad Request" error | Wrong URL format | Use \`workbench.verily.com/app/UUID/proxy/PORT/\` |
+| Server not accessible | Bound to \`localhost\` | Change to \`host='0.0.0.0'\` |
+| Container restart loop | Process exits immediately | Ensure server runs continuously |
 
 ---
 
 ## Deployment
 
-### Deploy to Workbench
 In Workbench UI, create custom app with:
-- **Repository:** `git@github.com:YOUR-ORG/YOUR-REPO.git`
-- **Branch:** `your-branch`
-- **Folder:** `src/YOUR-APP-NAME`
-
-### For faster deploys (optional): Push to GAR
-```bash
-# Build
-cd src/YOUR-APP-NAME
-docker compose build
-
-# Tag
-export TAG="us-central1-docker.pkg.dev/PROJECT/REPO/NAME:$(date +'%Y%m%d')"
-docker tag YOUR-APP-NAME-app:latest ${TAG}
-
-# Push
-docker push ${TAG}
-
-# Update docker-compose.yaml to use image: instead of build:
-```
+- **Repository:** \`https://github.com/YOUR-ORG/YOUR-REPO.git\`
+- **Branch:** \`main\`
+- **Folder:** \`.\` (root) or \`src/YOUR-APP-NAME\` if in monorepo
 
 ---
 
 ## Local Testing
 
-```bash
+\`\`\`bash
 # Create required network
 docker network create app-network
 
 # Build and run
-cd src/YOUR-APP-NAME
 docker compose build
 docker compose up
 
 # Access at http://localhost:8080
-```
-
----
-
-## Debugging on VM
-
-```bash
-# SSH to VM, then:
-docker logs application-server --tail 100
-docker exec -it application-server /bin/sh
-docker ps -a
-```
+\`\`\`
 
 ---
 
 ## Reference Implementations
 
-All examples are in the public repo: https://github.com/verily-src/workbench-app-devcontainers
+All examples: https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
 
-| App | Description | Complexity |
-|-----|-------------|------------|
-| `src/playground/` | Multi-service app with Caddy | Simple |
-| `src/vscode/` | VS Code Server on port 8443 | Pre-built image |
-| `src/r-analysis/` | RStudio on port 8787 | Pre-built image |
-| `src/workbench-jupyter/` | JupyterLab with Workbench tools | Full-featured |
+| App | Description | Port |
+|-----|-------------|------|
+| \`playground/\` | Simple multi-service example | 8080 |
+| \`vscode/\` | VS Code Server | 8443 |
+| \`r-analysis/\` | RStudio | 8787 |
+| \`workbench-jupyter/\` | JupyterLab with tools | 8888 |
 
 ---
 
-## When DO You Need Features?
+## When to Use Features
 
-Sometimes you genuinely need the full-featured approach:
+Sometimes you need the full-featured approach:
 
 | Need | Solution |
 |------|----------|
-| Workbench CLI (`wb`) | Use `workbench-tools` feature |
-| LLM/MCP integration | Use `wb-mcp-server` feature |
-| Pre-authenticated gcloud | Use `workbench-tools` feature |
-| Jupyter notebooks | Use `workbench-jupyter` base image |
+| Workbench CLI (\`wb\`) | Use \`workbench-tools\` feature |
+| LLM/MCP integration | Use \`wb-mcp-server\` feature |
+| Pre-authenticated gcloud | Use \`workbench-tools\` feature |
 
-**If you need these, accept the complexity.** But test thoroughly.
+**If you need these, use the full \`workbench-app-devcontainers\` repo as your base.**
+SKILL_EOF
+
+    # Create APP_TEMPLATES.md skill (full version, embedded)
+    log_info "Creating APP_TEMPLATES.md skill..."
+    cat > "${SKILLS_DIR}/APP_TEMPLATES.md" << 'TEMPLATES_SKILL_EOF'
+# App Templates for Workbench
+
+**Pre-built, ready-to-deploy application templates with workspace resource integration.**
+
+> **When to use this:** User wants an app that visualizes data, serves an API, processes files, or creates dashboards using their workspace resources.
 
 ---
 
-## Key Insight
+## Available Templates
 
-The old guides suggested using `workbench-jupyter` base image + devcontainer features + startup scripts. This adds complexity that causes failures.
+| Template | Best For | Port | Key Features |
+|----------|----------|------|--------------|
+| **flask-api** | REST APIs, backend services, data processing | 8080 | JSON endpoints, file upload, BQ queries |
+| **streamlit-dashboard** | Data visualization, interactive exploration | 8501 | Charts, file browser, BigQuery explorer |
+| **rshiny-dashboard** | R statistical analysis, R-based visualizations | 3838 | Shiny UI, plotly, ggplot2, tidyverse |
+| **file-processor** | File upload, validation, transformation | 8080 | Drag-drop UI, auto-save to GCS, schema validation |
 
-The **playground pattern** proves you only need:
-1. A container named `application-server`
-2. On the `app-network` network
-3. Serving HTTP on a port
+---
 
-Everything else is optional convenience that often breaks.
+## Template Selection Guide
 
-**When in doubt, simplify.**
-SKILL_EOF
+### Quick Decision Matrix
+
+| User Says... | Recommend |
+|--------------|-----------|
+| "dashboard", "visualize", "charts", "explore data" | `streamlit-dashboard` |
+| "API", "endpoint", "backend", "REST", "service" | `flask-api` |
+| "R", "statistical", "ggplot", "tidyverse" | `rshiny-dashboard` |
+| "upload", "process files", "validate", "CSV" | `file-processor` |
+| "something custom", "from scratch" | → Use `CUSTOM_APP.md` skill |
+
+---
+
+## App Examples Location
+
+Official app examples are at:
+```
+https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
+```
+
+---
+
+## How to Create a Custom App
+
+### Option 1: Use Quick Start Script
+```bash
+# Fork the official repo, then:
+./scripts/create-custom-app.sh my-app python:3.11-slim 8080
+```
+
+### Option 2: Copy and Customize
+1. Fork https://github.com/verily-src/workbench-app-devcontainers
+2. Copy an existing app folder from `src/` (e.g., `example/`)
+3. Modify the configuration and code
+4. Push to GitHub and deploy
+
+---
+
+## Template Summaries
+
+### flask-api (Port 8080)
+- REST API with Flask
+- Pre-built endpoints: `/health`, `/resources`, `/buckets/<name>/files`, `/bigquery/query`
+- Easy to add custom endpoints
+
+### streamlit-dashboard (Port 8501)
+- Interactive dashboard with tabs
+- GCS file browser, BigQuery explorer, visualization
+- Easy to add new tabs/charts
+
+### rshiny-dashboard (Port 3838)
+- R-based Shiny dashboard
+- Includes: shiny, shinydashboard, plotly, ggplot2, dplyr, tidyr
+- bigrquery and googleCloudStorageR for data access
+
+### file-processor (Port 8080)
+- Drag-drop file upload UI
+- Processes CSV, JSON, Excel
+- Auto-save to GCS buckets
+- Schema validation
+
+---
+
+## Workspace Resource Integration
+
+All templates auto-detect workspace resources via environment variables:
+
+```python
+# Python
+import os
+bucket = os.environ.get("WORKBENCH_my_bucket")
+```
+
+```r
+# R
+bucket <- Sys.getenv("WORKBENCH_my_bucket")
+```
+
+---
+
+## When Templates Don't Fit
+
+If no template matches:
+1. Check if a template can be extended (usually yes)
+2. If truly custom, read `~/.workbench/skills/CUSTOM_APP.md`
+TEMPLATES_SKILL_EOF
+
+    # Create DASHBOARD_BUILDER.md skill (full version, embedded)
+    log_info "Creating DASHBOARD_BUILDER.md skill..."
+    cat > "${SKILLS_DIR}/DASHBOARD_BUILDER.md" << 'DASHBOARD_SKILL_EOF'
+# Web Apps & Dashboards Skill
+
+**Build interactive web apps, dashboards, and visualizations that run on a port in Workbench.**
+
+> **Triggers:** 
+> - "Create a dashboard", "visualize data", "build charts"
+> - "Run a Flask/Streamlit/FastAPI app"
+> - "Display data in the browser", "interactive UI"
+> - Any web app that serves content on a port
+
+---
+
+## 🌐 Workbench Proxy & Web Apps Best Practices
+
+### Proxy URL Format
+
+All web apps in Workbench are accessed via:
+\`\`\`
+https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
+\`\`\`
+
+### ⚠️ How to Get the App UUID (CRITICAL)
+
+**You MUST automatically get the app UUID - NEVER ask the user for it.**
+
+\`\`\`bash
+# Run this command and use the output:
+wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
+\`\`\`
+
+**⚡ LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
+1. First run the command above to get the running app UUID
+2. Use that actual UUID in the URL you provide
+3. Do NOT use placeholders like \`[APP_UUID]\` in your final response
+4. Do NOT ask the user to find/replace the UUID themselves
+
+### ✅ Correct URL Examples
+\`\`\`
+https://workbench.verily.com/app/abc123-def456-789/proxy/8080/
+https://workbench.verily.com/app/abc123-def456-789/proxy/8501/index.html
+https://workbench.verily.com/app/abc123-def456-789/proxy/8000/dashboard.html
+\`\`\`
+
+### ❌ WRONG URL Formats (These WILL fail)
+\`\`\`
+https://abc123-def456.workbench-app.verily.com/  ← WRONG: "Bad Request" error
+https://workbench-app.verily.com/abc123-def456/  ← WRONG: Invalid domain
+http://localhost:8080/                            ← WRONG: Not accessible externally
+https://abc123-def456/workbench.verily.com/       ← WRONG: Reversed format
+file:///home/jupyter/dashboard.html               ← WRONG: JavaScript blocked
+\`\`\`
+
+### ⚠️ Common Issue: JavaScript API Calls Failing
+
+**Problem:** JavaScript using absolute paths fails through Workbench proxy
+
+**Symptoms:**
+- Dashboard loads but shows no data
+- Charts remain empty with "-" placeholders  
+- Browser console shows 404 errors for API calls
+- Flask/server logs show requests for \`/\` but NOT \`/api/*\` endpoints
+
+### ✅ Solution: Use Relative Paths (TESTED & CONFIRMED)
+
+**Always use relative paths (no leading \`/\`) for fetch/AJAX calls:**
+
+\`\`\`javascript
+// ✅ CORRECT - relative paths work through proxy
+fetch('api/metadata')
+fetch('api/data?filter=value')
+
+// ❌ WRONG - absolute paths fail
+fetch('/api/metadata')  
+fetch('/api/data?filter=value')
+\`\`\`
+
+### Why Absolute Paths Fail
+
+\`\`\`
+User visits: https://workbench.verily.com/app/UUID/proxy/8080/
+
+Absolute path: fetch('/api/data')
+  → Browser resolves to: https://workbench.verily.com/api/data ❌ (404!)
+
+Relative path: fetch('api/data')  
+  → Browser resolves to: https://workbench.verily.com/app/UUID/proxy/8080/api/data ✅
+\`\`\`
+
+### Alternative: Embed Data in HTML (For Static Dashboards)
+
+If you don't need dynamic filtering, embed data directly in the template:
+
+**Python (Flask):**
+\`\`\`python
+@app.route('/')
+def index():
+    data = get_data_from_bigquery()
+    return render_template('dashboard.html', data_json=json.dumps(data))
+\`\`\`
+
+**HTML Template:**
+\`\`\`html
+<script>
+const data = {{ data_json|safe }};
+// Use data directly, no fetch calls needed
+renderChart(data);
+</script>
+\`\`\`
+
+**When to use:** Static dashboards, large datasets that don't change, or when filters can be client-side only.
+
+### Testing Checklist
+
+Before deploying any web app:
+
+- [ ] **Relative paths** - All \`fetch()\` calls use \`'api/...'\` not \`'/api/...'\`
+- [ ] **Test locally** - \`curl http://localhost:PORT/api/endpoint\` returns data
+- [ ] **Server logs** - Verify API requests arrive: \`tail -f server.log\`
+- [ ] **Browser DevTools** - Network tab shows 200 status for API calls
+- [ ] **App UUID obtained** - Not using placeholder \`[APP_UUID]\`
+
+---
+
+## Workflow
+
+### Step 1: Understand Requirements
+
+Ask the user:
+1. **Data source?** BigQuery table, CSV in bucket, or local file?
+2. **Visualizations?** Charts (bar, line, scatter), tables, filters?
+3. **Interactivity?** Static display or dynamic filtering?
+
+### Step 2: Auto-Detect Environment
+
+**Always run these commands first:**
+
+\`\`\`bash
+# Get app UUID (REQUIRED for final URL)
+APP_UUID=\$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
+echo "App UUID: \$APP_UUID"
+
+# Verify Python
+python3 --version
+
+# Check working directory
+pwd
+\`\`\`
+
+### Step 3: Install Dependencies
+
+\`\`\`bash
+pip install flask flask-cors pandas plotly google-cloud-bigquery db-dtypes
+\`\`\`
+
+> **Note:** \`db-dtypes\` is required for BigQuery to properly convert data types for pandas.
+
+### Step 4: Create Dashboard Structure
+
+\`\`\`
+dashboard/
+├── app.py              # Flask server
+├── templates/
+│   └── index.html      # Dashboard HTML
+└── static/
+    └── style.css       # Optional styling
+\`\`\`
+
+---
+
+## Working Template: BigQuery Dashboard
+
+**app.py:**
+\`\`\`python
+from flask import Flask, render_template, jsonify
+from flask_cors import CORS
+from google.cloud import bigquery
+
+app = Flask(__name__)
+CORS(app)
+
+_data_cache = None
+
+def get_bigquery_data():
+    global _data_cache
+    if _data_cache is not None:
+        return _data_cache
+    
+    client = bigquery.Client()
+    query = """
+    SELECT *
+    FROM \\\`YOUR_PROJECT.YOUR_DATASET.YOUR_TABLE\\\`
+    LIMIT 1000
+    """
+    df = client.query(query).to_dataframe()
+    _data_cache = df.to_dict(orient='records')
+    return _data_cache
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('api/data')  # NO leading slash!
+def get_data():
+    try:
+        data = get_bigquery_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('api/metadata')
+def get_metadata():
+    try:
+        data = get_bigquery_data()
+        return jsonify({
+            "columns": list(data[0].keys()) if data else [],
+            "row_count": len(data)
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    # CRITICAL: host='0.0.0.0' required for Workbench proxy access
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+\`\`\`
+
+**templates/index.html:**
+\`\`\`html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Data Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .chart { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .error { color: #d32f2f; padding: 20px; background: #ffebee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Data Dashboard</h1>
+        <div id="metadata" class="chart"><div id="metadata-content">Loading...</div></div>
+        <div id="chart1" class="chart"><div id="chart-content">Loading...</div></div>
+    </div>
+    <script>
+        // CRITICAL: Use relative paths (no leading slash!)
+        async function loadData() {
+            try {
+                const response = await fetch('api/data');  // Relative!
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                const data = await response.json();
+                
+                const cols = Object.keys(data[0]);
+                const numCol = cols.find(c => typeof data[0][c] === 'number') || cols[1];
+                
+                Plotly.newPlot('chart-content', [{
+                    x: data.slice(0,20).map(r => r[cols[0]]),
+                    y: data.slice(0,20).map(r => r[numCol]),
+                    type: 'bar'
+                }]);
+            } catch (e) {
+                document.getElementById('chart-content').innerHTML = '<div class="error">Error: ' + e.message + '</div>';
+            }
+        }
+        loadData();
+    </script>
+</body>
+</html>
+\`\`\`
+
+---
+
+## Step 5: Test & Launch
+
+\`\`\`bash
+# Get app UUID
+APP_UUID=\$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
+
+# Start server
+cd dashboard
+nohup python3 app.py > server.log 2>&1 &
+
+# Test locally
+curl -s http://localhost:8080/api/metadata | jq .
+
+echo "Dashboard at: https://workbench.verily.com/app/\${APP_UUID}/proxy/8080/"
+\`\`\`
+
+---
+
+## ⚠️ Critical Flask Configuration
+
+\`\`\`python
+# ❌ WRONG - proxy cannot reach your app
+app.run(host='localhost', port=8080)
+
+# ✅ CORRECT - accessible through Workbench proxy
+app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+\`\`\`
+
+**Required settings:**
+- \`host='0.0.0.0'\` - Allows external connections (not just localhost)
+- \`threaded=True\` - Handles concurrent users
+- \`debug=False\` - Security (don't expose debug info)
+
+**Restart after code changes:**
+\`\`\`bash
+pkill -f "python3 app.py"
+python3 app.py &
+\`\`\`
+
+**Browser not showing changes?** Hard refresh: \`Ctrl+Shift+R\` or \`Cmd+Shift+R\`
+
+---
+
+## Troubleshooting Checklist
+
+| Issue | Check | Fix |
+|-------|-------|-----|
+| Data doesn't load | Path format | Change \`fetch('/api/...')\` to \`fetch('api/...')\` |
+| 404 errors | Server running? | \`ps aux | grep python\` |
+| CORS error | CORS setup | Ensure \`CORS(app)\` is added |
+| BQ error | Auth | Check \`gcloud auth list\` |
+| Blank page | Console errors | Check browser DevTools |
+| Works locally, fails via URL | Host binding | Change \`localhost\` to \`0.0.0.0\` |
+| Gateway timeout | Server/UUID | Check server running + correct UUID |
+| Address in use | Port conflict | \`kill \$(lsof -t -i :8080)\` |
+| Changes not showing | Cache/restart | Hard refresh + restart server |
+
+---
+
+## Common Pitfalls
+
+- ❌ \`fetch('/api/data')\` — **Use** \`fetch('api/data')\` (no leading slash)
+- ❌ \`host='localhost'\` — **Use** \`host='0.0.0.0'\` (allows proxy access)
+- ❌ Placeholder \`[APP_UUID]\` — **Always get real UUID** with \`wb app list\`
+- ❌ Forgetting to restart server after code changes
+- ❌ Not checking server logs when debugging
+DASHBOARD_SKILL_EOF
 }
 
 # Fetch workspace information
@@ -602,25 +952,13 @@ generate_claude_md() {
     cat > "${CLAUDE_FILE}" << EOF
 # Workbench Context
 
-You are working inside **Verily Workbench**, a secure cloud-based research environment.
-
----
-
-## ⚡ Quick Rules (Read This First)
-
-| If the user asks... | Do this |
-|---------------------|---------|
-| About the workspace (name, ID, role, description) | **Use this file** → See "Current Workspace" below |
-| For a resource path (bucket, dataset) | **Use this file** → See "Resource Paths" below |
-| To query data, list files, or run operations | **Use MCP tools** or CLI |
-
-**Simple rule:** Static info → this file. Actions → MCP/CLI.
+You are working inside **Verily Workbench**, a secure cloud-based research environment for biomedical data analysis.
 
 ---
 
 ## What is Verily Workbench?
 
-Verily Workbench enables researchers to:
+Verily Workbench is a platform that enables researchers to:
 - Access and analyze biomedical data (clinical, genomics, wearables, imaging)
 - Run computational workflows at scale (WDL, Nextflow)
 - Collaborate securely with governance and policy enforcement
@@ -628,89 +966,21 @@ Verily Workbench enables researchers to:
 
 ---
 
-## 📍 Current Workspace
-
-> **Answer "What workspace am I in?" with this section.**
+## Current Workspace
 
 | Property | Value |
 |----------|-------|
 | **Name** | ${ws_name} |
 | **ID** | \`${ws_id}\` |
-| **Description** | ${ws_desc} |
-| **Cloud** | ${ws_cloud} |
-| **Project** | \`${project_display}\` |
+| **Cloud Platform** | ${ws_cloud} |
+| **Project/Account** | \`${project_display}\` |
 | **Your Role** | ${ws_role} |
 | **User** | ${ws_user} |
 | **Organization** | ${ws_org:-"—"} |
 | **Server** | ${ws_server:-"—"} |
 
-**Example response:** *"You're in **${ws_name}** (\`${ws_id}\`), a ${ws_cloud} workspace where you have ${ws_role} access."*
-
----
-
-## 🗂️ Resource Paths (Use for "What's the path for X?")
-
-\`\`\`json
-${embedded_json}
-\`\`\`
-
-**How to use:**
-- \`resourcePaths["my-bucket"]\` → \`gs://actual-bucket-name\`
-- Environment variable: \`\$WORKBENCH_my_bucket\`
-
----
-
-## ⚠️ Data Persistence Warning
-
-> **LOCAL FILES ARE LOST WHEN THE APP STOPS.** Always save important work to cloud buckets.
-
-### Available Buckets
-${bucket_list}
-
-### Quick Save Commands
-\`\`\`bash
-gsutil cp file.ipynb gs://BUCKET/notebooks/           # Single file
-gsutil -m cp -r ./results/ gs://BUCKET/results/       # Directory
-\`\`\`
-
-**🤖 Proactively ask users:** *"Want me to save this to a bucket so it persists?"*
-
----
-
-## 🔍 Data Exploration (Most Common Tasks)
-
-### Find Resources
-\`\`\`bash
-wb resource list                    # List all
-wb resource describe <name>         # Details
-env | grep WORKBENCH_               # Environment variables
-\`\`\`
-
-### Preview BigQuery Data
-\`\`\`bash
-bq ls PROJECT:DATASET                              # List tables
-bq show --schema PROJECT:DATASET.TABLE             # Schema
-bq head -n 10 PROJECT:DATASET.TABLE                # Sample rows
-\`\`\`
-
-### Browse GCS Files
-\`\`\`bash
-gsutil ls gs://BUCKET/                             # List
-gsutil cat gs://BUCKET/file.txt | head             # Preview
-\`\`\`
-
----
-
-## 🔧 MCP Tools vs CLI
-
-| Use MCP Tools For | Use CLI For |
-|-------------------|-------------|
-| \`list_resources\`, \`get_resource\` | Complex operations |
-| \`query_bigquery\` | \`wb workflow logs\` |
-| \`run_workflow\` | \`wb resource delete\` |
-| Structured responses | Full feature coverage |
-
-**Prefer MCP when available** — it's faster and returns structured data.
+### Description
+${ws_desc}
 
 ---
 
@@ -743,12 +1013,13 @@ Data collections are curated datasets in the Workbench catalog. When added to a 
 
 Use the **MCP server** to find which data collection a resource came from:
 
-1. **Use the MCP \`get_resource\` tool** to get full resource metadata including lineage
-2. The \`resourceLineage\` array contains:
+1. **Use the MCP \`workspace_list_data_collections\` tool** to get resources grouped by data collection
+2. Or use \`workspace_list_resources\` with workspaceId to get full resource metadata
+3. The \`resourceLineage\` object contains:
    - \`sourceWorkspaceId\`: UUID of the data collection
    - \`sourceResourceId\`: UUID of the original resource
 
-**Example:** Ask "Use get_resource to get lineage for resource 'clinical-bq-dataset'"
+**Example:** Ask "Use workspace_list_data_collections to show me which data collections my resources came from"
 
 The response includes:
 \`\`\`json
@@ -834,20 +1105,100 @@ gs://your-bucket/
 
 ---
 
-## Python Examples
+## 🔍 Data Exploration Cheatsheet
 
+This is the **most important section** for quickly discovering and accessing data.
+
+### Step 1: Find Your Resources
+\`\`\`bash
+wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
+\`\`\`
+
+### Step 2: Use Environment Variables (Easiest!)
+Every resource is available as an environment variable:
+\`\`\`bash
+# Pattern: \$WORKBENCH_<resource_name>
+echo \$WORKBENCH_my_bucket      # → gs://actual-bucket-name
+env | grep WORKBENCH_           # List all
+\`\`\`
+
+### Step 3: Get Cloud Paths
+\`\`\`bash
+wb resource describe <resource-name> --format=json
+# Look for: bucketName, projectId, datasetId, gitRepoUrl
+\`\`\`
+
+### Step 4: Preview Data Quickly
+
+**BigQuery:**
+\`\`\`bash
+bq head -n 10 <project>:<dataset>.<table>     # Quick preview
+bq show --schema <project>:<dataset>.<table>  # Column names/types
+bq show --format=prettyjson <project>:<dataset>.<table> | jq '{rows: .numRows}'  # Row count
+\`\`\`
+
+**GCS:**
+\`\`\`bash
+gsutil ls gs://<bucket>/                       # List files
+gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
+\`\`\`
+
+### 🤖 LLM Quick Patterns
+
+| Question | Command |
+|----------|---------|
+| "What data is available?" | \`wb resource list\` |
+| "What tables in dataset?" | \`bq ls <project>:<dataset>\` |
+| "What columns in table?" | \`bq show --schema <project>:<dataset>.<table>\` |
+| "How big is this table?" | \`bq show --format=prettyjson ... \\| jq '{rows: .numRows}'\` |
+| "Show sample data" | \`bq head -n 5 <project>:<dataset>.<table>\` |
+
+---
+
+## How to Discover Data (Detailed)
+
+### List Resources
+\`\`\`bash
+wb resource list
+wb resource list --format=json
+wb resource describe <resource-name>
+\`\`\`
+
+### Explore GCS Buckets
+\`\`\`bash
+gsutil ls gs://<bucket>/
+gsutil ls -l gs://<bucket>/path/
+gsutil cat gs://<bucket>/path/file.txt
+\`\`\`
+
+### Explore BigQuery
+\`\`\`bash
+bq ls <project>:<dataset>
+bq show <project>:<dataset>.<table>
+bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
+\`\`\`
+
+---
+
+## How to Query Data
+
+### BigQuery (CLI)
+\`\`\`bash
+bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 100'
+\`\`\`
+
+### BigQuery (Python)
 \`\`\`python
-# BigQuery
 from google.cloud import bigquery
 client = bigquery.Client()
 df = client.query("SELECT * FROM \\\`project.dataset.table\\\` LIMIT 100").to_dataframe()
+\`\`\`
 
-# GCS Files
+### GCS Files (Python)
+\`\`\`python
 import pandas as pd
 df = pd.read_parquet('gs://bucket/path/file.parquet')
-
-# Save to GCS
-df.to_parquet('gs://bucket/output.parquet')
+df = pd.read_csv('gs://bucket/path/file.csv')
 \`\`\`
 
 ---
@@ -885,16 +1236,44 @@ wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucke
 
 ---
 
+## MCP vs CLI: When to Use Each
+
+This app has **two interfaces** to Workbench functionality:
+
+| Interface | Best For | Pros | Cons |
+|-----------|----------|------|------|
+| **MCP Tools** | LLM operations | Structured responses, no shell needed, faster | Limited tool set |
+| **CLI (\`wb\`)** | Complex operations, fallback | Full feature coverage, human-friendly | Requires shell execution, text parsing |
+
+### 🤖 LLM Decision Guide
+
+1. **Prefer MCP tools** when the operation is supported — they return structured data and don't require shell execution
+2. **Fall back to CLI** when MCP doesn't have the tool, or for complex/chained operations
+3. **Use cloud CLIs directly** (\`gsutil\`, \`bq\`, \`gcloud\`) for low-level cloud operations
+
+### Example: Same Operation, Two Ways
+
+**List resources:**
+- MCP: Use \`workspace_list_resources\` tool → returns JSON array
+- CLI: Run \`wb resource list --format=json\` → parse stdout
+
+**Query BigQuery:**
+- MCP: Use \`bq_execute\` tool with query parameter → returns results
+- CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → parse output
+
+---
+
 ## MCP Tools Available
 
 The Workbench MCP server exposes these tools for programmatic LLM access:
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
-| \`list_resources\` | \`wb resource list\` | List all resources in the workspace |
-| \`get_resource\` | \`wb resource describe <name>\` | Get details about a specific resource |
-| \`query_bigquery\` | \`bq query\` | Run SQL queries against BigQuery |
-| \`run_workflow\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
+| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
+| \`workspace_list_data_collections\` | N/A | List data collections and their resources |
+| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
+| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
+| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
 | \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
 | \`build_cohort\` | *(UI only)* | Create a cohort using Data Explorer |
 | \`export_cohort\` | *(UI only)* | Export cohort data to a bucket |
@@ -952,23 +1331,82 @@ wb app describe <name>         # App details
 
 ---
 
+## ⚠️ Workbench Web Apps & Proxy URLs (CRITICAL)
+
+> **🚨 STOP! If user wants a dashboard, chart, Flask app, HTML page, or ANY web UI:**
+> **→ READ \`~/.workbench/skills/DASHBOARD_BUILDER.md\` FIRST!**
+> 
+> That skill contains critical configuration, working templates, and troubleshooting for all interactive web content.
+
+### Quick Reference
+
+**Proxy URL format (all web content):**
+\`\`\`
+https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
+\`\`\`
+
+**Get App UUID automatically (NEVER ask user for it):**
+\`\`\`bash
+wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
+\`\`\`
+
+### ⚠️ JavaScript Relative Paths (Critical for Dashboards)
+
+**All fetch() calls in JavaScript MUST use relative paths:**
+\`\`\`javascript
+// ✅ CORRECT - works through Workbench proxy
+fetch('api/data')
+
+// ❌ WRONG - absolute path breaks through proxy (404 error!)
+fetch('/api/data')
+\`\`\`
+
+**Why:** \`fetch('/api/data')\` resolves to \`workbench.verily.com/api/data\` (wrong!)  
+**Should be:** \`workbench.verily.com/app/UUID/proxy/PORT/api/data\`
+
+### Common Ports
+| Content Type | Port | Example Command |
+|--------------|------|-----------------|
+| Flask/FastAPI | 8080 | \`flask run --port 8080\` |
+| Streamlit | 8501 | \`streamlit run app.py\` |
+| Static HTML | 8000 | \`python3 -m http.server 8000\` |
+| R Shiny | 3838 | (configured in app) |
+
+### ❌ Wrong URL Formats
+\`\`\`
+https://UUID.workbench-app.verily.com/     ← Bad Request error
+http://localhost:8080/                     ← Not accessible externally  
+file:///home/jupyter/dashboard.html        ← JavaScript blocked
+\`\`\`
+
+---
+
 ## Creating Custom Apps
 
-**Two approaches depending on complexity:**
+> **When a user asks to create an app, turn code into an app, or build something deployable:**
 
-### Simple Apps (Recommended)
-Workbench custom apps need exactly **three things**:
-1. Container named \`application-server\`
-2. Connected to \`app-network\` (external Docker network)
-3. HTTP server on a port
+### Step 1: Determine the Type
 
-⚠️ **Avoid complexity:** Devcontainer features and startup scripts often fail.
+| User Wants... | Read This Skill |
+|---------------|-----------------|
+| Dashboard, visualization, Flask app, web UI | \`DASHBOARD_BUILDER.md\` |
+| Deployable custom app from scratch | \`CUSTOM_APP.md\` |
 
-**📖 For detailed guide:** \`Read ~/.workbench/skills/CUSTOM_APP.md\`
+### Step 2: Use the Appropriate Skill
 
-### Full-Featured Apps
-For apps needing Workbench CLI, gcloud, etc.:
-📦 https://github.com/verily-src/workbench-app-devcontainers
+**For dashboards/web UIs** → \`~/.workbench/skills/DASHBOARD_BUILDER.md\`
+- Working Flask templates with BigQuery
+- Critical proxy URL configuration
+- Tested troubleshooting guides
+
+**For deployable apps** → \`~/.workbench/skills/CUSTOM_APP.md\`
+- Minimal devcontainer pattern
+- Docker configuration
+- Deployment checklist
+
+### Quick Reference
+- **Official app examples**: https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
+- **Quick start script**: https://github.com/verily-src/workbench-app-devcontainers/blob/master/scripts/create-custom-app.sh
 
 ---
 
@@ -976,11 +1414,44 @@ For apps needing Workbench CLI, gcloud, etc.:
 
 When users ask about specific topics, **read these skill files** for detailed guidance:
 
-| Topic | Skill File |
-|-------|------------|
-| Creating custom apps | \`~/.workbench/skills/CUSTOM_APP.md\` |
+| Topic | Skill File | When to Use |
+|-------|------------|-------------|
+| **🚨 Dashboards, HTML, Flask, Web UIs** | \`~/.workbench/skills/DASHBOARD_BUILDER.md\` | **READ THIS FIRST** for any: dashboard, chart, visualization, Flask app, Streamlit, HTML page, web UI, interactive display, Plotly, or anything running on a port |
+| Building custom apps | \`~/.workbench/skills/CUSTOM_APP.md\` | User wants to build a deployable app from scratch |
 
-**How to use:** When the topic comes up, read the skill file first.
+### ⚡ Skill Trigger Guide
+
+**ALWAYS read \`DASHBOARD_BUILDER.md\` FIRST when user says ANY of these:**
+- "create a dashboard"
+- "visualize data" / "show me a chart" / "display data"
+- "build a Flask app" / "run Flask" / "Flask server"
+- "Streamlit" / "Plotly" / "interactive chart"
+- "run on port" / "serve HTML" / "web page"
+- "show in browser" / "open in new tab"
+- Any request to display data interactively
+
+**Read CUSTOM_APP.md when:**
+- "build a deployable app" / "create a custom app"
+- "API service" / "backend" / "from scratch"
+
+---
+
+## Quick Reference (Machine-Readable)
+
+Use this JSON for exact resource paths and environment variables:
+
+\`\`\`json
+${embedded_json}
+\`\`\`
+
+**Usage:**
+- \`resourcePaths["my-bucket"]\` → exact GCS/BQ path
+- \`envVars["WORKBENCH_my_bucket"]\` → environment variable value
+
+To refresh after workspace changes:
+\`\`\`bash
+~/.workbench/generate-context.sh
+\`\`\`
 
 ---
 

@@ -1,0 +1,23 @@
+{
+  "id": "streamlit-dashboard",
+  "version": "1.0.0",
+  "name": "Streamlit Dashboard",
+  "description": "Interactive data dashboard with Streamlit for visualization and exploration",
+  "documentationURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/master/src/templates/streamlit-dashboard",
+  "licenseURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

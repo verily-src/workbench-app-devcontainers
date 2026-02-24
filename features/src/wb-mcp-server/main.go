@@ -373,6 +373,27 @@ var wbTools = []Tool{
 			Properties: map[string]interface{}{},
 		},
 	},
+	{
+		Name:        "workspace_list_data_collections",
+		Description: `List all data collections in the current workspace and their associated resources.
+
+Use this when a user asks:
+- "What data collections exist in my workspace?"
+- "Show me resources grouped by data collection"
+- "Which resources came from which data collections?"
+
+This tool automatically:
+1. Gets all resources and identifies their sourceWorkspaceId (where they were cloned from)
+2. Looks up each source workspace to get the actual data collection name
+3. Groups resources by their source data collection
+4. Shows resources created directly in this workspace (no source)
+
+Returns a structured list of data collections with their resources, types, and cloud paths.`,
+		InputSchema: InputSchema{
+			Type:       "object",
+			Properties: map[string]interface{}{},
+		},
+	},
 
 	{
 		Name:        "group_create",
@@ -1500,29 +1521,37 @@ WORKFLOW:
 }
 
 func initializeConfig() error {
+	// Default to production Verily URLs
+	workspaceBaseURL = "https://workbench.verily.com/api/wsm"
+	dataExplorerURL = "https://workbench.verily.com/api/de"
+
 	cmd := exec.Command("wb", "status", "--format=json")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Fallback to production Verily URLs
-		workspaceBaseURL = "https://workbench.verily.com/api/wsm"
-		dataExplorerURL = "https://workbench.verily.com/api/de"
+		fmt.Fprintf(os.Stderr, "Warning: wb status failed, using default URLs: %v\n", err)
 	} else {
 		var status map[string]interface{}
-		if err := json.Unmarshal(output, &status); err == nil {
-			if server, ok := status["server"].(map[string]interface{}); ok {
-				// Get workspaceManagerUri from wb status output
-				if wsURL, ok := server["workspaceManagerUri"].(string); ok {
-					workspaceBaseURL = wsURL
-					// Derive dataExplorerUri from workspaceManagerUri
-					// Pattern: replace /api/wsm with /api/de
-					dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
-				} else {
-					// Fallback to production Verily URLs
-					workspaceBaseURL = "https://workbench.verily.com/api/wsm"
-					dataExplorerURL = "https://workbench.verily.com/api/de"
-				}
+		if err := json.Unmarshal(output, &status); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to parse wb status JSON, using default URLs: %v\n", err)
+		} else if server, ok := status["server"].(map[string]interface{}); ok {
+			// Get workspaceManagerUri from wb status output
+			if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
+				workspaceBaseURL = wsURL
+				// Derive dataExplorerUri from workspaceManagerUri
+				// Pattern: replace /api/wsm with /api/de
+				dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
 			}
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
 		}
+	}
+
+	// Final safety check - ensure URLs are never empty
+	if workspaceBaseURL == "" {
+		workspaceBaseURL = "https://workbench.verily.com/api/wsm"
+	}
+	if dataExplorerURL == "" {
+		dataExplorerURL = "https://workbench.verily.com/api/de"
 	}
 
 	fmt.Fprintf(os.Stderr, "Initialized - Workspace: %s, DataExplorer: %s\n", workspaceBaseURL, dataExplorerURL)
@@ -2403,6 +2432,191 @@ func handleCallTool(params CallToolParams) CallToolResult {
 
 	case "folder_list_tree":
 		output, err = executeWbCommand([]string{"folder", "tree"})
+
+	case "workspace_list_data_collections":
+		// Get current workspace from wb status
+		statusOutput, statusErr := executeWbCommand([]string{"status", "--format=json"})
+		if statusErr != nil {
+			err = fmt.Errorf("failed to get workspace status: %w", statusErr)
+			break
+		}
+		var statusData map[string]interface{}
+		if jsonErr := json.Unmarshal([]byte(statusOutput), &statusData); jsonErr != nil {
+			err = fmt.Errorf("failed to parse status: %w", jsonErr)
+			break
+		}
+		workspace, ok := statusData["workspace"].(map[string]interface{})
+		if !ok {
+			err = fmt.Errorf("no workspace set - run 'wb workspace set <id>' first")
+			break
+		}
+		// Get either userFacingId or id from the workspace status
+		workspaceId := ""
+		if ufid, ok := workspace["userFacingId"].(string); ok && ufid != "" {
+			workspaceId = ufid
+		} else if id, ok := workspace["id"].(string); ok {
+			workspaceId = id
+		} else {
+			err = fmt.Errorf("could not get workspace ID from status")
+			break
+		}
+		// Resolve to UUID using the same method as other working tools
+		workspaceUuid, resolveErr := resolveWorkspaceId(workspaceId)
+		if resolveErr != nil {
+			err = fmt.Errorf("could not resolve workspace ID: %w", resolveErr)
+			break
+		}
+
+		// List all resources (same API call as workspace_list_resources which works)
+		resourcesUrl := fmt.Sprintf("%s/api/workspaces/v1/%s/resources?offset=0&limit=1000", workspaceBaseURL, workspaceUuid)
+		resourcesResp, apiErr := makeAPIRequest("GET", resourcesUrl, nil)
+		if apiErr != nil {
+			err = fmt.Errorf("failed to list resources via API: %w", apiErr)
+			break
+		}
+
+		// Parse resources list
+		var resourcesData map[string]interface{}
+		if jsonErr := json.Unmarshal(resourcesResp, &resourcesData); jsonErr != nil {
+			err = fmt.Errorf("failed to parse resources: %w", jsonErr)
+			break
+		}
+		resourcesList, ok := resourcesData["resources"].([]interface{})
+		if !ok {
+			resourcesList = []interface{}{}
+		}
+
+		// Extract sourceWorkspaceIds from resourceLineage (which is an ARRAY inside metadata)
+		sourceWorkspaceIds := make(map[string]bool)
+		for _, r := range resourcesList {
+			resource, ok := r.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			metadata, ok := resource["metadata"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// resourceLineage is an array inside metadata
+			if lineageArray, ok := metadata["resourceLineage"].([]interface{}); ok && len(lineageArray) > 0 {
+				if firstLineage, ok := lineageArray[0].(map[string]interface{}); ok {
+					if sourceId, ok := firstLineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
+						sourceWorkspaceIds[sourceId] = true
+					}
+				}
+			}
+		}
+
+		// Look up each source workspace to get the data collection name
+		dataCollectionNames := make(map[string]string) // sourceWorkspaceId -> display name
+		for sourceId := range sourceWorkspaceIds {
+			// Use API to get workspace details
+			wsUrl := fmt.Sprintf("%s/api/workspaces/v1/%s", workspaceBaseURL, sourceId)
+			wsResp, wsErr := makeAPIRequest("GET", wsUrl, nil)
+			if wsErr == nil {
+				var wsInfo map[string]interface{}
+				if json.Unmarshal(wsResp, &wsInfo) == nil {
+					// Try to get display name, fall back to id
+					if displayName, ok := wsInfo["displayName"].(string); ok && displayName != "" {
+						dataCollectionNames[sourceId] = displayName
+					} else if userFacingId, ok := wsInfo["userFacingId"].(string); ok && userFacingId != "" {
+						dataCollectionNames[sourceId] = userFacingId
+					} else {
+						dataCollectionNames[sourceId] = sourceId
+					}
+				} else {
+					dataCollectionNames[sourceId] = sourceId
+				}
+			} else {
+				// If we can't access the source workspace, use the ID
+				dataCollectionNames[sourceId] = sourceId + " (inaccessible)"
+			}
+		}
+
+		// Group resources by data collection (using resourceLineage array inside metadata)
+		dataCollections := make(map[string]map[string]interface{})
+		localResources := []map[string]interface{}{}
+
+		for _, r := range resourcesList {
+			resource, ok := r.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			metadata, _ := resource["metadata"].(map[string]interface{})
+			if metadata == nil {
+				continue
+			}
+
+			resourceInfo := map[string]interface{}{}
+
+			// Extract name and type from metadata
+			if name, ok := metadata["name"].(string); ok {
+				resourceInfo["name"] = name
+			}
+			if resType, ok := metadata["resourceType"].(string); ok {
+				resourceInfo["type"] = resType
+			}
+			// GCS bucket path
+			if bucket, ok := metadata["bucketName"].(string); ok {
+				resourceInfo["path"] = "gs://" + bucket
+			} else if gcsBucket, ok := metadata["gcsBucketName"].(string); ok {
+				resourceInfo["path"] = "gs://" + gcsBucket
+			}
+			// BigQuery dataset path
+			if dataset, ok := metadata["datasetId"].(string); ok {
+				if project, ok := metadata["projectId"].(string); ok {
+					resourceInfo["path"] = project + ":" + dataset
+				}
+			}
+
+			// Check resourceLineage array for source workspace ID
+			var sourceId string
+			if lineageArray, ok := metadata["resourceLineage"].([]interface{}); ok && len(lineageArray) > 0 {
+				if firstLineage, ok := lineageArray[0].(map[string]interface{}); ok {
+					if sid, ok := firstLineage["sourceWorkspaceId"].(string); ok && sid != "" {
+						sourceId = sid
+					}
+				}
+			}
+
+			// Group by data collection or mark as local
+			if sourceId != "" {
+				collectionName := dataCollectionNames[sourceId]
+				if dataCollections[collectionName] == nil {
+					dataCollections[collectionName] = map[string]interface{}{
+						"sourceWorkspaceId": sourceId,
+						"resources":         []map[string]interface{}{},
+					}
+				}
+				resList := dataCollections[collectionName]["resources"].([]map[string]interface{})
+				dataCollections[collectionName]["resources"] = append(resList, resourceInfo)
+			} else {
+				localResources = append(localResources, resourceInfo)
+			}
+		}
+
+		// Count resources in collections
+		resourcesInCollections := 0
+		for _, dc := range dataCollections {
+			if res, ok := dc["resources"].([]map[string]interface{}); ok {
+				resourcesInCollections += len(res)
+			}
+		}
+
+		// Build output
+		result := map[string]interface{}{
+			"dataCollections": dataCollections,
+			"localResources":  localResources,
+			"summary": map[string]interface{}{
+				"totalDataCollections":     len(dataCollections),
+				"totalResources":           len(resourcesList),
+				"resourcesFromCollections": resourcesInCollections,
+				"resourcesCreatedLocally":  len(localResources),
+			},
+		}
+
+		outputBytes, _ := json.MarshalIndent(result, "", "  ")
+		output = string(outputBytes)
 
 	case "group_create":
 		groupId := params.Arguments["groupId"].(string)

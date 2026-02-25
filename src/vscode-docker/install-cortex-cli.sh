@@ -57,36 +57,13 @@ if [[ ! -d "cortex/tools/cortex-cli" ]]; then
 fi
 
 # Install cortex-cli as user abc (where SSH keys are configured)
+# Use the same pattern as post-startup.sh: sudo -u USER bash -l -c
 echo "Installing cortex-cli as user abc (root doesn't have SSH keys)..."
 echo "GOPATH is set to: ${GOPATH}"
+echo "Running go install with verbose output..."
 
-# Create a temporary script to run as abc user
-# This ensures we capture all output properly
-INSTALL_SCRIPT="/tmp/install-cortex-cli-inner.sh"
-cat > "${INSTALL_SCRIPT}" << 'EOF'
-#!/bin/bash
-set -x  # Show commands being executed
-export GOPATH=/config/go
-export PATH=/usr/local/go/bin:${GOPATH}/bin:${PATH}
-cd /config/repos/verily1
-exec go install ./cortex/tools/cortex-cli 2>&1
-EOF
-
-chmod +x "${INSTALL_SCRIPT}"
-
-echo "Running go install as user abc..."
-echo "Temp script location: ${INSTALL_SCRIPT}"
-echo "Temp script contents:"
-cat "${INSTALL_SCRIPT}"
-echo "---"
-echo "Testing if user abc exists:"
-id abc || echo "User abc does not exist!"
-echo "Testing if bash exists:"
-which bash || echo "bash not found!"
-echo "Now running the install script..."
-set -x
-if su abc -c "bash ${INSTALL_SCRIPT}" 2>&1; then
-set +x
+# Use sudo instead of su - matches the RUN_AS_LOGIN_USER pattern from post-startup.sh
+if sudo -u abc bash -l -c "cd ${VERILY1_PATH} && export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:${GOPATH}/bin:\$PATH && go install -v ./cortex/tools/cortex-cli"; then
   echo "cortex-cli installed successfully to ${GOPATH}/bin/cortex-cli"
 
   # Verify installation
@@ -98,13 +75,10 @@ set +x
     echo "Checking if it installed elsewhere..."
     find /config -name "cortex-cli" 2>/dev/null || echo "cortex-cli not found in /config"
   fi
-
-  rm -f "${INSTALL_SCRIPT}"
 else
   EXIT_CODE=$?
   echo "Error: Failed to install cortex-cli (exit code: ${EXIT_CODE})"
-  echo "Check the output above for errors from go install"
-  rm -f "${INSTALL_SCRIPT}"
+  echo "Error output should be visible above"
   exit 1
 fi
 

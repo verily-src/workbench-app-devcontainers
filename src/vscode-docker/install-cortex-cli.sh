@@ -75,7 +75,18 @@ EOF
 chmod +x "${INSTALL_SCRIPT}"
 
 echo "Running go install as user abc..."
-if su abc -c "bash ${INSTALL_SCRIPT}"; then
+echo "Temp script location: ${INSTALL_SCRIPT}"
+echo "Temp script contents:"
+cat "${INSTALL_SCRIPT}"
+echo "---"
+echo "Testing if user abc exists:"
+id abc || echo "User abc does not exist!"
+echo "Testing if bash exists:"
+which bash || echo "bash not found!"
+echo "Now running the install script..."
+set -x
+if su abc -c "bash ${INSTALL_SCRIPT}" 2>&1; then
+set +x
   echo "cortex-cli installed successfully to ${GOPATH}/bin/cortex-cli"
 
   # Verify installation

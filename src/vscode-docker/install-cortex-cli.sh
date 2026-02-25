@@ -58,7 +58,11 @@ fi
 
 # Install cortex-cli as user abc (where SSH keys are configured)
 echo "Installing cortex-cli as user abc (root doesn't have SSH keys)..."
-if su - abc -c "export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPATH}/bin:\${PATH} && cd ${VERILY1_PATH} && go install ./cortex/tools/cortex-cli"; then
+echo "GOPATH is set to: ${GOPATH}"
+echo "Running: su - abc -c 'export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPATH}/bin:\${PATH} && cd ${VERILY1_PATH} && go install ./cortex/tools/cortex-cli'"
+
+# Capture both stdout and stderr
+if su - abc -c "export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPATH}/bin:\${PATH} && cd ${VERILY1_PATH} && go install ./cortex/tools/cortex-cli" 2>&1; then
   echo "cortex-cli installed successfully to ${GOPATH}/bin/cortex-cli"
 
   # Verify installation
@@ -67,9 +71,13 @@ if su - abc -c "export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPA
     "${GOPATH}/bin/cortex-cli" --help || echo "cortex-cli binary exists but --help failed"
   else
     echo "Warning: cortex-cli binary not found at expected location ${GOPATH}/bin/cortex-cli"
+    echo "Checking if it installed elsewhere..."
+    find /config -name "cortex-cli" 2>/dev/null || echo "cortex-cli not found in /config"
   fi
 else
-  echo "Error: Failed to install cortex-cli"
+  EXIT_CODE=$?
+  echo "Error: Failed to install cortex-cli (exit code: ${EXIT_CODE})"
+  echo "The error output should be visible above"
   exit 1
 fi
 

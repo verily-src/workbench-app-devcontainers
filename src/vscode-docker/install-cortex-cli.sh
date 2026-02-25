@@ -59,10 +59,23 @@ fi
 # Install cortex-cli as user abc (where SSH keys are configured)
 echo "Installing cortex-cli as user abc (root doesn't have SSH keys)..."
 echo "GOPATH is set to: ${GOPATH}"
-echo "Running: su - abc -c 'export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPATH}/bin:\${PATH} && cd ${VERILY1_PATH} && go install ./cortex/tools/cortex-cli'"
 
-# Capture both stdout and stderr
-if su - abc -c "export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPATH}/bin:\${PATH} && cd ${VERILY1_PATH} && go install ./cortex/tools/cortex-cli" 2>&1; then
+# Create a temporary script to run as abc user
+# This ensures we capture all output properly
+INSTALL_SCRIPT="/tmp/install-cortex-cli-inner.sh"
+cat > "${INSTALL_SCRIPT}" << 'EOF'
+#!/bin/bash
+set -x  # Show commands being executed
+export GOPATH=/config/go
+export PATH=/usr/local/go/bin:${GOPATH}/bin:${PATH}
+cd /config/repos/verily1
+exec go install ./cortex/tools/cortex-cli 2>&1
+EOF
+
+chmod +x "${INSTALL_SCRIPT}"
+
+echo "Running go install as user abc..."
+if su abc -c "bash ${INSTALL_SCRIPT}"; then
   echo "cortex-cli installed successfully to ${GOPATH}/bin/cortex-cli"
 
   # Verify installation
@@ -74,10 +87,13 @@ if su - abc -c "export GOPATH=${GOPATH} && export PATH=/usr/local/go/bin:\${GOPA
     echo "Checking if it installed elsewhere..."
     find /config -name "cortex-cli" 2>/dev/null || echo "cortex-cli not found in /config"
   fi
+
+  rm -f "${INSTALL_SCRIPT}"
 else
   EXIT_CODE=$?
   echo "Error: Failed to install cortex-cli (exit code: ${EXIT_CODE})"
-  echo "The error output should be visible above"
+  echo "Check the output above for errors from go install"
+  rm -f "${INSTALL_SCRIPT}"
   exit 1
 fi
 

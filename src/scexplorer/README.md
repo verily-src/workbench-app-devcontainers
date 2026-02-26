@@ -26,15 +26,7 @@ scExploreR (v1.0.0) is a comprehensive Shiny application designed for interactiv
 
 ## Getting Started
 
-### 1. Build and Start the Container
-
-```bash
-docker-compose up -d --build
-```
-
-The application will be accessible at `http://localhost:3838`
-
-### 2. Prepare Your Data
+### 1. Prepare Your Data
 
 scExploreR requires a pre-processed single cell data object. Place your data file at:
 
@@ -44,7 +36,7 @@ scExploreR requires a pre-processed single cell data object. Place your data fil
 
 For the container, mount your data directory or copy files to the appropriate location.
 
-### 3. Configuration (Optional)
+### 2. Configuration (Optional)
 
 For advanced features, you can configure your object using the scExploreR configuration app:
 
@@ -61,7 +53,7 @@ Save the generated configuration file as:
 /srv/shiny-server/scexplorer/data/object_config.yaml
 ```
 
-### 4. Multi-Dataset Mode (Optional)
+### 3. Multi-Dataset Mode (Optional)
 
 To serve multiple datasets, create a browser configuration file at:
 

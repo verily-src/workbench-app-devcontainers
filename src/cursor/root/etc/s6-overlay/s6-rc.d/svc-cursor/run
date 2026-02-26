@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bash
+
+# Start Cursor IDE
+exec s6-setuidgid abc /Cursor.AppImage --no-sandbox --appimage-extract-and-run

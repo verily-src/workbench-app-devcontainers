@@ -1,0 +1,20 @@
+{
+  "id": "cursor",
+  "version": "1.0.0",
+  "name": "Cursor IDE (Actual)",
+  "description": "**ACTUAL Cursor IDE** in browser with AI assistant. WARNING: Verify licensing before production use! (Port: 8080, User: root)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

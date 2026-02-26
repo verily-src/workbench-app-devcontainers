@@ -1,0 +1,34 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CURSOR_VERSION: "1.7.52"
+        CURSOR_BUILD_HASH: "b9e5948c1ad20443a5cecba6b84a3c9b99d62582"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - cursor-data:/cursor
+      - cursor-config:/config
+    ports:
+      - "8080:8080"
+    environment:
+      CUSTOM_USER: "cursor"
+      PASSWORD: "changeme"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  cursor-data:
+  cursor-config:

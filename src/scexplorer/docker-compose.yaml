@@ -1,0 +1,27 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BASE_IMAGE=rocker/shiny:4.5.0
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - "3838:3838"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

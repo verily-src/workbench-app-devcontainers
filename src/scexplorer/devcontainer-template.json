@@ -1,0 +1,21 @@
+{
+  "id": "scexplorer",
+  "version": "1.0.0",
+  "name": "scExploreR - Single Cell Data Explorer",
+  "description": "R Shiny application for single cell omics data visualization and analysis",
+  "documentationURL": "https://amc-heme.github.io/scExploreR/",
+  "licenseURL": "https://github.com/amc-heme/scExploreR/blob/main/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws", "azure"],
+      "default": "gcp",
+      "description": "Cloud provider for data storage"
+    },
+    "login": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable cloud authentication"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+# Data files
+data/
+*.rds
+*.h5ad
+*.h5
+*.csv
+*.tsv
+
+# R session files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Logs
+*.log
+logs/
+
+# Configuration files with sensitive data
+*_config.yaml
+config.yaml
+!devcontainer-template.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment files
+.env
+.env.local

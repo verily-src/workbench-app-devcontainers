@@ -8,7 +8,7 @@
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
-    "./startupscript/post-startup.sh",
+    "/startupscript/git-setup.sh",
     "root",
     "/config",
     "${templateOption:cloud}",

@@ -1,6 +1,7 @@
 #!/bin/bash
 set -o errexit
 set -o pipefail
+set -o nounset
 
 # Allow overriding via environment for local testing
 readonly WB_EXE="${WB_EXE:-/usr/bin/wb}"

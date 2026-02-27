@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.5-labs
-ARG BASE_IMAGE=rocker/shiny:4.5.0
+ARG BASE_IMAGE=rocker/shiny:4.3.0
 FROM ${BASE_IMAGE}
 
 # Install system dependencies
@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages for Anndata support
-RUN pip3 install --no-cache-dir --break-system-packages \
+RUN pip3 install --no-cache-dir \
     numpy \
     pandas \
     scipy \

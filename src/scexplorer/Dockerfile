@@ -64,6 +64,8 @@ RUN R -e "install.packages(c(\
     'igraph' \
     ), repos='https://cloud.r-project.org/')"
 
+RUN R -e "install.packages('shinymanager', repos='https://cloud.r-project.org/')"
+
 # Install remote GitHub dependencies
 RUN R -e "remotes::install_github('immunogenomics/presto')"
 RUN R -e "remotes::install_github('amc-heme/SCUBA')"

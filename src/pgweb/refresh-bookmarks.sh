@@ -1,5 +1,6 @@
 #!/bin/bash
-set -e
+set -o errexit
+set -o pipefail
 
 # Allow overriding via environment for local testing
 readonly WB_EXE="${WB_EXE:-/usr/bin/wb}"
@@ -20,17 +21,13 @@ generate_iam_token() {
 
   # Get credentials from Workbench
   local wb_creds
-  # shellcheck disable=SC2312
   wb_creds=$(${WB_EXE} resource credentials --id "${resource_id}" --scope "${scope}" --format json 2>/dev/null) || return 1
   readonly wb_creds
 
   # Extract AWS credentials
   local access_key secret_key session_token
-  # shellcheck disable=SC2312
   access_key=$(echo "${wb_creds}" | jq -r '.AccessKeyId')
-  # shellcheck disable=SC2312
   secret_key=$(echo "${wb_creds}" | jq -r '.SecretAccessKey')
-  # shellcheck disable=SC2312
   session_token=$(echo "${wb_creds}" | jq -r '.SessionToken')
   readonly access_key secret_key session_token
 
@@ -65,7 +62,6 @@ EOF
 }
 
 refresh_bookmarks() {
-  # shellcheck disable=SC2312
   echo "$(date): Refreshing pgweb bookmarks from Workbench resources..."
 
   # Create temporary directory for new bookmarks (using PID for uniqueness)
@@ -76,15 +72,12 @@ refresh_bookmarks() {
 
   # Get list of Aurora databases from Workbench
   local RESOURCES
-  # shellcheck disable=SC2312
   RESOURCES=$(${WB_EXE} resource list --format json)
   readonly RESOURCES
 
   # Process each resource
-  # shellcheck disable=SC2312
   echo "${RESOURCES}" | jq -c '.[]' | while read -r resource; do
     local RESOURCE_TYPE
-    # shellcheck disable=SC2312
     RESOURCE_TYPE=$(echo "${resource}" | jq -r '.resourceType')
 
     # Skip non-Aurora resources
@@ -93,7 +86,6 @@ refresh_bookmarks() {
     fi
 
     local RESOURCE_ID
-    # shellcheck disable=SC2312
     RESOURCE_ID=$(echo "${resource}" | jq -r '.id')
     echo "  Processing: ${RESOURCE_ID} (type: ${RESOURCE_TYPE})"
 
@@ -102,25 +94,17 @@ refresh_bookmarks() {
     if [[ "${RESOURCE_TYPE}" == "AWS_AURORA_DATABASE" ]]; then
       DB_DATA="${resource}"
     else
-      # shellcheck disable=SC2312
       DB_DATA=$(echo "${resource}" | jq -r '.referencedResource')
     fi
 
     # Extract database connection info
     local DB_NAME RO_ENDPOINT RO_USER RW_ENDPOINT RW_USER PORT REGION
-    # shellcheck disable=SC2312
     DB_NAME=$(echo "${DB_DATA}" | jq -r '.databaseName')
-    # shellcheck disable=SC2312
     RO_ENDPOINT=$(echo "${DB_DATA}" | jq -r '.roEndpoint')
-    # shellcheck disable=SC2312
     RO_USER=$(echo "${DB_DATA}" | jq -r '.roUser')
-    # shellcheck disable=SC2312
     RW_ENDPOINT=$(echo "${DB_DATA}" | jq -r '.rwEndpoint')
-    # shellcheck disable=SC2312
     RW_USER=$(echo "${DB_DATA}" | jq -r '.rwUser')
-    # shellcheck disable=SC2312
     PORT=$(echo "${DB_DATA}" | jq -r '.port')
-    # shellcheck disable=SC2312
     REGION=$(echo "${DB_DATA}" | jq -r '.region // "us-east-1"')
 
     # Validate all required fields are present
@@ -137,7 +121,6 @@ refresh_bookmarks() {
     # Try to create READ_ONLY bookmark
     echo "    Checking read access..."
     local RO_TOKEN
-    # shellcheck disable=SC2310,SC2311,SC2312
     if RO_TOKEN=$(generate_iam_token "${RESOURCE_ID}" "READ_ONLY" "${RO_ENDPOINT}" "${PORT}" "${RO_USER}" "${REGION}"); then
       echo "    Read access confirmed"
       echo "    Creating read-only bookmark..."
@@ -151,7 +134,6 @@ refresh_bookmarks() {
     # Try to create WRITE_READ bookmark
     echo "    Checking write access..."
     local RW_TOKEN
-    # shellcheck disable=SC2310,SC2311,SC2312
     if RW_TOKEN=$(generate_iam_token "${RESOURCE_ID}" "WRITE_READ" "${RW_ENDPOINT}" "${PORT}" "${RW_USER}" "${REGION}"); then
       echo "    Write access confirmed"
       echo "    Creating write-read bookmark..."
@@ -165,14 +147,11 @@ refresh_bookmarks() {
   # Count bookmarks - must use find since the while loop runs in a subshell (due to pipe),
   # so a counter variable incremented in the loop would not be visible here
   local BOOKMARK_COUNT
-  # shellcheck disable=SC2312
   BOOKMARK_COUNT=$(find "${TEMP_DIR}" -name "*.toml" -type f 2>/dev/null | wc -l)
   readonly BOOKMARK_COUNT
-  # shellcheck disable=SC2312
   echo "$(date): Refresh complete. Created ${BOOKMARK_COUNT} bookmarks."
 
   # Atomically update symlink to point to new bookmark directory
-  # shellcheck disable=SC2312
   ln -sfn "$(basename "${TEMP_DIR}")" "${BOOKMARK_DIR}"
 
   # Cleanup old bookmark directories (all except current)
@@ -180,9 +159,7 @@ refresh_bookmarks() {
 }
 
 # Run single refresh
-# shellcheck disable=SC2310
 if ! refresh_bookmarks; then
-  # shellcheck disable=SC2312
   echo "$(date): ERROR: Bookmark refresh failed"
   exit 1
 fi

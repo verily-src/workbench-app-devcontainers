@@ -1,5 +1,6 @@
 #!/bin/bash
-set -e
+set -o errexit
+set -o pipefail
 
 echo "Starting bookmark refresh for pgweb..."
 
@@ -15,6 +16,7 @@ echo "Running initial bookmark refresh..."
 
 # Start background loop for continuous refresh (detached from parent)
 echo "Starting background bookmark refresh service (every 10 minutes)..."
+# Single quotes intentional: $(date) should expand at runtime, not now
 # shellcheck disable=SC2016
 nohup bash -c '
   while true; do

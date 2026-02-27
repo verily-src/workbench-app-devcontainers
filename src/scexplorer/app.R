@@ -20,7 +20,6 @@ if (file.exists(browser_config_path)) {
     browser_config = browser_config_path,
     host = "0.0.0.0",
     port = 3838,
-    launch.browser = FALSE
   )
 } else if (file.exists(default_object_path)) {
   # Single-dataset mode
@@ -33,7 +32,6 @@ if (file.exists(browser_config_path)) {
     config_path = config_arg,
     host = "0.0.0.0",
     port = 3838,
-    launch.browser = FALSE
   )
 } else {
   # No data found - show instructions

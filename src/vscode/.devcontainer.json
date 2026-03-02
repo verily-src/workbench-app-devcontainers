@@ -5,7 +5,7 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand":
-    "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh abc",
+    "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh abc; code-server --install-extension Google.geminicodeassist",
   // re-mount bucket files on container start up
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
@@ -34,7 +34,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "googlecloudtools.cloudcode"
+        "Google.geminicodeassist"
       ]
     },
     "workbench": {

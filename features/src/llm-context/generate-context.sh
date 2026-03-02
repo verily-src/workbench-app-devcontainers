@@ -402,27 +402,28 @@ SKILL_EOF
 
 ---
 
-## App Examples Location
+## Template Location
 
-Official app examples are at:
+All templates are at:
 ```
-https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
+https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
 ```
 
 ---
 
-## How to Create a Custom App
+## How to Use a Template
 
-### Option 1: Use Quick Start Script
-```bash
-# Fork the official repo, then:
-./scripts/create-custom-app.sh my-app python:3.11-slim 8080
+### Option 1: Deploy Directly
+```
+Repository: https://github.com/aculotti-verily/wb-app-mcp-and-context.git
+Branch: templates-only
+Folder: src/templates/<template-name>
 ```
 
 ### Option 2: Copy and Customize
-1. Fork https://github.com/verily-src/workbench-app-devcontainers
-2. Copy an existing app folder from `src/` (e.g., `example/`)
-3. Modify the configuration and code
+1. Copy the template folder to user's repo
+2. Modify application code in `app/`
+3. Update `devcontainer-template.json` with new name/description
 4. Push to GitHub and deploy
 
 ---
@@ -956,6 +957,23 @@ You are working inside **Verily Workbench**, a secure cloud-based research envir
 
 ---
 
+## ⚡ MCP Tools First!
+
+> **Before running ANY CLI command, check if an MCP tool exists for the operation.**
+> MCP tools return structured JSON and are faster than parsing CLI output.
+
+| Common Task | ✅ Use This MCP Tool |
+|-------------|---------------------|
+| List data collections | \`workspace_list_data_collections\` |
+| List resources | \`workspace_list_resources\` |
+| Resources by folder | \`resource_list_tree\` |
+| Query BigQuery | \`bq_execute\` |
+| List bucket files | \`list_files\` |
+
+**Skip to:** [Data Exploration Cheatsheet](#-data-exploration-cheatsheet) | [MCP Tools](#mcp-tools-available)
+
+---
+
 ## What is Verily Workbench?
 
 Verily Workbench is a platform that enables researchers to:
@@ -1109,7 +1127,18 @@ gs://your-bucket/
 
 This is the **most important section** for quickly discovering and accessing data.
 
+> **⚡ MCP FIRST:** Always check if an MCP tool exists before using CLI commands. MCP tools return structured data and are faster.
+
 ### Step 1: Find Your Resources
+
+**🎯 Use MCP tools (preferred):**
+| What You Need | MCP Tool |
+|---------------|----------|
+| Data collections + their resources | \`workspace_list_data_collections\` |
+| All resources (flat list) | \`workspace_list_resources\` |
+| Resources organized by folder | \`resource_list_tree\` |
+
+**CLI fallback:**
 \`\`\`bash
 wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
 \`\`\`
@@ -1145,13 +1174,19 @@ gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
 
 ### 🤖 LLM Quick Patterns
 
-| Question | Command |
-|----------|---------|
-| "What data is available?" | \`wb resource list\` |
-| "What tables in dataset?" | \`bq ls <project>:<dataset>\` |
-| "What columns in table?" | \`bq show --schema <project>:<dataset>.<table>\` |
-| "How big is this table?" | \`bq show --format=prettyjson ... \\| jq '{rows: .numRows}'\` |
-| "Show sample data" | \`bq head -n 5 <project>:<dataset>.<table>\` |
+| User Question | Best Tool | Command/Tool |
+|---------------|-----------|--------------|
+| "What data collections do I have?" | **MCP** | \`workspace_list_data_collections\` |
+| "What resources are in my workspace?" | **MCP** | \`workspace_list_resources\` |
+| "Show resources by folder" | **MCP** | \`resource_list_tree\` |
+| "Query this BigQuery table" | **MCP** | \`bq_execute\` |
+| "What tables are in this dataset?" | CLI | \`bq ls <project>:<dataset>\` |
+| "What columns in this table?" | CLI | \`bq show --schema <project>:<dataset>.<table>\` |
+| "How big is this table?" | CLI | \`bq show --format=prettyjson ... \\| jq '{rows: .numRows}'\` |
+| "Show me sample data" | CLI | \`bq head -n 5 <project>:<dataset>.<table>\` |
+| "List files in bucket" | **MCP** | \`list_files\` |
+
+> **⚠️ Pattern to avoid:** Don't default to \`wb resource list\` for data collection questions. Use \`workspace_list_data_collections\` instead!
 
 ---
 
@@ -1245,21 +1280,33 @@ This app has **two interfaces** to Workbench functionality:
 | **MCP Tools** | LLM operations | Structured responses, no shell needed, faster | Limited tool set |
 | **CLI (\`wb\`)** | Complex operations, fallback | Full feature coverage, human-friendly | Requires shell execution, text parsing |
 
+### ⚠️ Common Operations — USE MCP, NOT CLI
+
+These operations have dedicated MCP tools. **Do NOT use CLI for these:**
+
+| Operation | ✅ Use MCP Tool | ❌ Don't Use CLI |
+|-----------|-----------------|------------------|
+| List data collections | \`workspace_list_data_collections\` | ~~\`wb resource list\`~~ |
+| List all resources | \`workspace_list_resources\` | ~~\`wb resource list\`~~ |
+| Resources by folder | \`resource_list_tree\` | ~~\`wb resource list-tree\`~~ |
+| Run BigQuery query | \`bq_execute\` | ~~\`bq query\`~~ |
+| List bucket files | \`list_files\` | ~~\`gsutil ls\`~~ |
+
 ### 🤖 LLM Decision Guide
 
-1. **Prefer MCP tools** when the operation is supported — they return structured data and don't require shell execution
-2. **Fall back to CLI** when MCP doesn't have the tool, or for complex/chained operations
-3. **Use cloud CLIs directly** (\`gsutil\`, \`bq\`, \`gcloud\`) for low-level cloud operations
+1. **ALWAYS check MCP tools first** — especially for list/query operations
+2. **Fall back to CLI only** when MCP doesn't have the tool
+3. **Use cloud CLIs** (\`gsutil\`, \`bq\`) only for operations MCP doesn't support
 
 ### Example: Same Operation, Two Ways
 
 **List resources:**
-- MCP: Use \`workspace_list_resources\` tool → returns JSON array
-- CLI: Run \`wb resource list --format=json\` → parse stdout
+- ✅ MCP: Use \`workspace_list_resources\` tool → returns JSON array
+- ⚠️ CLI: Run \`wb resource list --format=json\` → requires shell, parsing
 
 **Query BigQuery:**
-- MCP: Use \`bq_execute\` tool with query parameter → returns results
-- CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → parse output
+- ✅ MCP: Use \`bq_execute\` tool with query parameter → returns results
+- ⚠️ CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → requires parsing
 
 ---
 
@@ -1269,8 +1316,8 @@ The Workbench MCP server exposes these tools for programmatic LLM access:
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
+| \`workspace_list_data_collections\` | N/A | **List data collections and their resources** |
 | \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
-| \`workspace_list_data_collections\` | N/A | List data collections and their resources |
 | \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
 | \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
 | \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
@@ -1405,8 +1452,8 @@ file:///home/jupyter/dashboard.html        ← JavaScript blocked
 - Deployment checklist
 
 ### Quick Reference
-- **Official app examples**: https://github.com/verily-src/workbench-app-devcontainers/tree/master/src
-- **Quick start script**: https://github.com/verily-src/workbench-app-devcontainers/blob/master/scripts/create-custom-app.sh
+- **Templates**: https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
+- **Full-featured apps**: https://github.com/verily-src/workbench-app-devcontainers
 
 ---
 

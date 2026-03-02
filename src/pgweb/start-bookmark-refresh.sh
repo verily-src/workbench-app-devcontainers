@@ -3,10 +3,12 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+readonly PGWEB_BASE="${PGWEB_BASE:-/root/.pgweb}"
+
 echo "Starting bookmark refresh for pgweb..."
 
 # Create base directory (but not bookmarks subdirectory - that will be a symlink)
-mkdir -p /root/.pgweb
+mkdir -p "${PGWEB_BASE}"
 
 # Make sure refresh script is executable
 chmod +x /workspace/refresh-bookmarks.sh
@@ -24,7 +26,7 @@ nohup bash -c '
     sleep 600  # 10 minutes
     /workspace/refresh-bookmarks.sh || echo "$(date): WARNING: Bookmark refresh failed"
   done
-' >> /root/.pgweb/refresh.log 2>&1 &
+' >> "${PGWEB_BASE}/refresh.log" 2>&1 &
 
 REFRESH_PID=$!
 echo "Bookmark refresh service configured (background PID: ${REFRESH_PID})"

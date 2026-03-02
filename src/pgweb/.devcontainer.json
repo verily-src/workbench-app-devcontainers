@@ -1,0 +1,27 @@
+{
+  "name": "pgweb",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "root",
+    "/root",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "postStartCommand": "/workspace/start-bookmark-refresh.sh",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "upgradePackages": false
+    },
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
+  },
+  "remoteUser": "root"
+}

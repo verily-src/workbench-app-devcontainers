@@ -15,12 +15,6 @@ Web-based Cursor IDE with AI-powered coding assistant for Verily Workbench.
 
 Once deployed in Workbench, access Cursor IDE at the app URL (port 8080).
 
-**Login:**
-- Username: `cursor`
-- Password: `changeme`
-
-After logging in to the container, sign in with your Cursor account to activate AI features.
-
 ## Local Testing
 
 ```bash
@@ -39,8 +33,9 @@ Access at: http://localhost:8080
 
 ## Customization
 
-Edit `docker-compose.yaml` to change authentication credentials:
+Edit `docker-compose.yaml` to customize the container configuration.
 
+Optional: Add authentication by setting environment variables:
 ```yaml
 environment:
   CUSTOM_USER: "your-username"

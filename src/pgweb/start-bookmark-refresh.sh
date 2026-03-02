@@ -3,7 +3,7 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-readonly PGWEB_BASE="${PGWEB_BASE:-/root/.pgweb}"
+readonly PGWEB_BASE="${PGWEB_BASE:-/pgweb}"
 
 echo "Starting bookmark refresh for pgweb..."
 

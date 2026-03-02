@@ -5,7 +5,7 @@ set -o nounset
 
 # Allow overriding via environment for local testing
 readonly WB_EXE="${WB_EXE:-/usr/bin/wb}"
-readonly PGWEB_BASE="${PGWEB_BASE:-/root/.pgweb}"
+readonly PGWEB_BASE="${PGWEB_BASE:-/pgweb}"
 readonly BOOKMARK_DIR="${PGWEB_BASE}/bookmarks"
 
 # Create base directory if it doesn't exist

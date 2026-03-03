@@ -23,9 +23,16 @@ Installs the Gemini CLI for AI-powered code assistance in your devcontainer.
 
 ## Requirements
 
-This feature automatically installs Node.js LTS if it's not already present. No additional dependencies required!
+This feature requires Node.js. Add the Node.js feature to your `devcontainer.json`:
 
-**Note:** If `claude-code` is installed first (which also provides Node.js), this feature will detect and reuse that installation instead of installing Node.js again.
+```json
+"features": {
+    "ghcr.io/devcontainers/features/node": { "version": "lts" },
+    "./.devcontainer/features/gemini-cli": {}
+}
+```
+
+The installation order is handled automatically via `installsAfter`.
 
 ## Authentication
 

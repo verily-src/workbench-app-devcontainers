@@ -47,19 +47,40 @@ echo "Starting Gemini CLI installation..."
 # Install dependencies (curl, unzip, etc.)
 check_packages curl ca-certificates
 
-# Install Gemini CLI via npm (Google's official CLI package)
-# Note: Gemini CLI is distributed via npm as @google-cloud/gemini
-if command -v npm &> /dev/null; then
-    echo "Installing Gemini CLI globally..."
-    npm install -g @google-cloud/cli
-    
-    # Make it accessible to the specified user
-    if [ "${USERNAME}" != "root" ]; then
-        chown -R "${USERNAME}:${USERNAME}" "$(npm root -g)"
-    fi
-else
-    echo "WARNING: npm not found. Please ensure Node.js is installed first."
-    echo "Add 'ghcr.io/devcontainers/features/node' to your features before gemini-cli."
+# Install Gemini CLI using official Google distribution
+echo "Installing Gemini CLI from official source..."
+
+# Download and install the official Gemini CLI
+GEMINI_CLI_VERSION="${VERSION}"
+if [ "${GEMINI_CLI_VERSION}" = "latest" ]; then
+    GEMINI_CLI_VERSION="$(curl -s https://api.github.com/repos/google-gemini/gemini-cli/releases/latest | grep 'tag_name' | cut -d'"' -f4)"
+fi
+
+# Detect architecture
+ARCH="$(uname -m)"
+case "${ARCH}" in
+    x86_64)
+        ARCH="amd64"
+        ;;
+    aarch64|arm64)
+        ARCH="arm64"
+        ;;
+    *)
+        echo "Unsupported architecture: ${ARCH}"
+        exit 1
+        ;;
+esac
+
+# Download Gemini CLI binary
+DOWNLOAD_URL="https://github.com/google-gemini/gemini-cli/releases/download/${GEMINI_CLI_VERSION}/gemini-cli_linux_${ARCH}"
+echo "Downloading from: ${DOWNLOAD_URL}"
+
+curl -fsSL "${DOWNLOAD_URL}" -o /usr/local/bin/gemini-cli
+chmod +x /usr/local/bin/gemini-cli
+
+# Verify installation
+if ! command -v gemini-cli &> /dev/null; then
+    echo "ERROR: Gemini CLI installation failed"
     exit 1
 fi
 

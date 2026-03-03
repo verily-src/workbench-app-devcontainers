@@ -18,7 +18,7 @@
     "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {
       "version": "17"
     },
-    "ghcr.io/devcontainers/features/node@sha256:6db63d607e36dcc8107e2c81dcb577c32e2e95acdef35c2efab4ad94e26b7f5b": {
+    "ghcr.io/devcontainers/features/node": {
       "version": "lts"
     },
     "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18": {},

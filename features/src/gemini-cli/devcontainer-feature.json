@@ -21,7 +21,6 @@
     }
   },
   "installsAfter": [
-    "ghcr.io/devcontainers/features/common-utils",
-    "ghcr.io/anthropics/devcontainer-features/claude-code"
+    "ghcr.io/devcontainers/features/common-utils"
   ]
 }

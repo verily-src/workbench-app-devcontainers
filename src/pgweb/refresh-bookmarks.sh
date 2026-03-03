@@ -5,11 +5,21 @@ set -o nounset
 
 # Allow overriding via environment for local testing
 readonly WB_EXE="${WB_EXE:-/usr/bin/wb}"
-readonly PGWEB_BASE="${PGWEB_BASE:-/root/.pgweb}"
+readonly PGWEB_BASE="${PGWEB_BASE:-/pgweb}"
 readonly BOOKMARK_DIR="${PGWEB_BASE}/bookmarks"
 
 # Create base directory if it doesn't exist
 mkdir -p "${PGWEB_BASE}"
+
+# Helper function to get AWS region
+get_region() {
+  local imds_token
+  imds_token="$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)"
+  local region
+  region="$(wget --header "X-aws-ec2-metadata-token: ${imds_token}" -q -O - http://169.254.169.254/latest/meta-data/placement/region)"
+
+  echo "${region}"
+}
 
 # Helper function to get credentials and generate IAM auth token
 generate_iam_token() {
@@ -76,6 +86,10 @@ refresh_bookmarks() {
   RESOURCES=$(${WB_EXE} resource list --format json)
   readonly RESOURCES
 
+  local VM_REGION
+  VM_REGION=$(get_region)
+  readonly VM_REGION
+
   # Process each resource
   echo "${RESOURCES}" | jq -c '.[]' | while read -r resource; do
     local RESOURCE_TYPE
@@ -116,6 +130,12 @@ refresh_bookmarks() {
        [[ -z "${RW_USER}" || "${RW_USER}" == "null" ]] || \
        [[ -z "${PORT}" || "${PORT}" == "null" ]]; then
       echo "    Missing required database fields, skipping"
+      continue
+    fi
+
+    if [[ "${REGION}" != "${VM_REGION}" ]]; then
+      echo "    Resource region (${REGION}) does not match VM region (${VM_REGION}), skipping"
+      touch "${TEMP_DIR}/${RESOURCE_ID} (Disabled - Cross Region).toml"
       continue
     fi
 

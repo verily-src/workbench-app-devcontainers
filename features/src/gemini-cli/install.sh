@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+# install.sh installs the Gemini CLI in the devcontainer
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
+readonly VERSION="${VERSION:-"latest"}"
+readonly USERNAME="${USERNAME:-"root"}"
+USER_HOME_DIR="${USERHOMEDIR:-"/home/${USERNAME}"}"
+if [[ "${USER_HOME_DIR}" == "/home/root" ]]; then
+    USER_HOME_DIR="/root"
+fi
+readonly USER_HOME_DIR
+
+export DEBIAN_FRONTEND=noninteractive
+export TZ=Etc/UTC
+
+WORKDIR="$(mktemp -d)"
+readonly WORKDIR
+
+function cleanup() {
+    rm -rf "${WORKDIR:?}"
+}
+
+trap 'cleanup' EXIT
+
+function apt_get_update() {
+    if [ "$(find /var/lib/apt/lists/* | wc -l)" = "0" ]; then
+        echo "Running apt-get update..."
+        apt-get update -y
+    fi
+}
+
+# Checks if packages are installed and installs them if not
+function check_packages() {
+    if ! dpkg -s "$@" > /dev/null 2>&1; then
+        apt_get_update
+        apt-get -y install --no-install-recommends "$@"
+    fi
+}
+
+echo "Starting Gemini CLI installation..."
+
+# Install dependencies (curl, unzip, etc.)
+check_packages curl ca-certificates
+
+# Install Gemini CLI via npm (Google's official CLI package)
+# Note: Gemini CLI is distributed via npm as @google-cloud/gemini
+if command -v npm &> /dev/null; then
+    echo "Installing Gemini CLI globally..."
+    npm install -g @google-cloud/cli
+    
+    # Make it accessible to the specified user
+    if [ "${USERNAME}" != "root" ]; then
+        chown -R "${USERNAME}:${USERNAME}" "$(npm root -g)"
+    fi
+else
+    echo "WARNING: npm not found. Please ensure Node.js is installed first."
+    echo "Add 'ghcr.io/devcontainers/features/node' to your features before gemini-cli."
+    exit 1
+fi
+
+echo "Gemini CLI installation completed successfully!"
+echo "Users can now run 'gcloud ai' commands or use Gemini CLI tools."

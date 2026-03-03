@@ -83,14 +83,6 @@ Most common format for single-cell analysis in R. Ensure your Seurat object:
 - Has cell metadata
 - Has been clustered
 
-### Anndata Objects
-
-For Python-based workflows. Requirements:
-- Processed using scanpy or similar tools
-- Contains embeddings (X_umap, X_tsne)
-- Has observations (cell metadata)
-- Has variable features
-
 The container includes Python support with numpy, pandas, scipy, anndata, and scanpy pre-installed.
 
 ## File Structure
@@ -164,10 +156,9 @@ These can be adjusted in `shiny-customized.conf` if needed for very large datase
 The devcontainer supports integration with cloud storage:
 - AWS (with AWS CLI)
 - GCP (with Google Cloud CLI)
-- Azure
 
 Configure cloud access through the devcontainer options:
-- `cloud`: Select your cloud provider (gcp, aws, azure)
+- `cloud`: Select your cloud provider (gcp, aws)
 - `login`: Enable cloud authentication
 
 ## Troubleshooting
@@ -206,15 +197,14 @@ If you encounter issues with Anndata objects:
 
 ## Documentation and Support
 
-- **scExploreR Documentation**: https://amc-heme.github.io/scExploreR/
 - **GitHub Repository**: https://github.com/amc-heme/scExploreR
 - **scExploreR Issues**: https://github.com/amc-heme/scExploreR/issues
 
 ## Version Information
 
 - **scExploreR Version**: v1.0.0
-- **R Version**: 4.5.0
-- **Base Image**: rocker/shiny:4.5.0
+- **R Version**: 4.3.0
+- **Base Image**: rocker/shiny:4.3.0
 - **Shiny Server**: Latest (from base image)
 
 ## License

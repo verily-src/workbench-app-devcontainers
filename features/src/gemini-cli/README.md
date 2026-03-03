@@ -6,10 +6,7 @@ Installs the Gemini CLI for AI-powered code assistance in your devcontainer.
 
 ```json
 "features": {
-    "./.devcontainer/features/gemini-cli": {
-        "username": "abc",
-        "userHomeDir": "/config"
-    }
+    "./.devcontainer/features/gemini-cli": {}
 }
 ```
 
@@ -33,16 +30,6 @@ This feature requires Node.js. If your devcontainer doesn't already have Node.js
 
 The `gemini-cli` feature will automatically install after Node.js via `installsAfter`.
 
-## Authentication
-
-After installation, users will need to authenticate with their Google Cloud account:
-
-```bash
-gcloud auth login
-```
-
-Or use service account credentials as needed for your Workbench setup.
-
 ---
 
-_Note: This is a custom Workbench feature for Gemini CLI integration._
+_Note: This file was auto-generated from the [devcontainer-feature.json](devcontainer-feature.json).  Add additional notes to a `NOTES.md`._

@@ -18,6 +18,9 @@ Once deployed in Workbench, access the pgweb UI at the app URL (port 8081).
 
 The app automatically discovers all Aurora databases in your Workbench workspace and creates pre-configured connection bookmarks with fresh IAM authentication tokens.
 
+For more information on how pgweb bookmarks work, see [Server Connection
+Bookmarks](https://github.com/sosedoff/pgweb/wiki/Server-Connection-Bookmarks).
+
 ### How It Works
 
 1. **Auto-Discovery**: Every 10 minutes, the app queries `wb resource list` to find all Aurora databases

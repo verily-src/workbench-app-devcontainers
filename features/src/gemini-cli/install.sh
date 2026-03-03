@@ -49,31 +49,12 @@ check_packages curl ca-certificates
 
 # Install Gemini CLI via npm (Google's official CLI package)
 # Official package: @google/gemini-cli
+# Note: Requires Node.js (installed by claude-code feature)
 
-# Check if Node.js/npm is available, install if not
 if ! command -v npm &> /dev/null; then
-    echo "Node.js not found. Installing Node.js LTS..."
-    
-    # Install Node.js using NodeSource repository (official)
-    check_packages curl ca-certificates gnupg
-    
-    # Setup NodeSource repository for LTS
-    mkdir -p /etc/apt/keyrings
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-    
-    NODE_MAJOR=20  # LTS version
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
-    
-    apt_get_update
-    apt-get install -y nodejs
-    
-    # Verify Node.js installation
-    if ! command -v npm &> /dev/null; then
-        echo "ERROR: Failed to install Node.js/npm"
-        exit 1
-    fi
-    
-    echo "Node.js $(node --version) and npm $(npm --version) installed successfully"
+    echo "ERROR: npm not found. Node.js is required for Gemini CLI installation."
+    echo "Ensure claude-code feature is installed before gemini-cli (it provides Node.js)."
+    exit 1
 fi
 
 echo "Installing Gemini CLI globally..."
@@ -85,7 +66,7 @@ if [ "${USERNAME}" != "root" ]; then
 fi
 
 # Verify installation
-if ! command -v gemini &> /dev/null && ! npm list -g @google/gemini-cli &> /dev/null; then
+if ! npm list -g @google/gemini-cli &> /dev/null; then
     echo "WARNING: Gemini CLI installation may have issues, but continuing..."
 fi
 

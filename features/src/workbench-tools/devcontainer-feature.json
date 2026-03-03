@@ -4,6 +4,16 @@
   "name": "Workbench Tools",
   "description": "Installs common tools for Workbench Apps. Currently it only supports Debian-based systems (e.g. Ubuntu) on x86_64.",
   "options": {
+      "libEnv": {
+          "type": "string",
+          "default": "/opt/conda/envs/workbench-ds",
+          "description": "The path to the conda environment where Python libraries (e.g. numpy, plotly, scipy) should be installed. This could be a pre-existing environment or a new one."
+      },
+      "libPythonVersion": {
+          "type": "string",
+          "default": "3.10",
+          "description": "The Python version to use for the installed libraries."
+      },
       "cloud": {
           "type": "string",
           "default": "",

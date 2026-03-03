@@ -6,7 +6,7 @@
   },
   "ghcr.io/devcontainers/features/java": {
     "tag": "1",
-    "installed": "sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286",
+    "installed": "sha256:e75d274ac969b29a59ba6f34c2d098f6a52144d0ec027ef326b724ea4b8b7b4e",
     "filter": ".*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/dhoeric/features/google-cloud-cli": {
@@ -26,22 +26,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:69b041fbb48ff267fc38e10d3ed8c013826e30d921e1756ee18ad24cce82d52c",
+    "installed": "sha256:358d266a485ca6040ab9a6cfa63c799cafbc778f0a3cae50e6e7c0ddf0a6e149",
     "filter": ".*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:5b2315728968fd8d1c7773a843978834333f887fd95e71261668244efc248b7f",
+    "installed": "sha256:390a6c68099d9ab1193b71ce6ec23631dcad4e008f836ebb2333b574025b5151",
     "filter": ".*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:f847557cb079c6404fb5f3f7702223e946d339e900744a065fb3d45de84e4337",
+    "installed": "sha256:5c8fa7810c7b5c837afe06029a22d097a4f62c665c5f5a114049ad278a64ba20",
     "filter": ".*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:ef1c06cb7d005e3eae6153d79f9eb82f1652773cc5e622ba0345964779f8bdce",
+    "installed": "sha256:0b38b47b7be3334d42103ee0176a6bcf90f2139517af117c0a18ce871c660d33",
     "filter": ".*\\/Dockerfile"
   }
 }

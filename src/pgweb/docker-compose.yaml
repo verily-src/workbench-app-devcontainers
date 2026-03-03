@@ -3,13 +3,9 @@ services:
     # The container name must be "application-server"
     container_name: "application-server"
     # This can be either a pre-existing image or built from a Dockerfile
-    image: "sosedoff/pgweb"
-    # build:
-    #   context: .
-    # Override the default entrypoint to use our custom script
-    entrypoint: []
-    command: ["pgweb", "--sessions", "--bind=0.0.0.0", "--listen=8081", "--bookmarks-dir=/root/.pgweb/bookmarks"]
-    user: "root"
+    build:
+      context: .
+    command: ["--sessions", "--bookmarks-dir=/pgweb/bookmarks"]
     restart: always
     volumes:
       - .:/workspace:cached

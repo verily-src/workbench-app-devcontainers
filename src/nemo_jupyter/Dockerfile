@@ -17,9 +17,15 @@ RUN useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} 
     # Fix ownership for common dirs
     && mkdir -p /workspace \
     && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /tmp \
-    && chown -R ${NB_UID}:${NB_GID} /opt/conda || true \
-    # Add alias for weightsbiases
-    && printf 'alias weightsbiases="/usr/local/bin/wb"\nalias wb="/usr/bin/wb"\n' >> ${WORKDIR}/.bashrc
+    && chown -R ${NB_UID}:${NB_GID} /opt/conda || true
+
+# Add shell functions to override wb commands (functions work in non-interactive shells, unlike aliases)
+RUN <<EOF cat >> ${WORKDIR}/.bashrc
+weightsbiases() { /usr/local/bin/wb "\$@"; }
+wb() { /usr/bin/wb "\$@"; }
+wandb() { /opt/venv/bin/wb "\$@"; }
+export -f weightsbiases wb wandb
+EOF
 
 # Environment and working directory
 ENV HOME=${WORKDIR}

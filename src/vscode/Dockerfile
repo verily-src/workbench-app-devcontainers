@@ -1,10 +1,10 @@
 FROM lscr.io/linuxserver/code-server:4.100.3
 
 # Download extension VSIXs at build time so no network is needed at runtime
-RUN curl -L \
+RUN curl -fL --compressed \
     "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/Google/vsextensions/geminicodeassist/latest/vspackage" \
     -o /opt/geminicodeassist.vsix && \
-    curl -L \
+    curl -fL --compressed \
     "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/anthropic/vsextensions/claude-code/latest/vspackage" \
     -o /opt/claudecode.vsix
 

@@ -4,7 +4,7 @@
 
 [ -f /config/.extensions-installed ] && exit 0
 
-s6-setuidgid abc code-server --install-extension /opt/geminicodeassist.vsix
-s6-setuidgid abc code-server --install-extension /opt/claudecode.vsix
+HOME=/config s6-setuidgid abc /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /opt/geminicodeassist.vsix
+HOME=/config s6-setuidgid abc /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /opt/claudecode.vsix
 
 touch /config/.extensions-installed

@@ -2,8 +2,8 @@
 # Install VSCode extensions after code-server is ready
 # Usage: ./install-extensions.sh extension1 extension2 extension3
 
-# Wait for code-server to be ready
-until su - abc -c 'code-server --list-extensions' &> /dev/null; do
+# Wait for code-server HTTP endpoint to respond
+until curl -sf http://localhost:8443 > /dev/null 2>&1; do
     sleep 1
 done
 

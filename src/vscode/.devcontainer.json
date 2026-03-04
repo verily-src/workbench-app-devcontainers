@@ -14,8 +14,6 @@
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
-  // Install Gemini Code Assist extension after code-server is running
-  "postAttachCommand": "su - abc -c 'code-server --install-extension Google.geminicodeassist' || true",
   "features": {
     "ghcr.io/devcontainers/features/java@sha256:df67d6ff6e9cdd858207ae9e92a99ddb88384b789f79eecd6f873216e951d286": {
       "version": "17"
@@ -41,11 +39,6 @@
   },
   "remoteUser": "root",
   "customizations": {
-    "vscode": {
-      "extensions": [
-        "Google.geminicodeassist"
-      ]
-    },
     "workbench": {
       "opens": {
         "extensions": [

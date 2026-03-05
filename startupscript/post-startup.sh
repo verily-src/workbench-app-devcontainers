@@ -82,23 +82,25 @@ exec 2> >(tee -a "${POST_STARTUP_OUTPUT_FILE}" >&2)  # Append errors to the file
 ###############################
 # RStudio file type configuration
 ###############################
-# Register additional file types as text to prevent RStudio from
-# misidentifying them as binary (PHP-130724). This must run before
-# apt-get and other network-dependent steps that may fail.
+# Override libmagic detection for file types that are misidentified as binary
+# (PHP-130724). WDL files containing "import" statements are detected as
+# "application/javascript" by libmagic, causing RStudio to refuse to open them.
+# Adding a custom magic rule ensures they are detected as text/plain instead.
+# This must run before apt-get and other network-dependent steps that may fail.
 if command -v rstudio-server &> /dev/null; then
-  emit "Registering additional MIME types for RStudio..."
-  cat > /usr/share/mime/packages/wdl.xml << 'MIME_EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
-  <mime-type type="text/x-wdl">
-    <comment>Workflow Description Language</comment>
-    <glob pattern="*.wdl"/>
-  </mime-type>
-</mime-info>
-MIME_EOF
-  if command -v update-mime-database &> /dev/null; then
-    update-mime-database /usr/share/mime
-  fi
+  emit "Configuring file type detection for RStudio..."
+  mkdir -p /etc/magic
+  cat > /etc/magic << 'MAGIC_EOF'
+# WDL (Workflow Description Language) files - override JavaScript detection.
+# libmagic misidentifies WDL import statements as JavaScript/ES modules,
+# which causes RStudio to treat .wdl files as binary.
+0 string version\ 1.0 Workflow Description Language source
+!:mime text/plain
+0 string version\ 1.1 Workflow Description Language source
+!:mime text/plain
+0 string version\ draft-2 Workflow Description Language source
+!:mime text/plain
+MAGIC_EOF
 fi
 
 # The apt package index may not be clean when we run; resynchronize

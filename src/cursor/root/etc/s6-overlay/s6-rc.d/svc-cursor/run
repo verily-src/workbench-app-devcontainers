@@ -1,4 +1,9 @@
 #!/usr/bin/with-contenv bash
 
+# Wait for KasmVNC X display to be ready
+until xdpyinfo -display :1 >/dev/null 2>&1; do sleep 1; done
+
 # Start Cursor IDE
-exec s6-setuidgid abc /Cursor.AppImage --no-sandbox --appimage-extract-and-run
+exec s6-setuidgid abc \
+    env DISPLAY=:1 \
+    /Cursor.AppImage --no-sandbox --appimage-extract-and-run

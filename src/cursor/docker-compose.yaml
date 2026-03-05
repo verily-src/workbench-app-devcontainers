@@ -2,7 +2,9 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "arfodublo/cursor-in-browser:1.7.52-x64"
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: always
     volumes:
       - .:/workspace:cached

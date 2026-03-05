@@ -77,7 +77,7 @@ CONDA_PACKAGES_1=(
 )
 
 CONDA_PACKAGES_2=(
-    "python=3.9"
+    "python=3.12"
     "pip"
     "perl==5.32.1"
     "bedtools"

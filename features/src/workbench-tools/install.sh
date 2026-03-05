@@ -11,7 +11,7 @@ set -o xtrace
 readonly CLOUD="${CLOUD:-""}"
 readonly USERNAME="${USERNAME:-"root"}"
 readonly LIB_ENV="${LIBENV:-"/opt/conda/envs/workbench-ds"}"
-readonly LIB_PYTHON_VERSION="${LIBPYTHONVERSION:-"3.10"}"
+readonly LIB_PYTHON_VERSION="${LIBPYTHONVERSION:-"3.14"}"
 USER_HOME_DIR="${USERHOMEDIR:-"/home/${USERNAME}"}"
 if [[ "${USER_HOME_DIR}" == "/home/root" ]]; then
     USER_HOME_DIR="/root"
@@ -72,21 +72,21 @@ fi
 # Install the samtools family of tools in a separate environment since some of
 # the other tools depend on old versions of these.
 CONDA_PACKAGES_1=(
-    "bioconda::bcftools"
-    "bioconda::htslib" # includes bgzip and tabix
-    "bioconda::samtools"
+    "bioconda::bcftools>=1.23"
+    "bioconda::htslib>=1.23" # includes bgzip and tabix
+    "bioconda::samtools>=1.23"
 )
 
 # Environment 2 contains the genomics CLI tools. They will be added to the
 # PATH but will not be usable as Python libraries.
 CONDA_PACKAGES_2=(
-    "conda-forge::python=3.10"
+    "conda-forge::python"
     "conda-forge::pip"
-    "conda-forge::perl==5.32.1"
+    "conda-forge::perl>=5.32"
     "bioconda::bedtools"
     "conda-forge::bgenix"
     "conda-forge::cromwell"
-    "bioconda::ensembl-vep>=115.1"
+    "bioconda::ensembl-vep>=115"
     "bioconda::nextflow"
     "bioconda::plink"
     "bioconda::plink2"

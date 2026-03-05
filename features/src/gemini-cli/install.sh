@@ -120,6 +120,9 @@ main() {
     PKG_MANAGER=$(detect_package_manager)
     echo "Detected package manager: $PKG_MANAGER"
 
+    # Install tmux (required for TUI support in browser-based terminals)
+    install_packages "$PKG_MANAGER" tmux
+
     # Try to install Node.js if it's not available
     if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
         echo "Node.js or npm not found, attempting to install automatically..."
@@ -128,6 +131,26 @@ main() {
 
     # Install Gemini CLI
     install_gemini_cli || exit 1
+
+    # Wrap gemini in tmux so its TUI works in browser-based terminals (code-server,
+    # JupyterLab). tmux provides the PTY raw-mode support these terminals lack.
+    # No-op if already inside a tmux session.
+    BASHRC="${HOME}/.bashrc"
+    if [ -f "${BASHRC}" ] && ! grep -q 'function gemini' "${BASHRC}"; then
+        cat >> "${BASHRC}" << 'EOF'
+function gemini() {
+    if [ -z "$TMUX" ]; then
+        tmux kill-session -t "gemini" 2>/dev/null || true
+        tmux new-session -d -s "gemini"
+        sleep 0.3
+        tmux send-keys -t "gemini" "gemini" Enter
+        tmux attach-session -t "gemini"
+    else
+        command gemini "$@"
+    fi
+}
+EOF
+    fi
 }
 
 # Execute main function

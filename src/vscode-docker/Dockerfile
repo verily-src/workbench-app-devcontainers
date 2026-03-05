@@ -56,12 +56,11 @@ RUN wget https://go.dev/dl/go1.23.5.linux-amd64.tar.gz && \
     rm go1.23.5.linux-amd64.tar.gz
 
 # Install gh (GitHub CLI version 2.86.0)
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
-    chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
-    apt-get update && \
-    apt-get install -y gh=2.86.0 && \
-    rm -rf /var/lib/apt/lists/*
+ARG GH_CLI_VERSION=2.86.0
+RUN curl -L "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_amd64.tar.gz" -o gh.tar.gz && \
+    tar -xzf gh.tar.gz && \
+    mv gh_${GH_CLI_VERSION}_linux_amd64/bin/gh /usr/local/bin/ && \
+    rm -rf gh.tar.gz gh_${GH_CLI_VERSION}_linux_amd64
 
 # Install uv (Python package manager version 0.9.27)
 RUN curl -LsSf https://astral.sh/uv/0.9.27/install.sh | sh && \
@@ -69,8 +68,8 @@ RUN curl -LsSf https://astral.sh/uv/0.9.27/install.sh | sh && \
     mv $HOME/.local/bin/uvx /usr/local/bin/
 
 # Set up environment variables
-ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/config/go"
+ENV PATH="/usr/local/go/bin:${GOPATH}/bin:${PATH}"
 ENV GOPRIVATE="github.com/verily-src/*"
 ENV SUDO_PASSWORD="pwd"
 

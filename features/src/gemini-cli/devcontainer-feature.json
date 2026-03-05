@@ -1,27 +1,11 @@
 {
+  "name": "Gemini CLI",
   "id": "gemini-cli",
   "version": "1.0.0",
-  "name": "Gemini CLI",
-  "description": "Installs the Gemini CLI for AI-powered code assistance",
-  "options": {
-    "version": {
-      "type": "string",
-      "default": "latest",
-      "description": "Version of Gemini CLI to install"
-    },
-    "username": {
-      "type": "string",
-      "default": "root",
-      "description": "Username of the container user"
-    },
-    "userHomeDir": {
-      "type": "string",
-      "default": "/root",
-      "description": "Home directory of the container user"
-    }
-  },
+  "description": "Installs the Gemini CLI globally",
+  "documentationURL": "https://github.com/google-gemini/gemini-cli",
+  "options": {},
   "installsAfter": [
-    "ghcr.io/devcontainers/features/common-utils",
     "ghcr.io/devcontainers/features/node"
   ]
 }

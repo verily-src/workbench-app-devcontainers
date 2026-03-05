@@ -29,7 +29,11 @@ if [ -f "${BASHRC}" ] && ! grep -q 'function gemini' "${BASHRC}"; then
     cat >> "${BASHRC}" << 'EOF'
 function gemini() {
     if [ -z "$TMUX" ]; then
-        tmux new-session -A -s "gemini" -- bash -ic 'command gemini "$@"' _ "$@"
+        tmux kill-session -t "gemini" 2>/dev/null || true
+        tmux new-session -d -s "gemini"
+        sleep 0.3
+        tmux send-keys -t "gemini" "command gemini $(printf '%q ' "$@")" Enter
+        tmux attach-session -t "gemini"
     else
         command gemini "$@"
     fi

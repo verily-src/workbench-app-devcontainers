@@ -61,6 +61,7 @@ if [[ -n "${GCP_PROJECT_ID}" ]]; then
 gcp_project_id: ${GCP_PROJECT_ID}
 gcp_region: ${GCP_REGION:-UNKNOWN}
 profiles_repo: shared-artifacts-a2hhlz
+profiles_region: us-west2
 EOF
 
   echo "cortex.yaml created successfully at ${CORTEX_CONFIG_PATH}"
@@ -75,6 +76,7 @@ else
 gcp_project_id: "UNKNOWN"
 gcp_region: "UNKNOWN"
 profiles_repo: shared-artifacts-a2hhlz
+profiles_region: us-west2
 # Please update this file with the correct values
 EOF
   echo "cortex.yaml created with placeholder at ${CORTEX_CONFIG_PATH}"

@@ -1,6 +1,9 @@
 FROM lscr.io/linuxserver/code-server:4.100.3
 
-# Download extension VSIXs at build time so no network is needed at runtime
+# Download extension VSIXs at build time so no network is needed at runtime.
+# To update: rebuild the image with --no-cache (latest version is pulled automatically).
+# Gemini: https://marketplace.visualstudio.com/items?itemName=Google.geminicodeassist
+# Claude: https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code
 RUN curl -fL --compressed \
     "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/Google/vsextensions/geminicodeassist/latest/vspackage" \
     -o /opt/geminicodeassist.vsix && \

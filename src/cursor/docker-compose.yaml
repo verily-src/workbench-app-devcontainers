@@ -2,12 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        CURSOR_VERSION: "1.7.52"
-        CURSOR_BUILD_HASH: "b9e5948c1ad20443a5cecba6b84a3c9b99d62582"
+    image: "arfodublo/cursor-in-browser:1.7.52-x64"
     restart: always
     volumes:
       - .:/workspace:cached

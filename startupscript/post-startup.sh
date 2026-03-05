@@ -219,29 +219,6 @@ sed -i '/user_allow_other/s/^#//g' /etc/fuse.conf
 source "${CLOUD_SCRIPT_DIR}/resource-mount.sh"
 
 ###############################
-# RStudio file type configuration
-###############################
-# Register additional file types as text to prevent RStudio from
-# misidentifying them as binary (PHP-130724).
-if command -v rstudio-server &> /dev/null; then
-  emit "Registering additional MIME types for RStudio..."
-  # Add WDL (Workflow Description Language) MIME type so RStudio
-  # recognizes .wdl files as text instead of binary.
-  cat > /usr/share/mime/packages/wdl.xml << 'MIME_EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
-  <mime-type type="text/x-wdl">
-    <comment>Workflow Description Language</comment>
-    <glob pattern="*.wdl"/>
-  </mime-type>
-</mime-info>
-MIME_EOF
-  if command -v update-mime-database &> /dev/null; then
-    update-mime-database /usr/share/mime
-  fi
-fi
-
-###############################
 # cloud platform specific setup
 ###############################
 if [[ -f "${CLOUD_SCRIPT_DIR}/post-startup-hook.sh" ]]; then

@@ -1,6 +1,8 @@
 services:
   app:
     container_name: "application-server"
+    build:
+      context: .
     image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.5"
     restart: always
     volumes:

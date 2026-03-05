@@ -1,17 +1,13 @@
+version: '2.4'
 services:
   app:
     container_name: "application-server"
-    image: "ghcr.io/rocker-org/devcontainer/tidyverse:4.5"
+    image: 'gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-acc' 
     restart: always
     volumes:
-      - .:/workspace:cached
-      - work:/home/rstudio:cached
-    tmpfs:
-      - /home/rstudio/workspace:uid=1000,gid=1000
+      - ..:/workspace:cached
     ports:
-      - "8787:8787"
-    environment:
-      "DISABLE_AUTH": "true"
+      - '8080:8080'
     networks:
       - app-network
     cap_add:
@@ -23,5 +19,3 @@ services:
 networks:
   app-network:
     external: true
-volumes:
-  work:

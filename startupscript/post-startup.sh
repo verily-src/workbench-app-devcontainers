@@ -79,6 +79,28 @@ ${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LE
 exec > >(tee -a "${POST_STARTUP_OUTPUT_FILE}")  # Append output to the file and print to terminal
 exec 2> >(tee -a "${POST_STARTUP_OUTPUT_FILE}" >&2)  # Append errors to the file and print to terminal
 
+###############################
+# RStudio file type configuration
+###############################
+# Register additional file types as text to prevent RStudio from
+# misidentifying them as binary (PHP-130724). This must run before
+# apt-get and other network-dependent steps that may fail.
+if command -v rstudio-server &> /dev/null; then
+  emit "Registering additional MIME types for RStudio..."
+  cat > /usr/share/mime/packages/wdl.xml << 'MIME_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-wdl">
+    <comment>Workflow Description Language</comment>
+    <glob pattern="*.wdl"/>
+  </mime-type>
+</mime-info>
+MIME_EOF
+  if command -v update-mime-database &> /dev/null; then
+    update-mime-database /usr/share/mime
+  fi
+fi
+
 # The apt package index may not be clean when we run; resynchronize
 if type apk > /dev/null 2>&1; then
   apk update

@@ -145,8 +145,11 @@ else
 fi
 
 # Install dsub via pip if on GCP. The conda version is outdated.
+# dsub is installed in LIB_ENV because it can be used as a Python library, and
+# users may want to install additional packages alongside it.
+# PYTHONNOUSERSITE=1 prevents pip from seeing/modifying packages in user site-packages.
 if [[ "${CLOUD}" == "gcp" ]]; then
-    "${WORKBENCH_TOOLS_DIR}/2/bin/pip" install dsub
+    PYTHONNOUSERSITE=1 "${LIB_ENV}/bin/pip" install dsub
 fi
 
 # Force the perl and python scripts to use the correct perl/python

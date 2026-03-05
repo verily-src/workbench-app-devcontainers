@@ -134,17 +134,15 @@ main() {
 
     # Wrap gemini in tmux so its TUI works in browser-based terminals (code-server,
     # JupyterLab). tmux provides the PTY raw-mode support these terminals lack.
+    # $(command -v gemini) is resolved in the calling shell (where NVM/PATH is set),
+    # so tmux receives an absolute path and needs no shell or PATH lookup of its own.
     # No-op if already inside a tmux session.
     BASHRC="${HOME}/.bashrc"
     if [ -f "${BASHRC}" ] && ! grep -q 'function gemini' "${BASHRC}"; then
         cat >> "${BASHRC}" << 'EOF'
 function gemini() {
     if [ -z "$TMUX" ]; then
-        tmux kill-session -t "gemini" 2>/dev/null || true
-        tmux new-session -d -s "gemini"
-        sleep 0.3
-        tmux send-keys -t "gemini" "gemini" Enter
-        tmux attach-session -t "gemini"
+        tmux new-session -- "$(command -v gemini)" "$@"
     else
         command gemini "$@"
     fi

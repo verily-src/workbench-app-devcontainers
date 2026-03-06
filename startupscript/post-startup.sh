@@ -94,11 +94,17 @@ if command -v rstudio-server &> /dev/null; then
 # WDL (Workflow Description Language) files - override JavaScript detection.
 # libmagic misidentifies WDL import statements as JavaScript/ES modules,
 # which causes RStudio to treat .wdl files as binary.
+# Rules for files starting with a version declaration:
 0 string version\ 1.0 Workflow Description Language source
 !:mime text/plain
 0 string version\ 1.1 Workflow Description Language source
 !:mime text/plain
 0 string version\ draft-2 Workflow Description Language source
+!:mime text/plain
+# Rule for files starting with an import (no version header).
+# This also matches JavaScript ES module files, but reclassifying them
+# as text/plain is harmless — they are still text.
+0 string import\ " Text source with imports
 !:mime text/plain
 MAGIC_EOF
 fi

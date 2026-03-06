@@ -89,7 +89,6 @@ exec 2> >(tee -a "${POST_STARTUP_OUTPUT_FILE}" >&2)  # Append errors to the file
 # This must run before apt-get and other network-dependent steps that may fail.
 if command -v rstudio-server &> /dev/null; then
   emit "Configuring file type detection for RStudio..."
-  mkdir -p /etc/magic
   cat > /etc/magic << 'MAGIC_EOF'
 # WDL (Workflow Description Language) files - override JavaScript detection.
 # libmagic misidentifies WDL import statements as JavaScript/ES modules,

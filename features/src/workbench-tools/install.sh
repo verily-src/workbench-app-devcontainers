@@ -10,7 +10,7 @@ set -o xtrace
 
 readonly CLOUD="${CLOUD:-""}"
 readonly USERNAME="${USERNAME:-"root"}"
-readonly LIB_ENV="${LIBENV:-"/opt/conda/envs/workbench-ds"}"
+readonly LIBRARIES_ENV_DIR="${LIBENV:-"/opt/conda/envs/workbench-ds"}"
 readonly LIB_PYTHON_VERSION="${LIBPYTHONVERSION:-"3.14"}"
 USER_HOME_DIR="${USERHOMEDIR:-"/home/${USERNAME}"}"
 if [[ "${USER_HOME_DIR}" == "/home/root" ]]; then
@@ -71,15 +71,16 @@ fi
 
 # Install the samtools family of tools in a separate environment since some of
 # the other tools depend on old versions of these.
-CONDA_PACKAGES_1=(
+readonly CONDA_PACKAGES_SAMTOOLS=(
     "bioconda::bcftools>=1.23"
     "bioconda::htslib>=1.23" # includes bgzip and tabix
     "bioconda::samtools>=1.23"
 )
+readonly SAMTOOLS_ENV_DIR="${WORKBENCH_TOOLS_DIR}/samtools"
 
 # Environment 2 contains the genomics CLI tools. They will be added to the
 # PATH but will not be usable as Python libraries.
-CONDA_PACKAGES_2=(
+readonly CONDA_PACKAGES_BINARIES=(
     "conda-forge::python"
     "conda-forge::pip"
     "conda-forge::perl>=5.32"
@@ -93,12 +94,13 @@ CONDA_PACKAGES_2=(
     "bioconda::regenie"
     "bioconda::vcftools"
 )
+readonly BINARIES_ENV_DIR="${WORKBENCH_TOOLS_DIR}/binaries"
 
 # Environment 3 contains data science Python libraries. These should be
 # accessible from the user's default Python environment, which is why we install
 # them separately and give the user control over whether to inject them into an
 # existing environment or create a new one.
-CONDA_PACKAGES_3=(
+CONDA_PACKAGES_LIBRARIES=(
     "conda-forge::google-cloud-storage"
     "conda-forge::ipykernel"
     "conda-forge::ipywidgets"
@@ -117,50 +119,50 @@ CONDA_PACKAGES_3=(
 # Build isolated environments
 mkdir -p "${WORKBENCH_TOOLS_DIR}"
 echo "Building Environment 1 (Samtools family)..."
-mamba create --prefix "${WORKBENCH_TOOLS_DIR}/1" -y "${CONDA_PACKAGES_1[@]}"
+mamba create --prefix "${SAMTOOLS_ENV_DIR}" -y "${CONDA_PACKAGES_SAMTOOLS[@]}"
 
 echo "Building Environment 2 (Genomics CLI Tools)..."
-mamba create --prefix "${WORKBENCH_TOOLS_DIR}/2" -y "${CONDA_PACKAGES_2[@]}"
+mamba create --prefix "${BINARIES_ENV_DIR}" -y "${CONDA_PACKAGES_BINARIES[@]}"
 
 echo "Building Environment 3 (Python Libraries)..."
 LIB_ENV_EXISTS=0
 
-if [ -d "${LIB_ENV}" ]; then
+if [ -d "${LIBRARIES_ENV_DIR}" ]; then
     # SCENARIO A: Target environment already exists on host. Inject packages into it.
     LIB_ENV_EXISTS=1
-    echo "Host environment detected at ${LIB_ENV}. Injecting data science packages..."
+    echo "Host environment detected at ${LIBRARIES_ENV_DIR}. Injecting data science packages..."
 
-    if mamba list -p /opt/conda/envs/jupyter --full-name python --json | jq -e 'length == 0' >/dev/null; then
+    if mamba list -p "${LIBRARIES_ENV_DIR}" --full-name python --json | jq -e 'length == 0' >/dev/null; then
         echo "No Python installation found in host environment. Adding python=${LIB_PYTHON_VERSION} to package list."
-        CONDA_PACKAGES_3+=("conda-forge::python=${LIB_PYTHON_VERSION}")
+        CONDA_PACKAGES_LIBRARIES+=("conda-forge::python=${LIB_PYTHON_VERSION}")
     fi
-    mamba install --prefix "${LIB_ENV}" -y "${CONDA_PACKAGES_3[@]}"
+    mamba install --prefix "${LIBRARIES_ENV_DIR}" -y "${CONDA_PACKAGES_LIBRARIES[@]}"
 else
     # SCENARIO B: Target environment does not exist. Create it from scratch.
-    echo "No host environment found. Creating standalone environment at ${LIB_ENV}..."
-    mkdir -p "$(dirname "${LIB_ENV}")"
+    echo "No host environment found. Creating standalone environment at ${LIBRARIES_ENV_DIR}..."
+    mkdir -p "$(dirname "${LIBRARIES_ENV_DIR}")"
 
-    CONDA_PACKAGES_3+=("conda-forge::python=${LIB_PYTHON_VERSION}")
-    mamba create --prefix "${LIB_ENV}" -y "${CONDA_PACKAGES_3[@]}"
+    CONDA_PACKAGES_LIBRARIES+=("conda-forge::python=${LIB_PYTHON_VERSION}")
+    mamba create --prefix "${LIBRARIES_ENV_DIR}" -y "${CONDA_PACKAGES_LIBRARIES[@]}"
 fi
 
 # Install dsub via pip if on GCP. The conda version is outdated.
-# dsub is installed in LIB_ENV because it can be used as a Python library, and
-# users may want to install additional packages alongside it.
+# dsub is installed in LIBRARIES_ENV_DIR because it can be used as a Python
+# library, and users may want to install additional packages alongside it.
 # PYTHONNOUSERSITE=1 prevents pip from seeing/modifying packages in user site-packages.
 if [[ "${CLOUD}" == "gcp" ]]; then
-    PYTHONNOUSERSITE=1 "${LIB_ENV}/bin/pip" install dsub
+    PYTHONNOUSERSITE=1 "${LIBRARIES_ENV_DIR}/bin/pip" install dsub
 fi
 
 # Force the perl and python scripts to use the correct perl/python
-find -L "${WORKBENCH_TOOLS_DIR}/2/bin" -type f -executable -exec \
+find -L "${BINARIES_ENV_DIR}/bin" -type f -executable -exec \
     sed -i --follow-symlinks \
-        -e "1s|^#\!/usr/bin/env perl\\r\?$|#\!${WORKBENCH_TOOLS_DIR}/2/bin/perl|" \
-        -e "1s|^#\!/usr/bin/env python\\r\?$|#\!${WORKBENCH_TOOLS_DIR}/2/bin/python|" {} \;
+        -e "1s|^#\!/usr/bin/env perl\\r\?$|#\!${BINARIES_ENV_DIR}/bin/perl|" \
+        -e "1s|^#\!/usr/bin/env python\\r\?$|#\!${BINARIES_ENV_DIR}/bin/python|" {} \;
 
 # Make the login user the owner of the conda environments
 chown -R "${USERNAME}:" "${WORKBENCH_TOOLS_DIR}"
-chown -R "${USERNAME}:" "${LIB_ENV}"
+chown -R "${USERNAME}:" "${LIBRARIES_ENV_DIR}"
 
 {
     echo "# Workbench Tools Configuration"
@@ -169,15 +171,15 @@ chown -R "${USERNAME}:" "${LIB_ENV}"
     # If it already existed (LIB_ENV_EXISTS=1), we leave the host image's PATH untouched to prevent shadowing.
     if [[ "${LIB_ENV_EXISTS}" == "0" ]]; then
         # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
-        printf 'export PATH="%s:$PATH"\n' "${LIB_ENV}/bin"
+        printf 'export PATH="%s:$PATH"\n' "${LIBRARIES_ENV_DIR}/bin"
     fi
     
     # Set PATH to include workbench-tools binaries
     # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
-    printf 'export PATH="$PATH:%s"\n' "${WORKBENCH_TOOLS_DIR}/1/bin:${WORKBENCH_TOOLS_DIR}/2/bin"
+    printf 'export PATH="$PATH:%s"\n' "${SAMTOOLS_ENV_DIR}/bin:${BINARIES_ENV_DIR}/bin"
 
     # Set CROMWELL_JAR environment variable
-    printf 'export CROMWELL_JAR="%s"\n' "${WORKBENCH_TOOLS_DIR}/2/share/cromwell/cromwell.jar"
+    printf 'export CROMWELL_JAR="%s"\n' "${BINARIES_ENV_DIR}/share/cromwell/cromwell.jar"
 } >> "${USER_HOME_DIR}/.bashrc"
 
 # Allow .bashrc to be sourced in non-interactive shells

@@ -22,6 +22,7 @@
   ],
   "features": {
     "./.devcontainer/features/workbench-tools": {
+      "libEnv": "/opt/conda/envs/jupyter", // Use the jupyter conda environment
       "cloud": "${templateOption:cloud}",
       "username": "jupyter",
       "userHomeDir": "/home/jupyter"

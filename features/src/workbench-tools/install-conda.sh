@@ -19,7 +19,6 @@ install_miniforge() {
     local download_url
     download_url="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh"
 
-    check_packages curl ca-certificates
     mkdir -p /tmp/miniforge
     (
         cd /tmp/miniforge

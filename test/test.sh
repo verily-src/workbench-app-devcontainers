@@ -11,6 +11,8 @@ function check() {
     check_user "${TEST_USER}" "$@"
 }
 
+sudo -u "${TEST_USER}" bash -l -c "echo PATH: $PATH"
+
 # Template specific tests
 check "gcsfuse" gcsfuse -v
 check "wb cli" wb version
@@ -18,9 +20,9 @@ check "fuse.conf user_allow_other" grep -qE "^[[:space:]]*[^#]*user_allow_other"
 
 # The workbench-tools feature should install these
 if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
-    check "python3" python3 --version
+    check "python3" "which python3 && python3 --version"
     check "python3: venv" 'python3 -c "import venv"'
-    check "pip3" pip3 --version
+    check "pip3" "which pip3 && pip3 --version"
     if [[ "$TEMPLATE_ID" != "nemo_jupyter" ]] && [[ "$TEMPLATE_ID" != "nemo_jupyter_aou" ]]; then
         check "cromwell" cromwell --version
     fi
@@ -44,6 +46,21 @@ if [[ "$HAS_WORKBENCH_TOOLS" == "true" ]]; then
     check "vep: filter_vep" "filter_vep --help > /dev/null"
     check "vep: variant_recoder" "variant_recoder --help | head -n10"
     check "vep: haplo" "haplo --help | head -n10"
+
+    # Python packages
+    check "python: google-cloud-storage" 'python3 -c "import google.cloud.storage"'
+    check "python: ipykernel" 'python3 -c "import ipykernel"'
+    check "python: ipywidgets" 'python3 -c "import ipywidgets"'
+    check "python: jupyter" 'python3 -c "import jupyter"'
+    check "python: openai" 'python3 -c "import openai"'
+    check "python: matplotlib" 'python3 -c "import matplotlib"'
+    check "python: numpy" 'python3 -c "import numpy"'
+    check "python: plotly" 'python3 -c "import plotly"'
+    check "python: pandas" 'python3 -c "import pandas"'
+    check "python: seaborn" 'python3 -c "import seaborn"'
+    check "python: scikit-learn" 'python3 -c "import sklearn"'
+    check "python: scipy" 'python3 -c "import scipy"'
+    check "python: tqdm" 'python3 -c "import tqdm"'
 fi
 
 # The postgres-client feature should install these

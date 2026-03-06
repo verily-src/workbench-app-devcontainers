@@ -20,5 +20,5 @@ echo "Gemini CLI installed at: $(command -v gemini)"
 
 # Fix NVM ownership so the container user can manage the active-version symlink.
 # Without this, opening a new terminal prints a permission denied error.
-USERNAME="${USERNAME:-"root"}"
+USERNAME="${USERNAME:-root}"
 chown -R "${USERNAME}:${USERNAME}" /usr/local/share/nvm 2>/dev/null || true

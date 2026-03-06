@@ -79,6 +79,35 @@ ${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LE
 exec > >(tee -a "${POST_STARTUP_OUTPUT_FILE}")  # Append output to the file and print to terminal
 exec 2> >(tee -a "${POST_STARTUP_OUTPUT_FILE}" >&2)  # Append errors to the file and print to terminal
 
+###############################
+# RStudio file type configuration
+###############################
+# Override libmagic detection for file types that are misidentified as binary
+# (PHP-130724). WDL files containing "import" statements are detected as
+# "application/javascript" by libmagic, causing RStudio to refuse to open them.
+# Adding a custom magic rule ensures they are detected as text/plain instead.
+# This must run before apt-get and other network-dependent steps that may fail.
+if command -v rstudio-server &> /dev/null; then
+  emit "Configuring file type detection for RStudio..."
+  cat > /etc/magic << 'MAGIC_EOF'
+# WDL (Workflow Description Language) files - override JavaScript detection.
+# libmagic misidentifies WDL import statements as JavaScript/ES modules,
+# which causes RStudio to treat .wdl files as binary.
+# Rules for files starting with a version declaration:
+0 string version\ 1.0 Workflow Description Language source
+!:mime text/plain
+0 string version\ 1.1 Workflow Description Language source
+!:mime text/plain
+0 string version\ draft-2 Workflow Description Language source
+!:mime text/plain
+# Rule for files starting with an import (no version header).
+# This also matches JavaScript ES module files, but reclassifying them
+# as text/plain is harmless — they are still text.
+0 string import\ " Text source with imports
+!:mime text/plain
+MAGIC_EOF
+fi
+
 # The apt package index may not be clean when we run; resynchronize
 if type apk > /dev/null 2>&1; then
   apk update

@@ -21,6 +21,11 @@
     "${templateOption:login}"
   ],
   "features": {
+    "ghcr.io/devcontainers/features/node": {
+      "version": "24.11.0"
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+    "./.devcontainer/features/gemini-cli": { "username": "jupyter" },
     "./.devcontainer/features/workbench-tools": {
       "libEnv": "/opt/conda/envs/jupyter", // Use the jupyter conda environment
       "cloud": "${templateOption:cloud}",

@@ -1,0 +1,74 @@
+{
+  "name": "OPTIMEyes Ophthalmology Annotation",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "root",
+    "/config",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "root",
+    "/config",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/python@sha256:0fadbedc6445f523ca138545c686eb5c37c32d1ca4900ac7c187431315c90429": {
+      "version": "3.10"
+    },
+    "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "root",
+      "userHomeDir": "/config"
+    },
+    "./.devcontainer/features/postgres-client": {
+      "version": "16"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          // Python files
+          ".py",
+          ".ipynb",
+          // Web files
+          ".html",
+          ".css",
+          ".js",
+          // Data files
+          ".json",
+          ".csv",
+          ".tsv",
+          // Medical imaging
+          ".nii",
+          ".dcm",
+          // Documents
+          ".md",
+          ".txt"
+        ],
+        "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+      }
+    }
+  },
+  "forwardPorts": [80, 5000, 5984],
+  "portsAttributes": {
+    "80": {
+      "label": "OPTIMEyes Web App",
+      "onAutoForward": "notify"
+    },
+    "5984": {
+      "label": "CouchDB",
+      "onAutoForward": "silent"
+    }
+  }
+}

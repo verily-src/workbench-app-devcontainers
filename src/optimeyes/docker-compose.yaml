@@ -1,0 +1,62 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/config:cached
+      - data:/workspace/data:cached
+    ports:
+      - "80:80"
+      - "5000:5000"
+    environment:
+      FLASK_APP: "OPTIMEyes"
+      IMAGE_COMPARATOR_DATA: "/workspace/data"
+      DNS: "0.0.0.0"
+      SSL: "False"
+      DB_PORT: "5984"
+      HTTP_PORT: "80"
+      DEPLOY: "DEV"
+      ADMIN_PARTY: "False"
+      SECRET_KEY: "${templateOption:secret_key}"
+      COUCHDB_USER: "${templateOption:db_user}"
+      COUCHDB_PASSWORD: "${templateOption:db_password}"
+      COUCH_DB: "image_comparator"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    depends_on:
+      - couchdb
+    command: tail -f /dev/null
+
+  couchdb:
+    container_name: "couchdb-server"
+    image: couchdb:latest
+    restart: always
+    ports:
+      - "5984:5984"
+    environment:
+      COUCHDB_USER: "${templateOption:db_user}"
+      COUCHDB_PASSWORD: "${templateOption:db_password}"
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    external: true
+
+volumes:
+  work:
+  data:
+  couchdb_data:

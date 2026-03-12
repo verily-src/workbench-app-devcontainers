@@ -1,0 +1,15 @@
+Flask
+flask_login
+werkzeug==2.3.0
+python-dotenv
+flask_cors
+requests
+mypy
+couchdb
+pytest
+Pillow
+pandas
+pycocotools
+scikit-image
+gunicorn
+mkdocs

@@ -1,0 +1,38 @@
+{
+  "id": "optimeyes",
+  "version": "0.0.1",
+  "name": "OPTIMEyes",
+  "description": "Ophthalmology image annotation application with Flask, CouchDB, and MONAI Label support",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/optimeyes",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    },
+    "db_user": {
+      "type": "string",
+      "description": "CouchDB admin username",
+      "default": "admin"
+    },
+    "db_password": {
+      "type": "string",
+      "description": "CouchDB admin password",
+      "default": "password"
+    },
+    "secret_key": {
+      "type": "string",
+      "description": "Flask application secret key for session management",
+      "default": "dev-secret-key-change-in-production"
+    }
+  },
+  "platforms": ["Any"]
+}

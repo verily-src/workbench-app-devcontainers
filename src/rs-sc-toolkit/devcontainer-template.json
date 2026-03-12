@@ -1,0 +1,23 @@
+{
+  "id": "rs-sc-toolkit",
+  "version": "0.0.1",
+  "name": "RS Single-Cell Toolkit",
+  "description": "VSCode environment with R, Python, and single-cell analysis tools (SCVERSE, Bioconductor, Seurat, Nextflow, Snakemake)",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/rs-sc-toolkit",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

@@ -29,9 +29,9 @@
 #   For this reason, * should always be the first rule.
 
 # Removed disallowed owners: @verily-src/verily-fte-github-users
-*  @verily-src/terra-dev @verily-src/terra-solutions-team
+*  @verily-src/user-apps-dev @verily-src/terra-solutions-team
 
-src/vscode-docker/  @verily-src/php-ml-ops-infra
+src/vscode-docker/  @verily-src/php-ml-ops-infra @verily-src/user-apps-dev
 
 # ENFORCED: Workflows required by all repositories are owned by @verily-src/verily-engprod.
 .github/workflows/enforced-*  @verily-src/verily-engprod

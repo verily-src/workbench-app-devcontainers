@@ -402,25 +402,9 @@ SKILL_EOF
 
 ---
 
-## Template Location
-
-All templates are at:
-```
-https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
-```
-
----
-
 ## How to Use a Template
 
-### Option 1: Deploy Directly
-```
-Repository: https://github.com/aculotti-verily/wb-app-mcp-and-context.git
-Branch: templates-only
-Folder: src/templates/<template-name>
-```
-
-### Option 2: Copy and Customize
+### Copy and Customize
 1. Copy the template folder to user's repo
 2. Modify application code in `app/`
 3. Update `devcontainer-template.json` with new name/description
@@ -1779,7 +1763,6 @@ file:///home/jupyter/dashboard.html        ← JavaScript blocked
 - Deployment checklist
 
 ### Quick Reference
-- **Templates**: https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
 - **Full-featured apps**: https://github.com/verily-src/workbench-app-devcontainers
 
 ---

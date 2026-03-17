@@ -2,6 +2,18 @@
 
 **Trigger:** User asks to troubleshoot, debug, or fix a failed workflow.
 
+## ⚡ LLM Behavior: Be Proactive!
+
+**Once the user confirms which job to investigate, DO NOT ask which diagnostic steps to run.** Instead:
+1. **Run all diagnostic commands automatically** (Steps 2-4 at minimum)
+2. **Analyze the results** and identify the root cause
+3. **Report your diagnosis** with evidence (error messages, exit codes, log snippets)
+4. **Propose a fix** with specific changes
+5. **THEN ask** if they want you to apply the fix or investigate further
+
+❌ Don't say: "Would you like me to check the logs?"
+✅ Do say: "I checked the logs and found an OOM error. The task requested 8GB but needed more. I recommend increasing memory to 16GB in the runtime block."
+
 ---
 
 ## Quick Diagnosis (Start Here)
@@ -39,7 +51,7 @@ wb workflow job list --format=json | jq '.[] | select(.status == "FAILED") | {id
 wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.status == "FAILED") | {id, status}'
 ```
 
-**Ask user:** Confirm which job ID to investigate.
+**Ask user:** Confirm which job ID to investigate (if multiple failed jobs).
 
 ---
 

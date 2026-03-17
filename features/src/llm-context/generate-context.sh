@@ -577,13 +577,11 @@ renderChart(data);
 
 ### Testing Checklist
 
-Before deploying any web app:
-
-- [ ] **Relative paths** - All \`fetch()\` calls use \`'api/...'\` not \`'/api/...'\`
-- [ ] **Test locally** - \`curl http://localhost:PORT/api/endpoint\` returns data
-- [ ] **Server logs** - Verify API requests arrive: \`tail -f server.log\`
-- [ ] **Browser DevTools** - Network tab shows 200 status for API calls
-- [ ] **App UUID obtained** - Not using placeholder \`[APP_UUID]\`
+Before deploying:
+- [ ] All \`fetch()\` calls use relative paths (\`'api/...'\` not \`'/api/...'\`)
+- [ ] Test locally: \`curl http://localhost:PORT/api/endpoint\`
+- [ ] Server logs show API requests arriving
+- [ ] App UUID obtained (not using placeholder \`[APP_UUID]\`)
 
 ---
 
@@ -868,20 +866,7 @@ wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.stat
 ### Step 2: Get Job Details & Inputs
 
 \`\`\`bash
-# Full job metadata
-wb workflow job describe --job=<JOB_ID> --format=json
-\`\`\`
-
-**Key fields to extract:**
-\`\`\`bash
-# Error message
-wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage'
-
-# Inputs used
-wb workflow job describe --job=<JOB_ID> --format=json | jq '.inputs'
-
-# Outputs (if any)
-wb workflow job describe --job=<JOB_ID> --format=json | jq '.outputs'
+wb workflow job describe --job=<JOB_ID> --format=json | jq '{failureMessage, inputs, outputs}'
 \`\`\`
 
 ---
@@ -1609,33 +1594,6 @@ You are working inside **Verily Workbench**, a secure cloud-based research envir
 
 ---
 
-## ⚡ MCP Tools First!
-
-> **Before running ANY CLI command, check if an MCP tool exists for the operation.**
-> MCP tools return structured JSON and are faster than parsing CLI output.
-
-| Common Task | ✅ Use This MCP Tool |
-|-------------|---------------------|
-| List data collections | \`workspace_list_data_collections\` |
-| List resources | \`workspace_list_resources\` |
-| Resources by folder | \`resource_list_tree\` |
-| Query BigQuery | \`bq_execute\` |
-| List bucket files | \`list_files\` |
-
-**Skip to:** [Data Exploration Cheatsheet](#-data-exploration-cheatsheet) | [MCP Tools](#mcp-tools-available)
-
----
-
-## What is Verily Workbench?
-
-Verily Workbench is a platform that enables researchers to:
-- Access and analyze biomedical data (clinical, genomics, wearables, imaging)
-- Run computational workflows at scale (WDL, Nextflow)
-- Collaborate securely with governance and policy enforcement
-- Use familiar tools (Jupyter, RStudio, VS Code) in the cloud
-
----
-
 ## Current Workspace
 
 | Property | Value |
@@ -1703,6 +1661,14 @@ The response includes:
 ### Workflows
 Workflows are reproducible pipelines in WDL or Nextflow format, registered in the workspace.
 
+### Policies & Constraints
+Workspaces may have policies that restrict:
+- **Region**: Where data and compute must reside
+- **Groups**: Who can access the workspace
+- **Export**: Whether data can leave the workspace
+
+Check with: \`wb workspace describe\`
+
 ---
 
 ## ⚠️ Important: Data Persistence
@@ -1757,33 +1723,21 @@ gs://your-bucket/
 └── models/             # Trained ML models
 \`\`\`
 
-### 🤖 LLM Guidance
+### LLM Guidance
 
-**As an AI assistant, you should proactively help users persist their work:**
-
-1. **When users create files locally**, ask: *"Would you like me to save this to a cloud bucket so it persists after the app stops?"*
-
-2. **When users finish analysis**, suggest: *"Your results are saved locally. Should I copy them to a bucket for long-term storage?"*
-
-3. **At session end**, remind: *"Remember to save any important local files to cloud storage before stopping the app."*
-
-4. **Check local disk usage** to identify files that need saving:
-   \`\`\`bash
-   du -sh ~/*
-   ls -la ~/
-   \`\`\`
+- **When users create files locally**, suggest saving to a bucket: \`gsutil cp <file> gs://<bucket>/\`
+- **When users finish analysis**, remind: *"Save important outputs to cloud storage before stopping the app."*
+- **List available buckets:** \`wb resource list --type=GCS_BUCKET --format=json\`
 
 ---
 
-## 🔍 Data Exploration Cheatsheet
+## Data Discovery & Querying
 
-This is the **most important section** for quickly discovering and accessing data.
+> **⚡ MCP FIRST:** Always check if an MCP tool exists before using CLI commands.
 
-> **⚡ MCP FIRST:** Always check if an MCP tool exists before using CLI commands. MCP tools return structured data and are faster.
+### Find Your Resources
 
-### Step 1: Find Your Resources
-
-**🎯 Use MCP tools (preferred):**
+**Use MCP tools (preferred):**
 | What You Need | MCP Tool |
 |---------------|----------|
 | Data collections + their resources | \`workspace_list_data_collections\` |
@@ -1795,36 +1749,53 @@ This is the **most important section** for quickly discovering and accessing dat
 wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
 \`\`\`
 
-### Step 2: Use Environment Variables (Easiest!)
-Every resource is available as an environment variable:
+### Get the Cloud Path for a Resource
+
 \`\`\`bash
-# Pattern: \$WORKBENCH_<resource_name>
+wb resource describe <resource-name> --format=json
+# Look for: bucketName, projectId+datasetId, gitRepoUrl
+\`\`\`
+
+### Use Environment Variables (Easiest)
+
+\`\`\`bash
 echo \$WORKBENCH_my_bucket      # → gs://actual-bucket-name
 env | grep WORKBENCH_           # List all
 \`\`\`
 
-### Step 3: Get Cloud Paths
-\`\`\`bash
-wb resource describe <resource-name> --format=json
-# Look for: bucketName, projectId, datasetId, gitRepoUrl
-\`\`\`
-
-### Step 4: Preview Data Quickly
+### Preview Data
 
 **BigQuery:**
 \`\`\`bash
-bq head -n 10 <project>:<dataset>.<table>     # Quick preview
-bq show --schema <project>:<dataset>.<table>  # Column names/types
-bq show --format=prettyjson <project>:<dataset>.<table> | jq '{rows: .numRows}'  # Row count
+bq head -n 10 <project>:<dataset>.<table>
+bq show --schema <project>:<dataset>.<table>
+bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
 \`\`\`
 
 **GCS:**
 \`\`\`bash
-gsutil ls gs://<bucket>/                       # List files
-gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
+gsutil ls gs://<bucket>/
+gsutil cat -r 0-1024 gs://<bucket>/path/file.csv
 \`\`\`
 
-### 🤖 LLM Quick Patterns
+### Query Data
+
+**CLI:**
+\`\`\`bash
+bq query --use_legacy_sql=false 'SELECT col1, col2 FROM \`project.dataset.table\` LIMIT 100'
+\`\`\`
+
+**Python:**
+\`\`\`python
+from google.cloud import bigquery
+client = bigquery.Client()
+df = client.query("SELECT * FROM \`project.dataset.table\` LIMIT 100").to_dataframe()
+
+import pandas as pd
+df = pd.read_parquet('gs://bucket-name/path/file.parquet')
+\`\`\`
+
+### LLM Quick Reference
 
 | User Question | Best Tool | Command/Tool |
 |---------------|-----------|--------------|
@@ -1834,59 +1805,9 @@ gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
 | "Query this BigQuery table" | **MCP** | \`bq_execute\` |
 | "What tables are in this dataset?" | CLI | \`bq ls <project>:<dataset>\` |
 | "What columns in this table?" | CLI | \`bq show --schema <project>:<dataset>.<table>\` |
-| "How big is this table?" | CLI | \`bq show --format=prettyjson ... \\| jq '{rows: .numRows}'\` |
-| "Show me sample data" | CLI | \`bq head -n 5 <project>:<dataset>.<table>\` |
 | "List files in bucket" | **MCP** | \`list_files\` |
 
-> **⚠️ Pattern to avoid:** Don't default to \`wb resource list\` for data collection questions. Use \`workspace_list_data_collections\` instead!
-
----
-
-## How to Discover Data (Detailed)
-
-### List Resources
-\`\`\`bash
-wb resource list
-wb resource list --format=json
-wb resource describe <resource-name>
-\`\`\`
-
-### Explore GCS Buckets
-\`\`\`bash
-gsutil ls gs://<bucket>/
-gsutil ls -l gs://<bucket>/path/
-gsutil cat gs://<bucket>/path/file.txt
-\`\`\`
-
-### Explore BigQuery
-\`\`\`bash
-bq ls <project>:<dataset>
-bq show <project>:<dataset>.<table>
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
-\`\`\`
-
----
-
-## How to Query Data
-
-### BigQuery (CLI)
-\`\`\`bash
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 100'
-\`\`\`
-
-### BigQuery (Python)
-\`\`\`python
-from google.cloud import bigquery
-client = bigquery.Client()
-df = client.query("SELECT * FROM \\\`project.dataset.table\\\` LIMIT 100").to_dataframe()
-\`\`\`
-
-### GCS Files (Python)
-\`\`\`python
-import pandas as pd
-df = pd.read_parquet('gs://bucket/path/file.parquet')
-df = pd.read_csv('gs://bucket/path/file.csv')
-\`\`\`
+> **⚠️ Don't default to \`wb resource list\` for data collection questions. Use \`workspace_list_data_collections\` instead.**
 
 ---
 
@@ -1923,48 +1844,18 @@ wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucke
 
 ---
 
-## MCP vs CLI: When to Use Each
+## MCP Tools
 
-This app has **two interfaces** to Workbench functionality:
+> **Always check MCP tools before running CLI commands. MCP tools return structured JSON and are faster.**
 
-| Interface | Best For | Pros | Cons |
-|-----------|----------|------|------|
-| **MCP Tools** | LLM operations | Structured responses, no shell needed, faster | Limited tool set |
-| **CLI (\`wb\`)** | Complex operations, fallback | Full feature coverage, human-friendly | Requires shell execution, text parsing |
+### When to Use Each
 
-### ⚠️ Common Operations — USE MCP, NOT CLI
+| Interface | Best For |
+|-----------|----------|
+| **MCP Tools** | List/query operations — structured responses, no shell needed |
+| **CLI (\`wb\`)** | Complex operations or anything not covered by MCP |
 
-These operations have dedicated MCP tools. **Do NOT use CLI for these:**
-
-| Operation | ✅ Use MCP Tool | ❌ Don't Use CLI |
-|-----------|-----------------|------------------|
-| List data collections | \`workspace_list_data_collections\` | ~~\`wb resource list\`~~ |
-| List all resources | \`workspace_list_resources\` | ~~\`wb resource list\`~~ |
-| Resources by folder | \`resource_list_tree\` | ~~\`wb resource list-tree\`~~ |
-| Run BigQuery query | \`bq_execute\` | ~~\`bq query\`~~ |
-| List bucket files | \`list_files\` | ~~\`gsutil ls\`~~ |
-
-### 🤖 LLM Decision Guide
-
-1. **ALWAYS check MCP tools first** — especially for list/query operations
-2. **Fall back to CLI only** when MCP doesn't have the tool
-3. **Use cloud CLIs** (\`gsutil\`, \`bq\`) only for operations MCP doesn't support
-
-### Example: Same Operation, Two Ways
-
-**List resources:**
-- ✅ MCP: Use \`workspace_list_resources\` tool → returns JSON array
-- ⚠️ CLI: Run \`wb resource list --format=json\` → requires shell, parsing
-
-**Query BigQuery:**
-- ✅ MCP: Use \`bq_execute\` tool with query parameter → returns results
-- ⚠️ CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → requires parsing
-
----
-
-## MCP Tools Available
-
-The Workbench MCP server exposes these tools for programmatic LLM access:
+### Available MCP Tools
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
@@ -1980,12 +1871,7 @@ The Workbench MCP server exposes these tools for programmatic LLM access:
 | \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
 | \`read_file\` | \`gsutil cat\` | Read contents of a file |
 
-**Not available via MCP (use CLI instead):**
-- \`wb workspace set\` — switch workspaces
-- \`wb auth login\` — re-authenticate
-- \`wb workflow logs\` — view workflow logs
-- \`wb resource delete\` — delete resources
-- Complex resource creation with many options
+**Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`, \`wb resource delete\`
 
 ---
 
@@ -2017,16 +1903,6 @@ wb workflow logs <run-id>      # Run logs
 wb app list                    # List running apps
 wb app describe <name>         # App details
 \`\`\`
-
----
-
-## Best Practices
-
-1. **Explore before acting**: Use \`LIMIT\` in queries, \`ls\` before copying
-2. **Use environment variables**: \`\$WORKBENCH_<resource>\` for scripts
-3. **Cost awareness**: Large queries and compute cost money
-4. **Reproducibility**: Document analysis, version code
-5. **Confirm destructive actions**: Check before deleting
 
 ---
 

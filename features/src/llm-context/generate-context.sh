@@ -1136,11 +1136,12 @@ WORKFLOW_SKILL_EOF
     log_info "Creating scientific skills..."
     mkdir -p "${SKILLS_DIR}/scientific"
     
-    # Create SKILL_INDEX.md
-    cat > "${SKILLS_DIR}/SKILL_INDEX.md" << 'SKILL_INDEX_EOF'
-# Skill Index
+    # Create SCIENTIFIC_SKILLS_INDEX.md
+    cat > "${SKILLS_DIR}/SCIENTIFIC_SKILLS_INDEX.md" << 'SCIENTIFIC_SKILLS_EOF'
+# Scientific Skills Index
 
-**Read this file first to navigate available skills.**
+**This file routes Claude to domain-specific scientific skills.**
+Workbench skills (workflows, dashboards, custom apps) are handled directly by `CLAUDE.md`.
 
 ---
 
@@ -1148,28 +1149,15 @@ WORKFLOW_SKILL_EOF
 
 | User Says... | Read This Skill |
 |--------------|-----------------|
-| "workflow failed" / "debug workflow" | `WORKFLOW_TROUBLESHOOT.md` |
-| "create dashboard" / "visualize" / "Flask" | `DASHBOARD_BUILDER.md` |
-| "create app" / "deploy app" | `CUSTOM_APP.md` |
-| "single-cell" / "RNA-seq" / "scanpy" | `scientific/BIOINFORMATICS.md` |
-| "molecule" / "drug" / "RDKit" / "ChEMBL" | `scientific/DRUG_DISCOVERY.md` |
-| "gene" / "protein" / "variant" / "UniProt" | `scientific/GENOMICS_DATABASES.md` |
-| "statistics" / "ML" / "plot" / "sklearn" | `scientific/DATA_ANALYSIS.md` |
-| "clinical trial" / "PubMed" / "literature" | `scientific/CLINICAL.md` |
+| "single-cell" / "RNA-seq" / "scanpy" / "differential expression" | `scientific/BIOINFORMATICS.md` |
+| "molecule" / "SMILES" / "drug" / "RDKit" / "ChEMBL" / "target" | `scientific/DRUG_DISCOVERY.md` |
+| "gene" / "protein" / "variant" / "UniProt" / "Ensembl" / "PDB" | `scientific/GENOMICS_DATABASES.md` |
+| "machine learning" / "sklearn" / "statistics" / "plot" | `scientific/DATA_ANALYSIS.md` |
+| "clinical trial" / "PubMed" / "survival analysis" | `scientific/CLINICAL.md` |
 
 ---
 
-## Workbench Skills
-
-| Skill | File | Description |
-|-------|------|-------------|
-| **Workflow Troubleshooting** | `WORKFLOW_TROUBLESHOOT.md` | Debug failed WDL/Nextflow workflows |
-| **Dashboard Builder** | `DASHBOARD_BUILDER.md` | Create web apps, Flask, Streamlit |
-| **Custom App** | `CUSTOM_APP.md` | Build deployable Workbench apps |
-
----
-
-## Scientific Skills
+## Domain Skills
 
 ### 🧬 Bioinformatics (`scientific/BIOINFORMATICS.md`)
 Single-cell analysis, differential expression, sequence analysis, RNA velocity.
@@ -1190,7 +1178,17 @@ Machine learning, statistics, visualization.
 ### 🏥 Clinical (`scientific/CLINICAL.md`)
 Clinical trials, literature search, survival analysis.
 **APIs:** clinicaltrials.gov, pubmed
-SKILL_INDEX_EOF
+
+---
+
+## Adding New Skills
+
+To add skills from [claude-scientific-skills](https://github.com/K-Dense-AI/claude-scientific-skills):
+
+1. Copy the `SKILL.md` file to `scientific/<skill-name>.md`
+2. Add a row to the Quick Navigation table above
+3. Add a domain section below
+SCIENTIFIC_SKILLS_EOF
 
     # Create BIOINFORMATICS.md
     cat > "${SKILLS_DIR}/scientific/BIOINFORMATICS.md" << 'BIOINFO_EOF'
@@ -2112,9 +2110,9 @@ file:///home/jupyter/dashboard.html        ← JavaScript blocked
 
 ## Available Skills
 
-> **📚 Read \`~/.workbench/skills/SKILL_INDEX.md\` first** to navigate all available skills.
-
 ### Workbench Skills
+
+Read these directly — no index needed:
 
 | Topic | Skill File | When to Use |
 |-------|------------|-------------|
@@ -2123,6 +2121,8 @@ file:///home/jupyter/dashboard.html        ← JavaScript blocked
 | **Workflow debugging** | \`WORKFLOW_TROUBLESHOOT.md\` | Failed WDL/Nextflow, logs, memory/disk issues |
 
 ### Scientific Skills
+
+> **📚 Read \`~/.workbench/skills/SCIENTIFIC_SKILLS_INDEX.md\` first** to navigate scientific domain skills.
 
 | Domain | Skill File | Covers |
 |--------|------------|--------|
@@ -2143,28 +2143,22 @@ file:///home/jupyter/dashboard.html        ← JavaScript blocked
 - "show in browser" / "open in new tab"
 - Any request to display data interactively
 
-**Read CUSTOM_APP.md when:**
+**Read \`CUSTOM_APP.md\` when:**
 - "build a deployable app" / "create a custom app"
 - "API service" / "backend" / "from scratch"
 
-**Read WORKFLOW_TROUBLESHOOT.md when:**
+**Read \`WORKFLOW_TROUBLESHOOT.md\` when:**
+- "troubleshoot my workflow" / "fix my workflow"
 - "my workflow failed" / "workflow error" / "debug workflow"
+- "troubleshoot my job" / "my job failed" / "workflow job failed"
 - "job failed" / "task failed" / "out of memory"
 - "check logs" / "why did it fail" / "troubleshoot"
 
-**Read scientific/BIOINFORMATICS.md when:**
+**Read \`SCIENTIFIC_SKILLS_INDEX.md\` then the relevant domain file when user mentions:**
 - "single-cell" / "RNA-seq" / "scanpy" / "differential expression"
-
-**Read scientific/DRUG_DISCOVERY.md when:**
-- "molecule" / "SMILES" / "drug" / "RDKit" / "ChEMBL" / "target"
-
-**Read scientific/GENOMICS_DATABASES.md when:**
+- "molecule" / "SMILES" / "drug" / "RDKit" / "ChEMBL"
 - "gene" / "protein" / "variant" / "UniProt" / "Ensembl" / "PDB"
-
-**Read scientific/DATA_ANALYSIS.md when:**
-- "machine learning" / "sklearn" / "statistics" / "plot"
-
-**Read scientific/CLINICAL.md when:**
+- "machine learning" / "sklearn" / "statistics"
 - "clinical trial" / "PubMed" / "survival analysis"
 
 ---

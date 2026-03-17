@@ -1131,6 +1131,349 @@ gcloud batch jobs describe <BATCH_JOB> --format=json | jq '.taskGroups[0].taskSp
 - **VPC-SC:** Run \`gcloud batch\` commands from within workspace app
 - **Preemption:** If using spot VMs, set \`preemptible: 0\` for reliability
 WORKFLOW_SKILL_EOF
+
+    # Create scientific skills directory and index
+    log_info "Creating scientific skills..."
+    mkdir -p "${SKILLS_DIR}/scientific"
+    
+    # Create SKILL_INDEX.md
+    cat > "${SKILLS_DIR}/SKILL_INDEX.md" << 'SKILL_INDEX_EOF'
+# Skill Index
+
+**Read this file first to navigate available skills.**
+
+---
+
+## ⚡ Quick Navigation
+
+| User Says... | Read This Skill |
+|--------------|-----------------|
+| "workflow failed" / "debug workflow" | `WORKFLOW_TROUBLESHOOT.md` |
+| "create dashboard" / "visualize" / "Flask" | `DASHBOARD_BUILDER.md` |
+| "create app" / "deploy app" | `CUSTOM_APP.md` |
+| "single-cell" / "RNA-seq" / "scanpy" | `scientific/BIOINFORMATICS.md` |
+| "molecule" / "drug" / "RDKit" / "ChEMBL" | `scientific/DRUG_DISCOVERY.md` |
+| "gene" / "protein" / "variant" / "UniProt" | `scientific/GENOMICS_DATABASES.md` |
+| "statistics" / "ML" / "plot" / "sklearn" | `scientific/DATA_ANALYSIS.md` |
+| "clinical trial" / "PubMed" / "literature" | `scientific/CLINICAL.md` |
+
+---
+
+## Workbench Skills
+
+| Skill | File | Description |
+|-------|------|-------------|
+| **Workflow Troubleshooting** | `WORKFLOW_TROUBLESHOOT.md` | Debug failed WDL/Nextflow workflows |
+| **Dashboard Builder** | `DASHBOARD_BUILDER.md` | Create web apps, Flask, Streamlit |
+| **Custom App** | `CUSTOM_APP.md` | Build deployable Workbench apps |
+
+---
+
+## Scientific Skills
+
+### 🧬 Bioinformatics (`scientific/BIOINFORMATICS.md`)
+Single-cell analysis, differential expression, sequence analysis, RNA velocity.
+**Packages:** scanpy, anndata, biopython, pydeseq2, scvelo
+
+### 💊 Drug Discovery (`scientific/DRUG_DISCOVERY.md`)
+Cheminformatics, molecular ML, bioactivity databases, target identification.
+**Packages/APIs:** rdkit, deepchem, chembl, drugbank, opentargets
+
+### 🔬 Genomics Databases (`scientific/GENOMICS_DATABASES.md`)
+Gene annotations, protein data, variant interpretation, 3D structures.
+**APIs:** ensembl, uniprot, clinvar, pdb
+
+### 📊 Data Analysis (`scientific/DATA_ANALYSIS.md`)
+Machine learning, statistics, visualization.
+**Packages:** scikit-learn, statsmodels, plotly, seaborn
+
+### 🏥 Clinical (`scientific/CLINICAL.md`)
+Clinical trials, literature search, survival analysis.
+**APIs:** clinicaltrials.gov, pubmed
+SKILL_INDEX_EOF
+
+    # Create BIOINFORMATICS.md
+    cat > "${SKILLS_DIR}/scientific/BIOINFORMATICS.md" << 'BIOINFO_EOF'
+# Bioinformatics Skills
+
+**Trigger:** Single-cell, RNA-seq, sequences, differential expression, trajectory.
+
+## Quick Reference
+| Task | Package | Import |
+|------|---------|--------|
+| Single-cell workflow | scanpy | `import scanpy as sc` |
+| Differential expression | pydeseq2 | `from pydeseq2 import DeseqDataSet` |
+| Sequence analysis | biopython | `from Bio import SeqIO` |
+| RNA velocity | scvelo | `import scvelo as scv` |
+
+## Scanpy Workflow
+```python
+import scanpy as sc
+adata = sc.read_h5ad('data.h5ad')
+sc.pp.calculate_qc_metrics(adata, inplace=True)
+sc.pp.normalize_total(adata, target_sum=1e4)
+sc.pp.log1p(adata)
+sc.pp.highly_variable_genes(adata, n_top_genes=2000)
+sc.tl.pca(adata)
+sc.pp.neighbors(adata)
+sc.tl.umap(adata)
+sc.tl.leiden(adata)
+sc.tl.rank_genes_groups(adata, 'leiden')
+sc.pl.umap(adata, color='leiden')
+```
+
+## PyDESeq2 (Differential Expression)
+```python
+from pydeseq2.dds import DeseqDataSet
+from pydeseq2.ds import DeseqStats
+dds = DeseqDataSet(counts=counts.T, metadata=metadata, design_factors='condition')
+dds.deseq2()
+stat_res = DeseqStats(dds, contrast=['condition', 'treated', 'control'])
+results = stat_res.results_df
+sig = results[(results['padj'] < 0.05) & (abs(results['log2FoldChange']) > 1)]
+```
+
+## Biopython
+```python
+from Bio import SeqIO, Entrez
+Entrez.email = "email@example.com"
+# Parse FASTA
+for record in SeqIO.parse('seq.fasta', 'fasta'):
+    print(record.id, len(record.seq))
+# NCBI fetch
+handle = Entrez.efetch(db="nucleotide", id="NM_001301717", rettype="fasta")
+```
+
+Install: `pip install scanpy anndata pydeseq2 biopython scvelo`
+BIOINFO_EOF
+
+    # Create DRUG_DISCOVERY.md
+    cat > "${SKILLS_DIR}/scientific/DRUG_DISCOVERY.md" << 'DRUGDISC_EOF'
+# Drug Discovery Skills
+
+**Trigger:** Molecules, SMILES, drugs, fingerprints, ADMET, targets, bioactivity.
+
+## Quick Reference
+| Task | Tool | Access |
+|------|------|--------|
+| Molecular properties | rdkit | `from rdkit import Chem` |
+| ADMET prediction | deepchem | `import deepchem as dc` |
+| Bioactivity (IC50, Ki) | ChEMBL | REST API |
+| Drug info | DrugBank | REST API |
+| Target-disease | Open Targets | GraphQL |
+
+## RDKit
+```python
+from rdkit import Chem
+from rdkit.Chem import Descriptors, AllChem, DataStructs
+
+mol = Chem.MolFromSmiles('CC(=O)OC1=CC=CC=C1C(=O)O')  # Aspirin
+mw = Descriptors.MolWt(mol)
+logp = Descriptors.MolLogP(mol)
+hbd = Descriptors.NumHDonors(mol)
+hba = Descriptors.NumHAcceptors(mol)
+
+# Fingerprint similarity
+fp1 = AllChem.GetMorganFingerprintAsBitVect(mol1, radius=2)
+fp2 = AllChem.GetMorganFingerprintAsBitVect(mol2, radius=2)
+similarity = DataStructs.TanimotoSimilarity(fp1, fp2)
+```
+
+## ChEMBL API
+```python
+from chembl_webresource_client.new_client import new_client
+molecule = new_client.molecule
+activity = new_client.activity
+# Search compound
+aspirin = molecule.filter(pref_name__iexact='aspirin')[0]
+# Get activities for target
+acts = activity.filter(target_chembl_id='CHEMBL230', pchembl_value__gte=6)
+```
+
+## Open Targets API
+```python
+import requests
+query = '''query { target(ensemblId: "ENSG00000157764") {
+  approvedSymbol
+  associatedDiseases { rows { disease { name } score } }
+}}'''
+r = requests.post("https://api.platform.opentargets.org/api/v4/graphql", json={'query': query})
+```
+
+Install: `pip install rdkit deepchem chembl_webresource_client`
+DRUGDISC_EOF
+
+    # Create GENOMICS_DATABASES.md
+    cat > "${SKILLS_DIR}/scientific/GENOMICS_DATABASES.md" << 'GENOMICS_EOF'
+# Genomics Databases Skills
+
+**Trigger:** Genes, proteins, variants, structures, Ensembl, UniProt, ClinVar, PDB.
+
+## Quick Reference
+| Need | Database | API |
+|------|----------|-----|
+| Gene annotations | Ensembl | REST |
+| Protein data | UniProt | REST |
+| Variant pathogenicity | ClinVar | E-utilities |
+| 3D structures | PDB | REST |
+
+## Ensembl
+```python
+import requests
+SERVER = "https://rest.ensembl.org"
+# Gene lookup
+gene = requests.get(f"{SERVER}/lookup/symbol/homo_sapiens/BRCA1",
+                   headers={"Content-Type": "application/json"}).json()
+# Sequence
+seq = requests.get(f"{SERVER}/sequence/id/{gene['id']}").json()
+```
+
+## UniProt
+```python
+import requests
+# Search protein
+r = requests.get("https://rest.uniprot.org/uniprotkb/search",
+    params={"query": "gene:TP53 AND organism_id:9606", "format": "json"})
+# Get by ID
+protein = requests.get("https://rest.uniprot.org/uniprotkb/P04637.json").json()
+```
+
+## ClinVar
+```python
+from Bio import Entrez
+Entrez.email = "email@example.com"
+handle = Entrez.esearch(db="clinvar", term="BRCA1[gene] AND pathogenic[clinsig]")
+record = Entrez.read(handle)
+```
+
+## PDB
+```python
+import requests
+# Get structure
+structure = requests.get("https://data.rcsb.org/rest/v1/core/entry/1TUP").json()
+# Download PDB file
+pdb = requests.get("https://files.rcsb.org/download/1TUP.pdb").text
+```
+
+Install: `pip install biopython requests`
+GENOMICS_EOF
+
+    # Create DATA_ANALYSIS.md
+    cat > "${SKILLS_DIR}/scientific/DATA_ANALYSIS.md" << 'DATAANALYSIS_EOF'
+# Data Analysis Skills
+
+**Trigger:** ML, statistics, visualization, sklearn, regression, clustering, plots.
+
+## Quick Reference
+| Task | Package | Import |
+|------|---------|--------|
+| ML models | scikit-learn | `from sklearn.ensemble import RandomForestClassifier` |
+| Statistics | statsmodels | `import statsmodels.api as sm` |
+| Interactive plots | plotly | `import plotly.express as px` |
+| Statistical plots | seaborn | `import seaborn as sns` |
+
+## Scikit-learn
+```python
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+model = RandomForestClassifier(n_estimators=100)
+model.fit(X_train, y_train)
+print(classification_report(y_test, model.predict(X_test)))
+cv_scores = cross_val_score(model, X, y, cv=5)
+```
+
+## Statsmodels
+```python
+import statsmodels.api as sm
+X_const = sm.add_constant(X)
+model = sm.OLS(y, X_const).fit()
+print(model.summary())  # Full regression output with p-values
+```
+
+## Plotly
+```python
+import plotly.express as px
+fig = px.scatter(df, x='x', y='y', color='category', hover_data=['name'])
+fig.show()
+fig = px.histogram(df, x='value', color='group')
+fig = px.box(df, x='category', y='value')
+```
+
+## Seaborn
+```python
+import seaborn as sns
+import matplotlib.pyplot as plt
+sns.boxplot(data=df, x='category', y='value', hue='group')
+sns.heatmap(df.corr(), annot=True, cmap='coolwarm')
+sns.pairplot(df, hue='category')
+plt.savefig('plot.png', dpi=300)
+```
+
+Install: `pip install scikit-learn statsmodels plotly seaborn`
+DATAANALYSIS_EOF
+
+    # Create CLINICAL.md
+    cat > "${SKILLS_DIR}/scientific/CLINICAL.md" << 'CLINICAL_EOF'
+# Clinical Skills
+
+**Trigger:** Clinical trials, PubMed, literature, survival analysis.
+
+## Quick Reference
+| Task | Source | Access |
+|------|--------|--------|
+| Clinical trials | ClinicalTrials.gov | REST API |
+| Literature | PubMed | E-utilities |
+| Survival analysis | lifelines | Python |
+
+## ClinicalTrials.gov API
+```python
+import requests
+BASE = "https://clinicaltrials.gov/api/v2"
+# Search trials
+r = requests.get(f"{BASE}/studies", params={
+    "query.cond": "breast cancer",
+    "query.intr": "pembrolizumab",
+    "filter.overallStatus": "RECRUITING"
+})
+for study in r.json()['studies']:
+    info = study['protocolSection']['identificationModule']
+    print(f"{info['nctId']}: {info['briefTitle']}")
+```
+
+## PubMed
+```python
+from Bio import Entrez
+Entrez.email = "email@example.com"
+handle = Entrez.esearch(db="pubmed", term="CRISPR cancer[Title/Abstract]", retmax=20)
+pmids = Entrez.read(handle)['IdList']
+handle = Entrez.efetch(db="pubmed", id=pmids, rettype="abstract")
+print(handle.read())
+```
+
+## Survival Analysis (lifelines)
+```python
+from lifelines import KaplanMeierFitter, CoxPHFitter
+from lifelines.statistics import logrank_test
+
+kmf = KaplanMeierFitter()
+kmf.fit(durations, events, label='Survival')
+kmf.plot_survival_function()
+
+# Compare groups
+results = logrank_test(dur1, dur2, ev1, ev2)
+print(f"p-value: {results.p_value:.4f}")
+
+# Cox regression
+cph = CoxPHFitter()
+cph.fit(df, duration_col='time', event_col='event')
+cph.print_summary()
+```
+
+Install: `pip install biopython requests lifelines`
+CLINICAL_EOF
 }
 
 # Fetch workspace information
@@ -1769,13 +2112,25 @@ file:///home/jupyter/dashboard.html        ← JavaScript blocked
 
 ## Available Skills
 
-When users ask about specific topics, **read these skill files** for detailed guidance:
+> **📚 Read \`~/.workbench/skills/SKILL_INDEX.md\` first** to navigate all available skills.
+
+### Workbench Skills
 
 | Topic | Skill File | When to Use |
 |-------|------------|-------------|
-| **🚨 Dashboards, HTML, Flask, Web UIs** | \`~/.workbench/skills/DASHBOARD_BUILDER.md\` | **READ THIS FIRST** for any: dashboard, chart, visualization, Flask app, Streamlit, HTML page, web UI, interactive display, Plotly, or anything running on a port |
-| Building custom apps | \`~/.workbench/skills/CUSTOM_APP.md\` | User wants to build a deployable app from scratch |
-| **Troubleshoot failed workflows** | \`~/.workbench/skills/WORKFLOW_TROUBLESHOOT.md\` | Debug WDL/Nextflow failures, pull logs, check memory/disk, identify root cause |
+| **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
+| Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
+| **Workflow debugging** | \`WORKFLOW_TROUBLESHOOT.md\` | Failed WDL/Nextflow, logs, memory/disk issues |
+
+### Scientific Skills
+
+| Domain | Skill File | Covers |
+|--------|------------|--------|
+| 🧬 Bioinformatics | \`scientific/BIOINFORMATICS.md\` | scanpy, anndata, pydeseq2, biopython, scvelo |
+| 💊 Drug Discovery | \`scientific/DRUG_DISCOVERY.md\` | rdkit, deepchem, chembl, drugbank, opentargets |
+| 🔬 Genomics DBs | \`scientific/GENOMICS_DATABASES.md\` | ensembl, uniprot, clinvar, pdb |
+| 📊 Data Analysis | \`scientific/DATA_ANALYSIS.md\` | sklearn, statsmodels, plotly, seaborn |
+| 🏥 Clinical | \`scientific/CLINICAL.md\` | clinicaltrials.gov, pubmed, lifelines |
 
 ### ⚡ Skill Trigger Guide
 
@@ -1796,6 +2151,21 @@ When users ask about specific topics, **read these skill files** for detailed gu
 - "my workflow failed" / "workflow error" / "debug workflow"
 - "job failed" / "task failed" / "out of memory"
 - "check logs" / "why did it fail" / "troubleshoot"
+
+**Read scientific/BIOINFORMATICS.md when:**
+- "single-cell" / "RNA-seq" / "scanpy" / "differential expression"
+
+**Read scientific/DRUG_DISCOVERY.md when:**
+- "molecule" / "SMILES" / "drug" / "RDKit" / "ChEMBL" / "target"
+
+**Read scientific/GENOMICS_DATABASES.md when:**
+- "gene" / "protein" / "variant" / "UniProt" / "Ensembl" / "PDB"
+
+**Read scientific/DATA_ANALYSIS.md when:**
+- "machine learning" / "sklearn" / "statistics" / "plot"
+
+**Read scientific/CLINICAL.md when:**
+- "clinical trial" / "PubMed" / "survival analysis"
 
 ---
 

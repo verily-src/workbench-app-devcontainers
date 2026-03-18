@@ -43,6 +43,9 @@ readonly CLOUD="$1"
 # Configuration with defaults
 readonly FLUENT_BIT_IMAGE="${FLUENT_BIT_IMAGE:-cr.fluentbit.io/fluent/fluent-bit:2.0-debug}"
 
+# Db directory to store file offsets
+mkdir -p /var/lib/fluent-bit
+
 # Build Docker run command arguments
 DOCKER_ARGS=(
     --rm

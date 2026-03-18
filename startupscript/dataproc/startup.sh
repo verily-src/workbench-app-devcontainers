@@ -1392,6 +1392,48 @@ systemctl daemon-reload
 # and pick up the modified service configuration and environment variables.
 
 ####################################################################################
+# Configure Fluent Bit for Dataproc-specific logging
+####################################################################################
+
+emit "Configuring Fluent Bit for Dataproc..."
+
+FLUENT_BIT_PATH="/etc/fluent-bit/conf.d/10-vwb-dataproc-fluent-bit.conf"
+if [[ -f /etc/fluent-bit/fluent-bit.conf ]]; then
+  # Add @INCLUDE directive to main fluent-bit.conf if not already present
+  INCLUDE_DIRECTIVE="@INCLUDE /etc/fluent-bit/conf.d/\*.conf"
+  if ! grep -q "${INCLUDE_DIRECTIVE}" /etc/fluent-bit/fluent-bit.conf; then
+    echo "" >> /etc/fluent-bit/fluent-bit.conf
+    echo "${INCLUDE_DIRECTIVE}" >> /etc/fluent-bit/fluent-bit.conf
+    emit "Added @INCLUDE directive to /etc/fluent-bit/fluent-bit.conf"
+  else
+    emit "@INCLUDE directive already exists in /etc/fluent-bit/fluent-bit.conf"
+  fi
+else
+  emit "WARNING: /etc/fluent-bit/fluent-bit.conf not found, installing as main config file."
+  FLUENT_BIT_PATH="/etc/fluent-bit/fluent-bit.conf"
+fi
+
+# Create conf.d directory for additional fluent-bit configurations
+mkdir -p /etc/fluent-bit/conf.d
+
+# Download Dataproc-specific fluent-bit configuration
+curl -fsSL -o "${FLUENT_BIT_PATH}" \
+  https://raw.githubusercontent.com/verily-src/workbench-app-devcontainers/refs/heads/june/dataproc-fluent-bit/startupscript/butane/gcp/10-vwb-dataproc-fluent-bit.conf
+
+# Create directory for fluent-bit DB files (for tracking file offsets)
+mkdir -p /var/lib/fluent-bit
+
+# Restart fluent-bit service to pick up new configuration
+if systemctl is-active --quiet fluent-bit; then
+  systemctl restart fluent-bit
+  emit "Fluent Bit service restarted"
+else
+  emit "WARNING: fluent-bit service is not running, skipping restart"
+fi
+
+emit "Fluent Bit configuration complete"
+
+####################################################################################
 # Run a set of tests that should be invariant to the workspace or user configuration
 ####################################################################################
 

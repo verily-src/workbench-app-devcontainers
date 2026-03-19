@@ -43,6 +43,9 @@ readonly CLOUD="$1"
 # Configuration with defaults
 readonly FLUENT_BIT_IMAGE="${FLUENT_BIT_IMAGE:-cr.fluentbit.io/fluent/fluent-bit:2.0-debug}"
 
+# Db directory to store file offsets
+mkdir -p /var/lib/fluent-bit
+
 # Build Docker run command arguments
 DOCKER_ARGS=(
     --rm
@@ -51,6 +54,7 @@ DOCKER_ARGS=(
     -v /etc/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
     -v /var/log/journal:/var/log/journal:ro
     -v /var/lib/docker/containers:/var/lib/docker/containers:ro
+    -v /var/lib/fluent-bit:/var/lib/fluent-bit
 )
 
 # Add cloud-specific configuration

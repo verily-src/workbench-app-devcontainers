@@ -1,0 +1,1 @@
+Workbench sets headless shell env (`DISPLAY=`, `BROWSER=`, `NO_BROWSER=1`) in `startupscript/setup-bashrc.sh` (GCP) and `startupscript/aws/post-startup-hook.sh` (AWS). This feature writes `~/.gemini/settings.json` to disable auto-update and set the `ANSI Light` theme, which adapts to both light (e.g. RStudio) and dark terminals without requiring `NO_COLOR`.

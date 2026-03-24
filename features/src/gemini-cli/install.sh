@@ -12,6 +12,9 @@ install_gemini_cli() {
     if [ "${username}" = "root" ]; then
         npm install -g @google/gemini-cli@0.34.0
     else
+        # Chown the NVM dir and npm cache to the target user so npm install -g
+        # can write to them. Both may be root-owned from earlier features in the
+        # build pipeline (e.g. claude-code) running npm as root.
         local nvm_dir="${NVM_DIR:-/usr/local/share/nvm}"
         local user_home
         user_home=$(eval echo "~${username}" 2>/dev/null || echo "/home/${username}")
@@ -20,6 +23,7 @@ install_gemini_cli() {
         sudo -u "${username}" env PATH="${PATH}" npm install -g @google/gemini-cli@0.34.0
     fi
 
+    # 'command' is a shell builtin and can't be used via env; use 'which' instead.
     if which gemini >/dev/null 2>&1; then
         echo "Gemini CLI installed successfully!"
         return 0
@@ -40,6 +44,9 @@ fix_permissions() {
     local user_home
     user_home=$(eval echo "~${username}" 2>/dev/null || echo "/home/${username}")
 
+    # Disable auto-update to prevent gemini from trying to re-exec itself on
+    # first run, which fails on freshly provisioned machines.
+    # Use ANSI Light theme so colors adapt to both light and dark terminals.
     mkdir -p "${user_home}/.gemini"
     printf '{"general.enableAutoUpdate": false, "ui": {"autoThemeSwitching": false, "theme": "ANSI Light"}}\n' > "${user_home}/.gemini/settings.json"
     chown -R "${username}:" "${user_home}/.gemini"

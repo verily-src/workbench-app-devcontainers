@@ -47,6 +47,11 @@ export WORKBENCH_INSTALL_PATH="${WORKBENCH_INSTALL_PATH}"
 export AWS_CONFIG_FILE="${AWS_CONFIG_FILE}"
 export AWS_VAULT_BACKEND="file"
 export AWS_VAULT_FILE_PASSPHRASE=""
+
+# Headless Workbench (same as setup-bashrc.sh on GCP; this file replaces ~/.bashrc on AWS)
+export DISPLAY=
+export BROWSER=
+export NO_BROWSER=1
 EOF
 
 #######################################

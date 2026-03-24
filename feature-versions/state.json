@@ -24,6 +24,16 @@
     "installed": "sha256:dbf431d6b42d55cde50fa1df75c7f7c3999a90cde6d73f7a7071174b3c3d0cc4",
     "filter": ".*\\/\\.devcontainer\\.json"
   },
+  "ghcr.io/devcontainers/features/node": {
+    "tag": "1",
+    "installed": "sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6",
+    "filter": ".*\\/\\.devcontainer\\.json"
+  },
+  "ghcr.io/anthropics/devcontainer-features/claude-code": {
+    "tag": "1.0",
+    "installed": "sha256:cfc2e7d3e9fd3b9b01f8d5cb158508a884c8c0ede2e23ed10f32dea5d4ffe69a",
+    "filter": ".*\\/\\.devcontainer\\.json"
+  },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
     "installed": "sha256:7eafa2c2dfc853b0bbd9c3b002160ab6597b62d5727f419aeec951539e74f452",

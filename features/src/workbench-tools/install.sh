@@ -180,18 +180,6 @@ chown -R "${USERNAME}:" "${LIBRARIES_ENV_DIR}"
 
     # Set CROMWELL_JAR environment variable
     printf 'export CROMWELL_JAR="%s"\n' "${BINARIES_ENV_DIR}/share/cromwell/cromwell.jar"
-
-    # Wrap gcloud to unset DISPLAY per-invocation so auth commands don't try
-    # to open a browser via X11 in headless devcontainer environments.
-    printf 'function gcloud() { DISPLAY= command gcloud "$@"; }\n'
-
-    # Wrap claude to clear BROWSER per-invocation so any app-managed browser
-    # handler does not intercept the auth URL in headless environments.
-    printf 'function claude() { BROWSER= command claude "$@"; }\n'
-
-    # Wrap gemini to set NO_BROWSER=1 per-invocation to force device code flow
-    # instead of opening a browser window.
-    printf 'function gemini() { NO_BROWSER=1 NO_COLOR=1 command gemini "$@"; }\n'
 } >> "${USER_HOME_DIR}/.bashrc"
 
 # Allow .bashrc to be sourced in non-interactive shells

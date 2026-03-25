@@ -64,10 +64,17 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     apt-get install -y gh && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv (Python package manager version 0.9.27)
-RUN curl -LsSf https://astral.sh/uv/0.9.27/install.sh | sh && \
-    mv $HOME/.local/bin/uv /usr/local/bin/ && \
-    mv $HOME/.local/bin/uvx /usr/local/bin/
+# Install Node.js (required for promptfoo)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install promptfoo CLI
+RUN npm install -g promptfoo
+
+# Install uv (Python package manager version 0.11.1)
+# Installed directly to /usr/local/bin so that `uv self update` works correctly
+RUN curl -LsSf https://astral.sh/uv/0.11.1/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
 
 # Set up environment variables
 ENV PATH="/usr/local/go/bin:${PATH}"

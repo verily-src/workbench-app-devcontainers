@@ -91,3 +91,14 @@ export AWS_VAULT_FILE_PASSPHRASE=""
 EOF
 
 fi
+
+# Headless devcontainers: no real display/browser for gcloud, Claude Code, Gemini CLI.
+emit "Adding headless CLI environment to ~/.bashrc ..."
+
+cat << 'EOF' >> "${USER_BASHRC}"
+
+# Headless Workbench (gcloud, Claude Code, Gemini CLI)
+export DISPLAY=
+export BROWSER=
+export NO_BROWSER=1
+EOF

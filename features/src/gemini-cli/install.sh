@@ -4,19 +4,21 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+readonly USERNAME="${USERNAME:-"root"}"
+
 install_gemini_cli() {
-    local username="${1:-root}"
+    local username="${1}"
     echo "Installing Gemini CLI..."
 
     if [ "${username}" = "root" ]; then
-        npm install -g @google/gemini-cli@0.34.0
+        npm install -g @google/gemini-cli
     else
         local nvm_dir="${NVM_DIR:-/usr/local/share/nvm}"
         local user_home
         user_home=$(eval echo "~${username}" 2>/dev/null || echo "/home/${username}")
         [ -d "${nvm_dir}" ] && chown -R "${username}:" "${nvm_dir}"
         [ -d "${user_home}/.npm" ] && chown -R "${username}:" "${user_home}/.npm"
-        sudo -u "${username}" env PATH="${PATH}" npm install -g @google/gemini-cli@0.34.0
+        sudo -u "${username}" env PATH="${PATH}" npm install -g @google/gemini-cli
     fi
 
     if which gemini >/dev/null 2>&1; then
@@ -29,7 +31,7 @@ install_gemini_cli() {
 }
 
 fix_permissions() {
-    local username="${1:-root}"
+    local username="${1}"
 
     if [ "${username}" = "root" ]; then
         return 0
@@ -64,8 +66,8 @@ if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
     print_nodejs_requirement
 fi
 
-install_gemini_cli "${USERNAME:-root}" || exit 1
+install_gemini_cli "${USERNAME}" || exit 1
 
-fix_permissions "${USERNAME:-root}"
+fix_permissions "${USERNAME}"
 
 echo "Done!"

@@ -17,6 +17,10 @@ services:
       SUDO_PASSWORD: "pwd"
     networks:
       - app-network
+    logging:
+      driver: "json-file"
+      options:
+        tag: "{{.Name}}"
     cap_add:
       - SYS_ADMIN
     devices:

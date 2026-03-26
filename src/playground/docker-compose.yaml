@@ -12,6 +12,10 @@ services:
     networks:
       - app-network
       - playground-apps
+    logging:
+      driver: "json-file"
+      options:
+        tag: "{{.Name}}"
 
   playground:
     build:

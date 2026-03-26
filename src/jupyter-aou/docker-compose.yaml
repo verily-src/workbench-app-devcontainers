@@ -20,6 +20,10 @@ services:
       - app-network
     depends_on:
       - wondershaper
+    logging:
+      driver: "json-file"
+      options:
+        tag: "{{.Name}}"
     cap_add:
       - SYS_ADMIN
     devices:

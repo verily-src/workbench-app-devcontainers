@@ -35,11 +35,14 @@ while read -r source size used mount; do
 done < <(df -B1 --output=source,size,used,target / /var/lib/docker 2>/dev/null | tail -n +2)
 
 # --- Docker container stats (CPU and memory usage ratios) ---
+# CPUPerc and MemPerc are formated as percentages (e.g. "15%"), so we strip
+# the '%' and convert to a ratio (e.g. 0.15), rounded to 4 decimal places to
+# avoid floating point funkiness.
 containers_json=$(docker stats --no-stream --format '{{json .}}' 2>/dev/null \
   | jq -sc '[.[] | {
       name: .Name,
-      cpu_usage_ratio: (.CPUPerc | rtrimstr("%") | tonumber / 100),
-      memory_usage_ratio: (.MemPerc | rtrimstr("%") | tonumber / 100)
+      cpu_usage_ratio: (.CPUPerc | rtrimstr("%") | tonumber * 100 | floor | . / 10000),
+      memory_usage_ratio: (.MemPerc | rtrimstr("%") | tonumber * 100 | floor | . / 10000)
     }]') \
   || containers_json="[]"
 

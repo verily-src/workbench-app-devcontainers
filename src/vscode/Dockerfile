@@ -7,13 +7,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL "https://open-vsx.org/api/Google/geminicodeassist/latest" \
         | jq -r '.files.download' \
-        | xargs curl -fL --compressed -o /opt/geminicodeassist.vsix \
+        | xargs curl -fL --compressed -o /tmp/geminicodeassist.vsix \
     && curl -fsSL "https://open-vsx.org/api/Anthropic/claude-code/latest" \
         | jq -r '.files.download' \
-        | xargs curl -fL --compressed -o /opt/claudecode.vsix
-
-# Install extensions during container init, before code-server starts
-COPY install-extensions.sh /etc/cont-init.d/99-install-extensions
-RUN chmod +x /etc/cont-init.d/99-install-extensions
+        | xargs curl -fL --compressed -o /tmp/claudecode.vsix \
+    && mkdir -p /config/extensions \
+    && HOME=/config /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/geminicodeassist.vsix \
+    && HOME=/config /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/claudecode.vsix \
+    && rm /tmp/geminicodeassist.vsix /tmp/claudecode.vsix
 
 WORKDIR /config

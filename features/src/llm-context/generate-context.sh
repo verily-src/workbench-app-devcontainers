@@ -1731,7 +1731,64 @@ gs://your-bucket/
 
 ---
 
-## Data Discovery & Querying
+## MCP Tools
+
+> **Always use MCP tools before falling back to CLI. MCP tools return structured JSON and are faster.**
+
+| Interface | Best For |
+|-----------|----------|
+| **MCP Tools** | List/query operations — structured responses, no shell needed |
+| **CLI (\`wb\`)** | Complex operations or anything not covered by MCP |
+
+### Available MCP Tools
+
+| MCP Tool | CLI Equivalent | Description |
+|----------|----------------|-------------|
+| \`workspace_list_data_collections\` | N/A | **List data collections and their resources** |
+| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
+| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
+| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
+| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
+| \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
+| \`build_cohort\` | *(UI only)* | Create a cohort using Data Explorer |
+| \`export_cohort\` | *(UI only)* | Export cohort data to a bucket |
+| \`create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
+| \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
+| \`read_file\` | \`gsutil cat\` | Read contents of a file |
+
+**Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`, \`wb resource delete\`
+
+## CLI Quick Reference
+
+\`\`\`bash
+# Workspace
+wb workspace describe          # Current workspace details
+wb workspace list              # All your workspaces
+wb workspace set <id>          # Switch workspace
+
+# Resources
+wb resource list               # List resources
+wb resource describe <name>    # Resource details
+wb resource delete <name>      # Delete resource
+
+# Workflows
+wb workflow list               # List workflows
+wb workflow run <id>           # Run workflow
+wb workflow describe <run-id>  # Run status
+wb workflow logs <run-id>      # Run logs
+
+# Apps
+wb app list                    # List running apps
+wb app describe <name>         # App details
+
+# Auth
+wb auth status                 # Check authentication
+wb auth login                  # Re-authenticate
+\`\`\`
+
+---
+
+## ⚠️ Important: Data Persistence
 
 > **⚡ MCP FIRST:** Always check if an MCP tool exists before using CLI commands.
 
@@ -1844,143 +1901,46 @@ wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucke
 
 ---
 
-## MCP Tools
+## ⚠️ Workbench Web Apps & Proxy URLs
 
-> **Always check MCP tools before running CLI commands. MCP tools return structured JSON and are faster.**
+> **🚨 If the user wants a dashboard, chart, Flask app, HTML page, or ANY web UI — read \`~/.workbench/skills/DASHBOARD_BUILDER.md\` first.**
 
-### When to Use Each
+### Proxy URL Format
 
-| Interface | Best For |
-|-----------|----------|
-| **MCP Tools** | List/query operations — structured responses, no shell needed |
-| **CLI (\`wb\`)** | Complex operations or anything not covered by MCP |
-
-### Available MCP Tools
-
-| MCP Tool | CLI Equivalent | Description |
-|----------|----------------|-------------|
-| \`workspace_list_data_collections\` | N/A | **List data collections and their resources** |
-| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
-| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
-| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
-| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
-| \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
-| \`build_cohort\` | *(UI only)* | Create a cohort using Data Explorer |
-| \`export_cohort\` | *(UI only)* | Export cohort data to a bucket |
-| \`create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
-| \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
-| \`read_file\` | \`gsutil cat\` | Read contents of a file |
-
-**Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`, \`wb resource delete\`
-
----
-
-## CLI Quick Reference
-
-\`\`\`bash
-# Auth
-wb auth status                 # Check authentication
-wb auth login                  # Re-authenticate
-
-# Workspace
-wb workspace describe          # Current workspace details
-wb workspace list              # All your workspaces  
-wb workspace set <id>          # Switch workspace
-
-# Resources
-wb resource list               # List resources
-wb resource list --format=json # JSON output
-wb resource describe <name>    # Resource details
-wb resource delete <name>      # Delete resource
-
-# Workflows
-wb workflow list               # List workflows
-wb workflow run <id>           # Run workflow
-wb workflow describe <run-id>  # Run status
-wb workflow logs <run-id>      # Run logs
-
-# Apps
-wb app list                    # List running apps
-wb app describe <name>         # App details
-\`\`\`
-
----
-
-## ⚠️ Workbench Web Apps & Proxy URLs (CRITICAL)
-
-> **🚨 STOP! If user wants a dashboard, chart, Flask app, HTML page, or ANY web UI:**
-> **→ READ \`~/.workbench/skills/DASHBOARD_BUILDER.md\` FIRST!**
-> 
-> That skill contains critical configuration, working templates, and troubleshooting for all interactive web content.
-
-### Quick Reference
-
-**Proxy URL format (all web content):**
 \`\`\`
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 \`\`\`
 
-**Get App UUID automatically (NEVER ask user for it):**
+**Get App UUID automatically — NEVER ask the user for it:**
 \`\`\`bash
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 \`\`\`
 
-### ⚠️ JavaScript Relative Paths (Critical for Dashboards)
-
-**All fetch() calls in JavaScript MUST use relative paths:**
-\`\`\`javascript
-// ✅ CORRECT - works through Workbench proxy
-fetch('api/data')
-
-// ❌ WRONG - absolute path breaks through proxy (404 error!)
-fetch('/api/data')
-\`\`\`
-
-**Why:** \`fetch('/api/data')\` resolves to \`workbench.verily.com/api/data\` (wrong!)  
-**Should be:** \`workbench.verily.com/app/UUID/proxy/PORT/api/data\`
-
 ### Common Ports
-| Content Type | Port | Example Command |
-|--------------|------|-----------------|
-| Flask/FastAPI | 8080 | \`flask run --port 8080\` |
-| Streamlit | 8501 | \`streamlit run app.py\` |
-| Static HTML | 8000 | \`python3 -m http.server 8000\` |
-| R Shiny | 3838 | (configured in app) |
+
+| Content Type | Port |
+|--------------|------|
+| Flask/FastAPI | 8080 |
+| Streamlit | 8501 |
+| Static HTML | 8000 |
+| R Shiny | 3838 |
+
+### ⚠️ JavaScript: Always Use Relative Paths
+
+All \`fetch()\` calls in JavaScript **must** use relative paths (no leading \`/\`):
+
+\`\`\`javascript
+fetch('api/data')   // ✅ resolves to workbench.verily.com/app/UUID/proxy/8080/api/data
+fetch('/api/data')  // ❌ resolves to workbench.verily.com/api/data — 404!
+\`\`\`
 
 ### ❌ Wrong URL Formats
+
 \`\`\`
-https://UUID.workbench-app.verily.com/     ← Bad Request error
-http://localhost:8080/                     ← Not accessible externally  
-file:///home/jupyter/dashboard.html        ← JavaScript blocked
+https://UUID.workbench-app.verily.com/   ← Bad Request error
+http://localhost:8080/                   ← Not accessible externally
+file:///home/jupyter/dashboard.html      ← JavaScript blocked
 \`\`\`
-
----
-
-## Creating Custom Apps
-
-> **When a user asks to create an app, turn code into an app, or build something deployable:**
-
-### Step 1: Determine the Type
-
-| User Wants... | Read This Skill |
-|---------------|-----------------|
-| Dashboard, visualization, Flask app, web UI | \`DASHBOARD_BUILDER.md\` |
-| Deployable custom app from scratch | \`CUSTOM_APP.md\` |
-
-### Step 2: Use the Appropriate Skill
-
-**For dashboards/web UIs** → \`~/.workbench/skills/DASHBOARD_BUILDER.md\`
-- Working Flask templates with BigQuery
-- Critical proxy URL configuration
-- Tested troubleshooting guides
-
-**For deployable apps** → \`~/.workbench/skills/CUSTOM_APP.md\`
-- Minimal devcontainer pattern
-- Docker configuration
-- Deployment checklist
-
-### Quick Reference
-- **Full-featured apps**: https://github.com/verily-src/workbench-app-devcontainers
 
 ---
 
@@ -2061,7 +2021,9 @@ To refresh after workspace changes:
 ## Getting Help
 
 - **Docs**: https://support.workbench.verily.com
-- **Custom Apps**: https://github.com/verily-src/workbench-app-devcontainers
+- **Custom Apps Guide**: https://support.workbench.verily.com/docs/guides/cloud_apps/create_custom_apps/
+- **Devcontainers Repo**: https://github.com/verily-src/workbench-app-devcontainers
+- **Devcontainer Reference**: https://containers.dev/implementors/json_reference/
 - **CLI Help**: \`wb --help\` or \`wb <command> --help\`
 - **Support**: support@workbench.verily.com
 

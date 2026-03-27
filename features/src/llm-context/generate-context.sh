@@ -480,17 +480,13 @@ TEMPLATES_SKILL_EOF
 
 ### Proxy URL Format
 
-All web apps in Workbench are accessed via:
+The proxy URL is the **only valid way** to access web apps in Workbench:
 \`\`\`
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 \`\`\`
 
-### ⚠️ How to Get the App UUID (CRITICAL)
-
-**You MUST automatically get the app UUID - NEVER ask the user for it.**
-
+Retrieve the App UUID automatically:
 \`\`\`bash
-# Run this command and use the output:
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 \`\`\`
 
@@ -1673,65 +1669,17 @@ Check with: \`wb workspace describe\`
 
 ## ⚠️ Important: Data Persistence
 
-> **LOCAL STORAGE IS EPHEMERAL.** Files saved on this app's local disk will be **lost** when the app stops or restarts.
-
-### The Problem
-Users often create files locally (notebooks, scripts, outputs) without realizing they won't persist. When the app shuts down, all local work is lost.
-
-### The Solution
-**Save important files to a cloud bucket** in your workspace. Buckets persist independently of apps.
-
-### Available Storage Buckets in This Workspace
-
-${bucket_list}
-
-### How to Save Local Files to Cloud Storage
-
-\`\`\`bash
-# Copy a single file to a bucket
-gsutil cp my-notebook.ipynb gs://<bucket-name>/notebooks/
-
-# Copy a directory recursively
-gsutil -m cp -r ./my-results/ gs://<bucket-name>/results/
-
-# Sync a local directory (only copies changed files)
-gsutil -m rsync -r ./my-project/ gs://<bucket-name>/projects/my-project/
-\`\`\`
-
-### In Python
-\`\`\`python
-# Save dataframes directly to GCS
-df.to_parquet('gs://bucket-name/path/output.parquet')
-df.to_csv('gs://bucket-name/path/output.csv')
-
-# Or use storage client
-from google.cloud import storage
-client = storage.Client()
-bucket = client.bucket('bucket-name')
-blob = bucket.blob('path/file.csv')
-blob.upload_from_filename('local-file.csv')
-\`\`\`
-
-### Suggested Bucket Organization
-\`\`\`
-gs://your-bucket/
-├── notebooks/          # Jupyter notebooks
-├── scripts/            # Python/R scripts  
-├── data/raw/           # Input data
-├── data/processed/     # Cleaned data
-├── results/            # Analysis outputs
-└── models/             # Trained ML models
-\`\`\`
-
-### LLM Guidance
+Local app storage is ephemeral — files saved to the app's local disk are **lost when the app stops or restarts**. Always encourage users to save important work to a GCS bucket in their workspace.
 
 - **When users create files locally**, suggest saving to a bucket: \`gsutil cp <file> gs://<bucket>/\`
 - **When users finish analysis**, remind: *"Save important outputs to cloud storage before stopping the app."*
-- **List available buckets:** \`wb resource list --type=GCS_BUCKET --format=json\`
+- **Available buckets in this workspace:**
+
+${bucket_list}
 
 ---
 
-## MCP Tools
+## Most Commonly Used MCP Tools
 
 > **Always use MCP tools before falling back to CLI. MCP tools return structured JSON and are faster.**
 
@@ -1740,7 +1688,7 @@ gs://your-bucket/
 | **MCP Tools** | List/query operations — structured responses, no shell needed |
 | **CLI (\`wb\`)** | Complex operations or anything not covered by MCP |
 
-### Available MCP Tools
+### Data & Resources
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
@@ -1748,13 +1696,50 @@ gs://your-bucket/
 | \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
 | \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
 | \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
-| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
-| \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
-| \`build_cohort\` | *(UI only)* | Create a cohort using Data Explorer |
-| \`export_cohort\` | *(UI only)* | Export cohort data to a bucket |
-| \`create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
 | \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
 | \`read_file\` | \`gsutil cat\` | Read contents of a file |
+| \`resource_create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
+| \`resource_delete\` | \`wb resource delete\` | Delete a resource |
+| \`resource_check_access\` | — | Check if service account has access to a resource |
+| \`resource_mount\` / \`resource_unmount\` | — | Mount/unmount a GCS bucket |
+
+### Apps & Workflows
+
+| MCP Tool | CLI Equivalent | Description |
+|----------|----------------|-------------|
+| \`app_list\` | \`wb app list\` | List running apps |
+| \`app_create\` | \`wb app create\` | Create a new custom app |
+| \`app_get_url\` | — | Get the proxy URL for a running app |
+| \`app_start\` / \`app_stop\` | \`wb app start/stop\` | Start or stop an app |
+| \`workflow_list\` | \`wb workflow list\` | List available workflows |
+| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
+| \`workflow_job_list\` | \`wb workflow job list\` | List workflow job runs |
+| \`workflow_job_describe\` | \`wb workflow job describe\` | Get details of a specific job run |
+| \`workflow_job_cancel\` | \`wb workflow job cancel\` | Cancel a running job |
+| \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
+
+### Data Explorer
+
+| MCP Tool | Description |
+|----------|-------------|
+| \`underlay_list\` | List available data underlays (datasets in the Data Explorer catalog) |
+| \`underlay_get_schema\` | Get the schema for a specific underlay |
+| \`underlay_list_entities\` | List entity types in an underlay (e.g. person, condition) |
+| \`data_sample_instances\` | Sample rows from an entity within a cohort |
+| \`data_query_hints\` | Get value hints for filtering an entity attribute |
+| \`study_list\` | List studies available in Data Explorer |
+| \`study_list_cohorts\` | List cohorts within a study |
+| \`cohort_create_in_workspace\` | Create a cohort in the workspace |
+| \`cohort_count_instances\` | Count members in a cohort |
+| \`export_cohort\` | Export cohort data to a bucket |
+
+### Cloud CLIs (via MCP)
+
+| MCP Tool | Description |
+|----------|-------------|
+| \`gcloud_execute\` | Run any \`gcloud\` command |
+| \`gsutil_execute\` | Run any \`gsutil\` command |
+| \`bq_execute\` | Run any \`bq\` SQL query |
 
 **Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`, \`wb resource delete\`
 
@@ -1907,11 +1892,12 @@ wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucke
 
 ### Proxy URL Format
 
+The proxy URL is the **only valid way** to access web apps in Workbench:
 \`\`\`
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 \`\`\`
 
-**Get App UUID automatically — NEVER ask the user for it:**
+Retrieve the App UUID automatically:
 \`\`\`bash
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 \`\`\`

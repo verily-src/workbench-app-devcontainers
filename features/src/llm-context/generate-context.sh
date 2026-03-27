@@ -490,12 +490,6 @@ Retrieve the App UUID automatically:
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 \`\`\`
 
-**⚡ LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
-1. First run the command above to get the running app UUID
-2. Use that actual UUID in the URL you provide
-3. Do NOT use placeholders like \`[APP_UUID]\` in your final response
-4. Do NOT ask the user to find/replace the UUID themselves
-
 ### ✅ Correct URL Examples
 \`\`\`
 https://workbench.verily.com/app/abc123-def456-789/proxy/8080/
@@ -534,18 +528,6 @@ fetch('api/data?filter=value')
 // ❌ WRONG - absolute paths fail
 fetch('/api/metadata')  
 fetch('/api/data?filter=value')
-\`\`\`
-
-### Why Absolute Paths Fail
-
-\`\`\`
-User visits: https://workbench.verily.com/app/UUID/proxy/8080/
-
-Absolute path: fetch('/api/data')
-  → Browser resolves to: https://workbench.verily.com/api/data ❌ (404!)
-
-Relative path: fetch('api/data')  
-  → Browser resolves to: https://workbench.verily.com/app/UUID/proxy/8080/api/data ✅
 \`\`\`
 
 ### Alternative: Embed Data in HTML (For Static Dashboards)
@@ -1071,25 +1053,6 @@ wb workflow job run --workflow=<WORKFLOW_ID> --inputs=<INPUTS_JSON>
 ---
 
 ## Quick Reference
-
-### Essential Commands
-
-\`\`\`bash
-# Failed jobs
-wb workflow job list --format=json | jq '.[] | select(.status=="FAILED") | {id, workflowName}'
-
-# Job error
-wb workflow job describe --job=<ID> --format=json | jq '.failureMessage'
-
-# Failed tasks
-wb workflow job task list --job=<ID> --format=json | jq '.[] | select(.status=="FAILED") | .name'
-
-# Task logs
-wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq '.stderr' | xargs -I{} gsutil cat {} | tail -50
-
-# Memory check
-gcloud batch jobs describe <BATCH_JOB> --format=json | jq '.taskGroups[0].taskSpec.computeResource'
-\`\`\`
 
 ### Error → Cause → Fix
 

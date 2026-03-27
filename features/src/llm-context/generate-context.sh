@@ -402,25 +402,9 @@ SKILL_EOF
 
 ---
 
-## Template Location
-
-All templates are at:
-```
-https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
-```
-
----
-
 ## How to Use a Template
 
-### Option 1: Deploy Directly
-```
-Repository: https://github.com/aculotti-verily/wb-app-mcp-and-context.git
-Branch: templates-only
-Folder: src/templates/<template-name>
-```
-
-### Option 2: Copy and Customize
+### Copy and Customize
 1. Copy the template folder to user's repo
 2. Modify application code in `app/`
 3. Update `devcontainer-template.json` with new name/description
@@ -593,13 +577,11 @@ renderChart(data);
 
 ### Testing Checklist
 
-Before deploying any web app:
-
-- [ ] **Relative paths** - All \`fetch()\` calls use \`'api/...'\` not \`'/api/...'\`
-- [ ] **Test locally** - \`curl http://localhost:PORT/api/endpoint\` returns data
-- [ ] **Server logs** - Verify API requests arrive: \`tail -f server.log\`
-- [ ] **Browser DevTools** - Network tab shows 200 status for API calls
-- [ ] **App UUID obtained** - Not using placeholder \`[APP_UUID]\`
+Before deploying:
+- [ ] All \`fetch()\` calls use relative paths (\`'api/...'\` not \`'/api/...'\`)
+- [ ] Test locally: \`curl http://localhost:PORT/api/endpoint\`
+- [ ] Server logs show API requests arriving
+- [ ] App UUID obtained (not using placeholder \`[APP_UUID]\`)
 
 ---
 
@@ -820,6 +802,661 @@ python3 app.py &
 - ❌ Forgetting to restart server after code changes
 - ❌ Not checking server logs when debugging
 DASHBOARD_SKILL_EOF
+
+    # Create WORKFLOW_TROUBLESHOOT.md skill (full version, embedded)
+    log_info "Creating WORKFLOW_TROUBLESHOOT.md skill..."
+    cat > "${SKILLS_DIR}/WORKFLOW_TROUBLESHOOT.md" << 'WORKFLOW_SKILL_EOF'
+# WDL Workflow Troubleshooting Skill
+
+**Trigger:** User asks to troubleshoot, debug, or fix a failed workflow.
+
+## ⚡ LLM Behavior: Be Proactive!
+
+**Once the user confirms which job to investigate, DO NOT ask which diagnostic steps to run.** Instead:
+1. **Run all diagnostic commands automatically** (Steps 2-4 at minimum)
+2. **Analyze the results** and identify the root cause
+3. **Report your diagnosis** with evidence (error messages, exit codes, log snippets)
+4. **Propose a fix** with specific changes
+5. **THEN ask** if they want you to apply the fix or investigate further
+
+❌ Don't say: "Would you like me to check the logs?"
+✅ Do say: "I checked the logs and found an OOM error. The task requested 8GB but needed more. I recommend increasing memory to 16GB in the runtime block."
+
+---
+
+## Quick Diagnosis (Start Here)
+
+\`\`\`bash
+# 1. Find failed jobs
+wb workflow job list --format=json | jq -r '.[] | select(.status=="FAILED") | "\(.id)\t\(.workflowName)\t\(.startTime)"'
+
+# 2. Get error message (replace JOB_ID)
+wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage // "No message"'
+
+# 3. Find failed task
+wb workflow job task list --job=<JOB_ID> --format=json | jq -r '.[] | select(.status=="FAILED") | .name'
+
+# 4. Get task error + logs
+wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json | jq '{stderr, stdout, exitCode, failureMessage}'
+\`\`\`
+
+**After running these 4 commands, you'll know:** which job failed, why, which task, and where logs are.
+
+---
+
+## Step-by-Step Guide
+
+### Step 1: Identify Failed Job
+
+\`\`\`bash
+# List all failed jobs
+wb workflow job list --format=json | jq '.[] | select(.status == "FAILED") | {id, workflowName, status, startTime, endTime}'
+\`\`\`
+
+**For batch jobs:**
+\`\`\`bash
+# List failed sub-jobs within a batch
+wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.status == "FAILED") | {id, status}'
+\`\`\`
+
+**Ask user:** Confirm which job ID to investigate (if multiple failed jobs).
+
+---
+
+### Step 2: Get Job Details & Inputs
+
+\`\`\`bash
+wb workflow job describe --job=<JOB_ID> --format=json | jq '{failureMessage, inputs, outputs}'
+\`\`\`
+
+---
+
+### Step 3: Find Failed Task & Get Logs
+
+\`\`\`bash
+# List all tasks with status
+wb workflow job task list --job=<JOB_ID> --format=json | jq '.[] | {name, status, exitCode}'
+
+# Get failed task details
+wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json
+\`\`\`
+
+**Extract log URLs:**
+\`\`\`bash
+# Get stderr and stdout URLs
+TASK_INFO=\$(wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json)
+STDERR_URL=\$(echo \$TASK_INFO | jq -r '.stderr')
+STDOUT_URL=\$(echo \$TASK_INFO | jq -r '.stdout')
+
+echo "stderr: \$STDERR_URL"
+echo "stdout: \$STDOUT_URL"
+\`\`\`
+
+---
+
+### Step 4: Pull and Analyze Task Logs
+
+#### Read Log Contents
+
+\`\`\`bash
+# Read stderr (usually contains errors)
+gsutil cat "\$STDERR_URL" 2>/dev/null | tail -100
+
+# Read stdout
+gsutil cat "\$STDOUT_URL" 2>/dev/null | tail -100
+
+# Search for common error patterns
+gsutil cat "\$STDERR_URL" 2>/dev/null | grep -i -E "error|exception|failed|denied|killed|oom|memory|disk|timeout" | head -30
+\`\`\`
+
+#### Common Log File Patterns
+
+Cromwell execution logs are typically at:
+\`\`\`
+gs://<execution-bucket>/<workflow-id>/<call-name>/execution/
+├── stdout          # Task standard output
+├── stderr          # Task standard error  
+├── script          # The actual command that ran
+├── rc              # Return code (exit code)
+└── script.submit   # Submission script
+\`\`\`
+
+**One-liner to read all execution files:**
+\`\`\`bash
+# Find execution directory from task describe, then:
+EXEC_DIR=\$(echo \$TASK_INFO | jq -r '.executionDirectory // empty')
+if [ -n "\$EXEC_DIR" ]; then
+  echo "=== script ===" && gsutil cat "\$EXEC_DIR/script" 2>/dev/null
+  echo "=== rc ===" && gsutil cat "\$EXEC_DIR/rc" 2>/dev/null
+  echo "=== stderr (last 50 lines) ===" && gsutil cat "\$EXEC_DIR/stderr" 2>/dev/null | tail -50
+fi
+\`\`\`
+
+---
+
+### Step 5: Check Resource Allocation & Usage
+
+#### What Was Requested (from WDL runtime)
+
+\`\`\`bash
+# Get workflow definition to see runtime requirements
+wb workflow describe --workflow=<WORKFLOW_ID> --format=json | jq '.sourceUrl'
+
+# Read WDL file
+gsutil cat gs://<bucket>/<path>/workflow.wdl | grep -A10 "runtime {"
+\`\`\`
+
+#### Check Actual Resource Usage (GCP Batch)
+
+\`\`\`bash
+# For GCP Cromwell jobs, get batch job details
+gcloud batch jobs list --filter="status.state=FAILED" --format="table(name,status.state,createTime)"
+
+# Describe specific batch job
+gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '{
+  status: .status.state,
+  statusEvents: .status.statusEvents,
+  taskGroups: .taskGroups[0].taskSpec.computeResource
+}'
+\`\`\`
+
+#### Memory-Specific Checks
+
+\`\`\`bash
+# Check if OOM (Out of Memory) killed the task
+gsutil cat "\$STDERR_URL" 2>/dev/null | grep -i -E "oom|out of memory|killed|cannot allocate|memory"
+
+# Check what memory was requested in batch job
+gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.computeResource.memoryMib'
+
+# Check dmesg/syslog for OOM events (if available in logs)
+gsutil cat "\$STDERR_URL" 2>/dev/null | grep -i "killed process"
+\`\`\`
+
+---
+
+### Step 6: Diagnose by Error Type
+
+#### Memory Issues (OOM)
+
+**Symptoms:**
+- Exit code 137 (SIGKILL) or 143
+- "Killed" in stderr
+- "Cannot allocate memory"
+- Task succeeded locally but fails at scale
+
+**Diagnosis:**
+\`\`\`bash
+# Check requested memory
+gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.computeResource'
+
+# Look for memory errors in logs
+gsutil cat "\$STDERR_URL" 2>/dev/null | grep -i -E "memory|oom|killed|malloc"
+\`\`\`
+
+**Fix:** Increase \`memory\` in WDL runtime block:
+\`\`\`wdl
+runtime {
+  memory: "32G"  # Increase from previous value
+}
+\`\`\`
+
+#### Disk Issues
+
+**Symptoms:**
+- "No space left on device"
+- "Disk quota exceeded"
+
+**Diagnosis:**
+\`\`\`bash
+gsutil cat "\$STDERR_URL" 2>/dev/null | grep -i -E "space|disk|quota"
+\`\`\`
+
+**Fix:** Increase disk in WDL runtime:
+\`\`\`wdl
+runtime {
+  disks: "local-disk 200 SSD"  # Increase size
+}
+\`\`\`
+
+#### Input File Issues
+
+**Symptoms:**
+- "FileNotFoundException"
+- "Localization failed"
+- File not found errors
+
+**Diagnosis:**
+\`\`\`bash
+# Check if input files exist
+wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.inputs | to_entries[] | .value' | while read path; do
+  if [[ \$path == gs://* ]]; then
+    echo -n "\$path: " && gsutil ls "\$path" 2>&1 | head -1
+  fi
+done
+\`\`\`
+
+#### Permission Issues
+
+**Symptoms:**
+- "Permission denied"
+- "Access denied"
+- 403 errors
+
+**Diagnosis:**
+\`\`\`bash
+# Check service account permissions
+gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.serviceAccount'
+
+# Test bucket access
+gsutil ls gs://<bucket>/ 2>&1 | head -5
+\`\`\`
+
+---
+
+### Step 7: Propose Solution
+
+Based on diagnosis, recommend one of:
+
+| Issue | Solution Template |
+|-------|-------------------|
+| **OOM** | "Increase memory from X to Y in the runtime block" |
+| **Disk full** | "Increase disk size from X to Y GB" |
+| **Missing input** | "Input file doesn't exist. Verify path: \`gsutil ls <path>\`" |
+| **Permission** | "Service account lacks access. Grant \`roles/storage.objectViewer\` on bucket" |
+| **Timeout** | "Task exceeded time limit. Increase \`maxRetries\` or optimize task" |
+| **Docker** | "Image pull failed. Verify image exists and is accessible" |
+
+**Re-run after fixing:**
+\`\`\`bash
+wb workflow job run --workflow=<WORKFLOW_ID> --inputs=<INPUTS_JSON>
+\`\`\`
+
+---
+
+## Quick Reference
+
+### Essential Commands
+
+\`\`\`bash
+# Failed jobs
+wb workflow job list --format=json | jq '.[] | select(.status=="FAILED") | {id, workflowName}'
+
+# Job error
+wb workflow job describe --job=<ID> --format=json | jq '.failureMessage'
+
+# Failed tasks
+wb workflow job task list --job=<ID> --format=json | jq '.[] | select(.status=="FAILED") | .name'
+
+# Task logs
+wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq '.stderr' | xargs -I{} gsutil cat {} | tail -50
+
+# Memory check
+gcloud batch jobs describe <BATCH_JOB> --format=json | jq '.taskGroups[0].taskSpec.computeResource'
+\`\`\`
+
+### Error → Cause → Fix
+
+| Exit Code | Meaning | Common Fix |
+|-----------|---------|------------|
+| 1 | General error | Check stderr for details |
+| 2 | Misuse of command | Check script syntax |
+| 126 | Permission problem | Check file permissions |
+| 127 | Command not found | Check PATH, container image |
+| 137 | SIGKILL (OOM) | **Increase memory** |
+| 139 | Segfault | Check input data, memory |
+| 143 | SIGTERM | Task timeout or preemption |
+
+---
+
+## Workbench-Specific Notes
+
+- **Log retention:** Cromwell logs persist in workspace execution bucket
+- **Batch jobs:** Each sub-job has independent logs; troubleshoot specific failed sub-job
+- **VPC-SC:** Run \`gcloud batch\` commands from within workspace app
+- **Preemption:** If using spot VMs, set \`preemptible: 0\` for reliability
+WORKFLOW_SKILL_EOF
+
+    # Create scientific skills directory and index
+    log_info "Creating scientific skills..."
+    mkdir -p "${SKILLS_DIR}/scientific"
+    
+    # Create SCIENTIFIC_SKILLS_INDEX.md
+    cat > "${SKILLS_DIR}/SCIENTIFIC_SKILLS_INDEX.md" << 'SCIENTIFIC_SKILLS_EOF'
+# Scientific Skills Index
+
+**This file routes Claude to domain-specific scientific skills.**
+Workbench skills (workflows, dashboards, custom apps) are handled directly by `CLAUDE.md`.
+
+---
+
+## ⚡ Quick Navigation
+
+| User Says... | Read This Skill |
+|--------------|-----------------|
+| "single-cell" / "RNA-seq" / "scanpy" / "differential expression" | `scientific/BIOINFORMATICS.md` |
+| "molecule" / "SMILES" / "drug" / "RDKit" / "ChEMBL" / "target" | `scientific/DRUG_DISCOVERY.md` |
+| "gene" / "protein" / "variant" / "UniProt" / "Ensembl" / "PDB" | `scientific/GENOMICS_DATABASES.md` |
+| "machine learning" / "sklearn" / "statistics" / "plot" | `scientific/DATA_ANALYSIS.md` |
+| "clinical trial" / "PubMed" / "survival analysis" | `scientific/CLINICAL.md` |
+
+---
+
+## Domain Skills
+
+### 🧬 Bioinformatics (`scientific/BIOINFORMATICS.md`)
+Single-cell analysis, differential expression, sequence analysis, RNA velocity.
+**Packages:** scanpy, anndata, biopython, pydeseq2, scvelo
+
+### 💊 Drug Discovery (`scientific/DRUG_DISCOVERY.md`)
+Cheminformatics, molecular ML, bioactivity databases, target identification.
+**Packages/APIs:** rdkit, deepchem, chembl, drugbank, opentargets
+
+### 🔬 Genomics Databases (`scientific/GENOMICS_DATABASES.md`)
+Gene annotations, protein data, variant interpretation, 3D structures.
+**APIs:** ensembl, uniprot, clinvar, pdb
+
+### 📊 Data Analysis (`scientific/DATA_ANALYSIS.md`)
+Machine learning, statistics, visualization.
+**Packages:** scikit-learn, statsmodels, plotly, seaborn
+
+### 🏥 Clinical (`scientific/CLINICAL.md`)
+Clinical trials, literature search, survival analysis.
+**APIs:** clinicaltrials.gov, pubmed
+
+---
+
+## Adding New Skills
+
+To add skills from [claude-scientific-skills](https://github.com/K-Dense-AI/claude-scientific-skills):
+
+1. Copy the `SKILL.md` file to `scientific/<skill-name>.md`
+2. Add a row to the Quick Navigation table above
+3. Add a domain section below
+SCIENTIFIC_SKILLS_EOF
+
+    # Create BIOINFORMATICS.md
+    cat > "${SKILLS_DIR}/scientific/BIOINFORMATICS.md" << 'BIOINFO_EOF'
+# Bioinformatics Skills
+
+**Trigger:** Single-cell, RNA-seq, sequences, differential expression, trajectory.
+
+## Quick Reference
+| Task | Package | Import |
+|------|---------|--------|
+| Single-cell workflow | scanpy | `import scanpy as sc` |
+| Differential expression | pydeseq2 | `from pydeseq2 import DeseqDataSet` |
+| Sequence analysis | biopython | `from Bio import SeqIO` |
+| RNA velocity | scvelo | `import scvelo as scv` |
+
+## Scanpy Workflow
+```python
+import scanpy as sc
+adata = sc.read_h5ad('data.h5ad')
+sc.pp.calculate_qc_metrics(adata, inplace=True)
+sc.pp.normalize_total(adata, target_sum=1e4)
+sc.pp.log1p(adata)
+sc.pp.highly_variable_genes(adata, n_top_genes=2000)
+sc.tl.pca(adata)
+sc.pp.neighbors(adata)
+sc.tl.umap(adata)
+sc.tl.leiden(adata)
+sc.tl.rank_genes_groups(adata, 'leiden')
+sc.pl.umap(adata, color='leiden')
+```
+
+## PyDESeq2 (Differential Expression)
+```python
+from pydeseq2.dds import DeseqDataSet
+from pydeseq2.ds import DeseqStats
+dds = DeseqDataSet(counts=counts.T, metadata=metadata, design_factors='condition')
+dds.deseq2()
+stat_res = DeseqStats(dds, contrast=['condition', 'treated', 'control'])
+results = stat_res.results_df
+sig = results[(results['padj'] < 0.05) & (abs(results['log2FoldChange']) > 1)]
+```
+
+## Biopython
+```python
+from Bio import SeqIO, Entrez
+Entrez.email = "email@example.com"
+# Parse FASTA
+for record in SeqIO.parse('seq.fasta', 'fasta'):
+    print(record.id, len(record.seq))
+# NCBI fetch
+handle = Entrez.efetch(db="nucleotide", id="NM_001301717", rettype="fasta")
+```
+
+Install: `pip install scanpy anndata pydeseq2 biopython scvelo`
+BIOINFO_EOF
+
+    # Create DRUG_DISCOVERY.md
+    cat > "${SKILLS_DIR}/scientific/DRUG_DISCOVERY.md" << 'DRUGDISC_EOF'
+# Drug Discovery Skills
+
+**Trigger:** Molecules, SMILES, drugs, fingerprints, ADMET, targets, bioactivity.
+
+## Quick Reference
+| Task | Tool | Access |
+|------|------|--------|
+| Molecular properties | rdkit | `from rdkit import Chem` |
+| ADMET prediction | deepchem | `import deepchem as dc` |
+| Bioactivity (IC50, Ki) | ChEMBL | REST API |
+| Drug info | DrugBank | REST API |
+| Target-disease | Open Targets | GraphQL |
+
+## RDKit
+```python
+from rdkit import Chem
+from rdkit.Chem import Descriptors, AllChem, DataStructs
+
+mol = Chem.MolFromSmiles('CC(=O)OC1=CC=CC=C1C(=O)O')  # Aspirin
+mw = Descriptors.MolWt(mol)
+logp = Descriptors.MolLogP(mol)
+hbd = Descriptors.NumHDonors(mol)
+hba = Descriptors.NumHAcceptors(mol)
+
+# Fingerprint similarity
+fp1 = AllChem.GetMorganFingerprintAsBitVect(mol1, radius=2)
+fp2 = AllChem.GetMorganFingerprintAsBitVect(mol2, radius=2)
+similarity = DataStructs.TanimotoSimilarity(fp1, fp2)
+```
+
+## ChEMBL API
+```python
+from chembl_webresource_client.new_client import new_client
+molecule = new_client.molecule
+activity = new_client.activity
+# Search compound
+aspirin = molecule.filter(pref_name__iexact='aspirin')[0]
+# Get activities for target
+acts = activity.filter(target_chembl_id='CHEMBL230', pchembl_value__gte=6)
+```
+
+## Open Targets API
+```python
+import requests
+query = '''query { target(ensemblId: "ENSG00000157764") {
+  approvedSymbol
+  associatedDiseases { rows { disease { name } score } }
+}}'''
+r = requests.post("https://api.platform.opentargets.org/api/v4/graphql", json={'query': query})
+```
+
+Install: `pip install rdkit deepchem chembl_webresource_client`
+DRUGDISC_EOF
+
+    # Create GENOMICS_DATABASES.md
+    cat > "${SKILLS_DIR}/scientific/GENOMICS_DATABASES.md" << 'GENOMICS_EOF'
+# Genomics Databases Skills
+
+**Trigger:** Genes, proteins, variants, structures, Ensembl, UniProt, ClinVar, PDB.
+
+## Quick Reference
+| Need | Database | API |
+|------|----------|-----|
+| Gene annotations | Ensembl | REST |
+| Protein data | UniProt | REST |
+| Variant pathogenicity | ClinVar | E-utilities |
+| 3D structures | PDB | REST |
+
+## Ensembl
+```python
+import requests
+SERVER = "https://rest.ensembl.org"
+# Gene lookup
+gene = requests.get(f"{SERVER}/lookup/symbol/homo_sapiens/BRCA1",
+                   headers={"Content-Type": "application/json"}).json()
+# Sequence
+seq = requests.get(f"{SERVER}/sequence/id/{gene['id']}").json()
+```
+
+## UniProt
+```python
+import requests
+# Search protein
+r = requests.get("https://rest.uniprot.org/uniprotkb/search",
+    params={"query": "gene:TP53 AND organism_id:9606", "format": "json"})
+# Get by ID
+protein = requests.get("https://rest.uniprot.org/uniprotkb/P04637.json").json()
+```
+
+## ClinVar
+```python
+from Bio import Entrez
+Entrez.email = "email@example.com"
+handle = Entrez.esearch(db="clinvar", term="BRCA1[gene] AND pathogenic[clinsig]")
+record = Entrez.read(handle)
+```
+
+## PDB
+```python
+import requests
+# Get structure
+structure = requests.get("https://data.rcsb.org/rest/v1/core/entry/1TUP").json()
+# Download PDB file
+pdb = requests.get("https://files.rcsb.org/download/1TUP.pdb").text
+```
+
+Install: `pip install biopython requests`
+GENOMICS_EOF
+
+    # Create DATA_ANALYSIS.md
+    cat > "${SKILLS_DIR}/scientific/DATA_ANALYSIS.md" << 'DATAANALYSIS_EOF'
+# Data Analysis Skills
+
+**Trigger:** ML, statistics, visualization, sklearn, regression, clustering, plots.
+
+## Quick Reference
+| Task | Package | Import |
+|------|---------|--------|
+| ML models | scikit-learn | `from sklearn.ensemble import RandomForestClassifier` |
+| Statistics | statsmodels | `import statsmodels.api as sm` |
+| Interactive plots | plotly | `import plotly.express as px` |
+| Statistical plots | seaborn | `import seaborn as sns` |
+
+## Scikit-learn
+```python
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+model = RandomForestClassifier(n_estimators=100)
+model.fit(X_train, y_train)
+print(classification_report(y_test, model.predict(X_test)))
+cv_scores = cross_val_score(model, X, y, cv=5)
+```
+
+## Statsmodels
+```python
+import statsmodels.api as sm
+X_const = sm.add_constant(X)
+model = sm.OLS(y, X_const).fit()
+print(model.summary())  # Full regression output with p-values
+```
+
+## Plotly
+```python
+import plotly.express as px
+fig = px.scatter(df, x='x', y='y', color='category', hover_data=['name'])
+fig.show()
+fig = px.histogram(df, x='value', color='group')
+fig = px.box(df, x='category', y='value')
+```
+
+## Seaborn
+```python
+import seaborn as sns
+import matplotlib.pyplot as plt
+sns.boxplot(data=df, x='category', y='value', hue='group')
+sns.heatmap(df.corr(), annot=True, cmap='coolwarm')
+sns.pairplot(df, hue='category')
+plt.savefig('plot.png', dpi=300)
+```
+
+Install: `pip install scikit-learn statsmodels plotly seaborn`
+DATAANALYSIS_EOF
+
+    # Create CLINICAL.md
+    cat > "${SKILLS_DIR}/scientific/CLINICAL.md" << 'CLINICAL_EOF'
+# Clinical Skills
+
+**Trigger:** Clinical trials, PubMed, literature, survival analysis.
+
+## Quick Reference
+| Task | Source | Access |
+|------|--------|--------|
+| Clinical trials | ClinicalTrials.gov | REST API |
+| Literature | PubMed | E-utilities |
+| Survival analysis | lifelines | Python |
+
+## ClinicalTrials.gov API
+```python
+import requests
+BASE = "https://clinicaltrials.gov/api/v2"
+# Search trials
+r = requests.get(f"{BASE}/studies", params={
+    "query.cond": "breast cancer",
+    "query.intr": "pembrolizumab",
+    "filter.overallStatus": "RECRUITING"
+})
+for study in r.json()['studies']:
+    info = study['protocolSection']['identificationModule']
+    print(f"{info['nctId']}: {info['briefTitle']}")
+```
+
+## PubMed
+```python
+from Bio import Entrez
+Entrez.email = "email@example.com"
+handle = Entrez.esearch(db="pubmed", term="CRISPR cancer[Title/Abstract]", retmax=20)
+pmids = Entrez.read(handle)['IdList']
+handle = Entrez.efetch(db="pubmed", id=pmids, rettype="abstract")
+print(handle.read())
+```
+
+## Survival Analysis (lifelines)
+```python
+from lifelines import KaplanMeierFitter, CoxPHFitter
+from lifelines.statistics import logrank_test
+
+kmf = KaplanMeierFitter()
+kmf.fit(durations, events, label='Survival')
+kmf.plot_survival_function()
+
+# Compare groups
+results = logrank_test(dur1, dur2, ev1, ev2)
+print(f"p-value: {results.p_value:.4f}")
+
+# Cox regression
+cph = CoxPHFitter()
+cph.fit(df, duration_col='time', event_col='event')
+cph.print_summary()
+```
+
+Install: `pip install biopython requests lifelines`
+CLINICAL_EOF
 }
 
 # Fetch workspace information
@@ -957,33 +1594,6 @@ You are working inside **Verily Workbench**, a secure cloud-based research envir
 
 ---
 
-## ⚡ MCP Tools First!
-
-> **Before running ANY CLI command, check if an MCP tool exists for the operation.**
-> MCP tools return structured JSON and are faster than parsing CLI output.
-
-| Common Task | ✅ Use This MCP Tool |
-|-------------|---------------------|
-| List data collections | \`workspace_list_data_collections\` |
-| List resources | \`workspace_list_resources\` |
-| Resources by folder | \`resource_list_tree\` |
-| Query BigQuery | \`bq_execute\` |
-| List bucket files | \`list_files\` |
-
-**Skip to:** [Data Exploration Cheatsheet](#-data-exploration-cheatsheet) | [MCP Tools](#mcp-tools-available)
-
----
-
-## What is Verily Workbench?
-
-Verily Workbench is a platform that enables researchers to:
-- Access and analyze biomedical data (clinical, genomics, wearables, imaging)
-- Run computational workflows at scale (WDL, Nextflow)
-- Collaborate securely with governance and policy enforcement
-- Use familiar tools (Jupyter, RStudio, VS Code) in the cloud
-
----
-
 ## Current Workspace
 
 | Property | Value |
@@ -1051,6 +1661,14 @@ The response includes:
 ### Workflows
 Workflows are reproducible pipelines in WDL or Nextflow format, registered in the workspace.
 
+### Policies & Constraints
+Workspaces may have policies that restrict:
+- **Region**: Where data and compute must reside
+- **Groups**: Who can access the workspace
+- **Export**: Whether data can leave the workspace
+
+Check with: \`wb workspace describe\`
+
 ---
 
 ## ⚠️ Important: Data Persistence
@@ -1105,33 +1723,78 @@ gs://your-bucket/
 └── models/             # Trained ML models
 \`\`\`
 
-### 🤖 LLM Guidance
+### LLM Guidance
 
-**As an AI assistant, you should proactively help users persist their work:**
-
-1. **When users create files locally**, ask: *"Would you like me to save this to a cloud bucket so it persists after the app stops?"*
-
-2. **When users finish analysis**, suggest: *"Your results are saved locally. Should I copy them to a bucket for long-term storage?"*
-
-3. **At session end**, remind: *"Remember to save any important local files to cloud storage before stopping the app."*
-
-4. **Check local disk usage** to identify files that need saving:
-   \`\`\`bash
-   du -sh ~/*
-   ls -la ~/
-   \`\`\`
+- **When users create files locally**, suggest saving to a bucket: \`gsutil cp <file> gs://<bucket>/\`
+- **When users finish analysis**, remind: *"Save important outputs to cloud storage before stopping the app."*
+- **List available buckets:** \`wb resource list --type=GCS_BUCKET --format=json\`
 
 ---
 
-## 🔍 Data Exploration Cheatsheet
+## MCP Tools
 
-This is the **most important section** for quickly discovering and accessing data.
+> **Always use MCP tools before falling back to CLI. MCP tools return structured JSON and are faster.**
 
-> **⚡ MCP FIRST:** Always check if an MCP tool exists before using CLI commands. MCP tools return structured data and are faster.
+| Interface | Best For |
+|-----------|----------|
+| **MCP Tools** | List/query operations — structured responses, no shell needed |
+| **CLI (\`wb\`)** | Complex operations or anything not covered by MCP |
 
-### Step 1: Find Your Resources
+### Available MCP Tools
 
-**🎯 Use MCP tools (preferred):**
+| MCP Tool | CLI Equivalent | Description |
+|----------|----------------|-------------|
+| \`workspace_list_data_collections\` | N/A | **List data collections and their resources** |
+| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
+| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
+| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
+| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
+| \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
+| \`build_cohort\` | *(UI only)* | Create a cohort using Data Explorer |
+| \`export_cohort\` | *(UI only)* | Export cohort data to a bucket |
+| \`create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
+| \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
+| \`read_file\` | \`gsutil cat\` | Read contents of a file |
+
+**Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`, \`wb resource delete\`
+
+## CLI Quick Reference
+
+\`\`\`bash
+# Workspace
+wb workspace describe          # Current workspace details
+wb workspace list              # All your workspaces
+wb workspace set <id>          # Switch workspace
+
+# Resources
+wb resource list               # List resources
+wb resource describe <name>    # Resource details
+wb resource delete <name>      # Delete resource
+
+# Workflows
+wb workflow list               # List workflows
+wb workflow run <id>           # Run workflow
+wb workflow describe <run-id>  # Run status
+wb workflow logs <run-id>      # Run logs
+
+# Apps
+wb app list                    # List running apps
+wb app describe <name>         # App details
+
+# Auth
+wb auth status                 # Check authentication
+wb auth login                  # Re-authenticate
+\`\`\`
+
+---
+
+## ⚠️ Important: Data Persistence
+
+> **⚡ MCP FIRST:** Always check if an MCP tool exists before using CLI commands.
+
+### Find Your Resources
+
+**Use MCP tools (preferred):**
 | What You Need | MCP Tool |
 |---------------|----------|
 | Data collections + their resources | \`workspace_list_data_collections\` |
@@ -1143,36 +1806,53 @@ This is the **most important section** for quickly discovering and accessing dat
 wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
 \`\`\`
 
-### Step 2: Use Environment Variables (Easiest!)
-Every resource is available as an environment variable:
+### Get the Cloud Path for a Resource
+
 \`\`\`bash
-# Pattern: \$WORKBENCH_<resource_name>
+wb resource describe <resource-name> --format=json
+# Look for: bucketName, projectId+datasetId, gitRepoUrl
+\`\`\`
+
+### Use Environment Variables (Easiest)
+
+\`\`\`bash
 echo \$WORKBENCH_my_bucket      # → gs://actual-bucket-name
 env | grep WORKBENCH_           # List all
 \`\`\`
 
-### Step 3: Get Cloud Paths
-\`\`\`bash
-wb resource describe <resource-name> --format=json
-# Look for: bucketName, projectId, datasetId, gitRepoUrl
-\`\`\`
-
-### Step 4: Preview Data Quickly
+### Preview Data
 
 **BigQuery:**
 \`\`\`bash
-bq head -n 10 <project>:<dataset>.<table>     # Quick preview
-bq show --schema <project>:<dataset>.<table>  # Column names/types
-bq show --format=prettyjson <project>:<dataset>.<table> | jq '{rows: .numRows}'  # Row count
+bq head -n 10 <project>:<dataset>.<table>
+bq show --schema <project>:<dataset>.<table>
+bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
 \`\`\`
 
 **GCS:**
 \`\`\`bash
-gsutil ls gs://<bucket>/                       # List files
-gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
+gsutil ls gs://<bucket>/
+gsutil cat -r 0-1024 gs://<bucket>/path/file.csv
 \`\`\`
 
-### 🤖 LLM Quick Patterns
+### Query Data
+
+**CLI:**
+\`\`\`bash
+bq query --use_legacy_sql=false 'SELECT col1, col2 FROM \`project.dataset.table\` LIMIT 100'
+\`\`\`
+
+**Python:**
+\`\`\`python
+from google.cloud import bigquery
+client = bigquery.Client()
+df = client.query("SELECT * FROM \`project.dataset.table\` LIMIT 100").to_dataframe()
+
+import pandas as pd
+df = pd.read_parquet('gs://bucket-name/path/file.parquet')
+\`\`\`
+
+### LLM Quick Reference
 
 | User Question | Best Tool | Command/Tool |
 |---------------|-----------|--------------|
@@ -1182,59 +1862,9 @@ gsutil cat -r 0-1024 gs://<bucket>/file.csv    # Preview first 1KB
 | "Query this BigQuery table" | **MCP** | \`bq_execute\` |
 | "What tables are in this dataset?" | CLI | \`bq ls <project>:<dataset>\` |
 | "What columns in this table?" | CLI | \`bq show --schema <project>:<dataset>.<table>\` |
-| "How big is this table?" | CLI | \`bq show --format=prettyjson ... \\| jq '{rows: .numRows}'\` |
-| "Show me sample data" | CLI | \`bq head -n 5 <project>:<dataset>.<table>\` |
 | "List files in bucket" | **MCP** | \`list_files\` |
 
-> **⚠️ Pattern to avoid:** Don't default to \`wb resource list\` for data collection questions. Use \`workspace_list_data_collections\` instead!
-
----
-
-## How to Discover Data (Detailed)
-
-### List Resources
-\`\`\`bash
-wb resource list
-wb resource list --format=json
-wb resource describe <resource-name>
-\`\`\`
-
-### Explore GCS Buckets
-\`\`\`bash
-gsutil ls gs://<bucket>/
-gsutil ls -l gs://<bucket>/path/
-gsutil cat gs://<bucket>/path/file.txt
-\`\`\`
-
-### Explore BigQuery
-\`\`\`bash
-bq ls <project>:<dataset>
-bq show <project>:<dataset>.<table>
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
-\`\`\`
-
----
-
-## How to Query Data
-
-### BigQuery (CLI)
-\`\`\`bash
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 100'
-\`\`\`
-
-### BigQuery (Python)
-\`\`\`python
-from google.cloud import bigquery
-client = bigquery.Client()
-df = client.query("SELECT * FROM \\\`project.dataset.table\\\` LIMIT 100").to_dataframe()
-\`\`\`
-
-### GCS Files (Python)
-\`\`\`python
-import pandas as pd
-df = pd.read_parquet('gs://bucket/path/file.parquet')
-df = pd.read_csv('gs://bucket/path/file.csv')
-\`\`\`
+> **⚠️ Don't default to \`wb resource list\` for data collection questions. Use \`workspace_list_data_collections\` instead.**
 
 ---
 
@@ -1271,200 +1901,72 @@ wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucke
 
 ---
 
-## MCP vs CLI: When to Use Each
+## ⚠️ Workbench Web Apps & Proxy URLs
 
-This app has **two interfaces** to Workbench functionality:
+> **🚨 If the user wants a dashboard, chart, Flask app, HTML page, or ANY web UI — read \`~/.workbench/skills/DASHBOARD_BUILDER.md\` first.**
 
-| Interface | Best For | Pros | Cons |
-|-----------|----------|------|------|
-| **MCP Tools** | LLM operations | Structured responses, no shell needed, faster | Limited tool set |
-| **CLI (\`wb\`)** | Complex operations, fallback | Full feature coverage, human-friendly | Requires shell execution, text parsing |
+### Proxy URL Format
 
-### ⚠️ Common Operations — USE MCP, NOT CLI
-
-These operations have dedicated MCP tools. **Do NOT use CLI for these:**
-
-| Operation | ✅ Use MCP Tool | ❌ Don't Use CLI |
-|-----------|-----------------|------------------|
-| List data collections | \`workspace_list_data_collections\` | ~~\`wb resource list\`~~ |
-| List all resources | \`workspace_list_resources\` | ~~\`wb resource list\`~~ |
-| Resources by folder | \`resource_list_tree\` | ~~\`wb resource list-tree\`~~ |
-| Run BigQuery query | \`bq_execute\` | ~~\`bq query\`~~ |
-| List bucket files | \`list_files\` | ~~\`gsutil ls\`~~ |
-
-### 🤖 LLM Decision Guide
-
-1. **ALWAYS check MCP tools first** — especially for list/query operations
-2. **Fall back to CLI only** when MCP doesn't have the tool
-3. **Use cloud CLIs** (\`gsutil\`, \`bq\`) only for operations MCP doesn't support
-
-### Example: Same Operation, Two Ways
-
-**List resources:**
-- ✅ MCP: Use \`workspace_list_resources\` tool → returns JSON array
-- ⚠️ CLI: Run \`wb resource list --format=json\` → requires shell, parsing
-
-**Query BigQuery:**
-- ✅ MCP: Use \`bq_execute\` tool with query parameter → returns results
-- ⚠️ CLI: Run \`bq query --use_legacy_sql=false 'SELECT ...'\` → requires parsing
-
----
-
-## MCP Tools Available
-
-The Workbench MCP server exposes these tools for programmatic LLM access:
-
-| MCP Tool | CLI Equivalent | Description |
-|----------|----------------|-------------|
-| \`workspace_list_data_collections\` | N/A | **List data collections and their resources** |
-| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
-| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
-| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
-| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
-| \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
-| \`build_cohort\` | *(UI only)* | Create a cohort using Data Explorer |
-| \`export_cohort\` | *(UI only)* | Export cohort data to a bucket |
-| \`create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
-| \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
-| \`read_file\` | \`gsutil cat\` | Read contents of a file |
-
-**Not available via MCP (use CLI instead):**
-- \`wb workspace set\` — switch workspaces
-- \`wb auth login\` — re-authenticate
-- \`wb workflow logs\` — view workflow logs
-- \`wb resource delete\` — delete resources
-- Complex resource creation with many options
-
----
-
-## CLI Quick Reference
-
-\`\`\`bash
-# Auth
-wb auth status                 # Check authentication
-wb auth login                  # Re-authenticate
-
-# Workspace
-wb workspace describe          # Current workspace details
-wb workspace list              # All your workspaces  
-wb workspace set <id>          # Switch workspace
-
-# Resources
-wb resource list               # List resources
-wb resource list --format=json # JSON output
-wb resource describe <name>    # Resource details
-wb resource delete <name>      # Delete resource
-
-# Workflows
-wb workflow list               # List workflows
-wb workflow run <id>           # Run workflow
-wb workflow describe <run-id>  # Run status
-wb workflow logs <run-id>      # Run logs
-
-# Apps
-wb app list                    # List running apps
-wb app describe <name>         # App details
-\`\`\`
-
----
-
-## Best Practices
-
-1. **Explore before acting**: Use \`LIMIT\` in queries, \`ls\` before copying
-2. **Use environment variables**: \`\$WORKBENCH_<resource>\` for scripts
-3. **Cost awareness**: Large queries and compute cost money
-4. **Reproducibility**: Document analysis, version code
-5. **Confirm destructive actions**: Check before deleting
-
----
-
-## ⚠️ Workbench Web Apps & Proxy URLs (CRITICAL)
-
-> **🚨 STOP! If user wants a dashboard, chart, Flask app, HTML page, or ANY web UI:**
-> **→ READ \`~/.workbench/skills/DASHBOARD_BUILDER.md\` FIRST!**
-> 
-> That skill contains critical configuration, working templates, and troubleshooting for all interactive web content.
-
-### Quick Reference
-
-**Proxy URL format (all web content):**
 \`\`\`
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 \`\`\`
 
-**Get App UUID automatically (NEVER ask user for it):**
+**Get App UUID automatically — NEVER ask the user for it:**
 \`\`\`bash
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 \`\`\`
 
-### ⚠️ JavaScript Relative Paths (Critical for Dashboards)
-
-**All fetch() calls in JavaScript MUST use relative paths:**
-\`\`\`javascript
-// ✅ CORRECT - works through Workbench proxy
-fetch('api/data')
-
-// ❌ WRONG - absolute path breaks through proxy (404 error!)
-fetch('/api/data')
-\`\`\`
-
-**Why:** \`fetch('/api/data')\` resolves to \`workbench.verily.com/api/data\` (wrong!)  
-**Should be:** \`workbench.verily.com/app/UUID/proxy/PORT/api/data\`
-
 ### Common Ports
-| Content Type | Port | Example Command |
-|--------------|------|-----------------|
-| Flask/FastAPI | 8080 | \`flask run --port 8080\` |
-| Streamlit | 8501 | \`streamlit run app.py\` |
-| Static HTML | 8000 | \`python3 -m http.server 8000\` |
-| R Shiny | 3838 | (configured in app) |
+
+| Content Type | Port |
+|--------------|------|
+| Flask/FastAPI | 8080 |
+| Streamlit | 8501 |
+| Static HTML | 8000 |
+| R Shiny | 3838 |
+
+### ⚠️ JavaScript: Always Use Relative Paths
+
+All \`fetch()\` calls in JavaScript **must** use relative paths (no leading \`/\`):
+
+\`\`\`javascript
+fetch('api/data')   // ✅ resolves to workbench.verily.com/app/UUID/proxy/8080/api/data
+fetch('/api/data')  // ❌ resolves to workbench.verily.com/api/data — 404!
+\`\`\`
 
 ### ❌ Wrong URL Formats
+
 \`\`\`
-https://UUID.workbench-app.verily.com/     ← Bad Request error
-http://localhost:8080/                     ← Not accessible externally  
-file:///home/jupyter/dashboard.html        ← JavaScript blocked
+https://UUID.workbench-app.verily.com/   ← Bad Request error
+http://localhost:8080/                   ← Not accessible externally
+file:///home/jupyter/dashboard.html      ← JavaScript blocked
 \`\`\`
-
----
-
-## Creating Custom Apps
-
-> **When a user asks to create an app, turn code into an app, or build something deployable:**
-
-### Step 1: Determine the Type
-
-| User Wants... | Read This Skill |
-|---------------|-----------------|
-| Dashboard, visualization, Flask app, web UI | \`DASHBOARD_BUILDER.md\` |
-| Deployable custom app from scratch | \`CUSTOM_APP.md\` |
-
-### Step 2: Use the Appropriate Skill
-
-**For dashboards/web UIs** → \`~/.workbench/skills/DASHBOARD_BUILDER.md\`
-- Working Flask templates with BigQuery
-- Critical proxy URL configuration
-- Tested troubleshooting guides
-
-**For deployable apps** → \`~/.workbench/skills/CUSTOM_APP.md\`
-- Minimal devcontainer pattern
-- Docker configuration
-- Deployment checklist
-
-### Quick Reference
-- **Templates**: https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/templates-only/src/templates/
-- **Full-featured apps**: https://github.com/verily-src/workbench-app-devcontainers
 
 ---
 
 ## Available Skills
 
-When users ask about specific topics, **read these skill files** for detailed guidance:
+### Workbench Skills
+
+Read these directly — no index needed:
 
 | Topic | Skill File | When to Use |
 |-------|------------|-------------|
-| **🚨 Dashboards, HTML, Flask, Web UIs** | \`~/.workbench/skills/DASHBOARD_BUILDER.md\` | **READ THIS FIRST** for any: dashboard, chart, visualization, Flask app, Streamlit, HTML page, web UI, interactive display, Plotly, or anything running on a port |
-| Building custom apps | \`~/.workbench/skills/CUSTOM_APP.md\` | User wants to build a deployable app from scratch |
+| **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
+| Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
+| **Workflow debugging** | \`WORKFLOW_TROUBLESHOOT.md\` | Failed WDL/Nextflow, logs, memory/disk issues |
+
+### Scientific Skills
+
+> **📚 Read \`~/.workbench/skills/SCIENTIFIC_SKILLS_INDEX.md\` first** to navigate scientific domain skills.
+
+| Domain | Skill File | Covers |
+|--------|------------|--------|
+| 🧬 Bioinformatics | \`scientific/BIOINFORMATICS.md\` | scanpy, anndata, pydeseq2, biopython, scvelo |
+| 💊 Drug Discovery | \`scientific/DRUG_DISCOVERY.md\` | rdkit, deepchem, chembl, drugbank, opentargets |
+| 🔬 Genomics DBs | \`scientific/GENOMICS_DATABASES.md\` | ensembl, uniprot, clinvar, pdb |
+| 📊 Data Analysis | \`scientific/DATA_ANALYSIS.md\` | sklearn, statsmodels, plotly, seaborn |
+| 🏥 Clinical | \`scientific/CLINICAL.md\` | clinicaltrials.gov, pubmed, lifelines |
 
 ### ⚡ Skill Trigger Guide
 
@@ -1477,9 +1979,23 @@ When users ask about specific topics, **read these skill files** for detailed gu
 - "show in browser" / "open in new tab"
 - Any request to display data interactively
 
-**Read CUSTOM_APP.md when:**
+**Read \`CUSTOM_APP.md\` when:**
 - "build a deployable app" / "create a custom app"
 - "API service" / "backend" / "from scratch"
+
+**Read \`WORKFLOW_TROUBLESHOOT.md\` when:**
+- "troubleshoot my workflow" / "fix my workflow"
+- "my workflow failed" / "workflow error" / "debug workflow"
+- "troubleshoot my job" / "my job failed" / "workflow job failed"
+- "job failed" / "task failed" / "out of memory"
+- "check logs" / "why did it fail" / "troubleshoot"
+
+**Read \`SCIENTIFIC_SKILLS_INDEX.md\` then the relevant domain file when user mentions:**
+- "single-cell" / "RNA-seq" / "scanpy" / "differential expression"
+- "molecule" / "SMILES" / "drug" / "RDKit" / "ChEMBL"
+- "gene" / "protein" / "variant" / "UniProt" / "Ensembl" / "PDB"
+- "machine learning" / "sklearn" / "statistics"
+- "clinical trial" / "PubMed" / "survival analysis"
 
 ---
 
@@ -1505,7 +2021,9 @@ To refresh after workspace changes:
 ## Getting Help
 
 - **Docs**: https://support.workbench.verily.com
-- **Custom Apps**: https://github.com/verily-src/workbench-app-devcontainers
+- **Custom Apps Guide**: https://support.workbench.verily.com/docs/guides/cloud_apps/create_custom_apps/
+- **Devcontainers Repo**: https://github.com/verily-src/workbench-app-devcontainers
+- **Devcontainer Reference**: https://containers.dev/implementors/json_reference/
 - **CLI Help**: \`wb --help\` or \`wb <command> --help\`
 - **Support**: support@workbench.verily.com
 

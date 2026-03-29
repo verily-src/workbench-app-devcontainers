@@ -89,7 +89,6 @@ CONDA_PACKAGES_LIBRARIES=(
     "conda-forge::scikit-learn"
     "conda-forge::scipy"
     "conda-forge::tqdm"
-    "conda-forge::snakemake"
     "bioconda::bioconductor-deseq2"
     "conda-forge::r-seurat"
     "conda-forge::scanpy"
@@ -99,6 +98,7 @@ CONDA_PACKAGES_LIBRARIES=(
 
 # Packages to install via PIP to avoid Mamba solver conflicts
 readonly PIP_PACKAGES_OMICS=(
+    "snakemake"
     "anndata"
     "mudata"
     "spatialdata"

@@ -122,6 +122,10 @@ else
     mamba create --prefix "${LIBRARIES_ENV_DIR}" -y "${CONDA_PACKAGES_LIBRARIES[@]}"
 fi
 
+# Install dsub via pip if on GCP. The conda version is outdated.
+# dsub is installed in LIBRARIES_ENV_DIR because it can be used as a Python
+# library, and users may want to install additional packages alongside it.
+# PYTHONNOUSERSITE=1 prevents pip from seeing/modifying packages in user site-packages.
 if [[ "${CLOUD}" == "gcp" ]]; then
     PYTHONNOUSERSITE=1 "${LIBRARIES_ENV_DIR}/bin/pip" install dsub
 fi

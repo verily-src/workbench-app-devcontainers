@@ -8,9 +8,9 @@ set -o xtrace
 
 readonly CLOUD="${CLOUD:-""}"
 readonly USERNAME="${USERNAME:-"root"}"
-readonly LIBRARIES_ENV_DIR="${LIBENV:-"/opt/conda/envs/workbench-ds"}"
-# Downgraded to 3.10 for better compatibility with scvi-tools/spatialdata
-readonly LIB_PYTHON_VERSION="${LIBPYTHONVERSION:-"3.10"}" 
+readonly LIBRARIES_ENV_DIR="${LIBENV:-"/opt/conda/envs/rs-sc-toolkit"}"
+# Downgraded to 3.13 for better compatibility with scvi-tools/spatialdata
+readonly LIB_PYTHON_VERSION="${LIBPYTHONVERSION:-"3.13"}" 
 USER_HOME_DIR="${USERHOMEDIR:-"/home/${USERNAME}"}"
 if [[ "${USER_HOME_DIR}" == "/home/root" ]]; then
     USER_HOME_DIR="/root"
@@ -94,17 +94,13 @@ CONDA_PACKAGES_LIBRARIES=(
     "conda-forge::scanpy"
     "conda-forge::muon"
     "conda-forge::squidpy"
-)
-
-# Packages to install via PIP to avoid Mamba solver conflicts
-readonly PIP_PACKAGES_OMICS=(
-    "snakemake"
-    "anndata"
-    "mudata"
-    "spatialdata"
-    "scvi-tools"
-    "pertpy"
-    "decoupler"
+    "conda-forge::decoupler-py"
+    "bioconda::snakemake"
+    "conda-forge::scvi-tools"
+    "conda-forge::anndata"
+    "conda-forge::mudata"
+    "conda-forge::spatialdata"
+    "conda-forge::pertpy"
 )
 
 mkdir -p "${WORKBENCH_TOOLS_DIR}"
@@ -125,10 +121,6 @@ else
     CONDA_PACKAGES_LIBRARIES+=("conda-forge::python=${LIB_PYTHON_VERSION}")
     mamba create --prefix "${LIBRARIES_ENV_DIR}" -y "${CONDA_PACKAGES_LIBRARIES[@]}"
 fi
-
-# Install PIP packages into Env 3
-echo "Installing specialized omics packages via PIP..."
-PYTHONNOUSERSITE=1 "${LIBRARIES_ENV_DIR}/bin/pip" install "${PIP_PACKAGES_OMICS[@]}"
 
 if [[ "${CLOUD}" == "gcp" ]]; then
     PYTHONNOUSERSITE=1 "${LIBRARIES_ENV_DIR}/bin/pip" install dsub

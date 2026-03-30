@@ -10,7 +10,7 @@ readonly CLOUD="${CLOUD:-""}"
 readonly USERNAME="${USERNAME:-"root"}"
 readonly LIBRARIES_ENV_DIR="${LIBENV:-"/opt/conda/envs/rs-sc-toolkit"}"
 # Downgraded to 3.13 for better compatibility with scvi-tools/spatialdata
-readonly LIB_PYTHON_VERSION="${LIBPYTHONVERSION:-"3.13"}" 
+readonly LIB_PYTHON_VERSION="${LIBPYTHONVERSION:-"3.10"}" 
 USER_HOME_DIR="${USERHOMEDIR:-"/home/${USERNAME}"}"
 if [[ "${USER_HOME_DIR}" == "/home/root" ]]; then
     USER_HOME_DIR="/root"

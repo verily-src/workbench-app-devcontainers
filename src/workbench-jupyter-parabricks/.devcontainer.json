@@ -20,7 +20,7 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/java@sha256:e75d274ac969b29a59ba6f34c2d098f6a52144d0ec027ef326b724ea4b8b7b4e": {
+    "ghcr.io/devcontainers/features/java@sha256:9663ce0219ff85786e87901ce5f0a59f488edd5f99b46015192cda48468b233a": {
           "version": "17"
         },
     "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},

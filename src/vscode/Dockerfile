@@ -12,8 +12,9 @@ RUN apt-get update \
         | jq -r '.files.download' \
         | xargs curl -fL --compressed -o /tmp/claudecode.vsix \
     && mkdir -p /config/extensions \
-    && HOME=/config /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/geminicodeassist.vsix \
-    && HOME=/config /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/claudecode.vsix \
+    && chown abc:abc /config \
+    && HOME=/config su abc -s /bin/bash -c "/app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/geminicodeassist.vsix" \
+    && HOME=/config su abc -s /bin/bash -c "/app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/claudecode.vsix" \
     && rm /tmp/geminicodeassist.vsix /tmp/claudecode.vsix
 
 WORKDIR /config

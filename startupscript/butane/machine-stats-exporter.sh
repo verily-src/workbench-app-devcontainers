@@ -10,7 +10,7 @@ set -o pipefail
 # --- CPU ---
 cpu_count=$(nproc)
 
-# Load average (1m) normalized by CPU count — can exceed 1.0 under overload
+# Load average (1m) normalized by CPU count--can exceed 1.0 under overload
 # (e.g. waiting for I/O)
 cpu_load=$(awk '{print $1}' /proc/loadavg)
 cpu_load_normalized=$(awk "BEGIN {printf \"%.4f\", ${cpu_load}/${cpu_count}}")
@@ -38,13 +38,40 @@ done < <(df -B1 --output=source,size,used,target / /var/lib/docker 2>/dev/null |
 # CPUPerc and MemPerc are formated as percentages (e.g. "15%"), so we strip
 # the '%' and convert to a ratio (e.g. 0.15), rounded to 4 decimal places to
 # avoid floating point funkiness.
-containers_json=$(docker stats --no-stream --format '{{json .}}' 2>/dev/null \
-  | jq -sc '[.[] | {
-      name: .Name,
-      cpu_usage_ratio: (.CPUPerc | rtrimstr("%") | tonumber * 100 | floor | . / 10000),
-      memory_usage_ratio: (.MemPerc | rtrimstr("%") | tonumber * 100 | floor | . / 10000)
-    }]') \
-  || containers_json="[]"
+containers_json=$(
+  # Get CPU/memory usage from docker stats (only running containers)
+  # .ID is a 12-char short ID we use as the join key.
+  stats=$(docker stats --no-stream --format '{{json .}}' 2>/dev/null \
+    | jq -sc '[.[] | {
+        id: .ID,
+        cpu_usage_ratio: (.CPUPerc | rtrimstr("%") | tonumber * 100 | floor | . / 10000),
+        memory_usage_ratio: (.MemPerc | rtrimstr("%") | tonumber * 100 | floor | . / 10000)
+      }]') || stats="[]"
+
+  # Get state from docker inspect for all containers.
+  # .Id is the full 64-char ID; truncate to 12 to match docker stats.
+  state=$(docker ps -aq | xargs docker inspect 2>/dev/null \
+    | jq -c '[.[] | {
+        id: .Id[:12],
+        name: .Name,
+        state: .State | {
+          status: .Status,
+          running: .Running,
+          paused: .Paused,
+          restarting: .Restarting,
+          oom_killed: .OOMKilled,
+          dead: .Dead,
+          exit_code: .ExitCode,
+          error: .Error,
+          started_at: .StartedAt,
+          finished_at: (.FinishedAt | if . == "0001-01-01T00:00:00Z" then null else . end)
+        }}]') || state="[]"
+
+  # Merge stats into state by container ID
+  jq -nc --argjson stats "$stats" --argjson state "$state" '
+    ($stats | map({(.id): .}) | add // {}) as $s |
+    [$state[] | . + ($s[.id] // {cpu_usage_ratio: 0, memory_usage_ratio: 0}) | del(.id)]'
+) || containers_json="[]"
 
 # --- Proxy request rate (last 1m) ---
 proxy_requests_1m=0

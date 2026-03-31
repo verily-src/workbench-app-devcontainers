@@ -149,11 +149,11 @@ readonly GIT_IGNORE="${USER_HOME_DIR}/gitignore_global"
 cd /tmp || exit
 
 # Send stdout and stderr from this script to a file for debugging.
-# Use tee to also send output to journald logs.
 # Make the .wb directory as the user so that they own it and have correct linux permissions.
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_WORKBENCH_CONFIG_DIR}'"
 ${RUN_AS_LOGIN_USER} "ln -sf '${USER_WORKBENCH_CONFIG_DIR}' '${USER_WORKBENCH_LEGACY_CONFIG_DIR}'"
-exec > >(tee -a "${POST_STARTUP_OUTPUT_FILE}") 2>&1
+exec >> "${POST_STARTUP_OUTPUT_FILE}"
+exec 2>&1
 
 #######################################
 # Emit a message with a timestamp
@@ -917,8 +917,8 @@ cat << EOF >"${WORKBENCH_BOOT_SCRIPT}"
 # This script is run on instance boot to configure the instance for Workbench.
 
 # Send stdout and stderr from this script to a file for debugging.
-# Use tee to also send output to journald logs.
-exec > >(tee -a "${WORKBENCH_BOOT_SERVICE_OUTPUT_FILE}") 2>&1
+exec >> "${WORKBENCH_BOOT_SERVICE_OUTPUT_FILE}"
+exec 2>&1
 
 # Pick up environment from the ~/.bashrc
 source "${USER_BASHRC}"

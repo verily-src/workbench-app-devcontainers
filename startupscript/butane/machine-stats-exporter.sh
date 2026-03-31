@@ -50,7 +50,7 @@ containers_json=$(
 
   # Get state from docker inspect for all containers.
   # .Id is the full 64-char ID; truncate to 12 to match docker stats.
-  state=$(docker inspect $(docker ps -aq) 2>/dev/null \
+  state=$(docker ps -aq | xargs docker inspect 2>/dev/null \
     | jq -c '[.[] | {
         id: .Id[:12],
         name: .Name,

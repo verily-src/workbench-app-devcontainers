@@ -9,6 +9,7 @@ services:
     volumes:
       - .:/workspace:cached
       - work:/home/user:cached
+      - crowdstrike-falcon-volume:/tmp/CrowdStrike:ro
     ports:
       - "8080:80"
     networks:
@@ -19,8 +20,31 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor=unconfined
+    depends_on:
+      - falcon-sensor
+
+  falcon-sensor:
+    container_name: "crowdstrike-falcon-sensor"
+    image: "falcon-sensor/falcon-container:latest"
+    restart: always
+    privileged: false
+    cap_add:
+      - SYS_PTRACE
+    pid: "service:app"
+    networks:
+      - app-network
+    volumes:
+      - crowdstrike-falcon-volume:/tmp/CrowdStrike
+      - work:/home/user:ro
+    environment:
+      - FALCONCTL_OPT_CID=${FALCONCTL_OPT_CID}
+    env_file:
+      - .env
+
 networks:
   app-network:
     external: true
+
 volumes:
   work:
+  crowdstrike-falcon-volume:

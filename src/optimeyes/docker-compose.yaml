@@ -1,4 +1,7 @@
 version: "2.4"
+include:
+  - path:
+    - ./OPTIMEyes/docker-compose.yml
 services:
   app:
     container_name: "application-server"
@@ -15,7 +18,8 @@ services:
       - "5000:5000"
       - "5984:5984"
       - "8000:8000"
-
+    env_file:
+      - .env
     environment:
       FLASK_APP: "OPTIMEyes"
       IMAGE_COMPARATOR_DATA: "/workspace/Image-Comparator-Data"
@@ -25,9 +29,9 @@ services:
       HTTP_PORT: "80"
       DEPLOY: "DEV"
       ADMIN_PARTY: "False"
-      SECRET_KEY: "$${templateOption:secret_key}"
-      COUCHDB_USER: "$${templateOption:db_user}"
-      COUCHDB_PASSWORD: "$${templateOption:db_password}"
+      SECRET_KEY: "${SECRET_KEY}"
+      COUCHDB_USER: "${COUCHDB_USER}"
+      COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
       COUCH_DB: "image_comparator"
       MONAI_LABEL_ENV: "development"
     networks:
@@ -39,39 +43,43 @@ services:
     security_opt:
       - apparmor:unconfined
     depends_on:
+      - monailabel
+      - flask
       - couchdb
     command: tail -f /dev/null
 
-  couchdb:
-    container_name: "couchdb-server"
-    image: couchdb:latest
-    restart: always
-    ports:
-      - "5984:5984"
-    environment:
-      COUCHDB_USER: "$${templateOption:db_user}"
-      COUCHDB_PASSWORD: "$${templateOption:db_password}"
-    volumes:
-      - couchdb_data:/opt/couchdb/data
-    networks:
-      - app-network
+  # couchdb:
+  #   container_name: "couchdb-server"
+  #   image: couchdb:latest
+  #   restart: always
+  #   ports:
+  #     - "5984:5984"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     COUCHDB_USER: "${COUCHDB_USER}"
+  #     COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
+  #   volumes:
+  #     - couchdb_data:/opt/couchdb/data
+  #   networks:
+  #     - app-network
 
-  monailabel:
-    build:
-      context: ./monailabel
-    ports:
-      - 8000:8000
-    volumes:
-      - ./monailabel:/monailabel
-    stdin_open: true
-    tty: true
-    working_dir: /monailabel
-    env_file:
-      - .env
-    environment:
-      - MONAI_LABEL_ENV=development
-    command: monailabel start_server --app apps/monaibundle --studies datastore --conf bundles IntegrationBundle,SegformerBundle,MedSamBundle --conf zoo_source ngc
-    # command: bash
+  # monailabel:
+  #   build:
+  #     context: ./monailabel
+  #   ports:
+  #     - 8000:8000
+  #   volumes:
+  #     - ./monailabel:/monailabel
+  #   stdin_open: true
+  #   tty: true
+  #   working_dir: /monailabel
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - MONAI_LABEL_ENV=development
+  #   command: monailabel start_server --app apps/monaibundle --studies datastore --conf bundles IntegrationBundle,SegformerBundle,MedSamBundle --conf zoo_source ngc
+  #   # command: bash
 
 networks:
   app-network:

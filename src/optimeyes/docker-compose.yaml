@@ -52,6 +52,23 @@ services:
     networks:
       - app-network
 
+  monailabel:
+    build:
+      context: ./monailabel
+    ports:
+      - 8000:8000
+    volumes:
+      - ./monailabel:/monailabel
+    stdin_open: true
+    tty: true
+    working_dir: /monailabel
+    env_file:
+      - .env
+    environment:
+      - MONAI_LABEL_ENV=development
+    command: monailabel start_server --app apps/monaibundle --studies datastore --conf bundles IntegrationBundle,SegformerBundle,MedSamBundle --conf zoo_source ngc
+    # command: bash
+
 networks:
   app-network:
     external: true

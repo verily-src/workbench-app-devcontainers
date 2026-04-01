@@ -1,4 +1,4 @@
-FROM ubuntu:jammy-20230816
+FROM ubuntu:jammy
 
 # Install essential system packages
 RUN apt update -y && \

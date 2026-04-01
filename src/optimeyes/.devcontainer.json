@@ -19,11 +19,11 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/python@sha256:0fadbedc6445f523ca138545c686eb5c37c32d1ca4900ac7c187431315c90429": {
+    "ghcr.io/devcontainers/features/python:1": {
       "version": "3.10"
     },
-    "ghcr.io/devcontainers/features/aws-cli@sha256:bbc9fd513c22e331953126c75ad7b2ed1f9044f1cd5890b7073b634810459b18": {},
-    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
+    "ghcr.io/devcontainers/features/aws-cli:1": {},
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
     "./.devcontainer/features/workbench-tools": {
       "cloud": "${templateOption:cloud}",
       "username": "root",

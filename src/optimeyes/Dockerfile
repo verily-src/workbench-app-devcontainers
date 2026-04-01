@@ -20,6 +20,9 @@ WORKDIR /workspace
 # Copy requirements file
 COPY requirements.txt /workspace/requirements.txt
 
+# Copy .env file
+COPY .env /OPTIMEyes/.env
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /workspace/requirements.txt
 

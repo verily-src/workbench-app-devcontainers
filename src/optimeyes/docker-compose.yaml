@@ -1,7 +1,4 @@
 version: "2.4"
-include:
-  - path:
-    - ./OPTIMEyes/docker-compose.yml
 services:
   app:
     container_name: "application-server"
@@ -18,22 +15,6 @@ services:
       - "5000:5000"
       - "5984:5984"
       - "8000:8000"
-    env_file:
-      - .env
-    environment:
-      FLASK_APP: "OPTIMEyes"
-      IMAGE_COMPARATOR_DATA: "/workspace/Image-Comparator-Data"
-      DNS: "0.0.0.0"
-      SSL: "False"
-      DB_PORT: "5984"
-      HTTP_PORT: "80"
-      DEPLOY: "DEV"
-      ADMIN_PARTY: "False"
-      SECRET_KEY: "${SECRET_KEY}"
-      COUCHDB_USER: "${COUCHDB_USER}"
-      COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
-      COUCH_DB: "image_comparator"
-      MONAI_LABEL_ENV: "development"
     networks:
       - app-network
     cap_add:
@@ -48,38 +29,70 @@ services:
       - couchdb
     command: tail -f /dev/null
 
-  # couchdb:
-  #   container_name: "couchdb-server"
-  #   image: couchdb:latest
-  #   restart: always
-  #   ports:
-  #     - "5984:5984"
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     COUCHDB_USER: "${COUCHDB_USER}"
-  #     COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
-  #   volumes:
-  #     - couchdb_data:/opt/couchdb/data
-  #   networks:
-  #     - app-network
+  flask:
+    build:
+      context: ./OPTIMEyes/flask_server
+      dockerfile: ./OPTIMEyes/Dockerfile
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./flask_server:/flask_server
+      - ./Image-Comparator-Data:/Image-Comparator-Data 
+    working_dir: /flask_server
+    env_file:
+      - .env
+    environment:
+      - FLASK_APP=${FLASK_APP}
+      - IMAGE_COMPARATOR_DATA=${IMAGE_COMPARATOR_DATA}
+      - DNS=${DNS}
+      - SSL=${SSL}
+      - DB_PORT=${DB_PORT}
+      - HTTP_PORT=${HTTP_PORT}
+      - DEPLOY=${DEPLOY}
+      - COUCH_DB=${COUCH_DB}
+      - COUCHDB_USER=${COUCHDB_USER}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+      - ADMIN_PARTY=${ADMIN_PARTY}
+      - SECRET_KEY=${SECRET_KEY}
+    command: bash -c "/flask_server/OPTIMEyes/utils/setup.sh"
+    # command: sleep 1000000
+    ports:
+      - ${HTTP_PORT}:8080
+    depends_on:
+      - couchdb
 
-  # monailabel:
-  #   build:
-  #     context: ./monailabel
-  #   ports:
-  #     - 8000:8000
-  #   volumes:
-  #     - ./monailabel:/monailabel
-  #   stdin_open: true
-  #   tty: true
-  #   working_dir: /monailabel
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - MONAI_LABEL_ENV=development
-  #   command: monailabel start_server --app apps/monaibundle --studies datastore --conf bundles IntegrationBundle,SegformerBundle,MedSamBundle --conf zoo_source ngc
-  #   # command: bash
+  couchdb:
+    container_name: "couchdb-server"
+    image: couchdb:latest
+    restart: always
+    ports:
+      - "5984:5984"
+    env_file:
+      - .env
+    environment:
+      COUCHDB_USER: "${COUCHDB_USER}"
+      COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    networks:
+      - app-network
+
+  monailabel:
+    build:
+      context: ./OPTIMEyes/monailabel
+    ports:
+      - 8000:8000
+    volumes:
+      - ./monailabel:/monailabel
+    stdin_open: true
+    tty: true
+    working_dir: /monailabel
+    env_file:
+      - .env
+    environment:
+      - MONAI_LABEL_ENV=development
+    command: monailabel start_server --app apps/monaibundle --studies datastore --conf bundles IntegrationBundle,SegformerBundle,MedSamBundle --conf zoo_source ngc
+    # command: bash
 
 networks:
   app-network:
@@ -89,3 +102,5 @@ volumes:
   work:
   data:
   couchdb_data:
+  flask_server:
+  monailabel:

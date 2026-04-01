@@ -32,7 +32,7 @@ services:
   flask:
     build:
       context: ./OPTIMEyes/flask_server
-      dockerfile: ./OPTIMEyes/flask_server/Dockerfile
+      dockerfile: Dockerfile
     stdin_open: true
     tty: true
     volumes:
@@ -80,7 +80,7 @@ services:
   monailabel:
     build:
       context: ./OPTIMEyes/monailabel
-      dockerfile: ./OPTIMEyes/flask_server/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - 8000:8000
     volumes:

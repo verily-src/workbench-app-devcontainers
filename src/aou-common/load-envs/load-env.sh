@@ -17,6 +17,14 @@ function get_env_vars() {
         cat "${HOME}/.aou-env"
         return 0
     fi
+    
+    # If not running interactively, don't attempt to load environment variables
+    case $- in
+       *i*) ;;
+        *) echo "Not running interactively. Skipping environment variable loading." >&2
+           return 0
+           ;;
+    esac
 
     CONTEXT_PATH="${HOME}/.workbench/context.json"
     readonly CONTEXT_PATH

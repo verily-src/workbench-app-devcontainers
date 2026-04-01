@@ -13,9 +13,12 @@ services:
     ports:
       - "80:80"
       - "5000:5000"
+      - "5984:5984"
+      - "8000:8000"
+
     environment:
       FLASK_APP: "OPTIMEyes"
-      IMAGE_COMPARATOR_DATA: "/workspace/data"
+      IMAGE_COMPARATOR_DATA: "/workspace/Image-Comparator-Data"
       DNS: "0.0.0.0"
       SSL: "False"
       DB_PORT: "5984"
@@ -26,6 +29,7 @@ services:
       COUCHDB_USER: "${templateOption:db_user}"
       COUCHDB_PASSWORD: "${templateOption:db_password}"
       COUCH_DB: "image_comparator"
+      MONAI_LABEL_ENV: "development"
     networks:
       - app-network
     cap_add:

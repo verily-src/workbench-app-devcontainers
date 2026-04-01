@@ -1,0 +1,3 @@
+[submodule "src/optimeyes/OPTIMEyes"]
+	path = src/optimeyes/OPTIMEyes
+	url = git@github.com:QTIM-Lab/OPTIMEyes.git

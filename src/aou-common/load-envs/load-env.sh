@@ -5,7 +5,7 @@
 #
 # Usage: source load-env.sh
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 readonly SCRIPT_DIR
 
 # Get the environment variables inside a function so that the set -o options
@@ -30,10 +30,16 @@ function get_env_vars() {
         return 1
     fi
 
-    WORKSPACE_ID="$(jq -er '.workspace.userFacingId' "${CONTEXT_PATH}")"
+    if ! WORKSPACE_ID="$(jq -er '.workspace.userFacingId' "${CONTEXT_PATH}")"; then
+        echo "Workspace ID is not set in ${CONTEXT_PATH}." >&2
+        return 1
+    fi
     readonly WORKSPACE_ID
 
-    WSM_API_URL="$(jq -er '.server.workspaceManagerUri' "${CONTEXT_PATH}")"
+    if ! WSM_API_URL="$(jq -er '.server.workspaceManagerUri' "${CONTEXT_PATH}")"; then
+        echo "WSM API URL is not set in ${CONTEXT_PATH}." >&2
+        return 1
+    fi
     readonly WSM_API_URL
 
     if wb auth status 2>&1 | grep -q "NO USER LOGGED IN"; then

@@ -49,11 +49,9 @@
 set -e
 
 # Configuration
-CONTEXT_DIR="${HOME}/.workbench"
+CONTEXT_DIR="${HOME}/.claude"
 SKILLS_DIR="${CONTEXT_DIR}/skills"
 CLAUDE_FILE="${CONTEXT_DIR}/CLAUDE.md"
-# Visible symlink in home directory for Claude Code auto-discovery
-VISIBLE_CLAUDE_SYMLINK="${HOME}/CLAUDE.md"
 
 # Colors for output
 RED='\033[0;31m'
@@ -458,7 +456,7 @@ bucket <- Sys.getenv("WORKBENCH_my_bucket")
 
 If no template matches:
 1. Check if a template can be extended (usually yes)
-2. If truly custom, read `~/.workbench/skills/CUSTOM_APP.md`
+2. If truly custom, read `~/.claude/skills/CUSTOM_APP.md`
 TEMPLATES_SKILL_EOF
 
     # Create DASHBOARD_BUILDER.md skill (full version, embedded)
@@ -1851,7 +1849,7 @@ wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucke
 
 ## ⚠️ Workbench Web Apps & Proxy URLs
 
-> **🚨 If the user wants a dashboard, chart, Flask app, HTML page, or ANY web UI — read \`~/.workbench/skills/DASHBOARD_BUILDER.md\` first.**
+> **🚨 If the user wants a dashboard, chart, Flask app, HTML page, or ANY web UI — read \`~/.claude/skills/DASHBOARD_BUILDER.md\` first.**
 
 ### Proxy URL Format
 
@@ -1907,7 +1905,7 @@ Read these directly — no index needed:
 
 ### Scientific Skills
 
-> **📚 Read \`~/.workbench/skills/SCIENTIFIC_SKILLS_INDEX.md\` first** to navigate scientific domain skills.
+> **📚 Read \`~/.claude/skills/SCIENTIFIC_SKILLS_INDEX.md\` first** to navigate scientific domain skills.
 
 | Domain | Skill File | Covers |
 |--------|------------|--------|
@@ -1962,7 +1960,7 @@ ${embedded_json}
 
 To refresh after workspace changes:
 \`\`\`bash
-~/.workbench/generate-context.sh
+~/.claude/generate-context.sh
 \`\`\`
 
 ---
@@ -2004,20 +2002,15 @@ main() {
     
     # Generate single CLAUDE.md file with embedded JSON
     generate_claude_md "$WORKSPACE" "$RESOURCES" "$WORKFLOWS" "$APPS"
-    
-    # Create visible symlink in home directory for Claude Code auto-discovery
-    ln -sf "${CLAUDE_FILE}" "${VISIBLE_CLAUDE_SYMLINK}"
-    log_info "Created symlink ~/CLAUDE.md → ${CLAUDE_FILE}"
-    
+
     echo "" >&2
     log_info "Context generation complete!"
     echo "" >&2
     echo "Generated file:" >&2
     echo "  - ${CLAUDE_FILE}" >&2
-    echo "  - ~/CLAUDE.md (symlink for auto-discovery)" >&2
     echo "" >&2
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
-    echo "✅ Claude Code will automatically discover ~/CLAUDE.md" >&2
+    echo "✅ Claude Code will automatically discover ~/.claude/CLAUDE.md" >&2
     echo "" >&2
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
     echo "" >&2

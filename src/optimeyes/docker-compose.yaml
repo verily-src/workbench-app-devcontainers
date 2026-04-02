@@ -3,39 +3,13 @@ services:
   app:
     container_name: "application-server"
     build:
-      context: .
+      context: ./OPTIMEyes/flask_server
       dockerfile: Dockerfile
     restart: always
     volumes:
       - .:/workspace:cached
       - work:/config:cached
       - data:/workspace/data:cached
-    ports:
-      - "80:80"
-      - "5000:5000"
-      - "5984:5984"
-      - "8000:8000"
-    networks:
-      - app-network
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse
-    security_opt:
-      - apparmor:unconfined
-    depends_on:
-      - monailabel
-      - flask
-      - couchdb
-    command: tail -f /dev/null
-
-  flask:
-    build:
-      context: ./OPTIMEyes/flask_server
-      dockerfile: Dockerfile
-    stdin_open: true
-    tty: true
-    volumes:
       - ./flask_server:/flask_server
       - ./Image-Comparator-Data:/Image-Comparator-Data 
     working_dir: /flask_server

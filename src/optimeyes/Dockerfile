@@ -34,4 +34,4 @@ ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=OPTIMEyes
 
 # Default command
-CMD ["bash"]
+# CMD ["bash"] 

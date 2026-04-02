@@ -3,16 +3,16 @@ services:
   app:
     container_name: "application-server"
     build:
-      context: ./OPTIMEyes/flask_server
+      context: .
       dockerfile: Dockerfile
     restart: always
     volumes:
       - .:/workspace:cached
       - work:/config:cached
       - data:/workspace/data:cached
-      - ./flask_server:/flask_server
-      - ./Image-Comparator-Data:/Image-Comparator-Data 
-    working_dir: /flask_server
+      - ./workspace/flask_server:/flask_server
+      - ./workspace/Image-Comparator-Data:/Image-Comparator-Data 
+    working_dir: /workspace/flask_server
     env_file:
       - .env
     environment:
@@ -28,7 +28,7 @@ services:
       - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
       - ADMIN_PARTY=${ADMIN_PARTY}
       - SECRET_KEY=${SECRET_KEY}
-    command: bash -c "/flask_server/OPTIMEyes/utils/setup.sh"
+    command: bash -c "flask_server/OPTIMEyes/utils/setup.sh"
     # command: sleep 1000000
     ports:
       - ${HTTP_PORT}:8080

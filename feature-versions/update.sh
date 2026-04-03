@@ -16,18 +16,20 @@ for IMAGE in $(echo "$STATE" | jq -r 'keys | .[]'); do
     echo "Processing image: $IMAGE"
     TAG="$(jq -r --arg feat "$IMAGE" '.[$feat].tag' <<< "$STATE")"
     FILTER="$(jq -r --arg feat "$IMAGE" '.[$feat].filter' <<< "$STATE")"
-    INSTALLED="$IMAGE@$(jq -r --arg feat "$IMAGE" '.[$feat].installed' <<< "$STATE")"
-    LATEST="$IMAGE@$(docker buildx imagetools inspect "$IMAGE:$TAG" | grep "Digest:" | awk '{print $2}')"
+    INSTALLED_DIGEST="$(jq -r --arg feat "$IMAGE" '.[$feat].installed' <<< "$STATE")"
+    LATEST_DIGEST="$(docker buildx imagetools inspect "$IMAGE:$TAG" | grep "Digest:" | awk '{print $2}')"
+
+    INSTALLED="$IMAGE@$INSTALLED_DIGEST"
+    LATEST="$IMAGE@$LATEST_DIGEST"
 
     if [ "$INSTALLED" != "$LATEST" ]; then
         echo "Updating $IMAGE from $INSTALLED to $LATEST"
 
         pushd "$SRC_DIR"
-        find . -regex "$FILTER" -print0 | xargs -0L1 sed -i "s|$INSTALLED|$LATEST|g"
+        find . -regextype posix-extended -regex "$FILTER" -print0 | xargs -0L1 sed -i "s|$INSTALLED|$LATEST|g"
         popd
 
-        LATEST_TAG="$(echo "$LATEST" | cut -d'@' -f2)"
-        NEW_STATE="$(jq --arg feat "$IMAGE" --arg latest "$LATEST_TAG" '.[$feat].installed = $latest' "$STATE_FILE")"
+        NEW_STATE="$(jq --arg feat "$IMAGE" --arg latest "$LATEST_DIGEST" '.[$feat].installed = $latest' "$STATE_FILE")"
         cat <<< "$NEW_STATE" > "$STATE_FILE"
     else
         echo "$IMAGE is already up to date."

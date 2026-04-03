@@ -1,5 +1,5 @@
 # Use the official NVIDIA Clara Parabricks container as the base image
-FROM nvcr.io/nvidia/clara/clara-parabricks:4.6.0-1 AS base
+FROM nvcr.io/nvidia/clara/clara-parabricks@sha256:d0761eb4b9921bc046c53520287316d545eb79feaeb8f22387e9bb5734650447 AS base
 
 #  Set the default shell for subsequent commands to bash.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

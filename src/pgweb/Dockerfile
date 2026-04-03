@@ -1,4 +1,4 @@
-FROM sosedoff/pgweb
+FROM sosedoff/pgweb@sha256:a5256d416e2e8b92d69a4459058e3eca33a9f075d8325491644411d0bc3bd70b
 
 USER root
 

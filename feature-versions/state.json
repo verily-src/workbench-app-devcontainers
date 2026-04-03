@@ -53,5 +53,35 @@
     "tag": "latest",
     "installed": "sha256:ec12ff37df1749def9d181e5fdc027c9f94f34a7dd5977e8af4e543660a9c766",
     "filter": ".*\\/Dockerfile"
+  },
+  "ghcr.io/rocker-org/devcontainer/tidyverse": {
+    "tag": "4",
+    "installed": "sha256:289c5d02d8115aa209f4a8a49ee9378dccbf623897eed9cc46c87dfbbca9015b",
+    "filter": ".*\\/(docker-compose\\.yaml|Dockerfile)"
+  },
+  "lscr.io/linuxserver/code-server": {
+    "tag": "latest",
+    "installed": "sha256:629232bdd99640dd3d514a40c740a9d42dcb808a844005821b2f4be6e6a8b66e",
+    "filter": ".*\\/Dockerfile"
+  },
+  "golang": {
+    "tag": "1.23-bookworm",
+    "installed": "sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db",
+    "filter": ".*\\/Dockerfile"
+  },
+  "nvcr.io/nvidia/nemo": {
+    "tag": "25.07.nemotron-nano-v2",
+    "installed": "sha256:f96daf8b2f07a4f8fb20e754f91b507e507ceb9119943027a4d43d7ca15e3896",
+    "filter": ".*\\/Dockerfile"
+  },
+  "nvcr.io/nvidia/clara/clara-parabricks": {
+    "tag": "4.6.0-1",
+    "installed": "sha256:d0761eb4b9921bc046c53520287316d545eb79feaeb8f22387e9bb5734650447",
+    "filter": ".*\\/Dockerfile"
+  },
+  "sosedoff/pgweb": {
+    "tag": "latest",
+    "installed": "sha256:a5256d416e2e8b92d69a4459058e3eca33a9f075d8325491644411d0bc3bd70b",
+    "filter": ".*\\/Dockerfile"
   }
 }

@@ -1,0 +1,23 @@
+{
+  "id": "gradio-pandas",
+  "version": "1.0.0",
+  "name": "Gradio Pandas JupyterLab",
+  "description": "JupyterLab environment with Gradio for building interactive data apps. Write Gradio code in notebooks and publish shareable apps on port 7860. Includes pandas, matplotlib, seaborn, and plotly for data analysis.",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/gradio-pandas",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

@@ -1,3 +1,6 @@
 [submodule "src/optimeyes/OPTIMEyes"]
 	path = src/optimeyes/OPTIMEyes
 	url = git@github.com:QTIM-Lab/OPTIMEyes.git
+[submodule "src/monaiLabel/segmentationMonaiLabel"]
+	path = src/monaiLabel/segmentationMonaiLabel
+	url = git@github.com:QTIM-Lab/segmentationMonaiLabel.git

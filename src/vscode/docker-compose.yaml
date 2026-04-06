@@ -2,9 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: "lscr.io/linuxserver/code-server@sha256:629232bdd99640dd3d514a40c740a9d42dcb808a844005821b2f4be6e6a8b66e"
     restart: always
     volumes:
       - .:/workspace:cached

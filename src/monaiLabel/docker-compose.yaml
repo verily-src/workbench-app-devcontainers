@@ -1,0 +1,32 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: ./segmentationMonaiLabel
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/config:cached
+      - data:/workspace/data:cached
+    working_dir: /workspace
+    ports:
+      - 8000:8000
+    networks:
+      - app-network
+    # SYS_ADMIN and fuse are required to mount workspace resources into the
+    # container.
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+networks:
+  app-network:
+    external: true
+
+volumes:
+  work:

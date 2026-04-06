@@ -11,7 +11,7 @@ RUN apt-get update \
 USER abc
 ENV HOME=/config
 
-RUN curl -fsSL 'https://open-vsx.org/api/Google/geminicodeassist/latest' \
+RUN curl -fsSL 'https://open-vsx.org/api/Google/geminicodeassist/2.75.0' \
         | jq -r '.files.download' \
         | xargs curl -fL --compressed -o /tmp/geminicodeassist.vsix \
     && curl -fsSL 'https://open-vsx.org/api/Anthropic/claude-code/latest' \

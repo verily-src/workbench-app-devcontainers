@@ -5,14 +5,14 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
-    "./startupscript/post-startup.sh",
+    // "./startupscript/post-startup.sh",
     "root",
     "/config",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
   "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
+    // "./startupscript/remount-on-restart.sh",
     "root",
     "/config",
     "${templateOption:cloud}",
@@ -34,32 +34,32 @@
     }
   },
   "remoteUser": "root",
-  "customizations": {
-    "workbench": {
-      "opens": {
-        "extensions": [
-          // Python files
-          ".py",
-          ".ipynb",
-          // Web files
-          ".html",
-          ".css",
-          ".js",
-          // Data files
-          ".json",
-          ".csv",
-          ".tsv",
-          // Medical imaging
-          ".nii",
-          ".dcm",
-          // Documents
-          ".md",
-          ".txt"
-        ],
-        "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
-      }
-    }
-  },
+  // "customizations": {
+  //   "workbench": {
+  //     "opens": {
+  //       "extensions": [
+  //         // Python files
+  //         ".py",
+  //         ".ipynb",
+  //         // Web files
+  //         ".html",
+  //         ".css",
+  //         ".js",
+  //         // Data files
+  //         ".json",
+  //         ".csv",
+  //         ".tsv",
+  //         // Medical imaging
+  //         ".nii",
+  //         ".dcm",
+  //         // Documents
+  //         ".md",
+  //         ".txt"
+  //       ],
+  //       "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+  //     }
+  //   }
+  // },
   "forwardPorts": [80, 5000, 5984],
   "portsAttributes": {
     "80": {

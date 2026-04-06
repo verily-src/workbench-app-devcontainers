@@ -10,15 +10,18 @@ ARG TARGETARCH=amd64
 
 # Extensions are installed as user 'abc' (the linuxserver runtime user) so they
 # are readable/writable at runtime without permission errors.
-RUN mkdir -p /config/extensions /config/data/User \
+RUN mkdir -p /config/extensions /config/.local/share/code-server/User \
     && chown -R abc:abc /config
 
 USER abc
 ENV HOME=/config
 
 # Disable extension auto-update so pinned versions are not overwritten at runtime.
-RUN echo '{"extensions.autoUpdate": false, "extensions.autoCheckUpdates": false}' \
-    > /config/data/User/settings.json
+# extensions.supportNodeGlobalNavigator: VS Code 1.101+ treats `navigator` as a Node.js
+# global; extensions compiled against older bundlers declare their own `navigator` and
+# crash the extension host with "PendingMigrationError" if this flag is not set.
+RUN echo '{"extensions.autoUpdate": false, "extensions.autoCheckUpdates": false, "extensions.supportNodeGlobalNavigator": true}' \
+    > /config/.local/share/code-server/User/settings.json
 
 # Claude Code ships platform-specific VSIXs. Open VSX's /latest endpoint resolves
 # to a single platform (currently alpine-arm64), which breaks on linux/amd64.

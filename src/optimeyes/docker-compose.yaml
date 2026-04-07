@@ -5,7 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
+    stdin_open: true
+    tty: true
+    # restart: always
     volumes:
       - .:/workspace:cached
       - work:/config:cached
@@ -31,6 +33,19 @@ services:
     command: bash -c "/workspace/flask_server/OPTIMEyes/utils/setup.sh"
     ports:
       - ${HTTP_PORT}:8080
+    # The service must be connected to the "app-network" Docker network
+    networks:
+      - app-network
+    depends_on:
+      - couchdb
+    # SYS_ADMIN and fuse are required to mount workspace resources into the
+    # container.
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
 
   couchdb:
     container_name: "couchdb-server"
@@ -45,6 +60,7 @@ services:
       COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
     volumes:
       - couchdb_data:/opt/couchdb/data
+      - ./workspace/flask_server:/flask_server
     networks:
       - app-network
 

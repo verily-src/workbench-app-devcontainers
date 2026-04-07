@@ -1,15 +1,12 @@
-version: "2.4"
 services:
   app:
     container_name: "application-server"
     build:
-      context: ./segmentationMonaiLabel
+      context: .
       dockerfile: Dockerfile
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/config:cached
-      - data:/workspace/data:cached
     working_dir: /workspace
     ports:
       - 8000:8000
@@ -27,6 +24,3 @@ services:
 networks:
   app-network:
     external: true
-
-volumes:
-  work:

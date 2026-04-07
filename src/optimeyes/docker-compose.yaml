@@ -1,4 +1,3 @@
-version: "2.4"
 services:
   app:
     container_name: "application-server"
@@ -10,10 +9,10 @@ services:
     # restart: always
     volumes:
       - .:/workspace:cached
-      - work:/config:cached
+      - data:/config:cached
       - data:/workspace/data:cached
-      - ./workspace/flask_server:/flask_server
-      - ./workspace/Image-Comparator-Data:/Image-Comparator-Data 
+      - ./OPTIMEyes/flask_server:/flask_server
+      - ./OPTIMEyes/Image-Comparator-Data:/Image-Comparator-Data 
     working_dir: /workspace/flask_server
     env_file:
       - .env
@@ -87,8 +86,5 @@ networks:
     external: true
 
 volumes:
-  work:
   data:
   couchdb_data:
-  flask_server:
-  monailabel:

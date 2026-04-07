@@ -78,11 +78,6 @@ if [[ -d "${DEVCONTAINER_FEATURES_PATH}" ]]; then
     rsync -a --ignore-existing "${DEVCONTAINER_FEATURES_PATH}/" "${DEVCONTAINER_PATH}/.devcontainer/features"
 fi
 
-# Rewrite ghcr.io references to use the GAR pull-through cache
-readonly GHCR_CACHE="us-central1-docker.pkg.dev/workbench-app-cache/ghcr-cache"
-sed -i "s|ghcr\.io/|${GHCR_CACHE}/|g" "${DEVCONTAINER_CONFIG_PATH}"
-find "${DEVCONTAINER_PATH}/.devcontainer/features" -name devcontainer-feature.json -exec sed -i "s|ghcr\.io/|${GHCR_CACHE}/|g" {} +
-
 replace_template_options() {
     local TEMPLATE_PATH="$1"
 

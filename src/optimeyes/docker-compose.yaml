@@ -28,43 +28,43 @@ services:
       - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
       - ADMIN_PARTY=${ADMIN_PARTY}
       - SECRET_KEY=${SECRET_KEY}
-    command: start.sh
+    command: bash -c "/workspace/flask_server/OPTIMEyes/utils/setup.sh"
     ports:
       - ${HTTP_PORT}:8080
 
-  # couchdb:
-  #   container_name: "couchdb-server"
-  #   image: couchdb:latest
-  #   restart: always
-  #   ports:
-  #     - "5984:5984"
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     COUCHDB_USER: "${COUCHDB_USER}"
-  #     COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
-  #   volumes:
-  #     - couchdb_data:/opt/couchdb/data
-  #   networks:
-  #     - app-network
+  couchdb:
+    container_name: "couchdb-server"
+    image: couchdb:latest
+    restart: always
+    ports:
+      - "5984:5984"
+    env_file:
+      - .env
+    environment:
+      COUCHDB_USER: "${COUCHDB_USER}"
+      COUCHDB_PASSWORD: "${COUCHDB_PASSWORD}"
+    volumes:
+      - couchdb_data:/opt/couchdb/data
+    networks:
+      - app-network
 
-  # monailabel:
-  #   build:
-  #     context: ./OPTIMEyes/monailabel
-  #     dockerfile: Dockerfile
-  #   ports:
-  #     - 8000:8000
-  #   volumes:
-  #     - ./monailabel:/monailabel
-  #   stdin_open: true
-  #   tty: true
-  #   working_dir: /monailabel
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - MONAI_LABEL_ENV=development
-  #   command: monailabel start_server --app apps/monaibundle --studies datastore --conf bundles IntegrationBundle,SegformerBundle,MedSamBundle --conf zoo_source ngc
-  #   # command: bash
+  monailabel:
+    build:
+      context: ./OPTIMEyes/monailabel
+      dockerfile: Dockerfile
+    ports:
+      - 8000:8000
+    env_file:
+      - .env
+    volumes:
+      - ./monailabel:/monailabel
+    stdin_open: true
+    tty: true
+    # working_dir: /monailabel
+    environment:
+      - MONAI_LABEL_ENV=development
+    command: monailabel start_server --app apps/monaibundle --studies datastore --conf bundles IntegrationBundle,SegformerBundle,MedSamBundle --conf zoo_source ngc
+    # command: bash
 
 networks:
   app-network:

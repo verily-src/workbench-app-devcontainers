@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:0b297a607d08782070c8a81080ed97d8cbf0af7740adae7b1a71a8b36edea960",
+    "installed": "sha256:8150f0241344b58f6e0095e570e1f9fbbd98220009009c3a3e8a9cdf15cba973",
     "filter": ".*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:93e4fe76ed151be30ee83d4ee1ef25c97038f1f4bc0e410443b43ca1ccc9f1e7",
+    "installed": "sha256:32f6f8192a0a0a34881491600a2482608e9133ffd6fb3ff137fe65c9bc160437",
     "filter": ".*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:1c827209fb24a1f4099b1e7db7a65775dca076471a47e5b0ce52c23cfda54f3f",
+    "installed": "sha256:093cbf59aa63e042980a19f5403655516da1b1a8c671379978959f468ce33052",
     "filter": ".*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:ec12ff37df1749def9d181e5fdc027c9f94f34a7dd5977e8af4e543660a9c766",
+    "installed": "sha256:c6e55356fa78187da382c76af331c6af1a0b48e82f5148872f5bdca55b00688b",
     "filter": ".*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,7 +61,7 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:629232bdd99640dd3d514a40c740a9d42dcb808a844005821b2f4be6e6a8b66e",
+    "installed": "sha256:308f49acac8734542560f797d79b15e4c872c4d3f97d1b22862633fcce2af62a",
     "filter": ".*\\/Dockerfile"
   },
   "golang": {

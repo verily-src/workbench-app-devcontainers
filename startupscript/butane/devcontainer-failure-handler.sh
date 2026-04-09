@@ -32,8 +32,10 @@ if [[ "${num_retries}" -ge "${RETRY_COUNT}" ]]; then
         # Log failure
         source /home/core/metadata-utils.sh
         set_metadata "startup_script/status" "ERROR"
-        set_metadata "startup_script/message" "There was an error launching your custom container on the VM. Please try recreating the VM."
-
+        error_message=$(get_guest_attribute "startup_script/message" "")
+        if [[ -z "${error_message}" ]]; then
+          set_metadata "startup_script/message" "There was an error launching your custom container on the VM. Please try recreating the VM."
+        fi
         # Stop the service
         systemctl stop devcontainer.service
 

@@ -19,7 +19,6 @@ install_miniforge() {
     local download_url
     download_url="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh"
 
-    check_packages curl ca-certificates
     mkdir -p /tmp/miniforge
     (
         cd /tmp/miniforge
@@ -46,6 +45,8 @@ CONDA_SCRIPT="${CONDA_DIR}/etc/profile.d/conda.sh"
 # shellcheck source=/dev/null
 source "${CONDA_SCRIPT}"
 conda config --set env_prompt '({name})'
+chown -R "${USERNAME}:" "${USER_HOME_DIR}/.conda" || true
+chown "${USERNAME}:" "${USER_HOME_DIR}/.condarc" || true
 
 echo "source ${CONDA_SCRIPT}" >> "${USER_HOME_DIR}/.bashrc"
 chown -R "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"

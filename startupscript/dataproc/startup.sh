@@ -202,7 +202,6 @@ function get_service_url() {
   "dev-stable") echo "https://workbench-dev.verily.com/api/$2" ;;
   "dev-unstable") echo "https://workbench-dev-unstable.verily.com/api/$2" ;;
   "test") echo "https://workbench-test.verily.com/api/$2" ;;
-  "staging") echo "https://workbench-staging.verily.com/api/$2" ;;
   "prod") echo "https://workbench.verily.com/api/$2" ;;
   *) return 1 ;;
   esac
@@ -231,7 +230,7 @@ function get_ui_uri() {
     echo "https://workbench.verily.com"
   elif [[ "${env}" == "dev-stable" ]]; then
     echo "https://workbench-dev.verily.com"
-  elif [[ "${env}" == "dev-unstable" || "${env}" == "test" || "${env}" == "staging" ]]; then
+  elif [[ "${env}" == "dev-unstable" || "${env}" == "test" ]]; then
     echo "https://workbench-${env}.verily.com"
   else
     echo "https://workbench.verily.com"
@@ -763,6 +762,145 @@ if [[ -f ~/.ssh-agent/environment ]]; then
 fi
 EOF
 
+###################################
+# Setup Knox certificate auto-renewal
+###################################
+# Knox Gateway SSL certificates expire. Setup annual renewal
+# to prevent Component Gateway web interfaces from becoming inactive.
+
+emit "Setting up Knox Gateway certificate auto-renewal..."
+
+readonly KNOX_REGEN_SCRIPT="/usr/local/bin/regenerate-knox-cert.sh"
+readonly KNOX_CRON_FILE="/etc/cron.d/knox-cert-regeneration"
+
+# Create the regeneration script
+cat << 'KNOX_REGEN_EOF' > "${KNOX_REGEN_SCRIPT}"
+#!/bin/bash
+#
+# Name: regenerate-knox-cert.sh
+#
+# Description:
+#   Script to regenerate the Knox Gateway SSL certificate on a Dataproc cluster.
+#
+# Reference:
+#   https://docs.cloud.google.com/dataproc/docs/concepts/accessing/dataproc-gateways#regenerate
+#
+
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+
+# Knox keystore configuration
+readonly KNOX_KEYSTORE="/var/lib/knox/security/keystores/gateway.jks"
+readonly BACKUP_DIR="/var/lib/knox/security/keystores/backup"
+readonly BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+readonly BACKUP_FILE="${BACKUP_DIR}/gateway_${BACKUP_TIMESTAMP}.jks"
+
+#######################################
+# Emit a message with a timestamp
+# Logs are captured by systemd journal when run via cron
+#######################################
+function emit() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') $*"
+}
+readonly -f emit
+
+emit "Starting Knox Gateway SSL certificate regeneration check..."
+
+# Only run on the dataproc master node. Exit with error if otherwise.
+ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
+if [[ "${ROLE}" != 'Master' ]]; then
+  emit "ERROR: This script must be run on the Dataproc master node. Current role: ${ROLE}"
+  exit 1
+fi
+readonly ROLE
+
+emit "Running on Dataproc master node."
+
+# Check if keystore exists
+if [[ ! -f "${KNOX_KEYSTORE}" ]]; then
+  emit "ERROR: Knox keystore not found at ${KNOX_KEYSTORE}"
+  exit 1
+fi
+
+# Check certificate year before proceeding
+emit "Checking certificate year..."
+CERT_INFO=$(echo "" | keytool -list -v -keystore "${KNOX_KEYSTORE}" 2>&1)
+
+# Extract the certificate creation date and year
+CERT_CREATION_DATE=$(echo "${CERT_INFO}" | grep -i "Creation date:" | head -n 1 | sed 's/.*Creation date: //')
+
+if [[ -z "${CERT_CREATION_DATE}" ]]; then
+  emit "WARNING: Could not extract certificate creation date. Proceeding with regeneration."
+else
+  # Extract year from certificate date (last token)
+  CERT_YEAR=$(echo "${CERT_CREATION_DATE}" | awk '{print $NF}')
+  CURRENT_YEAR=$(date +%Y)
+
+  emit "Certificate creation date: ${CERT_CREATION_DATE}"
+  emit "Certificate year: ${CERT_YEAR}"
+  emit "Current year: ${CURRENT_YEAR}"
+
+  # Only regenerate if certificate is from a previous year
+  if [[ "${CERT_YEAR}" == "${CURRENT_YEAR}" ]]; then
+    emit "Certificate was created this year (${CURRENT_YEAR}). Skipping regeneration."
+    exit 0
+  fi
+
+  emit "Certificate is from year ${CERT_YEAR}. Proceeding with regeneration..."
+fi
+
+# Create backup directory if it doesn't exist
+mkdir -p "${BACKUP_DIR}"
+
+# Backup the current keystore
+emit "Backing up current keystore to ${BACKUP_FILE}"
+cp "${KNOX_KEYSTORE}" "${BACKUP_FILE}"
+
+if [[ ! -f "${BACKUP_FILE}" ]]; then
+  emit "ERROR: Failed to create backup of keystore"
+  exit 1
+fi
+
+emit "Backup created successfully."
+
+# Remove the old keystore to trigger regeneration
+emit "Removing old keystore..."
+rm -f "${KNOX_KEYSTORE}"
+
+# Restart Knox service to generate new certificate
+emit "Restarting Knox service to generate new certificate..."
+systemctl restart knox
+
+emit "Knox Gateway SSL certificate regeneration completed successfully."
+
+exit 0
+KNOX_REGEN_EOF
+
+chmod +x "${KNOX_REGEN_SCRIPT}"
+
+# Create cron job
+# Use systemd-cat to send output to journalctl with identifier 'knox-cert-regen'
+cat << EOF > "${KNOX_CRON_FILE}"
+# Knox Gateway SSL Certificate Regeneration
+# Checks certificate year and regenerates if from previous year
+# Logs are sent to journalctl and can be viewed with: journalctl -t knox-cert-regen
+
+# Check annually at 2 AM on January 1st (ensures cert is regenerated yearly)
+0 2 1 1 * root systemd-cat -t knox-cert-regen ${KNOX_REGEN_SCRIPT}
+
+# Also check on reboot (regenerates only if cert is from previous year)
+@reboot root sleep 60 && systemd-cat -t knox-cert-regen ${KNOX_REGEN_SCRIPT}
+EOF
+
+chmod 644 "${KNOX_CRON_FILE}"
+
+emit "Knox certificate auto-renewal configured successfully"
+emit "Cron job created at ${KNOX_CRON_FILE}"
+emit "Certificate year will be checked at 2 AM on January 1st every year and on reboot."
+emit "Certificate will be regenerated only if from a previous year."
+
 #############################
 # Setup instance boot service
 #############################
@@ -829,8 +967,6 @@ IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_a
                   | jq '.value')"
 readonly IS_NON_GOOGLE_ACCOUNT
 
-ENABLE_VWB_PROXY="$(get_metadata_value "instance/attributes/enable-dataproc-vwb-proxy")"
-readonly ENABLE_VWB_PROXY
 # Retrieve Workbench proxy agent image
 PROXY_AGENT_IMAGE="$(get_metadata_value "instance/attributes/proxy-agent-image")"
 readonly PROXY_AGENT_IMAGE
@@ -854,7 +990,7 @@ readonly PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY="GOOGLE_AGENT_WITH_VWB_PROXY"
 
 # Decide proxy type
 PROXY_TYPE=""
-if [[ ${ENABLE_VWB_PROXY} == "true" && -n "${PROXY_AGENT_IMAGE}" ]]; then
+if [[ -n "${PROXY_AGENT_IMAGE}" ]]; then
   PROXY_TYPE="${PROXY_TYPE_VWB}"
 elif [[ ${IS_NON_GOOGLE_ACCOUNT} == "true" ]]; then
   PROXY_TYPE="${PROXY_TYPE_GOOGLE_AGENT_WITH_VWB_PROXY}"
@@ -868,8 +1004,6 @@ if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
 ###################################
     if [[ "${PROXY_TYPE}" == "${PROXY_TYPE_VWB}" ]]; then
       emit "Using Workbench Proxy"
-      ENABLE_MONITORING_SCRIPT="$(get_metadata_value "instance/attributes/enable-dataproc-monitoring-script")"
-      readonly ENABLE_MONITORING_SCRIPT
 
       readonly WORKSPACE_LINK_EL='<a id="workspace" class="forum" target="_blank" href="'"${UI_BASE_URL}/workspaces/${TERRA_WORKSPACE}"'"'">${TERRA_WORKSPACE}</a>"
 
@@ -928,7 +1062,7 @@ docker run \
   --backend="${RESOURCE_ID}" \
   --session-cookie-name="_xsrf" \
   --inject-banner="\$(cat ${PROXY_AGENT_BANNER})" \
-  --enable-monitoring-script="${ENABLE_MONITORING_SCRIPT:-false}" \
+  --enable-monitoring-script=true \
   --websocket-transport=true
 EOF
       # Grant execute permission to the startup script

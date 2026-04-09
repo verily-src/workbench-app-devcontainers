@@ -36,11 +36,11 @@ cd /tmp
 
 ##################################################################
 # Send stdout and stderr from this script to a file for debugging.
+# Use tee to also send output to journald logs.
 ##################################################################
 readonly USER_WORKBENCH_CONFIG_DIR="${WORK_DIRECTORY}/.workbench"
 readonly POST_STARTUP_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/remount-on-restart-output.txt"
-exec >> "${POST_STARTUP_OUTPUT_FILE}"
-exec 2>&1
+exec > >(tee -a "${POST_STARTUP_OUTPUT_FILE}") 2>&1
 
 ##############################
 # Import utility functions

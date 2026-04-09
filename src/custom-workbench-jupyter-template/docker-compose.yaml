@@ -1,14 +1,18 @@
-version: "2.4"
+include:
+  - ../jupyter-common/jupyter-common-compose.yaml
 services:
   app:
     container_name: "application-server"
-    image: "${templateOption:containerImage}"
+    build:
+      context: .
+      additional_contexts:
+        jupyter-extension-builder: service:jupyter-common-extension-builder
     user: "jupyter"
     restart: always
     volumes:
       - .:/workspace:cached
     ports:
-      - "${templateOption:containerPort}:${templateOption:containerPort}"
+      - "8888:8888"
     networks:
       - app-network
     cap_add:

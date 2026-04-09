@@ -8,3 +8,6 @@ services:
   aou-common-extension-builder:
     build:
       context: ../aou-common/extension-builder
+  aou-common-load-envs:
+    build:
+      context: ../aou-common/load-envs

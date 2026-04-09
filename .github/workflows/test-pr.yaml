@@ -25,17 +25,25 @@ jobs:
             - 'startupscript/**'
             - 'test/**'
         config:
-          # BENCH-4080: Re-enable cirrocumulus test
-          - jupyter-template:
-              user: jupyter
-            jupyter:
+          - example:
               user: jovyan
-            shiny:
-              user: shiny
+            jupyter-template:
+              user: jupyter
             r-analysis:
               user: rstudio
               workbench_tools: true
+              postgres_client: true
+            r-analysis-aou:
+              user: rstudio
+              workbench_tools: true
+              postgres_client: true
+              filters:
+                - 'src/aou-common/**'
             vscode:
+              user: abc
+              workbench_tools: true
+              postgres_client: true
+            vscode-docker:
               user: abc
               workbench_tools: true
             workbench-jupyter:
@@ -43,34 +51,47 @@ jobs:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               options:
                 containerImage: 'us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter:ov-dev-stable'
+              filters:
+                - 'src/jupyter-common/**'
             jupyter-aou:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               filters:
+                - 'src/jupyter-common/**'
                 - 'src/aou-common/**'
             nemo_jupyter:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
             nemo_jupyter_aou:
               user: jupyter
               maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               filters:
                 - 'src/aou-common/**'
                 - 'src/nemo_jupyter/**'
             workbench-jupyter-parabricks:
               user: jupyter
+              maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
             workbench-jupyter-parabricks-aou:
               user: jupyter
+              maximize_build_space: true
               workbench_tools: true
+              postgres_client: true
               filters:
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
+            ubuntu-example:
+              user: vscode
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:
@@ -91,6 +112,7 @@ jobs:
               | .value = $common
               | .value += ["src/" + ($v.template // .key) + "/**"]
               | .value += if $v.workbench_tools then ["features/src/workbench-tools/**"] else [] end
+              | .value += if $v.postgres_client then ["features/src/postgres-client/**"] else [] end
               | .value += ($v.filters // [])
             ] | from_entries' | yq -P >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -110,7 +132,7 @@ jobs:
           jq -n \
               --argjson changed "$CHANGED_TEMPLATES" \
               --argjson config "$CONFIG" \
-              '[$changed[] as $t 
+              '[$changed[] as $t
                 | $config[$t]
                 | select(. != null)
                 | {
@@ -118,6 +140,7 @@ jobs:
                     user,
                     maximize_build_space: (.maximize_build_space // false),
                     workbench_tools: (.workbench_tools // false),
+                    postgres_client: (.postgres_client // false),
                     options: (.options // {}),
                   }
               ]' >> $GITHUB_OUTPUT
@@ -129,7 +152,7 @@ jobs:
     needs: [detect-changes]
     runs-on: ubuntu-latest
     continue-on-error: true
-    if : ${{ needs.detect-changes.outputs.templates != '[]' }}
+    if : ${{ needs.detect-changes.outputs.apps != '[]' }}
     strategy:
       matrix:
         app: ${{ fromJSON(needs.detect-changes.outputs.apps) }}
@@ -144,16 +167,27 @@ jobs:
           # This is the amount of space left over, not allocated to the LVM
           # volume. We already checked out the repo so we don't need much
           root-reserve-mb: 512
-          build-mount-path: /var/lib/docker
+          build-mount-path: /mnt/build
           remove-dotnet: true
           remove-android: true
           remove-haskell: true
           remove-codeql: true
           remove-docker-images: true
 
-      - name: Restart docker
+      - name: Reconfigure docker and containerd to use new build space
         if: ${{ matrix.app.maximize_build_space }}
-        run: sudo service docker restart
+        run: |
+          sudo mkdir -p /mnt/build/docker
+          echo '{"data-root": "/mnt/build/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo mkdir -p /mnt/build/containerd
+          sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+          sudo sed -i "s|root = '/var/lib/containerd'|root = '/mnt/build/containerd'|" /etc/containerd/config.toml
+
+      - name: Restart docker and containerd
+        if: ${{ matrix.app.maximize_build_space }}
+        run: |
+          sudo systemctl restart containerd
+          sudo systemctl restart docker
 
       - name: Smoke test for '${{ matrix.app.template }}'
         id: smoke_test
@@ -162,4 +196,5 @@ jobs:
           template: "${{ matrix.app.template }}"
           user: "${{ matrix.app.user }}"
           workbench_tools: "${{ matrix.app.workbench_tools }}"
+          postgres_client: "${{ matrix.app.postgres_client }}"
           options: "${{ toJSON(matrix.app.options) }}"

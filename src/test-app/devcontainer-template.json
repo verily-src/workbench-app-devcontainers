@@ -1,0 +1,20 @@
+{
+  "id": "test-app",
+  "version": "1.0.0",
+  "name": "test-app",
+  "description": "Custom Workbench app: test-app (Image: docker/getting-started, Port: 80, User: root)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

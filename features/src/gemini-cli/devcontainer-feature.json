@@ -1,0 +1,17 @@
+{
+  "name": "Gemini CLI",
+  "id": "gemini-cli",
+  "version": "1.0.0",
+  "description": "Installs the Gemini CLI globally",
+  "documentationURL": "https://github.com/google-gemini/gemini-cli",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user"
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/node"
+  ]
+}

@@ -1,0 +1,38 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    # This can be either a pre-existing image or built from a Dockerfile
+    image: "mcr.microsoft.com/devcontainers/base:ubuntu"
+    # build:
+    #   context: .
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/vscode/work
+    user: vscode
+    command: ["ttyd", "-W", "-p", "7681", "bash"]
+    # The port specified here will be forwarded and accessible from the
+    # Workbench UI.
+    ports:
+      - 7681:7681
+    # The service must be connected to the "app-network" Docker network
+    networks:
+      - app-network
+    # SYS_ADMIN and fuse are required to mount workspace resources into the
+    # container.
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

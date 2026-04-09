@@ -14,7 +14,8 @@
 # - WORKBENCH_INSTALL_PATH: path to CLI executable
 
 readonly AWS_VAULT_INSTALL_PATH="/usr/bin/aws-vault"
-readonly AWS_VAULT_EXE_URL="https://github.com/99designs/aws-vault/releases/download/v7.2.0/aws-vault-linux-amd64"
+readonly AWS_VAULT_BINARY_PATH="/usr/bin/_aws-vault"
+readonly AWS_VAULT_EXE_URL="https://github.com/ByteNess/aws-vault/releases/download/v7.9.13/aws-vault-linux-amd64"
 
 if [[ -f "${AWS_VAULT_INSTALL_PATH}" ]]; then
     emit "aws-vault already installed"
@@ -23,14 +24,24 @@ else
     # Install aws-vault for credential caching
     ##########################################
     emit "installing aws-vault"
-    curl --no-progress-meter --location --output "${AWS_VAULT_INSTALL_PATH}" "${AWS_VAULT_EXE_URL}"
-    chmod 755 "${AWS_VAULT_INSTALL_PATH}"
+    curl --no-progress-meter --location --output "${AWS_VAULT_BINARY_PATH}" "${AWS_VAULT_EXE_URL}"
 
-    ##########################################
-    # Export AWS-related environment variables
-    ##########################################
-    export AWS_VAULT_BACKEND="file"
-    export AWS_VAULT_FILE_PASSPHRASE=""
+    cat <<EOF > "${AWS_VAULT_INSTALL_PATH}"
+export AWS_VAULT_BACKEND="file"
+export AWS_VAULT_FILE_PASSPHRASE=""
+
+# aws-vault's keyring dependency creates dbus-daemon processes without cleaning
+# them up (https://github.com/99designs/keyring/issues/103). By setting
+# DBUS_SESSION_BUS_ADDRESS to /dev/null, we can prevent aws-vault from creating
+# these processes. dbus is only needed for the "secretservice" backend, which we
+# do not use.
+export DBUS_SESSION_BUS_ADDRESS="/dev/null"
+
+exec "${AWS_VAULT_BINARY_PATH}" "\$@"
+EOF
+
+    chmod 755 "${AWS_VAULT_INSTALL_PATH}"
+    chmod 755 "${AWS_VAULT_BINARY_PATH}"
 
     #####################################
     # Set up aws-vault credential caching

@@ -126,7 +126,7 @@ function _get_ecr_login_password() {
     
     # Get credentials from wb.sh in credential_process JSON format
     local credentials
-    credentials="$(/home/core/wb.sh resource credentials --name "${ecr_repo_id}" --scope WRITE_READ --format json)" || {
+    credentials="$(/home/core/wb.sh resource credentials --name "${ecr_repo_id}" --scope READ_ONLY --format json)" || {
         echo "Error: Failed to get credentials for repository ${ecr_repo_id}" >&2
         return 1
     }

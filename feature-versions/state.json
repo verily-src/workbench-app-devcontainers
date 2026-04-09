@@ -62,7 +62,7 @@
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
     "installed": "sha256:308f49acac8734542560f797d79b15e4c872c4d3f97d1b22862633fcce2af62a",
-    "filter": ".*\\/Dockerfile"
+    "filter": ".*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
     "tag": "1.23-bookworm",

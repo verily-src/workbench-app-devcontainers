@@ -1,0 +1,11 @@
+# WB Data Profiler — Dependencies
+# BigQuery schema introspection + data profiles
+google-cloud-bigquery>=3.25.0
+google-cloud-storage>=2.14.0
+pandas>=2.0.0
+db-dtypes>=1.2.0
+# Vertex AI / Gemini for semantic profiling
+google-cloud-aiplatform>=1.60.0
+google-genai>=1.0.0
+# Gradio UI
+gradio>=5.0.0

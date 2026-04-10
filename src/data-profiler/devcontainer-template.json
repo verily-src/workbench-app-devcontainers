@@ -1,0 +1,14 @@
+{
+  "id": "data-profiler",
+  "version": "1.0.0",
+  "name": "WB Data Profiler",
+  "description": "Technical (C2a) and Semantic (C2b) profiling for BigQuery datasets. Gradio app on port 8080.",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp"],
+      "default": "gcp",
+      "description": "Cloud provider"
+    }
+  }
+}

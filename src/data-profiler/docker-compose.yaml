@@ -1,0 +1,27 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - 8080:8080
+    environment:
+      - GCP_PROJECT_ID
+      - DATA_PROJECT_IDS
+      - OUTPUT_GCS_BUCKET
+      - GEMINI_MODEL=gemini-2.5-flash
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+networks:
+  app-network:
+    external: true

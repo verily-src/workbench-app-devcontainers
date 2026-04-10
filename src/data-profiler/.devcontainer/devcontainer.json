@@ -4,6 +4,8 @@
     "service": "app",
     "workspaceFolder": "/workspace",
     "forwardPorts": [8080],
+    "postCreateCommand": "cd /app && pip install --no-cache-dir -r requirements.txt",
+    "postStartCommand": "cd /app && ./start.sh",
     "customizations": {
         "vscode": {
             "extensions": [

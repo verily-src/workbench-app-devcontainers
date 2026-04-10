@@ -4,6 +4,8 @@ services:
     build:
       context: .
     restart: always
+    working_dir: /app
+    command: ["./start.sh"]
     volumes:
       - .:/workspace:cached
     ports:

@@ -90,9 +90,19 @@ readonly TOKEN
 
 echo "Checking signing algorithm for resource ${RESOURCE_ID}..."
 
+if [[ "${CLOUD}" == "gcp" ]]; then
+  RESOURCE_PATH="resources/controlled/gcp/gce-instances"
+elif [[ "${CLOUD}" == "aws" ]]; then
+  RESOURCE_PATH="resources/controlled/aws/instances"
+else
+  >&2 echo "ERROR: Unsupported cloud: ${CLOUD}"
+  exit 1
+fi
+readonly RESOURCE_PATH
+
 SIGNING_ALGORITHM="$(curl -s -f \
   -H "Authorization: Bearer ${TOKEN}" \
-  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/resources/controlled/gcp/gce-instances/${RESOURCE_ID}" \
+  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/${RESOURCE_PATH}/${RESOURCE_ID}" \
   | jq -r '.attributes.signingAlgorithm')"
 readonly SIGNING_ALGORITHM
 

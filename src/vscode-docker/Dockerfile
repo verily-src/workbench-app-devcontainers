@@ -50,10 +50,11 @@ RUN curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.17.1/s
     install skaffold /usr/local/bin/ && \
     rm skaffold
 
-# Install Go (version 1.23.5)
-RUN wget https://go.dev/dl/go1.23.5.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.23.5.linux-amd64.tar.gz && \
-    rm go1.23.5.linux-amd64.tar.gz
+# Install Go (version 1.26.2)
+RUN wget https://go.dev/dl/go1.26.2.linux-amd64.tar.gz && \
+    rm -rf /usr/local/go && \
+    tar -C /usr/local -xzf go1.26.2.linux-amd64.tar.gz && \
+    rm go1.26.2.linux-amd64.tar.gz
 
 # Install gh (GitHub CLI version 2.86.0)
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \

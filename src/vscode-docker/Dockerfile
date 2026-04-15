@@ -1,7 +1,7 @@
 # VS Code Docker Development Container
 # Based on lscr.io/linuxserver/code-server with Docker, kubectl, minikube, skaffold, helm, and Go pre-installed
 
-FROM lscr.io/linuxserver/code-server:4.100.3
+FROM lscr.io/linuxserver/code-server@sha256:111275f3c11a51d1d2ad675bfca531677ee6d54ec89e86e78d5b9dcc1a40c6f0
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -56,18 +56,25 @@ RUN wget https://go.dev/dl/go1.26.2.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.26.2.linux-amd64.tar.gz && \
     rm go1.26.2.linux-amd64.tar.gz
 
-# Install gh (GitHub CLI version 2.86.0)
+# Install gh (not pinned because only the latest version is available in the
+# repository)
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
     chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
     apt-get update && \
-    apt-get install -y gh=2.86.0 && \
+    apt-get install -y gh && \
     rm -rf /var/lib/apt/lists/*
 
-# Install uv (Python package manager version 0.9.27)
-RUN curl -LsSf https://astral.sh/uv/0.9.27/install.sh | sh && \
-    mv $HOME/.local/bin/uv /usr/local/bin/ && \
-    mv $HOME/.local/bin/uvx /usr/local/bin/
+# Install Node.js (required for promptfoo)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install promptfoo CLI
+RUN npm install -g promptfoo
+
+# Install uv (Python package manager)
+RUN curl -LsSf https://astral.sh/uv/0.10.7/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
 
 # Set up environment variables
 ENV PATH="/usr/local/go/bin:${PATH}"

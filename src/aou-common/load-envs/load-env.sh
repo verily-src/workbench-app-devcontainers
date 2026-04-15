@@ -5,6 +5,9 @@
 #
 # Usage: source load-env.sh
 
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+readonly SCRIPT_DIR
+
 # Get the environment variables inside a function so that the set -o options
 # don't impact the user's environment, since this script needs to be sourced to
 # apply the environment variables.
@@ -27,10 +30,16 @@ function get_env_vars() {
         return 1
     fi
 
-    WORKSPACE_ID="$(jq -r '.workspace.userFacingId' "${CONTEXT_PATH}")"
+    if ! WORKSPACE_ID="$(jq -er '.workspace.userFacingId' "${CONTEXT_PATH}")"; then
+        echo "Workspace ID is not set in ${CONTEXT_PATH}." >&2
+        return 1
+    fi
     readonly WORKSPACE_ID
 
-    WSM_API_URL="$(jq -r '.server.workspaceManagerUri' "${CONTEXT_PATH}")"
+    if ! WSM_API_URL="$(jq -er '.server.workspaceManagerUri' "${CONTEXT_PATH}")"; then
+        echo "WSM API URL is not set in ${CONTEXT_PATH}." >&2
+        return 1
+    fi
     readonly WSM_API_URL
 
     if wb auth status 2>&1 | grep -q "NO USER LOGGED IN"; then
@@ -41,7 +50,7 @@ function get_env_vars() {
     local auth_token
     auth_token="$(wb auth print-access-token)"
 
-    ENV_VARS="$(AUTH_TOKEN="$auth_token" ./load-env -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}")"
+    ENV_VARS="$(AUTH_TOKEN="$auth_token" "${SCRIPT_DIR}/load-env" -workspace "${WORKSPACE_ID}" -wsm-url "${WSM_API_URL}")"
     echo "${ENV_VARS}" > "${HOME}/.aou-env"
     echo "${ENV_VARS}"
 }

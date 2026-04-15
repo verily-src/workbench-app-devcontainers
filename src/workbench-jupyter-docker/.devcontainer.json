@@ -16,6 +16,13 @@
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
+  "features": {
+    "./.devcontainer/features/jupyter": {
+      "version": "3.12",
+      "installJupyterlab": "true",
+      "user": "jupyter"
+    }
+  },
   "remoteUser": "root",
   "customizations": {
     "workbench": {

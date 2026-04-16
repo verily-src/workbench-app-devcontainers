@@ -1,0 +1,8 @@
+{
+  "name": "Clinical Dashboard",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/app",
+  "remoteUser": "root"
+}

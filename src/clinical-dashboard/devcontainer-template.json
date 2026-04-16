@@ -1,0 +1,8 @@
+{
+  "id": "clinical-dashboard",
+  "description": "Clinical data dashboard with BigQuery integration for BHS study",
+  "version": "1.0.0",
+  "name": "Clinical Dashboard",
+  "options": {},
+  "platforms": ["Any"]
+}

@@ -61,7 +61,7 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:308f49acac8734542560f797d79b15e4c872c4d3f97d1b22862633fcce2af62a",
+    "installed": "sha256:111275f3c11a51d1d2ad675bfca531677ee6d54ec89e86e78d5b9dcc1a40c6f0",
     "filter": ".*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {

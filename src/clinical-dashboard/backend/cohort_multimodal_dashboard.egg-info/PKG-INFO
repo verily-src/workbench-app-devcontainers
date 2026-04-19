@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: cohort-multimodal-dashboard
+Version: 0.1.0
+Summary: Cohort-based multimodal clinical data dashboard
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.104.0
+Requires-Dist: uvicorn[standard]>=0.24.0
+Requires-Dist: google-cloud-bigquery>=3.14.0
+Requires-Dist: google-cloud-storage>=2.10.0
+Requires-Dist: pandas>=2.1.0
+Requires-Dist: numpy>=1.26.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pydantic-settings>=2.1.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.0; extra == "dev"
+Requires-Dist: httpx>=0.25.0; extra == "dev"

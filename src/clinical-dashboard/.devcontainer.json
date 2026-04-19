@@ -3,7 +3,6 @@
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",
-  "workspaceFolder": "/workspace",
-  "postCreateCommand": "echo 'Dashboard ready'",
+  "workspaceFolder": "/app",
   "remoteUser": "root"
 }

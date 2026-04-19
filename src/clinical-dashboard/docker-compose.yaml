@@ -5,6 +5,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: always
+    volumes:
+      - .:/workspace:cached
     ports:
       - "8080:8080"
     environment:
@@ -13,6 +15,13 @@ services:
       BQ_PROJECT: "wb-spotless-eggplant-4340"
     networks:
       - app-network
+    # Required by Workbench for mounting workspace resources
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
 
 networks:
   app-network:

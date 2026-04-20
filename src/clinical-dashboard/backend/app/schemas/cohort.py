@@ -1,5 +1,5 @@
 """Pydantic schemas for cohort endpoints"""
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
 
@@ -16,6 +16,7 @@ class CohortFilters(BaseModel):
     max_age: Optional[int] = None
     disease: Optional[str] = None
     medication: Optional[str] = None
+    additional_filters: Optional[Dict[str, Any]] = None
 
 
 class CohortResponse(BaseModel):

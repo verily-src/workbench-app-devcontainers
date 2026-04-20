@@ -66,3 +66,51 @@ def get_visit_timeline(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}")
+
+
+@router.get("/visit-scatter")
+def get_visit_scatter(cohort_ids: str):
+    """Get individual visit dates for scatter plot.
+
+    Returns each participant's visit dates (study_day) for all visits.
+    """
+    usubjids = [uid.strip() for uid in cohort_ids.split(",") if uid.strip()]
+    if not usubjids:
+        raise HTTPException(status_code=400, detail="No cohort IDs provided")
+
+    usubjid_list = "', '".join(usubjids)
+
+    try:
+        query = f"""
+        SELECT
+            USUBJID,
+            VISITNUM as visit_num,
+            VISIT as visit_name,
+            study_day
+        FROM `{settings.bhs_project}.crf.VS`
+        WHERE USUBJID IN ('{usubjid_list}')
+          AND VISITNUM IS NOT NULL
+          AND study_day IS NOT NULL
+        ORDER BY USUBJID, VISITNUM
+        LIMIT 10000
+        """
+
+        df = query_to_dataframe(query)
+
+        visits = [
+            {
+                "usubjid": str(row["USUBJID"]),
+                "visit_num": int(row["visit_num"]),
+                "visit_name": str(row["visit_name"]) if row.get("visit_name") else f"Visit {int(row['visit_num'])}",
+                "study_day": float(row["study_day"])
+            }
+            for _, row in df.iterrows()
+        ]
+
+        return {
+            "cohort_size": len(usubjids),
+            "visits": visits
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}")

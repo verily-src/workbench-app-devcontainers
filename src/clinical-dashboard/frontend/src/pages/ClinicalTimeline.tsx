@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useClinicalTimeline } from '../api/hooks'
+import { useClinicalTimeline, useVisitScatter } from '../api/hooks'
 import PlotlyChart from '../components/PlotlyChart'
 import type { Data } from 'plotly.js'
 
@@ -16,6 +16,7 @@ export default function ClinicalTimeline() {
   }, [])
 
   const { data, isLoading, error } = useClinicalTimeline(cohortIds)
+  const { data: scatterData, isLoading: scatterLoading } = useVisitScatter(cohortIds)
 
   if (cohortIds.length === 0) {
     return (
@@ -125,6 +126,27 @@ export default function ClinicalTimeline() {
         line: { width: 0 },
         showlegend: false,
         hoverinfo: 'skip',
+      },
+    ]
+  }
+
+  const createVisitScatterChart = (): Data[] => {
+    if (!scatterData?.visits || scatterData.visits.length === 0) return []
+
+    return [
+      {
+        x: scatterData.visits.map(v => v.study_day),
+        y: scatterData.visits.map(v => v.visit_num),
+        type: 'scatter',
+        mode: 'markers',
+        marker: {
+          size: 6,
+          color: 'rgb(59, 130, 246)',
+          opacity: 0.6,
+        },
+        text: scatterData.visits.map(v => `${v.usubjid}<br>${v.visit_name}<br>Day ${v.study_day}`),
+        hoverinfo: 'text',
+        showlegend: false,
       },
     ]
   }
@@ -245,6 +267,32 @@ export default function ClinicalTimeline() {
               className="w-full"
             />
           </div>
+
+          {/* Visit Scatter Plot */}
+          {scatterData && scatterData.visits.length > 0 && (
+            <div className="card p-6">
+              <h2 className="text-lg font-medium mb-4">Doctor Visit Dates</h2>
+              <p className="text-sm text-verily-ink/60 mb-4">
+                Each point represents a doctor visit for a participant in the cohort
+              </p>
+              <PlotlyChart
+                data={createVisitScatterChart()}
+                layout={{
+                  xaxis: {
+                    title: 'Study Day',
+                  },
+                  yaxis: {
+                    title: 'Visit Number',
+                    tickmode: 'linear',
+                    tick0: 0,
+                    dtick: 1,
+                  },
+                  height: 500,
+                }}
+                className="w-full"
+              />
+            </div>
+          )}
 
           {/* Visit Summary Table */}
           <div className="card p-6">

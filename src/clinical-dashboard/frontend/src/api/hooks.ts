@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './client'
-import type { CohortResponse, DeviceDataResponse, ClinicalTimelineResponse, CohortFilters } from './types'
+import type {
+  CohortResponse,
+  DeviceDataResponse,
+  IndividualDataResponse,
+  ClinicalTimelineResponse,
+  VisitScatterResponse,
+  CohortFilters
+} from './types'
 
 export function useCohortFilter(filters: CohortFilters, additionalFilters?: Record<string, string>) {
   return useQuery({
@@ -21,11 +28,50 @@ export function useCohortFilter(filters: CohortFilters, additionalFilters?: Reco
   })
 }
 
-export function useDeviceData(cohortIds: string[]) {
+export function useDeviceData(
+  cohortIds: string[],
+  minDay?: number,
+  maxDay?: number
+) {
   return useQuery({
-    queryKey: ['device-data', cohortIds],
+    queryKey: ['device-data', cohortIds, minDay, maxDay],
     queryFn: async () => {
-      const { data } = await api.get<DeviceDataResponse>('/device-data/aggregated', {
+      const params: any = { cohort_ids: cohortIds.join(',') }
+      if (minDay !== undefined) params.min_day = minDay
+      if (maxDay !== undefined) params.max_day = maxDay
+
+      const { data } = await api.get<DeviceDataResponse>('/device-data/aggregated', { params })
+      return data
+    },
+    enabled: cohortIds.length > 0,
+  })
+}
+
+export function useIndividualData(
+  usubjid: string | null,
+  metrics: string,
+  minDay?: number,
+  maxDay?: number
+) {
+  return useQuery({
+    queryKey: ['individual-data', usubjid, metrics, minDay, maxDay],
+    queryFn: async () => {
+      const params: any = { usubjid, metrics }
+      if (minDay !== undefined) params.min_day = minDay
+      if (maxDay !== undefined) params.max_day = maxDay
+
+      const { data } = await api.get<IndividualDataResponse>('/device-data/individual', { params })
+      return data
+    },
+    enabled: !!usubjid,
+  })
+}
+
+export function useParticipantsWithData(cohortIds: string[]) {
+  return useQuery({
+    queryKey: ['participants-with-data', cohortIds],
+    queryFn: async () => {
+      const { data } = await api.get<{ participants: string[] }>('/device-data/participants-with-data', {
         params: { cohort_ids: cohortIds.join(',') },
       })
       return data
@@ -39,6 +85,19 @@ export function useClinicalTimeline(cohortIds: string[]) {
     queryKey: ['clinical-timeline', cohortIds],
     queryFn: async () => {
       const { data } = await api.get<ClinicalTimelineResponse>('/clinical-data/visit-timeline', {
+        params: { cohort_ids: cohortIds.join(',') },
+      })
+      return data
+    },
+    enabled: cohortIds.length > 0,
+  })
+}
+
+export function useVisitScatter(cohortIds: string[]) {
+  return useQuery({
+    queryKey: ['visit-scatter', cohortIds],
+    queryFn: async () => {
+      const { data } = await api.get<VisitScatterResponse>('/clinical-data/visit-scatter', {
         params: { cohort_ids: cohortIds.join(',') },
       })
       return data

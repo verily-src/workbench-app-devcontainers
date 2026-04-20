@@ -1,5 +1,6 @@
 services:
   app:
+    # Workbench looks for this exact container name.
     container_name: "application-server"
     build:
       context: .
@@ -8,6 +9,8 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # WORKBENCH_USER_EMAIL is forwarded by the proxy layer in production;
+      # X-Forwarded-User is the fallback path we already read in the app.
       APP_ENV: "prod"
       USE_DEMO_TABLES: "true"
     networks:

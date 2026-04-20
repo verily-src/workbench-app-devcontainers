@@ -7,7 +7,8 @@ settings = get_settings()
 
 def get_bq_client() -> bigquery.Client:
     """Get a BigQuery client with cost guardrails."""
-    client = bigquery.Client(project=settings.bhs_project)
+    # Use app_project for authentication, query data from bhs_project
+    client = bigquery.Client(project=settings.app_project)
     return client
 
 

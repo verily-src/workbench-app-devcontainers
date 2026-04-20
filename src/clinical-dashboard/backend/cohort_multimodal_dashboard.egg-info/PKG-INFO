@@ -2,7 +2,7 @@ Metadata-Version: 2.4
 Name: cohort-multimodal-dashboard
 Version: 0.1.0
 Summary: Cohort-based multimodal clinical data dashboard
-Requires-Python: >=3.10
+Requires-Python: >=3.9
 Requires-Dist: fastapi>=0.104.0
 Requires-Dist: uvicorn[standard]>=0.24.0
 Requires-Dist: google-cloud-bigquery>=3.14.0

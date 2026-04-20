@@ -1,7 +1,7 @@
 # VS Code Docker Development Container
 # Based on lscr.io/linuxserver/code-server with Docker, kubectl, minikube, skaffold, helm, and Go pre-installed
 
-FROM lscr.io/linuxserver/code-server@sha256:111275f3c11a51d1d2ad675bfca531677ee6d54ec89e86e78d5b9dcc1a40c6f0
+FROM lscr.io/linuxserver/code-server@sha256:4620adace18935dd6ca79d77e3bc1c379e21875392192f970cf5d6b0fb4aefcd
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

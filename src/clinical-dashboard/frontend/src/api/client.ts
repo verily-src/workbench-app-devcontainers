@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 export const api = axios.create({
-  baseURL: './api/',  // Relative to current page path
+  baseURL: './dashboard/api/',  // Workbench reserves /api/, use custom prefix
   headers: {
     'Content-Type': 'application/json',
   },

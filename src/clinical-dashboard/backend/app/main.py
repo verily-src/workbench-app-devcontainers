@@ -21,12 +21,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(cohorts.router, prefix="/api/cohorts", tags=["cohorts"])
-app.include_router(device_data.router, prefix="/api/device-data", tags=["device-data"])
-app.include_router(clinical_data.router, prefix="/api/clinical-data", tags=["clinical-data"])
+app.include_router(cohorts.router, prefix="/dashboard/api/cohorts", tags=["cohorts"])
+app.include_router(device_data.router, prefix="/dashboard/api/device-data", tags=["device-data"])
+app.include_router(clinical_data.router, prefix="/dashboard/api/clinical-data", tags=["clinical-data"])
 
 
-@app.get("/api/health")
+@app.get("/dashboard/api/health")
 def health():
     return {
         "status": "ok",

@@ -43,12 +43,6 @@ def filter_cohort(
     if sex:
         where_conditions.append(f"sex = '{sex}'")
 
-    if min_age is not None:
-        where_conditions.append(f"age_at_enrollment >= {min_age}")
-
-    if max_age is not None:
-        where_conditions.append(f"age_at_enrollment <= {max_age}")
-
     if disease:
         disease_col = DISEASE_MAP.get(disease)
         if disease_col:
@@ -63,13 +57,11 @@ def filter_cohort(
 
     where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
 
-    # Query DIAGNOSES table
+    # Query DIAGNOSES table (only available columns)
     query = f"""
     SELECT DISTINCT
         USUBJID,
-        sex,
-        age_at_enrollment,
-        race
+        sex
     FROM `{settings.bhs_project}.analysis.DIAGNOSES`
     WHERE {where_clause}
     ORDER BY USUBJID
@@ -86,8 +78,8 @@ def filter_cohort(
                 Participant(
                     usubjid=str(row["USUBJID"]),
                     sex=str(row["sex"]) if row.get("sex") else None,
-                    age_at_enrollment=int(row["age_at_enrollment"]) if row.get("age_at_enrollment") else None,
-                    race=str(row["race"]) if row.get("race") else None,
+                    age_at_enrollment=None,  # Not available in DIAGNOSES table
+                    race=None,  # Not available in DIAGNOSES table
                 )
             )
 

@@ -1,21 +1,6 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings
-import subprocess
-
-
-def get_gcp_project() -> str:
-    """Auto-detect current GCP project."""
-    try:
-        result = subprocess.run(
-            ["gcloud", "config", "get-value", "project"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        project = result.stdout.strip()
-        return project if project else "wb-rapid-apricot-2196"
-    except Exception:
-        return "wb-rapid-apricot-2196"
+import os
 
 
 class Settings(BaseSettings):
@@ -23,7 +8,11 @@ class Settings(BaseSettings):
 
     env: str = "dev"
     bhs_project: str = "wb-spotless-eggplant-4340"  # Where BHS data lives
-    app_project: str = get_gcp_project()  # Current workspace project
+
+    # Workbench sets GOOGLE_CLOUD_PROJECT in deployed containers
+    # Fall back to wb-rapid-apricot-2196 for local dev
+    app_project: str = os.getenv("GOOGLE_CLOUD_PROJECT", "wb-rapid-apricot-2196")
+
     use_demo_tables: bool = True
 
     # BigQuery cost guardrails

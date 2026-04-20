@@ -8,12 +8,6 @@ import hashlib
 router = APIRouter()
 settings = get_settings()
 
-
-@router.get("/filters")
-def get_available_filters():
-    """Return catalog of all available filters grouped by category."""
-    return FILTER_CATALOG
-
 # Complete map of ALL available clinical filters
 FILTER_CATALOG = {
     "demographics": {
@@ -64,8 +58,15 @@ DISEASE_MAP = {k: v["column"] for cat in ["cardiovascular", "metabolic", "mental
 MEDICATION_MAP = {k: v["column"] for k, v in FILTER_CATALOG["medications"].items()}
 
 
+@router.get("/filters")
+def get_available_filters():
+    """Return catalog of all available filters grouped by category."""
+    return FILTER_CATALOG
+
+
 from typing import Dict, Any
 from fastapi import Query
+import json
 
 
 @router.get("/filter", response_model=CohortResponse)
@@ -103,7 +104,6 @@ def filter_cohort(
 
     # Dynamic filters from JSON
     if filters:
-        import json
         try:
             filter_dict = json.loads(filters)
             # Look up each filter in the catalog
@@ -156,7 +156,6 @@ def filter_cohort(
             )
 
         # Generate cohort ID from filters
-        import json
         filter_str = f"{sex}_{disease}_{medication}_{filters}"
         cohort_id = hashlib.md5(filter_str.encode()).hexdigest()[:8]
 

@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException
 from ..services.bq import query_to_dataframe
 from ..schemas.cohort import CohortResponse, CohortFilters, Participant
@@ -28,11 +29,11 @@ MEDICATION_MAP = {
 
 @router.get("/filter", response_model=CohortResponse)
 def filter_cohort(
-    sex: str | None = None,
-    min_age: int | None = None,
-    max_age: int | None = None,
-    disease: str | None = None,
-    medication: str | None = None,
+    sex: Optional[str] = None,
+    min_age: Optional[int] = None,
+    max_age: Optional[int] = None,
+    disease: Optional[str] = None,
+    medication: Optional[str] = None,
 ):
     """Filter participants by clinical labels to build a cohort."""
 

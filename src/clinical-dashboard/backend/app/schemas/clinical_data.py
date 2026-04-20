@@ -1,4 +1,5 @@
 """Pydantic schemas for clinical data endpoints"""
+from typing import List
 from pydantic import BaseModel
 
 
@@ -17,4 +18,4 @@ class VisitPoint(BaseModel):
 
 class ClinicalTimelineResponse(BaseModel):
     cohort_size: int
-    visits: list[VisitPoint]
+    visits: List[VisitPoint]

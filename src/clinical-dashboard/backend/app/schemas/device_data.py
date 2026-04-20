@@ -1,4 +1,5 @@
 """Pydantic schemas for device data endpoints"""
+from typing import Dict, List
 from pydantic import BaseModel
 
 
@@ -11,4 +12,4 @@ class DeviceMetricPoint(BaseModel):
 
 class DeviceDataResponse(BaseModel):
     cohort_size: int
-    metrics: dict[str, list[DeviceMetricPoint]]
+    metrics: Dict[str, List[DeviceMetricPoint]]

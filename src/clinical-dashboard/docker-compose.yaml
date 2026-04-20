@@ -7,8 +7,9 @@ services:
     restart: always
     ports:
       - "8080:8080"
-    volumes:
-      - .:/app:cached
+    environment:
+      APP_ENV: "prod"
+      USE_DEMO_TABLES: "true"
     networks:
       - app-network
 

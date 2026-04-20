@@ -3,12 +3,38 @@ import { useNavigate } from 'react-router-dom'
 import { useCohortFilter } from '../api/hooks'
 import type { CohortFilters } from '../api/types'
 
+// Top priority conditions to show by default
+const PRIORITY_CONDITIONS = [
+  { key: 'cad', label: 'Coronary Artery Disease', category: 'cardiovascular' },
+  { key: 'chf', label: 'Congestive Heart Failure', category: 'cardiovascular' },
+  { key: 'mi', label: 'Myocardial Infarction (Heart Attack)', category: 'cardiovascular' },
+  { key: 'stroke', label: 'Stroke', category: 'cardiovascular' },
+  { key: 'tia', label: 'TIA (Mini-Stroke)', category: 'cardiovascular' },
+  { key: 'diab1', label: 'Type 1 Diabetes', category: 'metabolic' },
+  { key: 'diab2', label: 'Type 2 Diabetes', category: 'metabolic' },
+  { key: 'depression', label: 'Major Depression', category: 'mental_health' },
+  { key: 'dementia', label: 'Dementia', category: 'mental_health' },
+  { key: 'statin', label: 'Taking Statins', category: 'medications' },
+]
+
+// Additional filters available in dropdown
+const ADDITIONAL_FILTERS = [
+  { key: 'smoking_status', label: 'Smoking Status', category: 'demographics' },
+  { key: 'pad', label: 'Peripheral Artery Disease', category: 'cardiovascular' },
+  { key: 'vhd', label: 'Valvular Heart Disease', category: 'cardiovascular' },
+  { key: 'prediabetes', label: 'Prediabetes', category: 'metabolic' },
+  { key: 'sleepapnea', label: 'Sleep Apnea', category: 'metabolic' },
+  { key: 'bipolar', label: 'Bipolar Disorder', category: 'mental_health' },
+  { key: 'diabetes_med', label: 'Diabetes Medications', category: 'medications' },
+]
+
 export default function CohortSelector() {
   const navigate = useNavigate()
   const [filters, setFilters] = useState<CohortFilters>({})
   const [activeFilters, setActiveFilters] = useState<CohortFilters>({})
+  const [additionalFilters, setAdditionalFilters] = useState<Record<string, string>>({})
 
-  const { data, isLoading, error } = useCohortFilter(activeFilters)
+  const { data, isLoading, error } = useCohortFilter(activeFilters, additionalFilters)
 
   // Store selected cohort in localStorage for other pages
   useEffect(() => {
@@ -25,18 +51,43 @@ export default function CohortSelector() {
   const handleReset = () => {
     setFilters({})
     setActiveFilters({})
+    setAdditionalFilters({})
     localStorage.removeItem('selectedCohort')
+  }
+
+  const handleToggleCondition = (key: string) => {
+    setAdditionalFilters(prev => {
+      const newFilters = { ...prev }
+      if (newFilters[key]) {
+        delete newFilters[key]
+      } else {
+        newFilters[key] = '1'
+      }
+      return newFilters
+    })
+  }
+
+  const handleAddFilter = (key: string) => {
+    if (!additionalFilters[key]) {
+      setAdditionalFilters(prev => ({ ...prev, [key]: '1' }))
+    }
+  }
+
+  const handleRemoveFilter = (key: string) => {
+    setAdditionalFilters(prev => {
+      const newFilters = { ...prev }
+      delete newFilters[key]
+      return newFilters
+    })
   }
 
   const handleExportCsv = () => {
     if (!data || data.participants.length === 0) return
 
-    const headers = ['USUBJID', 'Sex', 'Age', 'Race']
+    const headers = ['USUBJID', 'Sex']
     const rows = data.participants.map(p => [
       p.usubjid,
       p.sex || '',
-      p.age_at_enrollment?.toString() || '',
-      p.race || '',
     ])
 
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
@@ -49,6 +100,8 @@ export default function CohortSelector() {
     URL.revokeObjectURL(url)
   }
 
+  const activeAdditionalFilters = ADDITIONAL_FILTERS.filter(f => !additionalFilters[f.key])
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-6">
       <div className="mb-4">
@@ -59,9 +112,9 @@ export default function CohortSelector() {
       </div>
 
       <div className="card p-6">
-        <h2 className="text-lg font-medium mb-4">Filters</h2>
+        <h2 className="text-lg font-medium mb-4">Basic Filters</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           <div>
             <label className="block text-sm font-medium mb-1">Sex</label>
             <select
@@ -76,29 +129,7 @@ export default function CohortSelector() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Min Age</label>
-            <input
-              type="number"
-              className="input w-full"
-              placeholder="18"
-              value={filters.min_age ?? ''}
-              onChange={(e) => setFilters({ ...filters, min_age: e.target.value ? Number(e.target.value) : undefined })}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Max Age</label>
-            <input
-              type="number"
-              className="input w-full"
-              placeholder="90"
-              value={filters.max_age ?? ''}
-              onChange={(e) => setFilters({ ...filters, max_age: e.target.value ? Number(e.target.value) : undefined })}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Disease</label>
+            <label className="block text-sm font-medium mb-1">Disease (Legacy)</label>
             <select
               className="input w-full"
               value={filters.disease || ''}
@@ -106,7 +137,7 @@ export default function CohortSelector() {
             >
               <option value="">Any</option>
               <option value="htn">Hypertension</option>
-              <option value="diabetes">Diabetes</option>
+              <option value="diabetes">Diabetes (Any)</option>
               <option value="cvd">Cardiovascular Disease</option>
               <option value="ckd">Chronic Kidney Disease</option>
               <option value="afib">Atrial Fibrillation</option>
@@ -115,7 +146,7 @@ export default function CohortSelector() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Medication</label>
+            <label className="block text-sm font-medium mb-1">Medication (Legacy)</label>
             <select
               className="input w-full"
               value={filters.medication || ''}
@@ -131,7 +162,65 @@ export default function CohortSelector() {
           </div>
         </div>
 
-        <div className="mt-6 flex gap-3">
+        <h3 className="text-md font-medium mb-3 mt-6">Important Conditions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mb-6">
+          {PRIORITY_CONDITIONS.map(condition => (
+            <label key={condition.key} className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!additionalFilters[condition.key]}
+                onChange={() => handleToggleCondition(condition.key)}
+                className="rounded border-verily-mute"
+              />
+              <span className="text-sm">{condition.label}</span>
+            </label>
+          ))}
+        </div>
+
+        {Object.keys(additionalFilters).length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-md font-medium mb-2">Active Additional Filters</h3>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(additionalFilters).map(([key, value]) => {
+                const filter = [...PRIORITY_CONDITIONS, ...ADDITIONAL_FILTERS].find(f => f.key === key)
+                if (!filter) return null
+                return (
+                  <div key={key} className="inline-flex items-center gap-1 px-3 py-1 bg-verily-primary/10 text-verily-primary rounded-full text-sm">
+                    <span>{filter.label}</span>
+                    <button
+                      onClick={() => handleRemoveFilter(key)}
+                      className="ml-1 hover:text-verily-primary/70"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium mb-1">+ Add Filter</label>
+          <select
+            className="input w-full max-w-md"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) {
+                handleAddFilter(e.target.value)
+              }
+            }}
+          >
+            <option value="">Choose a filter to add...</option>
+            {activeAdditionalFilters.map(filter => (
+              <option key={filter.key} value={filter.key}>
+                {filter.label} ({filter.category})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex gap-3">
           <button className="btn-primary" onClick={handleApply} disabled={isLoading}>
             {isLoading ? 'Loading...' : 'Apply Filters'}
           </button>
@@ -187,8 +276,6 @@ export default function CohortSelector() {
                   <tr>
                     <th className="text-left py-2 px-3 font-medium">USUBJID</th>
                     <th className="text-left py-2 px-3 font-medium">Sex</th>
-                    <th className="text-left py-2 px-3 font-medium">Age</th>
-                    <th className="text-left py-2 px-3 font-medium">Race</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,8 +283,6 @@ export default function CohortSelector() {
                     <tr key={p.usubjid} className="border-b border-verily-mute/50">
                       <td className="py-2 px-3 font-mono text-xs">{p.usubjid}</td>
                       <td className="py-2 px-3">{p.sex || '-'}</td>
-                      <td className="py-2 px-3">{p.age_at_enrollment ?? '-'}</td>
-                      <td className="py-2 px-3">{p.race || '-'}</td>
                     </tr>
                   ))}
                 </tbody>

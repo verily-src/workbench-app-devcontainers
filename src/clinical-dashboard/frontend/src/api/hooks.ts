@@ -2,14 +2,22 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './client'
 import type { CohortResponse, DeviceDataResponse, ClinicalTimelineResponse, CohortFilters } from './types'
 
-export function useCohortFilter(filters: CohortFilters) {
+export function useCohortFilter(filters: CohortFilters, additionalFilters?: Record<string, string>) {
   return useQuery({
-    queryKey: ['cohort', filters],
+    queryKey: ['cohort', filters, additionalFilters],
     queryFn: async () => {
-      const { data } = await api.get<CohortResponse>('/cohorts/filter', { params: filters })
+      const params: any = { ...filters }
+
+      // Add additional filters as JSON string
+      if (additionalFilters && Object.keys(additionalFilters).length > 0) {
+        params.filters = JSON.stringify(additionalFilters)
+      }
+
+      const { data } = await api.get<CohortResponse>('/cohorts/filter', { params })
       return data
     },
-    enabled: Object.keys(filters).some(k => filters[k as keyof CohortFilters] != null),
+    enabled: Object.keys(filters).some(k => filters[k as keyof CohortFilters] != null) ||
+             (additionalFilters && Object.keys(additionalFilters).length > 0),
   })
 }
 

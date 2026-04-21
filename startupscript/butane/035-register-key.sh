@@ -162,12 +162,13 @@ echo "Registering public key with WSM..."
 set +o xtrace
 HTTP_CODE="$(curl -s -o "${RESPONSE_FILE}" -w '%{http_code}' -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${IDENTITY_TOKEN}" \
   -H "Content-Type: application/json" \
-  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/applications/${RESOURCE_ID}/registerKey" \
+  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/secrets/registerKey" \
   -d '{
+    "appResourceId": "'"${RESOURCE_ID}"'",
     "key": "'"${BASE64_PUBLIC_KEY}"'",
-    "algorithm": "ED25519",
-    "identityToken": "'"${IDENTITY_TOKEN}"'"
+    "algorithm": "ED25519"
   }')"
 readonly HTTP_CODE
 set -o xtrace

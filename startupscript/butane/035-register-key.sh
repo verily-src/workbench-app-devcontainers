@@ -85,8 +85,10 @@ if [[ -z "${RESOURCE_ID}" ]]; then
 fi
 
 # Get an access token via the Workbench CLI
+set +o xtrace
 TOKEN="$(/home/core/wb.sh auth print-access-token)"
 readonly TOKEN
+set -o xtrace
 
 echo "Checking signing algorithm for resource ${RESOURCE_ID}..."
 
@@ -100,10 +102,24 @@ else
 fi
 readonly RESOURCE_PATH
 
-SIGNING_ALGORITHM="$(curl -s -f \
+RESPONSE_FILE="$(mktemp)"
+trap 'rm -f "${RESPONSE_FILE}"' EXIT
+
+set +o xtrace
+RESOURCE_HTTP_CODE="$(curl -s \
   -H "Authorization: Bearer ${TOKEN}" \
-  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/${RESOURCE_PATH}/${RESOURCE_ID}" \
-  | jq -r '.attributes.signingAlgorithm')"
+  -o "${RESPONSE_FILE}" -w '%{http_code}' \
+  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/${RESOURCE_PATH}/${RESOURCE_ID}")"
+readonly RESOURCE_HTTP_CODE
+set -o xtrace
+
+if [[ "${RESOURCE_HTTP_CODE}" -lt 200 || "${RESOURCE_HTTP_CODE}" -ge 300 ]]; then
+  >&2 echo "ERROR: Failed to fetch resource with HTTP status ${RESOURCE_HTTP_CODE}."
+  >&2 cat "${RESPONSE_FILE}"
+  exit 1
+fi
+
+SIGNING_ALGORITHM="$(jq -r '.attributes.signingAlgorithm' "${RESPONSE_FILE}")"
 readonly SIGNING_ALGORITHM
 
 if [[ "${SIGNING_ALGORITHM}" != "UNSET" ]]; then
@@ -126,12 +142,15 @@ BASE64_PUBLIC_KEY="$(grep -v '^-----' "${KEY_DIR}/signing.pub" | tr -d '\n')"
 readonly BASE64_PUBLIC_KEY
 
 echo "Fetching identity token..."
+set +o xtrace
 IDENTITY_TOKEN="$(get_identity_token "${WSM_URL}" "${TOKEN}")"
 readonly IDENTITY_TOKEN
+set -o xtrace
 
 echo "Registering public key with WSM..."
 
-HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+set +o xtrace
+HTTP_CODE="$(curl -s -o "${RESPONSE_FILE}" -w '%{http_code}' -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/applications/${RESOURCE_ID}/registerKey" \
@@ -141,10 +160,12 @@ HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
     "identityToken": "'"${IDENTITY_TOKEN}"'"
   }')"
 readonly HTTP_CODE
+set -o xtrace
 
 if [[ "${HTTP_CODE}" -eq 204 ]]; then
   echo "Key registration successful."
 else
   >&2 echo "ERROR: Key registration failed with HTTP status ${HTTP_CODE}."
+  >&2 cat "${RESPONSE_FILE}"
   exit 1
 fi

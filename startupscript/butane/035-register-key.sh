@@ -70,9 +70,9 @@ readonly SERVER
 WSM_URL="$(get_service_url "wsm" "${SERVER}")"
 readonly WSM_URL
 
-WORKSPACE_ID="$(get_metadata_value "terra-workspace-id" "")"
-readonly WORKSPACE_ID
-if [[ -z "${WORKSPACE_ID}" ]]; then
+WORKSPACE_UFID="$(get_metadata_value "terra-workspace-id" "")"
+readonly WORKSPACE_UFID
+if [[ -z "${WORKSPACE_UFID}" ]]; then
   echo "No workspace ID found in metadata. Skipping key registration."
   exit 0
 fi
@@ -89,6 +89,16 @@ set +o xtrace
 TOKEN="$(/home/core/wb.sh auth print-access-token)"
 readonly TOKEN
 set -o xtrace
+
+WORKSPACE_ID="$(curl -s -f \
+  -H "Authorization: Bearer ${TOKEN}" \
+  "${WSM_URL}/api/workspaces/v1/workspaceByUserFacingId/${WORKSPACE_UFID}" \
+  | jq -r '.id')"
+readonly WORKSPACE_ID
+if [[ -z "${WORKSPACE_ID}" || "${WORKSPACE_ID}" == "null" ]]; then
+  >&2 echo "ERROR: Failed to resolve workspace UUID for user-facing ID '${WORKSPACE_UFID}'."
+  exit 1
+fi
 
 echo "Checking signing algorithm for resource ${RESOURCE_ID}..."
 
@@ -152,12 +162,13 @@ echo "Registering public key with WSM..."
 set +o xtrace
 HTTP_CODE="$(curl -s -o "${RESPONSE_FILE}" -w '%{http_code}' -X POST \
   -H "Authorization: Bearer ${TOKEN}" \
+  -H "Authorization: Bearer ${IDENTITY_TOKEN}" \
   -H "Content-Type: application/json" \
-  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/applications/${RESOURCE_ID}/registerKey" \
+  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/secrets/registerKey" \
   -d '{
+    "appResourceId": "'"${RESOURCE_ID}"'",
     "key": "'"${BASE64_PUBLIC_KEY}"'",
-    "algorithm": "ED25519",
-    "identityToken": "'"${IDENTITY_TOKEN}"'"
+    "algorithm": "ED25519"
   }')"
 readonly HTTP_CODE
 set -o xtrace

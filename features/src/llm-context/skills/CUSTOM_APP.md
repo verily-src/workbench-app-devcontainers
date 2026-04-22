@@ -63,6 +63,7 @@ networks:
 ```
 
 **Alternative: Use image directly (no Dockerfile):**
+> ⚠️ The `volumes` mount below is for local dev only. In production, Workbench builds the image — code must be baked in via `COPY` in the Dockerfile. Do not rely on volume mounts for deployed apps.
 ```yaml
 services:
   app:
@@ -176,6 +177,9 @@ For apps needing `wb` CLI, bucket mounting, gcloud auth.
 - [ ] `container_name: "application-server"`
 - [ ] `networks: app-network` with `external: true`
 - [ ] Server binds to `0.0.0.0` (not `localhost`)
+- [ ] All `fetch()` calls use relative paths — `fetch('api/data')` ✅ not `fetch('/api/data')` ❌
+- [ ] All `<a href>` and `<link>` use relative paths — leading `/` routes to `workbench.verily.com`, causing 404s
+- [ ] Do not use `url_for()` for frontend-facing links — generates wrong paths behind the proxy
 
 ---
 
@@ -199,6 +203,7 @@ from flask import Flask
 from flask_cors import CORS
 
 app = Flask(__name__)
+app.config['STRICT_SLASHES'] = False  # Prevents 308 redirects behind the proxy
 CORS(app)
 
 @app.route('/')
@@ -275,6 +280,9 @@ All examples are from the official repo: [verily-src/workbench-app-devcontainers
 | No container created | Check Workbench logs, GitHub access |
 | Container restart loop | App crashes on startup (check `docker logs`) |
 | "Bad Request" | Wrong URL format |
+| 308 redirect loop | Missing `app.config['STRICT_SLASHES'] = False` on Flask app |
+| 404 on API calls | Leading `/` in `fetch()` path — use `fetch('api/data')` not `fetch('/api/data')` |
+| Build fails on pip install | Unpinned dependencies — pin versions in `requirements.txt` |
 
 ---
 

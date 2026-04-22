@@ -851,9 +851,11 @@ if [[ -n "${USER_STARTUP_SCRIPT}" ]]; then
 fi
 
 # TODO(BENCH-2612): use workbench CLI instead to get user profile.
+set +o xtrace
 IS_NON_GOOGLE_ACCOUNT="$(curl "${USER_SERVICE_URL}/api/profile?path=non_google_account" \
                     -H "accept: application/json" -H "Authorization: Bearer $(gcloud auth print-access-token)" \
                   | jq '.value')"
+set -o xtrace
 readonly IS_NON_GOOGLE_ACCOUNT
 
 if [[ "${IS_NON_GOOGLE_ACCOUNT}" == "true" ]]; then

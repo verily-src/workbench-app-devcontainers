@@ -33,8 +33,10 @@ if docker ps -q --filter "name=proxy-agent" | grep -q . \
         WORKSPACE_USER_FACING_ID="$(get_metadata_value "terra-workspace-id" "")"
         SERVER="$(get_metadata_value "terra-cli-server" "prod")"
         WSM_SERVICE_URL="$(get_service_url "wsm" "${SERVER}")"
+        set +o xtrace
         RESPONSE=$(curl -s -X GET "${WSM_SERVICE_URL}/api/workspaces/v1/workspaceByUserFacingId/${WORKSPACE_USER_FACING_ID}" \
                     -H "Authorization: Bearer $(/home/core/wb.sh auth print-access-token)")
+        set -o xtrace
         WORKSPACE_ID=$(echo "${RESPONSE}" | jq -r '.id');
         RESOURCE_ID="$(get_metadata_value "wb-resource-id" "")"
 

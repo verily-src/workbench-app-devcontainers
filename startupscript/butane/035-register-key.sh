@@ -33,41 +33,11 @@ source /home/core/metadata-utils.sh
 # shellcheck source=/dev/null
 source /home/core/service-utils.sh
 
-#######################################
-# Get an identity token for the current cloud environment.
-# GCE: fetch a GCE identity token from the metadata server.
-# EC2: the Workbench CLI's access token is already a presigned STS
-#      GetCallerIdentity request, so it doubles as the identity token.
-#######################################
-function get_identity_token() {
-  local wsm_host="$1"
-  local access_token="$2"
-
-  if [[ "${CLOUD}" == "gcp" ]]; then
-    # On GCP the access token (OAuth2) and identity token (OIDC JWT from the
-    # metadata server) are different, so we must fetch the identity token
-    # separately.
-    curl -s -f -H "Metadata-Flavor: Google" \
-      "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=${wsm_host}&format=full"
-  elif [[ "${CLOUD}" == "aws" ]]; then
-    # On AWS the CLI's access token is already a base64-encoded presigned
-    # STS GetCallerIdentity request — the same format registerKey expects.
-    echo -n "${access_token}"
-  else
-    >&2 echo "ERROR: Unsupported cloud: ${CLOUD}"
-    return 1
-  fi
-}
-readonly -f get_identity_token
-
 # Read metadata values
-SERVER="$(get_metadata_value "terra-cli-server" "")"
-if [[ -z "${SERVER}" ]]; then
-  SERVER="verily"
-fi
-readonly SERVER
+CLI_SERVER="$(get_metadata_value "terra-cli-server" "prod")"
+readonly CLI_SERVER
 
-WSM_URL="$(get_service_url "wsm" "${SERVER}")"
+WSM_URL="$(get_service_url "wsm" "${CLI_SERVER}")"
 readonly WSM_URL
 
 WORKSPACE_UFID="$(get_metadata_value "terra-workspace-id" "")"
@@ -87,14 +57,15 @@ fi
 # Get an access token via the Workbench CLI
 set +o xtrace
 TOKEN="$(/home/core/wb.sh auth print-access-token)"
+# shellcheck disable=SC2034  # TOKEN is only used indirectly via curl_with_auth
 readonly TOKEN
 set -o xtrace
 
-WORKSPACE_ID="$(curl -s -f \
-  -H "Authorization: Bearer ${TOKEN}" \
+WORKSPACE_ID="$(curl_with_auth TOKEN -s -f \
   "${WSM_URL}/api/workspaces/v1/workspaceByUserFacingId/${WORKSPACE_UFID}" \
   | jq -r '.id')"
 readonly WORKSPACE_ID
+
 if [[ -z "${WORKSPACE_ID}" || "${WORKSPACE_ID}" == "null" ]]; then
   >&2 echo "ERROR: Failed to resolve workspace UUID for user-facing ID '${WORKSPACE_UFID}'."
   exit 1
@@ -115,13 +86,10 @@ readonly RESOURCE_PATH
 RESPONSE_FILE="$(mktemp)"
 trap 'rm -f "${RESPONSE_FILE}"' EXIT
 
-set +o xtrace
-RESOURCE_HTTP_CODE="$(curl -s \
-  -H "Authorization: Bearer ${TOKEN}" \
+RESOURCE_HTTP_CODE="$(curl_with_auth TOKEN -s \
   -o "${RESPONSE_FILE}" -w '%{http_code}' \
   "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/${RESOURCE_PATH}/${RESOURCE_ID}")"
 readonly RESOURCE_HTTP_CODE
-set -o xtrace
 
 if [[ "${RESOURCE_HTTP_CODE}" -lt 200 || "${RESOURCE_HTTP_CODE}" -ge 300 ]]; then
   >&2 echo "ERROR: Failed to fetch resource with HTTP status ${RESOURCE_HTTP_CODE}."
@@ -151,18 +119,19 @@ chmod 600 "${KEY_DIR}/signing.key"
 BASE64_PUBLIC_KEY="$(grep -v '^-----' "${KEY_DIR}/signing.pub" | tr -d '\n')"
 readonly BASE64_PUBLIC_KEY
 
-echo "Fetching identity token..."
-set +o xtrace
-IDENTITY_TOKEN="$(get_identity_token "${WSM_URL}" "${TOKEN}")"
-readonly IDENTITY_TOKEN
-set -o xtrace
-
 echo "Registering public key with WSM..."
 
-set +o xtrace
-HTTP_CODE="$(curl -s -o "${RESPONSE_FILE}" -w '%{http_code}' -X POST \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Authorization: Bearer ${IDENTITY_TOKEN}" \
+# GCE Note: the registerKey endpoint MUST be used with a GCE identity token, not
+# an access token, because the endpoint validates the token's compute_engine
+# claims against the app resource's stored project/zone/instance name. The
+# Workbench CLI returns an identity token with wb auth print-access-token so the
+# same token can be used, but if this changes we will need to fetch an identity
+# token from the VM metadata server instead.
+#
+# AWS is authorized with a pre-signed GetCallerIdentity request, which already
+# contains the necessary instance information.
+HTTP_CODE="$(curl_with_auth TOKEN -s -X POST \
+  -o "${RESPONSE_FILE}" -w '%{http_code}' \
   -H "Content-Type: application/json" \
   "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/secrets/registerKey" \
   -d '{
@@ -171,7 +140,6 @@ HTTP_CODE="$(curl -s -o "${RESPONSE_FILE}" -w '%{http_code}' -X POST \
     "algorithm": "ED25519"
   }')"
 readonly HTTP_CODE
-set -o xtrace
 
 if [[ "${HTTP_CODE}" -eq 204 ]]; then
   echo "Key registration successful."

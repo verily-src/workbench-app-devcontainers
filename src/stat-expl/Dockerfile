@@ -7,8 +7,14 @@ WORKDIR /fe
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
+# Copy only files needed for build
+COPY vite.config.ts tsconfig.json tsconfig.node.json ./
+COPY tailwind.config.js postcss.config.js ./
+COPY index.html ./
+COPY src/ ./src/
+COPY public/ ./public/
+
 # Build the SPA
-COPY . ./
 RUN npm run build
 
 
@@ -22,7 +28,9 @@ RUN pip install --no-cache-dir flask flask-cors
 
 # Copy built frontend from stage 1
 COPY --from=frontend-build /fe/dist /app/dist
-COPY --from=frontend-build /fe/public /app/public
+
+# Copy public docs (schema.json) from build context
+COPY public/docs /app/public/docs
 
 # Copy server script
 COPY server.py /app/server.py

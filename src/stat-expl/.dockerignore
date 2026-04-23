@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output (will be built inside Docker)
+dist/
+
+# Development
+.vite/
+*.log
+npm-debug.log*
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs that don't need to be in image
+README.md
+ACCESS_INSTRUCTIONS.md
+
+# Local dev files
+.env
+.env.local

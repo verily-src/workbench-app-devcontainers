@@ -2,17 +2,14 @@
 
 **Trigger:** User asks to troubleshoot, debug, or fix a failed workflow.
 
-## ⚡ LLM Behavior: Be Proactive!
+## Behavior
 
-**Once the user confirms which job to investigate, DO NOT ask which diagnostic steps to run.** Instead:
-1. **Run all diagnostic commands automatically** (Steps 2-4 at minimum)
-2. **Analyze the results** and identify the root cause
-3. **Report your diagnosis** with evidence (error messages, exit codes, log snippets)
-4. **Propose a fix** with specific changes
-5. **THEN ask** if they want you to apply the fix or investigate further
-
-❌ Don't say: "Would you like me to check the logs?"
-✅ Do say: "I checked the logs and found an OOM error. The task requested 8GB but needed more. I recommend increasing memory to 16GB in the runtime block."
+Once the target job is identified:
+1. Run all diagnostic commands (Steps 2–4) without waiting for further instruction
+2. Collect error message, failed task name, logs, and exit code
+3. Identify the root cause from the evidence
+4. Present the diagnosis with supporting log snippets or error output
+5. Propose a specific fix
 
 ---
 
@@ -271,6 +268,7 @@ Based on diagnosis, recommend one of:
 | **Permission** | "Service account lacks access. Grant `roles/storage.objectViewer` on bucket" |
 | **Timeout** | "Task exceeded time limit. Increase `maxRetries` or optimize task" |
 | **Docker** | "Image pull failed. Verify image exists and is accessible" |
+| **Other** | Describe the root cause from logs and propose a fix based on the specific error |
 
 **Re-run after fixing:**
 ```bash

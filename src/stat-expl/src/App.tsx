@@ -7,10 +7,11 @@ import { Variables } from './pages/Variables';
 import { Quality } from './pages/Quality';
 import { Hypotheses } from './pages/Hypotheses';
 import { TestPage } from './pages/TestPage';
+import { Simple } from './pages/Simple';
 
 function App() {
   return (
-    <BrowserRouter basename="/dashboard">
+    <BrowserRouter>
       <CohortProvider>
         <div className="min-h-screen bg-gray-50">
           <Nav />
@@ -23,6 +24,7 @@ function App() {
               <Route path="/quality" element={<Quality />} />
               <Route path="/hypotheses" element={<Hypotheses />} />
               <Route path="/test" element={<TestPage />} />
+              <Route path="/simple" element={<Simple />} />
             </Routes>
           </main>
         </div>

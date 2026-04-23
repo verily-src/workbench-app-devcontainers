@@ -4,7 +4,12 @@
 
 ## Behavior
 
-Once the target job is identified, immediately run all relevant diagnostic commands (Steps 2–4 at minimum) without waiting for further instruction. Collect the error message, failed task, logs, and exit code. Analyze the results, identify the root cause, and present a diagnosis with supporting evidence. Then propose a specific fix.
+Once the target job is identified:
+1. Run all diagnostic commands (Steps 2–4) without waiting for further instruction
+2. Collect error message, failed task name, logs, and exit code
+3. Identify the root cause from the evidence
+4. Present the diagnosis with supporting log snippets or error output
+5. Propose a specific fix
 
 ---
 
@@ -263,6 +268,7 @@ Based on diagnosis, recommend one of:
 | **Permission** | "Service account lacks access. Grant `roles/storage.objectViewer` on bucket" |
 | **Timeout** | "Task exceeded time limit. Increase `maxRetries` or optimize task" |
 | **Docker** | "Image pull failed. Verify image exists and is accessible" |
+| **Other** | Describe the root cause from logs and propose a fix based on the specific error |
 
 **Re-run after fixing:**
 ```bash

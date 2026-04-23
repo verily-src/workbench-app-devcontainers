@@ -42,4 +42,6 @@ usermod -aG docker jupyter
 chown -R jupyter /home/jupyter/.docker
 
 # Login to docker with gcloud credentials (needs to be re-run every 30 min if needed)
+set +o xtrace
 sudo -u jupyter /bin/bash -c "docker login -u oauth2accesstoken -p $(gcloud auth print-access-token) https://us-central1-docker.pkg.dev"
+set -o xtrace

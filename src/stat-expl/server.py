@@ -1,38 +1,40 @@
 """
-Simple Flask server to serve the built React SPA.
-Handles routing for Workbench proxy at /app/UUID/proxy/8080/
+FastAPI server to serve the built React SPA.
+Uses FastAPI with StaticFiles for proper SPA routing.
+Pattern from clinical-dashboard.
 """
-from flask import Flask, send_from_directory, jsonify
-from flask_cors import CORS
-import os
+from pathlib import Path
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-app = Flask(__name__, static_folder='dist')
-CORS(app)
+app = FastAPI(
+    title="Dataset Statistical Explorer",
+    version="0.1.0",
+    description="5-page biostatistics workspace for dataset fitness assessment",
+)
 
-@app.route('/health')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/health")
 def health():
-    return jsonify({"status": "ok", "app": "stat-expl"})
+    return {
+        "status": "ok",
+        "app": "stat-expl",
+        "version": "0.1.0"
+    }
 
-@app.route('/docs/<path:path>')
-def serve_docs(path):
-    """Serve schema.json and other docs"""
-    return send_from_directory('public/docs', path)
-
-@app.route('/')
-@app.route('/<path:path>')
-def serve_app(path=''):
-    """
-    Serve the React SPA.
-    All routes go to index.html for client-side routing.
-    Assets like JS/CSS are served from their actual paths.
-    """
-    # If path exists in dist (e.g., assets/), serve it directly
-    if path and os.path.exists(os.path.join(app.static_folder, path)):
-        return send_from_directory(app.static_folder, path)
-
-    # Otherwise serve index.html for client-side routing
-    return send_from_directory(app.static_folder, 'index.html')
-
-if __name__ == '__main__':
-    # CRITICAL: host='0.0.0.0' required for Workbench proxy access
-    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+# Serve the built frontend at the app root
+# html=True makes it serve index.html for all routes (SPA routing)
+_FRONTEND_DIST = Path(__file__).resolve().parent / "dist"
+if _FRONTEND_DIST.exists():
+    app.mount(
+        "/",
+        StaticFiles(directory=str(_FRONTEND_DIST), html=True),
+        name="frontend",
+    )

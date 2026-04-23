@@ -15,6 +15,11 @@ function log_event() {
     local payload="$4"
     local log_url="${wsm_url}/api/workspaces/v1/${workspace_id}/resources/${resource_id}/instance-state"
 
+    if [[ $- == *x* ]]; then
+        { set +o xtrace; } 2>/dev/null
+        trap 'set -o xtrace' RETURN
+    fi
+
     # Log VM event
     local response
     response=$(curl -s -X POST "${log_url}" \

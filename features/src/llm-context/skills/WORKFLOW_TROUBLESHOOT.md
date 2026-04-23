@@ -2,17 +2,9 @@
 
 **Trigger:** User asks to troubleshoot, debug, or fix a failed workflow.
 
-## ⚡ LLM Behavior: Be Proactive!
+## Behavior
 
-**Once the user confirms which job to investigate, DO NOT ask which diagnostic steps to run.** Instead:
-1. **Run all diagnostic commands automatically** (Steps 2-4 at minimum)
-2. **Analyze the results** and identify the root cause
-3. **Report your diagnosis** with evidence (error messages, exit codes, log snippets)
-4. **Propose a fix** with specific changes
-5. **THEN ask** if they want you to apply the fix or investigate further
-
-❌ Don't say: "Would you like me to check the logs?"
-✅ Do say: "I checked the logs and found an OOM error. The task requested 8GB but needed more. I recommend increasing memory to 16GB in the runtime block."
+Once the target job is identified, immediately run all relevant diagnostic commands (Steps 2–4 at minimum) without waiting for further instruction. Collect the error message, failed task, logs, and exit code. Analyze the results, identify the root cause, and present a diagnosis with supporting evidence. Then propose a specific fix.
 
 ---
 

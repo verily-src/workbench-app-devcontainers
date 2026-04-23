@@ -50,6 +50,10 @@ jobs:
             vscode-docker:
               user: abc
               workbench_tools: true
+            vscode-secrets:
+              user: abc
+              workbench_tools: true
+              postgres_client: true
             workbench-jupyter:
               template: custom-workbench-jupyter-template
               user: jupyter

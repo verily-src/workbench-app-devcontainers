@@ -6,7 +6,7 @@ set -o pipefail
 
 
 SCRIPT_DIR="$(dirname "$(realpath "$0")")"
-SRC_DIR="$(realpath "$SCRIPT_DIR/../src")"
+ROOT_DIR="$(realpath "$SCRIPT_DIR/..")"
 STATE_FILE="$SCRIPT_DIR/state.json"
 readonly STATE_FILE
 STATE="$(cat "$STATE_FILE")"
@@ -25,8 +25,8 @@ for IMAGE in $(echo "$STATE" | jq -r 'keys | .[]'); do
     if [ "$INSTALLED" != "$LATEST" ]; then
         echo "Updating $IMAGE from $INSTALLED to $LATEST"
 
-        pushd "$SRC_DIR"
-        find . -regextype posix-extended -regex "$FILTER" -print0 | xargs -0L1 sed -i "s|$INSTALLED|$LATEST|g"
+        pushd "$ROOT_DIR"
+        find . -regextype posix-extended -regex "\.\/$FILTER" -print0 | xargs -0L1 sed -i "s|$INSTALLED|$LATEST|g"
         popd
 
         NEW_STATE="$(jq --arg feat "$IMAGE" --arg latest "$LATEST_DIGEST" '.[$feat].installed = $latest' "$STATE_FILE")"

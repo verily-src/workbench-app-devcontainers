@@ -67,6 +67,8 @@ interface DataContextType {
 
   // Loading state
   isLoading: boolean
+  loadingProgress: { [key: string]: 'pending' | 'loading' | 'complete' | 'error' }
+  loadingMessage: string
 
   // Health check
   apiStatus: string | null
@@ -84,63 +86,103 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [quality, setQuality] = useState<QualityData | null>(null)
   const [apiStatus, setApiStatus] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadingProgress, setLoadingProgress] = useState<{ [key: string]: 'pending' | 'loading' | 'complete' | 'error' }>({})
+  const [loadingMessage, setLoadingMessage] = useState('Initializing...')
 
   useEffect(() => {
+    // Fetch with timeout wrapper
+    const fetchWithTimeout = async (url: string, timeout = 30000) => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
+      try {
+        const response = await fetch(url, { signal: controller.signal })
+        clearTimeout(timeoutId)
+        return response
+      } catch (error) {
+        clearTimeout(timeoutId)
+        throw error
+      }
+    }
+
     // Fetch all summary data once on app load
     const fetchAllData = async () => {
       setIsLoading(true)
+
+      const endpoints = {
+        health: '/dashboard/api/health',
+        datasets: '/dashboard/api/datasets',
+        demographics: '/dashboard/api/demographics',
+        variables: '/dashboard/api/variables/all',
+        diagnoses: '/dashboard/api/diagnoses',
+        timeline: '/dashboard/api/enrollment-timeline',
+        sensordata: '/dashboard/api/sensordata',
+        quality: '/dashboard/api/quality'
+      }
+
+      // Initialize progress tracking
+      const initialProgress = Object.keys(endpoints).reduce((acc, key) => ({
+        ...acc,
+        [key]: 'pending' as const
+      }), {})
+      setLoadingProgress(initialProgress)
+
       try {
-        // Fetch in parallel for speed
-        const [
-          healthRes,
-          datasetsRes,
-          demographicsRes,
-          variablesRes,
-          diagnosesRes,
-          timelineRes,
-          sensorRes,
-          qualityRes
-        ] = await Promise.all([
-          fetch('/dashboard/api/health'),
-          fetch('/dashboard/api/datasets'),
-          fetch('/dashboard/api/demographics'),
-          fetch('/dashboard/api/variables/all'),
-          fetch('/dashboard/api/diagnoses'),
-          fetch('/dashboard/api/enrollment-timeline'),
-          fetch('/dashboard/api/sensordata'),
-          fetch('/dashboard/api/quality')
-        ])
+        // Fetch in parallel with individual error handling
+        const results = await Promise.allSettled(
+          Object.entries(endpoints).map(async ([key, url]) => {
+            setLoadingProgress(prev => ({ ...prev, [key]: 'loading' }))
+            setLoadingMessage(`Loading ${key}...`)
+            try {
+              const response = await fetchWithTimeout(url)
+              if (!response.ok) throw new Error(`HTTP ${response.status}`)
+              const data = await response.json()
+              setLoadingProgress(prev => ({ ...prev, [key]: 'complete' }))
+              return { key, data, success: true }
+            } catch (error) {
+              console.error(`Failed to fetch ${key}:`, error)
+              setLoadingProgress(prev => ({ ...prev, [key]: 'error' }))
+              return { key, error, success: false }
+            }
+          })
+        )
 
-        const [
-          healthData,
-          datasetsData,
-          demographicsData,
-          variablesData,
-          diagnosesData,
-          timelineData,
-          sensorDataData,
-          qualityData
-        ] = await Promise.all([
-          healthRes.json(),
-          datasetsRes.json(),
-          demographicsRes.json(),
-          variablesRes.json(),
-          diagnosesRes.json(),
-          timelineRes.json(),
-          sensorRes.json(),
-          qualityRes.json()
-        ])
+        // Process successful results (graceful degradation)
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value.success) {
+            const { key, data } = result.value
+            switch (key) {
+              case 'health':
+                setApiStatus(data.status)
+                break
+              case 'datasets':
+                setDatasets(data)
+                break
+              case 'demographics':
+                setDemographics(data)
+                break
+              case 'variables':
+                setVariables(data.variables || [])
+                break
+              case 'diagnoses':
+                setDiagnoses(data.conditions || [])
+                break
+              case 'timeline':
+                setTimeline(data.timeline || [])
+                break
+              case 'sensordata':
+                setSensorData(data)
+                break
+              case 'quality':
+                setQuality(data)
+                break
+            }
+          }
+        })
 
-        setApiStatus(healthData.status)
-        setDatasets(datasetsData)
-        setDemographics(demographicsData)
-        setVariables(variablesData.variables)
-        setDiagnoses(diagnosesData.conditions)
-        setTimeline(timelineData.timeline)
-        setSensorData(sensorDataData)
-        setQuality(qualityData)
+        setLoadingMessage('Complete!')
       } catch (error) {
         console.error('Failed to fetch data:', error)
+        setLoadingMessage('Error loading data')
       } finally {
         setIsLoading(false)
       }
@@ -160,6 +202,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         sensorData,
         quality,
         isLoading,
+        loadingProgress,
+        loadingMessage,
         apiStatus
       }}
     >

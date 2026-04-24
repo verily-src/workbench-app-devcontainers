@@ -1,6 +1,6 @@
 {
   "name": "stat-expl",
-  "version": "0.0.5",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
     "plotly.js-dist-min": "^2.35.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-plotly.js": "^2.6.0"
+    "react-plotly.js": "^2.6.0",
+    "react-router-dom": "^6.20.0"
   },
   "devDependencies": {
     "@types/plotly.js": "^2.12.0",

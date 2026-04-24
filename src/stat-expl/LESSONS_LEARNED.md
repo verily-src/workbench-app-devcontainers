@@ -19,29 +19,40 @@ Critical issues encountered and resolved during stat-expl deployment.
 
 ---
 
-## 2. Browser Polyfills Required for Plotly.js
-**Issue**: Plotly.js requires Node.js globals (buffer, stream, util) that don't exist in browsers.
+## 2. Plotly.js: DON'T Use Browser Polyfills (They Break Builds)
+**Issue**: Adding browser polyfills (buffer, stream-browserify, util) causes Vite builds to run out of memory, even with 4GB Node heap.
 
-**Solution**: Add polyfills in `vite.config.ts`:
+**ERROR**: `FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory`
+
+**Solution**: Use `plotly.js-dist-min` WITHOUT polyfills. Modern browsers handle it fine.
+
+```json
+// package.json - CORRECT
+"dependencies": {
+  "plotly.js-dist-min": "^2.27.0",
+  "react-plotly.js": "^2.6.0"
+}
+
+// ❌ DO NOT ADD: buffer, stream-browserify, util
+```
+
+```json
+// package.json - build script needs memory limit
+"scripts": {
+  "build": "NODE_OPTIONS='--max-old-space-size=4096' vite build"
+}
+```
 
 ```typescript
-resolve: {
-  alias: {
-    buffer: 'buffer/',
-    stream: 'stream-browserify',
-    util: 'util/',
-  },
-},
-define: {
-  global: 'globalThis',
-  'process.env': {},
-},
+// vite.config.ts - NO polyfill aliases needed
+export default defineConfig({
+  plugins: [react()],
+  base: './',
+  // ❌ DO NOT add resolve.alias or define for polyfills
+})
 ```
 
-Install polyfills:
-```bash
-npm install buffer stream-browserify util
-```
+**Why**: The polyfills themselves cause massive bundle bloat during Vite's build process, exhausting Node.js memory. Modern browsers support the APIs Plotly needs natively.
 
 ---
 

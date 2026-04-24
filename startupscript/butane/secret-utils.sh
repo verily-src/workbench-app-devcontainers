@@ -96,3 +96,37 @@ function retrieve_secret() {
   echo -n "${secret_value_b64}" | base64 -d
 }
 readonly -f retrieve_secret
+
+# Validates that an attached secret is permitted by the entry's allowedSecrets list.
+# No-op if allowedSecrets is not specified in the entry.
+# Args:
+#   $1 - secret entry JSON (from secrets.json)
+#   $2 - workspace ID of the attached secret
+#   $3 - resource ID of the attached secret
+# Returns: 0 if allowed (or no restriction), 1 if not allowed
+function validate_allowed_secret() {
+  local secret_entry="$1"
+  local workspace_id="$2"
+  local resource_id="$3"
+
+  local allowed_secrets
+  allowed_secrets="$(echo "${secret_entry}" | jq '.allowedSecrets // empty')"
+
+  if [[ -z "${allowed_secrets}" ]]; then
+    return 0
+  fi
+
+  local match
+  match="$(echo "${allowed_secrets}" | jq -e \
+    --arg wid "${workspace_id}" \
+    --arg rid "${resource_id}" \
+    '[.[] | select(.workspaceId == $wid and .resourceId == $rid)] | length > 0')"
+
+  if [[ "${match}" != "true" ]]; then
+    local secret_name
+    secret_name="$(echo "${secret_entry}" | jq -r '.name')"
+    >&2 echo "ERROR: Attached secret '${secret_name}' (workspace=${workspace_id}, resource=${resource_id}) is not in allowedSecrets."
+    return 1
+  fi
+}
+readonly -f validate_allowed_secret

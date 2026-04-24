@@ -158,6 +158,8 @@ for i in $(seq 0 $((PIPE_SECRET_COUNT - 1))); do
     exit 1
   fi
 
+  validate_allowed_secret "${SECRET_ENTRY}" "${SECRET_WORKSPACE_ID}" "${SECRET_RESOURCE_ID}"
+
   echo "Retrieving secret: ${SECRET_NAME}"
 
   { set +o xtrace; } 2>/dev/null

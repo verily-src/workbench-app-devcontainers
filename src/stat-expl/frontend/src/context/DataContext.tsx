@@ -55,6 +55,21 @@ interface QualityData {
   low_severity_count: number
 }
 
+interface PassportMetrics {
+  total_participants: number
+  enrollment_start: string
+  enrollment_end: string
+  last_refresh: string
+  median_followup_days: number
+  followup_q25: number
+  followup_q75: number
+}
+
+interface DomainCoverage {
+  domains: { name: string; participants: number; coverage_pct: number }[]
+  total_participants: number
+}
+
 interface DataContextType {
   // Static cached data (fetched once)
   datasets: DatasetInfo | null
@@ -64,6 +79,8 @@ interface DataContextType {
   timeline: TimelinePoint[]
   sensorData: SensorData | null
   quality: QualityData | null
+  passportMetrics: PassportMetrics | null
+  domainCoverage: DomainCoverage | null
 
   // Loading state
   isLoading: boolean
@@ -84,6 +101,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [timeline, setTimeline] = useState<TimelinePoint[]>([])
   const [sensorData, setSensorData] = useState<SensorData | null>(null)
   const [quality, setQuality] = useState<QualityData | null>(null)
+  const [passportMetrics, setPassportMetrics] = useState<PassportMetrics | null>(null)
+  const [domainCoverage, setDomainCoverage] = useState<DomainCoverage | null>(null)
   const [apiStatus, setApiStatus] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadingProgress, setLoadingProgress] = useState<{ [key: string]: 'pending' | 'loading' | 'complete' | 'error' }>({})
@@ -116,7 +135,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         diagnoses: '/dashboard/api/diagnoses',
         timeline: '/dashboard/api/enrollment-timeline',
         sensordata: '/dashboard/api/sensordata',
-        quality: '/dashboard/api/quality'
+        quality: '/dashboard/api/quality',
+        passport: '/dashboard/api/passport-metrics',
+        domains: '/dashboard/api/domain-coverage'
       }
 
       // Initialize progress tracking
@@ -175,6 +196,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
               case 'quality':
                 setQuality(data)
                 break
+              case 'passport':
+                setPassportMetrics(data)
+                break
+              case 'domains':
+                setDomainCoverage(data)
+                break
             }
           }
         })
@@ -201,6 +228,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         timeline,
         sensorData,
         quality,
+        passportMetrics,
+        domainCoverage,
         isLoading,
         loadingProgress,
         loadingMessage,

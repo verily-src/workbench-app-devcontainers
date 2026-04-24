@@ -407,6 +407,116 @@ def get_cohort(age_min: int = None, age_max: int = None, sex: str = None):
     result = list(bq_client.query(query).result())[0]
     return {"cohort_size": result.cohort_size, "filters_applied": len(conditions)}
 
+@app.get("/dashboard/api/passport-metrics")
+def get_passport_metrics():
+    """Get key passport metrics: participants, date range, refresh time, median follow-up"""
+    from datetime import datetime
+
+    # Get participant count and date range from demographics
+    demo_query = f"""
+    SELECT
+        COUNT(DISTINCT d.SUBJID) as total_participants,
+        MIN(e.enrollment_date) as first_enrollment,
+        MAX(e.enrollment_date) as last_enrollment
+    FROM `{DATA_PROJECT}.screener.DM` d
+    LEFT JOIN `{DATA_PROJECT}.analysis.ENRDT` e ON d.SUBJID = e.SUBJID
+    """
+    demo = list(bq_client.query(demo_query).result())[0]
+
+    # Calculate follow-up duration (days from enrollment to last data point)
+    # Using sensor data as proxy for last data point
+    followup_query = f"""
+    WITH participant_followup AS (
+        SELECT
+            SUBJID,
+            DATE_DIFF(MAX(DATE(timestamp)), MIN(e.enrollment_date), DAY) as followup_days
+        FROM `{DATA_PROJECT}.sensordata.STEP` s
+        JOIN `{DATA_PROJECT}.analysis.ENRDT` e ON s.SUBJID = e.SUBJID
+        WHERE s.timestamp IS NOT NULL AND e.enrollment_date IS NOT NULL
+        GROUP BY SUBJID
+    )
+    SELECT
+        APPROX_QUANTILES(followup_days, 100)[OFFSET(50)] as median_followup,
+        APPROX_QUANTILES(followup_days, 100)[OFFSET(25)] as q25,
+        APPROX_QUANTILES(followup_days, 100)[OFFSET(75)] as q75
+    FROM participant_followup
+    WHERE followup_days > 0
+    """
+    followup = list(bq_client.query(followup_query).result())[0]
+
+    return {
+        "total_participants": demo.total_participants,
+        "enrollment_start": demo.first_enrollment.isoformat() if demo.first_enrollment else None,
+        "enrollment_end": demo.last_enrollment.isoformat() if demo.last_enrollment else None,
+        "last_refresh": datetime.utcnow().isoformat(),
+        "median_followup_days": followup.median_followup,
+        "followup_q25": followup.q25,
+        "followup_q75": followup.q75
+    }
+
+@app.get("/dashboard/api/domain-coverage")
+def get_domain_coverage():
+    """Get data coverage across different domains"""
+
+    # EHR (any clinical record)
+    ehr_query = f"""
+    SELECT COUNT(DISTINCT SUBJID) as count
+    FROM `{DATA_PROJECT}.crf.VS`
+    """
+    ehr_count = list(bq_client.query(ehr_query).result())[0].count
+
+    # Labs
+    labs_query = f"""
+    SELECT COUNT(DISTINCT SUBJID) as count
+    FROM `{DATA_PROJECT}.corelabreads.LB`
+    """
+    labs_count = list(bq_client.query(labs_query).result())[0].count
+
+    # Medications (check if CM table exists)
+    try:
+        meds_query = f"""
+        SELECT COUNT(DISTINCT SUBJID) as count
+        FROM `{DATA_PROJECT}.crf.CM`
+        """
+        meds_count = list(bq_client.query(meds_query).result())[0].count
+    except:
+        meds_count = 0
+
+    # Diagnoses (ICD codes)
+    dx_query = f"""
+    SELECT COUNT(DISTINCT SUBJID) as count
+    FROM `{DATA_PROJECT}.analysis.MH_ICD`
+    """
+    dx_count = list(bq_client.query(dx_query).result())[0].count
+
+    # Sensor data
+    sensor_query = f"""
+    SELECT COUNT(DISTINCT SUBJID) as count
+    FROM `{DATA_PROJECT}.sensordata.STEP`
+    """
+    sensor_count = list(bq_client.query(sensor_query).result())[0].count
+
+    # PRO (Patient-Reported Outcomes from surveys)
+    pro_query = f"""
+    SELECT COUNT(DISTINCT SUBJID) as count
+    FROM `{DATA_PROJECT}.appsurveys.MSS`
+    """
+    pro_count = list(bq_client.query(pro_query).result())[0].count
+
+    total = 2502  # Total participants
+
+    return {
+        "domains": [
+            {"name": "EHR", "participants": ehr_count, "coverage_pct": round(100.0 * ehr_count / total, 1)},
+            {"name": "Labs", "participants": labs_count, "coverage_pct": round(100.0 * labs_count / total, 1)},
+            {"name": "Medications", "participants": meds_count, "coverage_pct": round(100.0 * meds_count / total, 1)},
+            {"name": "Diagnoses", "participants": dx_count, "coverage_pct": round(100.0 * dx_count / total, 1)},
+            {"name": "Sensor", "participants": sensor_count, "coverage_pct": round(100.0 * sensor_count / total, 1)},
+            {"name": "PRO", "participants": pro_count, "coverage_pct": round(100.0 * pro_count / total, 1)}
+        ],
+        "total_participants": total
+    }
+
 @app.get("/dashboard/api/export")
 def export_data(format: str = "csv"):
     """Export dataset summary as CSV"""

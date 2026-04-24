@@ -662,6 +662,152 @@ def get_medication_breakdown(drug_class: str):
     medications = [{"name": row.medication, "patient_count": row.patient_count} for row in results]
     return {"drug_class": drug_class, "medications": medications}
 
+@app.get("/dashboard/api/hypotheses/rwe-opportunities")
+def get_rwe_opportunities():
+    """Get real-world evidence opportunities: diseases and medications with sensor + clinical data"""
+
+    # Diseases with sensor + clinical measurements
+    disease_query = f"""
+    WITH disease_patients AS (
+        SELECT DISTINCT
+            REPLACE(MHTERM, '_', ' ') as diagnosis,
+            SUBJID
+        FROM `{DATA_PROJECT}.crf.MH`
+        WHERE MHYN = 'Yes'
+    ),
+    sensor_patients AS (
+        SELECT DISTINCT SUBJID
+        FROM `{DATA_PROJECT}.sensordata.STEP`
+    ),
+    vitals_patients AS (
+        SELECT DISTINCT SUBJID
+        FROM `{DATA_PROJECT}.crf.VS`
+    )
+    SELECT
+        d.diagnosis,
+        COUNT(DISTINCT d.SUBJID) as total_patients,
+        COUNT(DISTINCT s.SUBJID) as patients_with_sensor,
+        COUNT(DISTINCT v.SUBJID) as patients_with_vitals
+    FROM disease_patients d
+    LEFT JOIN sensor_patients s ON d.SUBJID = s.SUBJID
+    LEFT JOIN vitals_patients v ON d.SUBJID = v.SUBJID
+    GROUP BY d.diagnosis
+    HAVING COUNT(DISTINCT d.SUBJID) >= 100 AND COUNT(DISTINCT s.SUBJID) >= 50
+    ORDER BY COUNT(DISTINCT d.SUBJID) DESC
+    LIMIT 15
+    """
+    disease_results = bq_client.query(disease_query).result()
+    diseases = []
+    for row in disease_results:
+        sensor_pct = round(100.0 * row.patients_with_sensor / row.total_patients, 1) if row.total_patients > 0 else 0
+        vitals_pct = round(100.0 * row.patients_with_vitals / row.total_patients, 1) if row.total_patients > 0 else 0
+        diseases.append({
+            "diagnosis": row.diagnosis,
+            "total_patients": row.total_patients,
+            "sensor_coverage_pct": sensor_pct,
+            "vitals_coverage_pct": vitals_pct,
+            "rwe_ready": sensor_pct >= 70 and vitals_pct >= 70
+        })
+
+    # Medication classes with sensor + clinical measurements
+    med_query = f"""
+    WITH med_patients AS (
+        SELECT DISTINCT
+            Level1_Name as drug_class,
+            SUBJID
+        FROM `{DATA_PROJECT}.crf.CM`
+        WHERE Level1_Name IS NOT NULL AND Level1_Name NOT LIKE '%||%'
+    ),
+    sensor_patients AS (
+        SELECT DISTINCT SUBJID
+        FROM `{DATA_PROJECT}.sensordata.STEP`
+    ),
+    vitals_patients AS (
+        SELECT DISTINCT SUBJID
+        FROM `{DATA_PROJECT}.crf.VS`
+    )
+    SELECT
+        m.drug_class,
+        COUNT(DISTINCT m.SUBJID) as total_patients,
+        COUNT(DISTINCT s.SUBJID) as patients_with_sensor,
+        COUNT(DISTINCT v.SUBJID) as patients_with_vitals
+    FROM med_patients m
+    LEFT JOIN sensor_patients s ON m.SUBJID = s.SUBJID
+    LEFT JOIN vitals_patients v ON m.SUBJID = v.SUBJID
+    GROUP BY m.drug_class
+    HAVING COUNT(DISTINCT m.SUBJID) >= 100
+    ORDER BY COUNT(DISTINCT m.SUBJID) DESC
+    LIMIT 10
+    """
+    med_results = bq_client.query(med_query).result()
+    medications = []
+    for row in med_results:
+        sensor_pct = round(100.0 * row.patients_with_sensor / row.total_patients, 1) if row.total_patients > 0 else 0
+        vitals_pct = round(100.0 * row.patients_with_vitals / row.total_patients, 1) if row.total_patients > 0 else 0
+        medications.append({
+            "drug_class": row.drug_class,
+            "total_patients": row.total_patients,
+            "sensor_coverage_pct": sensor_pct,
+            "vitals_coverage_pct": vitals_pct,
+            "rwe_ready": sensor_pct >= 70 and vitals_pct >= 70
+        })
+
+    # Example hypotheses based on the data
+    hypotheses = [
+        {
+            "id": 1,
+            "title": "Physical Activity and Blood Pressure Control",
+            "question": "Does daily step count correlate with blood pressure changes in hypertensive patients?",
+            "data_required": ["HIGH BLOOD PRESSURE HYPERTENSION diagnosis", "Systolic/Diastolic BP measurements", "Daily step count from sensors"],
+            "feasibility": "high",
+            "patient_pool": "~800+ patients with hypertension, sensor data, and serial BP measurements"
+        },
+        {
+            "id": 2,
+            "title": "Activity Patterns in Diabetic Patients",
+            "question": "Do patients with Type 2 Diabetes on medication show different activity patterns compared to diet-controlled patients?",
+            "data_required": ["DIABETES TYPE 2 diagnosis", "Medication records", "Daily step count from sensors", "HbA1c measurements"],
+            "feasibility": "high",
+            "patient_pool": "~400+ diabetic patients with medication records and sensor data"
+        },
+        {
+            "id": 3,
+            "title": "Medication Adherence via Activity Monitoring",
+            "question": "Can changes in activity patterns predict medication non-adherence in cardiovascular patients?",
+            "data_required": ["Cardiovascular medications", "Daily step count patterns", "Vital sign measurements", "Medication refill data"],
+            "feasibility": "medium",
+            "patient_pool": "~600+ patients on cardiovascular medications with sensor data"
+        },
+        {
+            "id": 4,
+            "title": "Depression and Physical Activity",
+            "question": "Is there a correlation between depressive symptoms (PHQ-9 scores) and daily physical activity levels?",
+            "data_required": ["MAJOR DEPRESSIVE DISORDER diagnosis", "PHQ-9 survey responses", "Daily step count from sensors"],
+            "feasibility": "high",
+            "patient_pool": "~500+ patients with depression diagnosis, PRO data, and sensors"
+        },
+        {
+            "id": 5,
+            "title": "Sleep Apnea and Activity Levels",
+            "question": "Do patients with sleep apnea show different daily activity patterns or reduced exercise capacity?",
+            "data_required": ["SLEEP APNEA diagnosis", "Sleep data from sensors", "Daily step count", "Oxygen saturation measurements"],
+            "feasibility": "medium",
+            "patient_pool": "~400+ patients with sleep apnea diagnosis and sensor data"
+        }
+    ]
+
+    return {
+        "diseases": diseases,
+        "medications": medications,
+        "example_hypotheses": hypotheses,
+        "summary": {
+            "total_rwe_ready_diseases": len([d for d in diseases if d["rwe_ready"]]),
+            "total_rwe_ready_medications": len([m for m in medications if m["rwe_ready"]]),
+            "total_patients_with_sensor": 2430,
+            "sensor_coverage_pct": 97.1
+        }
+    }
+
 @app.get("/dashboard/api/population/demographics")
 def get_population_demographics():
     """Get comprehensive demographics: age, sex, race, ethnicity, site"""

@@ -1,224 +1,499 @@
-import { useState } from 'react'
-import { useCohort } from '../context/CohortContext'
+import { useState, useEffect } from 'react'
 
-const sampleHypotheses = [
-  {
-    question: 'Does BMI correlate with cardiovascular events?',
-    canAnswer: true,
-    requiredVars: ['bmi', 'cv_events'],
-    availability: 'Both variables present with 94% and 89% completeness',
-    powerEstimate: 'Adequate (n=1,247, power=0.85)',
-  },
-  {
-    question: 'What is the effect of medication adherence on outcomes?',
-    canAnswer: true,
-    requiredVars: ['medication_adherence', 'clinical_outcomes'],
-    availability: 'Both available, 78% and 92% completeness',
-    powerEstimate: 'Adequate (n=980, power=0.82)',
-  },
-  {
-    question: 'How does exercise frequency impact glucose levels?',
-    canAnswer: false,
-    requiredVars: ['exercise_frequency', 'glucose_levels'],
-    availability: 'Exercise frequency not captured',
-    powerEstimate: 'N/A - missing data',
-  },
-  {
-    question: 'Association between sleep quality and depression scores?',
-    canAnswer: false,
-    requiredVars: ['sleep_quality', 'depression_score'],
-    availability: 'Sleep quality only available for 23% of cohort',
-    powerEstimate: 'Insufficient (n=287, power=0.45)',
-  },
-]
+interface Disease {
+  diagnosis: string
+  total_patients: number
+  sensor_coverage_pct: number
+  vitals_coverage_pct: number
+  rwe_ready: boolean
+}
+
+interface Medication {
+  drug_class: string
+  total_patients: number
+  sensor_coverage_pct: number
+  vitals_coverage_pct: number
+  rwe_ready: boolean
+}
+
+interface Hypothesis {
+  id: number
+  title: string
+  question: string
+  data_required: string[]
+  feasibility: string
+  patient_pool: string
+}
 
 export default function Hypotheses() {
-  const { flags } = useCohort()
-  const [showOnlyAnswerable, setShowOnlyAnswerable] = useState(false)
+  const [diseases, setDiseases] = useState<Disease[]>([])
+  const [medications, setMedications] = useState<Medication[]>([])
+  const [hypotheses, setHypotheses] = useState<Hypothesis[]>([])
+  const [summary, setSummary] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedTab, setSelectedTab] = useState<'hypotheses' | 'diseases' | 'medications'>('hypotheses')
 
-  const filteredHypotheses = showOnlyAnswerable
-    ? sampleHypotheses.filter(h => h.canAnswer)
-    : sampleHypotheses
+  useEffect(() => {
+    fetch('/dashboard/api/hypotheses/rwe-opportunities')
+      .then(r => r.json())
+      .then(data => {
+        setDiseases(data.diseases)
+        setMedications(data.medications)
+        setHypotheses(data.example_hypotheses)
+        setSummary(data.summary)
+        setIsLoading(false)
+      })
+      .catch(err => {
+        console.error('Failed to load RWE opportunities:', err)
+        setIsLoading(false)
+      })
+  }, [])
 
-  const canAnswer = sampleHypotheses.filter(h => h.canAnswer).length
-  const cannot = sampleHypotheses.filter(h => !h.canAnswer).length
+  if (isLoading) {
+    return <div style={{ color: 'rgba(26, 26, 26, 0.6)' }}>Loading hypothesis generator...</div>
+  }
 
   return (
     <div>
       <div style={{
         backgroundColor: '#fff',
-        borderRadius: '8px',
+        borderRadius: '12px',
         padding: '24px',
         marginBottom: '24px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+        border: '1px solid #e9e4d8'
       }}>
         <h2 style={{
           fontSize: '24px',
           fontWeight: 600,
-          color: '#1e293b',
+          color: '#1a1a1a',
           marginBottom: '8px'
         }}>
-          Hypothesis Assessment
+          Real-World Evidence Opportunities
         </h2>
-        <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px' }}>
-          Assess whether your research questions can be answered with this dataset
+        <p style={{ color: 'rgba(26, 26, 26, 0.6)', fontSize: '14px', marginBottom: '24px' }}>
+          Potential research hypotheses using sensor data + clinical measurements
         </p>
 
-        {/* Summary Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-          <MetricCard label="Can Answer" value={canAnswer} color="#10b981" />
-          <MetricCard label="Cannot Answer" value={cannot} color="#dc2626" />
-          <MetricCard label="Answerability Rate" value={`${Math.round((canAnswer / sampleHypotheses.length) * 100)}%`} color="#3b82f6" />
-        </div>
-
-        {/* Flags Summary */}
-        {flags.length > 0 && (
+        {/* Summary Card */}
+        {summary && (
           <div style={{
-            backgroundColor: '#fef3c7',
-            border: '1px solid #fbbf24',
-            borderRadius: '6px',
-            padding: '16px',
-            marginBottom: '24px'
+            padding: '20px',
+            backgroundColor: 'rgba(8, 122, 106, 0.05)',
+            border: '1px solid rgba(8, 122, 106, 0.2)',
+            borderRadius: '8px',
+            marginBottom: '32px'
           }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#92400e', marginBottom: '8px' }}>
-              ⚠ Active Flags ({flags.length})
-            </h3>
-            <ul style={{ margin: 0, paddingLeft: '20px', color: '#78350f' }}>
-              {flags.map((flag, idx) => (
-                <li key={idx} style={{ marginBottom: '4px', fontSize: '14px' }}>{flag}</li>
-              ))}
-            </ul>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '24px'
+            }}>
+              <SummaryMetric label="RWE-Ready Diseases" value={summary.total_rwe_ready_diseases.toString()} />
+              <SummaryMetric label="RWE-Ready Medications" value={summary.total_rwe_ready_medications.toString()} />
+              <SummaryMetric label="Patients with Sensors" value={summary.total_patients_with_sensor.toLocaleString()} />
+              <SummaryMetric label="Sensor Coverage" value={`${summary.sensor_coverage_pct}%`} />
+            </div>
+            <p style={{
+              marginTop: '16px',
+              fontSize: '13px',
+              color: 'rgba(26, 26, 26, 0.6)',
+              fontStyle: 'italic'
+            }}>
+              RWE-Ready = ≥70% of patients have both sensor data and clinical measurements
+            </p>
           </div>
         )}
 
-        {/* Filter */}
-        <div style={{ marginBottom: '24px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: '#1e293b' }}>
-            <input
-              type="checkbox"
-              checked={showOnlyAnswerable}
-              onChange={e => setShowOnlyAnswerable(e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            Show only answerable hypotheses
-          </label>
-        </div>
-
-        {/* Hypotheses Cards */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {filteredHypotheses.map((hyp, idx) => (
-            <div
-              key={idx}
-              style={{
-                backgroundColor: '#fff',
-                border: `2px solid ${hyp.canAnswer ? '#86efac' : '#fca5a5'}`,
-                borderRadius: '8px',
-                padding: '20px'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', margin: 0, flex: 1 }}>
-                  {hyp.question}
-                </h3>
-                <span style={{
-                  backgroundColor: hyp.canAnswer ? '#dcfce7' : '#fee2e2',
-                  color: hyp.canAnswer ? '#166534' : '#991b1b',
-                  padding: '4px 12px',
-                  borderRadius: '4px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  whiteSpace: 'nowrap',
-                  marginLeft: '16px'
-                }}>
-                  {hyp.canAnswer ? '✓ Can Answer' : '✗ Cannot Answer'}
-                </span>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '14px' }}>
-                <div>
-                  <div style={{ color: '#64748b', marginBottom: '4px', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
-                    Required Variables
-                  </div>
-                  <div style={{ color: '#1e293b', fontFamily: 'monospace', fontSize: '13px' }}>
-                    {hyp.requiredVars.join(', ')}
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ color: '#64748b', marginBottom: '4px', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
-                    Power Estimate
-                  </div>
-                  <div style={{ color: '#1e293b' }}>
-                    {hyp.powerEstimate}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e2e8f0' }}>
-                <div style={{ color: '#64748b', marginBottom: '4px', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
-                  Data Availability
-                </div>
-                <div style={{ color: hyp.canAnswer ? '#15803d' : '#991b1b' }}>
-                  {hyp.availability}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Cannot Answer Section - Always Populated */}
+        {/* Tabs */}
         <div style={{
-          backgroundColor: '#fef2f2',
-          border: '2px solid #fca5a5',
-          borderRadius: '8px',
-          padding: '20px',
-          marginTop: '24px'
+          display: 'flex',
+          gap: '8px',
+          marginBottom: '24px',
+          borderBottom: '2px solid #e9e4d8'
         }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#991b1b', marginBottom: '12px' }}>
-            Limitations: Questions This Dataset Cannot Answer
-          </h3>
-          <ul style={{ margin: 0, paddingLeft: '20px', color: '#7f1d1d' }}>
-            {sampleHypotheses.filter(h => !h.canAnswer).map((hyp, idx) => (
-              <li key={idx} style={{ marginBottom: '8px', fontSize: '14px' }}>
-                <strong>{hyp.question}</strong>
-                <div style={{ color: '#991b1b', fontSize: '13px', marginTop: '4px' }}>
-                  Reason: {hyp.availability}
-                </div>
-              </li>
-            ))}
-            <li style={{ marginBottom: '8px', fontSize: '14px' }}>
-              <strong>Genetic markers analysis?</strong>
-              <div style={{ color: '#991b1b', fontSize: '13px', marginTop: '4px' }}>
-                Reason: No genomic data collected
-              </div>
-            </li>
-            <li style={{ marginBottom: '8px', fontSize: '14px' }}>
-              <strong>Long-term mortality outcomes (&gt;10 years)?</strong>
-              <div style={{ color: '#991b1b', fontSize: '13px', marginTop: '4px' }}>
-                Reason: Study duration only 2 years
-              </div>
-            </li>
-          </ul>
+          <TabButton
+            label="Example Hypotheses"
+            active={selectedTab === 'hypotheses'}
+            onClick={() => setSelectedTab('hypotheses')}
+          />
+          <TabButton
+            label={`Diseases (${diseases.length})`}
+            active={selectedTab === 'diseases'}
+            onClick={() => setSelectedTab('diseases')}
+          />
+          <TabButton
+            label={`Medications (${medications.length})`}
+            active={selectedTab === 'medications'}
+            onClick={() => setSelectedTab('medications')}
+          />
         </div>
+
+        {/* Content */}
+        {selectedTab === 'hypotheses' && (
+          <div>
+            <p style={{
+              fontSize: '14px',
+              color: 'rgba(26, 26, 26, 0.7)',
+              marginBottom: '24px',
+              padding: '16px',
+              backgroundColor: '#f5f2ea',
+              borderRadius: '6px'
+            }}>
+              These are example research questions that can be answered using the combination of sensor data,
+              clinical measurements, diagnoses, and medications in this dataset.
+            </p>
+            {hypotheses.map(h => (
+              <HypothesisCard key={h.id} hypothesis={h} />
+            ))}
+          </div>
+        )}
+
+        {selectedTab === 'diseases' && (
+          <div>
+            <p style={{
+              fontSize: '14px',
+              color: 'rgba(26, 26, 26, 0.7)',
+              marginBottom: '24px',
+              padding: '16px',
+              backgroundColor: '#f5f2ea',
+              borderRadius: '6px'
+            }}>
+              Diseases with ≥100 patients and ≥50 patients with sensor data. Green indicates RWE-ready (≥70% coverage for both sensors and vitals).
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(1, 1fr)',
+              gap: '12px'
+            }}>
+              {diseases.map(d => (
+                <DiseaseCard key={d.diagnosis} disease={d} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedTab === 'medications' && (
+          <div>
+            <p style={{
+              fontSize: '14px',
+              color: 'rgba(26, 26, 26, 0.7)',
+              marginBottom: '24px',
+              padding: '16px',
+              backgroundColor: '#f5f2ea',
+              borderRadius: '6px'
+            }}>
+              Medication classes with ≥100 patients. Green indicates RWE-ready (≥70% coverage for both sensors and vitals).
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(1, 1fr)',
+              gap: '12px'
+            }}>
+              {medications.map(m => (
+                <MedicationCard key={m.drug_class} medication={m} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function MetricCard({ label, value, color }: { label: string; value: string | number; color: string }) {
+function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
-    <div style={{
-      backgroundColor: '#f8fafc',
-      border: '1px solid #e2e8f0',
-      borderRadius: '6px',
-      padding: '16px'
-    }}>
-      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+    <button
+      onClick={onClick}
+      style={{
+        padding: '12px 20px',
+        fontSize: '14px',
+        fontWeight: 600,
+        color: active ? '#087A6A' : 'rgba(26, 26, 26, 0.6)',
+        backgroundColor: 'transparent',
+        border: 'none',
+        borderBottom: active ? '2px solid #087A6A' : '2px solid transparent',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function SummaryMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{
+        fontSize: '12px',
+        color: 'rgba(26, 26, 26, 0.6)',
+        marginBottom: '4px',
+        textTransform: 'uppercase',
+        fontWeight: 600
+      }}>
         {label}
       </div>
-      <div style={{ fontSize: '24px', fontWeight: 600, color }}>
+      <div style={{
+        fontSize: '24px',
+        fontWeight: 600,
+        color: '#087A6A'
+      }}>
         {value}
+      </div>
+    </div>
+  )
+}
+
+function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
+  const feasibilityColor = hypothesis.feasibility === 'high' ? '#087A6A' : hypothesis.feasibility === 'medium' ? '#A25BC5' : '#D35C65'
+
+  return (
+    <div style={{
+      padding: '20px',
+      backgroundColor: '#f5f2ea',
+      border: '1px solid #e9e4d8',
+      borderRadius: '8px',
+      marginBottom: '16px'
+    }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: '12px'
+      }}>
+        <h3 style={{
+          fontSize: '16px',
+          fontWeight: 600,
+          color: '#1a1a1a',
+          margin: 0
+        }}>
+          {hypothesis.title}
+        </h3>
+        <span style={{
+          padding: '4px 12px',
+          backgroundColor: feasibilityColor,
+          color: '#fff',
+          fontSize: '12px',
+          fontWeight: 600,
+          borderRadius: '12px',
+          textTransform: 'uppercase'
+        }}>
+          {hypothesis.feasibility} feasibility
+        </span>
+      </div>
+
+      <p style={{
+        fontSize: '14px',
+        color: '#1a1a1a',
+        marginBottom: '16px',
+        fontStyle: 'italic'
+      }}>
+        "{hypothesis.question}"
+      </p>
+
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{
+          fontSize: '12px',
+          fontWeight: 600,
+          color: 'rgba(26, 26, 26, 0.7)',
+          marginBottom: '8px',
+          textTransform: 'uppercase'
+        }}>
+          Data Required:
+        </div>
+        <ul style={{
+          margin: 0,
+          paddingLeft: '20px',
+          fontSize: '13px',
+          color: 'rgba(26, 26, 26, 0.8)'
+        }}>
+          {hypothesis.data_required.map((req, i) => (
+            <li key={i} style={{ marginBottom: '4px' }}>{req}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div style={{
+        padding: '12px',
+        backgroundColor: '#fff',
+        borderRadius: '4px',
+        fontSize: '13px',
+        color: 'rgba(26, 26, 26, 0.7)'
+      }}>
+        <strong>Patient Pool:</strong> {hypothesis.patient_pool}
+      </div>
+    </div>
+  )
+}
+
+function DiseaseCard({ disease }: { disease: Disease }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '2fr 1fr 1fr 1fr',
+      alignItems: 'center',
+      padding: '16px',
+      backgroundColor: disease.rwe_ready ? 'rgba(8, 122, 106, 0.05)' : '#f5f2ea',
+      border: disease.rwe_ready ? '1px solid rgba(8, 122, 106, 0.3)' : '1px solid #e9e4d8',
+      borderRadius: '6px'
+    }}>
+      <div>
+        <div style={{
+          fontSize: '14px',
+          fontWeight: 600,
+          color: '#1a1a1a'
+        }}>
+          {disease.diagnosis}
+        </div>
+        <div style={{
+          fontSize: '12px',
+          color: 'rgba(26, 26, 26, 0.6)',
+          marginTop: '4px'
+        }}>
+          {disease.total_patients.toLocaleString()} patients
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontSize: '18px',
+          fontWeight: 600,
+          color: disease.sensor_coverage_pct >= 70 ? '#087A6A' : 'rgba(26, 26, 26, 0.6)'
+        }}>
+          {disease.sensor_coverage_pct}%
+        </div>
+        <div style={{
+          fontSize: '11px',
+          color: 'rgba(26, 26, 26, 0.6)'
+        }}>
+          Sensor Data
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontSize: '18px',
+          fontWeight: 600,
+          color: disease.vitals_coverage_pct >= 70 ? '#087A6A' : 'rgba(26, 26, 26, 0.6)'
+        }}>
+          {disease.vitals_coverage_pct}%
+        </div>
+        <div style={{
+          fontSize: '11px',
+          color: 'rgba(26, 26, 26, 0.6)'
+        }}>
+          Vitals Data
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        {disease.rwe_ready ? (
+          <span style={{
+            padding: '6px 12px',
+            backgroundColor: '#087A6A',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: '12px'
+          }}>
+            RWE-READY
+          </span>
+        ) : (
+          <span style={{
+            padding: '6px 12px',
+            backgroundColor: '#e9e4d8',
+            color: 'rgba(26, 26, 26, 0.6)',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: '12px'
+          }}>
+            LIMITED
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MedicationCard({ medication }: { medication: Medication }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '2fr 1fr 1fr 1fr',
+      alignItems: 'center',
+      padding: '16px',
+      backgroundColor: medication.rwe_ready ? 'rgba(8, 122, 106, 0.05)' : '#f5f2ea',
+      border: medication.rwe_ready ? '1px solid rgba(8, 122, 106, 0.3)' : '1px solid #e9e4d8',
+      borderRadius: '6px'
+    }}>
+      <div>
+        <div style={{
+          fontSize: '14px',
+          fontWeight: 600,
+          color: '#1a1a1a'
+        }}>
+          {medication.drug_class}
+        </div>
+        <div style={{
+          fontSize: '12px',
+          color: 'rgba(26, 26, 26, 0.6)',
+          marginTop: '4px'
+        }}>
+          {medication.total_patients.toLocaleString()} patients
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontSize: '18px',
+          fontWeight: 600,
+          color: medication.sensor_coverage_pct >= 70 ? '#087A6A' : 'rgba(26, 26, 26, 0.6)'
+        }}>
+          {medication.sensor_coverage_pct}%
+        </div>
+        <div style={{
+          fontSize: '11px',
+          color: 'rgba(26, 26, 26, 0.6)'
+        }}>
+          Sensor Data
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontSize: '18px',
+          fontWeight: 600,
+          color: medication.vitals_coverage_pct >= 70 ? '#087A6A' : 'rgba(26, 26, 26, 0.6)'
+        }}>
+          {medication.vitals_coverage_pct}%
+        </div>
+        <div style={{
+          fontSize: '11px',
+          color: 'rgba(26, 26, 26, 0.6)'
+        }}>
+          Vitals Data
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        {medication.rwe_ready ? (
+          <span style={{
+            padding: '6px 12px',
+            backgroundColor: '#087A6A',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: '12px'
+          }}>
+            RWE-READY
+          </span>
+        ) : (
+          <span style={{
+            padding: '6px 12px',
+            backgroundColor: '#e9e4d8',
+            color: 'rgba(26, 26, 26, 0.6)',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: '12px'
+          }}>
+            LIMITED
+          </span>
+        )}
       </div>
     </div>
   )

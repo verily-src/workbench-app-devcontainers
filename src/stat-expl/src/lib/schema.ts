@@ -45,7 +45,7 @@ export async function loadSchema(): Promise<Schema> {
   }
 
   try {
-    const response = await fetch('/docs/schema.json');
+    const response = await fetch('docs/schema.json');
     if (!response.ok) {
       throw new Error(`Failed to load schema: ${response.statusText}`);
     }

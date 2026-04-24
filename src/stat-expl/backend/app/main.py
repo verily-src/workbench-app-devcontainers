@@ -484,7 +484,7 @@ def get_domain_coverage():
     # Labs
     labs_query = f"""
     SELECT COUNT(DISTINCT SUBJID) as count
-    FROM `{DATA_PROJECT}.corelabreads.LB`
+    FROM `{DATA_PROJECT}.externallab.CLABS`
     """
     labs_count = list(bq_client.query(labs_query).result())[0].count
 

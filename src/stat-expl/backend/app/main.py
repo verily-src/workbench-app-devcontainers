@@ -427,7 +427,7 @@ def get_cohort(age_min: int = None, age_max: int = None, sex: str = None):
 
 @app.get("/dashboard/api/passport-metrics")
 def get_passport_metrics():
-    """Get key passport metrics: participants, date range, refresh time, median follow-up"""
+    """Get key passport metrics: participants, date range, refresh time, median follow-up, and domain coverage"""
     from datetime import datetime
 
     # Get participant count and date range from demographics
@@ -460,14 +460,32 @@ def get_passport_metrics():
     """
     followup = list(bq_client.query(followup_query).result())[0]
 
+    # Get domain coverage
+    ehr_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.VS`").result())[0].count
+    labs_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.externallab.CLABS`").result())[0].count
+    meds_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.CM`").result())[0].count
+    dx_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.MH` WHERE MHYN IS NOT NULL").result())[0].count
+    sensor_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.sensordata.STEP`").result())[0].count
+    pro_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.appsurveys.PHQ9A`").result())[0].count
+
+    total = demo.total_participants
+
     return {
-        "total_participants": demo.total_participants,
+        "total_participants": total,
         "enrollment_start": demo.first_enrollment.isoformat() if demo.first_enrollment else None,
         "enrollment_end": demo.last_enrollment.isoformat() if demo.last_enrollment else None,
         "last_refresh": datetime.utcnow().isoformat(),
         "median_followup_days": followup.median_followup,
         "followup_q25": followup.q25,
-        "followup_q75": followup.q75
+        "followup_q75": followup.q75,
+        "domains": [
+            {"name": "EHR", "participants": ehr_count, "coverage_pct": round(100.0 * ehr_count / total, 1)},
+            {"name": "Labs", "participants": labs_count, "coverage_pct": round(100.0 * labs_count / total, 1)},
+            {"name": "Medications", "participants": meds_count, "coverage_pct": round(100.0 * meds_count / total, 1)},
+            {"name": "Diagnoses", "participants": dx_count, "coverage_pct": round(100.0 * dx_count / total, 1)},
+            {"name": "Sensor", "participants": sensor_count, "coverage_pct": round(100.0 * sensor_count / total, 1)},
+            {"name": "PRO", "participants": pro_count, "coverage_pct": round(100.0 * pro_count / total, 1)}
+        ]
     }
 
 @app.get("/dashboard/api/domain-coverage")
@@ -1373,27 +1391,73 @@ def search_variables(query: str):
 
     return {"matched_variables": list(set(matched_vars)), "search_query": query}
 
-@app.get("/dashboard/api/passport/cumulative-enrollment")
-def get_cumulative_enrollment():
-    """Get cumulative enrollment over time"""
+@app.get("/dashboard/api/passport/active-participants")
+def get_active_participants_over_time():
+    """Get active participants over time (enrollments - dropouts)"""
     query = f"""
-    WITH monthly_enrollment AS (
+    WITH enrollment_data AS (
         SELECT
+            SUBJID,
             FORMAT_DATE('%Y-%m', enrollment_date) as month,
-            COUNT(*) as new_enrollments
+            enrollment_date
         FROM `{DATA_PROJECT}.analysis.ENRDT`
         WHERE enrollment_date IS NOT NULL
-        GROUP BY month
-        ORDER BY month
+    ),
+    last_activity AS (
+        SELECT
+            s.SUBJID,
+            e.enrollment_date,
+            DATE_ADD(e.enrollment_date, INTERVAL CAST(MAX(s.study_day) AS INT64) DAY) as last_sensor_date
+        FROM `{DATA_PROJECT}.sensordata.STEP` s
+        JOIN `{DATA_PROJECT}.analysis.ENRDT` e ON s.SUBJID = e.SUBJID
+        WHERE s.study_day IS NOT NULL AND s.study_day > 0
+        GROUP BY s.SUBJID, e.enrollment_date
+    ),
+    dropout_data AS (
+        SELECT
+            SUBJID,
+            FORMAT_DATE('%Y-%m', DATE_ADD(last_sensor_date, INTERVAL 30 DAY)) as dropout_month
+        FROM last_activity
+    ),
+    all_months AS (
+        SELECT DISTINCT month FROM enrollment_data
+        UNION DISTINCT
+        SELECT DISTINCT dropout_month FROM dropout_data WHERE dropout_month IS NOT NULL
+    ),
+    monthly_changes AS (
+        SELECT
+            m.month,
+            COALESCE(e.enrollments, 0) as enrollments,
+            COALESCE(d.dropouts, 0) as dropouts
+        FROM all_months m
+        LEFT JOIN (
+            SELECT month, COUNT(*) as enrollments
+            FROM enrollment_data
+            GROUP BY month
+        ) e ON m.month = e.month
+        LEFT JOIN (
+            SELECT dropout_month, COUNT(*) as dropouts
+            FROM dropout_data
+            WHERE dropout_month IS NOT NULL
+            GROUP BY dropout_month
+        ) d ON m.month = d.dropout_month
+        ORDER BY m.month
     )
     SELECT
         month,
-        SUM(new_enrollments) OVER (ORDER BY month) as cumulative_count
-    FROM monthly_enrollment
+        enrollments,
+        dropouts,
+        SUM(enrollments - dropouts) OVER (ORDER BY month) as active_participants
+    FROM monthly_changes
     ORDER BY month
     """
     results = bq_client.query(query).result()
-    timeline = [{"month": row.month, "cumulative_count": row.cumulative_count} for row in results]
+    timeline = [{
+        "month": row.month,
+        "active_participants": row.active_participants,
+        "enrollments": row.enrollments,
+        "dropouts": row.dropouts
+    } for row in results]
     return {"timeline": timeline}
 
 @app.get("/dashboard/api/passport/filter")

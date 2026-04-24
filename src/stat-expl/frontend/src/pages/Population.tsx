@@ -15,30 +15,54 @@ interface Demographics {
   enrollment_end: string
 }
 
+interface Condition {
+  name: string
+  code: string
+  count: number
+  percentage: number
+}
+
+interface TimelinePoint {
+  month: string
+  count: number
+}
+
 export default function Population() {
   const { filters, setFilters } = useCohort()
   const [demographics, setDemographics] = useState<Demographics | null>(null)
+  const [conditions, setConditions] = useState<Condition[]>([])
+  const [timeline, setTimeline] = useState<TimelinePoint[]>([])
+  const [cohortSize, setCohortSize] = useState<number | null>(null)
 
   useEffect(() => {
     fetch('/dashboard/api/demographics')
       .then(r => r.json())
       .then(d => setDemographics(d))
       .catch(e => console.error('Demographics fetch failed:', e))
+
+    fetch('/dashboard/api/diagnoses')
+      .then(r => r.json())
+      .then(d => setConditions(d.conditions))
+      .catch(e => console.error('Diagnoses fetch failed:', e))
+
+    fetch('/dashboard/api/enrollment-timeline')
+      .then(r => r.json())
+      .then(d => setTimeline(d.timeline))
+      .catch(e => console.error('Timeline fetch failed:', e))
   }, [])
 
-  // Calculate filtered count (simple client-side estimation)
-  const getFilteredCount = () => {
-    if (!demographics) return 0
-    if (!filters.ageMin && !filters.ageMax && filters.sex === 'all') {
-      return demographics.total_participants
-    }
-    // Rough estimation based on filters
-    let estimate = demographics.total_participants
-    if (filters.sex === 'M') estimate = demographics.male_count
-    if (filters.sex === 'F') estimate = demographics.female_count
-    if (filters.ageMin || filters.ageMax) estimate = Math.round(estimate * 0.7) // rough filter
-    return estimate
-  }
+  useEffect(() => {
+    // Fetch server-side filtered cohort size
+    const params = new URLSearchParams()
+    if (filters.ageMin) params.append('age_min', filters.ageMin.toString())
+    if (filters.ageMax) params.append('age_max', filters.ageMax.toString())
+    if (filters.sex && filters.sex !== 'all') params.append('sex', filters.sex)
+
+    fetch(`/dashboard/api/cohort?${params}`)
+      .then(r => r.json())
+      .then(d => setCohortSize(d.cohort_size))
+      .catch(e => console.error('Cohort fetch failed:', e))
+  }, [filters])
 
   return (
     <div>
@@ -70,7 +94,7 @@ export default function Population() {
           marginBottom: '24px'
         }}>
           <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#1e40af', marginBottom: '12px' }}>
-            Cohort Filters
+            Cohort Filters (Server-side)
           </h3>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'end', flexWrap: 'wrap' }}>
             <div>
@@ -123,8 +147,8 @@ export default function Population() {
                 }}
               >
                 <option value="all">All</option>
-                <option value="M">Male</option>
-                <option value="F">Female</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
               </select>
             </div>
           </div>
@@ -137,8 +161,48 @@ export default function Population() {
               <MetricCard label="Total Participants" value={demographics.total_participants.toLocaleString()} />
               <MetricCard label="Mean Age" value={`${demographics.mean_age} years`} />
               <MetricCard label="Enrollment Period" value={`${demographics.enrollment_start?.slice(0, 4)}-${demographics.enrollment_end?.slice(0, 4)}`} />
-              <MetricCard label="Filtered Cohort" value={getFilteredCount().toLocaleString()} />
+              <MetricCard label="Filtered Cohort" value={cohortSize !== null ? cohortSize.toLocaleString() : 'Loading...'} />
             </div>
+
+            {/* Enrollment Timeline */}
+            {timeline.length > 0 && (
+              <div style={{
+                backgroundColor: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                padding: '16px',
+                marginBottom: '24px'
+              }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
+                  Enrollment Timeline
+                </h3>
+                <Plot
+                  plotly={Plotly}
+                  data={[
+                    {
+                      x: timeline.map(t => t.month),
+                      y: timeline.map(t => t.count),
+                      type: 'scatter',
+                      mode: 'lines+markers',
+                      marker: { color: '#3b82f6', size: 6 },
+                      line: { color: '#3b82f6', width: 2 },
+                      fill: 'tozeroy',
+                      fillcolor: 'rgba(59, 130, 246, 0.1)'
+                    },
+                  ]}
+                  layout={{
+                    width: 900,
+                    height: 300,
+                    margin: { t: 20, r: 20, b: 60, l: 60 },
+                    xaxis: { title: 'Month', tickangle: -45 },
+                    yaxis: { title: 'New Enrollments' },
+                    plot_bgcolor: '#f8fafc',
+                    paper_bgcolor: '#fff',
+                  }}
+                  config={{ displayModeBar: false }}
+                />
+              </div>
+            )}
 
             {/* Age Distribution Chart */}
             <div style={{
@@ -180,7 +244,8 @@ export default function Population() {
               backgroundColor: '#fff',
               border: '1px solid #e2e8f0',
               borderRadius: '6px',
-              padding: '16px'
+              padding: '16px',
+              marginBottom: '24px'
             }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
                 Sex Distribution
@@ -205,6 +270,60 @@ export default function Population() {
                 config={{ displayModeBar: false }}
               />
             </div>
+
+            {/* Condition Prevalence */}
+            {conditions.length > 0 && (
+              <div style={{
+                backgroundColor: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                padding: '16px'
+              }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
+                  Common Conditions (Derived History)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                  {conditions.slice(0, 6).map(cond => (
+                    <div key={cond.code} style={{
+                      backgroundColor: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      padding: '12px'
+                    }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+                        {cond.name}
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
+                        {cond.count} <span style={{ fontSize: '14px', color: '#64748b' }}>({cond.percentage}%)</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Plot
+                  plotly={Plotly}
+                  data={[
+                    {
+                      x: conditions.map(c => c.code),
+                      y: conditions.map(c => c.percentage),
+                      type: 'bar',
+                      marker: { color: '#8b5cf6' },
+                      text: conditions.map(c => `${c.percentage}%`),
+                      textposition: 'outside',
+                    },
+                  ]}
+                  layout={{
+                    width: 800,
+                    height: 300,
+                    margin: { t: 40, r: 20, b: 80, l: 60 },
+                    xaxis: { title: 'Condition', tickangle: -45 },
+                    yaxis: { title: 'Prevalence (%)' },
+                    plot_bgcolor: '#f8fafc',
+                    paper_bgcolor: '#fff',
+                  }}
+                  config={{ displayModeBar: false }}
+                />
+              </div>
+            )}
           </>
         ) : (
           <p style={{ color: '#64748b' }}>Loading demographics...</p>

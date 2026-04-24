@@ -222,6 +222,224 @@ def get_quality():
         "low_severity_count": len([i for i in issues if i["severity"] == "low"])
     }
 
+@app.get("/dashboard/api/variables/all")
+def get_all_variables():
+    """Get expanded variable catalog including anthropometrics, scores, demographics"""
+    query = f"""
+    WITH total_vs AS (SELECT COUNT(*) as total FROM `{DATA_PROJECT}.crf.VS`)
+    SELECT
+        'vs_height_cm' as variable,
+        'numeric' as type,
+        'Height (cm)' as description,
+        'Vital Signs' as category,
+        ROUND(100.0 * COUNT(vs_height_cm) / (SELECT total FROM total_vs), 1) as completeness,
+        CONCAT(CAST(ROUND(MIN(vs_height_cm), 0) AS STRING), '-', CAST(ROUND(MAX(vs_height_cm), 0) AS STRING), ' cm') as range
+    FROM `{DATA_PROJECT}.crf.VS`
+    UNION ALL
+    SELECT 'vs_weight_kg', 'numeric', 'Weight (kg)', 'Vital Signs',
+        ROUND(100.0 * COUNT(vs_weight_kg) / (SELECT total FROM total_vs), 1),
+        CONCAT(CAST(ROUND(MIN(vs_weight_kg), 0) AS STRING), '-', CAST(ROUND(MAX(vs_weight_kg), 0) AS STRING), ' kg')
+    FROM `{DATA_PROJECT}.crf.VS`
+    UNION ALL
+    SELECT 'vs_wc_cm', 'numeric', 'Waist circumference (cm)', 'Vital Signs',
+        ROUND(100.0 * COUNT(vs_wc_cm) / (SELECT total FROM total_vs), 1),
+        CONCAT(CAST(ROUND(MIN(vs_wc_cm), 0) AS STRING), '-', CAST(ROUND(MAX(vs_wc_cm), 0) AS STRING), ' cm')
+    FROM `{DATA_PROJECT}.crf.VS`
+    UNION ALL
+    SELECT 'vs_sbp1_mmhg', 'numeric', 'Systolic BP (1st reading)', 'Vital Signs',
+        ROUND(100.0 * COUNT(vs_sbp1_mmhg) / (SELECT total FROM total_vs), 1),
+        CONCAT(CAST(ROUND(MIN(vs_sbp1_mmhg), 0) AS STRING), '-', CAST(ROUND(MAX(vs_sbp1_mmhg), 0) AS STRING), ' mmHg')
+    FROM `{DATA_PROJECT}.crf.VS`
+    UNION ALL
+    SELECT 'vs_dbp1_mmhg', 'numeric', 'Diastolic BP (1st reading)', 'Vital Signs',
+        ROUND(100.0 * COUNT(vs_dbp1_mmhg) / (SELECT total FROM total_vs), 1),
+        CONCAT(CAST(ROUND(MIN(vs_dbp1_mmhg), 0) AS STRING), '-', CAST(ROUND(MAX(vs_dbp1_mmhg), 0) AS STRING), ' mmHg')
+    FROM `{DATA_PROJECT}.crf.VS`
+    UNION ALL
+    SELECT 'vs_pulse_bpm', 'numeric', 'Pulse (bpm)', 'Vital Signs',
+        ROUND(100.0 * COUNT(vs_pulse_bpm) / (SELECT total FROM total_vs), 1),
+        CONCAT(CAST(ROUND(MIN(vs_pulse_bpm), 0) AS STRING), '-', CAST(ROUND(MAX(vs_pulse_bpm), 0) AS STRING), ' bpm')
+    FROM `{DATA_PROJECT}.crf.VS`
+    UNION ALL
+    SELECT 'vs_osat_pct', 'numeric', 'Oxygen saturation (%)', 'Vital Signs',
+        ROUND(100.0 * COUNT(vs_osat_pct) / (SELECT total FROM total_vs), 1),
+        CONCAT(CAST(ROUND(MIN(vs_osat_pct), 0) AS STRING), '-', CAST(ROUND(MAX(vs_osat_pct), 0) AS STRING), ' %')
+    FROM `{DATA_PROJECT}.crf.VS`
+    UNION ALL
+    SELECT 'vs_rrate_bpm', 'numeric', 'Respiratory rate (bpm)', 'Vital Signs',
+        ROUND(100.0 * COUNT(vs_rrate_bpm) / (SELECT total FROM total_vs), 1),
+        CONCAT(CAST(ROUND(MIN(vs_rrate_bpm), 0) AS STRING), '-', CAST(ROUND(MAX(vs_rrate_bpm), 0) AS STRING), ' bpm')
+    FROM `{DATA_PROJECT}.crf.VS`
+    """
+
+    dm_query = f"""
+    WITH total_dm AS (SELECT COUNT(*) as total FROM `{DATA_PROJECT}.screener.DM`)
+    SELECT
+        'age_at_enrollment' as variable,
+        'numeric' as type,
+        'Age at enrollment' as description,
+        'Demographics' as category,
+        ROUND(100.0 * COUNT(age_at_enrollment) / (SELECT total FROM total_dm), 1) as completeness,
+        CONCAT(CAST(MIN(age_at_enrollment) AS STRING), '-', CAST(MAX(age_at_enrollment) AS STRING), ' years') as range
+    FROM `{DATA_PROJECT}.screener.DM`
+    UNION ALL
+    SELECT 'SEX', 'categorical', 'Sex', 'Demographics',
+        ROUND(100.0 * COUNT(SEX) / (SELECT total FROM total_dm), 1),
+        '2 values (Male, Female)'
+    FROM `{DATA_PROJECT}.screener.DM`
+    UNION ALL
+    SELECT 'RACE', 'categorical', 'Race', 'Demographics',
+        ROUND(100.0 * COUNT(RACE) / (SELECT total FROM total_dm), 1),
+        'Multiple values'
+    FROM `{DATA_PROJECT}.screener.DM`
+    UNION ALL
+    SELECT 'hispanic_ancestry', 'categorical', 'Hispanic ancestry', 'Demographics',
+        ROUND(100.0 * COUNT(hispanic_ancestry) / (SELECT total FROM total_dm), 1),
+        '2 values (Yes, No)'
+    FROM `{DATA_PROJECT}.screener.DM`
+    """
+
+    variables = []
+    for row in bq_client.query(query).result():
+        variables.append({
+            "name": row.variable,
+            "type": row.type,
+            "description": row.description,
+            "category": row.category,
+            "completeness": row.completeness,
+            "range": row.range
+        })
+
+    for row in bq_client.query(dm_query).result():
+        variables.append({
+            "name": row.variable,
+            "type": row.type,
+            "description": row.description,
+            "category": row.category,
+            "completeness": row.completeness,
+            "range": row.range
+        })
+
+    return {"variables": variables}
+
+@app.get("/dashboard/api/diagnoses")
+def get_diagnoses():
+    """Get diagnosis/condition prevalence"""
+    query = f"""
+    SELECT
+        COUNT(DISTINCT SUBJID) as total_participants,
+        COUNTIF(der_hx_htn = 1) as htn_count,
+        COUNTIF(der_hx_diab = 1) as diabetes_count,
+        COUNTIF(der_hx_dyslipidemia = 1) as dyslipidemia_count,
+        COUNTIF(der_hx_cvd = 1) as cvd_count,
+        COUNTIF(der_hx_afib = 1) as afib_count,
+        COUNTIF(der_hx_ckd = 1) as ckd_count
+    FROM `{DATA_PROJECT}.analysis.DIAGNOSES`
+    """
+    result = list(bq_client.query(query).result())[0]
+
+    conditions = [
+        {"name": "Hypertension", "code": "HTN", "count": result.htn_count, "percentage": round(100.0 * result.htn_count / result.total_participants, 1)},
+        {"name": "Diabetes", "code": "DIAB", "count": result.diabetes_count, "percentage": round(100.0 * result.diabetes_count / result.total_participants, 1)},
+        {"name": "Cardiovascular Disease", "code": "CVD", "count": result.cvd_count, "percentage": round(100.0 * result.cvd_count / result.total_participants, 1)},
+        {"name": "Dyslipidemia", "code": "DYSLIP", "count": result.dyslipidemia_count, "percentage": round(100.0 * result.dyslipidemia_count / result.total_participants, 1)},
+        {"name": "Atrial Fibrillation", "code": "AFIB", "count": result.afib_count, "percentage": round(100.0 * result.afib_count / result.total_participants, 1)},
+        {"name": "Chronic Kidney Disease", "code": "CKD", "count": result.ckd_count, "percentage": round(100.0 * result.ckd_count / result.total_participants, 1)},
+    ]
+
+    return {"conditions": sorted(conditions, key=lambda x: x["count"], reverse=True)}
+
+@app.get("/dashboard/api/sensordata")
+def get_sensordata():
+    """Get sensor data summary"""
+    query = f"""
+    SELECT
+        COUNT(DISTINCT SUBJID) as participants_with_data,
+        (SELECT COUNT(*) FROM `{DATA_PROJECT}.sensordata.STEP`) as total_step_records,
+        (SELECT COUNT(*) FROM `{DATA_PROJECT}.sensordata.PULSE`) as total_pulse_records,
+        (SELECT COUNT(*) FROM `{DATA_PROJECT}.sensordata.SLPSTG`) as total_sleep_records
+    FROM `{DATA_PROJECT}.sensordata.STEP`
+    """
+    result = list(bq_client.query(query).result())[0]
+
+    return {
+        "participants_with_step_data": result.participants_with_data,
+        "total_step_records": result.total_step_records,
+        "total_pulse_records": result.total_pulse_records,
+        "total_sleep_records": result.total_sleep_records,
+        "data_coverage_pct": round(100.0 * result.participants_with_data / 2502, 1)
+    }
+
+@app.get("/dashboard/api/enrollment-timeline")
+def get_enrollment_timeline():
+    """Get enrollment over time"""
+    query = f"""
+    SELECT
+        FORMAT_DATE('%Y-%m', enrollment_date) as month,
+        COUNT(*) as enrollments
+    FROM `{DATA_PROJECT}.analysis.ENRDT`
+    WHERE enrollment_date IS NOT NULL
+    GROUP BY month
+    ORDER BY month
+    """
+    results = bq_client.query(query).result()
+    timeline = [{"month": row.month, "count": row.enrollments} for row in results]
+    return {"timeline": timeline}
+
+@app.get("/dashboard/api/cohort")
+def get_cohort(age_min: int = None, age_max: int = None, sex: str = None):
+    """Get server-side filtered cohort count"""
+    conditions = []
+    if age_min is not None:
+        conditions.append(f"age_at_enrollment >= {age_min}")
+    if age_max is not None:
+        conditions.append(f"age_at_enrollment <= {age_max}")
+    if sex and sex.upper() in ('MALE', 'FEMALE'):
+        conditions.append(f"SEX = '{sex.capitalize()}'")
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+    query = f"""
+    SELECT COUNT(DISTINCT SUBJID) as cohort_size
+    FROM `{DATA_PROJECT}.screener.DM`
+    WHERE {where_clause}
+    """
+    result = list(bq_client.query(query).result())[0]
+    return {"cohort_size": result.cohort_size, "filters_applied": len(conditions)}
+
+@app.get("/dashboard/api/export")
+def export_data(format: str = "csv"):
+    """Export dataset summary as CSV"""
+    from fastapi.responses import Response
+    import csv
+    from io import StringIO
+
+    # Get summary data
+    demo_query = f"""
+    SELECT
+        SUBJID,
+        age_at_enrollment,
+        SEX,
+        RACE
+    FROM `{DATA_PROJECT}.screener.DM`
+    LIMIT 100
+    """
+    results = bq_client.query(demo_query).result()
+
+    # Generate CSV
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['SUBJID', 'Age', 'Sex', 'Race'])
+    for row in results:
+        writer.writerow([row.SUBJID, row.age_at_enrollment, row.SEX, row.RACE])
+
+    csv_content = output.getvalue()
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=dataset_export.csv"}
+    )
+
 # Mount Vite build at root
 # Path: /app/backend/app/main.py -> /app/frontend/dist
 _DIST_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"

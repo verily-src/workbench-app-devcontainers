@@ -8,9 +8,18 @@ interface DatasetInfo {
   total_tables: number
 }
 
+interface SensorData {
+  participants_with_step_data: number
+  total_step_records: number
+  total_pulse_records: number
+  total_sleep_records: number
+  data_coverage_pct: number
+}
+
 export default function Passport() {
   const [health, setHealth] = useState<any>(null)
   const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null)
+  const [sensorData, setSensorData] = useState<SensorData | null>(null)
 
   useEffect(() => {
     fetch('/dashboard/api/health')
@@ -22,6 +31,11 @@ export default function Passport() {
       .then(r => r.json())
       .then(d => setDatasetInfo(d))
       .catch(e => console.error('Dataset fetch failed:', e))
+
+    fetch('/dashboard/api/sensordata')
+      .then(r => r.json())
+      .then(d => setSensorData(d))
+      .catch(e => console.error('Sensor data fetch failed:', e))
   }, [])
 
   return (
@@ -45,12 +59,83 @@ export default function Passport() {
           High-level overview of dataset provenance, structure, and coverage
         </p>
 
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div></div>
+          <a
+            href="/dashboard/api/export?format=csv"
+            download
+            style={{
+              padding: '10px 20px',
+              backgroundColor: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '14px',
+              fontWeight: 600,
+              textDecoration: 'none',
+              cursor: 'pointer',
+              display: 'inline-block'
+            }}
+          >
+            📥 Export Sample Data (CSV)
+          </a>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '32px' }}>
           <MetricCard label="Project" value={datasetInfo?.project || 'Loading...'} />
           <MetricCard label="Datasets" value={datasetInfo?.datasets.length || '...'} />
           <MetricCard label="Total Tables" value={datasetInfo?.total_tables || '...'} />
           <MetricCard label="API Status" value={health?.status || 'checking...'} />
         </div>
+
+        {/* Sensor Data Overview */}
+        {sensorData && (
+          <div style={{
+            backgroundColor: '#f0f9ff',
+            border: '1px solid #bae6fd',
+            borderRadius: '6px',
+            padding: '16px',
+            marginBottom: '24px'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#0369a1', marginBottom: '12px' }}>
+              Wearable Sensor Data Available
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#0284c7', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Participants with Data
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#0369a1' }}>
+                  {sensorData.participants_with_step_data.toLocaleString()} <span style={{ fontSize: '14px', color: '#0284c7' }}>({sensorData.data_coverage_pct}%)</span>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#0284c7', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Step Records
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#0369a1' }}>
+                  {(sensorData.total_step_records / 1e9).toFixed(1)}B
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#0284c7', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Pulse Records
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#0369a1' }}>
+                  {(sensorData.total_pulse_records / 1e9).toFixed(1)}B
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '11px', color: '#0284c7', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+                  Sleep Records
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#0369a1' }}>
+                  {(sensorData.total_sleep_records / 1e6).toFixed(1)}M
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{
           backgroundColor: '#f8fafc',

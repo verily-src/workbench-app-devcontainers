@@ -3,7 +3,6 @@ import { DataProvider, useData } from './context/DataContext'
 import { CohortProvider } from './context/CohortContext'
 import LoadingScreen from './components/LoadingScreen'
 import Passport from './pages/Passport'
-import Population from './pages/Population'
 import Variables from './pages/Variables'
 import Quality from './pages/Quality'
 import Hypotheses from './pages/Hypotheses'
@@ -28,7 +27,6 @@ function VerilyMark({ className = '' }: { className?: string }) {
 
 const NAV_LINKS = [
   { to: '/passport', label: 'Passport' },
-  { to: '/population', label: 'Population' },
   { to: '/variables', label: 'Variables' },
   { to: '/quality', label: 'Quality' },
   { to: '/hypotheses', label: 'Hypotheses' },
@@ -135,7 +133,6 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Navigate to="/passport" replace />} />
           <Route path="/passport" element={<Passport />} />
-          <Route path="/population" element={<Population />} />
           <Route path="/variables" element={<Variables />} />
           <Route path="/quality" element={<Quality />} />
           <Route path="/hypotheses" element={<Hypotheses />} />

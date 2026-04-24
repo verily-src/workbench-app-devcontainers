@@ -1278,62 +1278,117 @@ def get_comprehensive_variables():
     })
 
     # SENSOR domain with special metrics
-    sensor_query = f"""
-    SELECT
-        COUNT(DISTINCT SUBJID) as patients_with_data,
-        COUNT(*) as total_measurements,
-        APPROX_QUANTILES(study_day, 100)[OFFSET(50)] as median_wear_days
-    FROM `{DATA_PROJECT}.sensordata.STEP`
-    """
-    sensor_result = list(bq_client.query(sensor_query).result())[0]
 
-    # Calculate consecutive day metrics
-    consec_7_query = f"""
-    WITH daily_data AS (
-        SELECT DISTINCT SUBJID, CAST(study_day AS INT64) as day
-        FROM `{DATA_PROJECT}.sensordata.STEP`
-        WHERE study_day IS NOT NULL
-    ),
-    consecutive AS (
-        SELECT
-            SUBJID,
-            day,
-            day - ROW_NUMBER() OVER (PARTITION BY SUBJID ORDER BY day) as grp
-        FROM daily_data
-    ),
-    streaks AS (
-        SELECT
-            SUBJID,
-            COUNT(*) as streak_length
-        FROM consecutive
-        GROUP BY SUBJID, grp
-    )
-    SELECT
-        COUNT(DISTINCT SUBJID) as count
-    FROM streaks
-    WHERE streak_length >= 7
-    """
-    consec_7_count = list(bq_client.query(consec_7_query).result())[0].count
+    # Define all sensor variables to add
+    sensor_variables = [
+        ("STEP", "Step Count", "steps", "Daily step count from wearable device"),
+        ("PULSE", "Heart Rate", "bpm", "Instantaneous heart rate"),
+        ("HEMET", "Resting Heart Rate", "bpm", "Daily resting heart rate"),
+        ("HEMET", "HRV RMSSD", "ms", "Heart rate variability (RMSSD)"),
+        ("HEMET", "HRV SDNN", "ms", "Heart rate variability (SDNN Index)"),
+        ("SLPMET", "Total Sleep Time", "minutes", "Total sleep duration per night"),
+        ("SLPMET", "Sleep Efficiency", "%", "Percentage of time in bed spent asleep"),
+        ("SLPMET", "REM Sleep", "minutes", "REM sleep duration per night"),
+        ("SLPMET", "Deep Sleep", "minutes", "Deep sleep duration per night"),
+        ("SLPMET", "Light Sleep", "minutes", "Light sleep duration per night"),
+    ]
 
-    variables.append({
-        "name": "Step Count",
-        "column": "step_count",
-        "domain": "Sensor",
-        "type": "numeric",
-        "unit": "steps",
-        "patient_coverage_pct": round(100.0 * sensor_result.patients_with_data / total_patients, 1),
-        "patients_with_data": sensor_result.patients_with_data,
-        "median_measurements_per_patient": round(sensor_result.total_measurements / sensor_result.patients_with_data, 1),
-        "total_measurements": sensor_result.total_measurements,
-        "median_value": None,
-        "value_range": None,
-        "distribution": None,
-        "sensor_metrics": {
-            "median_wear_days": int(sensor_result.median_wear_days) if sensor_result.median_wear_days else 0,
-            "pct_7_consecutive_days": round(100.0 * consec_7_count / sensor_result.patients_with_data, 1),
-            "pct_30_consecutive_days": 0  # Placeholder - expensive to calculate
-        }
-    })
+    # Column mappings for each table
+    column_map = {
+        ("STEP", "Step Count"): None,  # No specific column, just count records
+        ("PULSE", "Heart Rate"): "pulse_rate",
+        ("HEMET", "Resting Heart Rate"): "rhr",
+        ("HEMET", "HRV RMSSD"): "rmssd_mean",
+        ("HEMET", "HRV SDNN"): "sdnn_index",
+        ("SLPMET", "Total Sleep Time"): "total_sleep_time",
+        ("SLPMET", "Sleep Efficiency"): "sleep_efficiency",
+        ("SLPMET", "REM Sleep"): "rem",
+        ("SLPMET", "Deep Sleep"): "deep",
+        ("SLPMET", "Light Sleep"): "light",
+    }
+
+    for table, name, unit, desc in sensor_variables:
+        col = column_map.get((table, name))
+
+        # Query for each sensor variable
+        if col:
+            # Has a specific column
+            query = f"""
+            SELECT
+                COUNT(DISTINCT SUBJID) as patients_with_data,
+                COUNT({col}) as total_measurements,
+                APPROX_QUANTILES(study_day, 100)[OFFSET(50)] as median_wear_days
+            FROM `{DATA_PROJECT}.sensordata.{table}`
+            WHERE {col} IS NOT NULL
+            """
+        else:
+            # STEP count - no specific column
+            query = f"""
+            SELECT
+                COUNT(DISTINCT SUBJID) as patients_with_data,
+                COUNT(*) as total_measurements,
+                APPROX_QUANTILES(study_day, 100)[OFFSET(50)] as median_wear_days
+            FROM `{DATA_PROJECT}.sensordata.{table}`
+            """
+
+        result = list(bq_client.query(query).result())[0]
+
+        if result.patients_with_data > 0:
+            # Calculate consecutive day metrics (only for STEP to save time)
+            if table == "STEP":
+                consec_7_query = f"""
+                WITH daily_data AS (
+                    SELECT DISTINCT SUBJID, CAST(study_day AS INT64) as day
+                    FROM `{DATA_PROJECT}.sensordata.STEP`
+                    WHERE study_day IS NOT NULL
+                ),
+                consecutive AS (
+                    SELECT
+                        SUBJID,
+                        day,
+                        day - ROW_NUMBER() OVER (PARTITION BY SUBJID ORDER BY day) as grp
+                    FROM daily_data
+                ),
+                streaks AS (
+                    SELECT
+                        SUBJID,
+                        COUNT(*) as streak_length
+                    FROM consecutive
+                    GROUP BY SUBJID, grp
+                )
+                SELECT
+                    COUNT(DISTINCT SUBJID) as count
+                FROM streaks
+                WHERE streak_length >= 7
+                """
+                consec_7_count = list(bq_client.query(consec_7_query).result())[0].count
+                sensor_metrics = {
+                    "median_wear_days": int(result.median_wear_days) if result.median_wear_days else 0,
+                    "pct_7_consecutive_days": round(100.0 * consec_7_count / result.patients_with_data, 1),
+                    "pct_30_consecutive_days": 0
+                }
+            else:
+                sensor_metrics = {
+                    "median_wear_days": int(result.median_wear_days) if result.median_wear_days else 0,
+                    "pct_7_consecutive_days": 0,
+                    "pct_30_consecutive_days": 0
+                }
+
+            variables.append({
+                "name": name,
+                "column": col or table,
+                "domain": "Sensor",
+                "type": "numeric",
+                "unit": unit,
+                "patient_coverage_pct": round(100.0 * result.patients_with_data / total_patients, 1),
+                "patients_with_data": result.patients_with_data,
+                "median_measurements_per_patient": round(result.total_measurements / result.patients_with_data, 1),
+                "total_measurements": result.total_measurements,
+                "median_value": None,
+                "value_range": None,
+                "distribution": None,
+                "sensor_metrics": sensor_metrics
+            })
 
     # PRO domain
     pro_query = f"""

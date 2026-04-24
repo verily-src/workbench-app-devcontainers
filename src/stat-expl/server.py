@@ -1,7 +1,7 @@
 """
 FastAPI server to serve the built React SPA.
 Uses FastAPI with StaticFiles for proper SPA routing.
-Pattern from clinical-dashboard.
+CRITICAL: Workbench reserves /api/ - use /dashboard/api/ prefix instead.
 """
 from pathlib import Path
 from fastapi import FastAPI
@@ -21,7 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health")
+@app.get("/dashboard/api/health")
 def health():
     return {
         "status": "ok",
@@ -29,11 +29,11 @@ def health():
         "version": "0.1.0"
     }
 
-# Serve the built frontend at the app root
-# html=True makes it serve index.html for all routes (SPA routing)
-# Only mount if dist exists AND has content (not just empty dir)
+# Serve the built frontend at the app root. Static mounts are registered
+# LAST so /dashboard/api/* takes precedence. Using StaticFiles(html=True) makes it serve
+# index.html for the root and fall through for asset paths.
 _FRONTEND_DIST = Path(__file__).resolve().parent / "dist"
-if _FRONTEND_DIST.exists() and any(_FRONTEND_DIST.iterdir()):
+if _FRONTEND_DIST.exists():
     app.mount(
         "/",
         StaticFiles(directory=str(_FRONTEND_DIST), html=True),

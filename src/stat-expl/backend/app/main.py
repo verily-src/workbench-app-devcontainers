@@ -743,6 +743,254 @@ def search_population(query: str):
         "sex": sex_data
     }
 
+@app.get("/dashboard/api/variables/comprehensive")
+def get_comprehensive_variables():
+    """Get comprehensive variable catalog organized by domain with coverage and measurement metrics"""
+
+    variables = []
+    total_patients = 2502
+
+    # VITALS domain
+    vitals = ['vs_height_cm', 'vs_weight_kg', 'vs_wc_cm', 'vs_sbp1_mmhg', 'vs_dbp1_mmhg', 'vs_pulse_bpm', 'vs_osat_pct', 'vs_rrate_bpm']
+    vitals_names = ['Height', 'Weight', 'Waist Circumference', 'Systolic BP', 'Diastolic BP', 'Pulse', 'Oxygen Saturation', 'Respiratory Rate']
+    vitals_units = ['cm', 'kg', 'cm', 'mmHg', 'mmHg', 'bpm', '%', 'bpm']
+
+    for i, col in enumerate(vitals):
+        query = f"""
+        SELECT
+            COUNT(DISTINCT SUBJID) as patients_with_data,
+            COUNT({col}) as total_measurements,
+            APPROX_QUANTILES({col}, 100)[OFFSET(50)] as median_value,
+            APPROX_QUANTILES({col}, 100)[OFFSET(25)] as q25,
+            APPROX_QUANTILES({col}, 100)[OFFSET(75)] as q75,
+            MIN({col}) as min_value,
+            MAX({col}) as max_value
+        FROM `{DATA_PROJECT}.crf.VS`
+        WHERE {col} IS NOT NULL
+        """
+        result = list(bq_client.query(query).result())[0]
+
+        if result.patients_with_data > 0:
+            # Calculate median measurements per patient
+            med_per_patient = round(result.total_measurements / result.patients_with_data, 1)
+            coverage_pct = round(100.0 * result.patients_with_data / total_patients, 1)
+
+            variables.append({
+                "name": vitals_names[i],
+                "column": col,
+                "domain": "Vitals",
+                "type": "numeric",
+                "unit": vitals_units[i],
+                "patient_coverage_pct": coverage_pct,
+                "patients_with_data": result.patients_with_data,
+                "median_measurements_per_patient": med_per_patient,
+                "total_measurements": result.total_measurements,
+                "median_value": float(result.median_value) if result.median_value else None,
+                "value_range": f"{round(float(result.min_value), 1)}-{round(float(result.max_value), 1)}" if result.min_value else None,
+                "distribution": {
+                    "min": float(result.min_value) if result.min_value else None,
+                    "q25": float(result.q25) if result.q25 else None,
+                    "median": float(result.median_value) if result.median_value else None,
+                    "q75": float(result.q75) if result.q75 else None,
+                    "max": float(result.max_value) if result.max_value else None
+                }
+            })
+
+    # LABS domain (top 15 most common)
+    labs_query = f"""
+    SELECT
+        otcname as lab_name,
+        COUNT(DISTINCT SUBJID) as patients_with_data,
+        COUNT(*) as total_measurements
+    FROM `{DATA_PROJECT}.externallab.CLABS`
+    WHERE otcname IS NOT NULL
+    GROUP BY otcname
+    ORDER BY patients_with_data DESC
+    LIMIT 15
+    """
+    labs_results = bq_client.query(labs_query).result()
+    for row in labs_results:
+        coverage_pct = round(100.0 * row.patients_with_data / total_patients, 1)
+        med_per_patient = round(row.total_measurements / row.patients_with_data, 1)
+        variables.append({
+            "name": row.lab_name.title(),
+            "column": row.lab_name,
+            "domain": "Labs",
+            "type": "numeric",
+            "unit": "varies",
+            "patient_coverage_pct": coverage_pct,
+            "patients_with_data": row.patients_with_data,
+            "median_measurements_per_patient": med_per_patient,
+            "total_measurements": row.total_measurements,
+            "median_value": None,
+            "value_range": None,
+            "distribution": None
+        })
+
+    # DIAGNOSES domain
+    dx_query = f"""
+    SELECT
+        'Diagnosis Count' as var_name,
+        COUNT(DISTINCT SUBJID) as patients_with_data,
+        COUNT(*) as total_measurements
+    FROM `{DATA_PROJECT}.crf.MH`
+    WHERE MHYN = 'Yes'
+    """
+    dx_result = list(bq_client.query(dx_query).result())[0]
+    variables.append({
+        "name": "Diagnosis Count",
+        "column": "MHTERM",
+        "domain": "Diagnoses",
+        "type": "categorical",
+        "unit": "conditions",
+        "patient_coverage_pct": round(100.0 * dx_result.patients_with_data / total_patients, 1),
+        "patients_with_data": dx_result.patients_with_data,
+        "median_measurements_per_patient": round(dx_result.total_measurements / dx_result.patients_with_data, 1),
+        "total_measurements": dx_result.total_measurements,
+        "median_value": None,
+        "value_range": None,
+        "distribution": None
+    })
+
+    # MEDICATIONS domain
+    meds_query = f"""
+    SELECT
+        'Medication Count' as var_name,
+        COUNT(DISTINCT SUBJID) as patients_with_data,
+        COUNT(*) as total_measurements
+    FROM `{DATA_PROJECT}.crf.CM`
+    WHERE Level1_Name IS NOT NULL
+    """
+    meds_result = list(bq_client.query(meds_query).result())[0]
+    variables.append({
+        "name": "Medication Count",
+        "column": "Level1_Name",
+        "domain": "Medications",
+        "type": "categorical",
+        "unit": "medications",
+        "patient_coverage_pct": round(100.0 * meds_result.patients_with_data / total_patients, 1),
+        "patients_with_data": meds_result.patients_with_data,
+        "median_measurements_per_patient": round(meds_result.total_measurements / meds_result.patients_with_data, 1),
+        "total_measurements": meds_result.total_measurements,
+        "median_value": None,
+        "value_range": None,
+        "distribution": None
+    })
+
+    # SENSOR domain with special metrics
+    sensor_query = f"""
+    SELECT
+        COUNT(DISTINCT SUBJID) as patients_with_data,
+        COUNT(*) as total_measurements,
+        APPROX_QUANTILES(study_day, 100)[OFFSET(50)] as median_wear_days
+    FROM `{DATA_PROJECT}.sensordata.STEP`
+    """
+    sensor_result = list(bq_client.query(sensor_query).result())[0]
+
+    # Calculate consecutive day metrics
+    consec_7_query = f"""
+    WITH daily_data AS (
+        SELECT DISTINCT SUBJID, CAST(study_day AS INT64) as day
+        FROM `{DATA_PROJECT}.sensordata.STEP`
+        WHERE study_day IS NOT NULL
+    ),
+    consecutive AS (
+        SELECT
+            SUBJID,
+            day,
+            day - ROW_NUMBER() OVER (PARTITION BY SUBJID ORDER BY day) as grp
+        FROM daily_data
+    ),
+    streaks AS (
+        SELECT
+            SUBJID,
+            COUNT(*) as streak_length
+        FROM consecutive
+        GROUP BY SUBJID, grp
+    )
+    SELECT
+        COUNT(DISTINCT SUBJID) as count
+    FROM streaks
+    WHERE streak_length >= 7
+    """
+    consec_7_count = list(bq_client.query(consec_7_query).result())[0].count
+
+    variables.append({
+        "name": "Step Count",
+        "column": "step_count",
+        "domain": "Sensor",
+        "type": "numeric",
+        "unit": "steps",
+        "patient_coverage_pct": round(100.0 * sensor_result.patients_with_data / total_patients, 1),
+        "patients_with_data": sensor_result.patients_with_data,
+        "median_measurements_per_patient": round(sensor_result.total_measurements / sensor_result.patients_with_data, 1),
+        "total_measurements": sensor_result.total_measurements,
+        "median_value": None,
+        "value_range": None,
+        "distribution": None,
+        "sensor_metrics": {
+            "median_wear_days": int(sensor_result.median_wear_days) if sensor_result.median_wear_days else 0,
+            "pct_7_consecutive_days": round(100.0 * consec_7_count / sensor_result.patients_with_data, 1),
+            "pct_30_consecutive_days": 0  # Placeholder - expensive to calculate
+        }
+    })
+
+    # PRO domain
+    pro_query = f"""
+    SELECT
+        'PHQ-9 Depression Score' as var_name,
+        COUNT(DISTINCT SUBJID) as patients_with_data,
+        COUNT(*) as total_measurements
+    FROM `{DATA_PROJECT}.appsurveys.PHQ9A`
+    """
+    pro_result = list(bq_client.query(pro_query).result())[0]
+    variables.append({
+        "name": "PHQ-9 Depression Score",
+        "column": "PHQ9A",
+        "domain": "PRO",
+        "type": "numeric",
+        "unit": "score",
+        "patient_coverage_pct": round(100.0 * pro_result.patients_with_data / total_patients, 1),
+        "patients_with_data": pro_result.patients_with_data,
+        "median_measurements_per_patient": round(pro_result.total_measurements / pro_result.patients_with_data, 1),
+        "total_measurements": pro_result.total_measurements,
+        "median_value": None,
+        "value_range": None,
+        "distribution": None
+    })
+
+    return {"variables": variables, "total_patients": total_patients}
+
+@app.get("/dashboard/api/variables/search")
+def search_variables(query: str):
+    """Search variables by clinical concept"""
+    search_term = query.lower()
+
+    # Map clinical concepts to variable groups
+    concept_map = {
+        "kidney": ["CREATININE URINE", "ALBUMIN URINE", "MDRD", "ALBN-CRT RATIO"],
+        "renal": ["CREATININE URINE", "ALBUMIN URINE", "MDRD", "ALBN-CRT RATIO"],
+        "diabetes": ["HBA1C", "vs_weight_kg"],
+        "blood pressure": ["vs_sbp1_mmhg", "vs_dbp1_mmhg"],
+        "bp": ["vs_sbp1_mmhg", "vs_dbp1_mmhg"],
+        "hypertension": ["vs_sbp1_mmhg", "vs_dbp1_mmhg"],
+        "cholesterol": ["LIPID PANEL"],
+        "lipid": ["LIPID PANEL"],
+        "heart": ["vs_pulse_bpm", "vs_sbp1_mmhg", "vs_dbp1_mmhg"],
+        "depression": ["PHQ-9 Depression Score"],
+        "mental": ["PHQ-9 Depression Score"],
+        "activity": ["Step Count"],
+        "steps": ["Step Count"],
+        "sensor": ["Step Count"]
+    }
+
+    matched_vars = []
+    for concept, var_names in concept_map.items():
+        if search_term in concept:
+            matched_vars.extend(var_names)
+
+    return {"matched_variables": list(set(matched_vars)), "search_query": query}
+
 @app.get("/dashboard/api/passport/filter")
 def filter_passport_metrics(
     enroll_start: str = None,

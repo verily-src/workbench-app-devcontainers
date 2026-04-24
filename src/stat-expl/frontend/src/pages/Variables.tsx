@@ -1,249 +1,430 @@
-import { useState } from 'react'
-import { useCohort } from '../context/CohortContext'
-import { useData } from '../context/DataContext'
-import Plot from 'react-plotly.js'
-import Plotly from 'plotly.js-dist-min'
+import { useState, useEffect } from 'react'
+
+interface Variable {
+  name: string
+  column: string
+  domain: string
+  type: string
+  unit: string
+  patient_coverage_pct: number
+  patients_with_data: number
+  median_measurements_per_patient: number
+  total_measurements: number
+  median_value: number | null
+  value_range: string | null
+  distribution: {
+    min: number
+    q25: number
+    median: number
+    q75: number
+    max: number
+  } | null
+  sensor_metrics?: {
+    median_wear_days: number
+    pct_7_consecutive_days: number
+    pct_30_consecutive_days: number
+  }
+}
 
 export default function Variables() {
-  const { addFlag } = useCohort()
-  const { variables, isLoading } = useData()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [variables, setVariables] = useState<Variable[]>([])
+  const [filteredVariables, setFilteredVariables] = useState<Variable[]>([])
+  const [completenessThreshold, setCompletenessThreshold] = useState(0)
+  const [minMeasurements, setMinMeasurements] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [expandedVar, setExpandedVar] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const categories = ['all', ...Array.from(new Set(variables.map(v => v.category)))]
+  // Load variables
+  useEffect(() => {
+    fetch('/dashboard/api/variables/comprehensive')
+      .then(r => r.json())
+      .then(data => {
+        setVariables(data.variables)
+        setFilteredVariables(data.variables)
+        setIsLoading(false)
+      })
+      .catch(err => {
+        console.error('Failed to load variables:', err)
+        setIsLoading(false)
+      })
+  }, [])
 
-  const filteredVars = variables.filter(v => {
-    const matchesSearch = v.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         v.description.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = selectedCategory === 'all' || v.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+  // Apply filters
+  useEffect(() => {
+    let filtered = variables.filter(v =>
+      v.patient_coverage_pct >= completenessThreshold &&
+      v.median_measurements_per_patient >= minMeasurements
+    )
 
-  const numericCount = variables.filter(v => v.type === 'numeric').length
-  const categoricalCount = variables.filter(v => v.type === 'categorical').length
-  const avgCompleteness = variables.length > 0
-    ? (variables.reduce((sum, v) => sum + v.completeness, 0) / variables.length).toFixed(1)
-    : '0'
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(v =>
+        v.name.toLowerCase().includes(query) ||
+        v.domain.toLowerCase().includes(query)
+      )
+    }
+
+    setFilteredVariables(filtered)
+  }, [variables, completenessThreshold, minMeasurements, searchQuery])
+
+  if (isLoading) {
+    return <div style={{ color: 'rgba(26, 26, 26, 0.6)' }}>Loading variables...</div>
+  }
+
+  const domains = Array.from(new Set(filteredVariables.map(v => v.domain)))
+  const usableCount = filteredVariables.length
+  const totalCount = variables.length
 
   return (
     <div>
       <div style={{
         backgroundColor: '#fff',
-        borderRadius: '8px',
+        borderRadius: '12px',
         padding: '24px',
         marginBottom: '24px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+        boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+        border: '1px solid #e9e4d8'
       }}>
         <h2 style={{
           fontSize: '24px',
           fontWeight: 600,
-          color: '#1e293b',
+          color: '#1a1a1a',
           marginBottom: '8px'
         }}>
-          Variables
+          Variable Catalog
         </h2>
-        <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px' }}>
-          Variable catalog, data types, completeness, and distributions
+        <p style={{ color: 'rgba(26, 26, 26, 0.6)', fontSize: '14px', marginBottom: '24px' }}>
+          Comprehensive data dictionary with coverage, measurement frequency, and distributions
         </p>
 
-        {/* Search and Filters */}
-        <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        {/* Search Bar */}
+        <div style={{ marginBottom: '24px' }}>
+          <label style={{
+            display: 'block',
+            fontSize: '14px',
+            fontWeight: 600,
+            color: '#1a1a1a',
+            marginBottom: '8px'
+          }}>
+            Search by Clinical Concept or Variable Name
+          </label>
           <input
             type="text"
-            placeholder="Search variables..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="e.g., kidney function, blood pressure, diabetes..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             style={{
-              flex: 1,
-              minWidth: '300px',
-              padding: '10px 16px',
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px',
-              fontSize: '14px'
+              width: '100%',
+              padding: '12px 16px',
+              fontSize: '16px',
+              border: '2px solid #e9e4d8',
+              borderRadius: '8px',
+              outline: 'none'
             }}
+            onFocus={(e) => e.currentTarget.style.borderColor = '#087A6A'}
+            onBlur={(e) => e.currentTarget.style.borderColor = '#e9e4d8'}
           />
-          <select
-            value={selectedCategory}
-            onChange={e => setSelectedCategory(e.target.value)}
-            style={{
-              padding: '10px 16px',
-              border: '1px solid #cbd5e1',
-              borderRadius: '6px',
+        </div>
+
+        {/* Filter Controls */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: '24px',
+          marginBottom: '24px',
+          padding: '20px',
+          backgroundColor: '#f5f2ea',
+          borderRadius: '8px'
+        }}>
+          {/* Completeness Threshold */}
+          <div>
+            <label style={{
               fontSize: '14px',
-              backgroundColor: '#fff'
-            }}
-          >
-            {categories.map(cat => (
-              <option key={cat} value={cat}>
-                {cat === 'all' ? 'All Categories' : cat}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Variable Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-          <MetricCard label="Total Variables" value={variables.length} />
-          <MetricCard label="Numeric" value={numericCount} />
-          <MetricCard label="Categorical" value={categoricalCount} />
-          <MetricCard label="Avg Completeness" value={`${avgCompleteness}%`} />
-        </div>
-
-        {/* Variable Table */}
-        {variables.length > 0 ? (
-          <div style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            overflow: 'hidden',
-            marginBottom: '24px'
-          }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Variable</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Description</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Category</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Type</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Completeness</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Range/Values</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredVars.map(v => (
-                  <tr key={v.name} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#1e293b', fontFamily: 'monospace' }}>
-                      {v.name}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#475569' }}>
-                      {v.description}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>
-                      <span style={{
-                        backgroundColor: '#f1f5f9',
-                        color: '#475569',
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        fontWeight: 500
-                      }}>
-                        {v.category}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: '#64748b' }}>
-                      <span style={{
-                        backgroundColor: v.type === 'numeric' ? '#dbeafe' : '#fce7f3',
-                        color: v.type === 'numeric' ? '#1e40af' : '#9f1239',
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        fontWeight: 500
-                      }}>
-                        {v.type}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '14px', color: v.completeness < 80 ? '#dc2626' : '#1e293b' }}>
-                      {v.completeness}%
-                      {v.completeness < 80 && <span style={{ marginLeft: '4px', color: '#dc2626' }}>⚠</span>}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b', fontFamily: 'monospace' }}>
-                      {v.range}
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      {v.completeness < 80 && (
-                        <button
-                          onClick={() => addFlag(`Low completeness: ${v.name} (${v.completeness}%)`)}
-                          style={{
-                            padding: '4px 12px',
-                            backgroundColor: '#fef3c7',
-                            color: '#92400e',
-                            border: '1px solid #fbbf24',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            fontWeight: 500
-                          }}
-                        >
-                          Flag
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p style={{ color: '#64748b' }}>Loading variables...</p>
-        )}
-
-        {/* Completeness by Category */}
-        {variables.length > 0 && (
-          <div style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            padding: '16px'
-          }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-              Completeness by Category
-            </h3>
-            <Plot
-              plotly={Plotly}
-              data={categories
-                .filter(cat => cat !== 'all')
-                .map(category => ({
-                  x: variables.filter(v => v.category === category).map(v => v.name),
-                  y: variables.filter(v => v.category === category).map(v => v.completeness),
-                  type: 'bar',
-                  name: category,
-                  marker: {
-                    color: category === 'Vital Signs' ? '#3b82f6' :
-                           category === 'Demographics' ? '#8b5cf6' : '#10b981'
-                  }
-                }))}
-              layout={{
-                width: 900,
-                height: 350,
-                margin: { t: 20, r: 20, b: 120, l: 60 },
-                xaxis: { title: 'Variable', tickangle: -45 },
-                yaxis: { title: 'Completeness (%)', range: [0, 105] },
-                plot_bgcolor: '#f8fafc',
-                paper_bgcolor: '#fff',
-                barmode: 'group',
-                showlegend: true,
-                shapes: [{
-                  type: 'line',
-                  x0: 0,
-                  x1: 1,
-                  xref: 'paper',
-                  y0: 80,
-                  y1: 80,
-                  line: { color: '#ef4444', width: 2, dash: 'dash' }
-                }]
+              fontWeight: 600,
+              color: '#1a1a1a',
+              marginBottom: '8px',
+              display: 'block'
+            }}>
+              Completeness Threshold: {completenessThreshold}%
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={completenessThreshold}
+              onChange={(e) => setCompletenessThreshold(parseInt(e.target.value))}
+              style={{
+                width: '100%',
+                height: '8px',
+                borderRadius: '4px',
+                outline: 'none',
+                background: `linear-gradient(to right, #087A6A 0%, #087A6A ${completenessThreshold}%, #e9e4d8 ${completenessThreshold}%, #e9e4d8 100%)`
               }}
-              config={{ displayModeBar: false }}
             />
+            <p style={{
+              fontSize: '12px',
+              color: 'rgba(26, 26, 26, 0.6)',
+              marginTop: '8px'
+            }}>
+              Show only variables with ≥{completenessThreshold}% patient coverage
+            </p>
           </div>
-        )}
+
+          {/* Minimum Measurements */}
+          <div>
+            <label style={{
+              fontSize: '14px',
+              fontWeight: 600,
+              color: '#1a1a1a',
+              marginBottom: '8px',
+              display: 'block'
+            }}>
+              Minimum Measurements: {minMeasurements}
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="20"
+              step="1"
+              value={minMeasurements}
+              onChange={(e) => setMinMeasurements(parseInt(e.target.value))}
+              style={{
+                width: '100%',
+                height: '8px',
+                borderRadius: '4px',
+                outline: 'none',
+                background: `linear-gradient(to right, #087A6A 0%, #087A6A ${(minMeasurements / 20) * 100}%, #e9e4d8 ${(minMeasurements / 20) * 100}%, #e9e4d8 100%)`
+              }}
+            />
+            <p style={{
+              fontSize: '12px',
+              color: 'rgba(26, 26, 26, 0.6)',
+              marginTop: '8px'
+            }}>
+              Show only variables with ≥{minMeasurements} median measurements per patient
+            </p>
+          </div>
+        </div>
+
+        {/* Results Summary */}
+        <div style={{
+          padding: '16px',
+          backgroundColor: 'rgba(8, 122, 106, 0.05)',
+          border: '1px solid rgba(8, 122, 106, 0.2)',
+          borderRadius: '6px',
+          marginBottom: '32px',
+          fontSize: '14px',
+          color: '#087A6A',
+          fontWeight: 600
+        }}>
+          Showing {usableCount} usable variables of {totalCount} total
+          {(completenessThreshold > 0 || minMeasurements > 0) && (
+            <button
+              onClick={() => {
+                setCompletenessThreshold(0)
+                setMinMeasurements(0)
+              }}
+              style={{
+                marginLeft: '16px',
+                padding: '4px 12px',
+                backgroundColor: '#087A6A',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              Reset Filters
+            </button>
+          )}
+        </div>
+
+        {/* Variables Grid by Domain */}
+        {domains.map(domain => {
+          const domainVars = filteredVariables.filter(v => v.domain === domain)
+          if (domainVars.length === 0) return null
+
+          return (
+            <div key={domain} style={{ marginBottom: '32px' }}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                color: '#1a1a1a',
+                marginBottom: '16px',
+                paddingBottom: '8px',
+                borderBottom: '2px solid #087A6A'
+              }}>
+                {domain}
+                <span style={{
+                  fontSize: '14px',
+                  fontWeight: 400,
+                  color: 'rgba(26, 26, 26, 0.6)',
+                  marginLeft: '12px'
+                }}>
+                  ({domainVars.length} variables)
+                </span>
+              </h3>
+
+              {domainVars.map(v => (
+                <div key={v.column} style={{ marginBottom: '8px' }}>
+                  {/* Variable Row */}
+                  <div
+                    onClick={() => setExpandedVar(expandedVar === v.column ? null : v.column)}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '2fr 1fr 1fr 80px',
+                      alignItems: 'center',
+                      padding: '12px 16px',
+                      backgroundColor: expandedVar === v.column ? 'rgba(8, 122, 106, 0.05)' : '#f5f2ea',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      border: expandedVar === v.column ? '1px solid rgba(8, 122, 106, 0.3)' : '1px solid transparent',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (expandedVar !== v.column) e.currentTarget.style.backgroundColor = '#e9e4d8'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (expandedVar !== v.column) e.currentTarget.style.backgroundColor = '#f5f2ea'
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a' }}>
+                        {v.name}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'rgba(26, 26, 26, 0.6)', marginTop: '2px' }}>
+                        {v.type} • {v.unit}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#087A6A', fontWeight: 600 }}>
+                      {v.patient_coverage_pct}% coverage
+                      <div style={{ fontSize: '11px', color: 'rgba(26, 26, 26, 0.6)', fontWeight: 400 }}>
+                        {v.patients_with_data.toLocaleString()} patients
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#1a1a1a' }}>
+                      {v.median_measurements_per_patient} median/patient
+                      <div style={{ fontSize: '11px', color: 'rgba(26, 26, 26, 0.6)' }}>
+                        {v.total_measurements.toLocaleString()} total
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: '18px', color: '#087A6A' }}>
+                      {expandedVar === v.column ? '▼' : '▶'}
+                    </div>
+                  </div>
+
+                  {/* Expanded Detail View */}
+                  {expandedVar === v.column && (
+                    <div style={{
+                      marginTop: '8px',
+                      padding: '20px',
+                      backgroundColor: '#fff',
+                      border: '1px solid #e9e4d8',
+                      borderRadius: '6px'
+                    }}>
+                      <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#1a1a1a', marginBottom: '16px' }}>
+                        {v.name} - Detailed View
+                      </h4>
+
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, 1fr)',
+                        gap: '16px',
+                        marginBottom: '16px'
+                      }}>
+                        <DetailMetric label="Coverage" value={`${v.patient_coverage_pct}%`} />
+                        <DetailMetric label="Patients" value={v.patients_with_data.toLocaleString()} />
+                        <DetailMetric label="Total Measurements" value={v.total_measurements.toLocaleString()} />
+                        <DetailMetric label="Median/Patient" value={v.median_measurements_per_patient.toString()} />
+                        {v.value_range && <DetailMetric label="Value Range" value={v.value_range} />}
+                        {v.median_value !== null && <DetailMetric label="Median Value" value={v.median_value.toFixed(1)} />}
+                      </div>
+
+                      {v.distribution && (
+                        <div style={{
+                          padding: '16px',
+                          backgroundColor: '#f5f2ea',
+                          borderRadius: '6px',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{ fontSize: '14px', fontWeight: 600, color: '#1a1a1a', marginBottom: '12px' }}>
+                            Distribution (5-Number Summary)
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                            <span>Min: {v.distribution.min?.toFixed(1)}</span>
+                            <span>Q25: {v.distribution.q25?.toFixed(1)}</span>
+                            <span>Median: {v.distribution.median?.toFixed(1)}</span>
+                            <span>Q75: {v.distribution.q75?.toFixed(1)}</span>
+                            <span>Max: {v.distribution.max?.toFixed(1)}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {v.sensor_metrics && (
+                        <div style={{
+                          padding: '16px',
+                          backgroundColor: 'rgba(8, 122, 106, 0.05)',
+                          border: '1px solid rgba(8, 122, 106, 0.2)',
+                          borderRadius: '6px'
+                        }}>
+                          <div style={{ fontSize: '14px', fontWeight: 600, color: '#087A6A', marginBottom: '12px' }}>
+                            Sensor-Specific Metrics
+                          </div>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(3, 1fr)',
+                            gap: '12px'
+                          }}>
+                            <DetailMetric
+                              label="Median Wear-Days"
+                              value={v.sensor_metrics.median_wear_days.toString()}
+                            />
+                            <DetailMetric
+                              label=">7 Consecutive Days"
+                              value={`${v.sensor_metrics.pct_7_consecutive_days}%`}
+                            />
+                            <DetailMetric
+                              label=">30 Consecutive Days"
+                              value={`${v.sensor_metrics.pct_30_consecutive_days}%`}
+                            />
+                          </div>
+                          <p style={{
+                            marginTop: '12px',
+                            fontSize: '12px',
+                            color: 'rgba(26, 26, 26, 0.6)',
+                            fontStyle: 'italic'
+                          }}>
+                            These metrics determine whether sensor data is usable for longitudinal analysis or only cross-sectional snapshots
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
-function MetricCard({ label, value }: { label: string; value: string | number }) {
+function DetailMetric({ label, value }: { label: string; value: string }) {
   return (
     <div style={{
-      backgroundColor: '#f8fafc',
-      border: '1px solid #e2e8f0',
-      borderRadius: '6px',
-      padding: '16px'
+      padding: '12px',
+      backgroundColor: '#f5f2ea',
+      borderRadius: '4px'
     }}>
-      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 600 }}>
+      <div style={{ fontSize: '11px', color: 'rgba(26, 26, 26, 0.6)', marginBottom: '4px', textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontSize: '20px', fontWeight: 600, color: '#1e293b' }}>
+      <div style={{ fontSize: '16px', fontWeight: 600, color: '#1a1a1a' }}>
         {value}
       </div>
     </div>

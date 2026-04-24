@@ -1,4 +1,4 @@
-# Absolute minimum - health endpoint only
+# Minimal + StaticFiles serving (no build step)
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -11,8 +11,9 @@ RUN apt-get update \
 # Install FastAPI and uvicorn only
 RUN pip install --no-cache-dir fastapi uvicorn[standard]
 
-# Copy minimal server
+# Copy server and static files
 COPY server.py /app/server.py
+COPY static/ /app/static/
 
 EXPOSE 8080
 

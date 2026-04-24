@@ -21,13 +21,31 @@ def health():
 @app.get("/dashboard/api/datasets")
 def get_datasets():
     """Get dataset and table counts"""
+    # Query each dataset's INFORMATION_SCHEMA separately (cross-project INFORMATION_SCHEMA access restricted)
     query = f"""
-    SELECT
-        table_schema as dataset,
-        COUNT(DISTINCT table_name) as table_count
-    FROM `{DATA_PROJECT}.INFORMATION_SCHEMA.TABLES`
-    WHERE table_schema IN ('crf', 'analysis', 'sensordata', 'admin', 'screener', 'appsurveys', 'corelabreads', 'externallab')
-    GROUP BY table_schema
+    SELECT 'crf' as dataset, COUNT(DISTINCT table_name) as table_count
+    FROM `{DATA_PROJECT}.crf.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT 'analysis', COUNT(DISTINCT table_name)
+    FROM `{DATA_PROJECT}.analysis.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT 'sensordata', COUNT(DISTINCT table_name)
+    FROM `{DATA_PROJECT}.sensordata.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT 'admin', COUNT(DISTINCT table_name)
+    FROM `{DATA_PROJECT}.admin.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT 'screener', COUNT(DISTINCT table_name)
+    FROM `{DATA_PROJECT}.screener.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT 'appsurveys', COUNT(DISTINCT table_name)
+    FROM `{DATA_PROJECT}.appsurveys.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT 'corelabreads', COUNT(DISTINCT table_name)
+    FROM `{DATA_PROJECT}.corelabreads.INFORMATION_SCHEMA.TABLES`
+    UNION ALL
+    SELECT 'externallab', COUNT(DISTINCT table_name)
+    FROM `{DATA_PROJECT}.externallab.INFORMATION_SCHEMA.TABLES`
     ORDER BY table_count DESC
     """
     results = bq_client.query(query).result()
@@ -233,7 +251,7 @@ def get_all_variables():
         'Height (cm)' as description,
         'Vital Signs' as category,
         ROUND(100.0 * COUNT(vs_height_cm) / (SELECT total FROM total_vs), 1) as completeness,
-        CONCAT(CAST(ROUND(MIN(vs_height_cm), 0) AS STRING), '-', CAST(ROUND(MAX(vs_height_cm), 0) AS STRING), ' cm') as range
+        CONCAT(CAST(ROUND(MIN(vs_height_cm), 0) AS STRING), '-', CAST(ROUND(MAX(vs_height_cm), 0) AS STRING), ' cm') as value_range
     FROM `{DATA_PROJECT}.crf.VS`
     UNION ALL
     SELECT 'vs_weight_kg', 'numeric', 'Weight (kg)', 'Vital Signs',
@@ -280,7 +298,7 @@ def get_all_variables():
         'Age at enrollment' as description,
         'Demographics' as category,
         ROUND(100.0 * COUNT(age_at_enrollment) / (SELECT total FROM total_dm), 1) as completeness,
-        CONCAT(CAST(MIN(age_at_enrollment) AS STRING), '-', CAST(MAX(age_at_enrollment) AS STRING), ' years') as range
+        CONCAT(CAST(MIN(age_at_enrollment) AS STRING), '-', CAST(MAX(age_at_enrollment) AS STRING), ' years') as value_range
     FROM `{DATA_PROJECT}.screener.DM`
     UNION ALL
     SELECT 'SEX', 'categorical', 'Sex', 'Demographics',
@@ -307,7 +325,7 @@ def get_all_variables():
             "description": row.description,
             "category": row.category,
             "completeness": row.completeness,
-            "range": row.range
+            "range": row.value_range
         })
 
     for row in bq_client.query(dm_query).result():
@@ -317,7 +335,7 @@ def get_all_variables():
             "description": row.description,
             "category": row.category,
             "completeness": row.completeness,
-            "range": row.range
+            "range": row.value_range
         })
 
     return {"variables": variables}
@@ -423,24 +441,22 @@ def get_passport_metrics():
     """
     demo = list(bq_client.query(demo_query).result())[0]
 
-    # Calculate follow-up duration (days from enrollment to last data point)
+    # Calculate follow-up duration (study_day is FLOAT representing days since enrollment)
     # Using sensor data as proxy for last data point
     followup_query = f"""
     WITH participant_followup AS (
         SELECT
-            s.SUBJID,
-            DATE_DIFF(MAX(s.study_day), MIN(e.enrollment_date), DAY) as followup_days
-        FROM `{DATA_PROJECT}.sensordata.STEP` s
-        JOIN `{DATA_PROJECT}.analysis.ENRDT` e ON s.SUBJID = e.SUBJID
-        WHERE s.study_day IS NOT NULL AND e.enrollment_date IS NOT NULL
-        GROUP BY s.SUBJID
+            SUBJID,
+            MAX(study_day) as followup_days
+        FROM `{DATA_PROJECT}.sensordata.STEP`
+        WHERE study_day IS NOT NULL AND study_day > 0
+        GROUP BY SUBJID
     )
     SELECT
-        APPROX_QUANTILES(followup_days, 100)[OFFSET(50)] as median_followup,
-        APPROX_QUANTILES(followup_days, 100)[OFFSET(25)] as q25,
-        APPROX_QUANTILES(followup_days, 100)[OFFSET(75)] as q75
+        CAST(APPROX_QUANTILES(followup_days, 100)[OFFSET(50)] AS INT64) as median_followup,
+        CAST(APPROX_QUANTILES(followup_days, 100)[OFFSET(25)] AS INT64) as q25,
+        CAST(APPROX_QUANTILES(followup_days, 100)[OFFSET(75)] AS INT64) as q75
     FROM participant_followup
-    WHERE followup_days > 0
     """
     followup = list(bq_client.query(followup_query).result())[0]
 

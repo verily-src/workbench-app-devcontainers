@@ -1,0 +1,33 @@
+include:
+  - ../common/common-compose.yaml
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      additional_contexts:
+        wb-secret-receiver: service:common-secret-receiver-builder
+    entrypoint: ["/wb-secret-receiver", "/init"]
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/vscode:cached
+    ports:
+      - "8443:8443"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

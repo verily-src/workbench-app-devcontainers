@@ -428,12 +428,12 @@ def get_passport_metrics():
     followup_query = f"""
     WITH participant_followup AS (
         SELECT
-            SUBJID,
-            DATE_DIFF(MAX(DATE(timestamp)), MIN(e.enrollment_date), DAY) as followup_days
+            s.SUBJID,
+            DATE_DIFF(MAX(s.study_day), MIN(e.enrollment_date), DAY) as followup_days
         FROM `{DATA_PROJECT}.sensordata.STEP` s
         JOIN `{DATA_PROJECT}.analysis.ENRDT` e ON s.SUBJID = e.SUBJID
-        WHERE s.timestamp IS NOT NULL AND e.enrollment_date IS NOT NULL
-        GROUP BY SUBJID
+        WHERE s.study_day IS NOT NULL AND e.enrollment_date IS NOT NULL
+        GROUP BY s.SUBJID
     )
     SELECT
         APPROX_QUANTILES(followup_days, 100)[OFFSET(50)] as median_followup,
@@ -482,10 +482,11 @@ def get_domain_coverage():
     except:
         meds_count = 0
 
-    # Diagnoses (ICD codes)
+    # Diagnoses (Medical History)
     dx_query = f"""
     SELECT COUNT(DISTINCT SUBJID) as count
-    FROM `{DATA_PROJECT}.analysis.MH_ICD`
+    FROM `{DATA_PROJECT}.crf.MH`
+    WHERE MHYN IS NOT NULL
     """
     dx_count = list(bq_client.query(dx_query).result())[0].count
 
@@ -497,9 +498,10 @@ def get_domain_coverage():
     sensor_count = list(bq_client.query(sensor_query).result())[0].count
 
     # PRO (Patient-Reported Outcomes from surveys)
+    # Using PHQ9A as representative PRO survey
     pro_query = f"""
     SELECT COUNT(DISTINCT SUBJID) as count
-    FROM `{DATA_PROJECT}.appsurveys.MSS`
+    FROM `{DATA_PROJECT}.appsurveys.PHQ9A`
     """
     pro_count = list(bq_client.query(pro_query).result())[0].count
 

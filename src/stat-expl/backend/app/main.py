@@ -568,6 +568,181 @@ def export_data(format: str = "csv"):
         headers={"Content-Disposition": "attachment; filename=dataset_export.csv"}
     )
 
+@app.get("/dashboard/api/population/age-histogram")
+def get_age_histogram():
+    """Get age distribution as histogram bins"""
+    query = f"""
+    SELECT
+        CAST(FLOOR(age_at_enrollment / 5) * 5 AS INT64) as age_bin,
+        COUNT(*) as count
+    FROM `{DATA_PROJECT}.screener.DM`
+    WHERE age_at_enrollment IS NOT NULL
+    GROUP BY age_bin
+    ORDER BY age_bin
+    """
+    results = bq_client.query(query).result()
+    bins = [{"age_min": row.age_bin, "age_max": row.age_bin + 4, "count": row.count} for row in results]
+    return {"bins": bins}
+
+@app.get("/dashboard/api/population/top-diagnoses")
+def get_top_diagnoses(limit: int = 20):
+    """Get top N diagnoses with patient counts"""
+    query = f"""
+    SELECT
+        REPLACE(MHTERM, '_', ' ') as diagnosis,
+        COUNT(DISTINCT SUBJID) as patient_count
+    FROM `{DATA_PROJECT}.crf.MH`
+    WHERE MHTERM IS NOT NULL AND MHYN = 'Yes'
+    GROUP BY MHTERM
+    ORDER BY patient_count DESC
+    LIMIT {limit}
+    """
+    results = bq_client.query(query).result()
+    diagnoses = [{"name": row.diagnosis, "patient_count": row.patient_count} for row in results]
+    return {"diagnoses": diagnoses, "total_patients": 2502}
+
+@app.get("/dashboard/api/population/top-medications")
+def get_top_medications(limit: int = 20):
+    """Get top N medication classes with patient counts"""
+    query = f"""
+    WITH med_classes AS (
+        SELECT
+            SUBJID,
+            SPLIT(Level1_Name, ' || ') as classes
+        FROM `{DATA_PROJECT}.crf.CM`
+        WHERE Level1_Name IS NOT NULL
+    ),
+    expanded AS (
+        SELECT
+            SUBJID,
+            class_name
+        FROM med_classes, UNNEST(classes) as class_name
+    )
+    SELECT
+        class_name as drug_class,
+        COUNT(DISTINCT SUBJID) as patient_count
+    FROM expanded
+    GROUP BY class_name
+    ORDER BY patient_count DESC
+    LIMIT {limit}
+    """
+    results = bq_client.query(query).result()
+    medications = [{"drug_class": row.drug_class, "patient_count": row.patient_count} for row in results]
+    return {"medications": medications, "total_patients": 2502}
+
+@app.get("/dashboard/api/population/demographics")
+def get_population_demographics():
+    """Get comprehensive demographics: age, sex, race, ethnicity, site"""
+    # Sex distribution
+    sex_query = f"""
+    SELECT SEX, COUNT(*) as count
+    FROM `{DATA_PROJECT}.screener.DM`
+    WHERE SEX IS NOT NULL
+    GROUP BY SEX
+    """
+    sex_results = list(bq_client.query(sex_query).result())
+    sex_data = [{"sex": row.SEX, "count": row.count} for row in sex_results]
+
+    # Race distribution
+    race_query = f"""
+    SELECT RACE, COUNT(*) as count
+    FROM `{DATA_PROJECT}.screener.DM`
+    WHERE RACE IS NOT NULL AND RACE != ''
+    GROUP BY RACE
+    ORDER BY count DESC
+    """
+    race_results = list(bq_client.query(race_query).result())
+    race_data = [{"race": row.RACE, "count": row.count} for row in race_results]
+
+    # Ethnicity distribution
+    ethnicity_query = f"""
+    SELECT hispanic_ancestry, COUNT(*) as count
+    FROM `{DATA_PROJECT}.screener.DM`
+    WHERE hispanic_ancestry IS NOT NULL
+    GROUP BY hispanic_ancestry
+    """
+    ethnicity_results = list(bq_client.query(ethnicity_query).result())
+    ethnicity_data = [{"ethnicity": row.hispanic_ancestry, "count": row.count} for row in ethnicity_results]
+
+    # Site distribution
+    site_query = f"""
+    SELECT SITEID, COUNT(*) as count
+    FROM `{DATA_PROJECT}.screener.DM`
+    GROUP BY SITEID
+    ORDER BY count DESC
+    """
+    site_results = list(bq_client.query(site_query).result())
+    site_data = [{"site": row.SITEID, "count": row.count} for row in site_results]
+
+    return {
+        "sex": sex_data,
+        "race": race_data,
+        "ethnicity": ethnicity_data,
+        "sites": site_data,
+        "total_participants": 2502,
+        "data_capture_note": "Race and ethnicity self-reported via screener questionnaire"
+    }
+
+@app.get("/dashboard/api/population/search")
+def search_population(query: str):
+    """Search for patients by clinical concept and return filtered demographics"""
+    search_term = f"%{query.upper().replace(' ', '_')}%"
+
+    # Search in diagnoses
+    dx_query = f"""
+    SELECT DISTINCT SUBJID
+    FROM `{DATA_PROJECT}.crf.MH`
+    WHERE UPPER(MHTERM) LIKE '{search_term}' AND MHYN = 'Yes'
+    """
+
+    # Get matching patient IDs
+    dx_results = list(bq_client.query(dx_query).result())
+    patient_ids = [row.SUBJID for row in dx_results]
+
+    if not patient_ids:
+        return {
+            "matched_patients": 0,
+            "total_patients": 2502,
+            "age_histogram": [],
+            "sex": [],
+            "top_diagnoses": [],
+            "top_medications": []
+        }
+
+    # Create patient list for filtering
+    patient_list = ','.join([f"'{p}'" for p in patient_ids[:1000]])  # Limit to 1000 for performance
+
+    # Age histogram for filtered patients
+    age_query = f"""
+    SELECT
+        CAST(FLOOR(age_at_enrollment / 5) * 5 AS INT64) as age_bin,
+        COUNT(*) as count
+    FROM `{DATA_PROJECT}.screener.DM`
+    WHERE SUBJID IN ({patient_list})
+    GROUP BY age_bin
+    ORDER BY age_bin
+    """
+    age_results = list(bq_client.query(age_query).result())
+    age_bins = [{"age_min": row.age_bin, "age_max": row.age_bin + 4, "count": row.count} for row in age_results]
+
+    # Sex distribution for filtered patients
+    sex_query = f"""
+    SELECT SEX, COUNT(*) as count
+    FROM `{DATA_PROJECT}.screener.DM`
+    WHERE SUBJID IN ({patient_list})
+    GROUP BY SEX
+    """
+    sex_results = list(bq_client.query(sex_query).result())
+    sex_data = [{"sex": row.SEX, "count": row.count} for row in sex_results]
+
+    return {
+        "matched_patients": len(patient_ids),
+        "total_patients": 2502,
+        "search_query": query,
+        "age_histogram": age_bins,
+        "sex": sex_data
+    }
+
 # Mount Vite build at root
 # Path: /app/backend/app/main.py -> /app/frontend/dist
 _DIST_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"

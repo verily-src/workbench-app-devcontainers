@@ -2,14 +2,26 @@ import { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
 import Plotly from 'plotly.js-dist-min'
 
+interface DatasetInfo {
+  project: string
+  datasets: { name: string; table_count: number }[]
+  total_tables: number
+}
+
 export default function Passport() {
   const [health, setHealth] = useState<any>(null)
+  const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null)
 
   useEffect(() => {
     fetch('/dashboard/api/health')
       .then(r => r.json())
       .then(d => setHealth(d))
       .catch(e => console.error('Health check failed:', e))
+
+    fetch('/dashboard/api/datasets')
+      .then(r => r.json())
+      .then(d => setDatasetInfo(d))
+      .catch(e => console.error('Dataset fetch failed:', e))
   }, [])
 
   return (
@@ -34,9 +46,9 @@ export default function Passport() {
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-          <MetricCard label="Project" value="wb-spotless-eggplant-4340" />
-          <MetricCard label="Datasets" value="3" />
-          <MetricCard label="Total Tables" value="~15" />
+          <MetricCard label="Project" value={datasetInfo?.project || 'Loading...'} />
+          <MetricCard label="Datasets" value={datasetInfo?.datasets.length || '...'} />
+          <MetricCard label="Total Tables" value={datasetInfo?.total_tables || '...'} />
           <MetricCard label="API Status" value={health?.status || 'checking...'} />
         </div>
 
@@ -48,58 +60,59 @@ export default function Passport() {
           marginBottom: '24px'
         }}>
           <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-            Known Datasets
+            Available Datasets
           </h3>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-            <li style={{ padding: '8px 0', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-              <code style={{ backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px', fontSize: '13px' }}>
-                analysis
-              </code> — Analysis results and derived tables
-            </li>
-            <li style={{ padding: '8px 0', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-              <code style={{ backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px', fontSize: '13px' }}>
-                crf
-              </code> — Case report forms (clinical data)
-            </li>
-            <li style={{ padding: '8px 0', color: '#475569' }}>
-              <code style={{ backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px', fontSize: '13px' }}>
-                sensordata
-              </code> — Time-series sensor measurements
-            </li>
-          </ul>
+          {datasetInfo ? (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {datasetInfo.datasets.map(ds => (
+                <li key={ds.name} style={{ padding: '8px 0', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+                  <code style={{ backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px', fontSize: '13px', fontWeight: 600 }}>
+                    {ds.name}
+                  </code>
+                  <span style={{ marginLeft: '12px', color: '#64748b' }}>
+                    {ds.table_count} tables
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p style={{ color: '#64748b' }}>Loading datasets...</p>
+          )}
         </div>
 
-        <div style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '6px',
-          padding: '16px'
-        }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-            Test Chart: Dataset Distribution
-          </h3>
-          <Plot
-            plotly={Plotly}
-            data={[
-              {
-                x: ['analysis', 'crf', 'sensordata'],
-                y: [5, 7, 3],
-                type: 'bar',
-                marker: { color: '#3b82f6' },
-              },
-            ]}
-            layout={{
-              width: 800,
-              height: 300,
-              margin: { t: 20, r: 20, b: 40, l: 40 },
-              xaxis: { title: 'Dataset' },
-              yaxis: { title: 'Number of Tables' },
-              plot_bgcolor: '#f8fafc',
-              paper_bgcolor: '#fff',
-            }}
-            config={{ displayModeBar: false }}
-          />
-        </div>
+        {datasetInfo && (
+          <div style={{
+            backgroundColor: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '6px',
+            padding: '16px'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
+              Dataset Distribution
+            </h3>
+            <Plot
+              plotly={Plotly}
+              data={[
+                {
+                  x: datasetInfo.datasets.map(d => d.name),
+                  y: datasetInfo.datasets.map(d => d.table_count),
+                  type: 'bar',
+                  marker: { color: '#3b82f6' },
+                },
+              ]}
+              layout={{
+                width: 800,
+                height: 300,
+                margin: { t: 20, r: 20, b: 80, l: 40 },
+                xaxis: { title: 'Dataset', tickangle: -45 },
+                yaxis: { title: 'Number of Tables' },
+                plot_bgcolor: '#f8fafc',
+                paper_bgcolor: '#fff',
+              }}
+              config={{ displayModeBar: false }}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

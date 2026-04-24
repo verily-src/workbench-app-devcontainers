@@ -1,9 +1,44 @@
+import { useState, useEffect } from 'react'
 import { useCohort } from '../context/CohortContext'
 import Plot from 'react-plotly.js'
 import Plotly from 'plotly.js-dist-min'
 
+interface Demographics {
+  total_participants: number
+  mean_age: number
+  min_age: number
+  max_age: number
+  male_count: number
+  female_count: number
+  age_distribution: { age_group: string; count: number }[]
+  enrollment_start: string
+  enrollment_end: string
+}
+
 export default function Population() {
   const { filters, setFilters } = useCohort()
+  const [demographics, setDemographics] = useState<Demographics | null>(null)
+
+  useEffect(() => {
+    fetch('/dashboard/api/demographics')
+      .then(r => r.json())
+      .then(d => setDemographics(d))
+      .catch(e => console.error('Demographics fetch failed:', e))
+  }, [])
+
+  // Calculate filtered count (simple client-side estimation)
+  const getFilteredCount = () => {
+    if (!demographics) return 0
+    if (!filters.ageMin && !filters.ageMax && filters.sex === 'all') {
+      return demographics.total_participants
+    }
+    // Rough estimation based on filters
+    let estimate = demographics.total_participants
+    if (filters.sex === 'M') estimate = demographics.male_count
+    if (filters.sex === 'F') estimate = demographics.female_count
+    if (filters.ageMin || filters.ageMax) estimate = Math.round(estimate * 0.7) // rough filter
+    return estimate
+  }
 
   return (
     <div>
@@ -95,81 +130,85 @@ export default function Population() {
           </div>
         </div>
 
-        {/* Demographics Overview */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-          <MetricCard label="Total Participants" value="1,247" />
-          <MetricCard label="Mean Age" value="54.3 years" />
-          <MetricCard label="Enrollment Period" value="2022-2024" />
-          <MetricCard label="Filtered Cohort" value={
-            filters.ageMin || filters.ageMax || filters.sex !== 'all' ? '~850' : '1,247'
-          } />
-        </div>
+        {demographics ? (
+          <>
+            {/* Demographics Overview */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+              <MetricCard label="Total Participants" value={demographics.total_participants.toLocaleString()} />
+              <MetricCard label="Mean Age" value={`${demographics.mean_age} years`} />
+              <MetricCard label="Enrollment Period" value={`${demographics.enrollment_start?.slice(0, 4)}-${demographics.enrollment_end?.slice(0, 4)}`} />
+              <MetricCard label="Filtered Cohort" value={getFilteredCount().toLocaleString()} />
+            </div>
 
-        {/* Age Distribution Chart */}
-        <div style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '6px',
-          padding: '16px',
-          marginBottom: '24px'
-        }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-            Age Distribution
-          </h3>
-          <Plot
-            plotly={Plotly}
-            data={[
-              {
-                x: [18, 25, 35, 45, 55, 65, 75],
-                y: [45, 120, 215, 340, 285, 175, 67],
-                type: 'bar',
-                marker: { color: '#3b82f6' },
-                name: 'Participants'
-              },
-            ]}
-            layout={{
-              width: 800,
-              height: 300,
-              margin: { t: 20, r: 20, b: 40, l: 60 },
-              xaxis: { title: 'Age Group' },
-              yaxis: { title: 'Count' },
-              plot_bgcolor: '#f8fafc',
-              paper_bgcolor: '#fff',
-            }}
-            config={{ displayModeBar: false }}
-          />
-        </div>
+            {/* Age Distribution Chart */}
+            <div style={{
+              backgroundColor: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              padding: '16px',
+              marginBottom: '24px'
+            }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
+                Age Distribution
+              </h3>
+              <Plot
+                plotly={Plotly}
+                data={[
+                  {
+                    x: demographics.age_distribution.map(d => d.age_group),
+                    y: demographics.age_distribution.map(d => d.count),
+                    type: 'bar',
+                    marker: { color: '#3b82f6' },
+                    name: 'Participants'
+                  },
+                ]}
+                layout={{
+                  width: 800,
+                  height: 300,
+                  margin: { t: 20, r: 20, b: 40, l: 60 },
+                  xaxis: { title: 'Age Group' },
+                  yaxis: { title: 'Count' },
+                  plot_bgcolor: '#f8fafc',
+                  paper_bgcolor: '#fff',
+                }}
+                config={{ displayModeBar: false }}
+              />
+            </div>
 
-        {/* Sex Distribution */}
-        <div style={{
-          backgroundColor: '#fff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '6px',
-          padding: '16px'
-        }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-            Sex Distribution
-          </h3>
-          <Plot
-            plotly={Plotly}
-            data={[
-              {
-                labels: ['Female', 'Male'],
-                values: [687, 560],
-                type: 'pie',
-                marker: { colors: ['#ec4899', '#3b82f6'] },
-              },
-            ]}
-            layout={{
-              width: 500,
-              height: 300,
-              margin: { t: 20, r: 20, b: 20, l: 20 },
-              showlegend: true,
-              paper_bgcolor: '#fff',
-            }}
-            config={{ displayModeBar: false }}
-          />
-        </div>
+            {/* Sex Distribution */}
+            <div style={{
+              backgroundColor: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              padding: '16px'
+            }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
+                Sex Distribution
+              </h3>
+              <Plot
+                plotly={Plotly}
+                data={[
+                  {
+                    labels: ['Female', 'Male'],
+                    values: [demographics.female_count, demographics.male_count],
+                    type: 'pie',
+                    marker: { colors: ['#ec4899', '#3b82f6'] },
+                  },
+                ]}
+                layout={{
+                  width: 500,
+                  height: 300,
+                  margin: { t: 20, r: 20, b: 20, l: 20 },
+                  showlegend: true,
+                  paper_bgcolor: '#fff',
+                }}
+                config={{ displayModeBar: false }}
+              />
+            </div>
+          </>
+        ) : (
+          <p style={{ color: '#64748b' }}>Loading demographics...</p>
+        )}
       </div>
     </div>
   )

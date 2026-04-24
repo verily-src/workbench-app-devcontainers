@@ -23,7 +23,13 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Install FastAPI and uvicorn (like clinical-dashboard)
+# Install system dependencies (like clinical-dashboard)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install FastAPI and uvicorn
 RUN pip install --no-cache-dir fastapi uvicorn
 
 # Copy built frontend from stage 1
@@ -41,4 +47,4 @@ EXPOSE 8080
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')" || exit 1
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1

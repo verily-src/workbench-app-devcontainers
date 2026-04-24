@@ -20,14 +20,15 @@ export default function LoadingScreen() {
         backgroundColor: '#fff',
         borderRadius: '12px',
         padding: '40px',
-        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+        border: '1px solid #e9e4d8',
         maxWidth: '500px',
         width: '100%'
       }}>
         <h2 style={{
           fontSize: '24px',
           fontWeight: 600,
-          color: '#1e293b',
+          color: '#1a1a1a',
           marginBottom: '24px',
           textAlign: 'center'
         }}>
@@ -36,14 +37,14 @@ export default function LoadingScreen() {
 
         {/* Progress Bar */}
         <div style={{
-          backgroundColor: '#e2e8f0',
+          backgroundColor: '#e9e4d8',
           borderRadius: '8px',
           height: '12px',
           marginBottom: '16px',
           overflow: 'hidden'
         }}>
           <div style={{
-            backgroundColor: errorSteps > 0 ? '#f59e0b' : '#3b82f6',
+            backgroundColor: errorSteps > 0 ? '#D35C65' : '#087A6A',
             height: '100%',
             width: `${progress}%`,
             transition: 'width 0.3s ease'
@@ -53,7 +54,7 @@ export default function LoadingScreen() {
         {/* Progress Text */}
         <p style={{
           textAlign: 'center',
-          color: '#64748b',
+          color: 'rgba(26, 26, 26, 0.6)',
           fontSize: '14px',
           marginBottom: '24px'
         }}>
@@ -64,7 +65,7 @@ export default function LoadingScreen() {
         {/* Current Action */}
         <p style={{
           textAlign: 'center',
-          color: '#475569',
+          color: '#1a1a1a',
           fontSize: '16px',
           marginBottom: '24px',
           fontWeight: 500
@@ -74,14 +75,14 @@ export default function LoadingScreen() {
 
         {/* Detailed Progress */}
         <div style={{
-          backgroundColor: '#f8fafc',
+          backgroundColor: '#f5f2ea',
           borderRadius: '6px',
           padding: '16px'
         }}>
           <h3 style={{
             fontSize: '12px',
             fontWeight: 600,
-            color: '#64748b',
+            color: 'rgba(26, 26, 26, 0.6)',
             marginBottom: '12px',
             textTransform: 'uppercase'
           }}>
@@ -93,16 +94,16 @@ export default function LoadingScreen() {
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '6px 0',
-              borderBottom: '1px solid #e2e8f0',
+              borderBottom: '1px solid #e9e4d8',
               fontSize: '13px'
             }}>
-              <span style={{ color: '#475569', textTransform: 'capitalize' }}>
+              <span style={{ color: '#1a1a1a', textTransform: 'capitalize' }}>
                 {key}
               </span>
               <span style={{
-                color: status === 'complete' ? '#10b981' :
-                       status === 'error' ? '#ef4444' :
-                       status === 'loading' ? '#3b82f6' : '#94a3b8',
+                color: status === 'complete' ? '#087A6A' :
+                       status === 'error' ? '#D35C65' :
+                       status === 'loading' ? '#087A6A' : 'rgba(26, 26, 26, 0.4)',
                 fontWeight: 500
               }}>
                 {status === 'complete' ? '✓ Complete' :
@@ -117,11 +118,11 @@ export default function LoadingScreen() {
           <div style={{
             marginTop: '16px',
             padding: '12px',
-            backgroundColor: '#fef3c7',
-            border: '1px solid #fbbf24',
+            backgroundColor: 'rgba(211, 92, 101, 0.1)',
+            border: '1px solid #D35C65',
             borderRadius: '6px',
             fontSize: '13px',
-            color: '#92400e'
+            color: '#8B3A3F'
           }}>
             Some data failed to load but the app will continue with available data.
           </div>

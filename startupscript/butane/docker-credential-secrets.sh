@@ -56,14 +56,16 @@ if [[ ! -f "${SECRETS_JSON}" ]]; then
   exit 1
 fi
 
-secret_name="$(jq -r --arg registry "${registry_hostname}" \
-  '.[] | select(.dockerRegistry == $registry) | .name' \
-  "${SECRETS_JSON}" | head -1)"
+secret_entry="$(jq --arg registry "${registry_hostname}" \
+  '.[] | select(.dockerRegistry == $registry)' \
+  "${SECRETS_JSON}")"
 
-if [[ -z "${secret_name}" ]]; then
+if [[ -z "${secret_entry}" || "${secret_entry}" == "null" ]]; then
   echo "Error: No secret configured for registry ${registry_hostname}" >&2
   exit 1
 fi
+
+secret_name="$(echo "${secret_entry}" | jq -r '.name')"
 
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
@@ -114,6 +116,8 @@ if [[ -z "${secret_workspace_id}" || "${secret_workspace_id}" == "null" || \
   echo "Error: Secret '${secret_name}' not found in app resource's attached secrets" >&2
   exit 1
 fi
+
+validate_allowed_secret "${secret_entry}" "${secret_workspace_id}" "${secret_resource_id}"
 
 credential="$(retrieve_secret TOKEN "${WSM_URL}" "${RESOURCE_ID}" "${KEY_FILE}" \
   "${secret_workspace_id}" "${secret_resource_id}")"

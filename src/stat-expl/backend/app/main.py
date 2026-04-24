@@ -743,6 +743,133 @@ def search_population(query: str):
         "sex": sex_data
     }
 
+@app.get("/dashboard/api/passport/filter")
+def filter_passport_metrics(
+    enroll_start: str = None,
+    enroll_end: str = None,
+    min_followup_days: int = None,
+    complete_coverage_only: bool = False
+):
+    """Filter passport metrics by enrollment date range, minimum follow-up, and coverage"""
+
+    # Build WHERE clause
+    conditions = ["1=1"]
+
+    if enroll_start:
+        conditions.append(f"e.enrollment_date >= '{enroll_start}'")
+    if enroll_end:
+        conditions.append(f"e.enrollment_date <= '{enroll_end}'")
+
+    where_clause = " AND ".join(conditions)
+
+    # Get base patient list filtered by enrollment
+    base_query = f"""
+    SELECT DISTINCT d.SUBJID
+    FROM `{DATA_PROJECT}.screener.DM` d
+    JOIN `{DATA_PROJECT}.analysis.ENRDT` e ON d.SUBJID = e.SUBJID
+    WHERE {where_clause}
+    """
+    base_results = list(bq_client.query(base_query).result())
+    patient_ids = [row.SUBJID for row in base_results]
+
+    if not patient_ids:
+        return {
+            "total_participants": 0,
+            "filtered_participants": 0,
+            "complete_coverage_participants": 0,
+            "domains": []
+        }
+
+    # Apply minimum follow-up filter if specified
+    if min_followup_days is not None and min_followup_days > 0:
+        patient_list = ','.join([f"'{p}'" for p in patient_ids])
+        followup_query = f"""
+        SELECT DISTINCT SUBJID
+        FROM `{DATA_PROJECT}.sensordata.STEP`
+        WHERE SUBJID IN ({patient_list})
+        AND study_day >= {min_followup_days}
+        """
+        followup_results = list(bq_client.query(followup_query).result())
+        patient_ids = [row.SUBJID for row in followup_results]
+
+    if not patient_ids:
+        return {
+            "total_participants": 2502,
+            "filtered_participants": 0,
+            "complete_coverage_participants": 0,
+            "domains": []
+        }
+
+    patient_list = ','.join([f"'{p}'" for p in patient_ids])
+
+    # Get domain coverage for filtered patients
+    ehr_query = f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.VS` WHERE SUBJID IN ({patient_list})"
+    labs_query = f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.externallab.CLABS` WHERE SUBJID IN ({patient_list})"
+    meds_query = f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.CM` WHERE SUBJID IN ({patient_list})"
+    dx_query = f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.MH` WHERE SUBJID IN ({patient_list}) AND MHYN IS NOT NULL"
+    sensor_query = f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.sensordata.STEP` WHERE SUBJID IN ({patient_list})"
+    pro_query = f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.appsurveys.PHQ9A` WHERE SUBJID IN ({patient_list})"
+
+    ehr_count = list(bq_client.query(ehr_query).result())[0].count
+    labs_count = list(bq_client.query(labs_query).result())[0].count
+    meds_count = list(bq_client.query(meds_query).result())[0].count
+    dx_count = list(bq_client.query(dx_query).result())[0].count
+    sensor_count = list(bq_client.query(sensor_query).result())[0].count
+    pro_count = list(bq_client.query(pro_query).result())[0].count
+
+    # Find patients with complete coverage (present in all 6 domains)
+    if complete_coverage_only:
+        complete_coverage_query = f"""
+        WITH domain_coverage AS (
+            SELECT DISTINCT SUBJID, 1 as has_ehr FROM `{DATA_PROJECT}.crf.VS` WHERE SUBJID IN ({patient_list})
+        ),
+        labs_coverage AS (
+            SELECT DISTINCT SUBJID, 1 as has_labs FROM `{DATA_PROJECT}.externallab.CLABS` WHERE SUBJID IN ({patient_list})
+        ),
+        meds_coverage AS (
+            SELECT DISTINCT SUBJID, 1 as has_meds FROM `{DATA_PROJECT}.crf.CM` WHERE SUBJID IN ({patient_list})
+        ),
+        dx_coverage AS (
+            SELECT DISTINCT SUBJID, 1 as has_dx FROM `{DATA_PROJECT}.crf.MH` WHERE SUBJID IN ({patient_list}) AND MHYN IS NOT NULL
+        ),
+        sensor_coverage AS (
+            SELECT DISTINCT SUBJID, 1 as has_sensor FROM `{DATA_PROJECT}.sensordata.STEP` WHERE SUBJID IN ({patient_list})
+        ),
+        pro_coverage AS (
+            SELECT DISTINCT SUBJID, 1 as has_pro FROM `{DATA_PROJECT}.appsurveys.PHQ9A` WHERE SUBJID IN ({patient_list})
+        )
+        SELECT COUNT(DISTINCT d.SUBJID) as count
+        FROM `{DATA_PROJECT}.screener.DM` d
+        JOIN domain_coverage dc ON d.SUBJID = dc.SUBJID
+        JOIN labs_coverage lc ON d.SUBJID = lc.SUBJID
+        JOIN meds_coverage mc ON d.SUBJID = mc.SUBJID
+        JOIN dx_coverage dxc ON d.SUBJID = dxc.SUBJID
+        JOIN sensor_coverage sc ON d.SUBJID = sc.SUBJID
+        JOIN pro_coverage pc ON d.SUBJID = pc.SUBJID
+        WHERE d.SUBJID IN ({patient_list})
+        """
+        complete_count = list(bq_client.query(complete_coverage_query).result())[0].count
+    else:
+        complete_count = 0
+
+    # Return appropriate count based on toggle
+    display_count = complete_count if complete_coverage_only else len(patient_ids)
+
+    return {
+        "total_participants": 2502,
+        "filtered_participants": len(patient_ids),
+        "complete_coverage_participants": complete_count,
+        "display_count": display_count,
+        "domains": [
+            {"name": "EHR", "participants": ehr_count, "coverage_pct": round(100.0 * ehr_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
+            {"name": "Labs", "participants": labs_count, "coverage_pct": round(100.0 * labs_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
+            {"name": "Medications", "participants": meds_count, "coverage_pct": round(100.0 * meds_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
+            {"name": "Diagnoses", "participants": dx_count, "coverage_pct": round(100.0 * dx_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
+            {"name": "Sensor", "participants": sensor_count, "coverage_pct": round(100.0 * sensor_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
+            {"name": "PRO", "participants": pro_count, "coverage_pct": round(100.0 * pro_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0}
+        ]
+    }
+
 # Mount Vite build at root
 # Path: /app/backend/app/main.py -> /app/frontend/dist
 _DIST_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"

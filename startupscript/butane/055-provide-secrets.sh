@@ -190,7 +190,9 @@ done
 echo "Delivering ${PIPE_SECRET_COUNT} secret(s) to container..."
 
 set +o xtrace
-echo "${SECRETS_JSON}" | docker exec -i "${CONTAINER_NAME}" sh -c "cat > ${PIPE_PATH}"
-set -o xtrace
+if ! echo "${SECRETS_JSON}" | timeout 30 docker exec -i "${CONTAINER_NAME}" sh -c "cat > ${PIPE_PATH}"; then
+  >&2 echo "ERROR: Timed out writing secrets to container pipe."
+  exit 1
+fi
 
 echo "Secrets delivered successfully."

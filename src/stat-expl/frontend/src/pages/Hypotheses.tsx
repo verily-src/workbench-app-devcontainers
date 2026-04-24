@@ -23,6 +23,20 @@ interface Hypothesis {
   data_required: string[]
   feasibility: string
   patient_pool: string
+  cohort_type: string
+}
+
+interface CohortData {
+  cohort_size: number
+  data_availability: {
+    vitals: { count: number; pct: number }
+    labs: { count: number; pct: number }
+    medications: { count: number; pct: number }
+    diagnoses: { count: number; pct: number }
+    sensor: { count: number; pct: number }
+    pro: { count: number; pct: number }
+  }
+  patient_ids: string[]
 }
 
 export default function Hypotheses() {
@@ -32,6 +46,9 @@ export default function Hypotheses() {
   const [summary, setSummary] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedTab, setSelectedTab] = useState<'hypotheses' | 'diseases' | 'medications'>('hypotheses')
+  const [selectedHypothesis, setSelectedHypothesis] = useState<Hypothesis | null>(null)
+  const [cohortData, setCohortData] = useState<CohortData | null>(null)
+  const [isBuildingCohort, setIsBuildingCohort] = useState(false)
 
   useEffect(() => {
     fetch('/dashboard/api/hypotheses/rwe-opportunities')
@@ -48,6 +65,28 @@ export default function Hypotheses() {
         setIsLoading(false)
       })
   }, [])
+
+  const buildCohort = (hypothesis: Hypothesis) => {
+    setSelectedHypothesis(hypothesis)
+    setIsBuildingCohort(true)
+    setCohortData(null)
+
+    fetch(`/dashboard/api/hypotheses/build-cohort?cohort_type=${hypothesis.cohort_type}`)
+      .then(r => r.json())
+      .then(data => {
+        setCohortData(data)
+        setIsBuildingCohort(false)
+      })
+      .catch(err => {
+        console.error('Failed to build cohort:', err)
+        setIsBuildingCohort(false)
+      })
+  }
+
+  const exportCohort = () => {
+    if (!selectedHypothesis) return
+    window.open(`/dashboard/api/hypotheses/export-cohort?cohort_type=${selectedHypothesis.cohort_type}`, '_blank')
+  }
 
   if (isLoading) {
     return <div style={{ color: 'rgba(26, 26, 26, 0.6)' }}>Loading hypothesis generator...</div>
@@ -141,11 +180,105 @@ export default function Hypotheses() {
               borderRadius: '6px'
             }}>
               These are example research questions that can be answered using the combination of sensor data,
-              clinical measurements, diagnoses, and medications in this dataset.
+              clinical measurements, diagnoses, and medications in this dataset. Click any hypothesis to build a cohort and see data availability.
             </p>
             {hypotheses.map(h => (
-              <HypothesisCard key={h.id} hypothesis={h} />
+              <HypothesisCard key={h.id} hypothesis={h} onClick={() => buildCohort(h)} />
             ))}
+
+            {/* Cohort Builder Panel */}
+            {selectedHypothesis && (
+              <div style={{
+                marginTop: '32px',
+                padding: '24px',
+                backgroundColor: '#fff',
+                border: '2px solid #087A6A',
+                borderRadius: '8px'
+              }}>
+                <h3 style={{
+                  fontSize: '20px',
+                  fontWeight: 600,
+                  color: '#087A6A',
+                  marginBottom: '16px'
+                }}>
+                  Cohort Builder: {selectedHypothesis.title}
+                </h3>
+
+                {isBuildingCohort ? (
+                  <div style={{ fontSize: '14px', color: 'rgba(26, 26, 26, 0.6)', fontStyle: 'italic' }}>
+                    Building cohort...
+                  </div>
+                ) : cohortData ? (
+                  <div>
+                    {/* Cohort Size */}
+                    <div style={{
+                      marginBottom: '24px',
+                      padding: '20px',
+                      backgroundColor: 'rgba(8, 122, 106, 0.05)',
+                      border: '1px solid rgba(8, 122, 106, 0.2)',
+                      borderRadius: '6px'
+                    }}>
+                      <div style={{
+                        fontSize: '14px',
+                        color: 'rgba(26, 26, 26, 0.6)',
+                        marginBottom: '8px',
+                        textTransform: 'uppercase',
+                        fontWeight: 600
+                      }}>
+                        Total Participants
+                      </div>
+                      <div style={{
+                        fontSize: '48px',
+                        fontWeight: 600,
+                        color: '#087A6A',
+                        lineHeight: 1.1
+                      }}>
+                        N = {cohortData.cohort_size.toLocaleString()}
+                      </div>
+                    </div>
+
+                    {/* Data Availability Breakdown */}
+                    <div style={{ marginBottom: '24px' }}>
+                      <h4 style={{
+                        fontSize: '16px',
+                        fontWeight: 600,
+                        color: '#1a1a1a',
+                        marginBottom: '16px'
+                      }}>
+                        Data Availability Across Domains
+                      </h4>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, 1fr)',
+                        gap: '12px'
+                      }}>
+                        {Object.entries(cohortData.data_availability).map(([domain, data]: [string, any]) => (
+                          <DataAvailabilityCard key={domain} domain={domain} data={data} totalN={cohortData.cohort_size} />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Export Button */}
+                    <button
+                      onClick={exportCohort}
+                      style={{
+                        padding: '12px 24px',
+                        backgroundColor: '#087A6A',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '16px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        width: '100%'
+                      }}
+                    >
+                      Export Cohort as CSV
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         )}
 
@@ -245,17 +378,30 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   )
 }
 
-function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
+function HypothesisCard({ hypothesis, onClick }: { hypothesis: Hypothesis; onClick: () => void }) {
   const feasibilityColor = hypothesis.feasibility === 'high' ? '#087A6A' : hypothesis.feasibility === 'medium' ? '#A25BC5' : '#D35C65'
 
   return (
-    <div style={{
-      padding: '20px',
-      backgroundColor: '#f5f2ea',
-      border: '1px solid #e9e4d8',
-      borderRadius: '8px',
-      marginBottom: '16px'
-    }}>
+    <div
+      onClick={onClick}
+      style={{
+        padding: '20px',
+        backgroundColor: '#f5f2ea',
+        border: '1px solid #e9e4d8',
+        borderRadius: '8px',
+        marginBottom: '16px',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = '#e9e4d8'
+        e.currentTarget.style.borderColor = '#087A6A'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = '#f5f2ea'
+        e.currentTarget.style.borderColor = '#e9e4d8'
+      }}
+    >
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -494,6 +640,72 @@ function MedicationCard({ medication }: { medication: Medication }) {
             LIMITED
           </span>
         )}
+      </div>
+    </div>
+  )
+}
+
+function DataAvailabilityCard({ domain, data, totalN }: { domain: string; data: { count: number; pct: number }; totalN: number }) {
+  const isGoodCoverage = data.pct >= 80
+  const isModerateCoverage = data.pct >= 50 && data.pct < 80
+
+  const domainLabels: { [key: string]: string } = {
+    vitals: 'Vitals',
+    labs: 'Laboratory Tests',
+    medications: 'Medications',
+    diagnoses: 'Diagnoses',
+    sensor: 'Sensor Data',
+    pro: 'PRO Surveys'
+  }
+
+  return (
+    <div style={{
+      backgroundColor: '#f5f2ea',
+      border: '1px solid #e9e4d8',
+      borderRadius: '6px',
+      padding: '16px'
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        marginBottom: '12px'
+      }}>
+        <div style={{
+          width: '20px',
+          height: '20px',
+          borderRadius: '4px',
+          backgroundColor: isGoodCoverage ? '#087A6A' : isModerateCoverage ? '#A25BC5' : '#e9e4d8',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          {isGoodCoverage && (
+            <span style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
+          )}
+        </div>
+        <div style={{
+          fontSize: '14px',
+          fontWeight: 600,
+          color: '#1a1a1a'
+        }}>
+          {domainLabels[domain] || domain}
+        </div>
+      </div>
+      <div style={{
+        fontSize: '24px',
+        fontWeight: 600,
+        color: isGoodCoverage ? '#087A6A' : isModerateCoverage ? '#A25BC5' : 'rgba(26, 26, 26, 0.4)',
+        marginBottom: '4px'
+      }}>
+        {data.pct}%
+      </div>
+      <div style={{
+        fontSize: '12px',
+        color: 'rgba(26, 26, 26, 0.6)'
+      }}>
+        {data.count.toLocaleString()} of {totalN.toLocaleString()} patients
       </div>
     </div>
   )

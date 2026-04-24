@@ -755,12 +755,22 @@ def get_rwe_opportunities():
     # Example hypotheses based on the data
     hypotheses = [
         {
+            "id": 0,
+            "title": "Baseline/Normal Population Cohort",
+            "question": "Can I build a cohort of healthy baseline participants without major chronic conditions?",
+            "data_required": ["No major chronic disease diagnoses", "Complete vital signs", "Sensor data available"],
+            "feasibility": "high",
+            "patient_pool": "Participants without diabetes, hypertension, heart disease, or major diagnoses",
+            "cohort_type": "baseline"
+        },
+        {
             "id": 1,
             "title": "Physical Activity and Blood Pressure Control",
             "question": "Does daily step count correlate with blood pressure changes in hypertensive patients?",
             "data_required": ["HIGH BLOOD PRESSURE HYPERTENSION diagnosis", "Systolic/Diastolic BP measurements", "Daily step count from sensors"],
             "feasibility": "high",
-            "patient_pool": "~800+ patients with hypertension, sensor data, and serial BP measurements"
+            "patient_pool": "~800+ patients with hypertension, sensor data, and serial BP measurements",
+            "cohort_type": "hypertension"
         },
         {
             "id": 2,
@@ -768,7 +778,8 @@ def get_rwe_opportunities():
             "question": "Do patients with Type 2 Diabetes on medication show different activity patterns compared to diet-controlled patients?",
             "data_required": ["DIABETES TYPE 2 diagnosis", "Medication records", "Daily step count from sensors", "HbA1c measurements"],
             "feasibility": "high",
-            "patient_pool": "~400+ diabetic patients with medication records and sensor data"
+            "patient_pool": "~400+ diabetic patients with medication records and sensor data",
+            "cohort_type": "diabetes"
         },
         {
             "id": 3,
@@ -776,7 +787,8 @@ def get_rwe_opportunities():
             "question": "Can changes in activity patterns predict medication non-adherence in cardiovascular patients?",
             "data_required": ["Cardiovascular medications", "Daily step count patterns", "Vital sign measurements", "Medication refill data"],
             "feasibility": "medium",
-            "patient_pool": "~600+ patients on cardiovascular medications with sensor data"
+            "patient_pool": "~600+ patients on cardiovascular medications with sensor data",
+            "cohort_type": "cardiovascular"
         },
         {
             "id": 4,
@@ -784,7 +796,8 @@ def get_rwe_opportunities():
             "question": "Is there a correlation between depressive symptoms (PHQ-9 scores) and daily physical activity levels?",
             "data_required": ["MAJOR DEPRESSIVE DISORDER diagnosis", "PHQ-9 survey responses", "Daily step count from sensors"],
             "feasibility": "high",
-            "patient_pool": "~500+ patients with depression diagnosis, PRO data, and sensors"
+            "patient_pool": "~500+ patients with depression diagnosis, PRO data, and sensors",
+            "cohort_type": "depression"
         },
         {
             "id": 5,
@@ -792,7 +805,8 @@ def get_rwe_opportunities():
             "question": "Do patients with sleep apnea show different daily activity patterns or reduced exercise capacity?",
             "data_required": ["SLEEP APNEA diagnosis", "Sleep data from sensors", "Daily step count", "Oxygen saturation measurements"],
             "feasibility": "medium",
-            "patient_pool": "~400+ patients with sleep apnea diagnosis and sensor data"
+            "patient_pool": "~400+ patients with sleep apnea diagnosis and sensor data",
+            "cohort_type": "sleep_apnea"
         }
     ]
 
@@ -807,6 +821,156 @@ def get_rwe_opportunities():
             "sensor_coverage_pct": 97.1
         }
     }
+
+@app.get("/dashboard/api/hypotheses/build-cohort")
+def build_hypothesis_cohort(cohort_type: str):
+    """Build a cohort for a specific hypothesis"""
+
+    if cohort_type == "baseline":
+        # Baseline/normal population: No major chronic diseases
+        exclusion_conditions = ["DIABETES_TYPE_2", "DIABETES_TYPE_1", "HIGH_BLOOD_PRESSURE_HYPERTENSION",
+                               "ARRHYTHMIA", "SLEEP_APNEA", "MAJOR_DEPRESSIVE_DISORDER"]
+        exclusion_list = ','.join([f"'{c}'" for c in exclusion_conditions])
+
+        query = f"""
+        WITH excluded_patients AS (
+            SELECT DISTINCT SUBJID
+            FROM `{DATA_PROJECT}.crf.MH`
+            WHERE MHTERM IN ({exclusion_list}) AND MHYN = 'Yes'
+        )
+        SELECT DISTINCT d.SUBJID
+        FROM `{DATA_PROJECT}.screener.DM` d
+        WHERE d.SUBJID NOT IN (SELECT SUBJID FROM excluded_patients)
+        """
+
+    elif cohort_type == "hypertension":
+        query = f"""
+        SELECT DISTINCT mh.SUBJID
+        FROM `{DATA_PROJECT}.crf.MH` mh
+        WHERE mh.MHTERM = 'HIGH_BLOOD_PRESSURE_HYPERTENSION' AND mh.MHYN = 'Yes'
+        """
+
+    elif cohort_type == "diabetes":
+        query = f"""
+        SELECT DISTINCT mh.SUBJID
+        FROM `{DATA_PROJECT}.crf.MH` mh
+        WHERE mh.MHTERM IN ('DIABETES_TYPE_2', 'DIABETES_TYPE_1') AND mh.MHYN = 'Yes'
+        """
+
+    elif cohort_type == "cardiovascular":
+        query = f"""
+        SELECT DISTINCT cm.SUBJID
+        FROM `{DATA_PROJECT}.crf.CM` cm
+        WHERE cm.Level1_Name = 'CARDIOVASCULAR SYSTEM'
+        """
+
+    elif cohort_type == "depression":
+        query = f"""
+        SELECT DISTINCT mh.SUBJID
+        FROM `{DATA_PROJECT}.crf.MH` mh
+        WHERE mh.MHTERM = 'MAJOR_DEPRESSIVE_DISORDER' AND mh.MHYN = 'Yes'
+        """
+
+    elif cohort_type == "sleep_apnea":
+        query = f"""
+        SELECT DISTINCT mh.SUBJID
+        FROM `{DATA_PROJECT}.crf.MH` mh
+        WHERE mh.MHTERM = 'SLEEP_APNEA' AND mh.MHYN = 'Yes'
+        """
+    else:
+        return {"error": "Unknown cohort type"}
+
+    # Get cohort patients
+    results = list(bq_client.query(query).result())
+    patient_ids = [row.SUBJID for row in results]
+
+    if not patient_ids:
+        return {
+            "cohort_size": 0,
+            "data_availability": {},
+            "patients": []
+        }
+
+    patient_list = ','.join([f"'{p}'" for p in patient_ids[:500]])  # Limit for performance
+
+    # Check data availability for this cohort
+    ehr_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.VS` WHERE SUBJID IN ({patient_list})").result())[0].count
+    labs_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.externallab.CLABS` WHERE SUBJID IN ({patient_list})").result())[0].count
+    meds_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.CM` WHERE SUBJID IN ({patient_list})").result())[0].count
+    dx_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.MH` WHERE SUBJID IN ({patient_list}) AND MHYN IS NOT NULL").result())[0].count
+    sensor_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.sensordata.STEP` WHERE SUBJID IN ({patient_list})").result())[0].count
+    pro_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.appsurveys.PHQ9A` WHERE SUBJID IN ({patient_list})").result())[0].count
+
+    cohort_size = len(patient_ids)
+
+    return {
+        "cohort_type": cohort_type,
+        "cohort_size": cohort_size,
+        "data_availability": {
+            "vitals": {"count": ehr_count, "pct": round(100.0 * ehr_count / cohort_size, 1)},
+            "labs": {"count": labs_count, "pct": round(100.0 * labs_count / cohort_size, 1)},
+            "medications": {"count": meds_count, "pct": round(100.0 * meds_count / cohort_size, 1)},
+            "diagnoses": {"count": dx_count, "pct": round(100.0 * dx_count / cohort_size, 1)},
+            "sensor": {"count": sensor_count, "pct": round(100.0 * sensor_count / cohort_size, 1)},
+            "pro": {"count": pro_count, "pct": round(100.0 * pro_count / cohort_size, 1)}
+        },
+        "patients": patient_ids[:500]  # Return first 500 patient IDs
+    }
+
+@app.get("/dashboard/api/hypotheses/export-cohort")
+def export_hypothesis_cohort(cohort_type: str):
+    """Export cohort data as CSV"""
+    from fastapi.responses import Response
+    import csv
+    from io import StringIO
+
+    # Build cohort first
+    cohort_data = build_hypothesis_cohort(cohort_type)
+    patient_ids = cohort_data.get("patients", [])
+
+    if not patient_ids:
+        return Response(
+            content="No patients found for this cohort",
+            media_type="text/plain"
+        )
+
+    patient_list = ','.join([f"'{p}'" for p in patient_ids])
+
+    # Get patient demographics and summary data
+    demo_query = f"""
+    SELECT
+        d.SUBJID,
+        d.SEX,
+        d.RACE,
+        d.age_at_enrollment,
+        e.enrollment_date
+    FROM `{DATA_PROJECT}.screener.DM` d
+    LEFT JOIN `{DATA_PROJECT}.analysis.ENRDT` e ON d.SUBJID = e.SUBJID
+    WHERE d.SUBJID IN ({patient_list})
+    ORDER BY d.SUBJID
+    """
+    results = list(bq_client.query(demo_query).result())
+
+    # Write CSV
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['SUBJID', 'Sex', 'Race', 'Age', 'Enrollment_Date', 'Cohort_Type'])
+    for row in results:
+        writer.writerow([
+            row.SUBJID,
+            row.SEX or '',
+            row.RACE or '',
+            row.age_at_enrollment or '',
+            row.enrollment_date.isoformat() if row.enrollment_date else '',
+            cohort_type
+        ])
+
+    csv_content = output.getvalue()
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=cohort_{cohort_type}.csv"}
+    )
 
 @app.get("/dashboard/api/population/demographics")
 def get_population_demographics():

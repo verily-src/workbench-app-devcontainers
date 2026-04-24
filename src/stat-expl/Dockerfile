@@ -30,5 +30,6 @@ CMD ["uvicorn", "server:app", \
      "--log-level", "info", \
      "--access-log"]
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD curl -f http://127.0.0.1:8080/health || exit 1
+# Temporarily remove health check for debugging
+# HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+#   CMD curl -f http://127.0.0.1:8080/health || exit 1

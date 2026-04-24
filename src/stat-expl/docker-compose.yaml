@@ -1,6 +1,6 @@
 services:
   app:
-    # Workbench looks for this exact container name
+    # Workbench looks for this exact container name.
     container_name: "application-server"
     build:
       context: .
@@ -8,6 +8,8 @@ services:
     restart: always
     ports:
       - "8080:8080"
+    environment:
+      APP_ENV: "prod"
     networks:
       - app-network
 

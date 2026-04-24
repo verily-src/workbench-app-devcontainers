@@ -1,19 +1,30 @@
-# Minimal + StaticFiles serving (no build step)
+# Step 3: Add Vite React build (no polyfills yet)
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /fe
+
+# Install deps
+COPY package.json package-lock.json* ./
+RUN npm install
+
+# Build React app
+COPY vite.config.ts index.html ./
+COPY src/ ./src/
+RUN npm run build
+
+# Runtime stage
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Minimal system deps
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Install FastAPI and uvicorn only
 RUN pip install --no-cache-dir fastapi uvicorn[standard]
 
-# Copy server and static files
 COPY server.py /app/server.py
-COPY static/ /app/static/
+COPY --from=frontend-build /fe/dist /app/dist/
 
 EXPOSE 8080
 

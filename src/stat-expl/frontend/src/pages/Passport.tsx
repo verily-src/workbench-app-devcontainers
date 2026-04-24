@@ -6,14 +6,22 @@ import Plotly from 'plotly.js-dist-min'
 export default function Passport() {
   const { passportMetrics, timeline, isLoading } = useData()
   const [enrollDateRange, setEnrollDateRange] = useState<[string, string] | null>(null)
-  const [minFollowup, setMinFollowup] = useState(0)
-  const [completeCoverageOnly, setCompleteCoverageOnly] = useState(false)
+  const [minCompleteness, setMinCompleteness] = useState(0)
+  const [cumulativeTimeline, setCumulativeTimeline] = useState<any[]>([])
   const [filteredMetrics, setFilteredMetrics] = useState<any>(null)
   const [isFiltering, setIsFiltering] = useState(false)
 
+  // Load cumulative enrollment timeline
+  useEffect(() => {
+    fetch('/dashboard/api/passport/cumulative-enrollment')
+      .then(r => r.json())
+      .then(data => setCumulativeTimeline(data.timeline))
+      .catch(err => console.error('Failed to load cumulative enrollment:', err))
+  }, [])
+
   // Apply filters
   useEffect(() => {
-    if (!enrollDateRange && minFollowup === 0 && !completeCoverageOnly) {
+    if (!enrollDateRange && minCompleteness === 0) {
       setFilteredMetrics(null)
       return
     }
@@ -24,10 +32,9 @@ export default function Passport() {
       params.append('enroll_start', enrollDateRange[0])
       params.append('enroll_end', enrollDateRange[1])
     }
-    if (minFollowup > 0) {
-      params.append('min_followup_days', minFollowup.toString())
+    if (minCompleteness > 0) {
+      params.append('min_completeness_pct', minCompleteness.toString())
     }
-    params.append('complete_coverage_only', completeCoverageOnly.toString())
 
     const timer = setTimeout(() => {
       fetch(`/dashboard/api/passport/filter?${params}`)
@@ -43,7 +50,7 @@ export default function Passport() {
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [enrollDateRange, minFollowup, completeCoverageOnly])
+  }, [enrollDateRange, minCompleteness])
 
   if (isLoading) {
     return (
@@ -53,9 +60,8 @@ export default function Passport() {
     )
   }
 
-  const displayCount = filteredMetrics ? filteredMetrics.display_count : (passportMetrics?.total_participants || 2502)
-  const filteredCount = filteredMetrics?.filtered_participants
-  const completeCount = filteredMetrics?.complete_coverage_participants || 0
+  const displayCount = filteredMetrics ? filteredMetrics.filtered_participants : (passportMetrics?.total_participants || 2502)
+  const domainData = filteredMetrics ? filteredMetrics.domains : passportMetrics?.domains || []
 
   return (
     <div>
@@ -88,22 +94,15 @@ export default function Passport() {
           borderRadius: '8px'
         }}>
           <div style={{ fontSize: '12px', color: 'rgba(26, 26, 26, 0.6)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 600 }}>
-            {completeCoverageOnly ? 'Patients with Complete Coverage' : 'Current Analysis Cohort'}
+            Current Analysis Cohort
           </div>
           <div style={{ fontSize: '48px', fontWeight: 600, color: '#087A6A', lineHeight: 1.1 }}>
             N = {isFiltering ? '...' : displayCount.toLocaleString()}
           </div>
           {filteredMetrics && (
             <div style={{ fontSize: '14px', color: 'rgba(26, 26, 26, 0.6)', marginTop: '8px' }}>
-              {completeCoverageOnly ? (
-                <>
-                  {completeCount.toLocaleString()} of {filteredCount.toLocaleString()} filtered patients have all 6 domains
-                </>
-              ) : (
-                <>
-                  Filtered from {passportMetrics?.total_participants.toLocaleString() || '2,502'} total patients
-                </>
-              )}
+              Filtered from {passportMetrics?.total_participants.toLocaleString() || '2,502'} total patients
+              {minCompleteness > 0 && ` (≥${minCompleteness}% data completeness)`}
             </div>
           )}
         </div>
@@ -205,7 +204,52 @@ export default function Passport() {
           </div>
         )}
 
-        {/* Minimum Follow-up Slider */}
+        {/* Cumulative Enrollment Graph */}
+        {cumulativeTimeline && cumulativeTimeline.length > 0 && (
+          <div style={{ marginBottom: '32px' }}>
+            <h3 style={{
+              fontSize: '18px',
+              fontWeight: 600,
+              color: '#1a1a1a',
+              marginBottom: '16px'
+            }}>
+              Cumulative Enrollment Over Time
+            </h3>
+            <p style={{
+              fontSize: '13px',
+              color: 'rgba(26, 26, 26, 0.6)',
+              marginBottom: '12px'
+            }}>
+              Total number of participants enrolled from study start to present
+            </p>
+            <Plot
+              plotly={Plotly}
+              data={[
+                {
+                  x: cumulativeTimeline.map(t => t.month),
+                  y: cumulativeTimeline.map(t => t.cumulative_count),
+                  type: 'scatter',
+                  mode: 'lines',
+                  fill: 'tozeroy',
+                  marker: { color: '#087A6A' },
+                  line: { color: '#087A6A', width: 3 },
+                },
+              ]}
+              layout={{
+                width: 900,
+                height: 300,
+                margin: { t: 20, r: 20, b: 60, l: 60 },
+                xaxis: { title: 'Month' },
+                yaxis: { title: 'Total Enrolled Participants' },
+                plot_bgcolor: '#f5f2ea',
+                paper_bgcolor: '#fff',
+              }}
+              config={{ displayModeBar: false }}
+            />
+          </div>
+        )}
+
+        {/* Minimum Completeness Slider */}
         <div style={{ marginBottom: '32px' }}>
           <h3 style={{
             fontSize: '18px',
@@ -213,33 +257,33 @@ export default function Passport() {
             color: '#1a1a1a',
             marginBottom: '8px'
           }}>
-            Minimum Follow-up Threshold
+            Minimum Data Completeness Threshold
           </h3>
           <p style={{
             fontSize: '13px',
             color: 'rgba(26, 26, 26, 0.6)',
             marginBottom: '12px'
           }}>
-            Require patients to have at least this many days of follow-up data
+            Remove participants with less than this percentage of data completeness. Completeness = % of 6 data domains they have.
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <input
               type="range"
               min="0"
-              max="1800"
-              step="30"
-              value={minFollowup}
-              onChange={(e) => setMinFollowup(parseInt(e.target.value))}
+              max="100"
+              step="10"
+              value={minCompleteness}
+              onChange={(e) => setMinCompleteness(parseInt(e.target.value))}
               style={{
                 flex: 1,
                 height: '8px',
                 borderRadius: '4px',
                 outline: 'none',
-                background: `linear-gradient(to right, #087A6A 0%, #087A6A ${(minFollowup / 1800) * 100}%, #e9e4d8 ${(minFollowup / 1800) * 100}%, #e9e4d8 100%)`
+                background: `linear-gradient(to right, #087A6A 0%, #087A6A ${minCompleteness}%, #e9e4d8 ${minCompleteness}%, #e9e4d8 100%)`
               }}
             />
             <div style={{
-              minWidth: '120px',
+              minWidth: '100px',
               padding: '8px 16px',
               backgroundColor: '#f5f2ea',
               border: '1px solid #e9e4d8',
@@ -249,12 +293,12 @@ export default function Passport() {
               color: '#087A6A',
               textAlign: 'center'
             }}>
-              {minFollowup} days
+              {minCompleteness}%
             </div>
           </div>
-          {minFollowup > 0 && (
+          {minCompleteness > 0 && (
             <button
-              onClick={() => setMinFollowup(0)}
+              onClick={() => setMinCompleteness(0)}
               style={{
                 marginTop: '12px',
                 padding: '6px 16px',
@@ -267,106 +311,47 @@ export default function Passport() {
                 cursor: 'pointer'
               }}
             >
-              Reset to 0 days
+              Reset to 0%
             </button>
           )}
         </div>
 
-        {/* Complete Coverage Toggle */}
+        {/* Domain Coverage - Always Show */}
         <div style={{
-          marginBottom: '32px',
-          padding: '16px',
           backgroundColor: '#f5f2ea',
           border: '1px solid #e9e4d8',
-          borderRadius: '6px'
+          borderRadius: '6px',
+          padding: '20px'
         }}>
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            cursor: 'pointer'
+          <h3 style={{
+            fontSize: '16px',
+            fontWeight: 600,
+            color: '#1a1a1a',
+            marginBottom: '16px'
           }}>
-            <input
-              type="checkbox"
-              checked={completeCoverageOnly}
-              onChange={(e) => setCompleteCoverageOnly(e.target.checked)}
-              style={{
-                width: '20px',
-                height: '20px',
-                cursor: 'pointer'
-              }}
-            />
-            <div>
-              <div style={{
-                fontSize: '16px',
-                fontWeight: 600,
-                color: '#1a1a1a'
-              }}>
-                Complete Domain Coverage Only
-              </div>
-              <div style={{
-                fontSize: '13px',
-                color: 'rgba(26, 26, 26, 0.6)',
-                marginTop: '4px'
-              }}>
-                Show only patients with data in all 6 domains (EHR, Labs, Medications, Diagnoses, Sensor, PRO)
-              </div>
-            </div>
-          </label>
-          {completeCoverageOnly && filteredMetrics && (
-            <div style={{
-              marginTop: '12px',
-              padding: '12px',
-              backgroundColor: 'rgba(8, 122, 106, 0.05)',
-              border: '1px solid rgba(8, 122, 106, 0.2)',
-              borderRadius: '4px',
-              fontSize: '14px',
-              color: '#087A6A'
-            }}>
-              <strong>{completeCount.toLocaleString()}</strong> patients have complete coverage
-              ({Math.round(100 * completeCount / (filteredCount || 1))}% of filtered cohort)
-            </div>
-          )}
-        </div>
-
-        {/* Domain Coverage */}
-        {filteredMetrics ? (
+            Data Domain Coverage
+            <span style={{ fontWeight: 400, fontSize: '14px', color: 'rgba(26, 26, 26, 0.6)', marginLeft: '8px' }}>
+              ({filteredMetrics ? 'filtered cohort' : 'full cohort'})
+            </span>
+          </h3>
           <div style={{
-            backgroundColor: '#f5f2ea',
-            border: '1px solid #e9e4d8',
-            borderRadius: '6px',
-            padding: '20px'
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '12px'
           }}>
-            <h3 style={{
-              fontSize: '16px',
-              fontWeight: 600,
-              color: '#1a1a1a',
-              marginBottom: '16px'
-            }}>
-              Data Domain Coverage
-              <span style={{ fontWeight: 400, fontSize: '14px', color: 'rgba(26, 26, 26, 0.6)', marginLeft: '8px' }}>
-                (for filtered cohort)
-              </span>
-            </h3>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              gap: '12px'
-            }}>
-              {filteredMetrics.domains.map((domain: any) => (
-                <DomainCard key={domain.name} domain={domain} />
-              ))}
-            </div>
-            <p style={{
-              marginTop: '16px',
-              fontSize: '13px',
-              color: 'rgba(26, 26, 26, 0.6)',
-              fontStyle: 'italic'
-            }}>
-              Coverage shows percentage of {displayCount.toLocaleString()} filtered participants with at least one record in each domain
-            </p>
+            {domainData.map((domain: any) => (
+              <DomainCard key={domain.name} domain={domain} />
+            ))}
           </div>
-        ) : null}
+          <p style={{
+            marginTop: '16px',
+            fontSize: '13px',
+            color: 'rgba(26, 26, 26, 0.6)',
+            fontStyle: 'italic'
+          }}>
+            Coverage shows percentage of {displayCount.toLocaleString()} participants with at least one record in each domain
+          </p>
+        </div>
       </div>
     </div>
   )

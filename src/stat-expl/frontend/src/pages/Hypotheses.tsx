@@ -258,6 +258,38 @@ export default function Hypotheses() {
                       </div>
                     </div>
 
+                    {/* Participant List */}
+                    <div style={{ marginBottom: '24px' }}>
+                      <h4 style={{
+                        fontSize: '16px',
+                        fontWeight: 600,
+                        color: '#1a1a1a',
+                        marginBottom: '16px'
+                      }}>
+                        Participant IDs ({cohortData.patient_ids.length.toLocaleString()} total)
+                      </h4>
+                      <div style={{
+                        padding: '16px',
+                        backgroundColor: '#f5f2ea',
+                        borderRadius: '6px',
+                        maxHeight: '300px',
+                        overflowY: 'auto',
+                        fontFamily: 'monospace',
+                        fontSize: '12px',
+                        lineHeight: '1.6'
+                      }}>
+                        {cohortData.patient_ids.map((id: string, i: number) => (
+                          <div key={id} style={{
+                            display: 'inline-block',
+                            width: '25%',
+                            padding: '2px 4px'
+                          }}>
+                            {id}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Export Button */}
                     <button
                       onClick={exportCohort}

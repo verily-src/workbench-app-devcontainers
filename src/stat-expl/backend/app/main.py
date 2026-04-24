@@ -888,10 +888,11 @@ def build_hypothesis_cohort(cohort_type: str):
         return {
             "cohort_size": 0,
             "data_availability": {},
-            "patients": []
+            "patient_ids": []
         }
 
-    patient_list = ','.join([f"'{p}'" for p in patient_ids[:500]])  # Limit for performance
+    # For data availability checks, use all patient IDs
+    patient_list = ','.join([f"'{p}'" for p in patient_ids])
 
     # Check data availability for this cohort
     ehr_count = list(bq_client.query(f"SELECT COUNT(DISTINCT SUBJID) as count FROM `{DATA_PROJECT}.crf.VS` WHERE SUBJID IN ({patient_list})").result())[0].count
@@ -914,7 +915,7 @@ def build_hypothesis_cohort(cohort_type: str):
             "sensor": {"count": sensor_count, "pct": round(100.0 * sensor_count / cohort_size, 1)},
             "pro": {"count": pro_count, "pct": round(100.0 * pro_count / cohort_size, 1)}
         },
-        "patients": patient_ids[:500]  # Return first 500 patient IDs
+        "patient_ids": patient_ids  # Return ALL patient IDs
     }
 
 @app.get("/dashboard/api/hypotheses/export-cohort")
@@ -926,7 +927,7 @@ def export_hypothesis_cohort(cohort_type: str):
 
     # Build cohort first
     cohort_data = build_hypothesis_cohort(cohort_type)
-    patient_ids = cohort_data.get("patients", [])
+    patient_ids = cohort_data.get("patient_ids", [])
 
     if not patient_ids:
         return Response(

@@ -36,6 +36,8 @@ export default function Population() {
   const [searchResults, setSearchResults] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSearching, setIsSearching] = useState(false)
+  const [selectedMedClass, setSelectedMedClass] = useState<string | null>(null)
+  const [medBreakdown, setMedBreakdown] = useState<any>(null)
 
   // Load initial data
   useEffect(() => {
@@ -81,6 +83,14 @@ export default function Population() {
 
     return () => clearTimeout(timer)
   }, [searchQuery])
+
+  const handleMedicationClick = (drugClass: string) => {
+    setSelectedMedClass(drugClass)
+    fetch(`/dashboard/api/population/medication-breakdown?drug_class=${encodeURIComponent(drugClass)}`)
+      .then(r => r.json())
+      .then(data => setMedBreakdown(data))
+      .catch(err => console.error('Failed to load medication breakdown:', err))
+  }
 
   if (isLoading) {
     return <div style={{ color: 'rgba(26, 26, 26, 0.6)' }}>Loading population data...</div>
@@ -338,6 +348,14 @@ export default function Population() {
           <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#1a1a1a', marginBottom: '16px' }}>
             Top 20 Medication Classes
           </h3>
+          <p style={{
+            fontSize: '13px',
+            color: 'rgba(26, 26, 26, 0.6)',
+            marginBottom: '12px',
+            fontStyle: 'italic'
+          }}>
+            Click on any medication class to see specific medications
+          </p>
           <div style={{
             backgroundColor: '#f5f2ea',
             borderRadius: '6px',
@@ -346,15 +364,32 @@ export default function Population() {
             overflowY: 'auto'
           }}>
             {medications.map((med, i) => (
-              <div key={med.drug_class} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '10px 12px',
-                marginBottom: '4px',
-                backgroundColor: '#fff',
-                borderRadius: '4px'
-              }}>
+              <div
+                key={med.drug_class}
+                onClick={() => handleMedicationClick(med.drug_class)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 12px',
+                  marginBottom: '4px',
+                  backgroundColor: selectedMedClass === med.drug_class ? 'rgba(8, 122, 106, 0.1)' : '#fff',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  border: selectedMedClass === med.drug_class ? '1px solid #087A6A' : '1px solid transparent',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (selectedMedClass !== med.drug_class) {
+                    e.currentTarget.style.backgroundColor = '#e9e4d8'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (selectedMedClass !== med.drug_class) {
+                    e.currentTarget.style.backgroundColor = '#fff'
+                  }
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{
                     fontSize: '12px',
@@ -364,7 +399,7 @@ export default function Population() {
                   }}>
                     {i + 1}
                   </span>
-                  <span style={{ fontSize: '14px', color: '#1a1a1a' }}>
+                  <span style={{ fontSize: '14px', color: '#1a1a1a', fontWeight: selectedMedClass === med.drug_class ? 600 : 400 }}>
                     {med.drug_class}
                   </span>
                 </div>
@@ -374,6 +409,71 @@ export default function Population() {
               </div>
             ))}
           </div>
+
+          {/* Medication Breakdown */}
+          {medBreakdown && selectedMedClass && (
+            <div style={{
+              marginTop: '16px',
+              padding: '20px',
+              backgroundColor: '#fff',
+              border: '2px solid #087A6A',
+              borderRadius: '8px'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px'
+              }}>
+                <h4 style={{ fontSize: '16px', fontWeight: 600, color: '#087A6A', margin: 0 }}>
+                  Medications in {selectedMedClass}
+                </h4>
+                <button
+                  onClick={() => {
+                    setSelectedMedClass(null)
+                    setMedBreakdown(null)
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    backgroundColor: 'transparent',
+                    color: '#087A6A',
+                    border: '1px solid #087A6A',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '8px',
+                maxHeight: '300px',
+                overflowY: 'auto'
+              }}>
+                {medBreakdown.medications?.map((med: any) => (
+                  <div key={med.medication} style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#f5f2ea',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span style={{ fontSize: '13px', color: '#1a1a1a' }}>
+                      {med.medication}
+                    </span>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#087A6A' }}>
+                      {med.patient_count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

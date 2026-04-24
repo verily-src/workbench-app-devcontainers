@@ -1,42 +1,16 @@
-"""
-FastAPI server to serve the built React SPA.
-Uses FastAPI with StaticFiles for proper SPA routing.
-CRITICAL: Workbench reserves /api/ - use /dashboard/api/ prefix instead.
-"""
+"""Minimal FastAPI server with Vite React build"""
 from pathlib import Path
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(
-    title="Dataset Statistical Explorer",
-    version="0.1.0",
-    description="5-page biostatistics workspace for dataset fitness assessment",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="stat-expl-minimal")
 
 @app.get("/dashboard/api/health")
 def health():
-    return {
-        "status": "ok",
-        "app": "stat-expl",
-        "version": "0.1.0"
-    }
+    return {"status": "ok", "app": "stat-expl-minimal", "version": "0.0.5"}
 
-# Serve the built frontend at the app root. Static mounts are registered
-# LAST so /dashboard/api/* takes precedence. Using StaticFiles(html=True) makes it serve
-# index.html for the root and fall through for asset paths.
+# Mount Vite build at root
 # Path: /app/backend/app/main.py -> /app/frontend/dist
-_FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-if _FRONTEND_DIST.exists():
-    app.mount(
-        "/",
-        StaticFiles(directory=str(_FRONTEND_DIST), html=True),
-        name="frontend",
-    )
+_DIST_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+if _DIST_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(_DIST_DIR), html=True), name="frontend")

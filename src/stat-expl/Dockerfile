@@ -1,15 +1,14 @@
-# Step 3: Add Vite React build (no polyfills yet)
+# Step 5: Match clinical-dashboard folder structure
 FROM node:20-alpine AS frontend-build
 
 WORKDIR /fe
 
 # Install deps
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 # Build React app
-COPY vite.config.ts index.html ./
-COPY src/ ./src/
+COPY frontend/ ./
 RUN npm run build
 
 # Runtime stage
@@ -18,17 +17,25 @@ FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl \
+ && apt-get install -y --no-install-recommends curl build-essential \
  && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir fastapi uvicorn[standard]
+# Install backend Python deps (editable install via pyproject.toml)
+COPY backend/pyproject.toml /app/backend/pyproject.toml
+COPY backend/app/__init__.py /app/backend/app/__init__.py
+RUN pip install --no-cache-dir -e /app/backend
 
-COPY server.py /app/server.py
-COPY --from=frontend-build /fe/dist /app/dist/
+# Full backend source
+COPY backend/ /app/backend/
+
+# Drop built frontend where main.py expects it
+COPY --from=frontend-build /fe/dist /app/frontend/dist
 
 EXPOSE 8080
 
-CMD ["uvicorn", "server:app", \
+WORKDIR /app/backend
+CMD ["uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8080", \
-     "--log-level", "info"]
+     "--log-level", "info", \
+     "--access-log"]

@@ -32,7 +32,9 @@ if [[ -z "${DOCKER_REGISTRIES}" ]]; then
 fi
 
 DOCKER_CONFIG_DIR="${HOME:-/root}/.docker"
+readonly DOCKER_CONFIG_DIR
 DOCKER_CONFIG_FILE="${DOCKER_CONFIG_DIR}/config.json"
+readonly DOCKER_CONFIG_FILE
 
 mkdir -p "${DOCKER_CONFIG_DIR}"
 

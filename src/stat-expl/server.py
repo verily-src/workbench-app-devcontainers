@@ -31,8 +31,9 @@ def health():
 
 # Serve the built frontend at the app root
 # html=True makes it serve index.html for all routes (SPA routing)
+# Only mount if dist exists AND has content (not just empty dir)
 _FRONTEND_DIST = Path(__file__).resolve().parent / "dist"
-if _FRONTEND_DIST.exists():
+if _FRONTEND_DIST.exists() and any(_FRONTEND_DIST.iterdir()):
     app.mount(
         "/",
         StaticFiles(directory=str(_FRONTEND_DIST), html=True),

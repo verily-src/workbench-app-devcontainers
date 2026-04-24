@@ -32,7 +32,8 @@ def health():
 # Serve the built frontend at the app root. Static mounts are registered
 # LAST so /dashboard/api/* takes precedence. Using StaticFiles(html=True) makes it serve
 # index.html for the root and fall through for asset paths.
-_FRONTEND_DIST = Path(__file__).resolve().parent / "dist"
+# Path: /app/backend/app/main.py -> /app/frontend/dist
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 if _FRONTEND_DIST.exists():
     app.mount(
         "/",

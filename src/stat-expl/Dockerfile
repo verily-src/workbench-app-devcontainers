@@ -3,51 +3,48 @@ FROM node:20-alpine AS frontend-build
 
 WORKDIR /fe
 
-# Install deps based on lockfile only
-COPY package.json package-lock.json ./
+# Install deps based on lockfile only — maximal layer cache.
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-# Copy only files needed for build
-COPY vite.config.ts tsconfig.json tsconfig.node.json ./
-COPY tailwind.config.js postcss.config.js ./
-COPY index.html ./
-COPY src/ ./src/
-COPY public/ ./public/
-
-# Build the SPA
+# Build the SPA. `base: './'` in vite.config.ts emits relative asset paths so
+# the bundle works behind Workbench's /app/<UUID>/proxy/8080/ prefix.
+COPY frontend/ ./
 RUN npm run build
 
 
-# ── Stage 2: runtime — serve the built SPA ────────────────────────────────────
+# ── Stage 2: runtime — FastAPI serving /api + the built SPA ──────────────────
 FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Minimal apt deps — build-essential for any Python dep that lacks a wheel
+# Minimal apt deps — build-essential only needed
+# if any Python dep lacks a wheel (keep for safety, small image cost).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential curl \
  && rm -rf /var/lib/apt/lists/*
 
-# Install FastAPI and uvicorn with standard extras
-RUN pip install --no-cache-dir fastapi uvicorn[standard]
+# Install backend Python deps (editable install via pyproject.toml).
+COPY backend/pyproject.toml /app/backend/pyproject.toml
+COPY backend/app/__init__.py /app/backend/app/__init__.py
+RUN pip install --no-cache-dir -e /app/backend
 
-# Copy built frontend from stage 1
-COPY --from=frontend-build /fe/dist /app/dist
+# Full backend source (overwrites the stub __init__.py above).
+COPY backend/ /app/backend/
 
-# Copy public docs (schema.json) from frontend-build stage into dist
-COPY --from=frontend-build /fe/public/docs /app/dist/docs
-
-# Copy server script
-COPY server.py /app/server.py
+# Drop the built frontend where main.py expects it: _FRONTEND_DIST is
+# <file>.parent.parent.parent / "frontend" / "dist" → /app/frontend/dist
+COPY --from=frontend-build /fe/dist /app/frontend/dist
 
 EXPOSE 8080
 
 # Container is long-running; restart:always in compose handles crashes.
-CMD ["uvicorn", "server:app", \
+WORKDIR /app/backend
+CMD ["uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8080", \
      "--log-level", "info", \
      "--access-log"]
 
-# HEALTHCHECK removed - clinical-dashboard's is broken but still works
+# Note: Removing HEALTHCHECK - clinical-dashboard's is broken but still works

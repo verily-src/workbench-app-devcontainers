@@ -610,7 +610,7 @@ def get_top_diagnoses(limit: int = 20):
         REPLACE(MHTERM, '_', ' ') as diagnosis,
         COUNT(DISTINCT SUBJID) as patient_count
     FROM `{DATA_PROJECT}.crf.MH`
-    WHERE MHTERM IS NOT NULL AND MHYN = 'Yes'
+    WHERE MHTERM IS NOT NULL AND MHYN = 'Y'
     GROUP BY MHTERM
     ORDER BY patient_count DESC
     LIMIT {limit}
@@ -691,7 +691,7 @@ def get_rwe_opportunities():
             REPLACE(MHTERM, '_', ' ') as diagnosis,
             SUBJID
         FROM `{DATA_PROJECT}.crf.MH`
-        WHERE MHYN = 'Yes'
+        WHERE MHYN = 'Y'
     ),
     sensor_patients AS (
         SELECT DISTINCT SUBJID
@@ -854,7 +854,7 @@ def build_hypothesis_cohort(cohort_type: str):
         WITH excluded_patients AS (
             SELECT DISTINCT SUBJID
             FROM `{DATA_PROJECT}.crf.MH`
-            WHERE MHTERM IN ({exclusion_list}) AND MHYN = 'Yes'
+            WHERE MHTERM IN ({exclusion_list}) AND MHYN = 'Y'
         )
         SELECT DISTINCT d.SUBJID
         FROM `{DATA_PROJECT}.screener.DM` d
@@ -865,14 +865,14 @@ def build_hypothesis_cohort(cohort_type: str):
         query = f"""
         SELECT DISTINCT mh.SUBJID
         FROM `{DATA_PROJECT}.crf.MH` mh
-        WHERE mh.MHTERM = 'HIGH_BLOOD_PRESSURE_HYPERTENSION' AND mh.MHYN = 'Yes'
+        WHERE mh.MHTERM = 'HIGH_BLOOD_PRESSURE_HYPERTENSION' AND mh.MHYN = 'Y'
         """
 
     elif cohort_type == "diabetes":
         query = f"""
         SELECT DISTINCT mh.SUBJID
         FROM `{DATA_PROJECT}.crf.MH` mh
-        WHERE mh.MHTERM IN ('DIABETES_TYPE_2', 'DIABETES_TYPE_1') AND mh.MHYN = 'Yes'
+        WHERE mh.MHTERM IN ('DIABETES_TYPE_2', 'DIABETES_TYPE_1') AND mh.MHYN = 'Y'
         """
 
     elif cohort_type == "cardiovascular":
@@ -886,14 +886,14 @@ def build_hypothesis_cohort(cohort_type: str):
         query = f"""
         SELECT DISTINCT mh.SUBJID
         FROM `{DATA_PROJECT}.crf.MH` mh
-        WHERE mh.MHTERM = 'MAJOR_DEPRESSIVE_DISORDER' AND mh.MHYN = 'Yes'
+        WHERE mh.MHTERM = 'MAJOR_DEPRESSIVE_DISORDER' AND mh.MHYN = 'Y'
         """
 
     elif cohort_type == "sleep_apnea":
         query = f"""
         SELECT DISTINCT mh.SUBJID
         FROM `{DATA_PROJECT}.crf.MH` mh
-        WHERE mh.MHTERM = 'SLEEP_APNEA' AND mh.MHYN = 'Yes'
+        WHERE mh.MHTERM = 'SLEEP_APNEA' AND mh.MHYN = 'Y'
         """
     else:
         return {"error": "Unknown cohort type"}
@@ -1087,13 +1087,13 @@ def search_population(query: str):
         dx_query = f"""
         SELECT DISTINCT SUBJID
         FROM `{DATA_PROJECT}.crf.MH`
-        WHERE MHTERM IN ({terms_list}) AND MHYN = 'Yes'
+        WHERE MHTERM IN ({terms_list}) AND MHYN = 'Y'
         """
     else:
         dx_query = f"""
         SELECT DISTINCT SUBJID
         FROM `{DATA_PROJECT}.crf.MH`
-        WHERE UPPER(MHTERM) LIKE '{search_term}' AND MHYN = 'Yes'
+        WHERE UPPER(MHTERM) LIKE '{search_term}' AND MHYN = 'Y'
         """
 
     # Get matching patient IDs
@@ -1234,7 +1234,7 @@ def get_comprehensive_variables():
         COUNT(DISTINCT SUBJID) as patients_with_data,
         COUNT(*) as total_measurements
     FROM `{DATA_PROJECT}.crf.MH`
-    WHERE MHYN = 'Yes'
+    WHERE MHYN = 'Y'
     """
     dx_result = list(bq_client.query(dx_query).result())[0]
     variables.append({

@@ -1,29 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useCohort } from '../context/CohortContext'
+import { useData } from '../context/DataContext'
 import Plot from 'react-plotly.js'
 import Plotly from 'plotly.js-dist-min'
 
-interface Variable {
-  name: string
-  type: string
-  description: string
-  category: string
-  completeness: number
-  range: string
-}
-
 export default function Variables() {
   const { addFlag } = useCohort()
+  const { variables, isLoading } = useData()
   const [searchTerm, setSearchTerm] = useState('')
-  const [variables, setVariables] = useState<Variable[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
-
-  useEffect(() => {
-    fetch('/dashboard/api/variables/all')
-      .then(r => r.json())
-      .then(d => setVariables(d.variables))
-      .catch(e => console.error('Variables fetch failed:', e))
-  }, [])
 
   const categories = ['all', ...Array.from(new Set(variables.map(v => v.category)))]
 

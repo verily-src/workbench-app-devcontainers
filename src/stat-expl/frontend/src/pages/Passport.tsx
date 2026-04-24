@@ -1,42 +1,9 @@
-import { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
 import Plotly from 'plotly.js-dist-min'
-
-interface DatasetInfo {
-  project: string
-  datasets: { name: string; table_count: number }[]
-  total_tables: number
-}
-
-interface SensorData {
-  participants_with_step_data: number
-  total_step_records: number
-  total_pulse_records: number
-  total_sleep_records: number
-  data_coverage_pct: number
-}
+import { useData } from '../context/DataContext'
 
 export default function Passport() {
-  const [health, setHealth] = useState<any>(null)
-  const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null)
-  const [sensorData, setSensorData] = useState<SensorData | null>(null)
-
-  useEffect(() => {
-    fetch('/dashboard/api/health')
-      .then(r => r.json())
-      .then(d => setHealth(d))
-      .catch(e => console.error('Health check failed:', e))
-
-    fetch('/dashboard/api/datasets')
-      .then(r => r.json())
-      .then(d => setDatasetInfo(d))
-      .catch(e => console.error('Dataset fetch failed:', e))
-
-    fetch('/dashboard/api/sensordata')
-      .then(r => r.json())
-      .then(d => setSensorData(d))
-      .catch(e => console.error('Sensor data fetch failed:', e))
-  }, [])
+  const { datasets, sensorData, apiStatus, isLoading } = useData()
 
   return (
     <div>
@@ -81,12 +48,16 @@ export default function Passport() {
           </a>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-          <MetricCard label="Project" value={datasetInfo?.project || 'Loading...'} />
-          <MetricCard label="Datasets" value={datasetInfo?.datasets.length || '...'} />
-          <MetricCard label="Total Tables" value={datasetInfo?.total_tables || '...'} />
-          <MetricCard label="API Status" value={health?.status || 'checking...'} />
-        </div>
+        {isLoading ? (
+          <p style={{ color: '#64748b' }}>Loading dataset information...</p>
+        ) : (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+              <MetricCard label="Project" value={datasets?.project || 'N/A'} />
+              <MetricCard label="Datasets" value={datasets?.datasets.length || 0} />
+              <MetricCard label="Total Tables" value={datasets?.total_tables || 0} />
+              <MetricCard label="API Status" value={apiStatus || 'checking...'} />
+            </div>
 
         {/* Sensor Data Overview */}
         {sensorData && (
@@ -137,66 +108,66 @@ export default function Passport() {
           </div>
         )}
 
-        <div style={{
-          backgroundColor: '#f8fafc',
-          border: '1px solid #e2e8f0',
-          borderRadius: '6px',
-          padding: '16px',
-          marginBottom: '24px'
-        }}>
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-            Available Datasets
-          </h3>
-          {datasetInfo ? (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {datasetInfo.datasets.map(ds => (
-                <li key={ds.name} style={{ padding: '8px 0', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-                  <code style={{ backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px', fontSize: '13px', fontWeight: 600 }}>
-                    {ds.name}
-                  </code>
-                  <span style={{ marginLeft: '12px', color: '#64748b' }}>
-                    {ds.table_count} tables
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p style={{ color: '#64748b' }}>Loading datasets...</p>
-          )}
-        </div>
+            <div style={{
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '6px',
+              padding: '16px',
+              marginBottom: '24px'
+            }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
+                Available Datasets
+              </h3>
+              {datasets && (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {datasets.datasets.map(ds => (
+                    <li key={ds.name} style={{ padding: '8px 0', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+                      <code style={{ backgroundColor: '#e2e8f0', padding: '2px 8px', borderRadius: '4px', fontSize: '13px', fontWeight: 600 }}>
+                        {ds.name}
+                      </code>
+                      <span style={{ marginLeft: '12px', color: '#64748b' }}>
+                        {ds.table_count} tables
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-        {datasetInfo && (
-          <div style={{
-            backgroundColor: '#fff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            padding: '16px'
-          }}>
-            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
-              Dataset Distribution
-            </h3>
-            <Plot
-              plotly={Plotly}
-              data={[
-                {
-                  x: datasetInfo.datasets.map(d => d.name),
-                  y: datasetInfo.datasets.map(d => d.table_count),
-                  type: 'bar',
-                  marker: { color: '#3b82f6' },
-                },
-              ]}
-              layout={{
-                width: 800,
-                height: 300,
-                margin: { t: 20, r: 20, b: 80, l: 40 },
-                xaxis: { title: 'Dataset', tickangle: -45 },
-                yaxis: { title: 'Number of Tables' },
-                plot_bgcolor: '#f8fafc',
-                paper_bgcolor: '#fff',
-              }}
-              config={{ displayModeBar: false }}
-            />
-          </div>
+            {datasets && (
+              <div style={{
+                backgroundColor: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                padding: '16px'
+              }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#1e293b', marginBottom: '12px' }}>
+                  Dataset Distribution
+                </h3>
+                <Plot
+                  plotly={Plotly}
+                  data={[
+                    {
+                      x: datasets.datasets.map(d => d.name),
+                      y: datasets.datasets.map(d => d.table_count),
+                      type: 'bar',
+                      marker: { color: '#3b82f6' },
+                    },
+                  ]}
+                  layout={{
+                    width: 800,
+                    height: 300,
+                    margin: { t: 20, r: 20, b: 80, l: 40 },
+                    xaxis: { title: 'Dataset', tickangle: -45 },
+                    yaxis: { title: 'Number of Tables' },
+                    plot_bgcolor: '#f8fafc',
+                    paper_bgcolor: '#fff',
+                  }}
+                  config={{ displayModeBar: false }}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

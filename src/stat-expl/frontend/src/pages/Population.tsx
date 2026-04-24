@@ -1,68 +1,37 @@
 import { useState, useEffect } from 'react'
 import { useCohort } from '../context/CohortContext'
+import { useData } from '../context/DataContext'
 import Plot from 'react-plotly.js'
 import Plotly from 'plotly.js-dist-min'
 
-interface Demographics {
-  total_participants: number
-  mean_age: number
-  min_age: number
-  max_age: number
-  male_count: number
-  female_count: number
-  age_distribution: { age_group: string; count: number }[]
-  enrollment_start: string
-  enrollment_end: string
-}
-
-interface Condition {
-  name: string
-  code: string
-  count: number
-  percentage: number
-}
-
-interface TimelinePoint {
-  month: string
-  count: number
-}
-
 export default function Population() {
   const { filters, setFilters } = useCohort()
-  const [demographics, setDemographics] = useState<Demographics | null>(null)
-  const [conditions, setConditions] = useState<Condition[]>([])
-  const [timeline, setTimeline] = useState<TimelinePoint[]>([])
+  const { demographics, diagnoses, timeline, isLoading } = useData()
   const [cohortSize, setCohortSize] = useState<number | null>(null)
 
   useEffect(() => {
-    fetch('/dashboard/api/demographics')
-      .then(r => r.json())
-      .then(d => setDemographics(d))
-      .catch(e => console.error('Demographics fetch failed:', e))
+    // Debounce cohort size calculation (only refetch when filters change)
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams()
+      if (filters.ageMin) params.append('age_min', filters.ageMin.toString())
+      if (filters.ageMax) params.append('age_max', filters.ageMax.toString())
+      if (filters.sex && filters.sex !== 'all') params.append('sex', filters.sex)
 
-    fetch('/dashboard/api/diagnoses')
-      .then(r => r.json())
-      .then(d => setConditions(d.conditions))
-      .catch(e => console.error('Diagnoses fetch failed:', e))
+      fetch(`/dashboard/api/cohort?${params}`)
+        .then(r => r.json())
+        .then(d => setCohortSize(d.cohort_size))
+        .catch(e => console.error('Cohort fetch failed:', e))
+    }, 300) // 300ms debounce
 
-    fetch('/dashboard/api/enrollment-timeline')
-      .then(r => r.json())
-      .then(d => setTimeline(d.timeline))
-      .catch(e => console.error('Timeline fetch failed:', e))
-  }, [])
-
-  useEffect(() => {
-    // Fetch server-side filtered cohort size
-    const params = new URLSearchParams()
-    if (filters.ageMin) params.append('age_min', filters.ageMin.toString())
-    if (filters.ageMax) params.append('age_max', filters.ageMax.toString())
-    if (filters.sex && filters.sex !== 'all') params.append('sex', filters.sex)
-
-    fetch(`/dashboard/api/cohort?${params}`)
-      .then(r => r.json())
-      .then(d => setCohortSize(d.cohort_size))
-      .catch(e => console.error('Cohort fetch failed:', e))
+    return () => clearTimeout(timer)
   }, [filters])
+
+  // Set initial cohort size from demographics
+  useEffect(() => {
+    if (demographics && cohortSize === null) {
+      setCohortSize(demographics.total_participants)
+    }
+  }, [demographics, cohortSize])
 
   return (
     <div>
@@ -154,7 +123,9 @@ export default function Population() {
           </div>
         </div>
 
-        {demographics ? (
+        {isLoading ? (
+          <p style={{ color: '#64748b' }}>Loading population data...</p>
+        ) : demographics ? (
           <>
             {/* Demographics Overview */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px', marginBottom: '24px' }}>
@@ -272,7 +243,7 @@ export default function Population() {
             </div>
 
             {/* Condition Prevalence */}
-            {conditions.length > 0 && (
+            {diagnoses.length > 0 && (
               <div style={{
                 backgroundColor: '#fff',
                 border: '1px solid #e2e8f0',
@@ -283,7 +254,7 @@ export default function Population() {
                   Common Conditions (Derived History)
                 </h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-                  {conditions.slice(0, 6).map(cond => (
+                  {diagnoses.slice(0, 6).map(cond => (
                     <div key={cond.code} style={{
                       backgroundColor: '#f8fafc',
                       border: '1px solid #e2e8f0',
@@ -303,11 +274,11 @@ export default function Population() {
                   plotly={Plotly}
                   data={[
                     {
-                      x: conditions.map(c => c.code),
-                      y: conditions.map(c => c.percentage),
+                      x: diagnoses.map(c => c.code),
+                      y: diagnoses.map(c => c.percentage),
                       type: 'bar',
                       marker: { color: '#8b5cf6' },
-                      text: conditions.map(c => `${c.percentage}%`),
+                      text: diagnoses.map(c => `${c.percentage}%`),
                       textposition: 'outside',
                     },
                   ]}

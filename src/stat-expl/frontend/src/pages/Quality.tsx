@@ -1,26 +1,11 @@
-import { useState, useEffect } from 'react'
 import { useCohort } from '../context/CohortContext'
+import { useData } from '../context/DataContext'
 import Plot from 'react-plotly.js'
 import Plotly from 'plotly.js-dist-min'
 
-interface QualityData {
-  overall_score: number
-  issues: { issue: string; severity: string; affected: number; percentage: number }[]
-  high_severity_count: number
-  medium_severity_count: number
-  low_severity_count: number
-}
-
 export default function Quality() {
   const { addFlag } = useCohort()
-  const [qualityData, setQualityData] = useState<QualityData | null>(null)
-
-  useEffect(() => {
-    fetch('/dashboard/api/quality')
-      .then(r => r.json())
-      .then(d => setQualityData(d))
-      .catch(e => console.error('Quality fetch failed:', e))
-  }, [])
+  const { quality: qualityData, isLoading } = useData()
 
   const severityColor = (severity: string) => {
     switch (severity) {
@@ -52,7 +37,9 @@ export default function Quality() {
           Missingness patterns, outliers, duplicates, and data integrity checks
         </p>
 
-        {qualityData ? (
+        {isLoading ? (
+          <p style={{ color: '#64748b' }}>Loading quality data...</p>
+        ) : qualityData ? (
           <>
             {/* Quality Score */}
             <div style={{

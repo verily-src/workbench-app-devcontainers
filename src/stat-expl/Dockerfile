@@ -29,8 +29,8 @@ RUN pip install --no-cache-dir fastapi uvicorn
 # Copy built frontend from stage 1
 COPY --from=frontend-build /fe/dist /app/dist
 
-# Copy public docs (schema.json) into dist so StaticFiles serves it
-COPY public/docs /app/dist/docs
+# Copy public docs (schema.json) from frontend-build stage into dist
+COPY --from=frontend-build /fe/public/docs /app/dist/docs
 
 # Copy server script
 COPY server.py /app/server.py

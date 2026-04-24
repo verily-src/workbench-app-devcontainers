@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
+import Plotly from 'plotly.js-dist-min'
 
 function App() {
   const [health, setHealth] = useState<any>(null)
@@ -25,6 +26,7 @@ function App() {
       <div style={{ background: '#fff', padding: '12px', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
         <strong>Test chart (Plotly):</strong>
         <Plot
+          plotly={Plotly}
           data={[
             {
               x: [1, 2, 3, 4, 5],

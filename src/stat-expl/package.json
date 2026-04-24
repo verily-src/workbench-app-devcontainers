@@ -4,22 +4,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "plotly.js-dist-min": "^2.35.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "plotly.js": "^2.27.0",
-    "react-plotly.js": "^2.6.0",
-    "buffer": "^6.0.3",
-    "stream-browserify": "^3.0.0",
-    "util": "^0.12.5"
+    "react-plotly.js": "^2.6.0"
   },
   "devDependencies": {
+    "@types/plotly.js": "^2.12.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.0.0",
     "vite": "^5.0.0"
   }
 }

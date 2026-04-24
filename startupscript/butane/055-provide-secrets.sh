@@ -92,7 +92,6 @@ WORKSPACE_ID="$(curl_with_auth TOKEN -s -f \
   "${WSM_URL}/api/workspaces/v1/workspaceByUserFacingId/${WORKSPACE_UFID}" \
   | jq -r '.id')"
 readonly WORKSPACE_ID
-
 if [[ -z "${WORKSPACE_ID}" || "${WORKSPACE_ID}" == "null" ]]; then
   >&2 echo "ERROR: Failed to resolve workspace UUID for '${WORKSPACE_UFID}'."
   exit 1

@@ -46,14 +46,11 @@ function retrieve_secret() {
   challenge_request="$(jq -n --arg appResourceId "${app_resource_id}" \
     '{"identifier": {"appResourceId": $appResourceId}}')"
 
-  local challenge_response
-  challenge_response="$(curl_with_auth "${token_var}" -s -f -X POST \
+  local nonce
+  nonce="$(curl_with_auth "${token_var}" -s -f -X POST \
     -H "Content-Type: application/json" \
     "${wsm_url}/api/workspaces/v1/${secret_workspace_id}/secrets/${secret_resource_id}/challenge" \
-    -d "${challenge_request}")"
-
-  local nonce
-  nonce="$(echo "${challenge_response}" | jq -r '.nonce')"
+    -d "${challenge_request}" | jq -r '.nonce')"
 
   if [[ -z "${nonce}" || "${nonce}" == "null" ]]; then
     >&2 echo "ERROR: Failed to get challenge nonce for secret ${secret_resource_id}."
@@ -79,14 +76,11 @@ function retrieve_secret() {
     trap 'set -o xtrace' RETURN
   fi
 
-  local read_response
-  read_response="$(curl_with_auth "${token_var}" -s -f -X POST \
+  local secret_value_b64
+  secret_value_b64="$(curl_with_auth "${token_var}" -s -f -X POST \
     -H "Content-Type: application/json" \
     "${wsm_url}/api/workspaces/v1/${secret_workspace_id}/secrets/${secret_resource_id}/read" \
-    -d "${read_request}")"
-
-  local secret_value_b64
-  secret_value_b64="$(echo "${read_response}" | jq -r '.base64EncodedSecretValue')"
+    -d "${read_request}" | jq -r '.base64EncodedSecretValue')"
 
   if [[ -z "${secret_value_b64}" || "${secret_value_b64}" == "null" ]]; then
     >&2 echo "ERROR: Failed to read secret ${secret_resource_id}."

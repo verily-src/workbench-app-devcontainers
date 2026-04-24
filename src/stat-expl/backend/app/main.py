@@ -630,6 +630,38 @@ def get_top_medications(limit: int = 20):
     medications = [{"drug_class": row.drug_class, "patient_count": row.patient_count} for row in results]
     return {"medications": medications, "total_patients": 2502}
 
+@app.get("/dashboard/api/population/medication-breakdown")
+def get_medication_breakdown(drug_class: str):
+    """Get breakdown of specific medications within a drug class"""
+    query = f"""
+    WITH med_classes AS (
+        SELECT
+            SUBJID,
+            PrefTerm,
+            SPLIT(Level1_Name, ' || ') as classes
+        FROM `{DATA_PROJECT}.crf.CM`
+        WHERE Level1_Name IS NOT NULL AND PrefTerm IS NOT NULL
+    ),
+    expanded AS (
+        SELECT
+            SUBJID,
+            PrefTerm,
+            class_name
+        FROM med_classes, UNNEST(classes) as class_name
+        WHERE class_name = '{drug_class}'
+    )
+    SELECT
+        PrefTerm as medication,
+        COUNT(DISTINCT SUBJID) as patient_count
+    FROM expanded
+    GROUP BY PrefTerm
+    ORDER BY patient_count DESC
+    LIMIT 20
+    """
+    results = bq_client.query(query).result()
+    medications = [{"name": row.medication, "patient_count": row.patient_count} for row in results]
+    return {"drug_class": drug_class, "medications": medications}
+
 @app.get("/dashboard/api/population/demographics")
 def get_population_demographics():
     """Get comprehensive demographics: age, sex, race, ethnicity, site"""
@@ -686,14 +718,54 @@ def get_population_demographics():
 @app.get("/dashboard/api/population/search")
 def search_population(query: str):
     """Search for patients by clinical concept and return filtered demographics"""
-    search_term = f"%{query.upper().replace(' ', '_')}%"
+
+    # Clinical concept mapping (maps user queries to actual MHTERM values)
+    concept_map = {
+        "heart failure": ["ARRHYTHMIA", "HIGH_BLOOD_PRESSURE_HYPERTENSION"],
+        "diabetes": ["DIABETES_TYPE_2", "DIABETES_TYPE_1"],
+        "hypertension": ["HIGH_BLOOD_PRESSURE_HYPERTENSION"],
+        "high blood pressure": ["HIGH_BLOOD_PRESSURE_HYPERTENSION"],
+        "depression": ["MAJOR_DEPRESSIVE_DISORDER"],
+        "anxiety": ["GENERALIZED_ANXIETY_DISORDER"],
+        "asthma": ["ASTHMA"],
+        "kidney": ["KIDNEY_OR_BLADDER_STONES"],
+        "arthritis": ["OSTEOARTHRITIS"],
+        "sleep": ["SLEEP_APNEA"],
+        "migraine": ["MIGRAINE_HEADACHES"],
+        "thyroid": ["HYPOTHYROIDISM"],
+        "cholesterol": ["HYPERCHOLESTEROLEMIA"]
+    }
+
+    # Find matching terms
+    query_lower = query.lower()
+    matched_terms = []
+
+    # Check if query matches a concept
+    for concept, terms in concept_map.items():
+        if concept in query_lower:
+            matched_terms.extend(terms)
+
+    # If no concept match, try fuzzy match on MHTERM directly
+    if not matched_terms:
+        search_term = f"%{query.upper().replace(' ', '_')}%"
+    else:
+        # Create OR clause for matched terms
+        search_term = None
 
     # Search in diagnoses
-    dx_query = f"""
-    SELECT DISTINCT SUBJID
-    FROM `{DATA_PROJECT}.crf.MH`
-    WHERE UPPER(MHTERM) LIKE '{search_term}' AND MHYN = 'Yes'
-    """
+    if matched_terms:
+        terms_list = ','.join([f"'{term}'" for term in matched_terms])
+        dx_query = f"""
+        SELECT DISTINCT SUBJID
+        FROM `{DATA_PROJECT}.crf.MH`
+        WHERE MHTERM IN ({terms_list}) AND MHYN = 'Yes'
+        """
+    else:
+        dx_query = f"""
+        SELECT DISTINCT SUBJID
+        FROM `{DATA_PROJECT}.crf.MH`
+        WHERE UPPER(MHTERM) LIKE '{search_term}' AND MHYN = 'Yes'
+        """
 
     # Get matching patient IDs
     dx_results = list(bq_client.query(dx_query).result())
@@ -703,10 +775,9 @@ def search_population(query: str):
         return {
             "matched_patients": 0,
             "total_patients": 2502,
+            "search_query": query,
             "age_histogram": [],
-            "sex": [],
-            "top_diagnoses": [],
-            "top_medications": []
+            "sex": []
         }
 
     # Create patient list for filtering
@@ -991,23 +1062,43 @@ def search_variables(query: str):
 
     return {"matched_variables": list(set(matched_vars)), "search_query": query}
 
+@app.get("/dashboard/api/passport/cumulative-enrollment")
+def get_cumulative_enrollment():
+    """Get cumulative enrollment over time"""
+    query = f"""
+    WITH monthly_enrollment AS (
+        SELECT
+            FORMAT_DATE('%Y-%m', enrollment_date) as month,
+            COUNT(*) as new_enrollments
+        FROM `{DATA_PROJECT}.analysis.ENRDT`
+        WHERE enrollment_date IS NOT NULL
+        GROUP BY month
+        ORDER BY month
+    )
+    SELECT
+        month,
+        SUM(new_enrollments) OVER (ORDER BY month) as cumulative_count
+    FROM monthly_enrollment
+    ORDER BY month
+    """
+    results = bq_client.query(query).result()
+    timeline = [{"month": row.month, "cumulative_count": row.cumulative_count} for row in results]
+    return {"timeline": timeline}
+
 @app.get("/dashboard/api/passport/filter")
 def filter_passport_metrics(
     enroll_start: str = None,
     enroll_end: str = None,
-    min_followup_days: int = None,
-    complete_coverage_only: bool = False
+    min_completeness_pct: int = None
 ):
-    """Filter passport metrics by enrollment date range, minimum follow-up, and coverage"""
+    """Filter passport metrics by enrollment date range and minimum data completeness percentage"""
 
-    # Build WHERE clause
+    # Build WHERE clause for enrollment
     conditions = ["1=1"]
-
     if enroll_start:
         conditions.append(f"e.enrollment_date >= '{enroll_start}'")
     if enroll_end:
         conditions.append(f"e.enrollment_date <= '{enroll_end}'")
-
     where_clause = " AND ".join(conditions)
 
     # Get base patient list filtered by enrollment
@@ -1022,29 +1113,40 @@ def filter_passport_metrics(
 
     if not patient_ids:
         return {
-            "total_participants": 0,
+            "total_participants": 2502,
             "filtered_participants": 0,
-            "complete_coverage_participants": 0,
             "domains": []
         }
 
-    # Apply minimum follow-up filter if specified
-    if min_followup_days is not None and min_followup_days > 0:
+    # Apply completeness filter if specified
+    # Completeness = % of 6 domains the participant has data in
+    if min_completeness_pct is not None and min_completeness_pct > 0:
+        min_domains = max(1, int(6 * min_completeness_pct / 100))  # Convert % to number of domains (minimum 1)
         patient_list = ','.join([f"'{p}'" for p in patient_ids])
-        followup_query = f"""
-        SELECT DISTINCT SUBJID
-        FROM `{DATA_PROJECT}.sensordata.STEP`
-        WHERE SUBJID IN ({patient_list})
-        AND study_day >= {min_followup_days}
+        completeness_query = f"""
+        WITH patient_domains AS (
+            SELECT
+                d.SUBJID,
+                (IF(EXISTS(SELECT 1 FROM `{DATA_PROJECT}.crf.VS` WHERE SUBJID = d.SUBJID), 1, 0) +
+                 IF(EXISTS(SELECT 1 FROM `{DATA_PROJECT}.externallab.CLABS` WHERE SUBJID = d.SUBJID), 1, 0) +
+                 IF(EXISTS(SELECT 1 FROM `{DATA_PROJECT}.crf.CM` WHERE SUBJID = d.SUBJID), 1, 0) +
+                 IF(EXISTS(SELECT 1 FROM `{DATA_PROJECT}.crf.MH` WHERE SUBJID = d.SUBJID AND MHYN IS NOT NULL), 1, 0) +
+                 IF(EXISTS(SELECT 1 FROM `{DATA_PROJECT}.sensordata.STEP` WHERE SUBJID = d.SUBJID), 1, 0) +
+                 IF(EXISTS(SELECT 1 FROM `{DATA_PROJECT}.appsurveys.PHQ9A` WHERE SUBJID = d.SUBJID), 1, 0)) as domain_count
+            FROM `{DATA_PROJECT}.screener.DM` d
+            WHERE d.SUBJID IN ({patient_list})
+        )
+        SELECT SUBJID
+        FROM patient_domains
+        WHERE domain_count >= {min_domains}
         """
-        followup_results = list(bq_client.query(followup_query).result())
-        patient_ids = [row.SUBJID for row in followup_results]
+        completeness_results = list(bq_client.query(completeness_query).result())
+        patient_ids = [row.SUBJID for row in completeness_results]
 
     if not patient_ids:
         return {
             "total_participants": 2502,
             "filtered_participants": 0,
-            "complete_coverage_participants": 0,
             "domains": []
         }
 
@@ -1065,49 +1167,9 @@ def filter_passport_metrics(
     sensor_count = list(bq_client.query(sensor_query).result())[0].count
     pro_count = list(bq_client.query(pro_query).result())[0].count
 
-    # Find patients with complete coverage (present in all 6 domains)
-    if complete_coverage_only:
-        complete_coverage_query = f"""
-        WITH domain_coverage AS (
-            SELECT DISTINCT SUBJID, 1 as has_ehr FROM `{DATA_PROJECT}.crf.VS` WHERE SUBJID IN ({patient_list})
-        ),
-        labs_coverage AS (
-            SELECT DISTINCT SUBJID, 1 as has_labs FROM `{DATA_PROJECT}.externallab.CLABS` WHERE SUBJID IN ({patient_list})
-        ),
-        meds_coverage AS (
-            SELECT DISTINCT SUBJID, 1 as has_meds FROM `{DATA_PROJECT}.crf.CM` WHERE SUBJID IN ({patient_list})
-        ),
-        dx_coverage AS (
-            SELECT DISTINCT SUBJID, 1 as has_dx FROM `{DATA_PROJECT}.crf.MH` WHERE SUBJID IN ({patient_list}) AND MHYN IS NOT NULL
-        ),
-        sensor_coverage AS (
-            SELECT DISTINCT SUBJID, 1 as has_sensor FROM `{DATA_PROJECT}.sensordata.STEP` WHERE SUBJID IN ({patient_list})
-        ),
-        pro_coverage AS (
-            SELECT DISTINCT SUBJID, 1 as has_pro FROM `{DATA_PROJECT}.appsurveys.PHQ9A` WHERE SUBJID IN ({patient_list})
-        )
-        SELECT COUNT(DISTINCT d.SUBJID) as count
-        FROM `{DATA_PROJECT}.screener.DM` d
-        JOIN domain_coverage dc ON d.SUBJID = dc.SUBJID
-        JOIN labs_coverage lc ON d.SUBJID = lc.SUBJID
-        JOIN meds_coverage mc ON d.SUBJID = mc.SUBJID
-        JOIN dx_coverage dxc ON d.SUBJID = dxc.SUBJID
-        JOIN sensor_coverage sc ON d.SUBJID = sc.SUBJID
-        JOIN pro_coverage pc ON d.SUBJID = pc.SUBJID
-        WHERE d.SUBJID IN ({patient_list})
-        """
-        complete_count = list(bq_client.query(complete_coverage_query).result())[0].count
-    else:
-        complete_count = 0
-
-    # Return appropriate count based on toggle
-    display_count = complete_count if complete_coverage_only else len(patient_ids)
-
     return {
         "total_participants": 2502,
         "filtered_participants": len(patient_ids),
-        "complete_coverage_participants": complete_count,
-        "display_count": display_count,
         "domains": [
             {"name": "EHR", "participants": ehr_count, "coverage_pct": round(100.0 * ehr_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
             {"name": "Labs", "participants": labs_count, "coverage_pct": round(100.0 * labs_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},

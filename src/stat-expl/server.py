@@ -7,7 +7,7 @@ app = FastAPI(title="stat-expl-minimal")
 
 @app.get("/dashboard/api/health")
 def health():
-    return {"status": "ok", "app": "stat-expl-minimal", "version": "0.0.3"}
+    return {"status": "ok", "app": "stat-expl-minimal", "version": "0.0.4"}
 
 # Mount Vite build at root
 _DIST_DIR = Path(__file__).parent / "dist"

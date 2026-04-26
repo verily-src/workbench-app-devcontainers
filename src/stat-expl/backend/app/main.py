@@ -1,8 +1,12 @@
 """Dataset Statistical Explorer - FastAPI server"""
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from google.cloud import bigquery
+from .config import get_config
+from .governance import ComplianceValidator, EvidenceCollector
+from .export import CohortExporter, ExportRequest
 
 app = FastAPI(
     title="Dataset Statistical Explorer",
@@ -10,9 +14,25 @@ app = FastAPI(
     description="5-page biostatistics workspace for dataset fitness assessment"
 )
 
-# BigQuery client
-bq_client = bigquery.Client(project="wb-rapid-apricot-2196")
-DATA_PROJECT = "wb-spotless-eggplant-4340"
+# Initialize config and BigQuery client
+config = get_config()
+bq_client = bigquery.Client(project=config.app_project)
+
+# Get discovered BigQuery datasets
+bq_datasets = config.discovery.get_bigquery_datasets()
+if not bq_datasets:
+    raise RuntimeError("No BigQuery datasets found in Workbench environment. "
+                      "Ensure WORKBENCH_* environment variables are set.")
+
+# Use first discovered dataset as primary data project
+# Format: project.dataset -> extract project
+DATA_PROJECT = bq_datasets[0].path.split('.')[0] if '.' in bq_datasets[0].path else config.app_project
+
+# Initialize governance and export components
+evidence_dir = Path.home() / ".claude" / "evidence"
+compliance_validator = ComplianceValidator(bq_client, DATA_PROJECT)
+evidence_collector = EvidenceCollector(evidence_dir)
+cohort_exporter = CohortExporter(config, bq_client, DATA_PROJECT)
 
 @app.get("/dashboard/api/health")
 def health():
@@ -1542,6 +1562,148 @@ def filter_passport_metrics(
             {"name": "Diagnoses", "participants": dx_count, "coverage_pct": round(100.0 * dx_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
             {"name": "Sensor", "participants": sensor_count, "coverage_pct": round(100.0 * sensor_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0},
             {"name": "PRO", "participants": pro_count, "coverage_pct": round(100.0 * pro_count / len(patient_ids), 1) if len(patient_ids) > 0 else 0}
+        ]
+    }
+
+# === GOVERNANCE & EXPORT ENDPOINTS ===
+
+@app.get("/dashboard/api/governance/config")
+def get_governance_config():
+    """Get current governance configuration"""
+    return {
+        "enable_exports": config.enable_exports,
+        "require_validation": config.require_validation,
+        "run_compliance_checks": config.run_compliance_checks,
+        "compliance_checks": config.compliance_checks,
+        "available_buckets": [
+            {
+                "name": r.name,
+                "path": r.path,
+                "is_controlled": r.is_controlled
+            }
+            for r in config.discovery.get_controlled_buckets()
+        ]
+    }
+
+@app.post("/dashboard/api/governance/validate-cohort")
+async def validate_cohort(cohort_type: str, patient_ids: list):
+    """Run compliance checks on a cohort before export"""
+    if not patient_ids:
+        raise HTTPException(status_code=400, detail="Empty cohort")
+
+    check_results = compliance_validator.run_all_checks(
+        patient_ids=patient_ids,
+        cohort_type=cohort_type,
+        enabled_checks=config.compliance_checks
+    )
+
+    all_passed = all(
+        result.passed or result.severity != "error"
+        for result in check_results
+    )
+
+    return {
+        "cohort_type": cohort_type,
+        "cohort_size": len(patient_ids),
+        "all_checks_passed": all_passed,
+        "checks": [
+            {
+                "check_name": r.check_name,
+                "passed": r.passed,
+                "severity": r.severity,
+                "message": r.message,
+                "details": r.details
+            }
+            for r in check_results
+        ]
+    }
+
+@app.post("/dashboard/api/export/cohort")
+async def export_cohort_with_governance(
+    cohort_type: str,
+    patient_ids: list,
+    selection_criteria: dict,
+    sql_query: str,
+    data_sources: list,
+    risk_tier: str = "standard",
+    validated_by: str = None
+):
+    """Export cohort with full governance trail"""
+    if not config.enable_exports:
+        raise HTTPException(status_code=403, detail="Exports are disabled")
+
+    request = ExportRequest(
+        cohort_type=cohort_type,
+        patient_ids=patient_ids,
+        selection_criteria=selection_criteria,
+        sql_query=sql_query,
+        data_sources=data_sources,
+        risk_tier=risk_tier,
+        require_validation=config.require_validation,
+        validated_by=validated_by
+    )
+
+    result = cohort_exporter.export_cohort_csv(request)
+
+    if not result.success:
+        raise HTTPException(status_code=400, detail={
+            "message": result.message,
+            "errors": result.errors
+        })
+
+    return {
+        "success": result.success,
+        "export_path": result.export_path,
+        "governance_report_path": result.governance_report_path,
+        "message": result.message,
+        "validation_status": result.validation_status,
+        "compliance_passed": result.compliance_passed
+    }
+
+@app.get("/dashboard/api/export/list")
+def list_exports(cohort_type: str = None):
+    """List all cohort exports"""
+    exports = cohort_exporter.list_exports(cohort_type=cohort_type)
+    return {"exports": exports, "total": len(exports)}
+
+@app.get("/dashboard/api/governance/reports")
+def list_governance_reports(cohort_type: str = None):
+    """List all governance reports"""
+    reports = evidence_collector.list_reports(cohort_type=cohort_type)
+    return {"reports": reports, "total": len(reports)}
+
+@app.get("/dashboard/api/governance/report/{report_id}")
+def get_governance_report(report_id: str):
+    """Get a specific governance report"""
+    report = evidence_collector.get_report(report_id)
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    return report.model_dump(mode='json')
+
+@app.get("/dashboard/api/resources")
+def list_workbench_resources():
+    """List all discovered Workbench resources"""
+    resources = []
+    for name, resource in config.discovery.resources.items():
+        resources.append({
+            "name": resource.name,
+            "type": resource.type,
+            "path": resource.path,
+            "is_controlled": resource.is_controlled,
+            "mounted_path": str(resource.mounted_path) if resource.mounted_path else None
+        })
+
+    return {
+        "resources": resources,
+        "bigquery_datasets": [
+            {"name": r.name, "path": r.path}
+            for r in config.discovery.get_bigquery_datasets()
+        ],
+        "controlled_buckets": [
+            {"name": r.name, "path": r.path}
+            for r in config.discovery.get_controlled_buckets()
         ]
     }
 

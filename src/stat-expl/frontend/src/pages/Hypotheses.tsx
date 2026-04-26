@@ -39,6 +39,21 @@ interface CohortData {
   patient_ids: string[]
 }
 
+interface ComplianceCheck {
+  check_name: string
+  passed: boolean
+  severity: string
+  message: string
+  details: any
+}
+
+interface ValidationState {
+  checks: ComplianceCheck[]
+  all_passed: boolean
+  validator_name: string
+  is_approved: boolean
+}
+
 export default function Hypotheses() {
   const [diseases, setDiseases] = useState<Disease[]>([])
   const [medications, setMedications] = useState<Medication[]>([])
@@ -49,6 +64,11 @@ export default function Hypotheses() {
   const [selectedHypothesis, setSelectedHypothesis] = useState<Hypothesis | null>(null)
   const [cohortData, setCohortData] = useState<CohortData | null>(null)
   const [isBuildingCohort, setIsBuildingCohort] = useState(false)
+  const [validationState, setValidationState] = useState<ValidationState | null>(null)
+  const [isValidating, setIsValidating] = useState(false)
+  const [validatorName, setValidatorName] = useState('')
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportResult, setExportResult] = useState<any>(null)
 
   useEffect(() => {
     fetch('/dashboard/api/hypotheses/rwe-opportunities')
@@ -70,12 +90,16 @@ export default function Hypotheses() {
     setSelectedHypothesis(hypothesis)
     setIsBuildingCohort(true)
     setCohortData(null)
+    setValidationState(null)
+    setExportResult(null)
 
     fetch(`/dashboard/api/hypotheses/build-cohort?cohort_type=${hypothesis.cohort_type}`)
       .then(r => r.json())
       .then(data => {
         setCohortData(data)
         setIsBuildingCohort(false)
+        // Automatically run validation checks
+        runValidationChecks(hypothesis.cohort_type, data.patient_ids)
       })
       .catch(err => {
         console.error('Failed to build cohort:', err)
@@ -83,9 +107,79 @@ export default function Hypotheses() {
       })
   }
 
-  const exportCohort = () => {
-    if (!selectedHypothesis) return
-    window.open(`/dashboard/api/hypotheses/export-cohort?cohort_type=${selectedHypothesis.cohort_type}`, '_blank')
+  const runValidationChecks = (cohortType: string, patientIds: string[]) => {
+    setIsValidating(true)
+
+    fetch('/dashboard/api/governance/validate-cohort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cohort_type: cohortType,
+        patient_ids: patientIds
+      })
+    })
+      .then(r => r.json())
+      .then(data => {
+        setValidationState({
+          checks: data.checks,
+          all_passed: data.all_checks_passed,
+          validator_name: '',
+          is_approved: false
+        })
+        setIsValidating(false)
+      })
+      .catch(err => {
+        console.error('Failed to run validation checks:', err)
+        setIsValidating(false)
+      })
+  }
+
+  const approveExport = () => {
+    if (!validatorName.trim()) {
+      alert('Please enter your name to approve the export')
+      return
+    }
+    setValidationState(prev => prev ? { ...prev, validator_name: validatorName, is_approved: true } : null)
+  }
+
+  const exportCohortWithGovernance = () => {
+    if (!selectedHypothesis || !cohortData || !validationState?.is_approved) {
+      alert('Cohort must be validated and approved before export')
+      return
+    }
+
+    setIsExporting(true)
+
+    const selectionCriteria = {
+      cohort_type: selectedHypothesis.cohort_type,
+      hypothesis_title: selectedHypothesis.title
+    }
+
+    const sqlQuery = `/* Cohort: ${selectedHypothesis.cohort_type} - ${selectedHypothesis.title} */`
+
+    fetch('/dashboard/api/export/cohort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cohort_type: selectedHypothesis.cohort_type,
+        patient_ids: cohortData.patient_ids,
+        selection_criteria: selectionCriteria,
+        sql_query: sqlQuery,
+        data_sources: ['screener.DM', 'analysis.ENRDT'],
+        risk_tier: 'standard',
+        validated_by: validationState.validator_name
+      })
+    })
+      .then(r => r.json())
+      .then(data => {
+        setExportResult(data)
+        setIsExporting(false)
+      })
+      .catch(err => {
+        console.error('Export failed:', err)
+        alert('Export failed: ' + err.message)
+        setIsExporting(false)
+      })
   }
 
   if (isLoading) {
@@ -290,23 +384,181 @@ export default function Hypotheses() {
                       </div>
                     </div>
 
-                    {/* Export Button */}
-                    <button
-                      onClick={exportCohort}
-                      style={{
-                        padding: '12px 24px',
-                        backgroundColor: '#087A6A',
-                        color: '#fff',
-                        border: 'none',
+                    {/* Validation Gate */}
+                    {isValidating ? (
+                      <div style={{
+                        padding: '20px',
+                        backgroundColor: '#f5f2ea',
                         borderRadius: '6px',
-                        fontSize: '16px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        width: '100%'
-                      }}
-                    >
-                      Export Cohort as CSV
-                    </button>
+                        fontSize: '14px',
+                        color: 'rgba(26, 26, 26, 0.6)',
+                        fontStyle: 'italic',
+                        textAlign: 'center'
+                      }}>
+                        Running compliance checks...
+                      </div>
+                    ) : validationState ? (
+                      <div style={{
+                        marginBottom: '24px',
+                        padding: '20px',
+                        backgroundColor: validationState.all_passed ? 'rgba(8, 122, 106, 0.05)' : 'rgba(211, 92, 101, 0.05)',
+                        border: validationState.all_passed ? '1px solid rgba(8, 122, 106, 0.3)' : '1px solid rgba(211, 92, 101, 0.3)',
+                        borderRadius: '8px'
+                      }}>
+                        <h4 style={{
+                          fontSize: '16px',
+                          fontWeight: 600,
+                          color: '#1a1a1a',
+                          marginBottom: '16px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          <span style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '50%',
+                            backgroundColor: validationState.all_passed ? '#087A6A' : '#D35C65',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '16px',
+                            fontWeight: 'bold'
+                          }}>
+                            {validationState.all_passed ? '✓' : '!'}
+                          </span>
+                          Compliance Validation
+                        </h4>
+
+                        <div style={{ marginBottom: '20px' }}>
+                          {validationState.checks.map((check, i) => (
+                            <ComplianceCheckCard key={i} check={check} />
+                          ))}
+                        </div>
+
+                        {validationState.all_passed && !validationState.is_approved && (
+                          <div style={{
+                            padding: '16px',
+                            backgroundColor: '#fff',
+                            borderRadius: '6px',
+                            marginBottom: '16px'
+                          }}>
+                            <label style={{
+                              display: 'block',
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              color: '#1a1a1a',
+                              marginBottom: '8px'
+                            }}>
+                              Validator Name (required for export):
+                            </label>
+                            <input
+                              type="text"
+                              value={validatorName}
+                              onChange={(e) => setValidatorName(e.target.value)}
+                              placeholder="Enter your name"
+                              style={{
+                                width: '100%',
+                                padding: '10px',
+                                fontSize: '14px',
+                                border: '1px solid #e9e4d8',
+                                borderRadius: '4px',
+                                marginBottom: '12px'
+                              }}
+                            />
+                            <button
+                              onClick={approveExport}
+                              style={{
+                                padding: '10px 20px',
+                                backgroundColor: '#087A6A',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontSize: '14px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Approve for Export
+                            </button>
+                          </div>
+                        )}
+
+                        {validationState.is_approved && (
+                          <div style={{
+                            padding: '12px',
+                            backgroundColor: 'rgba(8, 122, 106, 0.1)',
+                            borderRadius: '6px',
+                            fontSize: '14px',
+                            color: '#087A6A',
+                            fontWeight: 600
+                          }}>
+                            ✓ Approved by: {validationState.validator_name}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {/* Export Button */}
+                    {validationState?.is_approved ? (
+                      <div>
+                        <button
+                          onClick={exportCohortWithGovernance}
+                          disabled={isExporting}
+                          style={{
+                            padding: '12px 24px',
+                            backgroundColor: isExporting ? '#e9e4d8' : '#087A6A',
+                            color: isExporting ? 'rgba(26, 26, 26, 0.4)' : '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '16px',
+                            fontWeight: 600,
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            width: '100%'
+                          }}
+                        >
+                          {isExporting ? 'Exporting...' : 'Export Cohort with Governance Report'}
+                        </button>
+
+                        {exportResult && (
+                          <div style={{
+                            marginTop: '16px',
+                            padding: '16px',
+                            backgroundColor: exportResult.success ? 'rgba(8, 122, 106, 0.05)' : 'rgba(211, 92, 101, 0.05)',
+                            border: exportResult.success ? '1px solid rgba(8, 122, 106, 0.3)' : '1px solid rgba(211, 92, 101, 0.3)',
+                            borderRadius: '6px'
+                          }}>
+                            <div style={{
+                              fontSize: '14px',
+                              fontWeight: 600,
+                              color: exportResult.success ? '#087A6A' : '#D35C65',
+                              marginBottom: '8px'
+                            }}>
+                              {exportResult.message}
+                            </div>
+                            {exportResult.success && (
+                              <div style={{ fontSize: '12px', color: 'rgba(26, 26, 26, 0.6)' }}>
+                                <div>Export: <code style={{ fontSize: '11px', backgroundColor: '#f5f2ea', padding: '2px 6px', borderRadius: '3px' }}>{exportResult.export_path}</code></div>
+                                <div style={{ marginTop: '4px' }}>Governance Report: <code style={{ fontSize: '11px', backgroundColor: '#f5f2ea', padding: '2px 6px', borderRadius: '3px' }}>{exportResult.governance_report_path}</code></div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '12px',
+                        backgroundColor: '#f5f2ea',
+                        borderRadius: '6px',
+                        fontSize: '14px',
+                        color: 'rgba(26, 26, 26, 0.6)',
+                        textAlign: 'center',
+                        fontStyle: 'italic'
+                      }}>
+                        Complete compliance validation and approval before exporting
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -739,6 +991,86 @@ function DataAvailabilityCard({ domain, data, totalN }: { domain: string; data: 
       }}>
         {data.count.toLocaleString()} of {totalN.toLocaleString()} patients
       </div>
+    </div>
+  )
+}
+
+function ComplianceCheckCard({ check }: { check: ComplianceCheck }) {
+  const severityColors = {
+    error: { bg: 'rgba(211, 92, 101, 0.1)', border: '#D35C65', text: '#D35C65' },
+    warning: { bg: 'rgba(162, 91, 197, 0.1)', border: '#A25BC5', text: '#A25BC5' },
+    info: { bg: 'rgba(8, 122, 106, 0.1)', border: '#087A6A', text: '#087A6A' }
+  }
+
+  const colors = severityColors[check.severity as keyof typeof severityColors] || severityColors.info
+
+  return (
+    <div style={{
+      padding: '12px',
+      backgroundColor: colors.bg,
+      border: `1px solid ${colors.border}`,
+      borderRadius: '6px',
+      marginBottom: '8px'
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '4px'
+      }}>
+        <span style={{
+          width: '18px',
+          height: '18px',
+          borderRadius: '50%',
+          backgroundColor: check.passed ? '#087A6A' : colors.border,
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '12px',
+          fontWeight: 'bold',
+          flexShrink: 0
+        }}>
+          {check.passed ? '✓' : '!'}
+        </span>
+        <div style={{
+          fontSize: '13px',
+          fontWeight: 600,
+          color: '#1a1a1a'
+        }}>
+          {check.check_name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+        </div>
+        <div style={{
+          marginLeft: 'auto',
+          fontSize: '11px',
+          fontWeight: 600,
+          color: colors.text,
+          textTransform: 'uppercase'
+        }}>
+          {check.severity}
+        </div>
+      </div>
+      <div style={{
+        fontSize: '12px',
+        color: 'rgba(26, 26, 26, 0.7)',
+        marginLeft: '26px'
+      }}>
+        {check.message}
+      </div>
+      {check.details && (
+        <div style={{
+          marginTop: '8px',
+          marginLeft: '26px',
+          fontSize: '11px',
+          color: 'rgba(26, 26, 26, 0.6)',
+          fontFamily: 'monospace',
+          backgroundColor: 'rgba(0, 0, 0, 0.03)',
+          padding: '6px 8px',
+          borderRadius: '4px'
+        }}>
+          {JSON.stringify(check.details, null, 2)}
+        </div>
+      )}
     </div>
   )
 }

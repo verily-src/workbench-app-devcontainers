@@ -23,79 +23,68 @@ jobs:
     strategy:
       matrix:
         common_filters:
-          - 
+          -
             - '.github/workflows/test-pr.yaml'
-            - '.github/actions/smoke-test/**'
             - 'startupscript/**'
-            - 'test/**'
+            - 'tests/common/**'
         config:
-          - example:
-              user: jovyan
-            jupyter-template:
-              user: jupyter
+          - example: {}
+            jupyter-template: {}
             r-analysis:
-              user: rstudio
-              workbench_tools: true
-              postgres_client: true
-            r-analysis-aou:
-              user: rstudio
-              workbench_tools: true
-              postgres_client: true
               filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
+            r-analysis-aou:
+              filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
                 - 'src/aou-common/**'
             vscode:
-              user: abc
-              workbench_tools: true
-              postgres_client: true
+              filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
             vscode-docker:
-              user: abc
-              workbench_tools: true
+              filters:
+                - 'features/src/workbench-tools/**'
             workbench-jupyter:
               template: custom-workbench-jupyter-template
-              user: jupyter
               maximize_build_space: true
-              workbench_tools: true
-              postgres_client: true
-              options:
-                containerImage: 'us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter:ov-dev-stable'
               filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
                 - 'src/jupyter-common/**'
             jupyter-aou:
-              user: jupyter
               maximize_build_space: true
-              workbench_tools: true
-              postgres_client: true
               filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
                 - 'src/jupyter-common/**'
                 - 'src/aou-common/**'
             nemo_jupyter:
-              user: jupyter
               maximize_build_space: true
-              workbench_tools: true
-              postgres_client: true
-            nemo_jupyter_aou:
-              user: jupyter
-              maximize_build_space: true
-              workbench_tools: true
-              postgres_client: true
               filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
+            nemo_jupyter_aou:
+              maximize_build_space: true
+              filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
                 - 'src/aou-common/**'
                 - 'src/nemo_jupyter/**'
             workbench-jupyter-parabricks:
-              user: jupyter
               maximize_build_space: true
-              workbench_tools: true
-              postgres_client: true
-            workbench-jupyter-parabricks-aou:
-              user: jupyter
-              maximize_build_space: true
-              workbench_tools: true
-              postgres_client: true
               filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
+            workbench-jupyter-parabricks-aou:
+              maximize_build_space: true
+              filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
-            ubuntu-example:
-              user: vscode
+            ubuntu-example: {}
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:
@@ -115,8 +104,7 @@ jobs:
               | .value as $v
               | .value = $common
               | .value += ["src/" + ($v.template // .key) + "/**"]
-              | .value += if $v.workbench_tools then ["features/src/workbench-tools/**"] else [] end
-              | .value += if $v.postgres_client then ["features/src/postgres-client/**"] else [] end
+              | .value += ["tests/" + ($v.template // .key) + ".sh"]
               | .value += ($v.filters // [])
             ] | from_entries' | yq -P >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -141,11 +129,7 @@ jobs:
                 | select(. != null)
                 | {
                     template: (.template // $t),
-                    user,
                     maximize_build_space: (.maximize_build_space // false),
-                    workbench_tools: (.workbench_tools // false),
-                    postgres_client: (.postgres_client // false),
-                    options: (.options // {}),
                   }
               ]' >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -162,6 +146,9 @@ jobs:
         app: ${{ fromJSON(needs.detect-changes.outputs.apps) }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
 
       # Free up disk space by removing unnecessary files, if needed
       - name: Maximize build disk space
@@ -193,12 +180,17 @@ jobs:
           sudo systemctl restart containerd
           sudo systemctl restart docker
 
-      - name: Smoke test for '${{ matrix.app.template }}'
-        id: smoke_test
-        uses: ./.github/actions/smoke-test
-        with:
-          template: "${{ matrix.app.template }}"
-          user: "${{ matrix.app.user }}"
-          workbench_tools: "${{ matrix.app.workbench_tools }}"
-          postgres_client: "${{ matrix.app.postgres_client }}"
-          options: "${{ toJSON(matrix.app.options) }}"
+      - name: Copy startup scripts
+        run: |
+          cp tests/common/vm-metadata.sh startupscript/gcp/
+          for dir in src/*/; do
+            if [[ -d "${dir}" ]]; then
+              cp -r startupscript "${dir}"
+            fi
+          done
+
+      - name: Build '${{ matrix.app.template }}'
+        run: tests/common/build.sh "${{ matrix.app.template }}"
+
+      - name: Test '${{ matrix.app.template }}'
+        run: tests/common/test.sh "${{ matrix.app.template }}"

@@ -7,17 +7,12 @@ services:
       context: .
       additional_contexts:
         wb-secret-receiver: service:common-secret-receiver-builder
-    entrypoint: ["/wb-secret-receiver", "/init"]
+    entrypoint: ["/wb-secret-receiver", "python3", "-m", "http.server", "8080"]
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/vscode:cached
     ports:
-      - "8443:8443"
-    environment:
-      USER: "abc"
-      DEFAULT_WORKSPACE: "/config"
-      SUDO_PASSWORD: "pwd"
+      - 8080:8080
     networks:
       - app-network
     cap_add:
@@ -29,5 +24,3 @@ services:
 networks:
   app-network:
     external: true
-volumes:
-  work:

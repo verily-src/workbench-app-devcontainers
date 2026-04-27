@@ -78,6 +78,8 @@ Folder: src/templates/<template-name>
 4. Push to GitHub
 5. Deploy from user's repo
 
+> ⚠️ Volume mounts (`volumes: .:/workspace`) are for local dev only. In production, Workbench builds the image — code must be baked in via `COPY` in the Dockerfile. Do not rely on volume mounts for deployed apps.
+
 ---
 
 ## Template Details
@@ -214,6 +216,7 @@ If the user's requirements don't match any template:
 
 ### Add a new endpoint (Flask)
 ```python
+# app.config['STRICT_SLASHES'] = False should already be set in the template — do not remove it
 @app.route("/my-endpoint", methods=["POST"])
 def my_endpoint():
     data = request.get_json()
@@ -242,11 +245,28 @@ RUN R -e "install.packages(c('existingpkgs', 'newpackage'))"
 
 Before deploying any template:
 
+- [ ] `.devcontainer.json` at repo ROOT (not in a subfolder)
 - [ ] Container name is `application-server`
 - [ ] Network is `app-network` with `external: true`
 - [ ] Port is exposed and mapped correctly
 - [ ] `devcontainer-template.json` has unique `id`
 - [ ] Application binds to `0.0.0.0` (not `localhost`)
+- [ ] All `fetch()` calls use relative paths — `fetch('api/data')` ✅ not `fetch('/api/data')` ❌
+- [ ] All `<a href>` and `<link>` use relative paths — leading `/` routes to `workbench.verily.com`, causing 404s
+- [ ] Do not use `url_for()` for frontend-facing links — generates wrong paths behind the proxy
+
+---
+
+## Common Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| App fails to create | `.devcontainer.json` not at repo root | Move to repo root |
+| 308 redirect loop | Flask missing `STRICT_SLASHES` setting | Add `app.config['STRICT_SLASHES'] = False` |
+| 404 on API calls | Leading `/` in `fetch()` path | Use `fetch('api/data')` not `fetch('/api/data')` |
+| Build fails on pip install | Unpinned dependencies | Pin versions in `requirements.txt` |
+| App works locally but not deployed | Volume mount used instead of `COPY` | Bake code into image via Dockerfile `COPY` |
+| Container restart loop | App crashes on startup | Check `docker logs application-server` |
 
 ---
 

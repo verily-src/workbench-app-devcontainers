@@ -1592,28 +1592,13 @@ Resources are cloud assets managed by Workbench:
 **Environment Variables**: Each resource is available as \`\$WORKBENCH_<resource_name>\` (e.g., \`\$WORKBENCH_my_bucket\`).
 
 ### Data Collections
-Data collections are curated datasets in the Workbench catalog. When added to a workspace, their resources are cloned into **folders**.
+Curated datasets published to the Workbench catalog. When added to a workspace, their resources are cloned as **folders** — they may look like user-created resources but originated externally. Common types include clinical data (OMOP, FHIR), genomics (VCF, BAM), and wearables.
 
-#### Identifying Resources from Data Collections
+Data collections can carry **policies** that restrict how their data is used (region, export controls, access groups).
 
-Use the **MCP server** to find which data collection a resource came from:
-
-1. **Use the MCP \`workspace_list_data_collections\` tool** to get resources grouped by data collection
-2. Or use \`workspace_list_resources\` with workspaceId to get full resource metadata
-3. The \`resourceLineage\` object contains:
-   - \`sourceWorkspaceId\`: UUID of the data collection
-   - \`sourceResourceId\`: UUID of the original resource
-
-**Example:** Ask "Use workspace_list_data_collections to show me which data collections my resources came from"
-
-The response includes:
-\`\`\`json
-{
-  "resourceLineage": [
-    { "sourceWorkspaceId": "abc123-...", "sourceResourceId": "def456-..." }
-  ]
-}
-\`\`\`
+**To identify resources from data collections:**
+1. Use \`workspace_list_data_collections\` — groups resources by source collection (preferred)
+2. Or use \`workspace_list_resources\` with \`workspaceId\` — returns full resource metadata including \`resourceLineage\`, which contains the source collection ID and original resource ID
 
 ### Workflows
 Workflows are reproducible pipelines in WDL or Nextflow format, registered in the workspace.
@@ -1702,7 +1687,7 @@ ${bucket_list}
 | \`gsutil_execute\` | Run any \`gsutil\` command |
 | \`bq_execute\` | Run any \`bq\` SQL query |
 
-**Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`, \`wb resource delete\`
+**Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`
 
 ## CLI Quick Reference
 
@@ -1734,7 +1719,7 @@ wb auth login                  # Re-authenticate
 
 ---
 
-## ⚠️ Important: Data Persistence
+## Data Discovery & Querying
 
 > **⚡ MCP FIRST:** Always check if an MCP tool exists before using CLI commands.
 
@@ -1797,20 +1782,6 @@ df = client.query("SELECT * FROM \`project.dataset.table\` LIMIT 100").to_datafr
 import pandas as pd
 df = pd.read_parquet('gs://bucket-name/path/file.parquet')
 \`\`\`
-
-### LLM Quick Reference
-
-| User Question | Best Tool | Command/Tool |
-|---------------|-----------|--------------|
-| "What data collections do I have?" | **MCP** | \`workspace_list_data_collections\` |
-| "What resources are in my workspace?" | **MCP** | \`workspace_list_resources\` |
-| "Show resources by folder" | **MCP** | \`resource_list_tree\` |
-| "Query this BigQuery table" | **MCP** | \`bq_execute\` |
-| "What tables are in this dataset?" | CLI | \`bq ls <project>:<dataset>\` |
-| "What columns in this table?" | CLI | \`bq show --schema <project>:<dataset>.<table>\` |
-| "List files in bucket" | **MCP** | \`list_files\` |
-
-> **⚠️ Don't default to \`wb resource list\` for data collection questions. Use \`workspace_list_data_collections\` instead.**
 
 ---
 
@@ -1901,6 +1872,7 @@ Read these directly — no index needed:
 |-------|------------|-------------|
 | **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
 | Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
+| App templates | \`APP_TEMPLATES.md\` | Pre-built templates for dashboards, APIs, file processors |
 | **Workflow debugging** | \`WORKFLOW_TROUBLESHOOT.md\` | Failed WDL/Nextflow, logs, memory/disk issues |
 
 ### Scientific Skills
@@ -1929,6 +1901,10 @@ Read these directly — no index needed:
 **Read \`CUSTOM_APP.md\` when:**
 - "build a deployable app" / "create a custom app"
 - "API service" / "backend" / "from scratch"
+
+**Read \`APP_TEMPLATES.md\` when:**
+- "dashboard template" / "starter template" / "pre-built app"
+- "what templates are available" / "which template should I use"
 
 **Read \`WORKFLOW_TROUBLESHOOT.md\` when:**
 - "troubleshoot my workflow" / "fix my workflow"

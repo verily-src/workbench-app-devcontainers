@@ -29,6 +29,9 @@ echo "failed: $(date)" >> "${RETRY_FILE}"
 # Check if number of retries have exceeded maximum
 num_retries="$(wc -l < "${RETRY_FILE}")"
 if [[ "${num_retries}" -ge "${RETRY_COUNT}" ]]; then
+        # Stop the service
+        systemctl stop devcontainer.service
+
         # Log failure
         source /home/core/metadata-utils.sh
         set_metadata "startup_script/status" "ERROR"
@@ -36,8 +39,6 @@ if [[ "${num_retries}" -ge "${RETRY_COUNT}" ]]; then
         if [[ -z "${error_message}" ]]; then
           set_metadata "startup_script/message" "There was an error launching your custom container on the VM. Please try recreating the VM."
         fi
-        # Stop the service
-        systemctl stop devcontainer.service
 
         if [[ "$SHUTDOWN_ON_FAILURE" == "true" ]]; then
             # Sleep for a bit in case logs need to be captured

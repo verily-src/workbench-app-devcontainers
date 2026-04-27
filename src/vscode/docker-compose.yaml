@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "lscr.io/linuxserver/code-server@sha256:4620adace18935dd6ca79d77e3bc1c379e21875392192f970cf5d6b0fb4aefcd"
+    image: "lscr.io/linuxserver/code-server@sha256:1f384394d473c43ab6a39b2227ba3aa9c95af648ce3a67e1b4da1969c16c7c0d"
     restart: always
     volumes:
       - .:/workspace:cached

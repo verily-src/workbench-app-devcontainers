@@ -188,4 +188,6 @@ sed -i '/^# If not running interactively/,/esac/d' "${USER_HOME_DIR}/.bashrc" ||
 # Make sure the login user is the owner of their .bashrc
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"
 
+mamba clean --all -y
+
 echo "Workbench tools installation complete!"

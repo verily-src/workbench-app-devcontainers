@@ -9,7 +9,7 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/rishabhc/work
+      - work:/home/jovyan/work
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:

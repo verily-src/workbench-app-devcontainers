@@ -6,8 +6,8 @@
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
     "./startupscript/post-startup.sh",
-    "rishbahc",
-    "/home/rishabhc",
+    "jovyan",
+    "/home/jovyan",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],

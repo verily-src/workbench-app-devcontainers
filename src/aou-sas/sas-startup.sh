@@ -112,3 +112,15 @@ if ! grep -q "X-SAS-Authorization" /etc/httpd/conf.d/dkrapro-proxy.conf; then
   sed -i '/ProxyPreserveHost On/a RequestHeader set X-SAS-Authorization "Basic YW91OmFvdQ=="' \
     /etc/httpd/conf.d/dkrapro-proxy.conf
 fi
+
+# The Workbench proxy terminates TLS and connects to this container via HTTP.
+# Apache must rewrite Location headers to use HTTPS so redirects (e.g. / →
+# /SASStudio) don't violate the Workbench UI's Content Security Policy.
+if ! grep -q "X-Forwarded-Proto" /etc/httpd/conf.d/dkrapro-proxy.conf; then
+  sed -i '/ProxyPreserveHost On/a RequestHeader set X-Forwarded-Proto "https"' \
+    /etc/httpd/conf.d/dkrapro-proxy.conf
+fi
+if ! grep -q "Header edit Location" /etc/httpd/conf.d/dkrapro-proxy.conf; then
+  sed -i '/ProxyPreserveHost On/a Header edit Location ^http:// https://' \
+    /etc/httpd/conf.d/dkrapro-proxy.conf
+fi

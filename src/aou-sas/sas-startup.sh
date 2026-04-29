@@ -111,16 +111,15 @@ PROXY_CONF=/etc/httpd/conf.d/dkrapro-proxy.conf
 if ! grep -q "AOU-CONFIGURED" "${PROXY_CONF}"; then
   sed -i "s/RequestHeader/#RequestHeader/g" "${PROXY_CONF}"
 
+  # Force Apache to generate https:// URLs in redirects (RedirectMatch etc.)
+  # since the Workbench proxy terminates TLS upstream.
+  sed -i 's|^ServerName localhost$|ServerName https://localhost|' "${PROXY_CONF}"
+
   sed -i '/ProxyPreserveHost On/a # AOU-CONFIGURED' "${PROXY_CONF}"
 
   # Auto-login (base64 of "aou:aou" = YW91OmFvdQ==)
   sed -i '/AOU-CONFIGURED/a RequestHeader set X-SAS-Authorization "Basic YW91OmFvdQ=="' \
     "${PROXY_CONF}"
-
-  # The Workbench proxy terminates TLS and connects via HTTP.  Rewrite
-  # Location headers so redirects use https:// (required by CSP).
   sed -i '/AOU-CONFIGURED/a RequestHeader set X-Forwarded-Proto "https"' \
-    "${PROXY_CONF}"
-  sed -i '/AOU-CONFIGURED/a Header always edit Location ^http:// https://' \
     "${PROXY_CONF}"
 fi

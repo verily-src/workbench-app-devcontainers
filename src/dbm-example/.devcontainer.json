@@ -13,8 +13,8 @@
   ],
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
-    "rishbahc",
-    "/home/rishabhc",
+    "jovyan",
+    "/home/jovyan",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],

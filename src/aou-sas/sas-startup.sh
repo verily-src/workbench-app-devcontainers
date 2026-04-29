@@ -33,7 +33,7 @@ fi
 ###############################################################################
 # System packages required by Workbench startup scripts
 ###############################################################################
-yum install -y jq curl fuse fuse-libs tar wget sudo git 2>/dev/null
+yum install -y jq curl fuse fuse-libs tar wget sudo git 2>/dev/null || true
 
 ###############################################################################
 # gcsfuse — GCS bucket mounting
@@ -49,18 +49,19 @@ repo_gpgcheck=0
 gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 EOF
-  yum install -y gcsfuse
+  yum install -y gcsfuse || true
 fi
 
 ###############################################################################
 # Google Cloud SDK
 ###############################################################################
 if ! command -v gcloud &>/dev/null; then
-  curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-565.0.0-linux-x86_64.tar.gz
-  tar -xf google-cloud-cli-565.0.0-linux-x86_64.tar.gz
-  ./google-cloud-sdk/install.sh -q
-  ln -sf /google-cloud-sdk/bin/* /bin/
-  rm -f google-cloud-cli-565.0.0-linux-x86_64.tar.gz
+  curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-565.0.0-linux-x86_64.tar.gz \
+    && tar -xf google-cloud-cli-565.0.0-linux-x86_64.tar.gz \
+    && ./google-cloud-sdk/install.sh -q \
+    && ln -sf /google-cloud-sdk/bin/* /bin/ \
+    && rm -f google-cloud-cli-565.0.0-linux-x86_64.tar.gz \
+    || true
 fi
 
 ###############################################################################

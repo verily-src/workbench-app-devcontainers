@@ -6,8 +6,8 @@ Custom Workbench application based on quay.io/jupyter/base-notebook.
 
 - **Image**: quay.io/jupyter/base-notebook
 - **Port**: 8888
-- **User**: rishbahc
-- **Home Directory**: /home/rishabhc
+- **User**: rishabhc
+- **Home Directory**: /home/jovyan
 
 ## Access
 

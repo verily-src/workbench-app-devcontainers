@@ -104,23 +104,23 @@ sed -Ei 's#^USERMODS=(.*)#USERMODS=-allowxcmd \1#g' \
 ###############################################################################
 # Apache proxy — auto-login and header cleanup
 ###############################################################################
-sed -i "s/RequestHeader/#RequestHeader/g" /etc/httpd/conf.d/dkrapro-proxy.conf
+PROXY_CONF=/etc/httpd/conf.d/dkrapro-proxy.conf
 
-# Inject Basic Auth header so SAS Studio auto-authenticates as "aou"
-# without showing a login prompt (base64 of "aou:aou" = YW91OmFvdQ==).
-if ! grep -q "X-SAS-Authorization" /etc/httpd/conf.d/dkrapro-proxy.conf; then
-  sed -i '/ProxyPreserveHost On/a RequestHeader set X-SAS-Authorization "Basic YW91OmFvdQ=="' \
-    /etc/httpd/conf.d/dkrapro-proxy.conf
-fi
+# Comment out default RequestHeader lines from the SAS image, then re-add
+# exactly the ones we need.  Use a marker so restarts are idempotent.
+if ! grep -q "AOU-CONFIGURED" "${PROXY_CONF}"; then
+  sed -i "s/RequestHeader/#RequestHeader/g" "${PROXY_CONF}"
 
-# The Workbench proxy terminates TLS and connects to this container via HTTP.
-# Apache must rewrite Location headers to use HTTPS so redirects (e.g. / →
-# /SASStudio) don't violate the Workbench UI's Content Security Policy.
-if ! grep -q "X-Forwarded-Proto" /etc/httpd/conf.d/dkrapro-proxy.conf; then
-  sed -i '/ProxyPreserveHost On/a RequestHeader set X-Forwarded-Proto "https"' \
-    /etc/httpd/conf.d/dkrapro-proxy.conf
-fi
-if ! grep -q "Header edit Location" /etc/httpd/conf.d/dkrapro-proxy.conf; then
-  sed -i '/ProxyPreserveHost On/a Header edit Location ^http:// https://' \
-    /etc/httpd/conf.d/dkrapro-proxy.conf
+  sed -i '/ProxyPreserveHost On/a # AOU-CONFIGURED' "${PROXY_CONF}"
+
+  # Auto-login (base64 of "aou:aou" = YW91OmFvdQ==)
+  sed -i '/AOU-CONFIGURED/a RequestHeader set X-SAS-Authorization "Basic YW91OmFvdQ=="' \
+    "${PROXY_CONF}"
+
+  # The Workbench proxy terminates TLS and connects via HTTP.  Rewrite
+  # Location headers so redirects use https:// (required by CSP).
+  sed -i '/AOU-CONFIGURED/a RequestHeader set X-Forwarded-Proto "https"' \
+    "${PROXY_CONF}"
+  sed -i '/AOU-CONFIGURED/a Header always edit Location ^http:// https://' \
+    "${PROXY_CONF}"
 fi

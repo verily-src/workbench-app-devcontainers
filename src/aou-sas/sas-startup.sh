@@ -80,6 +80,16 @@ mkdir -p /data/saswork /data/utilloc
 chown -R aou:aougroup /data
 
 ###############################################################################
+# Lock down the SAS license so the aou user cannot read it via pipe commands.
+# The entrypoint wrapper already sets root:root 0400 for Mikey Secrets, but
+# this covers the bind-mount fallback and acts as defence in depth.
+###############################################################################
+if [ -f /sasinside/SASLicense.jwt ]; then
+  chown root:root /sasinside/SASLicense.jwt
+  chmod 400 /sasinside/SASLicense.jwt
+fi
+
+###############################################################################
 # AoU environment loader (staged in Dockerfile at /opt/sas/aou/)
 ###############################################################################
 if [ -d /opt/sas/aou ]; then

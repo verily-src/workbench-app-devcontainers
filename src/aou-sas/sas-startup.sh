@@ -124,8 +124,8 @@ if ! grep -q "AOU-CONFIGURED" "${PROXY_CONF}"; then
     "${PROXY_CONF}"
 
   # Strip framing restrictions so SAS Studio can be iframed by the Workbench UI.
-  sed -i '/AOU-CONFIGURED/a Header always unset X-Frame-Options' \
+  sed -i '/AOU-CONFIGURED/a Header unset X-Frame-Options' \
     "${PROXY_CONF}"
-  sed -i '/AOU-CONFIGURED/a Header always unset Content-Security-Policy' \
+  sed -i '/AOU-CONFIGURED/a Header unset Content-Security-Policy' \
     "${PROXY_CONF}"
 fi

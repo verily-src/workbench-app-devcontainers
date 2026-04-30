@@ -128,4 +128,9 @@ if ! grep -q "AOU-CONFIGURED" "${PROXY_CONF}"; then
     "${PROXY_CONF}"
   sed -i '/AOU-CONFIGURED/a Header unset Content-Security-Policy' \
     "${PROXY_CONF}"
+
+  # SameSite=None cookies require the Secure flag.  The app sees HTTP
+  # (proxy terminates TLS) so SAS omits it — add it via Apache.
+  sed -i '/AOU-CONFIGURED/a Header edit Set-Cookie "^(.*SameSite=None.*)$" "$1; Secure"' \
+    "${PROXY_CONF}"
 fi

@@ -124,28 +124,24 @@ readonly APP_RESOURCE
 ATTACHED_SECRETS="$(echo "${APP_RESOURCE}" | jq '.attributes.secrets // {}')"
 readonly ATTACHED_SECRETS
 
+echo "Waiting for container to create named pipe..."
+
+retries=0
+until docker exec "${CONTAINER_NAME}" sh -c "[ -p ${PIPE_PATH} ]" 2>/dev/null; do
+  if (( retries >= 40 )); then
+    >&2 echo "ERROR: Timed out waiting for container to create ${PIPE_PATH}"
+    exit 1
+  fi
+  sleep 3
+  (( retries++ ))
+done
+
 # --- Build JSON secrets array for pipe delivery ---
 SECRETS_JSON="[]"
 
 for i in $(seq 0 $((PIPE_SECRET_COUNT - 1))); do
   SECRET_ENTRY="$(echo "${PIPE_SECRETS}" | jq ".[$i]")"
   SECRET_NAME="$(echo "${SECRET_ENTRY}" | jq -r '.name')"
-
-  # Determine delivery type and target
-  PIPE_VAR="$(echo "${SECRET_ENTRY}" | jq -r '.pipeVar // empty')"
-  PATH_VAR="$(echo "${SECRET_ENTRY}" | jq -r '.pathVar // empty')"
-  VALUE_VAR="$(echo "${SECRET_ENTRY}" | jq -r '.valueVar // empty')"
-
-  if [[ -n "${PIPE_VAR}" ]]; then
-    SECRET_TYPE="pipeVar"
-    SECRET_TARGET="${PIPE_VAR}"
-  elif [[ -n "${PATH_VAR}" ]]; then
-    SECRET_TYPE="pathVar"
-    SECRET_TARGET="${PATH_VAR}"
-  elif [[ -n "${VALUE_VAR}" ]]; then
-    SECRET_TYPE="valueVar"
-    SECRET_TARGET="${VALUE_VAR}"
-  fi
 
   # Look up secret's workspace and resource IDs from attached secrets map
   SECRET_WORKSPACE_ID="$(echo "${ATTACHED_SECRETS}" | jq -r --arg name "${SECRET_NAME}" '.[$name].workspaceId')"
@@ -165,26 +161,19 @@ for i in $(seq 0 $((PIPE_SECRET_COUNT - 1))); do
   SECRET_VALUE="$(retrieve_secret TOKEN "${WSM_URL}" "${RESOURCE_ID}" "${KEY_FILE}" \
     "${SECRET_WORKSPACE_ID}" "${SECRET_RESOURCE_ID}")"
 
-  SECRETS_JSON="$(echo "${SECRETS_JSON}" | jq \
-    --arg type "${SECRET_TYPE}" \
-    --arg value "${SECRET_VALUE}" \
-    --arg target "${SECRET_TARGET}" \
-    '. += [{"type": $type, "value": $value, "target": $target}]')"
+  for SECRET_TYPE_KEY in pipeVar pathVar valueVar; do
+    SECRET_TARGET="$(echo "${SECRET_ENTRY}" | jq -r ".${SECRET_TYPE_KEY} // empty")"
+    if [[ -n "${SECRET_TARGET}" ]]; then
+      SECRETS_JSON="$(echo "${SECRETS_JSON}" | jq \
+        --arg type "${SECRET_TYPE_KEY}" \
+        --arg value "${SECRET_VALUE}" \
+        --arg target "${SECRET_TARGET}" \
+        '. += [{"type": $type, "value": $value, "target": $target}]')"
+    fi
+  done
   set -o xtrace
 
   echo "Retrieved secret: ${SECRET_NAME}"
-done
-
-echo "Waiting for container to create named pipe..."
-
-retries=0
-until docker exec "${CONTAINER_NAME}" sh -c "[ -p ${PIPE_PATH} ]" 2>/dev/null; do
-  if (( retries >= 40 )); then
-    >&2 echo "ERROR: Timed out waiting for container to create ${PIPE_PATH}"
-    exit 1
-  fi
-  sleep 3
-  (( retries++ ))
 done
 
 echo "Delivering ${PIPE_SECRET_COUNT} secret(s) to container..."

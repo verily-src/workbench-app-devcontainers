@@ -18,7 +18,9 @@ echo "Injecting mock secrets..."
 echo '[
     {"type":"valueVar","value":"test-value-secret","target":"EXAMPLE_SECRET"},
     {"type":"pipeVar","value":"test-pipe-secret","target":"PIPE_SECRET"},
-    {"type":"pathVar","value":"test-path-secret","target":"PATH_SECRET"}
+    {"type":"pathVar","value":"test-path-secret","target":"PATH_SECRET"},
+    {"type":"valueVar","value":"test-multi-secret","target":"MULTI_VALUE"},
+    {"type":"pathVar","value":"test-multi-secret","target":"MULTI_PATH"}
 ]' | timeout 30 docker exec --user root -i "$CONTAINER_NAME" sh -c 'cat > /tmp/secrets'
 
 bats tests/test-app-secrets.bats

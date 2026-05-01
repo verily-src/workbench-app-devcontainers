@@ -2,7 +2,13 @@
 
 CONTAINER_NAME="application-server"
 
+exec_in_container() {
+    local user="$1"
+    shift
+    docker exec --user "$user" "$CONTAINER_NAME" "$@"
+}
+
 run_in_container() {
-    docker exec --user root "$CONTAINER_NAME" sudo -u "${TEST_USER}" bash -l -c \
+    exec_in_container "${TEST_USER}" bash -l -c \
         "set -o pipefail && set -o errexit && set -o nounset && $*"
 }

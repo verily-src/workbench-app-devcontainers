@@ -1,0 +1,26 @@
+include:
+  - ../common/common-compose.yaml
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      additional_contexts:
+        wb-secret-receiver: service:common-secret-receiver-builder
+    entrypoint: ["/wb-secret-receiver", "python3", "-m", "http.server", "8080"]
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true

@@ -101,6 +101,7 @@ readonly BINARIES_ENV_DIR="${WORKBENCH_TOOLS_DIR}/binaries"
 # them separately and give the user control over whether to inject them into an
 # existing environment or create a new one.
 CONDA_PACKAGES_LIBRARIES=(
+    "conda-forge::pip"
     "conda-forge::google-cloud-storage"
     "conda-forge::ipykernel"
     "conda-forge::ipywidgets"

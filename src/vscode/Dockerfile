@@ -11,15 +11,17 @@ RUN apt-get update \
 USER abc
 ENV HOME=/config
 
-RUN curl -fsSL 'https://open-vsx.org/api/Google/geminicodeassist/2.75.0' \
+RUN curl -fsSL 'https://open-vsx.org/api/Google/geminicodeassist/2.79.0' \
         | jq -r '.files.download' \
         | xargs curl -fL --compressed -o /tmp/geminicodeassist.vsix \
-    && curl -fsSL 'https://open-vsx.org/api/Anthropic/claude-code/latest' \
+    && curl -fsSL 'https://open-vsx.org/api/Anthropic/claude-code/linux-x64/2.1.128' \
         | jq -r '.files.download' \
         | xargs curl -fL --compressed -o /tmp/claudecode.vsix \
     && /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/geminicodeassist.vsix \
     && /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension /tmp/claudecode.vsix \
-    && rm /tmp/geminicodeassist.vsix /tmp/claudecode.vsix
+    && rm /tmp/geminicodeassist.vsix /tmp/claudecode.vsix \
+    && mkdir -p /config/data/User \
+    && echo '{"http.systemCertificatesNode":true}' > /config/data/User/settings.json
 
 USER root
 

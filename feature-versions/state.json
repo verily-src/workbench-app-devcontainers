@@ -1,7 +1,7 @@
 {
   "ghcr.io/devcontainers/features/aws-cli": {
     "tag": "1",
-    "installed": "sha256:17cb4a40151f59144b46957b9264683663b0214371a041ecd53dccc015a4b923",
+    "installed": "sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/java": {
@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:0438761b165f6f8da90383722278be8cf89607f39cd42c386877fe72f26b3b40",
+    "installed": "sha256:9913e59651181cc8e04c9bf729f818eb43d3f9f6fc1cfa3c8823152f01abfa2c",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:454db241e887998792175c600b9a04ef78cbf8cede9b75c92f09982cbbd7ae65",
+    "installed": "sha256:e87a73208ebf4e475b85966e4e5cc9eed6f25d5c91cbf34f0393bc4a9760aa3d",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:91bf43412e28a0eeb057ac480f243ce105636be59b16b105cb9e2fcb5851f041",
+    "installed": "sha256:ca14ee34a801c15933feeb3a36092ee77b54f4f2625d1e5089a2ae1609184dc2",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:fe512afbcca4d0d112724bcefac8d36af1fd789c74ff912f1de507f2fc0b94ea",
+    "installed": "sha256:8b35fb551456957343cbc59c5fa2249ddf411be077b276369ae56ad02a251ed6",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,7 +61,7 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:1f384394d473c43ab6a39b2227ba3aa9c95af648ce3a67e1b4da1969c16c7c0d",
+    "installed": "sha256:a4d0e4d07e485c4be3934c063ea713824dd134af53b46dd5a2be3b871e61887b",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {

@@ -4,6 +4,7 @@ function set_severity(tag, timestamp, record)
     if priority then
         -- Journald logs: map syslog priority (0-7) to severity levels
         local p = tostring(priority)
+        record["severity_level"] = tonumber(priority)
 
         if p == "0" then
             record["severity"] = "EMERGENCY"
@@ -27,6 +28,7 @@ function set_severity(tag, timestamp, record)
     else
         -- No priority field (e.g., Docker logs), default to INFO
         record["severity"] = "INFO"
+        record["severity_level"] = 6
     end
 
     return 1, timestamp, record

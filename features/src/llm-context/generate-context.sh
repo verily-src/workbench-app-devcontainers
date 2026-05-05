@@ -2147,7 +2147,7 @@ generate_bucket_list() {
         echo "|-------------|-------------|-------------|"
         echo "$buckets" | jq -r '.[] | "| `s3://\(.bucketName // "unknown")/\(.prefix // "")` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
     else
-        # GCP — unchanged
+        # GCP
         local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "GCS_BUCKET")]' 2>/dev/null || echo "[]")
         local count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
 

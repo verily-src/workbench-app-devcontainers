@@ -2194,6 +2194,8 @@ generate_claude_md() {
     
     # Set platform-specific template content (generator branches; output file is clean, no conditionals)
     local storage_bucket_type storage_save_cmd resource_table_rows
+    local mcp_data_resources_rows cloud_cli_section cloud_path_hint env_var_example
+    local data_preview_query_section create_resources_section
     if [ "$ws_cloud" = "AWS" ]; then
         storage_bucket_type="S3 bucket"
         storage_save_cmd='aws s3 cp <file> s3://<bucket>/'
@@ -2201,6 +2203,75 @@ generate_claude_md() {
 | `AWS_AURORA_DATABASE` | Aurora PostgreSQL database | `wb resource create aurora-database` |
 | `AWS_AURORA_DATABASE_REFERENCE` | Aurora DB reference (external) | `wb resource add-ref aurora-database` |
 | `GIT_REPO` | Git repository reference | `wb resource add-ref git-repo` |'
+
+        mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+| `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
+| `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
+| `list_files` | `aws s3 ls` | List files in an S3 storage folder |
+| `read_file` | `aws s3 cp <key> -` | Read contents of a file from S3 |
+| `resource_create_bucket` | `wb resource create s3-storage-folder` | Create a new S3 storage folder |
+| `resource_delete` | `wb resource delete` | Delete a resource |
+| `resource_check_access` | — | Check if IAM role has access to a resource |'
+
+        cloud_cli_section='### Cloud CLIs
+
+No direct AWS CLI MCP wrapper — use `aws` CLI commands in the terminal:
+- **S3**: `aws s3 ls s3://<bucket>/`, `aws s3 cp <src> <dst>`
+- **Batch**: `aws batch list-jobs --job-queue <queue> --job-status FAILED`
+- **Aurora**: `psql "host=<endpoint> port=5432 dbname=<db> user=<user>"`'
+
+        cloud_path_hint='# Look for: bucketName+prefix (S3), rwEndpoint+port+databaseName (Aurora), gitRepoUrl'
+
+        env_var_example='echo $WORKBENCH_my_bucket      # → s3://bucket/prefix
+env | grep WORKBENCH_           # List all'
+
+        data_preview_query_section='**S3:**
+```bash
+aws s3 ls s3://<bucket>/<prefix>/
+aws s3 cp s3://<bucket>/<prefix>/file.csv - | head -20
+```
+
+**Aurora PostgreSQL:**
+```bash
+# Get endpoint from wb CLI
+wb resource describe <resource-name> --format=json | jq .rwEndpoint
+# Connect
+psql "host=<rwEndpoint> port=<port> dbname=<databaseName> user=<user>"
+# \dt  →  list tables;  SELECT * FROM table_name LIMIT 10;
+```
+
+### Query Data
+
+**Python:**
+```python
+import boto3, pandas as pd
+
+# Read CSV from S3
+s3 = boto3.client("s3")
+obj = s3.get_object(Bucket="<bucket>", Key="<prefix>/file.csv")
+df = pd.read_csv(obj["Body"])
+
+# Read Parquet directly (requires s3fs)
+df = pd.read_parquet("s3://<bucket>/<prefix>/file.parquet")
+
+# Aurora PostgreSQL
+import psycopg2
+conn = psycopg2.connect(host="<rwEndpoint>", port=<port>, dbname="<db>", user="<user>", password="<pass>")
+df = pd.read_sql("SELECT * FROM table_name LIMIT 100", conn)
+conn.close()
+```'
+
+        create_resources_section='```bash
+# S3 storage folder
+wb resource create s3-storage-folder --name my-storage --description "My storage folder"
+
+# Aurora PostgreSQL database
+wb resource create aurora-database --name my-db --description "My database"
+
+# Reference an external Aurora database
+wb resource add-ref aurora-database --name external-db
+```'
+
     else
         storage_bucket_type="GCS bucket"
         storage_save_cmd='gsutil cp <file> gs://<bucket>/'
@@ -2209,6 +2280,71 @@ generate_claude_md() {
 | `GIT_REPO` | Git repository reference | `wb resource add-ref git-repo` |
 | `GCS_OBJECT` | Individual GCS file reference | `wb resource add-ref gcs-object` |
 | `BQ_TABLE` | BigQuery table reference | `wb resource add-ref bq-table` |'
+
+        mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+| `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
+| `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
+| `bq_execute` | `bq query` | Run SQL queries against BigQuery |
+| `list_files` | `gsutil ls` | List files in a GCS bucket |
+| `read_file` | `gsutil cat` | Read contents of a file |
+| `resource_create_bucket` | `wb resource create gcs-bucket` | Create a new GCS bucket |
+| `resource_delete` | `wb resource delete` | Delete a resource |
+| `resource_check_access` | — | Check if service account has access to a resource |
+| `resource_mount` / `resource_unmount` | — | Mount/unmount a GCS bucket |'
+
+        cloud_cli_section='### Cloud CLIs (via MCP)
+
+| MCP Tool | Description |
+|----------|-------------|
+| `gcloud_execute` | Run any `gcloud` command |
+| `gsutil_execute` | Run any `gsutil` command |
+| `bq_execute` | Run any `bq` SQL query |'
+
+        cloud_path_hint='# Look for: bucketName, projectId+datasetId, gitRepoUrl'
+
+        env_var_example='echo $WORKBENCH_my_bucket      # → gs://actual-bucket-name
+env | grep WORKBENCH_           # List all'
+
+        data_preview_query_section='**BigQuery:**
+```bash
+bq head -n 10 <project>:<dataset>.<table>
+bq show --schema <project>:<dataset>.<table>
+bq query --use_legacy_sql=false '"'"'SELECT * FROM `project.dataset.table` LIMIT 10'"'"'
+```
+
+**GCS:**
+```bash
+gsutil ls gs://<bucket>/
+gsutil cat -r 0-1024 gs://<bucket>/path/file.csv
+```
+
+### Query Data
+
+**CLI:**
+```bash
+bq query --use_legacy_sql=false '"'"'SELECT col1, col2 FROM `project.dataset.table` LIMIT 100'"'"'
+```
+
+**Python:**
+```python
+from google.cloud import bigquery
+client = bigquery.Client()
+df = client.query("SELECT * FROM `project.dataset.table` LIMIT 100").to_dataframe()
+
+import pandas as pd
+df = pd.read_parquet("gs://bucket-name/path/file.parquet")
+```'
+
+        create_resources_section='```bash
+# GCS bucket
+wb resource create gcs-bucket --name my-bucket --description "My bucket"
+
+# BigQuery dataset
+wb resource create bq-dataset --name my-dataset --description "My dataset"
+
+# Reference external GCS bucket
+wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucket
+```'
     fi
 
     # Generate dynamic sections
@@ -2306,16 +2442,7 @@ ${bucket_list}
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
-| \`workspace_list_data_collections\` | N/A | **List data collections and their resources** |
-| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
-| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
-| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
-| \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
-| \`read_file\` | \`gsutil cat\` | Read contents of a file |
-| \`resource_create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
-| \`resource_delete\` | \`wb resource delete\` | Delete a resource |
-| \`resource_check_access\` | — | Check if service account has access to a resource |
-| \`resource_mount\` / \`resource_unmount\` | — | Mount/unmount a GCS bucket |
+${mcp_data_resources_rows}
 
 ### Apps & Workflows
 
@@ -2347,13 +2474,7 @@ ${bucket_list}
 | \`cohort_count_instances\` | Count members in a cohort |
 | \`export_cohort\` | Export cohort data to a bucket |
 
-### Cloud CLIs (via MCP)
-
-| MCP Tool | Description |
-|----------|-------------|
-| \`gcloud_execute\` | Run any \`gcloud\` command |
-| \`gsutil_execute\` | Run any \`gsutil\` command |
-| \`bq_execute\` | Run any \`bq\` SQL query |
+${cloud_cli_section}
 
 **Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`
 
@@ -2409,47 +2530,18 @@ wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
 
 \`\`\`bash
 wb resource describe <resource-name> --format=json
-# Look for: bucketName, projectId+datasetId, gitRepoUrl
+${cloud_path_hint}
 \`\`\`
 
 ### Use Environment Variables (Easiest)
 
 \`\`\`bash
-echo \$WORKBENCH_my_bucket      # → gs://actual-bucket-name
-env | grep WORKBENCH_           # List all
+${env_var_example}
 \`\`\`
 
 ### Preview Data
 
-**BigQuery:**
-\`\`\`bash
-bq head -n 10 <project>:<dataset>.<table>
-bq show --schema <project>:<dataset>.<table>
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
-\`\`\`
-
-**GCS:**
-\`\`\`bash
-gsutil ls gs://<bucket>/
-gsutil cat -r 0-1024 gs://<bucket>/path/file.csv
-\`\`\`
-
-### Query Data
-
-**CLI:**
-\`\`\`bash
-bq query --use_legacy_sql=false 'SELECT col1, col2 FROM \`project.dataset.table\` LIMIT 100'
-\`\`\`
-
-**Python:**
-\`\`\`python
-from google.cloud import bigquery
-client = bigquery.Client()
-df = client.query("SELECT * FROM \`project.dataset.table\` LIMIT 100").to_dataframe()
-
-import pandas as pd
-df = pd.read_parquet('gs://bucket-name/path/file.parquet')
-\`\`\`
+${data_preview_query_section}
 
 ---
 
@@ -2473,16 +2565,7 @@ wb workflow logs <run-id>
 
 ## How to Create Resources
 
-\`\`\`bash
-# GCS bucket
-wb resource create gcs-bucket --name my-bucket --description "My bucket"
-
-# BigQuery dataset
-wb resource create bq-dataset --name my-dataset --description "My dataset"
-
-# Reference external GCS bucket
-wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucket
-\`\`\`
+${create_resources_section}
 
 ---
 

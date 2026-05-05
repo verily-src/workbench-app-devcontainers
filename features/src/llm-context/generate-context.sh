@@ -32,7 +32,8 @@
 #     - id: resource name
 #     - uuid
 #     - description
-#     - resourceType: GCS_BUCKET, BQ_DATASET, GIT_REPO, etc.
+#     - resourceType: GCS_BUCKET, BQ_DATASET, GIT_REPO, GCS_OBJECT, BQ_TABLE (GCP)
+#                       AWS_S3_STORAGE_FOLDER, AWS_AURORA_DATABASE, AWS_AURORA_DATABASE_REFERENCE (AWS)
 #     - stewardshipType: CONTROLLED, REFERENCED
 #     - region
 #     - For GCS: bucketName, location
@@ -88,10 +89,8 @@ check_prerequisites() {
     # Check if workspace is set
     if ! wb workspace describe --format=json &> /dev/null; then
         log_error "No workspace set or not authenticated. Please run:"
-        log_error "  wb auth login --mode=APP_DEFAULT_CREDENTIALS"
+        log_error "  wb auth login   (GCP: add --mode=APP_DEFAULT_CREDENTIALS inside Workbench apps)"
         log_error "  wb workspace set <workspace-id>"
-        log_error ""
-        log_error "Note: Use --mode=APP_DEFAULT_CREDENTIALS inside Workbench apps"
         exit 1
     fi
     
@@ -1809,7 +1808,7 @@ pwd
 ### Step 3: Install Dependencies
 
 ```bash
-pip install flask flask-cors pandas plotly boto3
+pip install flask flask-cors pandas plotly boto3 psycopg2-binary
 ```
 
 ### Step 4: Create Dashboard Structure
@@ -1882,6 +1881,39 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
 ```
 
+### Template 2: Aurora PostgreSQL Dashboard
+
+```python
+import psycopg2
+import pandas as pd
+import os
+
+def get_data_from_aurora():
+    global _data_cache
+    if _data_cache is not None:
+        return _data_cache
+
+    # WORKBENCH_<resource_name> contains "host:port/dbname" — use wb to get credentials:
+    #   wb resource resolve aurora-database --id=<resource-id>
+    # Or hard-code connection details after running the above command once.
+    conn_ref = os.environ.get('WORKBENCH_my_aurora_db', '').split('/')
+    host_port = conn_ref[0].split(':') if conn_ref[0] else ['your-aurora-endpoint', '5432']
+    host = host_port[0]
+    port = host_port[1] if len(host_port) > 1 else '5432'
+    dbname = conn_ref[1] if len(conn_ref) > 1 else 'your-db-name'
+
+    conn = psycopg2.connect(
+        host=host, port=port, dbname=dbname,
+        user='your-user', password='your-password'
+    )
+    df = pd.read_sql('SELECT * FROM your_table LIMIT 1000', conn)
+    conn.close()
+    _data_cache = df.to_dict(orient='records')
+    return _data_cache
+```
+
+> **Tip:** Use `wb resource resolve aurora-database --id=<id>` to get the connection string, or check the `WORKBENCH_*` env vars populated by Workbench context generation.
+
 ### Alternative: Embed Data in HTML (For Static Dashboards)
 
 ```python
@@ -1939,6 +1971,16 @@ aws s3 ls s3://<bucket>/
 
 # Check env vars set by Workbench
 env | grep WORKBENCH
+```
+
+### Aurora connection errors
+
+```bash
+# Get connection string from wb CLI
+wb resource resolve aurora-database --id=<resource-id>
+
+# Test connectivity
+psql "host=<endpoint> port=5432 dbname=<db> user=<user>"
 ```
 
 ### Server not accessible through proxy
@@ -2020,13 +2062,16 @@ generate_embedded_json() {
     local resources="$1"
     
     # Generate resourcePaths map: resource name -> cloud path
-    local resource_paths=$(echo "$resources" | jq -c '
+    # Two-step declaration so failures fall back to '{}' rather than propagating
+    local resource_paths
+    resource_paths=$(echo "$resources" | jq -c '
         map(
             {
                 key: .id,
                 value: (
                     if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
-                    elif .resourceType == "S3_BUCKET" then "s3://\(.bucketName)"
+                    elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
+                    elif .resourceType == "AWS_AURORA_DATABASE" then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
                     elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
                     elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
                     elif .resourceType == "GIT_REPO" then .gitRepoUrl
@@ -2036,16 +2081,18 @@ generate_embedded_json() {
                 )
             }
         ) | map(select(.value != null)) | from_entries
-    ')
+    ') || resource_paths='{}'
     
     # Generate envVars map: WORKBENCH_<name> -> cloud path
-    local env_vars=$(echo "$resources" | jq -c '
+    local env_vars
+    env_vars=$(echo "$resources" | jq -c '
         map(
             {
                 key: ("WORKBENCH_" + (.id | gsub("-"; "_"))),
                 value: (
                     if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
-                    elif .resourceType == "S3_BUCKET" then "s3://\(.bucketName)"
+                    elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
+                    elif .resourceType == "AWS_AURORA_DATABASE" then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
                     elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
                     elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
                     elif .resourceType == "GIT_REPO" then .gitRepoUrl
@@ -2055,9 +2102,11 @@ generate_embedded_json() {
                 )
             }
         ) | map(select(.value != null)) | from_entries
-    ')
+    ') || env_vars='{}'
     
-    # Output compact JSON for embedding
+    # Output compact JSON for embedding; if either var is empty, use {} so jq never gets an invalid argument
+    resource_paths="${resource_paths:-{}}" 
+    env_vars="${env_vars:-{}}"
     jq -n \
         --argjson resource_paths "$resource_paths" \
         --argjson env_vars "$env_vars" \
@@ -2073,20 +2122,20 @@ generate_bucket_list() {
     local cloud_platform="${2:-GCP}"
 
     if [ "$cloud_platform" = "AWS" ]; then
-        local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "S3_BUCKET")]' 2>/dev/null || echo "[]")
+        local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "AWS_S3_STORAGE_FOLDER")]' 2>/dev/null || echo "[]")
         local count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
 
         if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
             echo "*No S3 buckets in this workspace.* Create one with:"
             echo '```bash'
-            echo 'wb resource create s3-bucket --name my-storage --description "Storage for results"'
+            echo 'wb resource create s3-storage-folder --name my-storage --description "Storage for results"'
             echo '```'
             return
         fi
 
         echo "| Bucket Name | Resource ID | Description |"
         echo "|-------------|-------------|-------------|"
-        echo "$buckets" | jq -r '.[] | "| `s3://\(.bucketName // "unknown")/` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
+        echo "$buckets" | jq -r '.[] | "| `s3://\(.bucketName // "unknown")/\(.prefix // "")` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
     else
         # GCP — unchanged
         local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "GCS_BUCKET")]' 2>/dev/null || echo "[]")
@@ -2138,7 +2187,9 @@ generate_claude_md() {
     if [ "$ws_cloud" = "AWS" ]; then
         storage_bucket_type="S3 bucket"
         storage_save_cmd='aws s3 cp <file> s3://<bucket>/'
-        resource_table_rows='| `S3_BUCKET` | Amazon S3 bucket | `wb resource create s3-bucket` |
+        resource_table_rows='| `AWS_S3_STORAGE_FOLDER` | AWS S3 storage folder | `wb resource create s3-storage-folder` |
+| `AWS_AURORA_DATABASE` | Aurora PostgreSQL database | `wb resource create aurora-database` |
+| `AWS_AURORA_DATABASE_REFERENCE` | Aurora DB reference (external) | `wb resource add-ref aurora-database` |
 | `GIT_REPO` | Git repository reference | `wb resource add-ref git-repo` |'
     else
         storage_bucket_type="GCS bucket"
@@ -2538,7 +2589,7 @@ ${embedded_json}
 \`\`\`
 
 **Usage:**
-- \`resourcePaths["my-bucket"]\` → exact GCS/BQ path
+- \`resourcePaths["my-bucket"]\` → exact cloud storage/database path
 - \`envVars["WORKBENCH_my_bucket"]\` → environment variable value
 
 To refresh after workspace changes:

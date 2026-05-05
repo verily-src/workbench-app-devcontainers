@@ -1883,36 +1883,68 @@ if __name__ == '__main__':
 
 ### Template 2: Aurora PostgreSQL Dashboard
 
+Aurora in Workbench uses **IAM database authentication** — you cannot connect with a static
+password. The correct flow is:
+
+1. Get temporary AWS credentials via `wb resource credentials`
+2. Generate an IAM auth token via boto3 (token is valid for 15 minutes)
+3. Connect with `sslmode='require'` — **SSL is mandatory; connections are rejected without it**
+
 ```python
-import psycopg2
-import pandas as pd
-import os
+import json, subprocess, boto3, psycopg2, pandas as pd, os
+
+def get_aurora_connection(resource_id: str, username: str):
+    """
+    Returns an open psycopg2 connection to a Workbench-managed Aurora database.
+    resource_id: the Workbench resource ID (e.g. 'test-db-1')
+    username:    the IAM database user (check with your workspace admin)
+    """
+    # Step 1 — get temporary AWS credentials from Workbench
+    result = subprocess.run(
+        ['wb', 'resource', 'credentials',
+         f'--id={resource_id}', '--scope=WRITE_READ', '--format=json'],
+        capture_output=True, text=True, check=True
+    )
+    creds = json.loads(result.stdout)
+
+    # Step 2 — parse connection details from WORKBENCH_* env var
+    # Format: "host:port/dbname"  e.g. "abc.cluster.us-west-2.rds.amazonaws.com:5432/mydb"
+    conn_str = os.environ.get(f'WORKBENCH_{resource_id.replace("-", "_")}', '')
+    host_part, _, dbname = conn_str.partition('/')
+    host, _, port = host_part.partition(':')
+    port = int(port) if port else 5432
+
+    # Step 3 — generate IAM auth token (valid 15 min)
+    session = boto3.Session(
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_session_token=creds['SessionToken'],
+        region_name='us-west-2'
+    )
+    auth_token = session.client('rds').generate_db_auth_token(
+        DBHostname=host, Port=port, DBUsername=username, Region='us-west-2'
+    )
+
+    # Step 4 — connect with SSL (REQUIRED — Aurora rejects unencrypted connections)
+    return psycopg2.connect(
+        host=host, port=port, database=dbname,
+        user=username, password=auth_token,
+        sslmode='require'   # mandatory — omitting this causes "PAM authentication failed"
+    )
 
 def get_data_from_aurora():
     global _data_cache
     if _data_cache is not None:
         return _data_cache
-
-    # WORKBENCH_<resource_name> contains "host:port/dbname" — use wb to get credentials:
-    #   wb resource resolve aurora-database --id=<resource-id>
-    # Or hard-code connection details after running the above command once.
-    conn_ref = os.environ.get('WORKBENCH_my_aurora_db', '').split('/')
-    host_port = conn_ref[0].split(':') if conn_ref[0] else ['your-aurora-endpoint', '5432']
-    host = host_port[0]
-    port = host_port[1] if len(host_port) > 1 else '5432'
-    dbname = conn_ref[1] if len(conn_ref) > 1 else 'your-db-name'
-
-    conn = psycopg2.connect(
-        host=host, port=port, dbname=dbname,
-        user='your-user', password='your-password'
-    )
+    conn = get_aurora_connection('test-db-1', 'your-iam-username')
     df = pd.read_sql('SELECT * FROM your_table LIMIT 1000', conn)
     conn.close()
     _data_cache = df.to_dict(orient='records')
     return _data_cache
 ```
 
-> **Tip:** Use `wb resource resolve aurora-database --id=<id>` to get the connection string, or check the `WORKBENCH_*` env vars populated by Workbench context generation.
+> **Why IAM auth?** Workbench-managed Aurora databases are configured for IAM authentication only.
+> Static passwords will fail with "PAM authentication failed" or "pg_hba.conf rejects connection".
 
 ### Alternative: Embed Data in HTML (For Static Dashboards)
 
@@ -1975,12 +2007,64 @@ env | grep WORKBENCH
 
 ### Aurora connection errors
 
-```bash
-# Get connection string from wb CLI
-wb resource resolve aurora-database --id=<resource-id>
+Aurora requires IAM authentication + SSL. Plain password connections are rejected.
 
-# Test connectivity
-psql "host=<endpoint> port=5432 dbname=<db> user=<user>"
+**Symptoms and causes:**
+- `"PAM authentication failed"` → not using IAM auth token as password
+- `"pg_hba.conf rejects connection... no encryption"` → missing `sslmode='require'`
+- `"SSL connection is required"` → same SSL issue
+
+**Step-by-step fix:**
+
+```bash
+# 1. Get temporary credentials from Workbench (scoped to this resource)
+wb resource credentials --id=<resource-id> --scope=WRITE_READ --format=json
+# Returns: {"AccessKeyId":"...","SecretAccessKey":"...","SessionToken":"..."}
+```
+
+```python
+import boto3, psycopg2, json, subprocess
+
+# 2. Generate IAM auth token
+result = subprocess.run(
+    ['wb', 'resource', 'credentials', '--id=<resource-id>', '--scope=WRITE_READ', '--format=json'],
+    capture_output=True, text=True, check=True
+)
+creds = json.loads(result.stdout)
+
+session = boto3.Session(
+    aws_access_key_id=creds['AccessKeyId'],
+    aws_secret_access_key=creds['SecretAccessKey'],
+    aws_session_token=creds['SessionToken'],
+    region_name='us-west-2'
+)
+auth_token = session.client('rds').generate_db_auth_token(
+    DBHostname='<aurora-endpoint>', Port=5432,
+    DBUsername='<username>', Region='us-west-2'
+)
+
+# 3. Connect with SSL enabled (mandatory)
+conn = psycopg2.connect(
+    host='<aurora-endpoint>', port=5432, database='<dbname>',
+    user='<username>', password=auth_token,
+    sslmode='require'   # CRITICAL — without this, connection is rejected
+)
+```
+
+**AWS CLI alternative (to verify the token works):**
+```bash
+# Export the credentials first
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_SESSION_TOKEN="..."
+
+# Generate auth token
+TOKEN=$(aws rds generate-db-auth-token \
+  --hostname <aurora-endpoint> --port 5432 \
+  --region us-west-2 --username <username>)
+
+# Connect (psql requires SSL flag)
+PGSSLMODE=require psql "host=<aurora-endpoint> port=5432 dbname=<db> user=<username> password=$TOKEN"
 ```
 
 ### Server not accessible through proxy
@@ -2003,6 +2087,8 @@ app.run(host='0.0.0.0', port=8080)
 - [ ] **Data cached** - Avoid repeated S3 reads
 - [ ] **Error handling** - API returns errors as JSON, not crashes
 - [ ] **CORS enabled** - `CORS(app)` added
+- [ ] **Aurora: IAM auth** - Using `wb resource credentials` + boto3 token, not a static password
+- [ ] **Aurora: SSL enabled** - `sslmode='require'` in psycopg2.connect()
 
 ---
 
@@ -2012,11 +2098,13 @@ app.run(host='0.0.0.0', port=8080)
 |-------|-------|-----|
 | 404 on API | Path format | Remove leading `/` from fetch |
 | CORS error | CORS setup | Add `CORS(app)` |
-| Blank page | Server running? | `ps aux | grep python` |
+| Blank page | Server running? | `ps aux \| grep python` |
 | S3 error | AWS credentials | `aws sts get-caller-identity` |
 | Wrong port | URL vs code | Match port in URL to `app.run()` |
 | Works locally, fails via URL | Host binding | Change `localhost` to `0.0.0.0` |
 | Gateway timeout | Server/UUID | Check server running + correct UUID |
+| Aurora: PAM auth failed | IAM auth | Use `wb resource credentials` + boto3 token |
+| Aurora: no encryption | SSL missing | Add `sslmode='require'` to psycopg2.connect() |
 
 ---
 
@@ -2178,7 +2266,7 @@ generate_claude_md() {
 No direct AWS CLI MCP wrapper — use `aws` CLI commands in the terminal:
 - **S3**: `aws s3 ls s3://<bucket>/`, `aws s3 cp <src> <dst>`
 - **Batch**: `aws batch list-jobs --job-queue <queue> --job-status FAILED`
-- **Aurora**: `psql "host=<endpoint> port=5432 dbname=<db> user=<user>"`'
+- **Aurora**: requires IAM auth token — see Aurora connection instructions in DASHBOARD_BUILDER skill'
 
         cloud_path_hint='# Look for: bucketName+prefix (S3), rwEndpoint+port+databaseName (Aurora), gitRepoUrl'
 
@@ -2191,32 +2279,59 @@ aws s3 ls s3://<bucket>/<prefix>/
 aws s3 cp s3://<bucket>/<prefix>/file.csv - | head -20
 ```
 
-**Aurora PostgreSQL:**
+**Aurora PostgreSQL** (requires IAM auth + SSL — plain passwords are rejected):
 ```bash
-# Get endpoint from wb CLI
-wb resource describe <resource-name> --format=json | jq .rwEndpoint
-# Connect
-psql "host=<rwEndpoint> port=<port> dbname=<databaseName> user=<user>"
+# Step 1: get temporary credentials from Workbench
+wb resource credentials --id=<resource-id> --scope=WRITE_READ --format=json
+# Returns: {"AccessKeyId":"...","SecretAccessKey":"...","SessionToken":"..."}
+
+# Step 2: export credentials, generate auth token, connect
+export AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_SESSION_TOKEN="..."
+TOKEN=$(aws rds generate-db-auth-token --hostname <rwEndpoint> --port 5432 --region us-west-2 --username <user>)
+PGSSLMODE=require psql "host=<rwEndpoint> port=5432 dbname=<db> user=<user> password=$TOKEN"
 # \dt  →  list tables;  SELECT * FROM table_name LIMIT 10;
 ```
 
 ### Query Data
 
-**Python:**
+**Python (S3):**
 ```python
 import boto3, pandas as pd
 
-# Read CSV from S3
 s3 = boto3.client("s3")
 obj = s3.get_object(Bucket="<bucket>", Key="<prefix>/file.csv")
 df = pd.read_csv(obj["Body"])
 
 # Read Parquet directly (requires s3fs)
 df = pd.read_parquet("s3://<bucket>/<prefix>/file.parquet")
+```
 
-# Aurora PostgreSQL
-import psycopg2
-conn = psycopg2.connect(host="<rwEndpoint>", port=<port>, dbname="<db>", user="<user>", password="<pass>")
+**Python (Aurora — IAM auth required):**
+```python
+import json, subprocess, boto3, psycopg2
+
+# Get temporary credentials from Workbench
+creds = json.loads(subprocess.run(
+    ["wb", "resource", "credentials", "--id=<resource-id>", "--scope=WRITE_READ", "--format=json"],
+    capture_output=True, text=True, check=True
+).stdout)
+
+# Generate IAM auth token
+session = boto3.Session(
+    aws_access_key_id=creds["AccessKeyId"],
+    aws_secret_access_key=creds["SecretAccessKey"],
+    aws_session_token=creds["SessionToken"],
+    region_name="us-west-2"
+)
+auth_token = session.client("rds").generate_db_auth_token(
+    DBHostname="<rwEndpoint>", Port=5432, DBUsername="<user>", Region="us-west-2"
+)
+
+# Connect — sslmode="require" is mandatory
+conn = psycopg2.connect(
+    host="<rwEndpoint>", port=5432, database="<db>",
+    user="<user>", password=auth_token, sslmode="require"
+)
 df = pd.read_sql("SELECT * FROM table_name LIMIT 100", conn)
 conn.close()
 ```'

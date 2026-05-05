@@ -1333,7 +1333,7 @@ CRITICAL:
 			Properties: map[string]interface{}{
 				"studyId":               map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace response"},
 				"cohortId":              map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace response"},
-				"criteriaGroupSections": map[string]interface{}{"type": "array", "description": "Array of criteria group sections"},
+				"criteriaGroupSections": map[string]interface{}{"type": "array", "description": "Array of criteria group sections", "items": map[string]interface{}{"type": "object"}},
 				"displayName":           map[string]interface{}{"type": "string", "description": "Optional: Update cohort display name"},
 				"description":           map[string]interface{}{"type": "string", "description": "Optional: Update cohort description"},
 			},
@@ -1475,7 +1475,7 @@ WORKFLOW:
 				"attribute": map[string]interface{}{"type": "string"},
 				"operator":  map[string]interface{}{"type": "string", "enum": []string{"EQUALS", "NOT_EQUALS", "LESS_THAN", "GREATER_THAN", "LESS_THAN_OR_EQUAL", "GREATER_THAN_OR_EQUAL", "IN", "NOT_IN", "BETWEEN", "IS_NULL", "IS_NOT_NULL"}},
 				"value":     map[string]interface{}{},
-				"values":    map[string]interface{}{"type": "array"},
+				"values":    map[string]interface{}{"type": "array", "items": map[string]interface{}{}},
 				"dataType":  map[string]interface{}{"type": "string", "enum": []string{"BOOLEAN", "INT64", "STRING", "DATE", "TIMESTAMP", "DOUBLE"}},
 			},
 			Required: []string{"attribute", "operator", "dataType"},
@@ -1500,7 +1500,7 @@ WORKFLOW:
 			Type: "object",
 			Properties: map[string]interface{}{
 				"operator":   map[string]interface{}{"type": "string", "enum": []string{"AND", "OR", "NOT"}},
-				"subfilters": map[string]interface{}{"type": "array"},
+				"subfilters": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
 			},
 			Required: []string{"operator", "subfilters"},
 		},
@@ -1513,7 +1513,7 @@ WORKFLOW:
 			Properties: map[string]interface{}{
 				"hierarchy": map[string]interface{}{"type": "string"},
 				"operator":  map[string]interface{}{"type": "string", "enum": []string{"CHILD_OF", "DESCENDANT_OF_INCLUSIVE", "IS_ROOT", "IS_MEMBER", "IS_LEAF"}},
-				"values":    map[string]interface{}{"type": "array"},
+				"values":    map[string]interface{}{"type": "array", "items": map[string]interface{}{}},
 			},
 			Required: []string{"hierarchy", "operator"},
 		},

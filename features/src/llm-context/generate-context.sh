@@ -2060,45 +2060,30 @@ fetch_apps() {
 # Generate embedded JSON (returns JSON to stdout, doesn't write to file)
 generate_embedded_json() {
     local resources="$1"
-    
-    # Generate resourcePaths map: resource name -> cloud path
-    # Two-step declaration so failures fall back to '{}' rather than propagating
-    # jq expression shared by both maps — normalise to one resource path value per resource.
-    # The outer `| jq -cs 'add // {}'` slurps all jq outputs (which may be multiple objects
-    # if the input contained non-array JSON) into a single merged object, guaranteeing that
-    # the variable always contains exactly one valid JSON value for --argjson.
-    local _resource_path_expr='
-        if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
-        elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
-        elif .resourceType == "AWS_AURORA_DATABASE" then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
-        elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
-        elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
-        elif .resourceType == "GIT_REPO" then .gitRepoUrl
-        elif .resourceType == "GCS_OBJECT" then "gs://\(.bucketName)/\(.objectName // "")"
-        else null
-        end'
 
-    local resource_paths
-    resource_paths=$(printf '%s' "$resources" | jq -c "
-        map({ key: .id, value: ( $_resource_path_expr ) })
-        | map(select(.value != null)) | from_entries
-    " 2>/dev/null | jq -cs 'add // {}' 2>/dev/null) || resource_paths='{}'
+    # Build both maps in a single jq invocation so no intermediate bash variables
+    # are passed via --argjson (which is sensitive to embedded newlines and encoding
+    # edge cases on some jq versions).  A jq `def` avoids repeating the path expression.
+    # `(if type == "array" then . else [] end)` guards against non-array input.
+    local result
+    result=$(printf '%s' "${resources:-[]}" | jq -c '
+        def cloud_path:
+            if .resourceType == "GCS_BUCKET"              then "gs://\(.bucketName)"
+            elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
+            elif .resourceType == "AWS_AURORA_DATABASE"   then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
+            elif .resourceType == "BQ_DATASET"            then "\(.projectId).\(.datasetId)"
+            elif .resourceType == "BQ_TABLE"              then "\(.projectId).\(.datasetId).\(.tableId // "")"
+            elif .resourceType == "GIT_REPO"              then .gitRepoUrl
+            elif .resourceType == "GCS_OBJECT"            then "gs://\(.bucketName)/\(.objectName // "")"
+            else null end;
+        (if type == "array" then . else [] end) |
+        {
+            "resourcePaths": (map({key: .id,                                      value: cloud_path}) | map(select(.value != null)) | from_entries),
+            "envVars":       (map({key: ("WORKBENCH_" + (.id | gsub("-";"_"))), value: cloud_path}) | map(select(.value != null)) | from_entries)
+        }
+    ' 2>/dev/null | head -1)
 
-    local env_vars
-    env_vars=$(printf '%s' "$resources" | jq -c "
-        map({ key: (\"WORKBENCH_\" + (.id | gsub(\"-\"; \"_\"))), value: ( $_resource_path_expr ) })
-        | map(select(.value != null)) | from_entries
-    " 2>/dev/null | jq -cs 'add // {}' 2>/dev/null) || env_vars='{}'
-
-    resource_paths="${resource_paths:-{}}"
-    env_vars="${env_vars:-{}}"
-    jq -n \
-        --argjson resource_paths "$resource_paths" \
-        --argjson env_vars "$env_vars" \
-        '{
-          "resourcePaths": $resource_paths,
-          "envVars": $env_vars
-        }'
+    printf '%s\n' "${result:-{\"resourcePaths\":{},\"envVars\":{}}}"
 }
 
 # Generate bucket list for data persistence section

@@ -135,11 +135,22 @@ EOF
 # Make the directory and files accessible to the user
 chown -R "${USERNAME}:" "${WB_MCP_DIR}"
 
-# Auto-configure Claude CLI if available
-if command -v claude &> /dev/null; then
-    echo "Found Claude CLI, attempting to add MCP server..."
-    su - "${USERNAME}" -c "claude mcp add --transport stdio wb -- ${WB_MCP_BIN}" 2>/dev/null || true
-fi
+# Write Claude Code MCP config directly — more reliable than `claude mcp add`,
+# which can write to the wrong location across Claude Code versions.
+CLAUDE_CONFIG_DIR="${USER_HOME_DIR}/.claude"
+mkdir -p "${CLAUDE_CONFIG_DIR}"
+cat > "${CLAUDE_CONFIG_DIR}/mcp.json" <<EOF
+{
+  "mcpServers": {
+    "wb": {
+      "command": "${WB_MCP_BIN}",
+      "args": []
+    }
+  }
+}
+EOF
+chown -R "${USERNAME}:" "${CLAUDE_CONFIG_DIR}"
+echo "Wrote Claude Code MCP config to ${CLAUDE_CONFIG_DIR}/mcp.json"
 
 # Auto-configure Gemini CLI if available
 if command -v gemini &> /dev/null; then
@@ -164,12 +175,8 @@ echo "wb-mcp-server installation complete!"
 echo "=========================================="
 echo ""
 echo "The MCP server binary is installed at: ${WB_MCP_BIN}"
-echo "Configuration file: ${WB_MCP_DIR}/mcp-config.json"
-echo ""
-echo "To use with Claude CLI, add this to your Claude config:"
-echo "  \"wb\": {"
-echo "    \"command\": \"${WB_MCP_BIN}\""
-echo "  }"
+echo "Claude Code MCP config:               ${USER_HOME_DIR}/.claude/mcp.json"
+echo "Generic MCP config reference:         ${WB_MCP_DIR}/mcp-config.json"
 echo ""
 echo "To start the server manually: ${WB_MCP_DIR}/start-server.sh"
 echo "=========================================="

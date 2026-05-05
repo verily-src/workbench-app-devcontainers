@@ -2063,60 +2063,35 @@ generate_embedded_json() {
     
     # Generate resourcePaths map: resource name -> cloud path
     # Two-step declaration so failures fall back to '{}' rather than propagating
+    # jq expression shared by both maps — normalise to one resource path value per resource.
+    # The outer `| jq -cs 'add // {}'` slurps all jq outputs (which may be multiple objects
+    # if the input contained non-array JSON) into a single merged object, guaranteeing that
+    # the variable always contains exactly one valid JSON value for --argjson.
+    local _resource_path_expr='
+        if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
+        elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
+        elif .resourceType == "AWS_AURORA_DATABASE" then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
+        elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
+        elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
+        elif .resourceType == "GIT_REPO" then .gitRepoUrl
+        elif .resourceType == "GCS_OBJECT" then "gs://\(.bucketName)/\(.objectName // "")"
+        else null
+        end'
+
     local resource_paths
-    resource_paths=$(echo "$resources" | jq -c '
-        map(
-            {
-                key: .id,
-                value: (
-                    if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
-                    elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
-                    elif .resourceType == "AWS_AURORA_DATABASE" then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
-                    elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
-                    elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
-                    elif .resourceType == "GIT_REPO" then .gitRepoUrl
-                    elif .resourceType == "GCS_OBJECT" then "gs://\(.bucketName)/\(.objectName // "")"
-                    else null
-                    end
-                )
-            }
-        ) | map(select(.value != null)) | from_entries
-    ') || resource_paths='{}'
-    
-    # Generate envVars map: WORKBENCH_<name> -> cloud path
+    resource_paths=$(printf '%s' "$resources" | jq -c "
+        map({ key: .id, value: ( $_resource_path_expr ) })
+        | map(select(.value != null)) | from_entries
+    " 2>/dev/null | jq -cs 'add // {}' 2>/dev/null) || resource_paths='{}'
+
     local env_vars
-    env_vars=$(echo "$resources" | jq -c '
-        map(
-            {
-                key: ("WORKBENCH_" + (.id | gsub("-"; "_"))),
-                value: (
-                    if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
-                    elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
-                    elif .resourceType == "AWS_AURORA_DATABASE" then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
-                    elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
-                    elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
-                    elif .resourceType == "GIT_REPO" then .gitRepoUrl
-                    elif .resourceType == "GCS_OBJECT" then "gs://\(.bucketName)/\(.objectName // "")"
-                    else null
-                    end
-                )
-            }
-        ) | map(select(.value != null)) | from_entries
-    ') || env_vars='{}'
-    
-    # Validate each value is parseable JSON before passing to --argjson.
-    # jq-produced output should always be valid, but a corrupt $resources string
-    # can leave these as empty or multi-line values that --argjson rejects.
+    env_vars=$(printf '%s' "$resources" | jq -c "
+        map({ key: (\"WORKBENCH_\" + (.id | gsub(\"-\"; \"_\"))), value: ( $_resource_path_expr ) })
+        | map(select(.value != null)) | from_entries
+    " 2>/dev/null | jq -cs 'add // {}' 2>/dev/null) || env_vars='{}'
+
     resource_paths="${resource_paths:-{}}"
     env_vars="${env_vars:-{}}"
-    if ! printf '%s' "$resource_paths" | jq empty 2>/dev/null; then
-        log_error "resource_paths is not valid JSON (value: ${resource_paths:0:120}); falling back to {}" >&2
-        resource_paths='{}'
-    fi
-    if ! printf '%s' "$env_vars" | jq empty 2>/dev/null; then
-        log_error "env_vars is not valid JSON (value: ${env_vars:0:120}); falling back to {}" >&2
-        env_vars='{}'
-    fi
     jq -n \
         --argjson resource_paths "$resource_paths" \
         --argjson env_vars "$env_vars" \

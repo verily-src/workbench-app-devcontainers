@@ -2104,9 +2104,19 @@ generate_embedded_json() {
         ) | map(select(.value != null)) | from_entries
     ') || env_vars='{}'
     
-    # Output compact JSON for embedding; if either var is empty, use {} so jq never gets an invalid argument
-    resource_paths="${resource_paths:-{}}" 
+    # Validate each value is parseable JSON before passing to --argjson.
+    # jq-produced output should always be valid, but a corrupt $resources string
+    # can leave these as empty or multi-line values that --argjson rejects.
+    resource_paths="${resource_paths:-{}}"
     env_vars="${env_vars:-{}}"
+    if ! printf '%s' "$resource_paths" | jq empty 2>/dev/null; then
+        log_error "resource_paths is not valid JSON (value: ${resource_paths:0:120}); falling back to {}" >&2
+        resource_paths='{}'
+    fi
+    if ! printf '%s' "$env_vars" | jq empty 2>/dev/null; then
+        log_error "env_vars is not valid JSON (value: ${env_vars:0:120}); falling back to {}" >&2
+        env_vars='{}'
+    fi
     jq -n \
         --argjson resource_paths "$resource_paths" \
         --argjson env_vars "$env_vars" \

@@ -126,15 +126,10 @@ readonly ATTACHED_SECRETS
 
 echo "Waiting for container to create named pipe..."
 
-retries=0
-until docker exec "${CONTAINER_NAME}" sh -c "[ -p ${PIPE_PATH} ]" 2>/dev/null; do
-  if (( retries >= 40 )); then
-    >&2 echo "ERROR: Timed out waiting for container to create ${PIPE_PATH}"
-    exit 1
-  fi
-  sleep 3
-  (( retries++ ))
-done
+if ! docker exec "${CONTAINER_NAME}" sh -c "[ -p ${PIPE_PATH} ]" 2>/dev/null; then
+  >&2 echo "Container not receinv secrets at ${PIPE_PATH}. Skipping secret provisioning."
+  exit 0
+fi
 
 # --- Build JSON secrets array for pipe delivery ---
 SECRETS_JSON="[]"

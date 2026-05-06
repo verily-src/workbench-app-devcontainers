@@ -328,7 +328,7 @@ Prompts can be versioned and A/B tested through Langfuse.
 ### Project Structure
 
 ```
-agno_fastomop/
+fast-omop/
 ├── src/agno_fastomop/
 │   ├── agents/          # Agent definitions
 │   │   ├── database.py

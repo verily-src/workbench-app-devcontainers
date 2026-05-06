@@ -7,5 +7,5 @@ service cron start
 bash /app/post-startup.sh
                                                                                                                 
 # Start the Agno orchestration service                                             
-cd /app/agno_fastomop
+cd /app/fast-omop
 python -m agno_fastomop.run_agent

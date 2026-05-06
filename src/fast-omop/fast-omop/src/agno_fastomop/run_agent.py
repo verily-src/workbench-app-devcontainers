@@ -1,5 +1,5 @@
 import asyncio
-# from agno_fastomop.workflows.omop_workflow import run_omop_query, cleanup_workflow
+# from agno_fastomop.workflows.omop_workflow import cleanup_workflow
 from agno_fastomop.agents.supervisor import create_supervisor_agent                                               
 from agno.tools.mcp import MCPTools                                                                               
 from agno_fastomop.config import config                                                                           
@@ -194,7 +194,7 @@ async def batch_mode(dataset_path, output_path=None):
 
     # # Cleanup workflow after batch
     # print("Cleaning up resources...")
-    await cleanup_workflow()
+    # await cleanup_workflow()
 
     end_time = datetime.now()
 

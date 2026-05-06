@@ -4,7 +4,7 @@ import tomllib
 from agno.tools.mcp import MCPTools
 
 def _load_omcp_command_and_env() -> str:
-    config_path = "/Users/k24118093/Documents/agno_fastomop/config.toml"
+    config_path = "/Users/k24118093/Documents/fast-omop/config.toml"
     with open(config_path, "rb") as f:
         cfg = tomllib.load(f)
     raw_cmd = cfg.get("omcp", {}).get("command", "").strip()

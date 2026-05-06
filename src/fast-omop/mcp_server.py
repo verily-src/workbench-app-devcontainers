@@ -29,7 +29,7 @@ def run_bq_query(query, project_id, output_format="csv"):
 
 
 @mcp.tool()
-def Select_Query(query):
+def Select_Query(query: str) -> str:
     project_id = os.getenv("PROJECT_ID")
 
     try:

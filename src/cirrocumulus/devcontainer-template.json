@@ -1,0 +1,20 @@
+{
+  "id": "cirrocumulus",
+  "version": "1.0.0",
+  "name": "Cirrocumulus",
+  "description": "Single-cell data visualization tool for analyzing .zarr and .h5ad files",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "true"
+    }
+  }
+}

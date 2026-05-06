@@ -135,7 +135,7 @@ fi
 
 validate_allowed_secret "${SECRET_ENTRY}" "${SECRET_WORKSPACE_ID}" "${SECRET_RESOURCE_ID}"
 
-CREDENTIAL="$(retrieve_secret TOKEN "${WSM_URL}" "${RESOURCE_ID}" "${KEY_FILE}" \
+CREDENTIAL="$(retrieve_secret TOKEN "${WSM_URL}" "${WORKSPACE_ID}" "${RESOURCE_ID}" "${KEY_FILE}" \
   "${SECRET_WORKSPACE_ID}" "${SECRET_RESOURCE_ID}")"
 readonly CREDENTIAL
 

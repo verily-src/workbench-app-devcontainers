@@ -29,22 +29,26 @@ readonly -f sign_nonce
 # Args:
 #   $1 - name of the variable holding the auth token (passed to curl_with_auth)
 #   $2 - WSM base URL
-#   $3 - app resource ID (the challenge requestor)
-#   $4 - path to the Ed25519 private signing key
-#   $5 - workspace ID containing the secret
-#   $6 - secret resource ID
+#   $3 - app workspace ID (workspace containing the app resource)
+#   $4 - app resource ID (the challenge requestor)
+#   $5 - path to the Ed25519 private signing key
+#   $6 - workspace ID containing the secret
+#   $7 - secret resource ID
 # Outputs: decrypted secret value on stdout
 function retrieve_secret() {
   local token_var="$1"
   local wsm_url="$2"
-  local app_resource_id="$3"
-  local key_file="$4"
-  local secret_workspace_id="$5"
-  local secret_resource_id="$6"
+  local app_workspace_id="$3"
+  local app_resource_id="$4"
+  local key_file="$5"
+  local secret_workspace_id="$6"
+  local secret_resource_id="$7"
 
   local challenge_request
-  challenge_request="$(jq -n --arg appResourceId "${app_resource_id}" \
-    '{"identifier": {"appResourceId": $appResourceId}}')"
+  challenge_request="$(jq -n \
+    --arg workspaceId "${app_workspace_id}" \
+    --arg resourceId "${app_resource_id}" \
+    '{"identifier": {"app": {"workspaceId": $workspaceId, "resourceId": $resourceId}}}')"
 
   local nonce
   nonce="$(curl_with_auth "${token_var}" -s -f -X POST \
@@ -62,11 +66,12 @@ function retrieve_secret() {
 
   local read_request
   read_request="$(jq -n \
-    --arg appResourceId "${app_resource_id}" \
+    --arg workspaceId "${app_workspace_id}" \
+    --arg resourceId "${app_resource_id}" \
     --arg nonce "${nonce}" \
     --arg signature "${signature}" \
     '{
-      "identifier": {"appResourceId": $appResourceId},
+      "identifier": {"app": {"workspaceId": $workspaceId, "resourceId": $resourceId}},
       "nonce": $nonce,
       "signature": $signature
     }')"

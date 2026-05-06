@@ -158,7 +158,7 @@ for i in $(seq 0 $((PIPE_SECRET_COUNT - 1))); do
   echo "Retrieving secret: ${SECRET_NAME}"
 
   { set +o xtrace; } 2>/dev/null
-  SECRET_VALUE="$(retrieve_secret TOKEN "${WSM_URL}" "${RESOURCE_ID}" "${KEY_FILE}" \
+  SECRET_VALUE="$(retrieve_secret TOKEN "${WSM_URL}" "${WORKSPACE_ID}" "${RESOURCE_ID}" "${KEY_FILE}" \
     "${SECRET_WORKSPACE_ID}" "${SECRET_RESOURCE_ID}")"
 
   for SECRET_TYPE_KEY in pipeVar pathVar valueVar; do

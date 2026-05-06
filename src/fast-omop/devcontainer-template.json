@@ -1,0 +1,20 @@
+{
+  "id": "fast-omop",
+  "version": "1.0.0",
+  "name": "fast-omop",
+  "description": "Custom Workbench app: fast-omop (Image: , Port: 5000, User: root)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

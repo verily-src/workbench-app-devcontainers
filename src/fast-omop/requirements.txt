@@ -1,0 +1,25 @@
+agno>=2.6.4
+pydantic>=2.12.5
+fastmcp>=0.8.0
+mcp>=1.0.0
+fastapi>=0.136.1
+uvicorn>=0.24.0
+httpx>=0.25.0
+ibis-framework[all]>=9.0.0
+sqlglot>=28.9.0
+duckdb>=1.4.4
+pandas>=2.3.3
+pyarrow>=23.0.0
+python-dotenv>=1.0.0
+uv
+sync
+sentence-transformers
+bq
+
+# Flask app
+
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.7
+python-dotenv==1.0.1
+gunicorn==22.0.0

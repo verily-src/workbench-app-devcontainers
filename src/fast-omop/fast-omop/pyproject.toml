@@ -1,0 +1,44 @@
+[project]
+name = "agno_fastomop"
+version = "0.1.0"
+description = "Clean NL-to-SQL framework for OMOP CDM using Agno multi-agent system"
+dependencies = [
+    "agno>=2.3.1",
+    "langfuse>=2.0.0",
+    "pydantic>=2.0.0",
+    "openai>=1.0.0",
+    "anthropic>=0.42.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.25.0",
+    "openlit>=1.0.0",
+    "lancedb>=0.3.0",
+    "fastapi>=0.104.0",
+    "ollama>=0.1.0",
+    "tomli>=2.0.0",
+    "websockets>=12.0",
+    "nest-asyncio>=1.5.0",
+    "opentelemetry-api>=1.20.0",
+    "ag-ui-protocol>=0.1.0",
+    # "sentence-transformers>=2.0.0",  # Commented out - not needed since knowledge base is disabled
+    "pandas>=2.0.0",
+    "sentence-transformers>=5.1.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0"
+]
+postgres = [
+    "ibis-framework[postgres]>=10.0.0"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agno_fastomop"]

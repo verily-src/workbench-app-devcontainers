@@ -1,0 +1,66 @@
+[models]
+default_provider = "anthropic"
+default_id = "claude-3-5-sonnet-20241022"
+
+[models.providers.anthropic]
+provider = "anthropic"
+model_id = "claude-3-5-sonnet-20241022"
+
+[models.providers.openai]
+provider = "openai"
+model_id = "gpt-4-turbo-preview"
+
+[models.providers.azure]
+provider = "azure"
+model_id = "gpt-4.1"
+api_version = "2025-01-01-preview"
+temperature = 0.0  # Deterministic responses
+
+[models.providers.ollama]
+provider = "ollama"
+model_id = "gpt-oss:20b"
+
+[models.providers.ollama_light]
+provider = "ollama"
+model_id = "qwen2.5:7b"
+
+[agents.database]
+name = "OMOP Database Agent"
+model_provider = "ollama"
+prompt_name = "database_agent"
+prompt_label = "dev"
+reasoning = false
+markdown = false
+
+[agents.semantic]
+name = "OMOP Semantic Agent"
+model_provider = "ollama"
+prompt_name = "semantic_agent"
+prompt_label = "dev"
+reasoning = false  # Disable reasoning - output_schema enforces JSON, reasoning adds explanatory text
+
+[agents.orchestrator]
+name = "OMOP Orchestrator"
+model_provider = "ollama"
+prompt_name = "supervisor"
+prompt_label = "dev"
+reasoning = false
+
+[omcp]
+transport = "stdio"
+command = "uv run --directory /Users/kristenliu/Documents/workbench-app-devcontainers/src/fast-omop python mcp_server.py"
+
+[milvus]
+host = "localhost"
+port = 19530
+collection = "omop_clinical_concepts"
+embedding_model = "abhinand/MedEmbed-large-v0.1"
+
+[observability]
+tracing_enabled = true
+disable_batch = true
+
+[bigquery]                                                                                                        
+project_id = "wb-blazing-leek-7838"
+collection_id = "cms-syn-puf"
+org_id = "verily1"

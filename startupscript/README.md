@@ -8,6 +8,48 @@ Currently there are three flavors of startup.script:
 - dataproc cluster
 - general gce instance (in the startupscript/ folder)
 
+## How startup scripts get wired into app templates
+
+App templates in `src/<app-name>/` are **not self-contained**. They depend on shared scripts and features that live elsewhere in this repo. Understanding how these get resolved is essential for debugging startup failures.
+
+### The repo is mounted as `/workspace`
+
+When Workbench launches an app, it clones the **entire repo** (not just the `src/<app-name>/` subdirectory) onto the VM. The `docker-compose.yaml` in each template mounts the repo root into the container:
+
+```yaml
+volumes:
+  - .:/workspace:cached
+```
+
+The devcontainer CLI resolves this `.` relative to the `--workspace-folder` argument, which Workbench sets to the repo root. So `/workspace` inside the container contains the full repo tree.
+
+### Lifecycle commands resolve from the workspace root
+
+The `.devcontainer.json` sets:
+
+```json
+"workspaceFolder": "/workspace"
+```
+
+All relative paths in `postCreateCommand` and `postStartCommand` resolve from `/workspace`:
+
+```json
+"postCreateCommand": ["bash", "-c", "./startupscript/post-startup.sh ..."]
+"postStartCommand": ["bash", "-c", "./startupscript/remount-on-restart.sh ..."]
+```
+
+These become `/workspace/startupscript/post-startup.sh` and `/workspace/startupscript/remount-on-restart.sh` inside the container.
+
+### Features resolve the same way
+
+Local features referenced as `./.devcontainer/features/<name>` resolve relative to the workspace root. The `.devcontainer/features/` directory contains symlinks to `features/src/`. External features (e.g. `ghcr.io/devcontainers/features/aws-cli`) are pulled from OCI registries by the devcontainer CLI.
+
+### Implications for development
+
+- **Shared scripts affect all templates.** A bug in `post-startup.sh` or `remount-on-restart.sh` breaks every app that calls them.
+- **Cloud-specific logic must handle both GCP and AWS.** Templates pass `${templateOption:cloud}` to startup scripts, which branch on `gcp` vs `aws`. If a shared script hardcodes GCP-specific behavior, AWS launches break.
+- **Missing features cause silent failures.** If an app template omits a required feature (e.g. `aws-cli`), the startup scripts that depend on it (e.g. `aws/vm-metadata.sh`) fail silently due to `2>/dev/null` error suppression.
+
 ## How to test your change?
 
 ### Option 1

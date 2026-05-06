@@ -91,6 +91,13 @@ def validate_config():
     # required_env = required_base.copy()
     required_env = []
 
+    if "vertex" in providers_used:
+        # No API key needed — uses GCP Application Default Credentials.
+        # Optionally check that region and project are configured:
+        # required_env.append("CLOUD_ML_REGION")
+        # required_env.append("ANTHROPIC_VERTEX_PROJECT_ID")
+        pass
+
     if "azure" in providers_used:
         required_env.append("AZURE_OPENAI_API_KEY")
         required_env.append("AZURE_OPENAI_ENDPOINT")

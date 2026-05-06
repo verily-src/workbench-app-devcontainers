@@ -1,7 +1,12 @@
 [models]
-default_provider = "ollama"
-default_id = "gpt-oss:20b"
+default_provider = "vertex"
+default_id = "claude-sonnet-4@20250514"
 
+[models.providers.vertex]
+provider = "vertex"
+model_id = "claude-sonnet-4@20250514"
+region = "us-east5"
+project_id = "wb-blazing-leek-7838"    # Replace with your GCP project ID
 
 [models.providers.anthropic]
 provider = "anthropic"
@@ -27,7 +32,7 @@ model_id = "qwen2.5:7b"
 
 [agents.database]
 name = "OMOP Database Agent"
-model_provider = "ollama"
+model_provider = "vertex"
 prompt_name = "database_agent"
 prompt_label = "dev"
 reasoning = false
@@ -35,14 +40,14 @@ markdown = false
 
 [agents.semantic]
 name = "OMOP Semantic Agent"
-model_provider = "ollama"
+model_provider = "vertex"
 prompt_name = "semantic_agent"
 prompt_label = "dev"
 reasoning = false  # Disable reasoning - output_schema enforces JSON, reasoning adds explanatory text
 
 [agents.orchestrator]
 name = "OMOP Orchestrator"
-model_provider = "ollama"
+model_provider = "vertex"
 prompt_name = "supervisor"
 prompt_label = "dev"
 reasoning = false

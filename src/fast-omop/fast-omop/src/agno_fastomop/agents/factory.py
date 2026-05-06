@@ -4,6 +4,7 @@ from agno.models.openai import OpenAIChat
 from agno.models.ollama import Ollama
 from typing import Dict, Any
 import os
+from agno.models.vertexai import Claude as VertexClaude
 
 def create_model(config: Dict) -> Any:
     """
@@ -15,6 +16,12 @@ def create_model(config: Dict) -> Any:
 
     if model_type == "anthropic":
         return Claude(id=model_id)
+    elif model_type == "vertex":
+        return VertexClaude(
+            id=model_id,
+            region=config.get("region"),       # Falls back to CLOUD_ML_REGION env var
+            project_id=config.get("project_id") # Falls back to ANTHROPIC_VERTEX_PROJECT_ID env var
+        )
     elif model_type == "azure":
         return AzureOpenAI(id=model_id,
                            api_version=config.get("api_version", "2024-10-21"),

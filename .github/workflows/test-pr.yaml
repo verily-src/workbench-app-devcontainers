@@ -46,6 +46,9 @@ jobs:
             vscode-docker:
               filters:
                 - 'features/src/workbench-tools/**'
+            test-app-secrets:
+              filters:
+                - 'src/common/**'
             workbench-jupyter:
               template: custom-workbench-jupyter-template
               maximize_build_space: true

@@ -127,7 +127,7 @@ readonly ATTACHED_SECRETS
 echo "Waiting for container to create named pipe..."
 
 if ! docker exec "${CONTAINER_NAME}" sh -c "[ -p ${PIPE_PATH} ]" 2>/dev/null; then
-  >&2 echo "Container not receinv secrets at ${PIPE_PATH}. Skipping secret provisioning."
+  >&2 echo "Container not receiving secrets at ${PIPE_PATH}. Skipping secret provisioning."
   exit 0
 fi
 

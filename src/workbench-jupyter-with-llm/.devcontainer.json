@@ -14,7 +14,7 @@
   "postStartCommand": [
     "bash",
     "-c",
-    "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\"; /opt/llm-context/generate-context.sh /home/jupyter || true"
+    "./startupscript/remount-on-restart.sh jupyter /home/jupyter \"${templateOption:cloud}\" \"${templateOption:login}\"; /opt/llm-context/run-context-generator.sh || true"
   ],
   "features": {
     "./.devcontainer/features/workbench-tools": {

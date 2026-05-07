@@ -88,5 +88,10 @@
     "tag": "4",
     "installed": "sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60",
     "filter": "startupscript\\/butane\\/050-parse-devcontainer\\.sh"
+  },
+  "gcr.io/go-containerregistry/crane": {
+    "tag": "latest",
+    "installed": "sha256:d3a706262093746258f20107ab4e95536f9d6d45c8c3f3acf6b02b1801b440d6",
+    "filter": "startupscript\\/butane\\/prefetch-oci-features\\.sh"
   }
 }

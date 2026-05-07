@@ -130,7 +130,7 @@ for FEATURE_REF in "${FEATURE_REFS[@]}"; do
   }
 
   mkdir -p "${LOCAL_DIR}"
-  tar -xzf "${BLOB_TAR}" -C "${LOCAL_DIR}" || {
+  tar -xf "${BLOB_TAR}" -C "${LOCAL_DIR}" || {
     echo "WARNING: Failed to extract blob for ${RESOLVED_REF}, skipping" >&2
     rm -f "${BLOB_TAR}"
     rm -rf "${LOCAL_DIR}"
@@ -148,6 +148,11 @@ for FEATURE_REF in "${FEATURE_REFS[@]}"; do
   echo "Prefetched ${FEATURE_REF} -> ${LOCAL_DIR}"
 done
 
+if [[ ${#PREFETCHED_REFS[@]} -eq 0 ]]; then
+  echo "No features were prefetched"
+  exit 0
+fi
+
 # Rewrite devcontainer.json: replace OCI refs with local paths.
 for FEATURE_REF in "${FEATURE_REFS[@]}"; do
   RESOURCE="$(ref_to_resource "${FEATURE_REF}")"
@@ -156,6 +161,7 @@ for FEATURE_REF in "${FEATURE_REFS[@]}"; do
     continue
   fi
 
+  # shellcheck disable=SC2016 # backslash-ampersand is intentional sed replacement syntax
   ESCAPED_REF="$(printf '%s' "${FEATURE_REF}" | sed 's/[[\.*^$()+?{|]/\\&/g')"
   sed -i "s|\"${ESCAPED_REF}\"|\"${LOCAL_PATH}\"|g" "${CONFIG_PATH}"
 done

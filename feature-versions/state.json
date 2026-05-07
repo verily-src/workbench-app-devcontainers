@@ -1,7 +1,7 @@
 {
   "ghcr.io/devcontainers/features/aws-cli": {
     "tag": "1",
-    "installed": "sha256:17cb4a40151f59144b46957b9264683663b0214371a041ecd53dccc015a4b923",
+    "installed": "sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/java": {
@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:0438761b165f6f8da90383722278be8cf89607f39cd42c386877fe72f26b3b40",
+    "installed": "sha256:de88723a9f7b48ed902b539da7a7279540ea296157b9878edc399d0b5e112701",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:454db241e887998792175c600b9a04ef78cbf8cede9b75c92f09982cbbd7ae65",
+    "installed": "sha256:8acd16daa8b02799e8f8117e6fc1f8dcdca542d888fa92855c21eba279fa8b1d",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:91bf43412e28a0eeb057ac480f243ce105636be59b16b105cb9e2fcb5851f041",
+    "installed": "sha256:4448c95b56482bffc5d7d62f6a5b0ac89c3547a670d74b1f99b1c0247e6c329c",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:fe512afbcca4d0d112724bcefac8d36af1fd789c74ff912f1de507f2fc0b94ea",
+    "installed": "sha256:9e63c7b033e053487c7c4b8d9b84ebc58f2a4be76bb6129ced2ba90da8643d1f",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,12 +61,12 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:1f384394d473c43ab6a39b2227ba3aa9c95af648ce3a67e1b4da1969c16c7c0d",
+    "installed": "sha256:6e542034343228a692e0b24f12cbcc8ade3650ec1e2c9e195bc291f2bf024e3c",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
     "tag": "1.26-alpine",
-    "installed": "sha256:f85330846cde1e57ca9ec309382da3b8e6ae3ab943d2739500e08c86393a21b1",
+    "installed": "sha256:e58f92c51f4cc98f2ef4780ba8708fe914f20e6175720a19c1c85ff029a6b9fc",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {

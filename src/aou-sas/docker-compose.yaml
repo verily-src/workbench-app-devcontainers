@@ -21,8 +21,6 @@ services:
       # With Mikey Secrets, the entrypoint wrapper populates /sasinside/ from
       # the SAS_LICENSE_PATH file descriptor instead.
       - ./sasinside:/sasinside
-    tmpfs:
-      - /data/workspace:uid=1001,gid=1001
     environment:
       HOST_AUTH: ""
       SAS_DEBUG: "0"

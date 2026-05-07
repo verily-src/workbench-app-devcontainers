@@ -135,10 +135,12 @@ EOF
 # Make the directory and files accessible to the user
 chown -R "${USERNAME}:" "${WB_MCP_DIR}"
 
-# Write Claude Code MCP config directly — more reliable than `claude mcp add`,
-# which can write to the wrong location across Claude Code versions.
+# Write Claude Code MCP config to both legacy and current locations.
+# Older versions read ~/.claude/mcp.json; v2.1+ reads ~/.claude.json.
 CLAUDE_CONFIG_DIR="${USER_HOME_DIR}/.claude"
+CLAUDE_JSON="${USER_HOME_DIR}/.claude.json"
 mkdir -p "${CLAUDE_CONFIG_DIR}"
+
 cat > "${CLAUDE_CONFIG_DIR}/mcp.json" <<EOF
 {
   "mcpServers": {
@@ -150,7 +152,30 @@ cat > "${CLAUDE_CONFIG_DIR}/mcp.json" <<EOF
 }
 EOF
 chown -R "${USERNAME}:" "${CLAUDE_CONFIG_DIR}"
-echo "Wrote Claude Code MCP config to ${CLAUDE_CONFIG_DIR}/mcp.json"
+echo "Wrote legacy MCP config to ${CLAUDE_CONFIG_DIR}/mcp.json"
+
+# Merge wb server into ~/.claude.json (preserving existing config)
+if command -v python3 &> /dev/null; then
+    python3 -c "
+import json, os
+path = '${CLAUDE_JSON}'
+cfg = {}
+if os.path.isfile(path):
+    with open(path) as f:
+        cfg = json.load(f)
+cfg.setdefault('mcpServers', {})['wb'] = {
+    'command': '${WB_MCP_BIN}',
+    'args': []
+}
+with open(path, 'w') as f:
+    json.dump(cfg, f, indent=2)
+    f.write('\n')
+"
+    chown "${USERNAME}:" "${CLAUDE_JSON}"
+    echo "Wrote MCP config to ${CLAUDE_JSON}"
+else
+    echo "python3 not found, skipping ${CLAUDE_JSON} — run 'claude mcp add wb ${WB_MCP_BIN}' manually"
+fi
 
 # Auto-configure Gemini CLI if available
 if command -v gemini &> /dev/null; then

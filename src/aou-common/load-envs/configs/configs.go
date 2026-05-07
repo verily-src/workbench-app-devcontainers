@@ -13,3 +13,6 @@ var CdrConfigStable []byte
 
 //go:embed cdr_config_prod.json
 var CdrConfigProd []byte
+
+//go:embed cdr_config_early_access.json
+var CdrConfigEarlyAccess []byte

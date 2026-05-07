@@ -117,6 +117,8 @@ func GetCdrConfiguration(mappings map[uuid.UUID]DataCollectionMapping, aouVersio
 		cdrConfigData = configs.CdrConfigStable
 	case "prod":
 		cdrConfigData = configs.CdrConfigProd
+	case "early_access":
+		cdrConfigData = configs.CdrConfigEarlyAccess
 	default:
 		return nil, nil, fmt.Errorf("unknown CDR environment: %s", mapping.CdrEnv)
 	}

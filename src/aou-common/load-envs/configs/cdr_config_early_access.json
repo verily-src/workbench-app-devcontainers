@@ -1,0 +1,31 @@
+{
+  "accessTiers": [
+    {
+      "shortName": "registered",
+      "datasetsBucket": "",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-rw-prod/aou-rw-gar-remote-repo-docker-prod"
+    },
+    {
+      "shortName": "controlled",
+      "datasetsBucket": "gs://vwb-aou-earlyaccess-datasets-controlled/",
+      "artifactRegistryRepo": "us-central1-docker.pkg.dev/all-of-us-rw-prod/aou-rw-gar-remote-repo-docker-prod"
+    }
+  ],
+  "cdrVersions": [
+    {
+      "name": "All of Us Registered Tier Early Access Dataset v9",
+      "bigqueryProject": "wb-crisp-citrus-2555",
+      "bigqueryDataset": "R2025Q4R4",
+      "accessTier": "registered",
+      "dcVersionName": "cdrv9-ea"
+    },
+    {
+      "name": "All of Us Controlled Tier Early Access Dataset v9",
+      "bigqueryProject": "wb-bright-olive-4015",
+      "bigqueryDataset": "C2025Q4R3",
+      "accessTier": "controlled",
+      "storageBasePath": "v9",
+      "dcVersionName": "cdrv9-ea"
+    }
+  ]
+}

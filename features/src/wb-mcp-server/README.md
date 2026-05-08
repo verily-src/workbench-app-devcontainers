@@ -14,20 +14,45 @@ Add to your `devcontainer.json`:
 }
 ```
 
-Rebuild your devcontainer. The server installs at `/opt/wb-mcp-server/wb-mcp-server`.
+Rebuild your devcontainer. The server:
+- Installs at `/opt/wb-mcp-server/wb-mcp-server`
+- **Runs automatically as HTTP daemon** on port 9242
+- **Auto-configures Claude CLI and Gemini CLI** during installation
 
-## Setup
+## How It Works
 
-### With Claude CLI
+The server runs in **HTTP mode** as a persistent background service:
 
+- **No lazy loading** - tools are available immediately
+- **Port 9242** - uncommon port to avoid conflicts
+- **Starts via postStartCommand** after authentication completes
+- **Pre-configured** with both Claude Code and Gemini CLI
+
+### Manual Setup (if needed)
+
+If auto-configuration failed, manually add the server:
+
+**Claude CLI:**
 ```bash
-claude mcp add --transport stdio wb -- /opt/wb-mcp-server/wb-mcp-server
+claude mcp add --transport http wb http://127.0.0.1:9242
 ```
 
-### With Gemini CLI
+**Gemini CLI:**
+```bash
+gemini mcp add --scope user --transport http wb http://127.0.0.1:9242
+```
+
+### Server Control
 
 ```bash
-gemini mcp add --scope user wb /opt/wb-mcp-server/wb-mcp-server
+# Start server
+/opt/wb-mcp-server/start-server.sh
+
+# Stop server
+/opt/wb-mcp-server/stop-server.sh
+
+# Check status
+pgrep -f 'wb-mcp-server -http'
 ```
 
 ## Quick Examples
@@ -115,13 +140,27 @@ First find underlay names:
 ```
 
 ### Server not responding
-Test directly:
+
+Check if the server is running:
 ```bash
-/opt/wb-mcp-server/wb-mcp-server
+pgrep -f 'wb-mcp-server -http'
 ```
-Then send:
-```json
-{"jsonrpc":"2.0","id":1,"method":"tools/list"}
+
+If not running, start it:
+```bash
+/opt/wb-mcp-server/start-server.sh
+```
+
+Test the HTTP endpoint:
+```bash
+curl -X POST http://127.0.0.1:9242 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Check logs:
+```bash
+tail -f /tmp/wb-mcp-server.log
 ```
 
 ## Requirements

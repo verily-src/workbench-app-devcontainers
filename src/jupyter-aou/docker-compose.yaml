@@ -27,7 +27,7 @@ services:
     # TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227
   wondershaper:
     container_name: "wondershaper"
-    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:de88723a9f7b48ed902b539da7a7279540ea296157b9878edc399d0b5e112701"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:ff6cb0ed80e949a67394b2015267e375c55e1fc577ffacb6fc6f76b5c82acb5c"
     restart: always
     network_mode: "host"
     cap_add:

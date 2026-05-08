@@ -36,12 +36,12 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:de88723a9f7b48ed902b539da7a7279540ea296157b9878edc399d0b5e112701",
+    "installed": "sha256:ff6cb0ed80e949a67394b2015267e375c55e1fc577ffacb6fc6f76b5c82acb5c",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:8acd16daa8b02799e8f8117e6fc1f8dcdca542d888fa92855c21eba279fa8b1d",
+    "installed": "sha256:0ddb5398887dd5fdb2456165344f5fd4cc80e3047d2a126af0b31a71b4a3e5b1",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
@@ -66,7 +66,7 @@
   },
   "golang": {
     "tag": "1.26-alpine",
-    "installed": "sha256:e58f92c51f4cc98f2ef4780ba8708fe914f20e6175720a19c1c85ff029a6b9fc",
+    "installed": "sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {

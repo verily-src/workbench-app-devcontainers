@@ -14,7 +14,7 @@ if [[ "${USER_HOME_DIR}" == "/home/root" ]]; then
 fi
 readonly USER_HOME_DIR
 
-readonly PORT="${PORT:-"3000"}"
+readonly WB_MCP_PORT="${PORT:-"9242"}"
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
@@ -100,10 +100,9 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${WB_MCP_BIN}
+ExecStart=${WB_MCP_BIN} -http -port ${WB_MCP_PORT}
 Restart=on-failure
 User=${USERNAME}
-StandardInput=socket
 StandardOutput=journal
 StandardError=journal
 
@@ -111,22 +110,53 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# Create a helper script to run the server
+# Create a startup script that runs as HTTP daemon
 cat > "${WB_MCP_DIR}/start-server.sh" <<'EOF'
 #!/bin/bash
-# Helper script to start the wb-mcp-server
-exec /opt/wb-mcp-server/wb-mcp-server
+# Start the wb-mcp-server in HTTP mode as a background daemon
+# This ensures the server is always available without lazy initialization
+
+WB_MCP_BIN="/opt/wb-mcp-server/wb-mcp-server"
+PORT="${WB_MCP_PORT:-9242}"
+LOGFILE="/tmp/wb-mcp-server.log"
+
+# Check if already running
+if pgrep -f "${WB_MCP_BIN} -http" > /dev/null; then
+    echo "wb-mcp-server is already running"
+    exit 0
+fi
+
+# Start server in background
+nohup "${WB_MCP_BIN}" -http -port "${PORT}" >> "${LOGFILE}" 2>&1 &
+echo "Started wb-mcp-server on port ${PORT} (PID: $!)"
+echo "Logs: ${LOGFILE}"
 EOF
 
 chmod +x "${WB_MCP_DIR}/start-server.sh"
 
-# Create MCP configuration file for easy client setup
+# Create a stop script
+cat > "${WB_MCP_DIR}/stop-server.sh" <<'EOF'
+#!/bin/bash
+# Stop the wb-mcp-server HTTP daemon
+
+WB_MCP_BIN="/opt/wb-mcp-server/wb-mcp-server"
+
+if pgrep -f "${WB_MCP_BIN} -http" > /dev/null; then
+    pkill -f "${WB_MCP_BIN} -http"
+    echo "Stopped wb-mcp-server"
+else
+    echo "wb-mcp-server is not running"
+fi
+EOF
+
+chmod +x "${WB_MCP_DIR}/stop-server.sh"
+
+# Create MCP configuration file for easy client setup (HTTP mode)
 cat > "${WB_MCP_DIR}/mcp-config.json" <<EOF
 {
   "mcpServers": {
     "wb": {
-      "command": "${WB_MCP_BIN}",
-      "args": []
+      "url": "http://127.0.0.1:${WB_MCP_PORT}"
     }
   }
 }
@@ -135,44 +165,34 @@ EOF
 # Make the directory and files accessible to the user
 chown -R "${USERNAME}:" "${WB_MCP_DIR}"
 
-# Auto-configure Claude CLI if available
+# Auto-configure Claude CLI if available (HTTP transport)
 if command -v claude &> /dev/null; then
-    echo "Found Claude CLI, attempting to add MCP server..."
-    su - "${USERNAME}" -c "claude mcp add --transport stdio wb -- ${WB_MCP_BIN}" 2>/dev/null || true
+    echo "Found Claude CLI, attempting to add MCP server (HTTP)..."
+    su - "${USERNAME}" -c "claude mcp add --transport http wb http://127.0.0.1:${WB_MCP_PORT}" 2>/dev/null || true
 fi
 
-# Auto-configure Gemini CLI if available
+# Auto-configure Gemini CLI if available (HTTP transport)
 if command -v gemini &> /dev/null; then
-    echo "Found Gemini CLI, attempting to add MCP server..."
-    su - "${USERNAME}" -c "gemini mcp add --scope user wb ${WB_MCP_BIN}" 2>/dev/null || true
+    echo "Found Gemini CLI, attempting to add MCP server (HTTP)..."
+    su - "${USERNAME}" -c "gemini mcp add --scope user --transport http wb http://127.0.0.1:${WB_MCP_PORT}" 2>/dev/null || true
 fi
 
-# Add environment variables and PATH to .bashrc
+
+# Add auto-start to .bashrc
 {
     echo ""
-    echo "# Workbench MCP Server"
-    echo "export WB_MCP_SERVER_BIN=\"${WB_MCP_BIN}\""
-    echo "export WB_MCP_CONFIG=\"${WB_MCP_DIR}/mcp-config.json\""
+    echo "# Workbench MCP Server - auto-start"
+    echo "if ! pgrep -f 'wb-mcp-server -http' > /dev/null 2>&1; then"
+    echo "    /opt/wb-mcp-server/start-server.sh > /dev/null 2>&1"
+    echo "fi"
 } >> "${USER_HOME_DIR}/.bashrc"
 
-# Make sure the login user is the owner of their .bashrc
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"
 
 echo ""
-echo "=========================================="
-echo "wb-mcp-server installation complete!"
-echo "=========================================="
-echo ""
-echo "The MCP server binary is installed at: ${WB_MCP_BIN}"
-echo "Configuration file: ${WB_MCP_DIR}/mcp-config.json"
-echo ""
-echo "To use with Claude CLI, add this to your Claude config:"
-echo "  \"wb\": {"
-echo "    \"command\": \"${WB_MCP_BIN}\""
-echo "  }"
-echo ""
-echo "To start the server manually: ${WB_MCP_DIR}/start-server.sh"
-echo "=========================================="
+echo "wb-mcp-server installed at ${WB_MCP_BIN}"
+echo "Port: ${WB_MCP_PORT}"
+echo "Auto-starts on shell login"
 echo ""
 
 echo "Done!"

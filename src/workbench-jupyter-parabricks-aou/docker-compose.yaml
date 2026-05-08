@@ -31,6 +31,9 @@ services:
     network_mode: "host"
     cap_add:
       - NET_ADMIN
+    volumes:
+      - ../aou-common/wondershaper-exempt.sh:/opt/wondershaper-exempt.sh:ro
+    entrypoint: ["/opt/wondershaper-exempt.sh"]
 networks:
   app-network:
     external: true

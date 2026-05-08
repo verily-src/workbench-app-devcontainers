@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -2919,15 +2921,54 @@ func handleRequest(req JSONRPCRequest) JSONRPCResponse {
 	}
 }
 
-func main() {
-	fmt.Fprintln(os.Stderr, "Workbench MCP Server v2.0 starting...")
+// HTTP handler for MCP requests
+func handleHTTP(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers for local access
+	w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
-	if err := initializeConfig(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing: %v\n", err)
-		os.Exit(1)
+	// Handle preflight
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
-	fmt.Fprintf(os.Stderr, "Ready - %d tools available\n", len(wbTools))
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req JSONRPCRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON-RPC request", http.StatusBadRequest)
+		return
+	}
+
+	response := handleRequest(req)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// Run server in HTTP mode
+func runHTTPServer(port string) {
+	http.HandleFunc("/", handleHTTP)
+
+	addr := "127.0.0.1:" + port
+	log.Printf("Starting HTTP MCP server on %s (port arg: %q)\n", addr, port)
+	log.Printf("Ready - %d tools available\n", len(wbTools))
+
+	log.Printf("About to call ListenAndServe with addr: %q\n", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		log.Fatalf("HTTP server failed: %v", err)
+	}
+}
+
+// Run server in stdio mode
+func runStdioServer() {
+	log.Println("Starting stdio MCP server")
+	log.Printf("Ready - %d tools available\n", len(wbTools))
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -2947,5 +2988,27 @@ func main() {
 			responseBytes, _ := json.Marshal(response)
 			fmt.Println(string(responseBytes))
 		}
+	}
+}
+
+func main() {
+	var httpMode bool
+	var port string
+
+	flag.BoolVar(&httpMode, "http", false, "Run in HTTP mode instead of stdio")
+	flag.StringVar(&port, "port", "9242", "Port for HTTP server")
+	flag.Parse()
+
+	log.SetOutput(os.Stderr)
+	log.Println("Workbench MCP Server v2.0 starting...")
+
+	if err := initializeConfig(); err != nil {
+		log.Fatalf("Error initializing: %v\n", err)
+	}
+
+	if httpMode {
+		runHTTPServer(port)
+	} else {
+		runStdioServer()
 	}
 }

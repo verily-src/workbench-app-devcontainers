@@ -1,0 +1,4 @@
+# Ignore everything in this directory (license files, certificates)
+*
+# But keep this .gitignore so the directory exists in git
+!.gitignore

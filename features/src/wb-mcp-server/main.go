@@ -1780,12 +1780,18 @@ func handleCallTool(params CallToolParams) CallToolResult {
 				continue
 			}
 
-			id, _ := ws["id"].(string)
+			uuid, _ := ws["id"].(string)
+			userFacingId, _ := ws["userFacingId"].(string)
 			name, _ := ws["displayName"].(string)
 			if name == "" {
-				name, _ = ws["userFacingId"].(string)
+				name = userFacingId
 			}
 			desc, _ := ws["description"].(string)
+
+			// Derive the Workbench UI URL for this data collection
+			// workspaceBaseURL is e.g. https://workbench.verily.com/api/wsm
+			workbenchBaseUI := strings.Replace(workspaceBaseURL, "/api/wsm", "", 1)
+			collectionURL := fmt.Sprintf("%s/data-collections/%s", workbenchBaseUI, userFacingId)
 
 			// Extract all terra-* workspace properties into a flat map
 			props := make(map[string]string)
@@ -1800,7 +1806,8 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			}
 
 			// Apply optional keyword filter across name, description, short description,
-			// modality tags, and therapeutic tags so searches like "genomics" or "imaging" work
+			// modality tags, and therapeutic tags so searches like "genomics" or "imaging" work.
+			// Props are extracted before the filter so tags are available for matching.
 			if query != "" {
 				searchTargets := strings.Join([]string{
 					strings.ToLower(name),
@@ -1817,8 +1824,10 @@ func handleCallTool(params CallToolParams) CallToolResult {
 
 			// Build structured result with all meaningful metadata fields
 			dc := map[string]interface{}{
-				"id":   id,
-				"name": name,
+				"id":             userFacingId,
+				"uuid":           uuid,
+				"name":           name,
+				"workbenchUrl":   collectionURL,
 			}
 
 			// Overview

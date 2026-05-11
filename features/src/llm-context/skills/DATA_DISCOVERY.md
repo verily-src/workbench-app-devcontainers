@@ -152,6 +152,5 @@ If the user wants to use a data collection:
 
 ## Notes
 
-- The platform-wide search may not return every data collection in Workbench — some collections use different workspace tags. If the user knows a specific collection exists but it's not in the results, direct them to browse the full catalog at: `https://workbench.verily.com/data-collections`
 - `workspace_list_data_collections` only shows collections already attached to the active workspace
 - `platform_list_data_collections` searches platform-wide but requires the user to have at least READ access to the collection workspace

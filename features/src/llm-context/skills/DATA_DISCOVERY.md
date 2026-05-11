@@ -6,13 +6,7 @@
 
 Read this skill whenever the user asks about finding, searching, or exploring data collections — whether inside their active workspace or across all of Workbench.
 
-**Trigger phrases — workspace-scoped search:**
-- "What data is in my workspace?"
-- "What data collections are attached to my workspace?"
-- "Show me the resources in my workspace"
-- "What datasets do I have access to here?"
-
-**Trigger phrases — platform-wide search:**
+**Trigger phrases — platform-wide search only (read this skill):**
 - "Find data collections across Workbench"
 - "What data do I have access to?"
 - "Search for [disease / modality / population] datasets"
@@ -26,14 +20,14 @@ Read this skill whenever the user asks about finding, searching, or exploring da
 
 ## Step 0 — Clarify the Search Scope
 
-**Always ask the user first:**
+**If the user's intent is ambiguous** (e.g., they said "find me data" without specifying where), ask:
 
 > "Would you like me to search only within your active workspace, or search across all data collections you have access to in Workbench (platform-wide)?"
 
-- **Workspace-only**: Use `workspace_list_data_collections` — fast, shows only what's already attached
-- **Platform-wide**: Use `platform_list_data_collections` — broader, searches all accessible collections
+- **Workspace-only**: Call `workspace_list_data_collections` directly — no need to continue with this skill
+- **Platform-wide**: Continue with Steps 1–4 below
 
-Do not assume scope. If the user's intent is ambiguous, ask.
+If the user clearly said "in my workspace" or asked about attached resources, skip this skill entirely and call `workspace_list_data_collections` directly.
 
 ---
 

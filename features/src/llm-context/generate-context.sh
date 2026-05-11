@@ -2724,12 +2724,13 @@ Read these directly — no index needed:
 
 ### ⚡ Skill Trigger Guide
 
-**Read \`DATA_DISCOVERY.md\` when:**
-- "find data collections" / "search for data" / "what data do I have access to"
-- "find me a dataset" / "search across workbench" / "what datasets are available"
-- "genomics data" / "clinical data" / "imaging data" / "proteomics data"
-- "data I can add to my workspace" / "data collections I haven't attached"
+**Read \`DATA_DISCOVERY.md\` when the user wants to search ACROSS Workbench (not just their active workspace):**
+- "find data collections" / "search for data across workbench"
+- "find me a dataset" / "what datasets are available"
+- "genomics data" / "clinical data" / "imaging data" / "proteomics data" (without a specific workspace context)
+- "data I can add to my workspace" / "data collections I haven't attached yet"
 - "find data related to [disease / topic]"
+- Do NOT use this skill for "what's in my workspace" — call \`workspace_list_data_collections\` directly instead
 
 **ALWAYS read \`DASHBOARD_BUILDER.md\` FIRST when user says ANY of these:**
 - "create a dashboard"

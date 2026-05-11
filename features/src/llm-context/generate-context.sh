@@ -32,7 +32,8 @@
 #     - id: resource name
 #     - uuid
 #     - description
-#     - resourceType: GCS_BUCKET, BQ_DATASET, GIT_REPO, etc.
+#     - resourceType: GCS_BUCKET, BQ_DATASET, GIT_REPO, GCS_OBJECT, BQ_TABLE (GCP)
+#                       AWS_S3_STORAGE_FOLDER, AWS_AURORA_DATABASE, AWS_AURORA_DATABASE_REFERENCE (AWS)
 #     - stewardshipType: CONTROLLED, REFERENCED
 #     - region
 #     - For GCS: bucketName, location
@@ -88,10 +89,8 @@ check_prerequisites() {
     # Check if workspace is set
     if ! wb workspace describe --format=json &> /dev/null; then
         log_error "No workspace set or not authenticated. Please run:"
-        log_error "  wb auth login --mode=APP_DEFAULT_CREDENTIALS"
+        log_error "  wb auth login   (GCP: add --mode=APP_DEFAULT_CREDENTIALS inside Workbench apps)"
         log_error "  wb workspace set <workspace-id>"
-        log_error ""
-        log_error "Note: Use --mode=APP_DEFAULT_CREDENTIALS inside Workbench apps"
         exit 1
     fi
     
@@ -106,9 +105,19 @@ setup_directories() {
 }
 
 # Install skill files (embedded - no network needed)
+# $1: cloud_platform — "GCP" (default) or "AWS"
 install_skills() {
+    local cloud_platform="${1:-GCP}"
     log_info "Installing skill files..."
     
+    # Copy DATA_DISCOVERY.md skill from the feature source directory
+    log_info "Creating DATA_DISCOVERY.md skill..."
+    if [ -f "$(dirname "$0")/skills/DATA_DISCOVERY.md" ]; then
+        cp "$(dirname "$0")/skills/DATA_DISCOVERY.md" "${SKILLS_DIR}/DATA_DISCOVERY.md"
+    else
+        log_info "DATA_DISCOVERY.md not found in feature source, skipping"
+    fi
+
     # Create CUSTOM_APP.md skill (full version, embedded)
     log_info "Creating CUSTOM_APP.md skill..."
     cat > "${SKILLS_DIR}/CUSTOM_APP.md" << 'SKILL_EOF'
@@ -1414,6 +1423,710 @@ cph.print_summary()
 
 Install: `pip install biopython requests lifelines`
 CLINICAL_EOF
+
+    # AWS-specific skill overrides — overwrite only the platform-sensitive skills.
+    # GCP skills written above are left untouched for GCP workspaces.
+    if [ "$cloud_platform" = "AWS" ]; then
+        log_info "Applying AWS skill variants for WORKFLOW_TROUBLESHOOT and DASHBOARD_BUILDER..."
+
+        cat > "${SKILLS_DIR}/WORKFLOW_TROUBLESHOOT.md" << 'AWS_WORKFLOW_SKILL_EOF'
+# WDL Workflow Troubleshooting Skill (AWS)
+
+**Trigger:** User asks to troubleshoot, debug, or fix a failed workflow.
+
+## Behavior
+
+Once the target job is identified:
+1. Run all diagnostic commands (Steps 2–4) without waiting for further instruction
+2. Collect error message, failed task name, logs, and exit code
+3. Identify the root cause from the evidence
+4. Present the diagnosis with supporting log snippets or error output
+5. Propose a specific fix
+
+---
+
+## Quick Diagnosis (Start Here)
+
+```bash
+# 1. Find failed jobs
+wb workflow job list --format=json | jq -r '.[] | select(.status=="FAILED") | "\(.id)\t\(.workflowName)\t\(.startTime)"'
+
+# 2. Get error message (replace JOB_ID)
+wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage // "No message"'
+
+# 3. Find failed task
+wb workflow job task list --job=<JOB_ID> --format=json | jq -r '.[] | select(.status=="FAILED") | .name'
+
+# 4. Get task error + logs
+wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json | jq '{stderr, stdout, exitCode, failureMessage}'
+```
+
+**After running these 4 commands, you'll know:** which job failed, why, which task, and where logs are.
+
+---
+
+## Step-by-Step Guide
+
+### Step 1: Identify Failed Job
+
+```bash
+wb workflow job list --format=json | jq '.[] | select(.status == "FAILED") | {id, workflowName, status, startTime, endTime}'
+```
+
+**For batch jobs:**
+```bash
+wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.status == "FAILED") | {id, status}'
+```
+
+**Ask user:** Confirm which job ID to investigate (if multiple failed jobs).
+
+---
+
+### Step 2: Get Job Details & Inputs
+
+```bash
+wb workflow job describe --job=<JOB_ID> --format=json
+```
+
+**Key fields to extract:**
+```bash
+wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage'
+wb workflow job describe --job=<JOB_ID> --format=json | jq '.inputs'
+wb workflow job describe --job=<JOB_ID> --format=json | jq '.outputs'
+```
+
+---
+
+### Step 3: Find Failed Task & Get Logs
+
+```bash
+wb workflow job task list --job=<JOB_ID> --format=json | jq '.[] | {name, status, exitCode}'
+wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json
+```
+
+**Extract log URLs:**
+```bash
+TASK_INFO=$(wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json)
+STDERR_URL=$(echo $TASK_INFO | jq -r '.stderr')
+STDOUT_URL=$(echo $TASK_INFO | jq -r '.stdout')
+echo "stderr: $STDERR_URL"
+echo "stdout: $STDOUT_URL"
+```
+
+---
+
+### Step 4: Pull and Analyze Task Logs
+
+#### Read Log Contents
+
+```bash
+# Read stderr (usually contains errors) — logs are in S3
+aws s3 cp "$STDERR_URL" - 2>/dev/null | tail -100
+
+# Read stdout
+aws s3 cp "$STDOUT_URL" - 2>/dev/null | tail -100
+
+# Search for common error patterns
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "error|exception|failed|denied|killed|oom|memory|disk|timeout" | head -30
+```
+
+#### Common Log File Patterns
+
+Cromwell execution logs are typically at:
+```
+s3://<execution-bucket>/<workflow-id>/<call-name>/execution/
+├── stdout          # Task standard output
+├── stderr          # Task standard error
+├── script          # The actual command that ran
+├── rc              # Return code (exit code)
+└── script.submit   # Submission script
+```
+
+**One-liner to read all execution files:**
+```bash
+EXEC_DIR=$(echo $TASK_INFO | jq -r '.executionDirectory // empty')
+if [ -n "$EXEC_DIR" ]; then
+  echo "=== script ===" && aws s3 cp "$EXEC_DIR/script" - 2>/dev/null
+  echo "=== rc ===" && aws s3 cp "$EXEC_DIR/rc" - 2>/dev/null
+  echo "=== stderr (last 50 lines) ===" && aws s3 cp "$EXEC_DIR/stderr" - 2>/dev/null | tail -50
+fi
+```
+
+---
+
+### Step 5: Check Resource Allocation & Usage
+
+#### What Was Requested (from WDL runtime)
+
+```bash
+wb workflow describe --workflow=<WORKFLOW_ID> --format=json | jq '.sourceUrl'
+
+# Read WDL file
+aws s3 cp s3://<bucket>/<path>/workflow.wdl - | grep -A10 "runtime {"
+```
+
+#### Check Actual Resource Usage (AWS Batch)
+
+```bash
+# List failed AWS Batch jobs
+aws batch list-jobs --job-queue <QUEUE_NAME> --job-status FAILED \
+  --query 'jobSummaryList[*].{id:jobId,name:jobName,status:status}' --output table
+
+# Describe specific batch job
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0] | {
+  status: .status,
+  statusReason: .statusReason,
+  container: .container.resourceRequirements
+}'
+```
+
+#### Memory-Specific Checks
+
+```bash
+# Check if OOM killed the task
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "oom|out of memory|killed|cannot allocate|memory"
+
+# Check what memory was requested in the batch job
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].container.resourceRequirements[] | select(.type=="MEMORY")'
+
+# Check for OOM kill signal in stderr
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i "killed process"
+```
+
+---
+
+### Step 6: Diagnose by Error Type
+
+#### Memory Issues (OOM)
+
+**Symptoms:**
+- Exit code 137 (SIGKILL) or 143
+- "Killed" in stderr
+- "Cannot allocate memory"
+- Task succeeded locally but fails at scale
+
+**Diagnosis:**
+```bash
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].container.resourceRequirements'
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "memory|oom|killed|malloc"
+```
+
+**Fix:** Increase `memory` in WDL runtime block:
+```wdl
+runtime {
+  memory: "32G"
+}
+```
+
+#### Disk Issues
+
+**Symptoms:**
+- "No space left on device"
+- "Disk quota exceeded"
+
+**Diagnosis:**
+```bash
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "space|disk|quota"
+```
+
+**Fix:** Increase disk in WDL runtime:
+```wdl
+runtime {
+  disks: "local-disk 200 SSD"
+}
+```
+
+#### Input File Issues
+
+**Symptoms:**
+- "FileNotFoundException"
+- "Localization failed"
+- File not found errors
+
+**Diagnosis:**
+```bash
+wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.inputs | to_entries[] | .value' | while read path; do
+  if [[ $path == s3://* ]]; then
+    echo -n "$path: " && aws s3 ls "$path" 2>&1 | head -1
+  fi
+done
+```
+
+#### Permission Issues
+
+**Symptoms:**
+- "Permission denied" / "Access denied" / 403 errors
+
+**Diagnosis:**
+```bash
+# Check IAM role attached to batch job
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].jobDefinition'
+
+# Test bucket access
+aws s3 ls s3://<bucket>/ 2>&1 | head -5
+```
+
+---
+
+### Step 7: Propose Solution
+
+| Issue | Solution Template |
+|-------|-------------------|
+| **OOM** | "Increase memory from X to Y in the runtime block" |
+| **Disk full** | "Increase disk size from X to Y GB" |
+| **Missing input** | "Input file doesn't exist. Verify path: `aws s3 ls <path>`" |
+| **Permission** | "IAM role lacks S3 access. Grant `s3:GetObject` on the bucket" |
+| **Timeout** | "Task exceeded time limit. Increase `maxRetries` or optimize task" |
+| **Docker** | "Image pull failed. Verify image exists and is accessible" |
+| **Other** | Describe the root cause from logs and propose a fix based on the specific error |
+
+**Re-run after fixing:**
+```bash
+wb workflow job run --workflow=<WORKFLOW_ID> --inputs=<INPUTS_JSON>
+```
+
+---
+
+## Quick Reference
+
+### Essential Commands
+
+```bash
+# Failed jobs
+wb workflow job list --format=json | jq '.[] | select(.status=="FAILED") | {id, workflowName}'
+
+# Job error
+wb workflow job describe --job=<ID> --format=json | jq '.failureMessage'
+
+# Failed tasks
+wb workflow job task list --job=<ID> --format=json | jq '.[] | select(.status=="FAILED") | .name'
+
+# Task logs (S3)
+wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq -r '.stderr' | xargs -I{} aws s3 cp {} - | tail -50
+
+# Memory check (AWS Batch)
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].container.resourceRequirements'
+```
+
+### Error → Cause → Fix
+
+| Exit Code | Meaning | Common Fix |
+|-----------|---------|------------|
+| 1 | General error | Check stderr for details |
+| 2 | Misuse of command | Check script syntax |
+| 126 | Permission problem | Check file permissions |
+| 127 | Command not found | Check PATH, container image |
+| 137 | SIGKILL (OOM) | **Increase memory** |
+| 139 | Segfault | Check input data, memory |
+| 143 | SIGTERM | Task timeout or preemption |
+
+---
+
+## Workbench-Specific Notes
+
+- **Log retention:** Cromwell logs persist in workspace execution bucket (S3)
+- **Batch jobs:** Each sub-job has independent logs; troubleshoot specific failed sub-job
+- **Preemption:** If using spot instances, set `preemptible: 0` for reliability
+AWS_WORKFLOW_SKILL_EOF
+
+        cat > "${SKILLS_DIR}/DASHBOARD_BUILDER.md" << 'AWS_DASHBOARD_SKILL_EOF'
+# Web Apps & Dashboards Skill (AWS)
+
+**Build interactive web apps, dashboards, and visualizations that run on a port in Workbench.**
+
+> **Triggers:**
+> - "Create a dashboard", "visualize data", "build charts"
+> - "Run a Flask/Streamlit/FastAPI app"
+> - "Display data in the browser", "interactive UI"
+> - Any web app that serves content on a port
+
+---
+
+## 🌐 Workbench Proxy & Web Apps Best Practices
+
+### Proxy URL Format
+
+All web apps in Workbench are accessed via:
+```
+https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
+```
+
+### ⚠️ How to Get the App UUID (CRITICAL)
+
+**You MUST automatically get the app UUID - NEVER ask the user for it.**
+
+```bash
+wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
+```
+
+**⚡ LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
+1. First run the command above to get the running app UUID
+2. Use that actual UUID in the URL you provide
+3. Do NOT use placeholders like `[APP_UUID]` in your final response
+4. Do NOT ask the user to find/replace the UUID themselves
+
+### ✅ Correct URL Examples
+```
+https://workbench.verily.com/app/abc123-def456-789/proxy/8080/
+https://workbench.verily.com/app/abc123-def456-789/proxy/8501/index.html
+```
+
+### ❌ WRONG URL Formats (These WILL fail)
+```
+https://abc123-def456.workbench-app.verily.com/  ← WRONG
+http://localhost:8080/                            ← WRONG: Not accessible externally
+```
+
+### ⚠️ Common Issue: JavaScript API Calls Failing
+
+**Problem:** JavaScript using absolute paths fails through Workbench proxy
+
+**Solution: Use Relative Paths (TESTED & CONFIRMED)**
+
+```javascript
+// ✅ CORRECT - relative paths work through proxy
+fetch('api/metadata')
+fetch('api/data?filter=value')
+
+// ❌ WRONG - absolute paths fail
+fetch('/api/metadata')
+fetch('/api/data?filter=value')
+```
+
+---
+
+## Workflow
+
+### Step 1: Understand Requirements
+
+Ask the user:
+1. **Data source?** S3 file (CSV, Parquet, JSON), Athena query, or local file?
+2. **Visualizations?** Charts (bar, line, scatter), tables, filters?
+3. **Interactivity?** Static display or dynamic filtering?
+
+### Step 2: Auto-Detect Environment
+
+```bash
+APP_UUID=$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
+echo "App UUID: $APP_UUID"
+python3 --version
+pwd
+```
+
+### Step 3: Install Dependencies
+
+```bash
+pip install flask flask-cors pandas plotly boto3 psycopg2-binary
+```
+
+### Step 4: Create Dashboard Structure
+
+```
+dashboard/
+├── app.py
+├── templates/
+│   └── index.html
+└── static/
+    └── style.css
+```
+
+---
+
+## Working Templates
+
+### Template 1: S3 Data Dashboard
+
+**app.py:**
+```python
+from flask import Flask, render_template, jsonify
+from flask_cors import CORS
+import pandas as pd
+import boto3
+import os
+
+app = Flask(__name__)
+CORS(app)
+
+_data_cache = None
+
+def get_data_from_s3():
+    global _data_cache
+    if _data_cache is not None:
+        return _data_cache
+
+    # Use the WORKBENCH_<resource_name> env var set by Workbench
+    bucket = os.environ.get('WORKBENCH_my_bucket', 'your-bucket-name')
+    s3 = boto3.client('s3')
+    obj = s3.get_object(Bucket=bucket, Key='path/to/data.csv')
+    df = pd.read_csv(obj['Body'])
+    _data_cache = df.to_dict(orient='records')
+    return _data_cache
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('api/data')  # NO leading slash!
+def get_data():
+    try:
+        data = get_data_from_s3()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('api/metadata')
+def get_metadata():
+    try:
+        data = get_data_from_s3()
+        if data:
+            return jsonify({"columns": list(data[0].keys()), "row_count": len(data)})
+        return jsonify({"columns": [], "row_count": 0})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    # CRITICAL: host='0.0.0.0' required for Workbench proxy access
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+```
+
+### Template 2: Aurora PostgreSQL Dashboard
+
+Aurora in Workbench uses **IAM database authentication** — you cannot connect with a static
+password. The correct flow is:
+
+1. Get temporary AWS credentials via `wb resource credentials`
+2. Generate an IAM auth token via boto3 (token is valid for 15 minutes)
+3. Connect with `sslmode='require'` — **SSL is mandatory; connections are rejected without it**
+
+```python
+import json, subprocess, boto3, psycopg2, pandas as pd, os
+
+def get_aurora_connection(resource_id: str, username: str):
+    """
+    Returns an open psycopg2 connection to a Workbench-managed Aurora database.
+    resource_id: the Workbench resource ID (e.g. 'test-db-1')
+    username:    the IAM database user (check with your workspace admin)
+    """
+    # Step 1 — get temporary AWS credentials from Workbench
+    result = subprocess.run(
+        ['wb', 'resource', 'credentials',
+         f'--id={resource_id}', '--scope=WRITE_READ', '--format=json'],
+        capture_output=True, text=True, check=True
+    )
+    creds = json.loads(result.stdout)
+
+    # Step 2 — parse connection details from WORKBENCH_* env var
+    # Format: "host:port/dbname"  e.g. "abc.cluster.us-west-2.rds.amazonaws.com:5432/mydb"
+    conn_str = os.environ.get(f'WORKBENCH_{resource_id.replace("-", "_")}', '')
+    host_part, _, dbname = conn_str.partition('/')
+    host, _, port = host_part.partition(':')
+    port = int(port) if port else 5432
+
+    # Step 3 — generate IAM auth token (valid 15 min)
+    session = boto3.Session(
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_session_token=creds['SessionToken'],
+        region_name='us-west-2'
+    )
+    auth_token = session.client('rds').generate_db_auth_token(
+        DBHostname=host, Port=port, DBUsername=username, Region='us-west-2'
+    )
+
+    # Step 4 — connect with SSL (REQUIRED — Aurora rejects unencrypted connections)
+    return psycopg2.connect(
+        host=host, port=port, database=dbname,
+        user=username, password=auth_token,
+        sslmode='require'   # mandatory — omitting this causes "PAM authentication failed"
+    )
+
+def get_data_from_aurora():
+    global _data_cache
+    if _data_cache is not None:
+        return _data_cache
+    conn = get_aurora_connection('test-db-1', 'your-iam-username')
+    df = pd.read_sql('SELECT * FROM your_table LIMIT 1000', conn)
+    conn.close()
+    _data_cache = df.to_dict(orient='records')
+    return _data_cache
+```
+
+> **Why IAM auth?** Workbench-managed Aurora databases are configured for IAM authentication only.
+> Static passwords will fail with "PAM authentication failed" or "pg_hba.conf rejects connection".
+
+### Alternative: Embed Data in HTML (For Static Dashboards)
+
+```python
+import json
+@app.route('/')
+def index():
+    data = get_data_from_s3()
+    return render_template('dashboard.html', data_json=json.dumps(data))
+```
+
+```html
+<script>
+const data = {{ data_json|safe }};
+renderChart(data);
+</script>
+```
+
+---
+
+## Troubleshooting
+
+### No data showing
+
+**1. Test API directly:**
+```bash
+curl http://localhost:8080/api/data | python3 -m json.tool | head -20
+```
+
+**2. Check S3 access:**
+```bash
+aws s3 ls s3://<bucket>/path/to/data.csv
+```
+
+**3. Check server logs:**
+```bash
+tail -f server.log
+```
+
+### Server won't start
+
+```bash
+lsof -i :8080
+kill $(lsof -t -i :8080)
+python3 app.py
+```
+
+### S3 / AWS errors
+
+```bash
+# Check AWS credentials
+aws sts get-caller-identity
+
+# Test S3 access
+aws s3 ls s3://<bucket>/
+
+# Check env vars set by Workbench
+env | grep WORKBENCH
+```
+
+### Aurora connection errors
+
+Aurora requires IAM authentication + SSL. Plain password connections are rejected.
+
+**Symptoms and causes:**
+- `"PAM authentication failed"` → not using IAM auth token as password
+- `"pg_hba.conf rejects connection... no encryption"` → missing `sslmode='require'`
+- `"SSL connection is required"` → same SSL issue
+
+**Step-by-step fix:**
+
+```bash
+# 1. Get temporary credentials from Workbench (scoped to this resource)
+wb resource credentials --id=<resource-id> --scope=WRITE_READ --format=json
+# Returns: {"AccessKeyId":"...","SecretAccessKey":"...","SessionToken":"..."}
+```
+
+```python
+import boto3, psycopg2, json, subprocess
+
+# 2. Generate IAM auth token
+result = subprocess.run(
+    ['wb', 'resource', 'credentials', '--id=<resource-id>', '--scope=WRITE_READ', '--format=json'],
+    capture_output=True, text=True, check=True
+)
+creds = json.loads(result.stdout)
+
+session = boto3.Session(
+    aws_access_key_id=creds['AccessKeyId'],
+    aws_secret_access_key=creds['SecretAccessKey'],
+    aws_session_token=creds['SessionToken'],
+    region_name='us-west-2'
+)
+auth_token = session.client('rds').generate_db_auth_token(
+    DBHostname='<aurora-endpoint>', Port=5432,
+    DBUsername='<username>', Region='us-west-2'
+)
+
+# 3. Connect with SSL enabled (mandatory)
+conn = psycopg2.connect(
+    host='<aurora-endpoint>', port=5432, database='<dbname>',
+    user='<username>', password=auth_token,
+    sslmode='require'   # CRITICAL — without this, connection is rejected
+)
+```
+
+**AWS CLI alternative (to verify the token works):**
+```bash
+# Export the credentials first
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_SESSION_TOKEN="..."
+
+# Generate auth token
+TOKEN=$(aws rds generate-db-auth-token \
+  --hostname <aurora-endpoint> --port 5432 \
+  --region us-west-2 --username <username>)
+
+# Connect (psql requires SSL flag)
+PGSSLMODE=require psql "host=<aurora-endpoint> port=5432 dbname=<db> user=<username> password=$TOKEN"
+```
+
+### Server not accessible through proxy
+
+**Fix:** Ensure Flask is bound to `0.0.0.0`, not `localhost`:
+```python
+app.run(host='0.0.0.0', port=8080)
+```
+
+---
+
+## Common Pitfalls Checklist
+
+- [ ] **Relative paths** - All `fetch()` calls use `'api/...'` not `'/api/...'`
+- [ ] **Host is 0.0.0.0** - Not `localhost` or `127.0.0.1`
+- [ ] **threaded=True** - For concurrent users
+- [ ] **debug=False** - For security
+- [ ] **App UUID obtained** - Not using placeholder `[APP_UUID]`
+- [ ] **S3 access verified** - `aws s3 ls s3://<bucket>/` returns files
+- [ ] **Data cached** - Avoid repeated S3 reads
+- [ ] **Error handling** - API returns errors as JSON, not crashes
+- [ ] **CORS enabled** - `CORS(app)` added
+- [ ] **Aurora: IAM auth** - Using `wb resource credentials` + boto3 token, not a static password
+- [ ] **Aurora: SSL enabled** - `sslmode='require'` in psycopg2.connect()
+
+---
+
+## Quick Reference
+
+| Issue | Check | Fix |
+|-------|-------|-----|
+| 404 on API | Path format | Remove leading `/` from fetch |
+| CORS error | CORS setup | Add `CORS(app)` |
+| Blank page | Server running? | `ps aux \| grep python` |
+| S3 error | AWS credentials | `aws sts get-caller-identity` |
+| Wrong port | URL vs code | Match port in URL to `app.run()` |
+| Works locally, fails via URL | Host binding | Change `localhost` to `0.0.0.0` |
+| Gateway timeout | Server/UUID | Check server running + correct UUID |
+| Aurora: PAM auth failed | IAM auth | Use `wb resource credentials` + boto3 token |
+| Aurora: no encryption | SSL missing | Add `sslmode='require'` to psycopg2.connect() |
+
+---
+
+## Example Prompts This Skill Handles
+
+- "Create a dashboard showing data from my S3 bucket"
+- "Build an interactive chart for analyzing patient demographics"
+- "Visualize the CSV files in my bucket"
+- "Make a web dashboard with filters for exploring data"
+- "Display query results in a browser with charts"
+AWS_DASHBOARD_SKILL_EOF
+
+        log_info "AWS skill variants applied."
+    fi
 }
 
 # Fetch workspace information
@@ -1443,73 +2156,69 @@ fetch_apps() {
 # Generate embedded JSON (returns JSON to stdout, doesn't write to file)
 generate_embedded_json() {
     local resources="$1"
-    
-    # Generate resourcePaths map: resource name -> cloud path
-    local resource_paths=$(echo "$resources" | jq -c '
-        map(
-            {
-                key: .id,
-                value: (
-                    if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
-                    elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
-                    elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
-                    elif .resourceType == "GIT_REPO" then .gitRepoUrl
-                    elif .resourceType == "GCS_OBJECT" then "gs://\(.bucketName)/\(.objectName // "")"
-                    else null
-                    end
-                )
-            }
-        ) | map(select(.value != null)) | from_entries
-    ')
-    
-    # Generate envVars map: WORKBENCH_<name> -> cloud path
-    local env_vars=$(echo "$resources" | jq -c '
-        map(
-            {
-                key: ("WORKBENCH_" + (.id | gsub("-"; "_"))),
-                value: (
-                    if .resourceType == "GCS_BUCKET" then "gs://\(.bucketName)"
-                    elif .resourceType == "BQ_DATASET" then "\(.projectId).\(.datasetId)"
-                    elif .resourceType == "BQ_TABLE" then "\(.projectId).\(.datasetId).\(.tableId // "")"
-                    elif .resourceType == "GIT_REPO" then .gitRepoUrl
-                    elif .resourceType == "GCS_OBJECT" then "gs://\(.bucketName)/\(.objectName // "")"
-                    else null
-                    end
-                )
-            }
-        ) | map(select(.value != null)) | from_entries
-    ')
-    
-    # Output compact JSON for embedding
-    jq -n \
-        --argjson resource_paths "$resource_paths" \
-        --argjson env_vars "$env_vars" \
-        '{
-          "resourcePaths": $resource_paths,
-          "envVars": $env_vars
-        }'
+
+    # Build both maps in a single jq invocation so no intermediate bash variables
+    # are passed via --argjson (which is sensitive to embedded newlines and encoding
+    # edge cases on some jq versions).  A jq `def` avoids repeating the path expression.
+    # `(if type == "array" then . else [] end)` guards against non-array input.
+    local result
+    result=$(printf '%s' "${resources:-[]}" | jq -c '
+        def cloud_path:
+            if .resourceType == "GCS_BUCKET"              then "gs://\(.bucketName)"
+            elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
+            elif .resourceType == "AWS_AURORA_DATABASE"   then "\(.rwEndpoint // "unknown"):\(.port // "5432")/\(.databaseName // "")"
+            elif .resourceType == "BQ_DATASET"            then "\(.projectId).\(.datasetId)"
+            elif .resourceType == "BQ_TABLE"              then "\(.projectId).\(.datasetId).\(.tableId // "")"
+            elif .resourceType == "GIT_REPO"              then .gitRepoUrl
+            elif .resourceType == "GCS_OBJECT"            then "gs://\(.bucketName)/\(.objectName // "")"
+            else null end;
+        (if type == "array" then . else [] end) |
+        {
+            "resourcePaths": (map({key: .id,                                      value: cloud_path}) | map(select(.value != null)) | from_entries),
+            "envVars":       (map({key: ("WORKBENCH_" + (.id | gsub("-";"_"))), value: cloud_path}) | map(select(.value != null)) | from_entries)
+        }
+    ' 2>/dev/null | head -1)
+
+    printf '%s\n' "${result:-{\"resourcePaths\":{},\"envVars\":{}}}"
 }
 
 # Generate bucket list for data persistence section
 generate_bucket_list() {
     local resources="$1"
-    
-    # Filter to only GCS_BUCKET resources
-    local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "GCS_BUCKET")]' 2>/dev/null || echo "[]")
-    local count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
-    
-    if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
-        echo "*No GCS buckets in this workspace.* Create one with:"
-        echo '```bash'
-        echo 'wb resource create gcs-bucket --name my-storage --description "Storage for results"'
-        echo '```'
-        return
+    local cloud_platform="${2:-GCP}"
+
+    if [ "$cloud_platform" = "AWS" ]; then
+        local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "AWS_S3_STORAGE_FOLDER")]' 2>/dev/null || echo "[]")
+        local count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
+
+        if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
+            echo "*No S3 buckets in this workspace.* Create one with:"
+            echo '```bash'
+            echo 'wb resource create s3-storage-folder --name my-storage --description "Storage for results"'
+            echo '```'
+            return
+        fi
+
+        echo "| Bucket Name | Resource ID | Description |"
+        echo "|-------------|-------------|-------------|"
+        echo "$buckets" | jq -r '.[] | "| `s3://\(.bucketName // "unknown")/\(.prefix // "")` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
+    else
+        # GCP
+        local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "GCS_BUCKET")]' 2>/dev/null || echo "[]")
+        local count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
+
+        if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
+            echo "*No GCS buckets in this workspace.* Create one with:"
+            echo '```bash'
+            echo 'wb resource create gcs-bucket --name my-storage --description "Storage for results"'
+            echo '```'
+            return
+        fi
+
+        echo "| Bucket Name | Resource ID | Description |"
+        echo "|-------------|-------------|-------------|"
+        echo "$buckets" | jq -r '.[] | "| `gs://\(.bucketName // "unknown")/` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
     fi
-    
-    echo "| Bucket Name | Resource ID | Description |"
-    echo "|-------------|-------------|-------------|"
-    
-    echo "$buckets" | jq -r '.[] | "| `gs://\(.bucketName // "unknown")/` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
 }
 
 # Generate CLAUDE.md
@@ -1539,9 +2248,191 @@ generate_claude_md() {
         project_display="$ws_aws_account"
     fi
     
+    # Set platform-specific template content (generator branches; output file is clean, no conditionals)
+    local storage_bucket_type storage_save_cmd resource_table_rows
+    local mcp_data_resources_rows cloud_cli_section cloud_path_hint env_var_example
+    local data_preview_query_section create_resources_section
+    if [ "$ws_cloud" = "AWS" ]; then
+        storage_bucket_type="S3 bucket"
+        storage_save_cmd='aws s3 cp <file> s3://<bucket>/'
+        resource_table_rows='| `AWS_S3_STORAGE_FOLDER` | AWS S3 storage folder | `wb resource create s3-storage-folder` |
+| `AWS_AURORA_DATABASE` | Aurora PostgreSQL database | `wb resource create aurora-database` |
+| `AWS_AURORA_DATABASE_REFERENCE` | Aurora DB reference (external) | `wb resource add-ref aurora-database` |
+| `GIT_REPO` | Git repository reference | `wb resource add-ref git-repo` |'
+
+        mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+| `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
+| `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
+| `list_files` | `aws s3 ls` | List files in an S3 storage folder |
+| `read_file` | `aws s3 cp <key> -` | Read contents of a file from S3 |
+| `resource_create_bucket` | `wb resource create s3-storage-folder` | Create a new S3 storage folder |
+| `resource_delete` | `wb resource delete` | Delete a resource |
+| `resource_check_access` | — | Check if IAM role has access to a resource |'
+
+        cloud_cli_section='### Cloud CLIs
+
+No direct AWS CLI MCP wrapper — use `aws` CLI commands in the terminal:
+- **S3**: `aws s3 ls s3://<bucket>/`, `aws s3 cp <src> <dst>`
+- **Batch**: `aws batch list-jobs --job-queue <queue> --job-status FAILED`
+- **Aurora**: requires IAM auth token — see Aurora connection instructions in DASHBOARD_BUILDER skill'
+
+        cloud_path_hint='# Look for: bucketName+prefix (S3), rwEndpoint+port+databaseName (Aurora), gitRepoUrl'
+
+        env_var_example='echo $WORKBENCH_my_bucket      # → s3://bucket/prefix
+env | grep WORKBENCH_           # List all'
+
+        data_preview_query_section='**S3:**
+```bash
+aws s3 ls s3://<bucket>/<prefix>/
+aws s3 cp s3://<bucket>/<prefix>/file.csv - | head -20
+```
+
+**Aurora PostgreSQL** (requires IAM auth + SSL — plain passwords are rejected):
+```bash
+# Step 1: get temporary credentials from Workbench
+wb resource credentials --id=<resource-id> --scope=WRITE_READ --format=json
+# Returns: {"AccessKeyId":"...","SecretAccessKey":"...","SessionToken":"..."}
+
+# Step 2: export credentials, generate auth token, connect
+export AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_SESSION_TOKEN="..."
+TOKEN=$(aws rds generate-db-auth-token --hostname <rwEndpoint> --port 5432 --region us-west-2 --username <user>)
+PGSSLMODE=require psql "host=<rwEndpoint> port=5432 dbname=<db> user=<user> password=$TOKEN"
+# \dt  →  list tables;  SELECT * FROM table_name LIMIT 10;
+```
+
+### Query Data
+
+**Python (S3):**
+```python
+import boto3, pandas as pd
+
+s3 = boto3.client("s3")
+obj = s3.get_object(Bucket="<bucket>", Key="<prefix>/file.csv")
+df = pd.read_csv(obj["Body"])
+
+# Read Parquet directly (requires s3fs)
+df = pd.read_parquet("s3://<bucket>/<prefix>/file.parquet")
+```
+
+**Python (Aurora — IAM auth required):**
+```python
+import json, subprocess, boto3, psycopg2
+
+# Get temporary credentials from Workbench
+creds = json.loads(subprocess.run(
+    ["wb", "resource", "credentials", "--id=<resource-id>", "--scope=WRITE_READ", "--format=json"],
+    capture_output=True, text=True, check=True
+).stdout)
+
+# Generate IAM auth token
+session = boto3.Session(
+    aws_access_key_id=creds["AccessKeyId"],
+    aws_secret_access_key=creds["SecretAccessKey"],
+    aws_session_token=creds["SessionToken"],
+    region_name="us-west-2"
+)
+auth_token = session.client("rds").generate_db_auth_token(
+    DBHostname="<rwEndpoint>", Port=5432, DBUsername="<user>", Region="us-west-2"
+)
+
+# Connect — sslmode="require" is mandatory
+conn = psycopg2.connect(
+    host="<rwEndpoint>", port=5432, database="<db>",
+    user="<user>", password=auth_token, sslmode="require"
+)
+df = pd.read_sql("SELECT * FROM table_name LIMIT 100", conn)
+conn.close()
+```'
+
+        create_resources_section='```bash
+# S3 storage folder
+wb resource create s3-storage-folder --name my-storage --description "My storage folder"
+
+# Aurora PostgreSQL database
+wb resource create aurora-database --name my-db --description "My database"
+
+# Reference an external Aurora database
+wb resource add-ref aurora-database --name external-db
+```'
+
+    else
+        storage_bucket_type="GCS bucket"
+        storage_save_cmd='gsutil cp <file> gs://<bucket>/'
+        resource_table_rows='| `GCS_BUCKET` | Google Cloud Storage bucket | `wb resource create gcs-bucket` |
+| `BQ_DATASET` | BigQuery dataset | `wb resource create bq-dataset` |
+| `GIT_REPO` | Git repository reference | `wb resource add-ref git-repo` |
+| `GCS_OBJECT` | Individual GCS file reference | `wb resource add-ref gcs-object` |
+| `BQ_TABLE` | BigQuery table reference | `wb resource add-ref bq-table` |'
+
+        mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+| `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
+| `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
+| `bq_execute` | `bq query` | Run SQL queries against BigQuery |
+| `list_files` | `gsutil ls` | List files in a GCS bucket |
+| `read_file` | `gsutil cat` | Read contents of a file |
+| `resource_create_bucket` | `wb resource create gcs-bucket` | Create a new GCS bucket |
+| `resource_delete` | `wb resource delete` | Delete a resource |
+| `resource_check_access` | — | Check if service account has access to a resource |
+| `resource_mount` / `resource_unmount` | — | Mount/unmount a GCS bucket |'
+
+        cloud_cli_section='### Cloud CLIs (via MCP)
+
+| MCP Tool | Description |
+|----------|-------------|
+| `gcloud_execute` | Run any `gcloud` command |
+| `gsutil_execute` | Run any `gsutil` command |
+| `bq_execute` | Run any `bq` SQL query |'
+
+        cloud_path_hint='# Look for: bucketName, projectId+datasetId, gitRepoUrl'
+
+        env_var_example='echo $WORKBENCH_my_bucket      # → gs://actual-bucket-name
+env | grep WORKBENCH_           # List all'
+
+        data_preview_query_section='**BigQuery:**
+```bash
+bq head -n 10 <project>:<dataset>.<table>
+bq show --schema <project>:<dataset>.<table>
+bq query --use_legacy_sql=false '"'"'SELECT * FROM `project.dataset.table` LIMIT 10'"'"'
+```
+
+**GCS:**
+```bash
+gsutil ls gs://<bucket>/
+gsutil cat -r 0-1024 gs://<bucket>/path/file.csv
+```
+
+### Query Data
+
+**CLI:**
+```bash
+bq query --use_legacy_sql=false '"'"'SELECT col1, col2 FROM `project.dataset.table` LIMIT 100'"'"'
+```
+
+**Python:**
+```python
+from google.cloud import bigquery
+client = bigquery.Client()
+df = client.query("SELECT * FROM `project.dataset.table` LIMIT 100").to_dataframe()
+
+import pandas as pd
+df = pd.read_parquet("gs://bucket-name/path/file.parquet")
+```'
+
+        create_resources_section='```bash
+# GCS bucket
+wb resource create gcs-bucket --name my-bucket --description "My bucket"
+
+# BigQuery dataset
+wb resource create bq-dataset --name my-dataset --description "My dataset"
+
+# Reference external GCS bucket
+wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucket
+```'
+    fi
+
     # Generate dynamic sections
     local embedded_json=$(generate_embedded_json "$resources")
-    local bucket_list=$(generate_bucket_list "$resources")
+    local bucket_list=$(generate_bucket_list "$resources" "$ws_cloud")
     
     # Write the file
     cat > "${CLAUDE_FILE}" << EOF
@@ -1583,11 +2474,7 @@ Resources are cloud assets managed by Workbench:
 
 | Type | Description | CLI Create Command |
 |------|-------------|-------------------|
-| \`GCS_BUCKET\` | Google Cloud Storage bucket | \`wb resource create gcs-bucket\` |
-| \`BQ_DATASET\` | BigQuery dataset | \`wb resource create bq-dataset\` |
-| \`GIT_REPO\` | Git repository reference | \`wb resource add-ref git-repo\` |
-| \`GCS_OBJECT\` | Individual GCS file reference | \`wb resource add-ref gcs-object\` |
-| \`BQ_TABLE\` | BigQuery table reference | \`wb resource add-ref bq-table\` |
+${resource_table_rows}
 
 **Environment Variables**: Each resource is available as \`\$WORKBENCH_<resource_name>\` (e.g., \`\$WORKBENCH_my_bucket\`).
 
@@ -1615,9 +2502,9 @@ Check with: \`wb workspace describe\`
 
 ## ⚠️ Important: Data Persistence
 
-Local app storage is ephemeral — files saved to the app's local disk are **lost when the app stops or restarts**. Always encourage users to save important work to a GCS bucket in their workspace.
+Local app storage is ephemeral — files saved to the app's local disk are **lost when the app stops or restarts**. Always encourage users to save important work to a ${storage_bucket_type} in their workspace.
 
-- **When users create files locally**, suggest saving to a bucket: \`gsutil cp <file> gs://<bucket>/\`
+- **When users create files locally**, suggest saving to a bucket: \`${storage_save_cmd}\`
 - **When users finish analysis**, remind: *"Save important outputs to cloud storage before stopping the app."*
 - **Available buckets in this workspace:**
 
@@ -1638,16 +2525,7 @@ ${bucket_list}
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
-| \`workspace_list_data_collections\` | N/A | **List data collections and their resources** |
-| \`workspace_list_resources\` | \`wb resource list\` | List all resources in the workspace |
-| \`resource_list_tree\` | \`wb resource list-tree\` | List resources organized by folder |
-| \`bq_execute\` | \`bq query\` | Run SQL queries against BigQuery |
-| \`list_files\` | \`gsutil ls\` | List files in a GCS bucket |
-| \`read_file\` | \`gsutil cat\` | Read contents of a file |
-| \`resource_create_bucket\` | \`wb resource create gcs-bucket\` | Create a new GCS bucket |
-| \`resource_delete\` | \`wb resource delete\` | Delete a resource |
-| \`resource_check_access\` | — | Check if service account has access to a resource |
-| \`resource_mount\` / \`resource_unmount\` | — | Mount/unmount a GCS bucket |
+${mcp_data_resources_rows}
 
 ### Apps & Workflows
 
@@ -1679,13 +2557,7 @@ ${bucket_list}
 | \`cohort_count_instances\` | Count members in a cohort |
 | \`export_cohort\` | Export cohort data to a bucket |
 
-### Cloud CLIs (via MCP)
-
-| MCP Tool | Description |
-|----------|-------------|
-| \`gcloud_execute\` | Run any \`gcloud\` command |
-| \`gsutil_execute\` | Run any \`gsutil\` command |
-| \`bq_execute\` | Run any \`bq\` SQL query |
+${cloud_cli_section}
 
 **Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`
 
@@ -1741,47 +2613,18 @@ wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
 
 \`\`\`bash
 wb resource describe <resource-name> --format=json
-# Look for: bucketName, projectId+datasetId, gitRepoUrl
+${cloud_path_hint}
 \`\`\`
 
 ### Use Environment Variables (Easiest)
 
 \`\`\`bash
-echo \$WORKBENCH_my_bucket      # → gs://actual-bucket-name
-env | grep WORKBENCH_           # List all
+${env_var_example}
 \`\`\`
 
 ### Preview Data
 
-**BigQuery:**
-\`\`\`bash
-bq head -n 10 <project>:<dataset>.<table>
-bq show --schema <project>:<dataset>.<table>
-bq query --use_legacy_sql=false 'SELECT * FROM \`project.dataset.table\` LIMIT 10'
-\`\`\`
-
-**GCS:**
-\`\`\`bash
-gsutil ls gs://<bucket>/
-gsutil cat -r 0-1024 gs://<bucket>/path/file.csv
-\`\`\`
-
-### Query Data
-
-**CLI:**
-\`\`\`bash
-bq query --use_legacy_sql=false 'SELECT col1, col2 FROM \`project.dataset.table\` LIMIT 100'
-\`\`\`
-
-**Python:**
-\`\`\`python
-from google.cloud import bigquery
-client = bigquery.Client()
-df = client.query("SELECT * FROM \`project.dataset.table\` LIMIT 100").to_dataframe()
-
-import pandas as pd
-df = pd.read_parquet('gs://bucket-name/path/file.parquet')
-\`\`\`
+${data_preview_query_section}
 
 ---
 
@@ -1805,16 +2648,7 @@ wb workflow logs <run-id>
 
 ## How to Create Resources
 
-\`\`\`bash
-# GCS bucket
-wb resource create gcs-bucket --name my-bucket --description "My bucket"
-
-# BigQuery dataset
-wb resource create bq-dataset --name my-dataset --description "My dataset"
-
-# Reference external GCS bucket
-wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucket
-\`\`\`
+${create_resources_section}
 
 ---
 
@@ -1870,6 +2704,7 @@ Read these directly — no index needed:
 
 | Topic | Skill File | When to Use |
 |-------|------------|-------------|
+| **🔍 Data discovery** | \`DATA_DISCOVERY.md\` | Find data collections inside or across all of Workbench |
 | **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
 | Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
 | App templates | \`APP_TEMPLATES.md\` | Pre-built templates for dashboards, APIs, file processors |
@@ -1888,6 +2723,13 @@ Read these directly — no index needed:
 | 🏥 Clinical | \`scientific/CLINICAL.md\` | clinicaltrials.gov, pubmed, lifelines |
 
 ### ⚡ Skill Trigger Guide
+
+**Read \`DATA_DISCOVERY.md\` ONLY when the user is searching for data collections they don't yet have, platform-wide:**
+- "search all data collections I have access to" / "find data collections across Workbench"
+- "what data collections can I add to my workspace?" / "data collections I haven't added yet"
+- "find a data collection related to [topic / disease / modality]"
+- "search across all Workbench data collections" / "what data collections are available on the platform?"
+- Do NOT use this skill for workspace-scoped questions — call \`workspace_list_data_collections\` directly instead
 
 **ALWAYS read \`DASHBOARD_BUILDER.md\` FIRST when user says ANY of these:**
 - "create a dashboard"
@@ -1931,7 +2773,7 @@ ${embedded_json}
 \`\`\`
 
 **Usage:**
-- \`resourcePaths["my-bucket"]\` → exact GCS/BQ path
+- \`resourcePaths["my-bucket"]\` → exact cloud storage/database path
 - \`envVars["WORKBENCH_my_bucket"]\` → environment variable value
 
 To refresh after workspace changes:
@@ -1968,14 +2810,20 @@ main() {
     
     check_prerequisites
     setup_directories
-    install_skills
-    
-    # Fetch all data
+
+    # Fetch all data first so we can detect cloud platform before generating skills
     WORKSPACE=$(fetch_workspace)
     RESOURCES=$(fetch_resources)
     WORKFLOWS=$(fetch_workflows)
     APPS=$(fetch_apps)
-    
+
+    # Detect cloud platform for platform-specific skill and context generation
+    local cloud_platform
+    cloud_platform=$(echo "$WORKSPACE" | jq -r '.cloudPlatform // "GCP"')
+    log_info "Detected cloud platform: ${cloud_platform}"
+
+    install_skills "$cloud_platform"
+
     # Generate single CLAUDE.md file with embedded JSON
     generate_claude_md "$WORKSPACE" "$RESOURCES" "$WORKFLOWS" "$APPS"
 

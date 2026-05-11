@@ -398,6 +398,55 @@ Returns a structured list of data collections with their resources, types, and c
 	},
 
 	{
+		Name: "platform_list_data_collections",
+		Description: `Search and list all data collections accessible to the current user across all of Workbench — not just those attached to the active workspace.
+
+Use this when a user asks:
+- "What data collections do I have access to?"
+- "Find data collections related to <topic>"
+- "Search for datasets across all of Workbench"
+- "What datasets could I add to my workspace?"
+- "Show me all accessible genomics / proteomics / clinical / imaging data"
+- "Are there any data collections I haven't attached yet?"
+- "Find me datasets about <disease area / modality / population>"
+
+This tool searches PLATFORM-WIDE. It returns all data collections the user has READ access to,
+regardless of whether they are attached to the active workspace.
+
+Always tell the user upfront that this is a broader platform-wide search (not just their workspace).
+
+The keyword search matches against: name, description, data modality tags, therapeutic area tags,
+and data model type — so queries like "imaging", "genomics", "oncology" will match relevant collections.
+
+Each result includes rich metadata sourced directly from the data collection:
+- shortDescription, description, organization, availability, isFree, isInstantlyAccessible
+- patientCount, timeFrame, geographicCoverage, dataModel
+- dataModalityTags (e.g. imaging, lab-results, ecrf), therapeuticTags (e.g. oncology, general-health)
+- underlayName (the data model identifier for schema exploration)
+- dataDictionary (links to schema documentation)
+- usageExamples (sample use cases and SQL queries)
+- accessGroupName, supportEmail
+- dataPublished, metadataLastUpdated, externalDocumentation
+
+Present results in a human-readable summary grouped by relevance. For each matching collection,
+highlight the most relevant fields for the user's query (e.g. patient count and modality for
+clinical searches, underlay name for schema exploration).`,
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"query": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional keyword to filter data collections by name or description (case-insensitive substring match)",
+				},
+				"limit": map[string]interface{}{
+					"type":        "number",
+					"description": "Maximum number of results to return (default: 100)",
+				},
+			},
+		},
+	},
+
+	{
 		Name:        "group_create",
 		Description: "Create a user group. Use this when managing multiple users with same access needs. Groups simplify permission management - grant access to group instead of individual users.",
 		InputSchema: InputSchema{
@@ -1335,7 +1384,7 @@ CRITICAL:
 			Properties: map[string]interface{}{
 				"studyId":               map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace response"},
 				"cohortId":              map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace response"},
-				"criteriaGroupSections": map[string]interface{}{"type": "array", "description": "Array of criteria group sections"},
+				"criteriaGroupSections": map[string]interface{}{"type": "array", "description": "Array of criteria group sections", "items": map[string]interface{}{"type": "object"}},
 				"displayName":           map[string]interface{}{"type": "string", "description": "Optional: Update cohort display name"},
 				"description":           map[string]interface{}{"type": "string", "description": "Optional: Update cohort description"},
 			},
@@ -1477,7 +1526,7 @@ WORKFLOW:
 				"attribute": map[string]interface{}{"type": "string"},
 				"operator":  map[string]interface{}{"type": "string", "enum": []string{"EQUALS", "NOT_EQUALS", "LESS_THAN", "GREATER_THAN", "LESS_THAN_OR_EQUAL", "GREATER_THAN_OR_EQUAL", "IN", "NOT_IN", "BETWEEN", "IS_NULL", "IS_NOT_NULL"}},
 				"value":     map[string]interface{}{},
-				"values":    map[string]interface{}{"type": "array"},
+				"values":    map[string]interface{}{"type": "array", "items": map[string]interface{}{}},
 				"dataType":  map[string]interface{}{"type": "string", "enum": []string{"BOOLEAN", "INT64", "STRING", "DATE", "TIMESTAMP", "DOUBLE"}},
 			},
 			Required: []string{"attribute", "operator", "dataType"},
@@ -1502,7 +1551,7 @@ WORKFLOW:
 			Type: "object",
 			Properties: map[string]interface{}{
 				"operator":   map[string]interface{}{"type": "string", "enum": []string{"AND", "OR", "NOT"}},
-				"subfilters": map[string]interface{}{"type": "array"},
+				"subfilters": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "object"}},
 			},
 			Required: []string{"operator", "subfilters"},
 		},
@@ -1515,7 +1564,7 @@ WORKFLOW:
 			Properties: map[string]interface{}{
 				"hierarchy": map[string]interface{}{"type": "string"},
 				"operator":  map[string]interface{}{"type": "string", "enum": []string{"CHILD_OF", "DESCENDANT_OF_INCLUSIVE", "IS_ROOT", "IS_MEMBER", "IS_LEAF"}},
-				"values":    map[string]interface{}{"type": "array"},
+				"values":    map[string]interface{}{"type": "array", "items": map[string]interface{}{}},
 			},
 			Required: []string{"hierarchy", "operator"},
 		},
@@ -1686,6 +1735,195 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			err = apiErr
 		} else {
 			output = string(respBody)
+		}
+
+	case "platform_list_data_collections":
+		// Fetch all data collections accessible to the user across all workspaces.
+		// Data collections are workspaces with the property terra-type=data-collection.
+		limit := 100
+		if l, ok := params.Arguments["limit"].(float64); ok {
+			limit = int(l)
+		}
+		query := ""
+		if q, ok := params.Arguments["query"].(string); ok {
+			query = strings.ToLower(strings.TrimSpace(q))
+		}
+
+		body := map[string]interface{}{
+			"limit":  limit,
+			"offset": 0,
+			"properties": []map[string]string{
+				{"key": "terra-type", "value": "data-collection"},
+			},
+		}
+		respBody, apiErr := makeAPIRequest("POST", workspaceBaseURL+"/api/workspaces/v2/filtered", body)
+		if apiErr != nil {
+			err = apiErr
+			break
+		}
+
+		var wsData map[string]interface{}
+		if jsonErr := json.Unmarshal(respBody, &wsData); jsonErr != nil {
+			err = fmt.Errorf("failed to parse response: %w", jsonErr)
+			break
+		}
+
+		workspaces, _ := wsData["workspaces"].([]interface{})
+		if workspaces == nil {
+			workspaces = []interface{}{}
+		}
+
+		var collections []map[string]interface{}
+		for _, w := range workspaces {
+			ws, ok := w.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			uuid, _ := ws["id"].(string)
+			userFacingId, _ := ws["userFacingId"].(string)
+			name, _ := ws["displayName"].(string)
+			if name == "" {
+				name = userFacingId
+			}
+			desc, _ := ws["description"].(string)
+
+			// Derive the Workbench UI URL for this data collection
+			// workspaceBaseURL is e.g. https://workbench.verily.com/api/wsm
+			workbenchBaseUI := strings.Replace(workspaceBaseURL, "/api/wsm", "", 1)
+			collectionURL := fmt.Sprintf("%s/data-collections/%s", workbenchBaseUI, userFacingId)
+
+			// Extract all terra-* workspace properties into a flat map
+			props := make(map[string]string)
+			if propsArray, ok := ws["properties"].([]interface{}); ok {
+				for _, p := range propsArray {
+					if prop, ok := p.(map[string]interface{}); ok {
+						k, _ := prop["key"].(string)
+						v, _ := prop["value"].(string)
+						props[k] = v
+					}
+				}
+			}
+
+			// Apply optional keyword filter across name, description, short description,
+			// modality tags, and therapeutic tags so searches like "genomics" or "imaging" work.
+			// Props are extracted before the filter so tags are available for matching.
+			if query != "" {
+				searchTargets := strings.Join([]string{
+					strings.ToLower(name),
+					strings.ToLower(desc),
+					strings.ToLower(props["terra-workspace-short-description"]),
+					strings.ToLower(props["terra-data-modality-tags"]),
+					strings.ToLower(props["terra-therapeutic-tags"]),
+					strings.ToLower(props["terra-dc-data-model"]),
+				}, " ")
+				if !strings.Contains(searchTargets, query) {
+					continue
+				}
+			}
+
+			// Build structured result with all meaningful metadata fields
+			dc := map[string]interface{}{
+				"id":             userFacingId,
+				"uuid":           uuid,
+				"name":           name,
+				"workbenchUrl":   collectionURL,
+			}
+
+			// Overview
+			if v := props["terra-workspace-short-description"]; v != "" {
+				dc["shortDescription"] = v
+			}
+			if desc != "" {
+				dc["description"] = desc
+			}
+			if v := props["terra-organization-name"]; v != "" {
+				dc["organization"] = v
+			}
+			if v := props["terra-dc-availability"]; v != "" {
+				dc["availability"] = v
+			}
+			if v := props["terra-dc-is-free"]; v != "" {
+				dc["isFree"] = v == "true"
+			}
+			if v := props["terra-is-instantly-accessible"]; v != "" {
+				dc["isInstantlyAccessible"] = v == "true"
+			}
+
+			// Data characteristics
+			if v := props["terra-dc-patient-count"]; v != "" {
+				dc["patientCount"] = v
+			}
+			if v := props["terra-dc-time-frame"]; v != "" {
+				dc["timeFrame"] = v
+			}
+			if v := props["terra-dc-geographic-coverage"]; v != "" {
+				dc["geographicCoverage"] = v
+			}
+			if v := props["terra-dc-data-model"]; v != "" {
+				dc["dataModel"] = v
+			}
+			if v := props["terra-data-modality-tags"]; v != "" {
+				dc["dataModalityTags"] = v
+			}
+			if v := props["terra-therapeutic-tags"]; v != "" {
+				dc["therapeuticTags"] = v
+			}
+
+			// Schema / underlay
+			if v := props["terra-dx-underlay-name"]; v != "" {
+				dc["underlayName"] = v
+			}
+
+			// Data dictionary
+			if v := props["terra-dc-data-dictionary"]; v != "" {
+				dc["dataDictionary"] = v
+			}
+
+			// Usage examples (includes sample queries)
+			if v := props["terra-dc-usage-examples-sample-use-cases"]; v != "" {
+				dc["usageExamples"] = v
+			}
+
+			// Access
+			if v := props["terra-access-group-name"]; v != "" {
+				dc["accessGroupName"] = v
+			}
+			if v := props["terra-support-email"]; v != "" {
+				dc["supportEmail"] = v
+			}
+
+			// Publication / freshness
+			if v := props["terra-dc-data-published"]; v != "" {
+				dc["dataPublished"] = v
+			}
+			if v := props["terra-dc-metadata-last-updated"]; v != "" {
+				dc["metadataLastUpdated"] = v
+			}
+
+			// External documentation
+			if v := props["terra-dc-external-documentation"]; v != "" {
+				dc["externalDocumentation"] = v
+			}
+
+			collections = append(collections, dc)
+		}
+
+		if collections == nil {
+			collections = []map[string]interface{}{}
+		}
+
+		result := map[string]interface{}{
+			"dataCollections": collections,
+			"total":           len(collections),
+			"scope":           "platform-wide (all data collections you have READ access to)",
+			"attachCommand":   "wb workspace clone --id=<id>  # or ask your workspace admin to attach the collection",
+		}
+		resultBytes, marshalErr := json.MarshalIndent(result, "", "  ")
+		if marshalErr != nil {
+			err = fmt.Errorf("failed to marshal result: %w", marshalErr)
+		} else {
+			output = string(resultBytes)
 		}
 
 	case "workspace_get":

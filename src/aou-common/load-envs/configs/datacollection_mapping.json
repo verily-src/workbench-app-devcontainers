@@ -28,5 +28,15 @@
     "dataCollectionUuid": "3d83ef80-77d7-43e8-a479-52946619b769",
     "cdrEnv": "prod",
     "accessTier": "controlled"
+  },
+  {
+    "dataCollectionUuid": "f5a74661-3f8a-4017-85b9-0ebb68dd9718",
+    "cdrEnv": "early_access",
+    "accessTier": "registered"
+  },
+  {
+    "dataCollectionUuid": "e7cff64a-5bd0-4c14-a801-a97401a6822f",
+    "cdrEnv": "early_access",
+    "accessTier": "controlled"
   }
 ]

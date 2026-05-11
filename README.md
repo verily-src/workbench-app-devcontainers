@@ -111,7 +111,7 @@ If you need more control, you can manually create a custom app:
    - Run the test script: `cd test && ./test.sh <your-app-name>`
    - Create a custom app in Workbench UI pointing to your forked repo and branch
 
-6. **Reference the example app** at [src/example](https://github.com/verily-src/workbench-app-devcontainer/tree/main/src/example) to see a basic implementation
+6. **Reference the example app** at [src/example](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/example) to see a basic implementation
 
 For detailed guidance, visit https://support.workbench.verily.com/docs/guides/cloud_apps/create_custom_apps/
 

@@ -101,6 +101,7 @@ readonly BINARIES_ENV_DIR="${WORKBENCH_TOOLS_DIR}/binaries"
 # them separately and give the user control over whether to inject them into an
 # existing environment or create a new one.
 CONDA_PACKAGES_LIBRARIES=(
+    "conda-forge::pip"
     "conda-forge::google-cloud-storage"
     "conda-forge::ipykernel"
     "conda-forge::ipywidgets"
@@ -187,5 +188,7 @@ sed -i '/^# If not running interactively/,/esac/d' "${USER_HOME_DIR}/.bashrc" ||
 
 # Make sure the login user is the owner of their .bashrc
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"
+
+mamba clean --all -y
 
 echo "Workbench tools installation complete!"

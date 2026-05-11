@@ -406,17 +406,31 @@ Use this when a user asks:
 - "Find data collections related to <topic>"
 - "Search for datasets across all of Workbench"
 - "What datasets could I add to my workspace?"
-- "Show me all accessible genomics / proteomics / clinical data"
+- "Show me all accessible genomics / proteomics / clinical / imaging data"
 - "Are there any data collections I haven't attached yet?"
+- "Find me datasets about <disease area / modality / population>"
 
-This tool searches PLATFORM-WIDE. It returns all data collections the user has READ access to, regardless of whether they are attached to the active workspace.
+This tool searches PLATFORM-WIDE. It returns all data collections the user has READ access to,
+regardless of whether they are attached to the active workspace.
 
 Always tell the user upfront that this is a broader platform-wide search (not just their workspace).
 
-To attach a found data collection to the current workspace:
-  wb data-collection add-to-workspace --id=<data-collection-id>
+The keyword search matches against: name, description, data modality tags, therapeutic area tags,
+and data model type — so queries like "imaging", "genomics", "oncology" will match relevant collections.
 
-Returns data collection names, IDs, descriptions, and underlay (data model) names where available.`,
+Each result includes rich metadata sourced directly from the data collection:
+- shortDescription, description, organization, availability, isFree, isInstantlyAccessible
+- patientCount, timeFrame, geographicCoverage, dataModel
+- dataModalityTags (e.g. imaging, lab-results, ecrf), therapeuticTags (e.g. oncology, general-health)
+- underlayName (the data model identifier for schema exploration)
+- dataDictionary (links to schema documentation)
+- usageExamples (sample use cases and SQL queries)
+- accessGroupName, supportEmail
+- dataPublished, metadataLastUpdated, externalDocumentation
+
+Present results in a human-readable summary grouped by relevance. For each matching collection,
+highlight the most relevant fields for the user's query (e.g. patient count and modality for
+clinical searches, underlay name for schema exploration).`,
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -1773,26 +1787,9 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			}
 			desc, _ := ws["description"].(string)
 
-			// Apply optional keyword filter against name and description
-			if query != "" {
-				nameMatch := strings.Contains(strings.ToLower(name), query)
-				descMatch := strings.Contains(strings.ToLower(desc), query)
-				if !nameMatch && !descMatch {
-					continue
-				}
-			}
-
-			dc := map[string]interface{}{
-				"id":   id,
-				"name": name,
-			}
-			if desc != "" {
-				dc["description"] = desc
-			}
-
-			// Extract workspace properties — pick out underlay name if present
+			// Extract all terra-* workspace properties into a flat map
+			props := make(map[string]string)
 			if propsArray, ok := ws["properties"].([]interface{}); ok {
-				props := make(map[string]string)
 				for _, p := range propsArray {
 					if prop, ok := p.(map[string]interface{}); ok {
 						k, _ := prop["key"].(string)
@@ -1800,10 +1797,104 @@ func handleCallTool(params CallToolParams) CallToolResult {
 						props[k] = v
 					}
 				}
-				if underlayName, ok := props["terra-dx-underlay-name"]; ok && underlayName != "" {
-					dc["underlayName"] = underlayName
+			}
+
+			// Apply optional keyword filter across name, description, short description,
+			// modality tags, and therapeutic tags so searches like "genomics" or "imaging" work
+			if query != "" {
+				searchTargets := strings.Join([]string{
+					strings.ToLower(name),
+					strings.ToLower(desc),
+					strings.ToLower(props["terra-workspace-short-description"]),
+					strings.ToLower(props["terra-data-modality-tags"]),
+					strings.ToLower(props["terra-therapeutic-tags"]),
+					strings.ToLower(props["terra-dc-data-model"]),
+				}, " ")
+				if !strings.Contains(searchTargets, query) {
+					continue
 				}
-				dc["properties"] = props
+			}
+
+			// Build structured result with all meaningful metadata fields
+			dc := map[string]interface{}{
+				"id":   id,
+				"name": name,
+			}
+
+			// Overview
+			if v := props["terra-workspace-short-description"]; v != "" {
+				dc["shortDescription"] = v
+			}
+			if desc != "" {
+				dc["description"] = desc
+			}
+			if v := props["terra-organization-name"]; v != "" {
+				dc["organization"] = v
+			}
+			if v := props["terra-dc-availability"]; v != "" {
+				dc["availability"] = v
+			}
+			if v := props["terra-dc-is-free"]; v != "" {
+				dc["isFree"] = v == "true"
+			}
+			if v := props["terra-is-instantly-accessible"]; v != "" {
+				dc["isInstantlyAccessible"] = v == "true"
+			}
+
+			// Data characteristics
+			if v := props["terra-dc-patient-count"]; v != "" {
+				dc["patientCount"] = v
+			}
+			if v := props["terra-dc-time-frame"]; v != "" {
+				dc["timeFrame"] = v
+			}
+			if v := props["terra-dc-geographic-coverage"]; v != "" {
+				dc["geographicCoverage"] = v
+			}
+			if v := props["terra-dc-data-model"]; v != "" {
+				dc["dataModel"] = v
+			}
+			if v := props["terra-data-modality-tags"]; v != "" {
+				dc["dataModalityTags"] = v
+			}
+			if v := props["terra-therapeutic-tags"]; v != "" {
+				dc["therapeuticTags"] = v
+			}
+
+			// Schema / underlay
+			if v := props["terra-dx-underlay-name"]; v != "" {
+				dc["underlayName"] = v
+			}
+
+			// Data dictionary
+			if v := props["terra-dc-data-dictionary"]; v != "" {
+				dc["dataDictionary"] = v
+			}
+
+			// Usage examples (includes sample queries)
+			if v := props["terra-dc-usage-examples-sample-use-cases"]; v != "" {
+				dc["usageExamples"] = v
+			}
+
+			// Access
+			if v := props["terra-access-group-name"]; v != "" {
+				dc["accessGroupName"] = v
+			}
+			if v := props["terra-support-email"]; v != "" {
+				dc["supportEmail"] = v
+			}
+
+			// Publication / freshness
+			if v := props["terra-dc-data-published"]; v != "" {
+				dc["dataPublished"] = v
+			}
+			if v := props["terra-dc-metadata-last-updated"]; v != "" {
+				dc["metadataLastUpdated"] = v
+			}
+
+			// External documentation
+			if v := props["terra-dc-external-documentation"]; v != "" {
+				dc["externalDocumentation"] = v
 			}
 
 			collections = append(collections, dc)
@@ -1817,7 +1908,7 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			"dataCollections": collections,
 			"total":           len(collections),
 			"scope":           "platform-wide (all data collections you have READ access to)",
-			"attachCommand":   "wb data-collection add-to-workspace --id=<id>",
+			"attachCommand":   "wb workspace clone --id=<id>  # or ask your workspace admin to attach the collection",
 		}
 		resultBytes, marshalErr := json.MarshalIndent(result, "", "  ")
 		if marshalErr != nil {

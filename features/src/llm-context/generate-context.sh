@@ -110,6 +110,14 @@ install_skills() {
     local cloud_platform="${1:-GCP}"
     log_info "Installing skill files..."
     
+    # Copy DATA_DISCOVERY.md skill from the feature source directory
+    log_info "Creating DATA_DISCOVERY.md skill..."
+    if [ -f "$(dirname "$0")/skills/DATA_DISCOVERY.md" ]; then
+        cp "$(dirname "$0")/skills/DATA_DISCOVERY.md" "${SKILLS_DIR}/DATA_DISCOVERY.md"
+    else
+        log_info "DATA_DISCOVERY.md not found in feature source, skipping"
+    fi
+
     # Create CUSTOM_APP.md skill (full version, embedded)
     log_info "Creating CUSTOM_APP.md skill..."
     cat > "${SKILLS_DIR}/CUSTOM_APP.md" << 'SKILL_EOF'
@@ -2696,6 +2704,7 @@ Read these directly — no index needed:
 
 | Topic | Skill File | When to Use |
 |-------|------------|-------------|
+| **🔍 Data discovery** | \`DATA_DISCOVERY.md\` | Find data collections inside or across all of Workbench |
 | **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
 | Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
 | App templates | \`APP_TEMPLATES.md\` | Pre-built templates for dashboards, APIs, file processors |
@@ -2714,6 +2723,13 @@ Read these directly — no index needed:
 | 🏥 Clinical | \`scientific/CLINICAL.md\` | clinicaltrials.gov, pubmed, lifelines |
 
 ### ⚡ Skill Trigger Guide
+
+**Read \`DATA_DISCOVERY.md\` when:**
+- "find data collections" / "search for data" / "what data do I have access to"
+- "find me a dataset" / "search across workbench" / "what datasets are available"
+- "genomics data" / "clinical data" / "imaging data" / "proteomics data"
+- "data I can add to my workspace" / "data collections I haven't attached"
+- "find data related to [disease / topic]"
 
 **ALWAYS read \`DASHBOARD_BUILDER.md\` FIRST when user says ANY of these:**
 - "create a dashboard"

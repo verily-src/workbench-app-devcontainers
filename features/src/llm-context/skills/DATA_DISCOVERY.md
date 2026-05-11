@@ -4,17 +4,26 @@
 
 ## When to Use This Skill
 
-Read this skill whenever the user asks about finding, searching, or exploring data collections — whether inside their active workspace or across all of Workbench.
+**Only read this skill when the user is explicitly searching for data collections they do not yet have in their workspace — across all of Workbench.**
 
-**Trigger phrases — platform-wide search only (read this skill):**
+Do NOT read this skill if the user is asking about data already in their workspace. In that case, call `workspace_list_data_collections` or `workspace_list_resources` directly.
+
+**Read this skill ONLY when the user says something like:**
+- "Search all data collections I have access to"
 - "Find data collections across Workbench"
-- "What data do I have access to?"
-- "Search for [disease / modality / population] datasets"
-- "Are there any genomics / clinical / imaging datasets I can use?"
-- "Find me a dataset related to [topic]"
-- "What data collections exist that I haven't added yet?"
-- "Show me all accessible data"
-- "Is there a [cancer / diabetes / cardiovascular] dataset available?"
+- "What data collections can I add to my workspace?"
+- "Are there any data collections I haven't added yet?"
+- "Find a data collection related to [topic / disease / modality]"
+- "Search across all Workbench data collections for [keyword]"
+- "What data collections are available on the platform?"
+- "Browse all accessible data collections"
+
+**Listing data collections in my workspace** — do NOT read this skill, call `workspace_list_data_collections` directly:
+- "What data collections are in my workspace?"
+- "What data is attached to my workspace?"
+- "List the data collections I have"
+- "What datasets do I have in this workspace?"
+- "Show me the data collections in my workspace"
 
 ---
 

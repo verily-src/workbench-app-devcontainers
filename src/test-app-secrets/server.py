@@ -22,12 +22,11 @@ def read_secret(env_var):
     if val is None:
         return ""
     if val.startswith("/dev/fd/"):
-        fd = int(val.split("/")[-1])
         try:
-            content = os.read(fd, 65536).decode()
+            with open(val) as f:
+                return f.read()
         except OSError:
-            content = ""
-        return content
+            return ""
     return val
 
 

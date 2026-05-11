@@ -23,7 +23,6 @@
   "installsAfter": [
     "ghcr.io/devcontainers/features/common-utils",
     "ghcr.io/devcontainers/features/go",
-    "ghcr.io/anthropics/devcontainer-features/claude-code",
     "./.devcontainer/features/gemini",
     "./.devcontainer/features/workbench-tools"
   ]

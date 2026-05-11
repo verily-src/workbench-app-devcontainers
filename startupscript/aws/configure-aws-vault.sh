@@ -15,7 +15,7 @@
 
 readonly AWS_VAULT_INSTALL_PATH="/usr/bin/aws-vault"
 readonly AWS_VAULT_BINARY_PATH="/usr/bin/_aws-vault"
-readonly AWS_VAULT_EXE_URL="https://github.com/ByteNess/aws-vault/releases/download/v7.9.13/aws-vault-linux-amd64"
+readonly AWS_VAULT_EXE_URL="https://github.com/ByteNess/aws-vault/releases/download/v7.10.6/aws-vault-linux-amd64"
 
 if [[ -f "${AWS_VAULT_INSTALL_PATH}" ]]; then
     emit "aws-vault already installed"
@@ -27,6 +27,7 @@ else
     curl --no-progress-meter --location --output "${AWS_VAULT_BINARY_PATH}" "${AWS_VAULT_EXE_URL}"
 
     cat <<EOF > "${AWS_VAULT_INSTALL_PATH}"
+#!/bin/bash
 export AWS_VAULT_BACKEND="file"
 export AWS_VAULT_FILE_PASSPHRASE=""
 

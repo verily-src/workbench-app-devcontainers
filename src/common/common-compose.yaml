@@ -1,0 +1,10 @@
+# This docker-compose file is meant to be included to build common image
+# dependencies. Use the .devcontainer.json "runServices" property to prevent it
+# from starting automatically.
+#
+# Paths are relative to the primary docker-compose.yaml file.
+
+services:
+  common-secret-receiver-builder:
+    build:
+      context: ../common/secret-receiver

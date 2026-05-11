@@ -1,87 +1,92 @@
 {
   "ghcr.io/devcontainers/features/aws-cli": {
     "tag": "1",
-    "installed": "sha256:17cb4a40151f59144b46957b9264683663b0214371a041ecd53dccc015a4b923",
-    "filter": ".*\\/\\.devcontainer\\.json"
+    "installed": "sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef",
+    "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/java": {
     "tag": "1",
     "installed": "sha256:9663ce0219ff85786e87901ce5f0a59f488edd5f99b46015192cda48468b233a",
-    "filter": ".*\\/\\.devcontainer\\.json"
+    "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/dhoeric/features/google-cloud-cli": {
     "tag": "1",
     "installed": "sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f",
-    "filter": ".*\\/\\.devcontainer\\.json"
+    "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/rocker-org/devcontainer-features/r-packages": {
     "tag": "1",
     "installed": "sha256:1a4ec64c4d2060e78e9c812bd3b3622c7e008465d566a2781c0e2b17a82592e5",
-    "filter": ".*\\/\\.devcontainer\\.json"
+    "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/common-utils": {
     "tag": "2",
     "installed": "sha256:dbf431d6b42d55cde50fa1df75c7f7c3999a90cde6d73f7a7071174b3c3d0cc4",
-    "filter": ".*\\/\\.devcontainer\\.json"
+    "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/node": {
     "tag": "1",
     "installed": "sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6",
-    "filter": ".*\\/\\.devcontainer\\.json"
+    "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/anthropics/devcontainer-features/claude-code": {
     "tag": "1.0",
     "installed": "sha256:cfc2e7d3e9fd3b9b01f8d5cb158508a884c8c0ede2e23ed10f32dea5d4ffe69a",
-    "filter": ".*\\/\\.devcontainer\\.json"
+    "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:8150f0241344b58f6e0095e570e1f9fbbd98220009009c3a3e8a9cdf15cba973",
-    "filter": ".*\\/docker-compose.yaml"
+    "installed": "sha256:ff6cb0ed80e949a67394b2015267e375c55e1fc577ffacb6fc6f76b5c82acb5c",
+    "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:32f6f8192a0a0a34881491600a2482608e9133ffd6fb3ff137fe65c9bc160437",
-    "filter": ".*\\/Dockerfile"
+    "installed": "sha256:0ddb5398887dd5fdb2456165344f5fd4cc80e3047d2a126af0b31a71b4a3e5b1",
+    "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:093cbf59aa63e042980a19f5403655516da1b1a8c671379978959f468ce33052",
-    "filter": ".*\\/Dockerfile"
+    "installed": "sha256:4448c95b56482bffc5d7d62f6a5b0ac89c3547a670d74b1f99b1c0247e6c329c",
+    "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:c6e55356fa78187da382c76af331c6af1a0b48e82f5148872f5bdca55b00688b",
-    "filter": ".*\\/Dockerfile"
+    "installed": "sha256:9e63c7b033e053487c7c4b8d9b84ebc58f2a4be76bb6129ced2ba90da8643d1f",
+    "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
     "tag": "4",
     "installed": "sha256:289c5d02d8115aa209f4a8a49ee9378dccbf623897eed9cc46c87dfbbca9015b",
-    "filter": ".*\\/(docker-compose\\.yaml|Dockerfile)"
+    "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:111275f3c11a51d1d2ad675bfca531677ee6d54ec89e86e78d5b9dcc1a40c6f0",
-    "filter": ".*\\/(docker-compose\\.yaml|Dockerfile)"
+    "installed": "sha256:6e542034343228a692e0b24f12cbcc8ade3650ec1e2c9e195bc291f2bf024e3c",
+    "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
-    "tag": "1.23-bookworm",
-    "installed": "sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db",
-    "filter": ".*\\/Dockerfile"
+    "tag": "1.26-alpine",
+    "installed": "sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d",
+    "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {
     "tag": "25.07.nemotron-nano-v2",
     "installed": "sha256:f96daf8b2f07a4f8fb20e754f91b507e507ceb9119943027a4d43d7ca15e3896",
-    "filter": ".*\\/Dockerfile"
+    "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/clara/clara-parabricks": {
     "tag": "4.6.0-1",
     "installed": "sha256:d0761eb4b9921bc046c53520287316d545eb79feaeb8f22387e9bb5734650447",
-    "filter": ".*\\/Dockerfile"
+    "filter": "src\\/.*\\/Dockerfile"
   },
   "sosedoff/pgweb": {
     "tag": "latest",
     "installed": "sha256:a5256d416e2e8b92d69a4459058e3eca33a9f075d8325491644411d0bc3bd70b",
-    "filter": ".*\\/Dockerfile"
+    "filter": "src\\/.*\\/Dockerfile"
+  },
+  "mikefarah/yq": {
+    "tag": "4",
+    "installed": "sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60",
+    "filter": "startupscript\\/butane\\/050-parse-devcontainer\\.sh"
   }
 }

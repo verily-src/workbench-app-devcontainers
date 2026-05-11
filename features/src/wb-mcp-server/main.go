@@ -398,6 +398,41 @@ Returns a structured list of data collections with their resources, types, and c
 	},
 
 	{
+		Name: "platform_list_data_collections",
+		Description: `Search and list all data collections accessible to the current user across all of Workbench — not just those attached to the active workspace.
+
+Use this when a user asks:
+- "What data collections do I have access to?"
+- "Find data collections related to <topic>"
+- "Search for datasets across all of Workbench"
+- "What datasets could I add to my workspace?"
+- "Show me all accessible genomics / proteomics / clinical data"
+- "Are there any data collections I haven't attached yet?"
+
+This tool searches PLATFORM-WIDE. It returns all data collections the user has READ access to, regardless of whether they are attached to the active workspace.
+
+Always tell the user upfront that this is a broader platform-wide search (not just their workspace).
+
+To attach a found data collection to the current workspace:
+  wb data-collection add-to-workspace --id=<data-collection-id>
+
+Returns data collection names, IDs, descriptions, and underlay (data model) names where available.`,
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"query": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional keyword to filter data collections by name or description (case-insensitive substring match)",
+				},
+				"limit": map[string]interface{}{
+					"type":        "number",
+					"description": "Maximum number of results to return (default: 100)",
+				},
+			},
+		},
+	},
+
+	{
 		Name:        "group_create",
 		Description: "Create a user group. Use this when managing multiple users with same access needs. Groups simplify permission management - grant access to group instead of individual users.",
 		InputSchema: InputSchema{
@@ -1686,6 +1721,109 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			err = apiErr
 		} else {
 			output = string(respBody)
+		}
+
+	case "platform_list_data_collections":
+		// Fetch all data collections accessible to the user across all workspaces.
+		// Data collections are workspaces with the property terra-type=data-collection.
+		limit := 100
+		if l, ok := params.Arguments["limit"].(float64); ok {
+			limit = int(l)
+		}
+		query := ""
+		if q, ok := params.Arguments["query"].(string); ok {
+			query = strings.ToLower(strings.TrimSpace(q))
+		}
+
+		body := map[string]interface{}{
+			"limit":  limit,
+			"offset": 0,
+			"properties": []map[string]string{
+				{"key": "terra-type", "value": "data-collection"},
+			},
+		}
+		respBody, apiErr := makeAPIRequest("POST", workspaceBaseURL+"/api/workspaces/v2/filtered", body)
+		if apiErr != nil {
+			err = apiErr
+			break
+		}
+
+		var wsData map[string]interface{}
+		if jsonErr := json.Unmarshal(respBody, &wsData); jsonErr != nil {
+			err = fmt.Errorf("failed to parse response: %w", jsonErr)
+			break
+		}
+
+		workspaces, _ := wsData["workspaces"].([]interface{})
+		if workspaces == nil {
+			workspaces = []interface{}{}
+		}
+
+		var collections []map[string]interface{}
+		for _, w := range workspaces {
+			ws, ok := w.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			id, _ := ws["id"].(string)
+			name, _ := ws["displayName"].(string)
+			if name == "" {
+				name, _ = ws["userFacingId"].(string)
+			}
+			desc, _ := ws["description"].(string)
+
+			// Apply optional keyword filter against name and description
+			if query != "" {
+				nameMatch := strings.Contains(strings.ToLower(name), query)
+				descMatch := strings.Contains(strings.ToLower(desc), query)
+				if !nameMatch && !descMatch {
+					continue
+				}
+			}
+
+			dc := map[string]interface{}{
+				"id":   id,
+				"name": name,
+			}
+			if desc != "" {
+				dc["description"] = desc
+			}
+
+			// Extract workspace properties — pick out underlay name if present
+			if propsArray, ok := ws["properties"].([]interface{}); ok {
+				props := make(map[string]string)
+				for _, p := range propsArray {
+					if prop, ok := p.(map[string]interface{}); ok {
+						k, _ := prop["key"].(string)
+						v, _ := prop["value"].(string)
+						props[k] = v
+					}
+				}
+				if underlayName, ok := props["terra-dx-underlay-name"]; ok && underlayName != "" {
+					dc["underlayName"] = underlayName
+				}
+				dc["properties"] = props
+			}
+
+			collections = append(collections, dc)
+		}
+
+		if collections == nil {
+			collections = []map[string]interface{}{}
+		}
+
+		result := map[string]interface{}{
+			"dataCollections": collections,
+			"total":           len(collections),
+			"scope":           "platform-wide (all data collections you have READ access to)",
+			"attachCommand":   "wb data-collection add-to-workspace --id=<id>",
+		}
+		resultBytes, marshalErr := json.MarshalIndent(result, "", "  ")
+		if marshalErr != nil {
+			err = fmt.Errorf("failed to marshal result: %w", marshalErr)
+		} else {
+			output = string(resultBytes)
 		}
 
 	case "workspace_get":

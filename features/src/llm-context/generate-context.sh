@@ -119,9 +119,9 @@ install_skills() {
 
 ## When to Use This Skill
 
-**Only read this skill when the user is explicitly searching for data collections they do not yet have in their workspace — across all of Workbench.**
+**Always read this skill before calling `platform_list_data_collections`.** This skill controls the full discovery flow — do not call the MCP tool directly without following these steps first.
 
-Do NOT read this skill if the user is asking about data already in their workspace. In that case, call `workspace_list_data_collections` or `workspace_list_resources` directly.
+Do NOT read this skill if the user is asking about data already in their workspace. In that case, call `workspace_list_data_collections` directly.
 
 **Read this skill ONLY when the user says something like:**
 - "Search all data collections I have access to"
@@ -222,12 +222,24 @@ For each result, the tool returns the following fields — use ALL of them when 
 
 ---
 
-## Step 3 — Present Results and Offer to Refine
+## Step 3 — Rank, Present Results, and Offer to Refine
 
-Present matching collections in a clear summary. For each result, highlight the fields most relevant to the user's query. Example format:
+For every result returned, assign a **relevance score from 1–5** based on how well the collection's metadata matches the user's query. Use ALL available metadata fields when scoring — name, description, shortDescription, dataModalityTags, therapeuticTags, dataModel, usageExamples, dataDictionary, patientCount, geographicCoverage.
+
+**Scoring guide:**
+| Score | Meaning |
+|---|---|
+| ⭐⭐⭐⭐⭐ 5 | Exact match — directly contains the data type, gene, disease, or topic the user asked about |
+| ⭐⭐⭐⭐ 4 | Strong match — highly relevant to the query and covers the right domain or modality |
+| ⭐⭐⭐ 3 | Good match — related to the query's domain; may not be specific to the exact topic but offers valuable context |
+| ⭐⭐ 2 | Potential match — shares topical overlap with the query and is worth exploring further |
+| ⭐ 1 | Broad match — loosely connected to the query; included for completeness and may surface unexpected value |
+
+Present results **sorted by score (highest first)**. For each result, include a one-sentence justification for the score that explains concretely why it ranked that way. Example format:
 
 ---
-**[Collection Name]**
+**[Collection Name]** — ⭐⭐⭐⭐⭐ 5/5
+- **Why**: [One concrete sentence explaining what in the metadata drove this score — e.g. "Contains whole-genome sequencing data with BRCA1/BRCA2 variant calls across 10,000 patients."]
 - **Summary**: [shortDescription]
 - **Data types**: [dataModalityTags]
 - **Patients**: [patientCount] | **Time frame**: [timeFrame] | **Geography**: [geographicCoverage]
@@ -237,7 +249,7 @@ Present matching collections in a clear summary. For each result, highlight the 
 
 After presenting results, ask:
 
-> "Do any of these match what you're looking for? Would you like to refine the search — for example, filter by data type, study size, or access level?"
+> "Do any of these look useful? Would you like to refine the search or explore a specific collection in more detail?"
 
 If the user wants deeper detail on a specific collection:
 - Use `underlayName` with `mcp__wb__underlay_list_entities` to explore the data schema
@@ -2877,11 +2889,14 @@ Read these directly — no index needed:
 
 ### ⚡ Skill Trigger Guide
 
-**Read \`DATA_DISCOVERY.md\` ONLY when the user is searching for data collections they don't yet have, platform-wide:**
-- "search all data collections I have access to" / "find data collections across Workbench"
-- "what data collections can I add to my workspace?" / "data collections I haven't added yet"
-- "find a data collection related to [topic / disease / modality]"
-- "search across all Workbench data collections" / "what data collections are available on the platform?"
+**ALWAYS read \`DATA_DISCOVERY.md\` BEFORE calling \`platform_list_data_collections\`.** The skill controls the full discovery flow including scope clarification, result presentation, and how to add a collection to the workspace.
+
+Trigger \`DATA_DISCOVERY.md\` whenever the user is searching for data collections platform-wide:
+- "find data collections" / "search for data collections" / "find data collections with [keyword]"
+- "find data collections across Workbench" / "search all data collections I have access to"
+- "what data collections can I add?" / "data collections I haven't added yet"
+- "find a data collection related to [topic / disease / gene / modality]"
+- "are there data collections about [topic]?" / "find data collections that have [keyword]"
 - Do NOT use this skill for workspace-scoped questions — call \`workspace_list_data_collections\` directly instead
 
 **ALWAYS read \`DASHBOARD_BUILDER.md\` FIRST when user says ANY of these:**

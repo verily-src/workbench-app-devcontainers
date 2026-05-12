@@ -1,7 +1,7 @@
 #!/bin/bash
-# sas-startup.sh — Runtime setup for SAS Analytics Pro on VWB GCE.
+# sas-pre-deploy.sh — Runtime setup for SAS Analytics Pro on VWB GCE.
 #
-# Mounted at /opt/sas/aou/sas-startup.sh and invoked via PRE_DEPLOY_SCRIPT
+# Mounted at /opt/sas/aou/sas-pre-deploy.sh and invoked via PRE_DEPLOY_SCRIPT
 # before SAS services start.  Only handles steps that depend on the /data
 # volume or runtime state; build-time setup is in the Dockerfile.
 #
@@ -16,16 +16,6 @@ set -o pipefail
 ###############################################################################
 mkdir -p /data/saswork /data/utilloc
 chown -R aou:aougroup /data
-
-###############################################################################
-# Lock down the SAS license so the aou user cannot read it via pipe commands.
-# The entrypoint wrapper already sets root:root 0400 for Mikey Secrets, but
-# this covers the bind-mount fallback and acts as defence in depth.
-###############################################################################
-if [ -f /sasinside/SASLicense.jwt ]; then
-  chown root:root /sasinside/SASLicense.jwt
-  chmod 400 /sasinside/SASLicense.jwt
-fi
 
 ###############################################################################
 # AoU environment loader (staged in Dockerfile at /opt/sas/aou/)

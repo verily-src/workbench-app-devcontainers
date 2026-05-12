@@ -13,7 +13,7 @@ if [ -n "${SAS_LICENSE_PATH:-}" ]; then
   mkdir -p /sasinside
   cp "$SAS_LICENSE_PATH" /sasinside/SASLicense.jwt
   chmod 400 /sasinside/SASLicense.jwt
-  chown root:root /sasinside/SASLicense.jwt
+  chown sas:sas /sasinside/SASLicense.jwt
 fi
 
 exec /opt/sas/viya/home/bin/sas-analytics-pro-entrypoint.sh "$@"

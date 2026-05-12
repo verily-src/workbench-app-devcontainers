@@ -24,7 +24,7 @@ services:
       # the SAS_LICENSE_PATH file descriptor instead.
       - ./sasinside:/sasinside
     tmpfs:
-      - /data/workspace:uid=1001,gid=1001
+      - /data/workspace:uid=1002,gid=1100
     environment:
       HOST_AUTH: ""
       SAS_DEBUG: "0"

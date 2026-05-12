@@ -7,7 +7,7 @@ services:
       context: .
       additional_contexts:
         wb-secret-receiver: service:common-secret-receiver-builder
-    entrypoint: ["/wb-secret-receiver", "python3", "-m", "http.server", "8080"]
+    entrypoint: ["/wb-secret-receiver", "python3", "/workspace/server.py"]
     restart: always
     volumes:
       - .:/workspace:cached

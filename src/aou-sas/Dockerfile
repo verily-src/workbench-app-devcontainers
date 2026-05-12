@@ -74,6 +74,7 @@ RUN PROXY_CONF=/etc/httpd/conf.d/dkrapro-proxy.conf && \
 
 # Wrapper entrypoint: copies the SAS license from Mikey Secrets (if active)
 # to /sasinside/ before handing off to the SAS entrypoint.
+COPY --from=wb-secret-receiver /dist/wb-secret-receiver /wb-secret-receiver
 COPY sas-entrypoint.sh /opt/sas/aou/sas-entrypoint.sh
 RUN chmod +x /opt/sas/aou/sas-entrypoint.sh
-ENTRYPOINT ["/opt/sas/aou/sas-entrypoint.sh"]
+ENTRYPOINT ["/wb-secret-receiver", "/opt/sas/aou/sas-entrypoint.sh"]

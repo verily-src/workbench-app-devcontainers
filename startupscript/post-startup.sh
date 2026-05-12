@@ -121,6 +121,9 @@ else
 fi
 
 
+echo "Simulating an error in the post startup script"
+exit 1
+
 # Create the target directories for installing into the HOME directory
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_BASH_COMPLETION_DIR}'"
 ${RUN_AS_LOGIN_USER} "mkdir -p '${USER_HOME_LOCAL_SHARE}'"

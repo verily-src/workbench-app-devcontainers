@@ -2726,54 +2726,40 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			resourcesList = []interface{}{}
 		}
 
-		// Extract sourceWorkspaceIds from resourceLineage (which is an ARRAY inside metadata)
-		sourceWorkspaceIds := make(map[string]bool)
-		for _, r := range resourcesList {
-			resource, ok := r.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			metadata, ok := resource["metadata"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			// resourceLineage is an array inside metadata
-			if lineageArray, ok := metadata["resourceLineage"].([]interface{}); ok && len(lineageArray) > 0 {
-				if firstLineage, ok := lineageArray[0].(map[string]interface{}); ok {
-					if sourceId, ok := firstLineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
-						sourceWorkspaceIds[sourceId] = true
+		// Build a UUID → display name map with a single batch API call.
+		// This avoids the N+1 sequential lookups (one per collection) that caused timeouts.
+		collectionNames := make(map[string]string) // uuid → display name
+		batchBody := map[string]interface{}{
+			"limit":  1000,
+			"offset": 0,
+			"properties": []map[string]string{
+				{"key": "terra-type", "value": "data-collection"},
+			},
+		}
+		if batchResp, batchErr := makeAPIRequest("POST", workspaceBaseURL+"/api/workspaces/v2/filtered", batchBody); batchErr == nil {
+			var batchData map[string]interface{}
+			if json.Unmarshal(batchResp, &batchData) == nil {
+				if wsList, ok := batchData["workspaces"].([]interface{}); ok {
+					for _, w := range wsList {
+						ws, ok := w.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						uuid, _ := ws["id"].(string)
+						displayName, _ := ws["displayName"].(string)
+						if displayName == "" {
+							displayName, _ = ws["userFacingId"].(string)
+						}
+						if uuid != "" && displayName != "" {
+							collectionNames[uuid] = displayName
+						}
 					}
 				}
 			}
 		}
+		// Fall back gracefully: if the batch call fails, groups will be keyed by UUID
 
-		// Look up each source workspace to get the data collection name
-		dataCollectionNames := make(map[string]string) // sourceWorkspaceId -> display name
-		for sourceId := range sourceWorkspaceIds {
-			// Use API to get workspace details
-			wsUrl := fmt.Sprintf("%s/api/workspaces/v1/%s", workspaceBaseURL, sourceId)
-			wsResp, wsErr := makeAPIRequest("GET", wsUrl, nil)
-			if wsErr == nil {
-				var wsInfo map[string]interface{}
-				if json.Unmarshal(wsResp, &wsInfo) == nil {
-					// Try to get display name, fall back to id
-					if displayName, ok := wsInfo["displayName"].(string); ok && displayName != "" {
-						dataCollectionNames[sourceId] = displayName
-					} else if userFacingId, ok := wsInfo["userFacingId"].(string); ok && userFacingId != "" {
-						dataCollectionNames[sourceId] = userFacingId
-					} else {
-						dataCollectionNames[sourceId] = sourceId
-					}
-				} else {
-					dataCollectionNames[sourceId] = sourceId
-				}
-			} else {
-				// If we can't access the source workspace, use the ID
-				dataCollectionNames[sourceId] = sourceId + " (inaccessible)"
-			}
-		}
-
-		// Group resources by data collection (using resourceLineage array inside metadata)
+		// Group resources by data collection, using display name where available
 		dataCollections := make(map[string]map[string]interface{})
 		localResources := []map[string]interface{}{}
 
@@ -2819,17 +2805,20 @@ func handleCallTool(params CallToolParams) CallToolResult {
 				}
 			}
 
-			// Group by data collection or mark as local
+			// Group by display name (falling back to UUID if name not resolved)
 			if sourceId != "" {
-				collectionName := dataCollectionNames[sourceId]
-				if dataCollections[collectionName] == nil {
-					dataCollections[collectionName] = map[string]interface{}{
+				groupKey := collectionNames[sourceId]
+				if groupKey == "" {
+					groupKey = sourceId
+				}
+				if dataCollections[groupKey] == nil {
+					dataCollections[groupKey] = map[string]interface{}{
 						"sourceWorkspaceId": sourceId,
 						"resources":         []map[string]interface{}{},
 					}
 				}
-				resList := dataCollections[collectionName]["resources"].([]map[string]interface{})
-				dataCollections[collectionName]["resources"] = append(resList, resourceInfo)
+				resList := dataCollections[groupKey]["resources"].([]map[string]interface{})
+				dataCollections[groupKey]["resources"] = append(resList, resourceInfo)
 			} else {
 				localResources = append(localResources, resourceInfo)
 			}

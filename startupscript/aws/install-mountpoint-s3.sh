@@ -24,6 +24,8 @@ emit "Installing mountpoint-s3 v${MOUNTPOINT_S3_VERSION} for s3 bucket mounting.
 if type apk > /dev/null 2>&1; then
   apk update
   apk add --no-cache curl gnupg
+elif type dnf > /dev/null 2>&1; then
+  dnf install -y curl gnupg2
 elif type apt-get > /dev/null 2>&1; then
   apt-get update
   apt-get install -y curl gnupg

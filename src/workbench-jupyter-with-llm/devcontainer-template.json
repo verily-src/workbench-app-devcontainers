@@ -1,9 +1,9 @@
 {
-  "id": "navid-workbench-jupyter",
+  "id": "workbench-jupyter-with-llm",
   "description": "Workbench JupyterLab with Gemini, Claude CLI, and MCP server integration",
   "version": "0.0.1",
-  "name": "Navid Workbench Jupyter",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/navid-workbench-jupyter",
+  "name": "Workbench Jupyter with LLM tools",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/workbench-jupyter-with-llm",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {
     "cloud": {

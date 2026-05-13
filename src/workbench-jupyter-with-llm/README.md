@@ -9,8 +9,6 @@ Workbench JupyterLab with integrated AI assistance through Gemini CLI, Claude CL
 |-----|-----|-----|-----|
 | cloud | VM cloud environment | string | gcp |
 | login | Whether to log in to workbench CLI | string | false |
-| containerImage | The container image to use | string | debian:bullseye |
-| containerPort | The port to expose the container on | number | 8888 |
 
 
 

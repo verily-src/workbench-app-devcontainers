@@ -81,11 +81,14 @@ else
     exit 1
 fi
 
-# Create user-specific directories
-USER_WORKBENCH_DIR="${USER_HOME_DIR}/.workbench"
-USER_SKILLS_DIR="${USER_WORKBENCH_DIR}/skills"
-mkdir -p "${USER_WORKBENCH_DIR}"
-mkdir -p "${USER_SKILLS_DIR}"
+# Copy skill files to installation directory
+if [[ -d "${FEATURE_DIR}/skills" ]]; then
+    mkdir -p "${LLM_CONTEXT_DIR}/skills"
+    cp -r "${FEATURE_DIR}/skills/." "${LLM_CONTEXT_DIR}/skills/"
+    echo "Copied skill files to ${LLM_CONTEXT_DIR}/skills"
+else
+    echo "Warning: skills directory not found in ${FEATURE_DIR}"
+fi
 
 # Create a wrapper script that runs with proper user context
 cat > "${LLM_CONTEXT_DIR}/run-context-generator.sh" << WRAPPER_EOF
@@ -99,7 +102,7 @@ cat > "${LLM_CONTEXT_DIR}/run-context-generator.sh" << WRAPPER_EOF
 MAX_RETRIES=8
 RETRY_DELAY=10
 for i in \$(seq 1 \${MAX_RETRIES}); do
-    if command -v wb &> /dev/null && wb workspace describe &> /dev/null 2>&1; then
+    if command -v wb &> /dev/null && wb workspace describe &> /dev/null; then
         echo "Workspace ready (attempt \${i}). Generating LLM context..."
         ${GENERATE_SCRIPT} || echo "LLM context generation failed (non-fatal)"
         exit 0
@@ -117,15 +120,17 @@ chmod +x "${LLM_CONTEXT_DIR}/run-context-generator.sh"
 chown -R "${USERNAME}:" "${LLM_CONTEXT_DIR}" 2>/dev/null || true
 chown -R "${USERNAME}:" "${USER_WORKBENCH_DIR}" 2>/dev/null || true
 
-# Add aliases and environment to bashrc
-{
-    echo ""
-    echo "# LLM Context Generator"
-    echo "export LLM_CONTEXT_ENABLED=true"
-    echo "export LLM_CONTEXT_HOME=\"${USER_HOME_DIR}\""
-    echo "alias generate-llm-context='${GENERATE_SCRIPT} ${USER_HOME_DIR}'"
-    echo "alias refresh-context='${GENERATE_SCRIPT} ${USER_HOME_DIR}'"
-} >> "${USER_HOME_DIR}/.bashrc"
+# Add aliases and environment to bashrc (idempotent)
+if ! grep -q "# LLM Context Generator" "${USER_HOME_DIR}/.bashrc" 2>/dev/null; then
+    {
+        echo ""
+        echo "# LLM Context Generator"
+        echo "export LLM_CONTEXT_ENABLED=true"
+        echo "export LLM_CONTEXT_HOME=\"${USER_HOME_DIR}\""
+        echo "alias generate-llm-context='${GENERATE_SCRIPT} ${USER_HOME_DIR}'"
+        echo "alias refresh-context='${GENERATE_SCRIPT} ${USER_HOME_DIR}'"
+    } >> "${USER_HOME_DIR}/.bashrc"
+fi
 
 # Make sure the login user is the owner of their .bashrc
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc" 2>/dev/null || true

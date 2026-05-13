@@ -1,4 +1,4 @@
-# WDL Workflow Troubleshooting Skill
+# WDL Workflow Troubleshooting Skill (AWS)
 
 **Trigger:** User asks to troubleshoot, debug, or fix a failed workflow.
 
@@ -41,13 +41,11 @@ wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json | 
 ### Step 1: Identify Failed Job
 
 ```bash
-# List all failed jobs
 wb workflow job list --format=json | jq '.[] | select(.status == "FAILED") | {id, workflowName, status, startTime, endTime}'
 ```
 
 **For batch jobs:**
 ```bash
-# List failed sub-jobs within a batch
 wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.status == "FAILED") | {id, status}'
 ```
 
@@ -58,19 +56,13 @@ wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.stat
 ### Step 2: Get Job Details & Inputs
 
 ```bash
-# Full job metadata
 wb workflow job describe --job=<JOB_ID> --format=json
 ```
 
 **Key fields to extract:**
 ```bash
-# Error message
 wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage'
-
-# Inputs used
 wb workflow job describe --job=<JOB_ID> --format=json | jq '.inputs'
-
-# Outputs (if any)
 wb workflow job describe --job=<JOB_ID> --format=json | jq '.outputs'
 ```
 
@@ -79,20 +71,15 @@ wb workflow job describe --job=<JOB_ID> --format=json | jq '.outputs'
 ### Step 3: Find Failed Task & Get Logs
 
 ```bash
-# List all tasks with status
 wb workflow job task list --job=<JOB_ID> --format=json | jq '.[] | {name, status, exitCode}'
-
-# Get failed task details
 wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json
 ```
 
 **Extract log URLs:**
 ```bash
-# Get stderr and stdout URLs
 TASK_INFO=$(wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json)
 STDERR_URL=$(echo $TASK_INFO | jq -r '.stderr')
 STDOUT_URL=$(echo $TASK_INFO | jq -r '.stdout')
-
 echo "stderr: $STDERR_URL"
 echo "stdout: $STDOUT_URL"
 ```
@@ -104,23 +91,23 @@ echo "stdout: $STDOUT_URL"
 #### Read Log Contents
 
 ```bash
-# Read stderr (usually contains errors)
-gsutil cat "$STDERR_URL" 2>/dev/null | tail -100
+# Read stderr (usually contains errors) — logs are in S3
+aws s3 cp "$STDERR_URL" - 2>/dev/null | tail -100
 
 # Read stdout
-gsutil cat "$STDOUT_URL" 2>/dev/null | tail -100
+aws s3 cp "$STDOUT_URL" - 2>/dev/null | tail -100
 
 # Search for common error patterns
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "error|exception|failed|denied|killed|oom|memory|disk|timeout" | head -30
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "error|exception|failed|denied|killed|oom|memory|disk|timeout" | head -30
 ```
 
 #### Common Log File Patterns
 
 Cromwell execution logs are typically at:
 ```
-gs://<execution-bucket>/<workflow-id>/<call-name>/execution/
+s3://<execution-bucket>/<workflow-id>/<call-name>/execution/
 ├── stdout          # Task standard output
-├── stderr          # Task standard error  
+├── stderr          # Task standard error
 ├── script          # The actual command that ran
 ├── rc              # Return code (exit code)
 └── script.submit   # Submission script
@@ -128,12 +115,11 @@ gs://<execution-bucket>/<workflow-id>/<call-name>/execution/
 
 **One-liner to read all execution files:**
 ```bash
-# Find execution directory from task describe, then:
 EXEC_DIR=$(echo $TASK_INFO | jq -r '.executionDirectory // empty')
 if [ -n "$EXEC_DIR" ]; then
-  echo "=== script ===" && gsutil cat "$EXEC_DIR/script" 2>/dev/null
-  echo "=== rc ===" && gsutil cat "$EXEC_DIR/rc" 2>/dev/null
-  echo "=== stderr (last 50 lines) ===" && gsutil cat "$EXEC_DIR/stderr" 2>/dev/null | tail -50
+  echo "=== script ===" && aws s3 cp "$EXEC_DIR/script" - 2>/dev/null
+  echo "=== rc ===" && aws s3 cp "$EXEC_DIR/rc" - 2>/dev/null
+  echo "=== stderr (last 50 lines) ===" && aws s3 cp "$EXEC_DIR/stderr" - 2>/dev/null | tail -50
 fi
 ```
 
@@ -144,38 +130,38 @@ fi
 #### What Was Requested (from WDL runtime)
 
 ```bash
-# Get workflow definition to see runtime requirements
 wb workflow describe --workflow=<WORKFLOW_ID> --format=json | jq '.sourceUrl'
 
 # Read WDL file
-gsutil cat gs://<bucket>/<path>/workflow.wdl | grep -A10 "runtime {"
+aws s3 cp s3://<bucket>/<path>/workflow.wdl - | grep -A10 "runtime {"
 ```
 
-#### Check Actual Resource Usage (GCP Batch)
+#### Check Actual Resource Usage (AWS Batch)
 
 ```bash
-# For GCP Cromwell jobs, get batch job details
-gcloud batch jobs list --filter="status.state=FAILED" --format="table(name,status.state,createTime)"
+# List failed AWS Batch jobs
+aws batch list-jobs --job-queue <QUEUE_NAME> --job-status FAILED \
+  --query 'jobSummaryList[*].{id:jobId,name:jobName,status:status}' --output table
 
 # Describe specific batch job
-gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '{
-  status: .status.state,
-  statusEvents: .status.statusEvents,
-  taskGroups: .taskGroups[0].taskSpec.computeResource
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0] | {
+  status: .status,
+  statusReason: .statusReason,
+  container: .container.resourceRequirements
 }'
 ```
 
 #### Memory-Specific Checks
 
 ```bash
-# Check if OOM (Out of Memory) killed the task
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "oom|out of memory|killed|cannot allocate|memory"
+# Check if OOM killed the task
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "oom|out of memory|killed|cannot allocate|memory"
 
-# Check what memory was requested in batch job
-gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.computeResource.memoryMib'
+# Check what memory was requested in the batch job
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].container.resourceRequirements[] | select(.type=="MEMORY")'
 
-# Check dmesg/syslog for OOM events (if available in logs)
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i "killed process"
+# Check for OOM kill signal in stderr
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i "killed process"
 ```
 
 ---
@@ -192,17 +178,14 @@ gsutil cat "$STDERR_URL" 2>/dev/null | grep -i "killed process"
 
 **Diagnosis:**
 ```bash
-# Check requested memory
-gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.computeResource'
-
-# Look for memory errors in logs
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "memory|oom|killed|malloc"
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].container.resourceRequirements'
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "memory|oom|killed|malloc"
 ```
 
 **Fix:** Increase `memory` in WDL runtime block:
 ```wdl
 runtime {
-  memory: "32G"  # Increase from previous value
+  memory: "32G"
 }
 ```
 
@@ -214,13 +197,13 @@ runtime {
 
 **Diagnosis:**
 ```bash
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "space|disk|quota"
+aws s3 cp "$STDERR_URL" - 2>/dev/null | grep -i -E "space|disk|quota"
 ```
 
 **Fix:** Increase disk in WDL runtime:
 ```wdl
 runtime {
-  disks: "local-disk 200 SSD"  # Increase size
+  disks: "local-disk 200 SSD"
 }
 ```
 
@@ -233,10 +216,9 @@ runtime {
 
 **Diagnosis:**
 ```bash
-# Check if input files exist
 wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.inputs | to_entries[] | .value' | while read path; do
-  if [[ $path == gs://* ]]; then
-    echo -n "$path: " && gsutil ls "$path" 2>&1 | head -1
+  if [[ $path == s3://* ]]; then
+    echo -n "$path: " && aws s3 ls "$path" 2>&1 | head -1
   fi
 done
 ```
@@ -244,31 +226,27 @@ done
 #### Permission Issues
 
 **Symptoms:**
-- "Permission denied"
-- "Access denied"
-- 403 errors
+- "Permission denied" / "Access denied" / 403 errors
 
 **Diagnosis:**
 ```bash
-# Check service account permissions
-gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.serviceAccount'
+# Check IAM role attached to batch job
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].jobDefinition'
 
 # Test bucket access
-gsutil ls gs://<bucket>/ 2>&1 | head -5
+aws s3 ls s3://<bucket>/ 2>&1 | head -5
 ```
 
 ---
 
 ### Step 7: Propose Solution
 
-Based on diagnosis, recommend one of:
-
 | Issue | Solution Template |
 |-------|-------------------|
 | **OOM** | "Increase memory from X to Y in the runtime block" |
 | **Disk full** | "Increase disk size from X to Y GB" |
-| **Missing input** | "Input file doesn't exist. Verify path: `gsutil ls <path>`" |
-| **Permission** | "Service account lacks access. Grant `roles/storage.objectViewer` on bucket" |
+| **Missing input** | "Input file doesn't exist. Verify path: `aws s3 ls <path>`" |
+| **Permission** | "IAM role lacks S3 access. Grant `s3:GetObject` on the bucket" |
 | **Timeout** | "Task exceeded time limit. Increase `maxRetries` or optimize task" |
 | **Docker** | "Image pull failed. Verify image exists and is accessible" |
 | **Other** | Describe the root cause from logs and propose a fix based on the specific error |
@@ -294,14 +272,14 @@ wb workflow job describe --job=<ID> --format=json | jq '.failureMessage'
 # Failed tasks
 wb workflow job task list --job=<ID> --format=json | jq '.[] | select(.status=="FAILED") | .name'
 
-# Task logs
-wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq '.stderr' | xargs -I{} gsutil cat {} | tail -50
+# Task logs (S3)
+wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq -r '.stderr' | xargs -I{} aws s3 cp {} - | tail -50
 
-# Memory check
-gcloud batch jobs describe <BATCH_JOB> --format=json | jq '.taskGroups[0].taskSpec.computeResource'
+# Memory check (AWS Batch)
+aws batch describe-jobs --jobs <JOB_ID> | jq '.jobs[0].container.resourceRequirements'
 ```
 
-### Error → Cause → Fix
+### Error -> Cause -> Fix
 
 | Exit Code | Meaning | Common Fix |
 |-----------|---------|------------|
@@ -317,7 +295,6 @@ gcloud batch jobs describe <BATCH_JOB> --format=json | jq '.taskGroups[0].taskSp
 
 ## Workbench-Specific Notes
 
-- **Log retention:** Cromwell logs persist in workspace execution bucket
+- **Log retention:** Cromwell logs persist in workspace execution bucket (S3)
 - **Batch jobs:** Each sub-job has independent logs; troubleshoot specific failed sub-job
-- **VPC-SC:** Run `gcloud batch` commands from within workspace app
-- **Preemption:** If using spot VMs, set `preemptible: 0` for reliability
+- **Preemption:** If using spot instances, set `preemptible: 0` for reliability

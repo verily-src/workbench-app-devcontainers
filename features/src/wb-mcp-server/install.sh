@@ -66,9 +66,14 @@ check_packages \
 
 # Check if Go is installed
 if ! command -v go &> /dev/null; then
-    echo "Go is not installed. Installing Go 1.21..."
-    GOLANG_VERSION="1.21.6"
-    GOLANG_ARCH="amd64"
+    echo "Go is not installed. Installing Go 1.25..."
+    GOLANG_VERSION="1.25.0"
+    case "$(uname -m)" in
+        x86_64)  GOLANG_ARCH="amd64" ;;
+        aarch64) GOLANG_ARCH="arm64" ;;
+        armv7l)  GOLANG_ARCH="armv6l" ;;
+        *)       echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
+    esac
 
     cd "${WORKDIR}"
     curl -fsSL "https://go.dev/dl/go${GOLANG_VERSION}.linux-${GOLANG_ARCH}.tar.gz" -o go.tar.gz
@@ -178,14 +183,16 @@ if command -v gemini &> /dev/null; then
 fi
 
 
-# Add auto-start to .bashrc
-{
-    echo ""
-    echo "# Workbench MCP Server - auto-start"
-    echo "if ! pgrep -f 'wb-mcp-server -http' > /dev/null 2>&1; then"
-    echo "    /opt/wb-mcp-server/start-server.sh > /dev/null 2>&1"
-    echo "fi"
-} >> "${USER_HOME_DIR}/.bashrc"
+# Add auto-start to .bashrc (idempotent)
+if ! grep -q "# Workbench MCP Server - auto-start" "${USER_HOME_DIR}/.bashrc" 2>/dev/null; then
+    {
+        echo ""
+        echo "# Workbench MCP Server - auto-start"
+        echo "if ! pgrep -f 'wb-mcp-server -http' > /dev/null 2>&1; then"
+        echo "    /opt/wb-mcp-server/start-server.sh > /dev/null 2>&1"
+        echo "fi"
+    } >> "${USER_HOME_DIR}/.bashrc"
+fi
 
 chown "${USERNAME}:" "${USER_HOME_DIR}/.bashrc"
 

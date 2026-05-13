@@ -5,6 +5,23 @@
 
 ---
 
+## Quick Start (Recommended)
+
+The official repo has a script that generates a complete app structure:
+
+```bash
+# Clone the official repo
+git clone https://github.com/verily-src/workbench-app-devcontainers.git
+cd workbench-app-devcontainers
+
+# Run the quick start script
+./scripts/create-custom-app.sh my-app quay.io/jupyter/base-notebook 8888 jovyan /home/jovyan
+```
+
+This generates all required files in `src/my-app/` with correct structure.
+
+---
+
 ## ⚠️ Choose Your Pattern
 
 | Pattern | Use When | Example |
@@ -348,3 +365,17 @@ ls -la /home/core/devcontainer/
 | `Failed to clone devcontainer GitHub repo` | GitHub access issue | Check repo permissions |
 | `Container exited with code 1` | App crash | Check `docker logs application-server` |
 | `proxy-agent or application-server is not started` | Container never started | Check earlier logs |
+
+---
+
+## When to Use Features
+
+Sometimes you need the full-featured approach:
+
+| Need | Solution |
+|------|----------|
+| Workbench CLI (`wb`) | Use `workbench-tools` feature |
+| LLM/MCP integration | Use `wb-mcp-server` feature |
+| Pre-authenticated gcloud | Use `workbench-tools` feature |
+
+**If you need these, use the full `workbench-app-devcontainers` repo as your base.**

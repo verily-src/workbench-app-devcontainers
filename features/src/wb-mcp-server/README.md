@@ -89,7 +89,7 @@ Uses `filter_build_attribute` and `cohort_create_in_workspace`.
 
 Uses `filter_build_attribute`, `filter_build_relationship`, `filter_build_boolean_logic`, and `cohort_create_in_workspace`.
 
-## How It Works
+## Internals
 
 ### Authentication
 - Auto-fetches bearer token from `wb auth print-access-token`

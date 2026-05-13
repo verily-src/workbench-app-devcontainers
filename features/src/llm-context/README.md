@@ -37,7 +37,7 @@ When installed, this feature:
 
 1. **Generates `~/CLAUDE.md`** - Claude Code auto-discovers this file on startup
 2. **Provides workspace context** - Name, ID, role, resources, cloud paths
-3. **Includes skill files** - Detailed guides (e.g., custom app creation) in `~/.workbench/skills/`
+3. **Includes skill files** - Detailed guides (e.g., custom app creation) in `~/.claude/skills/`
 4. **Sets up aliases** - `generate-llm-context`, `refresh-context`
 
 ## What's in `~/CLAUDE.md`
@@ -116,9 +116,9 @@ head ~/CLAUDE.md
 |------|---------|
 | `/opt/llm-context/generate-context.sh` | Main generation script |
 | `/opt/llm-context/run-context-generator.sh` | Auto-run wrapper |
-| `~/.workbench/CLAUDE.md` | Generated context (primary) |
+| `~/.claude/CLAUDE.md` | Generated context (primary) |
 | `~/CLAUDE.md` | Symlink for auto-discovery |
-| `~/.workbench/skills/` | Skill files (e.g., CUSTOM_APP.md) |
+| `~/.claude/skills/` | Skill files (e.g., CUSTOM_APP.md) |
 
 ## Notes
 

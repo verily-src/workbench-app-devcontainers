@@ -8,15 +8,14 @@ COPY --from=load-envs /dist/load-env /dist/load-env.sh /opt/sas/aou/
 
 ###############################################################################
 # Disable SAS-internal repos (unreachable outside SAS network) and enable
-# public UBI + EPEL repos so packages like jq, fuse, git can be resolved.
+# public UBI repos so packages like jq, fuse, git can be resolved.
 ###############################################################################
 RUN dnf config-manager --set-disabled \
         crackles-epel-everything \
         sas-rhel-9-baseos sas-rhel-9-appstream sas-rhel-9-codeready \
         sas-ubi-9-baseos sas-ubi-9-appstream sas-ubi-9-codeready-builder && \
     dnf config-manager --set-enabled \
-        ubi-9-baseos-rpms ubi-9-appstream-rpms ubi-9-codeready-builder-rpms && \
-    dnf clean all
+        ubi-9-baseos-rpms ubi-9-appstream-rpms ubi-9-codeready-builder-rpms
 
 ###############################################################################
 # System packages required by Workbench startup scripts
@@ -74,7 +73,8 @@ RUN PROXY_CONF=/etc/httpd/conf.d/dkrapro-proxy.conf && \
     sed -i '/AOU-CONFIGURED/a Header edit Set-Cookie "^(.*SameSite=None.*)\$" "\$1; Secure"' "${PROXY_CONF}"
 
 ###############################################################################
-# Create /data directory and chown to AoU user
+# Create /data directory and chown to AoU user. When the volume is mounted it
+# will inherit the owner
 ###############################################################################
 RUN mkdir -p /data && chown aou:aougroup /data
 

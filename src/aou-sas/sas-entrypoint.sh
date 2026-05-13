@@ -6,8 +6,7 @@
 # copies the license to /sasinside/SASLicense.jwt where the SAS Analytics
 # Pro entrypoint expects it.
 #
-# When SAS_LICENSE_PATH is not set (manual GCE testing), this script is a
-# no-op passthrough — SAS reads the license from the bind-mounted /sasinside/.
+# When SAS_LICENSE_PATH is not set, this script is a no-op passthrough.
 
 if [ -n "${SAS_LICENSE_PATH:-}" ]; then
   mkdir -p /sasinside

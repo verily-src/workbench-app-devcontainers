@@ -57,7 +57,7 @@ services:
       POSTGRES_PASSWORD: "playground_password"
       POSTGRES_DB: "playground"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql
     networks:
       - playground
     healthcheck:

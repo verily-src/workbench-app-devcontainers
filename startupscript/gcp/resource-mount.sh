@@ -26,6 +26,23 @@ if ! which gcsfuse >/dev/null 2>&1; then
     go install github.com/googlecloudplatform/gcsfuse/v2@master
     cp ${GOPATH}/bin/gcsfuse /usr/bin/gcsfuse
 
+  elif type dnf > /dev/null 2>&1; then
+    emit "Installing gcsfuse from yum repo..."
+    dnf install -y fuse
+    if ! dnf repolist | grep -q gcsfuse; then
+      cat > /etc/yum.repos.d/gcsfuse.repo <<'EOF'
+[gcsfuse]
+name=gcsfuse (packages.cloud.google.com)
+baseurl=https://packages.cloud.google.com/yum/repos/gcsfuse-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=0
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
+       https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+    fi
+    dnf install -y gcsfuse
+
   elif type apt-get > /dev/null 2>&1; then
     emit "Installing gcsfuse from apt package..."
 

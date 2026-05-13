@@ -43,6 +43,8 @@ rm -f "${USER_SSH_DIR}/id_rsa.tmp"
 if type apk > /dev/null 2>&1; then
   apk update
   apk add --no-cache openssh-client
+elif type dnf > /dev/null 2>&1; then
+  dnf install -y openssh-clients
 elif type apt-get > /dev/null 2>&1; then
   apt-get update
   apt-get install -y openssh-client

@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2016 # Single-quoted strings with $ and backticks are intentional template text
 #
 # Workbench LLM Context Generator
 # 
@@ -2353,8 +2354,10 @@ generate_bucket_list() {
     local cloud_platform="${2:-GCP}"
 
     if [ "$cloud_platform" = "AWS" ]; then
-        local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "AWS_S3_STORAGE_FOLDER")]' 2>/dev/null || echo "[]")
-        local count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
+        local buckets
+        buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "AWS_S3_STORAGE_FOLDER")]' 2>/dev/null || echo "[]")
+        local count
+        count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
 
         if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
             echo "*No S3 buckets in this workspace.* Create one with:"
@@ -2369,8 +2372,10 @@ generate_bucket_list() {
         echo "$buckets" | jq -r '.[] | "| `s3://\(.bucketName // "unknown")/\(.prefix // "")` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
     else
         # GCP
-        local buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "GCS_BUCKET")]' 2>/dev/null || echo "[]")
-        local count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
+        local buckets
+        buckets=$(echo "$resources" | jq '[.[] | select(.resourceType == "GCS_BUCKET")]' 2>/dev/null || echo "[]")
+        local count
+        count=$(echo "$buckets" | jq 'length' 2>/dev/null || echo "0")
 
         if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
             echo "*No GCS buckets in this workspace.* Create one with:"
@@ -2392,20 +2397,20 @@ generate_claude_md() {
     
     local workspace="$1"
     local resources="$2"
-    local workflows="$3"
-    local apps="$4"
-    
+    # $3 (workflows) and $4 (apps) reserved for future use
+
     # Extract workspace values - field names match UFWorkspaceLight.java
-    local ws_name=$(echo "$workspace" | jq -r '.name // "Unnamed Workspace"')
-    local ws_id=$(echo "$workspace" | jq -r '.id // "unknown"')
-    local ws_desc=$(echo "$workspace" | jq -r '.description // "No description"')
-    local ws_cloud=$(echo "$workspace" | jq -r '.cloudPlatform // "GCP"')
-    local ws_gcp_project=$(echo "$workspace" | jq -r '.googleProjectId // ""')
-    local ws_aws_account=$(echo "$workspace" | jq -r '.awsAccountId // ""')
-    local ws_role=$(echo "$workspace" | jq -r '.highestRole // "READER"')
-    local ws_user=$(echo "$workspace" | jq -r '.userEmail // "unknown"')
-    local ws_org=$(echo "$workspace" | jq -r '.orgId // ""')
-    local ws_server=$(echo "$workspace" | jq -r '.serverName // ""')
+    local ws_name ws_id ws_desc ws_cloud ws_gcp_project ws_aws_account ws_role ws_user ws_org ws_server
+    ws_name=$(echo "$workspace" | jq -r '.name // "Unnamed Workspace"')
+    ws_id=$(echo "$workspace" | jq -r '.id // "unknown"')
+    ws_desc=$(echo "$workspace" | jq -r '.description // "No description"')
+    ws_cloud=$(echo "$workspace" | jq -r '.cloudPlatform // "GCP"')
+    ws_gcp_project=$(echo "$workspace" | jq -r '.googleProjectId // ""')
+    ws_aws_account=$(echo "$workspace" | jq -r '.awsAccountId // ""')
+    ws_role=$(echo "$workspace" | jq -r '.highestRole // "READER"')
+    ws_user=$(echo "$workspace" | jq -r '.userEmail // "unknown"')
+    ws_org=$(echo "$workspace" | jq -r '.orgId // ""')
+    ws_server=$(echo "$workspace" | jq -r '.serverName // ""')
     
     # Determine project display
     local project_display="$ws_gcp_project"
@@ -2596,8 +2601,9 @@ wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucke
     fi
 
     # Generate dynamic sections
-    local embedded_json=$(generate_embedded_json "$resources")
-    local bucket_list=$(generate_bucket_list "$resources" "$ws_cloud")
+    local embedded_json bucket_list
+    embedded_json=$(generate_embedded_json "$resources")
+    bucket_list=$(generate_bucket_list "$resources" "$ws_cloud")
     
     # Write the file
     cat > "${CLAUDE_FILE}" << EOF

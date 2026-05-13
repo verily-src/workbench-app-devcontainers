@@ -23,6 +23,6 @@ chown -R aou:aougroup /data
 if [ -d /opt/sas/aou ]; then
   cp -n /opt/sas/aou/load-env /opt/sas/aou/load-env.sh /data/ 2>/dev/null || true
   chown aou:aougroup /data/load-env /data/load-env.sh 2>/dev/null || true
-  grep -q "load-env.sh" /data/.bashrc 2>/dev/null || \
-    echo "source /data/load-env.sh" >> /data/.bashrc
+  #grep -q "load-env.sh" /data/.bashrc 2>/dev/null || \
+  #  echo "source /data/load-env.sh" >> /data/.bashrc
 fi

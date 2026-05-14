@@ -6,7 +6,7 @@ set -o pipefail
 set -o xtrace
 
 echo "=== POST-STARTUP.SH STARTING ==="
-echo "Arguments: $@"
+echo "Arguments: $*"
 
 if [[ $# -ne 4 ]]; then
   echo "Usage: $0 user workDirectory <gcp/aws> <true/false>"

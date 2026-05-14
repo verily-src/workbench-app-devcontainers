@@ -1,0 +1,20 @@
+{
+  "id": "aou-sas",
+  "version": "1.0.0",
+  "name": "SAS App for AoU",
+  "description": "SAS Analytics Pro for All of Us",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

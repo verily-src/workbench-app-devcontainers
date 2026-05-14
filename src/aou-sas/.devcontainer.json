@@ -5,19 +5,7 @@
   "runServices": ["app", "wondershaper"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": [
-    "./startupscript/post-startup.sh",
-    "aou",
-    "/data",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
-  "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
-    "aou",
-    "/data",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
+  "postCreateCommand": "./startupscript/post-startup.sh aou /data '${templateOption:cloud}' '${templateOption:login}' && ./setup-sas-env.sh aou /data",
+  "postStartCommand": "./startupscript/remount-on-restart.sh aou /data '${templateOption:cloud}' '${templateOption:login}' && ./setup-sas-env.sh aou /data",
   "remoteUser": "root"
 }

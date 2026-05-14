@@ -18,11 +18,8 @@ services:
       # SAS startup script — invoked via PRE_DEPLOY_SCRIPT before SAS
       # services start.  Must NOT mount at /tmp/pre_deploy.sh because
       # the entrypoint overwrites that path with the env var content.
-      - ./sas-startup.sh:/opt/sas/aou/sas-startup.sh:ro
-      # Fallback license mount for manual GCE testing without Mikey Secrets.
-      # With Mikey Secrets, the entrypoint wrapper populates /sasinside/ from
-      # the SAS_LICENSE_PATH file descriptor instead.
-      - ./sasinside:/sasinside
+      - ./sas-pre-deploy.sh:/opt/sas/aou/sas-pre-deploy.sh:ro
+      - ./sas-post-deploy.sh:/opt/sas/aou/sas-post-deploy.sh:ro
     tmpfs:
       - /data/workspace:uid=1002,gid=1100
     environment:
@@ -30,7 +27,8 @@ services:
       SAS_DEBUG: "0"
       SASLICENSEFILE: "SASLicense.jwt"
       GOMEMLIMIT: "20MiB"
-      PRE_DEPLOY_SCRIPT: "bash /opt/sas/aou/sas-startup.sh"
+      PRE_DEPLOY_SCRIPT: "bash /opt/sas/aou/sas-pre-deploy.sh"
+      POST_DEPLOY_SCRIPT: "bash /opt/sas/aou/sas-post-deploy.sh"
       JAVA_OPTION_SAS_COMMONS_WEB_SECURITY_CORS_ALLOWEDORIGINS: "-Dsas.commons.web.security.cors.allowedOrigins=*"
       JAVA_OPTION_SAS_COMMONS_WEB_SECURITY_CORS_ALLOWCREDENTIALS: "-Dsas.commons.web.security.cors.allowCredentials=false"
       JAVA_OPTION_SAS_COMMONS_WEB_SECURITY_CORS_ALLOWEDHEADERS: "-Dsas.commons.web.security.cors.allowedHeaders=*"

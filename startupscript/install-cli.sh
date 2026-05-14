@@ -66,9 +66,11 @@ if ! command -v "${WORKBENCH_INSTALL_PATH}" &> /dev/null; then
 
   ${RUN_AS_LOGIN_USER} "curl -L https://storage.googleapis.com/${CLI_DISTRIBUTION_PATH#gs://}/download-install.sh | WORKBENCH_CLI_VERSION=${CLI_VERSION} bash"
   cp wb "${WORKBENCH_INSTALL_PATH}"
+  chmod 755 "${WORKBENCH_INSTALL_PATH}"
 
   # Copy 'wb' to its legacy 'terra' name.
   cp wb "${WORKBENCH_LEGACY_PATH}"
+  chmod 755 "${WORKBENCH_LEGACY_PATH}"
 fi
 
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM

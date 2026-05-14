@@ -1595,11 +1595,20 @@ func initializeConfig() error {
 			} else {
 				fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
 			}
-			// Cache the current workspace UUID to avoid resolveWorkspaceId calls at runtime
+			// Cache the workspace UUID at startup to avoid resolveWorkspaceId calls at runtime.
+			// ws["id"] from wb status is the userFacingId, not the UUID — resolve it once here.
 			if ws, ok := status["workspace"].(map[string]interface{}); ok {
-				if uuid, ok := ws["id"].(string); ok && uuid != "" {
-					cachedWorkspaceUUID = uuid
-					fmt.Fprintf(os.Stderr, "Cached workspace UUID: %s\n", uuid)
+				userFacingId, _ := ws["userFacingId"].(string)
+				if userFacingId == "" {
+					userFacingId, _ = ws["id"].(string)
+				}
+				if userFacingId != "" {
+					if uuid, resolveErr := resolveWorkspaceId(userFacingId); resolveErr == nil {
+						cachedWorkspaceUUID = uuid
+						fmt.Fprintf(os.Stderr, "Cached workspace UUID: %s\n", uuid)
+					} else {
+						fmt.Fprintf(os.Stderr, "Warning: could not resolve workspace UUID at startup: %v\n", resolveErr)
+					}
 				}
 			}
 		}

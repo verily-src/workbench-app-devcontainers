@@ -90,9 +90,10 @@ type ContentItem struct {
 
 // Global variables
 var (
-	workspaceBaseURL string
-	dataExplorerURL  string
-	httpClient       = &http.Client{Timeout: 60 * time.Second}
+	workspaceBaseURL     string
+	dataExplorerURL      string
+	cachedWorkspaceUUID  string // populated once at startup from wb status
+	httpClient           = &http.Client{Timeout: 60 * time.Second}
 )
 
 // Tool definitions
@@ -1584,16 +1585,21 @@ func initializeConfig() error {
 		var status map[string]interface{}
 		if err := json.Unmarshal(output, &status); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to parse wb status JSON, using default URLs: %v\n", err)
-		} else if server, ok := status["server"].(map[string]interface{}); ok {
-			// Get workspaceManagerUri from wb status output
-			if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
-				workspaceBaseURL = wsURL
-				// Derive dataExplorerUri from workspaceManagerUri
-				// Pattern: replace /api/wsm with /api/de
-				dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
-			}
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
+			// Extract server URLs
+			if server, ok := status["server"].(map[string]interface{}); ok {
+				if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
+					workspaceBaseURL = wsURL
+					dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
+			}
+			// Best-effort workspace UUID cache at startup. If this fails (e.g. auth not
+			// ready yet), getCurrentWorkspaceUUID() will retry lazily at call time.
+			if _, startupErr := getCurrentWorkspaceUUID(); startupErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not resolve workspace UUID at startup (will retry on first use): %v\n", startupErr)
+			}
 		}
 	}
 
@@ -1609,6 +1615,161 @@ func initializeConfig() error {
 	return nil
 }
 
+// resolveWorkspaceId resolves an arbitrary user-facing workspace ID to its UUID
+// by searching the full workspace list. Used by tools that accept an explicit
+// workspaceId parameter. For the CURRENT workspace, use getCurrentWorkspaceUUID().
+func resolveWorkspaceId(workspaceId string) (string, error) {
+	if isUUID(workspaceId) {
+		return workspaceId, nil // already a UUID
+	}
+	for _, limit := range []int{100, 5000} {
+		listUrl := fmt.Sprintf("%s/api/workspaces/v1?offset=0&limit=%d", workspaceBaseURL, limit)
+		listResp, apiErr := makeAPIRequest("GET", listUrl, nil)
+		if apiErr != nil {
+			continue
+		}
+		var listData map[string]interface{}
+		if json.Unmarshal(listResp, &listData) != nil {
+			continue
+		}
+		workspaces, _ := listData["workspaces"].([]interface{})
+		for _, ws := range workspaces {
+			wsMap, ok := ws.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			ufid, _ := wsMap["userFacingId"].(string)
+			id, _ := wsMap["id"].(string)
+			if ufid == workspaceId || id == workspaceId {
+				return id, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("workspace '%s' not found", workspaceId)
+}
+
+// isUUID returns true if s looks like a UUID (8-4-4-4-12 hex format).
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// getCurrentWorkspaceUUID returns the UUID of the currently active workspace.
+// It uses a three-layer strategy so that temporary failures (auth not ready,
+// server startup race) do not permanently break workspace-scoped tools:
+//
+//  1. Return the cached UUID if already resolved.
+//  2. Call `wb workspace describe --format=json` — fast, no list traversal needed.
+//     If the response contains a `uuid` field, use it directly.
+//     If not, extract the `id` / `userFacingId` and proceed to layer 3.
+//  3. Search the workspace list with a small page (100) first, then full (5000),
+//     using the userFacingId obtained from layer 2.
+//
+// The result is cached so subsequent calls within the same server session are instant.
+func getCurrentWorkspaceUUID() (string, error) {
+	if cachedWorkspaceUUID != "" {
+		return cachedWorkspaceUUID, nil
+	}
+
+	// Layer 1: wb workspace describe — most direct path.
+	userFacingId := ""
+	cmd := exec.Command("wb", "workspace", "describe", "--format=json")
+	if out, err := cmd.CombinedOutput(); err == nil {
+		var desc map[string]interface{}
+		if json.Unmarshal(out, &desc) == nil {
+			// Some Workbench versions return uuid directly.
+			if uuid, ok := desc["uuid"].(string); ok && isUUID(uuid) {
+				cachedWorkspaceUUID = uuid
+				fmt.Fprintf(os.Stderr, "Resolved workspace UUID from describe: %s\n", uuid)
+				return uuid, nil
+			}
+			// id may be the UUID on some versions, or userFacingId on others.
+			if id, ok := desc["id"].(string); ok {
+				if isUUID(id) {
+					cachedWorkspaceUUID = id
+					fmt.Fprintf(os.Stderr, "Resolved workspace UUID from describe.id: %s\n", id)
+					return id, nil
+				}
+				userFacingId = id
+			}
+			// Explicit userFacingId field takes precedence if present.
+			if ufid, ok := desc["userFacingId"].(string); ok && ufid != "" {
+				userFacingId = ufid
+			}
+		}
+	}
+
+	// Layer 2: fall back to wb status for userFacingId if describe didn't give it.
+	if userFacingId == "" {
+		cmd2 := exec.Command("wb", "status", "--format=json")
+		if out, err := cmd2.CombinedOutput(); err == nil {
+			var status map[string]interface{}
+			if json.Unmarshal(out, &status) == nil {
+				if ws, ok := status["workspace"].(map[string]interface{}); ok {
+					if ufid, ok := ws["userFacingId"].(string); ok && ufid != "" {
+						userFacingId = ufid
+					} else if id, ok := ws["id"].(string); ok {
+						if isUUID(id) {
+							cachedWorkspaceUUID = id
+							return id, nil
+						}
+						userFacingId = id
+					}
+				}
+			}
+		}
+	}
+
+	if userFacingId == "" {
+		return "", fmt.Errorf("no active workspace found — run `wb workspace set --id=<workspace-id>` first")
+	}
+
+	// Layer 3: resolve userFacingId → UUID via workspace list.
+	// Try a small page first to avoid fetching 5,000 workspaces for common cases.
+	for _, limit := range []int{100, 5000} {
+		listUrl := fmt.Sprintf("%s/api/workspaces/v1?offset=0&limit=%d", workspaceBaseURL, limit)
+		listResp, apiErr := makeAPIRequest("GET", listUrl, nil)
+		if apiErr != nil {
+			continue
+		}
+		var listData map[string]interface{}
+		if json.Unmarshal(listResp, &listData) != nil {
+			continue
+		}
+		workspaces, ok := listData["workspaces"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, w := range workspaces {
+			wsMap, ok := w.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			ufid, _ := wsMap["userFacingId"].(string)
+			id, _ := wsMap["id"].(string)
+			if ufid == userFacingId || id == userFacingId {
+				// id in the workspace list API is always the UUID.
+				cachedWorkspaceUUID = id
+				fmt.Fprintf(os.Stderr, "Resolved workspace UUID from list (limit=%d): %s\n", limit, id)
+				return id, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("workspace '%s' not found in accessible workspaces", userFacingId)
+}
+
 func getToken() (string, error) {
 	cmd := exec.Command("wb", "auth", "print-access-token")
 	output, err := cmd.CombinedOutput()
@@ -1618,31 +1779,6 @@ func getToken() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-func resolveWorkspaceId(workspaceId string) (string, error) {
-	listUrl := fmt.Sprintf("%s/api/workspaces/v1?offset=0&limit=5000", workspaceBaseURL)
-	listResp, apiErr := makeAPIRequest("GET", listUrl, nil)
-	if apiErr != nil {
-		return "", fmt.Errorf("failed to list workspaces: %w", apiErr)
-	}
-	var listData map[string]interface{}
-	if err := json.Unmarshal(listResp, &listData); err != nil {
-		return "", fmt.Errorf("error parsing workspace list: %v", err)
-	}
-	workspaces, ok := listData["workspaces"].([]interface{})
-	if !ok {
-		return "", fmt.Errorf("workspaces not found in list response")
-	}
-	for _, ws := range workspaces {
-		wsMap, ok := ws.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if wsMap["userFacingId"].(string) == workspaceId || wsMap["id"].(string) == workspaceId {
-			return wsMap["id"].(string), nil
-		}
-	}
-	return "", fmt.Errorf("workspace '%s' not found", workspaceId)
-}
 
 func makeAPIRequest(method, url string, body interface{}) ([]byte, error) {
 	token, err := getToken()
@@ -2674,36 +2810,11 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"folder", "tree"})
 
 	case "workspace_list_data_collections":
-		// Get current workspace from wb status
-		statusOutput, statusErr := executeWbCommand([]string{"status", "--format=json"})
-		if statusErr != nil {
-			err = fmt.Errorf("failed to get workspace status: %w", statusErr)
-			break
-		}
-		var statusData map[string]interface{}
-		if jsonErr := json.Unmarshal([]byte(statusOutput), &statusData); jsonErr != nil {
-			err = fmt.Errorf("failed to parse status: %w", jsonErr)
-			break
-		}
-		workspace, ok := statusData["workspace"].(map[string]interface{})
-		if !ok {
-			err = fmt.Errorf("no workspace set - run 'wb workspace set <id>' first")
-			break
-		}
-		// Get either userFacingId or id from the workspace status
-		workspaceId := ""
-		if ufid, ok := workspace["userFacingId"].(string); ok && ufid != "" {
-			workspaceId = ufid
-		} else if id, ok := workspace["id"].(string); ok {
-			workspaceId = id
-		} else {
-			err = fmt.Errorf("could not get workspace ID from status")
-			break
-		}
-		// Resolve to UUID using the same method as other working tools
-		workspaceUuid, resolveErr := resolveWorkspaceId(workspaceId)
-		if resolveErr != nil {
-			err = fmt.Errorf("could not resolve workspace ID: %w", resolveErr)
+		var workspaceUuid string
+		var uuidErr error
+		workspaceUuid, uuidErr = getCurrentWorkspaceUUID()
+		if uuidErr != nil {
+			output = fmt.Sprintf("Could not determine active workspace: %v\n\nTo fix: run `wb workspace set --id=<workspace-id>` in your terminal, then retry.", uuidErr)
 			break
 		}
 

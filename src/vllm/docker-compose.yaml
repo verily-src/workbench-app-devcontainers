@@ -1,0 +1,41 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: vllm
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - models:/models
+    ports:
+      - "8000:8000"
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    # Serve Llama 3 8B — adjust model/quantization as needed
+    command: >
+      python -m vllm.entrypoints.openai.api_server --model meta-llama/Meta-Llama-3-8B-Instruct --host 0.0.0.0 --port 8000 --max-model-len 4096 --dtype half --gpu-memory-utilization 0.90
+    # GPU runtime is auto-injected by Workbench when nvidia-smi is detected
+    # (see startupscript/butane/050-parse-devcontainer.sh + nvidia-runtime.yaml)
+    # For local testing, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+networks:
+  app-network:
+    external: true
+volumes:
+  models:

@@ -1,20 +1,21 @@
 {
-    "name": "vLLM Llama 3",
+    "name": "vLLM Llama 3.2",
     "dockerComposeFile": "docker-compose.yaml",
     "service": "app",
+    "runServices": ["app", "vllm"],
     "shutdownAction": "none",
     "workspaceFolder": "/workspace",
     "postCreateCommand": [
         "./startupscript/post-startup.sh",
-        "vllm",
-        "/home/vllm",
+        "abc",
+        "/config",
         "${templateOption:cloud}",
         "${templateOption:login}"
     ],
     "postStartCommand": [
         "./startupscript/remount-on-restart.sh",
-        "vllm",
-        "/home/vllm",
+        "abc",
+        "/config",
         "${templateOption:cloud}",
         "${templateOption:login}"
     ],
@@ -26,9 +27,28 @@
         "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
         "./.devcontainer/features/workbench-tools": {
             "cloud": "${templateOption:cloud}",
-            "username": "vllm",
-            "userHomeDir": "/home/vllm"
+            "username": "abc",
+            "userHomeDir": "/config"
         }
     },
-    "remoteUser": "root"
+    "remoteUser": "root",
+    "customizations": {
+        "workbench": {
+            "opens": {
+                "extensions": [
+                    ".py",
+                    ".ipynb",
+                    ".sh",
+                    ".md",
+                    ".html",
+                    ".csv",
+                    ".json",
+                    ".jsonc",
+                    ".yaml",
+                    ".yml"
+                ],
+                "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+            }
+        }
+    }
 }

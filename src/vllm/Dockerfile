@@ -1,26 +1,18 @@
-FROM vllm/vllm-openai:latest AS base
-
-ARG NB_USER=vllm
-ARG NB_UID=1010
-ARG NB_GID=1000
-ARG WORKDIR=/home/${NB_USER}
-
-USER root
+FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051 AS code-server
 
 RUN apt-get update \
-    && apt-get install -yq sudo curl \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends jq python3 python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /config/extensions \
+    && chown abc:abc /config /config/extensions
 
-RUN groupadd --gid ${NB_GID} ${NB_USER} || true \
-    && useradd --uid ${NB_UID} --gid ${NB_GID} --create-home --home-dir ${WORKDIR} --shell /bin/bash ${NB_USER} \
-    && mkdir -p /workspace /models \
-    && chown -R ${NB_UID}:${NB_GID} ${WORKDIR} /workspace /models /tmp
+USER abc
+ENV HOME=/config
 
-# Grant passwordless sudo
-RUN echo "${NB_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${NB_USER} \
-    && chmod 0440 /etc/sudoers.d/${NB_USER}
+RUN /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension ms-python.python
 
-ENV HOME=${WORKDIR}
-WORKDIR ${WORKDIR}
+USER root
+WORKDIR /config
 
-USER ${NB_USER}
+
+FROM vllm/vllm-openai:latest AS vllm

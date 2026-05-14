@@ -4,15 +4,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    user: vllm
+      target: code-server
     restart: always
     volumes:
       - .:/workspace:cached
-      - models:/models
+      - work:/config:cached
     ports:
-      - "8000:8000"
+      - "8443:8443"
     environment:
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
     networks:
       - app-network
     cap_add:
@@ -21,21 +22,31 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-    # Serve Llama 3 8B — adjust model/quantization as needed
+
+  vllm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: vllm
+    restart: always
+    volumes:
+      - models:/root/.cache/huggingface
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    networks:
+      - app-network
     command: >
-      python -m vllm.entrypoints.openai.api_server --model meta-llama/Meta-Llama-3-8B-Instruct --host 0.0.0.0 --port 8000 --max-model-len 4096 --dtype half --gpu-memory-utilization 0.90
-    # GPU runtime is auto-injected by Workbench when nvidia-smi is detected
-    # (see startupscript/butane/050-parse-devcontainer.sh + nvidia-runtime.yaml)
-    # For local testing, uncomment:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+      python -m vllm.entrypoints.openai.api_server
+      --model meta-llama/Llama-3.2-3B-Instruct
+      --host 0.0.0.0
+      --port 8000
+      --max-model-len 2048
+      --device cpu
+      --dtype bfloat16
+
 networks:
   app-network:
     external: true
 volumes:
+  work:
   models:

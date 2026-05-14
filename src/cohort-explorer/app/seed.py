@@ -1,5 +1,7 @@
 import csv
 import logging
+import subprocess
+import tempfile
 from pathlib import Path
 
 from sqlalchemy import select
@@ -72,10 +74,26 @@ def _parse_row(row: dict[str, str]) -> dict:
     return result
 
 
+def _resolve_path(tsv_path: str | Path) -> Path:
+    path_str = str(tsv_path)
+    if path_str.startswith("s3://"):
+        logger.info("Downloading from S3: %s", path_str)
+        local = Path(tempfile.gettempdir()) / Path(path_str).name
+        subprocess.run(
+            ["aws", "s3", "cp", path_str, str(local)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return local
+    local = Path(path_str)
+    if not local.exists():
+        raise FileNotFoundError(f"TSV not found: {local}")
+    return local
+
+
 def seed_from_tsv(db: Session, tsv_path: str | Path) -> int:
-    tsv_path = Path(tsv_path)
-    if not tsv_path.exists():
-        raise FileNotFoundError(f"TSV not found: {tsv_path}")
+    tsv_path = _resolve_path(tsv_path)
 
     existing = db.scalar(select(Sample.id).limit(1))
     if existing is not None:

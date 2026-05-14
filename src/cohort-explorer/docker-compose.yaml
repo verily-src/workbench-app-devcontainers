@@ -18,7 +18,7 @@ services:
       - apparmor:unconfined
     environment:
       AURORA_RESOURCE_ID: "${AURORA_RESOURCE_ID:-}"
-      TSV_PATH: "${TSV_PATH:-/root/workspace/GTEx_demo_folder/GTEx_V8_sample_manifest_metadata.tsv}"
+      TSV_PATH: "${TSV_PATH:-s3://v0-saas-prod-us-west-2-workbench/GTEx_demo_folder-yp-copy-of-gtex-demo-project/GTEx_V8_sample_manifest_metadata.tsv}"
 
 networks:
   app-network:

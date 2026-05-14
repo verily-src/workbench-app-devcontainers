@@ -49,7 +49,10 @@ export async function fetchCounts(filters: FilterState): Promise<Counts> {
 
 export async function seedData(): Promise<{ seeded: number }> {
   const res = await fetch("/api/seed", { method: "POST" });
-  if (!res.ok) throw new Error(`Failed to seed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed to seed: ${res.status}`);
+  }
   return res.json();
 }
 

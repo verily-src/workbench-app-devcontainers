@@ -208,6 +208,10 @@ def seed_data(db: Session = Depends(get_db)) -> dict:
         count = seed_from_tsv(db, tsv_path)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {tsv_path}") from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Seed error: {e}") from e
     return {"seeded": count}
 
 

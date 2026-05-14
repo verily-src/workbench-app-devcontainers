@@ -51,23 +51,27 @@ export default function App() {
     initialized.current = true;
 
     (async () => {
+      let needsSeed = false;
       try {
         const countsData = await fetchCounts(EMPTY_FILTERS);
-        if (countsData.samples === 0) {
-          setSeeding(true);
-          await seedData();
-          setSeeding(false);
-        }
+        needsSeed = countsData.samples === 0;
       } catch {
-        // DB may not have tables yet, try seeding
+        needsSeed = true;
+      }
+
+      if (needsSeed) {
         setSeeding(true);
         try {
-          await seedData();
+          const result = await seedData();
+          if (result.seeded === 0) {
+            setError("Seed completed but loaded 0 rows. Check TSV_PATH in container logs.");
+          }
         } catch (e) {
           setError(e instanceof Error ? e.message : "Seed failed");
         }
         setSeeding(false);
       }
+
       await loadData(EMPTY_FILTERS);
     })();
   }, [loadData]);

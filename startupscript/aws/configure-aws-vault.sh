@@ -36,7 +36,7 @@ export AWS_VAULT_FILE_PASSPHRASE=""
 # DBUS_SESSION_BUS_ADDRESS to /dev/null, we can prevent aws-vault from creating
 # these processes. dbus is only needed for the "secretservice" backend, which we
 # do not use.
-export DBUS_SESSION_BUS_ADDRESS="/dev/null"
+unset DBUS_SESSION_BUS_ADDRESS
 
 exec "${AWS_VAULT_BINARY_PATH}" "\$@"
 EOF

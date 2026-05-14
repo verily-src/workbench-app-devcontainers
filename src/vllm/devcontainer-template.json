@@ -1,0 +1,30 @@
+{
+    "id": "vllm",
+    "version": "0.0.1",
+    "name": "vLLM",
+    "description": "vLLM inference server with Llama 3 on GPU",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/vllm",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

@@ -202,8 +202,11 @@ def get_counts(
 
 
 @app.post("/api/seed")
-def seed_data(db: Session = Depends(get_db)) -> dict:
-    tsv_path = os.environ.get("TSV_PATH", "/workspace/GTEx_V8_sample_manifest_metadata.tsv")
+def seed_data(
+    path: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> dict:
+    tsv_path = path or os.environ.get("TSV_PATH", "/workspace/GTEx_V8_sample_manifest_metadata.tsv")
     try:
         count = seed_from_tsv(db, tsv_path)
     except FileNotFoundError as e:

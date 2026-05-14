@@ -4,7 +4,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: code-server
     restart: always
     volumes:
       - .:/workspace:cached
@@ -14,6 +13,8 @@ services:
     environment:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+      HUGGING_FACE_HUB_TOKEN: "${HF_TOKEN:-}"
     networks:
       - app-network
     cap_add:
@@ -23,30 +24,8 @@ services:
     security_opt:
       - apparmor:unconfined
 
-  vllm:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: vllm
-    restart: always
-    volumes:
-      - models:/root/.cache/huggingface
-    environment:
-      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
-    networks:
-      - app-network
-    command: >
-      python -m vllm.entrypoints.openai.api_server
-      --model meta-llama/Llama-3.2-3B-Instruct
-      --host 0.0.0.0
-      --port 8000
-      --max-model-len 2048
-      --device cpu
-      --dtype bfloat16
-
 networks:
   app-network:
     external: true
 volumes:
   work:
-  models:

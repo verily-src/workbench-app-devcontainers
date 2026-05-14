@@ -1,10 +1,12 @@
-FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051 AS code-server
+FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends jq python3 python3-pip \
+    && apt-get install -y --no-install-recommends jq python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /config/extensions \
     && chown abc:abc /config /config/extensions
+
+RUN pip install --break-system-packages vllm openai
 
 USER abc
 ENV HOME=/config
@@ -13,6 +15,3 @@ RUN /app/code-server/bin/code-server --extensions-dir /config/extensions --insta
 
 USER root
 WORKDIR /config
-
-
-FROM vllm/vllm-openai:latest AS vllm

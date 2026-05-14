@@ -127,7 +127,6 @@ chmod +x "${LLM_CONTEXT_DIR}/run-context-generator.sh"
 
 # Set ownership
 chown -R "${USERNAME}:" "${LLM_CONTEXT_DIR}" 2>/dev/null || true
-chown -R "${USERNAME}:" "${USER_WORKBENCH_DIR}" 2>/dev/null || true
 
 # Add aliases and environment to bashrc (idempotent)
 if ! grep -q "# LLM Context Generator" "${USER_HOME_DIR}/.bashrc" 2>/dev/null; then

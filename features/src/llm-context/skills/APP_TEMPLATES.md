@@ -47,41 +47,38 @@
 
 ## Template Locations
 
-The official app repository contains reference implementations and examples:
+All templates are bundled locally at `/opt/llm-context/templates/`:
 ```
-https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/
+/opt/llm-context/templates/
+├── flask-api/
+├── streamlit-dashboard/
+├── rshiny-dashboard/
+├── file-processor/
+└── README.md
 ```
 
-Good starting points:
-- [`example`](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/example) — Minimal standalone app (ttyd terminal)
-- [`workbench-vscode`](https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/workbench-vscode) — Full-featured VS Code Server
-
-Each app contains:
+Each template contains:
+- `manifest.yaml` - Capabilities and inputs
 - `.devcontainer.json` - Devcontainer config
 - `docker-compose.yaml` - Container setup
 - `Dockerfile` - Build instructions
-- `devcontainer-template.json` - Template metadata
-- Application code
+- `app/` - Application code
+- `README.md` - Documentation
 
 ---
 
 ## How to Use a Template
 
-### Recommended: Fork and Customize
+### Option 1: Deploy Directly
 
-The official repo (`verily-src/workbench-app-devcontainers`) is a curated collection of common/default apps. **Create a fork** for your custom app rather than submitting a PR to the org repo:
+Read the template files from `/opt/llm-context/templates/<template-name>/` and copy them into the user's repository to deploy.
 
-1. Fork https://github.com/verily-src/workbench-app-devcontainers
-2. Copy an existing app folder (e.g., `src/example`) to `src/my-app`
-3. Modify application code
-4. Update `devcontainer-template.json` with new name/description
-5. Push to your fork
-6. Deploy from your fork's repo URL
-
-### Alternative: Standalone Repo
-1. Copy the template files to a new repository
-2. Ensure `.devcontainer.json` is at the repo root
-3. Push to GitHub and deploy from your repo
+### Option 2: Copy and Customize
+1. Copy the template folder to user's repo
+2. Modify application code in `app/`
+3. Update `devcontainer-template.json` with new name/description
+4. Push to GitHub
+5. Deploy from user's repo
 
 > ⚠️ Volume mounts (`volumes: .:/workspace`) are for local dev only. In production, Workbench builds the image — code must be baked in via `COPY` in the Dockerfile. Do not rely on volume mounts for deployed apps.
 

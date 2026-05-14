@@ -90,6 +90,15 @@ else
     echo "Warning: skills directory not found in ${FEATURE_DIR}"
 fi
 
+# Copy app templates to installation directory
+if [[ -d "${FEATURE_DIR}/templates" ]]; then
+    mkdir -p "${LLM_CONTEXT_DIR}/templates"
+    cp -r "${FEATURE_DIR}/templates/." "${LLM_CONTEXT_DIR}/templates/"
+    echo "Copied app templates to ${LLM_CONTEXT_DIR}/templates"
+else
+    echo "Warning: templates directory not found in ${FEATURE_DIR}"
+fi
+
 # Create a wrapper script that runs with proper user context
 cat > "${LLM_CONTEXT_DIR}/run-context-generator.sh" << WRAPPER_EOF
 #!/bin/bash

@@ -90,9 +90,10 @@ type ContentItem struct {
 
 // Global variables
 var (
-	workspaceBaseURL string
-	dataExplorerURL  string
-	httpClient       = &http.Client{Timeout: 60 * time.Second}
+	workspaceBaseURL     string
+	dataExplorerURL      string
+	cachedWorkspaceUUID  string // populated once at startup from wb status
+	httpClient           = &http.Client{Timeout: 60 * time.Second}
 )
 
 // Tool definitions
@@ -1584,16 +1585,23 @@ func initializeConfig() error {
 		var status map[string]interface{}
 		if err := json.Unmarshal(output, &status); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to parse wb status JSON, using default URLs: %v\n", err)
-		} else if server, ok := status["server"].(map[string]interface{}); ok {
-			// Get workspaceManagerUri from wb status output
-			if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
-				workspaceBaseURL = wsURL
-				// Derive dataExplorerUri from workspaceManagerUri
-				// Pattern: replace /api/wsm with /api/de
-				dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
-			}
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
+			// Extract server URLs
+			if server, ok := status["server"].(map[string]interface{}); ok {
+				if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
+					workspaceBaseURL = wsURL
+					dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
+			}
+			// Cache the current workspace UUID to avoid resolveWorkspaceId calls at runtime
+			if ws, ok := status["workspace"].(map[string]interface{}); ok {
+				if uuid, ok := ws["id"].(string); ok && uuid != "" {
+					cachedWorkspaceUUID = uuid
+					fmt.Fprintf(os.Stderr, "Cached workspace UUID: %s\n", uuid)
+				}
+			}
 		}
 	}
 
@@ -2674,38 +2682,13 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"folder", "tree"})
 
 	case "workspace_list_data_collections":
-		// Get current workspace from wb status
-		statusOutput, statusErr := executeWbCommand([]string{"status", "--format=json"})
-		if statusErr != nil {
-			err = fmt.Errorf("failed to get workspace status: %w", statusErr)
+		// Use the workspace UUID cached at startup — avoids calling wb status and
+		// resolveWorkspaceId (which fetches all 5000 workspaces) on every tool call.
+		if cachedWorkspaceUUID == "" {
+			err = fmt.Errorf("workspace UUID not available — MCP server may not have a workspace set at startup")
 			break
 		}
-		var statusData map[string]interface{}
-		if jsonErr := json.Unmarshal([]byte(statusOutput), &statusData); jsonErr != nil {
-			err = fmt.Errorf("failed to parse status: %w", jsonErr)
-			break
-		}
-		workspace, ok := statusData["workspace"].(map[string]interface{})
-		if !ok {
-			err = fmt.Errorf("no workspace set - run 'wb workspace set <id>' first")
-			break
-		}
-		// Get either userFacingId or id from the workspace status
-		workspaceId := ""
-		if ufid, ok := workspace["userFacingId"].(string); ok && ufid != "" {
-			workspaceId = ufid
-		} else if id, ok := workspace["id"].(string); ok {
-			workspaceId = id
-		} else {
-			err = fmt.Errorf("could not get workspace ID from status")
-			break
-		}
-		// Resolve to UUID using the same method as other working tools
-		workspaceUuid, resolveErr := resolveWorkspaceId(workspaceId)
-		if resolveErr != nil {
-			err = fmt.Errorf("could not resolve workspace ID: %w", resolveErr)
-			break
-		}
+		workspaceUuid := cachedWorkspaceUUID
 
 		// List all resources (same API call as workspace_list_resources which works)
 		resourcesUrl := fmt.Sprintf("%s/api/workspaces/v1/%s/resources?offset=0&limit=1000", workspaceBaseURL, workspaceUuid)

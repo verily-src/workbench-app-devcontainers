@@ -805,7 +805,10 @@ def api_cohort_dimensions():
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from verily_profiler.storage import read_sem_profile, read_tech_profile
 
-    avail = _cached_scan()
+    try:
+        avail = _cached_scan()
+    except Exception:
+        avail = {}
     sem_fqs = [fq for fq, info in avail.items() if info.get("semantic")]
     tech_fqs = [fq for fq, info in avail.items() if info.get("technical")]
 

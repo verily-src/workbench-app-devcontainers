@@ -1,0 +1,29 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - app-data:/home/shiny/data
+    ports:
+      - "3838:3838"
+    environment:
+      - SHINY_LOG_LEVEL=TRACE
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  app-data:
+
+networks:
+  app-network:
+    external: true

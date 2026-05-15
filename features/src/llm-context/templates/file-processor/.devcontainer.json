@@ -1,0 +1,13 @@
+{
+  "name": "File Processor",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/app",
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "proxyTargetPort": 8080
+    }
+  }
+}

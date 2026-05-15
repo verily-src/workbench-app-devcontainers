@@ -50,8 +50,9 @@
 
 set -e
 
-# Configuration
-CONTEXT_DIR="${HOME}/.claude"
+# Configuration — accept an optional home directory argument (e.g., /config, /home/jupyter)
+USER_HOME="${1:-${HOME}}"
+CONTEXT_DIR="${USER_HOME}/.claude"
 SKILLS_DIR="${CONTEXT_DIR}/skills"
 CLAUDE_FILE="${CONTEXT_DIR}/CLAUDE.md"
 

@@ -170,17 +170,51 @@ EOF
 # Make the directory and files accessible to the user
 chown -R "${USERNAME}:" "${WB_MCP_DIR}"
 
-# Auto-configure Claude CLI if available (HTTP transport)
-if command -v claude &> /dev/null; then
-    echo "Found Claude CLI, attempting to add MCP server (HTTP)..."
-    su - "${USERNAME}" -c "claude mcp add --transport http wb http://127.0.0.1:${WB_MCP_PORT}" 2>/dev/null || true
+# Configure Claude Code MCP server via settings file (works regardless of CLI install order)
+CLAUDE_SETTINGS="${USER_HOME_DIR}/.claude.json"
+if [[ -f "${CLAUDE_SETTINGS}" ]]; then
+    # Merge into existing settings
+    jq --arg url "http://127.0.0.1:${WB_MCP_PORT}" \
+        '.mcpServers.wb = {"type": "http", "url": $url}' \
+        "${CLAUDE_SETTINGS}" > "${CLAUDE_SETTINGS}.tmp" \
+        && mv "${CLAUDE_SETTINGS}.tmp" "${CLAUDE_SETTINGS}"
+else
+    cat > "${CLAUDE_SETTINGS}" <<CLAUDE_EOF
+{
+  "mcpServers": {
+    "wb": {
+      "type": "http",
+      "url": "http://127.0.0.1:${WB_MCP_PORT}"
+    }
+  }
+}
+CLAUDE_EOF
 fi
+chown "${USERNAME}:" "${CLAUDE_SETTINGS}"
+echo "Configured Claude Code MCP server in ${CLAUDE_SETTINGS}"
 
-# Auto-configure Gemini CLI if available (HTTP transport)
-if command -v gemini &> /dev/null; then
-    echo "Found Gemini CLI, attempting to add MCP server (HTTP)..."
-    su - "${USERNAME}" -c "gemini mcp add --scope user --transport http wb http://127.0.0.1:${WB_MCP_PORT}" 2>/dev/null || true
+# Configure Gemini CLI MCP server via settings file
+GEMINI_SETTINGS="${USER_HOME_DIR}/.gemini/settings.json"
+mkdir -p "${USER_HOME_DIR}/.gemini"
+if [[ -f "${GEMINI_SETTINGS}" ]]; then
+    jq --arg url "http://127.0.0.1:${WB_MCP_PORT}" \
+        '.mcpServers.wb = {"type": "http", "url": $url}' \
+        "${GEMINI_SETTINGS}" > "${GEMINI_SETTINGS}.tmp" \
+        && mv "${GEMINI_SETTINGS}.tmp" "${GEMINI_SETTINGS}"
+else
+    cat > "${GEMINI_SETTINGS}" <<GEMINI_EOF
+{
+  "mcpServers": {
+    "wb": {
+      "type": "http",
+      "url": "http://127.0.0.1:${WB_MCP_PORT}"
+    }
+  }
+}
+GEMINI_EOF
 fi
+chown -R "${USERNAME}:" "${USER_HOME_DIR}/.gemini"
+echo "Configured Gemini CLI MCP server in ${GEMINI_SETTINGS}"
 
 
 # Add auto-start to .bashrc (idempotent)

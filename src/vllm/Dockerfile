@@ -6,8 +6,7 @@ RUN apt-get update \
     && mkdir -p /config/extensions /config/.cache/huggingface \
     && chown -R abc:abc /config
 
-RUN pip install --break-system-packages torch --index-url https://download.pytorch.org/whl/cu128 \
-    && pip install --break-system-packages vllm openai
+RUN pip install --break-system-packages vllm openai --extra-index-url https://download.pytorch.org/whl/cu128
 
 USER abc
 ENV HOME=/config

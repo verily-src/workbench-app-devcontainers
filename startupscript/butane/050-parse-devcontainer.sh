@@ -78,6 +78,9 @@ if [[ -d "${DEVCONTAINER_FEATURES_PATH}" ]]; then
     rsync -a --ignore-existing "${DEVCONTAINER_FEATURES_PATH}/" "${DEVCONTAINER_PATH}/.devcontainer/features"
 fi
 
+/home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
+    echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2
+
 replace_template_options() {
     local TEMPLATE_PATH="$1"
 

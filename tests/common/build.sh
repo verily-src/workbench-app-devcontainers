@@ -59,6 +59,16 @@ mkdir -p "${SRC_DIR}/.devcontainer/features"
 rsync -a --ignore-existing "features/src/" "${SRC_DIR}/.devcontainer/features"
 
 ############################
+# Prefetch OCI features
+############################
+PREFETCH_SCRIPT="./startupscript/butane/prefetch-oci-features.sh"
+if [[ -f "${SRC_DIR}/.devcontainer.json" ]]; then
+    "${PREFETCH_SCRIPT}" "${SRC_DIR}/.devcontainer.json"
+elif [[ -f "${SRC_DIR}/.devcontainer/devcontainer.json" ]]; then
+    "${PREFETCH_SCRIPT}" "${SRC_DIR}/.devcontainer/devcontainer.json"
+fi
+
+############################
 # Install Devcontainer CLI
 ############################
 export DOCKER_BUILDKIT=1

@@ -10,7 +10,7 @@ echo "Starting vLLM server on port 8000..."
 if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
     echo "GPU detected — using GPU backend"
     nohup /usr/bin/python3 -m vllm.entrypoints.openai.api_server \
-        --model meta-llama/Llama-3.2-3B-Instruct \
+        --model google/gemma-4-E4B-it \
         --host 0.0.0.0 \
         --port 8000 \
         --max-model-len 4096 \
@@ -21,7 +21,7 @@ else
     echo "No GPU detected — using CPU backend (this will be slow)"
     VLLM_TARGET_DEVICE=cpu \
     nohup /usr/bin/python3 -m vllm.entrypoints.openai.api_server \
-        --model meta-llama/Llama-3.2-3B-Instruct \
+        --model google/gemma-4-E4B-it \
         --host 0.0.0.0 \
         --port 8000 \
         --max-model-len 2048 \

@@ -1,5 +1,5 @@
 {
-    "name": "vLLM Llama 3.2",
+    "name": "vLLM Gemma 4",
     "dockerComposeFile": "docker-compose.yaml",
     "service": "app",
     "shutdownAction": "none",

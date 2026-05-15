@@ -14,7 +14,6 @@ services:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
       SUDO_PASSWORD: "pwd"
-      HUGGING_FACE_HUB_TOKEN: "${HF_TOKEN:-}"
     networks:
       - app-network
     cap_add:
@@ -23,6 +22,7 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
+    command: code-server --bind-addr 0.0.0.0:8443 --auth none --disable-telemetry /config
 
 networks:
   app-network:

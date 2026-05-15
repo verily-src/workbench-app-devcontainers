@@ -1,17 +1,24 @@
-FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051
+FROM vllm/vllm-openai:latest
+
+USER root
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends jq python3 python3-pip python3-venv \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /config/extensions \
-    && chown abc:abc /config /config/extensions
+    && apt-get install -y --no-install-recommends jq sudo curl \
+    && curl -fsSL https://code-server.dev/install.sh | sh \
+    && pip install openai \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --break-system-packages vllm openai
+RUN mkdir -p /config/extensions /workspace \
+    && useradd -u 1000 -s /bin/bash -d /config abc || true \
+    && chown -R abc:abc /config /workspace /tmp
+
+RUN echo "abc ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/abc \
+    && chmod 0440 /etc/sudoers.d/abc
 
 USER abc
 ENV HOME=/config
 
-RUN /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension ms-python.python
+RUN code-server --install-extension ms-python.python
 
 USER root
 WORKDIR /config

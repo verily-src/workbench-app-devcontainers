@@ -9,7 +9,10 @@ OLLAMA_LOG="/config/ollama-server.log"
 nohup ollama serve > "${OLLAMA_LOG}" 2>&1 &
 sleep 2
 
-echo "Pulling google/gemma-4-E4B-it model (this may take a few minutes)..."
+echo "Pulling gemma4:e4b model (this may take a few minutes)..."
 ollama pull gemma4:e4b >> "${OLLAMA_LOG}" 2>&1
 
-echo "Ollama ready — logs at ${OLLAMA_LOG}"
+echo "Preloading model into GPU memory..."
+curl -s http://localhost:11434/api/generate -d '{"model":"gemma4:e4b","prompt":"warmup","options":{"num_predict":1}}' > /dev/null 2>&1
+
+echo "Ollama ready — model loaded — logs at ${OLLAMA_LOG}"

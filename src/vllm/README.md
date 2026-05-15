@@ -1,6 +1,6 @@
-# vLLM
+# Ollama + Gemma 4
 
-Code-server IDE with a vLLM inference server running Gemma 4 E4B. Opens a browser-based VS Code editor on port 8443 with vLLM serving an OpenAI-compatible API on port 8000 inside the container.
+Code-server IDE with an Ollama inference server running Gemma 4 E4B. Opens a browser-based VS Code editor on port 8443 with Ollama serving an OpenAI-compatible API on port 11434 inside the container.
 
 ## Recommended VM Configuration
 
@@ -9,77 +9,72 @@ Code-server IDE with a vLLM inference server running Gemma 4 E4B. Opens a browse
 | Gemma 4 E2B | T4 (16 GB) | n1-standard-2 | 2 | 7.5 GB | Smallest viable setup |
 | **Gemma 4 E4B** | **T4 (16 GB)** | **n1-standard-4** | **4** | **15 GB** | **Default config, best value** |
 | Gemma 4 E4B | L4 (24 GB) | n1-standard-4 | 4 | 15 GB | ~2x faster inference |
-| Gemma 4 26B MoE | A100 (40 GB) | n1-standard-8 | 8 | 30 GB | Requires `--tensor-parallel-size` changes |
+| Gemma 4 26B MoE | A100 (40 GB) | n1-standard-8 | 8 | 30 GB | Larger model, needs more VRAM |
 
 ## Changing the Model
 
-Update the `--model` flag in `start-vllm.sh` and the `model=` parameter in your Python scripts.
+Update the `ollama pull` command in `start-vllm.sh` and the `model=` parameter in your Python scripts. See available models at https://ollama.com/library.
 
 ## Usage
 
 Once the app is ready, open the code-server IDE and run:
 
 ```python
-def main():
-    from openai import OpenAI
+from openai import OpenAI
 
-    client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+client = OpenAI(base_url="http://localhost:11434/v1", api_key="unused")
 
-    response = client.chat.completions.create(
-        model="google/gemma-4-E4B-it",
-        messages=[{"role": "user", "content": "Hello!"}],
-        max_tokens=100,
-    )
-    print(response.choices[0].message.content)
-
-if __name__ == "__main__":
-    main()
+response = client.chat.completions.create(
+    model="gemma4:4b",
+    messages=[{"role": "user", "content": "Hello!"}],
+    max_tokens=100,
+)
+print(response.choices[0].message.content)
 ```
 
-### Using `UV`
+### Using `uv`
 
+1. Install uv
 
-1. install uv
-
-    ```sh 
+    ```sh
     pip install uv
     ```
 
-2. initialize the project
+2. Initialize the project
 
-    ```sh 
+    ```sh
     uv init local-vllm-gema4-test
     ```
 
-3. Add open ai package to the registry
+3. Add openai package
 
-    ```sh 
+    ```sh
     cd local-vllm-gema4-test/
     uv add openai
     ```
 
 4. Run the application
 
-    ```sh 
+    ```sh
     uv run main.py
     ```
 
 ## Debugging
 
-Check vLLM server logs:
+Check Ollama server logs:
 
 ```bash
-tail -f ~/vllm-server.log
+tail -f ~/ollama-server.log
 ```
 
 Verify the server is running:
 
 ```bash
-curl http://localhost:8000/v1/models
+curl http://localhost:11434/v1/models
 ```
 
-Manually running vllm model 
+List downloaded models:
 
-```bash 
-/usr/bin/python3 -m vllm.entrypoints.openai.api_server --model google/gemma-4-E4B-it --host 0.0.0.0 --port 8000 --max-model-len 4096 --dtype half --gpu-memory-utilization 0.90
+```bash
+ollama list
 ```

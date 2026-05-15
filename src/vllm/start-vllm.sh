@@ -4,29 +4,12 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-VLLM_LOG="/config/vllm-server.log"
+OLLAMA_LOG="/config/ollama-server.log"
 
-echo "Starting vLLM server on port 8000..."
-if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
-    echo "GPU detected — using GPU backend"
-    nohup /usr/bin/python3 -m vllm.entrypoints.openai.api_server \
-        --model google/gemma-4-E4B-it \
-        --host 0.0.0.0 \
-        --port 8000 \
-        --max-model-len 4096 \
-        --dtype half \
-        --gpu-memory-utilization 0.90 \
-        > "${VLLM_LOG}" 2>&1 &
-else
-    echo "No GPU detected — using CPU backend (this will be slow)"
-    VLLM_TARGET_DEVICE=cpu \
-    nohup /usr/bin/python3 -m vllm.entrypoints.openai.api_server \
-        --model google/gemma-4-E4B-it \
-        --host 0.0.0.0 \
-        --port 8000 \
-        --max-model-len 2048 \
-        --dtype bfloat16 \
-        > "${VLLM_LOG}" 2>&1 &
-fi
+nohup ollama serve > "${OLLAMA_LOG}" 2>&1 &
+sleep 2
 
-echo "vLLM PID: $! — logs at ${VLLM_LOG}"
+echo "Pulling google/gemma-4-E4B-it model (this may take a few minutes)..."
+ollama pull gemma4:4b >> "${OLLAMA_LOG}" 2>&1
+
+echo "Ollama ready — logs at ${OLLAMA_LOG}"

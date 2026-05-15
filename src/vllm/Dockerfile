@@ -2,11 +2,12 @@ FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends jq python3 python3-pip python3-venv \
+    && curl -fsSL https://ollama.com/install.sh | sh \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /config/extensions /config/.cache/huggingface \
+    && mkdir -p /config/extensions /config/.cache \
     && chown -R abc:abc /config
 
-RUN pip install --break-system-packages vllm openai --extra-index-url https://download.pytorch.org/whl/cu128
+RUN pip install --break-system-packages openai
 
 USER abc
 ENV HOME=/config

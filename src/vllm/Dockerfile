@@ -16,7 +16,9 @@ RUN pip install --break-system-packages openai
 USER abc
 ENV HOME=/config
 
-RUN /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension ms-python.python
+RUN /app/code-server/bin/code-server --extensions-dir /config/extensions --install-extension ms-python.python \
+    && mkdir -p /config/data/User \
+    && echo '{"workbench.colorTheme":"Default Dark Modern"}' > /config/data/User/settings.json
 
 USER root
 WORKDIR /config

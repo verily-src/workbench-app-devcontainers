@@ -116,25 +116,30 @@ WantedBy=multi-user.target
 EOF
 
 # Create a startup script that runs as HTTP daemon
-cat > "${WB_MCP_DIR}/start-server.sh" <<'EOF'
+cat > "${WB_MCP_DIR}/start-server.sh" <<EOF
 #!/bin/bash
 # Start the wb-mcp-server in HTTP mode as a background daemon
 # This ensures the server is always available without lazy initialization
 
 WB_MCP_BIN="/opt/wb-mcp-server/wb-mcp-server"
-PORT="${WB_MCP_PORT:-9242}"
+PORT="\${WB_MCP_PORT:-9242}"
 LOGFILE="/tmp/wb-mcp-server.log"
+RUN_USER="${USERNAME}"
 
 # Check if already running
-if pgrep -f "${WB_MCP_BIN} -http" > /dev/null; then
+if pgrep -f "\${WB_MCP_BIN} -http" > /dev/null; then
     echo "wb-mcp-server is already running"
     exit 0
 fi
 
-# Start server in background
-nohup "${WB_MCP_BIN}" -http -port "${PORT}" >> "${LOGFILE}" 2>&1 &
-echo "Started wb-mcp-server on port ${PORT} (PID: $!)"
-echo "Logs: ${LOGFILE}"
+# Start server as the correct user (who has wb auth tokens)
+if [ "\$(id -u)" = "0" ] && [ "\${RUN_USER}" != "root" ]; then
+    su - "\${RUN_USER}" -c "nohup \${WB_MCP_BIN} -http -port \${PORT} >> \${LOGFILE} 2>&1 &"
+else
+    nohup "\${WB_MCP_BIN}" -http -port "\${PORT}" >> "\${LOGFILE}" 2>&1 &
+fi
+echo "Started wb-mcp-server on port \${PORT} as \${RUN_USER}"
+echo "Logs: \${LOGFILE}"
 EOF
 
 chmod +x "${WB_MCP_DIR}/start-server.sh"

@@ -20,16 +20,20 @@ Update the `--model` flag in `start-vllm.sh` and the `model=` parameter in your 
 Once the app is ready, open the code-server IDE and run:
 
 ```python
-from openai import OpenAI
+def main():
+    from openai import OpenAI
 
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+    client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
 
-response = client.chat.completions.create(
-    model="google/gemma-4-E4B-it",
-    messages=[{"role": "user", "content": "Hello!"}],
-    max_tokens=100,
-)
-print(response.choices[0].message.content)
+    response = client.chat.completions.create(
+        model="google/gemma-4-E4B-it",
+        messages=[{"role": "user", "content": "Hello!"}],
+        max_tokens=100,
+    )
+    print(response.choices[0].message.content)
+
+if __name__ == "__main__":
+    main()
 ```
 
 ### Using `UV`
@@ -51,7 +55,7 @@ print(response.choices[0].message.content)
 
     ```sh 
     cd local-vllm-gema4-test/
-    uv add opena
+    uv add openai
     ```
 
 4. Run the application
@@ -72,4 +76,10 @@ Verify the server is running:
 
 ```bash
 curl http://localhost:8000/v1/models
+```
+
+Manually running vllm model 
+
+```bash 
+/usr/bin/python3 -m vllm.entrypoints.openai.api_server --model google/gemma-4-E4B-it --host 0.0.0.0 --port 8000 --max-model-len 4096 --dtype half --gpu-memory-utilization 0.90
 ```

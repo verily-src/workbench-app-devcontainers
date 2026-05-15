@@ -19,7 +19,10 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/aws-cli@sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef": {}
+    "ghcr.io/devcontainers/features/java@sha256:e75d274ac969b29a59ba6f34c2d098f6a52144d0ec027ef326b724ea4b8b7b4e": {
+      "version": "17"
+    },
+    "ghcr.io/devcontainers/features/aws-cli@sha256:17cb4a40151f59144b46957b9264683663b0214371a041ecd53dccc015a4b923": {}
   },
   "remoteUser": "root"
 }

@@ -3,10 +3,11 @@ FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f
 RUN apt-get update \
     && apt-get install -y --no-install-recommends jq python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /config/extensions \
-    && chown abc:abc /config /config/extensions
+    && mkdir -p /config/extensions /config/.cache/huggingface \
+    && chown -R abc:abc /config
 
-RUN pip install --break-system-packages vllm openai
+RUN pip install --break-system-packages torch --index-url https://download.pytorch.org/whl/cu128 \
+    && pip install --break-system-packages vllm openai
 
 USER abc
 ENV HOME=/config

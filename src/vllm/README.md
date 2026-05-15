@@ -32,6 +32,34 @@ response = client.chat.completions.create(
 print(response.choices[0].message.content)
 ```
 
+### Using `UV`
+
+
+1. install uv
+
+    ```sh 
+    pip install uv
+    ```
+
+2. initialize the project
+
+    ```sh 
+    uv init local-vllm-gema4-test
+    ```
+
+3. Add open ai package to the registry
+
+    ```sh 
+    cd local-vllm-gema4-test/
+    uv add opena
+    ```
+
+4. Run the application
+
+    ```sh 
+    uv run main.py
+    ```
+
 ## Debugging
 
 Check vLLM server logs:

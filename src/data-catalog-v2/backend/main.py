@@ -656,6 +656,7 @@ async def api_run_technical(
     fq = _fq(project_id, dataset_id, table_id)
     if not PROFILE_BUCKET:
         raise HTTPException(503, "PROFILE_GCS_BUCKET not configured")
+    _ensure_bucket(PROFILE_BUCKET, BILLING_PROJECT)
     jid, started = job_state.try_start(fq, "technical")
     if not started:
         return JobStartResponse(job_id=jid, status="running").model_dump()
@@ -684,6 +685,7 @@ async def api_run_semantic(
     fq = _fq(project_id, dataset_id, table_id)
     if not PROFILE_BUCKET:
         raise HTTPException(503, "PROFILE_GCS_BUCKET not configured")
+    _ensure_bucket(PROFILE_BUCKET, BILLING_PROJECT)
     p, d, t = parse_fq_table(fq)
     if not read_json_if_exists(PROFILE_BUCKET, tech_object_path(p, d, t), BILLING_PROJECT):
         raise HTTPException(409, "Run technical profiling first")
@@ -761,6 +763,7 @@ def api_bulk_profile(body: dict[str, Any]):
         mode = "both"
     if not DATA_PROJECT or not PROFILE_BUCKET:
         raise HTTPException(503, "Project or bucket not configured")
+    _ensure_bucket(PROFILE_BUCKET, BILLING_PROJECT)
 
     batch_id = bulk_manager.start_batch(
         tables=tables,

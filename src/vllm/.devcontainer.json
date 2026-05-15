@@ -1,5 +1,5 @@
 {
-    "name": "vLLM Gemma 4",
+    "name": "Ollama Gemma 4",
     "dockerComposeFile": "docker-compose.yaml",
     "service": "app",
     "shutdownAction": "none",
@@ -19,6 +19,7 @@
         },
         "ghcr.io/devcontainers/features/aws-cli:1": {},
         "ghcr.io/dhoeric/features/google-cloud-cli:1": {},
+        "ghcr.io/anthropics/devcontainer-features/claude-code@sha256:cfc2e7d3e9fd3b9b01f8d5cb158508a884c8c0ede2e23ed10f32dea5d4ffe69a": {},
         "./.devcontainer/features/workbench-tools": {
             "cloud": "${templateOption:cloud}",
             "username": "abc",

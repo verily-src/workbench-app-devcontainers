@@ -2,7 +2,7 @@
     "id": "vllm",
     "version": "0.0.1",
     "name": "vLLM",
-    "description": "Code-server IDE with vLLM inference server (Gemma 4 E4B). Supports CPU and GPU.",
+    "description": "Code-server IDE with Ollama inference server (Gemma 4 E4B). Supports CPU and GPU.",
     "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/vllm",
     "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
     "options": {

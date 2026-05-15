@@ -6,8 +6,10 @@ RUN apt-get update \
     && mkdir -p /config/extensions /config/.cache \
     && chown -R abc:abc /config
 
-RUN curl -L https://ollama.com/download/ollama-linux-amd64 -o /usr/local/bin/ollama \
-    && chmod +x /usr/local/bin/ollama
+RUN apt-get update && apt-get install -y --no-install-recommends zstd \
+    && curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | tar --zstd -x -C /usr \
+    && rm -rf /var/lib/apt/lists/* \
+    && ollama --version
 
 RUN pip install --break-system-packages openai
 

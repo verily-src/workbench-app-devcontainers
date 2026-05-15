@@ -25,7 +25,7 @@ from openai import OpenAI
 client = OpenAI(base_url="http://localhost:11434/v1", api_key="unused")
 
 response = client.chat.completions.create(
-    model="gemma4:4b",
+    model="gemma4:e4b",
     messages=[{"role": "user", "content": "Hello!"}],
     max_tokens=100,
 )

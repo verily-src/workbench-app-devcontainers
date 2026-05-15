@@ -1,0 +1,30 @@
+{
+  "id": "wb-mcp-server",
+  "version": "2.0.0",
+  "name": "Workbench MCP Server",
+  "description": "Installs an MCP (Model Context Protocol) HTTP server that wraps the wb CLI, enabling AI assistants to interact with Workbench. Runs as a persistent daemon on port 9242, eliminating lazy-loading delays. Auto-configures Claude CLI and Gemini CLI.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user."
+    },
+    "port": {
+      "type": "string",
+      "default": "9242",
+      "description": "Port for the HTTP MCP server"
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/go",
+    "ghcr.io/anthropics/devcontainer-features/claude-code",
+    "./.devcontainer/features/gemini-cli",
+    "./.devcontainer/features/workbench-tools"
+  ]
+}

@@ -1,0 +1,21 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/app:cached
+    ports:
+      - "8501:8501"
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    external: true

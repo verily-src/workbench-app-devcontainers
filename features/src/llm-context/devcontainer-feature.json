@@ -1,0 +1,22 @@
+{
+  "id": "llm-context",
+  "version": "1.2.0",
+  "name": "LLM Context Generator",
+  "description": "Generates ~/CLAUDE.md context file for LLMs (Claude Code, Gemini, etc.) with Workbench workspace information. Claude Code auto-discovers this file on startup.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "./.devcontainer/features/workbench-tools"
+  ]
+}

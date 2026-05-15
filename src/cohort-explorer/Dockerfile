@@ -5,9 +5,7 @@ RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends curl procps \
-    && rm -rf /var/lib/apt/lists/*
+FROM mcr.microsoft.com/vscode/devcontainers/python:3.12-bookworm
 WORKDIR /app
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

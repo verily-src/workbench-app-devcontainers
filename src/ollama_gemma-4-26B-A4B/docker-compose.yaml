@@ -15,6 +15,7 @@ services:
       DEFAULT_WORKSPACE: "/config"
       SUDO_PASSWORD: "pwd"
       OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_FLASH_ATTENTION: "true"
     networks:
       - app-network
     cap_add:

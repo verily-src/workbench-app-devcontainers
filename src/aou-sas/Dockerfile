@@ -78,6 +78,12 @@ RUN PROXY_CONF=/etc/httpd/conf.d/dkrapro-proxy.conf && \
 ###############################################################################
 RUN mkdir -p /data && chown aou:aougroup /data
 
+# SAS Studio takes ~40s to start inside the container.  The Docker
+# HEALTHCHECK lets the host-level readiness probe (probe-proxy-readiness.sh)
+# wait for HTTP 200 before marking startup_script/status=COMPLETE.
+HEALTHCHECK --interval=5s --timeout=3s --start-period=60s --retries=3 \
+  CMD curl -sf http://localhost:7080/SASStudio/ || exit 1
+
 # Wrapper entrypoint: copies the SAS license from Mikey Secrets (if active)
 # to /sasinside/ before handing off to the SAS entrypoint.
 COPY --from=wb-secret-receiver /dist/wb-secret-receiver /wb-secret-receiver

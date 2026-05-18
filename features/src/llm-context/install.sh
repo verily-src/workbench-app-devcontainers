@@ -105,18 +105,21 @@ cat > "${LLM_CONTEXT_DIR}/run-context-generator.sh" << WRAPPER_EOF
 # Wrapper to run generate-context.sh with proper environment
 # This script is called on container start
 
+set -o xtrace
+
 # Wait for wb to be authenticated and workspace to be ready.
 # AWS apps take longer to initialise IAM credentials than GCP apps, so we
 # retry with backoff before giving up.
 MAX_RETRIES=8
 RETRY_DELAY=10
 for i in \$(seq 1 \${MAX_RETRIES}); do
-    if command -v wb &> /dev/null && wb workspace describe &> /dev/null; then
-        echo "Workspace ready (attempt \${i}). Generating LLM context..."
+    echo "Checking if workspace is ready (attempt \${i}/\${MAX_RETRIES})..."
+    if command -v wb &> /dev/null && timeout 30 wb workspace describe &> /dev/null; then
+        echo "Workspace ready! Generating LLM context..."
         ${GENERATE_SCRIPT} "${USER_HOME_DIR}" || echo "LLM context generation failed (non-fatal)"
         exit 0
     fi
-    echo "Waiting for workspace to be ready... (\${i}/\${MAX_RETRIES})"
+    echo "Workspace not ready yet, retrying in \${RETRY_DELAY}s..."
     sleep \${RETRY_DELAY}
 done
 

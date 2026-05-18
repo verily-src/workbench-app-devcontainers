@@ -105,6 +105,8 @@ cat > "${LLM_CONTEXT_DIR}/run-context-generator.sh" << WRAPPER_EOF
 # Wrapper to run generate-context.sh with proper environment
 # This script is called on container start
 
+set -o xtrace
+
 # Wait for wb to be authenticated and workspace to be ready.
 # AWS apps take longer to initialise IAM credentials than GCP apps, so we
 # retry with backoff before giving up.

@@ -1,0 +1,30 @@
+{
+    "id": "ollama_gemma-4-26B-A4B",
+    "version": "0.0.1",
+    "name": "Ollama Gemma 4 26B-A4B",
+    "description": "Code-server IDE with Ollama inference server (Gemma 4 26B MoE). Requires A100 GPU.",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/ollama_gemma-4-26B-A4B",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

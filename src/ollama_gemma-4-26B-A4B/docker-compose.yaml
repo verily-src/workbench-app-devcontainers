@@ -1,0 +1,31 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/config:cached
+    ports:
+      - "8443:8443"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+      OLLAMA_KEEP_ALIVE: "-1"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

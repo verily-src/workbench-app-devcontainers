@@ -11,9 +11,12 @@ set -o xtrace
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 
+APP_HEALTH="$(docker inspect --format='{{.State.Health.Status}}' application-server 2>/dev/null || echo "none")"
+
 if docker ps -q --filter "name=proxy-agent" | grep -q . \
-    && docker ps -q --filter "name=application-server" | grep -q .; then
-    echo "Proxy is ready."
+    && docker ps -q --filter "name=application-server" | grep -q . \
+    && [[ "${APP_HEALTH}" == "healthy" || "${APP_HEALTH}" == "none" ]]; then
+    echo "Proxy is ready (application-server health: ${APP_HEALTH})."
     status="$(get_guest_attribute "startup_script/status" "")"
     isSuccess="false"
     if [[ "${status}" != "ERROR" ]]; then

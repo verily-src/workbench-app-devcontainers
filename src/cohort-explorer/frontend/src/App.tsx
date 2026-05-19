@@ -26,6 +26,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const initialized = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadData = useCallback(async (f: FilterState) => {
     setLoading(true);
@@ -79,7 +80,8 @@ export default function App() {
   const handleFilterChange = useCallback(
     (updated: FilterState) => {
       setFilters(updated);
-      loadData(updated);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => loadData(updated), 300);
     },
     [loadData],
   );

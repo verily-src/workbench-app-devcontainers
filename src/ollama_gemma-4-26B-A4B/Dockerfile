@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends zstd \
     && rm -rf /var/lib/apt/lists/* \
     && ollama --version
 
-RUN pip install --break-system-packages openai
+RUN pip install --break-system-packages openai uv
 
 USER abc
 ENV HOME=/config

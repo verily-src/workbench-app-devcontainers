@@ -3,7 +3,7 @@ services:
     # The container name must be "application-server"
     container_name: "application-server"
     # This can be either a pre-existing image or built from a Dockerfile
-    image: "mcr.microsoft.com/devcontainers/base:ubuntu"
+    image: "mcr.microsoft.com/devcontainers/base:ubuntu-24.04"
     # build:
     #   context: .
     restart: always

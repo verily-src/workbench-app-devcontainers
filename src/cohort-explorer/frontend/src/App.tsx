@@ -27,23 +27,27 @@ export default function App() {
   const [seeding, setSeeding] = useState(false);
   const initialized = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchIdRef = useRef(0);
 
-  const loadData = useCallback(async (f: FilterState) => {
-    setLoading(true);
+  const loadData = useCallback(async (f: FilterState, showLoading = true) => {
+    const fetchId = ++fetchIdRef.current;
+    if (showLoading) setLoading(true);
     try {
       const [samplesData, filtersData, countsData] = await Promise.all([
         fetchSamples(f),
         fetchFilters(f),
         fetchCounts(f),
       ]);
+      if (fetchId !== fetchIdRef.current) return;
       setRows(samplesData);
       setAvailable(filtersData);
       setCounts(countsData);
       setError(null);
     } catch (e) {
+      if (fetchId !== fetchIdRef.current) return;
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setLoading(false);
+      if (fetchId === fetchIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -81,7 +85,7 @@ export default function App() {
     (updated: FilterState) => {
       setFilters(updated);
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => loadData(updated), 300);
+      debounceRef.current = setTimeout(() => loadData(updated, false), 600);
     },
     [loadData],
   );

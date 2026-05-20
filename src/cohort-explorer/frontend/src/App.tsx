@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import FilterPanel from "./components/FilterPanel.tsx";
 import DataGrid from "./components/DataGrid.tsx";
 import SummaryBar from "./components/SummaryBar.tsx";
+import TissueChart from "./components/TissueChart.tsx";
 import { fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
 import type { Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { EMPTY_FILTERS } from "./types.ts";
@@ -119,7 +120,22 @@ export default function App() {
             filters={filters}
             onChange={handleFilterChange}
           />
-          <DataGrid rows={rows} loading={loading} />
+          <Box sx={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+            {available && (
+              <TissueChart
+                data={available.tissue_type}
+                selected={filters.tissue_type}
+                onBarClick={(tissue) => {
+                  const current = filters.tissue_type;
+                  const updated = current.includes(tissue)
+                    ? current.filter((v) => v !== tissue)
+                    : [...current, tissue];
+                  handleFilterChange({ ...filters, tissue_type: updated });
+                }}
+              />
+            )}
+            <DataGrid rows={rows} loading={loading} />
+          </Box>
         </Box>
       </Box>
       <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError(null)}>

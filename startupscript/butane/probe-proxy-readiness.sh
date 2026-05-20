@@ -11,7 +11,7 @@ set -o xtrace
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 
-APP_HEALTH="$(docker inspect --format='{{.State.Health.Status}}' application-server 2>/dev/null || echo "none")"
+APP_HEALTH="$( (docker inspect --format='{{.State.Health.Status}}' application-server 2>/dev/null || echo "none") | xargs)"
 
 if docker ps -q --filter "name=proxy-agent" | grep -q . \
     && docker ps -q --filter "name=application-server" | grep -q . \

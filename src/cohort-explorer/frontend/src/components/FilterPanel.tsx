@@ -3,6 +3,7 @@ import {
   AccordionDetails,
   AccordionSummary,
   Box,
+  Button,
   Checkbox,
   Chip,
   FormControlLabel,
@@ -11,11 +12,15 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import type { FilterOption, FilterState, FiltersResponse, RangeFilter } from "../types";
+import { EMPTY_FILTERS } from "../types";
 
 interface Props {
   available: FiltersResponse | null;
   filters: FilterState;
   onChange: (updated: FilterState) => void;
+  dirty: boolean;
+  onApply: () => void;
+  onReset: () => void;
 }
 
 function CategoricalFilter({
@@ -122,7 +127,7 @@ function RangeFilterControl({
   );
 }
 
-export default function FilterPanel({ available, filters, onChange }: Props) {
+export default function FilterPanel({ available, filters, onChange, dirty, onApply, onReset }: Props) {
   if (!available) return null;
 
   const toggleCategorical = (field: keyof FilterState, value: string) => {
@@ -134,12 +139,17 @@ export default function FilterPanel({ available, filters, onChange }: Props) {
   };
 
   return (
-    <Box sx={{ width: 280, flexShrink: 0, overflow: "auto", borderRight: 1, borderColor: "divider" }}>
-      <Box sx={{ p: 1.5, borderBottom: 1, borderColor: "divider" }}>
-        <Typography variant="overline" color="text.secondary">
+    <Box sx={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: 1, borderColor: "divider" }}>
+      <Box sx={{ p: 1.5, borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", gap: 1 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
           Filters
         </Typography>
+        <Button size="small" onClick={onReset} disabled={JSON.stringify(filters) === JSON.stringify(EMPTY_FILTERS)}>
+          Reset
+        </Button>
       </Box>
+
+      <Box sx={{ flex: 1, overflow: "auto" }}>
 
       <CategoricalFilter
         label="Tissue Type"
@@ -206,6 +216,18 @@ export default function FilterPanel({ available, filters, onChange }: Props) {
         }
         step={10}
       />
+      </Box>
+
+      <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>
+        <Button
+          variant="contained"
+          fullWidth
+          onClick={onApply}
+          disabled={!dirty}
+        >
+          {dirty ? "Apply Filters" : "Filters Applied"}
+        </Button>
+      </Box>
     </Box>
   );
 }

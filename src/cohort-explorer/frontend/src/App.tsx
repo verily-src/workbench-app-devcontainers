@@ -18,8 +18,13 @@ const theme = createTheme({
   },
 });
 
+function filtersEqual(a: FilterState, b: FilterState): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export default function App() {
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
+  const [pending, setPending] = useState<FilterState>(EMPTY_FILTERS);
+  const [applied, setApplied] = useState<FilterState>(EMPTY_FILTERS);
   const [available, setAvailable] = useState<FiltersResponse | null>(null);
   const [rows, setRows] = useState<SampleRow[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
@@ -27,12 +32,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const initialized = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchIdRef = useRef(0);
 
-  const loadData = useCallback(async (f: FilterState, showLoading = true) => {
+  const dirty = !filtersEqual(pending, applied);
+
+  const loadData = useCallback(async (f: FilterState) => {
     const fetchId = ++fetchIdRef.current;
-    if (showLoading) setLoading(true);
+    setLoading(true);
     try {
       const [samplesData, filtersData, countsData] = await Promise.all([
         fetchSamples(f),
@@ -82,14 +88,16 @@ export default function App() {
     })();
   }, [loadData]);
 
-  const handleFilterChange = useCallback(
-    (updated: FilterState) => {
-      setFilters(updated);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => loadData(updated, false), 600);
-    },
-    [loadData],
-  );
+  const handleApply = useCallback(() => {
+    setApplied(pending);
+    loadData(pending);
+  }, [pending, loadData]);
+
+  const handleReset = useCallback(() => {
+    setPending(EMPTY_FILTERS);
+    setApplied(EMPTY_FILTERS);
+    loadData(EMPTY_FILTERS);
+  }, [loadData]);
 
   if (seeding) {
     return (
@@ -113,24 +121,30 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-        <SummaryBar counts={counts} filters={filters} loading={loading} />
+        <SummaryBar counts={counts} filters={applied} loading={loading} />
         <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
           <FilterPanel
             available={available}
-            filters={filters}
-            onChange={handleFilterChange}
+            filters={pending}
+            onChange={setPending}
+            dirty={dirty}
+            onApply={handleApply}
+            onReset={handleReset}
           />
           <Box sx={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
             {available && (
               <TissueChart
                 data={available.tissue_type}
-                selected={filters.tissue_type}
+                selected={applied.tissue_type}
                 onBarClick={(tissue) => {
-                  const current = filters.tissue_type;
+                  const current = pending.tissue_type;
                   const updated = current.includes(tissue)
                     ? current.filter((v) => v !== tissue)
                     : [...current, tissue];
-                  handleFilterChange({ ...filters, tissue_type: updated });
+                  const newPending = { ...pending, tissue_type: updated };
+                  setPending(newPending);
+                  setApplied(newPending);
+                  loadData(newPending);
                 }}
               />
             )}

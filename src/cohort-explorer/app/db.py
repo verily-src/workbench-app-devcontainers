@@ -68,7 +68,7 @@ def get_engine_for_resource(resource_id: str) -> Engine:
     def creator():
         import psycopg
         conn_str = resolve_connection_string(resource_id)
-        return psycopg.connect(conn_str, autocommit=False).connection
+        return psycopg.connect(conn_str, autocommit=False)
 
     engine = create_engine(
         "postgresql+psycopg://",

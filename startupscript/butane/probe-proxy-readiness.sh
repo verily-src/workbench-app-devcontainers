@@ -11,8 +11,8 @@ set -o xtrace
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 
-# Wait for containers to be healthy with timeout
-MAX_RETRIES=30
+# Wait for containers to be healthy with timeout (5 minutes)
+MAX_RETRIES=150
 RETRY_INTERVAL=2
 retry_count=0
 

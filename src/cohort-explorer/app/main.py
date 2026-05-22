@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
-from db import get_db
+from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, set_active_resource
 from models import Base, Sample
 from seed import seed_from_tsv
 
@@ -87,16 +87,44 @@ def _extract_filter_params(
 
 @app.on_event("startup")
 def startup():
-    from db import _get_engine
-
-    engine = _get_engine()
+    engine = get_sqlite_engine()
     Base.metadata.create_all(engine)
-    logger.info("Database tables ensured")
+    logger.info("SQLite tables ensured")
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/datasources")
+def get_datasources() -> dict:
+    aurora = list_aurora_resources()
+    active = get_active_resource_id()
+    return {
+        "resources": aurora,
+        "active": active,
+        "has_local": True,
+    }
+
+
+@app.post("/api/connect")
+def connect_resource(resource_id: str = Query(...)) -> dict:
+    if resource_id == "__local__":
+        set_active_resource(None)
+        return {"connected": "local (SQLite)"}
+
+    aurora = list_aurora_resources()
+    match = [r for r in aurora if r["id"] == resource_id]
+    if not match:
+        raise HTTPException(status_code=404, detail=f"Resource not found: {resource_id}")
+
+    try:
+        set_active_resource(resource_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Connection failed: {e}") from e
+
+    return {"connected": resource_id, "database": match[0].get("database")}
 
 
 @app.get("/api/samples")

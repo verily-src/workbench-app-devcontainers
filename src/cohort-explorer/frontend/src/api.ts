@@ -59,3 +59,32 @@ export async function seedData(): Promise<{ seeded: number }> {
 export function exportUrl(filters: FilterState): string {
   return `/api/export?${buildParams(filters)}`;
 }
+
+export interface Datasource {
+  id: string;
+  name: string;
+  database: string | null;
+  rw_endpoint: string | null;
+  resource_type: string;
+}
+
+export interface DatasourcesResponse {
+  resources: Datasource[];
+  active: string | null;
+  has_local: boolean;
+}
+
+export async function fetchDatasources(): Promise<DatasourcesResponse> {
+  const res = await fetch("/api/datasources");
+  if (!res.ok) throw new Error(`Failed to fetch datasources: ${res.status}`);
+  return res.json();
+}
+
+export async function connectResource(resourceId: string): Promise<{ connected: string }> {
+  const res = await fetch(`/api/connect?resource_id=${encodeURIComponent(resourceId)}`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed to connect: ${res.status}`);
+  }
+  return res.json();
+}

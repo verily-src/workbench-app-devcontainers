@@ -220,12 +220,12 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
 
       <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>
         <Button
-          variant="contained"
+          variant={dirty ? "contained" : "outlined"}
           fullWidth
           onClick={onApply}
           disabled={!dirty}
         >
-          {dirty ? "Apply Filters" : "Filters Applied"}
+          Apply Filters
         </Button>
       </Box>
     </Box>

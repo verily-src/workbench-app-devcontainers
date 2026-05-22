@@ -5,6 +5,7 @@ import FilterPanel from "./components/FilterPanel.tsx";
 import DataGrid from "./components/DataGrid.tsx";
 import SummaryBar from "./components/SummaryBar.tsx";
 import TissueChart from "./components/TissueChart.tsx";
+import ResourceSelector from "./components/ResourceSelector.tsx";
 import { fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
 import type { Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { EMPTY_FILTERS } from "./types.ts";
@@ -23,6 +24,7 @@ function filtersEqual(a: FilterState, b: FilterState): boolean {
 }
 
 export default function App() {
+  const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState<FilterState>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<FilterState>(EMPTY_FILTERS);
   const [available, setAvailable] = useState<FiltersResponse | null>(null);
@@ -58,35 +60,37 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
+  const initializeData = useCallback(async () => {
     if (initialized.current) return;
     initialized.current = true;
 
-    (async () => {
-      let needsSeed = false;
+    let needsSeed = false;
+    try {
+      const countsData = await fetchCounts(EMPTY_FILTERS);
+      needsSeed = countsData.samples === 0;
+    } catch {
+      needsSeed = true;
+    }
+
+    if (needsSeed) {
+      setSeeding(true);
       try {
-        const countsData = await fetchCounts(EMPTY_FILTERS);
-        needsSeed = countsData.samples === 0;
-      } catch {
-        needsSeed = true;
-      }
-
-      if (needsSeed) {
-        setSeeding(true);
-        try {
-          const result = await seedData();
-          if (result.seeded === 0) {
-            setError("Seed completed but loaded 0 rows. Check TSV_PATH in container logs.");
-          }
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "Seed failed");
+        const result = await seedData();
+        if (result.seeded === 0) {
+          setError("Seed completed but loaded 0 rows. Check TSV_PATH in container logs.");
         }
-        setSeeding(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Seed failed");
       }
+      setSeeding(false);
+    }
 
-      await loadData(EMPTY_FILTERS);
-    })();
+    await loadData(EMPTY_FILTERS);
   }, [loadData]);
+
+  useEffect(() => {
+    if (connected) initializeData();
+  }, [connected, initializeData]);
 
   const handleApply = useCallback(() => {
     setApplied(pending);
@@ -98,6 +102,15 @@ export default function App() {
     setApplied(EMPTY_FILTERS);
     loadData(EMPTY_FILTERS);
   }, [loadData]);
+
+  if (!connected) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <ResourceSelector onConnected={() => setConnected(true)} />
+      </ThemeProvider>
+    );
+  }
 
   if (seeding) {
     return (

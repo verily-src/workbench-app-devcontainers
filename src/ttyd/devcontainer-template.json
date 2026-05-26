@@ -1,0 +1,21 @@
+{
+  "id": "ttyd",
+  "version": "0.9.0",
+  "name": "ttyd",
+  "description": "Custom Workbench app: ttyd (Image: mcr.microsoft.com/devcontainers/base:ubuntu, Port: 2222, User: abc)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

@@ -3,19 +3,24 @@ services:
     # The container name must be "application-server"
     container_name: "application-server"
     # This can be either a pre-existing image or built from a Dockerfile
-    image: "mcr.microsoft.com/devcontainers/base:ubuntu-24.04"
-    # build:
-    #   context: .
+    image: "ubuntu:24.04"
+    # An unmodified Ubuntu image will exit immediately without a running process.
+    # If you are just testing it out, you can keep it alive with:
+    tty: true
     restart: always
     volumes:
       - .:/workspace:cached
       - work:/home/abc/work
-    user: abc
     command: ["ttyd", "-W", "-p", "2222", "bash"]
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:
-      - 2222:2222
+      - 8822:2222
+      - 8443:8443
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
     # The service must be connected to the "app-network" Docker network
     networks:
       - app-network

@@ -4,19 +4,14 @@ services:
     container_name: "application-server"
     # This can be either a pre-existing image or built from a Dockerfile
     image: "ubuntu:24.04"
-    # An unmodified Ubuntu image will exit immediately without a running process.
-    # If you are just testing it out, you can keep it alive with:
-    tty: true
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/abc/work
-    command: ["ttyd", "-W", "-p", "2222", "bash"]
+    command: ["ttyd", "-W", "-p", "8888", "bash"]
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:
-      - 8822:2222
-      - 8443:8443
+      - 8888:8888
     environment:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
@@ -24,12 +19,6 @@ services:
     # The service must be connected to the "app-network" Docker network
     networks:
       - app-network
-    # SYS_ADMIN and fuse are required to mount workspace resources into the
-    # container.
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/fuse
     security_opt:
       - apparmor:unconfined
 

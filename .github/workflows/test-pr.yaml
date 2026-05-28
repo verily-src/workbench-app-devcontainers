@@ -28,7 +28,8 @@ jobs:
             - 'startupscript/**'
             - 'tests/common/**'
         config:
-          - example: {}
+          - cohort-explorer: {}
+            example: {}
             jupyter-template: {}
             r-analysis:
               filters:
@@ -75,15 +76,6 @@ jobs:
                 - 'features/src/postgres-client/**'
                 - 'src/aou-common/**'
                 - 'src/nemo_jupyter/**'
-            workbench-jupyter-with-llm:
-              maximize_build_space: true
-              filters:
-                - 'features/src/workbench-tools/**'
-                - 'features/src/postgres-client/**'
-                - 'features/src/llm-context/**'
-                - 'features/src/wb-mcp-server/**'
-                - 'features/src/gemini-cli/**'
-                - 'src/jupyter-common/**'
             workbench-jupyter-parabricks:
               maximize_build_space: true
               filters:

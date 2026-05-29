@@ -1,6 +1,11 @@
+import csv
 import io
+import json
 import logging
 import os
+import subprocess
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -277,6 +282,124 @@ def export_csv(
         media_type="text/tab-separated-values",
         headers={"Content-Disposition": "attachment; filename=cohort_export.tsv"},
     )
+
+
+SALMON_WORKFLOW_ID = os.environ.get("SALMON_WORKFLOW_ID", "salmon-workflow")
+SALMON_INPUT_BUCKET_ID = os.environ.get("SALMON_INPUT_BUCKET_ID", "GTEx_demo_folder")
+SALMON_OUTPUT_BUCKET_ID = os.environ.get("SALMON_OUTPUT_BUCKET_ID", "GTEx_demo_folder")
+SALMON_COLUMN_MAPPING_URI = os.environ.get("SALMON_COLUMN_MAPPING_URI", "salmon-workflow-columns.json")
+SALMON_TRANSCRIPTOME = os.environ.get("SALMON_TRANSCRIPTOME", "test")
+SALMON_TRANSCRIPT_MAP = os.environ.get(
+    "SALMON_TRANSCRIPT_MAP",
+    json.dumps({
+        "test": {
+            "transcript_index": "s3://v0-saas-prod-us-west-2-terra/tests-gtex-demo-project/data/transcripts.fasta.tar.gz",
+            "genomitory_id": "test",
+        }
+    }),
+)
+
+
+def _build_salmon_row(sample: Sample) -> dict | None:
+    if not sample.fastq1_path:
+        return None
+    files = [sample.fastq1_path]
+    if sample.fastq2_path:
+        files.append(sample.fastq2_path)
+    return {
+        "input_files": json.dumps(files),
+        "sample_name": sample.gtex_sample_id,
+        "transcriptome": SALMON_TRANSCRIPTOME,
+        "transcript_map": SALMON_TRANSCRIPT_MAP,
+    }
+
+
+@app.post("/api/salmon/prepare")
+def prepare_salmon(
+    filters: dict = Depends(_extract_filter_params),
+    db: Session = Depends(get_db),
+) -> dict:
+    stmt = select(Sample)
+    stmt = _apply_filters(stmt, filters)
+    rows = db.execute(stmt).scalars().all()
+
+    with_fastq = []
+    without_fastq = 0
+    for s in rows:
+        row = _build_salmon_row(s)
+        if row:
+            with_fastq.append(row)
+        else:
+            without_fastq += 1
+
+    return {
+        "sample_count": len(rows),
+        "samples_with_fastq": len(with_fastq),
+        "samples_without_fastq": without_fastq,
+        "preview": with_fastq[:5],
+    }
+
+
+@app.post("/api/salmon/submit")
+def submit_salmon(
+    filters: dict = Depends(_extract_filter_params),
+    db: Session = Depends(get_db),
+) -> dict:
+    stmt = select(Sample)
+    stmt = _apply_filters(stmt, filters)
+    rows = db.execute(stmt).scalars().all()
+
+    salmon_rows = [r for r in (_build_salmon_row(s) for s in rows) if r]
+    if not salmon_rows:
+        raise HTTPException(status_code=400, detail="No samples with FASTQ paths in current filter")
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        writer = csv.DictWriter(f, fieldnames=["input_files", "sample_name", "transcriptome", "transcript_map"])
+        writer.writeheader()
+        writer.writerows(salmon_rows)
+        local_csv = f.name
+
+    try:
+        bucket_path = subprocess.run(
+            ["wb", "resource", "resolve", "--id", SALMON_INPUT_BUCKET_ID],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        subprocess.run(
+            ["aws", "s3", "cp", local_csv, f"{bucket_path}/{csv_filename}"],
+            capture_output=True, text=True, check=True,
+        )
+
+        result = subprocess.run(
+            [
+                "wb", "workflow", "job", "run",
+                f"--workflow={SALMON_WORKFLOW_ID}",
+                f"--batch-input-bucket-id={SALMON_INPUT_BUCKET_ID}",
+                f"--batch-input-csv-path={csv_filename}",
+                f"--column-mapping-uri={SALMON_COLUMN_MAPPING_URI}",
+                f"--output-bucket-id={SALMON_OUTPUT_BUCKET_ID}",
+                f"--output-path=salmon_outputs/{timestamp}",
+                f"--job-id=cohort-salmon-{timestamp}",
+            ],
+            capture_output=True, text=True, check=True,
+        )
+
+        return {
+            "job_id": f"cohort-salmon-{timestamp}",
+            "samples_submitted": len(salmon_rows),
+            "status": "submitted",
+            "output": result.stdout.strip(),
+        }
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Salmon submission failed: {e.stderr or e.stdout}",
+        ) from e
+    finally:
+        Path(local_csv).unlink(missing_ok=True)
 
 
 if STATIC_DIR.exists():

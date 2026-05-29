@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Box, Button, Chip, Typography } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { Counts, FilterState } from "../types";
 import { exportUrl } from "../api";
+import RunSalmonDialog from "./RunSalmonDialog";
 
 interface Props {
   counts: Counts | null;
@@ -10,6 +13,8 @@ interface Props {
 }
 
 export default function SummaryBar({ counts, filters, loading }: Props) {
+  const [salmonOpen, setSalmonOpen] = useState(false);
+
   return (
     <Box
       sx={{
@@ -52,6 +57,15 @@ export default function SummaryBar({ counts, filters, loading }: Props) {
       ) : null}
       <Box sx={{ flex: 1 }} />
       <Button
+        variant="outlined"
+        size="small"
+        startIcon={<PlayArrowIcon />}
+        onClick={() => setSalmonOpen(true)}
+        disabled={!counts || counts.fastq_pairs === 0}
+      >
+        Run Salmon
+      </Button>
+      <Button
         variant="contained"
         size="small"
         startIcon={<DownloadIcon />}
@@ -60,6 +74,11 @@ export default function SummaryBar({ counts, filters, loading }: Props) {
       >
         Export TSV
       </Button>
+      <RunSalmonDialog
+        open={salmonOpen}
+        onClose={() => setSalmonOpen(false)}
+        filters={filters}
+      />
     </Box>
   );
 }

@@ -2,9 +2,10 @@
 
 # Docker ACR Authentication Setup
 #
-# This script authenticates Docker with Azure Container Registry (ACR) registries
-# found in the current Terra Workbench environment. It uses the VM's managed identity
-# to obtain ACR refresh tokens for docker login.
+# This script configures Docker to use ACR
+# for all ACR registries found in the current Terra Workbench environment.
+# It modifies the user's Docker configuration to automatically authenticate
+# with ACR repositories using Workbench credentials.
 
 set -o errexit
 set -o nounset

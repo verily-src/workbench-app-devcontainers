@@ -9,8 +9,20 @@ function get_tag() {
     echo "usage: get_tag <prefix> <tag> <default-value>"
     exit 1
   fi
-  # TODO: read tags from Azure IMDS or ARM API
-  echo "${3}"
+
+  local prefix="${1}"
+  local tag="${2}"
+  local default="${3}"
+
+  # Hard-coded values for prototype.
+  # TODO: Replace with real implementation.
+  if [[ "${prefix}" == "vwbusr" ]]; then
+    case "${tag}" in
+      terra-cli-server) echo "dev-stable"; return ;;
+    esac
+  fi
+
+  echo "${default}"
 }
 readonly -f get_tag
 

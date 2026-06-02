@@ -16,7 +16,7 @@ import type { Datasource } from "../api";
 import { connectResource, fetchDatasources } from "../api";
 
 interface Props {
-  onConnected: () => void;
+  onConnected: (resourceId: string) => void;
 }
 
 export default function ResourceSelector({ onConnected }: Props) {
@@ -41,7 +41,7 @@ export default function ResourceSelector({ onConnected }: Props) {
     setError(null);
     try {
       await connectResource(selected);
-      onConnected();
+      onConnected(selected);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed");
     } finally {

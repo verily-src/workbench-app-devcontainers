@@ -297,7 +297,7 @@ SALMON_TRANSCRIPT_MAP = os.environ.get(
     "SALMON_TRANSCRIPT_MAP",
     json.dumps({
         "test": {
-            "transcript_index": "s3://v0-saas-prod-us-west-2-terra/tests-gtex-demo-project/data/transcripts.fasta.tar.gz",
+            "transcript_index": "s3://v0-saas-prod-us-west-2-workbench/GTEx_demo_folder-yp-copy-of-gtex-demo-project/data/transcripts.fasta.tar.gz",
             "genomitory_id": "test",
         }
     }),

@@ -17,7 +17,7 @@ import {
 } from "@mui/material";
 import type { FilterState } from "../types";
 import type { SalmonPrepareResponse } from "../api";
-import { prepareSalmon, submitSalmon } from "../api";
+import { prepareSalmon, submitSalmon, checkSalmonStatus } from "../api";
 
 interface Props {
   open: boolean;
@@ -50,7 +50,23 @@ export default function RunSalmonDialog({ open, onClose, filters }: Props) {
     setError(null);
     try {
       const result = await submitSalmon(filters);
-      setSuccess(`Submitted ${result.samples_submitted} samples. Job ID: ${result.job_id}`);
+      setSuccess(`Submitting ${result.samples_submitted} samples... Job ID: ${result.job_id}`);
+
+      const poll = setInterval(async () => {
+        try {
+          const status = await checkSalmonStatus(result.job_id);
+          if (status.status === "submitted") {
+            clearInterval(poll);
+            setSuccess(`Submitted successfully. Job ID: ${result.job_id}`);
+          } else if (status.status === "failed") {
+            clearInterval(poll);
+            setError(`Submission failed: ${status.error}`);
+            setSuccess(null);
+          }
+        } catch {
+          // still polling
+        }
+      }, 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Submission failed");
     } finally {

@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -343,29 +344,18 @@ def prepare_salmon(
     }
 
 
-@app.post("/api/salmon/submit")
-def submit_salmon(
-    filters: dict = Depends(_extract_filter_params),
-    db: Session = Depends(get_db),
-) -> dict:
-    stmt = select(Sample)
-    stmt = _apply_filters(stmt, filters)
-    rows = db.execute(stmt).scalars().all()
+_salmon_jobs: dict[str, dict] = {}
 
-    salmon_rows = [r for r in (_build_salmon_row(s) for s in rows) if r]
-    if not salmon_rows:
-        raise HTTPException(status_code=400, detail="No samples with FASTQ paths in current filter")
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-        writer = csv.DictWriter(f, fieldnames=["input_files", "sample_name", "transcriptome", "transcript_map"])
-        writer.writeheader()
-        writer.writerows(salmon_rows)
-        local_csv = f.name
-
+def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename: str, timestamp: str):
+    local_csv = None
     try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            writer = csv.DictWriter(f, fieldnames=["input_files", "sample_name", "transcriptome", "transcript_map"])
+            writer.writeheader()
+            writer.writerows(salmon_rows)
+            local_csv = f.name
+
         bucket_path = subprocess.run(
             ["wb", "resource", "resolve", "--id", SALMON_INPUT_BUCKET_ID],
             capture_output=True, text=True, check=True,
@@ -399,24 +389,63 @@ def submit_salmon(
                 f"--column-mapping-uri={SALMON_COLUMN_MAPPING_URI}",
                 f"--output-bucket-id={SALMON_OUTPUT_BUCKET_ID}",
                 f"--output-path=salmon_outputs/{timestamp}",
-                f"--job-id=cohort-salmon-{timestamp}",
+                f"--job-id={job_id}",
             ],
             capture_output=True, text=True, check=True,
         )
 
-        return {
-            "job_id": f"cohort-salmon-{timestamp}",
-            "samples_submitted": len(salmon_rows),
-            "status": "submitted",
-            "output": result.stdout.strip(),
-        }
+        _salmon_jobs[job_id] = {"status": "submitted", "output": result.stdout.strip()}
+        logger.info("Salmon job %s submitted successfully", job_id)
+
     except subprocess.CalledProcessError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Salmon submission failed: {e.stderr or e.stdout}",
-        ) from e
+        _salmon_jobs[job_id] = {"status": "failed", "error": e.stderr or e.stdout}
+        logger.error("Salmon job %s failed: %s", job_id, e.stderr or e.stdout)
+    except Exception as e:
+        _salmon_jobs[job_id] = {"status": "failed", "error": str(e)}
+        logger.error("Salmon job %s error: %s", job_id, e)
     finally:
-        Path(local_csv).unlink(missing_ok=True)
+        if local_csv:
+            Path(local_csv).unlink(missing_ok=True)
+
+
+@app.post("/api/salmon/submit")
+def submit_salmon(
+    filters: dict = Depends(_extract_filter_params),
+    db: Session = Depends(get_db),
+) -> dict:
+    stmt = select(Sample)
+    stmt = _apply_filters(stmt, filters)
+    rows = db.execute(stmt).scalars().all()
+
+    salmon_rows = [r for r in (_build_salmon_row(s) for s in rows) if r]
+    if not salmon_rows:
+        raise HTTPException(status_code=400, detail="No samples with FASTQ paths in current filter")
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    job_id = f"cohort-salmon-{timestamp}"
+    csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
+
+    _salmon_jobs[job_id] = {"status": "submitting"}
+
+    thread = threading.Thread(
+        target=_run_salmon_in_background,
+        args=(job_id, salmon_rows, csv_filename, timestamp),
+        daemon=True,
+    )
+    thread.start()
+
+    return {
+        "job_id": job_id,
+        "samples_submitted": len(salmon_rows),
+        "status": "submitting",
+    }
+
+
+@app.get("/api/salmon/status/{job_id}")
+def salmon_job_status(job_id: str) -> dict:
+    if job_id not in _salmon_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job_id": job_id, **_salmon_jobs[job_id]}
 
 
 if STATIC_DIR.exists():

@@ -100,7 +100,13 @@ export interface SalmonSubmitResponse {
   job_id: string;
   samples_submitted: number;
   status: string;
-  output: string;
+}
+
+export interface SalmonStatusResponse {
+  job_id: string;
+  status: string;
+  output?: string;
+  error?: string;
 }
 
 export async function prepareSalmon(filters: FilterState): Promise<SalmonPrepareResponse> {
@@ -118,5 +124,11 @@ export async function submitSalmon(filters: FilterState): Promise<SalmonSubmitRe
     const body = await res.json().catch(() => null);
     throw new Error(body?.detail ?? `Failed to submit: ${res.status}`);
   }
+  return res.json();
+}
+
+export async function checkSalmonStatus(jobId: string): Promise<SalmonStatusResponse> {
+  const res = await fetch(`/api/salmon/status/${encodeURIComponent(jobId)}`);
+  if (!res.ok) throw new Error(`Failed to check status: ${res.status}`);
   return res.json();
 }

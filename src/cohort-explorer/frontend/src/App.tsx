@@ -25,6 +25,7 @@ function filtersEqual(a: FilterState, b: FilterState): boolean {
 
 export default function App() {
   const [connected, setConnected] = useState(false);
+  const [resourceId, setResourceId] = useState<string>("__local__");
   const [pending, setPending] = useState<FilterState>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<FilterState>(EMPTY_FILTERS);
   const [available, setAvailable] = useState<FiltersResponse | null>(null);
@@ -72,12 +73,12 @@ export default function App() {
       needsSeed = true;
     }
 
-    if (needsSeed) {
+    if (needsSeed && resourceId === "__local__") {
       setSeeding(true);
       try {
         const result = await seedData();
         if (result.seeded === 0) {
-          setError("Seed completed but loaded 0 rows. Check TSV_PATH in container logs.");
+          setError("No local data found. Try selecting an Aurora datasource instead.");
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Seed failed");
@@ -107,7 +108,7 @@ export default function App() {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <ResourceSelector onConnected={() => setConnected(true)} />
+        <ResourceSelector onConnected={(id) => { setResourceId(id); setConnected(true); }} />
       </ThemeProvider>
     );
   }

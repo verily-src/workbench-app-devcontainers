@@ -368,9 +368,23 @@ def submit_salmon(
             capture_output=True, text=True, check=True,
         ).stdout.strip()
 
+        creds_json = subprocess.run(
+            ["wb", "resource", "credentials", "--id", SALMON_INPUT_BUCKET_ID,
+             "--scope", "WRITE_READ", "--format", "JSON"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        creds = json.loads(creds_json)
+
+        upload_env = {
+            **os.environ,
+            "AWS_ACCESS_KEY_ID": creds["AccessKeyId"],
+            "AWS_SECRET_ACCESS_KEY": creds["SecretAccessKey"],
+            "AWS_SESSION_TOKEN": creds["SessionToken"],
+        }
+
         subprocess.run(
             ["aws", "s3", "cp", local_csv, f"{bucket_path}/{csv_filename}"],
-            capture_output=True, text=True, check=True,
+            capture_output=True, text=True, check=True, env=upload_env,
         )
 
         result = subprocess.run(

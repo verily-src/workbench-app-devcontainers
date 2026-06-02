@@ -287,12 +287,9 @@ def export_csv(
 SALMON_WORKFLOW_ID = os.environ.get("SALMON_WORKFLOW_ID", "salmon-workflow")
 SALMON_INPUT_BUCKET_ID = os.environ.get("SALMON_INPUT_BUCKET_ID", "GTEx_demo_folder")
 SALMON_OUTPUT_BUCKET_ID = os.environ.get("SALMON_OUTPUT_BUCKET_ID", "GTEx_demo_folder")
-SALMON_COLUMN_MAPPING = os.environ.get(
-    "SALMON_COLUMN_MAPPING",
-    "salmon_workflow.sample_name=sample_name,"
-    "salmon_workflow.input_files=input_files,"
-    "salmon_workflow.transcriptome=transcriptome,"
-    "salmon_workflow.transcript_map=transcript_map",
+SALMON_COLUMN_MAPPING_URI = os.environ.get(
+    "SALMON_COLUMN_MAPPING_URI",
+    "s3://v0-saas-prod-us-west-2-workbench/GTEx_demo_folder-yp-copy-of-gtex-demo-project/salmon-workflow-columns.json",
 )
 SALMON_TRANSCRIPTOME = os.environ.get("SALMON_TRANSCRIPTOME", "test")
 SALMON_TRANSCRIPT_MAP = os.environ.get(
@@ -399,7 +396,7 @@ def submit_salmon(
                 f"--workflow={SALMON_WORKFLOW_ID}",
                 f"--batch-input-bucket-id={SALMON_INPUT_BUCKET_ID}",
                 f"--batch-input-csv-path={csv_filename}",
-                f"--column-mapping={SALMON_COLUMN_MAPPING}",
+                f"--column-mapping-uri={SALMON_COLUMN_MAPPING_URI}",
                 f"--output-bucket-id={SALMON_OUTPUT_BUCKET_ID}",
                 f"--output-path=salmon_outputs/{timestamp}",
                 f"--job-id=cohort-salmon-{timestamp}",

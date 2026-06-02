@@ -376,7 +376,7 @@ def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename
         }
 
         subprocess.run(
-            ["aws", "s3", "cp", local_csv, f"{bucket_path}/{csv_filename}"],
+            ["aws", "s3", "cp", local_csv, f"{bucket_path.rstrip('/')}/{csv_filename}"],
             capture_output=True, text=True, check=True, env=upload_env,
         )
 

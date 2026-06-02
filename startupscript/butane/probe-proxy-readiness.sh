@@ -35,6 +35,11 @@ done
 
 if [[ ${retry_count} -ge ${MAX_RETRIES} ]]; then
     echo "Timeout waiting for proxy-agent or application-server to be ready"
+    status="$(get_guest_attribute "startup_script/status" "")"
+    if [[ "${status}" != "ERROR" ]]; then
+        set_metadata "startup_script/status" "ERROR"
+        set_metadata "startup_script/message" "Timeout waiting for containers to be ready. Please try restarting the VM."
+    fi
     exit 1
 fi
 

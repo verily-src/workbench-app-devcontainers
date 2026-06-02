@@ -287,7 +287,10 @@ def export_csv(
 SALMON_WORKFLOW_ID = os.environ.get("SALMON_WORKFLOW_ID", "salmon-workflow")
 SALMON_INPUT_BUCKET_ID = os.environ.get("SALMON_INPUT_BUCKET_ID", "GTEx_demo_folder")
 SALMON_OUTPUT_BUCKET_ID = os.environ.get("SALMON_OUTPUT_BUCKET_ID", "GTEx_demo_folder")
-SALMON_COLUMN_MAPPING_URI = os.environ.get("SALMON_COLUMN_MAPPING_URI", "salmon-workflow-columns.json")
+SALMON_COLUMN_MAPPING_URI = os.environ.get(
+    "SALMON_COLUMN_MAPPING_URI",
+    "s3://v0-saas-prod-us-west-2-workbench/GTEx_demo_folder-yp-copy-of-gtex-demo-project/salmon-workflow-columns.json",
+)
 SALMON_TRANSCRIPTOME = os.environ.get("SALMON_TRANSCRIPTOME", "test")
 SALMON_TRANSCRIPT_MAP = os.environ.get(
     "SALMON_TRANSCRIPT_MAP",

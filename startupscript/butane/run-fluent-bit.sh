@@ -90,9 +90,51 @@ case "${CLOUD}" in
         )
         ;;
 
+    azure)
+        echo "Fetching instance metadata from Azure metadata service..."
+        IMDS="http://169.254.169.254/metadata"
+        IMDS_API="api-version=2025-04-07"
+
+        IDENTITY=$(curl -sH Metadata:true \
+            "${IMDS}/identity/oauth2/token?${IMDS_API}&resource=https://monitor.azure.com/")
+        readonly IDENTITY
+
+        CLIENT_ID=$(echo "${IDENTITY}" | jq -r '.client_id')
+        readonly CLIENT_ID
+
+        TENANT_ID=$(echo "${IDENTITY}" | jq -r '.access_token | split(".")[1] | @base64d | fromjson | .tid')
+        readonly TENANT_ID
+
+        TAGS=$(curl -sH Metadata:true "${IMDS}/instance/compute/tagsList?${IMDS_API}")
+        readonly TAGS
+
+        azure_tag() {
+            echo "${TAGS}" | jq -r ".[] | select(.name == \"$1\") | .value"
+        }
+        DCE_URL=$(azure_tag "DCE_URL")
+        readonly DCE_URL
+        DCR_ID=$(azure_tag "DCR_ID")
+        readonly DCR_ID
+
+        echo "  Tenant ID: ${TENANT_ID}"
+        echo "  Client ID: ${CLIENT_ID}"
+        echo "  DCE URL: ${DCE_URL}"
+        echo "  DCR ID: ${DCR_ID}"
+
+        echo "Starting fluent-bit for Azure Monitor Logs Ingestion..."
+        echo "  Image: ${FLUENT_BIT_IMAGE}"
+
+        DOCKER_ARGS+=(
+            --env "DCE_URL=${DCE_URL}"
+            --env "DCR_ID=${DCR_ID}"
+            --env "CLIENT_ID=${CLIENT_ID}"
+            --env "TENANT_ID=${TENANT_ID}"
+        )
+        ;;
+
     *)
         echo "Error: Invalid cloud provider '${CLOUD}'"
-        echo "Supported values: gcp, aws"
+        echo "Supported values: gcp, aws, azure"
         exit 1
         ;;
 esac

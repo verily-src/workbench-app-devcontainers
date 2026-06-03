@@ -6,9 +6,29 @@ import DataGrid from "./components/DataGrid.tsx";
 import SummaryBar from "./components/SummaryBar.tsx";
 import TissueChart from "./components/TissueChart.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
-import { fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
+import { connectResource, fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
 import type { Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { EMPTY_FILTERS } from "./types.ts";
+
+const STORAGE_KEY = "cohort-explorer-state";
+
+function saveState(resourceId: string, filters: FilterState) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceId, filters }));
+}
+
+function loadSavedState(): { resourceId: string; filters: FilterState } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.resourceId && parsed?.filters) return parsed;
+  } catch { /* corrupt data */ }
+  return null;
+}
+
+function clearSavedState() {
+  localStorage.removeItem(STORAGE_KEY);
+}
 
 const theme = createTheme({
   palette: {
@@ -34,8 +54,23 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [restoring, setRestoring] = useState(true);
   const initialized = useRef(false);
   const fetchIdRef = useRef(0);
+
+  useEffect(() => {
+    const saved = loadSavedState();
+    if (!saved) { setRestoring(false); return; }
+    connectResource(saved.resourceId)
+      .then(() => {
+        setResourceId(saved.resourceId);
+        setPending(saved.filters);
+        setApplied(saved.filters);
+        setConnected(true);
+      })
+      .catch(() => clearSavedState())
+      .finally(() => setRestoring(false));
+  }, []);
 
   const dirty = !filtersEqual(pending, applied);
 
@@ -86,8 +121,8 @@ export default function App() {
       setSeeding(false);
     }
 
-    await loadData(EMPTY_FILTERS);
-  }, [loadData]);
+    await loadData(applied);
+  }, [loadData, applied]);
 
   useEffect(() => {
     if (connected) initializeData();
@@ -96,19 +131,29 @@ export default function App() {
   const handleApply = useCallback(() => {
     setApplied(pending);
     loadData(pending);
-  }, [pending, loadData]);
+    saveState(resourceId, pending);
+  }, [pending, loadData, resourceId]);
 
   const handleReset = useCallback(() => {
     setPending(EMPTY_FILTERS);
     setApplied(EMPTY_FILTERS);
     loadData(EMPTY_FILTERS);
-  }, [loadData]);
+    saveState(resourceId, EMPTY_FILTERS);
+  }, [loadData, resourceId]);
+
+  if (restoring) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   if (!connected) {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <ResourceSelector onConnected={(id) => { setResourceId(id); setConnected(true); }} />
+        <ResourceSelector onConnected={(id) => { setResourceId(id); setConnected(true); saveState(id, EMPTY_FILTERS); }} />
       </ThemeProvider>
     );
   }
@@ -159,6 +204,7 @@ export default function App() {
                   setPending(newPending);
                   setApplied(newPending);
                   loadData(newPending);
+                  saveState(resourceId, newPending);
                 }}
               />
             )}

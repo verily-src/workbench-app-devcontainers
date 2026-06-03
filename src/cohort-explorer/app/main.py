@@ -120,17 +120,12 @@ def connect_resource(resource_id: str = Query(...)) -> dict:
         set_active_resource(None)
         return {"connected": "local (SQLite)"}
 
-    aurora = list_aurora_resources()
-    match = [r for r in aurora if r["id"] == resource_id]
-    if not match:
-        raise HTTPException(status_code=404, detail=f"Resource not found: {resource_id}")
-
     try:
         set_active_resource(resource_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Connection failed: {e}") from e
 
-    return {"connected": resource_id, "database": match[0].get("database")}
+    return {"connected": resource_id}
 
 
 @app.get("/api/samples")

@@ -108,12 +108,14 @@ case "${CLOUD}" in
         readonly STORAGE_ACCOUNT
         STORAGE_CONTAINER=$(vm_tag STORAGE_CONTAINER)
         readonly STORAGE_CONTAINER
-        SAS_TOKEN=$(vm_tag SAS_TOKEN)
-        readonly SAS_TOKEN
+        SAS_TOKEN_1=$(vm_tag SAS_TOKEN_1)
+        readonly SAS_TOKEN_1
+        SAS_TOKEN_2=$(vm_tag SAS_TOKEN_2)
+        readonly SAS_TOKEN_2
 
         echo "  Storage account: ${STORAGE_ACCOUNT}"
         echo "  Storage container: ${STORAGE_CONTAINER}"
-        echo "  SAS token: ${SAS_TOKEN:0:20}..."
+        echo "  SAS token: ${SAS_TOKEN_1:0:20}...${SAS_TOKEN_2:0:20}..."
 
         echo "Starting fluent-bit for Azure Blog log Ingestion..."
         echo "  Image: ${FLUENT_BIT_IMAGE}"
@@ -121,7 +123,7 @@ case "${CLOUD}" in
         DOCKER_ARGS+=(
             --env "STORAGE_ACCOUNT=${STORAGE_ACCOUNT}"
             --env "STORAGE_CONTAINER=${STORAGE_CONTAINER}"
-            --env "SAS_TOKEN=${SAS_TOKEN}"
+            --env "SAS_TOKEN=${SAS_TOKEN_1}${SAS_TOKEN_2}"
         )
         ;;
 

@@ -92,35 +92,36 @@ case "${CLOUD}" in
 
     azure)
         echo "Fetching instance metadata from Azure metadata service..."
-        IMDS="http://169.254.169.254/metadata"
-        IMDS_API="api-version=2025-04-07"
+        nonce=$(date -d "+5 minutes" +%s)
+        TOKEN=$(curl -sH Metadata:true "http://169.254.169.254/metadata/attested/document?nonce=$nonce" -X PUT)
+        readonly TOKEN # currently unused, see below
 
-        CLIENT_ID=$(curl -sH Metadata:true \
-            "${IMDS}/identity/oauth2/token?${IMDS_API}&resource=https://monitor.azure.com/" | jq -r '.client_id')
-        readonly CLIENT_ID
-
-        TAGS=$(curl -sH Metadata:true "${IMDS}/instance/compute/tagsList?${IMDS_API}")
+        # For now, we fetch these values from instance tags;
+        # in full implementation these will be returned by WSM based on $TOKEN
+        TAGS=$(curl -sH Metadata:true "http://169.254.169.254/metadata/instance/compute/tagsList?api-version=2025-04-07")
         readonly TAGS
 
-        azure_tag() {
+        vm_tag() {
             echo "${TAGS}" | jq -r ".[] | select(.name == \"$1\") | .value"
         }
-        DCE_URL=$(azure_tag "DCE_URL")
-        readonly DCE_URL
-        DCR_ID=$(azure_tag "DCR_ID")
-        readonly DCR_ID
+        STORAGE_ACCOUNT=$(vm_tag STORAGE_ACCOUNT)
+        readonly STORAGE_ACCOUNT
+        STORAGE_CONTAINER=$(vm_tag STORAGE_CONTAINER)
+        readonly STORAGE_CONTAINER
+        SAS_TOKEN=$(vm_tag SAS_TOKEN)
+        readonly SAS_TOKEN
 
-        echo "  Client ID: ${CLIENT_ID}"
-        echo "  DCE URL: ${DCE_URL}"
-        echo "  DCR ID: ${DCR_ID}"
+        echo "  Storage account: ${STORAGE_ACCOUNT}"
+        echo "  Storage container: ${STORAGE_CONTAINER}"
+        echo "  SAS token: ${SAS_TOKEN:0:20}..."
 
-        echo "Starting fluent-bit for Azure Monitor Logs Ingestion..."
+        echo "Starting fluent-bit for Azure Blog log Ingestion..."
         echo "  Image: ${FLUENT_BIT_IMAGE}"
 
         DOCKER_ARGS+=(
-            --env "CLIENT_ID=${CLIENT_ID}"
-            --env "DCE_URL=${DCE_URL}"
-            --env "DCR_ID=${DCR_ID}"
+            --env "STORAGE_ACCOUNT=${STORAGE_ACCOUNT}"
+            --env "STORAGE_CONTAINER=${STORAGE_CONTAINER}"
+            --env "SAS_TOKEN=${SAS_TOKEN}"
         )
         ;;
 

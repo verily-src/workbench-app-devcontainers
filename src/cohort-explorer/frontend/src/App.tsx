@@ -31,11 +31,14 @@ function loadSavedState(): { resourceId: string; filters: FilterState } | null {
 
 const theme = createTheme({
   palette: {
-    primary: { main: "#1565c0" },
+    primary: { main: "#087a6a", dark: "#054f45", light: "#84bdb5" },
+    background: { default: "#F5F6F7" },
+    text: { primary: "#212529", secondary: "rgba(0,0,0,0.6)" },
   },
   typography: {
-    fontFamily: "'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif",
+    fontFamily: "'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
   },
+  shape: { borderRadius: 6 },
 });
 
 function filtersEqual(a: FilterState, b: FilterState): boolean {

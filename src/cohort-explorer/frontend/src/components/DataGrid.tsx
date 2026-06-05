@@ -49,7 +49,16 @@ export default function DataGrid({ rows, loading, error }: Props) {
   );
 
   return (
-    <div style={{ flex: 1, width: "100%", height: "100%" }}>
+    <div style={{
+      flex: 1,
+      width: "100%",
+      height: "100%",
+      // @ts-expect-error ag-grid CSS custom properties
+      "--ag-active-color": "#087a6a",
+      "--ag-selected-row-background-color": "rgba(8,122,106,0.08)",
+      "--ag-row-hover-color": "rgba(8,122,106,0.04)",
+      "--ag-header-background-color": "#F5F6F7",
+    }}>
       <AgGridReact<SampleRow>
         rowData={rows}
         columnDefs={columnDefs}

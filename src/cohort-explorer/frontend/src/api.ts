@@ -80,6 +80,12 @@ export async function fetchDatasources(): Promise<DatasourcesResponse> {
   return res.json();
 }
 
+export async function refreshDatasources(): Promise<DatasourcesResponse> {
+  const res = await fetch("/api/datasources/refresh", { method: "POST" });
+  if (!res.ok) throw new Error(`Failed to refresh datasources: ${res.status}`);
+  return res.json();
+}
+
 export async function connectResource(resourceId: string): Promise<{ connected: string }> {
   const res = await fetch(`/api/connect?resource_id=${encodeURIComponent(resourceId)}`, { method: "POST" });
   if (!res.ok) {

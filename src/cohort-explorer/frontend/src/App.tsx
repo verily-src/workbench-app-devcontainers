@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Box, CircularProgress, CssBaseline, IconButton, Snackbar, Tooltip } from "@mui/material";
+import { Alert, Box, CircularProgress, CssBaseline, Snackbar } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import FilterPanel from "./components/FilterPanel.tsx";
@@ -254,48 +252,17 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-        <SummaryBar counts={counts} filters={applied} loading={loading} onDisconnect={handleDisconnect} />
-        <Box sx={{ flex: 1, overflow: "hidden", position: "relative" }}>
-          {!filterPaneVisible && (
-            <Tooltip title="Show filters">
-              <IconButton
-                size="small"
-                onClick={() => setFilterPaneVisible(true)}
-                sx={{
-                  position: "absolute",
-                  left: 4,
-                  top: 8,
-                  zIndex: 10,
-                  bgcolor: "background.paper",
-                  border: 1,
-                  borderColor: "divider",
-                  "&:hover": { bgcolor: "action.hover" },
-                }}
-              >
-                <ChevronRightIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-          {!gridPaneVisible && (
-            <Tooltip title="Show data grid">
-              <IconButton
-                size="small"
-                onClick={() => setGridPaneVisible(true)}
-                sx={{
-                  position: "absolute",
-                  right: 16,
-                  bottom: 4,
-                  zIndex: 10,
-                  bgcolor: "background.paper",
-                  border: 1,
-                  borderColor: "divider",
-                  "&:hover": { bgcolor: "action.hover" },
-                }}
-              >
-                <ExpandLessIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
+        <SummaryBar
+          counts={counts}
+          filters={applied}
+          loading={loading}
+          onDisconnect={handleDisconnect}
+          filterPaneVisible={filterPaneVisible}
+          gridPaneVisible={gridPaneVisible}
+          onToggleFilterPane={() => setFilterPaneVisible((v) => !v)}
+          onToggleGridPane={() => setGridPaneVisible((v) => !v)}
+        />
+        <Box sx={{ flex: 1, overflow: "hidden" }}>
           <Allotment defaultSizes={[280, 1000]} snap>
             <Allotment.Pane minSize={150} maxSize={500} visible={filterPaneVisible}>
               <FilterPanel

@@ -3,6 +3,8 @@ import { Box, Button, Chip, IconButton, Tooltip, Typography } from "@mui/materia
 import DownloadIcon from "@mui/icons-material/Download";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
+import TableRowsIcon from "@mui/icons-material/TableRows";
 import type { Counts, FilterState } from "../types";
 import { exportUrl } from "../api";
 import RunSalmonDialog from "./RunSalmonDialog";
@@ -12,9 +14,16 @@ interface Props {
   filters: FilterState;
   loading: boolean;
   onDisconnect: () => void;
+  filterPaneVisible: boolean;
+  gridPaneVisible: boolean;
+  onToggleFilterPane: () => void;
+  onToggleGridPane: () => void;
 }
 
-export default function SummaryBar({ counts, filters, loading, onDisconnect }: Props) {
+export default function SummaryBar({
+  counts, filters, loading, onDisconnect,
+  filterPaneVisible, gridPaneVisible, onToggleFilterPane, onToggleGridPane,
+}: Props) {
   const [salmonOpen, setSalmonOpen] = useState(false);
 
   return (
@@ -63,6 +72,24 @@ export default function SummaryBar({ counts, filters, loading, onDisconnect }: P
         </>
       ) : null}
       <Box sx={{ flex: 1 }} />
+      <Tooltip title={filterPaneVisible ? "Hide filters" : "Show filters"}>
+        <IconButton
+          size="small"
+          onClick={onToggleFilterPane}
+          color={filterPaneVisible ? "default" : "primary"}
+        >
+          <ViewSidebarIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title={gridPaneVisible ? "Hide data grid" : "Show data grid"}>
+        <IconButton
+          size="small"
+          onClick={onToggleGridPane}
+          color={gridPaneVisible ? "default" : "primary"}
+        >
+          <TableRowsIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
       <Button
         variant="outlined"
         size="small"

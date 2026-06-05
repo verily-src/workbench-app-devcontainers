@@ -40,7 +40,7 @@ def _fetch_aurora_resources() -> list[dict]:
             capture_output=True,
             text=True,
             check=True,
-            timeout=30,
+            timeout=120,
         )
     except subprocess.TimeoutExpired:
         logger.warning("wb resource list timed out")
@@ -79,11 +79,13 @@ def _refresh_aurora_cache():
 
 
 def list_aurora_resources() -> list[dict]:
-    if _aurora_cache is None:
-        _refresh_aurora_cache()
-    else:
+    if _aurora_cache is not None:
         threading.Thread(target=_refresh_aurora_cache, daemon=True).start()
     return _aurora_cache or []
+
+
+def warm_aurora_cache():
+    threading.Thread(target=_refresh_aurora_cache, daemon=True).start()
 
 
 def refresh_aurora_cache() -> list[dict]:

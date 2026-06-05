@@ -15,6 +15,7 @@ _active_resource_id: str | None = None
 
 _aurora_cache: list[dict] | None = None
 _aurora_cache_lock = threading.Lock()
+_aurora_cache_ready = threading.Event()
 
 
 def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ") -> str:
@@ -75,22 +76,20 @@ def _refresh_aurora_cache():
     with _aurora_cache_lock:
         result = _fetch_aurora_resources()
         _aurora_cache = result
+        _aurora_cache_ready.set()
         logger.info("Aurora resource cache refreshed: %d resources", len(result))
 
 
-def list_aurora_resources() -> list[dict]:
-    if _aurora_cache is not None:
+def list_aurora_resources(wait: bool = False) -> list[dict]:
+    if wait and not _aurora_cache_ready.is_set():
+        _aurora_cache_ready.wait(timeout=120)
+    elif _aurora_cache is not None:
         threading.Thread(target=_refresh_aurora_cache, daemon=True).start()
     return _aurora_cache or []
 
 
 def warm_aurora_cache():
     threading.Thread(target=_refresh_aurora_cache, daemon=True).start()
-
-
-def refresh_aurora_cache() -> list[dict]:
-    _refresh_aurora_cache()
-    return _aurora_cache or []
 
 
 def get_engine_for_resource(resource_id: str) -> Engine:

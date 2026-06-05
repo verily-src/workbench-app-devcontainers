@@ -106,7 +106,7 @@ def health() -> dict[str, str]:
 
 @app.get("/api/datasources")
 def get_datasources() -> dict:
-    aurora = list_aurora_resources()
+    aurora = list_aurora_resources(wait=True)
     active = get_active_resource_id()
     return {
         "resources": aurora,

@@ -58,9 +58,7 @@ else
 fi
 
 # Check if authentication is already valid
-if [[ -z "${WB_LOGIN_MODE}" || "${WB_LOGIN_MODE}" == "TODO" ]]; then
-    echo "Skipping Workbench server authentication (WB_LOGIN_MODE=${WB_LOGIN_MODE})"
-elif ! /home/core/wb.sh auth status --format json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null; then
+if ! /home/core/wb.sh auth status --format json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null; then
     echo "Authenticating with Workbench server using mode ${WB_LOGIN_MODE}..."
     /home/core/wb.sh auth login --mode "${WB_LOGIN_MODE}"
     echo "Authentication completed successfully"

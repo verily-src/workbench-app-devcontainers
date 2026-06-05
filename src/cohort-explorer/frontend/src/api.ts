@@ -1,5 +1,35 @@
 import type { Counts, FilterState, FiltersResponse, SampleRow } from "./types";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/+$/, "");
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<Response> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchInit } = init ?? {};
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...fetchInit, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error(
+        `Request timed out after ${timeoutMs / 1000} seconds. The datasource may be unreachable.`,
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function extractError(res: Response, fallback: string): Promise<never> {
+  const body = await res.json().catch(() => null);
+  throw new Error(body?.detail ?? `${fallback} (HTTP ${res.status})`);
+}
+
 function buildParams(filters: FilterState): URLSearchParams {
   const params = new URLSearchParams();
   for (const key of [
@@ -28,36 +58,36 @@ function buildParams(filters: FilterState): URLSearchParams {
 }
 
 export async function fetchSamples(filters: FilterState): Promise<SampleRow[]> {
-  const res = await fetch(`/api/samples?${buildParams(filters)}`);
-  if (!res.ok) throw new Error(`Failed to fetch samples: ${res.status}`);
+  const res = await fetchWithTimeout(`${BASE}/api/samples?${buildParams(filters)}`);
+  if (!res.ok) await extractError(res, "Failed to fetch samples");
   return res.json();
 }
 
 export async function fetchFilters(
   filters: FilterState,
 ): Promise<FiltersResponse> {
-  const res = await fetch(`/api/filters?${buildParams(filters)}`);
-  if (!res.ok) throw new Error(`Failed to fetch filters: ${res.status}`);
+  const res = await fetchWithTimeout(`${BASE}/api/filters?${buildParams(filters)}`);
+  if (!res.ok) await extractError(res, "Failed to fetch filters");
   return res.json();
 }
 
 export async function fetchCounts(filters: FilterState): Promise<Counts> {
-  const res = await fetch(`/api/counts?${buildParams(filters)}`);
-  if (!res.ok) throw new Error(`Failed to fetch counts: ${res.status}`);
+  const res = await fetchWithTimeout(`${BASE}/api/counts?${buildParams(filters)}`);
+  if (!res.ok) await extractError(res, "Failed to fetch counts");
   return res.json();
 }
 
 export async function seedData(): Promise<{ seeded: number }> {
-  const res = await fetch("/api/seed", { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed to seed: ${res.status}`);
-  }
+  const res = await fetchWithTimeout(`${BASE}/api/seed`, {
+    method: "POST",
+    timeoutMs: 120_000,
+  });
+  if (!res.ok) await extractError(res, "Failed to seed data");
   return res.json();
 }
 
 export function exportUrl(filters: FilterState): string {
-  return `/api/export?${buildParams(filters)}`;
+  return `${BASE}/api/export?${buildParams(filters)}`;
 }
 
 export interface Datasource {
@@ -75,23 +105,23 @@ export interface DatasourcesResponse {
 }
 
 export async function fetchDatasources(): Promise<DatasourcesResponse> {
-  const res = await fetch("/api/datasources");
-  if (!res.ok) throw new Error(`Failed to fetch datasources: ${res.status}`);
+  const res = await fetchWithTimeout(`${BASE}/api/datasources`);
+  if (!res.ok) await extractError(res, "Failed to fetch datasources");
   return res.json();
 }
 
 export async function refreshDatasources(): Promise<DatasourcesResponse> {
-  const res = await fetch("/api/datasources/refresh", { method: "POST" });
-  if (!res.ok) throw new Error(`Failed to refresh datasources: ${res.status}`);
+  const res = await fetchWithTimeout(`${BASE}/api/datasources/refresh`, { method: "POST" });
+  if (!res.ok) await extractError(res, "Failed to refresh datasources");
   return res.json();
 }
 
 export async function connectResource(resourceId: string): Promise<{ connected: string }> {
-  const res = await fetch(`/api/connect?resource_id=${encodeURIComponent(resourceId)}`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed to connect: ${res.status}`);
-  }
+  const res = await fetchWithTimeout(
+    `${BASE}/api/connect?resource_id=${encodeURIComponent(resourceId)}`,
+    { method: "POST", timeoutMs: 15_000 },
+  );
+  if (!res.ok) await extractError(res, "Failed to connect");
   return res.json();
 }
 
@@ -116,25 +146,19 @@ export interface SalmonStatusResponse {
 }
 
 export async function prepareSalmon(filters: FilterState): Promise<SalmonPrepareResponse> {
-  const res = await fetch(`/api/salmon/prepare?${buildParams(filters)}`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed to prepare: ${res.status}`);
-  }
+  const res = await fetchWithTimeout(`${BASE}/api/salmon/prepare?${buildParams(filters)}`, { method: "POST" });
+  if (!res.ok) await extractError(res, "Failed to prepare Salmon job");
   return res.json();
 }
 
 export async function submitSalmon(filters: FilterState): Promise<SalmonSubmitResponse> {
-  const res = await fetch(`/api/salmon/submit?${buildParams(filters)}`, { method: "POST" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed to submit: ${res.status}`);
-  }
+  const res = await fetchWithTimeout(`${BASE}/api/salmon/submit?${buildParams(filters)}`, { method: "POST" });
+  if (!res.ok) await extractError(res, "Failed to submit Salmon job");
   return res.json();
 }
 
 export async function checkSalmonStatus(jobId: string): Promise<SalmonStatusResponse> {
-  const res = await fetch(`/api/salmon/status/${encodeURIComponent(jobId)}`);
-  if (!res.ok) throw new Error(`Failed to check status: ${res.status}`);
+  const res = await fetchWithTimeout(`${BASE}/api/salmon/status/${encodeURIComponent(jobId)}`);
+  if (!res.ok) await extractError(res, "Failed to check Salmon status");
   return res.json();
 }

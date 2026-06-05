@@ -88,7 +88,7 @@ export default function ResourceSelector({ onConnected }: Props) {
         <CardContent sx={{ p: 4 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 3 }}>
             <StorageIcon color="primary" />
-            <Typography variant="h5" sx={{ fontWeight: 600 }}>
+            <Typography variant="h5" sx={{ fontWeight: 600, fontFamily: "'Poppins', sans-serif" }}>
               Cohort Explorer
             </Typography>
           </Box>

@@ -18,9 +18,9 @@ interface Props {
   onBarClick: (tissue: string) => void;
 }
 
-const SELECTED_COLOR = "#1565c0";
-const UNSELECTED_COLOR = "#90caf9";
-const DEFAULT_COLOR = "#42a5f5";
+const SELECTED_COLOR = "#087a6a";
+const UNSELECTED_COLOR = "#84bdb5";
+const DEFAULT_COLOR = "#087a6a";
 
 export default function TissueChart({ data, selected, onBarClick }: Props) {
   const sorted = useMemo(
@@ -45,7 +45,7 @@ export default function TissueChart({ data, selected, onBarClick }: Props) {
               dataKey="label"
               width={180}
               fontSize={11}
-              tick={{ fill: "#333" }}
+              tick={{ fill: "#212529" }}
             />
             <Tooltip
               formatter={(value) => [Number(value).toLocaleString(), "Samples"]}

@@ -30,7 +30,7 @@ export default function SummaryBar({ counts, filters, loading, onDisconnect }: P
         bgcolor: "grey.50",
       }}
     >
-      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+      <Typography variant="h6" sx={{ fontWeight: 600, fontFamily: "'Poppins', sans-serif" }}>
         Cohort Explorer
       </Typography>
       <Tooltip title="Change datasource">

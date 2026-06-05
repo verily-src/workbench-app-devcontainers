@@ -1,6 +1,7 @@
 import json
 import logging
 import subprocess
+import threading
 from pathlib import Path
 
 from sqlalchemy import create_engine, Engine
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 _engines: dict[str, Engine] = {}
 _session_factories: dict[str, sessionmaker[Session]] = {}
 _active_resource_id: str | None = None
+
+_aurora_cache: list[dict] | None = None
+_aurora_cache_lock = threading.Lock()
 
 
 def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ") -> str:
@@ -24,18 +28,23 @@ def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ")
         capture_output=True,
         text=True,
         check=True,
+        timeout=30,
     )
     return result.stdout.strip()
 
 
-def list_aurora_resources() -> list[dict]:
+def _fetch_aurora_resources() -> list[dict]:
     try:
         result = subprocess.run(
             ["wb", "resource", "list", "--format", "json"],
             capture_output=True,
             text=True,
             check=True,
+            timeout=30,
         )
+    except subprocess.TimeoutExpired:
+        logger.warning("wb resource list timed out")
+        return []
     except (subprocess.CalledProcessError, FileNotFoundError):
         logger.warning("wb CLI not available, no Aurora resources")
         return []
@@ -59,6 +68,27 @@ def list_aurora_resources() -> list[dict]:
             "resource_type": rtype,
         })
     return aurora
+
+
+def _refresh_aurora_cache():
+    global _aurora_cache
+    with _aurora_cache_lock:
+        result = _fetch_aurora_resources()
+        _aurora_cache = result
+        logger.info("Aurora resource cache refreshed: %d resources", len(result))
+
+
+def list_aurora_resources() -> list[dict]:
+    if _aurora_cache is None:
+        _refresh_aurora_cache()
+    else:
+        threading.Thread(target=_refresh_aurora_cache, daemon=True).start()
+    return _aurora_cache or []
+
+
+def refresh_aurora_cache() -> list[dict]:
+    _refresh_aurora_cache()
+    return _aurora_cache or []
 
 
 def get_engine_for_resource(resource_id: str) -> Engine:

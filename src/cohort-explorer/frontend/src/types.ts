@@ -65,7 +65,10 @@ export interface FilterState {
 
 export type FieldDataType = "categorical" | "numeric";
 
-export type ChartType = "bar" | "pie" | "histogram" | "boxplot";
+export type ChartType =
+  | "bar" | "pie"
+  | "histogram" | "boxplot" | "kde"
+  | "scatter" | "cat-boxplot" | "heatmap";
 
 export interface FieldMeta {
   key: string;
@@ -77,6 +80,12 @@ export interface ChartConfig {
   id: string;
   fieldKey: string;
   chartType: ChartType;
+  field2Key?: string;
+}
+
+export interface KdePoint {
+  x: number;
+  density: number;
 }
 
 export interface HistogramBin {
@@ -114,8 +123,10 @@ export const DEFAULT_CHART_TYPE: Record<FieldDataType, ChartType> = {
 
 export const CHART_TYPES_FOR: Record<FieldDataType, ChartType[]> = {
   categorical: ["bar", "pie"],
-  numeric: ["histogram", "boxplot"],
+  numeric: ["histogram", "kde", "boxplot"],
 };
+
+export const CHART_TYPES_2D: ChartType[] = ["scatter", "cat-boxplot", "heatmap"];
 
 // --- Filter state ---
 

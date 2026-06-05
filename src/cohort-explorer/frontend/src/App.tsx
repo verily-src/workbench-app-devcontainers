@@ -26,10 +26,6 @@ function loadSavedState(): { resourceId: string; filters: FilterState } | null {
   return null;
 }
 
-function clearSavedState() {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
 const theme = createTheme({
   palette: {
     primary: { main: "#1565c0" },

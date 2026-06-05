@@ -11,7 +11,7 @@ interface Props {
   onChartFilter: (fieldKey: string, value: string | { min: number; max: number }) => void;
   onAddChart: (fieldKey: string) => void;
   onRemoveChart: (id: string) => void;
-  onUpdateChart: (id: string, updates: Partial<Pick<ChartConfig, "fieldKey" | "chartType">>) => void;
+  onUpdateChart: (id: string, updates: Partial<Pick<ChartConfig, "fieldKey" | "chartType" | "field2Key">>) => void;
 }
 
 export default function ChartDashboard({

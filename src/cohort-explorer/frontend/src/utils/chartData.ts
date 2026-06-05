@@ -1,4 +1,4 @@
-import type { BoxPlotStats, HistogramBin } from "../types";
+import type { BoxPlotStats, HistogramBin, KdePoint } from "../types";
 
 function percentile(sorted: number[], p: number): number {
   const idx = (p / 100) * (sorted.length - 1);
@@ -58,4 +58,48 @@ export function computeBoxPlotStats(values: number[]): BoxPlotStats | null {
   const outliers = sorted.filter((v) => v < min || v > max);
 
   return { min, q1, median, q3, max, outliers, count: sorted.length };
+}
+
+export function computeKde(
+  values: number[],
+  points = 100,
+): { kde: KdePoint[]; bins: HistogramBin[] } {
+  if (values.length === 0) return { kde: [], bins: [] };
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = sorted.length;
+  const min = sorted[0];
+  const max = sorted[n - 1];
+
+  if (min === max) {
+    return {
+      kde: [{ x: min, density: 1 }],
+      bins: computeHistogramBins(values),
+    };
+  }
+
+  // Silverman bandwidth
+  const std = Math.sqrt(
+    sorted.reduce((sum, v) => sum + (v - sorted.reduce((s, x) => s + x, 0) / n) ** 2, 0) / n,
+  );
+  const iqr = percentile(sorted, 75) - percentile(sorted, 25);
+  const h = 0.9 * Math.min(std, iqr / 1.34) * n ** -0.2;
+
+  const padding = (max - min) * 0.05;
+  const step = (max - min + 2 * padding) / (points - 1);
+  const xStart = min - padding;
+
+  const kde: KdePoint[] = [];
+  for (let i = 0; i < points; i++) {
+    const x = xStart + i * step;
+    let density = 0;
+    for (const v of sorted) {
+      const z = (x - v) / h;
+      density += Math.exp(-0.5 * z * z) / (h * Math.sqrt(2 * Math.PI));
+    }
+    density /= n;
+    kde.push({ x, density });
+  }
+
+  return { kde, bins: computeHistogramBins(values) };
 }

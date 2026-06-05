@@ -10,7 +10,7 @@ import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
 import { connectResource, fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
-import type { ChartConfig, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
+import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { DEFAULT_CHART_TYPE, EMPTY_FILTERS, FIELD_META } from "./types.ts";
 
 const STORAGE_KEY = "cohort-explorer-state";
@@ -188,12 +188,12 @@ export default function App() {
     [pending, loadData, resourceId],
   );
 
-  const handleAddChart = useCallback((fieldKey: string) => {
+  const handleAddChart = useCallback((fieldKey: string, chartType?: ChartType, field2Key?: string) => {
     const meta = FIELD_META.find((f) => f.key === fieldKey);
-    const chartType = meta ? DEFAULT_CHART_TYPE[meta.dataType] : "bar";
+    const resolvedType = chartType ?? (meta ? DEFAULT_CHART_TYPE[meta.dataType] : "bar");
     setChartConfigs((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), fieldKey, chartType },
+      { id: crypto.randomUUID(), fieldKey, chartType: resolvedType, field2Key },
     ]);
   }, []);
 
@@ -202,7 +202,7 @@ export default function App() {
   }, []);
 
   const handleUpdateChart = useCallback(
-    (id: string, updates: Partial<Pick<ChartConfig, "fieldKey" | "chartType">>) => {
+    (id: string, updates: Partial<Pick<ChartConfig, "fieldKey" | "chartType" | "field2Key">>) => {
       setChartConfigs((prev) =>
         prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
       );

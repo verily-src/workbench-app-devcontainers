@@ -21,7 +21,7 @@
   },
   "ghcr.io/devcontainers/features/common-utils": {
     "tag": "2",
-    "installed": "sha256:dbf431d6b42d55cde50fa1df75c7f7c3999a90cde6d73f7a7071174b3c3d0cc4",
+    "installed": "sha256:cb0c4d3c276f157eed17935747e364178d75fee17f55c4e129966f64633deb3a",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/node": {
@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:ff6cb0ed80e949a67394b2015267e375c55e1fc577ffacb6fc6f76b5c82acb5c",
+    "installed": "sha256:8c015b5d9f970ed9c0bbab1ce3a56a86012e391df6d1f4cc25b4ce5c8790b74c",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:8e29733a48c7f1d8fc0995c9be47f99244eb57307bcc1a4dbf432efdaaffcb69",
+    "installed": "sha256:b1763cbeb2aa4feaa4fbad14f3f823f6c32b0b07982ef50357fa09c284f848f8",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:e2043ab778c20cd3480502f075ec7ac89d7876207612a2ea54aaef40a72ea429",
+    "installed": "sha256:199d8f09a0fb1613ae124028e111b51c5cdaefc601451c4708f3aed8453c59a1",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:62089d6cef2015e08361928c6bb6ae003afd0800a3e682a536171b3bcb0765b1",
+    "installed": "sha256:6169b9eb6ba5d5bb5a36884291cbf0fe4f495768669c0a585df85520f497911f",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,7 +61,7 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051",
+    "installed": "sha256:0caf1b65ebec84b94397108b56da6c33f124c5390f5832da94e75f4609c0e2ad",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
@@ -91,7 +91,7 @@
   },
   "gcr.io/go-containerregistry/crane": {
     "tag": "latest",
-    "installed": "sha256:d3a706262093746258f20107ab4e95536f9d6d45c8c3f3acf6b02b1801b440d6",
+    "installed": "sha256:0ae17ecb34315aa7cbff28f6eddee3b7adae0b2f90101260d990804db1eb0084",
     "filter": "startupscript\\/butane\\/prefetch-oci-features\\.sh"
   }
 }

@@ -17,6 +17,7 @@
     "@mui/material": "^9.0.1",
     "ag-grid-community": "^35.3.0",
     "ag-grid-react": "^35.3.0",
+    "allotment": "^1.20.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^3.8.1"

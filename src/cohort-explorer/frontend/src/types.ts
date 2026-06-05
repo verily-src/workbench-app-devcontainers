@@ -61,6 +61,64 @@ export interface FilterState {
   paxgene_time_max: number | null;
 }
 
+// --- Chart types ---
+
+export type FieldDataType = "categorical" | "numeric";
+
+export type ChartType = "bar" | "pie" | "histogram" | "boxplot";
+
+export interface FieldMeta {
+  key: string;
+  label: string;
+  dataType: FieldDataType;
+}
+
+export interface ChartConfig {
+  id: string;
+  fieldKey: string;
+  chartType: ChartType;
+}
+
+export interface HistogramBin {
+  binStart: number;
+  binEnd: number;
+  label: string;
+  count: number;
+}
+
+export interface BoxPlotStats {
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+  outliers: number[];
+  count: number;
+}
+
+export const FIELD_META: FieldMeta[] = [
+  { key: "tissue_type", label: "Tissue Type", dataType: "categorical" },
+  { key: "tissue_type_detail", label: "Tissue Detail", dataType: "categorical" },
+  { key: "autolysis_score", label: "Autolysis Score", dataType: "categorical" },
+  { key: "current_material_type", label: "Material Type", dataType: "categorical" },
+  { key: "sample_collection_kit", label: "Collection Kit", dataType: "categorical" },
+  { key: "rin_number", label: "RIN Number", dataType: "numeric" },
+  { key: "total_ischemic_time", label: "Ischemic Time", dataType: "numeric" },
+  { key: "paxgene_time", label: "PAXgene Time", dataType: "numeric" },
+];
+
+export const DEFAULT_CHART_TYPE: Record<FieldDataType, ChartType> = {
+  categorical: "bar",
+  numeric: "histogram",
+};
+
+export const CHART_TYPES_FOR: Record<FieldDataType, ChartType[]> = {
+  categorical: ["bar", "pie"],
+  numeric: ["histogram", "boxplot"],
+};
+
+// --- Filter state ---
+
 export const EMPTY_FILTERS: FilterState = {
   tissue_type: [],
   tissue_type_detail: [],

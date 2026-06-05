@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Box, CircularProgress, CssBaseline, Snackbar } from "@mui/material";
+import { Alert, Box, CircularProgress, CssBaseline, IconButton, Snackbar, Tooltip } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import FilterPanel from "./components/FilterPanel.tsx";
 import DataGrid from "./components/DataGrid.tsx";
 import SummaryBar from "./components/SummaryBar.tsx";
-import TissueChart from "./components/TissueChart.tsx";
+import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
 import { connectResource, fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
-import type { Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
-import { EMPTY_FILTERS } from "./types.ts";
+import type { ChartConfig, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
+import { DEFAULT_CHART_TYPE, EMPTY_FILTERS, FIELD_META } from "./types.ts";
 
 const STORAGE_KEY = "cohort-explorer-state";
 
@@ -57,6 +59,11 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [restoring, setRestoring] = useState(true);
+  const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([
+    { id: "default", fieldKey: "tissue_type", chartType: "bar" },
+  ]);
+  const [filterPaneVisible, setFilterPaneVisible] = useState(true);
+  const [gridPaneVisible, setGridPaneVisible] = useState(true);
   const initialized = useRef(false);
   const fetchIdRef = useRef(0);
 
@@ -159,6 +166,52 @@ export default function App() {
     clearSavedState();
   }, []);
 
+  const handleChartFilter = useCallback(
+    (fieldKey: string, value: string | { min: number; max: number }) => {
+      let newPending: FilterState;
+      if (typeof value === "string") {
+        const current = (pending as unknown as Record<string, string[]>)[fieldKey] ?? [];
+        const updated = current.includes(value)
+          ? current.filter((v) => v !== value)
+          : [...current, value];
+        newPending = { ...pending, [fieldKey]: updated };
+      } else {
+        newPending = {
+          ...pending,
+          [`${fieldKey}_min`]: value.min,
+          [`${fieldKey}_max`]: value.max,
+        };
+      }
+      setPending(newPending);
+      setApplied(newPending);
+      loadData(newPending);
+      saveState(resourceId, newPending);
+    },
+    [pending, loadData, resourceId],
+  );
+
+  const handleAddChart = useCallback((fieldKey: string) => {
+    const meta = FIELD_META.find((f) => f.key === fieldKey);
+    const chartType = meta ? DEFAULT_CHART_TYPE[meta.dataType] : "bar";
+    setChartConfigs((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), fieldKey, chartType },
+    ]);
+  }, []);
+
+  const handleRemoveChart = useCallback((id: string) => {
+    setChartConfigs((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  const handleUpdateChart = useCallback(
+    (id: string, updates: Partial<Pick<ChartConfig, "fieldKey" | "chartType">>) => {
+      setChartConfigs((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      );
+    },
+    [],
+  );
+
   if (restoring) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
@@ -202,9 +255,49 @@ export default function App() {
       <CssBaseline />
       <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
         <SummaryBar counts={counts} filters={applied} loading={loading} onDisconnect={handleDisconnect} />
-        <Box sx={{ flex: 1, overflow: "hidden" }}>
+        <Box sx={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          {!filterPaneVisible && (
+            <Tooltip title="Show filters">
+              <IconButton
+                size="small"
+                onClick={() => setFilterPaneVisible(true)}
+                sx={{
+                  position: "absolute",
+                  left: 4,
+                  top: 8,
+                  zIndex: 10,
+                  bgcolor: "background.paper",
+                  border: 1,
+                  borderColor: "divider",
+                  "&:hover": { bgcolor: "action.hover" },
+                }}
+              >
+                <ChevronRightIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {!gridPaneVisible && (
+            <Tooltip title="Show data grid">
+              <IconButton
+                size="small"
+                onClick={() => setGridPaneVisible(true)}
+                sx={{
+                  position: "absolute",
+                  right: 16,
+                  bottom: 4,
+                  zIndex: 10,
+                  bgcolor: "background.paper",
+                  border: 1,
+                  borderColor: "divider",
+                  "&:hover": { bgcolor: "action.hover" },
+                }}
+              >
+                <ExpandLessIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           <Allotment defaultSizes={[280, 1000]} snap>
-            <Allotment.Pane minSize={150} maxSize={500}>
+            <Allotment.Pane minSize={150} maxSize={500} visible={filterPaneVisible}>
               <FilterPanel
                 available={available}
                 filters={pending}
@@ -212,6 +305,7 @@ export default function App() {
                 dirty={dirty}
                 onApply={handleApply}
                 onReset={handleReset}
+                onCollapse={() => setFilterPaneVisible(false)}
               />
             </Allotment.Pane>
             <Allotment.Pane>
@@ -224,25 +318,18 @@ export default function App() {
               ) : (
                 <Allotment vertical defaultSizes={[300, 500]} snap>
                   <Allotment.Pane minSize={100}>
-                    {available && (
-                      <TissueChart
-                        data={available.tissue_type}
-                        selected={applied.tissue_type}
-                        onBarClick={(tissue) => {
-                          const current = pending.tissue_type;
-                          const updated = current.includes(tissue)
-                            ? current.filter((v) => v !== tissue)
-                            : [...current, tissue];
-                          const newPending = { ...pending, tissue_type: updated };
-                          setPending(newPending);
-                          setApplied(newPending);
-                          loadData(newPending);
-                          saveState(resourceId, newPending);
-                        }}
-                      />
-                    )}
+                    <ChartDashboard
+                      chartConfigs={chartConfigs}
+                      available={available}
+                      rows={rows}
+                      applied={applied}
+                      onChartFilter={handleChartFilter}
+                      onAddChart={handleAddChart}
+                      onRemoveChart={handleRemoveChart}
+                      onUpdateChart={handleUpdateChart}
+                    />
                   </Allotment.Pane>
-                  <Allotment.Pane minSize={100}>
+                  <Allotment.Pane minSize={100} visible={gridPaneVisible}>
                     <DataGrid rows={rows} loading={loading} error={error} />
                   </Allotment.Pane>
                 </Allotment>

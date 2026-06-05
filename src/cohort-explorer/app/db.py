@@ -18,6 +18,9 @@ _aurora_cache_lock = threading.Lock()
 _aurora_cache_ready = threading.Event()
 
 
+_conn_string_cache: dict[str, str] = {}
+
+
 def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ") -> str:
     result = subprocess.run(
         [
@@ -29,9 +32,11 @@ def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ")
         capture_output=True,
         text=True,
         check=True,
-        timeout=30,
+        timeout=120,
     )
-    return result.stdout.strip()
+    conn_str = result.stdout.strip()
+    _conn_string_cache[resource_id] = conn_str
+    return conn_str
 
 
 def _fetch_aurora_resources() -> list[dict]:
@@ -98,6 +103,11 @@ def get_engine_for_resource(resource_id: str) -> Engine:
 
     def creator():
         import psycopg
+        if resource_id in _conn_string_cache:
+            try:
+                return psycopg.connect(_conn_string_cache[resource_id], autocommit=False)
+            except Exception:
+                logger.info("Cached connection string expired, refreshing for %s", resource_id)
         conn_str = resolve_connection_string(resource_id)
         return psycopg.connect(conn_str, autocommit=False)
 
@@ -126,13 +136,38 @@ def get_sqlite_engine() -> Engine:
     return engine
 
 
+_engine_ready: dict[str, threading.Event] = {}
+
+
+def _warm_engine(resource_id: str):
+    try:
+        resolve_connection_string(resource_id)
+        engine = _engines[resource_id]
+        with engine.connect() as conn:
+            conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        logger.info("Connection pre-warmed for %s", resource_id)
+    except Exception as e:
+        logger.error("Failed to pre-warm connection for %s: %s", resource_id, e)
+    finally:
+        _engine_ready[resource_id].set()
+
+
 def set_active_resource(resource_id: str | None):
     global _active_resource_id
     _active_resource_id = resource_id
     if resource_id and resource_id not in _session_factories:
         engine = get_engine_for_resource(resource_id)
         _session_factories[resource_id] = sessionmaker(bind=engine)
+    if resource_id and resource_id not in _conn_string_cache:
+        _engine_ready[resource_id] = threading.Event()
+        threading.Thread(target=_warm_engine, args=(resource_id,), daemon=True).start()
     logger.info("Active resource set to: %s", resource_id or "sqlite")
+
+
+def wait_engine_ready(resource_id: str, timeout: float = 120):
+    event = _engine_ready.get(resource_id)
+    if event:
+        event.wait(timeout=timeout)
 
 
 def get_active_resource_id() -> str | None:

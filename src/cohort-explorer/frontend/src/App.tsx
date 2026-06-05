@@ -68,7 +68,9 @@ export default function App() {
         setApplied(saved.filters);
         setConnected(true);
       })
-      .catch(() => clearSavedState())
+      .catch((e) => {
+        console.warn("Auto-reconnect failed, showing selector:", e);
+      })
       .finally(() => setRestoring(false));
   }, []);
 
@@ -122,7 +124,7 @@ export default function App() {
     }
 
     await loadData(applied);
-  }, [loadData, applied]);
+  }, [loadData, applied, resourceId]);
 
   useEffect(() => {
     if (connected) initializeData();

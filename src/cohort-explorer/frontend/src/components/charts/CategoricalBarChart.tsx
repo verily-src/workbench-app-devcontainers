@@ -43,7 +43,10 @@ export default function CategoricalBarChart({ data, selected, onBarClick }: Prop
             fontSize={11}
             tick={{ fill: "#212529" }}
           />
-          <Tooltip formatter={(value) => [Number(value).toLocaleString(), "Samples"]} />
+          <Tooltip
+            formatter={(value) => [Number(value).toLocaleString(), "Samples"]}
+            labelFormatter={(label) => String(label)}
+          />
           <Bar
             dataKey="count"
             cursor="pointer"

@@ -49,7 +49,7 @@ export default function DataGrid({ rows, loading, error }: Props) {
   );
 
   return (
-    <div style={{ flex: 1, width: "100%" }}>
+    <div style={{ flex: 1, width: "100%", height: "100%" }}>
       <AgGridReact<SampleRow>
         rowData={rows}
         columnDefs={columnDefs}

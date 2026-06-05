@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Box, CircularProgress, CssBaseline, Snackbar } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { Allotment } from "allotment";
+import "allotment/dist/style.css";
 import FilterPanel from "./components/FilterPanel.tsx";
 import DataGrid from "./components/DataGrid.tsx";
 import SummaryBar from "./components/SummaryBar.tsx";
@@ -197,45 +199,53 @@ export default function App() {
       <CssBaseline />
       <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
         <SummaryBar counts={counts} filters={applied} loading={loading} onDisconnect={handleDisconnect} />
-        <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
-          <FilterPanel
-            available={available}
-            filters={pending}
-            onChange={setPending}
-            dirty={dirty}
-            onApply={handleApply}
-            onReset={handleReset}
-          />
-          <Box sx={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
-            {blockingError ? (
-              <ConnectionError
-                message={error}
-                onRetry={() => loadData(applied)}
-                onDisconnect={handleDisconnect}
+        <Box sx={{ flex: 1, overflow: "hidden" }}>
+          <Allotment defaultSizes={[280, 1000]} snap>
+            <Allotment.Pane minSize={150} maxSize={500}>
+              <FilterPanel
+                available={available}
+                filters={pending}
+                onChange={setPending}
+                dirty={dirty}
+                onApply={handleApply}
+                onReset={handleReset}
               />
-            ) : (
-              <>
-                {available && (
-                  <TissueChart
-                    data={available.tissue_type}
-                    selected={applied.tissue_type}
-                    onBarClick={(tissue) => {
-                      const current = pending.tissue_type;
-                      const updated = current.includes(tissue)
-                        ? current.filter((v) => v !== tissue)
-                        : [...current, tissue];
-                      const newPending = { ...pending, tissue_type: updated };
-                      setPending(newPending);
-                      setApplied(newPending);
-                      loadData(newPending);
-                      saveState(resourceId, newPending);
-                    }}
-                  />
-                )}
-                <DataGrid rows={rows} loading={loading} error={error} />
-              </>
-            )}
-          </Box>
+            </Allotment.Pane>
+            <Allotment.Pane>
+              {blockingError ? (
+                <ConnectionError
+                  message={error}
+                  onRetry={() => loadData(applied)}
+                  onDisconnect={handleDisconnect}
+                />
+              ) : (
+                <Allotment vertical defaultSizes={[300, 500]} snap>
+                  <Allotment.Pane minSize={100}>
+                    {available && (
+                      <TissueChart
+                        data={available.tissue_type}
+                        selected={applied.tissue_type}
+                        onBarClick={(tissue) => {
+                          const current = pending.tissue_type;
+                          const updated = current.includes(tissue)
+                            ? current.filter((v) => v !== tissue)
+                            : [...current, tissue];
+                          const newPending = { ...pending, tissue_type: updated };
+                          setPending(newPending);
+                          setApplied(newPending);
+                          loadData(newPending);
+                          saveState(resourceId, newPending);
+                        }}
+                      />
+                    )}
+                  </Allotment.Pane>
+                  <Allotment.Pane minSize={100}>
+                    <DataGrid rows={rows} loading={loading} error={error} />
+                  </Allotment.Pane>
+                </Allotment>
+              )}
+            </Allotment.Pane>
+          </Allotment>
         </Box>
       </Box>
       {error && hasData && (

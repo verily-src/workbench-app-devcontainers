@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
-from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, set_active_resource, warm_aurora_cache
+from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, set_active_resource, wait_engine_ready, warm_aurora_cache
 from models import Base, Sample
 from seed import seed_from_tsv
 
@@ -134,6 +134,7 @@ def connect_resource(resource_id: str = Query(...)) -> dict:
 
     try:
         set_active_resource(resource_id)
+        wait_engine_ready(resource_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Connection failed: {e}") from e
 

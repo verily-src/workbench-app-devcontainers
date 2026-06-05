@@ -139,7 +139,7 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
   };
 
   return (
-    <Box sx={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: 1, borderColor: "divider" }}>
+    <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <Box sx={{ p: 1.5, borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", gap: 1 }}>
         <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
           Filters

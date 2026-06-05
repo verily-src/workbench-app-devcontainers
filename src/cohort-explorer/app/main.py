@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
-from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, refresh_aurora_cache, set_active_resource, warm_aurora_cache
+from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, set_active_resource, warm_aurora_cache
 from models import Base, Sample
 from seed import seed_from_tsv
 
@@ -117,10 +117,10 @@ def get_datasources() -> dict:
 
 @app.post("/api/datasources/refresh")
 def refresh_datasources() -> dict:
-    resources = refresh_aurora_cache()
+    warm_aurora_cache()
     active = get_active_resource_id()
     return {
-        "resources": resources,
+        "resources": list_aurora_resources(),
         "active": active,
         "has_local": True,
     }

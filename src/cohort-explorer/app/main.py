@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
-from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, refresh_aurora_cache, set_active_resource
+from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, refresh_aurora_cache, set_active_resource, warm_aurora_cache
 from models import Base, Sample
 from seed import seed_from_tsv
 
@@ -96,6 +96,7 @@ def startup():
     engine = get_sqlite_engine()
     Base.metadata.create_all(engine)
     logger.info("SQLite tables ensured")
+    warm_aurora_cache()
 
 
 @app.get("/api/health")

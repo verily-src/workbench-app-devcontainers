@@ -7,12 +7,9 @@ import {
   Checkbox,
   Chip,
   FormControlLabel,
-  IconButton,
   Slider,
-  Tooltip,
   Typography,
 } from "@mui/material";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import type { FilterOption, FilterState, FiltersResponse, RangeFilter } from "../types";
 import { EMPTY_FILTERS } from "../types";
@@ -24,7 +21,6 @@ interface Props {
   dirty: boolean;
   onApply: () => void;
   onReset: () => void;
-  onCollapse?: () => void;
 }
 
 function CategoricalFilter({
@@ -131,7 +127,7 @@ function RangeFilterControl({
   );
 }
 
-export default function FilterPanel({ available, filters, onChange, dirty, onApply, onReset, onCollapse }: Props) {
+export default function FilterPanel({ available, filters, onChange, dirty, onApply, onReset }: Props) {
   if (!available) return null;
 
   const toggleCategorical = (field: keyof FilterState, value: string) => {
@@ -151,13 +147,6 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
         <Button size="small" onClick={onReset} disabled={JSON.stringify(filters) === JSON.stringify(EMPTY_FILTERS)}>
           Reset
         </Button>
-        {onCollapse && (
-          <Tooltip title="Hide filters">
-            <IconButton size="small" onClick={onCollapse}>
-              <ChevronLeftIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
       </Box>
 
       <Box sx={{ flex: 1, overflow: "auto" }}>

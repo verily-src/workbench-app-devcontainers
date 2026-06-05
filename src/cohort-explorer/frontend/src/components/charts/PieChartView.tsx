@@ -58,7 +58,11 @@ export default function PieChartView({ data, selected, onSliceClick }: Props) {
               />
             ))}
           </Pie>
-          <Tooltip formatter={(value) => [Number(value).toLocaleString(), "Samples"]} />
+          <Tooltip
+            formatter={(value, _name, entry) =>
+              [Number(value).toLocaleString(), (entry as { payload?: { label?: string } }).payload?.label ?? "Samples"]
+            }
+          />
           <Legend
             layout="vertical"
             align="right"

@@ -272,7 +272,6 @@ export default function App() {
                 dirty={dirty}
                 onApply={handleApply}
                 onReset={handleReset}
-                onCollapse={() => setFilterPaneVisible(false)}
               />
             </Allotment.Pane>
             <Allotment.Pane>

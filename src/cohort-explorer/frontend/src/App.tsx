@@ -6,6 +6,7 @@ import DataGrid from "./components/DataGrid.tsx";
 import SummaryBar from "./components/SummaryBar.tsx";
 import TissueChart from "./components/TissueChart.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
+import ConnectionError from "./components/ConnectionError.tsx";
 import { connectResource, fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
 import type { Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { EMPTY_FILTERS } from "./types.ts";
@@ -139,6 +140,20 @@ export default function App() {
     saveState(resourceId, EMPTY_FILTERS);
   }, [loadData, resourceId]);
 
+  const handleDisconnect = useCallback(() => {
+    setConnected(false);
+    setResourceId("__local__");
+    setPending(EMPTY_FILTERS);
+    setApplied(EMPTY_FILTERS);
+    setAvailable(null);
+    setRows([]);
+    setCounts(null);
+    setError(null);
+    setLoading(true);
+    initialized.current = false;
+    clearSavedState();
+  }, []);
+
   if (restoring) {
     return (
       <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
@@ -174,11 +189,14 @@ export default function App() {
     );
   }
 
+  const hasData = rows.length > 0 || available !== null;
+  const blockingError = error && !hasData;
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-        <SummaryBar counts={counts} filters={applied} loading={loading} />
+        <SummaryBar counts={counts} filters={applied} loading={loading} onDisconnect={handleDisconnect} />
         <Box sx={{ display: "flex", flex: 1, overflow: "hidden" }}>
           <FilterPanel
             available={available}
@@ -189,32 +207,44 @@ export default function App() {
             onReset={handleReset}
           />
           <Box sx={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
-            {available && (
-              <TissueChart
-                data={available.tissue_type}
-                selected={applied.tissue_type}
-                onBarClick={(tissue) => {
-                  const current = pending.tissue_type;
-                  const updated = current.includes(tissue)
-                    ? current.filter((v) => v !== tissue)
-                    : [...current, tissue];
-                  const newPending = { ...pending, tissue_type: updated };
-                  setPending(newPending);
-                  setApplied(newPending);
-                  loadData(newPending);
-                  saveState(resourceId, newPending);
-                }}
+            {blockingError ? (
+              <ConnectionError
+                message={error}
+                onRetry={() => loadData(applied)}
+                onDisconnect={handleDisconnect}
               />
+            ) : (
+              <>
+                {available && (
+                  <TissueChart
+                    data={available.tissue_type}
+                    selected={applied.tissue_type}
+                    onBarClick={(tissue) => {
+                      const current = pending.tissue_type;
+                      const updated = current.includes(tissue)
+                        ? current.filter((v) => v !== tissue)
+                        : [...current, tissue];
+                      const newPending = { ...pending, tissue_type: updated };
+                      setPending(newPending);
+                      setApplied(newPending);
+                      loadData(newPending);
+                      saveState(resourceId, newPending);
+                    }}
+                  />
+                )}
+                <DataGrid rows={rows} loading={loading} error={error} />
+              </>
             )}
-            <DataGrid rows={rows} loading={loading} />
           </Box>
         </Box>
       </Box>
-      <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError(null)}>
-        <Alert severity="error" onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      </Snackbar>
+      {error && hasData && (
+        <Snackbar open autoHideDuration={6000} onClose={() => setError(null)}>
+          <Alert severity="error" onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </Snackbar>
+      )}
     </ThemeProvider>
   );
 }

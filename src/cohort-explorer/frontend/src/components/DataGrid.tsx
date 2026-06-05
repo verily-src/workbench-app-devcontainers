@@ -8,9 +8,10 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 interface Props {
   rows: SampleRow[];
   loading: boolean;
+  error?: string | null;
 }
 
-export default function DataGrid({ rows, loading }: Props) {
+export default function DataGrid({ rows, loading, error }: Props) {
   const columnDefs = useMemo<ColDef<SampleRow>[]>(
     () => [
       { field: "subject_id", headerName: "Subject", width: 130, pinned: "left" },
@@ -54,6 +55,11 @@ export default function DataGrid({ rows, loading }: Props) {
         columnDefs={columnDefs}
         defaultColDef={defaultColDef}
         loading={loading}
+        overlayNoRowsTemplate={
+          error
+            ? "Failed to load data"
+            : "No matching samples — adjust your filters"
+        }
         enableCellTextSelection
         animateRows={false}
         pagination

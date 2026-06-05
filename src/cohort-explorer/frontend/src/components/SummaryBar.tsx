@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Box, Button, Chip, Typography } from "@mui/material";
+import { Box, Button, Chip, IconButton, Tooltip, Typography } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import type { Counts, FilterState } from "../types";
 import { exportUrl } from "../api";
 import RunSalmonDialog from "./RunSalmonDialog";
@@ -10,9 +11,10 @@ interface Props {
   counts: Counts | null;
   filters: FilterState;
   loading: boolean;
+  onDisconnect: () => void;
 }
 
-export default function SummaryBar({ counts, filters, loading }: Props) {
+export default function SummaryBar({ counts, filters, loading, onDisconnect }: Props) {
   const [salmonOpen, setSalmonOpen] = useState(false);
 
   return (
@@ -28,9 +30,14 @@ export default function SummaryBar({ counts, filters, loading }: Props) {
         bgcolor: "grey.50",
       }}
     >
-      <Typography variant="h6" sx={{ fontWeight: 600, mr: 1 }}>
+      <Typography variant="h6" sx={{ fontWeight: 600 }}>
         Cohort Explorer
       </Typography>
+      <Tooltip title="Change datasource">
+        <IconButton size="small" onClick={onDisconnect} sx={{ ml: -1 }}>
+          <SwapHorizIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
       {loading ? (
         <Typography variant="body2" color="text.secondary">
           Loading...

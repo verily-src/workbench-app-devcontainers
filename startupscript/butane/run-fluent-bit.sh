@@ -93,7 +93,7 @@ case "${CLOUD}" in
     azure)
         echo "Fetching instance metadata from Azure metadata service..."
         nonce=$(date -d "+5 minutes" +%s)
-        TOKEN=$(curl -sH Metadata:true "http://169.254.169.254/metadata/attested/document?nonce=$nonce" -X PUT)
+        TOKEN=$(curl -sH Metadata:true "http://169.254.169.254/metadata/attested/document?api-version=2025-04-07&nonce=$nonce" | jq -r .signature)
         readonly TOKEN # currently unused, see below
 
         # For now, we fetch these values from instance tags;

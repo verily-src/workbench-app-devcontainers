@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, Tooltip, Typography } from "@mui/material";
 import { computeBoxPlotStats } from "../../utils/chartData";
 
 const BOX_COLOR = "#087a6a";
@@ -30,46 +30,52 @@ export default function BoxPlotChart({ values }: Props) {
     return ((v - domainMin) / range) * 100;
   }
 
-  const boxLeft = toPercent(stats.q1);
-  const boxRight = toPercent(stats.q3);
-  const boxWidth = boxRight - boxLeft;
-  const medianPos = toPercent(stats.median);
-  const minPos = toPercent(stats.min);
-  const maxPos = toPercent(stats.max);
-
   const ticks = [stats.min, stats.q1, stats.median, stats.q3, stats.max];
   const uniqueTicks = [...new Set(ticks.map((t) => t.toFixed(1)))];
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", justifyContent: "center", px: 3, py: 2 }}>
-      <svg width="100%" height="80" viewBox="0 0 100 40" preserveAspectRatio="none">
-        {/* Whisker line: min to max */}
-        <line x1={minPos} y1={20} x2={maxPos} y2={20} stroke={WHISKER_COLOR} strokeWidth={0.5} />
+      <svg width="100%" height="80" viewBox="0 0 100 40" preserveAspectRatio="none" style={{ overflow: "visible" }}>
+        {/* Whisker line */}
+        <line x1={toPercent(stats.min)} y1={20} x2={toPercent(stats.max)} y2={20} stroke={WHISKER_COLOR} strokeWidth={0.5}>
+          <title>Range: {stats.min.toFixed(2)} – {stats.max.toFixed(2)}</title>
+        </line>
 
-        {/* Min whisker cap */}
-        <line x1={minPos} y1={12} x2={minPos} y2={28} stroke={WHISKER_COLOR} strokeWidth={0.5} />
+        {/* Min cap */}
+        <Tooltip title={`Min: ${stats.min.toFixed(2)}`} arrow>
+          <line x1={toPercent(stats.min)} y1={12} x2={toPercent(stats.min)} y2={28} stroke={WHISKER_COLOR} strokeWidth={0.5} style={{ cursor: "default" }} />
+        </Tooltip>
 
-        {/* Max whisker cap */}
-        <line x1={maxPos} y1={12} x2={maxPos} y2={28} stroke={WHISKER_COLOR} strokeWidth={0.5} />
+        {/* Max cap */}
+        <Tooltip title={`Max: ${stats.max.toFixed(2)}`} arrow>
+          <line x1={toPercent(stats.max)} y1={12} x2={toPercent(stats.max)} y2={28} stroke={WHISKER_COLOR} strokeWidth={0.5} style={{ cursor: "default" }} />
+        </Tooltip>
 
         {/* IQR box */}
-        <rect
-          x={boxLeft}
-          y={8}
-          width={boxWidth}
-          height={24}
-          fill={BOX_COLOR}
-          fillOpacity={0.25}
-          stroke={WHISKER_COLOR}
-          strokeWidth={0.5}
-        />
+        <Tooltip title={`Q1: ${stats.q1.toFixed(2)}, Q3: ${stats.q3.toFixed(2)}, IQR: ${(stats.q3 - stats.q1).toFixed(2)}`} arrow>
+          <rect
+            x={toPercent(stats.q1)}
+            y={8}
+            width={toPercent(stats.q3) - toPercent(stats.q1)}
+            height={24}
+            fill={BOX_COLOR}
+            fillOpacity={0.25}
+            stroke={WHISKER_COLOR}
+            strokeWidth={0.5}
+            style={{ cursor: "default" }}
+          />
+        </Tooltip>
 
-        {/* Median line */}
-        <line x1={medianPos} y1={8} x2={medianPos} y2={32} stroke={WHISKER_COLOR} strokeWidth={1} />
+        {/* Median */}
+        <Tooltip title={`Median: ${stats.median.toFixed(2)}`} arrow>
+          <line x1={toPercent(stats.median)} y1={8} x2={toPercent(stats.median)} y2={32} stroke={WHISKER_COLOR} strokeWidth={1} style={{ cursor: "default" }} />
+        </Tooltip>
 
         {/* Outliers */}
         {stats.outliers.map((o, i) => (
-          <circle key={i} cx={toPercent(o)} cy={20} r={1.5} fill={OUTLIER_COLOR} stroke={WHISKER_COLOR} strokeWidth={0.3} />
+          <Tooltip key={i} title={`Outlier: ${o.toFixed(2)}`} arrow>
+            <circle cx={toPercent(o)} cy={20} r={1.5} fill={OUTLIER_COLOR} stroke={WHISKER_COLOR} strokeWidth={0.3} style={{ cursor: "default" }} />
+          </Tooltip>
         ))}
       </svg>
 

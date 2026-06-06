@@ -161,7 +161,7 @@ export default function App() {
     setError(null);
     setLoading(true);
     initialized.current = false;
-    clearSavedState();
+    localStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const handleChartFilter = useCallback(

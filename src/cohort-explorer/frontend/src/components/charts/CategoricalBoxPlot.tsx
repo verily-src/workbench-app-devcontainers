@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import type { SampleRow } from "../../types";
 import { computeBoxPlotStats } from "../../utils/chartData";
@@ -21,7 +21,15 @@ interface CategoryStats {
   stats: BoxPlotStats;
 }
 
+interface HoverInfo {
+  label: string;
+  x: number;
+  y: number;
+}
+
 export default function CategoricalBoxPlot({ rows, catField, numField, catLabel, numLabel }: Props) {
+  const [hover, setHover] = useState<HoverInfo | null>(null);
+
   const categories = useMemo(() => {
     const catKey = catField as keyof SampleRow;
     const numKey = numField as keyof SampleRow;
@@ -67,7 +75,7 @@ export default function CategoricalBoxPlot({ rows, catField, numField, catLabel,
   const rowHeight = Math.max(20, Math.min(40, 300 / categories.length));
 
   return (
-    <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 2, py: 1 }}>
+    <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", px: 2, py: 1, position: "relative" }}>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: "block" }}>
         {numLabel} by {catLabel}
       </Typography>
@@ -82,22 +90,32 @@ export default function CategoricalBoxPlot({ rows, catField, numField, catLabel,
               {category}
             </Typography>
             <Box sx={{ flex: 1, position: "relative", height: "100%" }}>
-              <svg width="100%" height="100%" preserveAspectRatio="none">
+              <svg width="100%" height="100%" preserveAspectRatio="none" style={{ overflow: "visible" }}>
+                {/* Whisker line */}
                 <line
                   x1={`${toPercent(stats.min)}%`} y1="50%"
                   x2={`${toPercent(stats.max)}%`} y2="50%"
                   stroke={WHISKER_COLOR} strokeWidth={1}
                 />
+                {/* Min cap */}
                 <line
                   x1={`${toPercent(stats.min)}%`} y1="25%"
                   x2={`${toPercent(stats.min)}%`} y2="75%"
                   stroke={WHISKER_COLOR} strokeWidth={1}
+                  onMouseEnter={(e) => setHover({ label: `Min: ${stats.min.toFixed(2)}`, x: e.clientX, y: e.clientY })}
+                  onMouseLeave={() => setHover(null)}
+                  style={{ cursor: "default" }}
                 />
+                {/* Max cap */}
                 <line
                   x1={`${toPercent(stats.max)}%`} y1="25%"
                   x2={`${toPercent(stats.max)}%`} y2="75%"
                   stroke={WHISKER_COLOR} strokeWidth={1}
+                  onMouseEnter={(e) => setHover({ label: `Max: ${stats.max.toFixed(2)}`, x: e.clientX, y: e.clientY })}
+                  onMouseLeave={() => setHover(null)}
+                  style={{ cursor: "default" }}
                 />
+                {/* IQR box */}
                 <rect
                   x={`${toPercent(stats.q1)}%`}
                   y="15%"
@@ -107,12 +125,23 @@ export default function CategoricalBoxPlot({ rows, catField, numField, catLabel,
                   fillOpacity={0.25}
                   stroke={WHISKER_COLOR}
                   strokeWidth={1}
+                  onMouseEnter={(e) => setHover({
+                    label: `${category}: Q1=${stats.q1.toFixed(2)}, Med=${stats.median.toFixed(2)}, Q3=${stats.q3.toFixed(2)}, n=${stats.count}`,
+                    x: e.clientX, y: e.clientY,
+                  })}
+                  onMouseLeave={() => setHover(null)}
+                  style={{ cursor: "default" }}
                 />
+                {/* Median */}
                 <line
                   x1={`${toPercent(stats.median)}%`} y1="15%"
                   x2={`${toPercent(stats.median)}%`} y2="85%"
                   stroke={WHISKER_COLOR} strokeWidth={2}
+                  onMouseEnter={(e) => setHover({ label: `Median: ${stats.median.toFixed(2)}`, x: e.clientX, y: e.clientY })}
+                  onMouseLeave={() => setHover(null)}
+                  style={{ cursor: "default" }}
                 />
+                {/* Outliers */}
                 {stats.outliers.map((o, i) => (
                   <circle
                     key={i}
@@ -122,6 +151,9 @@ export default function CategoricalBoxPlot({ rows, catField, numField, catLabel,
                     fill={OUTLIER_COLOR}
                     stroke={WHISKER_COLOR}
                     strokeWidth={0.5}
+                    onMouseEnter={(e) => setHover({ label: `Outlier: ${o.toFixed(2)}`, x: e.clientX, y: e.clientY })}
+                    onMouseLeave={() => setHover(null)}
+                    style={{ cursor: "default" }}
                   />
                 ))}
               </svg>
@@ -129,6 +161,26 @@ export default function CategoricalBoxPlot({ rows, catField, numField, catLabel,
           </Box>
         ))}
       </Box>
+      {hover && (
+        <Box
+          sx={{
+            position: "fixed",
+            left: hover.x + 12,
+            top: hover.y - 10,
+            bgcolor: "rgba(0,0,0,0.8)",
+            color: "white",
+            px: 1,
+            py: 0.5,
+            borderRadius: 1,
+            fontSize: 11,
+            pointerEvents: "none",
+            zIndex: 1500,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {hover.label}
+        </Box>
+      )}
     </Box>
   );
 }

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -7,10 +8,13 @@ import {
   Checkbox,
   Chip,
   FormControlLabel,
+  InputAdornment,
   Slider,
+  TextField,
   Typography,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import SearchIcon from "@mui/icons-material/Search";
 import type { FilterOption, FilterState, FiltersResponse, RangeFilter } from "../types";
 import { EMPTY_FILTERS } from "../types";
 
@@ -28,12 +32,19 @@ function CategoricalFilter({
   options,
   selected,
   onToggle,
+  searchable = false,
 }: {
   label: string;
   options: FilterOption[];
   selected: string[];
   onToggle: (value: string) => void;
+  searchable?: boolean;
 }) {
+  const [search, setSearch] = useState("");
+  const filtered = searchable && search
+    ? options.filter((opt) => opt.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
   return (
     <Accordion defaultExpanded={label === "Tissue Type"} disableGutters>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -44,28 +55,53 @@ function CategoricalFilter({
           <Chip label={selected.length} size="small" color="primary" sx={{ ml: 1 }} />
         )}
       </AccordionSummary>
-      <AccordionDetails sx={{ pt: 0, maxHeight: 240, overflow: "auto" }}>
-        {options.map((opt) => (
-          <FormControlLabel
-            key={opt.value}
-            sx={{ display: "flex", mx: 0 }}
-            control={
-              <Checkbox
-                size="small"
-                checked={selected.includes(opt.value)}
-                onChange={() => onToggle(opt.value)}
-              />
-            }
-            label={
-              <Typography variant="body2">
-                {opt.label}{" "}
-                <Typography component="span" variant="caption" color="text.secondary">
-                  ({opt.count})
-                </Typography>
-              </Typography>
-            }
+      <AccordionDetails sx={{ pt: 0, display: "flex", flexDirection: "column", maxHeight: 300, overflow: "hidden" }}>
+        {searchable && (
+          <TextField
+            size="small"
+            placeholder={`Search ${label.toLowerCase()}...`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" color="action" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+            sx={{ mb: 1, flexShrink: 0 }}
           />
-        ))}
+        )}
+        <Box sx={{ overflow: "auto", flex: 1 }}>
+          {filtered.map((opt) => (
+            <FormControlLabel
+              key={opt.value}
+              sx={{ display: "flex", mx: 0 }}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={selected.includes(opt.value)}
+                  onChange={() => onToggle(opt.value)}
+                />
+              }
+              label={
+                <Typography variant="body2">
+                  {opt.label}{" "}
+                  <Typography component="span" variant="caption" color="text.secondary">
+                    ({opt.count})
+                  </Typography>
+                </Typography>
+              }
+            />
+          ))}
+          {searchable && search && filtered.length === 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+              No matches
+            </Typography>
+          )}
+        </Box>
       </AccordionDetails>
     </Accordion>
   );
@@ -156,12 +192,14 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
         options={available.tissue_type}
         selected={filters.tissue_type}
         onToggle={(v) => toggleCategorical("tissue_type", v)}
+        searchable
       />
       <CategoricalFilter
         label="Tissue Detail"
         options={available.tissue_type_detail}
         selected={filters.tissue_type_detail}
         onToggle={(v) => toggleCategorical("tissue_type_detail", v)}
+        searchable
       />
       <CategoricalFilter
         label="Autolysis Score"

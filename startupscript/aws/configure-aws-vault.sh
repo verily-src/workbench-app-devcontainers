@@ -38,7 +38,7 @@ export AWS_VAULT_FILE_PASSPHRASE=""
 # do not use.
 export DBUS_SESSION_BUS_ADDRESS="/dev/null"
 
-if [ "$1" = "export" ]; then
+if [ "\$1" = "export" ]; then
   # Use a lock to prevent multiple aws-vault processes from attempting to
   # retrieve credentials from wb at the same time
   exec 200>/var/lock/aws-vault.lock

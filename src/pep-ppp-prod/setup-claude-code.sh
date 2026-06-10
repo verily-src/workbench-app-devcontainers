@@ -57,5 +57,3 @@ EOF
 
 mkdir -p /config/data/User
 echo '{"workbench.colorTheme":"Default Dark Modern"}' > /config/data/User/settings.json
-
-gcloud auth login --update-adc

@@ -4,7 +4,7 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "./startupscript/post-startup.sh root /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh root",
+  "postCreateCommand": "./startupscript/post-startup.sh root /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh root; ./setup-claude-code.sh",
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
     "root",
@@ -28,7 +28,8 @@
     },
     "ghcr.io/devcontainers/features/python:1": {
       "version": "3.12"
-    }
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
   "remoteUser": "root",
   "customizations": {

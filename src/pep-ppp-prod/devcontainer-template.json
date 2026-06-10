@@ -16,7 +16,7 @@
       "type": "string",
       "description": "Whether to log in to workbench CLI",
       "proposals": ["true", "false"],
-      "default": "false"
+      "default": "true"
     }
   },
   "platforms": ["Any"]

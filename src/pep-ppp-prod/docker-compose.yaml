@@ -6,11 +6,11 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/ubuntu:cached
+      - work:/home/vscode:cached
     ports:
-      - "8080:8080"
+      - "8443:8443"
     environment:
-      USER: "root"
+      USER: "abc"
       DEFAULT_WORKSPACE: "/config"
       SUDO_PASSWORD: "pwd"
     networks:

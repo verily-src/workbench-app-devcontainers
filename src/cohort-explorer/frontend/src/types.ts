@@ -14,6 +14,8 @@ export interface SampleRow {
   tissue_location: string | null;
   bss_collection_site: string | null;
   original_material_type: string | null;
+  pathology_notes: string | null;
+  prosector_comments: string | null;
   srr_id: string | null;
   fastq1_path: string | null;
   fastq2_path: string | null;

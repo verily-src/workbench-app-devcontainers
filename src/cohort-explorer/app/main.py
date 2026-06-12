@@ -168,6 +168,8 @@ def get_samples(
             "tissue_location": s.tissue_location,
             "bss_collection_site": s.bss_collection_site,
             "original_material_type": s.original_material_type,
+            "pathology_notes": s.pathology_notes,
+            "prosector_comments": s.prosector_comments,
             "srr_id": s.srr_id,
             "fastq1_path": s.fastq1_path,
             "fastq2_path": s.fastq2_path,

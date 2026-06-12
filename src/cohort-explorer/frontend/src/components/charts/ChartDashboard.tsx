@@ -41,7 +41,7 @@ export default function ChartDashboard({
         ))}
       </Box>
       <Box sx={{ display: "flex", justifyContent: "center", py: 1 }}>
-        <AddChartButton onAdd={onAddChart} />
+        <AddChartButton onAdd={onAddChart} usedFields={new Set(chartConfigs.map((c) => c.fieldKey))} />
       </Box>
     </Box>
   );

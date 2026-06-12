@@ -36,8 +36,10 @@ FILTERABLE_CATEGORICAL = [
 FILTERABLE_RANGE = ["rin_number", "total_ischemic_time", "paxgene_time"]
 
 
-def _apply_filters(stmt, params: dict):
+def _apply_filters(stmt, params: dict, exclude: str | None = None):
     for col_name in FILTERABLE_CATEGORICAL:
+        if col_name == exclude:
+            continue
         values = params.get(col_name)
         if values:
             col = getattr(Sample, col_name)
@@ -179,16 +181,16 @@ def get_filters(
     filters: dict = Depends(_extract_filter_params),
     db: Session = Depends(get_db),
 ) -> dict:
-    base_stmt = select(Sample)
-    base_stmt = _apply_filters(base_stmt, filters)
-    filtered_ids = base_stmt.with_only_columns(Sample.id).subquery()
-
     result: dict = {}
     for col_name in FILTERABLE_CATEGORICAL:
+        cross_stmt = select(Sample)
+        cross_stmt = _apply_filters(cross_stmt, filters, exclude=col_name)
+        cross_ids = cross_stmt.with_only_columns(Sample.id).subquery()
+
         col = getattr(Sample, col_name)
         values_stmt = (
             select(col, func.count(Sample.id))
-            .where(Sample.id.in_(select(filtered_ids.c.id)))
+            .where(Sample.id.in_(select(cross_ids.c.id)))
             .group_by(col)
             .order_by(col)
         )
@@ -201,6 +203,10 @@ def get_filters(
                 "count": cnt,
             })
         result[col_name] = options
+
+    all_stmt = select(Sample)
+    all_stmt = _apply_filters(all_stmt, filters)
+    filtered_ids = all_stmt.with_only_columns(Sample.id).subquery()
 
     for col_name in FILTERABLE_RANGE:
         col = getattr(Sample, col_name)

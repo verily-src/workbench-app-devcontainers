@@ -6,9 +6,10 @@ import { FIELD_META } from "../../types";
 
 interface Props {
   onAdd: (fieldKey: string, chartType?: ChartType, field2Key?: string) => void;
+  usedFields: Set<string>;
 }
 
-export default function AddChartButton({ onAdd }: Props) {
+export default function AddChartButton({ onAdd, usedFields }: Props) {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const categoricalFields = FIELD_META.filter((f) => f.dataType === "categorical");
@@ -32,13 +33,13 @@ export default function AddChartButton({ onAdd }: Props) {
       >
         <ListSubheader>Categorical</ListSubheader>
         {categoricalFields.map((f) => (
-          <MenuItem key={f.key} onClick={() => { onAdd(f.key); setAnchorEl(null); }}>
+          <MenuItem key={f.key} disabled={usedFields.has(f.key)} onClick={() => { onAdd(f.key); setAnchorEl(null); }}>
             <ListItemText primary={f.label} />
           </MenuItem>
         ))}
         <ListSubheader>Numeric</ListSubheader>
         {numericFields.map((f) => (
-          <MenuItem key={f.key} onClick={() => { onAdd(f.key); setAnchorEl(null); }}>
+          <MenuItem key={f.key} disabled={usedFields.has(f.key)} onClick={() => { onAdd(f.key); setAnchorEl(null); }}>
             <ListItemText primary={f.label} />
           </MenuItem>
         ))}

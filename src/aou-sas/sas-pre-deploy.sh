@@ -15,7 +15,9 @@ set -o pipefail
 # Data directories (on the sas-data volume)
 ###############################################################################
 mkdir -p /data/saswork /data/utilloc
-chown -R aou:aougroup /data
+# Chown only the directories we manage, not /data/workspace (contains gcsfuse mounts)
+chown aou:aougroup /data
+chown -R aou:aougroup /data/saswork /data/utilloc
 
 ###############################################################################
 # AoU environment loader (staged in Dockerfile at /opt/sas/aou/)

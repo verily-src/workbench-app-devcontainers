@@ -1,9 +1,9 @@
 {
-  "id": "cricket-annotation-tool",
+  "id": "glyph",
   "version": "1.0.0",
-  "name": "Cricket Annotation Tool",
-  "description": "Lightweight annotation tool for cricket action detection with bounding boxes",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/cricket-annotation-tool",
+  "name": "Glyph Annotation Tool",
+  "description": "Lightweight annotation tool for image labeling with bounding boxes",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/glyph",
   "options": {
     "imageTag": {
       "type": "string",

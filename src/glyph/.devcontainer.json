@@ -1,5 +1,5 @@
 {
-  "name": "Cricket Annotation Tool",
+  "name": "Glyph",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "workspaceFolder": "/workspace",
@@ -7,8 +7,8 @@
   "customizations": {
     "workbench": {
       "welcomePage": {
-        "title": "Cricket Annotation Tool",
-        "description": "Lightweight annotation tool for cricket action detection"
+        "title": "Glyph Annotation Tool",
+        "description": "Lightweight annotation tool for image labeling"
       }
     }
   }

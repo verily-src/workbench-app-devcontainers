@@ -90,15 +90,21 @@ export default function SummaryBar({
           <TableRowsIcon fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Button
-        variant="outlined"
-        size="small"
-        startIcon={<PlayArrowIcon />}
-        onClick={() => setSalmonOpen(true)}
-        disabled={!counts || counts.fastq_pairs === 0}
+      <Tooltip
+        title={counts && counts.fastq_pairs === 0 ? "No samples with FASTQ paths in current filter" : ""}
       >
-        Run Salmon
-      </Button>
+        <span>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<PlayArrowIcon />}
+            onClick={() => setSalmonOpen(true)}
+            disabled={!counts || counts.fastq_pairs === 0}
+          >
+            Run Salmon
+          </Button>
+        </span>
+      </Tooltip>
       <Button
         variant="contained"
         size="small"

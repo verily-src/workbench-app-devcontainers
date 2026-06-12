@@ -47,7 +47,9 @@ export default function PieChartView({ data, selected, onSliceClick }: Props) {
               <Cell
                 key={entry.value}
                 fill={PALETTE[i % PALETTE.length]}
-                opacity={hasSelection && !selected.includes(entry.value) ? 0.3 : 1}
+                opacity={hasSelection && !selected.includes(entry.value) ? 0.35 : 1}
+                stroke={hasSelection && selected.includes(entry.value) ? "#054f45" : "none"}
+                strokeWidth={hasSelection && selected.includes(entry.value) ? 2 : 0}
               />
             ))}
           </Pie>

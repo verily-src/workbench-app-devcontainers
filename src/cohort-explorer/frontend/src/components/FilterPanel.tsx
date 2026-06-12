@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -163,8 +163,24 @@ function RangeFilterControl({
   );
 }
 
+const RANGE_KEYS = ["rin_number", "total_ischemic_time", "paxgene_time"] as const;
+
 export default function FilterPanel({ available, filters, onChange, dirty, onApply, onReset }: Props) {
+  const globalRanges = useRef<Record<string, RangeFilter>>({});
+
+  useEffect(() => {
+    if (!available) return;
+    for (const key of RANGE_KEYS) {
+      if (!(key in globalRanges.current) && available[key].min !== null) {
+        globalRanges.current[key] = { ...available[key] };
+      }
+    }
+  }, [available]);
+
   if (!available) return null;
+
+  const rangeFor = (key: string): RangeFilter =>
+    globalRanges.current[key] ?? available[key as keyof FiltersResponse] as RangeFilter;
 
   const toggleCategorical = (field: keyof FilterState, value: string) => {
     const current = filters[field] as string[];
@@ -222,7 +238,7 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
 
       <RangeFilterControl
         label="RIN Number"
-        range={available.rin_number}
+        range={rangeFor("rin_number")}
         currentMin={filters.rin_number_min}
         currentMax={filters.rin_number_max}
         onChange={(min, max) =>
@@ -232,7 +248,7 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
       />
       <RangeFilterControl
         label="Ischemic Time (min)"
-        range={available.total_ischemic_time}
+        range={rangeFor("total_ischemic_time")}
         currentMin={filters.total_ischemic_time_min}
         currentMax={filters.total_ischemic_time_max}
         onChange={(min, max) =>
@@ -246,7 +262,7 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
       />
       <RangeFilterControl
         label="PAXgene Time (min)"
-        range={available.paxgene_time}
+        range={rangeFor("paxgene_time")}
         currentMin={filters.paxgene_time_min}
         currentMax={filters.paxgene_time_max}
         onChange={(min, max) =>

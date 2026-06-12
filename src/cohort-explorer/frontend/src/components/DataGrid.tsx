@@ -35,6 +35,8 @@ export default function DataGrid({ rows, loading, error }: Props) {
       { field: "bss_collection_site", headerName: "BSS Site", width: 100 },
       { field: "paxgene_time", headerName: "PAXgene (min)", width: 120, type: "numericColumn" },
       { field: "original_material_type", headerName: "Orig. Material", width: 180 },
+      { field: "pathology_notes", headerName: "Pathology Notes", width: 300 },
+      { field: "prosector_comments", headerName: "Prosector Comments", width: 300 },
     ],
     [],
   );

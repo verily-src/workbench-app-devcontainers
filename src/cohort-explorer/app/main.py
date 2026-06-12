@@ -269,19 +269,12 @@ def export_csv(
     stmt = stmt.order_by(Sample.tissue_type, Sample.gtex_sample_id)
     rows = db.execute(stmt).scalars().all()
 
+    columns = [c.key for c in Sample.__table__.columns if c.key != "id"]
+
     output = io.StringIO()
-    header = ["subject_id", "gtex_sample_id", "tissue_type", "tissue_type_detail", "fastq1_path", "fastq2_path", "srr_id"]
-    output.write("\t".join(header) + "\n")
+    output.write("\t".join(columns) + "\n")
     for s in rows:
-        vals = [
-            s.subject_id or "",
-            s.gtex_sample_id or "",
-            s.tissue_type or "",
-            s.tissue_type_detail or "",
-            s.fastq1_path or "",
-            s.fastq2_path or "",
-            s.srr_id or "",
-        ]
+        vals = [str(getattr(s, col) or "") for col in columns]
         output.write("\t".join(vals) + "\n")
 
     output.seek(0)

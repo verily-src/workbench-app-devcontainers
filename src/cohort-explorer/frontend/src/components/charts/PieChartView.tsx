@@ -10,8 +10,6 @@ import {
 } from "recharts";
 import type { FilterOption } from "../../types";
 
-const SELECTED_COLOR = "#087a6a";
-const UNSELECTED_COLOR = "#84bdb5";
 const PALETTE = [
   "#087a6a", "#0a9e89", "#3bb09e", "#6bc4b5", "#84bdb5",
   "#074D43", "#0b6b5c", "#4da396", "#96d4cb", "#b5e2dc",
@@ -48,13 +46,8 @@ export default function PieChartView({ data, selected, onSliceClick }: Props) {
             {sorted.map((entry, i) => (
               <Cell
                 key={entry.value}
-                fill={
-                  hasSelection
-                    ? selected.includes(entry.value)
-                      ? SELECTED_COLOR
-                      : UNSELECTED_COLOR
-                    : PALETTE[i % PALETTE.length]
-                }
+                fill={PALETTE[i % PALETTE.length]}
+                opacity={hasSelection && !selected.includes(entry.value) ? 0.3 : 1}
               />
             ))}
           </Pie>

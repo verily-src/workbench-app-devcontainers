@@ -12,9 +12,10 @@ import {
 } from "recharts";
 import type { FilterOption } from "../../types";
 
-const SELECTED_COLOR = "#087a6a";
-const UNSELECTED_COLOR = "#84bdb5";
-const DEFAULT_COLOR = "#087a6a";
+const PALETTE = [
+  "#087a6a", "#0a9e89", "#3bb09e", "#6bc4b5", "#84bdb5",
+  "#074D43", "#0b6b5c", "#4da396", "#96d4cb", "#b5e2dc",
+];
 
 interface Props {
   data: FilterOption[];
@@ -53,16 +54,11 @@ export default function CategoricalBarChart({ data, selected, onBarClick }: Prop
             onClick={(_data, index) => onBarClick(sorted[index].value)}
             radius={[0, 3, 3, 0]}
           >
-            {sorted.map((entry) => (
+            {sorted.map((entry, i) => (
               <Cell
                 key={entry.value}
-                fill={
-                  hasSelection
-                    ? selected.includes(entry.value)
-                      ? SELECTED_COLOR
-                      : UNSELECTED_COLOR
-                    : DEFAULT_COLOR
-                }
+                fill={PALETTE[i % PALETTE.length]}
+                opacity={hasSelection && !selected.includes(entry.value) ? 0.3 : 1}
               />
             ))}
           </Bar>

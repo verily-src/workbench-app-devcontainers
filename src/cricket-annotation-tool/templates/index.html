@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cricket Annotation Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>🏏 Cricket Annotation Tool</h1>
+            <div class="stats">
+                <span id="stats-pending">Pending: 0</span>
+                <span id="stats-completed">Completed: 0</span>
+                <span id="stats-total">Total: 0</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Panel: Task List -->
+            <aside class="task-list">
+                <h2>Tasks</h2>
+                <button id="load-tasks-btn" class="btn btn-primary">Load Tasks</button>
+                <div id="tasks-container"></div>
+            </aside>
+
+            <!-- Center Panel: Image & Annotation -->
+            <section class="annotation-workspace">
+                <div id="no-task-message" class="message">
+                    Select a task from the left to start annotating
+                </div>
+
+                <div id="annotation-area" style="display: none;">
+                    <!-- Task Info -->
+                    <div class="task-info">
+                        <span id="current-task-id"></span>
+                        <button id="skip-btn" class="btn btn-secondary">Skip</button>
+                    </div>
+
+                    <!-- Canvas Container -->
+                    <div class="canvas-container">
+                        <canvas id="annotation-canvas"></canvas>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="controls">
+                        <div class="label-buttons">
+                            <button class="label-btn" data-label="Batting" style="background: #FF6B6B;">Batting</button>
+                            <button class="label-btn" data-label="Bowling" style="background: #4ECDC4;">Bowling</button>
+                            <button class="label-btn" data-label="Fielding" style="background: #95E1D3;">Fielding</button>
+                            <button class="label-btn" data-label="Wicketkeeping" style="background: #FFE66D;">Wicketkeeping</button>
+                            <button class="label-btn" data-label="Ball" style="background: #00FF00;">Ball</button>
+                        </div>
+
+                        <div class="action-buttons">
+                            <button id="undo-btn" class="btn">↶ Undo</button>
+                            <button id="clear-btn" class="btn btn-warning">Clear All</button>
+                            <button id="submit-btn" class="btn btn-success">Submit</button>
+                        </div>
+                    </div>
+
+                    <!-- Instructions -->
+                    <div class="instructions">
+                        <p>📝 <strong>How to annotate:</strong></p>
+                        <ol>
+                            <li>Click a label button (Batting, Bowling, etc.)</li>
+                            <li>Draw a rectangle on the image by clicking and dragging</li>
+                            <li>Repeat for each player/object</li>
+                            <li>Click Submit when done</li>
+                        </ol>
+                        <p><strong>Shortcuts:</strong> 1-5 for labels | Z for undo | Enter to submit</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Annotations List -->
+            <aside class="annotations-list">
+                <h2>Annotations</h2>
+                <div id="annotations-container">
+                    <p class="message">No annotations yet</p>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+    <script src="{{ url_for('static', filename='js/annotator.js') }}"></script>
+</body>
+</html>

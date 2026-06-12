@@ -1,0 +1,14 @@
+{
+  "id": "cricket-annotation-tool",
+  "version": "1.0.0",
+  "name": "Cricket Annotation Tool",
+  "description": "Lightweight annotation tool for cricket action detection with bounding boxes",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/cricket-annotation-tool",
+  "options": {
+    "imageTag": {
+      "type": "string",
+      "description": "Python version",
+      "default": "3.11-slim"
+    }
+  }
+}

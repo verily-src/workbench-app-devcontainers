@@ -1,0 +1,289 @@
+/* Cricket Annotation Tool - Styling */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5;
+    color: #333;
+}
+
+.container {
+    max-width: 1800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+header {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+header h1 {
+    font-size: 24px;
+    color: #2c3e50;
+}
+
+.stats {
+    display: flex;
+    gap: 20px;
+}
+
+.stats span {
+    background: #ecf0f1;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* Main Content Layout */
+.main-content {
+    display: grid;
+    grid-template-columns: 250px 1fr 300px;
+    gap: 20px;
+    min-height: 600px;
+}
+
+/* Task List (Left Panel) */
+.task-list {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.task-list h2 {
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: #2c3e50;
+}
+
+.task-item {
+    background: #f8f9fa;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 4px solid #3498db;
+}
+
+.task-item:hover {
+    background: #e9ecef;
+    transform: translateX(5px);
+}
+
+.task-item strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.task-item span {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Annotation Workspace (Center Panel) */
+.annotation-workspace {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.message {
+    text-align: center;
+    color: #95a5a6;
+    padding: 100px 20px;
+    font-size: 18px;
+}
+
+.task-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #ecf0f1;
+}
+
+.task-info span {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.canvas-container {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#annotation-canvas {
+    border: 2px solid #ddd;
+    border-radius: 4px;
+}
+
+/* Controls */
+.controls {
+    margin-top: 20px;
+}
+
+.label-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.label-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.label-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.label-btn.active {
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.3);
+    transform: scale(1.05);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+/* Buttons */
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #3498db;
+    color: white;
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.btn-primary:hover {
+    background: #2980b9;
+}
+
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+}
+
+.btn-warning {
+    background: #f39c12;
+    color: white;
+}
+
+.btn-warning:hover {
+    background: #e67e22;
+}
+
+.btn-success {
+    background: #27ae60;
+    color: white;
+    flex: 1;
+}
+
+.btn-success:hover {
+    background: #229954;
+}
+
+/* Instructions */
+.instructions {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 4px solid #3498db;
+}
+
+.instructions p {
+    margin-bottom: 10px;
+}
+
+.instructions ol {
+    margin-left: 20px;
+    margin-bottom: 10px;
+}
+
+.instructions li {
+    margin-bottom: 5px;
+}
+
+/* Annotations List (Right Panel) */
+.annotations-list {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.annotations-list h2 {
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: #2c3e50;
+}
+
+.annotation-item {
+    background: #f8f9fa;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.annotation-item strong {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.annotation-item small {
+    font-size: 12px;
+    color: #666;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .main-content {
+        grid-template-columns: 1fr;
+    }
+
+    .task-list,
+    .annotations-list {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+}

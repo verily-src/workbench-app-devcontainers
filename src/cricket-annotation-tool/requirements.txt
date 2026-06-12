@@ -1,0 +1,20 @@
+# In-House Annotation Tool - Dependencies
+
+# Web framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Google Cloud
+google-cloud-bigquery==3.14.1
+google-cloud-storage==2.14.0
+google-auth==2.25.2
+
+# Data processing
+pandas==2.2.0
+
+# WSGI server (for production)
+gunicorn==21.2.0
+
+# Optional: For enhanced features
+# python-dotenv==1.0.0  # Environment variables
+# flask-cors==4.0.0     # If deploying separately from frontend

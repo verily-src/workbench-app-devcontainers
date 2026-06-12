@@ -1,0 +1,15 @@
+{
+  "name": "Cricket Annotation Tool",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "customizations": {
+    "workbench": {
+      "welcomePage": {
+        "title": "Cricket Annotation Tool",
+        "description": "Lightweight annotation tool for cricket action detection"
+      }
+    }
+  }
+}

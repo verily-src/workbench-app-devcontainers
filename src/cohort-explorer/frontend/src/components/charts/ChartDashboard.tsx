@@ -25,22 +25,20 @@ export default function ChartDashboard({
   onUpdateChart,
 }: Props) {
   return (
-    <Box sx={{ height: "100%", overflow: "auto", p: 1.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, flex: 1 }}>
-        {chartConfigs.map((config) => (
-          <ChartCard
-            key={config.id}
-            config={config}
-            available={available}
-            rows={rows}
-            applied={applied}
-            onChartFilter={onChartFilter}
-            onRemove={() => onRemoveChart(config.id)}
-            onUpdate={(updates) => onUpdateChart(config.id, updates)}
-          />
-        ))}
-      </Box>
-      <Box sx={{ display: "flex", justifyContent: "center", py: 1 }}>
+    <Box sx={{ height: "100%", overflow: "auto", p: 1.5, display: "flex", flexWrap: "wrap", gap: 1.5, alignContent: "flex-start" }}>
+      {chartConfigs.map((config) => (
+        <ChartCard
+          key={config.id}
+          config={config}
+          available={available}
+          rows={rows}
+          applied={applied}
+          onChartFilter={onChartFilter}
+          onRemove={() => onRemoveChart(config.id)}
+          onUpdate={(updates) => onUpdateChart(config.id, updates)}
+        />
+      ))}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: 120 }}>
         <AddChartButton onAdd={onAddChart} usedFields={new Set(chartConfigs.map((c) => c.fieldKey))} />
       </Box>
     </Box>

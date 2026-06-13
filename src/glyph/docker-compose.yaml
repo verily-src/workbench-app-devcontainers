@@ -1,18 +1,34 @@
-version: '3.8'
-
 services:
   app:
+    container_name: "application-server"
     image: python:3.11-slim
+    restart: always
     working_dir: /workspace
     command: >
       bash -c "
       pip install --no-cache-dir Flask Werkzeug google-cloud-bigquery google-cloud-storage &&
       python app_demo.py
       "
+    volumes:
+      - .:/workspace:cached
+      - work:/root/work
     ports:
-      - "80:8080"
+      - 8080:8080
+    networks:
+      - app-network
     environment:
       - PORT=8080
       - PYTHONUNBUFFERED=1
-    volumes:
-      - .:/workspace
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  app-network:
+    external: true

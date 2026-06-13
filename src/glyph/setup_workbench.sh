@@ -3,7 +3,7 @@
 
 set -e
 
-echo "🏏 Cricket Annotation Tool - Workbench Setup"
+echo "🏏 Glyph Annotation Tool - Workbench Setup"
 echo "============================================"
 echo ""
 
@@ -12,7 +12,7 @@ echo "📦 Installing dependencies..."
 pip install -q Flask Werkzeug
 
 # Check for images
-IMAGE_DIR="../data/cricket_images"
+IMAGE_DIR="../data/image_images"
 if [ -d "$IMAGE_DIR" ]; then
     IMAGE_COUNT=$(find $IMAGE_DIR -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.gif" \) 2>/dev/null | wc -l | tr -d ' ')
 
@@ -22,7 +22,7 @@ if [ -d "$IMAGE_DIR" ]; then
         echo "⚠️  No images found in $IMAGE_DIR"
         echo ""
         echo "Add images via:"
-        echo "  1. Workbench UI: Upload button → data/cricket_images/"
+        echo "  1. Workbench UI: Upload button → data/image_images/"
         echo "  2. GCS: gsutil cp gs://bucket/* $IMAGE_DIR/"
         echo ""
         read -p "Continue anyway? (y/n): " continue

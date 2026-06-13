@@ -26,10 +26,10 @@
 4. **Setup your data**
    ```bash
    # Option A: Upload images via UI
-   # Click Upload button → upload your cricket images to data/cricket_images/
+   # Click Upload button → upload your images to data/images/
    
    # Option B: Download from GCS
-   gsutil cp gs://your-bucket/cricket-images/* ../data/cricket_images/
+   gsutil cp gs://your-bucket/images/* ../data/images/
    ```
 
 5. **Run the app**
@@ -60,7 +60,7 @@ os.chdir('/home/jupyter/verily1/inhouse_annotation_tool')
 ### Cell 2: Check images
 ```python
 # List available images
-!ls -lh ../data/cricket_images/
+!ls -lh ../data/images/
 ```
 
 ### Cell 3: Start server
@@ -103,8 +103,8 @@ cd ~/verily1/inhouse_annotation_tool
 
 # Set your GCP project
 export GCP_PROJECT_ID="your-verily-project-id"
-export BQ_DATASET="cricket_annotations"
-export GCS_BUCKET="your-cricket-images-bucket"
+export BQ_DATASET="annotations"
+export GCS_BUCKET="your-images-bucket"
 
 # Create tables
 ./setup_bigquery.sh
@@ -114,17 +114,17 @@ export GCS_BUCKET="your-cricket-images-bucket"
 
 ```bash
 # Upload from local
-gsutil cp /path/to/images/* gs://${GCS_BUCKET}/cricket/
+gsutil cp /path/to/images/* gs://${GCS_BUCKET}/images/
 
 # Or if images are in Workbench
-gsutil cp ~/data/cricket_images/* gs://${GCS_BUCKET}/cricket/
+gsutil cp ~/data/images/* gs://${GCS_BUCKET}/images/
 ```
 
 ### Step 3: Load Tasks to BigQuery
 
 ```bash
 python scripts/load_tasks.py \
-  --gcs-prefix gs://${GCS_BUCKET}/cricket/ \
+  --gcs-prefix gs://${GCS_BUCKET}/images/ \
   --project-id ${GCP_PROJECT_ID} \
   --dataset ${BQ_DATASET}
 ```
@@ -154,10 +154,10 @@ PORT=8082 python app_demo.py
 
 ```bash
 # Check image directory exists
-ls -la ../data/cricket_images/
+ls -la ../data/images/
 
 # Check permissions
-chmod 644 ../data/cricket_images/*
+chmod 644 ../data/images/*
 ```
 
 ### Can't Access Web UI
@@ -215,7 +215,7 @@ pip install -q Flask Werkzeug google-cloud-bigquery google-cloud-storage
 
 # 2. Check for images
 echo "2. Checking for images..."
-IMAGE_DIR="../data/cricket_images"
+IMAGE_DIR="../data/images"
 if [ -d "$IMAGE_DIR" ] && [ "$(ls -A $IMAGE_DIR)" ]; then
     IMAGE_COUNT=$(ls -1 $IMAGE_DIR/*.{jpg,jpeg,png,gif} 2>/dev/null | wc -l)
     echo "   ✓ Found $IMAGE_COUNT images"
@@ -258,7 +258,7 @@ else
     read -p "   GCS Bucket (without gs://): " GCS_BUCKET
     
     export GCP_PROJECT_ID=$PROJECT_ID
-    export BQ_DATASET="cricket_annotations"
+    export BQ_DATASET="annotations"
     export GCS_BUCKET=$GCS_BUCKET
     
     echo ""
@@ -268,7 +268,7 @@ else
     echo ""
     echo "Loading tasks from GCS..."
     python scripts/load_tasks.py \
-      --gcs-prefix gs://${GCS_BUCKET}/cricket/ \
+      --gcs-prefix gs://${GCS_BUCKET}/images/ \
       --project-id ${PROJECT_ID} \
       --dataset ${BQ_DATASET}
     
@@ -354,7 +354,7 @@ from IPython.display import IFrame, display, HTML
 
 # Display annotation tool inline
 display(HTML(f'''
-    <h3>Cricket Annotation Tool</h3>
+    <h3>Glyph Annotation Tool</h3>
     <iframe src="/proxy/8080/" width="100%" height="800px"></iframe>
 '''))
 ```
@@ -365,7 +365,7 @@ Or as a link:
 from IPython.display import HTML, display
 
 display(HTML('''
-    <h2>🏏 Cricket Annotation Tool</h2>
+    <h2>Glyph Annotation Tool</h2>
     <a href="/proxy/8080/" target="_blank" style="
         display: inline-block;
         padding: 15px 30px;

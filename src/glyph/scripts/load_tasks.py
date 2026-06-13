@@ -125,7 +125,7 @@ if __name__ == '__main__':
     parser.add_argument('--csv', help='CSV file with tasks')
     parser.add_argument('--gcs-prefix', help='GCS prefix to scan for images')
     parser.add_argument('--project-id', default='your-project-id', help='GCP project ID')
-    parser.add_argument('--dataset', default='cricket_annotations', help='BigQuery dataset')
+    parser.add_argument('--dataset', default='image_annotations', help='BigQuery dataset')
     parser.add_argument('--task-type', default='bbox', help='Task type')
     parser.add_argument('--labels', nargs='+', help='Labels for the task')
 

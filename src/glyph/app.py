@@ -18,8 +18,8 @@ app = Flask(__name__)
 
 # Configuration
 GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID', 'your-project-id')
-BQ_DATASET = os.getenv('BQ_DATASET', 'cricket_annotations')
-GCS_BUCKET = os.getenv('GCS_BUCKET', 'cricket-images')
+BQ_DATASET = os.getenv('BQ_DATASET', 'image_annotations')
+GCS_BUCKET = os.getenv('GCS_BUCKET', 'image-images')
 
 # Initialize clients
 bq_client = bigquery.Client(project=GCP_PROJECT_ID)

@@ -34,7 +34,7 @@ def export_to_coco(project_id, dataset, output_path):
 
     coco = {
         'info': {
-            'description': 'Cricket Action Annotations',
+            'description': 'Glyph Action Annotations',
             'version': '1.0',
             'year': 2026
         },
@@ -184,7 +184,7 @@ if __name__ == '__main__':
     parser.add_argument('--format', required=True, choices=['coco', 'csv', 'json'], help='Export format')
     parser.add_argument('--output', required=True, help='Output file path')
     parser.add_argument('--project-id', default='your-project-id', help='GCP project ID')
-    parser.add_argument('--dataset', default='cricket_annotations', help='BigQuery dataset')
+    parser.add_argument('--dataset', default='image_annotations', help='BigQuery dataset')
 
     args = parser.parse_args()
 

@@ -11,20 +11,20 @@ pip install -r requirements.txt
 
 # 3. Set environment (replace with your values)
 export GCP_PROJECT_ID="your-project-id"
-export BQ_DATASET="cricket_annotations"
+export BQ_DATASET="annotations"
 export GCS_BUCKET="your-bucket"
 
 # 4. Setup BigQuery tables
 ./setup_bigquery.sh
 
 # 5. Upload test images to GCS
-gsutil cp /path/to/images/* gs://your-bucket/cricket/
+gsutil cp /path/to/images/* gs://your-bucket/images/
 
 # 6. Load annotation tasks
 python scripts/load_tasks.py \
-  --gcs-prefix gs://your-bucket/cricket/ \
+  --gcs-prefix gs://your-bucket/images/ \
   --project-id your-project-id \
-  --dataset cricket_annotations
+  --dataset annotations
 
 # 7. Run the app
 python app.py
@@ -39,7 +39,7 @@ open http://localhost:8080
 
 ### Landing Page
 ```
-🏏 Cricket Annotation Tool
+Glyph Annotation Tool
 ┌─────────────────────────────────────────────┐
 │ Pending: 10 | Completed: 0 | Total: 10      │
 └─────────────────────────────────────────────┘
@@ -77,9 +77,9 @@ Create a test dataset:
 # Create sample task CSV
 cat > sample_tasks.csv << 'EOF'
 image_gcs_path,task_type,labels
-gs://cricket-images/dhoni.png,bbox,"Batting,Bowling,Fielding,Wicketkeeping"
-gs://cricket-images/virat.png,bbox,"Batting,Bowling,Fielding,Wicketkeeping"
-gs://cricket-images/bumrah.png,bbox,"Batting,Bowling,Fielding,Wicketkeeping"
+gs://images/dhoni.png,bbox,"Batting,Bowling,Fielding,Wicketkeeping"
+gs://images/virat.png,bbox,"Batting,Bowling,Fielding,Wicketkeeping"
+gs://images/bumrah.png,bbox,"Batting,Bowling,Fielding,Wicketkeeping"
 EOF
 
 # Load to BigQuery
@@ -94,10 +94,10 @@ python scripts/load_tasks.py --csv sample_tasks.csv
 
 ```bash
 # View tasks
-bq query "SELECT task_id, status, image_gcs_path FROM cricket_annotations.annotation_tasks LIMIT 5"
+bq query "SELECT task_id, status, image_gcs_path FROM annotations.annotation_tasks LIMIT 5"
 
 # View annotations
-bq query "SELECT annotation_id, task_id, annotator FROM cricket_annotations.annotations LIMIT 5"
+bq query "SELECT annotation_id, task_id, annotator FROM annotations.annotations LIMIT 5"
 ```
 
 ### Check via API
@@ -153,7 +153,7 @@ cat annotations.json | jq '.annotations | length'
 ### "No tasks found"
 ```bash
 # Check if tasks loaded
-bq query "SELECT COUNT(*) FROM cricket_annotations.annotation_tasks"
+bq query "SELECT COUNT(*) FROM annotations.annotation_tasks"
 
 # If 0, re-run load script
 python scripts/load_tasks.py --gcs-prefix gs://your-bucket/
@@ -171,7 +171,7 @@ gcloud auth application-default print-access-token
 ### "BigQuery errors"
 ```bash
 # Verify dataset exists
-bq ls | grep cricket_annotations
+bq ls | grep annotations
 
 # Re-run setup
 ./setup_bigquery.sh
@@ -185,13 +185,13 @@ Once testing works locally:
 
 ```bash
 # Deploy to Cloud Run (5 minutes)
-gcloud run deploy cricket-annotation-tool \
+gcloud run deploy glyph \
   --source . \
   --region us-central1 \
   --set-env-vars GCP_PROJECT_ID=$GCP_PROJECT_ID,BQ_DATASET=$BQ_DATASET
 
 # Get URL
-gcloud run services describe cricket-annotation-tool \
+gcloud run services describe glyph \
   --region us-central1 \
   --format 'value(status.url)'
 ```

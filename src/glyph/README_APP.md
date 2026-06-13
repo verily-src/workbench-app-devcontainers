@@ -1,6 +1,6 @@
-# Cricket Annotation Tool
+# Glyph Annotation Tool
 
-Lightweight annotation tool for cricket action detection built for Google Cloud Workbench.
+Lightweight annotation tool for image detection built for Google Cloud Workbench.
 
 ## Quick Start in Workbench
 
@@ -8,7 +8,7 @@ Lightweight annotation tool for cricket action detection built for Google Cloud 
 2. Specify:
    - Repository: `https://github.com/verily-src/workbench-app-devcontainers.git`
    - Branch: `master`
-   - Path: `src/cricket-annotation-tool`
+   - Path: `src/glyph`
 3. Wait for deployment (~2-3 minutes)
 4. Access the app URL and start annotating!
 

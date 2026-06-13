@@ -50,8 +50,8 @@ pip install -r requirements.txt
 
 # 4. Set environment variables
 export GCP_PROJECT_ID="your-project-id"
-export BQ_DATASET="cricket_annotations"
-export GCS_BUCKET="cricket-images"
+export BQ_DATASET="annotations"
+export GCS_BUCKET="images"
 
 # 5. Setup BigQuery
 ./setup_bigquery.sh
@@ -80,18 +80,18 @@ gcloud config set project YOUR_PROJECT_ID
 ./setup_bigquery.sh
 
 # 3. Deploy to Cloud Run
-gcloud run deploy cricket-annotation-tool \
+gcloud run deploy glyph \
   --source . \
   --region us-central1 \
   --platform managed \
   --allow-unauthenticated \
-  --set-env-vars GCP_PROJECT_ID=YOUR_PROJECT_ID,BQ_DATASET=cricket_annotations,GCS_BUCKET=cricket-images \
+  --set-env-vars GCP_PROJECT_ID=YOUR_PROJECT_ID,BQ_DATASET=annotations,GCS_BUCKET=images \
   --memory 512Mi \
   --cpu 1 \
   --max-instances 10
 
 # 4. Get the URL
-gcloud run services describe cricket-annotation-tool --region us-central1 --format 'value(status.url)'
+gcloud run services describe glyph --region us-central1 --format 'value(status.url)'
 ```
 
 **Pros**: Auto-scaling, serverless, HTTPS included, IAM auth  
@@ -113,8 +113,8 @@ entrypoint: gunicorn -b :$PORT app:app
 
 env_variables:
   GCP_PROJECT_ID: "your-project-id"
-  BQ_DATASET: "cricket_annotations"
-  GCS_BUCKET: "cricket-images"
+  BQ_DATASET: "annotations"
+  GCS_BUCKET: "images"
 
 automatic_scaling:
   target_cpu_utilization: 0.65
@@ -152,7 +152,7 @@ gcloud config set project YOUR_PROJECT_ID
 ```bash
 # Run setup script
 export GCP_PROJECT_ID="your-project-id"
-export BQ_DATASET="cricket_annotations"
+export BQ_DATASET="annotations"
 ./setup_bigquery.sh
 
 # Verify tables created
@@ -163,10 +163,10 @@ bq ls $BQ_DATASET
 
 ```bash
 # Create bucket
-gsutil mb -l us-central1 gs://your-cricket-images/
+gsutil mb -l us-central1 gs://your-images/
 
 # Upload images
-gsutil -m cp -r /path/to/cricket/images/* gs://your-cricket-images/
+gsutil -m cp -r /path/to/images/images/* gs://your-images/
 ```
 
 ### 4. Load Annotation Tasks
@@ -174,9 +174,9 @@ gsutil -m cp -r /path/to/cricket/images/* gs://your-cricket-images/
 **Option A: From GCS bucket**
 ```bash
 python scripts/load_tasks.py \
-  --gcs-prefix gs://your-cricket-images/ \
+  --gcs-prefix gs://your-images/ \
   --project-id your-project-id \
-  --dataset cricket_annotations
+  --dataset annotations
 ```
 
 **Option B: From CSV**
@@ -191,7 +191,7 @@ EOF
 python scripts/load_tasks.py \
   --csv tasks.csv \
   --project-id your-project-id \
-  --dataset cricket_annotations
+  --dataset annotations
 ```
 
 ### 5. Deploy Application
@@ -201,7 +201,7 @@ Choose one of the deployment options above.
 ### 6. Access the Tool
 
 - **Workbench**: http://localhost:8080
-- **Cloud Run**: https://cricket-annotation-tool-xxxxx.run.app
+- **Cloud Run**: https://glyph-xxxxx.run.app
 - **App Engine**: https://YOUR_PROJECT_ID.appspot.com
 
 ---
@@ -226,7 +226,7 @@ python scripts/export_annotations.py \
   --format coco \
   --output annotations_coco.json \
   --project-id your-project-id \
-  --dataset cricket_annotations
+  --dataset annotations
 
 # Use annotations for training
 # The COCO file is now ready for YOLO, Detectron2, etc.
@@ -260,12 +260,12 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 **For Cloud Run:**
 ```bash
 # Require authentication
-gcloud run services update cricket-annotation-tool \
+gcloud run services update glyph \
   --region us-central1 \
   --no-allow-unauthenticated
 
 # Grant access to specific users
-gcloud run services add-iam-policy-binding cricket-annotation-tool \
+gcloud run services add-iam-policy-binding glyph \
   --region us-central1 \
   --member user:annotator@example.com \
   --role roles/run.invoker
@@ -279,7 +279,7 @@ gcloud run services add-iam-policy-binding cricket-annotation-tool \
 
 ```bash
 # Cloud Run logs
-gcloud run services logs read cricket-annotation-tool \
+gcloud run services logs read glyph \
   --region us-central1 \
   --limit 50
 
@@ -294,7 +294,7 @@ gcloud run services logs read cricket-annotation-tool \
 SELECT
   status,
   COUNT(*) as count
-FROM `your-project.cricket_annotations.annotation_tasks`
+FROM `your-project.annotations.annotation_tasks`
 GROUP BY status;
 ```
 
@@ -305,7 +305,7 @@ GROUP BY status;
 bq ls --project_id YOUR_PROJECT_ID --max_results 10
 
 # GCS usage
-gsutil du -sh gs://your-cricket-images/
+gsutil du -sh gs://your-images/
 
 # Cloud Run metrics
 # https://console.cloud.google.com/run

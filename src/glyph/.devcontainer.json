@@ -7,7 +7,7 @@
   "customizations": {
     "workbench": {
       "welcomePage": {
-        "title": "Glyph Annotation Tool",
+        "title": "Verily - Glyph, an annotations tool",
         "description": "Lightweight annotation tool for image labeling"
       }
     }

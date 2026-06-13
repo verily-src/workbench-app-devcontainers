@@ -1,8 +1,8 @@
 """
-In-House Annotation Tool - DEMO MODE
+Glyph Annotation Tool - DEMO MODE
 
 This is a demo version that runs locally without BigQuery/GCS.
-Uses local file storage and serves images from data/cricket_images/
+Uses local file storage and serves images from data/images/
 
 Usage:
     python app_demo.py
@@ -23,13 +23,13 @@ TASKS = []
 ANNOTATIONS = []
 TASK_ID_COUNTER = 1
 
-# Get absolute path to cricket images
+# Get absolute path to images
 BASE_DIR = Path(__file__).parent.parent
-IMAGES_DIR = BASE_DIR / "data" / "cricket_images"
+IMAGES_DIR = BASE_DIR / "data" / "images"
 
 
 def load_demo_tasks():
-    """Load tasks from local cricket_images directory."""
+    """Load tasks from local images directory."""
     global TASK_ID_COUNTER, TASKS
 
     if not IMAGES_DIR.exists():
@@ -163,7 +163,7 @@ def export_annotations():
     """Export all annotations to COCO format."""
     coco = {
         'info': {
-            'description': 'Cricket Action Annotations (Demo)',
+            'description': 'Glyph Annotations (Demo)',
             'version': '1.0',
             'year': 2026
         },
@@ -227,7 +227,7 @@ def export_annotations():
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("🏏 Cricket Annotation Tool - DEMO MODE")
+    print("Verily - Glyph, an annotations tool - DEMO MODE")
     print("="*60)
     print("")
 
@@ -238,7 +238,7 @@ if __name__ == '__main__':
         print("⚠️  No images found!")
         print(f"   Please add images to: {IMAGES_DIR}")
         print("")
-        print("   Or use the cricket images that already exist:")
+        print("   Or check existing images:")
         print(f"   ls '{IMAGES_DIR}'")
         print("")
     else:

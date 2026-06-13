@@ -5,7 +5,7 @@ set -e
 
 # Configuration
 PROJECT_ID="${GCP_PROJECT_ID:-your-project-id}"
-DATASET="${BQ_DATASET:-cricket_annotations}"
+DATASET="${BQ_DATASET:-image_annotations}"
 LOCATION="${BQ_LOCATION:-US}"
 
 echo "🔧 Setting up BigQuery for Annotation Tool"
@@ -17,7 +17,7 @@ echo ""
 # Create dataset
 echo "1. Creating dataset..."
 bq --location=$LOCATION mk --dataset \
-    --description "Cricket annotation tasks and results" \
+    --description "Glyph annotation tasks and results" \
     $PROJECT_ID:$DATASET \
     || echo "Dataset already exists"
 

@@ -10,6 +10,7 @@ Usage:
 """
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
 from datetime import datetime
 import uuid
 import json
@@ -68,14 +69,35 @@ def index():
 @app.route('/images/<path:filename>')
 def serve_image(filename):
     """Serve images from local directory."""
-    return send_from_directory(IMAGES_DIR, filename)
+    # Security: Prevent path traversal attacks
+    safe_filename = secure_filename(filename)
+    filepath = IMAGES_DIR / safe_filename
+
+    # Ensure resolved path is within IMAGES_DIR
+    try:
+        if not filepath.resolve().is_relative_to(IMAGES_DIR.resolve()):
+            return jsonify({'error': 'Access denied'}), 403
+    except (ValueError, OSError):
+        return jsonify({'error': 'Invalid file path'}), 400
+
+    if not filepath.exists():
+        return jsonify({'error': 'File not found'}), 404
+
+    return send_from_directory(IMAGES_DIR, safe_filename)
 
 
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
     """Fetch pending annotation tasks."""
+    # Security: Validate and limit query parameters
     limit = request.args.get('limit', 10, type=int)
+    limit = min(max(1, limit), 100)  # Clamp between 1-100
+
     status = request.args.get('status', 'pending')
+    # Validate status is one of allowed values
+    allowed_statuses = {'pending', 'in_progress', 'completed'}
+    if status not in allowed_statuses:
+        return jsonify({'error': 'Invalid status'}), 400
 
     # Filter by status
     filtered_tasks = [t for t in TASKS if t['status'] == status]
@@ -104,7 +126,42 @@ def start_task(task_id):
 @app.route('/api/annotations', methods=['POST'])
 def save_annotation():
     """Save annotation."""
+    # Security: Validate content length
+    MAX_PAYLOAD_SIZE = 1_000_000  # 1MB
+    if request.content_length and request.content_length > MAX_PAYLOAD_SIZE:
+        return jsonify({'error': 'Payload too large'}), 413
+
     data = request.json
+
+    # Security: Validate required fields
+    if not data or 'task_id' not in data or 'annotation_data' not in data:
+        return jsonify({'error': 'Missing required fields: task_id, annotation_data'}), 400
+
+    # Security: Validate task exists
+    task = next((t for t in TASKS if t['task_id'] == data['task_id']), None)
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+
+    # Security: Validate annotation data structure
+    ann_data = data['annotation_data']
+    if not isinstance(ann_data, dict):
+        return jsonify({'error': 'annotation_data must be an object'}), 400
+
+    # Security: Limit number of bounding boxes
+    MAX_BBOXES = 100
+    bboxes = ann_data.get('bboxes', [])
+    if not isinstance(bboxes, list):
+        return jsonify({'error': 'bboxes must be an array'}), 400
+    if len(bboxes) > MAX_BBOXES:
+        return jsonify({'error': f'Too many bounding boxes (max {MAX_BBOXES})'}), 400
+
+    # Validate each bbox has required fields
+    for bbox in bboxes:
+        if not isinstance(bbox, dict):
+            return jsonify({'error': 'Each bbox must be an object'}), 400
+        required_fields = ['label', 'x', 'y', 'width', 'height']
+        if not all(field in bbox for field in required_fields):
+            return jsonify({'error': f'Each bbox must have: {required_fields}'}), 400
 
     annotation_id = str(uuid.uuid4())
 
@@ -112,7 +169,7 @@ def save_annotation():
         'annotation_id': annotation_id,
         'task_id': data['task_id'],
         'annotator': data.get('annotator', 'demo_user'),
-        'annotation_data': data['annotation_data'],
+        'annotation_data': ann_data,
         'annotation_type': data.get('annotation_type', 'bbox'),
         'created_at': datetime.utcnow().isoformat(),
         'updated_at': datetime.utcnow().isoformat()
@@ -121,13 +178,10 @@ def save_annotation():
     ANNOTATIONS.append(annotation)
 
     # Update task status
-    for task in TASKS:
-        if task['task_id'] == data['task_id']:
-            task['status'] = 'completed'
-            break
+    task['status'] = 'completed'
 
     print(f"✓ Saved annotation: {annotation_id} for task {data['task_id']}")
-    print(f"  Boxes: {len(data['annotation_data'].get('bboxes', []))}")
+    print(f"  Boxes: {len(bboxes)}")
 
     return jsonify({
         'status': 'success',
@@ -254,4 +308,10 @@ if __name__ == '__main__':
     print("="*60)
     print("")
 
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Security: Only enable debug mode in development
+    debug_mode = os.getenv('FLASK_ENV') == 'development'
+    if debug_mode:
+        print("⚠️  DEBUG MODE ENABLED - For development only!")
+        print("")
+
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)

@@ -8,6 +8,7 @@ A lightweight annotation tool for Google Cloud.
 """
 
 from flask import Flask, render_template, request, jsonify
+from werkzeug.utils import secure_filename
 from google.cloud import bigquery, storage
 from datetime import datetime, timedelta
 import uuid
@@ -40,8 +41,15 @@ def get_tasks():
         limit (int): Number of tasks to fetch (default: 10)
         status (str): Filter by status (default: 'pending')
     """
+    # Security: Validate and limit query parameters
     limit = request.args.get('limit', 10, type=int)
+    limit = min(max(1, limit), 100)  # Clamp between 1-100
+
     status = request.args.get('status', 'pending')
+    # Validate status is one of allowed values
+    allowed_statuses = {'pending', 'in_progress', 'completed'}
+    if status not in allowed_statuses:
+        return jsonify({'error': 'Invalid status'}), 400
 
     query = f"""
         SELECT
@@ -120,7 +128,37 @@ def save_annotation():
             "annotation_type": "bbox"
         }
     """
+    # Security: Validate content length
+    MAX_PAYLOAD_SIZE = 1_000_000  # 1MB
+    if request.content_length and request.content_length > MAX_PAYLOAD_SIZE:
+        return jsonify({'error': 'Payload too large'}), 413
+
     data = request.json
+
+    # Security: Validate required fields
+    if not data or 'task_id' not in data or 'annotation_data' not in data:
+        return jsonify({'error': 'Missing required fields: task_id, annotation_data'}), 400
+
+    # Security: Validate annotation data structure
+    ann_data = data['annotation_data']
+    if not isinstance(ann_data, dict):
+        return jsonify({'error': 'annotation_data must be an object'}), 400
+
+    # Security: Limit number of bounding boxes
+    MAX_BBOXES = 100
+    bboxes = ann_data.get('bboxes', [])
+    if not isinstance(bboxes, list):
+        return jsonify({'error': 'bboxes must be an array'}), 400
+    if len(bboxes) > MAX_BBOXES:
+        return jsonify({'error': f'Too many bounding boxes (max {MAX_BBOXES})'}), 400
+
+    # Validate each bbox has required fields
+    for bbox in bboxes:
+        if not isinstance(bbox, dict):
+            return jsonify({'error': 'Each bbox must be an object'}), 400
+        required_fields = ['label', 'x', 'y', 'width', 'height']
+        if not all(field in bbox for field in required_fields):
+            return jsonify({'error': f'Each bbox must have: {required_fields}'}), 400
 
     annotation_id = str(uuid.uuid4())
 
@@ -131,7 +169,7 @@ def save_annotation():
         'annotation_id': annotation_id,
         'task_id': data['task_id'],
         'annotator': data.get('annotator', 'unknown'),
-        'annotation_data': json.dumps(data['annotation_data']),
+        'annotation_data': json.dumps(ann_data),
         'annotation_type': data.get('annotation_type', 'bbox'),
         'created_at': datetime.utcnow().isoformat(),
         'updated_at': datetime.utcnow().isoformat()

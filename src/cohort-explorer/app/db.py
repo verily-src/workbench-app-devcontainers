@@ -15,6 +15,7 @@ _active_resource_id: str | None = None
 
 _resource_cache: list[dict] | None = None
 _resource_cache_lock = threading.Lock()
+_resource_cache_ready = threading.Event()
 
 _conn_string_cache: dict[str, str] = {}
 
@@ -59,20 +60,21 @@ def _refresh_resource_cache():
     global _resource_cache
     with _resource_cache_lock:
         _resource_cache = _fetch_resources()
+        _resource_cache_ready.set()
         logger.info("Resource cache refreshed: %d resources", len(_resource_cache))
 
 
-def _ensure_cache() -> list[dict]:
-    if _resource_cache is None:
-        _refresh_resource_cache()
-    else:
+def _ensure_cache(wait: bool = False) -> list[dict]:
+    if wait and not _resource_cache_ready.is_set():
+        _resource_cache_ready.wait(timeout=120)
+    elif _resource_cache is not None:
         threading.Thread(target=_refresh_resource_cache, daemon=True).start()
     return _resource_cache or []
 
 
-def list_aurora_resources() -> list[dict]:
+def list_aurora_resources(wait: bool = False) -> list[dict]:
     aurora = []
-    for r in _ensure_cache():
+    for r in _ensure_cache(wait=wait):
         rtype = r.get("resourceType", "")
         if "AURORA_DATABASE" not in rtype:
             continue
@@ -90,9 +92,9 @@ def list_aurora_resources() -> list[dict]:
     return aurora
 
 
-def list_s3_folders() -> list[dict]:
+def list_s3_folders(wait: bool = False) -> list[dict]:
     folders = []
-    for r in _ensure_cache():
+    for r in _ensure_cache(wait=wait):
         rtype = r.get("resourceType", "")
         if "S3" not in rtype:
             continue
@@ -104,11 +106,8 @@ def list_s3_folders() -> list[dict]:
     return folders
 
 
-def warm_resource_cache(blocking: bool = False):
-    if blocking:
-        _refresh_resource_cache()
-    else:
-        threading.Thread(target=_refresh_resource_cache, daemon=True).start()
+def warm_resource_cache():
+    threading.Thread(target=_refresh_resource_cache, daemon=True).start()
 
 
 def get_engine_for_resource(resource_id: str) -> Engine:

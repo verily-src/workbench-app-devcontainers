@@ -99,7 +99,7 @@ def startup():
     engine = get_sqlite_engine()
     Base.metadata.create_all(engine)
     logger.info("SQLite tables ensured")
-    warm_resource_cache(blocking=True)
+    warm_resource_cache()
     cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
     init_cohorts(cohort_folder)
 
@@ -111,7 +111,7 @@ def health() -> dict[str, str]:
 
 @app.get("/api/datasources")
 def get_datasources() -> dict:
-    aurora = list_aurora_resources()
+    aurora = list_aurora_resources(wait=True)
     s3_folders = list_s3_folders()
     active = get_active_resource_id()
     return {

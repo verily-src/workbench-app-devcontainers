@@ -16,7 +16,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
-from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, set_active_resource, warm_aurora_cache
+from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
 from models import Base, Sample
 from seed import seed_from_tsv
 
@@ -99,7 +99,7 @@ def startup():
     engine = get_sqlite_engine()
     Base.metadata.create_all(engine)
     logger.info("SQLite tables ensured")
-    warm_aurora_cache()
+    warm_resource_cache()
     cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
     init_cohorts(cohort_folder)
 
@@ -112,9 +112,11 @@ def health() -> dict[str, str]:
 @app.get("/api/datasources")
 def get_datasources() -> dict:
     aurora = list_aurora_resources()
+    s3_folders = list_s3_folders()
     active = get_active_resource_id()
     return {
         "resources": aurora,
+        "s3_folders": s3_folders,
         "active": active,
         "has_local": True,
     }
@@ -122,17 +124,21 @@ def get_datasources() -> dict:
 
 @app.post("/api/datasources/refresh")
 def refresh_datasources() -> dict:
-    warm_aurora_cache()
+    warm_resource_cache()
     active = get_active_resource_id()
     return {
         "resources": list_aurora_resources(),
+        "s3_folders": list_s3_folders(),
         "active": active,
         "has_local": True,
     }
 
 
 @app.post("/api/connect")
-def connect_resource(resource_id: str = Query(...)) -> dict:
+def connect_resource(
+    resource_id: str = Query(...),
+    cohort_folder: str | None = Query(None),
+) -> dict:
     if resource_id == "__local__":
         set_active_resource(None)
         return {"connected": "local (SQLite)"}
@@ -141,6 +147,9 @@ def connect_resource(resource_id: str = Query(...)) -> dict:
         set_active_resource(resource_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Connection failed: {e}") from e
+
+    if cohort_folder:
+        init_cohorts(cohort_folder)
 
     return {"connected": resource_id}
 

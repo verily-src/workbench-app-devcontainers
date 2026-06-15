@@ -9,7 +9,7 @@ import SummaryBar from "./components/SummaryBar.tsx";
 import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
-import { connectResource, fetchCounts, fetchFilters, fetchSamples, seedData } from "./api.ts";
+import { connectResource, fetchCounts, fetchFilters, fetchSamples, getCohort, seedData } from "./api.ts";
 import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { DEFAULT_CHART_TYPE, EMPTY_FILTERS, FIELD_META } from "./types.ts";
 
@@ -62,6 +62,7 @@ export default function App() {
   ]);
   const [filterPaneVisible, setFilterPaneVisible] = useState(true);
   const [gridPaneVisible, setGridPaneVisible] = useState(true);
+  const [activeCohort, setActiveCohort] = useState<string | null>(null);
   const initialized = useRef(false);
   const fetchIdRef = useRef(0);
 
@@ -139,6 +140,7 @@ export default function App() {
 
   const handleApply = useCallback(() => {
     setApplied(pending);
+    setActiveCohort(null);
     loadData(pending);
     saveState(resourceId, pending);
   }, [pending, loadData, resourceId]);
@@ -146,6 +148,7 @@ export default function App() {
   const handleReset = useCallback(() => {
     setPending(EMPTY_FILTERS);
     setApplied(EMPTY_FILTERS);
+    setActiveCohort(null);
     loadData(EMPTY_FILTERS);
     saveState(resourceId, EMPTY_FILTERS);
   }, [loadData, resourceId]);
@@ -160,8 +163,26 @@ export default function App() {
     setCounts(null);
     setError(null);
     setLoading(true);
+    setActiveCohort(null);
     initialized.current = false;
     localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  const handleLoadCohort = useCallback(async (name: string) => {
+    try {
+      const cohort = await getCohort(name);
+      setPending(cohort.filters);
+      setApplied(cohort.filters);
+      setActiveCohort(name);
+      loadData(cohort.filters);
+      saveState(resourceId, cohort.filters);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load cohort");
+    }
+  }, [loadData, resourceId]);
+
+  const handleCohortSaved = useCallback((name: string) => {
+    setActiveCohort(name);
   }, []);
 
   const handleChartFilter = useCallback(
@@ -261,6 +282,9 @@ export default function App() {
           gridPaneVisible={gridPaneVisible}
           onToggleFilterPane={() => setFilterPaneVisible((v) => !v)}
           onToggleGridPane={() => setGridPaneVisible((v) => !v)}
+          activeCohort={activeCohort}
+          onLoadCohort={handleLoadCohort}
+          onCohortSaved={handleCohortSaved}
         />
         <Box sx={{ flex: 1, overflow: "hidden" }}>
           <Allotment defaultSizes={[280, 1000]} snap>

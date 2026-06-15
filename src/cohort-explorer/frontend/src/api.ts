@@ -90,6 +90,56 @@ export function exportUrl(filters: FilterState): string {
   return `${BASE}/api/export?${buildParams(filters)}`;
 }
 
+export interface CohortSummary {
+  name: string;
+  description: string;
+  sampleCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CohortFull extends CohortSummary {
+  filters: FilterState;
+}
+
+export async function listCohorts(): Promise<CohortSummary[]> {
+  const res = await fetchWithTimeout(`${BASE}/api/cohorts`);
+  if (!res.ok) await extractError(res, "Failed to list cohorts");
+  return res.json();
+}
+
+export async function getCohort(name: string): Promise<CohortFull> {
+  const res = await fetchWithTimeout(`${BASE}/api/cohorts/${encodeURIComponent(name)}`);
+  if (!res.ok) await extractError(res, "Failed to load cohort");
+  return res.json();
+}
+
+export async function saveCohort(
+  name: string, description: string, filters: FilterState, sampleCount: number,
+): Promise<CohortFull> {
+  const res = await fetchWithTimeout(`${BASE}/api/cohorts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description, filters, sampleCount }),
+  });
+  if (!res.ok) await extractError(res, "Failed to save cohort");
+  return res.json();
+}
+
+export async function deleteCohort(name: string): Promise<void> {
+  const res = await fetchWithTimeout(`${BASE}/api/cohorts/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) await extractError(res, "Failed to delete cohort");
+}
+
+export async function cohortExists(name: string): Promise<boolean> {
+  const res = await fetchWithTimeout(`${BASE}/api/cohorts/${encodeURIComponent(name)}/exists`);
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.exists;
+}
+
 export interface Datasource {
   id: string;
   name: string;

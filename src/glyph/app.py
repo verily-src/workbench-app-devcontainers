@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import uuid
 import os
 import json
+from fhir_export import export_to_fhir_bundle, generate_observation, generate_diagnostic_report
 
 app = Flask(__name__)
 
@@ -294,6 +295,141 @@ def generate_signed_url(gcs_path):
     )
 
     return url
+
+
+@app.route('/api/export/fhir', methods=['GET'])
+def export_fhir():
+    """Export all annotations as a FHIR Bundle."""
+    try:
+        # Query completed tasks
+        tasks_query = f"""
+            SELECT task_id, image_gcs_path, created_at, metadata
+            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.annotation_tasks`
+            WHERE status = 'completed'
+        """
+        tasks_results = bq_client.query(tasks_query).result()
+        tasks = [{'task_id': row.task_id, 'image_path': row.image_gcs_path,
+                  'created_at': row.created_at.isoformat() if row.created_at else None,
+                  'metadata': json.loads(row.metadata) if row.metadata else {}}
+                 for row in tasks_results]
+
+        # Query annotations
+        annotations_query = f"""
+            SELECT annotation_id, task_id, annotator, annotation_data, created_at
+            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.annotations`
+            WHERE task_id IN (SELECT task_id FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.annotation_tasks` WHERE status = 'completed')
+        """
+        annotations_results = bq_client.query(annotations_query).result()
+        annotations = [{'annotation_id': row.annotation_id, 'task_id': row.task_id,
+                        'annotator': row.annotator,
+                        'annotation_data': json.loads(row.annotation_data) if isinstance(row.annotation_data, str) else row.annotation_data,
+                        'created_at': row.created_at.isoformat() if row.created_at else None}
+                       for row in annotations_results]
+
+        # Generate FHIR Bundle
+        bundle = export_to_fhir_bundle(annotations, tasks)
+
+        return jsonify(bundle)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/fhir/observation/<task_id>', methods=['GET'])
+def export_fhir_observation(task_id):
+    """Export annotations for a specific task as FHIR Observations."""
+    try:
+        # Query task
+        task_query = f"""
+            SELECT task_id, image_gcs_path, created_at, metadata
+            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.annotation_tasks`
+            WHERE task_id = @task_id
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("task_id", "STRING", task_id)]
+        )
+        task_results = list(bq_client.query(task_query, job_config=job_config).result())
+
+        if not task_results:
+            return jsonify({'error': 'Task not found'}), 404
+
+        task = {'task_id': task_results[0].task_id, 'image_path': task_results[0].image_gcs_path,
+                'created_at': task_results[0].created_at.isoformat() if task_results[0].created_at else None}
+
+        # Query annotations
+        ann_query = f"""
+            SELECT annotation_id, task_id, annotator, annotation_data, created_at
+            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.annotations`
+            WHERE task_id = @task_id
+        """
+        ann_results = bq_client.query(ann_query, job_config=job_config).result()
+        annotations = [{'annotation_id': row.annotation_id, 'task_id': row.task_id,
+                        'annotator': row.annotator,
+                        'annotation_data': json.loads(row.annotation_data) if isinstance(row.annotation_data, str) else row.annotation_data,
+                        'created_at': row.created_at.isoformat() if row.created_at else None}
+                       for row in ann_results]
+
+        if not annotations:
+            return jsonify({'error': 'No annotations found'}), 404
+
+        # Generate Observations
+        observations = []
+        for ann in annotations:
+            obs = generate_observation(ann, task)
+            if obs:
+                observations.append(obs)
+
+        return jsonify({
+            'resourceType': 'Bundle',
+            'type': 'collection',
+            'entry': [{'resource': obs} for obs in observations]
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/fhir/report/<task_id>', methods=['GET'])
+def export_fhir_report(task_id):
+    """Export DiagnosticReport for a specific task."""
+    try:
+        # Query task
+        task_query = f"""
+            SELECT task_id, image_gcs_path, created_at, metadata
+            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.annotation_tasks`
+            WHERE task_id = @task_id
+        """
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[bigquery.ScalarQueryParameter("task_id", "STRING", task_id)]
+        )
+        task_results = list(bq_client.query(task_query, job_config=job_config).result())
+
+        if not task_results:
+            return jsonify({'error': 'Task not found'}), 404
+
+        task = {'task_id': task_results[0].task_id, 'image_path': task_results[0].image_gcs_path,
+                'created_at': task_results[0].created_at.isoformat() if task_results[0].created_at else None}
+
+        # Query annotations
+        ann_query = f"""
+            SELECT annotation_id, task_id, annotator, annotation_data, created_at
+            FROM `{GCP_PROJECT_ID}.{BQ_DATASET}.annotations`
+            WHERE task_id = @task_id
+        """
+        ann_results = bq_client.query(ann_query, job_config=job_config).result()
+        annotations = [{'annotation_id': row.annotation_id, 'task_id': row.task_id,
+                        'annotator': row.annotator,
+                        'annotation_data': json.loads(row.annotation_data) if isinstance(row.annotation_data, str) else row.annotation_data,
+                        'created_at': row.created_at.isoformat() if row.created_at else None}
+                       for row in ann_results]
+
+        if not annotations:
+            return jsonify({'error': 'No annotations found'}), 404
+
+        # Generate DiagnosticReport
+        report = generate_diagnostic_report(annotations, task)
+
+        return jsonify(report)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ import uuid
 import json
 import os
 from pathlib import Path
+from fhir_export import export_to_fhir_bundle, generate_observation, generate_diagnostic_report
 
 app = Flask(__name__)
 
@@ -277,6 +278,73 @@ def export_annotations():
             annotation_id += 1
 
     return jsonify(coco)
+
+
+@app.route('/api/export/fhir', methods=['GET'])
+def export_fhir():
+    """Export all annotations as a FHIR Bundle."""
+    try:
+        # Convert TASKS and ANNOTATIONS to FHIR Bundle
+        completed_tasks = [t for t in TASKS if t['status'] == 'completed']
+        completed_annotations = [a for a in ANNOTATIONS if any(t['task_id'] == a['task_id'] for t in completed_tasks)]
+
+        bundle = export_to_fhir_bundle(completed_annotations, completed_tasks)
+
+        return jsonify(bundle)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/fhir/observation/<task_id>', methods=['GET'])
+def export_fhir_observation(task_id):
+    """Export annotations for a specific task as FHIR Observations."""
+    try:
+        # Find task
+        task = next((t for t in TASKS if t['task_id'] == task_id), None)
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+
+        # Find annotations
+        task_annotations = [a for a in ANNOTATIONS if a['task_id'] == task_id]
+        if not task_annotations:
+            return jsonify({'error': 'No annotations found for this task'}), 404
+
+        # Generate Observations
+        observations = []
+        for ann in task_annotations:
+            obs = generate_observation(ann, task)
+            if obs:
+                observations.append(obs)
+
+        return jsonify({
+            'resourceType': 'Bundle',
+            'type': 'collection',
+            'entry': [{'resource': obs} for obs in observations]
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/export/fhir/report/<task_id>', methods=['GET'])
+def export_fhir_report(task_id):
+    """Export DiagnosticReport for a specific task."""
+    try:
+        # Find task
+        task = next((t for t in TASKS if t['task_id'] == task_id), None)
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+
+        # Find annotations
+        task_annotations = [a for a in ANNOTATIONS if a['task_id'] == task_id]
+        if not task_annotations:
+            return jsonify({'error': 'No annotations found for this task'}), 404
+
+        # Generate DiagnosticReport
+        report = generate_diagnostic_report(task_annotations, task)
+
+        return jsonify(report)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

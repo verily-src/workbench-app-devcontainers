@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
+from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, set_active_resource, warm_aurora_cache
 from models import Base, Sample
 from seed import seed_from_tsv
@@ -99,6 +100,8 @@ def startup():
     Base.metadata.create_all(engine)
     logger.info("SQLite tables ensured")
     warm_aurora_cache()
+    cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
+    init_cohorts(cohort_folder)
 
 
 @app.get("/api/health")
@@ -291,6 +294,44 @@ def export_csv(
         media_type="text/tab-separated-values",
         headers={"Content-Disposition": "attachment; filename=cohort_export.tsv"},
     )
+
+
+@app.get("/api/cohorts")
+def api_list_cohorts() -> list[dict]:
+    return list_cohorts()
+
+
+@app.get("/api/cohorts/{name}")
+def api_get_cohort(name: str) -> dict:
+    cohort = get_cohort(name)
+    if not cohort:
+        raise HTTPException(status_code=404, detail=f"Cohort not found: {name}")
+    return cohort
+
+
+@app.post("/api/cohorts")
+def api_save_cohort(body: dict) -> dict:
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Cohort name is required")
+    return save_cohort(
+        name=name,
+        description=body.get("description", ""),
+        filters=body.get("filters", {}),
+        sample_count=body.get("sampleCount", 0),
+    )
+
+
+@app.delete("/api/cohorts/{name}")
+def api_delete_cohort(name: str) -> dict:
+    if not delete_cohort(name):
+        raise HTTPException(status_code=404, detail=f"Cohort not found: {name}")
+    return {"deleted": name}
+
+
+@app.get("/api/cohorts/{name}/exists")
+def api_cohort_exists(name: str) -> dict:
+    return {"exists": cohort_exists(name)}
 
 
 SALMON_WORKFLOW_ID = os.environ.get("SALMON_WORKFLOW_ID", "salmon-workflow")

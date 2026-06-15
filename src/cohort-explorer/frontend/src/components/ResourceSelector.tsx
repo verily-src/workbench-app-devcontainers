@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import StorageIcon from "@mui/icons-material/Storage";
-import type { Datasource } from "../api";
+import type { Datasource, S3Folder } from "../api";
 import { connectResource, fetchDatasources, refreshDatasources } from "../api";
 
 interface Props {
@@ -24,7 +24,9 @@ interface Props {
 
 export default function ResourceSelector({ onConnected }: Props) {
   const [resources, setResources] = useState<Datasource[]>([]);
+  const [s3Folders, setS3Folders] = useState<S3Folder[]>([]);
   const [selected, setSelected] = useState("__local__");
+  const [selectedFolder, setSelectedFolder] = useState("");
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,7 +36,9 @@ export default function ResourceSelector({ onConnected }: Props) {
     fetchDatasources()
       .then((data) => {
         setResources(data.resources);
+        setS3Folders(data.s3_folders ?? []);
         if (data.active) setSelected(data.active);
+        if (data.s3_folders?.length) setSelectedFolder(data.s3_folders[0].id);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -46,6 +50,7 @@ export default function ResourceSelector({ onConnected }: Props) {
     try {
       const data = await refreshDatasources();
       setResources(data.resources);
+      setS3Folders(data.s3_folders ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Refresh failed");
     } finally {
@@ -57,7 +62,7 @@ export default function ResourceSelector({ onConnected }: Props) {
     setConnecting(true);
     setError(null);
     try {
-      await connectResource(selected);
+      await connectResource(selected, selectedFolder || undefined);
       onConnected(selected);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed");
@@ -94,8 +99,7 @@ export default function ResourceSelector({ onConnected }: Props) {
           </Box>
 
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Select a datasource to explore. Choose an Aurora database from
-            this workspace, or use the local demo data.
+            Select a datasource to explore and a storage folder for saving cohorts.
           </Typography>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
@@ -123,6 +127,23 @@ export default function ResourceSelector({ onConnected }: Props) {
               </IconButton>
             </Tooltip>
           </Box>
+
+          {s3Folders.length > 0 && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Cohort storage folder</InputLabel>
+              <Select
+                value={selectedFolder}
+                label="Cohort storage folder"
+                onChange={(e) => setSelectedFolder(e.target.value)}
+              >
+                {s3Folders.map((f) => (
+                  <MenuItem key={f.id} value={f.id}>
+                    {f.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
 
           {error && (
             <Typography variant="body2" color="error" sx={{ mb: 2 }}>

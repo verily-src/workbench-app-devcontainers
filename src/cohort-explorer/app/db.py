@@ -13,8 +13,8 @@ _engines: dict[str, Engine] = {}
 _session_factories: dict[str, sessionmaker[Session]] = {}
 _active_resource_id: str | None = None
 
-_aurora_cache: list[dict] | None = None
-_aurora_cache_lock = threading.Lock()
+_resource_cache: list[dict] | None = None
+_resource_cache_lock = threading.Lock()
 
 _conn_string_cache: dict[str, str] = {}
 
@@ -37,7 +37,7 @@ def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ")
     return conn_str
 
 
-def _fetch_aurora_resources() -> list[dict]:
+def _fetch_resources() -> list[dict]:
     try:
         result = subprocess.run(
             ["wb", "resource", "list", "--format", "json"],
@@ -50,16 +50,32 @@ def _fetch_aurora_resources() -> list[dict]:
         logger.warning("wb resource list timed out")
         return []
     except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.warning("wb CLI not available, no Aurora resources")
+        logger.warning("wb CLI not available, no resources")
         return []
+    return json.loads(result.stdout)
 
-    resources = json.loads(result.stdout)
+
+def _refresh_resource_cache():
+    global _resource_cache
+    with _resource_cache_lock:
+        _resource_cache = _fetch_resources()
+        logger.info("Resource cache refreshed: %d resources", len(_resource_cache))
+
+
+def _ensure_cache() -> list[dict]:
+    if _resource_cache is None:
+        _refresh_resource_cache()
+    else:
+        threading.Thread(target=_refresh_resource_cache, daemon=True).start()
+    return _resource_cache or []
+
+
+def list_aurora_resources() -> list[dict]:
     aurora = []
-    for r in resources:
+    for r in _ensure_cache():
         rtype = r.get("resourceType", "")
         if "AURORA_DATABASE" not in rtype:
             continue
-
         db_data = r if rtype == "AWS_AURORA_DATABASE" else r.get("referencedResource", r)
         aurora.append({
             "id": r.get("id"),
@@ -74,24 +90,22 @@ def _fetch_aurora_resources() -> list[dict]:
     return aurora
 
 
-def _refresh_aurora_cache():
-    global _aurora_cache
-    with _aurora_cache_lock:
-        result = _fetch_aurora_resources()
-        _aurora_cache = result
-        logger.info("Aurora resource cache refreshed: %d resources", len(result))
+def list_s3_folders() -> list[dict]:
+    folders = []
+    for r in _ensure_cache():
+        rtype = r.get("resourceType", "")
+        if "S3" not in rtype:
+            continue
+        folders.append({
+            "id": r.get("id"),
+            "name": r.get("id"),
+            "resource_type": rtype,
+        })
+    return folders
 
 
-def list_aurora_resources() -> list[dict]:
-    if _aurora_cache is None:
-        _refresh_aurora_cache()
-    else:
-        threading.Thread(target=_refresh_aurora_cache, daemon=True).start()
-    return _aurora_cache or []
-
-
-def warm_aurora_cache():
-    threading.Thread(target=_refresh_aurora_cache, daemon=True).start()
+def warm_resource_cache():
+    threading.Thread(target=_refresh_resource_cache, daemon=True).start()
 
 
 def get_engine_for_resource(resource_id: str) -> Engine:

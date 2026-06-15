@@ -148,8 +148,15 @@ export interface Datasource {
   resource_type: string;
 }
 
+export interface S3Folder {
+  id: string;
+  name: string;
+  resource_type: string;
+}
+
 export interface DatasourcesResponse {
   resources: Datasource[];
+  s3_folders: S3Folder[];
   active: string | null;
   has_local: boolean;
 }
@@ -166,9 +173,11 @@ export async function refreshDatasources(): Promise<DatasourcesResponse> {
   return res.json();
 }
 
-export async function connectResource(resourceId: string): Promise<{ connected: string }> {
+export async function connectResource(resourceId: string, cohortFolder?: string): Promise<{ connected: string }> {
+  const params = new URLSearchParams({ resource_id: resourceId });
+  if (cohortFolder) params.set("cohort_folder", cohortFolder);
   const res = await fetchWithTimeout(
-    `${BASE}/api/connect?resource_id=${encodeURIComponent(resourceId)}`,
+    `${BASE}/api/connect?${params}`,
     { method: "POST", timeoutMs: 15_000 },
   );
   if (!res.ok) await extractError(res, "Failed to connect");

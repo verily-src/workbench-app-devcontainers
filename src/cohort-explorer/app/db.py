@@ -104,8 +104,11 @@ def list_s3_folders() -> list[dict]:
     return folders
 
 
-def warm_resource_cache():
-    threading.Thread(target=_refresh_resource_cache, daemon=True).start()
+def warm_resource_cache(blocking: bool = False):
+    if blocking:
+        _refresh_resource_cache()
+    else:
+        threading.Thread(target=_refresh_resource_cache, daemon=True).start()
 
 
 def get_engine_for_resource(resource_id: str) -> Engine:

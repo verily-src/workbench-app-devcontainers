@@ -99,7 +99,7 @@ def startup():
     engine = get_sqlite_engine()
     Base.metadata.create_all(engine)
     logger.info("SQLite tables ensured")
-    warm_resource_cache()
+    warm_resource_cache(blocking=True)
     cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
     init_cohorts(cohort_folder)
 

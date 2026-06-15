@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:611070f2622733fba25b6d973aaee98ebedc1594ab7030df4f4fd70d0041f4a5",
+    "installed": "sha256:49a5b6f752a0456bf8f8dd776840847b0eb31e6008ad70901b4a0603d2cc9659",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:891d369df747b8e5d2db287073f82f7b660f6ebefdd5b881c9cd0467800fc597",
+    "installed": "sha256:dbc08a33062a031bc989a9e40e67b9a901be3624b14834808384b091ca504755",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:54504cac626fa9ec61083b87e0c87f2d7859faf7a65830b2e8a743d6a08ac7a2",
+    "installed": "sha256:49e92bed3d83ac0da24f557406a48832e92ac1765681ebe4651695f1b3f087e5",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:325ce4e4228c93e393872055dac2d3de067b179cf0921fc60fc41ce325b1e2f9",
+    "installed": "sha256:af388c92c3c9caadcbf280668c45078c64cb0356a2ae2befe7ce69976b82c421",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,12 +61,12 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:cb261a7f87674b445e0fd66d87d55900c1b823d276c727ab0d168a75e69e9992",
+    "installed": "sha256:99988f89acaa4243bc2b2cfa08ae1465c9d24404c59f3a457ad36ea57febb151",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
     "tag": "1.26-alpine",
-    "installed": "sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f",
+    "installed": "sha256:7a3e50096189ad57c9f9f865e7e4aa8585ed1585248513dc5cda498e2f41812c",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {

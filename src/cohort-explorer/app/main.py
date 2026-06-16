@@ -134,24 +134,70 @@ def refresh_datasources() -> dict:
     }
 
 
+@app.get("/api/s3/files")
+def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
+    try:
+        bucket_path = subprocess.run(
+            ["wb", "resource", "resolve", "--id", folder_id],
+            capture_output=True, text=True, check=True, timeout=120,
+        ).stdout.strip().rstrip("/")
+
+        result = subprocess.run(
+            ["aws", "s3", "ls", f"{bucket_path}/", "--recursive"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            return []
+
+        files = []
+        for line in result.stdout.strip().split("\n"):
+            if not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            key = parts[3]
+            if key.lower().endswith((".tsv", ".csv")):
+                size = int(parts[2])
+                files.append({
+                    "key": key,
+                    "name": key.split("/")[-1],
+                    "size": size,
+                    "s3_path": f"{bucket_path}/{key}",
+                })
+        return files
+    except Exception as e:
+        logger.error("Failed to list S3 files: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.post("/api/connect")
 def connect_resource(
     resource_id: str = Query(...),
     cohort_folder: str | None = Query(None),
+    seed_from: str | None = Query(None),
 ) -> dict:
     if resource_id == "__local__":
         set_active_resource(None)
-        return {"connected": "local (SQLite)"}
-
-    try:
-        set_active_resource(resource_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Connection failed: {e}") from e
+    else:
+        try:
+            set_active_resource(resource_id)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection failed: {e}") from e
 
     if cohort_folder:
         init_cohorts(cohort_folder)
 
-    return {"connected": resource_id}
+    if seed_from:
+        engine = get_sqlite_engine()
+        Base.metadata.create_all(engine)
+        from sqlalchemy.orm import Session as SaSession
+        with SaSession(engine) as db:
+            count = seed_from_tsv(db, seed_from)
+        set_active_resource(None)
+        return {"connected": "local (SQLite)", "seeded": count}
+
+    return {"connected": resource_id if resource_id != "__local__" else "local (SQLite)"}
 
 
 @app.get("/api/samples")

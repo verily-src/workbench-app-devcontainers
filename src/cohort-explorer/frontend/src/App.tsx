@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Box, CircularProgress, CssBaseline, Snackbar } from "@mui/material";
+import { Alert, Box, CircularProgress, CssBaseline, Snackbar, Typography } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
@@ -9,7 +9,9 @@ import SummaryBar from "./components/SummaryBar.tsx";
 import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
-import { connectResource, fetchCounts, fetchFilters, fetchSamples, getCohort, seedData } from "./api.ts";
+import { connectResource, fetchCounts, fetchFilters, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
+import type { ColumnMapping } from "./api.ts";
+import SchemaReview from "./components/SchemaReview.tsx";
 import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { DEFAULT_CHART_TYPE, EMPTY_FILTERS, FIELD_META } from "./types.ts";
 
@@ -63,6 +65,10 @@ export default function App() {
   const [filterPaneVisible, setFilterPaneVisible] = useState(true);
   const [gridPaneVisible, setGridPaneVisible] = useState(true);
   const [activeCohort, setActiveCohort] = useState<string | null>(null);
+  const [schemaStep, setSchemaStep] = useState<"none" | "inferring" | "reviewing">("none");
+  const [schemaMappings, setSchemaMappings] = useState<ColumnMapping[]>([]);
+  const [schemaSourceName, setSchemaSourceName] = useState("");
+  const [schemaFolderId, setSchemaFolderId] = useState<string | undefined>();
   const initialized = useRef(false);
   const fetchIdRef = useRef(0);
 
@@ -243,7 +249,65 @@ export default function App() {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <ResourceSelector onConnected={(id) => { setResourceId(id); setConnected(true); saveState(id, EMPTY_FILTERS); }} />
+        <ResourceSelector onConnected={async (id, meta) => {
+          setResourceId(id);
+          if (!meta?.sourceType) {
+            setConnected(true);
+            saveState(id, EMPTY_FILTERS);
+            return;
+          }
+          setSchemaFolderId(meta.folderId);
+          setSchemaStep("inferring");
+          try {
+            const result = await inferSchema({
+              source_type: meta.sourceType,
+              s3_path: meta.s3Path,
+              folder_id: meta.folderId,
+              resource_id: meta.sourceType === "aurora" ? id : undefined,
+              table: meta.table,
+            });
+            setSchemaMappings(result.mappings);
+            setSchemaSourceName(meta.sourceName ?? "schema");
+            setSchemaStep("reviewing");
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Schema inference failed");
+            setSchemaStep("none");
+          }
+        }} />
+      </ThemeProvider>
+    );
+  }
+
+  if (schemaStep === "inferring") {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: 2 }}>
+          <CircularProgress />
+          <Typography variant="body2" color="text.secondary">Analyzing schema...</Typography>
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
+  if (schemaStep === "reviewing") {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <SchemaReview
+          mappings={schemaMappings}
+          sourceName={schemaSourceName}
+          folderId={schemaFolderId}
+          onConfirmed={() => {
+            setSchemaStep("none");
+            setConnected(true);
+            saveState(resourceId, EMPTY_FILTERS);
+          }}
+          onBack={() => {
+            setSchemaStep("none");
+            setResourceId("__local__");
+          }}
+        />
       </ThemeProvider>
     );
   }

@@ -15,27 +15,39 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import StorageIcon from "@mui/icons-material/Storage";
-import type { Datasource, S3File, S3Folder } from "../api";
-import { connectResource, fetchDatasources, listS3Files, refreshDatasources } from "../api";
+import type { AuroraTable, Datasource, S3File, S3Folder } from "../api";
+import { connectResource, fetchDatasources, listAuroraTables, listS3Files, refreshDatasources } from "../api";
+
+export interface ConnectionMeta {
+  sourceType: "file" | "aurora";
+  folderId?: string;
+  s3Path?: string;
+  table?: string;
+  sourceName?: string;
+}
 
 interface Props {
-  onConnected: (resourceId: string) => void;
+  onConnected: (resourceId: string, meta?: ConnectionMeta) => void;
 }
 
 export default function ResourceSelector({ onConnected }: Props) {
   const [resources, setResources] = useState<Datasource[]>([]);
   const [s3Folders, setS3Folders] = useState<S3Folder[]>([]);
-  const [selected, setSelected] = useState("__local__");
+  const [selected, setSelected] = useState("__file__");
   const [selectedFolder, setSelectedFolder] = useState("");
   const [selectedFile, setSelectedFile] = useState("");
+  const [selectedTable, setSelectedTable] = useState("");
   const [s3Files, setS3Files] = useState<S3File[]>([]);
+  const [auroraTables, setAuroraTables] = useState<AuroraTable[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingTables, setLoadingTables] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isFileMode = selected === "__file__";
+  const isAuroraMode = resources.some((r) => r.id === selected);
 
   useEffect(() => {
     fetchDatasources()
@@ -82,6 +94,8 @@ export default function ResourceSelector({ onConnected }: Props) {
 
   const handleDatasourceChange = async (value: string) => {
     setSelected(value);
+    setSelectedTable("");
+    setAuroraTables([]);
     if (value === "__file__" && selectedFolder) {
       setLoadingFiles(true);
       try {
@@ -93,6 +107,18 @@ export default function ResourceSelector({ onConnected }: Props) {
       } finally {
         setLoadingFiles(false);
       }
+    } else if (value !== "__local__" && value !== "__file__") {
+      setLoadingTables(true);
+      try {
+        const tables = await listAuroraTables(value);
+        setAuroraTables(tables);
+        if (tables.length === 1) setSelectedTable(tables[0].name);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to list tables");
+        setAuroraTables([]);
+      } finally {
+        setLoadingTables(false);
+      }
     }
   };
 
@@ -102,10 +128,25 @@ export default function ResourceSelector({ onConnected }: Props) {
     try {
       if (isFileMode) {
         await connectResource("__local__", selectedFolder || undefined, selectedFile || undefined);
+        const fileName = selectedFile.split("/").pop() ?? "file";
+        onConnected("__local__", {
+          sourceType: "file",
+          folderId: selectedFolder,
+          s3Path: selectedFile,
+          sourceName: fileName,
+        });
+      } else if (isAuroraMode) {
+        await connectResource(selected, selectedFolder || undefined);
+        onConnected(selected, {
+          sourceType: "aurora",
+          folderId: selectedFolder,
+          table: selectedTable,
+          sourceName: selectedTable || selected,
+        });
       } else {
         await connectResource(selected, selectedFolder || undefined);
+        onConnected(selected);
       }
-      onConnected(isFileMode ? "__local__" : selected);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed");
     } finally {
@@ -118,6 +159,13 @@ export default function ResourceSelector({ onConnected }: Props) {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  const canConnect = (() => {
+    if (connecting) return false;
+    if (isFileMode) return !!selectedFile;
+    if (isAuroraMode) return !!selectedTable;
+    return true;
+  })();
 
   if (loading) {
     return (
@@ -147,7 +195,7 @@ export default function ResourceSelector({ onConnected }: Props) {
           </Box>
 
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Connect to an Aurora database, load a TSV/CSV from S3, or use local demo data.
+            Connect to an Aurora database or load a TSV/CSV from S3.
           </Typography>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
@@ -158,9 +206,6 @@ export default function ResourceSelector({ onConnected }: Props) {
                 label="Datasource"
                 onChange={(e) => handleDatasourceChange(e.target.value)}
               >
-                <MenuItem value="__local__">
-                  Local data (SQLite)
-                </MenuItem>
                 <MenuItem value="__file__">
                   Load from file (S3)
                 </MenuItem>
@@ -178,6 +223,30 @@ export default function ResourceSelector({ onConnected }: Props) {
               </IconButton>
             </Tooltip>
           </Box>
+
+          {isAuroraMode && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Table / View</InputLabel>
+              <Select
+                value={selectedTable}
+                label="Table / View"
+                onChange={(e) => setSelectedTable(e.target.value)}
+                disabled={loadingTables}
+              >
+                {loadingTables ? (
+                  <MenuItem disabled>Loading tables...</MenuItem>
+                ) : auroraTables.length === 0 ? (
+                  <MenuItem disabled>No tables found</MenuItem>
+                ) : (
+                  auroraTables.map((t) => (
+                    <MenuItem key={t.name} value={t.name}>
+                      {t.name} ({t.type})
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+          )}
 
           {s3Folders.length > 0 && (
             <FormControl fullWidth sx={{ mb: 2 }}>
@@ -208,7 +277,7 @@ export default function ResourceSelector({ onConnected }: Props) {
                 {loadingFiles ? (
                   <MenuItem disabled>Loading files...</MenuItem>
                 ) : s3Files.length === 0 ? (
-                  <MenuItem disabled>No TSV/CSV files found</MenuItem>
+                  <MenuItem disabled>No TSV/CSV/TXT files found</MenuItem>
                 ) : (
                   s3Files.map((f) => (
                     <MenuItem key={f.s3_path} value={f.s3_path}>
@@ -230,7 +299,7 @@ export default function ResourceSelector({ onConnected }: Props) {
             variant="contained"
             fullWidth
             onClick={handleConnect}
-            disabled={connecting || (isFileMode && !selectedFile)}
+            disabled={!canConnect}
           >
             {connecting ? "Connecting..." : "Connect"}
           </Button>

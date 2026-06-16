@@ -54,12 +54,14 @@ if [[ ! -f "${DEVCONTAINER_CONFIG_PATH}.template" ]]; then
 else
     cp "${DEVCONTAINER_CONFIG_PATH}.template" "${DEVCONTAINER_CONFIG_PATH}"
 fi
+sed -i "1s|^|// DO NOT EDIT: generated from ${DEVCONTAINER_CONFIG_PATH}.template on startup; edits will be overwritten.\n|" "${DEVCONTAINER_CONFIG_PATH}"
 if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
   if [[ ! -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" ]]; then
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template"
   else
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
   fi
+  sed -i "1s|^|# DO NOT EDIT: generated from ${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template on startup; edits will be overwritten.\n|" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 fi
 
 # Copy devcontainer post-startup scripts into the devcontainer folder so they

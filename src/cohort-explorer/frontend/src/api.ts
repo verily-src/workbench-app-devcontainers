@@ -90,6 +90,58 @@ export function exportUrl(filters: FilterState): string {
   return `${BASE}/api/export?${buildParams(filters)}`;
 }
 
+export interface ColumnMapping {
+  column: string;
+  type: string;
+  filter: string;
+  label: string;
+}
+
+export interface AuroraTable {
+  name: string;
+  type: string;
+}
+
+export async function listAuroraTables(resourceId: string): Promise<AuroraTable[]> {
+  const res = await fetchWithTimeout(
+    `${BASE}/api/schema/tables?resource_id=${encodeURIComponent(resourceId)}`,
+    { timeoutMs: 120_000 },
+  );
+  if (!res.ok) await extractError(res, "Failed to list tables");
+  return res.json();
+}
+
+export async function inferSchema(body: {
+  source_type: "file" | "aurora";
+  s3_path?: string;
+  folder_id?: string;
+  resource_id?: string;
+  table?: string;
+}): Promise<{ mappings: ColumnMapping[] }> {
+  const res = await fetchWithTimeout(`${BASE}/api/schema/infer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    timeoutMs: 120_000,
+  });
+  if (!res.ok) await extractError(res, "Failed to infer schema");
+  return res.json();
+}
+
+export async function confirmSchema(body: {
+  mappings: ColumnMapping[];
+  folder_id?: string;
+  source_name?: string;
+}): Promise<{ confirmed: boolean; columns: number }> {
+  const res = await fetchWithTimeout(`${BASE}/api/schema/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) await extractError(res, "Failed to confirm schema");
+  return res.json();
+}
+
 export interface CohortSummary {
   name: string;
   description: string;

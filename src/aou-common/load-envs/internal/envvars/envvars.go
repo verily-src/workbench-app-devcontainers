@@ -1,7 +1,6 @@
 package envvars
 
 import (
-	"fmt"
 	"maps"
 	"reflect"
 	"strings"

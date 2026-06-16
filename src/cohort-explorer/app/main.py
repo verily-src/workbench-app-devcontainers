@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
 from models import Base, Sample
+from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
 from seed import seed_from_tsv
 
 logging.basicConfig(level=logging.INFO)
@@ -157,7 +158,7 @@ def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
             if len(parts) < 4:
                 continue
             key = parts[3]
-            if key.lower().endswith((".tsv", ".csv")):
+            if key.lower().endswith((".tsv", ".csv", ".txt")):
                 size = int(parts[2])
                 files.append({
                     "key": key,
@@ -169,6 +170,74 @@ def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
     except Exception as e:
         logger.error("Failed to list S3 files: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/schema/tables")
+def api_list_tables(resource_id: str = Query(...)) -> list[dict]:
+    try:
+        return list_aurora_tables(resource_id)
+    except Exception as e:
+        logger.error("Failed to list tables: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/schema/infer")
+def api_infer_schema(body: dict) -> dict:
+    source_type = body.get("source_type")
+    folder_id = body.get("folder_id")
+    try:
+        if source_type == "file":
+            s3_path = body.get("s3_path", "")
+            local_path = Path(tempfile.gettempdir()) / Path(s3_path).name
+            profile_args = ["--profile", folder_id] if folder_id else []
+            subprocess.run(
+                ["aws", "s3", "cp", *profile_args, s3_path, str(local_path)],
+                capture_output=True, text=True, check=True, timeout=120,
+            )
+            mappings = infer_from_csv(str(local_path))
+            local_path.unlink(missing_ok=True)
+        elif source_type == "aurora":
+            resource_id = body.get("resource_id", "")
+            table = body.get("table", "")
+            mappings = infer_from_aurora(resource_id, table)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown source_type: {source_type}")
+        return {"mappings": mappings_to_dicts(mappings)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Schema inference failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/schema/confirm")
+def api_confirm_schema(body: dict) -> dict:
+    mappings_raw = body.get("mappings", [])
+    mappings = [ColumnMapping(**m) for m in mappings_raw]
+    folder_id = body.get("folder_id")
+    source_name = body.get("source_name", "schema")
+
+    if folder_id:
+        try:
+            local_csv = Path(tempfile.gettempdir()) / f"{source_name}.columns.csv"
+            save_mapping_csv(str(local_csv), mappings)
+
+            bucket_path = subprocess.run(
+                ["wb", "resource", "resolve", "--id", folder_id],
+                capture_output=True, text=True, check=True, timeout=120,
+            ).stdout.strip().rstrip("/")
+
+            subprocess.run(
+                ["aws", "s3", "cp", "--profile", folder_id, str(local_csv),
+                 f"{bucket_path}/{source_name}.columns.csv"],
+                capture_output=True, text=True, check=True, timeout=120,
+            )
+            local_csv.unlink(missing_ok=True)
+            logger.info("Saved mapping CSV to S3 for %s", source_name)
+        except Exception as e:
+            logger.warning("Failed to save mapping CSV to S3: %s", e)
+
+    return {"confirmed": True, "columns": len(mappings)}
 
 
 @app.post("/api/connect")
@@ -465,23 +534,10 @@ def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename
             capture_output=True, text=True, check=True,
         ).stdout.strip()
 
-        creds_json = subprocess.run(
-            ["wb", "resource", "credentials", "--id", SALMON_INPUT_BUCKET_ID,
-             "--scope", "WRITE_READ", "--format", "JSON"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        creds = json.loads(creds_json)
-
-        upload_env = {
-            **os.environ,
-            "AWS_ACCESS_KEY_ID": creds["AccessKeyId"],
-            "AWS_SECRET_ACCESS_KEY": creds["SecretAccessKey"],
-            "AWS_SESSION_TOKEN": creds["SessionToken"],
-        }
-
         subprocess.run(
-            ["aws", "s3", "cp", local_csv, f"{bucket_path.rstrip('/')}/{csv_filename}"],
-            capture_output=True, text=True, check=True, env=upload_env,
+            ["aws", "s3", "cp", "--profile", SALMON_INPUT_BUCKET_ID,
+             local_csv, f"{bucket_path.rstrip('/')}/{csv_filename}"],
+            capture_output=True, text=True, check=True,
         )
 
         result = subprocess.run(

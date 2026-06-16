@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import subprocess
 import threading
 from datetime import datetime, timezone
@@ -13,19 +12,8 @@ _folder_resource_id: str | None = None
 _bucket_path: str | None = None
 
 
-def _get_s3_env() -> dict[str, str]:
-    creds_json = subprocess.run(
-        ["wb", "resource", "credentials", "--id", _folder_resource_id,
-         "--scope", "WRITE_READ", "--format", "JSON"],
-        capture_output=True, text=True, check=True, timeout=120,
-    ).stdout.strip()
-    creds = json.loads(creds_json)
-    return {
-        **os.environ,
-        "AWS_ACCESS_KEY_ID": creds["AccessKeyId"],
-        "AWS_SECRET_ACCESS_KEY": creds["SecretAccessKey"],
-        "AWS_SESSION_TOKEN": creds["SessionToken"],
-    }
+def _profile_args() -> list[str]:
+    return ["--profile", _folder_resource_id] if _folder_resource_id else []
 
 
 def _resolve_bucket_path() -> str:
@@ -48,10 +36,9 @@ def _cohort_s3_key(name: str) -> str:
 def _load_from_s3():
     try:
         bucket = _resolve_bucket_path()
-        env = _get_s3_env()
         result = subprocess.run(
-            ["aws", "s3", "ls", f"{bucket}/cohorts/"],
-            capture_output=True, text=True, env=env, timeout=120,
+            ["aws", "s3", "ls", *_profile_args(), f"{bucket}/cohorts/"],
+            capture_output=True, text=True, timeout=120,
         )
         if result.returncode != 0:
             logger.info("No cohorts folder in S3 yet")
@@ -61,8 +48,8 @@ def _load_from_s3():
         for filename in files:
             try:
                 content = subprocess.run(
-                    ["aws", "s3", "cp", f"{bucket}/cohorts/{filename}", "-"],
-                    capture_output=True, text=True, env=env, timeout=120,
+                    ["aws", "s3", "cp", *_profile_args(), f"{bucket}/cohorts/{filename}", "-"],
+                    capture_output=True, text=True, timeout=120,
                 ).stdout.strip()
                 cohort = json.loads(content)
                 with _cohorts_lock:
@@ -77,12 +64,11 @@ def _load_from_s3():
 
 def _save_to_s3(cohort: dict):
     try:
-        env = _get_s3_env()
         content = json.dumps(cohort, indent=2)
         s3_key = _cohort_s3_key(cohort["name"])
         proc = subprocess.run(
-            ["aws", "s3", "cp", "-", s3_key, "--content-type", "application/json"],
-            input=content, capture_output=True, text=True, env=env, timeout=120,
+            ["aws", "s3", "cp", *_profile_args(), "-", s3_key, "--content-type", "application/json"],
+            input=content, capture_output=True, text=True, timeout=120,
         )
         if proc.returncode == 0:
             logger.info("Saved cohort '%s' to S3", cohort["name"])
@@ -94,11 +80,10 @@ def _save_to_s3(cohort: dict):
 
 def _delete_from_s3(name: str):
     try:
-        env = _get_s3_env()
         s3_key = _cohort_s3_key(name)
         subprocess.run(
-            ["aws", "s3", "rm", s3_key],
-            capture_output=True, text=True, env=env, timeout=120,
+            ["aws", "s3", "rm", *_profile_args(), s3_key],
+            capture_output=True, text=True, timeout=120,
         )
         logger.info("Deleted cohort '%s' from S3", name)
     except Exception as e:

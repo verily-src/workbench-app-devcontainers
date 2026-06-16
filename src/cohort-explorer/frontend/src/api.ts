@@ -173,9 +173,28 @@ export async function refreshDatasources(): Promise<DatasourcesResponse> {
   return res.json();
 }
 
-export async function connectResource(resourceId: string, cohortFolder?: string): Promise<{ connected: string }> {
+export interface S3File {
+  key: string;
+  name: string;
+  size: number;
+  s3_path: string;
+}
+
+export async function listS3Files(folderId: string): Promise<S3File[]> {
+  const res = await fetchWithTimeout(
+    `${BASE}/api/s3/files?folder_id=${encodeURIComponent(folderId)}`,
+    { timeoutMs: 120_000 },
+  );
+  if (!res.ok) await extractError(res, "Failed to list S3 files");
+  return res.json();
+}
+
+export async function connectResource(
+  resourceId: string, cohortFolder?: string, seedFrom?: string,
+): Promise<{ connected: string; seeded?: number }> {
   const params = new URLSearchParams({ resource_id: resourceId });
   if (cohortFolder) params.set("cohort_folder", cohortFolder);
+  if (seedFrom) params.set("seed_from", seedFrom);
   const res = await fetchWithTimeout(
     `${BASE}/api/connect?${params}`,
     { method: "POST", timeoutMs: 15_000 },

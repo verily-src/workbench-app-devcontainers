@@ -15,8 +15,8 @@ import {
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import StorageIcon from "@mui/icons-material/Storage";
-import type { Datasource, S3Folder } from "../api";
-import { connectResource, fetchDatasources, refreshDatasources } from "../api";
+import type { Datasource, S3File, S3Folder } from "../api";
+import { connectResource, fetchDatasources, listS3Files, refreshDatasources } from "../api";
 
 interface Props {
   onConnected: (resourceId: string) => void;
@@ -27,10 +27,15 @@ export default function ResourceSelector({ onConnected }: Props) {
   const [s3Folders, setS3Folders] = useState<S3Folder[]>([]);
   const [selected, setSelected] = useState("__local__");
   const [selectedFolder, setSelectedFolder] = useState("");
+  const [selectedFile, setSelectedFile] = useState("");
+  const [s3Files, setS3Files] = useState<S3File[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isFileMode = selected === "__file__";
 
   useEffect(() => {
     fetchDatasources()
@@ -58,17 +63,60 @@ export default function ResourceSelector({ onConnected }: Props) {
     }
   };
 
+  const handleFolderChange = async (folderId: string) => {
+    setSelectedFolder(folderId);
+    setSelectedFile("");
+    if (isFileMode && folderId) {
+      setLoadingFiles(true);
+      try {
+        const files = await listS3Files(folderId);
+        setS3Files(files);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to list files");
+        setS3Files([]);
+      } finally {
+        setLoadingFiles(false);
+      }
+    }
+  };
+
+  const handleDatasourceChange = async (value: string) => {
+    setSelected(value);
+    if (value === "__file__" && selectedFolder) {
+      setLoadingFiles(true);
+      try {
+        const files = await listS3Files(selectedFolder);
+        setS3Files(files);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to list files");
+        setS3Files([]);
+      } finally {
+        setLoadingFiles(false);
+      }
+    }
+  };
+
   const handleConnect = async () => {
     setConnecting(true);
     setError(null);
     try {
-      await connectResource(selected, selectedFolder || undefined);
-      onConnected(selected);
+      if (isFileMode) {
+        await connectResource("__local__", selectedFolder || undefined, selectedFile || undefined);
+      } else {
+        await connectResource(selected, selectedFolder || undefined);
+      }
+      onConnected(isFileMode ? "__local__" : selected);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed");
     } finally {
       setConnecting(false);
     }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   if (loading) {
@@ -99,7 +147,7 @@ export default function ResourceSelector({ onConnected }: Props) {
           </Box>
 
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Select a datasource to explore and a storage folder for saving cohorts.
+            Connect to an Aurora database, load a TSV/CSV from S3, or use local demo data.
           </Typography>
 
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
@@ -108,10 +156,13 @@ export default function ResourceSelector({ onConnected }: Props) {
               <Select
                 value={selected}
                 label="Datasource"
-                onChange={(e) => setSelected(e.target.value)}
+                onChange={(e) => handleDatasourceChange(e.target.value)}
               >
                 <MenuItem value="__local__">
                   Local data (SQLite)
+                </MenuItem>
+                <MenuItem value="__file__">
+                  Load from file (S3)
                 </MenuItem>
                 {resources.map((r) => (
                   <MenuItem key={r.id} value={r.id}>
@@ -130,17 +181,41 @@ export default function ResourceSelector({ onConnected }: Props) {
 
           {s3Folders.length > 0 && (
             <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Cohort storage folder</InputLabel>
+              <InputLabel>{isFileMode ? "S3 folder" : "Cohort storage folder"}</InputLabel>
               <Select
                 value={selectedFolder}
-                label="Cohort storage folder"
-                onChange={(e) => setSelectedFolder(e.target.value)}
+                label={isFileMode ? "S3 folder" : "Cohort storage folder"}
+                onChange={(e) => handleFolderChange(e.target.value)}
               >
                 {s3Folders.map((f) => (
                   <MenuItem key={f.id} value={f.id}>
                     {f.name}
                   </MenuItem>
                 ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {isFileMode && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>File</InputLabel>
+              <Select
+                value={selectedFile}
+                label="File"
+                onChange={(e) => setSelectedFile(e.target.value)}
+                disabled={loadingFiles}
+              >
+                {loadingFiles ? (
+                  <MenuItem disabled>Loading files...</MenuItem>
+                ) : s3Files.length === 0 ? (
+                  <MenuItem disabled>No TSV/CSV files found</MenuItem>
+                ) : (
+                  s3Files.map((f) => (
+                    <MenuItem key={f.s3_path} value={f.s3_path}>
+                      {f.name} ({formatSize(f.size)})
+                    </MenuItem>
+                  ))
+                )}
               </Select>
             </FormControl>
           )}
@@ -155,7 +230,7 @@ export default function ResourceSelector({ onConnected }: Props) {
             variant="contained"
             fullWidth
             onClick={handleConnect}
-            disabled={connecting}
+            disabled={connecting || (isFileMode && !selectedFile)}
           >
             {connecting ? "Connecting..." : "Connect"}
           </Button>

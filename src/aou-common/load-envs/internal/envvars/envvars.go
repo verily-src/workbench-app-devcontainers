@@ -12,7 +12,6 @@ const (
 	workspaceCDREnvKey = "WORKSPACE_CDR"
 
 	workspaceUfidKey        = "WORKSPACE_UFID"
-	workspaceBucketKey      = "WORKSPACE_BUCKET"
 	cdrStoragePathKey       = "CDR_STORAGE_PATH"
 	artifactRegistryRepoKey = "ARTIFACT_REGISTRY_DOCKER_REPO"
 )
@@ -67,7 +66,6 @@ func GetBaseEnvironmentVariables(
 	customEnvironmentVariables := make(map[string]string)
 
 	customEnvironmentVariables[workspaceUfidKey] = workspaceUfid
-	customEnvironmentVariables[workspaceBucketKey] = fmt.Sprintf("gs://cloned-%s-%s", "mybucket", gcpProject)
 	customEnvironmentVariables[artifactRegistryRepoKey] = accessTier.ArtifactRegistryRepo
 
 	// Add CDR environment variables

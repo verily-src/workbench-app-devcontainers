@@ -1,31 +1,19 @@
 {
   "id": "common-packages",
   "version": "1.0.0",
-  "name": "Common Data Science Packages",
-  "description": "Pre-installs common Python and R packages for data science workloads to avoid manual installation every time",
+  "name": "Pre-install Packages",
+  "description": "Pre-install Python and R packages so users don't have to run pip install or install.packages() every time",
   "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/features/src/common-packages",
   "options": {
     "pythonPackages": {
       "type": "string",
-      "enum": ["none", "basic", "ml", "bio", "full"],
-      "default": "basic",
-      "description": "Python package preset to install"
+      "default": "",
+      "description": "Python packages to install (space-separated, e.g., 'pandas numpy scikit-learn')"
     },
     "rPackages": {
       "type": "string",
-      "enum": ["none", "basic", "ml", "bio", "full"],
-      "default": "none",
-      "description": "R package preset to install"
-    },
-    "customPythonPackages": {
-      "type": "string",
       "default": "",
-      "description": "Additional Python packages to install (space-separated)"
-    },
-    "customRPackages": {
-      "type": "string",
-      "default": "",
-      "description": "Additional R packages to install (comma-separated)"
+      "description": "R packages to install (comma-separated, e.g., 'tidyverse,ggplot2,dplyr')"
     }
   }
 }

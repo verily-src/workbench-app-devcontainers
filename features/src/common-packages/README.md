@@ -1,150 +1,77 @@
-# Common Data Science Packages Feature
+# Pre-install Packages Feature
 
-Pre-install common Python and R packages so users don't have to run `pip install` or `install.packages()` every time they create an app.
+Pre-install your Python and R packages so you don't have to run `pip install` or `install.packages()` every time you create an app.
 
 ## Usage
 
-Add this feature to your `.devcontainer.json`:
+Just list the packages you want in your `.devcontainer.json`:
 
 ```json
 {
   "features": {
     "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "basic",
-      "rPackages": "basic"
+      "pythonPackages": "pandas numpy scikit-learn matplotlib",
+      "rPackages": "tidyverse,ggplot2,dplyr,plotly,shiny"
     }
   }
 }
 ```
 
-## Package Presets
-
-### Python Presets
-
-**`basic`** (Default for Jupyter apps):
-- pandas, numpy, matplotlib, seaborn, scikit-learn
-- jupyter, ipywidgets
-- google-cloud-bigquery, google-cloud-storage, db-dtypes
-
-**`ml`** (Machine Learning):
-- Everything in `basic` +
-- tensorflow, torch, transformers
-- xgboost, lightgbm, optuna, mlflow
-
-**`bio`** (Bioinformatics):
-- Everything in `basic` +
-- biopython, scanpy, anndata, pysam
-
-**`full`** (Everything):
-- All packages above +
-- plotly, dash, streamlit
-
-### R Presets
-
-**`basic`** (Default for R Analysis apps):
-- tidyverse, ggplot2, dplyr, tidyr, readr
-- plotly, shiny, DT
-- bigrquery, googleCloudStorageR
-
-**`ml`** (Machine Learning):
-- Everything in `basic` +
-- caret, randomForest, xgboost, keras, reticulate
-
-**`bio`** (Bioinformatics):
-- Everything in `basic` +
-- Seurat, BiocManager, DESeq2
-
-**`full`** (Everything):
-- All packages above +
-- data.table, arrow, sparklyr, shinydashboard
-
-## Custom Packages
-
-Add your own packages on top of presets:
-
-```json
-{
-  "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "basic",
-      "customPythonPackages": "mypackage anotherpackage",
-      "rPackages": "basic",
-      "customRPackages": "myRpackage,anotherRpackage"
-    }
-  }
-}
-```
-
-**Note:** 
-- Python custom packages are **space-separated**
-- R custom packages are **comma-separated**
+That's it! Packages will be pre-installed when the app is built.
 
 ## Examples
 
-### Jupyter with ML packages
+### R Analysis with 15 packages
 
 ```json
 {
   "features": {
     "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "ml"
+      "rPackages": "tidyverse,ggplot2,dplyr,tidyr,readr,plotly,shiny,DT,data.table,caret,randomForest,bigrquery,googleCloudStorageR,arrow,lubridate"
     }
   }
 }
 ```
 
-### R Analysis with tidyverse + your packages
+### Jupyter with Python packages
 
 ```json
 {
   "features": {
     "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "rPackages": "basic",
-      "customRPackages": "zoo,forecast,prophet"
+      "pythonPackages": "pandas numpy matplotlib seaborn scikit-learn google-cloud-bigquery google-cloud-storage"
     }
   }
 }
 ```
 
-### Both Python and R (for RStudio with Python)
+### Both Python and R
 
 ```json
 {
   "features": {
     "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "basic",
-      "rPackages": "ml"
+      "pythonPackages": "pandas numpy",
+      "rPackages": "ggplot2,dplyr"
     }
   }
 }
 ```
 
-## Skip Everything (No Packages)
+## Format
 
-```json
-{
-  "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "none",
-      "rPackages": "none"
-    }
-  }
-}
-```
+- **Python packages:** Space-separated (e.g., `"pandas numpy scikit-learn"`)
+- **R packages:** Comma-separated (e.g., `"tidyverse,ggplot2,dplyr"`)
 
 ## How It Works
 
-- Packages are installed during container build (one-time cost)
-- Once built, apps launch instantly with packages ready
-- Users can still install additional packages at runtime
-- All system dependencies are handled automatically
+- Packages install during container build (one-time)
+- Apps launch instantly with packages ready
+- Users can still install more packages at runtime if needed
+- Much simpler than creating custom app configs
 
 ## Performance
 
-- **First build:** Slower (installs all packages)
-- **Subsequent builds:** Fast (cached in image layers)
-- **App launch:** Instant (packages already installed)
-
-vs. installing manually every time:
-- ❌ Manual: 5-10 min every app launch
-- ✅ This feature: 0 seconds (already there)
+- **First build:** Takes time to install packages
+- **Every app after:** Instant - packages already there
+- **vs. manual install every time:** Saves 5-10 minutes per app launch

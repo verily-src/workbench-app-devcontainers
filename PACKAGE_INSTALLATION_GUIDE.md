@@ -1,14 +1,55 @@
 # Pre-installing Packages in Workbench Apps
 
-Users often want specific packages pre-installed in their apps to avoid running `pip install` or `install.packages()` every time they create an app. This guide shows three approaches.
+Users often want specific packages pre-installed in their apps to avoid running `pip install` or `install.packages()` every time they create an app. This guide shows four approaches.
 
 ---
 
-## Approach 1: Devcontainer Features (Easiest for R)
+## Approach 1: Use the `common-packages` Feature (Easiest!) ⭐
+
+**Best for:** Most users who want standard data science packages
+
+Use the built-in `common-packages` feature with curated package presets:
+
+```json
+{
+  "features": {
+    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
+      "pythonPackages": "basic",
+      "rPackages": "basic"
+    }
+  }
+}
+```
+
+**Available presets:**
+- `basic` - Core packages (pandas, numpy, tidyverse, ggplot2, BigQuery, GCS)
+- `ml` - Machine learning (tensorflow, torch, xgboost, caret, keras)
+- `bio` - Bioinformatics (biopython, scanpy, Seurat, DESeq2)
+- `full` - Everything + plotly, dash, streamlit, arrow, sparklyr
+
+**Add your own packages:**
+```json
+{
+  "features": {
+    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
+      "pythonPackages": "basic",
+      "customPythonPackages": "mypackage anotherpackage",
+      "rPackages": "basic",
+      "customRPackages": "zoo,forecast,prophet"
+    }
+  }
+}
+```
+
+See [`features/src/common-packages/README.md`](features/src/common-packages/README.md) for details.
+
+---
+
+## Approach 2: Third-Party Features (For Specific R Packages)
 
 ### R Packages
 
-Use the `r-packages` feature in `.devcontainer.json`:
+Use the third-party `r-packages` feature for complete control:
 
 ```json
 {

@@ -17,9 +17,11 @@ from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
+from dynamic_model import get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_range_filters, set_active_mapping
 from models import Base, Sample
 from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
 from seed import seed_from_tsv
+from starlette.requests import Request
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,23 +30,18 @@ app = FastAPI(title="Cohort Explorer")
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-FILTERABLE_CATEGORICAL = [
-    "tissue_type",
-    "tissue_type_detail",
-    "autolysis_score",
-    "current_material_type",
-    "sample_collection_kit",
-]
-FILTERABLE_RANGE = ["rin_number", "total_ischemic_time", "paxgene_time"]
+def _get_model():
+    return get_active_model() or Sample
 
 
 def _apply_filters(stmt, params: dict, exclude: str | None = None):
-    for col_name in FILTERABLE_CATEGORICAL:
+    model = _get_model()
+    for col_name in get_categorical_filters():
         if col_name == exclude:
             continue
         values = params.get(col_name)
         if values:
-            col = getattr(Sample, col_name)
+            col = getattr(model, col_name)
             value_list = values if isinstance(values, list) else [values]
             has_null = "__null__" in value_list
             non_null_values = [v for v in value_list if v != "__null__"]
@@ -55,8 +52,8 @@ def _apply_filters(stmt, params: dict, exclude: str | None = None):
             elif non_null_values:
                 stmt = stmt.where(col.in_(non_null_values))
 
-    for col_name in FILTERABLE_RANGE:
-        col = getattr(Sample, col_name)
+    for col_name in get_range_filters():
+        col = getattr(model, col_name)
         min_val = params.get(f"{col_name}_min")
         max_val = params.get(f"{col_name}_max")
         if min_val is not None:
@@ -67,32 +64,18 @@ def _apply_filters(stmt, params: dict, exclude: str | None = None):
     return stmt
 
 
-def _extract_filter_params(
-    tissue_type: list[str] | None = Query(None),
-    tissue_type_detail: list[str] | None = Query(None),
-    autolysis_score: list[str] | None = Query(None),
-    current_material_type: list[str] | None = Query(None),
-    sample_collection_kit: list[str] | None = Query(None),
-    rin_number_min: float | None = Query(None),
-    rin_number_max: float | None = Query(None),
-    total_ischemic_time_min: float | None = Query(None),
-    total_ischemic_time_max: float | None = Query(None),
-    paxgene_time_min: float | None = Query(None),
-    paxgene_time_max: float | None = Query(None),
-) -> dict:
-    return {
-        "tissue_type": tissue_type,
-        "tissue_type_detail": tissue_type_detail,
-        "autolysis_score": autolysis_score,
-        "current_material_type": current_material_type,
-        "sample_collection_kit": sample_collection_kit,
-        "rin_number_min": rin_number_min,
-        "rin_number_max": rin_number_max,
-        "total_ischemic_time_min": total_ischemic_time_min,
-        "total_ischemic_time_max": total_ischemic_time_max,
-        "paxgene_time_min": paxgene_time_min,
-        "paxgene_time_max": paxgene_time_max,
-    }
+def _extract_filter_params(request: Request) -> dict:
+    params: dict = {}
+    for col_name in get_categorical_filters():
+        values = request.query_params.getlist(col_name)
+        if values:
+            params[col_name] = values
+    for col_name in get_range_filters():
+        for suffix in ("_min", "_max"):
+            val = request.query_params.get(f"{col_name}{suffix}")
+            if val is not None:
+                params[f"{col_name}{suffix}"] = float(val)
+    return params
 
 
 @app.on_event("startup")
@@ -237,7 +220,14 @@ def api_confirm_schema(body: dict) -> dict:
         except Exception as e:
             logger.warning("Failed to save mapping CSV to S3: %s", e)
 
+    set_active_mapping(mappings_raw)
     return {"confirmed": True, "columns": len(mappings)}
+
+
+@app.get("/api/schema/active")
+def api_active_schema() -> dict:
+    mapping = get_active_mapping()
+    return {"mappings": mapping or []}
 
 
 @app.post("/api/connect")
@@ -271,55 +261,41 @@ def connect_resource(
 
 @app.get("/api/samples")
 def get_samples(
-    filters: dict = Depends(_extract_filter_params),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    stmt = select(Sample)
+    model = _get_model()
+    columns = get_all_columns()
+    filters = _extract_filter_params(request)
+    stmt = select(model)
     stmt = _apply_filters(stmt, filters)
-    stmt = stmt.order_by(Sample.tissue_type, Sample.gtex_sample_id)
+    first_col = columns[0] if columns else "id"
+    stmt = stmt.order_by(getattr(model, first_col))
     rows = db.execute(stmt).scalars().all()
     return [
-        {
-            "id": s.id,
-            "subject_id": s.subject_id,
-            "gtex_sample_id": s.gtex_sample_id,
-            "specimen_id": s.specimen_id,
-            "tissue_type": s.tissue_type,
-            "tissue_type_detail": s.tissue_type_detail,
-            "autolysis_score": s.autolysis_score,
-            "current_material_type": s.current_material_type,
-            "sample_collection_kit": s.sample_collection_kit,
-            "rin_number": float(s.rin_number) if s.rin_number is not None else None,
-            "total_ischemic_time": s.total_ischemic_time,
-            "paxgene_time": s.paxgene_time,
-            "tissue_location": s.tissue_location,
-            "bss_collection_site": s.bss_collection_site,
-            "original_material_type": s.original_material_type,
-            "pathology_notes": s.pathology_notes,
-            "prosector_comments": s.prosector_comments,
-            "srr_id": s.srr_id,
-            "fastq1_path": s.fastq1_path,
-            "fastq2_path": s.fastq2_path,
-        }
+        {"id": s.id, **{col: getattr(s, col) for col in columns}}
         for s in rows
     ]
 
 
 @app.get("/api/filters")
 def get_filters(
-    filters: dict = Depends(_extract_filter_params),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
+    model = _get_model()
+    filters = _extract_filter_params(request)
     result: dict = {}
-    for col_name in FILTERABLE_CATEGORICAL:
-        cross_stmt = select(Sample)
-        cross_stmt = _apply_filters(cross_stmt, filters, exclude=col_name)
-        cross_ids = cross_stmt.with_only_columns(Sample.id).subquery()
 
-        col = getattr(Sample, col_name)
+    for col_name in get_categorical_filters():
+        cross_stmt = select(model)
+        cross_stmt = _apply_filters(cross_stmt, filters, exclude=col_name)
+        cross_ids = cross_stmt.with_only_columns(model.id).subquery()
+
+        col = getattr(model, col_name)
         values_stmt = (
-            select(col, func.count(Sample.id))
-            .where(Sample.id.in_(select(cross_ids.c.id)))
+            select(col, func.count(model.id))
+            .where(model.id.in_(select(cross_ids.c.id)))
             .group_by(col)
             .order_by(col)
         )
@@ -333,15 +309,15 @@ def get_filters(
             })
         result[col_name] = options
 
-    all_stmt = select(Sample)
+    all_stmt = select(model)
     all_stmt = _apply_filters(all_stmt, filters)
-    filtered_ids = all_stmt.with_only_columns(Sample.id).subquery()
+    filtered_ids = all_stmt.with_only_columns(model.id).subquery()
 
-    for col_name in FILTERABLE_RANGE:
-        col = getattr(Sample, col_name)
+    for col_name in get_range_filters():
+        col = getattr(model, col_name)
         range_stmt = (
             select(func.min(col), func.max(col))
-            .where(Sample.id.in_(select(filtered_ids.c.id)))
+            .where(model.id.in_(select(filtered_ids.c.id)))
             .where(col.isnot(None))
         )
         row = db.execute(range_stmt).one()
@@ -355,26 +331,28 @@ def get_filters(
 
 @app.get("/api/counts")
 def get_counts(
-    filters: dict = Depends(_extract_filter_params),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    stmt = select(Sample)
+    model = _get_model()
+    filters = _extract_filter_params(request)
+    stmt = select(model)
     stmt = _apply_filters(stmt, filters)
     filtered = stmt.subquery()
 
-    counts = db.execute(
-        select(
-            func.count(filtered.c.id).label("samples"),
-            func.count(distinct(filtered.c.subject_id)).label("subjects"),
-            func.count(filtered.c.fastq1_path).label("fastq_pairs"),
-        )
-    ).one()
+    count_exprs = [func.count(filtered.c.id).label("samples")]
+    if hasattr(filtered.c, "subject_id"):
+        count_exprs.append(func.count(distinct(filtered.c.subject_id)).label("subjects"))
+    if hasattr(filtered.c, "fastq1_path"):
+        count_exprs.append(func.count(filtered.c.fastq1_path).label("fastq_pairs"))
 
-    return {
-        "samples": counts.samples,
-        "subjects": counts.subjects,
-        "fastq_pairs": counts.fastq_pairs,
-    }
+    row = db.execute(select(*count_exprs)).one()
+    result = {"samples": row.samples}
+    if hasattr(row, "subjects"):
+        result["subjects"] = row.subjects
+    if hasattr(row, "fastq_pairs"):
+        result["fastq_pairs"] = row.fastq_pairs
+    return result
 
 
 @app.post("/api/seed")
@@ -396,15 +374,17 @@ def seed_data(
 
 @app.get("/api/export")
 def export_csv(
-    filters: dict = Depends(_extract_filter_params),
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    stmt = select(Sample)
+    model = _get_model()
+    columns = get_all_columns()
+    filters = _extract_filter_params(request)
+    stmt = select(model)
     stmt = _apply_filters(stmt, filters)
-    stmt = stmt.order_by(Sample.tissue_type, Sample.gtex_sample_id)
+    first_col = columns[0] if columns else "id"
+    stmt = stmt.order_by(getattr(model, first_col))
     rows = db.execute(stmt).scalars().all()
-
-    columns = [c.key for c in Sample.__table__.columns if c.key != "id"]
 
     output = io.StringIO()
     output.write("\t".join(columns) + "\n")
@@ -493,10 +473,12 @@ def _build_salmon_row(sample: Sample) -> dict | None:
 
 @app.post("/api/salmon/prepare")
 def prepare_salmon(
-    filters: dict = Depends(_extract_filter_params),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    stmt = select(Sample)
+    model = _get_model()
+    filters = _extract_filter_params(request)
+    stmt = select(model)
     stmt = _apply_filters(stmt, filters)
     rows = db.execute(stmt).scalars().all()
 
@@ -570,10 +552,12 @@ def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename
 
 @app.post("/api/salmon/submit")
 def submit_salmon(
-    filters: dict = Depends(_extract_filter_params),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    stmt = select(Sample)
+    model = _get_model()
+    filters = _extract_filter_params(request)
+    stmt = select(model)
     stmt = _apply_filters(stmt, filters)
     rows = db.execute(stmt).scalars().all()
 

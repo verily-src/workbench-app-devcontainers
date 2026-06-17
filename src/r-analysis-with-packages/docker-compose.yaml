@@ -1,0 +1,27 @@
+services:
+  app:
+    container_name: "application-server"
+    image: "ghcr.io/rocker-org/devcontainer/tidyverse@sha256:289c5d02d8115aa209f4a8a49ee9378dccbf623897eed9cc46c87dfbbca9015b"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/rstudio:cached
+    tmpfs:
+      - /home/rstudio/workspace:uid=1000,gid=1000
+    ports:
+      - "8787:8787"
+    environment:
+      "DISABLE_AUTH": "true"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

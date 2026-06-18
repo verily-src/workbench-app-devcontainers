@@ -32,7 +32,7 @@
     "./.devcontainer/features/postgres-client": {
       "version": "16"
     },
-    "../../features/src/common-packages": {
+    "./.devcontainer/features/common-packages": {
       "rPackages": "tidyverse,ggplot2,dplyr,tidyr,readr,plotly,shiny,shinydashboard,DT,data.table,caret,randomForest,bigrquery,googleCloudStorageR,arrow"
     }
   },

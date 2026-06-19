@@ -1,0 +1,23 @@
+{
+  "id": "file-processor",
+  "version": "1.0.0",
+  "name": "File Processor",
+  "description": "Upload, validate, and transform files with GCS integration",
+  "documentationURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/tree/master/src/templates/file-processor",
+  "licenseURL": "https://github.com/aculotti-verily/wb-app-mcp-and-context/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

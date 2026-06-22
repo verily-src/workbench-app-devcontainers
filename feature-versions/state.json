@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:611070f2622733fba25b6d973aaee98ebedc1594ab7030df4f4fd70d0041f4a5",
+    "installed": "sha256:386ff4db0f4e5f0aac878bf291606a1b4d9331c33d54cf0edb025122ca69dbb3",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:891d369df747b8e5d2db287073f82f7b660f6ebefdd5b881c9cd0467800fc597",
+    "installed": "sha256:6395a12b7e2a0d36dcd2f3ab5ea010ee60efdf88aa05d7ee7b5a18a533f046a5",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:54504cac626fa9ec61083b87e0c87f2d7859faf7a65830b2e8a743d6a08ac7a2",
+    "installed": "sha256:7c06611c9231a97e172ca4f3517befde1f847dd50535a4fedc4fe0864ca62266",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:325ce4e4228c93e393872055dac2d3de067b179cf0921fc60fc41ce325b1e2f9",
+    "installed": "sha256:4d4b57a91ce944a5793c712551f717d78f5f34efdb5d172905e20db5d855c120",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,12 +61,12 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:cb261a7f87674b445e0fd66d87d55900c1b823d276c727ab0d168a75e69e9992",
+    "installed": "sha256:7e9523734c003b6336781942df7b48aa6936a9df6931c12a19a1f7ad7858eeba",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
     "tag": "1.26-alpine",
-    "installed": "sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f",
+    "installed": "sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {
@@ -91,7 +91,7 @@
   },
   "gcr.io/go-containerregistry/crane": {
     "tag": "latest",
-    "installed": "sha256:0ae17ecb34315aa7cbff28f6eddee3b7adae0b2f90101260d990804db1eb0084",
+    "installed": "sha256:6f95e0e453f09944a625fa219d6879aa2dfaf3f4c7fe3ac9bf41a0a41d45ec46",
     "filter": "startupscript\\/butane\\/prefetch-oci-features\\.sh"
   }
 }

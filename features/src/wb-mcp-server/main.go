@@ -4,10 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -90,10 +88,9 @@ type ContentItem struct {
 
 // Global variables
 var (
-	workspaceBaseURL     string
-	dataExplorerURL      string
-	cachedWorkspaceUUID  string // populated once at startup from wb status
-	httpClient           = &http.Client{Timeout: 60 * time.Second}
+	workspaceBaseURL string
+	dataExplorerURL  string
+	httpClient       = &http.Client{Timeout: 60 * time.Second}
 )
 
 // Tool definitions
@@ -395,55 +392,6 @@ Returns a structured list of data collections with their resources, types, and c
 		InputSchema: InputSchema{
 			Type:       "object",
 			Properties: map[string]interface{}{},
-		},
-	},
-
-	{
-		Name: "platform_list_data_collections",
-		Description: `Search and list all data collections accessible to the current user across all of Workbench — not just those attached to the active workspace.
-
-Use this when a user asks:
-- "What data collections do I have access to?"
-- "Find data collections related to <topic>"
-- "Search for datasets across all of Workbench"
-- "What datasets could I add to my workspace?"
-- "Show me all accessible genomics / proteomics / clinical / imaging data"
-- "Are there any data collections I haven't attached yet?"
-- "Find me datasets about <disease area / modality / population>"
-
-This tool searches PLATFORM-WIDE. It returns all data collections the user has READ access to,
-regardless of whether they are attached to the active workspace.
-
-Always tell the user upfront that this is a broader platform-wide search (not just their workspace).
-
-The keyword search matches against: name, description, data modality tags, therapeutic area tags,
-and data model type — so queries like "imaging", "genomics", "oncology" will match relevant collections.
-
-Each result includes rich metadata sourced directly from the data collection:
-- shortDescription, description, organization, availability, isFree, isInstantlyAccessible
-- patientCount, timeFrame, geographicCoverage, dataModel
-- dataModalityTags (e.g. imaging, lab-results, ecrf), therapeuticTags (e.g. oncology, general-health)
-- underlayName (the data model identifier for schema exploration)
-- dataDictionary (links to schema documentation)
-- usageExamples (sample use cases and SQL queries)
-- accessGroupName, supportEmail
-- dataPublished, metadataLastUpdated, externalDocumentation
-
-Present results in a human-readable summary grouped by relevance. For each matching collection,
-highlight the most relevant fields for the user's query (e.g. patient count and modality for
-clinical searches, underlay name for schema exploration).`,
-		InputSchema: InputSchema{
-			Type: "object",
-			Properties: map[string]interface{}{
-				"query": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional keyword to filter data collections by name or description (case-insensitive substring match)",
-				},
-				"limit": map[string]interface{}{
-					"type":        "number",
-					"description": "Maximum number of results to return (default: 100)",
-				},
-			},
 		},
 	},
 
@@ -1585,21 +1533,16 @@ func initializeConfig() error {
 		var status map[string]interface{}
 		if err := json.Unmarshal(output, &status); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to parse wb status JSON, using default URLs: %v\n", err)
+		} else if server, ok := status["server"].(map[string]interface{}); ok {
+			// Get workspaceManagerUri from wb status output
+			if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
+				workspaceBaseURL = wsURL
+				// Derive dataExplorerUri from workspaceManagerUri
+				// Pattern: replace /api/wsm with /api/de
+				dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
+			}
 		} else {
-			// Extract server URLs
-			if server, ok := status["server"].(map[string]interface{}); ok {
-				if wsURL, ok := server["workspaceManagerUri"].(string); ok && wsURL != "" {
-					workspaceBaseURL = wsURL
-					dataExplorerURL = strings.Replace(wsURL, "/api/wsm", "/api/de", 1)
-				}
-			} else {
-				fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
-			}
-			// Best-effort workspace UUID cache at startup. If this fails (e.g. auth not
-			// ready yet), getCurrentWorkspaceUUID() will retry lazily at call time.
-			if _, startupErr := getCurrentWorkspaceUUID(); startupErr != nil {
-				fmt.Fprintf(os.Stderr, "Warning: could not resolve workspace UUID at startup (will retry on first use): %v\n", startupErr)
-			}
+			fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
 		}
 	}
 
@@ -1615,161 +1558,6 @@ func initializeConfig() error {
 	return nil
 }
 
-// resolveWorkspaceId resolves an arbitrary user-facing workspace ID to its UUID
-// by searching the full workspace list. Used by tools that accept an explicit
-// workspaceId parameter. For the CURRENT workspace, use getCurrentWorkspaceUUID().
-func resolveWorkspaceId(workspaceId string) (string, error) {
-	if isUUID(workspaceId) {
-		return workspaceId, nil // already a UUID
-	}
-	for _, limit := range []int{100, 5000} {
-		listUrl := fmt.Sprintf("%s/api/workspaces/v1?offset=0&limit=%d", workspaceBaseURL, limit)
-		listResp, apiErr := makeAPIRequest("GET", listUrl, nil)
-		if apiErr != nil {
-			continue
-		}
-		var listData map[string]interface{}
-		if json.Unmarshal(listResp, &listData) != nil {
-			continue
-		}
-		workspaces, _ := listData["workspaces"].([]interface{})
-		for _, ws := range workspaces {
-			wsMap, ok := ws.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			ufid, _ := wsMap["userFacingId"].(string)
-			id, _ := wsMap["id"].(string)
-			if ufid == workspaceId || id == workspaceId {
-				return id, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("workspace '%s' not found", workspaceId)
-}
-
-// isUUID returns true if s looks like a UUID (8-4-4-4-12 hex format).
-func isUUID(s string) bool {
-	if len(s) != 36 {
-		return false
-	}
-	for i, c := range s {
-		if i == 8 || i == 13 || i == 18 || i == 23 {
-			if c != '-' {
-				return false
-			}
-		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return false
-		}
-	}
-	return true
-}
-
-// getCurrentWorkspaceUUID returns the UUID of the currently active workspace.
-// It uses a three-layer strategy so that temporary failures (auth not ready,
-// server startup race) do not permanently break workspace-scoped tools:
-//
-//  1. Return the cached UUID if already resolved.
-//  2. Call `wb workspace describe --format=json` — fast, no list traversal needed.
-//     If the response contains a `uuid` field, use it directly.
-//     If not, extract the `id` / `userFacingId` and proceed to layer 3.
-//  3. Search the workspace list with a small page (100) first, then full (5000),
-//     using the userFacingId obtained from layer 2.
-//
-// The result is cached so subsequent calls within the same server session are instant.
-func getCurrentWorkspaceUUID() (string, error) {
-	if cachedWorkspaceUUID != "" {
-		return cachedWorkspaceUUID, nil
-	}
-
-	// Layer 1: wb workspace describe — most direct path.
-	userFacingId := ""
-	cmd := exec.Command("wb", "workspace", "describe", "--format=json")
-	if out, err := cmd.CombinedOutput(); err == nil {
-		var desc map[string]interface{}
-		if json.Unmarshal(out, &desc) == nil {
-			// Some Workbench versions return uuid directly.
-			if uuid, ok := desc["uuid"].(string); ok && isUUID(uuid) {
-				cachedWorkspaceUUID = uuid
-				fmt.Fprintf(os.Stderr, "Resolved workspace UUID from describe: %s\n", uuid)
-				return uuid, nil
-			}
-			// id may be the UUID on some versions, or userFacingId on others.
-			if id, ok := desc["id"].(string); ok {
-				if isUUID(id) {
-					cachedWorkspaceUUID = id
-					fmt.Fprintf(os.Stderr, "Resolved workspace UUID from describe.id: %s\n", id)
-					return id, nil
-				}
-				userFacingId = id
-			}
-			// Explicit userFacingId field takes precedence if present.
-			if ufid, ok := desc["userFacingId"].(string); ok && ufid != "" {
-				userFacingId = ufid
-			}
-		}
-	}
-
-	// Layer 2: fall back to wb status for userFacingId if describe didn't give it.
-	if userFacingId == "" {
-		cmd2 := exec.Command("wb", "status", "--format=json")
-		if out, err := cmd2.CombinedOutput(); err == nil {
-			var status map[string]interface{}
-			if json.Unmarshal(out, &status) == nil {
-				if ws, ok := status["workspace"].(map[string]interface{}); ok {
-					if ufid, ok := ws["userFacingId"].(string); ok && ufid != "" {
-						userFacingId = ufid
-					} else if id, ok := ws["id"].(string); ok {
-						if isUUID(id) {
-							cachedWorkspaceUUID = id
-							return id, nil
-						}
-						userFacingId = id
-					}
-				}
-			}
-		}
-	}
-
-	if userFacingId == "" {
-		return "", fmt.Errorf("no active workspace found — run `wb workspace set --id=<workspace-id>` first")
-	}
-
-	// Layer 3: resolve userFacingId → UUID via workspace list.
-	// Try a small page first to avoid fetching 5,000 workspaces for common cases.
-	for _, limit := range []int{100, 5000} {
-		listUrl := fmt.Sprintf("%s/api/workspaces/v1?offset=0&limit=%d", workspaceBaseURL, limit)
-		listResp, apiErr := makeAPIRequest("GET", listUrl, nil)
-		if apiErr != nil {
-			continue
-		}
-		var listData map[string]interface{}
-		if json.Unmarshal(listResp, &listData) != nil {
-			continue
-		}
-		workspaces, ok := listData["workspaces"].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, w := range workspaces {
-			wsMap, ok := w.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			ufid, _ := wsMap["userFacingId"].(string)
-			id, _ := wsMap["id"].(string)
-			if ufid == userFacingId || id == userFacingId {
-				// id in the workspace list API is always the UUID.
-				cachedWorkspaceUUID = id
-				fmt.Fprintf(os.Stderr, "Resolved workspace UUID from list (limit=%d): %s\n", limit, id)
-				return id, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("workspace '%s' not found in accessible workspaces", userFacingId)
-}
-
 func getToken() (string, error) {
 	cmd := exec.Command("wb", "auth", "print-access-token")
 	output, err := cmd.CombinedOutput()
@@ -1779,6 +1567,31 @@ func getToken() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+func resolveWorkspaceId(workspaceId string) (string, error) {
+	listUrl := fmt.Sprintf("%s/api/workspaces/v1?offset=0&limit=5000", workspaceBaseURL)
+	listResp, apiErr := makeAPIRequest("GET", listUrl, nil)
+	if apiErr != nil {
+		return "", fmt.Errorf("failed to list workspaces: %w", apiErr)
+	}
+	var listData map[string]interface{}
+	if err := json.Unmarshal(listResp, &listData); err != nil {
+		return "", fmt.Errorf("error parsing workspace list: %v", err)
+	}
+	workspaces, ok := listData["workspaces"].([]interface{})
+	if !ok {
+		return "", fmt.Errorf("workspaces not found in list response")
+	}
+	for _, ws := range workspaces {
+		wsMap, ok := ws.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if wsMap["userFacingId"].(string) == workspaceId || wsMap["id"].(string) == workspaceId {
+			return wsMap["id"].(string), nil
+		}
+	}
+	return "", fmt.Errorf("workspace '%s' not found", workspaceId)
+}
 
 func makeAPIRequest(method, url string, body interface{}) ([]byte, error) {
 	token, err := getToken()
@@ -1827,30 +1640,6 @@ func executeWbCommand(args []string) (string, error) {
 	return string(output), err
 }
 
-func requireString(args map[string]interface{}, key string) (string, error) {
-	val, ok := args[key]
-	if !ok || val == nil {
-		return "", fmt.Errorf("missing required parameter: %s", key)
-	}
-	s, ok := val.(string)
-	if !ok {
-		return "", fmt.Errorf("parameter %s must be a string, got %T", key, val)
-	}
-	return s, nil
-}
-
-func requireStrings(args map[string]interface{}, keys ...string) ([]string, error) {
-	vals := make([]string, len(keys))
-	for i, key := range keys {
-		v, err := requireString(args, key)
-		if err != nil {
-			return nil, err
-		}
-		vals[i] = v
-	}
-	return vals, nil
-}
-
 func handleCallTool(params CallToolParams) CallToolResult {
 	var output string
 	var err error
@@ -1895,195 +1684,6 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			err = apiErr
 		} else {
 			output = string(respBody)
-		}
-
-	case "platform_list_data_collections":
-		// Fetch all data collections accessible to the user across all workspaces.
-		// Data collections are workspaces with the property terra-type=data-collection.
-		limit := 100
-		if l, ok := params.Arguments["limit"].(float64); ok {
-			limit = int(l)
-		}
-		query := ""
-		if q, ok := params.Arguments["query"].(string); ok {
-			query = strings.ToLower(strings.TrimSpace(q))
-		}
-
-		body := map[string]interface{}{
-			"limit":  limit,
-			"offset": 0,
-			"properties": []map[string]string{
-				{"key": "terra-type", "value": "data-collection"},
-			},
-		}
-		respBody, apiErr := makeAPIRequest("POST", workspaceBaseURL+"/api/workspaces/v2/filtered", body)
-		if apiErr != nil {
-			err = apiErr
-			break
-		}
-
-		var wsData map[string]interface{}
-		if jsonErr := json.Unmarshal(respBody, &wsData); jsonErr != nil {
-			err = fmt.Errorf("failed to parse response: %w", jsonErr)
-			break
-		}
-
-		workspaces, _ := wsData["workspaces"].([]interface{})
-		if workspaces == nil {
-			workspaces = []interface{}{}
-		}
-
-		var collections []map[string]interface{}
-		for _, w := range workspaces {
-			ws, ok := w.(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			uuid, _ := ws["id"].(string)
-			userFacingId, _ := ws["userFacingId"].(string)
-			name, _ := ws["displayName"].(string)
-			if name == "" {
-				name = userFacingId
-			}
-			desc, _ := ws["description"].(string)
-
-			// Derive the Workbench UI URL for this data collection
-			// workspaceBaseURL is e.g. https://workbench.verily.com/api/wsm
-			workbenchBaseUI := strings.Replace(workspaceBaseURL, "/api/wsm", "", 1)
-			collectionURL := fmt.Sprintf("%s/data-collections/%s", workbenchBaseUI, userFacingId)
-
-			// Extract all terra-* workspace properties into a flat map
-			props := make(map[string]string)
-			if propsArray, ok := ws["properties"].([]interface{}); ok {
-				for _, p := range propsArray {
-					if prop, ok := p.(map[string]interface{}); ok {
-						k, _ := prop["key"].(string)
-						v, _ := prop["value"].(string)
-						props[k] = v
-					}
-				}
-			}
-
-			// Apply optional keyword filter across name, description, short description,
-			// modality tags, and therapeutic tags so searches like "genomics" or "imaging" work.
-			// Props are extracted before the filter so tags are available for matching.
-			if query != "" {
-				searchTargets := strings.Join([]string{
-					strings.ToLower(name),
-					strings.ToLower(desc),
-					strings.ToLower(props["terra-workspace-short-description"]),
-					strings.ToLower(props["terra-data-modality-tags"]),
-					strings.ToLower(props["terra-therapeutic-tags"]),
-					strings.ToLower(props["terra-dc-data-model"]),
-				}, " ")
-				if !strings.Contains(searchTargets, query) {
-					continue
-				}
-			}
-
-			// Build structured result with all meaningful metadata fields
-			dc := map[string]interface{}{
-				"id":             userFacingId,
-				"uuid":           uuid,
-				"name":           name,
-				"workbenchUrl":   collectionURL,
-			}
-
-			// Overview
-			if v := props["terra-workspace-short-description"]; v != "" {
-				dc["shortDescription"] = v
-			}
-			if desc != "" {
-				dc["description"] = desc
-			}
-			if v := props["terra-organization-name"]; v != "" {
-				dc["organization"] = v
-			}
-			if v := props["terra-dc-availability"]; v != "" {
-				dc["availability"] = v
-			}
-			if v := props["terra-dc-is-free"]; v != "" {
-				dc["isFree"] = v == "true"
-			}
-			if v := props["terra-is-instantly-accessible"]; v != "" {
-				dc["isInstantlyAccessible"] = v == "true"
-			}
-
-			// Data characteristics
-			if v := props["terra-dc-patient-count"]; v != "" {
-				dc["patientCount"] = v
-			}
-			if v := props["terra-dc-time-frame"]; v != "" {
-				dc["timeFrame"] = v
-			}
-			if v := props["terra-dc-geographic-coverage"]; v != "" {
-				dc["geographicCoverage"] = v
-			}
-			if v := props["terra-dc-data-model"]; v != "" {
-				dc["dataModel"] = v
-			}
-			if v := props["terra-data-modality-tags"]; v != "" {
-				dc["dataModalityTags"] = v
-			}
-			if v := props["terra-therapeutic-tags"]; v != "" {
-				dc["therapeuticTags"] = v
-			}
-
-			// Schema / underlay
-			if v := props["terra-dx-underlay-name"]; v != "" {
-				dc["underlayName"] = v
-			}
-
-			// Data dictionary
-			if v := props["terra-dc-data-dictionary"]; v != "" {
-				dc["dataDictionary"] = v
-			}
-
-			// Usage examples (includes sample queries)
-			if v := props["terra-dc-usage-examples-sample-use-cases"]; v != "" {
-				dc["usageExamples"] = v
-			}
-
-			// Access
-			if v := props["terra-access-group-name"]; v != "" {
-				dc["accessGroupName"] = v
-			}
-			if v := props["terra-support-email"]; v != "" {
-				dc["supportEmail"] = v
-			}
-
-			// Publication / freshness
-			if v := props["terra-dc-data-published"]; v != "" {
-				dc["dataPublished"] = v
-			}
-			if v := props["terra-dc-metadata-last-updated"]; v != "" {
-				dc["metadataLastUpdated"] = v
-			}
-
-			// External documentation
-			if v := props["terra-dc-external-documentation"]; v != "" {
-				dc["externalDocumentation"] = v
-			}
-
-			collections = append(collections, dc)
-		}
-
-		if collections == nil {
-			collections = []map[string]interface{}{}
-		}
-
-		result := map[string]interface{}{
-			"dataCollections": collections,
-			"total":           len(collections),
-			"scope":           "platform-wide (all data collections you have READ access to)",
-			"attachCommand":   "wb workspace clone --id=<id>  # or ask your workspace admin to attach the collection",
-		}
-		resultBytes, marshalErr := json.MarshalIndent(result, "", "  ")
-		if marshalErr != nil {
-			err = fmt.Errorf("failed to marshal result: %w", marshalErr)
-		} else {
-			output = string(resultBytes)
 		}
 
 	case "workspace_get":
@@ -2687,11 +2287,8 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output = string(outputBytes)
 
 	case "workspace_create":
-		vals, reqErr := requireStrings(params.Arguments, "id", "podId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		id, podId := vals[0], vals[1]
+		id := params.Arguments["id"].(string)
+		podId := params.Arguments["podId"].(string)
 		args := []string{"workspace", "create", "--id=" + id, "--pod=" + podId}
 		if name, ok := params.Arguments["name"].(string); ok {
 			args = append(args, "--name="+name)
@@ -2705,17 +2302,11 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "workspace_delete":
-		workspaceId, reqErr := requireString(params.Arguments, "workspaceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		workspaceId := params.Arguments["workspaceId"].(string)
 		output, err = executeWbCommand([]string{"workspace", "delete", "--workspace=" + workspaceId})
 
 	case "workspace_update":
-		workspaceId, reqErr := requireString(params.Arguments, "workspaceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		workspaceId := params.Arguments["workspaceId"].(string)
 		args := []string{"workspace", "update", "--workspace=" + workspaceId}
 		if name, ok := params.Arguments["name"].(string); ok {
 			args = append(args, "--name="+name)
@@ -2726,11 +2317,8 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "workspace_duplicate":
-		vals, reqErr := requireStrings(params.Arguments, "sourceWorkspaceId", "destWorkspaceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		sourceId, destId := vals[0], vals[1]
+		sourceId := params.Arguments["sourceWorkspaceId"].(string)
+		destId := params.Arguments["destWorkspaceId"].(string)
 		args := []string{"workspace", "duplicate", "--source-workspace=" + sourceId, "--destination-workspace-id=" + destId}
 		if name, ok := params.Arguments["name"].(string); ok {
 			args = append(args, "--name="+name)
@@ -2738,46 +2326,34 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "workspace_set_property":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "key", "value")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"workspace", "set-property", "--workspace=" + vals[0], "--key=" + vals[1], "--value=" + vals[2]})
+		workspaceId := params.Arguments["workspaceId"].(string)
+		key := params.Arguments["key"].(string)
+		value := params.Arguments["value"].(string)
+		output, err = executeWbCommand([]string{"workspace", "set-property", "--workspace=" + workspaceId, "--key=" + key, "--value=" + value})
 
 	case "workspace_delete_property":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "key")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"workspace", "delete-property", "--workspace=" + vals[0], "--key=" + vals[1]})
+		workspaceId := params.Arguments["workspaceId"].(string)
+		key := params.Arguments["key"].(string)
+		output, err = executeWbCommand([]string{"workspace", "delete-property", "--workspace=" + workspaceId, "--key=" + key})
 
 	case "workspace_add_user":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "email", "role")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"workspace", "add-user", "--workspace=" + vals[0], "--email=" + vals[1], "--role=" + vals[2]})
+		workspaceId := params.Arguments["workspaceId"].(string)
+		email := params.Arguments["email"].(string)
+		role := params.Arguments["role"].(string)
+		output, err = executeWbCommand([]string{"workspace", "add-user", "--workspace=" + workspaceId, "--email=" + email, "--role=" + role})
 
 	case "workspace_remove_user":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "email")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"workspace", "remove-user", "--workspace=" + vals[0], "--email=" + vals[1]})
+		workspaceId := params.Arguments["workspaceId"].(string)
+		email := params.Arguments["email"].(string)
+		output, err = executeWbCommand([]string{"workspace", "remove-user", "--workspace=" + workspaceId, "--email=" + email})
 
 	case "workspace_list_users":
-		workspaceId, reqErr := requireString(params.Arguments, "workspaceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		workspaceId := params.Arguments["workspaceId"].(string)
 		output, err = executeWbCommand([]string{"workspace", "list-users", "--workspace=" + workspaceId})
 
 	case "resource_create_bucket":
-		vals, reqErr := requireStrings(params.Arguments, "resourceId", "bucketName")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		resourceId, bucketName := vals[0], vals[1]
+		resourceId := params.Arguments["resourceId"].(string)
+		bucketName := params.Arguments["bucketName"].(string)
 		args := []string{"resource", "create", "gcs-bucket", "--id=" + resourceId, "--bucket-name=" + bucketName}
 		if desc, ok := params.Arguments["description"].(string); ok {
 			args = append(args, "--description="+desc)
@@ -2785,11 +2361,8 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "resource_create_bq_dataset":
-		vals, reqErr := requireStrings(params.Arguments, "resourceId", "datasetId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		resourceId, datasetId := vals[0], vals[1]
+		resourceId := params.Arguments["resourceId"].(string)
+		datasetId := params.Arguments["datasetId"].(string)
 		args := []string{"resource", "create", "bq-dataset", "--id=" + resourceId, "--dataset-id=" + datasetId}
 		if desc, ok := params.Arguments["description"].(string); ok {
 			args = append(args, "--description="+desc)
@@ -2797,17 +2370,11 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "resource_delete":
-		resourceId, reqErr := requireString(params.Arguments, "resourceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		resourceId := params.Arguments["resourceId"].(string)
 		output, err = executeWbCommand([]string{"resource", "delete", "--name=" + resourceId})
 
 	case "resource_update":
-		resourceId, reqErr := requireString(params.Arguments, "resourceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		resourceId := params.Arguments["resourceId"].(string)
 		args := []string{"resource", "update", "--name=" + resourceId}
 		if name, ok := params.Arguments["name"].(string); ok {
 			args = append(args, "--new-name="+name)
@@ -2818,11 +2385,9 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "resource_add_reference":
-		vals, reqErr := requireStrings(params.Arguments, "resourceId", "resourceType", "path")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		resourceId, resourceType, path := vals[0], vals[1], vals[2]
+		resourceId := params.Arguments["resourceId"].(string)
+		resourceType := params.Arguments["resourceType"].(string)
+		path := params.Arguments["path"].(string)
 		args := []string{"resource", "add-ref", resourceType, "--name=" + resourceId, "--path=" + path}
 		if desc, ok := params.Arguments["description"].(string); ok {
 			args = append(args, "--description="+desc)
@@ -2830,25 +2395,17 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "resource_check_access":
-		resourceId, reqErr := requireString(params.Arguments, "resourceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		resourceId := params.Arguments["resourceId"].(string)
 		output, err = executeWbCommand([]string{"resource", "check-access", "--name=" + resourceId})
 
 	case "resource_move":
-		vals, reqErr := requireStrings(params.Arguments, "resourceId", "folderId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"resource", "move", "--name=" + vals[0], "--folder-id=" + vals[1]})
+		resourceId := params.Arguments["resourceId"].(string)
+		folderId := params.Arguments["folderId"].(string)
+		output, err = executeWbCommand([]string{"resource", "move", "--name=" + resourceId, "--folder-id=" + folderId})
 
 	case "folder_create":
-		vals, reqErr := requireStrings(params.Arguments, "folderId", "displayName")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		folderId, displayName := vals[0], vals[1]
+		folderId := params.Arguments["folderId"].(string)
+		displayName := params.Arguments["displayName"].(string)
 		args := []string{"folder", "create", "--id=" + folderId, "--display-name=" + displayName}
 		if desc, ok := params.Arguments["description"].(string); ok {
 			args = append(args, "--description="+desc)
@@ -2859,17 +2416,11 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "folder_delete":
-		folderId, reqErr := requireString(params.Arguments, "folderId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		folderId := params.Arguments["folderId"].(string)
 		output, err = executeWbCommand([]string{"folder", "delete", "--id=" + folderId})
 
 	case "folder_update":
-		folderId, reqErr := requireString(params.Arguments, "folderId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		folderId := params.Arguments["folderId"].(string)
 		args := []string{"folder", "update", "--id=" + folderId}
 		if displayName, ok := params.Arguments["displayName"].(string); ok {
 			args = append(args, "--display-name="+displayName)
@@ -2883,11 +2434,36 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"folder", "tree"})
 
 	case "workspace_list_data_collections":
-		var workspaceUuid string
-		var uuidErr error
-		workspaceUuid, uuidErr = getCurrentWorkspaceUUID()
-		if uuidErr != nil {
-			output = fmt.Sprintf("Could not determine active workspace: %v\n\nTo fix: run `wb workspace set --id=<workspace-id>` in your terminal, then retry.", uuidErr)
+		// Get current workspace from wb status
+		statusOutput, statusErr := executeWbCommand([]string{"status", "--format=json"})
+		if statusErr != nil {
+			err = fmt.Errorf("failed to get workspace status: %w", statusErr)
+			break
+		}
+		var statusData map[string]interface{}
+		if jsonErr := json.Unmarshal([]byte(statusOutput), &statusData); jsonErr != nil {
+			err = fmt.Errorf("failed to parse status: %w", jsonErr)
+			break
+		}
+		workspace, ok := statusData["workspace"].(map[string]interface{})
+		if !ok {
+			err = fmt.Errorf("no workspace set - run 'wb workspace set <id>' first")
+			break
+		}
+		// Get either userFacingId or id from the workspace status
+		workspaceId := ""
+		if ufid, ok := workspace["userFacingId"].(string); ok && ufid != "" {
+			workspaceId = ufid
+		} else if id, ok := workspace["id"].(string); ok {
+			workspaceId = id
+		} else {
+			err = fmt.Errorf("could not get workspace ID from status")
+			break
+		}
+		// Resolve to UUID using the same method as other working tools
+		workspaceUuid, resolveErr := resolveWorkspaceId(workspaceId)
+		if resolveErr != nil {
+			err = fmt.Errorf("could not resolve workspace ID: %w", resolveErr)
 			break
 		}
 
@@ -2910,40 +2486,54 @@ func handleCallTool(params CallToolParams) CallToolResult {
 			resourcesList = []interface{}{}
 		}
 
-		// Build a UUID → display name map with a single batch API call.
-		// This avoids the N+1 sequential lookups (one per collection) that caused timeouts.
-		collectionNames := make(map[string]string) // uuid → display name
-		batchBody := map[string]interface{}{
-			"limit":  1000,
-			"offset": 0,
-			"properties": []map[string]string{
-				{"key": "terra-type", "value": "data-collection"},
-			},
-		}
-		if batchResp, batchErr := makeAPIRequest("POST", workspaceBaseURL+"/api/workspaces/v2/filtered", batchBody); batchErr == nil {
-			var batchData map[string]interface{}
-			if json.Unmarshal(batchResp, &batchData) == nil {
-				if wsList, ok := batchData["workspaces"].([]interface{}); ok {
-					for _, w := range wsList {
-						ws, ok := w.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						uuid, _ := ws["id"].(string)
-						displayName, _ := ws["displayName"].(string)
-						if displayName == "" {
-							displayName, _ = ws["userFacingId"].(string)
-						}
-						if uuid != "" && displayName != "" {
-							collectionNames[uuid] = displayName
-						}
+		// Extract sourceWorkspaceIds from resourceLineage (which is an ARRAY inside metadata)
+		sourceWorkspaceIds := make(map[string]bool)
+		for _, r := range resourcesList {
+			resource, ok := r.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			metadata, ok := resource["metadata"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// resourceLineage is an array inside metadata
+			if lineageArray, ok := metadata["resourceLineage"].([]interface{}); ok && len(lineageArray) > 0 {
+				if firstLineage, ok := lineageArray[0].(map[string]interface{}); ok {
+					if sourceId, ok := firstLineage["sourceWorkspaceId"].(string); ok && sourceId != "" {
+						sourceWorkspaceIds[sourceId] = true
 					}
 				}
 			}
 		}
-		// Fall back gracefully: if the batch call fails, groups will be keyed by UUID
 
-		// Group resources by data collection, using display name where available
+		// Look up each source workspace to get the data collection name
+		dataCollectionNames := make(map[string]string) // sourceWorkspaceId -> display name
+		for sourceId := range sourceWorkspaceIds {
+			// Use API to get workspace details
+			wsUrl := fmt.Sprintf("%s/api/workspaces/v1/%s", workspaceBaseURL, sourceId)
+			wsResp, wsErr := makeAPIRequest("GET", wsUrl, nil)
+			if wsErr == nil {
+				var wsInfo map[string]interface{}
+				if json.Unmarshal(wsResp, &wsInfo) == nil {
+					// Try to get display name, fall back to id
+					if displayName, ok := wsInfo["displayName"].(string); ok && displayName != "" {
+						dataCollectionNames[sourceId] = displayName
+					} else if userFacingId, ok := wsInfo["userFacingId"].(string); ok && userFacingId != "" {
+						dataCollectionNames[sourceId] = userFacingId
+					} else {
+						dataCollectionNames[sourceId] = sourceId
+					}
+				} else {
+					dataCollectionNames[sourceId] = sourceId
+				}
+			} else {
+				// If we can't access the source workspace, use the ID
+				dataCollectionNames[sourceId] = sourceId + " (inaccessible)"
+			}
+		}
+
+		// Group resources by data collection (using resourceLineage array inside metadata)
 		dataCollections := make(map[string]map[string]interface{})
 		localResources := []map[string]interface{}{}
 
@@ -2989,20 +2579,17 @@ func handleCallTool(params CallToolParams) CallToolResult {
 				}
 			}
 
-			// Group by display name (falling back to UUID if name not resolved)
+			// Group by data collection or mark as local
 			if sourceId != "" {
-				groupKey := collectionNames[sourceId]
-				if groupKey == "" {
-					groupKey = sourceId
-				}
-				if dataCollections[groupKey] == nil {
-					dataCollections[groupKey] = map[string]interface{}{
+				collectionName := dataCollectionNames[sourceId]
+				if dataCollections[collectionName] == nil {
+					dataCollections[collectionName] = map[string]interface{}{
 						"sourceWorkspaceId": sourceId,
 						"resources":         []map[string]interface{}{},
 					}
 				}
-				resList := dataCollections[groupKey]["resources"].([]map[string]interface{})
-				dataCollections[groupKey]["resources"] = append(resList, resourceInfo)
+				resList := dataCollections[collectionName]["resources"].([]map[string]interface{})
+				dataCollections[collectionName]["resources"] = append(resList, resourceInfo)
 			} else {
 				localResources = append(localResources, resourceInfo)
 			}
@@ -3032,11 +2619,8 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output = string(outputBytes)
 
 	case "group_create":
-		vals, reqErr := requireStrings(params.Arguments, "groupId", "name")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		groupId, name := vals[0], vals[1]
+		groupId := params.Arguments["groupId"].(string)
+		name := params.Arguments["name"].(string)
 		args := []string{"group", "create", "--id=" + groupId, "--name=" + name}
 		if desc, ok := params.Arguments["description"].(string); ok {
 			args = append(args, "--description="+desc)
@@ -3044,42 +2628,30 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "group_delete":
-		groupId, reqErr := requireString(params.Arguments, "groupId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		groupId := params.Arguments["groupId"].(string)
 		output, err = executeWbCommand([]string{"group", "delete", "--id=" + groupId})
 
 	case "group_list":
 		output, err = executeWbCommand([]string{"group", "list"})
 
 	case "group_describe":
-		groupId, reqErr := requireString(params.Arguments, "groupId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		groupId := params.Arguments["groupId"].(string)
 		output, err = executeWbCommand([]string{"group", "describe", "--id=" + groupId})
 
 	case "group_add_user":
-		vals, reqErr := requireStrings(params.Arguments, "groupId", "email", "role")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"group", "member", "add", "--group-id=" + vals[0], "--email=" + vals[1], "--role=" + vals[2]})
+		groupId := params.Arguments["groupId"].(string)
+		email := params.Arguments["email"].(string)
+		role := params.Arguments["role"].(string)
+		output, err = executeWbCommand([]string{"group", "member", "add", "--group-id=" + groupId, "--email=" + email, "--role=" + role})
 
 	case "group_remove_user":
-		vals, reqErr := requireStrings(params.Arguments, "groupId", "email")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"group", "member", "remove", "--group-id=" + vals[0], "--email=" + vals[1]})
+		groupId := params.Arguments["groupId"].(string)
+		email := params.Arguments["email"].(string)
+		output, err = executeWbCommand([]string{"group", "member", "remove", "--group-id=" + groupId, "--email=" + email})
 
 	case "app_create":
-		vals, reqErr := requireStrings(params.Arguments, "appId", "appConfig")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		appId, appConfig := vals[0], vals[1]
+		appId := params.Arguments["appId"].(string)
+		appConfig := params.Arguments["appConfig"].(string)
 		args := []string{"app", "create", "gcp", "--id=" + appId, "--config=" + appConfig}
 		if machineType, ok := params.Arguments["machineType"].(string); ok {
 			args = append(args, "--machine-type="+machineType)
@@ -3093,34 +2665,22 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "app_delete":
-		appId, reqErr := requireString(params.Arguments, "appId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		appId := params.Arguments["appId"].(string)
 		output, err = executeWbCommand([]string{"app", "delete", "--id=" + appId, "--quiet"})
 
 	case "app_list":
 		output, err = executeWbCommand([]string{"app", "list"})
 
 	case "app_start":
-		appId, reqErr := requireString(params.Arguments, "appId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		appId := params.Arguments["appId"].(string)
 		output, err = executeWbCommand([]string{"app", "start", "--id=" + appId})
 
 	case "app_stop":
-		appId, reqErr := requireString(params.Arguments, "appId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		appId := params.Arguments["appId"].(string)
 		output, err = executeWbCommand([]string{"app", "stop", "--id=" + appId})
 
 	case "app_get_url":
-		appId, reqErr := requireString(params.Arguments, "appId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		appId := params.Arguments["appId"].(string)
 		output, err = executeWbCommand([]string{"app", "launch", "--id=" + appId})
 
 	case "auth_status":
@@ -3130,61 +2690,47 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"server", "list"})
 
 	case "server_set":
-		serverName, reqErr := requireString(params.Arguments, "serverName")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		serverName := params.Arguments["serverName"].(string)
 		output, err = executeWbCommand([]string{"server", "set", "--name=" + serverName})
 
 	case "server_status":
 		output, err = executeWbCommand([]string{"server", "status"})
 
 	case "server_list_regions":
-		cloudPlatform, reqErr := requireString(params.Arguments, "cloudPlatform")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		cloudPlatform := params.Arguments["cloudPlatform"].(string)
 		output, err = executeWbCommand([]string{"server", "list-regions", "--platform=" + cloudPlatform})
 
 	case "pod_list":
 		output, err = executeWbCommand([]string{"pod", "list"})
 
 	case "pod_describe":
-		podId, reqErr := requireString(params.Arguments, "podId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		podId := params.Arguments["podId"].(string)
 		output, err = executeWbCommand([]string{"pod", "describe", "--id=" + podId})
 
 	case "pod_role_list":
-		vals, reqErr := requireStrings(params.Arguments, "organizationId", "podId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"pod", "role", "list", "--organization=" + vals[0], "--pod=" + vals[1]})
+		organizationId := params.Arguments["organizationId"].(string)
+		podId := params.Arguments["podId"].(string)
+		output, err = executeWbCommand([]string{"pod", "role", "list", "--organization=" + organizationId, "--pod=" + podId})
 
 	case "pod_role_grant":
-		vals, reqErr := requireStrings(params.Arguments, "organizationId", "podId", "email", "role")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"pod", "role", "grant", "user", "--organization=" + vals[0], "--pod=" + vals[1], "--email=" + vals[2], "--role=" + vals[3]})
+		organizationId := params.Arguments["organizationId"].(string)
+		podId := params.Arguments["podId"].(string)
+		email := params.Arguments["email"].(string)
+		role := params.Arguments["role"].(string)
+		output, err = executeWbCommand([]string{"pod", "role", "grant", "user", "--organization=" + organizationId, "--pod=" + podId, "--email=" + email, "--role=" + role})
 
 	case "pod_role_revoke":
-		vals, reqErr := requireStrings(params.Arguments, "organizationId", "podId", "email", "role")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"pod", "role", "revoke", "user", "--organization=" + vals[0], "--pod=" + vals[1], "--email=" + vals[2], "--role=" + vals[3]})
+		organizationId := params.Arguments["organizationId"].(string)
+		podId := params.Arguments["podId"].(string)
+		email := params.Arguments["email"].(string)
+		role := params.Arguments["role"].(string)
+		output, err = executeWbCommand([]string{"pod", "role", "revoke", "user", "--organization=" + organizationId, "--pod=" + podId, "--email=" + email, "--role=" + role})
 
 	case "organization_list":
 		output, err = executeWbCommand([]string{"organization", "list"})
 
 	case "resource_credentials":
-		resourceId, reqErr := requireString(params.Arguments, "resourceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		resourceId := params.Arguments["resourceId"].(string)
 		args := []string{"resource", "credentials", "--name=" + resourceId}
 		if duration, ok := params.Arguments["duration"].(float64); ok {
 			args = append(args, fmt.Sprintf("--duration=%d", int(duration)))
@@ -3192,10 +2738,7 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "resource_open_console":
-		resourceId, reqErr := requireString(params.Arguments, "resourceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		resourceId := params.Arguments["resourceId"].(string)
 		output, err = executeWbCommand([]string{"resource", "open-console", "--name=" + resourceId})
 
 	case "resource_list_tree":
@@ -3208,60 +2751,38 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"resource", "unmount"})
 
 	case "notebook_start":
-		notebookId, reqErr := requireString(params.Arguments, "notebookId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		notebookId := params.Arguments["notebookId"].(string)
 		output, err = executeWbCommand([]string{"notebook", "start", "--id=" + notebookId})
 
 	case "notebook_stop":
-		notebookId, reqErr := requireString(params.Arguments, "notebookId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		notebookId := params.Arguments["notebookId"].(string)
 		output, err = executeWbCommand([]string{"notebook", "stop", "--id=" + notebookId})
 
 	case "notebook_launch":
-		notebookId, reqErr := requireString(params.Arguments, "notebookId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		notebookId := params.Arguments["notebookId"].(string)
 		output, err = executeWbCommand([]string{"notebook", "launch", "--id=" + notebookId})
 
 	case "cluster_start":
-		clusterId, reqErr := requireString(params.Arguments, "clusterId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		clusterId := params.Arguments["clusterId"].(string)
 		output, err = executeWbCommand([]string{"cluster", "start", "--id=" + clusterId})
 
 	case "cluster_stop":
-		clusterId, reqErr := requireString(params.Arguments, "clusterId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		clusterId := params.Arguments["clusterId"].(string)
 		output, err = executeWbCommand([]string{"cluster", "stop", "--id=" + clusterId})
 
 	case "cluster_launch":
-		clusterId, reqErr := requireString(params.Arguments, "clusterId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		clusterId := params.Arguments["clusterId"].(string)
 		output, err = executeWbCommand([]string{"cluster", "launch", "--id=" + clusterId})
 
 	case "workflow_list":
-		workspaceId, reqErr := requireString(params.Arguments, "workspaceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		workspaceId := params.Arguments["workspaceId"].(string)
 		output, err = executeWbCommand([]string{"workflow", "list", "--workspace=" + workspaceId})
 
 	case "workflow_create":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "workflowId", "bucketId", "path")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		workspaceId, workflowId, bucketId, path := vals[0], vals[1], vals[2], vals[3]
+		workspaceId := params.Arguments["workspaceId"].(string)
+		workflowId := params.Arguments["workflowId"].(string)
+		bucketId := params.Arguments["bucketId"].(string)
+		path := params.Arguments["path"].(string)
 		args := []string{"workflow", "create", "--workspace=" + workspaceId, "--workflow=" + workflowId, "--bucket-id=" + bucketId, "--path=" + path}
 		if displayName, ok := params.Arguments["displayName"].(string); ok {
 			args = append(args, "--display-name="+displayName)
@@ -3272,28 +2793,22 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "workflow_describe":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "workflowId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"workflow", "describe", "--workspace=" + vals[0], "--workflow=" + vals[1]})
+		workspaceId := params.Arguments["workspaceId"].(string)
+		workflowId := params.Arguments["workflowId"].(string)
+		output, err = executeWbCommand([]string{"workflow", "describe", "--workspace=" + workspaceId, "--workflow=" + workflowId})
 
 	case "workflow_job_list":
 		output, err = executeWbCommand([]string{"workflow", "job", "list"})
 
 	case "workflow_job_describe":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "jobId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"workflow", "job", "describe", "--workspace=" + vals[0], "--job-id=" + vals[1]})
+		workspaceId := params.Arguments["workspaceId"].(string)
+		jobId := params.Arguments["jobId"].(string)
+		output, err = executeWbCommand([]string{"workflow", "job", "describe", "--workspace=" + workspaceId, "--job-id=" + jobId})
 
 	case "workflow_job_run":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "workflowId", "outputBucketId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		workspaceId, workflowId, outputBucketId := vals[0], vals[1], vals[2]
+		workspaceId := params.Arguments["workspaceId"].(string)
+		workflowId := params.Arguments["workflowId"].(string)
+		outputBucketId := params.Arguments["outputBucketId"].(string)
 		args := []string{"workflow", "job", "run", "--workspace=" + workspaceId, "--workflow=" + workflowId, "--output-bucket-id=" + outputBucketId}
 		if jobId, ok := params.Arguments["jobId"].(string); ok {
 			args = append(args, "--job-id="+jobId)
@@ -3311,62 +2826,39 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand(args)
 
 	case "workflow_job_cancel":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "jobId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		output, err = executeWbCommand([]string{"workflow", "job", "cancel", "--workspace=" + vals[0], "--job-id=" + vals[1]})
+		workspaceId := params.Arguments["workspaceId"].(string)
+		jobId := params.Arguments["jobId"].(string)
+		output, err = executeWbCommand([]string{"workflow", "job", "cancel", "--workspace=" + workspaceId, "--job-id=" + jobId})
 
 	case "cromwell_generate_config":
-		path, reqErr := requireString(params.Arguments, "path")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		path := params.Arguments["path"].(string)
 		output, err = executeWbCommand([]string{"cromwell", "generate-config", "--path=" + path})
 
 	case "workspace_configure_aws":
-		workspaceId, reqErr := requireString(params.Arguments, "workspaceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		workspaceId := params.Arguments["workspaceId"].(string)
 		output, err = executeWbCommand([]string{"workspace", "configure-aws", "--workspace=" + workspaceId})
 
 	case "resolve":
-		resourceId, reqErr := requireString(params.Arguments, "resourceId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		resourceId := params.Arguments["resourceId"].(string)
 		output, err = executeWbCommand([]string{"resolve", "--name=" + resourceId})
 
 	case "version":
 		output, err = executeWbCommand([]string{"version"})
 
 	case "bq_execute":
-		command, reqErr := requireString(params.Arguments, "command")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		command := params.Arguments["command"].(string)
 		output, err = executeWbCommand(append([]string{"bq"}, strings.Fields(command)...))
 
 	case "gcloud_execute":
-		command, reqErr := requireString(params.Arguments, "command")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		command := params.Arguments["command"].(string)
 		output, err = executeWbCommand(append([]string{"gcloud"}, strings.Fields(command)...))
 
 	case "gsutil_execute":
-		command, reqErr := requireString(params.Arguments, "command")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		command := params.Arguments["command"].(string)
 		output, err = executeWbCommand(append([]string{"gsutil"}, strings.Fields(command)...))
 
 	case "git_execute":
-		command, reqErr := requireString(params.Arguments, "command")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
+		command := params.Arguments["command"].(string)
 		output, err = executeWbCommand(append([]string{"git"}, strings.Fields(command)...))
 
 	default:
@@ -3374,7 +2866,11 @@ func handleCallTool(params CallToolParams) CallToolResult {
 	}
 
 	if err != nil {
-		return CallToolResult{Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Error: %s", err.Error())}}, IsError: true}
+		errorMsg := fmt.Sprintf("Command failed with %s", err.Error())
+		if output != "" {
+			errorMsg = fmt.Sprintf("%s:\n%s", errorMsg, output)
+		}
+		return CallToolResult{Content: []ContentItem{{Type: "text", Text: errorMsg}}, IsError: true}
 	}
 	return CallToolResult{Content: []ContentItem{{Type: "text", Text: output}}, IsError: false}
 }
@@ -3427,54 +2923,15 @@ func handleRequest(req JSONRPCRequest) JSONRPCResponse {
 	}
 }
 
-// HTTP handler for MCP requests
-func handleHTTP(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers for local access
-	w.Header().Set("Access-Control-Allow-Origin", "http://127.0.0.1")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+func main() {
+	fmt.Fprintln(os.Stderr, "Workbench MCP Server v2.0 starting...")
 
-	// Handle preflight
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
-		return
+	if err := initializeConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing: %v\n", err)
+		os.Exit(1)
 	}
 
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var req JSONRPCRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON-RPC request", http.StatusBadRequest)
-		return
-	}
-
-	response := handleRequest(req)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
-// Run server in HTTP mode
-func runHTTPServer(port string) {
-	http.HandleFunc("/", handleHTTP)
-
-	addr := "127.0.0.1:" + port
-	log.Printf("Starting HTTP MCP server on %s (port arg: %q)\n", addr, port)
-	log.Printf("Ready - %d tools available\n", len(wbTools))
-
-	log.Printf("About to call ListenAndServe with addr: %q\n", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Fatalf("HTTP server failed: %v", err)
-	}
-}
-
-// Run server in stdio mode
-func runStdioServer() {
-	log.Println("Starting stdio MCP server")
-	log.Printf("Ready - %d tools available\n", len(wbTools))
+	fmt.Fprintf(os.Stderr, "Ready - %d tools available\n", len(wbTools))
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
@@ -3494,27 +2951,5 @@ func runStdioServer() {
 			responseBytes, _ := json.Marshal(response)
 			fmt.Println(string(responseBytes))
 		}
-	}
-}
-
-func main() {
-	var httpMode bool
-	var port string
-
-	flag.BoolVar(&httpMode, "http", false, "Run in HTTP mode instead of stdio")
-	flag.StringVar(&port, "port", "9242", "Port for HTTP server")
-	flag.Parse()
-
-	log.SetOutput(os.Stderr)
-	log.Println("Workbench MCP Server v2.0 starting...")
-
-	if err := initializeConfig(); err != nil {
-		log.Fatalf("Error initializing: %v\n", err)
-	}
-
-	if httpMode {
-		runHTTPServer(port)
-	} else {
-		runStdioServer()
 	}
 }

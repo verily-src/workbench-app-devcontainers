@@ -16,10 +16,15 @@ services:
       - .:/workspace:cached
     ports:
       - "8888:8888"
+    environment:
+      - HTTPS_PROXY=http://egress-dlp:8080
+      - HTTP_PROXY=http://egress-dlp:8080
+      - NO_PROXY=localhost,127.0.0.1,metadata.google.internal,169.254.169.254,egress-dlp
     networks:
       - app-network
     depends_on:
       - wondershaper
+      - egress-dlp
     cap_add:
       - SYS_ADMIN
     devices:
@@ -32,6 +37,23 @@ services:
     network_mode: "host"
     cap_add:
       - NET_ADMIN
+  egress-dlp:
+    container_name: "egress-dlp"
+    image: "us-central1-docker.pkg.dev/vwb-dev-happy-coffee-7059/test-docker-dlp/egress-dlp:latest"
+    restart: always
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        mkdir -p /opt/egress-dlp/certs /var/log/egress-dlp
+        exec mitmdump \
+          --mode regular \
+          --listen-host 0.0.0.0 \
+          --listen-port 8080 \
+          --set confdir=/opt/egress-dlp/certs \
+          --set ssl_insecure=true \
+          -s /opt/egress-dlp/addon.py
+    networks:
+      - app-network
 networks:
   app-network:
     external: true

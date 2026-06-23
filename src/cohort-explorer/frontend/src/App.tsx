@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, CircularProgress, CssBaseline, Snackbar, Typography } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { Allotment } from "allotment";
@@ -13,7 +13,7 @@ import { connectResource, fetchCounts, fetchFilters, fetchSamples, getCohort, in
 import type { ColumnMapping } from "./api.ts";
 import SchemaReview from "./components/SchemaReview.tsx";
 import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
-import { DEFAULT_CHART_TYPE, EMPTY_FILTERS, FIELD_META } from "./types.ts";
+import { DEFAULT_CHART_TYPE, buildEmptyFilters, buildFieldMeta } from "./types.ts";
 
 const STORAGE_KEY = "cohort-explorer-state";
 
@@ -50,8 +50,9 @@ function filtersEqual(a: FilterState, b: FilterState): boolean {
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [resourceId, setResourceId] = useState<string>("__local__");
-  const [pending, setPending] = useState<FilterState>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<FilterState>(EMPTY_FILTERS);
+  const [mappings, setMappings] = useState<ColumnMapping[]>([]);
+  const [pending, setPending] = useState<FilterState>({});
+  const [applied, setApplied] = useState<FilterState>({});
   const [available, setAvailable] = useState<FiltersResponse | null>(null);
   const [rows, setRows] = useState<SampleRow[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
@@ -59,9 +60,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [restoring, setRestoring] = useState(true);
-  const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([
-    { id: "default", fieldKey: "tissue_type", chartType: "bar" },
-  ]);
+  const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
+
+  const emptyFilters = useMemo(() => buildEmptyFilters(mappings), [mappings]);
+  const fieldMeta = useMemo(() => buildFieldMeta(mappings), [mappings]);
   const [filterPaneVisible, setFilterPaneVisible] = useState(true);
   const [gridPaneVisible, setGridPaneVisible] = useState(true);
   const [activeCohort, setActiveCohort] = useState<string | null>(null);
@@ -118,7 +120,7 @@ export default function App() {
 
     let needsSeed = false;
     try {
-      const countsData = await fetchCounts(EMPTY_FILTERS);
+      const countsData = await fetchCounts(emptyFilters);
       needsSeed = countsData.samples === 0;
     } catch {
       needsSeed = true;
@@ -152,18 +154,19 @@ export default function App() {
   }, [pending, loadData, resourceId]);
 
   const handleReset = useCallback(() => {
-    setPending(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
+    setPending(emptyFilters);
+    setApplied(emptyFilters);
     setActiveCohort(null);
-    loadData(EMPTY_FILTERS);
-    saveState(resourceId, EMPTY_FILTERS);
-  }, [loadData, resourceId]);
+    loadData(emptyFilters);
+    saveState(resourceId, emptyFilters);
+  }, [loadData, resourceId, emptyFilters]);
 
   const handleDisconnect = useCallback(() => {
     setConnected(false);
     setResourceId("__local__");
-    setPending(EMPTY_FILTERS);
-    setApplied(EMPTY_FILTERS);
+    setMappings([]);
+    setPending({});
+    setApplied({});
     setAvailable(null);
     setRows([]);
     setCounts(null);
@@ -216,13 +219,13 @@ export default function App() {
   );
 
   const handleAddChart = useCallback((fieldKey: string, chartType?: ChartType, field2Key?: string) => {
-    const meta = FIELD_META.find((f) => f.key === fieldKey);
+    const meta = fieldMeta.find((f) => f.key === fieldKey);
     const resolvedType = chartType ?? (meta ? DEFAULT_CHART_TYPE[meta.dataType] : "bar");
     setChartConfigs((prev) => [
       ...prev,
       { id: crypto.randomUUID(), fieldKey, chartType: resolvedType, field2Key },
     ]);
-  }, []);
+  }, [fieldMeta]);
 
   const handleRemoveChart = useCallback((id: string) => {
     setChartConfigs((prev) => prev.filter((c) => c.id !== id));
@@ -253,7 +256,7 @@ export default function App() {
           setResourceId(id);
           if (!meta?.sourceType) {
             setConnected(true);
-            saveState(id, EMPTY_FILTERS);
+            saveState(id, emptyFilters);
             return;
           }
           setSchemaFolderId(meta.folderId);
@@ -298,10 +301,17 @@ export default function App() {
           mappings={schemaMappings}
           sourceName={schemaSourceName}
           folderId={schemaFolderId}
-          onConfirmed={() => {
+          onConfirmed={(confirmed) => {
+            setMappings(confirmed);
+            const empty = buildEmptyFilters(confirmed);
+            setPending(empty);
+            setApplied(empty);
+            const meta = buildFieldMeta(confirmed);
+            const firstCat = meta.find((f) => f.dataType === "categorical");
+            setChartConfigs(firstCat ? [{ id: "default", fieldKey: firstCat.key, chartType: "bar" }] : []);
             setSchemaStep("none");
             setConnected(true);
-            saveState(resourceId, EMPTY_FILTERS);
+            saveState(resourceId, empty);
           }}
           onBack={() => {
             setSchemaStep("none");
@@ -356,6 +366,7 @@ export default function App() {
               <FilterPanel
                 available={available}
                 filters={pending}
+                mappings={mappings}
                 onChange={setPending}
                 dirty={dirty}
                 onApply={handleApply}
@@ -377,6 +388,7 @@ export default function App() {
                       available={available}
                       rows={rows}
                       applied={applied}
+                      fieldMeta={fieldMeta}
                       onChartFilter={handleChartFilter}
                       onAddChart={handleAddChart}
                       onRemoveChart={handleRemoveChart}
@@ -384,7 +396,7 @@ export default function App() {
                     />
                   </Allotment.Pane>
                   <Allotment.Pane minSize={100} visible={gridPaneVisible}>
-                    <DataGrid rows={rows} loading={loading} error={error} />
+                    <DataGrid rows={rows} loading={loading} error={error} mappings={mappings} />
                   </Allotment.Pane>
                 </Allotment>
               )}

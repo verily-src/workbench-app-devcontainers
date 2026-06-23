@@ -2,7 +2,7 @@
 
 **Build interactive web apps, dashboards, and visualizations that run on a port in Workbench.**
 
-> **Triggers:** 
+> **Triggers:**
 > - "Create a dashboard", "visualize data", "build charts"
 > - "Run a Flask/Streamlit/FastAPI app"
 > - "Display data in the browser", "interactive UI"
@@ -10,7 +10,7 @@
 
 ---
 
-## 🌐 Workbench Proxy & Web Apps Best Practices
+## Workbench Proxy & Web Apps Best Practices
 
 ### Proxy URL Format
 
@@ -19,105 +19,64 @@ All web apps in Workbench are accessed via:
 https://workbench.verily.com/app/[APP_UUID]/proxy/[PORT]/[PATH]
 ```
 
-### ⚠️ How to Get the App UUID (CRITICAL)
+### How to Get the App UUID (CRITICAL)
 
 **You MUST automatically get the app UUID - NEVER ask the user for it.**
 
+**Option A (preferred):** Use MCP tools — no shell needed, no permission prompt:
+```
+mcp__wb__app_get_url(appId=<app-resource-name>)
+```
+To find the app resource name, use `mcp__wb__workspace_list_resources` and filter for
+EC2 instances (`AWS_EC2_INSTANCE`) or GCE instances owned by the current user.
+
+**Option B:** Use the CLI:
 ```bash
-# Run this command and use the output:
 wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1
 ```
+Note: this can intermittently return 401 on some workspaces. If it fails, fall back to Option A.
 
-**⚡ LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
-1. First run the command above to get the running app UUID
+**LLM INSTRUCTION:** When constructing dashboard/proxy URLs:
+1. Use one of the methods above to get the running app UUID
 2. Use that actual UUID in the URL you provide
 3. Do NOT use placeholders like `[APP_UUID]` in your final response
 4. Do NOT ask the user to find/replace the UUID themselves
 
-### ✅ Correct URL Examples
+### Correct URL Examples
 ```
 https://workbench.verily.com/app/abc123-def456-789/proxy/8080/
 https://workbench.verily.com/app/abc123-def456-789/proxy/8501/index.html
-https://workbench.verily.com/app/abc123-def456-789/proxy/8000/dashboard.html
 ```
 
-### ❌ WRONG URL Formats (These WILL fail)
+### WRONG URL Formats (These WILL fail)
 ```
-https://abc123-def456.workbench-app.verily.com/  ← WRONG: "Bad Request" error
-https://workbench-app.verily.com/abc123-def456/  ← WRONG: Invalid domain
-http://localhost:8080/                            ← WRONG: Not accessible externally
-https://abc123-def456/workbench.verily.com/       ← WRONG: Reversed format
-file:///home/jupyter/dashboard.html               ← WRONG: JavaScript blocked
+https://abc123-def456.workbench-app.verily.com/  <- WRONG: "Bad Request" error
+http://localhost:8080/                            <- WRONG: Not accessible externally
+file:///home/jupyter/dashboard.html               <- WRONG: JavaScript blocked
 ```
 
-### ⚠️ Common Issue: JavaScript API Calls Failing
+### Common Issue: JavaScript API Calls Failing
 
-**Problem:** JavaScript using absolute paths fails through Workbench proxy
+**Problem:** JavaScript using absolute paths fails through Workbench proxy.
 
-**Symptoms:**
-- Dashboard loads but shows no data
-- Charts remain empty with "-" placeholders  
-- Browser console shows 404 errors for API calls
-- Flask/server logs show requests for `/` but NOT `/api/*` endpoints
-
-### ✅ Solution: Use Relative Paths (TESTED & CONFIRMED)
-
-**Always use relative paths (no leading `/`) for fetch/AJAX calls:**
+Note: This rule applies to **JavaScript `fetch()` calls only**. Flask/FastAPI route
+decorators still require a leading slash (e.g., `@app.route('/api/data')`).
 
 ```javascript
-// ✅ CORRECT - relative paths work through proxy
+// CORRECT - relative paths work through proxy
 fetch('api/metadata')
 fetch('api/data?filter=value')
 
-// ❌ WRONG - absolute paths fail
-fetch('/api/metadata')  
+// WRONG - absolute paths fail through proxy
+fetch('/api/metadata')
 fetch('/api/data?filter=value')
 ```
 
-### Why Absolute Paths Fail
-
+**Why:**
 ```
-User visits: https://workbench.verily.com/app/UUID/proxy/8080/
-
-Absolute path: fetch('/api/data')
-  → Browser resolves to: https://workbench.verily.com/api/data ❌ (404!)
-
-Relative path: fetch('api/data')  
-  → Browser resolves to: https://workbench.verily.com/app/UUID/proxy/8080/api/data ✅
+Absolute: fetch('/api/data')  -> https://workbench.verily.com/api/data         (404)
+Relative: fetch('api/data')   -> https://workbench.verily.com/app/UUID/proxy/8080/api/data  (OK)
 ```
-
-### Alternative: Embed Data in HTML (For Static Dashboards)
-
-If you don't need dynamic filtering, embed data directly in the template:
-
-**Python (Flask):**
-```python
-@app.route('/')
-def index():
-    data = get_data_from_bigquery()
-    return render_template('dashboard.html', data_json=json.dumps(data))
-```
-
-**HTML Template:**
-```html
-<script>
-const data = {{ data_json|safe }};
-// Use data directly, no fetch calls needed
-renderChart(data);
-</script>
-```
-
-**When to use:** Static dashboards, large datasets that don't change, or when filters can be client-side only.
-
-### Testing Checklist
-
-Before deploying any web app:
-
-- [ ] **Relative paths** - All `fetch()` calls use `'api/...'` not `'/api/...'`
-- [ ] **Test locally** - `curl http://localhost:PORT/api/endpoint` returns data
-- [ ] **Server logs** - Verify API requests arrive: `tail -f server.log`
-- [ ] **Browser DevTools** - Network tab shows 200 status for API calls
-- [ ] **App UUID obtained** - Not using placeholder `[APP_UUID]`
 
 ---
 
@@ -126,41 +85,37 @@ Before deploying any web app:
 ### Step 1: Understand Requirements
 
 Ask the user:
-1. **Data source?** BigQuery table, CSV in bucket, or local file?
+1. **Data source?** Aurora database, S3 file (CSV, Parquet), BigQuery, or local file?
 2. **Visualizations?** Charts (bar, line, scatter), tables, filters?
 3. **Interactivity?** Static display or dynamic filtering?
 
 ### Step 2: Auto-Detect Environment
 
-**Always run these commands first:**
+Get the app UUID using MCP tools (see "How to Get the App UUID" above).
+**Prefer MCP tools over `wb app list`** to avoid permission prompts.
 
+### Step 3: Check Dependencies
+
+The following packages are **pre-installed** in the Workbench Jupyter+LLM image:
+`fastapi`, `uvicorn`, `flask`, `flask-cors`, `plotly`, `pandas`, `boto3`, `psycopg2-binary`
+
+**Do NOT run `pip install` unless a specific import fails.** To verify:
 ```bash
-# Get app UUID (REQUIRED for final URL)
-APP_UUID=$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
-echo "App UUID: $APP_UUID"
-
-# Verify Python
-python3 --version
-
-# Check working directory
-pwd
+python3 -c "import flask; import fastapi; import plotly; print('OK')"
 ```
+Only install if the check above fails.
 
-### Step 3: Install Dependencies
-
-```bash
-pip install flask flask-cors pandas plotly google-cloud-bigquery db-dtypes
-```
-
-> **Note:** `db-dtypes` is required for BigQuery to properly convert data types for pandas.
+> **Note (GCP/BigQuery):** If using BigQuery with pandas, also install `db-dtypes` — it is
+> required for proper data type conversion and causes cryptic errors if missing:
+> `pip install --no-cache-dir db-dtypes`
 
 ### Step 4: Create Dashboard Structure
 
 ```
 dashboard/
-├── app.py              # Flask server
+├── app.py              # Flask/FastAPI server
 ├── templates/
-│   └── index.html      # Dashboard HTML
+│   └── index.html      # Dashboard HTML with Plotly.js
 └── static/
     └── style.css       # Optional styling
 ```
@@ -169,32 +124,117 @@ dashboard/
 
 ## Working Templates
 
-### Template 1: Simple BigQuery Dashboard
+### Template 1: Aurora PostgreSQL Dashboard (AWS)
 
-**app.py:**
+Aurora in Workbench uses **IAM database authentication** — you cannot connect with a
+static password. The correct flow is:
+
+1. Get temporary AWS credentials via `wb resource credentials`
+2. Generate an IAM auth token via boto3 (token is valid for 15 minutes)
+3. Connect with `sslmode='require'` — **SSL is mandatory**
+
+**Preferred: Use MCP tools for data queries** to avoid the IAM auth complexity entirely:
+```
+mcp__wb__aurora_query(resourceName="my-db", query="SELECT * FROM table LIMIT 100")
+mcp__wb__aurora_list_tables(resourceName="my-db")
+mcp__wb__aurora_describe_table(resourceName="my-db", tableName="my_table")
+```
+
+Query via MCP, embed results in the template, and serve with Flask/FastAPI.
+This avoids IAM auth in the app code entirely.
+
+**If live database queries are needed in the app:**
+
+```python
+import json, subprocess, boto3, psycopg2, os
+
+def get_aurora_connection(resource_id, username):
+    result = subprocess.run(
+        ['wb', 'resource', 'credentials',
+         f'--id={resource_id}', '--scope=READ_ONLY', '--format=json'],
+        capture_output=True, text=True, check=True
+    )
+    creds = json.loads(result.stdout)
+
+    conn_str = os.environ.get(f'WORKBENCH_{resource_id.replace("-", "_")}', '')
+    host_part, _, dbname = conn_str.partition('/')
+    host, _, port = host_part.partition(':')
+    port = int(port) if port else 5432
+
+    session = boto3.Session(
+        aws_access_key_id=creds['AccessKeyId'],
+        aws_secret_access_key=creds['SecretAccessKey'],
+        aws_session_token=creds['SessionToken'],
+        region_name='us-west-2'
+    )
+    token = session.client('rds').generate_db_auth_token(
+        DBHostname=host, Port=port, DBUsername=username, Region='us-west-2'
+    )
+    return psycopg2.connect(
+        host=host, port=port, database=dbname,
+        user=username, password=token,
+        sslmode='require'
+    )
+```
+
+### Template 2: S3 Data Dashboard (AWS)
+
 ```python
 from flask import Flask, render_template, jsonify
 from flask_cors import CORS
-from google.cloud import bigquery
+import pandas as pd
+import boto3
 import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Cache for data
+_data_cache = None
+
+def get_data_from_s3():
+    global _data_cache
+    if _data_cache is not None:
+        return _data_cache
+    bucket = os.environ.get('WORKBENCH_my_bucket', 'your-bucket-name')
+    s3 = boto3.client('s3')
+    obj = s3.get_object(Bucket=bucket, Key='path/to/data.csv')
+    df = pd.read_csv(obj['Body'])
+    _data_cache = df.to_dict(orient='records')
+    return _data_cache
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/api/data')
+def get_data():
+    try:
+        return jsonify(get_data_from_s3())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+```
+
+### Template 3: BigQuery Dashboard (GCP)
+
+```python
+from flask import Flask, render_template, jsonify, request
+from flask_cors import CORS
+from google.cloud import bigquery
+
+app = Flask(__name__)
+CORS(app)
+
 _data_cache = None
 
 def get_bigquery_data():
     global _data_cache
     if _data_cache is not None:
         return _data_cache
-    
     client = bigquery.Client()
-    query = """
-    SELECT *
-    FROM `YOUR_PROJECT.YOUR_DATASET.YOUR_TABLE`
-    LIMIT 1000
-    """
+    query = "SELECT * FROM `project.dataset.table` LIMIT 1000"
     df = client.query(query).to_dataframe()
     _data_cache = df.to_dict(orient='records')
     return _data_cache
@@ -203,33 +243,58 @@ def get_bigquery_data():
 def index():
     return render_template('index.html')
 
-@app.route('api/data')  # NO leading slash!
+@app.route('/api/data')
 def get_data():
     try:
         data = get_bigquery_data()
+        column = request.args.get('filter_column')
+        value = request.args.get('filter_value')
+        if column and value:
+            data = [row for row in data if str(row.get(column, '')) == value]
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('api/metadata')
+@app.route('/api/metadata')
 def get_metadata():
     try:
         data = get_bigquery_data()
         if data:
-            return jsonify({
-                "columns": list(data[0].keys()),
-                "row_count": len(data)
-            })
+            return jsonify({"columns": list(data[0].keys()), "row_count": len(data)})
         return jsonify({"columns": [], "row_count": 0})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # CRITICAL: host='0.0.0.0' required for Workbench proxy access
     app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
 ```
 
-**templates/index.html:**
+> **Note:** Requires `google-cloud-bigquery` and `db-dtypes`. Install with:
+> `pip install --no-cache-dir google-cloud-bigquery db-dtypes`
+
+### Alternative: Embed Data in HTML (For Static Dashboards)
+
+Query data via MCP or Python, then embed directly in the template. No API calls needed.
+
+```python
+import json
+@app.route('/')
+def index():
+    data = get_data()
+    return render_template('dashboard.html', data_json=json.dumps(data))
+```
+
+```html
+<script>
+const data = {{ data_json|safe }};
+renderChart(data);
+</script>
+```
+
+### Dashboard Frontend Template (index.html)
+
+Use this with any backend template above. All `fetch()` calls use **relative paths** (no leading `/`).
+
 ```html
 <!DOCTYPE html>
 <html>
@@ -247,7 +312,7 @@ if __name__ == '__main__':
 </head>
 <body>
     <div class="container">
-        <h1>📊 Data Dashboard</h1>
+        <h1>Data Dashboard</h1>
         <div id="metadata" class="chart">
             <h3>Dataset Info</h3>
             <div id="metadata-content" class="loading">Loading metadata...</div>
@@ -263,12 +328,9 @@ if __name__ == '__main__':
     </div>
 
     <script>
-        // CRITICAL: Use relative paths (no leading slash!)
-        const API_BASE = '';  // Empty string for relative paths
-        
         async function loadMetadata() {
             try {
-                const response = await fetch('api/metadata');  // Relative path!
+                const response = await fetch('api/metadata');
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 document.getElementById('metadata-content').innerHTML = `
@@ -276,78 +338,67 @@ if __name__ == '__main__':
                     <p><strong>Rows:</strong> ${data.row_count}</p>
                 `;
             } catch (error) {
-                document.getElementById('metadata-content').innerHTML = 
-                    `<div class="error">Error loading metadata: ${error.message}</div>`;
-                console.error('Metadata error:', error);
+                document.getElementById('metadata-content').innerHTML =
+                    `<div class="error">Error: ${error.message}</div>`;
             }
         }
 
         async function loadChart() {
             try {
-                const response = await fetch('api/data');  // Relative path!
+                const response = await fetch('api/data');
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
-                
                 if (data.length === 0) {
                     document.getElementById('chart-content').innerHTML = '<p>No data available</p>';
                     return;
                 }
-
-                // Create a simple bar chart with first numeric column
                 const columns = Object.keys(data[0]);
                 const numericCol = columns.find(col => typeof data[0][col] === 'number') || columns[1];
                 const labelCol = columns[0];
 
-                const chartData = [{
+                Plotly.newPlot('chart-content', [{
                     x: data.slice(0, 20).map(row => row[labelCol]),
                     y: data.slice(0, 20).map(row => row[numericCol]),
                     type: 'bar',
                     marker: { color: '#1976d2' }
-                }];
-
-                const layout = {
+                }], {
                     title: `${numericCol} by ${labelCol}`,
                     xaxis: { title: labelCol },
                     yaxis: { title: numericCol }
-                };
-
-                Plotly.newPlot('chart-content', chartData, layout);
+                });
             } catch (error) {
-                document.getElementById('chart-content').innerHTML = 
-                    `<div class="error">Error loading chart: ${error.message}</div>`;
-                console.error('Chart error:', error);
+                document.getElementById('chart-content').innerHTML =
+                    `<div class="error">Error: ${error.message}</div>`;
             }
         }
 
         async function loadTable() {
             try {
-                const response = await fetch('api/data');  // Relative path!
+                const response = await fetch('api/data');
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
-                
                 if (data.length === 0) {
                     document.getElementById('table-content').innerHTML = '<p>No data available</p>';
                     return;
                 }
-
                 const columns = Object.keys(data[0]);
                 let html = '<table style="width:100%; border-collapse: collapse;">';
-                html += '<thead><tr>' + columns.map(col => `<th style="border:1px solid #ddd; padding:8px; background:#f0f0f0;">${col}</th>`).join('') + '</tr></thead>';
-                html += '<tbody>';
+                html += '<thead><tr>' + columns.map(col =>
+                    `<th style="border:1px solid #ddd; padding:8px; background:#f0f0f0;">${col}</th>`
+                ).join('') + '</tr></thead><tbody>';
                 data.slice(0, 50).forEach(row => {
-                    html += '<tr>' + columns.map(col => `<td style="border:1px solid #ddd; padding:8px;">${row[col] ?? ''}</td>`).join('') + '</tr>';
+                    html += '<tr>' + columns.map(col =>
+                        `<td style="border:1px solid #ddd; padding:8px;">${row[col] ?? ''}</td>`
+                    ).join('') + '</tr>';
                 });
                 html += '</tbody></table>';
-                
                 document.getElementById('table-content').innerHTML = html;
             } catch (error) {
-                document.getElementById('table-content').innerHTML = 
-                    `<div class="error">Error loading table: ${error.message}</div>`;
-                console.error('Table error:', error);
+                document.getElementById('table-content').innerHTML =
+                    `<div class="error">Error: ${error.message}</div>`;
             }
         }
 
-        // Load all components
         loadMetadata();
         loadChart();
         loadTable();
@@ -358,105 +409,24 @@ if __name__ == '__main__':
 
 ---
 
-### Template 2: Multi-Chart Dashboard with Filters
-
-**app.py additions:**
-```python
-@app.route('api/data')
-def get_data():
-    # Get filter parameters
-    column = request.args.get('filter_column')
-    value = request.args.get('filter_value')
-    
-    data = get_bigquery_data()
-    
-    if column and value:
-        data = [row for row in data if str(row.get(column, '')) == value]
-    
-    return jsonify(data)
-
-@app.route('api/filters')
-def get_filters():
-    data = get_bigquery_data()
-    if not data:
-        return jsonify({})
-    
-    # Get unique values for categorical columns
-    filters = {}
-    for col in data[0].keys():
-        unique_values = list(set(str(row[col]) for row in data))
-        if len(unique_values) < 50:  # Only include if reasonable number
-            filters[col] = sorted(unique_values)
-    
-    return jsonify(filters)
-```
-
-**JavaScript filter implementation:**
-```javascript
-async function loadFilters() {
-    const response = await fetch('api/filters');
-    const filters = await response.json();
-    
-    const filterContainer = document.getElementById('filters');
-    for (const [column, values] of Object.entries(filters)) {
-        const select = document.createElement('select');
-        select.id = `filter-${column}`;
-        select.innerHTML = `<option value="">All ${column}</option>` +
-            values.map(v => `<option value="${v}">${v}</option>`).join('');
-        select.onchange = () => refreshData();
-        
-        filterContainer.appendChild(document.createTextNode(column + ': '));
-        filterContainer.appendChild(select);
-    }
-}
-
-async function refreshData() {
-    const params = new URLSearchParams();
-    document.querySelectorAll('select[id^="filter-"]').forEach(select => {
-        if (select.value) {
-            params.set('filter_column', select.id.replace('filter-', ''));
-            params.set('filter_value', select.value);
-        }
-    });
-    
-    const response = await fetch(`api/data?${params}`);  // Still relative!
-    const data = await response.json();
-    updateCharts(data);
-}
-```
-
----
-
-## Step 5: Test Locally
-
-**Before starting the server, test your setup:**
+## Step 5: Test Locally Before Giving the Proxy URL
 
 ```bash
-# Start server in background
 cd dashboard
 python3 app.py &
 sleep 2
 
-# Test endpoints locally
-echo "Testing root..."
+# Test endpoints
 curl -s http://localhost:8080/ | head -5
-
-echo "Testing API..."
 curl -s http://localhost:8080/api/metadata | jq .
-
-echo "Testing data..."
 curl -s http://localhost:8080/api/data | jq '.[0]'
 ```
-
----
 
 ## Step 6: Start Server & Provide URL
 
 ```bash
-# Get the app UUID
 APP_UUID=$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
 
-# Start server
 cd dashboard
 nohup python3 app.py > server.log 2>&1 &
 
@@ -464,111 +434,42 @@ echo "Dashboard running at:"
 echo "https://workbench.verily.com/app/${APP_UUID}/proxy/8080/"
 ```
 
-**Always provide the complete, working URL to the user - never placeholders!**
+**Always provide the complete, working URL to the user — never placeholders.**
 
 ---
 
-## ⚠️ Critical Flask Server Configuration
+## Critical Server Configuration
 
-These settings are **REQUIRED** for Workbench dashboards to work:
-
-### 1. Server MUST bind to 0.0.0.0 (NOT localhost)
+### REQUIRED settings for Workbench dashboards:
 
 ```python
-# ❌ WRONG - proxy cannot reach your app
-app.run(host='localhost', port=8080)
-app.run(host='127.0.0.1', port=8080)
-
-# ✅ CORRECT - accessible through Workbench proxy
-app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+app.run(
+    host='0.0.0.0',      # NOT localhost — proxy can't reach localhost
+    port=8080,            # Match this to the port in your proxy URL
+    debug=False,          # Security: don't use debug in shared environments
+    threaded=True         # Allow concurrent users
+)
 ```
-
-**Why:** The Workbench proxy routes external requests to your app. If bound to localhost, the proxy cannot reach it.
-
-### 2. Enable Threading for Concurrent Users
-
-```python
-app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
-```
-
-**Why:** Multiple users may access simultaneously. `threaded=True` allows concurrent request handling.
-
-### 3. Disable Debug Mode
-
-```python
-# ❌ WRONG - security risk, auto-reload issues
-app.run(debug=True)
-
-# ✅ CORRECT
-app.run(debug=False)
-```
-
-**Why:** Debug mode shouldn't be used in shared/production environments.
-
-### 4. Restarting Server After Code Changes
-
-Flask doesn't auto-reload when `debug=False`. After editing Python code:
-
-```bash
-# Find and kill existing server
-pkill -f "python3 app.py"
-# Or: kill $(lsof -t -i :8080)
-
-# Restart
-python3 app.py &
-```
-
-### 5. Browser Cache Issues
-
-If changes don't appear after restarting server:
-- **Hard refresh:** `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac)
-- Flask caches templates - server restart clears this
 
 ---
 
 ## Troubleshooting
 
-### Data doesn't load in browser
+### No data showing
 
-**1. Check paths in JavaScript:**
-```javascript
-// ❌ WRONG
-fetch('/api/data')
-
-// ✅ CORRECT
-fetch('api/data')
-```
-
-**2. Check server logs:**
-```bash
-tail -f server.log
-# Or if running in foreground, check terminal output
-```
-
-**3. Test API directly:**
-```bash
-curl http://localhost:8080/api/data | jq '.[0]'
-```
-
-**4. Check browser DevTools:**
-- Open Network tab
-- Look for failed requests (red)
-- Check the URL being requested
+1. **Test API directly:** `curl http://localhost:8080/api/data | head -20`
+2. **Check server logs:** `tail -f server.log`
+3. **Check JS paths:** All `fetch()` must use relative paths (no leading `/`)
 
 ### Server won't start
 
 ```bash
-# Check if port is in use
 lsof -i :8080
-
-# Kill existing process
 kill $(lsof -t -i :8080)
-
-# Check Python errors
-python3 app.py  # Run in foreground to see errors
+python3 app.py
 ```
 
-### BigQuery errors
+### BigQuery errors (GCP)
 
 ```bash
 # Check authentication
@@ -581,75 +482,49 @@ bq query --use_legacy_sql=false 'SELECT 1'
 gcloud config get-value project
 ```
 
-### Server not accessible through proxy (works locally, fails via URL)
+If `to_dataframe()` fails with type errors, install `db-dtypes`:
+`pip install --no-cache-dir db-dtypes`
 
-**Symptom:** `curl http://localhost:8080/` works, but Workbench URL fails
+### Aurora connection errors (AWS)
 
-**Cause:** Flask bound to `localhost` instead of `0.0.0.0`
-
-**Fix:**
-```python
-# Change this:
-app.run(host='localhost', port=8080)
-# To this:
-app.run(host='0.0.0.0', port=8080)
-```
+- `"PAM authentication failed"` -> not using IAM auth token as password
+- `"pg_hba.conf rejects connection... no encryption"` -> missing `sslmode='require'`
+- Consider using MCP tools (`mcp__wb__aurora_query`) instead of direct connections
 
 ### Changes not reflected after editing code
 
-**Cause 1:** Server not restarted
 ```bash
 pkill -f "python3 app.py"
 python3 app.py &
 ```
 
-**Cause 2:** Browser cache
-- Hard refresh: `Ctrl+Shift+R` or `Cmd+Shift+R`
+If changes still don't appear, hard-refresh the browser: `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac).
 
-### Gateway timeout
+### Server not accessible through proxy
 
-**Causes:**
-1. Server not running: `ps aux | grep app.py`
-2. Wrong UUID in URL: `wb app list --format=json`
-3. Server bound to localhost (see above)
-
----
-
-## Development Workflow (Recommended)
-
-1. **Build and test locally first**
-   ```bash
-   curl http://localhost:8080/
-   curl http://localhost:8080/api/metadata
-   ```
-
-2. **Check server logs for errors**
-   ```bash
-   tail -f server.log
-   ```
-
-3. **Only then test through Workbench proxy URL**
-
-4. **Use browser DevTools (F12) → Network tab** to debug client-side issues
+Ensure Flask/FastAPI binds to `0.0.0.0`, not `localhost`:
+```python
+app.run(host='0.0.0.0', port=8080)
+```
 
 ---
 
-## Common Pitfalls Checklist
+## Pre-Completion Checklist
 
-Before declaring the dashboard complete:
+Before declaring the dashboard complete, verify:
 
-- [ ] **Relative paths** - All `fetch()` calls use `'api/...'` not `'/api/...'`
-- [ ] **Host is 0.0.0.0** - Not `localhost` or `127.0.0.1`
-- [ ] **threaded=True** - For concurrent users
-- [ ] **debug=False** - For security
-- [ ] **App UUID obtained** - Not using placeholder `[APP_UUID]`
-- [ ] **Server running** - Process is active (`ps aux | grep python`)
-- [ ] **Port correct** - URL uses same port as `app.run(port=...)`
-- [ ] **CORS enabled** - `CORS(app)` added for cross-origin requests
-- [ ] **Data cached** - Avoid repeated BigQuery calls
-- [ ] **Error handling** - API returns errors as JSON, not crashes
-- [ ] **Tested locally** - `curl` tests pass before giving URL
-- [ ] **Server logs checked** - API requests appear in logs
+- [ ] **Relative paths** — All `fetch()` calls use `'api/...'` not `'/api/...'`
+- [ ] **Host is 0.0.0.0** — Not `localhost` or `127.0.0.1`
+- [ ] **threaded=True** — For concurrent users
+- [ ] **debug=False** — For security
+- [ ] **App UUID obtained** — Not using placeholder `[APP_UUID]`
+- [ ] **Server running** — Process is active (`ps aux | grep python`)
+- [ ] **Port correct** — URL uses same port as `app.run(port=...)`
+- [ ] **CORS enabled** — `CORS(app)` added
+- [ ] **Data cached** — Avoid repeated backend calls
+- [ ] **Error handling** — API returns errors as JSON, not crashes
+- [ ] **Tested locally** — `curl` tests pass before giving URL
+- [ ] **Server logs checked** — API requests appear in logs
 
 ---
 
@@ -657,22 +532,14 @@ Before declaring the dashboard complete:
 
 | Issue | Check | Fix |
 |-------|-------|-----|
-| 404 on API | Path format | Remove leading `/` from fetch |
+| 404 on API | JS path format | Remove leading `/` from `fetch()` |
 | CORS error | CORS setup | Add `CORS(app)` |
-| Blank page | Server running? | `ps aux | grep python` |
-| Data error | BigQuery auth | `gcloud auth list` |
-| Wrong port | URL vs code | Match port in URL to `app.run()` |
+| Blank page | Server running? | `ps aux \| grep python` |
 | Works locally, fails via URL | Host binding | Change `localhost` to `0.0.0.0` |
 | Gateway timeout | Server/UUID | Check server running + correct UUID |
-| Address in use | Port conflict | `kill $(lsof -t -i :8080)` |
+| BQ data type error | Missing dep | `pip install db-dtypes` |
+| BQ auth error | GCP credentials | `gcloud auth list` |
 | Changes not showing | Cache/restart | Hard refresh + restart server |
-
----
-
-## Example Prompts This Skill Handles
-
-- "Create a dashboard showing data from my BigQuery table"
-- "Build an interactive chart for analyzing patient demographics"
-- "Visualize the CSV files in my bucket"
-- "Make a web dashboard with filters for exploring data"
-- "Display query results in a browser with charts"
+| Address in use | Port conflict | `kill $(lsof -t -i :8080)` |
+| Aurora: PAM auth failed | IAM auth | Use `wb resource credentials` + boto3 token |
+| Aurora: no encryption | SSL missing | Add `sslmode='require'` |

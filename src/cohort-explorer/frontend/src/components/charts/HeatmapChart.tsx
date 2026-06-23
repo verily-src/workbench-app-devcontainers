@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Box, Tooltip, Typography } from "@mui/material";
-import type { SampleRow } from "../../types";
-import { FIELD_META } from "../../types";
+import type { FieldMeta, SampleRow } from "../../types";
 
 interface Props {
   rows: SampleRow[];
@@ -9,6 +8,7 @@ interface Props {
   yField: string;
   xLabel: string;
   yLabel: string;
+  fieldMeta: FieldMeta[];
   onCellClick?: (xValue: string, yValue: string) => void;
   onRangeSelect?: (xValues: string[], yValues: string[]) => void;
 }
@@ -40,13 +40,13 @@ function binNumericValues(values: (number | null)[], binCount = 10): { labels: s
   };
 }
 
-export default function HeatmapChart({ rows, xField, yField, xLabel, yLabel, onCellClick, onRangeSelect }: Props) {
+export default function HeatmapChart({ rows, xField, yField, xLabel, yLabel, fieldMeta, onCellClick, onRangeSelect }: Props) {
   const [dragStart, setDragStart] = useState<{ xi: number; yi: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ xi: number; yi: number } | null>(null);
   const isDragging = useRef(false);
 
-  const xMeta = FIELD_META.find((f) => f.key === xField);
-  const yMeta = FIELD_META.find((f) => f.key === yField);
+  const xMeta = fieldMeta.find((f) => f.key === xField);
+  const yMeta = fieldMeta.find((f) => f.key === yField);
   const xIsNumeric = xMeta?.dataType === "numeric";
   const yIsNumeric = yMeta?.dataType === "numeric";
 

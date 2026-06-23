@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import type { ChartConfig, FilterState, FiltersResponse, SampleRow } from "../../types";
+import type { ChartConfig, FieldMeta, FilterState, FiltersResponse, SampleRow } from "../../types";
 import ChartCard from "./ChartCard";
 import AddChartButton from "./AddChartButton";
 
@@ -8,6 +8,7 @@ interface Props {
   available: FiltersResponse | null;
   rows: SampleRow[];
   applied: FilterState;
+  fieldMeta: FieldMeta[];
   onChartFilter: (fieldKey: string, value: string | { min: number; max: number }) => void;
   onAddChart: (fieldKey: string) => void;
   onRemoveChart: (id: string) => void;
@@ -19,6 +20,7 @@ export default function ChartDashboard({
   available,
   rows,
   applied,
+  fieldMeta,
   onChartFilter,
   onAddChart,
   onRemoveChart,
@@ -33,13 +35,14 @@ export default function ChartDashboard({
           available={available}
           rows={rows}
           applied={applied}
+          fieldMeta={fieldMeta}
           onChartFilter={onChartFilter}
           onRemove={() => onRemoveChart(config.id)}
           onUpdate={(updates) => onUpdateChart(config.id, updates)}
         />
       ))}
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", minWidth: 120 }}>
-        <AddChartButton onAdd={onAddChart} usedFields={new Set(chartConfigs.map((c) => c.fieldKey))} />
+        <AddChartButton onAdd={onAddChart} usedFields={new Set(chartConfigs.map((c) => c.fieldKey))} fieldMeta={fieldMeta} />
       </Box>
     </Box>
   );

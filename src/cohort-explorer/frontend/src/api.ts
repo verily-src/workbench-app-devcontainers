@@ -118,7 +118,8 @@ export async function confirmSchema(body: {
   folder_id?: string;
   source_name?: string;
   table_name?: string;
-}): Promise<{ confirmed: boolean; columns: number }> {
+  file_path?: string;
+}): Promise<{ confirmed: boolean; columns: number; seeded?: number }> {
   const res = await fetchWithTimeout(`${BASE}/api/schema/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -126,3 +126,60 @@ def seed_from_tsv(db: Session, tsv_path: str | Path) -> int:
     db.commit()
     logger.info("Seeded %d samples", count)
     return count
+
+
+def seed_dynamic(db: Session, tsv_path: str | Path, model: type, mappings: list[dict]) -> int:
+    tsv_path = _resolve_path(tsv_path)
+
+    existing = db.scalar(select(model.id).limit(1))
+    if existing is not None:
+        logger.info("Table already has data, skipping seed")
+        return 0
+
+    col_types = {m["column"]: m["type"] for m in mappings}
+    col_names = list(col_types.keys())
+
+    path = Path(tsv_path)
+    with open(path, newline="", encoding="utf-8") as f:
+        sample = f.read(8192)
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=",\t")
+        except csv.Error:
+            dialect = None
+    delimiter = dialect.delimiter if dialect else ("\t" if path.suffix.lower() != ".csv" else ",")
+
+    logger.info("Seeding dynamic table from %s (%d columns)", tsv_path, len(col_names))
+    batch: list[dict] = []
+    count = 0
+    batch_size = 1000
+
+    with open(tsv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f, delimiter=delimiter)
+        for row in reader:
+            parsed: dict = {}
+            for col in col_names:
+                raw = row.get(col, "").strip()
+                if raw in SENTINEL_VALUES:
+                    parsed[col] = None
+                elif col_types[col] == "float":
+                    parsed[col] = _clean_float(raw)
+                elif col_types[col] == "integer":
+                    v = _clean_float(raw)
+                    parsed[col] = int(v) if v is not None else None
+                elif col_types[col] == "boolean":
+                    parsed[col] = raw.lower() in ("true", "yes", "1", "t", "y")
+                else:
+                    parsed[col] = raw or None
+            batch.append(parsed)
+            if len(batch) >= batch_size:
+                db.bulk_insert_mappings(model, batch)
+                count += len(batch)
+                batch.clear()
+
+        if batch:
+            db.bulk_insert_mappings(model, batch)
+            count += len(batch)
+
+    db.commit()
+    logger.info("Seeded %d rows into dynamic table", count)
+    return count

@@ -20,7 +20,7 @@ from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_re
 from dynamic_model import DynamicBase, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_range_filters, set_active_mapping
 from models import Base, Sample
 from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
-from seed import seed_from_tsv
+from seed import seed_dynamic, seed_from_tsv
 from starlette.requests import Request
 
 logging.basicConfig(level=logging.INFO)
@@ -223,11 +223,17 @@ def api_confirm_schema(body: dict) -> dict:
     table_name = body.get("table_name", "data")
     set_active_mapping(mappings_raw, table_name=table_name)
 
+    seeded = 0
     if get_active_resource_id() is None:
         engine = get_sqlite_engine()
         DynamicBase.metadata.create_all(engine)
+        file_path = body.get("file_path")
+        if file_path:
+            from sqlalchemy.orm import Session as SaSession
+            with SaSession(engine) as db:
+                seeded = seed_dynamic(db, file_path, get_active_model(), mappings_raw)
 
-    return {"confirmed": True, "columns": len(mappings)}
+    return {"confirmed": True, "columns": len(mappings), "seeded": seeded}
 
 
 @app.get("/api/schema/active")

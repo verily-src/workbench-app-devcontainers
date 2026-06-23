@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
-from dynamic_model import get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_range_filters, set_active_mapping
+from dynamic_model import DynamicBase, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_range_filters, set_active_mapping
 from models import Base, Sample
 from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
 from seed import seed_from_tsv
@@ -220,7 +220,13 @@ def api_confirm_schema(body: dict) -> dict:
         except Exception as e:
             logger.warning("Failed to save mapping CSV to S3: %s", e)
 
-    set_active_mapping(mappings_raw)
+    table_name = body.get("table_name", "data")
+    set_active_mapping(mappings_raw, table_name=table_name)
+
+    if get_active_resource_id() is None:
+        engine = get_sqlite_engine()
+        DynamicBase.metadata.create_all(engine)
+
     return {"confirmed": True, "columns": len(mappings)}
 
 

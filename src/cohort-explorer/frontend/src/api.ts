@@ -117,6 +117,7 @@ export async function confirmSchema(body: {
   mappings: ColumnMapping[];
   folder_id?: string;
   source_name?: string;
+  table_name?: string;
 }): Promise<{ confirmed: boolean; columns: number }> {
   const res = await fetchWithTimeout(`${BASE}/api/schema/confirm`, {
     method: "POST",

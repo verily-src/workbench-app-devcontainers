@@ -71,6 +71,7 @@ export default function App() {
   const [schemaMappings, setSchemaMappings] = useState<ColumnMapping[]>([]);
   const [schemaSourceName, setSchemaSourceName] = useState("");
   const [schemaTableName, setSchemaTableName] = useState<string | undefined>();
+  const [schemaFilePath, setSchemaFilePath] = useState<string | undefined>();
   const [schemaFolderId, setSchemaFolderId] = useState<string | undefined>();
   const initialized = useRef(false);
   const fetchIdRef = useRef(0);
@@ -282,6 +283,7 @@ export default function App() {
             setSchemaMappings(result.mappings);
             setSchemaSourceName(meta.sourceName ?? "schema");
             setSchemaTableName(meta.sourceType === "aurora" ? meta.table : "data");
+            setSchemaFilePath(meta.sourceType === "file" ? meta.s3Path : undefined);
             setSchemaStep("reviewing");
           } catch (e) {
             setError(e instanceof Error ? e.message : "Schema inference failed");
@@ -312,6 +314,7 @@ export default function App() {
           mappings={schemaMappings}
           sourceName={schemaSourceName}
           tableName={schemaTableName}
+          filePath={schemaFilePath}
           folderId={schemaFolderId}
           onConfirmed={(confirmed) => {
             setMappings(confirmed);

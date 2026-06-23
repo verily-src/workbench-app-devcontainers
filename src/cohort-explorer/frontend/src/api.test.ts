@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { EMPTY_FILTERS } from "./types";
 import type { FilterState } from "./types";
 
 // Mock import.meta.env.BASE_URL before importing api module
@@ -67,7 +66,7 @@ describe("error message extraction", () => {
       json: () => Promise.resolve({ detail: "Connection refused by database" }),
     });
 
-    await expect(api.fetchSamples(EMPTY_FILTERS)).rejects.toThrow(
+    await expect(api.fetchSamples({} as FilterState)).rejects.toThrow(
       "Connection refused by database",
     );
   });
@@ -79,7 +78,7 @@ describe("error message extraction", () => {
       json: () => Promise.resolve({}),
     });
 
-    await expect(api.fetchFilters(EMPTY_FILTERS)).rejects.toThrow(
+    await expect(api.fetchFilters({} as FilterState)).rejects.toThrow(
       "Failed to fetch filters (HTTP 502)",
     );
   });
@@ -91,7 +90,7 @@ describe("error message extraction", () => {
       json: () => Promise.reject(new Error("not json")),
     });
 
-    await expect(api.fetchCounts(EMPTY_FILTERS)).rejects.toThrow(
+    await expect(api.fetchCounts({} as FilterState)).rejects.toThrow(
       "Failed to fetch counts (HTTP 503)",
     );
   });
@@ -102,7 +101,7 @@ describe("query parameter serialization", () => {
     const fetchSpy = mockFetch({ json: () => Promise.resolve([]) });
 
     const filters: FilterState = {
-      ...EMPTY_FILTERS,
+      ...{} as FilterState,
       tissue_type: ["Brain", "Heart"],
       autolysis_score: ["Mild"],
     };
@@ -119,7 +118,7 @@ describe("query parameter serialization", () => {
     const fetchSpy = mockFetch({ json: () => Promise.resolve([]) });
 
     const filters: FilterState = {
-      ...EMPTY_FILTERS,
+      ...{} as FilterState,
       rin_number_min: 5.0,
       rin_number_max: 9.5,
     };
@@ -134,7 +133,7 @@ describe("query parameter serialization", () => {
   it("omits null range filters", async () => {
     const fetchSpy = mockFetch({ json: () => Promise.resolve([]) });
 
-    await api.fetchSamples(EMPTY_FILTERS);
+    await api.fetchSamples({} as FilterState);
 
     const url = fetchSpy.mock.calls[0][0] as string;
     expect(url).not.toContain("rin_number_min");
@@ -144,7 +143,7 @@ describe("query parameter serialization", () => {
 
 describe("exportUrl", () => {
   it("returns a URL string with the base path", () => {
-    const url = api.exportUrl(EMPTY_FILTERS);
+    const url = api.exportUrl({} as FilterState);
     expect(url).toMatch(/^\/proxy\/8080\/api\/export/);
   });
 });

@@ -9,7 +9,7 @@ import SummaryBar from "./components/SummaryBar.tsx";
 import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
-import { connectResource, fetchCounts, fetchFilters, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
+import { connectResource, fetchActiveSchema, fetchCounts, fetchFilters, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
 import type { ColumnMapping } from "./api.ts";
 import SchemaReview from "./components/SchemaReview.tsx";
 import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
@@ -79,8 +79,17 @@ export default function App() {
     const saved = loadSavedState();
     if (!saved) { setRestoring(false); return; }
     connectResource(saved.resourceId)
-      .then(() => {
+      .then(async () => {
         setResourceId(saved.resourceId);
+        try {
+          const schema = await fetchActiveSchema();
+          if (schema.mappings.length > 0) {
+            setMappings(schema.mappings);
+            const meta = buildFieldMeta(schema.mappings);
+            const firstCat = meta.find((f) => f.dataType === "categorical");
+            setChartConfigs(firstCat ? [{ id: "default", fieldKey: firstCat.key, chartType: "bar" }] : []);
+          }
+        } catch { /* no saved schema, filters/grid will be empty */ }
         setPending(saved.filters);
         setApplied(saved.filters);
         setConnected(true);

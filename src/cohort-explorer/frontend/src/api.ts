@@ -128,6 +128,12 @@ export async function confirmSchema(body: {
   return res.json();
 }
 
+export async function fetchActiveSchema(): Promise<{ mappings: ColumnMapping[] }> {
+  const res = await fetchWithTimeout(`${BASE}/api/schema/active`);
+  if (!res.ok) await extractError(res, "Failed to fetch active schema");
+  return res.json();
+}
+
 export interface CohortSummary {
   name: string;
   description: string;

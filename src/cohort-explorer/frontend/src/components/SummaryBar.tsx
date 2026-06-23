@@ -94,22 +94,26 @@ export default function SummaryBar({
         </Typography>
       ) : counts ? (
         <>
-          <Chip
-            label={`${counts.subjects.toLocaleString()} subjects`}
-            color="primary"
-            variant="outlined"
-            size="small"
-          />
+          {counts.subjects != null && (
+            <Chip
+              label={`${counts.subjects.toLocaleString()} subjects`}
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+          )}
           <Chip
             label={`${counts.samples.toLocaleString()} samples`}
             color="primary"
             size="small"
           />
-          <Chip
-            label={`${counts.fastq_pairs.toLocaleString()} FASTQ pairs`}
-            variant="outlined"
-            size="small"
-          />
+          {counts.fastq_pairs != null && (
+            <Chip
+              label={`${counts.fastq_pairs.toLocaleString()} FASTQ pairs`}
+              variant="outlined"
+              size="small"
+            />
+          )}
         </>
       ) : null}
       <Box sx={{ flex: 1 }} />
@@ -187,7 +191,7 @@ export default function SummaryBar({
         </MenuItem>
       </Menu>
       <Tooltip
-        title={counts && counts.fastq_pairs === 0 ? "No samples with FASTQ paths in current filter" : ""}
+        title={counts && (counts.fastq_pairs ?? 0) === 0 ? "No samples with FASTQ paths in current filter" : ""}
       >
         <span>
           <Button
@@ -195,7 +199,7 @@ export default function SummaryBar({
             size="small"
             startIcon={<PlayArrowIcon />}
             onClick={() => setSalmonOpen(true)}
-            disabled={!counts || counts.fastq_pairs === 0}
+            disabled={!counts || (counts.fastq_pairs ?? 0) === 0}
           >
             Run Salmon
           </Button>

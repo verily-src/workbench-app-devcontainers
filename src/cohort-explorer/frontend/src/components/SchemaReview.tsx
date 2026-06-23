@@ -25,12 +25,13 @@ const FILTER_OPTIONS = ["categorical", "range", "none"];
 interface Props {
   mappings: ColumnMapping[];
   sourceName: string;
+  tableName?: string;
   folderId?: string;
   onConfirmed: (mappings: ColumnMapping[]) => void;
   onBack: () => void;
 }
 
-export default function SchemaReview({ mappings: initial, sourceName, folderId, onConfirmed, onBack }: Props) {
+export default function SchemaReview({ mappings: initial, sourceName, tableName, folderId, onConfirmed, onBack }: Props) {
   const [mappings, setMappings] = useState<ColumnMapping[]>(initial);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +44,7 @@ export default function SchemaReview({ mappings: initial, sourceName, folderId, 
     setConfirming(true);
     setError(null);
     try {
-      await confirmSchema({ mappings, folder_id: folderId, source_name: sourceName });
+      await confirmSchema({ mappings, folder_id: folderId, source_name: sourceName, table_name: tableName });
       onConfirmed(mappings);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to confirm schema");

@@ -105,6 +105,10 @@ python3 -c "import flask; import fastapi; import plotly; print('OK')"
 ```
 Only install if the check above fails.
 
+> **Note (GCP/BigQuery):** If using BigQuery with pandas, also install `db-dtypes` — it is
+> required for proper data type conversion and causes cryptic errors if missing:
+> `pip install --no-cache-dir db-dtypes`
+
 ### Step 4: Create Dashboard Structure
 
 ```
@@ -216,7 +220,7 @@ if __name__ == '__main__':
 ### Template 3: BigQuery Dashboard (GCP)
 
 ```python
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from google.cloud import bigquery
 
@@ -242,13 +246,31 @@ def index():
 @app.route('/api/data')
 def get_data():
     try:
-        return jsonify(get_bigquery_data())
+        data = get_bigquery_data()
+        column = request.args.get('filter_column')
+        value = request.args.get('filter_value')
+        if column and value:
+            data = [row for row in data if str(row.get(column, '')) == value]
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/metadata')
+def get_metadata():
+    try:
+        data = get_bigquery_data()
+        if data:
+            return jsonify({"columns": list(data[0].keys()), "row_count": len(data)})
+        return jsonify({"columns": [], "row_count": 0})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
 ```
+
+> **Note:** Requires `google-cloud-bigquery` and `db-dtypes`. Install with:
+> `pip install --no-cache-dir google-cloud-bigquery db-dtypes`
 
 ### Alternative: Embed Data in HTML (For Static Dashboards)
 
@@ -268,6 +290,151 @@ const data = {{ data_json|safe }};
 renderChart(data);
 </script>
 ```
+
+### Dashboard Frontend Template (index.html)
+
+Use this with any backend template above. All `fetch()` calls use **relative paths** (no leading `/`).
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Data Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .chart { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .error { color: #d32f2f; padding: 20px; background: #ffebee; border-radius: 4px; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Data Dashboard</h1>
+        <div id="metadata" class="chart">
+            <h3>Dataset Info</h3>
+            <div id="metadata-content" class="loading">Loading metadata...</div>
+        </div>
+        <div id="chart1" class="chart">
+            <h3>Data Visualization</h3>
+            <div id="chart-content" class="loading">Loading chart...</div>
+        </div>
+        <div id="table" class="chart">
+            <h3>Data Table</h3>
+            <div id="table-content" class="loading">Loading data...</div>
+        </div>
+    </div>
+
+    <script>
+        async function loadMetadata() {
+            try {
+                const response = await fetch('api/metadata');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                document.getElementById('metadata-content').innerHTML = `
+                    <p><strong>Columns:</strong> ${data.columns.join(', ')}</p>
+                    <p><strong>Rows:</strong> ${data.row_count}</p>
+                `;
+            } catch (error) {
+                document.getElementById('metadata-content').innerHTML =
+                    `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function loadChart() {
+            try {
+                const response = await fetch('api/data');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (data.length === 0) {
+                    document.getElementById('chart-content').innerHTML = '<p>No data available</p>';
+                    return;
+                }
+                const columns = Object.keys(data[0]);
+                const numericCol = columns.find(col => typeof data[0][col] === 'number') || columns[1];
+                const labelCol = columns[0];
+
+                Plotly.newPlot('chart-content', [{
+                    x: data.slice(0, 20).map(row => row[labelCol]),
+                    y: data.slice(0, 20).map(row => row[numericCol]),
+                    type: 'bar',
+                    marker: { color: '#1976d2' }
+                }], {
+                    title: `${numericCol} by ${labelCol}`,
+                    xaxis: { title: labelCol },
+                    yaxis: { title: numericCol }
+                });
+            } catch (error) {
+                document.getElementById('chart-content').innerHTML =
+                    `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function loadTable() {
+            try {
+                const response = await fetch('api/data');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                if (data.length === 0) {
+                    document.getElementById('table-content').innerHTML = '<p>No data available</p>';
+                    return;
+                }
+                const columns = Object.keys(data[0]);
+                let html = '<table style="width:100%; border-collapse: collapse;">';
+                html += '<thead><tr>' + columns.map(col =>
+                    `<th style="border:1px solid #ddd; padding:8px; background:#f0f0f0;">${col}</th>`
+                ).join('') + '</tr></thead><tbody>';
+                data.slice(0, 50).forEach(row => {
+                    html += '<tr>' + columns.map(col =>
+                        `<td style="border:1px solid #ddd; padding:8px;">${row[col] ?? ''}</td>`
+                    ).join('') + '</tr>';
+                });
+                html += '</tbody></table>';
+                document.getElementById('table-content').innerHTML = html;
+            } catch (error) {
+                document.getElementById('table-content').innerHTML =
+                    `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        loadMetadata();
+        loadChart();
+        loadTable();
+    </script>
+</body>
+</html>
+```
+
+---
+
+## Step 5: Test Locally Before Giving the Proxy URL
+
+```bash
+cd dashboard
+python3 app.py &
+sleep 2
+
+# Test endpoints
+curl -s http://localhost:8080/ | head -5
+curl -s http://localhost:8080/api/metadata | jq .
+curl -s http://localhost:8080/api/data | jq '.[0]'
+```
+
+## Step 6: Start Server & Provide URL
+
+```bash
+APP_UUID=$(wb app list --format=json | jq -r '.[] | select(.status == "RUNNING") | .id' | head -1)
+
+cd dashboard
+nohup python3 app.py > server.log 2>&1 &
+
+echo "Dashboard running at:"
+echo "https://workbench.verily.com/app/${APP_UUID}/proxy/8080/"
+```
+
+**Always provide the complete, working URL to the user — never placeholders.**
 
 ---
 
@@ -302,11 +469,36 @@ kill $(lsof -t -i :8080)
 python3 app.py
 ```
 
+### BigQuery errors (GCP)
+
+```bash
+# Check authentication
+gcloud auth list
+
+# Test BQ access
+bq query --use_legacy_sql=false 'SELECT 1'
+
+# Check project
+gcloud config get-value project
+```
+
+If `to_dataframe()` fails with type errors, install `db-dtypes`:
+`pip install --no-cache-dir db-dtypes`
+
 ### Aurora connection errors (AWS)
 
 - `"PAM authentication failed"` -> not using IAM auth token as password
 - `"pg_hba.conf rejects connection... no encryption"` -> missing `sslmode='require'`
 - Consider using MCP tools (`mcp__wb__aurora_query`) instead of direct connections
+
+### Changes not reflected after editing code
+
+```bash
+pkill -f "python3 app.py"
+python3 app.py &
+```
+
+If changes still don't appear, hard-refresh the browser: `Ctrl+Shift+R` (Windows/Linux) or `Cmd+Shift+R` (Mac).
 
 ### Server not accessible through proxy
 
@@ -314,6 +506,25 @@ Ensure Flask/FastAPI binds to `0.0.0.0`, not `localhost`:
 ```python
 app.run(host='0.0.0.0', port=8080)
 ```
+
+---
+
+## Pre-Completion Checklist
+
+Before declaring the dashboard complete, verify:
+
+- [ ] **Relative paths** — All `fetch()` calls use `'api/...'` not `'/api/...'`
+- [ ] **Host is 0.0.0.0** — Not `localhost` or `127.0.0.1`
+- [ ] **threaded=True** — For concurrent users
+- [ ] **debug=False** — For security
+- [ ] **App UUID obtained** — Not using placeholder `[APP_UUID]`
+- [ ] **Server running** — Process is active (`ps aux | grep python`)
+- [ ] **Port correct** — URL uses same port as `app.run(port=...)`
+- [ ] **CORS enabled** — `CORS(app)` added
+- [ ] **Data cached** — Avoid repeated backend calls
+- [ ] **Error handling** — API returns errors as JSON, not crashes
+- [ ] **Tested locally** — `curl` tests pass before giving URL
+- [ ] **Server logs checked** — API requests appear in logs
 
 ---
 
@@ -326,5 +537,9 @@ app.run(host='0.0.0.0', port=8080)
 | Blank page | Server running? | `ps aux \| grep python` |
 | Works locally, fails via URL | Host binding | Change `localhost` to `0.0.0.0` |
 | Gateway timeout | Server/UUID | Check server running + correct UUID |
+| BQ data type error | Missing dep | `pip install db-dtypes` |
+| BQ auth error | GCP credentials | `gcloud auth list` |
+| Changes not showing | Cache/restart | Hard refresh + restart server |
+| Address in use | Port conflict | `kill $(lsof -t -i :8080)` |
 | Aurora: PAM auth failed | IAM auth | Use `wb resource credentials` + boto3 token |
 | Aurora: no encryption | SSL missing | Add `sslmode='require'` |

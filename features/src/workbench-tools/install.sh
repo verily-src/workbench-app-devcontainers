@@ -88,7 +88,7 @@ readonly CONDA_PACKAGES_BINARIES=(
     "conda-forge::bgenix"
     "conda-forge::cromwell"
     "bioconda::ensembl-vep>=115"
-    "bioconda::nextflow"
+    "bioconda::nextflow=25.10.2"
     "bioconda::plink"
     "bioconda::plink2"
     "bioconda::regenie"

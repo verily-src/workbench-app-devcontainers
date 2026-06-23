@@ -1,4 +1,4 @@
-FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051
+FROM lscr.io/linuxserver/code-server@sha256:7e9523734c003b6336781942df7b48aa6936a9df6931c12a19a1f7ad7858eeba
 
 # Gemini: https://open-vsx.org/extension/Google/geminicodeassist
 # Claude: https://open-vsx.org/extension/Anthropic/claude-code

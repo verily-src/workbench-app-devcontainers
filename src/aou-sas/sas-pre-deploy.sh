@@ -15,12 +15,6 @@ set -o pipefail
 # Data directories (on the sas-data volume)
 ###############################################################################
 mkdir -p /data/saswork /data/utilloc
-chown -R aou:aougroup /data
-
-###############################################################################
-# AoU environment loader (staged in Dockerfile at /opt/sas/aou/)
-###############################################################################
-if [ -d /opt/sas/aou ]; then
-  cp -n /opt/sas/aou/load-env /opt/sas/aou/load-env.sh /data/ 2>/dev/null || true
-  chown aou:aougroup /data/load-env /data/load-env.sh 2>/dev/null || true
-fi
+# Chown only the directories we manage, not /data/workspace (contains gcsfuse mounts)
+chown aou:aougroup /data
+chown -R aou:aougroup /data/saswork /data/utilloc

@@ -15,12 +15,13 @@ import {
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import SearchIcon from "@mui/icons-material/Search";
+import type { ColumnMapping } from "../api";
 import type { FilterOption, FilterState, FiltersResponse, RangeFilter } from "../types";
-import { EMPTY_FILTERS } from "../types";
 
 interface Props {
   available: FiltersResponse | null;
   filters: FilterState;
+  mappings: ColumnMapping[];
   onChange: (updated: FilterState) => void;
   dirty: boolean;
   onApply: () => void;
@@ -46,7 +47,7 @@ function CategoricalFilter({
     : options;
 
   return (
-    <Accordion defaultExpanded={label === "Tissue Type"} disableGutters>
+    <Accordion disableGutters>
       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
           {label}
@@ -163,32 +164,41 @@ function RangeFilterControl({
   );
 }
 
-const RANGE_KEYS = ["rin_number", "total_ischemic_time", "paxgene_time"] as const;
+function isFiltersEmpty(filters: FilterState): boolean {
+  return Object.values(filters).every((v) =>
+    Array.isArray(v) ? v.length === 0 : v === null,
+  );
+}
 
-export default function FilterPanel({ available, filters, onChange, dirty, onApply, onReset }: Props) {
+export default function FilterPanel({ available, filters, mappings, onChange, dirty, onApply, onReset }: Props) {
   const globalRanges = useRef<Record<string, RangeFilter>>({});
+  const rangeKeys = mappings.filter((m) => m.filter === "range").map((m) => m.column);
 
   useEffect(() => {
     if (!available) return;
-    for (const key of RANGE_KEYS) {
-      if (!(key in globalRanges.current) && available[key].min !== null) {
-        globalRanges.current[key] = { ...available[key] };
+    for (const key of rangeKeys) {
+      const val = available[key];
+      if (!(key in globalRanges.current) && val && "min" in val && val.min !== null) {
+        globalRanges.current[key] = { ...val };
       }
     }
-  }, [available]);
+  }, [available, rangeKeys]);
 
   if (!available) return null;
 
   const rangeFor = (key: string): RangeFilter =>
-    globalRanges.current[key] ?? available[key as keyof FiltersResponse] as RangeFilter;
+    globalRanges.current[key] ?? (available[key] as RangeFilter) ?? { min: null, max: null };
 
-  const toggleCategorical = (field: keyof FilterState, value: string) => {
-    const current = filters[field] as string[];
+  const toggleCategorical = (field: string, value: string) => {
+    const current = (filters[field] as string[]) ?? [];
     const updated = current.includes(value)
       ? current.filter((v) => v !== value)
       : [...current, value];
     onChange({ ...filters, [field]: updated });
   };
+
+  const categoricalMappings = mappings.filter((m) => m.filter === "categorical");
+  const rangeMappings = mappings.filter((m) => m.filter === "range");
 
   return (
     <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -196,80 +206,43 @@ export default function FilterPanel({ available, filters, onChange, dirty, onApp
         <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
           Filters
         </Typography>
-        <Button size="small" onClick={onReset} disabled={JSON.stringify(filters) === JSON.stringify(EMPTY_FILTERS)}>
+        <Button size="small" onClick={onReset} disabled={isFiltersEmpty(filters)}>
           Reset
         </Button>
       </Box>
 
       <Box sx={{ flex: 1, overflow: "auto" }}>
+        {categoricalMappings.map((m) => {
+          const options = (available[m.column] as FilterOption[]) ?? [];
+          return (
+            <CategoricalFilter
+              key={m.column}
+              label={m.label}
+              options={options}
+              selected={(filters[m.column] as string[]) ?? []}
+              onToggle={(v) => toggleCategorical(m.column, v)}
+              searchable={options.length > 10}
+            />
+          );
+        })}
 
-      <CategoricalFilter
-        label="Tissue Type"
-        options={available.tissue_type}
-        selected={filters.tissue_type}
-        onToggle={(v) => toggleCategorical("tissue_type", v)}
-        searchable
-      />
-      <CategoricalFilter
-        label="Tissue Detail"
-        options={available.tissue_type_detail}
-        selected={filters.tissue_type_detail}
-        onToggle={(v) => toggleCategorical("tissue_type_detail", v)}
-        searchable
-      />
-      <CategoricalFilter
-        label="Autolysis Score"
-        options={available.autolysis_score}
-        selected={filters.autolysis_score}
-        onToggle={(v) => toggleCategorical("autolysis_score", v)}
-      />
-      <CategoricalFilter
-        label="Material Type"
-        options={available.current_material_type}
-        selected={filters.current_material_type}
-        onToggle={(v) => toggleCategorical("current_material_type", v)}
-      />
-      <CategoricalFilter
-        label="Collection Kit"
-        options={available.sample_collection_kit}
-        selected={filters.sample_collection_kit}
-        onToggle={(v) => toggleCategorical("sample_collection_kit", v)}
-      />
-
-      <RangeFilterControl
-        label="RIN Number"
-        range={rangeFor("rin_number")}
-        currentMin={filters.rin_number_min}
-        currentMax={filters.rin_number_max}
-        onChange={(min, max) =>
-          onChange({ ...filters, rin_number_min: min, rin_number_max: max })
-        }
-        step={0.1}
-      />
-      <RangeFilterControl
-        label="Ischemic Time (min)"
-        range={rangeFor("total_ischemic_time")}
-        currentMin={filters.total_ischemic_time_min}
-        currentMax={filters.total_ischemic_time_max}
-        onChange={(min, max) =>
-          onChange({
-            ...filters,
-            total_ischemic_time_min: min,
-            total_ischemic_time_max: max,
-          })
-        }
-        step={10}
-      />
-      <RangeFilterControl
-        label="PAXgene Time (min)"
-        range={rangeFor("paxgene_time")}
-        currentMin={filters.paxgene_time_min}
-        currentMax={filters.paxgene_time_max}
-        onChange={(min, max) =>
-          onChange({ ...filters, paxgene_time_min: min, paxgene_time_max: max })
-        }
-        step={10}
-      />
+        {rangeMappings.map((m) => (
+          <RangeFilterControl
+            key={m.column}
+            label={m.label}
+            range={rangeFor(m.column)}
+            currentMin={(filters[`${m.column}_min`] as number | null) ?? null}
+            currentMax={(filters[`${m.column}_max`] as number | null) ?? null}
+            onChange={(min, max) =>
+              onChange({
+                ...filters,
+                [`${m.column}_min`]: min,
+                [`${m.column}_max`]: max,
+              })
+            }
+            step={m.type === "integer" ? 1 : 0.1}
+          />
+        ))}
       </Box>
 
       <Box sx={{ p: 1.5, borderTop: 1, borderColor: "divider" }}>

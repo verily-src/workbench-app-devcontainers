@@ -15,18 +15,22 @@ SA_TYPE_MAP = {
 
 _active_mapping: list[dict] | None = None
 _active_model: type | None = None
+_active_table_name: str | None = None
 
 
 class DynamicBase(DeclarativeBase):
     pass
 
 
-def set_active_mapping(mappings: list[dict]):
-    global _active_mapping, _active_model
+def set_active_mapping(mappings: list[dict], table_name: str = "data"):
+    global _active_mapping, _active_model, _active_table_name
     _active_mapping = mappings
+    _active_table_name = table_name
+
+    DynamicBase.metadata.clear()
 
     attrs: dict = {
-        "__tablename__": "data",
+        "__tablename__": table_name,
         "id": Column(Integer, primary_key=True),
     }
     for m in mappings:
@@ -34,7 +38,7 @@ def set_active_mapping(mappings: list[dict]):
         attrs[m["column"]] = Column(sa_type)
 
     _active_model = type("DynamicRow", (DynamicBase,), attrs)
-    logger.info("Dynamic model created with %d columns", len(mappings))
+    logger.info("Dynamic model created: table=%s, %d columns", table_name, len(mappings))
 
 
 def get_active_mapping() -> list[dict] | None:

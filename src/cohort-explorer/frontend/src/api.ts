@@ -32,27 +32,12 @@ async function extractError(res: Response, fallback: string): Promise<never> {
 
 function buildParams(filters: FilterState): URLSearchParams {
   const params = new URLSearchParams();
-  for (const key of [
-    "tissue_type",
-    "tissue_type_detail",
-    "autolysis_score",
-    "current_material_type",
-    "sample_collection_kit",
-  ] as const) {
-    for (const v of filters[key]) {
-      params.append(key, v);
+  for (const [key, val] of Object.entries(filters)) {
+    if (Array.isArray(val)) {
+      for (const v of val) params.append(key, v);
+    } else if (val !== null) {
+      params.append(key, String(val));
     }
-  }
-  for (const key of [
-    "rin_number_min",
-    "rin_number_max",
-    "total_ischemic_time_min",
-    "total_ischemic_time_max",
-    "paxgene_time_min",
-    "paxgene_time_max",
-  ] as const) {
-    const val = filters[key];
-    if (val !== null) params.append(key, String(val));
   }
   return params;
 }

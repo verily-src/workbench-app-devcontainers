@@ -350,7 +350,7 @@ export default function App() {
         }}
       >
         <CircularProgress />
-        <Box>Seeding GTEx V8 data (17,350 samples)...</Box>
+        <Box>Loading data...</Box>
       </Box>
     );
   }

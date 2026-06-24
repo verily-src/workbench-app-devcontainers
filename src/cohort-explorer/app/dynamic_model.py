@@ -29,9 +29,13 @@ def set_active_mapping(mappings: list[dict], table_name: str = "data"):
 
     DynamicBase.metadata.clear()
 
+    global _pk_name
+    user_columns = {m["column"] for m in mappings}
+    _pk_name = "_rowid" if "id" in user_columns else "id"
+
     attrs: dict = {
         "__tablename__": table_name,
-        "id": Column(Integer, primary_key=True),
+        _pk_name: Column(Integer, primary_key=True),
     }
     for m in mappings:
         sa_type = SA_TYPE_MAP.get(m["type"], Text)
@@ -45,8 +49,15 @@ def get_active_mapping() -> list[dict] | None:
     return _active_mapping
 
 
+_pk_name: str = "id"
+
+
 def get_active_model() -> type | None:
     return _active_model
+
+
+def get_pk_name() -> str:
+    return _pk_name
 
 
 def get_categorical_filters() -> list[str]:

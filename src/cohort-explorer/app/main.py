@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_connection_string, wait_connection_string, warm_resource_cache
-from dynamic_model import DynamicBase, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_range_filters, set_active_mapping
+from dynamic_model import DynamicBase, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_pk_name, get_range_filters, set_active_mapping
 from models import Base, Sample
 from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
 from seed import seed_dynamic, seed_from_tsv
@@ -32,6 +32,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 def _get_model():
     return get_active_model() or Sample
+
+
+def _get_pk(model):
+    return getattr(model, get_pk_name()) if get_active_model() else model.id
 
 
 def _apply_filters(stmt, params: dict, exclude: str | None = None):
@@ -289,8 +293,9 @@ def get_samples(
     first_col = columns[0] if columns else "id"
     stmt = stmt.order_by(getattr(model, first_col))
     rows = db.execute(stmt).scalars().all()
+    pk = get_pk_name()
     return [
-        {"id": s.id, **{col: getattr(s, col) for col in columns}}
+        {pk: getattr(s, pk), **{col: getattr(s, col) for col in columns}}
         for s in rows
     ]
 
@@ -307,12 +312,13 @@ def get_filters(
     for col_name in get_categorical_filters():
         cross_stmt = select(model)
         cross_stmt = _apply_filters(cross_stmt, filters, exclude=col_name)
-        cross_ids = cross_stmt.with_only_columns(model.id).subquery()
+        pk = _get_pk(model)
+        cross_ids = cross_stmt.with_only_columns(pk).subquery()
 
         col = getattr(model, col_name)
         values_stmt = (
-            select(col, func.count(model.id))
-            .where(model.id.in_(select(cross_ids.c.id)))
+            select(col, func.count(pk))
+            .where(pk.in_(select(cross_ids.c[get_pk_name()])))
             .group_by(col)
             .order_by(col)
         )
@@ -328,13 +334,14 @@ def get_filters(
 
     all_stmt = select(model)
     all_stmt = _apply_filters(all_stmt, filters)
-    filtered_ids = all_stmt.with_only_columns(model.id).subquery()
+    pk = _get_pk(model)
+    filtered_ids = all_stmt.with_only_columns(pk).subquery()
 
     for col_name in get_range_filters():
         col = getattr(model, col_name)
         range_stmt = (
             select(func.min(col), func.max(col))
-            .where(model.id.in_(select(filtered_ids.c.id)))
+            .where(pk.in_(select(filtered_ids.c[get_pk_name()])))
             .where(col.isnot(None))
         )
         row = db.execute(range_stmt).one()
@@ -357,7 +364,8 @@ def get_counts(
     stmt = _apply_filters(stmt, filters)
     filtered = stmt.subquery()
 
-    count_exprs = [func.count(filtered.c.id).label("samples")]
+    pk_col = get_pk_name()
+    count_exprs = [func.count(filtered.c[pk_col]).label("samples")]
     if hasattr(filtered.c, "subject_id"):
         count_exprs.append(func.count(distinct(filtered.c.subject_id)).label("subjects"))
     if hasattr(filtered.c, "fastq1_path"):

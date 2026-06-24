@@ -54,6 +54,23 @@ def _clean_float(value: str) -> float | None:
         return None
 
 
+def _parse_date(value: str):
+    from datetime import date, datetime
+    cleaned = _clean_text(value)
+    if cleaned is None:
+        return None
+    try:
+        return date.fromisoformat(cleaned[:10])
+    except ValueError:
+        pass
+    for fmt in ("%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def _clean_rin(value: str) -> float | None:
     f = _clean_float(value)
     if f is None:
@@ -168,6 +185,8 @@ def seed_dynamic(db: Session, tsv_path: str | Path, model: type, mappings: list[
                     parsed[col] = int(v) if v is not None else None
                 elif col_types[col] == "boolean":
                     parsed[col] = raw.lower() in ("true", "yes", "1", "t", "y")
+                elif col_types[col] == "date":
+                    parsed[col] = _parse_date(raw)
                 else:
                     parsed[col] = raw or None
             batch.append(parsed)

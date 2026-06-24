@@ -16,7 +16,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
-from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
+from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_connection_string, wait_connection_string, warm_resource_cache
 from dynamic_model import DynamicBase, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_range_filters, set_active_mapping
 from models import Base, Sample
 from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
@@ -96,6 +96,8 @@ def health() -> dict[str, str]:
 @app.get("/api/datasources")
 def get_datasources() -> dict:
     aurora = list_aurora_resources(wait=True)
+    for r in aurora:
+        warm_connection_string(r["id"])
     s3_folders = list_s3_folders()
     active = get_active_resource_id()
     return {
@@ -160,6 +162,7 @@ def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
 @app.get("/api/schema/tables")
 def api_list_tables(resource_id: str = Query(...)) -> list[dict]:
     try:
+        wait_connection_string(resource_id)
         return list_aurora_tables(resource_id)
     except Exception as e:
         logger.error("Failed to list tables: %s", e)
@@ -233,7 +236,7 @@ def api_confirm_schema(body: dict) -> dict:
         if file_path:
             from sqlalchemy.orm import Session as SaSession
             with SaSession(engine) as db:
-                seeded = seed_dynamic(db, file_path, get_active_model(), mappings_raw)
+                seeded = seed_dynamic(db, file_path, get_active_model(), mappings_raw, profile=folder_id)
 
     return {"confirmed": True, "columns": len(mappings), "seeded": seeded}
 

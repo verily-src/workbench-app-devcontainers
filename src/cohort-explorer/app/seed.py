@@ -91,17 +91,16 @@ def _parse_row(row: dict[str, str]) -> dict:
     return result
 
 
-def _resolve_path(tsv_path: str | Path) -> Path:
+def _resolve_path(tsv_path: str | Path, profile: str | None = None) -> Path:
     path_str = str(tsv_path)
     if path_str.startswith("s3://"):
         logger.info("Downloading from S3: %s", path_str)
         local = Path(tempfile.gettempdir()) / Path(path_str).name
-        subprocess.run(
-            ["aws", "s3", "cp", path_str, str(local)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        cmd = ["aws", "s3", "cp"]
+        if profile:
+            cmd.extend(["--profile", profile])
+        cmd.extend([path_str, str(local)])
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
         return local
     local = Path(path_str)
     if not local.exists():
@@ -145,8 +144,8 @@ def seed_from_tsv(db: Session, tsv_path: str | Path) -> int:
     return count
 
 
-def seed_dynamic(db: Session, tsv_path: str | Path, model: type, mappings: list[dict]) -> int:
-    tsv_path = _resolve_path(tsv_path)
+def seed_dynamic(db: Session, tsv_path: str | Path, model: type, mappings: list[dict], profile: str | None = None) -> int:
+    tsv_path = _resolve_path(tsv_path, profile=profile)
 
     existing = db.scalar(select(model.id).limit(1))
     if existing is not None:

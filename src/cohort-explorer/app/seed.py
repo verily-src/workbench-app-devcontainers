@@ -147,7 +147,8 @@ def seed_from_tsv(db: Session, tsv_path: str | Path) -> int:
 def seed_dynamic(db: Session, tsv_path: str | Path, model: type, mappings: list[dict], profile: str | None = None) -> int:
     tsv_path = _resolve_path(tsv_path, profile=profile)
 
-    existing = db.scalar(select(model.id).limit(1))
+    pk = list(model.__table__.primary_key.columns)[0]
+    existing = db.scalar(select(pk).limit(1))
     if existing is not None:
         logger.info("Table already has data, skipping seed")
         return 0

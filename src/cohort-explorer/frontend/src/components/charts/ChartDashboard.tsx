@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import type { ChartConfig, FieldMeta, FilterState, FiltersResponse, SampleRow } from "../../types";
+import type { ChartConfig, ChartType, FieldMeta, FilterState, FiltersResponse, SampleRow } from "../../types";
 import ChartCard from "./ChartCard";
 import AddChartButton from "./AddChartButton";
 
@@ -10,7 +10,7 @@ interface Props {
   applied: FilterState;
   fieldMeta: FieldMeta[];
   onChartFilter: (fieldKey: string, value: string | { min: number; max: number }) => void;
-  onAddChart: (fieldKey: string) => void;
+  onAddChart: (fieldKey: string, chartType?: ChartType, field2Key?: string) => void;
   onRemoveChart: (id: string) => void;
   onUpdateChart: (id: string, updates: Partial<Pick<ChartConfig, "fieldKey" | "chartType" | "field2Key">>) => void;
 }

@@ -109,10 +109,12 @@ def get_datasources() -> dict:
 @app.post("/api/datasources/refresh")
 def refresh_datasources() -> dict:
     warm_resource_cache()
+    aurora = list_aurora_resources(wait=True)
+    s3_folders = list_s3_folders()
     active = get_active_resource_id()
     return {
-        "resources": list_aurora_resources(),
-        "s3_folders": list_s3_folders(),
+        "resources": aurora,
+        "s3_folders": s3_folders,
         "active": active,
         "has_local": True,
     }

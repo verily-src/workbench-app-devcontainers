@@ -110,6 +110,30 @@ def warm_resource_cache():
     threading.Thread(target=_refresh_resource_cache, daemon=True).start()
 
 
+_conn_warm_events: dict[str, threading.Event] = {}
+
+
+def warm_connection_string(resource_id: str):
+    event = threading.Event()
+    _conn_warm_events[resource_id] = event
+
+    def _resolve():
+        try:
+            resolve_connection_string(resource_id)
+        except Exception as e:
+            logger.warning("Failed to warm connection for %s: %s", resource_id, e)
+        finally:
+            event.set()
+
+    threading.Thread(target=_resolve, daemon=True).start()
+
+
+def wait_connection_string(resource_id: str, timeout: float = 120):
+    event = _conn_warm_events.get(resource_id)
+    if event:
+        event.wait(timeout=timeout)
+
+
 def get_engine_for_resource(resource_id: str) -> Engine:
     if resource_id in _engines:
         return _engines[resource_id]

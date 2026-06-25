@@ -230,10 +230,11 @@ def api_confirm_schema(body: dict) -> dict:
             logger.warning("Failed to save mapping CSV to S3: %s", e)
 
     table_name = body.get("table_name", "data")
-    set_active_mapping(mappings_raw, table_name=table_name)
+    is_aurora = get_active_resource_id() is not None
+    set_active_mapping(mappings_raw, table_name=table_name, needs_pk=not is_aurora)
 
     seeded = 0
-    if get_active_resource_id() is None:
+    if not is_aurora:
         engine = get_sqlite_engine()
         DynamicBase.metadata.create_all(engine)
         file_path = body.get("file_path")

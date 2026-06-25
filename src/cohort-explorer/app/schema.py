@@ -139,12 +139,21 @@ PG_TYPE_MAP = {
 }
 
 
-def list_aurora_tables(resource_id: str) -> list[dict]:
-    from db import resolve_connection_string
+def _connect_aurora(resource_id: str):
+    from db import resolve_connection_string, _conn_string_cache
     import psycopg
 
     conn_str = resolve_connection_string(resource_id)
-    with psycopg.connect(conn_str) as conn:
+    try:
+        return psycopg.connect(conn_str)
+    except psycopg.OperationalError:
+        _conn_string_cache.pop(resource_id, None)
+        conn_str = resolve_connection_string(resource_id)
+        return psycopg.connect(conn_str)
+
+
+def list_aurora_tables(resource_id: str) -> list[dict]:
+    with _connect_aurora(resource_id) as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT table_name, table_type
@@ -159,11 +168,7 @@ def list_aurora_tables(resource_id: str) -> list[dict]:
 
 
 def infer_from_aurora(resource_id: str, table: str) -> list[ColumnMapping]:
-    from db import resolve_connection_string
-    import psycopg
-
-    conn_str = resolve_connection_string(resource_id)
-    with psycopg.connect(conn_str) as conn:
+    with _connect_aurora(resource_id) as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT column_name, data_type

@@ -22,24 +22,31 @@ class DynamicBase(DeclarativeBase):
     pass
 
 
-def set_active_mapping(mappings: list[dict], table_name: str = "data"):
-    global _active_mapping, _active_model, _active_table_name
+def set_active_mapping(mappings: list[dict], table_name: str = "data", needs_pk: bool = True):
+    global _active_mapping, _active_model, _active_table_name, _pk_name
     _active_mapping = mappings
     _active_table_name = table_name
 
     DynamicBase.metadata.clear()
 
-    global _pk_name
     user_columns = {m["column"] for m in mappings}
-    _pk_name = "_rowid" if "id" in user_columns else "id"
 
-    attrs: dict = {
-        "__tablename__": table_name,
-        _pk_name: Column(Integer, primary_key=True),
-    }
+    if needs_pk:
+        _pk_name = "_rowid" if "id" in user_columns else "id"
+        attrs: dict = {
+            "__tablename__": table_name,
+            _pk_name: Column(Integer, primary_key=True),
+        }
+    else:
+        _pk_name = "id" if "id" in user_columns else mappings[0]["column"]
+        attrs = {
+            "__tablename__": table_name,
+        }
+
     for m in mappings:
         sa_type = SA_TYPE_MAP.get(m["type"], Text)
-        attrs[m["column"]] = Column(sa_type)
+        is_pk = not needs_pk and m["column"] == _pk_name
+        attrs[m["column"]] = Column(sa_type, primary_key=is_pk)
 
     _active_model = type("DynamicRow", (DynamicBase,), attrs)
     logger.info("Dynamic model created: table=%s, %d columns", table_name, len(mappings))

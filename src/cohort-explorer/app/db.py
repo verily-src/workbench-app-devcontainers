@@ -46,22 +46,31 @@ def wait_connection_string(resource_id: str, timeout: float = 120):
         event.wait(timeout=timeout)
 
 
-def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ") -> str:
-    result = subprocess.run(
-        [
-            "wb", "resource", "resolve",
-            "--id", resource_id,
-            "--access-mode", access_mode,
-            "--include-password",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=120,
-    )
-    conn_str = result.stdout.strip()
-    _conn_string_cache[resource_id] = conn_str
-    return conn_str
+def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ", retries: int = 3) -> str:
+    if resource_id in _conn_string_cache:
+        return _conn_string_cache[resource_id]
+    last_err = None
+    for attempt in range(retries):
+        try:
+            result = subprocess.run(
+                [
+                    "wb", "resource", "resolve",
+                    "--id", resource_id,
+                    "--access-mode", access_mode,
+                    "--include-password",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=120,
+            )
+            conn_str = result.stdout.strip()
+            _conn_string_cache[resource_id] = conn_str
+            return conn_str
+        except subprocess.CalledProcessError as e:
+            last_err = e
+            logger.warning("wb resource resolve attempt %d/%d failed for %s: %s", attempt + 1, retries, resource_id, e.stderr or e.stdout)
+    raise last_err
 
 
 def _fetch_resources() -> list[dict]:

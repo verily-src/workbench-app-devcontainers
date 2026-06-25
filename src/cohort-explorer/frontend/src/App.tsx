@@ -259,41 +259,6 @@ export default function App() {
     );
   }
 
-  if (!connected) {
-    return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <ResourceSelector onConnected={async (id, meta) => {
-          setResourceId(id);
-          if (!meta?.sourceType) {
-            setConnected(true);
-            saveState(id, emptyFilters);
-            return;
-          }
-          setSchemaFolderId(meta.folderId);
-          setSchemaStep("inferring");
-          try {
-            const result = await inferSchema({
-              source_type: meta.sourceType,
-              s3_path: meta.s3Path,
-              folder_id: meta.folderId,
-              resource_id: meta.sourceType === "aurora" ? id : undefined,
-              table: meta.table,
-            });
-            setSchemaMappings(result.mappings);
-            setSchemaSourceName(meta.sourceName ?? "schema");
-            setSchemaTableName(meta.sourceType === "aurora" ? meta.table : "data");
-            setSchemaFilePath(meta.sourceType === "file" ? meta.s3Path : undefined);
-            setSchemaStep("reviewing");
-          } catch (e) {
-            setError(e instanceof Error ? e.message : "Schema inference failed");
-            setSchemaStep("none");
-          }
-        }} />
-      </ThemeProvider>
-    );
-  }
-
   if (schemaStep === "inferring") {
     return (
       <ThemeProvider theme={theme}>
@@ -333,6 +298,41 @@ export default function App() {
             setResourceId("__local__");
           }}
         />
+      </ThemeProvider>
+    );
+  }
+
+  if (!connected) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <ResourceSelector onConnected={async (id, meta) => {
+          setResourceId(id);
+          if (!meta?.sourceType) {
+            setConnected(true);
+            saveState(id, emptyFilters);
+            return;
+          }
+          setSchemaFolderId(meta.folderId);
+          setSchemaStep("inferring");
+          try {
+            const result = await inferSchema({
+              source_type: meta.sourceType,
+              s3_path: meta.s3Path,
+              folder_id: meta.folderId,
+              resource_id: meta.sourceType === "aurora" ? id : undefined,
+              table: meta.table,
+            });
+            setSchemaMappings(result.mappings);
+            setSchemaSourceName(meta.sourceName ?? "schema");
+            setSchemaTableName(meta.sourceType === "aurora" ? meta.table : "data");
+            setSchemaFilePath(meta.sourceType === "file" ? meta.s3Path : undefined);
+            setSchemaStep("reviewing");
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Schema inference failed");
+            setSchemaStep("none");
+          }
+        }} />
       </ThemeProvider>
     );
   }

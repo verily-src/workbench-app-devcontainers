@@ -98,6 +98,12 @@ def get_all_columns() -> list[str]:
     return [m["column"] for m in _active_mapping]
 
 
+def get_visible_columns() -> list[str]:
+    if not _active_mapping:
+        return []
+    return [m["column"] for m in _active_mapping if m["filter"] != "none"]
+
+
 def get_mapping_for_column(column: str) -> dict | None:
     if not _active_mapping:
         return None

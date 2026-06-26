@@ -17,11 +17,11 @@ import { DEFAULT_CHART_TYPE, buildEmptyFilters, buildFieldMeta } from "./types.t
 
 const STORAGE_KEY = "cohort-explorer-state";
 
-function saveState(resourceId: string, filters: FilterState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceId, filters }));
+function saveState(resourceId: string, filters: FilterState, tableName?: string) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceId, filters, tableName }));
 }
 
-function loadSavedState(): { resourceId: string; filters: FilterState } | null {
+function loadSavedState(): { resourceId: string; filters: FilterState; tableName?: string } | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -82,6 +82,7 @@ export default function App() {
     connectResource(saved.resourceId)
       .then(async () => {
         setResourceId(saved.resourceId);
+        if (saved.tableName) setSchemaTableName(saved.tableName);
         try {
           const schema = await fetchActiveSchema();
           if (schema.mappings.length > 0) {
@@ -161,7 +162,7 @@ export default function App() {
     setApplied(pending);
     setActiveCohort(null);
     loadData(pending);
-    saveState(resourceId, pending);
+    saveState(resourceId, pending, schemaTableName);
   }, [pending, loadData, resourceId]);
 
   const handleReset = useCallback(() => {
@@ -169,7 +170,7 @@ export default function App() {
     setApplied(emptyFilters);
     setActiveCohort(null);
     loadData(emptyFilters);
-    saveState(resourceId, emptyFilters);
+    saveState(resourceId, emptyFilters, schemaTableName);
   }, [loadData, resourceId, emptyFilters]);
 
   const handleDisconnect = useCallback(() => {
@@ -195,7 +196,7 @@ export default function App() {
       setApplied(cohort.filters);
       setActiveCohort(name);
       loadData(cohort.filters);
-      saveState(resourceId, cohort.filters);
+      saveState(resourceId, cohort.filters, schemaTableName);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load cohort");
     }
@@ -224,7 +225,7 @@ export default function App() {
       setPending(newPending);
       setApplied(newPending);
       loadData(newPending);
-      saveState(resourceId, newPending);
+      saveState(resourceId, newPending, schemaTableName);
     },
     [pending, loadData, resourceId],
   );
@@ -291,7 +292,7 @@ export default function App() {
             setChartConfigs(firstCat ? [{ id: "default", fieldKey: firstCat.key, chartType: "bar" }] : []);
             setSchemaStep("none");
             setConnected(true);
-            saveState(resourceId, empty);
+            saveState(resourceId, empty, schemaTableName);
           }}
           onBack={() => {
             setSchemaStep("none");

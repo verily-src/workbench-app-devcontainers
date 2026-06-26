@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_connection_string, wait_connection_string, warm_resource_cache
-from dynamic_model import DynamicBase, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_pk_name, get_range_filters, load_schema_from_disk, set_active_mapping
+from dynamic_model import DynamicBase, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_pk_name, get_range_filters, get_visible_columns, load_schema_from_disk, set_active_mapping
 from models import Base, Sample
 from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
 from seed import seed_dynamic, seed_from_tsv
@@ -288,7 +288,7 @@ def get_samples(
     db: Session = Depends(get_db),
 ) -> list[dict]:
     model = _get_model()
-    columns = get_all_columns()
+    columns = get_visible_columns() or get_all_columns()
     filters = _extract_filter_params(request)
     stmt = select(model)
     stmt = _apply_filters(stmt, filters)

@@ -28,6 +28,7 @@ interface Props {
   onToggleFilterPane: () => void;
   onToggleGridPane: () => void;
   activeCohort: string | null;
+  datasource: string;
   onLoadCohort: (name: string) => void;
   onCohortSaved: (name: string) => void;
 }
@@ -35,7 +36,7 @@ interface Props {
 export default function SummaryBar({
   counts, filters, loading, onDisconnect,
   filterPaneVisible, gridPaneVisible, onToggleFilterPane, onToggleGridPane,
-  activeCohort, onLoadCohort, onCohortSaved,
+  activeCohort, datasource, onLoadCohort, onCohortSaved,
 }: Props) {
   const [salmonOpen, setSalmonOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -44,9 +45,9 @@ export default function SummaryBar({
 
   const refreshCohorts = useCallback(async () => {
     try {
-      setCohorts(await listCohorts());
+      setCohorts(await listCohorts(datasource));
     } catch { /* ignore */ }
-  }, []);
+  }, [datasource]);
 
   useEffect(() => { refreshCohorts(); }, [refreshCohorts]);
 
@@ -224,6 +225,7 @@ export default function SummaryBar({
         onClose={() => setSaveOpen(false)}
         filters={filters}
         sampleCount={counts?.samples ?? 0}
+        datasource={datasource}
         onSaved={(name) => { onCohortSaved(name); refreshCohorts(); }}
       />
     </Box>

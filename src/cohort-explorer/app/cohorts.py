@@ -96,18 +96,20 @@ def init_cohorts(folder_resource_id: str):
     threading.Thread(target=_load_from_s3, daemon=True).start()
 
 
-def list_cohorts() -> list[dict]:
+def list_cohorts(datasource: str = "") -> list[dict]:
     with _cohorts_lock:
-        return [
-            {
+        results = []
+        for c in _cohorts.values():
+            if datasource and c.get("datasource", "") != datasource:
+                continue
+            results.append({
                 "name": c["name"],
                 "description": c.get("description", ""),
                 "sampleCount": c.get("sampleCount", 0),
                 "createdAt": c.get("createdAt"),
                 "updatedAt": c.get("updatedAt"),
-            }
-            for c in _cohorts.values()
-        ]
+            })
+        return results
 
 
 def get_cohort(name: str) -> dict | None:
@@ -115,13 +117,14 @@ def get_cohort(name: str) -> dict | None:
         return _cohorts.get(name)
 
 
-def save_cohort(name: str, description: str, filters: dict, sample_count: int) -> dict:
+def save_cohort(name: str, description: str, filters: dict, sample_count: int, datasource: str = "") -> dict:
     now = datetime.now(timezone.utc).isoformat()
     with _cohorts_lock:
         existing = _cohorts.get(name)
         cohort = {
             "name": name,
             "description": description,
+            "datasource": datasource,
             "filters": filters,
             "sampleCount": sample_count,
             "createdAt": existing["createdAt"] if existing else now,

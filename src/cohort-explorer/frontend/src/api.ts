@@ -147,8 +147,9 @@ export interface CohortFull extends CohortSummary {
   filters: FilterState;
 }
 
-export async function listCohorts(): Promise<CohortSummary[]> {
-  const res = await fetchWithTimeout(`${BASE}/api/cohorts`);
+export async function listCohorts(datasource?: string): Promise<CohortSummary[]> {
+  const params = datasource ? `?datasource=${encodeURIComponent(datasource)}` : "";
+  const res = await fetchWithTimeout(`${BASE}/api/cohorts${params}`);
   if (!res.ok) await extractError(res, "Failed to list cohorts");
   return res.json();
 }
@@ -160,12 +161,12 @@ export async function getCohort(name: string): Promise<CohortFull> {
 }
 
 export async function saveCohort(
-  name: string, description: string, filters: FilterState, sampleCount: number,
+  name: string, description: string, filters: FilterState, sampleCount: number, datasource?: string,
 ): Promise<CohortFull> {
   const res = await fetchWithTimeout(`${BASE}/api/cohorts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, description, filters, sampleCount }),
+    body: JSON.stringify({ name, description, filters, sampleCount, datasource }),
   });
   if (!res.ok) await extractError(res, "Failed to save cohort");
   return res.json();

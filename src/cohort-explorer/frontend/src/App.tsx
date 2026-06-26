@@ -372,6 +372,7 @@ export default function App() {
           onToggleFilterPane={() => setFilterPaneVisible((v) => !v)}
           onToggleGridPane={() => setGridPaneVisible((v) => !v)}
           activeCohort={activeCohort}
+          datasource={schemaTableName ? `${resourceId}:${schemaTableName}` : resourceId}
           onLoadCohort={handleLoadCohort}
           onCohortSaved={handleCohortSaved}
         />

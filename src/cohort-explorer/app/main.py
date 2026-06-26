@@ -439,8 +439,8 @@ def export_csv(
 
 
 @app.get("/api/cohorts")
-def api_list_cohorts() -> list[dict]:
-    return list_cohorts()
+def api_list_cohorts(datasource: str = Query("")) -> list[dict]:
+    return list_cohorts(datasource=datasource)
 
 
 @app.get("/api/cohorts/{name}")
@@ -461,6 +461,7 @@ def api_save_cohort(body: dict) -> dict:
         description=body.get("description", ""),
         filters=body.get("filters", {}),
         sample_count=body.get("sampleCount", 0),
+        datasource=body.get("datasource", ""),
     )
 
 

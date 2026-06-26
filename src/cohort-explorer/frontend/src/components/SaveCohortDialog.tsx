@@ -16,10 +16,11 @@ interface Props {
   onClose: () => void;
   filters: FilterState;
   sampleCount: number;
+  datasource: string;
   onSaved: (name: string) => void;
 }
 
-export default function SaveCohortDialog({ open, onClose, filters, sampleCount, onSaved }: Props) {
+export default function SaveCohortDialog({ open, onClose, filters, sampleCount, datasource, onSaved }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -37,7 +38,7 @@ export default function SaveCohortDialog({ open, onClose, filters, sampleCount, 
         setSaving(false);
         return;
       }
-      await saveCohort(trimmed, description.trim(), filters, sampleCount);
+      await saveCohort(trimmed, description.trim(), filters, sampleCount, datasource);
       onSaved(trimmed);
       setName("");
       setDescription("");

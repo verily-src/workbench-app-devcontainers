@@ -82,8 +82,19 @@ def _extract_filter_params(request: Request) -> dict:
     return params
 
 
+def _ensure_aws_config():
+    if os.environ.get("AWS_CONFIG_FILE"):
+        return
+    import glob
+    matches = glob.glob(os.path.expanduser("~/.workbench/aws/*.conf"))
+    if matches:
+        os.environ["AWS_CONFIG_FILE"] = matches[0]
+        logger.info("Set AWS_CONFIG_FILE to %s", matches[0])
+
+
 @app.on_event("startup")
 def startup():
+    _ensure_aws_config()
     engine = get_sqlite_engine()
     Base.metadata.create_all(engine)
     logger.info("SQLite tables ensured")

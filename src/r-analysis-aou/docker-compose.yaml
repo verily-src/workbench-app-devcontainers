@@ -27,7 +27,7 @@ services:
       - apparmor:unconfined
   wondershaper:
     container_name: "wondershaper"
-    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:f0b22ef4dc3553a32b2703a2f37ce2108147d036356fdbfc4fa0b5b24e51f456"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:f0cac0720169bd5f0a1f97d59fea43135fb5f715307486f9cfa18e68806ffc39"
     restart: always
     network_mode: "host"
     cap_add:

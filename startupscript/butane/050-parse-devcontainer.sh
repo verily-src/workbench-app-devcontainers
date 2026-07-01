@@ -83,6 +83,14 @@ fi
 /home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
     echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2
 
+# shellcheck source=/dev/null
+source '/home/core/metadata-utils.sh'
+SHM_SIZE="$(get_metadata_value "shm-size" "")"
+if [[ -z "${SHM_SIZE}" ]]; then
+    SHM_SIZE="$(get_guest_attribute "shm-size" "64m")"
+fi
+readonly SHM_SIZE
+
 replace_template_options() {
     local TEMPLATE_PATH="$1"
 
@@ -91,6 +99,7 @@ replace_template_options() {
     sed -i "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:shmSize}|${SHM_SIZE}|g" "${TEMPLATE_PATH}"
 }
 
 detect_gpu() {
@@ -169,8 +178,6 @@ else
 fi
 
 echo 'publishing devcontainer.json to metadata'
-# shellcheck source=/dev/null
-source '/home/core/metadata-utils.sh'
 readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
 DEVCONTAINER_CUSTOMIZATIONS="$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" | jq -c .customizations.workbench)"
 readonly DEVCONTAINER_CUSTOMIZATIONS

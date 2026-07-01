@@ -2,5 +2,18 @@
   "id": "playground",
   "version": "1.0.0",
   "name": "Playground Apps Manager",
-  "description": "Web-based manager for creating and deploying custom devcontainer applications"
+  "description": "Web-based manager for creating and deploying custom devcontainer applications",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "shmSize": {
+      "type": "string",
+      "description": "Shared memory size for the application-server container",
+      "default": "64m"
+    }
+  }
 }

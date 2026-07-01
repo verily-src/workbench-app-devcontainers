@@ -2,6 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
     image: "us-central1-docker.pkg.dev/verily-workbench-public/apps/workbench-jupyter:latest"
     user: "jupyter:${DOCKER_GID}"
     restart: always

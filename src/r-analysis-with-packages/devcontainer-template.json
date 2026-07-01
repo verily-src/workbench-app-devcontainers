@@ -1,0 +1,8 @@
+{
+  "id": "r-analysis-with-packages",
+  "version": "1.0.0",
+  "name": "R Analysis with Pre-installed Packages (TEST)",
+  "description": "R Analysis environment with common packages pre-installed using the common-packages feature",
+  "type": "application",
+  "featureSet": "full"
+}

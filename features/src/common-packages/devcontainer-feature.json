@@ -1,0 +1,19 @@
+{
+  "id": "common-packages",
+  "version": "1.0.0",
+  "name": "Pre-install Packages",
+  "description": "Pre-install Python and R packages so users don't have to run pip install or install.packages() every time",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/features/src/common-packages",
+  "options": {
+    "pythonPackages": {
+      "type": "string",
+      "default": "",
+      "description": "Python packages to install (space-separated, e.g., 'pandas numpy scikit-learn')"
+    },
+    "rPackages": {
+      "type": "string",
+      "default": "",
+      "description": "R packages to install (comma-separated, e.g., 'tidyverse,ggplot2,dplyr')"
+    }
+  }
+}

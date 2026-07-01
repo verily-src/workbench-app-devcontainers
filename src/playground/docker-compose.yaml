@@ -2,6 +2,7 @@ services:
   app:
     # The container name must be "application-server"
     container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
     image: "caddy:2.11-alpine"
     restart: always
     volumes:

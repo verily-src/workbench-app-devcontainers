@@ -87,7 +87,7 @@ fi
 source '/home/core/metadata-utils.sh'
 SHM_SIZE="$(get_metadata_value "shm-size" "")"
 if [[ -z "${SHM_SIZE}" ]]; then
-    SHM_SIZE="$(get_guest_attribute "shm-size" "64m")"
+    SHM_SIZE="$(get_guest_attribute "config/shm-size" "64m")"
 fi
 readonly SHM_SIZE
 

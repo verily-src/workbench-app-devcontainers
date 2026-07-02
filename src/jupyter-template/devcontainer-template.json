@@ -27,6 +27,11 @@
       "type": "number",
       "description": "The port to expose the container on",
       "default": 8888
+    },
+    "shmSize": {
+      "type": "string",
+      "description": "Shared memory size for the application-server container",
+      "default": "64m"
     }
   },
   "platforms": ["Any"]

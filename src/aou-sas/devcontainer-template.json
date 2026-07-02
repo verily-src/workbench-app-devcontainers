@@ -15,6 +15,11 @@
       "description": "Whether to log in to workbench CLI",
       "proposals": ["true", "false"],
       "default": "false"
+    },
+    "shmSize": {
+      "type": "string",
+      "description": "Shared memory size for the application-server container",
+      "default": "64m"
     }
   }
 }

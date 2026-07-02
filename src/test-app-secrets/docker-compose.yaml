@@ -3,6 +3,7 @@ include:
 services:
   app:
     container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
     build:
       context: .
       additional_contexts:

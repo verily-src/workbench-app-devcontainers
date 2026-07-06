@@ -16,7 +16,7 @@ import {
 import RefreshIcon from "@mui/icons-material/Refresh";
 import StorageIcon from "@mui/icons-material/Storage";
 import type { AuroraTable, Datasource, S3File, S3Folder } from "../api";
-import { connectResource, fetchDatasources, listAuroraTables, listS3Files, refreshDatasources } from "../api";
+import { connectResource, fetchDatasources, listS3Files, refreshDatasources } from "../api";
 
 export interface ConnectionMeta {
   sourceType: "file" | "aurora";
@@ -40,7 +40,6 @@ export default function ResourceSelector({ onConnected }: Props) {
   const [s3Files, setS3Files] = useState<S3File[]>([]);
   const [auroraTables, setAuroraTables] = useState<AuroraTable[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
-  const [loadingTables, setLoadingTables] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -50,15 +49,31 @@ export default function ResourceSelector({ onConnected }: Props) {
   const isAuroraMode = resources.some((r) => r.id === selected);
 
   useEffect(() => {
-    fetchDatasources()
-      .then((data) => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout>;
+
+    const load = async () => {
+      try {
+        const data = await fetchDatasources();
+        if (cancelled) return;
         setResources(data.resources);
         setS3Folders(data.s3_folders ?? []);
         if (data.active) setSelected(data.active);
         if (data.s3_folders?.length) setSelectedFolder(data.s3_folders[0].id);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+        if (!data.ready) {
+          retryTimer = setTimeout(load, 5000);
+          return;
+        }
+      } catch {
+        if (cancelled) return;
+        retryTimer = setTimeout(load, 5000);
+        return;
+      }
+      setLoading(false);
+    };
+    load();
+
+    return () => { cancelled = true; clearTimeout(retryTimer); };
   }, []);
 
   const handleRefresh = async () => {
@@ -68,6 +83,10 @@ export default function ResourceSelector({ onConnected }: Props) {
       const data = await refreshDatasources();
       setResources(data.resources);
       setS3Folders(data.s3_folders ?? []);
+      if (isAuroraMode) {
+        const resource = data.resources.find((r) => r.id === selected);
+        setAuroraTables(resource?.tables ?? []);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Refresh failed");
     } finally {
@@ -108,17 +127,10 @@ export default function ResourceSelector({ onConnected }: Props) {
         setLoadingFiles(false);
       }
     } else if (value !== "__local__" && value !== "__file__") {
-      setLoadingTables(true);
-      try {
-        const tables = await listAuroraTables(value);
-        setAuroraTables(tables);
-        if (tables.length === 1) setSelectedTable(tables[0].name);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to list tables");
-        setAuroraTables([]);
-      } finally {
-        setLoadingTables(false);
-      }
+      const resource = resources.find((r) => r.id === value);
+      const tables = resource?.tables ?? [];
+      setAuroraTables(tables);
+      if (tables.length === 1) setSelectedTable(tables[0].name);
     }
   };
 
@@ -169,8 +181,11 @@ export default function ResourceSelector({ onConnected }: Props) {
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+      <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100vh", gap: 2 }}>
         <CircularProgress />
+        <Typography variant="body2" color="text.secondary">
+          Connecting to workspace resources...
+        </Typography>
       </Box>
     );
   }
@@ -231,11 +246,8 @@ export default function ResourceSelector({ onConnected }: Props) {
                 value={selectedTable}
                 label="Table / View"
                 onChange={(e) => setSelectedTable(e.target.value)}
-                disabled={loadingTables}
               >
-                {loadingTables ? (
-                  <MenuItem disabled>Loading tables...</MenuItem>
-                ) : auroraTables.length === 0 ? (
+                {auroraTables.length === 0 ? (
                   <MenuItem disabled>No tables found</MenuItem>
                 ) : (
                   auroraTables.map((t) => (

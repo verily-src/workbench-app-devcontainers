@@ -87,15 +87,6 @@ export interface AuroraTable {
   type: string;
 }
 
-export async function listAuroraTables(resourceId: string): Promise<AuroraTable[]> {
-  const res = await fetchWithTimeout(
-    `${BASE}/api/schema/tables?resource_id=${encodeURIComponent(resourceId)}`,
-    { timeoutMs: 120_000 },
-  );
-  if (!res.ok) await extractError(res, "Failed to list tables");
-  return res.json();
-}
-
 export async function inferSchema(body: {
   source_type: "file" | "aurora";
   s3_path?: string;
@@ -192,6 +183,7 @@ export interface Datasource {
   database: string | null;
   rw_endpoint: string | null;
   resource_type: string;
+  tables?: AuroraTable[];
 }
 
 export interface S3Folder {
@@ -205,10 +197,11 @@ export interface DatasourcesResponse {
   s3_folders: S3Folder[];
   active: string | null;
   has_local: boolean;
+  ready: boolean;
 }
 
 export async function fetchDatasources(): Promise<DatasourcesResponse> {
-  const res = await fetchWithTimeout(`${BASE}/api/datasources`);
+  const res = await fetchWithTimeout(`${BASE}/api/datasources`, { timeoutMs: 120_000 });
   if (!res.ok) await extractError(res, "Failed to fetch datasources");
   return res.json();
 }

@@ -16,10 +16,10 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
-from db import get_active_resource_id, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_connection_string, wait_connection_string, warm_resource_cache
+from db import are_tables_ready, get_active_resource_id, get_cached_tables, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
 from dynamic_model import DynamicBase, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_pk_name, get_range_filters, get_visible_columns, load_schema_from_disk, set_active_mapping
 from models import Base, Sample
-from schema import infer_from_aurora, infer_from_csv, list_aurora_tables, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
+from schema import infer_from_aurora, infer_from_csv, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
 from seed import seed_dynamic, seed_from_tsv
 from starlette.requests import Request
 
@@ -113,7 +113,7 @@ def health() -> dict[str, str]:
 def get_datasources() -> dict:
     aurora = list_aurora_resources(wait=True)
     for r in aurora:
-        warm_connection_string(r["id"])
+        r["tables"] = get_cached_tables(r["id"])
     s3_folders = list_s3_folders()
     active = get_active_resource_id()
     return {
@@ -121,6 +121,7 @@ def get_datasources() -> dict:
         "s3_folders": s3_folders,
         "active": active,
         "has_local": True,
+        "ready": are_tables_ready(),
     }
 
 
@@ -128,6 +129,8 @@ def get_datasources() -> dict:
 def refresh_datasources() -> dict:
     warm_resource_cache()
     aurora = list_aurora_resources(wait=True)
+    for r in aurora:
+        r["tables"] = get_cached_tables(r["id"])
     s3_folders = list_s3_folders()
     active = get_active_resource_id()
     return {
@@ -135,6 +138,7 @@ def refresh_datasources() -> dict:
         "s3_folders": s3_folders,
         "active": active,
         "has_local": True,
+        "ready": are_tables_ready(),
     }
 
 
@@ -172,16 +176,6 @@ def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
         return files
     except Exception as e:
         logger.error("Failed to list S3 files: %s", e)
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@app.get("/api/schema/tables")
-def api_list_tables(resource_id: str = Query(...)) -> list[dict]:
-    try:
-        wait_connection_string(resource_id)
-        return list_aurora_tables(resource_id)
-    except Exception as e:
-        logger.error("Failed to list tables: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

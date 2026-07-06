@@ -20,6 +20,9 @@ _resource_cache_ready = threading.Event()
 _conn_string_cache: dict[str, str] = {}
 _conn_string_events: dict[str, threading.Event] = {}
 
+_table_cache: dict[str, list[dict]] = {}
+_tables_ready = threading.Event()
+
 
 def warm_connection_string(resource_id: str):
     if resource_id in _conn_string_cache:
@@ -91,12 +94,41 @@ def _fetch_resources() -> list[dict]:
     return json.loads(result.stdout)
 
 
+def _warm_resource_tables(resource_id: str):
+    try:
+        resolve_connection_string(resource_id)
+        from schema import list_aurora_tables
+        tables = list_aurora_tables(resource_id)
+        _table_cache[resource_id] = tables
+        logger.info("Cached %d tables for %s", len(tables), resource_id)
+    except Exception as e:
+        logger.warning("Failed to warm tables for %s: %s", resource_id, e)
+        _table_cache[resource_id] = []
+
+
+def _warm_all_aurora_tables():
+    aurora = list_aurora_resources()
+    if not aurora:
+        _tables_ready.set()
+        return
+    threads = []
+    for r in aurora:
+        t = threading.Thread(target=_warm_resource_tables, args=(r["id"],), daemon=True)
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join(timeout=120)
+    _tables_ready.set()
+    logger.info("All Aurora tables warmed: %d resources", len(aurora))
+
+
 def _refresh_resource_cache():
     global _resource_cache
     with _resource_cache_lock:
         _resource_cache = _fetch_resources()
         _resource_cache_ready.set()
         logger.info("Resource cache refreshed: %d resources", len(_resource_cache))
+    _warm_all_aurora_tables()
 
 
 def _ensure_cache(wait: bool = False) -> list[dict]:
@@ -195,6 +227,14 @@ def set_active_resource(resource_id: str | None):
 
 def get_active_resource_id() -> str | None:
     return _active_resource_id
+
+
+def get_cached_tables(resource_id: str) -> list[dict]:
+    return _table_cache.get(resource_id, [])
+
+
+def are_tables_ready() -> bool:
+    return _tables_ready.is_set()
 
 
 def get_db():

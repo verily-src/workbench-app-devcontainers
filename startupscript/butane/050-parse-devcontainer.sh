@@ -89,7 +89,7 @@ SHM_SIZE="$(get_metadata_value "shm-size" "")"
 if [[ -z "${SHM_SIZE}" ]]; then
     SHM_SIZE="$(get_guest_attribute "config/shm-size" "")"
 fi
-if [[ ! "${SHM_SIZE}" =~ ^[0-9]+[bBkKmMgG]?$ ]]; then
+if [[ ! "${SHM_SIZE}" =~ ^[0-9]+[bBkKmMgG][bB]?$ ]]; then
     echo "WARNING: invalid shm-size '${SHM_SIZE}', using default 64m" >&2
     SHM_SIZE="64m"
 fi

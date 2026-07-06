@@ -32,7 +32,7 @@ readonly CONTAINER_PORT="${6:-8080}"
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'
 readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
-readonly GPU_STATE_FILE="/home/core/gpu-state"
+readonly CONTAINER_STATE_FILE="/home/core/container-state"
 
 if [[ -f "${DEVCONTAINER_PATH}/.devcontainer.json" ]]; then
   DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
@@ -87,7 +87,11 @@ fi
 source '/home/core/metadata-utils.sh'
 SHM_SIZE="$(get_metadata_value "shm-size" "")"
 if [[ -z "${SHM_SIZE}" ]]; then
-    SHM_SIZE="$(get_guest_attribute "shm-size" "64m")"
+    SHM_SIZE="$(get_guest_attribute "config/shm-size" "")"
+fi
+if [[ ! "${SHM_SIZE}" =~ ^[0-9]+[bBkKmMgG]?$ ]]; then
+    echo "WARNING: invalid shm-size '${SHM_SIZE}', using default 64m" >&2
+    SHM_SIZE="64m"
 fi
 readonly SHM_SIZE
 
@@ -111,31 +115,32 @@ detect_gpu() {
     fi
 }
 
-handle_gpu_state_changed() {
-    local current_state="$1"
+handle_container_state_changed() {
+    # Each argument is a "key=value" pair representing current container state.
+    # Removes the application-server container if any value has changed since last run.
     local rebuild=false
 
-    # Check if this is first run or if state changed
-    if [[ ! -f "${GPU_STATE_FILE}" ]]; then
-        echo "First run, GPU state: ${current_state} (0=present, 1=absent)"
+    if [[ ! -f "${CONTAINER_STATE_FILE}" ]]; then
+        echo "First run, initializing container state"
         rebuild=true
     else
-        local previous_state
-        previous_state="$(cat "${GPU_STATE_FILE}")"
-
-        if [[ "${current_state}" != "${previous_state}" ]]; then
-            echo "GPU state changed from ${previous_state} to ${current_state} (0=present, 1=absent)"
-            rebuild=true
-        fi
+        local pair key value previous_value
+        for pair in "$@"; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            previous_value="$(grep "^${key}=" "${CONTAINER_STATE_FILE}" | cut -d= -f2-)"
+            if [[ "${value}" != "${previous_value}" ]]; then
+                echo "Container state changed: ${key} from ${previous_value} to ${value}"
+                rebuild=true
+            fi
+        done
     fi
 
-    # Rebuild container if needed
     if [[ "${rebuild}" == "true" ]]; then
         docker rm -f application-server
     fi
 
-    # Update state file
-    echo "${current_state}" > "${GPU_STATE_FILE}"
+    printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
 }
 
 apply_gpu_runtime() {
@@ -167,7 +172,7 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
 fi
 
 gpu_exists=$(detect_gpu; echo $?)
-handle_gpu_state_changed "${gpu_exists}"
+handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}"
 
 # Apply GPU runtime configuration if GPU is present
 if [[ "${gpu_exists}" == "0" ]]; then

@@ -254,8 +254,9 @@ export default function App() {
 
   if (restoring) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+      <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100vh", gap: 2 }}>
         <CircularProgress />
+        <Typography variant="body2" color="text.secondary">Restoring session...</Typography>
       </Box>
     );
   }

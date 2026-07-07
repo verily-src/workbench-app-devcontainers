@@ -131,9 +131,17 @@ install_skills() {
         done
     fi
 
+    # Copy upstream Nextflow skills (verbatim from nextflow-io/agent-skills)
+    if [[ -d "${source_skills}/nextflow" ]]; then
+        mkdir -p "${SKILLS_DIR}/nextflow"
+        for skill_file in "${source_skills}/nextflow"/*.md; do
+            [[ -f "${skill_file}" ]] && cp "${skill_file}" "${SKILLS_DIR}/nextflow/"
+        done
+    fi
+
     # AWS-specific skill overrides — overwrite only the platform-sensitive skills.
     if [ "$cloud_platform" = "AWS" ] && [[ -d "${source_skills}/aws" ]]; then
-        log_info "Applying AWS skill variants for WORKFLOW_TROUBLESHOOT and DASHBOARD_BUILDER..."
+        log_info "Applying AWS skill variants for WDL_WORKFLOW_TROUBLESHOOT and DASHBOARD_BUILDER..."
         for skill_file in "${source_skills}/aws"/*.md; do
             [[ -f "${skill_file}" ]] && cp "${skill_file}" "${SKILLS_DIR}/"
         done
@@ -727,7 +735,8 @@ Read these directly — no index needed:
 | **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
 | Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
 | App templates | \`APP_TEMPLATES.md\` | Pre-built templates for dashboards, APIs, file processors |
-| **Workflow debugging** | \`WORKFLOW_TROUBLESHOOT.md\` | Failed WDL/Nextflow, logs, memory/disk issues |
+| **WDL workflow debugging** | \`WDL_WORKFLOW_TROUBLESHOOT.md\` | Failed WDL jobs, Cromwell logs, memory/disk issues |
+| **Nextflow workflows** | \`NEXTFLOW_WORKFLOW.md\` | Nextflow authoring, launching, and troubleshooting |
 
 ### Scientific Skills
 
@@ -770,12 +779,17 @@ Trigger \`DATA_DISCOVERY.md\` whenever the user is searching for data collection
 - "dashboard template" / "starter template" / "pre-built app"
 - "what templates are available" / "which template should I use"
 
-**Read \`WORKFLOW_TROUBLESHOOT.md\` when:**
-- "troubleshoot my workflow" / "fix my workflow"
-- "my workflow failed" / "workflow error" / "debug workflow"
+**Read \`WDL_WORKFLOW_TROUBLESHOOT.md\` when the workflow is WDL/Cromwell-based:**
+- "troubleshoot my workflow" / "fix my workflow" / "workflow failed" / "workflow error"
 - "troubleshoot my job" / "my job failed" / "workflow job failed"
-- "job failed" / "task failed" / "out of memory"
-- "check logs" / "why did it fail" / "troubleshoot"
+- "job failed" / "task failed" / "out of memory" / "check logs" / "why did it fail"
+- If workflow type is ambiguous, check `wb workflow list` to confirm WDL before reading
+- Does NOT apply when user mentions Nextflow or nf-core — use `NEXTFLOW_WORKFLOW.md` instead
+
+**Read \`NEXTFLOW_WORKFLOW.md\` when the workflow is Nextflow-based:**
+- User explicitly mentions "nextflow" / "nf-core" / "nextflow module" / "nextflow run"
+- "create a Nextflow pipeline" / "run a Nextflow workflow" / "write a Nextflow pipeline"
+- "Nextflow failed" / "troubleshoot my Nextflow job" / "my Nextflow pipeline failed"
 
 **Read \`SCIENTIFIC_SKILLS_INDEX.md\` then the relevant domain file when user mentions:**
 - "single-cell" / "RNA-seq" / "scanpy" / "differential expression"

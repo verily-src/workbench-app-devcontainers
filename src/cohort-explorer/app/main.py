@@ -524,7 +524,9 @@ def _build_salmon_row(sample) -> dict | None:
         if fq2:
             files.append(fq2)
     sample_col = _find_column(model, "sample_id", "sample_name", "specimen")
-    sample_name = getattr(sample, sample_col, None) if sample_col else str(getattr(sample, get_pk_name(), ""))
+    sample_name = getattr(sample, sample_col, None) if sample_col else None
+    if not sample_name:
+        sample_name = str(getattr(sample, get_pk_name(), "unknown"))
     return {
         "input_files": json.dumps(files),
         "sample_name": sample_name,

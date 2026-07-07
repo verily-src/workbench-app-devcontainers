@@ -490,15 +490,36 @@ SALMON_TRANSCRIPT_MAP = os.environ.get(
 )
 
 
-def _build_salmon_row(sample: Sample) -> dict | None:
-    if not sample.fastq1_path:
+def _find_column(model, *patterns: str) -> str | None:
+    """Find a model attribute whose name contains any of the patterns (case-insensitive)."""
+    for attr in dir(model):
+        if attr.startswith("_"):
+            continue
+        lower = attr.lower()
+        if any(p in lower for p in patterns):
+            return attr
+    return None
+
+
+def _build_salmon_row(sample) -> dict | None:
+    model = type(sample)
+    fq1_col = _find_column(model, "fastq1", "fastq_1", "read1", "r1_path")
+    if not fq1_col:
         return None
-    files = [sample.fastq1_path]
-    if sample.fastq2_path:
-        files.append(sample.fastq2_path)
+    fq1 = getattr(sample, fq1_col, None)
+    if not fq1:
+        return None
+    files = [fq1]
+    fq2_col = _find_column(model, "fastq2", "fastq_2", "read2", "r2_path")
+    if fq2_col:
+        fq2 = getattr(sample, fq2_col, None)
+        if fq2:
+            files.append(fq2)
+    sample_col = _find_column(model, "sample_id", "sample_name", "specimen")
+    sample_name = getattr(sample, sample_col, None) if sample_col else str(getattr(sample, get_pk_name(), ""))
     return {
         "input_files": json.dumps(files),
-        "sample_name": sample.gtex_sample_id,
+        "sample_name": sample_name,
         "transcriptome": SALMON_TRANSCRIPTOME,
         "transcript_map": SALMON_TRANSCRIPT_MAP,
     }

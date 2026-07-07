@@ -58,7 +58,14 @@ export default function ResourceSelector({ onConnected }: Props) {
         if (cancelled) return;
         setResources(data.resources);
         setS3Folders(data.s3_folders ?? []);
-        if (data.active) setSelected(data.active);
+        if (data.active) {
+          setSelected(data.active);
+          const active = data.resources.find((r) => r.id === data.active);
+          if (active?.tables) {
+            setAuroraTables(active.tables);
+            if (active.tables.length === 1) setSelectedTable(active.tables[0].name);
+          }
+        }
         if (data.s3_folders?.length) setSelectedFolder(data.s3_folders[0].id);
         if (!data.ready) {
           retryTimer = setTimeout(load, 5000);

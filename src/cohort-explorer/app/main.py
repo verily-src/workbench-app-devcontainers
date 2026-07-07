@@ -85,6 +85,14 @@ def _extract_filter_params(request: Request) -> dict:
 def _ensure_aws_config():
     if os.environ.get("AWS_CONFIG_FILE"):
         return
+    try:
+        subprocess.run(
+            ["wb", "workspace", "configure-aws"],
+            capture_output=True, text=True, check=True, timeout=120,
+        )
+        logger.info("Configured AWS profiles via wb workspace configure-aws")
+    except Exception as e:
+        logger.warning("Failed to configure AWS profiles: %s", e)
     import glob
     matches = glob.glob(os.path.expanduser("~/.workbench/aws/*.conf"))
     if matches:

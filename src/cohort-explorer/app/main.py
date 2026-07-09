@@ -535,17 +535,54 @@ def _build_salmon_row(sample, transcriptome: str, transcript_map: str) -> dict |
     }
 
 
+_wdl_inputs_cache: dict[str, list[dict]] = {}
+
+BATCH_CSV_COLUMNS = {"input_files", "sample_name", "transcriptome", "transcript_map"}
+
+
+def _fetch_wdl_inputs(workflow_id: str) -> list[dict]:
+    if workflow_id in _wdl_inputs_cache:
+        return _wdl_inputs_cache[workflow_id]
+    try:
+        result = subprocess.run(
+            ["wb", "workflow", "describe", f"--workflow={workflow_id}", "--format", "json"],
+            capture_output=True, text=True, check=True, timeout=120,
+        )
+        wf = json.loads(result.stdout)
+        inputs = wf.get("inputs") or []
+        _wdl_inputs_cache[workflow_id] = inputs
+        return inputs
+    except Exception as e:
+        logger.warning("Failed to fetch WDL inputs for %s: %s", workflow_id, e)
+        return []
+
+
 @app.get("/api/salmon/defaults")
 def salmon_defaults() -> dict:
     s3_folders = list_s3_folders()
-    return {
-        "workflow_id": SALMON_WORKFLOW_ID,
+    wdl_inputs = _fetch_wdl_inputs(SALMON_WORKFLOW_ID)
+    csv_defaults = {
         "transcriptome": SALMON_TRANSCRIPTOME,
         "transcript_map": json.loads(SALMON_TRANSCRIPT_MAP) if isinstance(SALMON_TRANSCRIPT_MAP, str) else SALMON_TRANSCRIPT_MAP,
+    }
+    inputs_with_source = []
+    for inp in wdl_inputs:
+        short_name = inp["name"].split(".")[-1]
+        entry = {**inp, "short_name": short_name}
+        if short_name in BATCH_CSV_COLUMNS:
+            entry["source"] = "batch"
+            if short_name in csv_defaults:
+                entry["value"] = csv_defaults[short_name]
+        else:
+            entry["source"] = "static"
+        inputs_with_source.append(entry)
+    return {
+        "workflow_id": SALMON_WORKFLOW_ID,
         "input_bucket_id": SALMON_INPUT_BUCKET_ID,
         "output_bucket_id": SALMON_OUTPUT_BUCKET_ID,
         "column_mapping_uri": SALMON_COLUMN_MAPPING_URI,
         "s3_folders": s3_folders,
+        "inputs": inputs_with_source,
     }
 
 
@@ -590,6 +627,7 @@ def _run_salmon_in_background(
     job_id: str, salmon_rows: list[dict], csv_filename: str, timestamp: str,
     input_bucket_id: str, output_bucket_id: str, output_path: str,
     column_mapping_uri: str, workflow_id: str,
+    static_inputs: dict | None = None,
 ):
     local_csv = None
     try:
@@ -610,19 +648,20 @@ def _run_salmon_in_background(
             capture_output=True, text=True, check=True,
         )
 
-        result = subprocess.run(
-            [
-                "wb", "workflow", "job", "run",
-                f"--workflow={workflow_id}",
-                f"--batch-input-bucket-id={input_bucket_id}",
-                f"--batch-input-csv-path={csv_filename}",
-                f"--column-mapping-uri={column_mapping_uri}",
-                f"--output-bucket-id={output_bucket_id}",
-                f"--output-path={output_path}",
-                f"--job-id={job_id}",
-            ],
-            capture_output=True, text=True, check=True,
-        )
+        cmd = [
+            "wb", "workflow", "job", "run",
+            f"--workflow={workflow_id}",
+            f"--batch-input-bucket-id={input_bucket_id}",
+            f"--batch-input-csv-path={csv_filename}",
+            f"--column-mapping-uri={column_mapping_uri}",
+            f"--output-bucket-id={output_bucket_id}",
+            f"--output-path={output_path}",
+            f"--job-id={job_id}",
+        ]
+        if static_inputs:
+            cmd.append(f"--inputs={json.dumps(static_inputs)}")
+
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
         _salmon_jobs[job_id] = {"status": "submitted", "output": result.stdout.strip()}
         logger.info("Salmon job %s submitted successfully", job_id)
@@ -668,6 +707,8 @@ def submit_salmon(
     csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
     output_path = body.get("output_path", f"salmon_outputs/{timestamp}")
 
+    static_inputs = body.get("static_inputs")
+
     _salmon_jobs[job_id] = {"status": "submitting"}
 
     thread = threading.Thread(
@@ -675,6 +716,7 @@ def submit_salmon(
         args=(job_id, salmon_rows, csv_filename, timestamp,
               input_bucket_id, output_bucket_id, output_path,
               column_mapping_uri, workflow_id),
+        kwargs={"static_inputs": static_inputs},
         daemon=True,
     )
     thread.start()

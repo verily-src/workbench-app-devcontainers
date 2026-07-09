@@ -250,16 +250,27 @@ export interface WorkflowConfig {
   output_path?: string;
   workflow_id?: string;
   column_mapping_uri?: string;
+  static_inputs?: Record<string, string>;
+}
+
+export interface WdlInput {
+  name: string;
+  short_name: string;
+  type: string;
+  description: string | null;
+  defaultValue: string | null;
+  isRequired: boolean;
+  source: "batch" | "static";
+  value?: unknown;
 }
 
 export interface SalmonDefaults {
   workflow_id: string;
-  transcriptome: string;
-  transcript_map: Record<string, unknown>;
   input_bucket_id: string;
   output_bucket_id: string;
   column_mapping_uri: string;
   s3_folders: S3Folder[];
+  inputs: WdlInput[];
 }
 
 export interface SalmonPrepareResponse {

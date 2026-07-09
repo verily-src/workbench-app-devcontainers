@@ -509,7 +509,7 @@ def _find_column(model, *patterns: str) -> str | None:
     return None
 
 
-def _build_salmon_row(sample) -> dict | None:
+def _build_salmon_row(sample, transcriptome: str, transcript_map: str) -> dict | None:
     model = type(sample)
     fq1_col = _find_column(model, "fastq1", "fastq_1", "read1", "r1_path")
     if not fq1_col:
@@ -530,16 +530,36 @@ def _build_salmon_row(sample) -> dict | None:
     return {
         "input_files": json.dumps(files),
         "sample_name": sample_name,
+        "transcriptome": transcriptome,
+        "transcript_map": transcript_map,
+    }
+
+
+@app.get("/api/salmon/defaults")
+def salmon_defaults() -> dict:
+    s3_folders = list_s3_folders()
+    return {
+        "workflow_id": SALMON_WORKFLOW_ID,
         "transcriptome": SALMON_TRANSCRIPTOME,
-        "transcript_map": SALMON_TRANSCRIPT_MAP,
+        "transcript_map": json.loads(SALMON_TRANSCRIPT_MAP) if isinstance(SALMON_TRANSCRIPT_MAP, str) else SALMON_TRANSCRIPT_MAP,
+        "input_bucket_id": SALMON_INPUT_BUCKET_ID,
+        "output_bucket_id": SALMON_OUTPUT_BUCKET_ID,
+        "column_mapping_uri": SALMON_COLUMN_MAPPING_URI,
+        "s3_folders": s3_folders,
     }
 
 
 @app.post("/api/salmon/prepare")
 def prepare_salmon(
+    body: dict,
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
+    transcriptome = body.get("transcriptome", SALMON_TRANSCRIPTOME)
+    transcript_map = body.get("transcript_map", SALMON_TRANSCRIPT_MAP)
+    if isinstance(transcript_map, dict):
+        transcript_map = json.dumps(transcript_map)
+
     model = _get_model()
     filters = _extract_filter_params(request)
     stmt = select(model)
@@ -549,7 +569,7 @@ def prepare_salmon(
     with_fastq = []
     without_fastq = 0
     for s in rows:
-        row = _build_salmon_row(s)
+        row = _build_salmon_row(s, transcriptome, transcript_map)
         if row:
             with_fastq.append(row)
         else:
@@ -566,7 +586,11 @@ def prepare_salmon(
 _salmon_jobs: dict[str, dict] = {}
 
 
-def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename: str, timestamp: str):
+def _run_salmon_in_background(
+    job_id: str, salmon_rows: list[dict], csv_filename: str, timestamp: str,
+    input_bucket_id: str, output_bucket_id: str, output_path: str,
+    column_mapping_uri: str, workflow_id: str,
+):
     local_csv = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
@@ -576,12 +600,12 @@ def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename
             local_csv = f.name
 
         bucket_path = subprocess.run(
-            ["wb", "resource", "resolve", "--id", SALMON_INPUT_BUCKET_ID],
+            ["wb", "resource", "resolve", "--id", input_bucket_id],
             capture_output=True, text=True, check=True,
         ).stdout.strip()
 
         subprocess.run(
-            ["aws", "s3", "cp", "--profile", SALMON_INPUT_BUCKET_ID,
+            ["aws", "s3", "cp", "--profile", input_bucket_id,
              local_csv, f"{bucket_path.rstrip('/')}/{csv_filename}"],
             capture_output=True, text=True, check=True,
         )
@@ -589,12 +613,12 @@ def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename
         result = subprocess.run(
             [
                 "wb", "workflow", "job", "run",
-                f"--workflow={SALMON_WORKFLOW_ID}",
-                f"--batch-input-bucket-id={SALMON_INPUT_BUCKET_ID}",
+                f"--workflow={workflow_id}",
+                f"--batch-input-bucket-id={input_bucket_id}",
                 f"--batch-input-csv-path={csv_filename}",
-                f"--column-mapping-uri={SALMON_COLUMN_MAPPING_URI}",
-                f"--output-bucket-id={SALMON_OUTPUT_BUCKET_ID}",
-                f"--output-path=salmon_outputs/{timestamp}",
+                f"--column-mapping-uri={column_mapping_uri}",
+                f"--output-bucket-id={output_bucket_id}",
+                f"--output-path={output_path}",
                 f"--job-id={job_id}",
             ],
             capture_output=True, text=True, check=True,
@@ -616,28 +640,41 @@ def _run_salmon_in_background(job_id: str, salmon_rows: list[dict], csv_filename
 
 @app.post("/api/salmon/submit")
 def submit_salmon(
+    body: dict,
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
+    transcriptome = body.get("transcriptome", SALMON_TRANSCRIPTOME)
+    transcript_map = body.get("transcript_map", SALMON_TRANSCRIPT_MAP)
+    if isinstance(transcript_map, dict):
+        transcript_map = json.dumps(transcript_map)
+    input_bucket_id = body.get("input_bucket_id", SALMON_INPUT_BUCKET_ID)
+    output_bucket_id = body.get("output_bucket_id", SALMON_OUTPUT_BUCKET_ID)
+    workflow_id = body.get("workflow_id", SALMON_WORKFLOW_ID)
+    column_mapping_uri = body.get("column_mapping_uri", SALMON_COLUMN_MAPPING_URI)
+
     model = _get_model()
     filters = _extract_filter_params(request)
     stmt = select(model)
     stmt = _apply_filters(stmt, filters)
     rows = db.execute(stmt).scalars().all()
 
-    salmon_rows = [r for r in (_build_salmon_row(s) for s in rows) if r]
+    salmon_rows = [r for r in (_build_salmon_row(s, transcriptome, transcript_map) for s in rows) if r]
     if not salmon_rows:
         raise HTTPException(status_code=400, detail="No samples with FASTQ paths in current filter")
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     job_id = f"cohort-salmon-{timestamp}"
     csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
+    output_path = body.get("output_path", f"salmon_outputs/{timestamp}")
 
     _salmon_jobs[job_id] = {"status": "submitting"}
 
     thread = threading.Thread(
         target=_run_salmon_in_background,
-        args=(job_id, salmon_rows, csv_filename, timestamp),
+        args=(job_id, salmon_rows, csv_filename, timestamp,
+              input_bucket_id, output_bucket_id, output_path,
+              column_mapping_uri, workflow_id),
         daemon=True,
     )
     thread.start()

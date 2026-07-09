@@ -4,6 +4,11 @@
   "name": "Pre-install Packages",
   "description": "Pre-install Python and R packages so users don't have to run pip install or install.packages() every time",
   "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/main/features/src/common-packages",
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/python",
+    "ghcr.io/rocker-org/devcontainer-features/r-packages",
+    "./.devcontainer/features/workbench-tools"
+  ],
   "options": {
     "pythonPackages": {
       "type": "string",

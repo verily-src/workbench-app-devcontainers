@@ -242,6 +242,26 @@ export async function connectResource(
   return res.json();
 }
 
+export interface WorkflowConfig {
+  transcriptome?: string;
+  transcript_map?: Record<string, unknown>;
+  input_bucket_id?: string;
+  output_bucket_id?: string;
+  output_path?: string;
+  workflow_id?: string;
+  column_mapping_uri?: string;
+}
+
+export interface SalmonDefaults {
+  workflow_id: string;
+  transcriptome: string;
+  transcript_map: Record<string, unknown>;
+  input_bucket_id: string;
+  output_bucket_id: string;
+  column_mapping_uri: string;
+  s3_folders: S3Folder[];
+}
+
 export interface SalmonPrepareResponse {
   sample_count: number;
   samples_with_fastq: number;
@@ -262,14 +282,28 @@ export interface SalmonStatusResponse {
   error?: string;
 }
 
-export async function prepareSalmon(filters: FilterState): Promise<SalmonPrepareResponse> {
-  const res = await fetchWithTimeout(`${BASE}/api/salmon/prepare?${buildParams(filters)}`, { method: "POST" });
+export async function fetchSalmonDefaults(): Promise<SalmonDefaults> {
+  const res = await fetchWithTimeout(`${BASE}/api/salmon/defaults`);
+  if (!res.ok) await extractError(res, "Failed to fetch workflow defaults");
+  return res.json();
+}
+
+export async function prepareSalmon(filters: FilterState, config?: WorkflowConfig): Promise<SalmonPrepareResponse> {
+  const res = await fetchWithTimeout(`${BASE}/api/salmon/prepare?${buildParams(filters)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config ?? {}),
+  });
   if (!res.ok) await extractError(res, "Failed to prepare Salmon job");
   return res.json();
 }
 
-export async function submitSalmon(filters: FilterState): Promise<SalmonSubmitResponse> {
-  const res = await fetchWithTimeout(`${BASE}/api/salmon/submit?${buildParams(filters)}`, { method: "POST" });
+export async function submitSalmon(filters: FilterState, config?: WorkflowConfig): Promise<SalmonSubmitResponse> {
+  const res = await fetchWithTimeout(`${BASE}/api/salmon/submit?${buildParams(filters)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config ?? {}),
+  });
   if (!res.ok) await extractError(res, "Failed to submit Salmon job");
   return res.json();
 }

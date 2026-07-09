@@ -66,10 +66,19 @@ export default function ResourceSelector({ onConnected }: Props) {
             if (active.tables.length === 1) setSelectedTable(active.tables[0].name);
           }
         }
-        if (data.s3_folders?.length) setSelectedFolder(data.s3_folders[0].id);
+        const firstFolder = data.s3_folders?.[0]?.id;
+        if (firstFolder) setSelectedFolder(firstFolder);
         if (!data.ready) {
           retryTimer = setTimeout(load, 5000);
           return;
+        }
+        const effectiveSelected = data.active ?? "__file__";
+        if (effectiveSelected === "__file__" && firstFolder) {
+          setLoadingFiles(true);
+          listS3Files(firstFolder)
+            .then((files) => { if (!cancelled) setS3Files(files); })
+            .catch(() => { if (!cancelled) setS3Files([]); })
+            .finally(() => { if (!cancelled) setLoadingFiles(false); });
         }
       } catch {
         if (cancelled) return;
@@ -146,7 +155,7 @@ export default function ResourceSelector({ onConnected }: Props) {
     setError(null);
     try {
       if (isFileMode) {
-        await connectResource("__local__", selectedFolder || undefined, selectedFile || undefined);
+        await connectResource("__local__", selectedFolder || undefined);
         const fileName = selectedFile.split("/").pop() ?? "file";
         onConnected("__local__", {
           sourceType: "file",

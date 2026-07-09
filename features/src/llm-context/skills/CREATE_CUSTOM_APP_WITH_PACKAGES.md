@@ -49,7 +49,7 @@ Use the `common-packages` feature in `.devcontainer.json`:
 ```json
 {
   "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
+    "./.devcontainer/features/common-packages": {
       "pythonPackages": "USER_PACKAGES_HERE",
       "rPackages": "USER_PACKAGES_HERE"
     }

@@ -100,6 +100,17 @@ def _ensure_aws_config():
         logger.info("Set AWS_CONFIG_FILE to %s", matches[0])
 
 
+def _warm_s3_files():
+    from db import _resource_cache_ready, list_s3_folders
+    _resource_cache_ready.wait(timeout=180)
+    folders = list_s3_folders()
+    for folder in folders:
+        try:
+            _fetch_s3_files(folder["id"])
+        except Exception as e:
+            logger.warning("Failed to warm S3 files for %s: %s", folder["id"], e)
+
+
 @app.on_event("startup")
 def startup():
     _ensure_aws_config()
@@ -108,6 +119,7 @@ def startup():
     logger.info("SQLite tables ensured")
     load_schema_from_disk()
     warm_resource_cache()
+    threading.Thread(target=_warm_s3_files, daemon=True).start()
     cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
     init_cohorts(cohort_folder)
 

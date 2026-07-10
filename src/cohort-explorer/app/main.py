@@ -274,6 +274,7 @@ def api_confirm_schema(body: dict) -> dict:
     seeded = 0
     if not is_aurora:
         engine = get_sqlite_engine()
+        DynamicBase.metadata.drop_all(engine)
         DynamicBase.metadata.create_all(engine)
         file_path = body.get("file_path")
         if file_path:

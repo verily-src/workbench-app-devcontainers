@@ -150,39 +150,51 @@ def refresh_datasources() -> dict:
     }
 
 
+_s3_files_cache: dict[str, list[dict]] = {}
+
+
+def _fetch_s3_files(folder_id: str) -> list[dict]:
+    bucket_path = subprocess.run(
+        ["wb", "resource", "resolve", "--id", folder_id],
+        capture_output=True, text=True, check=True, timeout=120,
+    ).stdout.strip().rstrip("/")
+
+    result = subprocess.run(
+        ["aws", "s3", "ls", "--profile", folder_id, f"{bucket_path}/"],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        logger.warning("aws s3 ls failed for %s: %s", folder_id, result.stderr)
+        return []
+
+    files = []
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        key = parts[3]
+        if key.lower().endswith((".tsv", ".csv", ".txt")):
+            size = int(parts[2])
+            files.append({
+                "key": key,
+                "name": key.split("/")[-1],
+                "size": size,
+                "s3_path": f"{bucket_path}/{key}",
+            })
+    _s3_files_cache[folder_id] = files
+    logger.info("Cached %d S3 files for %s", len(files), folder_id)
+    return files
+
+
 @app.get("/api/s3/files")
 def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
+    if folder_id in _s3_files_cache:
+        threading.Thread(target=_fetch_s3_files, args=(folder_id,), daemon=True).start()
+        return _s3_files_cache[folder_id]
     try:
-        bucket_path = subprocess.run(
-            ["wb", "resource", "resolve", "--id", folder_id],
-            capture_output=True, text=True, check=True, timeout=120,
-        ).stdout.strip().rstrip("/")
-
-        result = subprocess.run(
-            ["aws", "s3", "ls", "--profile", folder_id, f"{bucket_path}/"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            logger.warning("aws s3 ls failed for %s: %s", folder_id, result.stderr)
-            raise HTTPException(status_code=502, detail=f"S3 listing failed: {result.stderr.strip()}")
-
-        files = []
-        for line in result.stdout.strip().split("\n"):
-            if not line.strip():
-                continue
-            parts = line.split()
-            if len(parts) < 4:
-                continue
-            key = parts[3]
-            if key.lower().endswith((".tsv", ".csv", ".txt")):
-                size = int(parts[2])
-                files.append({
-                    "key": key,
-                    "name": key.split("/")[-1],
-                    "size": size,
-                    "s3_path": f"{bucket_path}/{key}",
-                })
-        return files
+        return _fetch_s3_files(folder_id)
     except Exception as e:
         logger.error("Failed to list S3 files: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e

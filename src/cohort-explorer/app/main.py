@@ -304,7 +304,7 @@ def get_samples(
     model = _get_model()
     columns = get_visible_columns() or get_all_columns()
     filters = _extract_filter_params(request)
-    limit = int(request.query_params.get("limit", "5000"))
+    limit = int(request.query_params.get("limit", "1000"))
     stmt = select(model)
     stmt = _apply_filters(stmt, filters)
     first_col = columns[0] if columns else "id"
@@ -328,8 +328,9 @@ def get_filters(
 
     pk = _get_pk(model)
     has_filters = bool(filters)
+    max_cat = int(request.query_params.get("max_filters", "20"))
 
-    for col_name in get_categorical_filters():
+    for col_name in get_categorical_filters()[:max_cat]:
         col = getattr(model, col_name)
         if has_filters:
             cross_stmt = select(model)

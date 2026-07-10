@@ -94,8 +94,11 @@ def _parse_row(row: dict[str, str]) -> dict:
 def _resolve_path(tsv_path: str | Path, profile: str | None = None) -> Path:
     path_str = str(tsv_path)
     if path_str.startswith("s3://"):
-        logger.info("Downloading from S3: %s", path_str)
         local = Path(tempfile.gettempdir()) / Path(path_str).name
+        if local.exists() and local.stat().st_size > 0:
+            logger.info("Using cached local copy: %s", local)
+            return local
+        logger.info("Downloading from S3: %s", path_str)
         cmd = ["aws", "s3", "cp"]
         if profile:
             cmd.extend(["--profile", profile])

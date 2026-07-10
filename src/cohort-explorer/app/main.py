@@ -226,7 +226,6 @@ def api_infer_schema(body: dict) -> dict:
                 capture_output=True, text=True, check=True, timeout=120,
             )
             mappings = infer_from_csv(str(local_path))
-            local_path.unlink(missing_ok=True)
         elif source_type == "aurora":
             resource_id = body.get("resource_id", "")
             table = body.get("table", "")

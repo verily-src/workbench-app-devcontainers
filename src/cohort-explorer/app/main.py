@@ -159,7 +159,7 @@ def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
         ).stdout.strip().rstrip("/")
 
         result = subprocess.run(
-            ["aws", "s3", "ls", "--profile", folder_id, f"{bucket_path}/", "--recursive"],
+            ["aws", "s3", "ls", "--profile", folder_id, f"{bucket_path}/"],
             capture_output=True, text=True, timeout=120,
         )
         if result.returncode != 0:

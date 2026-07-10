@@ -163,7 +163,8 @@ def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
             capture_output=True, text=True, timeout=120,
         )
         if result.returncode != 0:
-            return []
+            logger.warning("aws s3 ls failed for %s: %s", folder_id, result.stderr)
+            raise HTTPException(status_code=502, detail=f"S3 listing failed: {result.stderr.strip()}")
 
         files = []
         for line in result.stdout.strip().split("\n"):

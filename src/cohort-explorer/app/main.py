@@ -325,20 +325,24 @@ def get_samples(
     request: Request,
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    model = _get_model()
-    columns = get_visible_columns() or get_all_columns()
-    filters = _extract_filter_params(request)
-    limit = int(request.query_params.get("limit", "1000"))
-    stmt = select(model)
-    stmt = _apply_filters(stmt, filters)
-    first_col = columns[0] if columns else "id"
-    stmt = stmt.order_by(getattr(model, first_col)).limit(limit)
-    rows = db.execute(stmt).scalars().all()
-    pk = get_pk_name()
-    return [
-        {pk: getattr(s, pk), **{col: getattr(s, col) for col in columns}}
-        for s in rows
-    ]
+    try:
+        model = _get_model()
+        columns = get_visible_columns() or get_all_columns()
+        filters = _extract_filter_params(request)
+        limit = int(request.query_params.get("limit", "1000"))
+        stmt = select(model)
+        stmt = _apply_filters(stmt, filters)
+        first_col = columns[0] if columns else "id"
+        stmt = stmt.order_by(getattr(model, first_col)).limit(limit)
+        rows = db.execute(stmt).scalars().all()
+        pk = get_pk_name()
+        return [
+            {pk: getattr(s, pk), **{col: getattr(s, col) for col in columns}}
+            for s in rows
+        ]
+    except Exception as e:
+        logger.error("Failed to fetch samples: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/filters")
@@ -346,65 +350,69 @@ def get_filters(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    model = _get_model()
-    filters = _extract_filter_params(request)
-    result: dict = {}
+    try:
+        model = _get_model()
+        filters = _extract_filter_params(request)
+        result: dict = {}
 
-    pk = _get_pk(model)
-    has_filters = bool(filters)
-    max_cat = int(request.query_params.get("max_filters", "20"))
+        pk = _get_pk(model)
+        has_filters = bool(filters)
+        max_cat = int(request.query_params.get("max_filters", "20"))
 
-    for col_name in get_categorical_filters()[:max_cat]:
-        col = getattr(model, col_name)
-        if has_filters:
-            cross_stmt = select(model)
-            cross_stmt = _apply_filters(cross_stmt, filters, exclude=col_name)
-            cross_ids = cross_stmt.with_only_columns(pk).subquery()
-            values_stmt = (
-                select(col, func.count(pk))
-                .where(pk.in_(select(cross_ids.c[get_pk_name()])))
-                .group_by(col)
-                .order_by(col)
-            )
-        else:
-            values_stmt = (
-                select(col, func.count(pk))
-                .group_by(col)
-                .order_by(col)
-            )
-        rows = db.execute(values_stmt).all()
-        options = []
-        for val, cnt in rows:
-            options.append({
-                "value": val if val is not None else "__null__",
-                "label": val if val is not None else "Unknown",
-                "count": cnt,
-            })
-        result[col_name] = options
+        for col_name in get_categorical_filters()[:max_cat]:
+            col = getattr(model, col_name)
+            if has_filters:
+                cross_stmt = select(model)
+                cross_stmt = _apply_filters(cross_stmt, filters, exclude=col_name)
+                cross_ids = cross_stmt.with_only_columns(pk).subquery()
+                values_stmt = (
+                    select(col, func.count(pk))
+                    .where(pk.in_(select(cross_ids.c[get_pk_name()])))
+                    .group_by(col)
+                    .order_by(col)
+                )
+            else:
+                values_stmt = (
+                    select(col, func.count(pk))
+                    .group_by(col)
+                    .order_by(col)
+                )
+            rows = db.execute(values_stmt).all()
+            options = []
+            for val, cnt in rows:
+                options.append({
+                    "value": val if val is not None else "__null__",
+                    "label": val if val is not None else "Unknown",
+                    "count": cnt,
+                })
+            result[col_name] = options
 
-    for col_name in get_range_filters():
-        col = getattr(model, col_name)
-        if has_filters:
-            all_stmt = select(model)
-            all_stmt = _apply_filters(all_stmt, filters)
-            filtered_ids = all_stmt.with_only_columns(pk).subquery()
-            range_stmt = (
-                select(func.min(col), func.max(col))
-                .where(pk.in_(select(filtered_ids.c[get_pk_name()])))
-                .where(col.isnot(None))
-            )
-        else:
-            range_stmt = (
-                select(func.min(col), func.max(col))
-                .where(col.isnot(None))
-            )
-        row = db.execute(range_stmt).one()
-        result[col_name] = {
-            "min": float(row[0]) if row[0] is not None else None,
-            "max": float(row[1]) if row[1] is not None else None,
-        }
+        for col_name in get_range_filters():
+            col = getattr(model, col_name)
+            if has_filters:
+                all_stmt = select(model)
+                all_stmt = _apply_filters(all_stmt, filters)
+                filtered_ids = all_stmt.with_only_columns(pk).subquery()
+                range_stmt = (
+                    select(func.min(col), func.max(col))
+                    .where(pk.in_(select(filtered_ids.c[get_pk_name()])))
+                    .where(col.isnot(None))
+                )
+            else:
+                range_stmt = (
+                    select(func.min(col), func.max(col))
+                    .where(col.isnot(None))
+                )
+            row = db.execute(range_stmt).one()
+            result[col_name] = {
+                "min": float(row[0]) if row[0] is not None else None,
+                "max": float(row[1]) if row[1] is not None else None,
+            }
 
-    return result
+        return result
+    except Exception as e:
+        logger.error("Failed to fetch filters: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/counts")

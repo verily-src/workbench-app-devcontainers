@@ -1,0 +1,11 @@
+{
+  "name": "Jupyter Test - Package Installation",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "../../features/src/llm-context": {},
+    "../../features/src/common-packages": {
+      "pythonPackages": "pandas numpy scikit-learn matplotlib seaborn"
+    }
+  },
+  "postCreateCommand": "python3 --version && echo '=== Installed packages ===' && pip list | grep -E '(pandas|numpy|scikit-learn|matplotlib|seaborn)'"
+}

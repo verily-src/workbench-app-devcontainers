@@ -2,8 +2,8 @@
   "name": "Jupyter Test - Package Installation",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "features": {
-    "../../features/src/llm-context": {},
-    "../../features/src/common-packages": {
+    "../features/src/llm-context": {},
+    "../features/src/common-packages": {
       "pythonPackages": "pandas numpy scikit-learn matplotlib seaborn"
     }
   },

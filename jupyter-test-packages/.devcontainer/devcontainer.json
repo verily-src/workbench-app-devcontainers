@@ -2,10 +2,20 @@
   "name": "Jupyter Test - Package Installation",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "features": {
+    "./features/src/jupyter": {
+      "installJupyterlab": true
+    },
     "./features/src/llm-context": {},
     "./features/src/common-packages": {
       "pythonPackages": "pandas numpy scikit-learn matplotlib seaborn"
     }
   },
-  "postCreateCommand": "python3 --version && echo '=== Installed packages ===' && pip list | grep -E '(pandas|numpy|scikit-learn|matplotlib|seaborn)'"
+  "forwardPorts": [8888],
+  "portsAttributes": {
+    "8888": {
+      "label": "Jupyter"
+    }
+  },
+  "postCreateCommand": "python3 --version && echo '=== Installed packages ===' && pip list | grep -E '(pandas|numpy|scikit-learn|matplotlib|seaborn)'",
+  "postStartCommand": "nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root > /tmp/jupyter.log 2>&1 &"
 }

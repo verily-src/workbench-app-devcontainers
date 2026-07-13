@@ -73,5 +73,8 @@ That's it! Packages will be pre-installed when the app is built.
 ## Performance
 
 - **First build:** Takes time to install packages
-- **Every app after:** Instant - packages already there
+- **Stop/restart same app:** Instant - packages already there
+- **New app with same config:** Fast if using cached default app config; otherwise rebuilds
 - **vs. manual install every time:** Saves 5-10 minutes per app launch
+
+**Note:** Workbench caches default app configurations. Custom app configs will rebuild on each new app creation, but packages persist across stop/restart of the same app.

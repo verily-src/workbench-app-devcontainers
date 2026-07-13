@@ -36,6 +36,9 @@
     "./.devcontainer/features/llm-context": {
       "username": "jupyter",
       "userHomeDir": "/home/jupyter"
+    },
+    "./.devcontainer/features/common-packages": {
+      "pythonPackages": "pandas numpy scikit-learn matplotlib seaborn"
     }
   },
   "remoteUser": "root",

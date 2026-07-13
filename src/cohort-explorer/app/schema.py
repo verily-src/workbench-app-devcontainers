@@ -35,24 +35,35 @@ def _is_boolean(values: list[str]) -> bool:
     return all(v.lower() in BOOLEAN_VALUES for v in values)
 
 
+NUMERIC_THRESHOLD = 0.9
+
+
 def _is_integer(values: list[str]) -> bool:
+    if not values:
+        return False
+    hits = 0
     for v in values:
         try:
             float_val = float(v)
             if float_val != int(float_val):
                 return False
+            hits += 1
         except ValueError:
-            return False
-    return True
+            pass
+    return hits / len(values) >= NUMERIC_THRESHOLD
 
 
 def _is_float(values: list[str]) -> bool:
+    if not values:
+        return False
+    hits = 0
     for v in values:
         try:
             float(v)
+            hits += 1
         except ValueError:
-            return False
-    return True
+            pass
+    return hits / len(values) >= NUMERIC_THRESHOLD
 
 
 def _is_date(values: list[str]) -> bool:
@@ -86,7 +97,7 @@ def _infer_filter(col_type: str, unique_count: int) -> str:
     return "none"
 
 
-def infer_from_csv(file_path: str, sample_size: int = 1000) -> list[ColumnMapping]:
+def infer_from_csv(file_path: str, sample_size: int = 5000) -> list[ColumnMapping]:
     path = Path(file_path)
     with open(path, newline="", encoding="utf-8") as f:
         sample = f.read(8192)
@@ -187,6 +198,26 @@ def infer_from_aurora(resource_id: str, table: str) -> list[ColumnMapping]:
                         f'SELECT COUNT(DISTINCT "{col_name}") FROM "{table}"'
                     )
                     unique_count = cur.fetchone()[0]
+
+                    cur.execute(f"""
+                        SELECT COUNT(*) FROM "{table}"
+                        WHERE "{col_name}" IS NOT NULL AND "{col_name}" != ''
+                    """)
+                    non_empty = cur.fetchone()[0]
+                    if non_empty > 0:
+                        cur.execute(f"""
+                            SELECT COUNT(*) FROM "{table}"
+                            WHERE "{col_name}" IS NOT NULL AND "{col_name}" != ''
+                            AND NOT "{col_name}" ~ '^-?[0-9]*\\.?[0-9]+$'
+                        """)
+                        non_numeric = cur.fetchone()[0]
+                        if non_numeric == 0:
+                            cur.execute(f"""
+                                SELECT COUNT(*) FROM "{table}"
+                                WHERE "{col_name}" ~ '\\.'
+                            """)
+                            has_decimal = cur.fetchone()[0] > 0
+                            col_type = "float" if has_decimal else "integer"
                 else:
                     unique_count = CATEGORICAL_THRESHOLD + 1
 

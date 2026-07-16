@@ -309,30 +309,17 @@ Handle common aliases:
 
 ## Creating Apps with Pre-installed Packages
 
-When user wants to **create a new app** with packages, generate a `.devcontainer.json`:
+When the user wants to **create a new app** with packages, don't emit a lone `.devcontainer.json` —
+a Workbench app is a **folder** (`.devcontainer.json` + `docker-compose.yaml` +
+`devcontainer-template.json`, plus a `Dockerfile` for VSCode). A single `.devcontainer.json` will
+not launch the app.
 
-**Example:** "Create a Jupyter app with machine learning packages"
+**Follow `CREATE_CUSTOM_APP_WITH_PACKAGES.md`**, which spits out the complete app folder for the
+requested type (Jupyter / RStudio-Shiny / VSCode) with the `common-packages` feature injected,
+ready to commit under `src/<app-name>/` and point a custom app config at.
 
-```json
-{
-  "name": "Jupyter - Machine Learning",
-  "dockerComposeFile": "docker-compose.yaml",
-  "service": "app",
-  "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "scikit-learn xgboost lightgbm tensorflow torch pandas numpy matplotlib seaborn"
-    }
-  },
-  "customizations": {
-    "vscode": {
-      "extensions": [
-        "ms-python.python",
-        "ms-toolsai.jupyter"
-      ]
-    }
-  }
-}
-```
+Use the domain→package mappings above to turn a vague request ("machine learning packages") into a
+concrete list, then hand off to that skill to generate the folder.
 
 ---
 

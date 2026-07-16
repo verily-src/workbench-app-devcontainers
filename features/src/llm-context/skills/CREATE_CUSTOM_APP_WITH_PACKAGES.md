@@ -1,138 +1,272 @@
 # Create Custom App with Pre-installed Packages
 
-**When to use:** A customer wants a Workbench app (JupyterLab, etc.) with specific packages pre-installed, and wants a devcontainer config they can point their **custom app config** at.
+**When to use:** A customer wants a custom Workbench app (JupyterLab, RStudio / R Shiny, VSCode)
+with specific Python and/or R packages pre-installed.
 
-**User story:** A customer on their private workstation says *"I need a JupyterLab app with these packages pre-installed."* The skill's output is a single `.devcontainer.json` they paste into their custom app config in Workbench.
+**User story:** *"Hey Claude, create me a custom app that has the packages I need — whatever
+Python or R packages, R Shiny, etc."*
 
-**Examples:**
-- "I need a JupyterLab app with pandas, numpy, and scikit-learn"
-- "Give me a Jupyter app with tidyverse and ggplot2"
-- "Jupyter with tensorflow, torch, and R's caret"
-
-**Goal:** Emit a single, complete, self-contained `.devcontainer.json` that both **runs the app** (via the prebuilt app image) **and** pre-installs the requested packages (via the `common-packages` feature).
-
----
-
-## Output Contract (READ FIRST)
-
-When the user names their packages, respond with **exactly one thing: a single `.devcontainer.json` fenced code block.**
-
-- **One file, self-contained.** It references a published image + a published feature by their `ghcr.io/...` paths. No `docker-compose.yaml`, no `Dockerfile`, no `startupscript/`, no local `./.devcontainer/...` paths. The customer doesn't have the repo — the file must work on its own.
-- **One output.** Emit the whole config in a single message. Don't split it across sections or stream it in pieces.
-- **No follow-up questions** when the packages and app type are given. Just generate. (Only exception: genuinely ambiguous language — see "When to Ask".)
-- **Copy-pasteable.** Valid JSON, no comments, no unfilled placeholders.
-
-Keep prose around the block to a one-line lead-in plus a one-line "paste this into your custom app config" note. The code block is the deliverable.
+**Goal:** Spit out a **complete app folder** — `devcontainer-template.json`, `.devcontainer.json`,
+and `docker-compose.yaml` (plus `README.md`, and a `Dockerfile` for VSCode) — that drops into
+`workbench-app-devcontainers/src/<app-name>/` and runs as a Workbench custom app with the
+requested packages pre-installed via the `common-packages` feature.
 
 ---
 
-## The Template (canonical output)
+## Why a whole folder, not one file (READ FIRST)
 
-Base image runs the app; the `common-packages` feature installs the packages. Fill in `pythonPackages` and/or `rPackages`; drop whichever the user didn't ask for.
+A Workbench app is a **folder**, not a single standalone `.devcontainer.json`. Workbench's
+custom-app flow needs the whole folder: the `docker-compose.yaml` defines the
+`application-server` container that actually runs the app (image, port, `app-network`, fuse
+mounts), and the startup scripts wire up bucket mounting. A lone `.devcontainer.json` will **not**
+launch the app.
+
+So the output is a folder the customer commits under `src/<app-name>/` and points their custom
+app config at.
+
+---
+
+## App type → base template → specifics
+
+Base each new app on the **existing template** for its type. Read that template's real files from
+`src/<app>/` and copy them (don't hand-copy from memory — this keeps pinned feature digests and
+startup wiring current), then inject `common-packages`.
+
+| App type | Base template | image | port | user | home | extra file |
+|----------|--------------|-------|------|------|------|-----------|
+| **Jupyter / JupyterLab** (default) | `src/jupyter-template/` | `${templateOption:containerImage}` (+ local `jupyter` feature installs JupyterLab) | 8888 | jupyter | /home/jupyter | — |
+| **RStudio / R / R Shiny** | `src/r-analysis/` | `ghcr.io/rocker-org/devcontainer/tidyverse` | 8787 | rstudio | /home/rstudio | — |
+| **VSCode** | `src/vscode/` | `lscr.io/linuxserver/code-server` (via `Dockerfile`) | 8443 | abc | /config | `Dockerfile` |
+
+---
+
+## Package mechanism
+
+- **Python packages** → `common-packages` `pythonPackages` (space-separated).
+- **R / R Shiny packages** → `common-packages` `rPackages` (comma-separated, no spaces). Note
+  `src/r-analysis` already installs `shiny,shinydashboard` via the rocker `r-packages` feature;
+  the user's extra R packages go through `common-packages`.
+- **VSCode extensions** are **not** pip/R packages — they're installed in the app's `Dockerfile`
+  from open-vsx. `common-packages` only covers Python/R libraries usable in the terminal. If a
+  VSCode user's "packages" are ambiguous, ask which they mean.
+
+Add this block to the template's `features` in `.devcontainer.json` (include only the key(s)
+requested):
 
 ```json
-{
-  "name": "JupyterLab - Custom Packages",
-  "image": "ghcr.io/verily-src/workbench-app-devcontainers/jupyter:latest",
-  "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "SPACE_SEPARATED_PYTHON_PACKAGES",
-      "rPackages": "COMMA_SEPARATED_R_PACKAGES"
-    }
-  }
+"ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
+  "pythonPackages": "pandas numpy scikit-learn",
+  "rPackages": "tidyverse,ggplot2"
 }
 ```
 
-- **Base image** `ghcr.io/verily-src/workbench-app-devcontainers/jupyter:latest` is the prebuilt Workbench JupyterLab app — it already launches JupyterLab, so no compose/startup wiring is needed in the customer's file.
-- **`common-packages`** is referenced by its **ghcr path** (never `./.devcontainer/features/common-packages` — that local path only resolves inside the repo, not in the customer's standalone config).
+---
+
+## Output Contract
+
+- **Emit the whole folder in one response.** One fenced code block per file, each labeled with
+  its path: `src/<app-name>/.devcontainer.json`, `src/<app-name>/docker-compose.yaml`,
+  `src/<app-name>/devcontainer-template.json`, `src/<app-name>/README.md` (+ `Dockerfile` for
+  VSCode).
+- **Complete files**, copy-pasteable, valid JSON/YAML. Keep `container_name: "application-server"`,
+  `networks: app-network` with `external: true`, fuse mounts, and the startupscript hooks intact.
+- **Pick an app name** from the request (e.g. `custom-jupyter-ml`); tell the user they can rename
+  the folder.
+- **One-line placement note:** *"Drop this folder into `workbench-app-devcontainers/src/<app-name>/`,
+  push it, and point your custom app config at that folder."*
+- **No follow-up questions** once app type and packages are known. Only exceptions: ambiguous
+  domain language (Python `scanpy` vs R `Seurat`), or VSCode "packages" (extensions vs libraries).
+
+For mapping vague domains ("machine learning", "genomics") to concrete package lists, see
+`INSTALL_PACKAGES.md`.
 
 ---
 
-## Package Format
+## Worked example: JupyterLab with pandas, numpy, scikit-learn
 
-**Python packages:** Space-separated
-```json
-"pythonPackages": "pandas numpy scikit-learn"
-```
+**User:** "Create a JupyterLab app with pandas, numpy, and scikit-learn"
 
-**R packages:** Comma-separated (NO SPACES)
-```json
-"rPackages": "tidyverse,ggplot2,dplyr"
-```
+Emit the folder `src/custom-jupyter-ml/` (based on `src/jupyter-template/` + `common-packages`):
 
-Include only the key(s) the user asked for. Python-only → omit `rPackages`. R-only → omit `pythonPackages`.
-
----
-
-## Example: Python packages
-
-**User:** "I need a JupyterLab app with pandas, numpy, and scikit-learn"
-
-**Generate:**
-
-`.devcontainer.json` — paste this into your custom app config:
+`src/custom-jupyter-ml/.devcontainer.json`:
 ```json
 {
-  "name": "JupyterLab - Custom Packages",
-  "image": "ghcr.io/verily-src/workbench-app-devcontainers/jupyter:latest",
+  "name": "custom-jupyter-ml",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "jupyter",
+    "/home/jupyter",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "jupyter",
+    "/home/jupyter",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
   "features": {
+    "ghcr.io/devcontainers/features/common-utils": {
+      "installZsh": false,
+      "installOhMyZsh": false,
+      "installOhMyZshConfig": false,
+      "username": "jupyter"
+    },
+    "./.devcontainer/features/jupyter": {
+      "installJupyterlab": true,
+      "cloudPlatform": "${templateOption:cloud}",
+      "configureJupyterlabAllowOrigin": "*"
+    },
     "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
       "pythonPackages": "pandas numpy scikit-learn"
     }
-  }
-}
-```
-
----
-
-## Example: R packages
-
-**User:** "Give me a Jupyter app with tidyverse and ggplot2"
-
-**Generate:**
-
-`.devcontainer.json` — paste this into your custom app config:
-```json
-{
-  "name": "JupyterLab - Custom Packages",
-  "image": "ghcr.io/verily-src/workbench-app-devcontainers/jupyter:latest",
-  "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "rPackages": "tidyverse,ggplot2"
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          ".ipynb", ".R", ".py",
+          ".md", ".html", ".latex", ".pdf",
+          ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg",
+          ".csv", ".tsv", ".json", ".vl"
+        ],
+        "fileUrlSuffix": "/lab/tree/{path}",
+        "folderUrlSuffix": "/lab/tree/{path}"
+      }
     }
   }
 }
 ```
 
----
+`src/custom-jupyter-ml/docker-compose.yaml`:
+```yaml
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "${templateOption:containerImage}"
+    user: "jupyter"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    ports:
+      - "${templateOption:containerPort}:${templateOption:containerPort}"
+    command: "/home/jupyter/.local/bin/jupyter lab"
+    environment:
+      SHELL: "/bin/bash"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+```
 
-## Example: Both Python and R
-
-**User:** "Jupyter with pandas and numpy, plus R's ggplot2 and dplyr"
-
-**Generate:**
-
-`.devcontainer.json` — paste this into your custom app config:
+`src/custom-jupyter-ml/devcontainer-template.json`:
 ```json
 {
-  "name": "JupyterLab - Custom Packages",
-  "image": "ghcr.io/verily-src/workbench-app-devcontainers/jupyter:latest",
-  "features": {
-    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
-      "pythonPackages": "pandas numpy",
-      "rPackages": "ggplot2,dplyr"
+  "id": "custom-jupyter-ml",
+  "version": "1.0.0",
+  "name": "custom-jupyter-ml",
+  "description": "Custom JupyterLab app with pre-installed packages: pandas numpy scikit-learn",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/custom-jupyter-ml",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    },
+    "containerImage": {
+      "type": "string",
+      "description": "The container image to use",
+      "default": "debian:bullseye"
+    },
+    "containerPort": {
+      "type": "number",
+      "description": "The port to expose the container on",
+      "default": 8888
     }
-  }
+  },
+  "platforms": ["Any"]
 }
 ```
 
+`src/custom-jupyter-ml/README.md`:
+```markdown
+# custom-jupyter-ml
+
+Custom Workbench JupyterLab app with pre-installed packages.
+
+- **Python packages:** pandas, numpy, scikit-learn (installed via the `common-packages` feature)
+- **Port:** 8888
+
+## Usage
+
+1. Commit this folder under `src/custom-jupyter-ml/` in your fork of
+   `workbench-app-devcontainers` and push.
+2. In the Workbench UI, create a custom app pointing at your repo, and set the folder to
+   `src/custom-jupyter-ml`.
+```
+
+**Lead-in to give the user:** *"Drop this folder into
+`workbench-app-devcontainers/src/custom-jupyter-ml/`, push it, and point your custom app config at
+that folder. Rename the folder if you like."*
+
 ---
 
-## When to Ask (the only exception to "no questions")
+## RStudio / R Shiny
 
-Only pause to ask if the language is genuinely ambiguous — e.g. "set me up for single-cell analysis" maps to both Python (`scanpy`) and R (`Seurat`). Ask which they want, then emit the single `.devcontainer.json`. If the user names concrete packages, never ask — just generate.
+Same shape, based on `src/r-analysis/`. Keep its `features` (java, rocker `r-packages` with
+`shiny,shinydashboard`, aws-cli, google-cloud-cli, node, claude-code, gemini-cli, workbench-tools,
+postgres-client) and add `common-packages` with the user's R packages:
 
-For mapping vague domains ("machine learning", "genomics") to concrete package lists, see `INSTALL_PACKAGES.md`.
+```json
+    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
+      "rPackages": "tidyverse,DESeq2"
+    }
+```
+
+Its `docker-compose.yaml` uses `image: ghcr.io/rocker-org/devcontainer/tidyverse@...`, port 8787,
+`DISABLE_AUTH=true`, and a `work` volume for `/home/rstudio`. `devcontainer-template.json` uses the
+standard `cloud`/`login` options (no `containerImage`/`containerPort`). R Shiny is already
+included — the user's extra R packages come through `common-packages`.
+
+---
+
+## VSCode
+
+Based on `src/vscode/`. This app builds from a `Dockerfile` (`lscr.io/linuxserver/code-server`),
+so the folder includes **four** files: `.devcontainer.json`, `docker-compose.yaml`,
+`devcontainer-template.json`, and `Dockerfile` (copy `src/vscode/Dockerfile`). Port 8443, user
+`abc`, home `/config`. Add `common-packages` for terminal Python/R libraries:
+
+```json
+    "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
+      "pythonPackages": "pandas scikit-learn"
+    }
+```
+
+Reminder: VSCode **editor extensions** are installed in the `Dockerfile` from open-vsx, not via
+`common-packages`. If the user asked for extensions, edit the `Dockerfile` instead.
 
 ---
 

@@ -6,7 +6,7 @@ echo "Installing user-specified packages..."
 # Install Python packages
 if [ -n "${PYTHONPACKAGES}" ] && command -v pip &> /dev/null; then
     echo "Installing Python packages: ${PYTHONPACKAGES}"
-    pip install --no-cache-dir ${PYTHONPACKAGES}
+    pip install --no-cache-dir "${PYTHONPACKAGES}"
 fi
 
 # Install R packages

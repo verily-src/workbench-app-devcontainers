@@ -88,8 +88,11 @@ def _fetch_resources() -> list[dict]:
     except subprocess.TimeoutExpired:
         logger.warning("wb resource list timed out")
         return []
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.warning("wb CLI not available, no resources")
+    except FileNotFoundError:
+        logger.warning("wb CLI not installed, no resources")
+        return []
+    except subprocess.CalledProcessError as e:
+        logger.warning("wb resource list failed (rc=%d): %s", e.returncode, e.stderr or e.stdout)
         return []
     return json.loads(result.stdout)
 

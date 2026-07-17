@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local artifacts
+app/cohort_explorer.db
+app/static/
+
+# Frontend build output and deps
+frontend/dist/
+frontend/node_modules/
+frontend/tsconfig.tsbuildinfo

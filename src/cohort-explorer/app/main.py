@@ -526,65 +526,9 @@ def api_cohort_exists(name: str) -> dict:
     return {"exists": cohort_exists(name)}
 
 
-SALMON_WORKFLOW_ID = os.environ.get("SALMON_WORKFLOW_ID", "salmon-workflow")
-SALMON_INPUT_BUCKET_ID = os.environ.get("SALMON_INPUT_BUCKET_ID", "GTEx_demo_folder")
-SALMON_OUTPUT_BUCKET_ID = os.environ.get("SALMON_OUTPUT_BUCKET_ID", "GTEx_demo_folder")
-SALMON_COLUMN_MAPPING_URI = os.environ.get(
-    "SALMON_COLUMN_MAPPING_URI",
-    "s3://v0-saas-prod-us-west-2-workbench/GTEx_demo_folder-yp-copy-of-gtex-demo-project/salmon-workflow-columns.json",
-)
-SALMON_TRANSCRIPTOME = os.environ.get("SALMON_TRANSCRIPTOME", "test")
-SALMON_TRANSCRIPT_MAP = os.environ.get(
-    "SALMON_TRANSCRIPT_MAP",
-    json.dumps({
-        "test": {
-            "transcript_index": "s3://v0-saas-prod-us-west-2-workbench/GTEx_demo_folder-yp-copy-of-gtex-demo-project/data/transcripts.fasta.tar.gz",
-            "genomitory_id": "test",
-        }
-    }),
-)
-
-
-def _find_column(model, *patterns: str) -> str | None:
-    """Find a model attribute whose name contains any of the patterns (case-insensitive)."""
-    for attr in dir(model):
-        if attr.startswith("_"):
-            continue
-        lower = attr.lower()
-        if any(p in lower for p in patterns):
-            return attr
-    return None
-
-
-def _build_salmon_row(sample, transcriptome: str, transcript_map: str) -> dict | None:
-    model = type(sample)
-    fq1_col = _find_column(model, "fastq1", "fastq_1", "read1", "r1_path")
-    if not fq1_col:
-        return None
-    fq1 = getattr(sample, fq1_col, None)
-    if not fq1:
-        return None
-    files = [fq1]
-    fq2_col = _find_column(model, "fastq2", "fastq_2", "read2", "r2_path")
-    if fq2_col:
-        fq2 = getattr(sample, fq2_col, None)
-        if fq2:
-            files.append(fq2)
-    sample_col = _find_column(model, "sample_id", "sample_name", "specimen")
-    sample_name = getattr(sample, sample_col, None) if sample_col else None
-    if not sample_name:
-        sample_name = str(getattr(sample, get_pk_name(), "unknown"))
-    return {
-        "input_files": json.dumps(files),
-        "sample_name": sample_name,
-        "transcriptome": transcriptome,
-        "transcript_map": transcript_map,
-    }
-
-
 _wdl_inputs_cache: dict[str, list[dict]] = {}
-
-BATCH_CSV_COLUMNS = {"input_files", "sample_name", "transcriptome", "transcript_map"}
+_workflows_cache: list[dict] | None = None
+_workflow_jobs: dict[str, dict] = {}
 
 
 def _fetch_wdl_inputs(workflow_id: str) -> list[dict]:
@@ -597,6 +541,8 @@ def _fetch_wdl_inputs(workflow_id: str) -> list[dict]:
         )
         wf = json.loads(result.stdout)
         inputs = wf.get("inputs") or []
+        for inp in inputs:
+            inp["short_name"] = inp["name"].split(".")[-1]
         _wdl_inputs_cache[workflow_id] = inputs
         return inputs
     except Exception as e:
@@ -604,182 +550,235 @@ def _fetch_wdl_inputs(workflow_id: str) -> list[dict]:
         return []
 
 
-@app.get("/api/salmon/defaults")
-def salmon_defaults() -> dict:
-    s3_folders = list_s3_folders()
-    wdl_inputs = _fetch_wdl_inputs(SALMON_WORKFLOW_ID)
-    csv_defaults = {
-        "transcriptome": SALMON_TRANSCRIPTOME,
-        "transcript_map": json.loads(SALMON_TRANSCRIPT_MAP) if isinstance(SALMON_TRANSCRIPT_MAP, str) else SALMON_TRANSCRIPT_MAP,
-    }
-    inputs_with_source = []
-    for inp in wdl_inputs:
-        short_name = inp["name"].split(".")[-1]
-        entry = {**inp, "short_name": short_name}
-        if short_name in BATCH_CSV_COLUMNS:
-            entry["source"] = "batch"
-            if short_name in csv_defaults:
-                entry["value"] = csv_defaults[short_name]
-        else:
-            entry["source"] = "static"
-        inputs_with_source.append(entry)
-    return {
-        "workflow_id": SALMON_WORKFLOW_ID,
-        "input_bucket_id": SALMON_INPUT_BUCKET_ID,
-        "output_bucket_id": SALMON_OUTPUT_BUCKET_ID,
-        "column_mapping_uri": SALMON_COLUMN_MAPPING_URI,
-        "s3_folders": s3_folders,
-        "inputs": inputs_with_source,
-    }
+@app.get("/api/workflows")
+def list_workflows() -> dict:
+    global _workflows_cache
+    if _workflows_cache is None:
+        try:
+            result = subprocess.run(
+                ["wb", "workflow", "list", "--format", "json"],
+                capture_output=True, text=True, check=True, timeout=120,
+            )
+            _workflows_cache = json.loads(result.stdout)
+        except Exception as e:
+            logger.error("Failed to list workflows: %s", e)
+            raise HTTPException(status_code=500, detail=str(e)) from e
+    workflows = [
+        {"id": w["id"], "name": w.get("displayName") or w["id"], "description": w.get("description")}
+        for w in (_workflows_cache or [])
+    ]
+    return {"workflows": workflows, "s3_folders": list_s3_folders()}
 
 
-@app.post("/api/salmon/prepare")
-def prepare_salmon(
+@app.get("/api/workflows/{name}/inputs")
+def get_workflow_inputs(name: str) -> dict:
+    return {"inputs": _fetch_wdl_inputs(name)}
+
+
+def _build_workflow_rows(
+    samples: list, inputs: list[dict], bindings: dict[str, dict],
+) -> tuple[list[dict], list[str]]:
+    """Return (rows, csv_columns) for the batch CSV.
+
+    Every bound input becomes a CSV column. Static values are written
+    same-valued to every row (gotcha #1: --inputs is inert for batch runs).
+    """
+    csv_columns: list[str] = []
+    static_values: dict[str, str] = {}
+    cohort_columns: dict[str, str] = {}
+
+    for inp in inputs:
+        short = inp["short_name"]
+        binding = bindings.get(short)
+        if not binding:
+            continue
+        mode = binding.get("mode")
+        value = binding.get("value", "")
+        if mode == "cohort" and value:
+            csv_columns.append(short)
+            cohort_columns[short] = value
+        elif mode == "static" and value != "":
+            csv_columns.append(short)
+            static_values[short] = value
+
+    rows: list[dict] = []
+    for s in samples:
+        row: dict = {}
+        skip = False
+        for csv_col, model_col in cohort_columns.items():
+            val = getattr(s, model_col, None)
+            if val is None or val == "":
+                skip = True
+                break
+            row[csv_col] = str(val)
+        if skip:
+            continue
+        for csv_col, static_val in static_values.items():
+            row[csv_col] = static_val
+        rows.append(row)
+    return rows, csv_columns
+
+
+@app.post("/api/workflows/{name}/prepare")
+def prepare_workflow(
+    name: str,
     body: dict,
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    transcriptome = body.get("transcriptome", SALMON_TRANSCRIPTOME)
-    transcript_map = body.get("transcript_map", SALMON_TRANSCRIPT_MAP)
-    if isinstance(transcript_map, dict):
-        transcript_map = json.dumps(transcript_map)
+    try:
+        bindings = body.get("bindings") or {}
+        inputs = _fetch_wdl_inputs(name)
 
-    model = _get_model()
-    filters = _extract_filter_params(request)
-    stmt = select(model)
-    stmt = _apply_filters(stmt, filters)
-    rows = db.execute(stmt).scalars().all()
+        model = _get_model()
+        filters = _extract_filter_params(request)
+        stmt = select(model)
+        stmt = _apply_filters(stmt, filters)
+        samples = db.execute(stmt).scalars().all()
 
-    with_fastq = []
-    without_fastq = 0
-    for s in rows:
-        row = _build_salmon_row(s, transcriptome, transcript_map)
-        if row:
-            with_fastq.append(row)
-        else:
-            without_fastq += 1
-
-    return {
-        "sample_count": len(rows),
-        "samples_with_fastq": len(with_fastq),
-        "samples_without_fastq": without_fastq,
-        "preview": with_fastq[:5],
-    }
+        rows, csv_columns = _build_workflow_rows(samples, inputs, bindings)
+        return {
+            "sample_count": len(samples),
+            "row_count": len(rows),
+            "skipped": len(samples) - len(rows),
+            "csv_columns": csv_columns,
+            "preview": rows[:5],
+        }
+    except Exception as e:
+        logger.error("prepare_workflow failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-_salmon_jobs: dict[str, dict] = {}
-
-
-def _run_salmon_in_background(
-    job_id: str, salmon_rows: list[dict], csv_filename: str, timestamp: str,
+def _run_workflow_in_background(
+    job_id: str, workflow_id: str, rows: list[dict], csv_columns: list[str],
+    csv_filename: str, mapping_filename: str, timestamp: str,
     input_bucket_id: str, output_bucket_id: str, output_path: str,
-    column_mapping_uri: str, workflow_id: str,
-    static_inputs: dict | None = None,
+    full_name_by_short: dict[str, str],
 ):
     local_csv = None
+    local_mapping = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            writer = csv.DictWriter(f, fieldnames=["input_files", "sample_name", "transcriptome", "transcript_map"])
+            writer = csv.DictWriter(f, fieldnames=csv_columns)
             writer.writeheader()
-            writer.writerows(salmon_rows)
+            writer.writerows(rows)
             local_csv = f.name
+
+        mapping = {full_name_by_short[c]: c for c in csv_columns}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(mapping, f)
+            local_mapping = f.name
 
         bucket_path = subprocess.run(
             ["wb", "resource", "resolve", "--id", input_bucket_id],
             capture_output=True, text=True, check=True,
-        ).stdout.strip()
+        ).stdout.strip().rstrip("/")
 
-        subprocess.run(
-            ["aws", "s3", "cp", "--profile", input_bucket_id,
-             local_csv, f"{bucket_path.rstrip('/')}/{csv_filename}"],
-            capture_output=True, text=True, check=True,
-        )
+        for src, dst in [(local_csv, csv_filename), (local_mapping, mapping_filename)]:
+            subprocess.run(
+                ["aws", "s3", "cp", "--profile", input_bucket_id,
+                 src, f"{bucket_path}/{dst}"],
+                capture_output=True, text=True, check=True,
+            )
 
+        mapping_uri = f"{bucket_path}/{mapping_filename}"
         cmd = [
             "wb", "workflow", "job", "run",
             f"--workflow={workflow_id}",
             f"--batch-input-bucket-id={input_bucket_id}",
             f"--batch-input-csv-path={csv_filename}",
-            f"--column-mapping-uri={column_mapping_uri}",
+            f"--column-mapping-uri={mapping_uri}",
             f"--output-bucket-id={output_bucket_id}",
             f"--output-path={output_path}",
             f"--job-id={job_id}",
         ]
-        if static_inputs:
-            cmd.append(f"--inputs={json.dumps(static_inputs)}")
-
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-        _salmon_jobs[job_id] = {"status": "submitted", "output": result.stdout.strip()}
-        logger.info("Salmon job %s submitted successfully", job_id)
+        _workflow_jobs[job_id] = {"status": "submitted", "output": result.stdout.strip()}
+        logger.info("Workflow job %s submitted successfully", job_id)
 
     except subprocess.CalledProcessError as e:
-        _salmon_jobs[job_id] = {"status": "failed", "error": e.stderr or e.stdout}
-        logger.error("Salmon job %s failed: %s", job_id, e.stderr or e.stdout)
+        _workflow_jobs[job_id] = {"status": "failed", "error": e.stderr or e.stdout}
+        logger.error("Workflow job %s failed: %s", job_id, e.stderr or e.stdout)
     except Exception as e:
-        _salmon_jobs[job_id] = {"status": "failed", "error": str(e)}
-        logger.error("Salmon job %s error: %s", job_id, e)
+        _workflow_jobs[job_id] = {"status": "failed", "error": str(e)}
+        logger.error("Workflow job %s error: %s", job_id, e)
     finally:
-        if local_csv:
-            Path(local_csv).unlink(missing_ok=True)
+        for p in (local_csv, local_mapping):
+            if p:
+                Path(p).unlink(missing_ok=True)
 
 
-@app.post("/api/salmon/submit")
-def submit_salmon(
+@app.post("/api/workflows/{name}/submit")
+def submit_workflow(
+    name: str,
     body: dict,
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
-    transcriptome = body.get("transcriptome", SALMON_TRANSCRIPTOME)
-    transcript_map = body.get("transcript_map", SALMON_TRANSCRIPT_MAP)
-    if isinstance(transcript_map, dict):
-        transcript_map = json.dumps(transcript_map)
-    input_bucket_id = body.get("input_bucket_id", SALMON_INPUT_BUCKET_ID)
-    output_bucket_id = body.get("output_bucket_id", SALMON_OUTPUT_BUCKET_ID)
-    workflow_id = body.get("workflow_id", SALMON_WORKFLOW_ID)
-    column_mapping_uri = body.get("column_mapping_uri", SALMON_COLUMN_MAPPING_URI)
+    try:
+        bindings = body.get("bindings") or {}
+        input_bucket_id = body.get("input_bucket_id")
+        output_bucket_id = body.get("output_bucket_id")
+        if not input_bucket_id or not output_bucket_id:
+            raise HTTPException(status_code=400, detail="input_bucket_id and output_bucket_id are required")
 
-    model = _get_model()
-    filters = _extract_filter_params(request)
-    stmt = select(model)
-    stmt = _apply_filters(stmt, filters)
-    rows = db.execute(stmt).scalars().all()
+        inputs = _fetch_wdl_inputs(name)
+        full_name_by_short = {inp["short_name"]: inp["name"] for inp in inputs}
 
-    salmon_rows = [r for r in (_build_salmon_row(s, transcriptome, transcript_map) for s in rows) if r]
-    if not salmon_rows:
-        raise HTTPException(status_code=400, detail="No samples with FASTQ paths in current filter")
+        missing_required = [
+            inp["short_name"] for inp in inputs
+            if inp.get("isRequired") and not (bindings.get(inp["short_name"]) or {}).get("value")
+        ]
+        if missing_required:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing bindings for required inputs: {', '.join(missing_required)}",
+            )
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    job_id = f"cohort-salmon-{timestamp}"
-    csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
-    output_path = body.get("output_path", f"salmon_outputs/{timestamp}")
+        model = _get_model()
+        filters = _extract_filter_params(request)
+        stmt = select(model)
+        stmt = _apply_filters(stmt, filters)
+        samples = db.execute(stmt).scalars().all()
 
-    static_inputs = body.get("static_inputs")
+        rows, csv_columns = _build_workflow_rows(samples, inputs, bindings)
+        if not rows:
+            raise HTTPException(status_code=400, detail="No rows to submit — check that bound cohort columns have values")
 
-    _salmon_jobs[job_id] = {"status": "submitting"}
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        job_id = f"cohort-{name}-{timestamp}"
+        csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
+        mapping_filename = f"workflow_inputs/mapping_{timestamp}.json"
+        output_path = body.get("output_path", f"workflow_outputs/{name}/{timestamp}")
 
-    thread = threading.Thread(
-        target=_run_salmon_in_background,
-        args=(job_id, salmon_rows, csv_filename, timestamp,
-              input_bucket_id, output_bucket_id, output_path,
-              column_mapping_uri, workflow_id),
-        kwargs={"static_inputs": static_inputs},
-        daemon=True,
-    )
-    thread.start()
+        _workflow_jobs[job_id] = {"status": "submitting"}
 
-    return {
-        "job_id": job_id,
-        "samples_submitted": len(salmon_rows),
-        "status": "submitting",
-    }
+        thread = threading.Thread(
+            target=_run_workflow_in_background,
+            args=(job_id, name, rows, csv_columns, csv_filename, mapping_filename, timestamp,
+                  input_bucket_id, output_bucket_id, output_path, full_name_by_short),
+            daemon=True,
+        )
+        thread.start()
+
+        return {
+            "job_id": job_id,
+            "rows_submitted": len(rows),
+            "status": "submitting",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("submit_workflow failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.get("/api/salmon/status/{job_id}")
-def salmon_job_status(job_id: str) -> dict:
-    if job_id not in _salmon_jobs:
+@app.get("/api/workflows/jobs/{job_id}")
+def workflow_job_status(job_id: str) -> dict:
+    if job_id not in _workflow_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-    return {"job_id": job_id, **_salmon_jobs[job_id]}
+    return {"job_id": job_id, **_workflow_jobs[job_id]}
 
 
 if STATIC_DIR.exists():

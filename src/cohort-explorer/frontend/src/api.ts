@@ -242,17 +242,6 @@ export async function connectResource(
   return res.json();
 }
 
-export interface WorkflowConfig {
-  transcriptome?: string;
-  transcript_map?: Record<string, unknown>;
-  input_bucket_id?: string;
-  output_bucket_id?: string;
-  output_path?: string;
-  workflow_id?: string;
-  column_mapping_uri?: string;
-  static_inputs?: Record<string, string>;
-}
-
 export interface WdlInput {
   name: string;
   short_name: string;
@@ -260,67 +249,99 @@ export interface WdlInput {
   description: string | null;
   defaultValue: string | null;
   isRequired: boolean;
-  source: "batch" | "static";
-  value?: unknown;
 }
 
-export interface SalmonDefaults {
-  workflow_id: string;
-  input_bucket_id: string;
-  output_bucket_id: string;
-  column_mapping_uri: string;
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+export interface WorkflowsResponse {
+  workflows: Workflow[];
   s3_folders: S3Folder[];
-  inputs: WdlInput[];
 }
 
-export interface SalmonPrepareResponse {
+export interface WorkflowInputBinding {
+  mode: "cohort" | "static";
+  value: string;
+}
+
+export interface WorkflowPrepareResponse {
   sample_count: number;
-  samples_with_fastq: number;
-  samples_without_fastq: number;
-  preview: { sample_name: string; input_files: string }[];
+  row_count: number;
+  skipped: number;
+  csv_columns: string[];
+  preview: Record<string, string>[];
 }
 
-export interface SalmonSubmitResponse {
+export interface WorkflowSubmitResponse {
   job_id: string;
-  samples_submitted: number;
+  rows_submitted: number;
   status: string;
 }
 
-export interface SalmonStatusResponse {
+export interface WorkflowJobStatusResponse {
   job_id: string;
   status: string;
   output?: string;
   error?: string;
 }
 
-export async function fetchSalmonDefaults(): Promise<SalmonDefaults> {
-  const res = await fetchWithTimeout(`${BASE}/api/salmon/defaults`);
-  if (!res.ok) await extractError(res, "Failed to fetch workflow defaults");
+export async function listWorkflows(): Promise<WorkflowsResponse> {
+  const res = await fetchWithTimeout(`${BASE}/api/workflows`, { timeoutMs: 120_000 });
+  if (!res.ok) await extractError(res, "Failed to list workflows");
   return res.json();
 }
 
-export async function prepareSalmon(filters: FilterState, config?: WorkflowConfig): Promise<SalmonPrepareResponse> {
-  const res = await fetchWithTimeout(`${BASE}/api/salmon/prepare?${buildParams(filters)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config ?? {}),
-  });
-  if (!res.ok) await extractError(res, "Failed to prepare Salmon job");
+export async function getWorkflowInputs(name: string): Promise<{ inputs: WdlInput[] }> {
+  const res = await fetchWithTimeout(
+    `${BASE}/api/workflows/${encodeURIComponent(name)}/inputs`,
+    { timeoutMs: 120_000 },
+  );
+  if (!res.ok) await extractError(res, "Failed to fetch workflow inputs");
   return res.json();
 }
 
-export async function submitSalmon(filters: FilterState, config?: WorkflowConfig): Promise<SalmonSubmitResponse> {
-  const res = await fetchWithTimeout(`${BASE}/api/salmon/submit?${buildParams(filters)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config ?? {}),
-  });
-  if (!res.ok) await extractError(res, "Failed to submit Salmon job");
+export async function prepareWorkflow(
+  name: string,
+  filters: FilterState,
+  bindings: Record<string, WorkflowInputBinding>,
+): Promise<WorkflowPrepareResponse> {
+  const res = await fetchWithTimeout(
+    `${BASE}/api/workflows/${encodeURIComponent(name)}/prepare?${buildParams(filters)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bindings }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to prepare workflow");
   return res.json();
 }
 
-export async function checkSalmonStatus(jobId: string): Promise<SalmonStatusResponse> {
-  const res = await fetchWithTimeout(`${BASE}/api/salmon/status/${encodeURIComponent(jobId)}`);
-  if (!res.ok) await extractError(res, "Failed to check Salmon status");
+export async function submitWorkflow(
+  name: string,
+  filters: FilterState,
+  bindings: Record<string, WorkflowInputBinding>,
+  input_bucket_id: string,
+  output_bucket_id: string,
+  output_path?: string,
+): Promise<WorkflowSubmitResponse> {
+  const res = await fetchWithTimeout(
+    `${BASE}/api/workflows/${encodeURIComponent(name)}/submit?${buildParams(filters)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bindings, input_bucket_id, output_bucket_id, output_path }),
+    },
+  );
+  if (!res.ok) await extractError(res, "Failed to submit workflow");
+  return res.json();
+}
+
+export async function checkWorkflowJobStatus(jobId: string): Promise<WorkflowJobStatusResponse> {
+  const res = await fetchWithTimeout(`${BASE}/api/workflows/jobs/${encodeURIComponent(jobId)}`);
+  if (!res.ok) await extractError(res, "Failed to check job status");
   return res.json();
 }

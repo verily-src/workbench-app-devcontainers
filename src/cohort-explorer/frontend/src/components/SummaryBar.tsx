@@ -12,10 +12,10 @@ import SaveIcon from "@mui/icons-material/Save";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
 import TableRowsIcon from "@mui/icons-material/TableRows";
-import type { CohortSummary } from "../api";
+import type { CohortSummary, ColumnMapping } from "../api";
 import { deleteCohort, exportUrl, listCohorts } from "../api";
 import type { Counts, FilterState } from "../types";
-import RunSalmonDialog from "./RunSalmonDialog";
+import RunWorkflowDialog from "./RunWorkflowDialog";
 import SaveCohortDialog from "./SaveCohortDialog";
 
 interface Props {
@@ -29,6 +29,7 @@ interface Props {
   onToggleGridPane: () => void;
   activeCohort: string | null;
   datasource: string;
+  mappings: ColumnMapping[];
   onLoadCohort: (name: string) => void;
   onCohortSaved: (name: string) => void;
 }
@@ -36,9 +37,9 @@ interface Props {
 export default function SummaryBar({
   counts, filters, loading, onDisconnect,
   filterPaneVisible, gridPaneVisible, onToggleFilterPane, onToggleGridPane,
-  activeCohort, datasource, onLoadCohort, onCohortSaved,
+  activeCohort, datasource, mappings, onLoadCohort, onCohortSaved,
 }: Props) {
-  const [salmonOpen, setSalmonOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [cohortAnchor, setCohortAnchor] = useState<null | HTMLElement>(null);
   const [cohorts, setCohorts] = useState<CohortSummary[]>([]);
@@ -192,17 +193,17 @@ export default function SummaryBar({
         </MenuItem>
       </Menu>
       <Tooltip
-        title={counts && (counts.fastq_pairs ?? 0) === 0 ? "No samples with FASTQ paths in current filter" : ""}
+        title={!counts || counts.samples === 0 ? "No samples to submit" : ""}
       >
         <span>
           <Button
             variant="outlined"
             size="small"
             startIcon={<PlayArrowIcon />}
-            onClick={() => setSalmonOpen(true)}
-            disabled={!counts || (counts.fastq_pairs ?? 0) === 0}
+            onClick={() => setWorkflowOpen(true)}
+            disabled={!counts || counts.samples === 0}
           >
-            Run Salmon
+            Run Workflow
           </Button>
         </span>
       </Tooltip>
@@ -215,10 +216,11 @@ export default function SummaryBar({
       >
         Export TSV
       </Button>
-      <RunSalmonDialog
-        open={salmonOpen}
-        onClose={() => setSalmonOpen(false)}
+      <RunWorkflowDialog
+        open={workflowOpen}
+        onClose={() => setWorkflowOpen(false)}
         filters={filters}
+        mappings={mappings}
       />
       <SaveCohortDialog
         open={saveOpen}

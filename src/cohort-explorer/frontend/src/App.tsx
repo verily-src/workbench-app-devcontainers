@@ -375,6 +375,7 @@ export default function App() {
           onToggleGridPane={() => setGridPaneVisible((v) => !v)}
           activeCohort={activeCohort}
           datasource={schemaTableName ? `${resourceId}:${schemaTableName}` : resourceId}
+          mappings={mappings}
           onLoadCohort={handleLoadCohort}
           onCohortSaved={handleCohortSaved}
         />

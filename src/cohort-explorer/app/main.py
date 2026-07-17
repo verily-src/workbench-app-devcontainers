@@ -82,6 +82,44 @@ def _extract_filter_params(request: Request) -> dict:
     return params
 
 
+def _ensure_workspace():
+    """Ensure wb has a workspace set. The container's /root is a named Docker
+    volume, isolated from the host, so `wb workspace set` on the host doesn't
+    persist here. Set from env vars Workbench provides."""
+    try:
+        result = subprocess.run(
+            ["wb", "workspace", "describe", "--format", "json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            data = json.loads(result.stdout)
+            if data.get("id"):
+                logger.info("Workspace already set: %s", data["id"])
+                return
+    except Exception:
+        pass
+
+    for env_var, flag in [
+        ("WORKBENCH_WORKSPACE_UUID", "--uuid"),
+        ("TERRA_WORKSPACE", "--id"),
+        ("WORKBENCH_WORKSPACE_ID", "--id"),
+        ("WORKSPACE_ID", "--id"),
+    ]:
+        value = os.environ.get(env_var)
+        if not value:
+            continue
+        try:
+            subprocess.run(
+                ["wb", "workspace", "set", f"{flag}={value}"],
+                capture_output=True, text=True, check=True, timeout=60,
+            )
+            logger.info("Set workspace from %s=%s", env_var, value)
+            return
+        except Exception as e:
+            logger.warning("Failed to set workspace from %s: %s", env_var, e)
+    logger.error("No workspace env var found — set WORKBENCH_WORKSPACE_UUID or run `wb workspace set` manually")
+
+
 def _ensure_aws_config():
     if os.environ.get("AWS_CONFIG_FILE"):
         return
@@ -113,6 +151,7 @@ def _warm_s3_files():
 
 @app.on_event("startup")
 def startup():
+    _ensure_workspace()
     _ensure_aws_config()
     engine = get_sqlite_engine()
     Base.metadata.create_all(engine)

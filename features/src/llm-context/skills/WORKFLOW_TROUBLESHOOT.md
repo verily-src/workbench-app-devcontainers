@@ -105,13 +105,13 @@ echo "stdout: $STDOUT_URL"
 
 ```bash
 # Read stderr (usually contains errors)
-gsutil cat "$STDERR_URL" 2>/dev/null | tail -100
+gcloud storage cat "$STDERR_URL" 2>/dev/null | tail -100
 
 # Read stdout
-gsutil cat "$STDOUT_URL" 2>/dev/null | tail -100
+gcloud storage cat "$STDOUT_URL" 2>/dev/null | tail -100
 
 # Search for common error patterns
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "error|exception|failed|denied|killed|oom|memory|disk|timeout" | head -30
+gcloud storage cat "$STDERR_URL" 2>/dev/null | grep -i -E "error|exception|failed|denied|killed|oom|memory|disk|timeout" | head -30
 ```
 
 #### Common Log File Patterns
@@ -131,9 +131,9 @@ gs://<execution-bucket>/<workflow-id>/<call-name>/execution/
 # Find execution directory from task describe, then:
 EXEC_DIR=$(echo $TASK_INFO | jq -r '.executionDirectory // empty')
 if [ -n "$EXEC_DIR" ]; then
-  echo "=== script ===" && gsutil cat "$EXEC_DIR/script" 2>/dev/null
-  echo "=== rc ===" && gsutil cat "$EXEC_DIR/rc" 2>/dev/null
-  echo "=== stderr (last 50 lines) ===" && gsutil cat "$EXEC_DIR/stderr" 2>/dev/null | tail -50
+  echo "=== script ===" && gcloud storage cat "$EXEC_DIR/script" 2>/dev/null
+  echo "=== rc ===" && gcloud storage cat "$EXEC_DIR/rc" 2>/dev/null
+  echo "=== stderr (last 50 lines) ===" && gcloud storage cat "$EXEC_DIR/stderr" 2>/dev/null | tail -50
 fi
 ```
 
@@ -148,7 +148,7 @@ fi
 wb workflow describe --workflow=<WORKFLOW_ID> --format=json | jq '.sourceUrl'
 
 # Read WDL file
-gsutil cat gs://<bucket>/<path>/workflow.wdl | grep -A10 "runtime {"
+gcloud storage cat gs://<bucket>/<path>/workflow.wdl | grep -A10 "runtime {"
 ```
 
 #### Check Actual Resource Usage (GCP Batch)
@@ -169,13 +169,13 @@ gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '{
 
 ```bash
 # Check if OOM (Out of Memory) killed the task
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "oom|out of memory|killed|cannot allocate|memory"
+gcloud storage cat "$STDERR_URL" 2>/dev/null | grep -i -E "oom|out of memory|killed|cannot allocate|memory"
 
 # Check what memory was requested in batch job
 gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.computeResource.memoryMib'
 
 # Check dmesg/syslog for OOM events (if available in logs)
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i "killed process"
+gcloud storage cat "$STDERR_URL" 2>/dev/null | grep -i "killed process"
 ```
 
 ---
@@ -196,7 +196,7 @@ gsutil cat "$STDERR_URL" 2>/dev/null | grep -i "killed process"
 gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.computeResource'
 
 # Look for memory errors in logs
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "memory|oom|killed|malloc"
+gcloud storage cat "$STDERR_URL" 2>/dev/null | grep -i -E "memory|oom|killed|malloc"
 ```
 
 **Fix:** Increase `memory` in WDL runtime block:
@@ -214,7 +214,7 @@ runtime {
 
 **Diagnosis:**
 ```bash
-gsutil cat "$STDERR_URL" 2>/dev/null | grep -i -E "space|disk|quota"
+gcloud storage cat "$STDERR_URL" 2>/dev/null | grep -i -E "space|disk|quota"
 ```
 
 **Fix:** Increase disk in WDL runtime:
@@ -236,7 +236,7 @@ runtime {
 # Check if input files exist
 wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.inputs | to_entries[] | .value' | while read path; do
   if [[ $path == gs://* ]]; then
-    echo -n "$path: " && gsutil ls "$path" 2>&1 | head -1
+    echo -n "$path: " && gcloud storage ls "$path" 2>&1 | head -1
   fi
 done
 ```
@@ -254,7 +254,7 @@ done
 gcloud batch jobs describe <BATCH_JOB_NAME> --format=json | jq '.taskGroups[0].taskSpec.serviceAccount'
 
 # Test bucket access
-gsutil ls gs://<bucket>/ 2>&1 | head -5
+gcloud storage ls gs://<bucket>/ 2>&1 | head -5
 ```
 
 ---
@@ -267,7 +267,7 @@ Based on diagnosis, recommend one of:
 |-------|-------------------|
 | **OOM** | "Increase memory from X to Y in the runtime block" |
 | **Disk full** | "Increase disk size from X to Y GB" |
-| **Missing input** | "Input file doesn't exist. Verify path: `gsutil ls <path>`" |
+| **Missing input** | "Input file doesn't exist. Verify path: `gcloud storage ls <path>`" |
 | **Permission** | "Service account lacks access. Grant `roles/storage.objectViewer` on bucket" |
 | **Timeout** | "Task exceeded time limit. Increase `maxRetries` or optimize task" |
 | **Docker** | "Image pull failed. Verify image exists and is accessible" |
@@ -295,7 +295,7 @@ wb workflow job describe --job=<ID> --format=json | jq '.failureMessage'
 wb workflow job task list --job=<ID> --format=json | jq '.[] | select(.status=="FAILED") | .name'
 
 # Task logs
-wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq '.stderr' | xargs -I{} gsutil cat {} | tail -50
+wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq '.stderr' | xargs -I{} gcloud storage cat {} | tail -50
 
 # Memory check
 gcloud batch jobs describe <BATCH_JOB> --format=json | jq '.taskGroups[0].taskSpec.computeResource'

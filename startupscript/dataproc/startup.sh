@@ -25,7 +25,7 @@
 #
 # How to test changes to this file:
 #   Copy this file to a GCS bucket:
-#   - gsutil cp startupscript/dataproc/startup.sh gs://MYBUCKET
+#   - gcloud storage cp startupscript/dataproc/startup.sh gs://MYBUCKET
 #
 #   Create a new VM (JupyterLab provided by Dataproc spark):
 #   - terra resource create dataproc-cluster \
@@ -1218,7 +1218,7 @@ wheel_path = get_metadata('WHEEL')
 wheel_name = wheel_path.split('/')[-1]
 
 print('copying wheel')
-safe_call('gsutil', 'cp', wheel_path, f'/home/hail/{wheel_name}')
+safe_call('gcloud', 'storage', 'cp', wheel_path, f'/home/hail/{wheel_name}')
 
 safe_call('${RUN_PIP}', 'install', '--no-dependencies', f'/home/hail/{wheel_name}')
 

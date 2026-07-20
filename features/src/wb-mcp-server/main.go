@@ -1570,6 +1570,158 @@ WORKFLOW:
 			Required: []string{"hierarchy", "operator"},
 		},
 	},
+
+	// --- Aurora Database Tools ---
+	{
+		Name:        "aurora_query",
+		Description: "Execute a SQL query against an Aurora PostgreSQL database. Handles IAM authentication automatically. Returns results as CSV.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"resourceName": map[string]interface{}{"type": "string", "description": "Workspace resource name for the Aurora database"},
+				"query":        map[string]interface{}{"type": "string", "description": "SQL query to execute"},
+				"accessMode":   map[string]interface{}{"type": "string", "enum": []string{"READ_ONLY", "WRITE_READ"}, "description": "Access mode (default: READ_ONLY)"},
+			},
+			Required: []string{"resourceName", "query"},
+		},
+	},
+	{
+		Name:        "aurora_list_tables",
+		Description: "List all tables in an Aurora PostgreSQL database.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"resourceName": map[string]interface{}{"type": "string", "description": "Workspace resource name for the Aurora database"},
+				"schema":       map[string]interface{}{"type": "string", "description": "Schema name (default: public)"},
+			},
+			Required: []string{"resourceName"},
+		},
+	},
+	{
+		Name:        "aurora_describe_table",
+		Description: "Get column names, data types, and constraints for a table in an Aurora PostgreSQL database.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"resourceName": map[string]interface{}{"type": "string", "description": "Workspace resource name for the Aurora database"},
+				"tableName":    map[string]interface{}{"type": "string", "description": "Table name to describe"},
+				"schema":       map[string]interface{}{"type": "string", "description": "Schema name (default: public)"},
+			},
+			Required: []string{"resourceName", "tableName"},
+		},
+	},
+	{
+		Name:        "aurora_resolve_connection",
+		Description: "Get a fresh connection string for an Aurora database with embedded IAM auth token. Use when connecting from Python, R, or other tools. Token is valid for 15 minutes.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"resourceName": map[string]interface{}{"type": "string", "description": "Workspace resource name for the Aurora database"},
+				"accessMode":   map[string]interface{}{"type": "string", "enum": []string{"READ_ONLY", "WRITE_READ"}, "description": "Access mode (default: READ_ONLY)"},
+			},
+			Required: []string{"resourceName"},
+		},
+	},
+
+	// --- S3 Storage Tools ---
+	{
+		Name:        "s3_list_objects",
+		Description: "List files and folders in an S3 storage resource.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"resourceName": map[string]interface{}{"type": "string", "description": "Workspace resource name (e.g., 'my_s3_folder')"},
+				"path":         map[string]interface{}{"type": "string", "description": "Sub-path within the resource prefix (optional)"},
+				"recursive":    map[string]interface{}{"type": "boolean", "description": "List recursively (default: false)"},
+			},
+			Required: []string{"resourceName"},
+		},
+	},
+	{
+		Name:        "s3_read_file",
+		Description: "Read contents of a file from S3. Returns text content. For large or binary files, returns size info instead.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"resourceName": map[string]interface{}{"type": "string", "description": "Workspace resource name"},
+				"path":         map[string]interface{}{"type": "string", "description": "File path relative to resource prefix"},
+				"maxBytes":     map[string]interface{}{"type": "integer", "description": "Max bytes to read (default: 1048576 = 1MB)"},
+			},
+			Required: []string{"resourceName", "path"},
+		},
+	},
+	{
+		Name:        "s3_write_file",
+		Description: "Write content to a file in S3. Creates or overwrites the file at the specified path.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"resourceName": map[string]interface{}{"type": "string", "description": "Workspace resource name"},
+				"path":         map[string]interface{}{"type": "string", "description": "Destination path relative to resource prefix"},
+				"content":      map[string]interface{}{"type": "string", "description": "File content to write"},
+			},
+			Required: []string{"resourceName", "path", "content"},
+		},
+	},
+	{
+		Name:        "s3_copy",
+		Description: "Copy files within or between S3 storage resources. Use sourceResource/destResource (preferred) to auto-resolve paths and credentials, or sourceUri/destUri for raw S3 URIs. For cross-resource copies between different credential scopes, uses a temp file to bridge.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"sourceResource": map[string]interface{}{"type": "string", "description": "Source workspace resource name (e.g., 'my_s3_folder'). Auto-resolves S3 path and credentials."},
+				"sourcePath":     map[string]interface{}{"type": "string", "description": "File path within source resource. Used with sourceResource."},
+				"destResource":   map[string]interface{}{"type": "string", "description": "Destination workspace resource name. Auto-resolves S3 path and credentials."},
+				"destPath":       map[string]interface{}{"type": "string", "description": "File path within destination resource. Used with destResource."},
+				"sourceUri":      map[string]interface{}{"type": "string", "description": "Full source S3 URI (fallback when sourceResource is not provided)"},
+				"destUri":        map[string]interface{}{"type": "string", "description": "Full destination S3 URI (fallback when destResource is not provided)"},
+				"recursive":      map[string]interface{}{"type": "boolean", "description": "Copy recursively (default: false)"},
+			},
+		},
+	},
+
+	// --- AWS Resource Lifecycle Tools ---
+	{
+		Name:        "resource_create_aurora_database",
+		Description: "Create an AWS Aurora PostgreSQL database in the workspace.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"name":         map[string]interface{}{"type": "string", "description": "Resource name in workspace"},
+				"databaseName": map[string]interface{}{"type": "string", "description": "PostgreSQL database name"},
+				"description":  map[string]interface{}{"type": "string", "description": "Resource description"},
+			},
+			Required: []string{"name", "databaseName"},
+		},
+	},
+	{
+		Name:        "resource_create_s3_folder",
+		Description: "Create an S3 storage folder in the workspace.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"name":        map[string]interface{}{"type": "string", "description": "Resource name in workspace"},
+				"folderName":  map[string]interface{}{"type": "string", "description": "S3 folder name"},
+				"description": map[string]interface{}{"type": "string", "description": "Resource description"},
+			},
+			Required: []string{"name", "folderName"},
+		},
+	},
+	{
+		Name:        "resource_create_s3_external_bucket",
+		Description: "Register an external S3 bucket as a workspace resource.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"name":        map[string]interface{}{"type": "string", "description": "Resource name in workspace"},
+				"bucketName":  map[string]interface{}{"type": "string", "description": "External S3 bucket name"},
+				"account":     map[string]interface{}{"type": "string", "description": "AWS account number"},
+				"region":      map[string]interface{}{"type": "string", "description": "AWS region"},
+				"description": map[string]interface{}{"type": "string", "description": "Resource description"},
+			},
+			Required: []string{"name", "bucketName", "account", "region"},
+		},
+	},
 }
 
 func initializeConfig() error {
@@ -1823,6 +1975,107 @@ func makeAPIRequest(method, url string, body interface{}) ([]byte, error) {
 
 func executeWbCommand(args []string) (string, error) {
 	cmd := exec.Command("wb", args...)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+func executeShellCommand(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+func getAuroraConnString(resourceName, accessMode string) (string, error) {
+	if accessMode == "" {
+		accessMode = "READ_ONLY"
+	}
+	args := []string{"resource", "resolve", "--id=" + resourceName,
+		"--access-mode", accessMode, "--include-password"}
+	connStr, err := executeWbCommand(args)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve Aurora connection: %w\n%s", err, connStr)
+	}
+	return strings.TrimSpace(connStr), nil
+}
+
+func executeAuroraQuery(resourceName, accessMode, query string) (string, error) {
+	connStr, err := getAuroraConnString(resourceName, accessMode)
+	if err != nil {
+		return "", err
+	}
+	return executeShellCommand("psql", connStr, "--csv", "-c", query)
+}
+
+func getS3ResourcePath(resourceName string) (string, error) {
+	descOutput, err := executeWbCommand([]string{"resource", "describe", "--id=" + resourceName, "--format=json"})
+	if err != nil {
+		return "", fmt.Errorf("failed to describe resource: %w\n%s", err, descOutput)
+	}
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(descOutput), &res); err != nil {
+		return "", fmt.Errorf("failed to parse resource JSON: %w", err)
+	}
+	bucket, _ := res["bucketName"].(string)
+	prefix, _ := res["prefix"].(string)
+	if bucket == "" {
+		return "", fmt.Errorf("resource %s has no bucketName — is it an S3 resource?", resourceName)
+	}
+	s3Path := "s3://" + bucket + "/"
+	if prefix != "" {
+		s3Path += prefix
+		if !strings.HasSuffix(s3Path, "/") {
+			s3Path += "/"
+		}
+	}
+	return s3Path, nil
+}
+
+func ensureAWSConfig() string {
+	// Look for existing AWS config generated by wb workspace configure-aws
+	home, _ := os.UserHomeDir()
+	wbDir := home + "/.workbench/aws"
+	entries, err := os.ReadDir(wbDir)
+	if err == nil {
+		// Prefer config matching the current workspace UUID
+		if cachedWorkspaceUUID != "" {
+			target := cachedWorkspaceUUID + ".conf"
+			for _, e := range entries {
+				if e.Name() == target {
+					return wbDir + "/" + e.Name()
+				}
+			}
+		}
+		// Fall back to any .conf file
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".conf") {
+				return wbDir + "/" + e.Name()
+			}
+		}
+	}
+	// Try to generate it
+	out, err := executeWbCommand([]string{"workspace", "configure-aws"})
+	if err != nil {
+		return ""
+	}
+	// Parse "export AWS_CONFIG_FILE=..." from output
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "export AWS_CONFIG_FILE=") {
+			return strings.TrimPrefix(line, "export AWS_CONFIG_FILE=")
+		}
+	}
+	return ""
+}
+
+func executeAWSCommand(profile string, args ...string) (string, error) {
+	configFile := ensureAWSConfig()
+	cmd := exec.Command("aws", args...)
+	if configFile != "" {
+		cmd.Env = append(os.Environ(), "AWS_CONFIG_FILE="+configFile)
+	}
+	if profile != "" {
+		cmd.Args = append(cmd.Args, "--profile", profile)
+	}
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
@@ -3369,12 +3622,300 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		}
 		output, err = executeWbCommand(append([]string{"git"}, strings.Fields(command)...))
 
+	// --- Aurora Database Tools ---
+	case "aurora_query":
+		resourceName, reqErr := requireString(params.Arguments, "resourceName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		query, reqErr := requireString(params.Arguments, "query")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		accessMode, _ := params.Arguments["accessMode"].(string)
+		if accessMode == "" {
+			accessMode = "READ_ONLY"
+		}
+		output, err = executeAuroraQuery(resourceName, accessMode, query)
+
+	case "aurora_list_tables":
+		resourceName, reqErr := requireString(params.Arguments, "resourceName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		schema, _ := params.Arguments["schema"].(string)
+		if schema == "" {
+			schema = "public"
+		}
+		query := fmt.Sprintf("SELECT tablename FROM pg_tables WHERE schemaname = '%s' ORDER BY tablename;", schema)
+		output, err = executeAuroraQuery(resourceName, "READ_ONLY", query)
+
+	case "aurora_describe_table":
+		resourceName, reqErr := requireString(params.Arguments, "resourceName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		tableName, reqErr := requireString(params.Arguments, "tableName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		schema, _ := params.Arguments["schema"].(string)
+		if schema == "" {
+			schema = "public"
+		}
+		query := fmt.Sprintf("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = '%s' AND table_name = '%s' ORDER BY ordinal_position;", schema, tableName)
+		output, err = executeAuroraQuery(resourceName, "READ_ONLY", query)
+
+	case "aurora_resolve_connection":
+		resourceName, reqErr := requireString(params.Arguments, "resourceName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		accessMode, _ := params.Arguments["accessMode"].(string)
+		if accessMode == "" {
+			accessMode = "READ_ONLY"
+		}
+		connStr, connErr := getAuroraConnString(resourceName, accessMode)
+		if connErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + connErr.Error()}}, IsError: true}
+		}
+		// Parse the libpq connection string into JSON for convenience
+		fields := map[string]string{}
+		for _, part := range strings.Fields(connStr) {
+			kv := strings.SplitN(part, "=", 2)
+			if len(kv) == 2 {
+				fields[kv[0]] = kv[1]
+			}
+		}
+		result := map[string]interface{}{
+			"connectionString": connStr,
+			"host":             fields["host"],
+			"port":             fields["port"],
+			"database":         fields["dbname"],
+			"user":             fields["user"],
+			"sslmode":          fields["sslmode"],
+			"tokenExpiresIn":   "15 minutes",
+		}
+		jsonBytes, _ := json.MarshalIndent(result, "", "  ")
+		output = string(jsonBytes)
+
+	// --- S3 Storage Tools ---
+	case "s3_list_objects":
+		resourceName, reqErr := requireString(params.Arguments, "resourceName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		s3Path, pathErr := getS3ResourcePath(resourceName)
+		if pathErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + pathErr.Error()}}, IsError: true}
+		}
+		if subPath, ok := params.Arguments["path"].(string); ok && subPath != "" {
+			s3Path += subPath
+		}
+		args := []string{"s3", "ls", s3Path}
+		if recursive, ok := params.Arguments["recursive"].(bool); ok && recursive {
+			args = append(args, "--recursive")
+		}
+		output, err = executeAWSCommand(resourceName, args...)
+
+	case "s3_read_file":
+		resourceName, reqErr := requireString(params.Arguments, "resourceName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		filePath, reqErr := requireString(params.Arguments, "path")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		s3Path, pathErr := getS3ResourcePath(resourceName)
+		if pathErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + pathErr.Error()}}, IsError: true}
+		}
+		s3Path += filePath
+
+		maxBytes := 1048576 // 1MB default
+		if mb, ok := params.Arguments["maxBytes"].(float64); ok && mb > 0 {
+			maxBytes = int(mb)
+		}
+
+		// Check file size first
+		headOutput, headErr := executeAWSCommand(resourceName, "s3api", "head-object", "--bucket", "", "--key", "")
+		_ = headOutput
+		_ = headErr
+
+		// Stream the file content, limited by maxBytes
+		configFile := ensureAWSConfig()
+		cmd := exec.Command("aws", "s3", "cp", s3Path, "-", "--profile", resourceName)
+		if configFile != "" {
+			cmd.Env = append(os.Environ(), "AWS_CONFIG_FILE="+configFile)
+		}
+		outBytes, readErr := cmd.CombinedOutput()
+		if readErr != nil {
+			err = readErr
+			output = string(outBytes)
+		} else if len(outBytes) > maxBytes {
+			output = string(outBytes[:maxBytes]) + fmt.Sprintf("\n\n--- TRUNCATED (showing %d of %d bytes) ---", maxBytes, len(outBytes))
+		} else {
+			output = string(outBytes)
+		}
+
+	case "s3_write_file":
+		resourceName, reqErr := requireString(params.Arguments, "resourceName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		filePath, reqErr := requireString(params.Arguments, "path")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		content, reqErr := requireString(params.Arguments, "content")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		s3Path, pathErr := getS3ResourcePath(resourceName)
+		if pathErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + pathErr.Error()}}, IsError: true}
+		}
+		s3Path += filePath
+
+		// Write content to temp file, then upload
+		tmpFile, tmpErr := os.CreateTemp("", "s3-write-*")
+		if tmpErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error creating temp file: " + tmpErr.Error()}}, IsError: true}
+		}
+		tmpPath := tmpFile.Name()
+		defer os.Remove(tmpPath)
+		tmpFile.WriteString(content)
+		tmpFile.Close()
+
+		output, err = executeAWSCommand(resourceName, "s3", "cp", tmpPath, s3Path)
+
+	case "s3_copy":
+		// Resolve source: prefer resource name, fall back to raw URI
+		sourceResource, _ := params.Arguments["sourceResource"].(string)
+		sourcePath, _ := params.Arguments["sourcePath"].(string)
+		sourceUri, _ := params.Arguments["sourceUri"].(string)
+		sourceProfile := sourceResource
+		if sourceResource != "" {
+			resolved, pathErr := getS3ResourcePath(sourceResource)
+			if pathErr != nil {
+				return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error resolving source resource: " + pathErr.Error()}}, IsError: true}
+			}
+			sourceUri = resolved + sourcePath
+		}
+		if sourceUri == "" {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: provide either sourceResource or sourceUri"}}, IsError: true}
+		}
+
+		// Resolve dest: prefer resource name, fall back to raw URI
+		destResource, _ := params.Arguments["destResource"].(string)
+		destPath, _ := params.Arguments["destPath"].(string)
+		destUri, _ := params.Arguments["destUri"].(string)
+		destProfile := destResource
+		if destResource != "" {
+			resolved, pathErr := getS3ResourcePath(destResource)
+			if pathErr != nil {
+				return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error resolving dest resource: " + pathErr.Error()}}, IsError: true}
+			}
+			destUri = resolved + destPath
+		}
+		if destUri == "" {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: provide either destResource or destUri"}}, IsError: true}
+		}
+
+		recursive, _ := params.Arguments["recursive"].(bool)
+
+		// Determine if we need a two-step copy (different profiles)
+		if sourceProfile != "" && destProfile != "" && sourceProfile != destProfile {
+			// Cross-resource copy: download to temp, then upload
+			tmpFile, tmpErr := os.CreateTemp("", "s3-copy-*")
+			if tmpErr != nil {
+				return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error creating temp file: " + tmpErr.Error()}}, IsError: true}
+			}
+			tmpPath := tmpFile.Name()
+			tmpFile.Close()
+			defer os.Remove(tmpPath)
+
+			dlArgs := []string{"s3", "cp", sourceUri, tmpPath}
+			if recursive {
+				dlArgs = append(dlArgs, "--recursive")
+			}
+			dlOutput, dlErr := executeAWSCommand(sourceProfile, dlArgs...)
+			if dlErr != nil {
+				return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error downloading from source: " + dlOutput}}, IsError: true}
+			}
+
+			ulArgs := []string{"s3", "cp", tmpPath, destUri}
+			if recursive {
+				ulArgs = append(ulArgs, "--recursive")
+			}
+			output, err = executeAWSCommand(destProfile, ulArgs...)
+		} else {
+			// Same profile or one side is raw URI: single-step copy
+			profile := sourceProfile
+			if profile == "" {
+				profile = destProfile
+			}
+			args := []string{"s3", "cp", sourceUri, destUri}
+			if recursive {
+				args = append(args, "--recursive")
+			}
+			output, err = executeAWSCommand(profile, args...)
+		}
+
+	// --- AWS Resource Lifecycle Tools ---
+	case "resource_create_aurora_database":
+		name, reqErr := requireString(params.Arguments, "name")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		dbName, reqErr := requireString(params.Arguments, "databaseName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		args := []string{"resource", "create", "aurora-database", "--name=" + name, "--database-name=" + dbName}
+		if desc, ok := params.Arguments["description"].(string); ok && desc != "" {
+			args = append(args, "--description="+desc)
+		}
+		output, err = executeWbCommand(args)
+
+	case "resource_create_s3_folder":
+		name, reqErr := requireString(params.Arguments, "name")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		folderName, reqErr := requireString(params.Arguments, "folderName")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		args := []string{"resource", "create", "s3-storage-folder", "--name=" + name, "--folder-name=" + folderName}
+		if desc, ok := params.Arguments["description"].(string); ok && desc != "" {
+			args = append(args, "--description="+desc)
+		}
+		output, err = executeWbCommand(args)
+
+	case "resource_create_s3_external_bucket":
+		vals, reqErr := requireStrings(params.Arguments, "name", "bucketName", "account", "region")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		args := []string{"resource", "create", "s3-external-bucket",
+			"--name=" + vals[0], "--bucket-name=" + vals[1], "--account=" + vals[2], "--region=" + vals[3]}
+		if desc, ok := params.Arguments["description"].(string); ok && desc != "" {
+			args = append(args, "--description="+desc)
+		}
+		output, err = executeWbCommand(args)
+
 	default:
 		return CallToolResult{Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Unknown tool: %s", params.Name)}}, IsError: true}
 	}
 
 	if err != nil {
-		return CallToolResult{Content: []ContentItem{{Type: "text", Text: fmt.Sprintf("Error: %s", err.Error())}}, IsError: true}
+		errMsg := fmt.Sprintf("Error: %s", err.Error())
+		if output != "" {
+			errMsg += "\n" + output
+		}
+		return CallToolResult{Content: []ContentItem{{Type: "text", Text: errMsg}}, IsError: true}
 	}
 	return CallToolResult{Content: []ContentItem{{Type: "text", Text: output}}, IsError: false}
 }

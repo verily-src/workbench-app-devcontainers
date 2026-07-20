@@ -2,6 +2,7 @@ services:
   app:
     # The container name must be "application-server"
     container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
     # This can be either a pre-existing image or built from a Dockerfile
     image: "docker/getting-started"
     # build:

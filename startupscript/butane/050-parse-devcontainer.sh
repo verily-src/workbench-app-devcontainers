@@ -32,7 +32,7 @@ readonly CONTAINER_PORT="${6:-8080}"
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'
 readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
-readonly GPU_STATE_FILE="/home/core/gpu-state"
+readonly CONTAINER_STATE_FILE="/home/core/container-state"
 
 if [[ -f "${DEVCONTAINER_PATH}/.devcontainer.json" ]]; then
   DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
@@ -54,12 +54,14 @@ if [[ ! -f "${DEVCONTAINER_CONFIG_PATH}.template" ]]; then
 else
     cp "${DEVCONTAINER_CONFIG_PATH}.template" "${DEVCONTAINER_CONFIG_PATH}"
 fi
+sed -i "1s|^|// DO NOT EDIT: generated from ${DEVCONTAINER_CONFIG_PATH}.template on startup; edits will be overwritten.\n|" "${DEVCONTAINER_CONFIG_PATH}"
 if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
   if [[ ! -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" ]]; then
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template"
   else
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
   fi
+  sed -i "1s|^|# DO NOT EDIT: generated from ${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template on startup; edits will be overwritten.\n|" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 fi
 
 # Copy devcontainer post-startup scripts into the devcontainer folder so they
@@ -81,6 +83,18 @@ fi
 /home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
     echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2
 
+# shellcheck source=/dev/null
+source '/home/core/metadata-utils.sh'
+SHM_SIZE="$(get_metadata_value "shm-size" "")"
+if [[ -z "${SHM_SIZE}" ]]; then
+    SHM_SIZE="$(get_guest_attribute "config/shm-size" "")"
+fi
+if [[ ! "${SHM_SIZE}" =~ ^[0-9]+[bBkKmMgG][bB]?$ ]]; then
+    echo "WARNING: invalid shm-size '${SHM_SIZE}', using default 64m" >&2
+    SHM_SIZE="64m"
+fi
+readonly SHM_SIZE
+
 replace_template_options() {
     local TEMPLATE_PATH="$1"
 
@@ -89,6 +103,7 @@ replace_template_options() {
     sed -i "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:shmSize}|${SHM_SIZE}|g" "${TEMPLATE_PATH}"
 }
 
 detect_gpu() {
@@ -100,31 +115,32 @@ detect_gpu() {
     fi
 }
 
-handle_gpu_state_changed() {
-    local current_state="$1"
+handle_container_state_changed() {
+    # Each argument is a "key=value" pair representing current container state.
+    # Removes the application-server container if any value has changed since last run.
     local rebuild=false
 
-    # Check if this is first run or if state changed
-    if [[ ! -f "${GPU_STATE_FILE}" ]]; then
-        echo "First run, GPU state: ${current_state} (0=present, 1=absent)"
+    if [[ ! -f "${CONTAINER_STATE_FILE}" ]]; then
+        echo "First run, initializing container state"
         rebuild=true
     else
-        local previous_state
-        previous_state="$(cat "${GPU_STATE_FILE}")"
-
-        if [[ "${current_state}" != "${previous_state}" ]]; then
-            echo "GPU state changed from ${previous_state} to ${current_state} (0=present, 1=absent)"
-            rebuild=true
-        fi
+        local pair key value previous_value
+        for pair in "$@"; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            previous_value="$(grep "^${key}=" "${CONTAINER_STATE_FILE}" | cut -d= -f2-)"
+            if [[ "${value}" != "${previous_value}" ]]; then
+                echo "Container state changed: ${key} from ${previous_value} to ${value}"
+                rebuild=true
+            fi
+        done
     fi
 
-    # Rebuild container if needed
     if [[ "${rebuild}" == "true" ]]; then
         docker rm -f application-server
     fi
 
-    # Update state file
-    echo "${current_state}" > "${GPU_STATE_FILE}"
+    printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
 }
 
 apply_gpu_runtime() {
@@ -156,7 +172,7 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
 fi
 
 gpu_exists=$(detect_gpu; echo $?)
-handle_gpu_state_changed "${gpu_exists}"
+handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}"
 
 # Apply GPU runtime configuration if GPU is present
 if [[ "${gpu_exists}" == "0" ]]; then
@@ -167,8 +183,6 @@ else
 fi
 
 echo 'publishing devcontainer.json to metadata'
-# shellcheck source=/dev/null
-source '/home/core/metadata-utils.sh'
 readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
 DEVCONTAINER_CUSTOMIZATIONS="$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" | jq -c .customizations.workbench)"
 readonly DEVCONTAINER_CUSTOMIZATIONS

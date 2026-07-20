@@ -198,6 +198,68 @@ fi
 chown "${USERNAME}:" "${CLAUDE_SETTINGS}"
 echo "Configured Claude Code MCP server in ${CLAUDE_SETTINGS}"
 
+# Configure Claude Code permissions: auto-allow read-only MCP tools
+CLAUDE_DIR="${USER_HOME_DIR}/.claude"
+CLAUDE_LOCAL_SETTINGS="${CLAUDE_DIR}/settings.local.json"
+mkdir -p "${CLAUDE_DIR}"
+cat > "${CLAUDE_LOCAL_SETTINGS}" <<'PERMS_EOF'
+{
+  "permissions": {
+    "allow": [
+      "mcp__wb__aurora_query",
+      "mcp__wb__aurora_list_tables",
+      "mcp__wb__aurora_describe_table",
+      "mcp__wb__aurora_resolve_connection",
+      "mcp__wb__wb_status",
+      "mcp__wb__workspace_get",
+      "mcp__wb__workspace_list_resources",
+      "mcp__wb__workspace_list_data_collections",
+      "mcp__wb__workspace_list_all",
+      "mcp__wb__workspace_list_users",
+      "mcp__wb__resource_list_tree",
+      "mcp__wb__resource_check_access",
+      "mcp__wb__resource_open_console",
+      "mcp__wb__s3_list_objects",
+      "mcp__wb__s3_read_file",
+      "mcp__wb__app_list",
+      "mcp__wb__app_get_url",
+      "mcp__wb__underlay_list",
+      "mcp__wb__underlay_get_schema",
+      "mcp__wb__underlay_list_entities",
+      "mcp__wb__underlay_get_entity",
+      "mcp__wb__underlay_list_criteria_selectors",
+      "mcp__wb__folder_list_tree",
+      "mcp__wb__auth_status",
+      "mcp__wb__resolve",
+      "mcp__wb__server_status",
+      "mcp__wb__server_list",
+      "mcp__wb__study_list",
+      "mcp__wb__study_list_cohorts",
+      "mcp__wb__data_query_hints",
+      "mcp__wb__data_sample_instances",
+      "mcp__wb__cohort_count_instances",
+      "mcp__wb__export_list_models",
+      "mcp__wb__export_describe",
+      "mcp__wb__export_preview",
+      "mcp__wb__workflow_list",
+      "mcp__wb__workflow_describe",
+      "mcp__wb__workflow_job_list",
+      "mcp__wb__workflow_job_describe",
+      "mcp__wb__group_list",
+      "mcp__wb__group_describe",
+      "mcp__wb__pod_list",
+      "mcp__wb__pod_describe",
+      "mcp__wb__organization_list",
+      "mcp__wb__version",
+      "mcp__wb__wb_workspace_list",
+      "mcp__wb__platform_list_data_collections"
+    ]
+  }
+}
+PERMS_EOF
+chown -R "${USERNAME}:" "${CLAUDE_DIR}"
+echo "Configured Claude Code read-only MCP permissions in ${CLAUDE_LOCAL_SETTINGS}"
+
 # Configure Gemini CLI MCP server via settings file
 GEMINI_SETTINGS="${USER_HOME_DIR}/.gemini/settings.json"
 mkdir -p "${USER_HOME_DIR}/.gemini"

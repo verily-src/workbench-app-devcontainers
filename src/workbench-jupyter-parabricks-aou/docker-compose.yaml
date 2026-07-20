@@ -3,6 +3,7 @@ include:
 services:
   app:
     container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
     build:
       context: ../workbench-jupyter-parabricks
       additional_contexts:
@@ -26,7 +27,7 @@ services:
     command: ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--LabApp.token=''"]
   wondershaper:
     container_name: "wondershaper"
-    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:ff6cb0ed80e949a67394b2015267e375c55e1fc577ffacb6fc6f76b5c82acb5c"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:c1f9a049ee6e522eff48199d0b518c49488520d03a52f5bcdf1eb33b9d6b172b"
     restart: always
     network_mode: "host"
     cap_add:

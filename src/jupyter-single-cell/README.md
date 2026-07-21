@@ -4,17 +4,19 @@ Custom Workbench JupyterLab app for **single-cell (Python / scanpy)** analysis, 
 `CREATE_CUSTOM_APP_WITH_PACKAGES` skill.
 
 - **Python packages:** scanpy, anndata, leidenalg, pandas, numpy, matplotlib
+- **Base image:** prebuilt `app-workbench-jupyter` (via Dockerfile) — a real JupyterLab/conda
+  environment, so packages layer on top instead of being built from scratch.
 - **Port:** 8888
 
-Packages are installed at build time via the `common-packages` feature, so the app launches with
-them ready — no `pip install` needed.
+Packages are installed at build time via the `common-packages` feature — the app launches with
+them ready, no `pip install` needed.
 
 ## Usage
 
 1. Commit this folder under `src/jupyter-single-cell/` and push.
 2. In the Workbench UI (Container setup), point a custom app at:
    - **Repository URL:** `https://github.com/verily-src/workbench-app-devcontainers.git`
-   - **Repository branch:** `package-installation`
+   - **Repository branch:** `package-installation`  (⚠️ no trailing spaces)
    - **Repository folder path:** `src/jupyter-single-cell`
 3. Verify in a notebook:
    ```python
@@ -24,6 +26,6 @@ them ready — no `pip install` needed.
 
 ## Note on the feature path
 
-This folder references the feature by **local path** (`./.devcontainer/features/common-packages`)
-because the feature is not yet published to ghcr. Once released, switch to the ghcr path:
+References `common-packages` by **local path** (`./.devcontainer/features/common-packages`)
+because the feature isn't published to ghcr yet. Once released, switch to the ghcr path:
 `ghcr.io/verily-src/workbench-app-devcontainers/common-packages`.

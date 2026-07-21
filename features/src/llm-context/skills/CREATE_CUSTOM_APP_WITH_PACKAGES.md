@@ -34,9 +34,17 @@ startup wiring current), then inject `common-packages`.
 
 | App type | Base template | image | port | user | home | extra file |
 |----------|--------------|-------|------|------|------|-----------|
-| **Jupyter / JupyterLab** (default) | `src/jupyter-template/` | `${templateOption:containerImage}` (+ local `jupyter` feature installs JupyterLab) | 8888 | jupyter | /home/jupyter | — |
+| **Jupyter / JupyterLab** (default) | `src/custom-workbench-jupyter-template/` | **prebuilt** `app-workbench-jupyter` (via `Dockerfile`) | 8888 | jupyter | /home/jupyter | `Dockerfile` |
 | **RStudio / R / R Shiny** | `src/r-analysis/` | `ghcr.io/rocker-org/devcontainer/tidyverse` | 8787 | rstudio | /home/rstudio | — |
 | **VSCode** | `src/vscode/` | `lscr.io/linuxserver/code-server` (via `Dockerfile`) | 8443 | abc | /config | `Dockerfile` |
+
+> ⚠️ **Do NOT base Jupyter apps on `src/jupyter-template/`** — it defaults to a bare `debian:bullseye`
+> image and tries to build Python/JupyterLab from scratch, which fails at deploy
+> (`sysconfig.get_default_scheme` / `post-startup.sh` errors). Always use the **prebuilt-image**
+> template `src/custom-workbench-jupyter-template/` (it has a `Dockerfile` + `docker-compose.yaml`
+> that `include`s `../jupyter-common/jupyter-common-compose.yaml`). Jupyter folders therefore have
+> **four** files: `.devcontainer.json`, `docker-compose.yaml`, `devcontainer-template.json`,
+> `Dockerfile` (copy the `Dockerfile` from `src/custom-workbench-jupyter-template/`).
 
 ---
 
@@ -86,14 +94,16 @@ For mapping vague domains ("machine learning", "genomics") to concrete package l
 
 **User:** "Create a JupyterLab app with pandas, numpy, and scikit-learn"
 
-Emit the folder `src/custom-jupyter-ml/` (based on `src/jupyter-template/` + `common-packages`):
+Emit the folder `src/custom-jupyter-ml/`, based on **`src/custom-workbench-jupyter-template/`** (the
+prebuilt-image template) + `common-packages`. Four files:
 
 `src/custom-jupyter-ml/.devcontainer.json`:
 ```json
 {
   "name": "custom-jupyter-ml",
-  "dockerComposeFile": "docker-compose.yaml",
+  "dockerComposeFile": ["docker-compose.yaml", "../jupyter-common/jupyter-common-compose.yaml"],
   "service": "app",
+  "runServices": ["app"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
@@ -111,16 +121,11 @@ Emit the folder `src/custom-jupyter-ml/` (based on `src/jupyter-template/` + `co
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/common-utils": {
-      "installZsh": false,
-      "installOhMyZsh": false,
-      "installOhMyZshConfig": false,
-      "username": "jupyter"
-    },
-    "./.devcontainer/features/jupyter": {
-      "installJupyterlab": true,
-      "cloudPlatform": "${templateOption:cloud}",
-      "configureJupyterlabAllowOrigin": "*"
+    "./.devcontainer/features/workbench-tools": {
+      "libEnv": "/opt/conda/envs/jupyter",
+      "cloud": "${templateOption:cloud}",
+      "username": "jupyter",
+      "userHomeDir": "/home/jupyter"
     },
     "ghcr.io/verily-src/workbench-app-devcontainers/common-packages": {
       "pythonPackages": "pandas numpy scikit-learn"
@@ -146,20 +151,21 @@ Emit the folder `src/custom-jupyter-ml/` (based on `src/jupyter-template/` + `co
 
 `src/custom-jupyter-ml/docker-compose.yaml`:
 ```yaml
-version: "2.4"
+include:
+  - ../jupyter-common/jupyter-common-compose.yaml
 services:
   app:
     container_name: "application-server"
-    image: "${templateOption:containerImage}"
+    build:
+      context: .
+      additional_contexts:
+        jupyter-extension-builder: service:jupyter-common-extension-builder
     user: "jupyter"
     restart: always
     volumes:
       - .:/workspace:cached
     ports:
-      - "${templateOption:containerPort}:${templateOption:containerPort}"
-    command: "/home/jupyter/.local/bin/jupyter lab"
-    environment:
-      SHELL: "/bin/bash"
+      - "8888:8888"
     networks:
       - app-network
     cap_add:
@@ -171,6 +177,15 @@ services:
 networks:
   app-network:
     external: true
+```
+
+`src/custom-jupyter-ml/Dockerfile` (copy verbatim from `src/custom-workbench-jupyter-template/Dockerfile`):
+```dockerfile
+FROM us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter@sha256:325ce4e4228c93e393872055dac2d3de067b179cf0921fc60fc41ce325b1e2f9
+
+# Install jupyter extensions
+RUN --mount=type=bind,from=jupyter-extension-builder,source=/dist,target=/tmp/extensions \
+    /tmp/extensions/setup.sh
 ```
 
 `src/custom-jupyter-ml/devcontainer-template.json`:
@@ -194,16 +209,6 @@ networks:
       "description": "Whether to log in to workbench CLI",
       "proposals": ["true", "false"],
       "default": "false"
-    },
-    "containerImage": {
-      "type": "string",
-      "description": "The container image to use",
-      "default": "debian:bullseye"
-    },
-    "containerPort": {
-      "type": "number",
-      "description": "The port to expose the container on",
-      "default": 8888
     }
   },
   "platforms": ["Any"]
@@ -214,7 +219,7 @@ networks:
 ```markdown
 # custom-jupyter-ml
 
-Custom Workbench JupyterLab app with pre-installed packages.
+Custom Workbench JupyterLab app with pre-installed packages (prebuilt `app-workbench-jupyter` base).
 
 - **Python packages:** pandas, numpy, scikit-learn (installed via the `common-packages` feature)
 - **Port:** 8888

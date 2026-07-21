@@ -221,6 +221,14 @@ To run and debug your app locally:
 
 5. **Access your app**: Once the container is running, you can access it at `localhost:<port>` where `<port>` is the port you specified in your configuration (e.g., `localhost:8888` for Jupyter, `localhost:7681` for ttyd)
 
+## Container Resource Limits
+
+Memory and shared memory limits are automatically configured to prevent OOM conditions on the host VM.
+
+**Memory Limit**: Reserves whichever is larger: 1GB or 10% of total memory for the host. Container gets the remainder. For example, a 16GB VM reserves 1.6GB and allocates 14.4GB to the container. Override via `memory-limit` metadata (e.g., `--metadata memory-limit=16g`).
+
+**Shared Memory**: Default is 64m. Override via `shm-size` metadata.
+
 ## How to use
 
 The `.devcontainer.json` file in the custom app folder (e.g. r-analysis/) contains the custom app configuration.

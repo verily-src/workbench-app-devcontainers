@@ -725,7 +725,9 @@ Read these directly — no index needed:
 |-------|------------|-------------|
 | **🔍 Data discovery** | \`DATA_DISCOVERY.md\` | Find data collections inside or across all of Workbench |
 | **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
-| Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
+| **Custom app WITH packages** | \`CREATE_CUSTOM_APP_WITH_PACKAGES.md\` | Custom app (Jupyter / RStudio / VSCode) with Python/R packages pre-installed |
+| Installing packages | \`INSTALL_PACKAGES.md\` | Add pip / R packages (on-demand or pre-install) to an environment |
+| Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps (no package pre-install) |
 | App templates | \`APP_TEMPLATES.md\` | Pre-built templates for dashboards, APIs, file processors |
 | **Workflow debugging** | \`WORKFLOW_TROUBLESHOOT.md\` | Failed WDL/Nextflow, logs, memory/disk issues |
 
@@ -762,8 +764,14 @@ Trigger \`DATA_DISCOVERY.md\` whenever the user is searching for data collection
 - "show in browser" / "open in new tab"
 - Any request to display data interactively
 
+**Read \`CREATE_CUSTOM_APP_WITH_PACKAGES.md\` FIRST when the request is a custom app that needs packages:**
+- "create/build a custom app with [packages]" / "app with X pre-installed"
+- "Jupyter/RStudio/VSCode app with pandas / tidyverse / scanpy / ..."
+- "custom app for [domain]" (e.g. single-cell, machine learning, genomics) — map the domain to packages via \`INSTALL_PACKAGES.md\`, then generate the app folder
+- Takes precedence over \`CUSTOM_APP.md\` whenever packages/pre-install are involved
+
 **Read \`CUSTOM_APP.md\` when:**
-- "build a deployable app" / "create a custom app"
+- "build a deployable app" / "create a custom app" (no packages to pre-install)
 - "API service" / "backend" / "from scratch"
 
 **Read \`APP_TEMPLATES.md\` when:**

@@ -4,6 +4,7 @@ services:
   app:
     container_name: "application-server"
     shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
     build:
       context: ../workbench-jupyter-parabricks
       additional_contexts:

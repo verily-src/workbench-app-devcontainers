@@ -3,6 +3,7 @@ services:
     # The container name must be "application-server"
     container_name: "application-server"
     shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
     # This can be either a pre-existing image or built from a Dockerfile
     build:
       context: .

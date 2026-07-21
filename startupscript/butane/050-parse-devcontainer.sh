@@ -95,6 +95,33 @@ if [[ ! "${SHM_SIZE}" =~ ^[0-9]+[bBkKmMgG][bB]?$ ]]; then
 fi
 readonly SHM_SIZE
 
+# Calculate memory limit for application-server container
+# Query total system memory in bytes
+TOTAL_MEM_BYTES=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)
+TOTAL_MEM_MB=$((TOTAL_MEM_BYTES / 1024 / 1024))
+
+# Reserve memory for host OS, proxy-agent, fluent-bit, and other system processes
+# Reserve whichever is larger: 1GB or 10% of total memory
+RESERVED_10PCT=$((TOTAL_MEM_MB * 10 / 100))
+RESERVED_MB=$((RESERVED_10PCT > 1024 ? RESERVED_10PCT : 1024))
+
+# Container gets total - reserved
+CONTAINER_MEM_LIMIT_MB=$((TOTAL_MEM_MB - RESERVED_MB))
+CONTAINER_MEM_LIMIT="${CONTAINER_MEM_LIMIT_MB}m"
+readonly CONTAINER_MEM_LIMIT
+echo "System memory: ${TOTAL_MEM_MB}MB, Reserved for host: ${RESERVED_MB}MB, Container memory limit: ${CONTAINER_MEM_LIMIT}"
+
+# Allow override via metadata
+MEMORY_LIMIT_OVERRIDE="$(get_metadata_value "memory-limit" "")"
+if [[ -n "${MEMORY_LIMIT_OVERRIDE}" ]]; then
+    if [[ "${MEMORY_LIMIT_OVERRIDE}" =~ ^[0-9]+[bBkKmMgG][bB]?$ ]]; then
+        CONTAINER_MEM_LIMIT="${MEMORY_LIMIT_OVERRIDE}"
+        echo "Using memory limit override: ${CONTAINER_MEM_LIMIT}"
+    else
+        echo "WARNING: invalid memory-limit override '${MEMORY_LIMIT_OVERRIDE}', using calculated limit ${CONTAINER_MEM_LIMIT}" >&2
+    fi
+fi
+
 replace_template_options() {
     local TEMPLATE_PATH="$1"
 
@@ -104,6 +131,7 @@ replace_template_options() {
     sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:shmSize}|${SHM_SIZE}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:memoryLimit}|${CONTAINER_MEM_LIMIT}|g" "${TEMPLATE_PATH}"
 }
 
 detect_gpu() {

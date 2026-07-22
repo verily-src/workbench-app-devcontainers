@@ -375,7 +375,7 @@ wb resource add-ref aurora-database --name external-db
 
     else
         storage_bucket_type="GCS bucket"
-        storage_save_cmd='gsutil cp <file> gs://<bucket>/'
+        storage_save_cmd='gcloud storage cp <file> gs://<bucket>/'
         resource_table_rows='| `GCS_BUCKET` | Google Cloud Storage bucket | `wb resource create gcs-bucket` |
 | `BQ_DATASET` | BigQuery dataset | `wb resource create bq-dataset` |
 | `GIT_REPO` | Git repository reference | `wb resource add-ref git-repo` |
@@ -386,8 +386,8 @@ wb resource add-ref aurora-database --name external-db
 | `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
 | `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
 | `bq_execute` | `bq query` | Run SQL queries against BigQuery |
-| `list_files` | `gsutil ls` | List files in a GCS bucket |
-| `read_file` | `gsutil cat` | Read contents of a file |
+| `list_files` | `gcloud storage ls` | List files in a GCS bucket |
+| `read_file` | `gcloud storage cat` | Read contents of a file |
 | `resource_create_bucket` | `wb resource create gcs-bucket` | Create a new GCS bucket |
 | `resource_delete` | `wb resource delete` | Delete a resource |
 | `resource_check_access` | — | Check if service account has access to a resource |
@@ -398,7 +398,6 @@ wb resource add-ref aurora-database --name external-db
 | MCP Tool | Description |
 |----------|-------------|
 | `gcloud_execute` | Run any `gcloud` command |
-| `gsutil_execute` | Run any `gsutil` command |
 | `bq_execute` | Run any `bq` SQL query |'
 
         cloud_path_hint='# Look for: bucketName, projectId+datasetId, gitRepoUrl'
@@ -415,8 +414,8 @@ bq query --use_legacy_sql=false '"'"'SELECT * FROM `project.dataset.table` LIMIT
 
 **GCS:**
 ```bash
-gsutil ls gs://<bucket>/
-gsutil cat -r 0-1024 gs://<bucket>/path/file.csv
+gcloud storage ls gs://<bucket>/
+gcloud storage cat gs://<bucket>/path/file.csv --range=0-1024
 ```
 
 ### Query Data

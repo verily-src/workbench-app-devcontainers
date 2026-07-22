@@ -15,7 +15,6 @@ services:
       - .:/workspace:cached
     ports:
       - "8888:8888"
-      - "8080:8080"
     networks:
       - app-network
     cap_add:

@@ -55,7 +55,13 @@ replace_template_options() {
     sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
     sed -i "s|\${templateOption:shmSize}|${SHM_SIZE}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:memoryLimit}|${CONTAINER_MEM_LIMIT}|g" "${TEMPLATE_PATH}"
+
+    # Handle memory limit - delete the line if empty
+    if [[ -z "${CONTAINER_MEM_LIMIT}" ]]; then
+        sed -i "/\${templateOption:memoryLimit}/d" "${TEMPLATE_PATH}"
+    else
+        sed -i "s|\${templateOption:memoryLimit}|${CONTAINER_MEM_LIMIT}|g" "${TEMPLATE_PATH}"
+    fi
 }
 
 detect_gpu() {

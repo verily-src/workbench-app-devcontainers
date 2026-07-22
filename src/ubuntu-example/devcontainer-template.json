@@ -6,20 +6,31 @@
   "options": {
     "cloud": {
       "type": "string",
-      "enum": ["gcp", "aws"],
+      "enum": [
+        "gcp",
+        "aws"
+      ],
       "default": "gcp",
       "description": "Cloud provider (gcp or aws)"
     },
     "login": {
       "type": "string",
       "description": "Whether to log in to workbench CLI",
-      "proposals": ["true", "false"],
+      "proposals": [
+        "true",
+        "false"
+      ],
       "default": "false"
     },
     "shmSize": {
       "type": "string",
       "description": "Shared memory size for the application-server container",
       "default": "64m"
+    },
+    "memoryLimit": {
+      "type": "string",
+      "description": "Memory limit for the application-server container",
+      "default": "8192m"
     }
   }
 }

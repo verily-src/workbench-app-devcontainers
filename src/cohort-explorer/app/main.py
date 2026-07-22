@@ -82,10 +82,51 @@ def _extract_filter_params(request: Request) -> dict:
     return params
 
 
+def _get_workspace_uuid_from_ec2_tags():
+    """Fetch the WorkspaceId tag from the EC2 instance via IMDSv2."""
+    import urllib.request
+    try:
+        token_req = urllib.request.Request(
+            "http://169.254.169.254/latest/api/token",
+            method="PUT",
+            headers={"X-aws-ec2-metadata-token-ttl-seconds": "600"},
+        )
+        with urllib.request.urlopen(token_req, timeout=5) as r:
+            token = r.read().decode()
+
+        def _get(path):
+            req = urllib.request.Request(
+                f"http://169.254.169.254/latest/meta-data/{path}",
+                headers={"X-aws-ec2-metadata-token": token},
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.read().decode()
+
+        instance_id = _get("instance-id")
+        region = _get("placement/region")
+
+        result = subprocess.run(
+            ["aws", "ec2", "describe-tags",
+             "--region", region,
+             "--filters", f"Name=resource-id,Values={instance_id}",
+                          "Name=key,Values=WorkspaceId",
+             "--query", "Tags[0].Value", "--output", "text"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            uuid = result.stdout.strip()
+            if uuid and uuid != "None":
+                return uuid
+        logger.warning("aws ec2 describe-tags failed: %s", result.stderr)
+    except Exception as e:
+        logger.warning("Failed to fetch workspace UUID from EC2 metadata: %s", e)
+    return None
+
+
 def _ensure_workspace():
     """Ensure wb has a workspace set. The container's /root is a named Docker
     volume, isolated from the host, so `wb workspace set` on the host doesn't
-    persist here. Set from env vars Workbench provides."""
+    persist here. Try env vars first, then fall back to EC2 instance tags."""
     try:
         result = subprocess.run(
             ["wb", "workspace", "describe", "--format", "json"],
@@ -117,7 +158,20 @@ def _ensure_workspace():
             return
         except Exception as e:
             logger.warning("Failed to set workspace from %s: %s", env_var, e)
-    logger.error("No workspace env var found — set WORKBENCH_WORKSPACE_UUID or run `wb workspace set` manually")
+
+    uuid = _get_workspace_uuid_from_ec2_tags()
+    if uuid:
+        try:
+            subprocess.run(
+                ["wb", "workspace", "set", f"--uuid={uuid}"],
+                capture_output=True, text=True, check=True, timeout=60,
+            )
+            logger.info("Set workspace from EC2 tag WorkspaceId=%s", uuid)
+            return
+        except Exception as e:
+            logger.warning("Failed to set workspace from EC2 tag: %s", e)
+
+    logger.error("Could not determine workspace — no env var and EC2 tag lookup failed")
 
 
 def _ensure_aws_config():

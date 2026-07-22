@@ -18,6 +18,105 @@ function usage {
   exit 1
 }
 
+calculate_container_memory_limit() {
+    # Query total system memory in bytes
+    local total_mem_bytes
+    total_mem_bytes=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)
+    local total_mem_mb=$((total_mem_bytes / 1024 / 1024))
+
+    # Reserve memory for host OS, proxy-agent, fluent-bit, and other system processes
+    # Reserve whichever is larger: 1GB or 10% of total memory
+    local reserved_10pct=$((total_mem_mb * 10 / 100))
+    local reserved_mb=$((reserved_10pct > 1024 ? reserved_10pct : 1024))
+
+    # Container gets total - reserved
+    local container_mem_limit_mb=$((total_mem_mb - reserved_mb))
+
+    # Validate that the container memory limit is not negative
+    # If negative or zero, don't set a memory limit (let container use available memory)
+    if [[ "${container_mem_limit_mb}" -le 0 ]]; then
+        echo "WARNING: Calculated container memory limit is ${container_mem_limit_mb}MB (negative or zero)" >&2
+        echo "WARNING: Total memory: ${total_mem_mb}MB, Reserved: ${reserved_mb}MB" >&2
+        echo "WARNING: Not setting a memory limit - container will use available system memory" >&2
+        echo "System memory: ${total_mem_mb}MB, Reserved for host: ${reserved_mb}MB, Container memory limit: none" >&2
+        echo ""  # Return empty string (no limit)
+    else
+        echo "System memory: ${total_mem_mb}MB, Reserved for host: ${reserved_mb}MB, Container memory limit: ${container_mem_limit_mb}m" >&2
+        echo "${container_mem_limit_mb}m"  # Return the limit
+    fi
+}
+
+replace_template_options() {
+    local TEMPLATE_PATH="$1"
+
+    echo "replacing templateOptions in ${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:login}|${LOGIN}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:shmSize}|${SHM_SIZE}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:memoryLimit}|${CONTAINER_MEM_LIMIT}|g" "${TEMPLATE_PATH}"
+}
+
+detect_gpu() {
+    # Detect NVIDIA GPUs
+    if nvidia-smi > /dev/null 2>&1; then
+        return 0  # GPU detected
+    else
+        return 1  # No GPU detected
+    fi
+}
+
+handle_container_state_changed() {
+    # Each argument is a "key=value" pair representing current container state.
+    # Removes the application-server container if any value has changed since last run.
+    local rebuild=false
+
+    if [[ ! -f "${CONTAINER_STATE_FILE}" ]]; then
+        echo "First run, initializing container state"
+        rebuild=true
+    else
+        local pair key value previous_value
+        for pair in "$@"; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            previous_value="$(grep "^${key}=" "${CONTAINER_STATE_FILE}" | cut -d= -f2-)"
+            if [[ "${value}" != "${previous_value}" ]]; then
+                echo "Container state changed: ${key} from ${previous_value} to ${value}"
+                rebuild=true
+            fi
+        done
+    fi
+
+    if [[ "${rebuild}" == "true" ]]; then
+        docker rm -f application-server
+    fi
+
+    printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
+}
+
+apply_gpu_runtime() {
+    local DOCKER_COMPOSE_PATH="$1"
+    local GPU_RUNTIME_BLOCK_PATH="$2"
+    local TEMP_COMPOSE_PATH="${DOCKER_COMPOSE_PATH}.tmp"
+
+    echo "Applying GPU runtime configuration in ${DOCKER_COMPOSE_PATH}"
+
+    # Use awk to insert the GPU runtime block after the "app:" line in the docker-compose.yaml file
+    awk -v gpu_config_path="$GPU_RUNTIME_BLOCK_PATH" '
+    /^[[:space:]]*app:/ {                 # Match the line containing "app:" (can be indented)
+        print $0;                         # Print the "app:" line as-is
+        system("cat " gpu_config_path);   # Insert the GPU runtime block by reading from the specified file
+    }
+    {
+        print $0;                         # For all other lines, print them unchanged
+    }
+    ' "${DOCKER_COMPOSE_PATH}" > "${TEMP_COMPOSE_PATH}"  # Redirect output to a temporary file
+
+    # Replace the original docker-compose.yaml file with the modified temporary file
+    mv "${TEMP_COMPOSE_PATH}" "${DOCKER_COMPOSE_PATH}"
+}
+
 # Check that the required arguments are provided: devcontainer_path, cloud, login
 if [[ $# -lt 3 ]]; then
     usage
@@ -96,20 +195,7 @@ fi
 readonly SHM_SIZE
 
 # Calculate memory limit for application-server container
-# Query total system memory in bytes
-TOTAL_MEM_BYTES=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)
-TOTAL_MEM_MB=$((TOTAL_MEM_BYTES / 1024 / 1024))
-
-# Reserve memory for host OS, proxy-agent, fluent-bit, and other system processes
-# Reserve whichever is larger: 1GB or 10% of total memory
-RESERVED_10PCT=$((TOTAL_MEM_MB * 10 / 100))
-RESERVED_MB=$((RESERVED_10PCT > 1024 ? RESERVED_10PCT : 1024))
-
-# Container gets total - reserved
-CONTAINER_MEM_LIMIT_MB=$((TOTAL_MEM_MB - RESERVED_MB))
-CONTAINER_MEM_LIMIT="${CONTAINER_MEM_LIMIT_MB}m"
-readonly CONTAINER_MEM_LIMIT
-echo "System memory: ${TOTAL_MEM_MB}MB, Reserved for host: ${RESERVED_MB}MB, Container memory limit: ${CONTAINER_MEM_LIMIT}"
+CONTAINER_MEM_LIMIT=$(calculate_container_memory_limit)
 
 # Allow override via metadata
 MEMORY_LIMIT_OVERRIDE="$(get_metadata_value "memory-limit" "")"
@@ -118,80 +204,10 @@ if [[ -n "${MEMORY_LIMIT_OVERRIDE}" ]]; then
         CONTAINER_MEM_LIMIT="${MEMORY_LIMIT_OVERRIDE}"
         echo "Using memory limit override: ${CONTAINER_MEM_LIMIT}"
     else
-        echo "WARNING: invalid memory-limit override '${MEMORY_LIMIT_OVERRIDE}', using calculated limit ${CONTAINER_MEM_LIMIT}" >&2
+        echo "WARNING: invalid memory-limit override '${MEMORY_LIMIT_OVERRIDE}', using calculated limit ${CONTAINER_MEM_LIMIT:-none}" >&2
     fi
 fi
-
-replace_template_options() {
-    local TEMPLATE_PATH="$1"
-
-    echo "replacing templateOptions in ${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:login}|${LOGIN}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:shmSize}|${SHM_SIZE}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:memoryLimit}|${CONTAINER_MEM_LIMIT}|g" "${TEMPLATE_PATH}"
-}
-
-detect_gpu() {
-    # Detect NVIDIA GPUs
-    if nvidia-smi > /dev/null 2>&1; then
-        return 0  # GPU detected
-    else
-        return 1  # No GPU detected
-    fi
-}
-
-handle_container_state_changed() {
-    # Each argument is a "key=value" pair representing current container state.
-    # Removes the application-server container if any value has changed since last run.
-    local rebuild=false
-
-    if [[ ! -f "${CONTAINER_STATE_FILE}" ]]; then
-        echo "First run, initializing container state"
-        rebuild=true
-    else
-        local pair key value previous_value
-        for pair in "$@"; do
-            key="${pair%%=*}"
-            value="${pair#*=}"
-            previous_value="$(grep "^${key}=" "${CONTAINER_STATE_FILE}" | cut -d= -f2-)"
-            if [[ "${value}" != "${previous_value}" ]]; then
-                echo "Container state changed: ${key} from ${previous_value} to ${value}"
-                rebuild=true
-            fi
-        done
-    fi
-
-    if [[ "${rebuild}" == "true" ]]; then
-        docker rm -f application-server
-    fi
-
-    printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
-}
-
-apply_gpu_runtime() {
-    local DOCKER_COMPOSE_PATH="$1"
-    local GPU_RUNTIME_BLOCK_PATH="$2"
-    local TEMP_COMPOSE_PATH="${DOCKER_COMPOSE_PATH}.tmp"
-
-    echo "Applying GPU runtime configuration in ${DOCKER_COMPOSE_PATH}"
-
-    # Use awk to insert the GPU runtime block after the "app:" line in the docker-compose.yaml file
-    awk -v gpu_config_path="$GPU_RUNTIME_BLOCK_PATH" '
-    /^[[:space:]]*app:/ {                 # Match the line containing "app:" (can be indented)
-        print $0;                         # Print the "app:" line as-is
-        system("cat " gpu_config_path);   # Insert the GPU runtime block by reading from the specified file
-    }
-    {
-        print $0;                         # For all other lines, print them unchanged
-    }
-    ' "${DOCKER_COMPOSE_PATH}" > "${TEMP_COMPOSE_PATH}"  # Redirect output to a temporary file
-
-    # Replace the original docker-compose.yaml file with the modified temporary file
-    mv "${TEMP_COMPOSE_PATH}" "${DOCKER_COMPOSE_PATH}"
-}
+readonly CONTAINER_MEM_LIMIT
 
 # Substitute template options in devcontainer.json and docker-compose.yaml
 replace_template_options "${DEVCONTAINER_CONFIG_PATH}"

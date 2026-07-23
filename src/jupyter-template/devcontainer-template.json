@@ -9,19 +9,13 @@
     "cloud": {
       "type": "string",
       "description": "VM cloud environment",
-      "proposals": [
-        "gcp",
-        "aws"
-      ],
+      "proposals": ["gcp", "aws"],
       "default": "gcp"
     },
     "login": {
       "type": "string",
       "description": "Whether to log in to workbench CLI",
-      "proposals": [
-        "true",
-        "false"
-      ],
+      "proposals": ["true", "false"],
       "default": "false"
     },
     "containerImage": {
@@ -45,7 +39,5 @@
       "default": "8192m"
     }
   },
-  "platforms": [
-    "Any"
-  ]
+  "platforms": ["Any"]
 }

@@ -6,20 +6,14 @@
   "options": {
     "cloud": {
       "type": "string",
-      "enum": [
-        "gcp",
-        "aws"
-      ],
+      "enum": ["gcp", "aws"],
       "default": "gcp",
       "description": "Cloud provider (gcp or aws)"
     },
     "login": {
       "type": "string",
       "description": "Whether to log in to workbench CLI",
-      "proposals": [
-        "true",
-        "false"
-      ],
+      "proposals": ["true", "false"],
       "default": "false"
     },
     "shmSize": {

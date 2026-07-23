@@ -6,10 +6,7 @@
   "options": {
     "cloud": {
       "type": "string",
-      "enum": [
-        "gcp",
-        "aws"
-      ],
+      "enum": ["gcp", "aws"],
       "default": "gcp",
       "description": "Cloud provider (gcp or aws)"
     },

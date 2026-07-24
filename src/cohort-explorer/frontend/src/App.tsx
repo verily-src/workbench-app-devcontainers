@@ -9,7 +9,7 @@ import SummaryBar from "./components/SummaryBar.tsx";
 import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
-import { connectResource, fetchActiveSchema, fetchCounts, fetchFilters, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
+import { connectResource, fetchActiveSchema, fetchCounts, fetchFilters, fetchReady, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
 import type { ColumnMapping } from "./api.ts";
 import SchemaReview from "./components/SchemaReview.tsx";
 import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
@@ -60,6 +60,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [restoring, setRestoring] = useState(true);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
 
   const emptyFilters = useMemo(() => buildEmptyFilters(mappings), [mappings]);
@@ -76,7 +77,27 @@ export default function App() {
   const initialized = useRef(false);
   const fetchIdRef = useRef(0);
 
+  // Poll backend readiness: the workspace context must be present before any
+  // resource listing happens. See /api/ready and the backend startup gate.
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      while (!cancelled) {
+        try {
+          const r = await fetchReady();
+          if (r.workspace) {
+            if (!cancelled) setWorkspaceReady(true);
+            return;
+          }
+        } catch { /* backend not up yet, keep polling */ }
+        await new Promise((res) => setTimeout(res, 3000));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceReady) return;
     const saved = loadSavedState();
     if (!saved) { setRestoring(false); return; }
     connectResource(saved.resourceId)
@@ -100,7 +121,7 @@ export default function App() {
         console.warn("Auto-reconnect failed, showing selector:", e);
       })
       .finally(() => setRestoring(false));
-  }, []);
+  }, [workspaceReady]);
 
   const dirty = !filtersEqual(pending, applied);
 
@@ -251,6 +272,15 @@ export default function App() {
     },
     [],
   );
+
+  if (!workspaceReady) {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100vh", gap: 2 }}>
+        <CircularProgress />
+        <Typography variant="body2" color="text.secondary">Connecting to workspace…</Typography>
+      </Box>
+    );
+  }
 
   if (restoring) {
     return (

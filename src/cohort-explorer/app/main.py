@@ -6,6 +6,7 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -82,96 +83,59 @@ def _extract_filter_params(request: Request) -> dict:
     return params
 
 
-def _get_workspace_uuid_from_ec2_tags():
-    """Fetch the WorkspaceId tag from the EC2 instance via IMDSv2."""
-    import urllib.request
+# Path to the Workbench CLI context file. Every `wb` invocation rewrites this
+# shared, unlocked file, so we NEVER poll it with `wb` -- we read it directly.
+_WORKBENCH_CONTEXT = Path.home() / ".workbench" / "context.json"
+
+# Set once the workspace context is present; gates all wb-dependent startup work.
+_workspace_ready = threading.Event()
+
+
+def _workspace_is_set() -> bool:
+    """True if context.json currently names a workspace.
+
+    Read the file directly rather than shelling out to `wb`: the CLI rewrites
+    context.json on every invocation (it caches resources there), so polling
+    with `wb` would itself race the platform startup script's `wb workspace set`
+    and could clobber it -- the exact failure this gate exists to avoid.
+    """
     try:
-        token_req = urllib.request.Request(
-            "http://169.254.169.254/latest/api/token",
-            method="PUT",
-            headers={"X-aws-ec2-metadata-token-ttl-seconds": "600"},
-        )
-        with urllib.request.urlopen(token_req, timeout=5) as r:
-            token = r.read().decode()
-
-        def _get(path):
-            req = urllib.request.Request(
-                f"http://169.254.169.254/latest/meta-data/{path}",
-                headers={"X-aws-ec2-metadata-token": token},
-            )
-            with urllib.request.urlopen(req, timeout=5) as r:
-                return r.read().decode()
-
-        instance_id = _get("instance-id")
-        region = _get("placement/region")
-
-        result = subprocess.run(
-            ["aws", "ec2", "describe-tags",
-             "--region", region,
-             "--filters", f"Name=resource-id,Values={instance_id}",
-                          "Name=key,Values=WorkspaceId",
-             "--query", "Tags[0].Value", "--output", "text"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode == 0:
-            uuid = result.stdout.strip()
-            if uuid and uuid != "None":
-                return uuid
-        logger.warning("aws ec2 describe-tags failed: %s", result.stderr)
-    except Exception as e:
-        logger.warning("Failed to fetch workspace UUID from EC2 metadata: %s", e)
-    return None
+        data = json.loads(_WORKBENCH_CONTEXT.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+    ws = data.get("workspace") or {}
+    return bool(ws.get("userFacingId") or ws.get("uuid"))
 
 
-def _ensure_workspace():
-    """Ensure wb has a workspace set. The container's /root is a named Docker
-    volume, isolated from the host, so `wb workspace set` on the host doesn't
-    persist here. Try env vars first, then fall back to EC2 instance tags."""
-    try:
-        result = subprocess.run(
-            ["wb", "workspace", "describe", "--format", "json"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            data = json.loads(result.stdout)
-            if data.get("id"):
-                logger.info("Workspace already set: %s", data["id"])
-                return
-    except Exception:
-        pass
+def _await_workspace_then_warm(max_wait: float = 600, poll_interval: float = 3):
+    """Wait for the workspace context, then run all wb-dependent startup work.
 
-    for env_var, flag in [
-        ("WORKBENCH_WORKSPACE_UUID", "--uuid"),
-        ("TERRA_WORKSPACE", "--id"),
-        ("WORKBENCH_WORKSPACE_ID", "--id"),
-        ("WORKSPACE_ID", "--id"),
-    ]:
-        value = os.environ.get(env_var)
-        if not value:
-            continue
-        try:
-            subprocess.run(
-                ["wb", "workspace", "set", f"{flag}={value}"],
-                capture_output=True, text=True, check=True, timeout=60,
-            )
-            logger.info("Set workspace from %s=%s", env_var, value)
-            return
-        except Exception as e:
-            logger.warning("Failed to set workspace from %s: %s", env_var, e)
+    On a fresh VM the app's uvicorn process starts before the postCreate script
+    installs the CLI and runs `wb workspace set`. Firing our own `wb` calls in
+    that window races (and clobbers) that set, because every `wb` command
+    rewrites the shared context.json. So we wait -- reading the file, issuing no
+    `wb` calls -- until the workspace is present, then warm everything.
+    """
+    deadline = time.monotonic() + max_wait
+    ready = False
+    while time.monotonic() < deadline:
+        if _workspace_is_set():
+            ready = True
+            break
+        time.sleep(poll_interval)
+    if ready:
+        logger.info("Workspace context present; starting wb-dependent warmup.")
+    else:
+        logger.error(
+            "Workspace context still absent after %ss; warming anyway "
+            "(datasources may be empty).", int(max_wait))
+    _workspace_ready.set()
 
-    uuid = _get_workspace_uuid_from_ec2_tags()
-    if uuid:
-        try:
-            subprocess.run(
-                ["wb", "workspace", "set", f"--uuid={uuid}"],
-                capture_output=True, text=True, check=True, timeout=60,
-            )
-            logger.info("Set workspace from EC2 tag WorkspaceId=%s", uuid)
-            return
-        except Exception as e:
-            logger.warning("Failed to set workspace from EC2 tag: %s", e)
-
-    logger.error("Could not determine workspace — no env var and EC2 tag lookup failed")
+    _ensure_aws_config()
+    warm_resource_cache()
+    threading.Thread(target=_warm_s3_files, daemon=True).start()
+    cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
+    init_cohorts(cohort_folder)
 
 
 def _ensure_aws_config():
@@ -205,21 +169,27 @@ def _warm_s3_files():
 
 @app.on_event("startup")
 def startup():
-    _ensure_workspace()
-    _ensure_aws_config()
+    # Work that doesn't need the CLI runs immediately.
     engine = get_sqlite_engine()
     Base.metadata.create_all(engine)
     logger.info("SQLite tables ensured")
     load_schema_from_disk()
-    warm_resource_cache()
-    threading.Thread(target=_warm_s3_files, daemon=True).start()
-    cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
-    init_cohorts(cohort_folder)
+    # Everything that shells out to `wb` is deferred behind the workspace gate
+    # so we don't race the platform startup script and clobber context.json.
+    threading.Thread(target=_await_workspace_then_warm, daemon=True).start()
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/ready")
+def ready() -> dict[str, bool]:
+    """App readiness for the frontend: the workspace context must be present
+    before datasources can be listed. /api/health stays a plain liveness check
+    so the platform proxy-readiness probe is unaffected."""
+    return {"workspace": _workspace_ready.is_set(), "tables": are_tables_ready()}
 
 
 @app.get("/api/datasources")

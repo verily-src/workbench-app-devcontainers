@@ -200,6 +200,17 @@ export interface DatasourcesResponse {
   ready: boolean;
 }
 
+export interface ReadyResponse {
+  workspace: boolean;
+  tables: boolean;
+}
+
+export async function fetchReady(): Promise<ReadyResponse> {
+  const res = await fetchWithTimeout(`${BASE}/api/ready`, { timeoutMs: 15_000 });
+  if (!res.ok) await extractError(res, "Failed to fetch readiness");
+  return res.json();
+}
+
 export async function fetchDatasources(): Promise<DatasourcesResponse> {
   const res = await fetchWithTimeout(`${BASE}/api/datasources`, { timeoutMs: 120_000 });
   if (!res.ok) await extractError(res, "Failed to fetch datasources");

@@ -24,10 +24,11 @@ calculate_container_memory_limit() {
     total_mem_bytes=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)
     local total_mem_mb=$((total_mem_bytes / 1024 / 1024))
 
-    # Reserve memory for host OS, proxy-agent, fluent-bit, and other system processes
-    # Reserve whichever is larger: 1GB or 10% of total memory
+    # Reserve memory for host OS, proxy-agent, fluent-bit, and other system processes.
+    # Reserve 10% of total memory, floored at 1GB and capped at 4GB.
     local reserved_10pct=$((total_mem_mb * 10 / 100))
     local reserved_mb=$((reserved_10pct > 1024 ? reserved_10pct : 1024))
+    reserved_mb=$((reserved_mb > 4096 ? 4096 : reserved_mb))
 
     # Container gets total - reserved
     local container_mem_limit_mb=$((total_mem_mb - reserved_mb))
@@ -202,17 +203,6 @@ readonly SHM_SIZE
 
 # Calculate memory limit for application-server container
 CONTAINER_MEM_LIMIT=$(calculate_container_memory_limit)
-
-# Allow override via metadata
-MEMORY_LIMIT_OVERRIDE="$(get_metadata_value "memory-limit" "")"
-if [[ -n "${MEMORY_LIMIT_OVERRIDE}" ]]; then
-    if [[ "${MEMORY_LIMIT_OVERRIDE}" =~ ^[0-9]+[bBkKmMgG][bB]?$ ]]; then
-        CONTAINER_MEM_LIMIT="${MEMORY_LIMIT_OVERRIDE}"
-        echo "Using memory limit override: ${CONTAINER_MEM_LIMIT}"
-    else
-        echo "WARNING: invalid memory-limit override '${MEMORY_LIMIT_OVERRIDE}', using calculated limit ${CONTAINER_MEM_LIMIT:-none}" >&2
-    fi
-fi
 readonly CONTAINER_MEM_LIMIT
 
 # Substitute template options in devcontainer.json and docker-compose.yaml

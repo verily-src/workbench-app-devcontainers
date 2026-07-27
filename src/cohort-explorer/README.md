@@ -131,9 +131,9 @@ src/cohort-explorer/
 
 ### Caching & startup
 
-The `wb` CLI is slow inside app containers (calls go through SAM; several seconds to a minute each), and the Workbench proxy times out at ~60s. The backend pre-warms and caches aggressively:
+The `wb` CLI is slow inside app containers (calls go through the Workbench backend; several seconds to a minute each), and the Workbench proxy times out at ~60s. The backend pre-warms and caches aggressively:
 
-- **Workspace** — `_ensure_workspace()` runs first at startup: if `wb workspace describe` shows none set, it tries the `WORKBENCH_WORKSPACE_UUID` / `TERRA_WORKSPACE` env vars, then falls back to the EC2 `WorkspaceId` instance tag via IMDSv2. (The container's `/root` is a named Docker volume isolated from the host, so a host-side `wb workspace set` doesn't reach it.)
+- **Workspace** — all `wb`-dependent startup work is deferred until the workspace context is set: a background gate polls the `wb` context file directly (no `wb` subprocess) until a workspace is present, then warms resources. `GET /api/ready` reports readiness, and the UI holds a "Connecting to workspace…" spinner until then.
 - **AWS profiles** — `wb workspace configure-aws` runs at startup and `AWS_CONFIG_FILE` is auto-discovered; all `aws s3` calls use `--profile <resource_id>`.
 - **Resource list + Aurora tables** — fetched in a background thread at startup; the datasources endpoint blocks until ready and returns tables inline.
 - **S3 file listings** — pre-warmed per folder at startup, cached, background-refreshed on subsequent calls.

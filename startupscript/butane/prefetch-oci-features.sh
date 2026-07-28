@@ -9,7 +9,7 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-readonly CRANE_IMAGE="gcr.io/go-containerregistry/crane@sha256:d3a706262093746258f20107ab4e95536f9d6d45c8c3f3acf6b02b1801b440d6"
+readonly CRANE_IMAGE="gcr.io/go-containerregistry/crane:latest@sha256:d3a706262093746258f20107ab4e95536f9d6d45c8c3f3acf6b02b1801b440d6"
 
 crane() {
   docker run --rm "${CRANE_IMAGE}" "$@"

@@ -194,5 +194,5 @@ SECRETS_YML="${DEVCONTAINER_PATH}/secrets.yml"
 if [[ -f "${SECRETS_YML}" ]]; then
   echo "Converting ${SECRETS_YML} to /home/core/secrets.json"
   docker run --rm -v "${SECRETS_YML}:/secrets.yml:ro" \
-    mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 -o=json '.secrets' /secrets.yml > /home/core/secrets.json
+    mikefarah/yq:4@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 -o=json '.secrets' /secrets.yml > /home/core/secrets.json
 fi

@@ -5,6 +5,7 @@ services:
   app:
     container_name: "application-server"
     shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
     build:
       context: .
       additional_contexts:

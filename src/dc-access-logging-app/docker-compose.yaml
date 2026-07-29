@@ -1,0 +1,35 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    image: "caddy:2.11-alpine"
+    restart: always
+    volumes:
+      - ./caddy:/etc/caddy:ro
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+      - internal
+
+  dc-access-logging:
+    build:
+      context: ./app
+    container_name: "dc-access-logging"
+    restart: always
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      DC_ACCESS_ENV: "${DC_ACCESS_ENV:-prod}"
+      DC_ACCESS_ORG_UFID: "${DC_ACCESS_ORG_UFID:-}"
+    networks:
+      - internal
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true
+  internal:
+    driver: bridge

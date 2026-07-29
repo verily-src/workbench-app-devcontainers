@@ -1,0 +1,6 @@
+{
+  "id": "dc-access-logging-app",
+  "version": "1.0.0",
+  "name": "Data Collection Access Logging",
+  "description": "Flask application for viewing data collection access logs from BigQuery"
+}

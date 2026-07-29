@@ -1,0 +1,9 @@
+{
+    admin off
+}
+
+http://:8080 {
+    route {
+        reverse_proxy dc-access-logging:5000
+    }
+}

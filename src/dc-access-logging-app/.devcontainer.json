@@ -1,0 +1,8 @@
+{
+  "name": "Data Collection Access Logging",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root"
+}

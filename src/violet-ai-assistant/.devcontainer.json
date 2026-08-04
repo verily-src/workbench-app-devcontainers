@@ -5,9 +5,17 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "remoteUser": "root",
+  "postStartCommand": "/opt/wb-mcp-server/start-server.sh || true",
   "features": {
     "./.devcontainer/features/workbench-tools": {
       "cloud": "gcp",
+      "username": "root",
+      "userHomeDir": "/root"
+    },
+    "./.devcontainer/features/gemini-cli": {
+      "username": "root"
+    },
+    "./.devcontainer/features/wb-mcp-server": {
       "username": "root",
       "userHomeDir": "/root"
     }

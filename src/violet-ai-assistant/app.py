@@ -1,11 +1,10 @@
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
-import vertexai
-from vertexai.generative_models import GenerativeModel
 import json
 import subprocess
 import os
 import logging
+import tempfile
 
 app = Flask(__name__)
 app.config['STRICT_SLASHES'] = False
@@ -14,8 +13,8 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Store chat sessions per project
-chat_sessions = {}
+# Store chat history per project
+chat_histories = {}
 
 def get_workbench_projects():
     """Get list of GCP projects from Workbench CLI."""
@@ -67,43 +66,83 @@ def get_default_project():
 
     return None
 
-def get_chat_session(project_id: str, location: str = "us-central1"):
-    """Get or create a chat session for the given project."""
-    session_key = f"{project_id}:{location}"
+def set_gemini_project(project_id: str):
+    """Configure Gemini CLI to use the specified GCP project."""
+    try:
+        result = subprocess.run(
+            ['gemini', 'config', 'set', 'project', project_id],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode != 0:
+            logger.error(f"Failed to set Gemini project: {result.stderr}")
+            return False
+        logger.info(f"Set Gemini project to: {project_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error setting Gemini project: {str(e)}")
+        return False
 
-    if session_key not in chat_sessions:
+def chat_with_gemini(message: str, project_id: str, history: list) -> str:
+    """Send a message to Gemini CLI and get response."""
+    # Set the project context
+    if not set_gemini_project(project_id):
+        raise Exception("Failed to configure Gemini with project")
+
+    # Create a temporary file for the conversation history
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        history_file = f.name
+        # Write history in Gemini CLI format
+        conversation = {
+            "messages": []
+        }
+        for msg in history:
+            conversation["messages"].append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+        json.dump(conversation, f)
+
+    try:
+        # Build Gemini CLI command
+        cmd = ['gemini', 'chat']
+
+        # Add history file if we have previous messages
+        if history:
+            cmd.extend(['--history', history_file])
+
+        # Add the message
+        cmd.append(message)
+
+        # Run Gemini CLI
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={**os.environ, 'GOOGLE_CLOUD_PROJECT': project_id}
+        )
+
+        if result.returncode != 0:
+            logger.error(f"Gemini CLI error: {result.stderr}")
+            raise Exception(f"Gemini CLI failed: {result.stderr}")
+
+        # Parse the response
+        response_text = result.stdout.strip()
+
+        # Clean up any CLI formatting
+        if response_text.startswith('Gemini:'):
+            response_text = response_text[7:].strip()
+
+        return response_text
+
+    finally:
+        # Clean up temporary file
         try:
-            # Initialize Vertex AI with the project
-            vertexai.init(project=project_id, location=location)
-
-            # Create a new chat session with Gemini
-            model = GenerativeModel("gemini-1.5-pro")
-
-            # System instruction for Violet
-            system_instruction = """You are Violet, a helpful AI assistant for Verily Workbench users.
-
-You help users with:
-- Understanding their Workbench environment and resources
-- Data analysis and bioinformatics workflows
-- Python, R, and SQL queries
-- Cloud resource management (GCP, BigQuery, Cloud Storage)
-- Best practices for scientific computing
-
-Be concise, friendly, and focus on practical solutions. When providing code examples,
-make them ready to run in a Workbench environment."""
-
-            chat = model.start_chat(response_validation=False)
-            chat_sessions[session_key] = {
-                'chat': chat,
-                'system_instruction': system_instruction,
-                'history': []
-            }
-            logger.info(f"Created new chat session for project {project_id}")
-        except Exception as e:
-            logger.error(f"Error creating chat session: {str(e)}")
-            raise
-
-    return chat_sessions[session_key]
+            os.unlink(history_file)
+        except:
+            pass
 
 @app.route('/')
 def index():
@@ -131,7 +170,6 @@ def chat():
         data = request.json
         message = data.get('message', '').strip()
         project_id = data.get('projectId', '')
-        location = data.get('location', 'us-central1')
 
         if not message:
             return jsonify({'error': 'Message is required'}), 400
@@ -139,27 +177,59 @@ def chat():
         if not project_id:
             return jsonify({'error': 'Project ID is required'}), 400
 
-        # Get or create chat session
-        session_data = get_chat_session(project_id, location)
-        chat = session_data['chat']
+        # Get or create chat history for this project
+        if project_id not in chat_histories:
+            chat_histories[project_id] = []
 
-        # Send message and get response
-        response = chat.send_message(message)
-        response_text = response.text
+        # Add system instruction as first message if history is empty
+        if not chat_histories[project_id]:
+            system_message = """You are Violet, a helpful AI assistant for Verily Workbench users.
 
-        # Store in history
-        session_data['history'].append({
+You help users with:
+- Understanding their Workbench environment and resources
+- Data analysis and bioinformatics workflows
+- Exploring data collections and creating cohorts
+- Python, R, and SQL queries
+- Cloud resource management (GCP, BigQuery, Cloud Storage)
+- Best practices for scientific computing
+
+You have access to Workbench MCP tools that let you:
+- List available data collections
+- Explore data schemas and entities
+- Create cohorts with complex filters
+- Manage workspace resources
+
+Be concise, friendly, and focus on practical solutions. When providing code examples,
+make them ready to run in a Workbench environment."""
+
+            chat_histories[project_id].append({
+                'role': 'system',
+                'content': system_message
+            })
+
+        # Get response from Gemini CLI
+        response_text = chat_with_gemini(
+            message,
+            project_id,
+            chat_histories[project_id]
+        )
+
+        # Update history
+        chat_histories[project_id].append({
             'role': 'user',
             'content': message
         })
-        session_data['history'].append({
+        chat_histories[project_id].append({
             'role': 'assistant',
             'content': response_text
         })
 
         return jsonify({
             'response': response_text,
-            'history': session_data['history']
+            'history': [
+                msg for msg in chat_histories[project_id]
+                if msg['role'] != 'system'  # Don't send system message to frontend
+            ]
         })
 
     except Exception as e:
@@ -172,12 +242,10 @@ def clear_chat():
     try:
         data = request.json
         project_id = data.get('projectId', '')
-        location = data.get('location', 'us-central1')
 
-        session_key = f"{project_id}:{location}"
-        if session_key in chat_sessions:
-            del chat_sessions[session_key]
-            logger.info(f"Cleared chat session for {session_key}")
+        if project_id in chat_histories:
+            del chat_histories[project_id]
+            logger.info(f"Cleared chat history for {project_id}")
 
         return jsonify({'status': 'cleared'})
     except Exception as e:

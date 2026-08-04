@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import vertexai
-from vertexai.generative_models import GenerativeModel, ChatSession
+from vertexai.generative_models import GenerativeModel
 import json
 import subprocess
 import os
@@ -67,7 +67,7 @@ def get_default_project():
 
     return None
 
-def get_chat_session(project_id: str, location: str = "us-central1") -> ChatSession:
+def get_chat_session(project_id: str, location: str = "us-central1"):
     """Get or create a chat session for the given project."""
     session_key = f"{project_id}:{location}"
 

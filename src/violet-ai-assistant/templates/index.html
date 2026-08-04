@@ -18,8 +18,8 @@
 
         body {
             font-family: 'Roboto', sans-serif;
-            background: #F5F5F5;
-            color: #212121;
+            background: #FAFAFA;
+            color: #424242;
             overflow: hidden;
         }
 
@@ -35,14 +35,14 @@
         .header {
             background: #FFFFFF;
             padding: 20px 24px;
-            border-bottom: 1px solid #E0E0E0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-bottom: 1px solid #E8E8E8;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
 
         .header h1 {
             font-size: 24px;
             font-weight: 500;
-            color: #212121;
+            color: #424242;
             margin-bottom: 16px;
             display: flex;
             align-items: center;
@@ -50,16 +50,22 @@
         }
 
         .violet-icon {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, #7B1FA2 0%, #9C27B0 100%);
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-size: 18px;
-            font-weight: 700;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .violet-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            mask-image: radial-gradient(circle, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+            -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
         }
 
         .project-selector {
@@ -71,25 +77,30 @@
         .project-selector label {
             font-size: 14px;
             font-weight: 500;
-            color: #616161;
+            color: #757575;
         }
 
         .project-selector select {
-            padding: 8px 12px;
-            border: 1px solid #BDBDBD;
-            border-radius: 4px;
+            padding: 10px 14px;
+            border: 1px solid #D0D0D0;
+            border-radius: 8px;
             background: white;
             font-size: 14px;
             font-family: 'Roboto', sans-serif;
-            color: #212121;
+            color: #424242;
             cursor: pointer;
             min-width: 300px;
+            transition: all 0.2s;
+        }
+
+        .project-selector select:hover {
+            border-color: #81C784;
         }
 
         .project-selector select:focus {
-            outline: 2px solid #1976D2;
+            outline: 2px solid #66BB6A;
             outline-offset: 2px;
-            border-color: #1976D2;
+            border-color: #66BB6A;
         }
 
         .chat-container {
@@ -142,69 +153,81 @@
             flex-shrink: 0;
             font-weight: 500;
             font-size: 14px;
+            overflow: hidden;
+            position: relative;
         }
 
         .message.user .message-avatar {
-            background: #E3F2FD;
-            color: #1976D2;
+            background: #E8F5E9;
+            color: #4CAF50;
         }
 
         .message.assistant .message-avatar {
-            background: linear-gradient(135deg, #7B1FA2 0%, #9C27B0 100%);
-            color: white;
+            background: white;
+            padding: 2px;
+        }
+
+        .message.assistant .message-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            mask-image: radial-gradient(circle, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+            -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
         }
 
         .message-content {
             background: white;
-            border: 1px solid #E0E0E0;
-            border-radius: 8px;
-            padding: 12px 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: 1px solid #E8E8E8;
+            border-radius: 16px;
+            padding: 14px 18px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
         }
 
         .message.user .message-content {
-            background: #E3F2FD;
-            border-color: #90CAF9;
+            background: #E8F5E9;
+            border-color: #C8E6C9;
         }
 
         .message.assistant .message-content {
-            background: #F5F5F5;
-            border-color: #E0E0E0;
+            background: #FAFAFA;
+            border-color: #E8E8E8;
         }
 
         .message-text {
             font-size: 14px;
             line-height: 1.6;
-            color: #212121;
+            color: #424242;
             white-space: pre-wrap;
             word-wrap: break-word;
         }
 
         .message-text code {
-            background: #F5F5F5;
-            padding: 2px 6px;
-            border-radius: 3px;
+            background: #F0F0F0;
+            padding: 3px 8px;
+            border-radius: 6px;
             font-family: 'Courier New', monospace;
             font-size: 13px;
+            color: #424242;
         }
 
         .message.user .message-text code {
-            background: #BBDEFB;
+            background: #C8E6C9;
+            color: #2E7D32;
         }
 
         .message-text pre {
-            background: #263238;
-            color: #ECEFF1;
-            padding: 12px;
-            border-radius: 4px;
+            background: #2F3B3E;
+            color: #E0E0E0;
+            padding: 16px;
+            border-radius: 12px;
             overflow-x: auto;
-            margin: 8px 0;
+            margin: 12px 0;
         }
 
         .message-text pre code {
             background: transparent;
             padding: 0;
-            color: #ECEFF1;
+            color: #E0E0E0;
         }
 
         .empty-state {
@@ -219,8 +242,19 @@
         }
 
         .empty-state-icon {
-            font-size: 64px;
-            color: #BDBDBD;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .empty-state-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            mask-image: radial-gradient(circle, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+            -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
         }
 
         .empty-state h2 {
@@ -234,12 +268,13 @@
             text-align: center;
             max-width: 500px;
             line-height: 1.6;
+            color: #757575;
         }
 
         .input-container {
-            border-top: 1px solid #E0E0E0;
-            padding: 16px 24px;
-            background: white;
+            border-top: 1px solid #E8E8E8;
+            padding: 20px 24px;
+            background: #FAFAFA;
             display: flex;
             gap: 12px;
             align-items: flex-end;
@@ -252,27 +287,34 @@
 
         .input-container textarea {
             width: 100%;
-            border: 1px solid #BDBDBD;
-            border-radius: 4px;
-            padding: 12px 16px;
+            border: 1px solid #D0D0D0;
+            border-radius: 12px;
+            padding: 14px 18px;
             font-size: 14px;
             font-family: 'Roboto', sans-serif;
             resize: none;
             min-height: 48px;
             max-height: 150px;
             line-height: 1.5;
+            background: white;
+            color: #424242;
+            transition: all 0.2s;
+        }
+
+        .input-container textarea:hover {
+            border-color: #81C784;
         }
 
         .input-container textarea:focus {
-            outline: 2px solid #1976D2;
+            outline: 2px solid #66BB6A;
             outline-offset: 2px;
-            border-color: #1976D2;
+            border-color: #66BB6A;
         }
 
         .button {
-            padding: 10px 20px;
+            padding: 12px 24px;
             border: none;
-            border-radius: 4px;
+            border-radius: 12px;
             font-size: 14px;
             font-weight: 500;
             font-family: 'Roboto', sans-serif;
@@ -285,24 +327,26 @@
         }
 
         .button-primary {
-            background: #1976D2;
+            background: #66BB6A;
             color: white;
             height: 48px;
         }
 
         .button-primary:hover:not(:disabled) {
-            background: #1565C0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            background: #4CAF50;
+            box-shadow: 0 2px 6px rgba(76, 175, 80, 0.3);
         }
 
         .button-secondary {
-            background: transparent;
-            color: #616161;
-            border: 1px solid #BDBDBD;
+            background: white;
+            color: #757575;
+            border: 1px solid #D0D0D0;
         }
 
         .button-secondary:hover:not(:disabled) {
-            background: #F5F5F5;
+            background: #FAFAFA;
+            border-color: #81C784;
+            color: #66BB6A;
         }
 
         .button:disabled {
@@ -325,11 +369,11 @@
         }
 
         .error-message {
-            background: #FFEBEE;
-            border: 1px solid #EF5350;
-            color: #C62828;
-            padding: 12px 16px;
-            border-radius: 4px;
+            background: #FFF3E0;
+            border: 1px solid #FFB74D;
+            color: #E65100;
+            padding: 14px 18px;
+            border-radius: 12px;
             margin: 16px 24px;
             font-size: 14px;
             display: flex;
@@ -347,16 +391,16 @@
         }
 
         .messages::-webkit-scrollbar-track {
-            background: #F5F5F5;
+            background: #FAFAFA;
         }
 
         .messages::-webkit-scrollbar-thumb {
-            background: #BDBDBD;
-            border-radius: 4px;
+            background: #C8E6C9;
+            border-radius: 8px;
         }
 
         .messages::-webkit-scrollbar-thumb:hover {
-            background: #9E9E9E;
+            background: #81C784;
         }
     </style>
 </head>
@@ -364,7 +408,9 @@
     <div class="app-container">
         <div class="header">
             <h1>
-                <div class="violet-icon">V</div>
+                <div class="violet-icon">
+                    <img src="static/violet.png" alt="Violet">
+                </div>
                 Meet Violet: Your Workbench AI Assistant
             </h1>
             <div class="project-selector">
@@ -382,7 +428,9 @@
         <div class="chat-container">
             <div id="messages" class="messages">
                 <div class="empty-state">
-                    <div class="empty-state-icon">💜</div>
+                    <div class="empty-state-icon">
+                        <img src="static/violet.png" alt="Violet">
+                    </div>
                     <h2>Hello! I'm Violet</h2>
                     <p>
                         Your AI assistant for Verily Workbench. I can help you with data analysis,
@@ -538,7 +586,14 @@
 
             const avatar = document.createElement('div');
             avatar.className = 'message-avatar';
-            avatar.textContent = role === 'user' ? 'U' : 'V';
+            if (role === 'user') {
+                avatar.textContent = 'U';
+            } else {
+                const img = document.createElement('img');
+                img.src = 'static/violet.png';
+                img.alt = 'Violet';
+                avatar.appendChild(img);
+            }
 
             const content = document.createElement('div');
             content.className = 'message-content';
@@ -595,7 +650,9 @@
                 const messagesDiv = document.getElementById('messages');
                 messagesDiv.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">💜</div>
+                        <div class="empty-state-icon">
+                        <img src="static/violet.png" alt="Violet">
+                    </div>
                         <h2>Hello! I'm Violet</h2>
                         <p>
                             Your AI assistant for Verily Workbench. I can help you with data analysis,

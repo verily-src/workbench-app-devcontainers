@@ -1,0 +1,8 @@
+{
+  "id": "violet-ai-assistant",
+  "version": "1.0.0",
+  "name": "Violet AI Assistant",
+  "description": "AI-powered chat assistant for Workbench using Vertex AI Gemini",
+  "options": {},
+  "platforms": ["GCP"]
+}

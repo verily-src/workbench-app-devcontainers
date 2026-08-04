@@ -1,0 +1,15 @@
+{
+  "name": "Violet AI Assistant",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root",
+  "features": {
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "gcp",
+      "username": "root",
+      "userHomeDir": "/root"
+    }
+  }
+}

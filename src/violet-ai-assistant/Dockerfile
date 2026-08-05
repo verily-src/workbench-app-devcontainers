@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     tar \
     default-jre-headless \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user similar to jupyter pattern

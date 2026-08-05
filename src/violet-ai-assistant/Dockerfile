@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Install system dependencies required by workbench-tools feature
+# Install system dependencies required by workbench-tools feature and startup scripts
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     build-essential \
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sed \
     sudo \
     tar \
+    default-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app user similar to jupyter pattern

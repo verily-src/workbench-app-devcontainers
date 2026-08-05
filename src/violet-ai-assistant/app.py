@@ -20,7 +20,7 @@ def get_workbench_projects():
     """Get list of GCP projects from Workbench CLI."""
     try:
         result = subprocess.run(
-            ['wb', 'resource', 'list', '--type=GCP_PROJECT', '--format=json'],
+            ['bash', '-l', '-c', 'wb resource list --type=GCP_PROJECT --format=json'],
             capture_output=True,
             text=True,
             check=True,

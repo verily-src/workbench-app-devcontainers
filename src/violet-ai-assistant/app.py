@@ -4,7 +4,9 @@ import json
 import subprocess
 import os
 import logging
-import tempfile
+import requests
+import vertexai
+from vertexai.generative_models import GenerativeModel, Content, Part
 
 app = Flask(__name__)
 app.config['STRICT_SLASHES'] = False
@@ -13,142 +15,121 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Workbench and Vertex AI configuration
+WORKBENCH_API_BASE = "https://workbench.verily.com/api/wsm"
+VERTEX_AI_LOCATION = "us-central1"
+GEMINI_MODEL = "gemini-2.5-flash"
+
 # Store chat history per project
 chat_histories = {}
 
-def get_workbench_projects():
-    """Get GCP project from current Workbench workspace."""
+def get_auth_token():
+    """Get OAuth2 bearer token from gcloud."""
     try:
-        # Get current workspace info which includes the GCP project
         result = subprocess.run(
-            ['sudo', '-u', 'app', 'bash', '-l', '-c', 'wb status --format=json'],
+            ['sudo', '-u', 'app', 'bash', '-l', '-c', 'gcloud auth print-access-token'],
             capture_output=True,
             text=True,
             check=True,
-            timeout=120
+            timeout=30
         )
-        status = json.loads(result.stdout)
-        project_id = status.get('workspace', {}).get('googleProjectId', '')
-        workspace_name = status.get('workspace', {}).get('name', '')
+        return result.stdout.strip()
+    except Exception as e:
+        logger.error(f"Error getting auth token: {str(e)}")
+        return None
 
-        if project_id:
-            return [{
-                'id': project_id,
-                'name': workspace_name or f'Workspace ({project_id})',
-                'projectId': project_id
-            }]
-        return []
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to get workspace status: {e.stderr}")
+def get_workbench_projects():
+    """Get list of GCP workspaces from Workbench API."""
+    try:
+        token = get_auth_token()
+        if not token:
+            return []
+
+        url = f"{WORKBENCH_API_BASE}/api/workspaces/v1"
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+        }
+
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+        workspaces = data.get('workspaces', [])
+
+        # Filter to only GCP workspaces and extract project info
+        projects = []
+        for ws in workspaces:
+            gcp_context = ws.get('gcpContext', {})
+            project_id = gcp_context.get('projectId')
+
+            if project_id:
+                projects.append({
+                    'id': ws.get('id', ''),
+                    'workspaceId': ws.get('userFacingId', ''),
+                    'name': ws.get('displayName', '') or ws.get('userFacingId', ''),
+                    'projectId': project_id
+                })
+
+        return projects
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to list workspaces: {str(e)}")
         return []
     except Exception as e:
-        logger.error(f"Error getting projects: {str(e)}")
+        logger.error(f"Error getting workspaces: {str(e)}")
         return []
 
 def get_default_project():
-    """Get the default GCP project from environment or gcloud config."""
-    # Try environment variable first (set by Workbench)
-    project = os.environ.get('GOOGLE_CLOUD_PROJECT')
-    if project:
-        return project
-
-    # Try gcloud config
-    try:
-        result = subprocess.run(
-            ['sudo', '-u', 'app', 'bash', '-l', '-c', 'gcloud config get-value project'],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=120
-        )
-        project = result.stdout.strip()
-        if project and project != '(unset)':
-            return project
-    except Exception as e:
-        logger.error(f"Error getting default project: {str(e)}")
-
-    return None
-
-def set_gemini_project(project_id: str):
-    """Configure Gemini CLI to use the specified GCP project."""
-    try:
-        result = subprocess.run(
-            ['sudo', '-u', 'app', 'bash', '-l', '-c', f'gemini config set project {project_id}'],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        if result.returncode != 0:
-            logger.error(f"Failed to set Gemini project: {result.stderr}")
-            return False
-        logger.info(f"Set Gemini project to: {project_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Error setting Gemini project: {str(e)}")
-        return False
+    """Get the default GCP project from environment."""
+    return os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GOOGLE_PROJECT')
 
 def chat_with_gemini(message: str, project_id: str, history: list) -> str:
-    """Send a message to Gemini CLI and get response."""
-    # Set the project context
-    if not set_gemini_project(project_id):
-        raise Exception("Failed to configure Gemini with project")
-
-    # Create a temporary file for the conversation history
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        history_file = f.name
-        # Write history in Gemini CLI format
-        conversation = {
-            "messages": []
-        }
-        for msg in history:
-            conversation["messages"].append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
-        json.dump(conversation, f)
-
+    """Send a message to Gemini via Vertex AI SDK and get response."""
     try:
-        # Build Gemini CLI command
-        cmd_parts = ['gemini', 'chat']
+        # Initialize Vertex AI for this project
+        vertexai.init(project=project_id, location=VERTEX_AI_LOCATION)
 
-        # Add history file if we have previous messages
-        if history:
-            cmd_parts.extend(['--history', history_file])
+        # Create model
+        model = GenerativeModel(GEMINI_MODEL)
 
-        # Add the message
-        cmd_parts.append(message)
+        # Convert history to Vertex AI format
+        contents = []
+        for msg in history:
+            role = msg['role']
+            if role == 'system':
+                # System messages can be prepended to first user message
+                continue
+            elif role == 'user':
+                contents.append(Content(role='user', parts=[Part.from_text(msg['content'])]))
+            elif role == 'assistant':
+                contents.append(Content(role='model', parts=[Part.from_text(msg['content'])]))
 
-        # Build the full command string
-        cmd_str = ' '.join(cmd_parts)
+        # Add the new user message
+        contents.append(Content(role='user', parts=[Part.from_text(message)]))
 
-        # Run Gemini CLI as app user
-        result = subprocess.run(
-            ['sudo', '-u', 'app', 'bash', '-l', '-c', cmd_str],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            env={**os.environ, 'GOOGLE_CLOUD_PROJECT': project_id}
-        )
+        # Get system message if exists
+        system_instruction = None
+        for msg in history:
+            if msg['role'] == 'system':
+                system_instruction = msg['content']
+                break
 
-        if result.returncode != 0:
-            logger.error(f"Gemini CLI error: {result.stderr}")
-            raise Exception(f"Gemini CLI failed: {result.stderr}")
+        # Generate response
+        if system_instruction:
+            model_with_system = GenerativeModel(
+                GEMINI_MODEL,
+                system_instruction=system_instruction
+            )
+            response = model_with_system.generate_content(contents)
+        else:
+            response = model.generate_content(contents)
 
-        # Parse the response
-        response_text = result.stdout.strip()
+        return response.text
 
-        # Clean up any CLI formatting
-        if response_text.startswith('Gemini:'):
-            response_text = response_text[7:].strip()
-
-        return response_text
-
-    finally:
-        # Clean up temporary file
-        try:
-            os.unlink(history_file)
-        except:
-            pass
+    except Exception as e:
+        logger.error(f"Error calling Vertex AI: {str(e)}")
+        raise Exception(f"Vertex AI error: {str(e)}")
 
 @app.route('/')
 def index():
@@ -156,7 +137,7 @@ def index():
 
 @app.route('/api/projects')
 def get_projects():
-    """Get available GCP projects."""
+    """Get available GCP workspaces."""
     try:
         projects = get_workbench_projects()
         default_project = get_default_project()
@@ -213,7 +194,7 @@ make them ready to run in a Workbench environment."""
                 'content': system_message
             })
 
-        # Get response from Gemini CLI
+        # Get response from Vertex AI
         response_text = chat_with_gemini(
             message,
             project_id,

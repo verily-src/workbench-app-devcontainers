@@ -1,0 +1,20 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    build:
+      context: ./app
+    restart: always
+    environment:
+      DC_ACCESS_ENV: "${DC_ACCESS_ENV:-prod}"
+      DC_ACCESS_ORG_UFID: "${DC_ACCESS_ORG_UFID:-}"
+    ports:
+      - 8080:5000
+    networks:
+      - app-network
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

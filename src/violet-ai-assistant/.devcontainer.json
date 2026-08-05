@@ -5,6 +5,13 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "remoteUser": "root",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "root",
+    "/root",
+    "gcp",
+    "true"
+  ],
   "postStartCommand": "/opt/wb-mcp-server/start-server.sh || true",
   "features": {
     "./.devcontainer/features/workbench-tools": {

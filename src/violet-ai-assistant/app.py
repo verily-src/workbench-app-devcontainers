@@ -31,34 +31,320 @@ GEMINI_MODEL = "gemini-2.5-flash"
 chat_histories = {}
 
 # Define MCP tools as function declarations
-list_data_collections_func = FunctionDeclaration(
-    name="list_data_collections",
-    description="List all data collections accessible in the current Workbench workspace",
-    parameters={
-        "type": "object",
-        "properties": {}
-    }
+
+# Workspace functions
+wb_status_func = FunctionDeclaration(
+    name="wb_status",
+    description="Get workspace and server status",
+    parameters={"type": "object", "properties": {}}
 )
 
-get_data_collection_func = FunctionDeclaration(
-    name="get_data_collection",
-    description="Get detailed information about a specific data collection",
+wb_workspace_list_func = FunctionDeclaration(
+    name="wb_workspace_list",
+    description="List all workspaces",
     parameters={
         "type": "object",
         "properties": {
-            "collection_id": {
-                "type": "string",
-                "description": "The ID of the data collection to retrieve"
-            }
+            "format": {"type": "string", "enum": ["json", "text"]}
+        }
+    }
+)
+
+workspace_create_func = FunctionDeclaration(
+    name="workspace_create",
+    description="Create a new workspace",
+    parameters={
+        "type": "object",
+        "properties": {
+            "id": {"type": "string", "description": "User-facing workspace ID"},
+            "podId": {"type": "string", "description": "Pod ID"},
+            "name": {"type": "string", "description": "Display name"},
+            "description": {"type": "string", "description": "Description"}
         },
-        "required": ["collection_id"]
+        "required": ["id", "podId"]
+    }
+)
+
+workspace_get_func = FunctionDeclaration(
+    name="workspace_get",
+    description="Get workspace details by ID",
+    parameters={
+        "type": "object",
+        "properties": {
+            "workspaceId": {"type": "string", "description": "User-facing workspace ID"}
+        },
+        "required": ["workspaceId"]
+    }
+)
+
+workspace_list_all_func = FunctionDeclaration(
+    name="workspace_list_all",
+    description="List all workspaces with optional property filters",
+    parameters={
+        "type": "object",
+        "properties": {
+            "properties": {"type": "object"},
+            "limit": {"type": "integer"},
+            "offset": {"type": "integer"}
+        }
+    }
+)
+
+workspace_list_resources_func = FunctionDeclaration(
+    name="workspace_list_resources",
+    description="List all resources in a workspace",
+    parameters={
+        "type": "object",
+        "properties": {
+            "workspaceId": {"type": "string", "description": "User-facing workspace ID"},
+            "offset": {"type": "integer"},
+            "limit": {"type": "integer"}
+        },
+        "required": ["workspaceId"]
+    }
+)
+
+workspace_list_users_func = FunctionDeclaration(
+    name="workspace_list_users",
+    description="List all users with access to a workspace",
+    parameters={
+        "type": "object",
+        "properties": {
+            "workspaceId": {"type": "string", "description": "User-facing workspace ID"}
+        },
+        "required": ["workspaceId"]
+    }
+)
+
+# Resource functions
+resource_create_bucket_func = FunctionDeclaration(
+    name="resource_create_bucket",
+    description="Create a cloud storage bucket",
+    parameters={
+        "type": "object",
+        "properties": {
+            "resourceId": {"type": "string", "description": "Resource ID"},
+            "bucketName": {"type": "string", "description": "Bucket name"},
+            "description": {"type": "string", "description": "Description"}
+        },
+        "required": ["resourceId", "bucketName"]
+    }
+)
+
+resource_create_bq_dataset_func = FunctionDeclaration(
+    name="resource_create_bq_dataset",
+    description="Create a BigQuery dataset",
+    parameters={
+        "type": "object",
+        "properties": {
+            "resourceId": {"type": "string", "description": "Resource ID"},
+            "datasetId": {"type": "string", "description": "Dataset ID"},
+            "description": {"type": "string", "description": "Description"}
+        },
+        "required": ["resourceId", "datasetId"]
+    }
+)
+
+resource_check_access_func = FunctionDeclaration(
+    name="resource_check_access",
+    description="Check if user has access to a resource",
+    parameters={
+        "type": "object",
+        "properties": {
+            "resourceId": {"type": "string", "description": "Resource ID"}
+        },
+        "required": ["resourceId"]
+    }
+)
+
+resource_list_tree_func = FunctionDeclaration(
+    name="resource_list_tree",
+    description="List resources in tree view",
+    parameters={"type": "object", "properties": {}}
+)
+
+# Folder functions
+folder_create_func = FunctionDeclaration(
+    name="folder_create",
+    description="Create a folder to organize resources",
+    parameters={
+        "type": "object",
+        "properties": {
+            "folderId": {"type": "string", "description": "Folder ID"},
+            "displayName": {"type": "string", "description": "Display name"},
+            "description": {"type": "string", "description": "Description"}
+        },
+        "required": ["folderId", "displayName"]
+    }
+)
+
+folder_list_tree_func = FunctionDeclaration(
+    name="folder_list_tree",
+    description="Show folder hierarchy as a tree",
+    parameters={"type": "object", "properties": {}}
+)
+
+# Data collection functions
+workspace_list_data_collections_func = FunctionDeclaration(
+    name="workspace_list_data_collections",
+    description="List data collections in current workspace",
+    parameters={"type": "object", "properties": {}}
+)
+
+platform_list_data_collections_func = FunctionDeclaration(
+    name="platform_list_data_collections",
+    description="Search all data collections accessible across Workbench",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search keyword"},
+            "limit": {"type": "integer", "description": "Max results"}
+        }
+    }
+)
+
+# App functions
+app_create_func = FunctionDeclaration(
+    name="app_create",
+    description="Create an application (JupyterLab, RStudio, VSCode)",
+    parameters={
+        "type": "object",
+        "properties": {
+            "appId": {"type": "string", "description": "Application ID"},
+            "appConfig": {"type": "string", "description": "Config: jupyter-lab, r-analysis, visual-studio-code"},
+            "machineType": {"type": "string", "description": "Machine type"},
+            "description": {"type": "string", "description": "Description"}
+        },
+        "required": ["appId", "appConfig"]
+    }
+)
+
+app_list_func = FunctionDeclaration(
+    name="app_list",
+    description="List all applications in workspace",
+    parameters={"type": "object", "properties": {}}
+)
+
+app_start_func = FunctionDeclaration(
+    name="app_start",
+    description="Start a stopped application",
+    parameters={
+        "type": "object",
+        "properties": {
+            "appId": {"type": "string", "description": "Application ID"}
+        },
+        "required": ["appId"]
+    }
+)
+
+app_stop_func = FunctionDeclaration(
+    name="app_stop",
+    description="Stop a running application",
+    parameters={
+        "type": "object",
+        "properties": {
+            "appId": {"type": "string", "description": "Application ID"}
+        },
+        "required": ["appId"]
+    }
+)
+
+app_get_url_func = FunctionDeclaration(
+    name="app_get_url",
+    description="Get the launch URL for an application",
+    parameters={
+        "type": "object",
+        "properties": {
+            "appId": {"type": "string", "description": "Application ID"}
+        },
+        "required": ["appId"]
+    }
+)
+
+# Underlay (data model) functions
+underlay_list_func = FunctionDeclaration(
+    name="underlay_list",
+    description="List all available data models (underlays)",
+    parameters={"type": "object", "properties": {}}
+)
+
+underlay_get_schema_func = FunctionDeclaration(
+    name="underlay_get_schema",
+    description="Get complete underlay schema with entities and attributes",
+    parameters={
+        "type": "object",
+        "properties": {
+            "underlayName": {"type": "string", "description": "Underlay name"}
+        },
+        "required": ["underlayName"]
+    }
+)
+
+underlay_list_entities_func = FunctionDeclaration(
+    name="underlay_list_entities",
+    description="List all entities in an underlay (e.g., Person, Condition)",
+    parameters={
+        "type": "object",
+        "properties": {
+            "underlayName": {"type": "string", "description": "Underlay name"}
+        },
+        "required": ["underlayName"]
+    }
+)
+
+underlay_get_entity_func = FunctionDeclaration(
+    name="underlay_get_entity",
+    description="Get entity details including attributes and relationships",
+    parameters={
+        "type": "object",
+        "properties": {
+            "underlayName": {"type": "string", "description": "Underlay name"},
+            "entityName": {"type": "string", "description": "Entity name"}
+        },
+        "required": ["underlayName", "entityName"]
+    }
+)
+
+# CLI executor functions
+bq_execute_func = FunctionDeclaration(
+    name="bq_execute",
+    description="Execute BigQuery command in workspace context",
+    parameters={
+        "type": "object",
+        "properties": {
+            "command": {"type": "string", "description": "BigQuery command (without 'bq' prefix)"}
+        },
+        "required": ["command"]
     }
 )
 
 # Create tool with MCP function declarations
 mcp_tool = Tool(function_declarations=[
-    list_data_collections_func,
-    get_data_collection_func
+    wb_status_func,
+    wb_workspace_list_func,
+    workspace_create_func,
+    workspace_get_func,
+    workspace_list_all_func,
+    workspace_list_resources_func,
+    workspace_list_users_func,
+    resource_create_bucket_func,
+    resource_create_bq_dataset_func,
+    resource_check_access_func,
+    resource_list_tree_func,
+    folder_create_func,
+    folder_list_tree_func,
+    workspace_list_data_collections_func,
+    platform_list_data_collections_func,
+    app_create_func,
+    app_list_func,
+    app_start_func,
+    app_stop_func,
+    app_get_url_func,
+    underlay_list_func,
+    underlay_get_schema_func,
+    underlay_list_entities_func,
+    underlay_get_entity_func,
+    bq_execute_func,
 ])
 
 def get_auth_token():
@@ -150,8 +436,31 @@ def execute_mcp_function(function_name: str, args: dict) -> dict:
 
         # Map function names to MCP tool names
         tool_map = {
-            "list_data_collections": "platform_list_data_collections",
-            "get_data_collection": "workspace_list_data_collections"
+            "wb_status": "wb_status",
+            "wb_workspace_list": "wb_workspace_list",
+            "workspace_create": "workspace_create",
+            "workspace_get": "workspace_get",
+            "workspace_list_all": "workspace_list_all",
+            "workspace_list_resources": "workspace_list_resources",
+            "workspace_list_users": "workspace_list_users",
+            "resource_create_bucket": "resource_create_bucket",
+            "resource_create_bq_dataset": "resource_create_bq_dataset",
+            "resource_check_access": "resource_check_access",
+            "resource_list_tree": "resource_list_tree",
+            "folder_create": "folder_create",
+            "folder_list_tree": "folder_list_tree",
+            "workspace_list_data_collections": "workspace_list_data_collections",
+            "platform_list_data_collections": "platform_list_data_collections",
+            "app_create": "app_create",
+            "app_list": "app_list",
+            "app_start": "app_start",
+            "app_stop": "app_stop",
+            "app_get_url": "app_get_url",
+            "underlay_list": "underlay_list",
+            "underlay_get_schema": "underlay_get_schema",
+            "underlay_list_entities": "underlay_list_entities",
+            "underlay_get_entity": "underlay_get_entity",
+            "bq_execute": "bq_execute",
         }
 
         tool_name = tool_map.get(function_name)
@@ -312,14 +621,45 @@ You help users with:
 - Exploring data collections and creating cohorts
 - Python, R, and SQL queries
 - Cloud resource management (GCP, BigQuery, Cloud Storage)
+- Managing workspaces, applications, and compute resources
 - Best practices for scientific computing
 
-You have access to MCP tools that let you:
-- list_data_collections: List all data collections accessible in the workspace
-- get_data_collection: Get detailed information about a specific data collection
+You have access to MCP tools including:
 
-When users ask about data collections or what data is available, use the list_data_collections tool.
-When they want details about a specific collection, use get_data_collection.
+WORKSPACE MANAGEMENT:
+- wb_status: Get workspace and server status
+- workspace_get: Get workspace details
+- workspace_list_all: List all workspaces
+- workspace_list_resources: List resources in a workspace
+- workspace_list_users: See who has access to a workspace
+- workspace_create: Create new workspaces
+
+RESOURCES:
+- resource_create_bucket: Create cloud storage buckets
+- resource_create_bq_dataset: Create BigQuery datasets
+- resource_check_access: Check resource permissions
+- resource_list_tree: View resources in tree hierarchy
+- folder_create: Create folders to organize resources
+- folder_list_tree: View folder structure
+
+DATA COLLECTIONS:
+- platform_list_data_collections: Search all available data collections
+- workspace_list_data_collections: List collections in current workspace
+
+APPLICATIONS:
+- app_list: List all applications (JupyterLab, RStudio, etc.)
+- app_create: Create new applications
+- app_start/app_stop: Start or stop applications
+- app_get_url: Get application launch URLs
+
+DATA EXPLORER:
+- underlay_list: List available data models
+- underlay_get_schema: Get complete schema
+- underlay_list_entities: List entities (Person, Condition, etc.)
+- underlay_get_entity: Get entity details
+
+QUERIES:
+- bq_execute: Execute BigQuery commands
 
 Be concise, friendly, and focus on practical solutions. When providing code examples,
 make them ready to run in a Workbench environment."""

@@ -17,26 +17,29 @@ logger = logging.getLogger(__name__)
 chat_histories = {}
 
 def get_workbench_projects():
-    """Get list of GCP projects from Workbench CLI."""
+    """Get GCP project from current Workbench workspace."""
     try:
+        # Get current workspace info which includes the GCP project
         result = subprocess.run(
-            ['bash', '-l', '-c', 'wb resource list --type=GCP_PROJECT --format=json'],
+            ['sudo', '-u', 'app', 'bash', '-l', '-c', 'wb status --format=json'],
             capture_output=True,
             text=True,
             check=True,
             timeout=10
         )
-        projects = json.loads(result.stdout)
-        return [
-            {
-                'id': p.get('resourceId', ''),
-                'name': p.get('name', ''),
-                'projectId': p.get('projectId', '')
-            }
-            for p in projects if p.get('projectId')
-        ]
+        status = json.loads(result.stdout)
+        project_id = status.get('workspace', {}).get('googleProjectId', '')
+        workspace_name = status.get('workspace', {}).get('name', '')
+
+        if project_id:
+            return [{
+                'id': project_id,
+                'name': workspace_name or f'Workspace ({project_id})',
+                'projectId': project_id
+            }]
+        return []
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to list projects: {e.stderr}")
+        logger.error(f"Failed to get workspace status: {e.stderr}")
         return []
     except Exception as e:
         logger.error(f"Error getting projects: {str(e)}")
@@ -52,7 +55,7 @@ def get_default_project():
     # Try gcloud config
     try:
         result = subprocess.run(
-            ['gcloud', 'config', 'get-value', 'project'],
+            ['sudo', '-u', 'app', 'bash', '-l', '-c', 'gcloud config get-value project'],
             capture_output=True,
             text=True,
             check=True,
@@ -70,7 +73,7 @@ def set_gemini_project(project_id: str):
     """Configure Gemini CLI to use the specified GCP project."""
     try:
         result = subprocess.run(
-            ['gemini', 'config', 'set', 'project', project_id],
+            ['sudo', '-u', 'app', 'bash', '-l', '-c', f'gemini config set project {project_id}'],
             capture_output=True,
             text=True,
             timeout=5
@@ -106,18 +109,21 @@ def chat_with_gemini(message: str, project_id: str, history: list) -> str:
 
     try:
         # Build Gemini CLI command
-        cmd = ['gemini', 'chat']
+        cmd_parts = ['gemini', 'chat']
 
         # Add history file if we have previous messages
         if history:
-            cmd.extend(['--history', history_file])
+            cmd_parts.extend(['--history', history_file])
 
         # Add the message
-        cmd.append(message)
+        cmd_parts.append(message)
 
-        # Run Gemini CLI
+        # Build the full command string
+        cmd_str = ' '.join(cmd_parts)
+
+        # Run Gemini CLI as app user
         result = subprocess.run(
-            cmd,
+            ['sudo', '-u', 'app', 'bash', '-l', '-c', cmd_str],
             capture_output=True,
             text=True,
             timeout=60,

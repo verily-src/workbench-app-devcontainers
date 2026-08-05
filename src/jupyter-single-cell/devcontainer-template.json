@@ -1,0 +1,23 @@
+{
+  "id": "jupyter-single-cell",
+  "version": "1.0.0",
+  "name": "jupyter-single-cell",
+  "description": "Custom Workbench JupyterLab app for single-cell (Python) analysis with pre-installed packages: scanpy anndata leidenalg pandas numpy matplotlib",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/jupyter-single-cell",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  },
+  "platforms": ["Any"]
+}

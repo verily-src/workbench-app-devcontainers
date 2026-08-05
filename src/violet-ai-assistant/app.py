@@ -114,8 +114,8 @@ def chat_with_gemini(message: str, project_id: str) -> str:
         # Build environment with Gemini config
         env = {**os.environ, **GEMINI_ENV, 'GOOGLE_CLOUD_PROJECT': project_id}
 
-        # Use --prompt for non-interactive mode
-        cmd = ['sudo', '-u', 'app', 'bash', '-l', '-c', f'gemini --prompt "{message}"']
+        # Use --prompt for non-interactive mode and specify model explicitly
+        cmd = ['sudo', '-u', 'app', 'bash', '-l', '-c', f'gemini --model gemini-2.5-flash --prompt "{message}"']
 
         # Run Gemini CLI
         result = subprocess.run(

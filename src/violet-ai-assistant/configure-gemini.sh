@@ -12,8 +12,22 @@ echo "Configuring Gemini CLI for user ${USER_NAME}..."
 # Create .gemini directory
 sudo -u "${USER_NAME}" mkdir -p "${USER_HOME}/.gemini"
 
-# Create settings.json with Vertex AI auth
-cat > "${USER_HOME}/.gemini/settings.json" << EOF
+# Update settings.json - merge with existing if present
+SETTINGS_FILE="${USER_HOME}/.gemini/settings.json"
+
+if [ -f "${SETTINGS_FILE}" ]; then
+    # Merge auth settings into existing file using jq
+    TMP_FILE=$(mktemp)
+    jq --arg project "${PROJECT_ID}" \
+       '. + {
+         "auth": {"method": "vertexai"},
+         "project": $project,
+         "location": "us-central1"
+       }' "${SETTINGS_FILE}" > "${TMP_FILE}"
+    mv "${TMP_FILE}" "${SETTINGS_FILE}"
+else
+    # Create new settings.json
+    cat > "${SETTINGS_FILE}" << EOF
 {
   "auth": {
     "method": "vertexai"
@@ -22,8 +36,9 @@ cat > "${USER_HOME}/.gemini/settings.json" << EOF
   "location": "us-central1"
 }
 EOF
+fi
 
-chown "${USER_NAME}:${USER_NAME}" "${USER_HOME}/.gemini/settings.json"
+chown "${USER_NAME}:${USER_NAME}" "${SETTINGS_FILE}"
 
 # Add Gemini environment variables to .bashrc if not already present
 if ! grep -q "GOOGLE_GENAI_USE_VERTEXAI" "${USER_HOME}/.bashrc"; then

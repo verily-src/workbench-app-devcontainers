@@ -1,0 +1,35 @@
+version: "2.4"
+
+services:
+  app:
+    container_name: "application-server"
+    image: "python:3.11-slim"
+    restart: always
+    working_dir: /workspace
+    command: >
+      bash -c "
+      apt-get update &&
+      apt-get install -y curl git &&
+      pip install --no-cache-dir streamlit pandas google-cloud-bigquery google-auth &&
+      streamlit run /workspace/src/sql-query-executor/app.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false
+      "
+    volumes:
+      - .:/workspace:cached
+      - work:/root/work
+    ports:
+      - 8501:8501
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  app-network:
+    external: true

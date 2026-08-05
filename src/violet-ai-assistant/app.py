@@ -42,7 +42,7 @@ def get_auth_token():
         return None
 
 def get_workbench_projects():
-    """Get list of GCP workspaces from Workbench API."""
+    """Get list of ALL GCP workspaces from Workbench API with pagination."""
     try:
         token = get_auth_token()
         if not token:
@@ -54,15 +54,35 @@ def get_workbench_projects():
             'Content-Type': 'application/json'
         }
 
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
+        all_workspaces = []
+        offset = 0
+        limit = 100  # Fetch 100 at a time
 
-        data = response.json()
-        workspaces = data.get('workspaces', [])
+        # Paginate through all workspaces
+        while True:
+            params = {'offset': offset, 'limit': limit}
+            response = requests.get(url, headers=headers, params=params, timeout=30)
+            response.raise_for_status()
+
+            data = response.json()
+            workspaces = data.get('workspaces', [])
+
+            if not workspaces:
+                break  # No more workspaces
+
+            all_workspaces.extend(workspaces)
+
+            # If we got fewer than limit, we're done
+            if len(workspaces) < limit:
+                break
+
+            offset += limit
+
+        logger.info(f"Fetched {len(all_workspaces)} total workspaces")
 
         # Filter to only GCP workspaces and extract project info
         projects = []
-        for ws in workspaces:
+        for ws in all_workspaces:
             gcp_context = ws.get('gcpContext', {})
             project_id = gcp_context.get('projectId')
 
@@ -74,6 +94,7 @@ def get_workbench_projects():
                     'projectId': project_id
                 })
 
+        logger.info(f"Found {len(projects)} GCP workspaces")
         return projects
 
     except requests.exceptions.RequestException as e:

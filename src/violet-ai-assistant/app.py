@@ -5,6 +5,15 @@ import subprocess
 import os
 import logging
 import requests
+import vertexai
+from vertexai.generative_models import (
+    GenerativeModel,
+    Content,
+    Part,
+    Tool,
+    FunctionDeclaration,
+    GenerationConfig
+)
 
 app = Flask(__name__)
 app.config['STRICT_SLASHES'] = False
@@ -13,18 +22,44 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Workbench API configuration
+# Workbench and Vertex AI configuration
 WORKBENCH_API_BASE = "https://workbench.verily.com/api/wsm"
-
-# Gemini CLI environment
-GEMINI_ENV = {
-    'GOOGLE_GENAI_USE_VERTEXAI': 'true',
-    'GOOGLE_CLOUD_LOCATION': 'us-central1',
-    'GEMINI_CLI_TRUST_WORKSPACE': 'true'
-}
+VERTEX_AI_LOCATION = "us-central1"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 # Store chat history per project
 chat_histories = {}
+
+# Define MCP tools as function declarations
+list_data_collections_func = FunctionDeclaration(
+    name="list_data_collections",
+    description="List all data collections accessible in the current Workbench workspace",
+    parameters={
+        "type": "object",
+        "properties": {}
+    }
+)
+
+get_data_collection_func = FunctionDeclaration(
+    name="get_data_collection",
+    description="Get detailed information about a specific data collection",
+    parameters={
+        "type": "object",
+        "properties": {
+            "collection_id": {
+                "type": "string",
+                "description": "The ID of the data collection to retrieve"
+            }
+        },
+        "required": ["collection_id"]
+    }
+)
+
+# Create tool with MCP function declarations
+mcp_tool = Tool(function_declarations=[
+    list_data_collections_func,
+    get_data_collection_func
+])
 
 def get_auth_token():
     """Get OAuth2 bearer token from gcloud."""
@@ -108,43 +143,127 @@ def get_default_project():
     """Get the default GCP project from environment."""
     return os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GOOGLE_PROJECT')
 
-def chat_with_gemini(message: str, project_id: str) -> str:
-    """Send a message to Gemini CLI and get response with MCP tool access."""
+def execute_mcp_function(function_name: str, args: dict) -> dict:
+    """Execute an MCP function by calling the wb-mcp-server via HTTP."""
     try:
-        # Build environment with Gemini config
-        env = {**os.environ, **GEMINI_ENV, 'GOOGLE_CLOUD_PROJECT': project_id}
+        mcp_url = "http://127.0.0.1:9242"
 
-        # Use --prompt for non-interactive mode and specify model explicitly
-        cmd = ['sudo', '-u', 'app', 'bash', '-l', '-c', f'gemini --model gemini-2.5-flash --prompt "{message}"']
+        # Map function names to MCP tool names
+        tool_map = {
+            "list_data_collections": "list-data-collections",
+            "get_data_collection": "get-data-collection"
+        }
 
-        # Run Gemini CLI
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            env=env,
-            cwd='/workspace'
+        tool_name = tool_map.get(function_name)
+        if not tool_name:
+            return {"error": f"Unknown function: {function_name}"}
+
+        # Call MCP server
+        payload = {
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": args
+            }
+        }
+
+        response = requests.post(mcp_url, json=payload, timeout=30)
+        response.raise_for_status()
+
+        result = response.json()
+        return result
+
+    except Exception as e:
+        logger.error(f"Error executing MCP function {function_name}: {str(e)}")
+        return {"error": str(e)}
+
+def chat_with_gemini(message: str, project_id: str, history: list) -> tuple[str, list]:
+    """Send a message to Gemini via Vertex AI SDK with function calling."""
+    try:
+        # Initialize Vertex AI for this project
+        vertexai.init(project=project_id, location=VERTEX_AI_LOCATION)
+
+        # Create model with MCP tools
+        model = GenerativeModel(
+            GEMINI_MODEL,
+            tools=[mcp_tool]
         )
 
-        if result.returncode != 0:
-            logger.error(f"Gemini CLI error: {result.stderr}")
-            raise Exception(f"Gemini CLI failed: {result.stderr}")
+        # Convert history to Vertex AI format
+        contents = []
+        system_instruction = None
 
-        # Get the response
-        response_text = result.stdout.strip()
+        for msg in history:
+            role = msg['role']
+            if role == 'system':
+                system_instruction = msg['content']
+            elif role == 'user':
+                contents.append(Content(role='user', parts=[Part.from_text(msg['content'])]))
+            elif role == 'assistant':
+                contents.append(Content(role='model', parts=[Part.from_text(msg['content'])]))
 
-        # Clean up any CLI formatting
-        if response_text.startswith('Gemini:'):
-            response_text = response_text[7:].strip()
+        # Add the new user message
+        contents.append(Content(role='user', parts=[Part.from_text(message)]))
 
-        return response_text
+        # Start chat session with system instruction if exists
+        if system_instruction:
+            chat = model.start_chat()
+            # System instructions need to be in generation config for SDK
+            generation_config = GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=2048
+            )
+        else:
+            chat = model.start_chat()
+            generation_config = GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=2048
+            )
 
-    except subprocess.TimeoutExpired:
-        raise Exception("Gemini CLI timed out")
+        # Send message and handle function calling loop
+        max_iterations = 5
+        iteration = 0
+        accumulated_responses = []
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            # Get response
+            response = chat.send_message(contents[-1].parts, generation_config=generation_config)
+
+            # Check if there are function calls
+            if response.candidates[0].content.parts[0].function_call:
+                function_call = response.candidates[0].content.parts[0].function_call
+                function_name = function_call.name
+                function_args = dict(function_call.args)
+
+                logger.info(f"Function call: {function_name}({function_args})")
+
+                # Execute the function
+                function_result = execute_mcp_function(function_name, function_args)
+
+                # Add function response to chat
+                function_response_part = Part.from_function_response(
+                    name=function_name,
+                    response={"result": function_result}
+                )
+
+                # Continue the conversation with function result
+                contents.append(Content(role='function', parts=[function_response_part]))
+
+            else:
+                # No function call, we have the final text response
+                response_text = response.text
+                accumulated_responses.append(response_text)
+                break
+
+        final_response = "\n".join(accumulated_responses) if accumulated_responses else "I apologize, but I couldn't complete that request."
+
+        return final_response, contents
+
     except Exception as e:
-        logger.error(f"Error calling Gemini CLI: {str(e)}")
-        raise
+        logger.error(f"Error calling Vertex AI: {str(e)}")
+        raise Exception(f"Vertex AI error: {str(e)}")
 
 @app.route('/')
 def index():
@@ -183,8 +302,39 @@ def chat():
         if project_id not in chat_histories:
             chat_histories[project_id] = []
 
-        # Get response from Gemini CLI (which has MCP tool access)
-        response_text = chat_with_gemini(message, project_id)
+        # Add system instruction as first message if history is empty
+        if not chat_histories[project_id]:
+            system_message = """You are Violet, a helpful AI assistant for Verily Workbench users.
+
+You help users with:
+- Understanding their Workbench environment and resources
+- Data analysis and bioinformatics workflows
+- Exploring data collections and creating cohorts
+- Python, R, and SQL queries
+- Cloud resource management (GCP, BigQuery, Cloud Storage)
+- Best practices for scientific computing
+
+You have access to MCP tools that let you:
+- list_data_collections: List all data collections accessible in the workspace
+- get_data_collection: Get detailed information about a specific data collection
+
+When users ask about data collections or what data is available, use the list_data_collections tool.
+When they want details about a specific collection, use get_data_collection.
+
+Be concise, friendly, and focus on practical solutions. When providing code examples,
+make them ready to run in a Workbench environment."""
+
+            chat_histories[project_id].append({
+                'role': 'system',
+                'content': system_message
+            })
+
+        # Get response from Vertex AI with function calling
+        response_text, updated_contents = chat_with_gemini(
+            message,
+            project_id,
+            chat_histories[project_id]
+        )
 
         # Update history
         chat_histories[project_id].append({
@@ -198,7 +348,10 @@ def chat():
 
         return jsonify({
             'response': response_text,
-            'history': chat_histories[project_id]
+            'history': [
+                msg for msg in chat_histories[project_id]
+                if msg['role'] != 'system'  # Don't send system message to frontend
+            ]
         })
 
     except Exception as e:

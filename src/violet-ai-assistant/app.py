@@ -5,8 +5,6 @@ import subprocess
 import os
 import logging
 import requests
-import vertexai
-from vertexai.generative_models import GenerativeModel, Content, Part
 
 app = Flask(__name__)
 app.config['STRICT_SLASHES'] = False
@@ -15,10 +13,15 @@ CORS(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Workbench and Vertex AI configuration
+# Workbench API configuration
 WORKBENCH_API_BASE = "https://workbench.verily.com/api/wsm"
-VERTEX_AI_LOCATION = "us-central1"
-GEMINI_MODEL = "gemini-2.5-flash"
+
+# Gemini CLI environment
+GEMINI_ENV = {
+    'GOOGLE_GENAI_USE_VERTEXAI': 'true',
+    'GOOGLE_CLOUD_LOCATION': 'us-central1',
+    'GEMINI_CLI_TRUST_WORKSPACE': 'true'
+}
 
 # Store chat history per project
 chat_histories = {}
@@ -84,52 +87,43 @@ def get_default_project():
     """Get the default GCP project from environment."""
     return os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('GOOGLE_PROJECT')
 
-def chat_with_gemini(message: str, project_id: str, history: list) -> str:
-    """Send a message to Gemini via Vertex AI SDK and get response."""
+def chat_with_gemini(message: str, project_id: str) -> str:
+    """Send a message to Gemini CLI and get response with MCP tool access."""
     try:
-        # Initialize Vertex AI for this project
-        vertexai.init(project=project_id, location=VERTEX_AI_LOCATION)
+        # Build environment with Gemini config
+        env = {**os.environ, **GEMINI_ENV, 'GOOGLE_CLOUD_PROJECT': project_id}
 
-        # Create model
-        model = GenerativeModel(GEMINI_MODEL)
+        # Use --prompt for non-interactive mode
+        cmd = ['sudo', '-u', 'app', 'bash', '-l', '-c', f'gemini --prompt "{message}"']
 
-        # Convert history to Vertex AI format
-        contents = []
-        for msg in history:
-            role = msg['role']
-            if role == 'system':
-                # System messages can be prepended to first user message
-                continue
-            elif role == 'user':
-                contents.append(Content(role='user', parts=[Part.from_text(msg['content'])]))
-            elif role == 'assistant':
-                contents.append(Content(role='model', parts=[Part.from_text(msg['content'])]))
+        # Run Gemini CLI
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+            cwd='/workspace'
+        )
 
-        # Add the new user message
-        contents.append(Content(role='user', parts=[Part.from_text(message)]))
+        if result.returncode != 0:
+            logger.error(f"Gemini CLI error: {result.stderr}")
+            raise Exception(f"Gemini CLI failed: {result.stderr}")
 
-        # Get system message if exists
-        system_instruction = None
-        for msg in history:
-            if msg['role'] == 'system':
-                system_instruction = msg['content']
-                break
+        # Get the response
+        response_text = result.stdout.strip()
 
-        # Generate response
-        if system_instruction:
-            model_with_system = GenerativeModel(
-                GEMINI_MODEL,
-                system_instruction=system_instruction
-            )
-            response = model_with_system.generate_content(contents)
-        else:
-            response = model.generate_content(contents)
+        # Clean up any CLI formatting
+        if response_text.startswith('Gemini:'):
+            response_text = response_text[7:].strip()
 
-        return response.text
+        return response_text
 
+    except subprocess.TimeoutExpired:
+        raise Exception("Gemini CLI timed out")
     except Exception as e:
-        logger.error(f"Error calling Vertex AI: {str(e)}")
-        raise Exception(f"Vertex AI error: {str(e)}")
+        logger.error(f"Error calling Gemini CLI: {str(e)}")
+        raise
 
 @app.route('/')
 def index():
@@ -168,38 +162,8 @@ def chat():
         if project_id not in chat_histories:
             chat_histories[project_id] = []
 
-        # Add system instruction as first message if history is empty
-        if not chat_histories[project_id]:
-            system_message = """You are Violet, a helpful AI assistant for Verily Workbench users.
-
-You help users with:
-- Understanding their Workbench environment and resources
-- Data analysis and bioinformatics workflows
-- Exploring data collections and creating cohorts
-- Python, R, and SQL queries
-- Cloud resource management (GCP, BigQuery, Cloud Storage)
-- Best practices for scientific computing
-
-You have access to Workbench MCP tools that let you:
-- List available data collections
-- Explore data schemas and entities
-- Create cohorts with complex filters
-- Manage workspace resources
-
-Be concise, friendly, and focus on practical solutions. When providing code examples,
-make them ready to run in a Workbench environment."""
-
-            chat_histories[project_id].append({
-                'role': 'system',
-                'content': system_message
-            })
-
-        # Get response from Vertex AI
-        response_text = chat_with_gemini(
-            message,
-            project_id,
-            chat_histories[project_id]
-        )
+        # Get response from Gemini CLI (which has MCP tool access)
+        response_text = chat_with_gemini(message, project_id)
 
         # Update history
         chat_histories[project_id].append({
@@ -213,10 +177,7 @@ make them ready to run in a Workbench environment."""
 
         return jsonify({
             'response': response_text,
-            'history': [
-                msg for msg in chat_histories[project_id]
-                if msg['role'] != 'system'  # Don't send system message to frontend
-            ]
+            'history': chat_histories[project_id]
         })
 
     except Exception as e:

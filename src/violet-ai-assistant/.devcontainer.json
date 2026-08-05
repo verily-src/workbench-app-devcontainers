@@ -12,7 +12,7 @@
     "gcp",
     "true"
   ],
-  "postStartCommand": "sudo -u app /opt/llm-context/run-context-generator.sh /home/app || true; /opt/wb-mcp-server/start-server.sh || true",
+  "postStartCommand": "sudo -u app /opt/llm-context/run-context-generator.sh /home/app || true; /opt/wb-mcp-server/start-server.sh || true; /workspace/configure-gemini.sh app /home/app || true",
   "features": {
     "ghcr.io/devcontainers/features/node@sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6": {
       "version": "24.11.0"

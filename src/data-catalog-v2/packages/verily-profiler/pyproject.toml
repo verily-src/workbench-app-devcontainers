@@ -1,0 +1,21 @@
+[project]
+name = "verily-profiler"
+version = "0.1.0"
+description = "BigQuery table profiling: technical stats + LLM-driven semantic metadata"
+requires-python = ">=3.11"
+dependencies = [
+    "google-cloud-bigquery>=3.25.0",
+    "google-cloud-storage>=2.14.0",
+    "google-genai>=1.0.0",
+    "click>=8.0.0",
+]
+
+[project.scripts]
+verily-profiler = "verily_profiler.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verily_profiler"]

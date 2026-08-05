@@ -25,7 +25,7 @@ def get_workbench_projects():
             capture_output=True,
             text=True,
             check=True,
-            timeout=10
+            timeout=120
         )
         status = json.loads(result.stdout)
         project_id = status.get('workspace', {}).get('googleProjectId', '')
@@ -59,7 +59,7 @@ def get_default_project():
             capture_output=True,
             text=True,
             check=True,
-            timeout=5
+            timeout=120
         )
         project = result.stdout.strip()
         if project and project != '(unset)':
@@ -76,7 +76,7 @@ def set_gemini_project(project_id: str):
             ['sudo', '-u', 'app', 'bash', '-l', '-c', f'gemini config set project {project_id}'],
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=30
         )
         if result.returncode != 0:
             logger.error(f"Failed to set Gemini project: {result.stderr}")

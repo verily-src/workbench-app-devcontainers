@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sed \
     sudo \
     tar \
+    jq \
     default-jre-headless \
     gnupg \
     lsb-release \

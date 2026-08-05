@@ -150,8 +150,8 @@ def execute_mcp_function(function_name: str, args: dict) -> dict:
 
         # Map function names to MCP tool names
         tool_map = {
-            "list_data_collections": "list-data-collections",
-            "get_data_collection": "get-data-collection"
+            "list_data_collections": "platform_list_data_collections",
+            "get_data_collection": "workspace_list_data_collections"
         }
 
         tool_name = tool_map.get(function_name)

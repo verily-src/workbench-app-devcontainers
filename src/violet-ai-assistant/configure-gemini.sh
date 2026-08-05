@@ -22,7 +22,8 @@ if [ -f "${SETTINGS_FILE}" ]; then
        '. + {
          "auth": {"method": "vertexai"},
          "project": $project,
-         "location": "us-central1"
+         "location": "us-central1",
+         "model": "gemini-2.5-flash"
        }' "${SETTINGS_FILE}" > "${TMP_FILE}"
     mv "${TMP_FILE}" "${SETTINGS_FILE}"
 else
@@ -33,7 +34,8 @@ else
     "method": "vertexai"
   },
   "project": "${PROJECT_ID}",
-  "location": "us-central1"
+  "location": "us-central1",
+  "model": "gemini-2.5-flash"
 }
 EOF
 fi

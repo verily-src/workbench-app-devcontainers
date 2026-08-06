@@ -490,6 +490,7 @@ def chat_with_gemini(message: str, project_id: str, history: list) -> tuple[str,
     """Send a message to Gemini via Vertex AI SDK with function calling."""
     try:
         # Initialize Vertex AI for this project
+        logger.info(f"Initializing Vertex AI with project={project_id}, location={VERTEX_AI_LOCATION}")
         vertexai.init(project=project_id, location=VERTEX_AI_LOCATION)
 
         # Create model with MCP tools
@@ -606,6 +607,8 @@ def chat():
 
         if not project_id:
             return jsonify({'error': 'Project ID is required'}), 400
+
+        logger.info(f"Chat request for project: {project_id}")
 
         # Get or create chat history for this project
         if project_id not in chat_histories:

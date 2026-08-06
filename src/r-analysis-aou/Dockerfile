@@ -14,12 +14,4 @@ COPY --from=load-envs --chown=$USER \
 
 RUN echo "source $HOME/load-env.sh" >> $HOME/.bashrc
 
-# Source AoU env vars in R sessions via rsession-profile, which RStudio Server
-# reads before starting each R session. Without this, variables exported in
-# .bashrc are visible in the terminal but not via Sys.getenv() in R, because
-# R sessions inherit from the RStudio server process rather than the shell.
-RUN mkdir -p /etc/rstudio && \
-    printf 'if [ -f "${HOME}/load-env.sh" ]; then\n    source "${HOME}/load-env.sh"\nfi\n' \
-    > /etc/rstudio/rsession-profile
-
 # TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227

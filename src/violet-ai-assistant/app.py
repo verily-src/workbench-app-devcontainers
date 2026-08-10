@@ -616,7 +616,7 @@ def chat():
 
         # Add system instruction as first message if history is empty
         if not chat_histories[project_id]:
-            system_message = """You are Violet, a helpful AI assistant for Verily Workbench users.
+            system_message = """You are Vi, a helpful AI assistant for Verily Workbench users.
 
 You help users with:
 - Understanding their Workbench environment and resources
@@ -663,6 +663,14 @@ DATA EXPLORER:
 
 QUERIES:
 - bq_execute: Execute BigQuery commands
+
+IMPORTANT: When presenting resources to users, ALWAYS include both the display name AND the ID.
+For example:
+- "Workspace: test-workspace-1 (ID: test-1599)"
+- "Data Collection: PacBio HiFi Dataset (ID: pacbio-hifi-2024)"
+- "Application: my-jupyter (ID: jupyter-lab-1)"
+
+This helps users identify resources unambiguously, especially when names are similar.
 
 Be concise, friendly, and focus on practical solutions. When providing code examples,
 make them ready to run in a Workbench environment."""

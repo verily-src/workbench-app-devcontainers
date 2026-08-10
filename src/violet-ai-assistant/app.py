@@ -481,9 +481,8 @@ def execute_mcp_function(function_name: str, args: dict) -> dict:
 
         result = response.json()
 
-        # Log first item for debugging (especially for list operations)
-        if isinstance(result, dict) and 'content' in result:
-            logger.info(f"MCP response preview for {function_name}: {str(result)[:500]}...")
+        # Log the actual response structure
+        logger.info(f"MCP raw response for {function_name}: {str(result)[:1000]}...")
 
         return result
 
@@ -556,6 +555,8 @@ def chat_with_gemini(message: str, project_id: str, history: list) -> tuple[str,
 
                 # Execute the function
                 function_result = execute_mcp_function(function_name, function_args)
+
+                logger.info(f"Sending to Gemini for {function_name}: {str(function_result)[:500]}...")
 
                 # Add function response to chat
                 function_response_part = Part.from_function_response(

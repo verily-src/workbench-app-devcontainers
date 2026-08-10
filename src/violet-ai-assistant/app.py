@@ -480,6 +480,11 @@ def execute_mcp_function(function_name: str, args: dict) -> dict:
         response.raise_for_status()
 
         result = response.json()
+
+        # Log first item for debugging (especially for list operations)
+        if isinstance(result, dict) and 'content' in result:
+            logger.info(f"MCP response preview for {function_name}: {str(result)[:500]}...")
+
         return result
 
     except Exception as e:
@@ -664,13 +669,24 @@ DATA EXPLORER:
 QUERIES:
 - bq_execute: Execute BigQuery commands
 
-IMPORTANT: When presenting resources to users, ALWAYS include both the display name AND the ID.
-For example:
-- "Workspace: test-workspace-1 (ID: test-1599)"
-- "Data Collection: PacBio HiFi Dataset (ID: pacbio-hifi-2024)"
-- "Application: my-jupyter (ID: jupyter-lab-1)"
+CRITICAL FORMATTING RULE: When presenting resources to users, you MUST ALWAYS include both the display name AND the ID.
 
-This helps users identify resources unambiguously, especially when names are similar.
+Required format:
+- Workspaces: "Workspace Name (ID: workspace-id)"
+- Data Collections: "Collection Name (ID: collection-id)"
+- Applications: "App Name (ID: app-id)"
+- Resources: "Resource Name (ID: resource-id)"
+
+Examples:
+- "test-workspace-1 (ID: test-1599)"
+- "PacBio HiFi SPRQ-Nx Human HG002 WGS (ID: pacbio-hifi-sprq-nx-human-hg002-wgs)"
+- "my-jupyter (ID: jupyter-lab-1)"
+
+When listing data collections from platform_list_data_collections, the response includes an "id" field.
+You MUST extract and display this id field for EVERY data collection in your response.
+Format each collection as: "**Collection Name (ID: collection-id)**: Description"
+
+This is essential because users need IDs to reference resources unambiguously in commands and APIs.
 
 Be concise, friendly, and focus on practical solutions. When providing code examples,
 make them ready to run in a Workbench environment."""

@@ -1,0 +1,20 @@
+{
+  "id": "enrichment-authoring",
+  "version": "1.0.0",
+  "name": "enrichment-authoring",
+  "description": "Custom Workbench app: enrichment-authoring (Image: mcr.microsoft.com/devcontainers/base:ubuntu-24.04, Port: 8080, User: vscode)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

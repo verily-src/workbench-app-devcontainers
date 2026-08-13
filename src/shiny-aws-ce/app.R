@@ -53,7 +53,7 @@ load_aws_data <- function() {
     # EC2 Other data
     ec2_other_categories <- read_csv(file.path(data_dir, "ec2_other_categories.csv"), show_col_types = FALSE)
     ec2_other_usage_lines <- read_csv(file.path(data_dir, "ec2_other_usage_lines.csv"), show_col_types = FALSE)
-    ec2_other_usage_summary <- read_csv(file.path(data_dir, "ec2_other_usage_summary.csv"), show_col_types = FALSE)
+    #ec2_other_usage_summary <- read_csv(file.path(data_dir, "ec2_other_usage_summary.csv"), show_col_types = FALSE)
 
     # Workspace data
     workspaces_ec2 <- read_csv(file.path(data_dir, "workspaces_ec2.csv"), show_col_types = FALSE)
@@ -136,7 +136,7 @@ load_aws_data <- function() {
       ebs_by_region = ebs_by_region,
       ec2_other_categories = ec2_other_categories,
       ec2_other_usage_lines = ec2_other_usage_lines,
-      ec2_other_usage_summary = ec2_other_usage_summary,
+      #ec2_other_usage_summary = ec2_other_usage_summary,
       workspaces_ec2 = workspaces_ec2,
       workspaces_omics = workspaces_omics,
       s3_daily_costs = s3_daily_costs,

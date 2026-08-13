@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:952f2d5befa26c52a0439378a978c5b6ff264f00dd9aae198a1952d16055a668",
+    "installed": "sha256:d87458314fd8a4dd6b44ca12788d95dfd529f8744e02cf28c18f1f7184059bb8",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:6aa410412594c3a226e5fde8dc5e0a15b1bde7ff963e8bbd3f2310bc472e2e60",
+    "installed": "sha256:0246bf84cdd3782cb139a4bad9ee2ebcf1fd5848f098257795d18ffed9db9752",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:b14171b7cdb093da244cf860d4aad647e8bc3b3e9c432ceddaa1f63539195e9d",
+    "installed": "sha256:1d091f4ad727822f6ece6e67d15bcd0d1978cb47a492207a0ad3d95f6c71c7f2",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:8f04415b5bf31223558d7d70aa990457fae7acafbfdabdb9986df630671a5b9c",
+    "installed": "sha256:445bf3b3adec5d5e1c7ecf773b82e7869655794ab3a5ef4b9682601924a8003b",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,7 +61,7 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:621d47575a19645f4267f68a77167ca0b4562d042717dbe0dbba318c9753bad7",
+    "installed": "sha256:53be15285786b6c9cedee49390bd0fa198bfb40cde3904b52452baa223272ea5",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
@@ -91,7 +91,7 @@
   },
   "gcr.io/go-containerregistry/crane": {
     "tag": "latest",
-    "installed": "sha256:e85fa14e99e5ef7351822ed887ce322bc1e22f9ef8e9eb54ebf2d7a9473bfef9",
+    "installed": "sha256:1adc5402d3545c76c559d095faaedec779f55b8457bb032b0905d4287fcd3597",
     "filter": "startupscript\\/butane\\/prefetch-oci-features\\.sh"
   }
 }

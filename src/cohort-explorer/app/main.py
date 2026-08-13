@@ -226,6 +226,8 @@ def refresh_datasources() -> dict:
 
 
 _s3_files_cache: dict[str, list[dict]] = {}
+_s3_files_last_refresh: dict[str, float] = {}
+_S3_FILES_COOLDOWN = 60.0
 
 
 def _fetch_s3_files(folder_id: str) -> list[dict]:
@@ -258,17 +260,34 @@ def _fetch_s3_files(folder_id: str) -> list[dict]:
                 "size": size,
                 "s3_path": f"{bucket_path}/{key}",
             })
-    _s3_files_cache[folder_id] = files
-    logger.info("Cached %d S3 files for %s", len(files), folder_id)
-    return files
+    # Never overwrite a non-empty cache with an empty result. A transient
+    # rc=0-but-empty listing (SAM/creds hiccup) must not blank a good list.
+    if files or folder_id not in _s3_files_cache:
+        _s3_files_cache[folder_id] = files
+        logger.info("Cached %d S3 files for %s", len(files), folder_id)
+    else:
+        logger.warning("Skipped caching empty S3 listing for %s (kept %d cached)",
+                       folder_id, len(_s3_files_cache[folder_id]))
+    return _s3_files_cache.get(folder_id, files)
+
+
+def _refresh_s3_files(folder_id: str):
+    try:
+        _fetch_s3_files(folder_id)
+    except Exception as e:
+        logger.warning("Background S3 refresh failed for %s: %s", folder_id, e)
 
 
 @app.get("/api/s3/files")
 def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
     if folder_id in _s3_files_cache:
-        threading.Thread(target=_fetch_s3_files, args=(folder_id,), daemon=True).start()
+        now = time.monotonic()
+        if now - _s3_files_last_refresh.get(folder_id, 0.0) > _S3_FILES_COOLDOWN:
+            _s3_files_last_refresh[folder_id] = now
+            threading.Thread(target=_refresh_s3_files, args=(folder_id,), daemon=True).start()
         return _s3_files_cache[folder_id]
     try:
+        _s3_files_last_refresh[folder_id] = time.monotonic()
         return _fetch_s3_files(folder_id)
     except Exception as e:
         logger.error("Failed to list S3 files: %s", e)

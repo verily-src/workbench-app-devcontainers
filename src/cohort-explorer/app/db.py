@@ -2,6 +2,7 @@ import json
 import logging
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 from sqlalchemy import create_engine, Engine
@@ -16,6 +17,8 @@ _active_resource_id: str | None = None
 _resource_cache: list[dict] | None = None
 _resource_cache_lock = threading.Lock()
 _resource_cache_ready = threading.Event()
+_last_refresh = 0.0
+_REFRESH_COOLDOWN = 60.0
 
 _conn_string_cache: dict[str, str] = {}
 _conn_string_events: dict[str, threading.Event] = {}
@@ -135,9 +138,12 @@ def _refresh_resource_cache():
 
 
 def _ensure_cache(wait: bool = False) -> list[dict]:
+    global _last_refresh
     if wait and not _resource_cache_ready.is_set():
         _resource_cache_ready.wait(timeout=120)
-    elif _resource_cache is not None:
+    elif (not wait and _resource_cache is not None
+          and time.monotonic() - _last_refresh > _REFRESH_COOLDOWN):
+        _last_refresh = time.monotonic()
         threading.Thread(target=_refresh_resource_cache, daemon=True).start()
     return _resource_cache or []
 

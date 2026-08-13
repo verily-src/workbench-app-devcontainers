@@ -508,7 +508,7 @@ server <- function(input, output, session) {
 
   output$compute_cost_box <- renderValueBox({
     compute_cost <- global_filtered_cost_data() %>%
-      dplyr::filter(category %in% c("Compute", "EC2-Instance", "EC2-Other")) %>%
+      dplyr::filter(category %in% c("Compute", "EC2-Instance", "EC2 - Other")) %>%
       dplyr::summarise(total = sum(amount_usd, na.rm = TRUE)) %>%
       dplyr::pull(total)
 

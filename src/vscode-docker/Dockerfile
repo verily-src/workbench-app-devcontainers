@@ -66,15 +66,24 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     rm -rf /var/lib/apt/lists/*
 
 # Install Node.js (required for promptfoo)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g npm@latest
 
 # Install promptfoo CLI
 RUN npm install -g promptfoo
 
 # Install uv (Python package manager)
 RUN curl -LsSf https://astral.sh/uv/0.10.7/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
+
+# Install bubblewrap (setuid, so it can create its sandbox without relying on
+# unprivileged user namespaces, which Ubuntu 24.04's AppArmor profile blocks),
+# required for the Codex CLI's sandboxing to work on Linux.
+RUN apt-get update && apt-get install -y bubblewrap \
+    && chmod u+s /usr/bin/bwrap \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set up environment variables
 ENV PATH="/usr/local/go/bin:${PATH}"

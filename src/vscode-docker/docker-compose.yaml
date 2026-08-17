@@ -30,6 +30,7 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
+      - seccomp:unconfined
 networks:
   app-network:
     external: true

@@ -1,0 +1,55 @@
+include:
+  - ../jupyter-common/jupyter-common-compose.yaml
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: ./browser.Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+    environment:
+      SELKIES_DESKTOP: false
+      NO_GAMEPAD: true
+      NO_DECOR: true
+      HARDEN_DESKTOP: true
+      DISABLE_CLOSE_BUTTON: true
+      RESTART_APP: true
+      HARDEN_KEYBINDS: true
+      SELKIES_UI_TITLE: VWB
+      SELKIES_UI_SHOW_LOGO: false
+      SELKIES_UI_SIDEBAR_SHOW_STATS: false
+      SELKIES_ENABLE_SHARING: false
+      SELKIES_CLIPBOARD_OUT_ENABLED: false
+      SELKIES_FILE_TRANSFERS: upload
+      SELKIES_UI_SIDEBAR_SHOW_FILES: true
+      SELKIES_UI_SIDEBAR_SHOW_GAMING_MODE: false
+      SELKIES_UI_SHOW_CORE_BUTTONS: false
+      CHROME_CLI: "--proxy-server=0.0.0.0:0 --proxy-bypass-list=jupyterlab http://jupyterlab:8888"
+
+  jupyterlab:
+    container_name: "jupyterlab"
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
+    build:
+      context: .
+      additional_contexts:
+        jupyter-extension-builder: service:jupyter-common-extension-builder
+    user: "jupyter"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true

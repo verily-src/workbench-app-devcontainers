@@ -1,9 +1,9 @@
 {
-  "id": "custom-workbench-jupyter-template",
-  "description": "A template used to serve the Workbench JupyterLab container image",
+  "id": "virtual-browser-jupyter",
+  "description": "A template that serves JupyterLab through a streamed Chromium browser session",
   "version": "0.0.1",
-  "name": "Workbench Prebuilt JupyterLab Template",
-  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/custom-workbench-jupyter-template",
+  "name": "JupyterLab in a Virtual Browser",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/virtual-browser-jupyter",
   "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
   "options": {
     "cloud": {

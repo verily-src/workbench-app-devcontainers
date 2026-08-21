@@ -24,6 +24,31 @@ services:
       SELKIES_UI_SIDEBAR_SHOW_STATS: false
       SELKIES_ENABLE_SHARING: false
       SELKIES_CLIPBOARD_OUT_ENABLED: false
+
+      # --- Selkies encoding tuning for a text/UI workload ---
+      # Selkies' defaults target full-motion cloud gaming. A JupyterLab UI is
+      # static most of the time, so the defaults spend CPU and egress encoding
+      # frames that are visually identical. These lower the steady-state cost.
+      #
+      # Frame rate cap, down from the built-in 60fps default. Ample for
+      # reading, scrolling and typing, and cuts encode work proportionally.
+      # Must be a single fixed value: a range (e.g. "8-20") is discarded in
+      # favour of the 60fps default. Note a fixed value also hides the
+      # framerate slider in the Selkies UI.
+      SELKIES_FRAMERATE: 20
+      # Quality target for moving content; higher CRF = fewer bits. Slight
+      # softness while scrolling is not noticeable, and paint-over (below)
+      # re-sends static content at high quality once motion stops.
+      # Keep this ABOVE SELKIES_H264_PAINTOVER_CRF (default 18) - paint-over
+      # only activates when its CRF is lower than this one.
+      SELKIES_H264_CRF: 28
+      # Re-encode a settled screen once at high quality, then stop sending.
+      # This is what keeps text crisp despite the higher motion CRF above.
+      SELKIES_USE_PAINT_OVER_QUALITY: true
+      # No audio or microphone in this workload. Left unlocked rather than
+      # removed, so a deployment can turn either back on without a rebuild.
+      SELKIES_AUDIO_ENABLED: false
+      SELKIES_MICROPHONE_ENABLED: false
       SELKIES_FILE_TRANSFERS: upload
       SELKIES_UI_SIDEBAR_SHOW_FILES: true
       SELKIES_UI_SIDEBAR_SHOW_GAMING_MODE: false

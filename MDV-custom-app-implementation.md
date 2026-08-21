@@ -13,7 +13,9 @@ A two-service Verily Workbench custom app under [src/mdv/](src/mdv/), following 
 
 | File | Purpose |
 | --- | --- |
-| [src/mdv/docker-compose.yaml](src/mdv/docker-compose.yaml) | Two services: `app` (MDV, the Workbench-facing `application-server`) and `mdv_db` (PostgreSQL). Defines named volumes and networks. |
+| [src/mdv/docker-compose.yaml](src/mdv/docker-compose.yaml) | Two services: `app` (MDV, the Workbench-facing `application-server`, built from the local `Dockerfile`) and `mdv_db` (PostgreSQL). Defines named volumes and networks. |
+| [src/mdv/Dockerfile](src/mdv/Dockerfile) | Thin wrapper over `mdvadmin/mdv:stable` that restores the tools Workbench provisioning needs on MDV's Debian trixie base: `sudo`, an `apt-key` shim, and a `fuse` package shim. |
+| [src/mdv/apt-key-shim.sh](src/mdv/apt-key-shim.sh) | Compatibility shim for the removed `apt-key`; handles both `add -` and `--keyring <file> add -` forms via `gpg --dearmor`. |
 | [src/mdv/.devcontainer.json](src/mdv/.devcontainer.json) | Devcontainer config: `service: app`, Workbench startup hooks, features, `remoteUser: root`. |
 | [src/mdv/devcontainer-template.json](src/mdv/devcontainer-template.json) | Template metadata and `cloud` / `login` options consumed by the build harness. |
 | [src/mdv/.env.example](src/mdv/.env.example) | Template for DB credentials and `FLASK_SECRET_KEY`. Copy to `.env` (git-ignored). |
@@ -29,7 +31,7 @@ A two-service Verily Workbench custom app under [src/mdv/](src/mdv/), following 
                           │
                    ┌──────┴───────┐
                    │     app      │  container_name: application-server
-                   │  MDV :5055   │  image: mdvadmin/mdv:stable  (user: pn)
+                   │  MDV :5055   │  build: Dockerfile (FROM mdvadmin/mdv:stable, user: pn)
                    └──────┬───────┘
                           │  mdv-internal (private; no host port)
                    ┌──────┴───────┐
@@ -50,7 +52,8 @@ volumes:  mdv-data → /app/mdv                (projects + .h5 files)
 
 | Concern | Decision | Where |
 | --- | --- | --- |
-| Image | Prebuilt `mdvadmin/mdv:stable` (pin a digest for prod) | `docker-compose.yaml` |
+| Image | Local wrapper (`image: mdv-workbench:local`) built `FROM mdvadmin/mdv:stable` (pin the FROM digest for prod) | `Dockerfile` / `docker-compose.yaml` |
+| trixie compat | Wrapper restores `sudo`, an `apt-key` shim, and a dummy `fuse` package (trixie renamed `fuse` → `fuse3`) so Workbench provisioning succeeds | `Dockerfile` |
 | Auth | `ENABLE_AUTH=0` — access gated by Workbench | `docker-compose.yaml` env |
 | Persistence | Local named volumes (`mdv-data`, `postgres-data`) — Option A | `docker-compose.yaml` volumes |
 | DB isolation | Private `mdv-internal` network, no host port | `docker-compose.yaml` networks |
@@ -74,8 +77,20 @@ volumes:  mdv-data → /app/mdv                (projects + .h5 files)
 - `service: app`, `workspaceFolder: /workspace`, `shutdownAction: none`, `runServices: [app, mdv_db]`.
 - `postCreateCommand` → `./startupscript/post-startup.sh pn /home/pn ${templateOption:cloud} ${templateOption:login}`.
 - `postStartCommand` → `./startupscript/remount-on-restart.sh` with the same args.
-- Features: `java`, `aws-cli`, `google-cloud-cli` (parity with `src/example`).
+- Features: `google-cloud-cli` only (MDV doesn't need the `java`/`aws-cli` features carried by `src/example`).
 - `remoteUser: root`.
+
+### Why a wrapper Dockerfile
+
+`mdvadmin/mdv:stable` is a Debian 13 (trixie) app-only image. Workbench's per-VM
+provisioning assumes tooling the image omits, so the wrapper layers it back on
+without touching the app:
+
+| Gap on trixie base | Symptom | Wrapper fix |
+| --- | --- | --- |
+| No `sudo` | `post-startup.sh` runs steps via `sudo -u <user>` | install `sudo` + NOPASSWD for `pn` |
+| `apt-key` removed | gcsfuse install and the `google-cloud-cli` feature call `apt-key add -` | `apt-key-shim.sh` at `/usr/local/bin/apt-key` (`gpg --dearmor`) |
+| `fuse` renamed to `fuse3` | `post-startup.sh`'s `apt-get install ... fuse` has no candidate and aborts | install `fuse3` + register a dummy `fuse` package that depends on it |
 
 ## How to run locally
 
@@ -117,7 +132,8 @@ The repo's own CI installs these in [tests/common/build.sh](tests/common/build.s
 
 ## Production follow-ups (not blocking a test app)
 
-* Pin the MDV image to a specific tag/digest instead of `:stable`.
+* Pin the wrapper's `FROM` to a specific MDV tag/digest instead of `:stable`.
+* Fold the trixie compat shims upstream if MDV later ships a Workbench-ready image.
 * Provide `FLASK_SECRET_KEY` and DB credentials as real secrets (not committed defaults).
 * Confirm `MDV_API_ROOT` if Workbench serves the app under a subpath.
 * For durable data, move to a retained persistent disk (Option B) and add scheduled backups

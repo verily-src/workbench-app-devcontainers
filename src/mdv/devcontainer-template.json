@@ -1,0 +1,20 @@
+{
+  "id": "mdv",
+  "version": "1.0.0",
+  "name": "mdv",
+  "description": "Multi-Dimensional Viewer (MDV) custom Workbench app (Image: mdvadmin/mdv:stable, Port: 5055, User: pn) with a private PostgreSQL backend.",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

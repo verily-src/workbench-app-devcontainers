@@ -1,0 +1,75 @@
+services:
+  app:
+    # The container name must be "application-server".
+    container_name: "application-server"
+    # Built from the local Dockerfile, which layers sudo + apt-key compatibility
+    # onto MDV's published image so Workbench provisioning works on its trixie base.
+    # Pin the FROM digest/tag in the Dockerfile for a real deployment.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: "mdv-workbench:local"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      # Live project store (project directories + .h5 files). Keep on a local
+      # volume — gcsfuse buckets cannot host MDV's random/mmap .h5 writes.
+      - mdv-data:/app/mdv
+    ports:
+      # MDV's port; forwarded and surfaced by the Workbench UI.
+      - 5055:5055
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      # Database connection (matches the mdv_db service below).
+      - DB_HOST=mdv_db
+      - DB_USER=${DB_USER:-mdv_user}
+      - DB_PASSWORD=${DB_PASSWORD:-mdv_password}
+      - DB_NAME=${DB_NAME:-mdv_db}
+      # Flask session signing key. Override via .env for anything real.
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-me-in-dot-env}
+      - MDV_API_ROOT=/
+      # Access is gated by Workbench; MDV's own auth stays off.
+      - ENABLE_AUTH=0
+    networks:
+      - app-network      # Workbench-facing (external)
+      - mdv-internal     # reaches the DB
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    depends_on:
+      mdv_db:
+        condition: service_healthy
+
+  mdv_db:
+    image: "postgres:16"
+    restart: always
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${DB_USER:-mdv_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-mdv_password}
+      POSTGRES_DB: ${DB_NAME:-mdv_db}
+    networks:
+      # Private only: not on app-network, no host port exposed.
+      - mdv-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mdv-data:
+  postgres-data:
+
+networks:
+  # External network created by Workbench; only the app service joins it.
+  app-network:
+    external: true
+  # Private network for app <-> db traffic.
+  mdv-internal:

@@ -1,0 +1,26 @@
+{
+  "name": "mdv",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "runServices": ["app", "mdv_db"],
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "pn",
+    "/home/pn",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "pn",
+    "/home/pn",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/dhoeric/features/google-cloud-cli:1": {}
+  },
+  "remoteUser": "root"
+}

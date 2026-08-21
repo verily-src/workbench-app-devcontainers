@@ -77,7 +77,7 @@ volumes:  mdv-data → /app/mdv                (projects + .h5 files)
 - `service: app`, `workspaceFolder: /workspace`, `shutdownAction: none`, `runServices: [app, mdv_db]`.
 - `postCreateCommand` → `./startupscript/post-startup.sh pn /home/pn ${templateOption:cloud} ${templateOption:login}`.
 - `postStartCommand` → `./startupscript/remount-on-restart.sh` with the same args.
-- Features: `google-cloud-cli` only (MDV doesn't need the `java`/`aws-cli` features carried by `src/example`).
+- Features: `java` (17) and `google-cloud-cli`. `java` is required — `post-startup.sh` sources `install-java.sh` for the `wb` CLI, so omitting it fails the provisioning hook. `aws-cli` is dropped because this app targets GCP (its scripts only run when `CLOUD == aws`).
 - `remoteUser: root`.
 
 ### Why a wrapper Dockerfile

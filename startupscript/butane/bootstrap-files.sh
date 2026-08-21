@@ -65,6 +65,7 @@ download /home/core/docker-credential-secrets.sh "docker-credential-secrets.sh"
 download /home/core/docker-auth-secrets.sh "docker-auth-secrets.sh"
 download /home/core/run-fluent-bit.sh "run-fluent-bit.sh"
 download /etc/fluent-bit/severity.lua "severity.lua" 0644
+download /etc/fluent-bit/container-name.lua "container-name.lua" 0644
 download /home/core/wb/Dockerfile "wb/Dockerfile" 0644
 download /home/core/wb.sh "wb/wb.sh"
 download /oem/bin/oem-postinst "oem-postinst"

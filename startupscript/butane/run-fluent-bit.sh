@@ -53,6 +53,7 @@ DOCKER_ARGS=(
     --network host
     -v /etc/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
     -v /etc/fluent-bit/severity.lua:/fluent-bit/scripts/severity.lua:ro
+    -v /etc/fluent-bit/container-name.lua:/fluent-bit/scripts/container-name.lua:ro
     -v /var/log/journal:/var/log/journal:ro
     -v /var/lib/docker/containers:/var/lib/docker/containers:ro
     -v /var/lib/fluent-bit:/var/lib/fluent-bit

@@ -1,6 +1,10 @@
 {
-  "URLAllowlist": ["http://jupyterlab:8888"],
-  "URLBlocklist": ["*"],
+  "URLAllowlist": [
+    "http://jupyterlab:8888"
+  ],
+  "URLBlocklist": [
+    "*"
+  ],
   "DownloadRestrictions": 3,
   "AllowFileSelectionDialogs": false,
   "DefaultFileSystemReadGuardSetting": 2,
@@ -12,10 +16,13 @@
   "CloudPrintSubmitEnabled": false,
   "SavingBrowserHistoryDisabled": true,
   "DeveloperToolsAvailability": 2,
+  "RemoteDebuggingAllowed": false,
   "IncognitoModeAvailability": 1,
   "BrowserGuestModeEnabled": false,
   "BrowserAddPersonEnabled": false,
-  "ExtensionInstallBlocklist": ["*"],
+  "ExtensionInstallBlocklist": [
+    "*"
+  ],
   "PasswordManagerEnabled": false,
   "AutofillAddressEnabled": false,
   "AutofillCreditCardEnabled": false,

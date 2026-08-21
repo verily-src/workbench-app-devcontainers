@@ -49,10 +49,14 @@ docker pull "${PROXY_IMAGE}"
 # Remove any existing proxy agent container
 docker rm -f "proxy-agent" 2>/dev/null || true
 
+# Note: per-container log options replace the daemon defaults set in
+# /etc/docker/daemon.json rather than merging with them, so the log tag that
+# identifies this container in forwarded logs has to be repeated here.
 docker run \
   --detach \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
+  --log-opt tag=proxy-agent \
   --name "proxy-agent" \
   --restart=unless-stopped \
   --net=host "${PROXY_IMAGE}" \

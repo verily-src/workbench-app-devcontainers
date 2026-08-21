@@ -1,5 +1,5 @@
 {
-  "name": "Custom Workbench JupyterLab devcontainer template",
+  "name": "JupyterLab in a Virtual Browser devcontainer template",
   "dockerComposeFile": ["docker-compose.yaml", "../jupyter-common/jupyter-common-compose.yaml"],
   "service": "jupyterlab",
   "runServices": ["app", "jupyterlab"],

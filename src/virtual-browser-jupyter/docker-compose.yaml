@@ -1,11 +1,15 @@
 include:
   - ../jupyter-common/jupyter-common-compose.yaml
 services:
+  # The browser is the served app: the proxy agent resolves its target by inspecting the container
+  # named "application-server" and taking its first published host port.
   app:
     container_name: "application-server"
     build:
       context: .
       dockerfile: ./browser.Dockerfile
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
     restart: always
     ports:
       - "3000:3000"
@@ -28,12 +32,13 @@ services:
       SELKIES_UI_SIDEBAR_SHOW_FILES: true
       SELKIES_UI_SIDEBAR_SHOW_GAMING_MODE: false
       SELKIES_UI_SHOW_CORE_BUTTONS: false
-      CHROME_CLI: "--proxy-server=0.0.0.0:0 --proxy-bypass-list=jupyterlab http://jupyterlab:8888"
+      # Chromium runs as a single-window app with no tab strip or address bar. The app URL must
+      # match the URLAllowlist entry in policies/managed-policy.json.
+      CHROME_CLI: "--app=http://jupyterlab:8888 --force-app-mode --start-fullscreen --proxy-server=0.0.0.0:0 --proxy-bypass-list=jupyterlab"
 
+  # JupyterLab is reached only over app-network by the browser container, so it publishes no ports.
   jupyterlab:
     container_name: "jupyterlab"
-    shm_size: "${templateOption:shmSize}"
-    mem_limit: "${templateOption:memoryLimit}"
     build:
       context: .
       additional_contexts:

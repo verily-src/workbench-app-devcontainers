@@ -20,6 +20,7 @@ readonly USER_HOME_DIR
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
+unset PYTHONPATH
 
 WORKDIR="$(mktemp -d)"
 readonly WORKDIR

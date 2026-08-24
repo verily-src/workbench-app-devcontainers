@@ -72,7 +72,8 @@ cat > "${REPO_ROOT}/${APP_DIR}/.devcontainer.json" <<EOF
   ],
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
-      "version": "17"
+      "version": "17",
+      "jdkDistro": "tem"
     },
     "ghcr.io/devcontainers/features/aws-cli:1": {},
     "ghcr.io/dhoeric/features/google-cloud-cli:1": {}

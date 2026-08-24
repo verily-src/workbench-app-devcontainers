@@ -4,12 +4,7 @@
     "installed": "sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
-  "ghcr.io/devcontainers/features/java": {
-    "tag": "1",
-    "installed": "sha256:8157bab2d8d71e40b2f3128c162fab763e2b11038fdd33784549290a5d386b48",
-    "filter": "src\\/.*\\/\\.devcontainer\\.json"
-  },
-  "ghcr.io/dhoeric/features/google-cloud-cli": {
+"ghcr.io/dhoeric/features/google-cloud-cli": {
     "tag": "1",
     "installed": "sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"

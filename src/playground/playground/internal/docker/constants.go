@@ -31,7 +31,8 @@ type TemplateVars struct {
 // WBFeatures defines the devcontainer features required for wb CLI
 var WBFeatures = map[string]any{
 	"ghcr.io/devcontainers/features/java:1": map[string]string{
-		"version": "17",
+		"version":    "17",
+		"jdkDistro": "tem",
 	},
 	"ghcr.io/devcontainers/features/aws-cli:1":    map[string]any{},
 	"ghcr.io/dhoeric/features/google-cloud-cli:1": map[string]any{},

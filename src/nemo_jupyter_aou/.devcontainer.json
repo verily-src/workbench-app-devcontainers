@@ -21,8 +21,9 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/java@sha256:8157bab2d8d71e40b2f3128c162fab763e2b11038fdd33784549290a5d386b48": {
-      "version": "17"
+    "./.devcontainer/features/java": {
+      "version": "17",
+      "jdkDistro": "tem"
     },
     "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
     "./.devcontainer/features/workbench-tools": {

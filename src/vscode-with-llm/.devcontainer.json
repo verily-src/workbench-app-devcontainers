@@ -10,7 +10,8 @@
   "postStartCommand": "./startupscript/remount-on-restart.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\"; /opt/llm-context/run-context-generator.sh /config || true",
   "features": {
     "ghcr.io/devcontainers/features/java@sha256:8157bab2d8d71e40b2f3128c162fab763e2b11038fdd33784549290a5d386b48": {
-      "version": "17"
+      "version": "17",
+      "jdkDistro": "tem"
     },
     "ghcr.io/devcontainers/features/node@sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6": {
       "version": "24.11.0"

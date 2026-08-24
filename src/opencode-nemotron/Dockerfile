@@ -3,7 +3,8 @@ FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f
 ARG OPENCODE_VERSION=1.18.22
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git jq python3 python3-pip python3-venv ripgrep zstd \
+    && apt-get install -y --no-install-recommends git jq openjdk-17-jre-headless \
+        python3 python3-pip python3-venv ripgrep zstd \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /config/extensions /config/.cache \
     && chown -R abc:abc /config

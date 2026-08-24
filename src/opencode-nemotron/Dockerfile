@@ -13,15 +13,22 @@ RUN curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | tar --zs
 
 # The installer hardcodes its target to ${HOME}/.opencode/bin. /config is a
 # volume mount at run time, so install under /opt and link the binary instead.
+# The base image sets HOME=/config for every user, including root. Override HOME
+# so neither the installer nor the version check writes root-owned state into
+# /config, which would stop the abc user from starting code-server.
 RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
     && HOME=/opt/opencode bash /tmp/install-opencode.sh \
         --version "${OPENCODE_VERSION}" --no-modify-path \
     && rm /tmp/install-opencode.sh \
     && chmod -R a+rX /opt/opencode \
     && ln -s /opt/opencode/.opencode/bin/opencode /usr/local/bin/opencode \
-    && opencode --version
+    && HOME=/opt/opencode opencode --version
 
 RUN pip install --break-system-packages openai uv
+
+# Re-assert ownership after every root layer, in case one of them wrote to
+# /config through the image-wide HOME=/config.
+RUN chown -R abc:abc /config
 
 USER abc
 ENV HOME=/config

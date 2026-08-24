@@ -51,12 +51,17 @@ print(response.choices[0].message.content)
 
 ## Changing the Model
 
-Set the `model` template option when you create the app. Use any tag from
-https://ollama.com/library. The value must be a tag that Ollama can pull, and the
-model must support tools for `opencode` to work.
+The model tag lives in `OLLAMA_MODEL` in `docker-compose.yaml`. Edit it in your
+fork and point the app config at that branch. Workbench substitutes only a fixed
+set of template options on the VM, so a custom `model` template option would not
+work.
 
-To change the model on a running app, edit `~/.config/opencode/opencode.json` and
-run `ollama pull <tag>`. The app rewrites that file on each restart.
+Use any tag from https://ollama.com/library. The model must support tools, or
+`opencode` cannot call them.
+
+To change the model on a running app, run `ollama pull <tag>` and edit
+`~/.config/opencode/opencode.json`. The app rewrites that file on each restart, so
+the change lasts until the next restart.
 
 ## Configuration
 

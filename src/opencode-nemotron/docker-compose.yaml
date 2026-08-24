@@ -14,7 +14,10 @@ services:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
       SUDO_PASSWORD: "pwd"
-      OLLAMA_MODEL: "${templateOption:model}"
+      # Workbench only substitutes a fixed set of template options on the VM
+      # (see startupscript/butane/050-parse-devcontainer.sh), so the model tag
+      # is set here rather than as a template option.
+      OLLAMA_MODEL: "nemotron-3.5-lightning:30b"
       OLLAMA_KEEP_ALIVE: "-1"
       OLLAMA_FLASH_ATTENTION: "true"
       # opencode needs a large context for reliable tool calls.

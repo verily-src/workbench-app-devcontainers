@@ -22,16 +22,6 @@
                 "false"
             ],
             "default": "false"
-        },
-        "model": {
-            "type": "string",
-            "description": "Ollama model tag that opencode uses",
-            "proposals": [
-                "nemotron-3.5-lightning:30b",
-                "nemotron-3-nano:30b",
-                "nemotron-3-nano:4b"
-            ],
-            "default": "nemotron-3.5-lightning:30b"
         }
     },
     "platforms": [

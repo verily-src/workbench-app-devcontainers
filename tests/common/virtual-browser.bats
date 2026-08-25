@@ -8,9 +8,10 @@ setup_file() {
 }
 
 BROWSER_CONTAINER="application-server"
-BACKEND_CONTAINER="jupyterlab"
+# Backend container name + app origin differ per template; the per-template .sh exports them.
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-jupyterlab}"
 POLICY_PATH="/etc/chromium/policies/managed/workbench-rbi.json"
-APP_ORIGIN="http://jupyterlab:8888"
+APP_ORIGIN="${APP_ORIGIN:-http://jupyterlab:8888}"
 
 @test "browser container is running" {
     run docker inspect -f '{{.State.Running}}' "${BROWSER_CONTAINER}"

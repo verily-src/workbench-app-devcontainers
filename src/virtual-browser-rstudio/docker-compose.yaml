@@ -1,0 +1,51 @@
+services:
+  # Browser front end. Built from the shared ../browser-common image; this template supplies only
+  # the RStudio-specific values. Selkies + hardening defaults are baked into that image.
+  app:
+    container_name: "application-server"
+    build:
+      context: ../browser-common
+      dockerfile: browser.Dockerfile
+      args:
+        # Baked into the policy URLAllowlist; must match the CHROME_CLI URL below.
+        APP_ORIGIN: "http://rstudio:8787"
+    # Chromium needs real shared memory to render; the 64MB Docker default causes renderer crashes.
+    shm_size: "2gb"
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+    environment:
+      # --kiosk: fullscreen, no window chrome/decorations, no address bar.
+      # --disable-features=WaylandFractionalScaleV1: fixes the Chromium/Wayland fractional-scaling
+      # click-offset. Dead proxy + bypass allow only the RStudio host. URL passed positionally.
+      CHROME_CLI: "--kiosk --disable-features=WaylandFractionalScaleV1 --proxy-server=0.0.0.0:0 --proxy-bypass-list=rstudio http://rstudio:8787"
+
+  # RStudio Server. Reached only over app-network by the browser container, so it publishes no ports.
+  rstudio:
+    container_name: "rstudio"
+    image: "ghcr.io/rocker-org/devcontainer/tidyverse@sha256:3a9ecbed900f17da528cdb17c3ddc43045fc9b4be7dbd8c61cb7b8a6439bfa6b"
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/rstudio:cached
+    tmpfs:
+      - /home/rstudio/workspace:uid=1000,gid=1000
+    environment:
+      DISABLE_AUTH: "true"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

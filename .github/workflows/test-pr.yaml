@@ -68,6 +68,10 @@ jobs:
               filters:
                 - 'src/browser-common/**'
                 - 'src/jupyter-common/**'
+            virtual-browser-rstudio:
+              maximize_build_space: true
+              filters:
+                - 'src/browser-common/**'
             nemo_jupyter:
               maximize_build_space: true
               filters:

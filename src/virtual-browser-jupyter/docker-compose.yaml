@@ -1,13 +1,11 @@
 include:
   - ../jupyter-common/jupyter-common-compose.yaml
 services:
-  # Browser front end. Built from the shared ../browser-common image; this template supplies only
-  # the JupyterLab-specific values. Selkies + hardening defaults are baked into that image.
+  # Browser front end, built from the shared ../browser-common image (Selkies + policy baked in).
   app:
     container_name: "application-server"
     build:
       context: ../browser-common
-      dockerfile: browser.Dockerfile
       args:
         APP_ORIGIN: "jupyterlab:8888"
     restart: always
@@ -16,10 +14,8 @@ services:
     networks:
       - app-network
     environment:
-      # --kiosk: fullscreen, no window chrome/decorations, no address bar.
       CHROME_CLI: "--kiosk http://jupyterlab:8888"
 
-  # JupyterLab server. Reached only over app-network by the browser container, so it publishes no ports.
   jupyterlab:
     container_name: "jupyterlab"
     build:

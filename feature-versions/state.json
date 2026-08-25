@@ -97,6 +97,6 @@
   "lscr.io/linuxserver/chromium": {
     "tag": "latest",
     "installed": "sha256:4c7b9086d2e5054b61c9e6b0f75efceece5befeff2bec3ff543d52e000cee21d",
-    "filter": "src\\/.*\\/browser\\.Dockerfile"
+    "filter": "src\\/browser-common\\/Dockerfile"
   }
 }

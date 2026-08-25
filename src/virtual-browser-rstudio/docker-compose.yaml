@@ -1,11 +1,9 @@
 services:
-  # Browser front end. Built from the shared ../browser-common image; this template supplies only
-  # the RStudio-specific values. Selkies + hardening defaults are baked into that image.
+  # Browser front end, built from the shared ../browser-common image (Selkies + policy baked in).
   app:
     container_name: "application-server"
     build:
       context: ../browser-common
-      dockerfile: browser.Dockerfile
       args:
         APP_ORIGIN: "rstudio:8787"
     # Chromium needs real shared memory to render; the 64MB Docker default causes renderer crashes.
@@ -16,10 +14,8 @@ services:
     networks:
       - app-network
     environment:
-      # --kiosk: fullscreen, no window chrome/decorations, no address bar.
       CHROME_CLI: "--kiosk http://rstudio:8787"
 
-  # RStudio Server. Reached only over app-network by the browser container, so it publishes no ports.
   rstudio:
     container_name: "rstudio"
     image: "ghcr.io/rocker-org/devcontainer/tidyverse@sha256:3a9ecbed900f17da528cdb17c3ddc43045fc9b4be7dbd8c61cb7b8a6439bfa6b"

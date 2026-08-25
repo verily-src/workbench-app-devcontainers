@@ -336,12 +336,11 @@ var wbTools = []Tool{
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"folderId":    map[string]interface{}{"type": "string", "description": "Folder ID (must be unique in workspace)"},
 				"displayName": map[string]interface{}{"type": "string", "description": "Display name for folder"},
 				"description": map[string]interface{}{"type": "string", "description": "Folder description"},
 				"parentId":    map[string]interface{}{"type": "string", "description": "Parent folder ID (for nested folders)"},
 			},
-			Required: []string{"folderId", "displayName"},
+			Required: []string{"displayName"},
 		},
 	},
 	{
@@ -3097,12 +3096,11 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"resource", "move", "--name=" + vals[0], "--folder-id=" + vals[1]})
 
 	case "folder_create":
-		vals, reqErr := requireStrings(params.Arguments, "folderId", "displayName")
+		displayName, reqErr := requireString(params.Arguments, "displayName")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		folderId, displayName := vals[0], vals[1]
-		args := []string{"folder", "create", "--id=" + folderId, "--display-name=" + displayName}
+		args := []string{"folder", "create", "--name=" + displayName}
 		if desc, ok := params.Arguments["description"].(string); ok {
 			args = append(args, "--description="+desc)
 		}

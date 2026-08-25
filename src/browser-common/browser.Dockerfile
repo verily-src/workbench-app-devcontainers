@@ -44,8 +44,11 @@ RUN mkdir -p /etc/chromium/policies/managed \
     && rm /tmp/managed-policy.json.tmpl
 
 # The Selkies client negotiates the click-coordinate mapping at initial load, before the streamed
-# iframe has settled to its final size, so clicks land offset until a resize event fire.
-# Dispatch synthetic resize events shortly after load so the client re-negotiates automatically. 
-# This inline script runs first and its timers fire after the client's resize listener is attached.
-RUN sed -i 's|</head>|<script>[600,1500,3000].forEach(function(t){setTimeout(function(){window.dispatchEvent(new Event("resize"))},t)})</script></head>|' \
+# iframe has settled to its final size, so clicks land offset until the resolution is re-negotiated
+# (which is why opening devtools or resizing the window "fixes" it). A synthetic resize event is a
+# no-op when dimensions haven't actually changed; instead post the client's own
+# "resetResolutionToWindow" message, which recomputes resolution from the container's current size.
+# Staggered timers catch the post-connect settle. This inline script runs before the deferred client
+# module, so the listener is attached by the time the timers fire.
+RUN sed -i 's|</head>|<script>[800,2000,4000].forEach(function(t){setTimeout(function(){window.postMessage({type:"resetResolutionToWindow"},window.location.origin)},t)})</script></head>|' \
     /usr/share/selkies/selkies-dashboard/index.html

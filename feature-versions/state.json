@@ -93,5 +93,10 @@
     "tag": "latest",
     "installed": "sha256:1adc5402d3545c76c559d095faaedec779f55b8457bb032b0905d4287fcd3597",
     "filter": "startupscript\\/butane\\/prefetch-oci-features\\.sh"
+  },
+  "lscr.io/linuxserver/chromium": {
+    "tag": "latest",
+    "installed": "sha256:4c7b9086d2e5054b61c9e6b0f75efceece5befeff2bec3ff543d52e000cee21d",
+    "filter": "src\\/.*\\/browser\\.Dockerfile"
   }
 }

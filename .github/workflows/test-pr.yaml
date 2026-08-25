@@ -63,6 +63,11 @@ jobs:
                 - 'features/src/postgres-client/**'
                 - 'src/jupyter-common/**'
                 - 'src/aou-common/**'
+            virtual-browser-jupyter:
+              maximize_build_space: true
+              filters:
+                - 'src/browser-common/**'
+                - 'src/jupyter-common/**'
             nemo_jupyter:
               maximize_build_space: true
               filters:

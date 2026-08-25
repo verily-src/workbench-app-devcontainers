@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:fb5515cca8201f38e1b0c782061cbe5ab7ea963ac439e611a77481fee75ca72f",
+    "installed": "sha256:b3a252896f229128423b1aced7f99e9ff03cc2354608f4e8a24c93685b116d27",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:94b2d5d455de7bb3924bb1c4e7e94e6db70fcf64f6aa8a3c19e962ecd3056092",
+    "installed": "sha256:e278240f5f62504259989390e0e2c0773e4441d49f05bf389ab78884f97011c8",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:bcf9aa28433bc9021fd2c84d5d11fab85a06101aac39ad6c2de10bc661c12fdf",
+    "installed": "sha256:59739f5a7c28f4e9f257f0e01d016108b568eda0d56ecce1e97a86a3c739056a",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:7e32fa4c82d9ec5381b81e2673ff9e15f8eed0b767e3a83bb4a2d84714dbe4eb",
+    "installed": "sha256:a63a54b2d10888e360bbd72e1180fa225db834efbd7ae1d025d48e27407a7793",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,12 +61,12 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:a6d1aa1083f224d1ebb47bf9e2eb9a5624c5107447014912b768c27bb30293fc",
+    "installed": "sha256:48dab910e89899bcdca334e18c96d44b1e7798affd9325196087ef35aba4946e",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
     "tag": "1.26-alpine",
-    "installed": "sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83",
+    "installed": "sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {
@@ -86,7 +86,7 @@
   },
   "mikefarah/yq": {
     "tag": "4",
-    "installed": "sha256:11a1f0b604b13dbbdc662260d8db6f644b22d8553122a25c1b5b2e8713ca6977",
+    "installed": "sha256:cfc4eee658595834ef304eadb0c3ea721f3b7cb6404ad8b7cb909cc5b5145b23",
     "filter": "startupscript\\/butane\\/050-parse-devcontainer\\.sh"
   },
   "gcr.io/go-containerregistry/crane": {

@@ -1,0 +1,56 @@
+<!--
+  Overrides the base image's /defaults/labwc.xml (the init copies it to rc.xml on every start).
+  Forces server-side decorations for all windows so Chromium doesn't manage its own surface and adopt
+  the compositor's fractional scale in fullscreen (--kiosk) — that fractional scale is what causes the
+  pointer offset. The emptied titlebar is a no-op under kiosk (fullscreen shows no decorations).
+-->
+<labwc_config>
+
+  <core>
+    <decoration>server</decoration>
+    <gap>0</gap>
+  </core>
+
+  <theme>
+    <name>Clearlooks</name>
+    <titlebar>
+      <layout></layout>
+      <showTitle>no</showTitle>
+    </titlebar>
+    <cornerRadius>0</cornerRadius>
+  </theme>
+
+  <keyboard>
+    <default />
+    <keybind key="A-F4"><action name="Close" /></keybind>
+    <keybind key="A-Escape"><action name="Close" /></keybind>
+    <keybind key="A-space"><action name="ShowMenu" menu="client-menu" /></keybind>
+    <keybind key="W-e"><action name="Execute" command="lab-sensible-terminal" /></keybind>
+  </keyboard>
+
+  <mouse>
+    <default />
+    <context name="Root">
+      <mousebind button="Left" action="Press" />
+      <mousebind button="Right" action="Press"><action name="ShowMenu" menu="root-menu" /></mousebind>
+      <mousebind button="Middle" action="Press"><action name="ShowMenu" menu="client-list-combined-menu" /></mousebind>
+    </context>
+    <context name="TitleBar">
+      <mousebind button="Right" action="Click"><action name="ShowMenu" menu="client-menu" /></mousebind>
+      <mousebind button="Middle" action="Click"><action name="ToggleMaximize" direction="vertical" /></mousebind>
+    </context>
+  </mouse>
+
+  <windowRules>
+    <!-- Keep server-side decorations for every window (so Chromium draws no CSD) and maximize on
+         map. The titlebar itself is emptied via the theme above, so no buttons are shown. -->
+    <windowRule identifier="*" serverDecoration="yes" />
+    <windowRule identifier="*"><action name="Maximize" /></windowRule>
+    <windowRule identifier="pcmanfm-qt" type="desktop" title="pcmanfm-desktop0" serverDecoration="no">
+      <action name="Lower" />
+      <action name="ToggleAlwaysOnBottom"/>
+    </windowRule>
+    <windowRule identifier="lxqt-panel" serverDecoration="no" />
+  </windowRules>
+
+</labwc_config>

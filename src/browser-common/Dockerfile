@@ -33,3 +33,7 @@ RUN mkdir -p /etc/chromium/policies/managed \
        > /etc/chromium/policies/managed/workbench-rbi.json \
     && rm /tmp/managed-policy.json.tmpl \
     && chmod 444 /etc/chromium/policies/managed/workbench-rbi.json
+
+# Force server-side decorations so Chromium doesn't adopt the compositor's fractional scale in
+# fullscreen, which otherwise causes a pointer offset. The init copies this to rc.xml on start.
+COPY labwc.xml /defaults/labwc.xml

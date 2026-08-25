@@ -42,3 +42,10 @@ RUN mkdir -p /etc/chromium/policies/managed \
     && sed "s|__APP_ORIGIN__|${APP_ORIGIN}|g" /tmp/managed-policy.json.tmpl \
        > /etc/chromium/policies/managed/workbench-rbi.json \
     && rm /tmp/managed-policy.json.tmpl
+
+# The Selkies client negotiates the click-coordinate mapping at initial load, before the streamed
+# iframe has settled to its final size, so clicks land offset until a resize event fire.
+# Dispatch synthetic resize events shortly after load so the client re-negotiates automatically. 
+# This inline script runs first and its timers fire after the client's resize listener is attached.
+RUN sed -i 's|</head>|<script>[600,1500,3000].forEach(function(t){setTimeout(function(){window.dispatchEvent(new Event("resize"))},t)})</script></head>|' \
+    /usr/share/selkies/selkies-dashboard/index.html

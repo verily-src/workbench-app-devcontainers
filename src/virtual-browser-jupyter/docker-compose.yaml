@@ -9,8 +9,7 @@ services:
       context: ../browser-common
       dockerfile: browser.Dockerfile
       args:
-        # Baked into the policy URLAllowlist; must match the CHROME_CLI URL below.
-        APP_ORIGIN: "http://jupyterlab:8888"
+        APP_ORIGIN: "jupyterlab:8888"
     restart: always
     ports:
       - "3000:3000"
@@ -18,7 +17,7 @@ services:
       - app-network
     environment:
       # --kiosk: fullscreen, no window chrome/decorations, no address bar.
-      CHROME_CLI: "--kiosk --proxy-server=0.0.0.0:0 --proxy-bypass-list=jupyterlab http://jupyterlab:8888"
+      CHROME_CLI: "--kiosk http://jupyterlab:8888"
 
   # JupyterLab server. Reached only over app-network by the browser container, so it publishes no ports.
   jupyterlab:

@@ -37,4 +37,5 @@ COPY managed-policy.json.tmpl /tmp/managed-policy.json.tmpl
 RUN mkdir -p /etc/chromium/policies/managed \
     && sed "s|__APP_ORIGIN__|${APP_ORIGIN}|g" /tmp/managed-policy.json.tmpl \
        > /etc/chromium/policies/managed/workbench-rbi.json \
-    && rm /tmp/managed-policy.json.tmpl
+    && rm /tmp/managed-policy.json.tmpl \
+    && chmod 444 /etc/chromium/policies/managed/workbench-rbi.json

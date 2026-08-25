@@ -10,10 +10,6 @@
 FROM lscr.io/linuxserver/chromium@sha256:4c7b9086d2e5054b61c9e6b0f75efceece5befeff2bec3ff543d52e000cee21d
 
 # Selkies + hardening defaults; a template may override any of these in its compose environment.
-#
-# Display stays on the default Wayland stack (auto-fits each client's window). The click-offset it
-# would otherwise cause is fixed by --disable-features=WaylandFractionalScaleV1 in the template's
-# CHROME_CLI — a known upstream Chromium/Wayland fractional-scaling bug.
 ENV SELKIES_DESKTOP=false \
     NO_GAMEPAD=true \
     HARDEN_DESKTOP=true \

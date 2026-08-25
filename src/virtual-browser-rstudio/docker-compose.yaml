@@ -18,9 +18,8 @@ services:
       - app-network
     environment:
       # --kiosk: fullscreen, no window chrome/decorations, no address bar.
-      # --disable-features=WaylandFractionalScaleV1: fixes the Chromium/Wayland fractional-scaling
-      # click-offset. Dead proxy + bypass allow only the RStudio host. URL passed positionally.
-      CHROME_CLI: "--kiosk --disable-features=WaylandFractionalScaleV1 --proxy-server=0.0.0.0:0 --proxy-bypass-list=rstudio http://rstudio:8787"
+      # Dead proxy + bypass allow only the RStudio host. URL passed positionally.
+      CHROME_CLI: "--kiosk --proxy-server=0.0.0.0:0 --proxy-bypass-list=rstudio http://rstudio:8787"
 
   # RStudio Server. Reached only over app-network by the browser container, so it publishes no ports.
   rstudio:

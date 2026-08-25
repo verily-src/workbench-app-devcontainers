@@ -34,14 +34,6 @@ autofill / translation / notifications.
 RStudio itself works normally, but its export/download actions rely on the disabled browser actions,
 so they won't save to your local machine. The Selkies sidebar (including file upload) is hidden.
 
-## Troubleshooting
-
-- **Offset clicks, blurry/zoomed rendering, or a black screen:** clear this site's browser storage
-  (devtools → Application → Clear storage) and hard-reload.
-- The click-offset that Chromium `--kiosk` hits on Wayland is fixed by
-  `--disable-features=WaylandFractionalScaleV1` and an automatic resize the `browser-common` image
-  fires after load. Don't remove those or add `use_css_scaling` / `enable_resize`.
-
 ## Configuring
 
 The browser front end lives in `../browser-common`. This template supplies only the RStudio-specific

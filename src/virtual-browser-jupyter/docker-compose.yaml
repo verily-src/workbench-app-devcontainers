@@ -18,9 +18,7 @@ services:
       - app-network
     environment:
       # --kiosk: fullscreen, no window chrome/decorations, no address bar.
-      # --disable-features=WaylandFractionalScaleV1: fixes the Chromium/Wayland fractional-scaling
-      # click-offset bug.
-      CHROME_CLI: "--kiosk --disable-features=WaylandFractionalScaleV1 --proxy-server=0.0.0.0:0 --proxy-bypass-list=jupyterlab http://jupyterlab:8888"
+      CHROME_CLI: "--kiosk --proxy-server=0.0.0.0:0 --proxy-bypass-list=jupyterlab http://jupyterlab:8888"
 
   # JupyterLab server. Reached only over app-network by the browser container, so it publishes no ports.
   jupyterlab:

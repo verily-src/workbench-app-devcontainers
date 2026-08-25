@@ -22,7 +22,8 @@
   ],
   "features": {
     "ghcr.io/devcontainers/features/java@sha256:8157bab2d8d71e40b2f3128c162fab763e2b11038fdd33784549290a5d386b48": {
-      "version": "17"
+      "version": "17",
+      "jdkDistro": "tem"
     },
     "ghcr.io/rocker-org/devcontainer-features/r-packages@sha256:1a4ec64c4d2060e78e9c812bd3b3622c7e008465d566a2781c0e2b17a82592e5": {
       "packages": "shiny,shinydashboard",

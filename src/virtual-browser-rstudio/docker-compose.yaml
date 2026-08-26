@@ -16,6 +16,10 @@ services:
       - backend-network
     environment:
       CHROME_CLI: "--app=http://rstudio:8787"
+      FILE_MANAGER_PATH: /uploads
+    # Shared with the backend so uploads from the streamed browser land in its file browser.
+    volumes:
+      - browser-uploads:/uploads
 
   rstudio:
     container_name: "rstudio"
@@ -26,6 +30,7 @@ services:
     volumes:
       - .:/workspace:cached
       - work:/home/rstudio:cached
+      - browser-uploads:/home/rstudio/browser-uploads
     tmpfs:
       - /home/rstudio/workspace:uid=1000,gid=1000
     environment:
@@ -44,3 +49,4 @@ networks:
   backend-network:
 volumes:
   work:
+  browser-uploads:

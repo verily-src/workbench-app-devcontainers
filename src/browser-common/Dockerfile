@@ -49,3 +49,7 @@ RUN mkdir -p /etc/chromium/policies/managed \
        > /etc/chromium/policies/managed/workbench-rbi.json \
     && rm /tmp/managed-policy.json.tmpl \
     && chmod 444 /etc/chromium/policies/managed/workbench-rbi.json
+
+# A named volume mounted here inherits these permissions, letting the browser and the backend, which
+# run as different users, both read and write uploads.
+RUN mkdir -p /uploads && chmod 0777 /uploads

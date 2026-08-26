@@ -16,6 +16,10 @@ services:
       - backend-network
     environment:
       CHROME_CLI: "--app=http://jupyterlab:8888"
+      FILE_MANAGER_PATH: /uploads
+    # Shared with the backend so uploads from the streamed browser land in its file browser.
+    volumes:
+      - browser-uploads:/uploads
 
   jupyterlab:
     container_name: "jupyterlab"
@@ -29,6 +33,7 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
+      - browser-uploads:/home/jupyter/browser-uploads
     networks:
       - backend-network
     cap_add:
@@ -41,3 +46,5 @@ networks:
   app-network:
     external: true
   backend-network:
+volumes:
+  browser-uploads:

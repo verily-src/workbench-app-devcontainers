@@ -13,6 +13,7 @@ services:
       - "3000:3000"
     networks:
       - app-network
+      - backend-network
     environment:
       CHROME_CLI: "--app=http://jupyterlab:8888"
 
@@ -29,7 +30,7 @@ services:
     volumes:
       - .:/workspace:cached
     networks:
-      - app-network
+      - backend-network
     cap_add:
       - SYS_ADMIN
     devices:
@@ -39,3 +40,4 @@ services:
 networks:
   app-network:
     external: true
+  backend-network:

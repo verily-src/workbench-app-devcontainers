@@ -13,6 +13,7 @@ services:
       - "3000:3000"
     networks:
       - app-network
+      - backend-network
     environment:
       CHROME_CLI: "--app=http://rstudio:8787"
 
@@ -30,7 +31,7 @@ services:
     environment:
       DISABLE_AUTH: "true"
     networks:
-      - app-network
+      - backend-network
     cap_add:
       - SYS_ADMIN
     devices:
@@ -40,5 +41,6 @@ services:
 networks:
   app-network:
     external: true
+  backend-network:
 volumes:
   work:

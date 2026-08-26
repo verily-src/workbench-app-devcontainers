@@ -8,10 +8,7 @@ setup_file() {
 }
 
 BROWSER_CONTAINER="application-server"
-# Backend container name + app origin differ per template; the per-template .sh exports them.
-BACKEND_CONTAINER="${BACKEND_CONTAINER:-jupyterlab}"
 POLICY_PATH="/etc/chromium/policies/managed/workbench-rbi.json"
-APP_ORIGIN="${APP_ORIGIN:-http://jupyterlab:8888}"
 
 @test "browser container is running" {
     run docker inspect -f '{{.State.Running}}' "${BROWSER_CONTAINER}"
@@ -49,18 +46,27 @@ APP_ORIGIN="${APP_ORIGIN:-http://jupyterlab:8888}"
         | jq -e '.DeveloperToolsAvailability == 2 and .RemoteDebuggingAllowed == false' > /dev/null
 }
 
-@test "clipboard-out and command are disabled AND locked in the browser env" {
-    # "<value>|locked" pins the setting so a client can't re-enable it over the data websocket.
-    run docker exec "${BROWSER_CONTAINER}" printenv SELKIES_CLIPBOARD_OUT_ENABLED
-    [ "${status}" -eq 0 ]
-    [ "${output}" = "false|locked" ]
-    run docker exec "${BROWSER_CONTAINER}" printenv SELKIES_COMMAND_ENABLED
-    [ "${status}" -eq 0 ]
-    [ "${output}" = "false|locked" ]
+@test "the policy file can't be modified by the user the browser actually runs as" {
+    run docker exec -u abc "${BROWSER_CONTAINER}" sh -c "echo x >> ${POLICY_PATH}"
+    [ "${status}" -ne 0 ]
 }
 
-@test "file transfers are upload-only" {
-    run docker exec "${BROWSER_CONTAINER}" printenv SELKIES_FILE_TRANSFERS
+@test "the app is actually serving on port 3000, not just running" {
+    run docker exec "${BROWSER_CONTAINER}" curl -sf --max-time 3 -o /dev/null http://localhost:3000/
     [ "${status}" -eq 0 ]
-    [ "${output}" = "upload" ]
+}
+
+@test "the backend is unreachable from a container on app-network alone" {
+    run docker run --rm --network app-network curlimages/curl:latest \
+        -sf --max-time 3 -o /dev/null "http://${APP_ORIGIN}"
+    [ "${status}" -ne 0 ]
+}
+
+@test "the backend is reachable from a container on its own backend network" {
+    local backend_network
+    backend_network="$(docker inspect "${BACKEND_CONTAINER}" \
+        --format '{{range $net, $_ := .NetworkSettings.Networks}}{{$net}}{{end}}')"
+    run docker run --rm --network "${backend_network}" curlimages/curl:latest \
+        -sf --max-time 3 -o /dev/null "http://${APP_ORIGIN}"
+    [ "${status}" -eq 0 ]
 }

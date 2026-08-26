@@ -14,7 +14,7 @@ services:
     networks:
       - app-network
     environment:
-      CHROME_CLI: "--kiosk http://rstudio:8787"
+      CHROME_CLI: "--app=http://rstudio:8787"
 
   rstudio:
     container_name: "rstudio"

@@ -14,7 +14,7 @@ services:
     networks:
       - app-network
     environment:
-      CHROME_CLI: "--kiosk http://jupyterlab:8888"
+      CHROME_CLI: "--app=http://jupyterlab:8888"
 
   jupyterlab:
     container_name: "jupyterlab"

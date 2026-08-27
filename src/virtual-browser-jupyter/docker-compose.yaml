@@ -15,7 +15,7 @@ services:
       - app-network
       - backend-network
     environment:
-      CHROME_CLI: "--app=http://jupyterlab:8888"
+      CHROME_CLI: "--kiosk http://jupyterlab:8888"
       FILE_MANAGER_PATH: /uploads
       # Run the browser as the backend's user so uploaded files are writable there, not just readable.
       PUID: 1001

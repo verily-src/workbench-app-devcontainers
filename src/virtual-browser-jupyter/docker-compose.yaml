@@ -1,0 +1,53 @@
+include:
+  - ../jupyter-common/jupyter-common-compose.yaml
+services:
+  # Browser front end, built from the shared ../browser-common image (Selkies + policy baked in).
+  app:
+    container_name: "application-server"
+    build:
+      context: ../browser-common
+      args:
+        APP_ORIGIN: "jupyterlab:8888"
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+      - backend-network
+    environment:
+      CHROME_CLI: "--kiosk http://jupyterlab:8888"
+      FILE_MANAGER_PATH: /uploads
+      # Run the browser as the backend's user so uploaded files are writable there, not just readable.
+      PUID: 1001
+      PGID: 1001
+    # Shared with the backend so uploads from the streamed browser land in its file browser.
+    volumes:
+      - browser-uploads:/uploads
+
+  jupyterlab:
+    container_name: "jupyterlab"
+    build:
+      context: .
+      additional_contexts:
+        jupyter-extension-builder: service:jupyter-common-extension-builder
+    user: "jupyter"
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - browser-uploads:/home/jupyter/browser-uploads
+    networks:
+      - backend-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+  backend-network:
+volumes:
+  browser-uploads:

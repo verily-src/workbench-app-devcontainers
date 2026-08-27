@@ -61,9 +61,7 @@ fi
 
 # Report success before docker is stopped. On AWS set_metadata tags the instance
 # by running the AWS CLI in a container, so it cannot run once the docker daemon
-# is gone. The steps below are covered by errexit and the OnFailure handler, and
-# the cache builder only captures a cache once the instance has also powered
-# itself off, so reporting here cannot turn a failed build into a successful one.
+# is gone.
 # shellcheck source=/dev/null
 source '/home/core/metadata-utils.sh'
 set_metadata 'startup_script/status' "COMPLETED"

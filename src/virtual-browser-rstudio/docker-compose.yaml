@@ -17,6 +17,9 @@ services:
     environment:
       CHROME_CLI: "--app=http://rstudio:8787"
       FILE_MANAGER_PATH: /uploads
+      # Run the browser as the backend's user so uploaded files are writable there, not just readable.
+      PUID: 1000
+      PGID: 1000
     # Shared with the backend so uploads from the streamed browser land in its file browser.
     volumes:
       - browser-uploads:/uploads

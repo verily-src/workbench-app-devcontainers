@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Do not hardcode secrets in this file. The telemetry API key is injected at
+# runtime from the OTEL_EXPORTER_OTLP_API_KEY environment variable.
+
 mkdir -p ~/.claude && cat <<EOF > ~/.claude/settings.json
 {
   "env": {
@@ -18,7 +21,7 @@ mkdir -p ~/.claude && cat <<EOF > ~/.claude/settings.json
     "OTEL_EXPORTER_OTLP_ENDPOINT": "https://claude-otel-collector-usage-events-64mw6qm9.uc.gateway.dev",
     "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "https://claude-otel-collector-usage-events-64mw6qm9.uc.gateway.dev/v1/traces",
     "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "https://claude-otel-collector-usage-events-64mw6qm9.uc.gateway.dev/v1/metrics",
-    "OTEL_EXPORTER_OTLP_HEADERS": "x-api-key=REDACTED_ROTATED_KEY",
+    "OTEL_EXPORTER_OTLP_HEADERS": "x-api-key=${OTEL_EXPORTER_OTLP_API_KEY}",
     "OTEL_RESOURCE_ATTRIBUTES": "environment=workbench,username=\${WORKBENCH_USER_EMAIL%@*}"
   },
   "permissions": {

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# Pre-commit secret scanner.
+#
+# Blocks a commit when staged content matches common credential patterns
+# (Google API keys, AWS keys, private keys, generic api-key assignments, etc.).
+# Enable it once per clone with:
+#
+#     git config core.hooksPath .githooks
+#
+# To bypass in a genuine false-positive case, commit with --no-verify.
+
+set -o errexit -o nounset -o pipefail
+
+# Patterns of things that must never be committed. Keep these conservative to
+# avoid noise, but broad enough to catch the obvious leaks.
+readonly PATTERNS=(
+  'AIza[0-9A-Za-z_-]{35}'                       # Google API key
+  'AKIA[0-9A-Z]{16}'                            # AWS access key id
+  'gh[pousr]_[0-9A-Za-z]{36,}'                  # GitHub token
+  'xox[baprs]-[0-9A-Za-z-]{10,}'                # Slack token
+  '-----BEGIN [A-Z ]*PRIVATE KEY-----'          # PEM private key
+  '(x-api-key|api[_-]?key|secret|token|password)[=:][[:space:]]*[A-Za-z0-9._-]{16,}'
+)
+
+# Only scan the staged additions (lines beginning with '+'), skipping the diff
+# header lines, so we do not flag values that are being removed.
+staged_additions="$(git diff --cached --no-color --diff-filter=ACM -U0 \
+  | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+
+if [[ -z "${staged_additions}" ]]; then
+  exit 0
+fi
+
+# Allow explicit placeholder references like ${OTEL_EXPORTER_OTLP_API_KEY}
+# so runtime env-var indirection does not trip the generic key/value rule.
+scan_input="$(printf '%s\n' "${staged_additions}" \
+  | grep -Ev '=\$\{[A-Z0-9_]+\}' || true)"
+
+found=0
+for pattern in "${PATTERNS[@]}"; do
+  matches="$(printf '%s\n' "${scan_input}" | grep -En "${pattern}" || true)"
+  if [[ -n "${matches}" ]]; then
+    if [[ "${found}" -eq 0 ]]; then
+      echo "ERROR: potential secret(s) detected in staged changes:" >&2
+      found=1
+    fi
+    echo "  pattern /${pattern}/:" >&2
+    printf '%s\n' "${matches}" | sed 's/^/    /' >&2
+  fi
+done
+
+if [[ "${found}" -ne 0 ]]; then
+  cat >&2 <<'MSG'
+
+Commit blocked. Do not commit credentials.
+ - Move the secret to a runtime env var (e.g. ${MY_SECRET}) and reference that.
+ - If this is a genuine false positive, re-run with: git commit --no-verify
+MSG
+  exit 1
+fi
+
+exit 0

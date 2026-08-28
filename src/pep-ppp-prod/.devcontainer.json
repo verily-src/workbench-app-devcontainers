@@ -14,7 +14,8 @@
   ],
   "features": {
     "ghcr.io/devcontainers/features/java:1.6.3": {
-      "version": "17"
+      "version": "17",
+      "jdkDistro": "tem"
     },
     "ghcr.io/devcontainers/features/aws-cli:1.1.1": {},
     "ghcr.io/dhoeric/features/google-cloud-cli:1.0.1": {},

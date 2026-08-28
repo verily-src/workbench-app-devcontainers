@@ -13,7 +13,7 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/java:1.6.3": {
+    "ghcr.io/devcontainers/features/java:1.8.2": {
       "version": "17",
       "jdkDistro": "tem"
     },

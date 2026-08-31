@@ -21,7 +21,7 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/java@sha256:8157bab2d8d71e40b2f3128c162fab763e2b11038fdd33784549290a5d386b48": {
+    "ghcr.io/devcontainers/features/java@sha256:7d2fc86e0dad756209cd68da6b2b43e6149a5e07232a9f20663c42a8ca1563ad": {
           "version": "17",
           "jdkDistro": "tem"
         },

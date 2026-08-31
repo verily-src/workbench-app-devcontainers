@@ -50,7 +50,7 @@ mkdir -p ~/.claude && cat <<EOF > ~/.claude/settings.json
     }
   ],
   "sandbox": {
-    "enabled": true,
+    "enabled": false,
     "autoAllowBashIfSandboxed": true,
     "excludedCommands": ["git"],
     "allowUnsandboxedCommands": false

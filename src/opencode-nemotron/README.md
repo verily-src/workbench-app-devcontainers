@@ -44,9 +44,14 @@ client = OpenAI(base_url="http://localhost:11434/v1", api_key="unused")
 response = client.chat.completions.create(
     model="nemotron-3.5-lightning:30b",
     messages=[{"role": "user", "content": "Hello!"}],
-    max_tokens=100,
 )
-print(response.choices[0].message.content)
+
+# Nemotron reasons before it answers. Ollama returns the thinking tokens in a
+# non-standard `reasoning` field, so a small max_tokens truncates the reply
+# before `content` holds anything.
+message = response.choices[0].message
+print(getattr(message, "reasoning", ""))
+print(message.content)
 ```
 
 ## Changing the Model

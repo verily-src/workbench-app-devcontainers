@@ -6,7 +6,9 @@ set -o pipefail
 
 readonly OLLAMA_LOG="/config/ollama-server.log"
 readonly OLLAMA_URL="http://localhost:11434"
-readonly MODEL="${OLLAMA_MODEL:-nemotron-3.5-lightning:30b}"
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+MODEL="$("${SCRIPT_DIR}/resolve-model.sh")"
+readonly SCRIPT_DIR MODEL
 
 server_is_up() {
   curl -fsS "${OLLAMA_URL}/api/version" > /dev/null 2>&1

@@ -15,7 +15,9 @@ if [[ -z "${USER_NAME}" || -z "${USER_HOME_DIR}" ]]; then
   exit 1
 fi
 
-readonly MODEL="${OLLAMA_MODEL:-nemotron-3.5-lightning:30b}"
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+MODEL="$("${SCRIPT_DIR}/resolve-model.sh")"
+readonly SCRIPT_DIR MODEL
 readonly CONFIG_DIR="${USER_HOME_DIR}/.config/opencode"
 readonly CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 

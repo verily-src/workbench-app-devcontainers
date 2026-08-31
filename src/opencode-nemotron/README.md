@@ -56,17 +56,28 @@ print(message.content)
 
 ## Changing the Model
 
-The model tag lives in `OLLAMA_MODEL` in `docker-compose.yaml`. Edit it in your
-fork and point the app config at that branch. Workbench substitutes only a fixed
-set of template options on the VM, so a custom `model` template option would not
-work.
+Write the tag to `/config/.opencode-model`, then restart the app:
+
+```sh
+echo nemotron-3-nano:4b > /config/.opencode-model
+```
+
+`/config` is a volume, so the override survives a restart and a machine-type
+change. On restart the app pulls the new tag and rewrites
+`~/.config/opencode/opencode.json` to match. Delete the file to return to the
+default.
+
+Pick a model that fits the GPU. See the table above. A model larger than VRAM
+runs partly on the CPU and is very slow. Change the tag before you move an app to
+a smaller GPU, for example from an A100 to an L4.
 
 Use any tag from https://ollama.com/library. The model must support tools, or
 `opencode` cannot call them.
 
-To change the model on a running app, run `ollama pull <tag>` and edit
-`~/.config/opencode/opencode.json`. The app rewrites that file on each restart, so
-the change lasts until the next restart.
+To change the default for new apps, edit `OLLAMA_MODEL` in `docker-compose.yaml`
+in your fork and point the app config at that branch. Workbench substitutes only
+a fixed set of template options on the VM, so a custom `model` template option
+would not work.
 
 ## Configuration
 
@@ -76,6 +87,10 @@ on restart. It sets:
 - `provider.ollama` — an OpenAI-compatible provider at `http://localhost:11434/v1`.
 - `autoupdate: false` — keeps the version that the Dockerfile pins.
 - `share: "disabled"` — blocks the hosted session-sharing service.
+
+`resolve-model.sh` picks the model tag. `/config/.opencode-model` wins, then
+`OLLAMA_MODEL` from `docker-compose.yaml`. Both `configure-opencode.sh` and
+`start-ollama.sh` call it, so the agent and the server always agree.
 
 `OLLAMA_CONTEXT_LENGTH` is set to 32768 in `docker-compose.yaml`. Smaller contexts
 make tool calls unreliable.

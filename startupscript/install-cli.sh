@@ -76,6 +76,13 @@ fi
 # Set browser manual login since that's the only login supported from a Vertex AI Notebook VM
 ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' config set browser MANUAL"
 
+# Tell the CLI where it lives. "wb workspace configure-aws" writes this path into
+# every "credential_process" line of the generated AWS config, and the CLI default
+# is /usr/local/bin/wb -- not where this script installs it. Set it here, before
+# the "wb workspace set" below: that set is what tells the app the workspace is
+# ready, and the app calls "wb workspace configure-aws" as soon as it sees it.
+${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' config set wb-path --path '${WORKBENCH_INSTALL_PATH}'"
+
 # Set the CLI server based on the server that created the VM.
 ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' server set --name=${TERRA_SERVER}"
 

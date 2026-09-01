@@ -1,0 +1,14 @@
+{
+  "id": "data-catalog",
+  "version": "1.0.0",
+  "name": "WB Data Catalog",
+  "description": "Interactive data catalog for BigQuery datasets with technical/semantic profiling and AI-powered exploration. FastAPI + React app on port 8080.",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp"],
+      "default": "gcp",
+      "description": "Cloud provider"
+    }
+  }
+}

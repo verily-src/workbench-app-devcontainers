@@ -134,7 +134,7 @@ def _await_workspace_then_warm(max_wait: float = 600, poll_interval: float = 3):
     _ensure_aws_config()
     warm_resource_cache()
     threading.Thread(target=_warm_s3_files, daemon=True).start()
-    cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID", "GTEx_demo_folder")
+    cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID") or "GTEx_files"
     init_cohorts(cohort_folder)
 
 

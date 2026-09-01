@@ -50,11 +50,17 @@ EOF
 
     chmod 755 "${AWS_VAULT_INSTALL_PATH}"
     chmod 755 "${AWS_VAULT_BINARY_PATH}"
-
-    #####################################
-    # Set up aws-vault credential caching
-    #####################################
-    ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set cache-with-aws-vault true"
-    ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set wb-path --path ${WORKBENCH_INSTALL_PATH}"
-    ${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path ${AWS_VAULT_INSTALL_PATH}"
 fi
+
+#####################################
+# Set up aws-vault credential caching
+#####################################
+# Run these on every boot, not only after a fresh install. The two binaries live
+# in the container filesystem, but this config lives in the user's home volume.
+# The volume outlives the container, so a recreated container with a kept volume
+# leaves the config pointing at the CLI defaults (/usr/local/bin/...), which do
+# not exist here. Every "credential_process" line in the generated AWS config
+# then names a missing file.
+${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set cache-with-aws-vault true"
+${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set wb-path --path ${WORKBENCH_INSTALL_PATH}"
+${RUN_AS_LOGIN_USER} "${WORKBENCH_INSTALL_PATH} config set aws-vault-path --path ${AWS_VAULT_INSTALL_PATH}"

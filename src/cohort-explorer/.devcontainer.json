@@ -19,7 +19,7 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/java@sha256:e75d274ac969b29a59ba6f34c2d098f6a52144d0ec027ef326b724ea4b8b7b4e": {
+    "ghcr.io/devcontainers/features/java@sha256:7d2fc86e0dad756209cd68da6b2b43e6149a5e07232a9f20663c42a8ca1563ad": {
       "version": "17"
     },
     "ghcr.io/devcontainers/features/aws-cli@sha256:17cb4a40151f59144b46957b9264683663b0214371a041ecd53dccc015a4b923": {},

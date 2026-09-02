@@ -19,8 +19,9 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/java@sha256:7d2fc86e0dad756209cd68da6b2b43e6149a5e07232a9f20663c42a8ca1563ad": {
-      "version": "17"
+    "ghcr.io/devcontainers/features/java@sha256:8157bab2d8d71e40b2f3128c162fab763e2b11038fdd33784549290a5d386b48": {
+      "version": "17",
+      "jdkDistro": "tem"
     },
     "ghcr.io/devcontainers/features/aws-cli@sha256:17cb4a40151f59144b46957b9264683663b0214371a041ecd53dccc015a4b923": {},
     "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {}

@@ -10,7 +10,7 @@ set -o pipefail
 set -o xtrace
 
 # Download Node.js from the source code and extract it to /opt
-readonly NODE_VERSION="v18.16.1"
+readonly NODE_VERSION="v24.19.0"
 readonly PLATFORM="linux-x64"
 readonly NODE_TAR="node-${NODE_VERSION}-${PLATFORM}.tar.gz"
 readonly NODE_INSTALL_SRC="https://storage.googleapis.com/bkt-workbench-artifacts/mirror/${NODE_TAR}"
@@ -18,7 +18,7 @@ readonly NODE_INSTALL_PATH="/home/core/${NODE_TAR}"
 
 echo "Downloading Node from ${NODE_INSTALL_SRC}" 
 wget -q -O "${NODE_INSTALL_PATH}" "${NODE_INSTALL_SRC}"
-echo "59582f51570d0857de6333620323bdeee5ae36107318f86ce5eca24747cabf5b  ${NODE_INSTALL_PATH}" | sha256sum -c
+echo "f625d97cd707df4ff96254916fbc5ff014f09c09effe5a1e0ca8f6d41a8789d4  ${NODE_INSTALL_PATH}" | sha256sum -c
 
 echo "Installing Node from ${NODE_INSTALL_PATH}" 
 tar -xzf "${NODE_INSTALL_PATH}" -C /opt --strip-components=1

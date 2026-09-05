@@ -52,3 +52,26 @@ def test_infer_sees_columns_empty_in_first_N_rows(tmp_path):
         f"expected integer, got {by_name['late_populated'].type} — "
         f"did someone lower the sample_size back below {BLANK_ROWS}?"
     )
+
+
+def test_find_numeric_type_conflicts_reports_only_mismatches():
+    from schema import ColumnMapping, _find_numeric_type_conflicts
+
+    mappings = [
+        ColumnMapping("sample_id", "text", "none", "Sample ID"),
+        ColumnMapping("score", "float", "range", "Score"),
+        ColumnMapping("age", "integer", "range", "Age"),
+        ColumnMapping("ratio", "float", "range", "Ratio"),
+    ]
+    physical_types = {
+        "sample_id": "text",
+        "score": "text",
+        "age": "bigint",
+        "ratio": "numeric",
+    }
+
+    assert _find_numeric_type_conflicts(mappings, physical_types) == [{
+        "column": "score",
+        "logical_type": "float",
+        "physical_type": "text",
+    }]

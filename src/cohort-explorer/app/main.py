@@ -20,7 +20,7 @@ from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list
 from db import are_tables_ready, get_active_resource_id, get_cached_tables, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
 from dynamic_model import DynamicBase, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_pk_name, get_range_filters, get_visible_columns, load_schema_from_disk, set_active_mapping
 from models import Base, Sample
-from schema import infer_from_aurora, infer_from_csv, load_mapping_csv, mappings_to_dicts, save_mapping_csv, ColumnMapping
+from schema import ColumnMapping, find_aurora_type_conflicts, infer_from_aurora, infer_from_csv, load_mapping_csv, mappings_to_dicts, save_mapping_csv
 from seed import seed_dynamic, seed_from_tsv
 from starlette.requests import Request
 
@@ -328,6 +328,25 @@ def api_confirm_schema(body: dict) -> dict:
     mappings = [ColumnMapping(**m) for m in mappings_raw]
     folder_id = body.get("folder_id")
     source_name = body.get("source_name", "schema")
+    table_name = body.get("table_name", "data")
+    resource_id = get_active_resource_id()
+    is_aurora = resource_id is not None
+
+    if resource_id:
+        conflicts = find_aurora_type_conflicts(resource_id, table_name, mappings)
+        if conflicts:
+            details = "; ".join(
+                f'"{item["column"]}" is PostgreSQL {item["physical_type"]} '
+                f'but mapped as {item["logical_type"]}'
+                for item in conflicts
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Cannot load this schema: {details}. "
+                    "Set these columns to text, or use a typed database view."
+                ),
+            )
 
     if folder_id:
         try:
@@ -349,8 +368,6 @@ def api_confirm_schema(body: dict) -> dict:
         except Exception as e:
             logger.warning("Failed to save mapping CSV to S3: %s", e)
 
-    table_name = body.get("table_name", "data")
-    is_aurora = get_active_resource_id() is not None
     set_active_mapping(mappings_raw, table_name=table_name, needs_pk=not is_aurora)
 
     seeded = 0

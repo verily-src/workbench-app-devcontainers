@@ -1,4 +1,4 @@
-FROM us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder@sha256:039b3fe16bf349b81cc10a825f4ed62439187d9f9e80529568a964006e78647a
+FROM us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder@sha256:6e5650bb9c478afdd926dc90879fd7ff789533ff9583260e9afa92819020d42d
 
 COPY extension /extension
 

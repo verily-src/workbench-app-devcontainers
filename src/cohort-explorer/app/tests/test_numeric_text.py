@@ -54,3 +54,29 @@ def test_confirm_restores_missing_aurora_storage_type(monkeypatch):
 
     assert result == {"confirmed": True, "columns": 1, "seeded": 0}
     assert activated["mapping"][0]["storage_type"] == "text"
+
+
+def test_samples_include_columns_without_filters(monkeypatch, tmp_path):
+    import dynamic_model
+    import main
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from starlette.requests import Request
+    from dynamic_model import DynamicBase, get_active_model, set_active_mapping
+
+    monkeypatch.setattr(dynamic_model, "_SCHEMA_FILE", tmp_path / "schema.json")
+    mappings = [
+        {"column": "sample_id", "type": "text", "filter": "categorical", "label": "Sample"},
+        {"column": "fastq1_path", "type": "text", "filter": "none", "label": "FASTQ 1"},
+    ]
+    set_active_mapping(mappings)
+    engine = create_engine("sqlite://")
+    DynamicBase.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        db.add(get_active_model()(sample_id="S1", fastq1_path="s3://reads/S1_R1.fastq.gz"))
+        db.commit()
+        request = Request({"type": "http", "query_string": b""})
+        rows = main.get_samples(request, db)
+
+    assert rows[0]["fastq1_path"] == "s3://reads/S1_R1.fastq.gz"

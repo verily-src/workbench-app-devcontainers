@@ -150,49 +150,6 @@ PG_TYPE_MAP = {
     "timestamp with time zone": "date",
 }
 
-NUMERIC_PG_TYPES = {
-    "integer": {"smallint", "integer", "bigint"},
-    "float": {"real", "double precision", "numeric"},
-}
-
-
-def _find_numeric_type_conflicts(
-    mappings: list[ColumnMapping],
-    physical_types: dict[str, str],
-) -> list[dict]:
-    return [
-        {
-            "column": mapping.column,
-            "logical_type": mapping.type,
-            "physical_type": physical_types[mapping.column],
-        }
-        for mapping in mappings
-        if mapping.type in NUMERIC_PG_TYPES
-        and mapping.column in physical_types
-        and physical_types[mapping.column] not in NUMERIC_PG_TYPES[mapping.type]
-    ]
-
-
-def find_aurora_type_conflicts(
-    resource_id: str,
-    table: str,
-    mappings: list[ColumnMapping],
-) -> list[dict]:
-    """Find numeric mappings that the current ORM model cannot load safely."""
-    if not any(mapping.type in NUMERIC_PG_TYPES for mapping in mappings):
-        return []
-
-    with _connect_aurora(resource_id) as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT column_name, data_type
-                FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = %s
-            """, (table,))
-            physical_types = dict(cur.fetchall())
-
-    return _find_numeric_type_conflicts(mappings, physical_types)
-
 def _connect_aurora(resource_id: str):
     from db import resolve_connection_string, _conn_string_cache
     import psycopg
@@ -219,6 +176,17 @@ def list_aurora_tables(resource_id: str) -> list[dict]:
                 {"name": row[0], "type": "view" if row[1] == "VIEW" else "table"}
                 for row in cur.fetchall()
             ]
+
+
+def get_aurora_storage_types(resource_id: str, table: str) -> dict[str, str]:
+    with _connect_aurora(resource_id) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+            """, (table,))
+            return dict(cur.fetchall())
 
 
 def infer_from_aurora(resource_id: str, table: str) -> list[ColumnMapping]:

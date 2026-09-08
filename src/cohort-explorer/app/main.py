@@ -13,14 +13,14 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import distinct, func, select
+from sqlalchemy import BigInteger, Float, cast, distinct, func, select
 from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import are_tables_ready, get_active_resource_id, get_cached_tables, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
-from dynamic_model import DynamicBase, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_pk_name, get_range_filters, get_visible_columns, load_schema_from_disk, set_active_mapping
+from dynamic_model import DynamicBase, TEXT_STORAGE_TYPES, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_mapping_for_column, get_pk_name, get_range_filters, get_visible_columns, load_schema_from_disk, set_active_mapping
 from models import Base, Sample
-from schema import ColumnMapping, find_aurora_type_conflicts, infer_from_aurora, infer_from_csv, load_mapping_csv, mappings_to_dicts, save_mapping_csv
+from schema import ColumnMapping, get_aurora_storage_types, infer_from_aurora, infer_from_csv, load_mapping_csv, mappings_to_dicts, save_mapping_csv
 from seed import seed_dynamic, seed_from_tsv
 from starlette.requests import Request
 
@@ -37,6 +37,34 @@ def _get_model():
 
 def _get_pk(model):
     return getattr(model, get_pk_name()) if get_active_model() else model.id
+
+
+def _is_text_backed_numeric(column: str) -> bool:
+    mapping = get_mapping_for_column(column)
+    return bool(
+        mapping
+        and mapping["type"] in {"integer", "float"}
+        and mapping.get("storage_type") in TEXT_STORAGE_TYPES
+    )
+
+
+def _query_column(model, column: str):
+    value = getattr(model, column)
+    if not _is_text_backed_numeric(column):
+        return value
+    mapping = get_mapping_for_column(column)
+    target_type = BigInteger if mapping["type"] == "integer" else Float
+    return cast(func.nullif(value, ""), target_type)
+
+
+def _row_value(row, column: str):
+    value = getattr(row, column)
+    if not _is_text_backed_numeric(column):
+        return value
+    if value in {None, ""}:
+        return None
+    mapping = get_mapping_for_column(column)
+    return int(value) if mapping["type"] == "integer" else float(value)
 
 
 def _apply_filters(stmt, params: dict, exclude: str | None = None):
@@ -58,7 +86,7 @@ def _apply_filters(stmt, params: dict, exclude: str | None = None):
                 stmt = stmt.where(col.in_(non_null_values))
 
     for col_name in get_range_filters():
-        col = getattr(model, col_name)
+        col = _query_column(model, col_name)
         min_val = params.get(f"{col_name}_min")
         max_val = params.get(f"{col_name}_max")
         if min_val is not None:
@@ -324,8 +352,7 @@ def api_infer_schema(body: dict) -> dict:
 
 @app.post("/api/schema/confirm")
 def api_confirm_schema(body: dict) -> dict:
-    mappings_raw = body.get("mappings", [])
-    mappings = [ColumnMapping(**m) for m in mappings_raw]
+    mappings_raw = [dict(mapping) for mapping in body.get("mappings", [])]
     folder_id = body.get("folder_id")
     source_name = body.get("source_name", "schema")
     table_name = body.get("table_name", "data")
@@ -333,20 +360,11 @@ def api_confirm_schema(body: dict) -> dict:
     is_aurora = resource_id is not None
 
     if resource_id:
-        conflicts = find_aurora_type_conflicts(resource_id, table_name, mappings)
-        if conflicts:
-            details = "; ".join(
-                f'"{item["column"]}" is PostgreSQL {item["physical_type"]} '
-                f'but mapped as {item["logical_type"]}'
-                for item in conflicts
-            )
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"Cannot load this schema: {details}. "
-                    "Set these columns to text, or use a typed database view."
-                ),
-            )
+        storage_types = get_aurora_storage_types(resource_id, table_name)
+        for mapping in mappings_raw:
+            mapping["storage_type"] = storage_types.get(mapping["column"])
+
+    mappings = [ColumnMapping(**mapping) for mapping in mappings_raw]
 
     if folder_id:
         try:
@@ -436,7 +454,7 @@ def get_samples(
         rows = db.execute(stmt).scalars().all()
         pk = get_pk_name()
         return [
-            {pk: getattr(s, pk), **{col: getattr(s, col) for col in columns}}
+            {pk: getattr(s, pk), **{col: _row_value(s, col) for col in columns}}
             for s in rows
         ]
     except Exception as e:
@@ -487,7 +505,7 @@ def get_filters(
             result[col_name] = options
 
         for col_name in get_range_filters():
-            col = getattr(model, col_name)
+            col = _query_column(model, col_name)
             if has_filters:
                 all_stmt = select(model)
                 all_stmt = _apply_filters(all_stmt, filters)

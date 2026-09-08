@@ -21,3 +21,22 @@ def test_get_all_columns_returns_mapping_order(monkeypatch, tmp_path):
     set_active_mapping(mappings, needs_pk=True)
 
     assert get_all_columns() == ["z_last", "a_first", "m_middle"]
+
+
+def test_text_storage_type_overrides_logical_numeric_type(monkeypatch, tmp_path):
+    import dynamic_model
+    from sqlalchemy import Text
+    from dynamic_model import get_active_model, set_active_mapping
+
+    monkeypatch.setattr(dynamic_model, "_SCHEMA_FILE", tmp_path / "schema.json")
+    mappings = [{
+        "column": "score",
+        "type": "float",
+        "filter": "range",
+        "label": "Score",
+        "storage_type": "text",
+    }]
+
+    set_active_mapping(mappings, table_name="samples", needs_pk=False)
+
+    assert isinstance(get_active_model().__table__.c.score.type, Text)

@@ -24,6 +24,7 @@ class ColumnMapping:
     type: str
     filter: str
     label: str
+    storage_type: str | None = None
 
 
 def generate_label(column_name: str) -> str:
@@ -192,7 +193,6 @@ def find_aurora_type_conflicts(
 
     return _find_numeric_type_conflicts(mappings, physical_types)
 
-
 def _connect_aurora(resource_id: str):
     from db import resolve_connection_string, _conn_string_cache
     import psycopg
@@ -270,6 +270,7 @@ def infer_from_aurora(resource_id: str, table: str) -> list[ColumnMapping]:
                     type=col_type,
                     filter=col_filter,
                     label=generate_label(col_name),
+                    storage_type=pg_type,
                 ))
 
     logger.info("Inferred schema from Aurora %s.%s: %d columns", resource_id, table, len(mappings))
@@ -285,6 +286,7 @@ def load_mapping_csv(file_path: str) -> list[ColumnMapping]:
                 type=row["type"],
                 filter=row["filter"],
                 label=row["label"],
+                storage_type=row.get("storage_type") or None,
             )
             for row in reader
         ]
@@ -292,7 +294,10 @@ def load_mapping_csv(file_path: str) -> list[ColumnMapping]:
 
 def save_mapping_csv(file_path: str, mappings: list[ColumnMapping]):
     with open(file_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["column", "type", "filter", "label"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["column", "type", "filter", "label", "storage_type"],
+        )
         writer.writeheader()
         for m in mappings:
             writer.writerow(asdict(m))

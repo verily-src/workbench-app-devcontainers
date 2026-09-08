@@ -17,6 +17,8 @@ SA_TYPE_MAP = {
     "date": Date,
 }
 
+TEXT_STORAGE_TYPES = {"text", "character", "character varying"}
+
 _active_mapping: list[dict] | None = None
 _active_model: type | None = None
 _active_table_name: str | None = None
@@ -48,7 +50,11 @@ def set_active_mapping(mappings: list[dict], table_name: str = "data", needs_pk:
         }
 
     for m in mappings:
-        sa_type = SA_TYPE_MAP.get(m["type"], Text)
+        sa_type = (
+            Text
+            if m.get("storage_type") in TEXT_STORAGE_TYPES
+            else SA_TYPE_MAP.get(m["type"], Text)
+        )
         is_pk = not needs_pk and m["column"] == _pk_name
         attrs[m["column"]] = Column(sa_type, primary_key=is_pk)
 

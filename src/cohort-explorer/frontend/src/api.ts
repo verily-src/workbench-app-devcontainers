@@ -80,6 +80,7 @@ export interface ColumnMapping {
   type: string;
   filter: string;
   label: string;
+  storage_type?: string | null;
 }
 
 export interface AuroraTable {

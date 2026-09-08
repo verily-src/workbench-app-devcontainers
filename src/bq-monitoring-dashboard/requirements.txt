@@ -1,0 +1,6 @@
+streamlit==1.31.0
+pandas==2.1.4
+google-cloud-bigquery==3.14.1
+google-auth==2.25.2
+plotly==5.18.0
+ydata-profiling==4.6.4

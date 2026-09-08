@@ -170,7 +170,6 @@ folder_create_func = FunctionDeclaration(
     parameters={
         "type": "object",
         "properties": {
-            "folderId": {"type": "string", "description": "Folder ID"},
             "displayName": {"type": "string", "description": "Display name"},
             "description": {"type": "string", "description": "Description"}
         },

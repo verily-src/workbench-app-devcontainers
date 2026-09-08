@@ -1,0 +1,32 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    # This can be either a pre-existing image or built from a Dockerfile
+    image: "ubuntu:24.04"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+    command: ["ttyd", "-W", "-p", "8888", "bash"]
+    # The port specified here will be forwarded and accessible from the
+    # Workbench UI.
+    ports:
+      - 8888:8888
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+    # The service must be connected to the "app-network" Docker network
+    networks:
+      - app-network
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

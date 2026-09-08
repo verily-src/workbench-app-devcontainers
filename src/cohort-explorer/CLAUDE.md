@@ -46,6 +46,29 @@ involvement.
    silent failure. Don't ship an endpoint without verifying it works with real (or realistic
    mock) data.
 
+## Lessons from the Aurora numeric-text failure
+
+**Do not confuse diagnosis with resolution.** Commit `1c243be` replaced a cryptic driver error
+with a useful column list, but it still blocked the user's GTEx table. It was a successful
+diagnostic change, not a successful load-data fix. Label partial fixes clearly and continue until
+the requested operation works.
+
+**Test the real boundary, not only our own validation code.** The first change unit-tested the
+conflict detector. That proved the detector, not SQLAlchemy and PostgreSQL behavior. The working
+change reproduced PostgreSQL OID 25 with the psycopg driver and tested rows, ranges, filters,
+counts, empty strings, and NULL values.
+
+**A column has a storage type and a logical type.** Aurora `text` controls how the driver must load
+the value. The inferred `float` or `integer` controls filters, charts, and API values. Do not force
+one type to serve both purposes. Load with the storage type, then cast only for numeric operations.
+
+**Keep metadata authoritative and backward-compatible.** Read physical types from
+`information_schema`. Restore missing physical metadata during schema confirmation so stale
+browser state cannot reintroduce the failure.
+
+**Regression-test every affected path.** For datasource changes, test PostgreSQL behavior plus
+native numeric columns, file/SQLite loading, frontend tests, and the production frontend build.
+
 ## Debugging this app on a Workbench VM
 
 Rules learned the hard way. Each one cost a full debug cycle.

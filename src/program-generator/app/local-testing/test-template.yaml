@@ -1,0 +1,481 @@
+# simple-program.yaml — A minimal VerilyMe program for testing.
+#
+# This template creates a single-bundle program with:
+#   - One info step (welcome screen using component nodes)
+#   - One consent step (regulated consent: sign flow + review flow)
+#   - One survey step (a short health check-in with choice and boolean questions)
+#   - One info step (thank-you screen using component nodes)
+#
+# Node-tree format:
+#   The entire file is a single node tree. Every element uses the same schema,
+#   with field names matching the proto Node message (components_common.proto):
+#     node_type    — SCREAMING_SNAKE_CASE node type (proto: NodeType node_type)
+#     value_string — optional string payload (proto: optional string value_string)
+#     html         — optional HTML content (proto: optional string html)
+#     nodes        — nested child nodes (proto: repeated Node nodes)
+#     uri          — optional URL (proto: optional string uri)
+#     id           — optional identifier (proto: optional string id)
+#
+#   Four prefix categories:
+#     ADMIN_ — administrative structure (builder-processed, not rendered)
+#     CMPT_  — renderable UI components
+#     PROP_  — metadata properties
+#     ACTN_  — behavioral actions
+#
+#   New types proposed (not yet in the proto):
+#
+#   Admin:      ADMIN_PROGRAM, ADMIN_BUNDLE, ADMIN_CARD, ADMIN_INFO_STEP,
+#               ADMIN_CONSENT_STEP, ADMIN_SURVEY_STEP, ADMIN_CONSENT_SIGN,
+#               ADMIN_CONSENT_REVIEW
+#   Components: CMPT_BUNDLE_LAYOUT, CMPT_HEADER, CMPT_FOOTER,
+#               CMPT_EXIT_BUTTON, CMPT_SURVEY_CONTEXT, CMPT_PAGE,
+#               CMPT_QUESTION_GROUP, CMPT_CHOICE_QUESTION,
+#               CMPT_FREE_TEXT_QUESTION, CMPT_TITLE, CMPT_PDF_VIEWER,
+#               CMPT_DIALOG, CMPT_CTA_BUTTON
+#   Properties: PROP_ORG_ID, PROP_VERSION, PROP_ENV_BASE_URL,
+#               PROP_TITLE, PROP_DESCRIPTION, PROP_LINK_ID, PROP_LABEL,
+#               PROP_REQUIRED, PROP_OPTION, PROP_BOOLEAN, PROP_SIGNATURE,
+#               PROP_CONSTRAINTS, PROP_NUMERIC, PROP_MIN_VALUE,
+#               PROP_MAX_VALUE, PROP_ALLOW_DECIMAL, PROP_MAX_DECIMAL_PLACES,
+#               PROP_UNITS, PROP_UNIT, PROP_UNIT_DISPLAY, PROP_UNIT_SYSTEM,
+#               PROP_UNIT_CODE, PROP_BODY
+#   Actions:    ACTN_ON_CLICK
+#
+#   Valueless markers (presence = true):
+#     PROP_REQUIRED, PROP_BOOLEAN, PROP_SIGNATURE, PROP_ALLOW_DECIMAL
+#
+#   Numeric type convention:
+#     PROP_NUMERIC defaults to integer. Add PROP_ALLOW_DECIMAL
+#     (valueless marker) to opt into decimal. Optionally nest
+#     PROP_MAX_DECIMAL_PLACES under PROP_ALLOW_DECIMAL.
+#
+#   Dialog trigger convention:
+#     CMPT_CTA_BUTTON with ACTN_ON_CLICK opens the CMPT_DIALOG whose
+#     value_string matches the action value (e.g. ACTN_ON_CLICK
+#     value_string="disagree" opens CMPT_DIALOG value_string="disagree").
+#
+# To create a new program from this template:
+#   go run ./cmd/seed-program \
+#     --template templates/simple-program.yaml \
+#     --fhir-store "projects/prj-d-1v-ucd/locations/us-west1/datasets/operational-healthcare-dataset/fhirStores/operational-fhir-store" \
+#     --gcs-bucket "econsent-pdf-pilot-dev-oneverily-prj-d-1v-ucd" \
+#     --output /tmp/program-config.json
+#
+# The --gcs-bucket flag is required because this template has a consent step.
+# The consent backend fetches the generated PDF from GCS at runtime.
+#
+# To preview the FHIR bundle without posting:
+#   go run ./cmd/seed-program \
+#     --template templates/simple-program.yaml \
+#     --dry-run
+
+node_type: ADMIN_PROGRAM
+value_string: "simple-test-program"
+nodes:
+  - node_type: PROP_ORG_ID
+    value_string: "264770f4-6a7b-496c-90e7-e895e3fe36d7"
+  - node_type: PROP_VERSION
+    value_string: "v1"
+  - node_type: PROP_ENV_BASE_URL
+    value_string: "https://dev-stable.one.verily.com"
+
+  - node_type: ADMIN_BUNDLE
+    value_string: "health-check-in"
+    nodes:
+      - node_type: ADMIN_CARD
+        nodes:
+          - node_type: PROP_TITLE
+            value_string: "Test Health Check-In"
+          - node_type: PROP_DESCRIPTION
+            value_string: "Complete a quick health check-in to help us understand your wellness"
+
+      # ── Info step (welcome) ─────────────────────────────────────────
+      - node_type: ADMIN_INFO_STEP
+        value_string: "Welcome to Your Health Check-In"
+        nodes:
+          - node_type: CMPT_BUNDLE_LAYOUT
+            nodes:
+              - node_type: CMPT_HEADER
+                nodes:
+                  - node_type: CMPT_EXIT_BUTTON
+                    nodes:
+                      - node_type: ACTN_ON_CLICK
+                        value_string: "exit"
+              - node_type: CMPT_VERTICAL_CONTAINER
+                nodes:
+                  - node_type: CMPT_RICH_TEXT
+                    html: "<h2>About This Check-In</h2>"
+                    value_string: "## About This Check-In"
+                  - node_type: CMPT_RICH_TEXT
+                    html: "<p>This short health check-in will help us understand how you're doing. It should take about <strong>2 minutes</strong> to complete.</p>"
+                    value_string: "This short health check-in will help us understand how you're doing. It should take about **2 minutes** to complete."
+                  - node_type: CMPT_SECTION_DIVIDER
+                  - node_type: CMPT_RICH_TEXT
+                    html: "<p>Your responses are confidential and will be used to personalize your experience in the program.</p>"
+                    value_string: "Your responses are confidential and will be used to personalize your experience in the program."
+              - node_type: CMPT_FOOTER
+                nodes:
+                  - node_type: CMPT_CTA_BUTTON
+                    value_string: "Continue"
+                    nodes:
+                      - node_type: ACTN_ON_CLICK
+                        value_string: "next"
+
+      # ── Consent step ────────────────────────────────────────────────
+      - node_type: ADMIN_CONSENT_STEP
+        value_string: "Research Participation Agreement"
+        nodes:
+          - node_type: ADMIN_CONSENT_SIGN
+            nodes:
+              - node_type: CMPT_BUNDLE_LAYOUT
+                nodes:
+                  - node_type: CMPT_HEADER
+                    nodes:
+                      - node_type: CMPT_CTA_BUTTON
+                        value_string: "Decline"
+                        nodes:
+                          - node_type: ACTN_ON_CLICK
+                            value_string: "disagree"
+                  - node_type: CMPT_PAGE
+                    nodes:
+                      - node_type: CMPT_PDF_VIEWER
+
+                      - node_type: CMPT_CHOICE_QUESTION
+                        nodes:
+                          - node_type: PROP_LABEL
+                            value_string: "I agree to participate in this health check-in program"
+                          - node_type: PROP_BOOLEAN
+                          - node_type: PROP_REQUIRED
+
+                      - node_type: CMPT_CHOICE_QUESTION
+                        nodes:
+                          - node_type: PROP_LABEL
+                            value_string: "I understand my responses will be used to personalize my experience"
+                          - node_type: PROP_BOOLEAN
+                          - node_type: PROP_REQUIRED
+
+                      - node_type: CMPT_FREE_TEXT_QUESTION
+                        nodes:
+                          - node_type: PROP_SIGNATURE
+                          - node_type: PROP_REQUIRED
+
+                      - node_type: CMPT_DIALOG
+                        value_string: "disagree"
+                        nodes:
+                          - node_type: PROP_LABEL
+                            value_string: "Are you sure?"
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Yes, decline"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "confirm"
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Go back"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "cancel"
+                  - node_type: CMPT_FOOTER
+                    nodes:
+                      - node_type: CMPT_CTA_BUTTON
+                        value_string: "I Agree"
+                        nodes:
+                          - node_type: ACTN_ON_CLICK
+                            value_string: "submit"
+
+          - node_type: ADMIN_CONSENT_REVIEW
+            nodes:
+              - node_type: CMPT_BUNDLE_LAYOUT
+                nodes:
+                  - node_type: CMPT_HEADER
+                    nodes:
+                      - node_type: CMPT_EXIT_BUTTON
+                        nodes:
+                          - node_type: ACTN_ON_CLICK
+                            value_string: "exit"
+                  - node_type: CMPT_PAGE
+                    nodes:
+                      - node_type: CMPT_PDF_VIEWER
+
+                      - node_type: CMPT_DIALOG
+                        value_string: "withdraw"
+                        nodes:
+                          - node_type: PROP_LABEL
+                            value_string: "Withdraw Consent?"
+                          - node_type: PROP_BODY
+                            value_string: "If you withdraw, your previous responses will no longer be used."
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Withdraw"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "confirm"
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Cancel"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "cancel"
+                  - node_type: CMPT_FOOTER
+                    nodes:
+                      - node_type: CMPT_CTA_BUTTON
+                        value_string: "Withdraw"
+                        nodes:
+                          - node_type: ACTN_ON_CLICK
+                            value_string: "withdraw"
+
+      # ── Survey step ─────────────────────────────────────────────────
+      #
+      # Structure: CMPT_PAGE = one screen (navigation boundary),
+      #            CMPT_QUESTION_GROUP = related questions within that screen.
+      #
+      # Identifier architecture:
+      #   - Survey OID: auto-derived by the builder. Resource-level.
+      #   - PROP_LINK_ID: per-question Questionnaire.item[].linkId.
+      #     Optional — auto-generated from tree position if omitted.
+      #
+      # NOTE: The node tree declares richer structure than the flat FHIR
+      # Questionnaire converter currently supports. Specifically:
+      #   - CMPT_PAGE grouping (page boundaries)
+      #   - CMPT_QUESTION_GROUP semantics
+      #   - CMPT_HORIZONTAL_CONTAINER (compound numeric layout)
+      #   - PROP_CONSTRAINTS / PROP_NUMERIC (min/max validation)
+      #   - PROP_UNITS (unit metadata)
+      #   - CMPT_HEADER / CMPT_FOOTER / CMPT_CTA_BUTTON chrome
+      # These are faithfully declared in the DSL but the converter
+      # currently flattens all questions into a flat Questionnaire.item[].
+      # A future converter could leverage these for richer FHIR output.
+      - node_type: ADMIN_SURVEY_STEP
+        value_string: "Health Check-In Survey"
+        nodes:
+          - node_type: CMPT_SURVEY_CONTEXT
+            nodes:
+              - node_type: CMPT_BUNDLE_LAYOUT
+                nodes:
+                  # ── Page 1: Overall Health ───────────────────────
+                  - node_type: CMPT_PAGE
+                    nodes:
+                      - node_type: CMPT_HEADER
+                        nodes:
+                          - node_type: CMPT_EXIT_BUTTON
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "exit"
+                      - node_type: CMPT_QUESTION_GROUP
+                        nodes:
+                          - node_type: CMPT_CHOICE_QUESTION
+                            nodes:
+                              - node_type: PROP_LINK_ID
+                                value_string: "q1"
+                              - node_type: PROP_LABEL
+                                value_string: "How would you rate your overall health today?"
+                              - node_type: PROP_OPTION
+                                value_string: "Excellent"
+                              - node_type: PROP_OPTION
+                                value_string: "Very Good"
+                              - node_type: PROP_OPTION
+                                value_string: "Good"
+                              - node_type: PROP_OPTION
+                                value_string: "Fair"
+                              - node_type: PROP_OPTION
+                                value_string: "Poor"
+                              - node_type: PROP_REQUIRED
+                      - node_type: CMPT_FOOTER
+                        nodes:
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Next"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "next"
+
+                  # ── Page 2: Exercise ─────────────────────────────
+                  - node_type: CMPT_PAGE
+                    nodes:
+                      - node_type: CMPT_HEADER
+                        nodes:
+                          - node_type: CMPT_EXIT_BUTTON
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "exit"
+                      - node_type: CMPT_QUESTION_GROUP
+                        nodes:
+                          - node_type: CMPT_CHOICE_QUESTION
+                            nodes:
+                              - node_type: PROP_LINK_ID
+                                value_string: "q2"
+                              - node_type: PROP_LABEL
+                                value_string: "Have you exercised in the past week?"
+                              - node_type: PROP_BOOLEAN
+                              - node_type: PROP_REQUIRED
+                      - node_type: CMPT_FOOTER
+                        nodes:
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Next"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "next"
+
+                  # ── Page 3: Sleep ────────────────────────────────
+                  - node_type: CMPT_PAGE
+                    nodes:
+                      - node_type: CMPT_HEADER
+                        nodes:
+                          - node_type: CMPT_EXIT_BUTTON
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "exit"
+                      - node_type: CMPT_QUESTION_GROUP
+                        nodes:
+                          - node_type: CMPT_FREE_TEXT_QUESTION
+                            nodes:
+                              - node_type: PROP_LINK_ID
+                                value_string: "q3"
+                              - node_type: PROP_LABEL
+                                value_string: "How many hours of sleep did you get last night?"
+                              - node_type: PROP_CONSTRAINTS
+                                nodes:
+                                  - node_type: PROP_NUMERIC
+                                    nodes:
+                                      - node_type: PROP_MIN_VALUE
+                                        value_string: "0"
+                                      - node_type: PROP_MAX_VALUE
+                                        value_string: "24"
+                      - node_type: CMPT_FOOTER
+                        nodes:
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Next"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "next"
+
+                  # ── Page 4: Blood Pressure (compound numeric) ────
+                  - node_type: CMPT_PAGE
+                    nodes:
+                      - node_type: CMPT_HEADER
+                        nodes:
+                          - node_type: CMPT_EXIT_BUTTON
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "exit"
+                      - node_type: CMPT_QUESTION_GROUP
+                        nodes:
+                          - node_type: CMPT_TITLE
+                            nodes:
+                              - node_type: CMPT_RICH_TEXT
+                                html: "<p>What is your blood pressure?</p>"
+                                value_string: "What is your blood pressure?"
+                          - node_type: CMPT_HORIZONTAL_CONTAINER
+                            nodes:
+                              - node_type: CMPT_FREE_TEXT_QUESTION
+                                nodes:
+                                  - node_type: PROP_LINK_ID
+                                    value_string: "q4-systolic"
+                                  - node_type: PROP_LABEL
+                                    value_string: "Systolic"
+                                  - node_type: PROP_CONSTRAINTS
+                                    nodes:
+                                      - node_type: PROP_NUMERIC
+                                        nodes:
+                                          - node_type: PROP_MIN_VALUE
+                                            value_string: "50"
+                                          - node_type: PROP_MAX_VALUE
+                                            value_string: "250"
+                                  - node_type: PROP_UNITS
+                                    nodes:
+                                      - node_type: PROP_UNIT
+                                        nodes:
+                                          - node_type: PROP_UNIT_DISPLAY
+                                            value_string: "mmHg"
+                                          - node_type: PROP_UNIT_SYSTEM
+                                            value_string: "http://unitsofmeasure.org"
+                                          - node_type: PROP_UNIT_CODE
+                                            value_string: "mm[Hg]"
+                                  - node_type: PROP_REQUIRED
+                              - node_type: CMPT_FREE_TEXT_QUESTION
+                                nodes:
+                                  - node_type: PROP_LINK_ID
+                                    value_string: "q4-diastolic"
+                                  - node_type: PROP_LABEL
+                                    value_string: "Diastolic"
+                                  - node_type: PROP_CONSTRAINTS
+                                    nodes:
+                                      - node_type: PROP_NUMERIC
+                                        nodes:
+                                          - node_type: PROP_MIN_VALUE
+                                            value_string: "30"
+                                          - node_type: PROP_MAX_VALUE
+                                            value_string: "150"
+                                  - node_type: PROP_UNITS
+                                    nodes:
+                                      - node_type: PROP_UNIT
+                                        nodes:
+                                          - node_type: PROP_UNIT_DISPLAY
+                                            value_string: "mmHg"
+                                          - node_type: PROP_UNIT_SYSTEM
+                                            value_string: "http://unitsofmeasure.org"
+                                          - node_type: PROP_UNIT_CODE
+                                            value_string: "mm[Hg]"
+                                  - node_type: PROP_REQUIRED
+                      - node_type: CMPT_FOOTER
+                        nodes:
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Next"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "next"
+
+                  # ── Page 5: Open-ended ───────────────────────────
+                  - node_type: CMPT_PAGE
+                    nodes:
+                      - node_type: CMPT_HEADER
+                        nodes:
+                          - node_type: CMPT_EXIT_BUTTON
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "exit"
+                      - node_type: CMPT_QUESTION_GROUP
+                        nodes:
+                          - node_type: CMPT_FREE_TEXT_QUESTION
+                            nodes:
+                              - node_type: PROP_LINK_ID
+                                value_string: "q5"
+                              - node_type: PROP_LABEL
+                                value_string: "Is there anything else you'd like to share about your health?"
+                      - node_type: CMPT_FOOTER
+                        nodes:
+                          - node_type: CMPT_CTA_BUTTON
+                            value_string: "Submit"
+                            nodes:
+                              - node_type: ACTN_ON_CLICK
+                                value_string: "submit"
+
+      # ── Info step (thank you) ───────────────────────────────────────
+      - node_type: ADMIN_INFO_STEP
+        value_string: "Thank You!"
+        nodes:
+          - node_type: CMPT_BUNDLE_LAYOUT
+            nodes:
+              - node_type: CMPT_HEADER
+                nodes:
+                  - node_type: CMPT_EXIT_BUTTON
+                    nodes:
+                      - node_type: ACTN_ON_CLICK
+                        value_string: "exit"
+              - node_type: CMPT_VERTICAL_CONTAINER
+                nodes:
+                  - node_type: CMPT_RICH_TEXT
+                    html: "<h2>Check-In Complete</h2>"
+                    value_string: "## Check-In Complete"
+                  - node_type: CMPT_SECTION_DIVIDER
+                  - node_type: CMPT_RICH_TEXT
+                    html: "<p>Thank you for completing your health check-in! Your responses have been recorded.</p>"
+                    value_string: "Thank you for completing your health check-in! Your responses have been recorded."
+                  - node_type: CMPT_HIGHLIGHT_CARD
+                    nodes:
+                      - node_type: CMPT_RICH_TEXT
+                        html: "<p><strong>What's next?</strong> Check back regularly for new missions and updates to your personalized health plan.</p>"
+                        value_string: "**What's next?** Check back regularly for new missions and updates to your personalized health plan."
+              - node_type: CMPT_FOOTER
+                nodes:
+                  - node_type: CMPT_CTA_BUTTON
+                    value_string: "Done"
+                    nodes:
+                      - node_type: ACTN_ON_CLICK
+                        value_string: "complete"

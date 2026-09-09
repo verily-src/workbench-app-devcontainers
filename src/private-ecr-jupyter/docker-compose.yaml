@@ -2,7 +2,7 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "639879951631.dkr.ecr.us-east-1.amazonaws.com/verily-workbench-private-test-app-repo:latest"
+    image: "677276073900.dkr.ecr.us-east-1.amazonaws.com/verily-workbench-private-test-app-repo:latest"
     restart: always
     volumes:
       - .:/workspace:cached

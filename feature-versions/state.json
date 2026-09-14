@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:89beaf5d77a2602470e0cf8f388edfa07b75d60f7aa39d05c6a9f960bb3f15d5",
+    "installed": "sha256:6352b1a6e3b89f3defc57f3b5dce5fa256febe943f43404b41cf4af3f6ec47f1",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:6e5650bb9c478afdd926dc90879fd7ff789533ff9583260e9afa92819020d42d",
+    "installed": "sha256:2840ea80c445fdc75c7b9200b4b366c49637ed7fc362a1bc4823d0fd3bd7d9d1",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:77a3d3d1f8f28f25cd9cd2d2fe34987e490d815921365672e897e408f807c398",
+    "installed": "sha256:5d070069212da2908eb9d5545b5cda4f9bc5632c7cec6c8ec760fab960e0724f",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:6960bfaf61679dcd3098a588214d559c7d3b1edd4cc90efcc98a63af0b90a9b3",
+    "installed": "sha256:8ba4fe37e2bf3788cb277699f7384b61e379dfb608626dcbd47aae69a56bda78",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,7 +61,7 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:acffbb134396e39dcdd398f62f0953eea3e7047ee9abbde5ad382246780617c9",
+    "installed": "sha256:35c66180741213ad9d8a4a31271fa7e84f290b681ece3fb84359c1ca7013da89",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
@@ -101,7 +101,7 @@
   },
   "lscr.io/linuxserver/chromium": {
     "tag": "latest",
-    "installed": "sha256:27f41698ae1e6193c54f8d0176f9049d3620b3d4bd6bf4eb600dc2577d76d7af",
+    "installed": "sha256:54a61718733c82ac041e7c84543283419b06ab0d6439eef5c20b1f6a53b8dcd0",
     "filter": "src\\/browser-common\\/Dockerfile"
   }
 }

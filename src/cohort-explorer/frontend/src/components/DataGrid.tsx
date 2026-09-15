@@ -17,6 +17,7 @@ export default function DataGrid({ rows, loading, error, mappings }: Props) {
   const columnDefs = useMemo<ColDef<SampleRow>[]>(
     () => mappings.map((m) => ({
       field: m.column,
+      tooltipField: m.column,
       headerName: m.label,
       width: m.type === "text" ? 200 : 120,
       type: m.type === "float" || m.type === "integer" ? "numericColumn" : undefined,
@@ -48,6 +49,7 @@ export default function DataGrid({ rows, loading, error, mappings }: Props) {
         rowData={rows}
         columnDefs={columnDefs}
         defaultColDef={defaultColDef}
+        tooltipShowDelay={300}
         loading={loading}
         overlayNoRowsTemplate={
           error

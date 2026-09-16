@@ -25,7 +25,7 @@
           "version": "17",
           "jdkDistro": "tem"
         },
-    "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
+    "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli@sha256:115b3b4a6c7948c660414a6f9aa601674aa1712e9616f7e436760daeeb4b95f2": {},
     "ghcr.io/devcontainers/features/aws-cli@sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef":{},
     "./.devcontainer/features/workbench-tools": {
       "cloud": "${templateOption:cloud}",

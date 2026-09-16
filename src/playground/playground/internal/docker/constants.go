@@ -34,7 +34,7 @@ var WBFeatures = map[string]any{
 		"version": "17",
 	},
 	"ghcr.io/devcontainers/features/aws-cli:1":    map[string]any{},
-	"ghcr.io/dhoeric/features/google-cloud-cli:1": map[string]any{},
+	"ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli:1": map[string]any{},
 }
 
 // DevcontainerTemplate for generating .devcontainer.json

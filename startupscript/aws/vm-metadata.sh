@@ -49,6 +49,16 @@ readonly -f get_metadata_value
 function set_metadata() {
   local key="${1}"
   local value="${2}"
+
+  # AWS tag value limit: 256 characters
+  local max_value_length=256
+
+  # Truncate value if too long
+  if [[ ${#value} -gt ${max_value_length} ]]; then
+    echo "Warning: Tag value for key '${key}' exceeds ${max_value_length} characters, truncating"
+    value="${value:0:${max_value_length}}"
+  fi
+
   # Per the AWS CLI documentation, value is provided within quotes,
   # with " and \ escaped with a \ prefix.
   # https://docs.aws.amazon.com/cli/latest/reference/ec2/create-tags.html

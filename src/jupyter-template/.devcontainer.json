@@ -20,15 +20,16 @@
     "${templateOption:login}"
   ],
   "features": {
-    "ghcr.io/devcontainers/features/common-utils@sha256:dbf431d6b42d55cde50fa1df75c7f7c3999a90cde6d73f7a7071174b3c3d0cc4": {
+    "ghcr.io/devcontainers/features/common-utils@sha256:cb0c4d3c276f157eed17935747e364178d75fee17f55c4e129966f64633deb3a": {
       // See https://github.com/devcontainers/features/tree/main/src/common-utils
       "installZsh": false,
       "installOhMyZsh": false,
       "installOhMyZshConfig": false,
       "username": "jupyter"
     },
-    "ghcr.io/devcontainers/features/java@sha256:9663ce0219ff85786e87901ce5f0a59f488edd5f99b46015192cda48468b233a": {
-      "version": "17"
+    "ghcr.io/devcontainers/features/java@sha256:7d2fc86e0dad756209cd68da6b2b43e6149a5e07232a9f20663c42a8ca1563ad": {
+      "version": "17",
+      "jdkDistro": "tem"
     },
     "ghcr.io/devcontainers/features/aws-cli@sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef": {},
     "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},

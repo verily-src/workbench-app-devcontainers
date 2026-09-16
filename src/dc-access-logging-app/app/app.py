@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -15,13 +16,15 @@ def _parse_wb_workspace():
     result = {}
     try:
         out = subprocess.run(
-            ["wb", "workspace", "describe"],
+            ["wb", "workspace", "describe", "--format=json"],
             capture_output=True, text=True, timeout=10,
         )
-        for line in out.stdout.splitlines():
-            for key in ("Organization:", "Google project:"):
-                if line.strip().startswith(key):
-                    result[key.rstrip(":")] = line.split(":", 1)[1].strip()
+        if out.returncode == 0 and out.stdout.strip():
+            data = json.loads(out.stdout)
+            if data.get("orgId"):
+                result["Organization"] = data["orgId"]
+            if data.get("googleProjectId"):
+                result["Google project"] = data["googleProjectId"]
     except Exception:
         pass
     return result

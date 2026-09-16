@@ -6,7 +6,7 @@
   },
   "ghcr.io/devcontainers/features/java": {
     "tag": "1",
-    "installed": "sha256:9663ce0219ff85786e87901ce5f0a59f488edd5f99b46015192cda48468b233a",
+    "installed": "sha256:7d2fc86e0dad756209cd68da6b2b43e6149a5e07232a9f20663c42a8ca1563ad",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/dhoeric/features/google-cloud-cli": {
@@ -21,7 +21,7 @@
   },
   "ghcr.io/devcontainers/features/common-utils": {
     "tag": "2",
-    "installed": "sha256:dbf431d6b42d55cde50fa1df75c7f7c3999a90cde6d73f7a7071174b3c3d0cc4",
+    "installed": "sha256:cb0c4d3c276f157eed17935747e364178d75fee17f55c4e129966f64633deb3a",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/node": {
@@ -36,37 +36,37 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:ff6cb0ed80e949a67394b2015267e375c55e1fc577ffacb6fc6f76b5c82acb5c",
+    "installed": "sha256:dc84f6ca005cbda3c2df529371dda84deee05d5ddced3e2497ca9e1edcc109f1",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:8e29733a48c7f1d8fc0995c9be47f99244eb57307bcc1a4dbf432efdaaffcb69",
+    "installed": "sha256:039b3fe16bf349b81cc10a825f4ed62439187d9f9e80529568a964006e78647a",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:e2043ab778c20cd3480502f075ec7ac89d7876207612a2ea54aaef40a72ea429",
+    "installed": "sha256:26f7c7314cce4afb074223982e55c8d1bc7fd6e0443c91435ac5b06f3c7686be",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:62089d6cef2015e08361928c6bb6ae003afd0800a3e682a536171b3bcb0765b1",
+    "installed": "sha256:7e7abd328398be0401d776daad043f7c54a14c42b4313e8a02ffddd4c494d382",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
     "tag": "4",
-    "installed": "sha256:289c5d02d8115aa209f4a8a49ee9378dccbf623897eed9cc46c87dfbbca9015b",
+    "installed": "sha256:3a9ecbed900f17da528cdb17c3ddc43045fc9b4be7dbd8c61cb7b8a6439bfa6b",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051",
+    "installed": "sha256:973c87625ae2509d184de32e0eaf366c5593817bd512cfcc4f3b72091fea88e3",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
     "tag": "1.26-alpine",
-    "installed": "sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d",
+    "installed": "sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {
@@ -84,14 +84,24 @@
     "installed": "sha256:a5256d416e2e8b92d69a4459058e3eca33a9f075d8325491644411d0bc3bd70b",
     "filter": "src\\/.*\\/Dockerfile"
   },
+  "debian": {
+    "tag": "13.6-slim",
+    "installed": "sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132",
+    "filter": "src\\/pgweb\\/Dockerfile"
+  },
   "mikefarah/yq": {
     "tag": "4",
-    "installed": "sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60",
+    "installed": "sha256:cfc4eee658595834ef304eadb0c3ea721f3b7cb6404ad8b7cb909cc5b5145b23",
     "filter": "startupscript\\/butane\\/050-parse-devcontainer\\.sh"
   },
   "gcr.io/go-containerregistry/crane": {
     "tag": "latest",
-    "installed": "sha256:d3a706262093746258f20107ab4e95536f9d6d45c8c3f3acf6b02b1801b440d6",
+    "installed": "sha256:2b6828477d3cdf9999e84515f4e2019c7e6550e4d7fe9b5b37542bd25c9bc201",
     "filter": "startupscript\\/butane\\/prefetch-oci-features\\.sh"
+  },
+  "lscr.io/linuxserver/chromium": {
+    "tag": "latest",
+    "installed": "sha256:4c7b9086d2e5054b61c9e6b0f75efceece5befeff2bec3ff543d52e000cee21d",
+    "filter": "src\\/browser-common\\/Dockerfile"
   }
 }

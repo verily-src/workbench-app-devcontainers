@@ -4,6 +4,8 @@ include:
 services:
   app:
     container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
     build:
       context: .
       additional_contexts:
@@ -27,7 +29,7 @@ services:
     # TODO(PHP-87353): Add remotefuse back. See https://github.com/verily-src/workbench-app-devcontainers/pull/227
   wondershaper:
     container_name: "wondershaper"
-    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:ff6cb0ed80e949a67394b2015267e375c55e1fc577ffacb6fc6f76b5c82acb5c"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:dc84f6ca005cbda3c2df529371dda84deee05d5ddced3e2497ca9e1edcc109f1"
     restart: always
     network_mode: "host"
     cap_add:

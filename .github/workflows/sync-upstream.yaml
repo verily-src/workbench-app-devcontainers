@@ -3,7 +3,7 @@ name: Sync upstream master
 on:
   workflow_dispatch:
   schedule:
-    - cron: "23 8 * * 1" # Mondays at 08:23 UTC
+    - cron: "23 8 1 * *" # First of each month at 08:23 UTC
 
 permissions:
   contents: read

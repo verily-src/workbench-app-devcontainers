@@ -6,7 +6,7 @@ histories. Do not copy the upstream tree over this repo or reset internal master
 
 ## Scheduled sync
 
-`.github/workflows/sync-upstream.yaml` runs every Monday at 08:23 UTC and supports
+`.github/workflows/sync-upstream.yaml` runs on the first of each month at 08:23 UTC and supports
 **Run workflow**. It checks out internal `master`, fetches upstream `master`, and:
 
 - Does nothing if upstream is already an ancestor of internal master.

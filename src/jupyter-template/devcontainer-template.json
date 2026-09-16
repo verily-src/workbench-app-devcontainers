@@ -21,7 +21,7 @@
     "containerImage": {
       "type": "string",
       "description": "The container image to use",
-      "default": "debian:bullseye"
+      "default": "debian:trixie"
     },
     "containerPort": {
       "type": "number",

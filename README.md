@@ -2,6 +2,9 @@
 
 Repo to store Verily Workbench-specific applications' devcontainer specifications. To develop your own custom app configuration, fork this repo.
 
+For this internal repository's scheduled and manual upstream merges, see
+[Syncing upstream devcontainers](docs/upstream-sync.md).
+
 ## Repository Structure
 
 - **`src/`**: Contains devcontainer app templates for various applications (Jupyter, R/RStudio, VSCode, etc.)

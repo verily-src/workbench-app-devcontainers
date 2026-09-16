@@ -1,0 +1,91 @@
+name: Sync upstream master
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 8 * * 1" # Mondays at 08:23 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-upstream-master
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'verily-src/vwb-eng-workbench-app-devcontainers'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.SYNC_UPSTREAM_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check credentials
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo '::error::Configure SYNC_UPSTREAM_TOKEN; see docs/upstream-sync.md.'
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_UPSTREAM_TOKEN }}
+
+      - name: Merge upstream and open a review PR
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing=$(gh pr list --base master --state open --limit 1000 \
+            --json headRefName,url \
+            --jq '.[] | select(.headRefName | startswith("automation/sync-upstream-")) | .url')
+          if [[ -n "$existing" ]]; then
+            echo "Existing sync PR needs review: $existing" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git remote add upstream https://github.com/verily-src/workbench-app-devcontainers.git
+          git fetch --no-tags upstream master
+          upstream_sha=$(git rev-parse refs/remotes/upstream/master)
+          base_sha=$(git rev-parse HEAD)
+          if git merge-base --is-ancestor "$upstream_sha" HEAD; then
+            echo 'Internal master already contains upstream master.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          branch="automation/sync-upstream-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git switch -c "$branch"
+          if ! git merge --no-ff --no-edit "$upstream_sha"; then
+            {
+              echo '## Upstream sync needs manual resolution'
+              echo "Internal master: $base_sha"
+              echo "Upstream master: $upstream_sha"
+              echo 'See docs/upstream-sync.md. No branch was pushed.'
+              echo '```text'
+              git diff --name-only --diff-filter=U
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          body="$RUNNER_TEMP/upstream-sync-pr.md"
+          {
+            echo 'Merge upstream master while preserving internal changes.'
+            echo
+            echo "Internal base: $base_sha"
+            echo "Upstream: $upstream_sha"
+            echo
+            echo 'Git merged without conflicts. Application behavior is not yet validated.'
+            echo 'Review the diff and require CI before merging. Use a merge commit, not squash or rebase.'
+            echo
+            echo '```text'
+            git diff --stat "$base_sha" HEAD
+            echo '```'
+          } > "$body"
+          git push origin "HEAD:refs/heads/$branch"
+          gh pr create --base master --head "$branch" \
+            --title 'Sync upstream master' --body-file "$body" >> "$GITHUB_STEP_SUMMARY"

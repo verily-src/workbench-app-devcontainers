@@ -782,8 +782,8 @@ Trigger \`DATA_DISCOVERY.md\` whenever the user is searching for data collection
 - "troubleshoot my workflow" / "fix my workflow" / "workflow failed" / "workflow error"
 - "troubleshoot my job" / "my job failed" / "workflow job failed"
 - "job failed" / "task failed" / "out of memory" / "check logs" / "why did it fail"
-- If workflow type is ambiguous, check `wb workflow list` to confirm WDL before reading
-- Does NOT apply when user mentions Nextflow or nf-core — use `NEXTFLOW_WORKFLOW.md` instead
+- If workflow type is ambiguous, check \`wb workflow list\` to confirm WDL before reading
+- Does NOT apply when user mentions Nextflow or nf-core — use \`NEXTFLOW_WORKFLOW.md\` instead
 
 **Read \`NEXTFLOW_WORKFLOW.md\` when the workflow is Nextflow-based:**
 - User explicitly mentions "nextflow" / "nf-core" / "nextflow module" / "nextflow run"

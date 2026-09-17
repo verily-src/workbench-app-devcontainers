@@ -9,9 +9,9 @@
     "installed": "sha256:61a839211feda1e2a1f10646648a948e733e4d98d770f3a4b6698a3c5fc92abe",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
-  "ghcr.io/dhoeric/features/google-cloud-cli": {
+  "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli": {
     "tag": "1",
-    "installed": "sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f",
+    "installed": "sha256:115b3b4a6c7948c660414a6f9aa601674aa1712e9616f7e436760daeeb4b95f2",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/rocker-org/devcontainer-features/r-packages": {

@@ -69,6 +69,11 @@
     "installed": "sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628",
     "filter": "src\\/.*\\/Dockerfile"
   },
+  "node": {
+    "tag": "24.20.0-alpine",
+    "installed": "sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf",
+    "filter": "src\\/playground\\/playground\\/Dockerfile"
+  },
   "nvcr.io/nvidia/nemo": {
     "tag": "25.07.nemotron-nano-v2",
     "installed": "sha256:f96daf8b2f07a4f8fb20e754f91b507e507ceb9119943027a4d43d7ca15e3896",

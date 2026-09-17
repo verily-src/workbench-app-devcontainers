@@ -34,24 +34,24 @@
     "installed": "sha256:cfc2e7d3e9fd3b9b01f8d5cb158508a884c8c0ede2e23ed10f32dea5d4ffe69a",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
-  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
+  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/user-apps-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:89beaf5d77a2602470e0cf8f388edfa07b75d60f7aa39d05c6a9f960bb3f15d5",
+    "installed": "sha256:3e9ebb173fa8bd160080bf207f39a1a3ec807ea942376c9cee7e0eae6c5ba4ab",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
-  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
+  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/user-apps-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:6e5650bb9c478afdd926dc90879fd7ff789533ff9583260e9afa92819020d42d",
+    "installed": "sha256:e0954df8685d73872af044db0fbf73e8e1f68a0325a24918e0f81631fe69aaf7",
     "filter": "src\\/.*\\/Dockerfile"
   },
-  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
+  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/user-apps-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:77a3d3d1f8f28f25cd9cd2d2fe34987e490d815921365672e897e408f807c398",
+    "installed": "sha256:4283c7dd4d147f9847f01863b09be7e2ceb152c6d86f18264f3a97349b63f56f",
     "filter": "src\\/.*\\/Dockerfile"
   },
-  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
+  "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/user-apps-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:6960bfaf61679dcd3098a588214d559c7d3b1edd4cc90efcc98a63af0b90a9b3",
+    "installed": "sha256:8c529bc65213a832750b0bf8bf3cd6d07645eb9e5f0ea9e49b023d7608a34ed8",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {

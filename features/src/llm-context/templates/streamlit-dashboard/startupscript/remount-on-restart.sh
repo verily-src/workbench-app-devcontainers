@@ -20,7 +20,7 @@ readonly USER_NAME="${1}"
 readonly WORK_DIRECTORY="${2}"
 readonly CLOUD="${3}"
 # shellcheck disable=SC2034
-readonly LOG_IN="${4}"
+LOG_IN="${4}"
 
 ##############################################
 # Get absolute paths of the script directories
@@ -51,8 +51,11 @@ source "${SCRIPT_DIR}/emit.sh"
 # CLI login
 #############################
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
-if [[ "${LOG_IN}" == "true" ]] && ${RUN_AS_LOGIN_USER} "'{$WORKBENCH_INSTALL_PATH}' auth status 2>&1" | grep -q "NO USER LOGGED IN"; then
-  ${RUN_AS_LOGIN_USER} "'{$WORKBENCH_INSTALL_PATH}' auth login --mode=APP_DEFAULT_CREDENTIALS"
+if [[ "${LOG_IN}" == "true" ]] && ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth status 2>&1" | grep -q "NO USER LOGGED IN"; then
+  if ! ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth login --mode=APP_DEFAULT_CREDENTIALS"; then
+    emit "Workbench CLI login failed; skipping resource mount."
+    LOG_IN="false"
+  fi
 fi
 
 #############################

@@ -18,6 +18,9 @@ download() {
   local dest="$1"
   local src="$2"
   local mode="${3:-0755}"
+  if [ -e "$dest" ]; then
+    return
+  fi
   mkdir -p "$(dirname "$dest")"
   curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL -o "$dest" "${BASE_URL}/${src}"
   chmod "$mode" "$dest"

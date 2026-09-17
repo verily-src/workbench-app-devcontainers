@@ -49,13 +49,19 @@ EOF
     # install packages needed to install gcsfuse
     apt-get install -y \
       fuse \
-      lsb-release
+      lsb-release \
+      gnupg
 
     GCSFUSE_REPO="gcsfuse-$(lsb_release -c -s)"
     readonly GCSFUSE_REPO
 
-    echo "deb https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" > /etc/apt/sources.list.d/gcsfuse.list
-    curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | apt-key add -
+    CLOUD_GPG_KEYRING="/usr/share/keyrings/cloud.google.gpg"
+    readonly CLOUD_GPG_KEYRING
+    if [ ! -f "${CLOUD_GPG_KEYRING}" ]; then
+      curl "https://packages.cloud.google.com/apt/doc/apt-key.gpg" | gpg --dearmor -o "${CLOUD_GPG_KEYRING}"
+    fi
+
+    echo "deb [signed-by=${CLOUD_GPG_KEYRING}] https://packages.cloud.google.com/apt ${GCSFUSE_REPO} main" > /etc/apt/sources.list.d/gcsfuse.list
     apt-get update \
       && apt-get install -y gcsfuse
   fi

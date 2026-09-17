@@ -1,7 +1,7 @@
 {
   "id": "jupyter",
   "name": "Jupyter Server",
-  "version": "1.6.5",
+  "version": "1.8.0",
   "documentationURL": "https://github.com/devcontainers/features/tree/main/src/python",
   "description": "Installs the provided version of Python, as well as PIPX, and other common Python utilities.  JupyterLab is conditionally installed with the python feature. Note: May require source code compilation.",
   "options": {
@@ -81,7 +81,7 @@
     "PYTHON_PATH": "/usr/local/python/current",
     "PIPX_HOME": "/usr/local/py-utils",
     "PIPX_BIN_DIR": "/usr/local/py-utils/bin",
-    "PATH": "/usr/local/python/current/bin:/usr/local/py-utils/bin:${PATH}"
+    "PATH": "/usr/local/python/current/bin:/usr/local/py-utils/bin:/usr/local/jupyter:${PATH}"
   },
   "installsAfter": [
     "ghcr.io/devcontainers/features/common-utils"

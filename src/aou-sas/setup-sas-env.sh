@@ -14,8 +14,8 @@ set -o pipefail
 readonly USER_NAME="${1}"
 readonly DATA_DIR="${2}"
 
-if [ -f "${DATA_DIR}/load-env.sh" ]; then
-  sudo -u "${USER_NAME}" bash -c "source '${DATA_DIR}/load-env.sh'" || true
+if [ -f "/opt/sas/aou/load-env.sh" ]; then
+  sudo -u "${USER_NAME}" bash -c "source '/opt/sas/aou/load-env.sh'" || true
 fi
 
 # Extract export statements from .bashrc to get workbench environment variables

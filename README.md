@@ -2,6 +2,9 @@
 
 Repo to store Verily Workbench-specific applications' devcontainer specifications. To develop your own custom app configuration, fork this repo.
 
+For this internal repository's scheduled and manual upstream merges, see
+[Syncing upstream devcontainers](docs/upstream-sync.md).
+
 ## Repository Structure
 
 - **`src/`**: Contains devcontainer app templates for various applications (Jupyter, R/RStudio, VSCode, etc.)
@@ -220,6 +223,14 @@ To run and debug your app locally:
    ```
 
 5. **Access your app**: Once the container is running, you can access it at `localhost:<port>` where `<port>` is the port you specified in your configuration (e.g., `localhost:8888` for Jupyter, `localhost:7681` for ttyd)
+
+## Container Resource Limits
+
+Memory and shared memory limits are automatically configured to prevent OOM conditions on the host VM.
+
+**Memory Limit**: Reserves 10% of total memory for the host, floored at 1GB and capped at 4GB. Container gets the remainder.
+
+**Shared Memory**: Default is 64m. Override via `shm-size` metadata.
 
 ## How to use
 

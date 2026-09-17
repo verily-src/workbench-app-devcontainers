@@ -1,4 +1,4 @@
-FROM ghcr.io/rocker-org/devcontainer/tidyverse@sha256:289c5d02d8115aa209f4a8a49ee9378dccbf623897eed9cc46c87dfbbca9015b
+FROM ghcr.io/rocker-org/devcontainer/tidyverse@sha256:3a9ecbed900f17da528cdb17c3ddc43045fc9b4be7dbd8c61cb7b8a6439bfa6b
 
 ARG USER=rstudio
 ARG HOME=/home/$USER

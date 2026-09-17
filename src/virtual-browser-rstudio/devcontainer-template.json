@@ -1,0 +1,33 @@
+{
+  "id": "virtual-browser-rstudio",
+  "description": "A template that serves RStudio Server through a streamed Chromium browser session",
+  "version": "0.0.1",
+  "name": "RStudio in a Virtual Browser",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/virtual-browser-rstudio",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    },
+    "shmSize": {
+      "type": "string",
+      "description": "Shared memory size for the RStudio container",
+      "default": "64m"
+    },
+    "memoryLimit": {
+      "type": "string",
+      "description": "Memory limit for the RStudio container",
+      "default": "8192m"
+    }
+  },
+  "platforms": ["Any"]
+}

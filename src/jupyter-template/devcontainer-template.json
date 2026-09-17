@@ -21,12 +21,22 @@
     "containerImage": {
       "type": "string",
       "description": "The container image to use",
-      "default": "debian:bullseye"
+      "default": "debian:bookworm"
     },
     "containerPort": {
       "type": "number",
       "description": "The port to expose the container on",
       "default": 8888
+    },
+    "shmSize": {
+      "type": "string",
+      "description": "Shared memory size for the application-server container",
+      "default": "64m"
+    },
+    "memoryLimit": {
+      "type": "string",
+      "description": "Memory limit for the application-server container",
+      "default": "8192m"
     }
   },
   "platforms": ["Any"]

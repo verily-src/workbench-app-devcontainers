@@ -21,8 +21,8 @@ my_dataframe.to_csv(destination_filename, index=False)
 my_bucket = os.getenv('WORKSPACE_BUCKET')
 
 # copy csv file to the bucket
-args = ["gsutil", "cp", f"./{destination_filename}", f"{my_bucket}/data/"]
+args = ["gcloud", "storage", "cp", f"./{destination_filename}", f"{my_bucket}/data/"]
 output = subprocess.run(args, capture_output=True)
 
-# print output from gsutil
+# print output from gcloud storage
 output.stderr

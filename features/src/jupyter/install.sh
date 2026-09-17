@@ -2,7 +2,8 @@
 
 # install.sh
 # This install script installs python and jupyter lab.
-# Forked from https://github.com/devcontainers/features/tree/main/src/python
+# Forked from https://github.com/devcontainers/features/tree/main/src/python,
+# last synced with https://github.com/devcontainers/features/commit/6e508935b0251b24d971ced4154f959599561ade
 # Workbench specific modifications are wrapped around in:
 # "### BEGIN: Workbench-specific customizations ###" and
 # "### END: Workbench-specific customizations ###"
@@ -531,7 +532,8 @@ install_cosign() {
 
     COSIGN_VERSION="latest"
     local cosign_url='https://github.com/sigstore/cosign'
-    local architecture=$(get_architecture)
+    local architecture
+    architecture=$(get_architecture)
 
     find_version_from_git_tags COSIGN_VERSION "${cosign_url}"
 
@@ -671,8 +673,10 @@ install_from_source() {
 
     # Discontinuation of PGP signatures for releases of Python 3.14 or future versions
     # CPython release artifacts are additionally signed with Sigstore starting with the Python 3.11.0
-    local major_version=$(echo "$VERSION" | cut -d. -f1)
-    local minor_version=$(echo "$VERSION" | cut -d. -f2)
+    local major_version
+    major_version=$(echo "$VERSION" | cut -d. -f1)
+    local minor_version
+    minor_version=$(echo "$VERSION" | cut -d. -f2)
     echo "(*) Detected Python version: ${major_version}.${minor_version}"
     if (( major_version > 3 )) || { (( major_version == 3 )) && (( minor_version >= 14 )); }; then
         echo "(*) Python 3.14+ detected. Attempting cosign verification..."
@@ -720,7 +724,7 @@ install_from_source() {
     make install
 
     cd /tmp
-    rm -rf /tmp/python-src ${GNUPGHOME} /tmp/vscdc-settings.env
+    rm -rf /tmp/python-src "${GNUPGHOME}" /tmp/vscdc-settings.env
 
     ln -s "${INSTALL_PATH}/bin/python3" "${INSTALL_PATH}/bin/python"
     ln -s "${INSTALL_PATH}/bin/pip3" "${INSTALL_PATH}/bin/pip"
@@ -765,10 +769,15 @@ install_user_package() {
     INSTALL_UNDER_ROOT="$1"
     PACKAGE="$2"
 
+    PIP_ARGS=(--upgrade --no-cache-dir)
+    if python_is_externally_managed "${PYTHON_SRC}"; then
+        PIP_ARGS+=(--break-system-packages)
+    fi
+
     if [ "$INSTALL_UNDER_ROOT" = true ]; then
-        sudo_if "${PYTHON_SRC}" -m pip install --upgrade --no-cache-dir "$PACKAGE"
+        sudo_if "${PYTHON_SRC}" -m pip install "${PIP_ARGS[@]}" "$PACKAGE"
     else
-        sudo_if "${PYTHON_SRC}" -m pip install --user --upgrade --no-cache-dir "$PACKAGE"
+        sudo_if "${PYTHON_SRC}" -m pip install --user "${PIP_ARGS[@]}" "$PACKAGE"
     fi
 }
 
@@ -966,26 +975,26 @@ if [ "${PYTHON_VERSION}" != "none" ]; then
         OLDIFS=$IFS
         IFS=","
             read -r -a additional_versions <<< "$ADDITIONAL_VERSIONS"
-            major_version=$(get_major_version ${VERSION})
+            major_version=$(get_major_version "${VERSION}")
             if type apt-get > /dev/null 2>&1; then
                 # Debian/Ubuntu: Use update-alternatives
-                update-alternatives --install ${CURRENT_PATH} python${major_version} ${PYTHON_INSTALL_PATH}/${VERSION} $((${#additional_versions[@]}+1))
-                update-alternatives --set python${major_version} ${PYTHON_INSTALL_PATH}/${VERSION}
+                update-alternatives --install "${CURRENT_PATH}" "python${major_version}" "${PYTHON_INSTALL_PATH}/${VERSION}" "$((${#additional_versions[@]}+1))"
+                update-alternatives --set "python${major_version}" "${PYTHON_INSTALL_PATH}/${VERSION}"
             elif type dnf > /dev/null 2>&1 || type yum > /dev/null 2>&1 || type microdnf > /dev/null 2>&1; then
                 # Fedora/RHEL/CentOS: Use alternatives
-                alternatives --install ${CURRENT_PATH} python${major_version} ${PYTHON_INSTALL_PATH}/${VERSION} $((${#additional_versions[@]}+1))
-                alternatives --set python${major_version} ${PYTHON_INSTALL_PATH}/${VERSION}
+                alternatives --install "${CURRENT_PATH}" "python${major_version}" "${PYTHON_INSTALL_PATH}/${VERSION}" "$((${#additional_versions[@]}+1))"
+                alternatives --set "python${major_version}" "${PYTHON_INSTALL_PATH}/${VERSION}"
             fi
             for i in "${!additional_versions[@]}"; do
                 version=${additional_versions[$i]}
                 OVERRIDE_DEFAULT_VERSION="false"
-                install_python $version
+                install_python "$version"
                 if type apt-get > /dev/null 2>&1; then
                     # Debian/Ubuntu: Use update-alternatives
-                    update-alternatives --install ${CURRENT_PATH} python${major_version} ${PYTHON_INSTALL_PATH}/${VERSION} $((${i}+1))
+                    update-alternatives --install "${CURRENT_PATH}" "python${major_version}" "${PYTHON_INSTALL_PATH}/${VERSION}" "$((i+1))"
                 elif type dnf > /dev/null 2>&1 || type yum > /dev/null 2>&1 || type microdnf > /dev/null 2>&1; then
                     # Fedora/RHEL/CentOS: Use alternatives
-                    alternatives --install ${CURRENT_PATH} python${major_version} ${PYTHON_INSTALL_PATH}/${VERSION} $((${i}+1))
+                    alternatives --install "${CURRENT_PATH}" "python${major_version}" "${PYTHON_INSTALL_PATH}/${VERSION}" "$((i+1))"
                 fi
             done
         INSTALL_PATH="${OLD_INSTALL_PATH}"

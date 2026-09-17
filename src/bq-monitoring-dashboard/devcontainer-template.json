@@ -1,0 +1,20 @@
+{
+  "id": "bq-monitoring-dashboard",
+  "version": "1.0.0",
+  "name": "BigQuery Monitoring Dashboard",
+  "description": "Real-time BigQuery monitoring dashboard with data profiling. Displays dataset/table metrics, visualizations, and detailed data characteristics using ydata-profiling.",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

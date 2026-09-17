@@ -770,9 +770,13 @@ install_user_package() {
     PACKAGE="$2"
 
     PIP_ARGS=(--upgrade --no-cache-dir)
+### BEGIN: Workbench-specific customizations ###
+    # os-provided python on Debian trixie+ is externally managed (PEP 668), so
+    # plain pip installs are rejected unless this flag is passed.
     if python_is_externally_managed "${PYTHON_SRC}"; then
         PIP_ARGS+=(--break-system-packages)
     fi
+### END: Workbench-specific customizations ###
 
     if [ "$INSTALL_UNDER_ROOT" = true ]; then
         sudo_if "${PYTHON_SRC}" -m pip install "${PIP_ARGS[@]}" "$PACKAGE"

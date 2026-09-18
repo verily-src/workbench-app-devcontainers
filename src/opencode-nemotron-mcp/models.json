@@ -1,0 +1,14 @@
+[
+  {
+    "tag": "nemotron-3-nano:4b",
+    "name": "Nemotron 3 Nano 4B (default)",
+    "weights": "2.8 GB",
+    "gpu": "T4 16 GB (primary) or V100 16 GB"
+  },
+  {
+    "tag": "nemotron-3.5-lightning:30b",
+    "name": "Nemotron 3.5 Lightning 30B",
+    "weights": "25 GB",
+    "gpu": "A100 40 GB (primary); A100 80 GB, H100 80 GB, or H100 80 GB MEGA"
+  }
+]

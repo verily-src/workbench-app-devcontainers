@@ -17,11 +17,17 @@ services:
       # Workbench only substitutes a fixed set of template options on the VM
       # (see startupscript/butane/050-parse-devcontainer.sh), so the model tag
       # is set here rather than as a template option.
-      OLLAMA_MODEL: "nemotron-3.5-lightning:30b"
+      # Use "prompt" to defer the download until the first interactive opencode launch.
+      OLLAMA_MODEL: "nemotron-3-nano:4b"
+      OLLAMA_HOST: "127.0.0.1:11434"
+      OLLAMA_MODELS: "/config/.ollama/models"
       OLLAMA_KEEP_ALIVE: "-1"
       OLLAMA_FLASH_ATTENTION: "true"
-      # opencode needs a large context for reliable tool calls.
-      OLLAMA_CONTEXT_LENGTH: "32768"
+      # Room for OpenCode, Workbench context, and MCP tool definitions.
+      OLLAMA_CONTEXT_LENGTH: "65536"
+      # Bound memory use on smaller GPUs, including when switching models.
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
     networks:
       - app-network
     cap_add:

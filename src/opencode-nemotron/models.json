@@ -1,0 +1,32 @@
+[
+  {
+    "tag": "nemotron-3-nano:4b",
+    "name": "Nemotron 3 Nano 4B (default)",
+    "weights": "2.8 GB",
+    "gpu": "T4 16 GB or L4 24 GB"
+  },
+  {
+    "tag": "nemotron-3-nano:4b-q8_0",
+    "name": "Nemotron 3 Nano 4B Q8",
+    "weights": "4.2 GB",
+    "gpu": "T4 16 GB or L4 24 GB"
+  },
+  {
+    "tag": "nemotron-3-nano:4b-bf16",
+    "name": "Nemotron 3 Nano 4B BF16",
+    "weights": "8.0 GB",
+    "gpu": "L4 24 GB"
+  },
+  {
+    "tag": "nemotron-3.5-lightning:30b",
+    "name": "Nemotron 3.5 Lightning 30B",
+    "weights": "25 GB",
+    "gpu": "A100 40 GB"
+  },
+  {
+    "tag": "nemotron-3-nano:30b",
+    "name": "Nemotron 3 Nano 30B",
+    "weights": "24 GB",
+    "gpu": "A100 40 GB"
+  }
+]

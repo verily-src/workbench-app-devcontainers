@@ -1,0 +1,35 @@
+name: "CI - Test OpenCode Nemotron scripts"
+on:
+  pull_request:
+    paths:
+      - 'src/opencode-nemotron/**'
+      - 'tests/opencode-nemotron/**'
+      - 'features/src/wb-mcp-server/**'
+      - 'features/src/llm-context/**'
+      - '.github/workflows/test-opencode-nemotron.yaml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/opencode-nemotron/**'
+      - 'tests/opencode-nemotron/**'
+      - 'features/src/wb-mcp-server/**'
+      - 'features/src/llm-context/**'
+      - '.github/workflows/test-opencode-nemotron.yaml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell scripts
+        run: shellcheck src/opencode-nemotron/*.sh
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: features/src/wb-mcp-server/go.mod
+          cache: false
+      - name: Build the shared MCP server for transport tests
+        run: go build -o "$RUNNER_TEMP/wb-mcp-server" features/src/wb-mcp-server/main.go
+      - name: Test without GPU or model downloads
+        env:
+          WB_MCP_TEST_BINARY: ${{ runner.temp }}/wb-mcp-server
+        run: python3 -m unittest discover -s tests/opencode-nemotron -v

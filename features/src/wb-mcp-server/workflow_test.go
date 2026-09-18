@@ -196,3 +196,50 @@ func TestWorkflowContextReloadAndTransportErrors(t *testing.T) {
 		t.Fatalf("missing context accepted: %+v", r)
 	}
 }
+
+func TestWorkflowTaskListLimit(t *testing.T) {
+	fakeWorkflowCLI(t)
+	calls := 0
+	httpClient = &http.Client{Transport: workflowTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if got := r.URL.Query().Get("limit"); got != "1000" {
+			t.Errorf("limit = %q, want 1000", got)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"tasks":[]}`)), Header: http.Header{}}, nil
+	})}
+	for _, tool := range wbTools {
+		if tool.Name == "workflow_task_list" {
+			if got := tool.InputSchema.Properties["limit"].(map[string]interface{})["maximum"]; got != 1000 {
+				t.Fatalf("advertised maximum = %v, want 1000", got)
+			}
+		}
+	}
+	for _, limit := range []float64{1000, 1001, 5000} {
+		t.Run(fmt.Sprint(limit), func(t *testing.T) {
+			before := calls
+			result := handleCallTool(CallToolParams{Name: "workflow_task_list", Arguments: map[string]interface{}{
+				"workspaceId": testWorkspace, "runId": testRun, "limit": limit,
+			}})
+			if limit == 1000 {
+				if result.IsError || calls != before+1 {
+					t.Fatalf("valid boundary rejected: %+v", result)
+				}
+			} else {
+				if !result.IsError || calls != before || !strings.Contains(result.Content[0].Text, "at most 1000") {
+					t.Fatalf("limit %v was not rejected locally: %+v", limit, result)
+				}
+			}
+		})
+	}
+}
+
+func TestWorkflowArgumentUsesSchemaBounds(t *testing.T) {
+	schema := map[string]interface{}{"type": "integer", "minimum": 2, "maximum": 5}
+	for _, value := range []float64{1, 2, 5, 6} {
+		_, err := workflowArgument(value, schema)
+		wantError := value < 2 || value > 5
+		if (err != nil) != wantError {
+			t.Errorf("value %v: error = %v, wantError = %v", value, err, wantError)
+		}
+	}
+}

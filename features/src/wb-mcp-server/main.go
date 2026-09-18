@@ -1767,7 +1767,7 @@ var workflowDiagnostics = []workflowDiagnostic{
 					"startTime": map[string]interface{}{"type": "string", "format": "date-time", "description": "Filter runs by their start time"},
 					"endTime":   map[string]interface{}{"type": "string", "format": "date-time", "description": "Filter runs by their end time"},
 					"pageToken": map[string]interface{}{"type": "string", "description": "Page token for pagination"},
-					"limit":     map[string]interface{}{"type": "integer", "default": 1000, "description": "Limit for pagination", "minimum": 1, "maximum": 2147483647},
+					"limit":     map[string]interface{}{"type": "integer", "default": 1000, "description": "Limit for pagination", "minimum": 1, "maximum": 1000},
 					"search":    map[string]interface{}{"type": "string", "description": "Search string matched across task name and status"},
 					"sortField": map[string]interface{}{"type": "string", "enum": []interface{}{"display_name", "status", "created_date"},
 						"default": "created_date", "description": "Column to sort tasks by"},
@@ -1905,8 +1905,15 @@ func workflowArgument(value interface{}, schema map[string]interface{}) (string,
 		return s, nil
 	case "integer":
 		n, ok := value.(float64)
-		if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n < 1 || n > math.MaxInt32 || n != math.Trunc(n) {
-			return "", fmt.Errorf("must be a positive 32-bit integer")
+		if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n != math.Trunc(n) {
+			return "", fmt.Errorf("must be an integer")
+		}
+		// Bounds come from the tool schema: task and log endpoints can differ.
+		if minimum, ok := schema["minimum"].(int); ok && n < float64(minimum) {
+			return "", fmt.Errorf("must be at least %d", minimum)
+		}
+		if maximum, ok := schema["maximum"].(int); ok && n > float64(maximum) {
+			return "", fmt.Errorf("must be at most %d", maximum)
 		}
 		return strconv.FormatFloat(n, 'f', 0, 64), nil
 	}

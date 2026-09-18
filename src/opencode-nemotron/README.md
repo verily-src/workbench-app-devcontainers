@@ -16,28 +16,33 @@ Code-server IDE with [OpenCode](https://opencode.ai), local
 `opencode-model --list` shows the catalog in `models.json`. Only the selected
 model is downloaded, rather than every model in the catalog.
 
-| Ollama tag | Weight download | Suggested GPU | Example GCP configuration |
+| Ollama tag | Weight download | Primary GPU target | Other Workbench GPU options |
 |---|---|---|---|
-| **`nemotron-3-nano:4b`** (default) | **2.8 GB** | **T4 16 GB or L4 24 GB** | N1 + one T4, or `g2-standard-8` |
-| `nemotron-3-nano:4b-q8_0` | 4.2 GB | T4 16 GB or L4 24 GB | N1 + one T4, or `g2-standard-8` |
-| `nemotron-3-nano:4b-bf16` | 8.0 GB | L4 24 GB | `g2-standard-8` |
-| `nemotron-3.5-lightning:30b` | 25 GB | A100 40 GB | `a2-highgpu-1g` |
-| `nemotron-3-nano:30b` | 24 GB | A100 40 GB | `a2-highgpu-1g` |
+| **`nemotron-3-nano:4b`** (default) | **2.8 GB** | **T4 16 GB** | V100 16 GB |
+| `nemotron-3.5-lightning:30b` | 25 GB | A100 40 GB | A100 80 GB, H100 80 GB, H100 80 GB MEGA |
 
-The first three entries are different weight formats of the same Nano 4B model,
-not three different model families. Q8 and BF16 retain more weight precision at
-the cost of memory. The 30B choices remain available for larger GPUs.
+The menu offers two choices: **Nano 4B for smaller GPUs** and **Lightning 30B for
+A100/H100 GPUs**. Precision variants and a second 30B model would overlap these
+hardware targets. Custom tags remain available for experimentation.
 Sizes and tool support come from the
 [Nano tags](https://ollama.com/library/nemotron-3-nano/tags) and
 [Lightning tag](https://ollama.com/library/nemotron-3.5-lightning:30b).
-See [GCP GPU configurations](https://docs.cloud.google.com/compute/docs/gpus)
-for machine availability.
+Example GCP configurations for the primary targets are N1 with one T4 and
+`a2-highgpu-1g` with one A100 40 GB. See
+[GCP GPU configurations](https://docs.cloud.google.com/compute/docs/gpus)
+for memory capacities and machine availability.
+
+**P4 8 GB is an experimental Nano 4B target**, excluded from the recommended
+menu guidance until tested with the configured 64K context. It leaves less
+memory for context and runtime allocations. Current Ollama also requires
+driver 570 or newer for P4; see
+[Ollama hardware requirements](https://docs.ollama.com/gpu).
 
 GPU suggestions are memory-budget estimates, not benchmark results. Weights are
 only part of VRAM use: context, KV cache, and runtime allocations also need room.
 Check `ollama ps` for `100% GPU` at the configured context length, and compare
 task quality and latency on your target VM. Smaller models can be less reliable
-on complex coding and MCP tasks. A T4/L4 offers a smaller hardware configuration
+on complex coding and MCP tasks. A T4 offers a smaller hardware configuration
 than an A100; actual cost depends on region, machine size, and provisioning.
 
 The older `nemotron-mini:4b` is deliberately excluded: its
@@ -63,7 +68,7 @@ the model again. To update an existing tag deliberately, run `ollama pull <tag>`
 ```sh
 opencode-model                         # numbered menu, including GPU guidance
 opencode-model --list                  # inspect choices without downloading
-opencode-model nemotron-3-nano:4b-q8_0  # noninteractive selection
+opencode-model nemotron-3-nano:4b       # noninteractive selection
 ```
 
 The picker downloads the selection, checks Ollama's advertised tool support,
@@ -80,7 +85,7 @@ echo nemotron-3-nano:4b > /config/.opencode-model
 ```
 
 The saved tag survives restarts and machine-type changes. Select a smaller model
-before moving from an A100 to a T4/L4. Delete `/config/.opencode-model` and restart
+before moving from an A100 to a T4/V100. Delete `/config/.opencode-model` and restart
 to return to the compose default. Custom Ollama tags can be passed to the picker;
 they must support tools, sufficient context, and your GPU. The catalog uses local
 model tags, not Ollama cloud models.

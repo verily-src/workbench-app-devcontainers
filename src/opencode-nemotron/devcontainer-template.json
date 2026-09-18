@@ -2,7 +2,7 @@
     "id": "opencode-nemotron",
     "version": "0.0.1",
     "name": "OpenCode + NVIDIA Nemotron",
-    "description": "Code-server IDE with OpenCode, local NVIDIA Nemotron models, Workbench MCP tools, and workspace context. Defaults to Nano 4B for T4/L4 GPUs; larger models are selectable.",
+    "description": "Code-server IDE with OpenCode, local NVIDIA Nemotron models, Workbench MCP tools, and workspace context. Defaults to Nano 4B for T4/V100 GPUs; Lightning 30B is selectable for A100/H100 GPUs.",
     "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/opencode-nemotron",
     "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
     "options": {

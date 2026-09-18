@@ -6,7 +6,7 @@
 # tag cannot be a template option. An operator overrides the docker-compose
 # default by writing a tag to /config/.opencode-model. /config is a volume, so
 # the override survives a restart and a machine-type change. Example: a move
-# from an A100 to an L4 needs a model that fits in less VRAM.
+# from an A100 to a T4 needs a model that fits in less VRAM.
 
 set -o errexit
 set -o nounset

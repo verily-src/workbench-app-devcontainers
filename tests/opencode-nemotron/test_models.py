@@ -14,7 +14,8 @@ import unittest
 
 APP = Path(__file__).resolve().parents[2] / "src" / "opencode-nemotron"
 DEFAULT = "nemotron-3-nano:4b"
-SMALL_Q8 = "nemotron-3-nano:4b-q8_0"
+# Keep custom tags and older saved selections usable outside the two-entry menu.
+CUSTOM_MODEL = "nemotron-3-nano:4b-q8_0"
 LARGE = "nemotron-3.5-lightning:30b"
 
 
@@ -115,10 +116,10 @@ elif name == "id":
         self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), DEFAULT)
         self.env["OLLAMA_MODEL"] = LARGE
         self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), LARGE)
-        self.override.write_text(SMALL_Q8 + "\n")
-        self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), SMALL_Q8)
+        self.override.write_text(CUSTOM_MODEL + "\n")
+        self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), CUSTOM_MODEL)
         self.env["OLLAMA_MODEL"] = "prompt"
-        self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), SMALL_Q8)
+        self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), CUSTOM_MODEL)
 
     def test_invalid_saved_selection_fails_before_network_access(self):
         self.override.write_text(" \n")
@@ -160,18 +161,18 @@ elif name == "id":
                 self.assertEqual(self.config.read_bytes(), old_config)
 
     def test_picker_pulls_only_selected_model_and_persists_it(self):
-        self.run_script("opencode-model.sh", SMALL_Q8)
-        self.assertEqual(self.selection(), (SMALL_Q8, "ollama/" + SMALL_Q8))
+        self.run_script("opencode-model.sh", CUSTOM_MODEL)
+        self.assertEqual(self.selection(), (CUSTOM_MODEL, "ollama/" + CUSTOM_MODEL))
         pulls = [args for name, args in self.read_calls() if name == "ollama" and args[0] == "pull"]
-        self.assertEqual(pulls, [["pull", SMALL_Q8]])
-        self.assertEqual(set(json.loads(self.config.read_text())["provider"]["ollama"]["models"]), {SMALL_Q8})
+        self.assertEqual(pulls, [["pull", CUSTOM_MODEL]])
+        self.assertEqual(set(json.loads(self.config.read_text())["provider"]["ollama"]["models"]), {CUSTOM_MODEL})
 
     def test_restart_reuses_cached_weights_without_pull(self):
-        self.override.write_text(SMALL_Q8)
+        self.override.write_text(CUSTOM_MODEL)
         self.env["TEST_CACHED"] = "1"
         self.run_script("start-ollama.sh")
         self.assertFalse(any(name == "ollama" and args[0] == "pull" for name, args in self.read_calls()))
-        self.assertIn(["ollama", ["show", SMALL_Q8]], self.read_calls())
+        self.assertIn(["ollama", ["show", CUSTOM_MODEL]], self.read_calls())
 
     def test_failed_download_tools_or_load_preserves_saved_selection(self):
         self.override.write_text(LARGE + "\n")
@@ -180,7 +181,7 @@ elif name == "id":
         for failure in ("TEST_PULL_FAIL", "TEST_NO_TOOLS", "TEST_LOAD_FAIL"):
             with self.subTest(failure=failure):
                 self.env[failure] = "1"
-                self.run_script("opencode-model.sh", SMALL_Q8, ok=False)
+                self.run_script("opencode-model.sh", CUSTOM_MODEL, ok=False)
                 self.assertEqual(self.selection(), (LARGE, "ollama/" + LARGE))
                 self.assertEqual(self.config.read_bytes(), old_config)
                 del self.env[failure]
@@ -204,15 +205,17 @@ elif name == "id":
 
     def test_listing_and_invalid_choices_never_download(self):
         listing = self.run_script("opencode-model.sh", "--list").stdout
-        for model in json.loads((APP / "models.json").read_text()):
-            self.assertIn(model["tag"], listing)
+        self.assertEqual(len(listing.splitlines()), 2)
+        for tag in (DEFAULT, LARGE):
+            self.assertIn(tag, listing)
+        self.assertNotIn(CUSTOM_MODEL, listing)
         for args in ([], ["prompt"], ["--bad"], ["bad tag"], [DEFAULT, LARGE]):
             self.run_script("opencode-model.sh", *args, ok=False)
         self.assertEqual(self.read_calls(), [])
 
-    def test_interactive_choice_selects_q8(self):
+    def test_interactive_choice_selects_lightning(self):
         self.assertEqual(self.interactive("2"), 0)
-        self.assertEqual(self.selection(), (SMALL_Q8, "ollama/" + SMALL_Q8))
+        self.assertEqual(self.selection(), (LARGE, "ollama/" + LARGE))
 
     def test_interactive_default_selects_nano_4b(self):
         self.assertEqual(self.interactive(""), 0)
@@ -220,7 +223,7 @@ elif name == "id":
 
     def test_interactive_cancel_or_out_of_range_preserves_selection(self):
         self.override.write_text(LARGE)
-        for choice in ("q", "99", "no", "0"):
+        for choice in ("q", "3", "99", "no", "0"):
             with self.subTest(choice=choice):
                 self.assertNotEqual(self.interactive(choice), 0)
                 self.assertEqual(self.override.read_text(), LARGE)

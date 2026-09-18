@@ -1,9 +1,9 @@
 {
-    "id": "opencode-nemotron",
+    "id": "opencode-nemotron-mcp",
     "version": "0.0.1",
-    "name": "OpenCode + NVIDIA Nemotron",
-    "description": "Code-server IDE with the opencode coding agent driving a local NVIDIA Nemotron model on Ollama. Requires an NVIDIA GPU with at least 40 GB of VRAM.",
-    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/opencode-nemotron",
+    "name": "OpenCode + NVIDIA Nemotron + Workbench MCP",
+    "description": "Code-server IDE with OpenCode, local NVIDIA Nemotron models, Workbench MCP tools, and workspace context. Defaults to Nano 4B for T4/V100 GPUs; Lightning 30B is selectable for A100/H100 GPUs.",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/opencode-nemotron-mcp",
     "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
     "options": {
         "cloud": {

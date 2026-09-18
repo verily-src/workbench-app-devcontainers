@@ -12,7 +12,7 @@ import time
 import unittest
 
 
-APP = Path(__file__).resolve().parents[2] / "src" / "opencode-nemotron"
+APP = Path(__file__).resolve().parents[2] / "src" / "opencode-nemotron-mcp"
 DEFAULT = "nemotron-3-nano:4b"
 # Keep custom tags and older saved selections usable outside the two-entry menu.
 CUSTOM_MODEL = "nemotron-3-nano:4b-q8_0"

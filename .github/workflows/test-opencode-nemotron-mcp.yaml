@@ -1,20 +1,20 @@
-name: "CI - Test OpenCode Nemotron scripts"
+name: "CI - Test OpenCode Nemotron MCP scripts"
 on:
   pull_request:
     paths:
-      - 'src/opencode-nemotron/**'
-      - 'tests/opencode-nemotron/**'
+      - 'src/opencode-nemotron-mcp/**'
+      - 'tests/opencode-nemotron-mcp/**'
       - 'features/src/wb-mcp-server/**'
       - 'features/src/llm-context/**'
-      - '.github/workflows/test-opencode-nemotron.yaml'
+      - '.github/workflows/test-opencode-nemotron-mcp.yaml'
   push:
     branches: [master]
     paths:
-      - 'src/opencode-nemotron/**'
-      - 'tests/opencode-nemotron/**'
+      - 'src/opencode-nemotron-mcp/**'
+      - 'tests/opencode-nemotron-mcp/**'
       - 'features/src/wb-mcp-server/**'
       - 'features/src/llm-context/**'
-      - '.github/workflows/test-opencode-nemotron.yaml'
+      - '.github/workflows/test-opencode-nemotron-mcp.yaml'
 
 jobs:
   test:
@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check shell scripts
-        run: shellcheck src/opencode-nemotron/*.sh
+        run: shellcheck src/opencode-nemotron-mcp/*.sh
       - uses: actions/setup-go@v5
         with:
           go-version-file: features/src/wb-mcp-server/go.mod
@@ -32,4 +32,4 @@ jobs:
       - name: Test without GPU or model downloads
         env:
           WB_MCP_TEST_BINARY: ${{ runner.temp }}/wb-mcp-server
-        run: python3 -m unittest discover -s tests/opencode-nemotron -v
+        run: python3 -m unittest discover -s tests/opencode-nemotron-mcp -v

@@ -8,10 +8,10 @@ COPY . .
  
 RUN go build -o /playground .
 
-FROM alpine:latest
+FROM node@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
 
-# Install Node.js, npm, Docker CLI, docker-compose, buildx, ttyd, bash, and devcontainer CLI
-RUN apk add --no-cache nodejs npm docker-cli docker-cli-compose docker-cli-buildx ttyd bash && \
+# Install Docker CLI, docker-compose, buildx, ttyd, bash, and devcontainer CLI
+RUN apk add --no-cache docker-cli docker-cli-compose docker-cli-buildx ttyd bash && \
     npm install -g @devcontainers/cli
 
 RUN addgroup -S playground -g 1001 && adduser -S playground -u 1001 -G playground

@@ -23,7 +23,12 @@ readonly DEVCONTAINER="npx --prefix /home/core devcontainer"
 readonly CMD="$1"
 readonly FOLDER="$2"
 if [[ "$CMD" == "build" ]]; then
-    $DEVCONTAINER build --workspace-folder "${FOLDER}"
+    # A restart reuses the existing container; rebuilding needs registry access.
+    if [[ -n "$(docker ps -aq --filter "label=devcontainer.local_folder=${FOLDER}")" ]]; then
+        echo "Devcontainer already exists; skipping build"
+    else
+        $DEVCONTAINER build --workspace-folder "${FOLDER}"
+    fi
 elif [[ "$CMD" == "up" ]]; then
     $DEVCONTAINER up --workspace-folder "${FOLDER}"
 else

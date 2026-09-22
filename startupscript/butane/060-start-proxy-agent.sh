@@ -43,8 +43,15 @@ if [[ "${TERRA_SERVER}" == "dev-stable" ]]; then
 fi
 readonly OPTIONS
 
-# Pull the latest proxy agent
-docker pull "${PROXY_IMAGE}"
+# Pull the latest proxy agent. Without internet access, such as an airlocked
+# restart, fall back to the local image.
+if ! docker pull "${PROXY_IMAGE}"; then
+    if ! docker image inspect "${PROXY_IMAGE}" >/dev/null 2>&1; then
+        echo "Error: could not pull ${PROXY_IMAGE} and no local image exists."
+        exit 1
+    fi
+    echo "WARNING: could not pull ${PROXY_IMAGE}; using the local image"
+fi
 
 # Remove any existing proxy agent container
 docker rm -f "proxy-agent" 2>/dev/null || true

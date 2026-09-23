@@ -8,6 +8,22 @@ Currently there are three flavors of startup.script:
 - dataproc cluster
 - general gce instance (in the startupscript/ folder)
 
+## AWS CodeArtifact mirrors
+
+The `virtual-browser-jupyter` and `virtual-browser-rstudio` templates opt in to
+CodeArtifact configuration with `WORKBENCH_CONFIGURE_CODEARTIFACT=true`. Setup
+runs only on AWS and skips instances without the `vwbusr:codeartifact-domain-name`
+tag. It configures pip and npm to use the account's `pypi-mirror` and `npm-mirror`.
+
+Both package managers use 12-hour tokens. App creation and every container start
+refresh them immediately and start a single background worker that refreshes every
+six hours. After a failed refresh, the worker retries after five minutes.
+Authentication uses the EC2 instance role independently of the user's workspace
+AWS profiles.
+
+Worker output is written to `~/.workbench/codeartifact-refresh.log`. To refresh
+immediately, run `/usr/local/bin/refresh-codeartifact-login.sh` as the app user.
+
 ## How to test your change?
 
 ### Option 1
@@ -90,7 +106,7 @@ readonly FOO="foo"
 ```
 
 However, for assignments that involve calling a command, `readonly` can mask error responses; in
-these cases the variable should be marked `readonly` as a subsequent step.  This is enforced by
+these cases the variable should be marked `readonly` as a subsequent step. This is enforced by
 `shellcheck` rule [SC2155](https://www.shellcheck.net/wiki/SC2155).
 
 ```shell

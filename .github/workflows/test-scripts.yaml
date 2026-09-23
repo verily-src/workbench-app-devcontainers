@@ -3,12 +3,16 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - 'startupscript/**'
+      - 'tests/test-codeartifact.bats'
       - '.github/workflows/test-scripts.yaml'
   push:
     branches:
       - master
     paths:
       - 'scripts/**'
+      - 'startupscript/**'
+      - 'tests/test-codeartifact.bats'
       - '.github/workflows/test-scripts.yaml'
 
 jobs:
@@ -27,3 +31,15 @@ jobs:
         run: |
           cd scripts/test
           bats create-custom-app.bats
+
+  test-codeartifact:
+    name: "Test CodeArtifact authentication and refresh"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats-core
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+      - name: Run CodeArtifact tests
+        run: bats tests/test-codeartifact.bats

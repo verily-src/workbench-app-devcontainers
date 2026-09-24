@@ -132,8 +132,8 @@ fi
 readonly DEVCONTAINER_PATH="$1"
 readonly CLOUD="$2"
 readonly LOGIN="$3"
-readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
-readonly CONTAINER_PORT="${6:-8080}"
+readonly CONTAINER_IMAGE="${4:-debian:trixie}"
+readonly CONTAINER_PORT="${5:-8080}"
 
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'

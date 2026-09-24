@@ -212,7 +212,7 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
 fi
 
 gpu_exists=$(detect_gpu; echo $?)
-handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}"
+handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}" "mem-limit=${CONTAINER_MEM_LIMIT}"
 
 # Apply GPU runtime configuration if GPU is present
 if [[ "${gpu_exists}" == "0" ]]; then

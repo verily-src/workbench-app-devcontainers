@@ -3,12 +3,16 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - 'startupscript/butane/050-parse-devcontainer.sh'
+      - 'startupscript/butane/test/**'
       - '.github/workflows/test-scripts.yaml'
   push:
     branches:
       - master
     paths:
       - 'scripts/**'
+      - 'startupscript/butane/050-parse-devcontainer.sh'
+      - 'startupscript/butane/test/**'
       - '.github/workflows/test-scripts.yaml'
 
 jobs:
@@ -27,3 +31,6 @@ jobs:
         run: |
           cd scripts/test
           bats create-custom-app.bats
+
+      - name: Run startup script bats tests
+        run: bats startupscript/butane/test

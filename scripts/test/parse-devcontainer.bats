@@ -3,7 +3,8 @@
 
 setup() {
     DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" >/dev/null 2>&1 && pwd )"
-    SCRIPT="${DIR}/../050-parse-devcontainer.sh"
+    REPO_ROOT="$(cd "${DIR}/../.." && pwd)"
+    SCRIPT="${REPO_ROOT}/startupscript/butane/050-parse-devcontainer.sh"
 
     # The script has top-level side effects, so load only the function under test.
     eval "$(sed -n '/^handle_container_state_changed() {/,/^}/p' "${SCRIPT}")"

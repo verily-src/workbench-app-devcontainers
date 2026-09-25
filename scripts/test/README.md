@@ -1,6 +1,6 @@
 # Script Tests
 
-This directory contains tests for scripts in the `scripts/` directory.
+This directory contains tests for scripts in the `scripts/` and `startupscript/` directories.
 
 ## Prerequisites
 
@@ -56,6 +56,14 @@ Tests for the `create-custom-app.sh` script:
 - ✅ Home directory defaults (/root for root, /home/username otherwise)
 - ✅ Valid JSON output
 - ✅ Success message output
+
+### parse-devcontainer.bats
+
+Tests for container state handling in `startupscript/butane/050-parse-devcontainer.sh`:
+
+- Container removal when the memory limit changes
+- Container preservation when the state is unchanged
+- Memory limit tracking in the startup script
 
 ## Writing New Tests
 

@@ -3,17 +3,19 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - 'startupscript/butane/050-parse-devcontainer.sh'
       - '.github/workflows/test-scripts.yaml'
   push:
     branches:
       - master
     paths:
       - 'scripts/**'
+      - 'startupscript/butane/050-parse-devcontainer.sh'
       - '.github/workflows/test-scripts.yaml'
 
 jobs:
   test-create-custom-app:
-    name: "Test create-custom-app.sh"
+    name: "Test scripts"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,4 +28,4 @@ jobs:
       - name: Run bats tests
         run: |
           cd scripts/test
-          bats create-custom-app.bats
+          bats .

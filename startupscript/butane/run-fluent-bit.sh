@@ -90,9 +90,46 @@ case "${CLOUD}" in
         )
         ;;
 
+    azure)
+        echo "Fetching instance metadata from Azure metadata service..."
+        nonce=$(date -d "+5 minutes" +%s)
+        TOKEN=$(curl -sH Metadata:true "http://169.254.169.254/metadata/attested/document?api-version=2025-04-07&nonce=$nonce" | jq -r .signature)
+        readonly TOKEN # currently unused, see below
+
+        # For now, we fetch these values from instance tags;
+        # in full implementation these will be returned by WSM based on $TOKEN
+        TAGS=$(curl -sH Metadata:true "http://169.254.169.254/metadata/instance/compute/tagsList?api-version=2025-04-07")
+        readonly TAGS
+
+        vm_tag() {
+            echo "${TAGS}" | jq -r ".[] | select(.name == \"$1\") | .value"
+        }
+        STORAGE_ACCOUNT=$(vm_tag STORAGE_ACCOUNT)
+        readonly STORAGE_ACCOUNT
+        STORAGE_CONTAINER=$(vm_tag STORAGE_CONTAINER)
+        readonly STORAGE_CONTAINER
+        SAS_TOKEN_1=$(vm_tag SAS_TOKEN_1)
+        readonly SAS_TOKEN_1
+        SAS_TOKEN_2=$(vm_tag SAS_TOKEN_2)
+        readonly SAS_TOKEN_2
+
+        echo "  Storage account: ${STORAGE_ACCOUNT}"
+        echo "  Storage container: ${STORAGE_CONTAINER}"
+        echo "  SAS token: ${SAS_TOKEN_1:0:20}...${SAS_TOKEN_2:0:20}..."
+
+        echo "Starting fluent-bit for Azure Blog log Ingestion..."
+        echo "  Image: ${FLUENT_BIT_IMAGE}"
+
+        DOCKER_ARGS+=(
+            --env "STORAGE_ACCOUNT=${STORAGE_ACCOUNT}"
+            --env "STORAGE_CONTAINER=${STORAGE_CONTAINER}"
+            --env "SAS_TOKEN=${SAS_TOKEN_1}${SAS_TOKEN_2}"
+        )
+        ;;
+
     *)
         echo "Error: Invalid cloud provider '${CLOUD}'"
-        echo "Supported values: gcp, aws"
+        echo "Supported values: gcp, aws, azure"
         exit 1
         ;;
 esac

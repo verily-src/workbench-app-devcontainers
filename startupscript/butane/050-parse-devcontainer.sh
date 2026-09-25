@@ -83,13 +83,15 @@ handle_container_state_changed() {
         echo "First run, initializing container state"
         rebuild=true
     else
-        local pair key value previous_value
+        local pair key value previous_pair
         for pair in "$@"; do
             key="${pair%%=*}"
             value="${pair#*=}"
-            previous_value="$(grep "^${key}=" "${CONTAINER_STATE_FILE}" | cut -d= -f2-)"
-            if [[ "${value}" != "${previous_value}" ]]; then
-                echo "Container state changed: ${key} from ${previous_value} to ${value}"
+            # sed succeeds when a key is absent from an older state file.
+            # Compare full pairs so a missing key differs from an empty value.
+            previous_pair="$(sed -n "/^${key}=/p" "${CONTAINER_STATE_FILE}")"
+            if [[ "${pair}" != "${previous_pair}" ]]; then
+                echo "Container state changed: ${key} from ${previous_pair#*=} to ${value}"
                 rebuild=true
             fi
         done

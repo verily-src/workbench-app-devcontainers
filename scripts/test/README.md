@@ -61,8 +61,11 @@ Tests for the `create-custom-app.sh` script:
 
 Tests for container state handling in `startupscript/butane/050-parse-devcontainer.sh`:
 
-- Container removal when the memory limit changes
+- Container removal when the memory limit, GPU state, or shared memory size changes
 - Container preservation when the state is unchanged
+- Exact key matching regardless of line order or similarly named keys
+- Read failures stop startup without removing the container or overwriting state
+- Migration of state files missing the memory limit, including an empty limit, under startup's shell settings
 - Memory limit tracking in the startup script
 
 ## Writing New Tests

@@ -15,14 +15,24 @@ readonly PLATFORM="linux-x64"
 readonly NODE_TAR="node-${NODE_VERSION}-${PLATFORM}.tar.gz"
 readonly NODE_INSTALL_SRC="https://storage.googleapis.com/bkt-workbench-artifacts/mirror/${NODE_TAR}"
 readonly NODE_INSTALL_PATH="/home/core/${NODE_TAR}"
+readonly DEVCONTAINER_CLI_PATH="/home/core/node_modules/.bin/devcontainer"
 
-echo "Downloading Node from ${NODE_INSTALL_SRC}" 
-wget -q -O "${NODE_INSTALL_PATH}" "${NODE_INSTALL_SRC}"
-echo "855d581f8a4eb1a8117e3426de25fe02770592febcfb31369aee1ffbfee9e8ec  ${NODE_INSTALL_PATH}" | sha256sum -c
+# Reuse Node and the devcontainer CLI from an earlier boot.
+if [[ "$(node --version 2>/dev/null)" == "${NODE_VERSION}" ]]; then
+  echo "Node ${NODE_VERSION} is already installed; skipping download"
+else
+  echo "Downloading Node from ${NODE_INSTALL_SRC}"
+  wget -q -O "${NODE_INSTALL_PATH}" "${NODE_INSTALL_SRC}"
+  echo "855d581f8a4eb1a8117e3426de25fe02770592febcfb31369aee1ffbfee9e8ec  ${NODE_INSTALL_PATH}" | sha256sum -c
 
-echo "Installing Node from ${NODE_INSTALL_PATH}" 
-tar -xzf "${NODE_INSTALL_PATH}" -C /opt --strip-components=1
-rm -f "${NODE_INSTALL_PATH}"
+  echo "Installing Node from ${NODE_INSTALL_PATH}"
+  tar -xzf "${NODE_INSTALL_PATH}" -C /opt --strip-components=1
+  rm -f "${NODE_INSTALL_PATH}"
+fi
 
-echo "Installing node packages"
-npm --prefix /home/core ci
+if [[ -x "${DEVCONTAINER_CLI_PATH}" ]]; then
+  echo "Devcontainer CLI is already installed; skipping npm install"
+else
+  echo "Installing node packages"
+  npm --prefix /home/core ci
+fi

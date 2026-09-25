@@ -1,0 +1,33 @@
+{
+  "id": "custom-jupyter-ml",
+  "version": "1.0.0",
+  "name": "custom-jupyter-ml",
+  "description": "Custom JupyterLab app with pre-installed packages: pandas numpy scikit-learn (Python), tidyverse ggplot2 (R)",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/custom-jupyter-ml",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    },
+    "containerImage": {
+      "type": "string",
+      "description": "The container image to use",
+      "default": "debian:bullseye"
+    },
+    "containerPort": {
+      "type": "number",
+      "description": "The port to expose the container on",
+      "default": 8888
+    }
+  },
+  "platforms": ["Any"]
+}

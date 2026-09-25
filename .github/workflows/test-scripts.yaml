@@ -15,7 +15,7 @@ on:
 
 jobs:
   test-create-custom-app:
-    name: "Test create-custom-app.sh"
+    name: "Test scripts"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

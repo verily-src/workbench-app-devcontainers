@@ -12,6 +12,8 @@ cp -a src/opencode-nemotron-mcp/. "${STAGE_DIR}/"
 mkdir -p "${STAGE_DIR}/.devcontainer/features"
 cp -a features/src/. "${STAGE_DIR}/.devcontainer/features/"
 cp -a startupscript "${STAGE_DIR}/startupscript"
+# Workbench placeholders are literal strings, not shell variables.
+# shellcheck disable=SC2016
 sed -i 's/${templateOption:cloud}/gcp/g; s/${templateOption:login}/false/g' "${STAGE_DIR}/.devcontainer.json"
 startupscript/butane/prefetch-oci-features.sh "${STAGE_DIR}/.devcontainer.json"
 devcontainer build --workspace-folder "${STAGE_DIR}" --image-name opencode-nemotron-mcp:ci

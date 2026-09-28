@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check shell scripts
-        run: shellcheck src/opencode-nemotron-mcp/*.sh
+        run: shellcheck src/opencode-nemotron-mcp/*.sh tests/opencode-nemotron-mcp/*.sh
       - uses: actions/setup-go@v5
         with:
           go-version-file: features/src/wb-mcp-server/go.mod
@@ -48,4 +48,18 @@ jobs:
       - name: Install pinned devcontainer CLI
         run: npm install -g @devcontainers/cli@0.89.0
       - name: Build all features and exercise model switching without GPU
-        run: bash tests/opencode-nemotron-mcp/build-container.sh
+        run: |
+          set -o pipefail
+          bash tests/opencode-nemotron-mcp/build-container.sh 2>&1 | tee "$RUNNER_TEMP/opencode-container-build.log"
+      - name: Include build failure details in the check summary
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          log = Path(os.environ["RUNNER_TEMP"]) / "opencode-container-build.log"
+          if log.exists():
+              tail = log.read_text(errors="replace")[-12000:]
+              escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print("::error title=Container build or integration failure::" + escaped)
+          PY

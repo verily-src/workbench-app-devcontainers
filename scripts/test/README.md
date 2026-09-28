@@ -1,6 +1,6 @@
 # Script Tests
 
-This directory contains tests for scripts in the `scripts/` directory.
+This directory contains tests for scripts in the `scripts/` and `startupscript/` directories.
 
 ## Prerequisites
 
@@ -56,6 +56,28 @@ Tests for the `create-custom-app.sh` script:
 - ✅ Home directory defaults (/root for root, /home/username otherwise)
 - ✅ Valid JSON output
 - ✅ Success message output
+
+### parse-devcontainer.bats
+
+Tests for container state handling in `startupscript/butane/050-parse-devcontainer.sh`:
+
+- Container removal when the memory limit, GPU state, or shared memory size changes
+- Container preservation when the state is unchanged
+- Exact key matching regardless of line order or similarly named keys
+- Read failures stop startup without removing the container or overwriting state
+- Migration of state files missing the memory limit, including an empty limit, under startup's shell settings
+- Memory limit tracking in the startup script
+
+### update-flatcar.bats
+
+Tests for the pinned Flatcar updater in `startupscript/butane/update-flatcar.sh`:
+
+- Staging only the approved stable version, and never downgrading
+- Cancelling a withdrawn or superseded staged update, including restoring the running partition's
+  boot priority
+- Leaving busy update-engine states and a held lock alone
+- Rejecting missing, malformed, or non-stable pins and boot channels
+- Keeping `SERVER=disabled` after a failed payload download
 
 ## Writing New Tests
 

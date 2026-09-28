@@ -10,6 +10,7 @@ readonly RESET=$'reset\ncgpt prioritize /dev/sda4\n'
 
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" >/dev/null 2>&1 && pwd)"
+    REPO_ROOT="$(cd "${DIR}/../.." && pwd)"
     ROOT="${BATS_TEST_TMPDIR}"
     mkdir -p "${ROOT}/bin"
 
@@ -67,7 +68,7 @@ exit "${UPDATE_EXIT:-0}"'
         -e "s#/home/core/metadata-utils.sh#${ROOT}/metadata-utils.sh#g" \
         -e "s#/run/lock/update-flatcar.lock#${ROOT}/update-flatcar.lock#g" \
         -e "s#/etc/flatcar/update.conf#${ROOT}/update.conf#g" \
-        "${DIR}/../update-flatcar.sh" > "${ROOT}/update-flatcar.sh"
+        "${REPO_ROOT}/startupscript/butane/update-flatcar.sh" > "${ROOT}/update-flatcar.sh"
 }
 
 stub() {

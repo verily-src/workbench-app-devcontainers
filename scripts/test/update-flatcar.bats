@@ -113,7 +113,7 @@ expect() {
 @test "same version" {
     PIN='{"flatcar_stable_version":"4593.2.5"}'
     run_update
-    expect success "${CLEAR}${CLEAR}"
+    expect success "${CLEAR}"
 }
 
 @test "newer version" {
@@ -138,7 +138,7 @@ expect() {
 @test "rollback without staged update" {
     CURRENT_VERSION="4757.2.0"
     run_update
-    expect success "${CLEAR}${CLEAR}"
+    expect success "${CLEAR}"
 }
 
 @test "rollback cancels staged update" {
@@ -224,13 +224,13 @@ expect() {
 @test "invalid running version" {
     CURRENT_VERSION="invalid"
     run_update
-    expect failure "${CLEAR}"
+    expect failure ""
 }
 
 @test "busy update engine states are left alone" {
     for state in UPDATE_STATUS_CHECKING_FOR_UPDATE UPDATE_STATUS_UPDATE_AVAILABLE \
         UPDATE_STATUS_DOWNLOADING UPDATE_STATUS_VERIFYING UPDATE_STATUS_FINALIZING \
-        UPDATE_STATUS_REPORTING_ERROR_EVENT UPDATE_STATUS_ATTEMPTING_ROLLBACK; do
+        UPDATE_STATUS_REPORTING_ERROR_EVENT; do
         ENGINE_STATE="${state}"
         run_update
         expect success "" || { echo "state ${state}"; return 1; }

@@ -13,12 +13,17 @@ set -o nounset
 set -o pipefail
 
 readonly MODEL_OVERRIDE_FILE="${OPENCODE_HOME:-/config}/.opencode-model"
-readonly DEFAULT_MODEL="nemotron-3-nano:4b"
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+readonly SCRIPT_DIR
 
 if [[ -s "${MODEL_OVERRIDE_FILE}" ]]; then
   MODEL="$(tr -d '[:space:]' < "${MODEL_OVERRIDE_FILE}")"
 else
-  MODEL="${OLLAMA_MODEL:-${DEFAULT_MODEL}}"
+  MODEL="${OLLAMA_MODEL:-auto}"
+fi
+
+if [[ "${MODEL}" == "auto" ]]; then
+  MODEL="$("${SCRIPT_DIR}/available-models.sh" | jq -r 'max_by(.default_priority).tag')"
 fi
 
 # "prompt" is a startup policy, never an Ollama model to download.

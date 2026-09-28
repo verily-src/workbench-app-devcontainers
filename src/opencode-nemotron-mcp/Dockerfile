@@ -9,7 +9,13 @@ RUN apt-get update \
     && mkdir -p /config/extensions /config/.cache \
     && chown -R abc:abc /config
 
-RUN curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | tar --zstd -x -C /usr \
+COPY ollama-release.json /opt/opencode-workbench/ollama-release.json
+RUN release_version="$(jq -r .version /opt/opencode-workbench/ollama-release.json)" \
+    && release_sha256="$(jq -r .sha256 /opt/opencode-workbench/ollama-release.json)" \
+    && curl --retry 3 -fsSL "https://github.com/ollama/ollama/releases/download/v${release_version}/ollama-linux-amd64.tar.zst" -o /tmp/ollama-runtime.tar.zst \
+    && printf '%s  %s\n' "${release_sha256}" /tmp/ollama-runtime.tar.zst | sha256sum -c - \
+    && tar --zstd -xf /tmp/ollama-runtime.tar.zst -C /usr \
+    && rm /tmp/ollama-runtime.tar.zst \
     && ollama --version
 
 # The installer hardcodes its target to ${HOME}/.opencode/bin. /config is a
@@ -25,10 +31,12 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
     && HOME=/opt/opencode /opt/opencode/.opencode/bin/opencode --version
 
 # Keep the picker available independently of the /workspace bind mount.
-COPY available-models.sh configure-opencode.sh resolve-model.sh start-ollama.sh opencode-model.sh opencode-launch.sh models.json workbench-instructions.md /opt/opencode-workbench/
+COPY available-models.sh configure-opencode.sh resolve-model.sh start-ollama.sh validate-model.sh gpu-check.py opencode-model.sh opencode-launch.sh models.json workbench-instructions.md /opt/opencode-workbench/
 RUN chmod +x /opt/opencode-workbench/*.sh \
     && ln -s /opt/opencode-workbench/opencode-launch.sh /usr/local/bin/opencode \
-    && ln -s /opt/opencode-workbench/opencode-model.sh /usr/local/bin/opencode-model
+    && ln -s /opt/opencode-workbench/opencode-model.sh /usr/local/bin/opencode-model \
+    && chmod +x /opt/opencode-workbench/gpu-check.py \
+    && ln -s /opt/opencode-workbench/gpu-check.py /usr/local/bin/opencode-gpu-check
 
 RUN pip install --break-system-packages openai uv
 

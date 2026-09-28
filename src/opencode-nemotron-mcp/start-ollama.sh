@@ -46,6 +46,13 @@ if ! server_is_up; then
   fi
 fi
 
+EXPECTED_VERSION="$(jq -r .version "${SCRIPT_DIR}/ollama-release.json")"
+SERVER_VERSION="$(curl -fsS --connect-timeout 2 --max-time 10 "${OLLAMA_URL}/api/version" | jq -r .version)"
+if [[ "${SERVER_VERSION}" != "${EXPECTED_VERSION}" ]]; then
+  echo "Ollama ${EXPECTED_VERSION} is required; server is ${SERVER_VERSION}. Rebuild/restart the container." >&2
+  exit 1
+fi
+
 if [[ "${MODEL}" == "prompt" ]]; then
   echo "Ollama ready. Start opencode in a terminal to choose and download a model."
   exit 0
@@ -68,7 +75,7 @@ prepare_model() {
   fi
 
   local model_info
-  model_info="$(curl -fsS "${OLLAMA_URL}/api/show" \
+  model_info="$(curl -fsS --connect-timeout 2 --max-time 30 "${OLLAMA_URL}/api/show" \
     -H 'Content-Type: application/json' \
     -d "$(jq -nc --arg model "${candidate}" '{model: $model}')")"
   if ! jq -e '(.capabilities // []) | index("tools") != null' <<< "${model_info}" > /dev/null; then
@@ -90,15 +97,13 @@ for CANDIDATE in "${MODELS_TO_PREPARE[@]}"; do
   prepare_model "${CANDIDATE}"
 done
 
-echo "Preloading ${MODEL} into GPU memory..."
-RESPONSE="$(curl -fsS "${OLLAMA_URL}/api/generate" \
-  -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg model "${MODEL}" --argjson context "${CONTEXT_LENGTH}" \
-    '{model: $model, prompt: "warmup", stream: false,
-      options: {num_predict: 1, num_ctx: $context}}')")"
-if ! jq -e '.done == true and .error == null' <<< "${RESPONSE}" > /dev/null; then
-  echo "Could not load ${MODEL}: ${RESPONSE}" >&2
-  exit 1
-fi
+# Validate sequentially, leaving the selected model resident. A successful
+# generation alone does not prove CUDA worked: Ollama can fall back to CPU.
+for CANDIDATE in "${MODELS_TO_PREPARE[@]}"; do
+  if [[ "${CANDIDATE}" != "${MODEL}" ]]; then
+    "${SCRIPT_DIR}/validate-model.sh" "${CANDIDATE}"
+  fi
+done
+"${SCRIPT_DIR}/validate-model.sh" "${MODEL}"
 
 echo "Ollama ready with ${MODEL} — logs at ${OLLAMA_LOG}"

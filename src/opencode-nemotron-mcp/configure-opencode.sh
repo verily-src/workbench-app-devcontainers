@@ -62,7 +62,7 @@ jq -n --arg model "${MODEL}" --arg home "${USER_HOME_DIR}" \
   --argjson models "${PROVIDER_MODELS}" '{
   "$schema": "https://opencode.ai/config.json",
   "model": ("ollama/" + $model),
-  "small_model": ("ollama/" + $model),
+  "enabled_providers": ["ollama"],
   "autoupdate": false,
   "share": "disabled",
   "instructions": [($home + "/.claude/CLAUDE.md"), "/opt/opencode-workbench/workbench-instructions.md"],
@@ -83,7 +83,7 @@ jq -n --arg model "${MODEL}" --arg home "${USER_HOME_DIR}" \
     }
   }
 } | if $model == "prompt" then
-  del(.model, .small_model) | .provider.ollama.models = {}
+  del(.model) | .provider.ollama.models = {}
 else . end' > "${CONFIG_FILE}.tmp"
 mv "${CONFIG_FILE}.tmp" "${CONFIG_FILE}"
 

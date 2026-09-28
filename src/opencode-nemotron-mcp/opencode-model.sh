@@ -14,7 +14,7 @@ readonly AVAILABLE_MODELS
 
 usage() {
   echo "Usage: opencode-model [--list | <ollama-model-tag>]"
-  echo "With no arguments, choose a model interactively. Only that model is downloaded."
+  echo "With no arguments, choose a model interactively. All compatible models are prepared."
 }
 
 list_models() {
@@ -56,7 +56,7 @@ if [[ -z "${MODEL}" ]]; then
     <<< "${AVAILABLE_MODELS}")"
 fi
 
-if [[ "${MODEL}" == "prompt" || ! "${MODEL}" =~ ^[[:alnum:]][[:alnum:]_.:/-]*$ ]]; then
+if [[ "${MODEL}" == "prompt" || "${MODEL}" == "auto" || ! "${MODEL}" =~ ^[[:alnum:]][[:alnum:]_.:/-]*$ ]]; then
   echo "Invalid model tag or selection: ${MODEL}" >&2
   exit 1
 fi

@@ -18,8 +18,6 @@ touch "${USER_HOME_DIR}/ollama-server.log"
 chown -R "${USER_NAME}:${USER_NAME}" "${USER_HOME_DIR}/.ollama"
 chown "${USER_NAME}:${USER_NAME}" "${USER_HOME_DIR}/ollama-server.log"
 
-"${SCRIPT_DIR}/configure-opencode.sh" "${USER_NAME}" "${USER_HOME_DIR}"
-
 # Run as the authenticated user so MCP and context see the user's wb tokens.
 sudo -H -u "${USER_NAME}" /opt/wb-mcp-server/start-server.sh
 sudo -H -u "${USER_NAME}" /opt/llm-context/run-context-generator.sh "${USER_HOME_DIR}" || {
@@ -30,3 +28,6 @@ sudo -H -u "${USER_NAME}" /opt/llm-context/run-context-generator.sh "${USER_HOME
 sudo -H -u "${USER_NAME}" \
   --preserve-env=OPENCODE_HOME,OPENCODE_GPU_MEMORY_MIB,OLLAMA_MODEL,OLLAMA_HOST,OLLAMA_MODELS,OLLAMA_KEEP_ALIVE,OLLAMA_FLASH_ATTENTION,OLLAMA_CONTEXT_LENGTH,OLLAMA_NUM_PARALLEL,OLLAMA_MAX_LOADED_MODELS \
   "${SCRIPT_DIR}/start-ollama.sh"
+
+# Publish the picker only after all eligible models pass their load checks.
+"${SCRIPT_DIR}/configure-opencode.sh" "${USER_NAME}" "${USER_HOME_DIR}"

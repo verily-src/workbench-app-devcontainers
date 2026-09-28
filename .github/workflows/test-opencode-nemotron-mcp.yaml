@@ -6,6 +6,7 @@ on:
       - 'tests/opencode-nemotron-mcp/**'
       - 'features/src/wb-mcp-server/**'
       - 'features/src/llm-context/**'
+      - 'features/src/workbench-tools/**'
       - '.github/workflows/test-opencode-nemotron-mcp.yaml'
   push:
     branches: [master]
@@ -14,6 +15,7 @@ on:
       - 'tests/opencode-nemotron-mcp/**'
       - 'features/src/wb-mcp-server/**'
       - 'features/src/llm-context/**'
+      - 'features/src/workbench-tools/**'
       - '.github/workflows/test-opencode-nemotron-mcp.yaml'
 
 jobs:
@@ -33,3 +35,17 @@ jobs:
         env:
           WB_MCP_TEST_BINARY: ${{ runner.temp }}/wb-mcp-server
         run: python3 -m unittest discover -s tests/opencode-nemotron-mcp -v
+
+  container:
+    name: Build devcontainer and test installed OpenCode
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned devcontainer CLI
+        run: npm install -g @devcontainers/cli@0.89.0
+      - name: Build all features and exercise model switching without GPU
+        run: bash tests/opencode-nemotron-mcp/build-container.sh

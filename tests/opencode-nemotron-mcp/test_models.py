@@ -56,11 +56,21 @@ if name == "ollama":
 if name == "curl":
     url = next(a for a in args if a.startswith("http"))
     if url.endswith("/api/version"):
-        print('{"version":"test"}')
+        print(json.dumps({"version": "0.1.0" if os.environ.get("TEST_OLD_VERSION") else "0.34.4"}))
     elif url.endswith("/api/show"):
         print(json.dumps({"capabilities": [] if os.environ.get("TEST_NO_TOOLS") else ["tools"]}))
     elif url.endswith("/api/generate"):
-        print('{"error":"out of memory"}' if os.environ.get("TEST_LOAD_FAIL") else '{"done":true}')
+        requested = json.loads(args[args.index("-d") + 1])["model"]
+        failed = os.environ.get("TEST_LOAD_FAIL") or requested == os.environ.get("TEST_FAIL_MODEL")
+        print('{"error":"out of memory"}' if failed else '{"done":true}')
+    elif url.endswith("/api/ps"):
+        calls = [json.loads(line) for line in pathlib.Path(os.environ["TEST_CALLS"]).read_text().splitlines()]
+        generate = [a for n, a in calls if n == "curl" and any(x.endswith("/api/generate") for x in a)][-1]
+        request = json.loads(generate[generate.index("-d") + 1])
+        state = {"name": request["model"], "size": 8000,
+                 "size_vram": 4000 if os.environ.get("TEST_PARTIAL_GPU") else 8000,
+                 "context_length": 4096 if os.environ.get("TEST_WRONG_CONTEXT") else request["options"]["num_ctx"]}
+        print(json.dumps({"models": [state, state] if os.environ.get("TEST_TWO_LOADED") else [state]}))
     else:
         sys.exit("Unexpected URL: " + url)
 elif name == "nvidia-smi":
@@ -77,7 +87,7 @@ elif name == "id":
     def run_script(self, name, *args, ok=True):
         result = subprocess.run(
             [str(APP / name), *args], env=self.env, input="",
-            text=True, capture_output=True, timeout=15,
+            text=True, capture_output=True, timeout=30,
         )
         if ok:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -87,20 +97,6 @@ elif name == "id":
 
     def read_calls(self):
         return [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
-
-    def test_image_copies_every_runtime_model_file(self):
-        dockerfile = (APP / "Dockerfile").read_text()
-        for name in (
-            "available-models.sh",
-            "configure-opencode.sh",
-            "models.json",
-            "opencode-launch.sh",
-            "opencode-model.sh",
-            "resolve-model.sh",
-            "start-ollama.sh",
-        ):
-            with self.subTest(name=name):
-                self.assertIn(name, dockerfile)
 
     def selection(self):
         return self.override.read_text().strip(), json.loads(self.config.read_text())["model"]
@@ -136,6 +132,15 @@ elif name == "id":
         self.env["OLLAMA_MODEL"] = "prompt"
         self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), CUSTOM_MODEL)
 
+    def test_auto_defaults_to_lightning_on_a100_and_h100(self):
+        self.env["OLLAMA_MODEL"] = "auto"
+        for memory in ("40536", "81559"):
+            with self.subTest(memory=memory):
+                self.env["OPENCODE_GPU_MEMORY_MIB"] = memory
+                self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), LARGE)
+        self.override.write_text(DEFAULT)
+        self.assertEqual(self.run_script("resolve-model.sh").stdout.strip(), DEFAULT)
+
     def test_invalid_saved_selection_fails_before_network_access(self):
         self.override.write_text(" \n")
         self.run_script("start-ollama.sh", ok=False)
@@ -145,7 +150,8 @@ elif name == "id":
         self.run_script("configure-opencode.sh", "abc", str(self.home))
         config = json.loads(self.config.read_text())
         self.assertEqual(config["model"], "ollama/" + DEFAULT)
-        self.assertEqual(config["model"], config["small_model"])
+        self.assertNotIn("small_model", config)
+        self.assertEqual(config["enabled_providers"], ["ollama"])
         self.assertEqual(set(config["provider"]["ollama"]["models"]), {DEFAULT})
         self.assertIn(str(self.home / ".claude/CLAUDE.md"), config["instructions"])
         self.assertIn("/opt/opencode-workbench/workbench-instructions.md", config["instructions"])
@@ -198,7 +204,7 @@ elif name == "id":
         self.override.write_text(LARGE + "\n")
         self.run_script("configure-opencode.sh", "abc", str(self.home))
         old_config = self.config.read_bytes()
-        for failure in ("TEST_PULL_FAIL", "TEST_NO_TOOLS", "TEST_LOAD_FAIL"):
+        for failure in ("TEST_PULL_FAIL", "TEST_NO_TOOLS", "TEST_LOAD_FAIL", "TEST_PARTIAL_GPU", "TEST_WRONG_CONTEXT", "TEST_TWO_LOADED", "TEST_OLD_VERSION"):
             with self.subTest(failure=failure):
                 self.env[failure] = "1"
                 self.run_script("opencode-model.sh", CUSTOM_MODEL, ok=False)
@@ -246,6 +252,17 @@ elif name == "id":
         self.assertEqual(set(config["provider"]["ollama"]["models"]), {DEFAULT, LARGE})
         pulls = [args for name, args in self.read_calls() if name == "ollama" and args[0] == "pull"]
         self.assertEqual(pulls, [["pull", DEFAULT], ["pull", LARGE]])
+        loaded = [json.loads(args[args.index("-d") + 1])["model"] for name, args in self.read_calls()
+                  if name == "curl" and any(a.endswith("/api/generate") for a in args)]
+        self.assertEqual(loaded, [DEFAULT, LARGE])
+        self.assertEqual(config["model"], "ollama/" + LARGE)
+
+    def test_failure_loading_unselected_lightning_fails_preflight(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "40536"
+        self.env["TEST_FAIL_MODEL"] = LARGE
+        result = self.run_script("start-ollama.sh", DEFAULT, ok=False)
+        self.assertIn("Could not load " + LARGE, result.stderr)
+        self.assertNotIn("Ollama ready", result.stdout)
 
     def test_catalog_model_that_exceeds_gpu_memory_is_rejected(self):
         result = self.run_script("configure-opencode.sh", "abc", str(self.home), LARGE, ok=False)

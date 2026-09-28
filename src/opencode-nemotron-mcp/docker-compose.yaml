@@ -18,7 +18,8 @@ services:
       # (see startupscript/butane/050-parse-devcontainer.sh), so the model tag
       # is set here rather than as a template option.
       # Use "prompt" to defer the download until the first interactive opencode launch.
-      OLLAMA_MODEL: "nemotron-3-nano:4b"
+      # Auto selects Lightning on A100/H100, experimental Nano 4B on T4/V100.
+      OLLAMA_MODEL: "auto"
       OLLAMA_HOST: "127.0.0.1:11434"
       OLLAMA_MODELS: "/config/.ollama/models"
       # Keep the active model warm, but allow predictable one-at-a-time swaps.

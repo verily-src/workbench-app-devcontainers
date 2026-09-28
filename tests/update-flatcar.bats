@@ -10,7 +10,7 @@ readonly RESET=$'reset\ncgpt prioritize /dev/sda4\n'
 
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" >/dev/null 2>&1 && pwd)"
-    REPO_ROOT="$(cd "${DIR}/../.." && pwd)"
+    REPO_ROOT="$(cd "${DIR}/.." && pwd)"
     ROOT="${BATS_TEST_TMPDIR}"
     mkdir -p "${ROOT}/bin"
 

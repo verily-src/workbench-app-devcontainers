@@ -68,17 +68,6 @@ Tests for container state handling in `startupscript/butane/050-parse-devcontain
 - Migration of state files missing the memory limit, including an empty limit, under startup's shell settings
 - Memory limit tracking in the startup script
 
-### update-flatcar.bats
-
-Tests for the pinned Flatcar updater in `startupscript/butane/update-flatcar.sh`:
-
-- Staging only the approved stable version, and never downgrading
-- Cancelling a withdrawn or superseded staged update, including restoring the running partition's
-  boot priority
-- Leaving busy update-engine states and a held lock alone
-- Rejecting missing, malformed, or non-stable pins and boot channels
-- Keeping `SERVER=disabled` after a failed payload download
-
 ## Writing New Tests
 
 Follow the bats format:

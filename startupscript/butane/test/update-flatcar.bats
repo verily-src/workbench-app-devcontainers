@@ -14,7 +14,6 @@ setup() {
     mkdir -p "${ROOT}/bin"
 
     CURRENT_VERSION="4593.2.5"
-    CHANNEL="stable"
     GROUP_CONF=""
     ENGINE_STATE="UPDATE_STATUS_IDLE"
     STAGED_VERSION=""
@@ -70,12 +69,12 @@ stub() {
 run_update() {
     printf 'VERSION_ID=%s\n' "${CURRENT_VERSION}" > "${ROOT}/os-release"
     printf '%s' "${PIN}" > "${ROOT}/pin.json"
-    printf '%s\n' "${GROUP_CONF:-GROUP=${CHANNEL}}" > "${ROOT}/share-update.conf"
+    printf '%s\n' "${GROUP_CONF:-GROUP=stable}" > "${ROOT}/share-update.conf"
     run env PATH="${ROOT}/bin:${PATH}" TEST_ROOT="${ROOT}" \
         ENGINE_STATE="${ENGINE_STATE}" STAGED_VERSION="${STAGED_VERSION}" \
         STATUS_EXIT="${STATUS_EXIT}" CURL_EXIT="${CURL_EXIT}" \
         UPDATE_EXIT="${UPDATE_EXIT}" FLOCK_EXIT="${FLOCK_EXIT}" \
-        bash "${ROOT}/update-flatcar.sh" "${VERSION_URL}" "${CHANNEL}"
+        bash "${ROOT}/update-flatcar.sh" "${VERSION_URL}"
 }
 
 # usage: expect <success|failure> <actions>
@@ -107,13 +106,6 @@ expect() {
 }
 
 @test "newer version" {
-    run_update
-    expect success "${CLEAR}${UPDATE}"
-}
-
-@test "beta channel" {
-    CHANNEL="beta"
-    PIN='{"flatcar_stable_version":"4593.2.5","flatcar_beta_version":"4593.2.10"}'
     run_update
     expect success "${CLEAR}${UPDATE}"
 }
@@ -246,11 +238,10 @@ expect() {
     expect failure "${CLEAR}${UPDATE}"
 }
 
-@test "GROUP disagrees with argument" {
+@test "non-stable GROUP is refused" {
     GROUP_CONF="GROUP=beta"
-    PIN='{"flatcar_beta_version":"4593.2.10"}'
     run_update
-    expect success "${CLEAR}${UPDATE}"
+    expect failure ""
 }
 
 @test "GROUP missing" {
@@ -261,13 +252,6 @@ expect() {
 
 @test "GROUP invalid" {
     GROUP_CONF="GROUP=nightly"
-    run_update
-    expect failure ""
-}
-
-@test "unsupported channel argument" {
-    CHANNEL="nightly"
-    GROUP_CONF="GROUP=stable"
     run_update
     expect failure ""
 }

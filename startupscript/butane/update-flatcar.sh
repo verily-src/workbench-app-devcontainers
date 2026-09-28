@@ -4,27 +4,16 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-readonly VERSION_URL="${1:?Usage: update-flatcar.sh <version-url> <channel>}"
-readonly CHANNEL_ARG="${2:?Usage: update-flatcar.sh <version-url> <channel>}"
-
-if [[ "$CHANNEL_ARG" != stable && "$CHANNEL_ARG" != beta ]]; then
-  echo "Unsupported Flatcar channel: $CHANNEL_ARG" >&2
-  exit 1
-fi
+readonly VERSION_URL="${1:?Usage: update-flatcar.sh <version-url>}"
 
 # /etc/flatcar/update.conf is overwritten by Ignition with only REBOOT_STRATEGY
 # and SERVER, so the booted channel must come from Flatcar's own copy under
-# /usr/share. The image family requested at VM creation and the update channel
-# can disagree, so this is the source of truth, not the CLI argument.
+# /usr/share. Only stable is pinned; a VM booted from another channel's image
+# must not be moved onto it.
 GROUP="$(sed -n 's/^GROUP=//p' /usr/share/flatcar/update.conf)"
-if [[ "$GROUP" != stable && "$GROUP" != beta ]]; then
-  echo "Missing or invalid GROUP in /usr/share/flatcar/update.conf: '$GROUP'" >&2
+if [[ "$GROUP" != stable ]]; then
+  echo "Booted channel is '$GROUP'; only stable is pinned" >&2
   exit 1
-fi
-CHANNEL="$CHANNEL_ARG"
-if [[ "$GROUP" != "$CHANNEL_ARG" ]]; then
-  echo "Booted channel ($GROUP) disagrees with requested channel ($CHANNEL_ARG); using booted channel" >&2
-  CHANNEL="$GROUP"
 fi
 
 # shellcheck source=/dev/null
@@ -53,7 +42,7 @@ fi
 
 TARGET_VERSION="$(curl --fail --silent --show-error --proto '=https' --proto-redir '=https' \
   --connect-timeout 10 --max-time 30 --retry 3 "$VERSION_URL" | \
-  jq -er --arg key "flatcar_${CHANNEL}_version" '.[$key] | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))')"
+  jq -er '.flatcar_stable_version | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))')"
 
 if [[ ! "$VERSION_ID" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid running Flatcar version: $VERSION_ID" >&2

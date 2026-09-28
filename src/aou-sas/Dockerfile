@@ -40,6 +40,7 @@ RUN curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cl
 RUN groupadd -g 1100 aougroup && \
     useradd -g aougroup -m -d /data -s /bin/bash aou && \
     echo "aou:aou" | chpasswd && \
+    chage -M -1 aou && \
     rm -f /etc/sudoers.d/aou
 
 ###############################################################################

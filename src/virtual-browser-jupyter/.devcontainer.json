@@ -1,12 +1,18 @@
 {
   "name": "JupyterLab in a Virtual Browser devcontainer template",
-  "dockerComposeFile": ["docker-compose.yaml", "../jupyter-common/jupyter-common-compose.yaml"],
+  "dockerComposeFile": ["docker-compose.yaml", "docker-compose.build.yaml", "../jupyter-common/jupyter-common-compose.yaml"],
   "service": "jupyterlab",
   "runServices": ["app", "jupyterlab"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
+  // The local volume driver requires its host bind directory to exist before startup.
+  "initializeCommand": ["mkdir", "-p", "/home/core/container-state.d/jupyter-home"],
+  // The host records successful setup in a directory mounted read-only here.
   "postCreateCommand": [
-    "./startupscript/post-startup.sh",
+    "sh",
+    "-ec",
+    "if [ ! -f /var/lib/workbench/setup/post-create.done ]; then ./startupscript/post-startup.sh \"$@\"; fi",
+    "--",
     "jupyter",
     "/home/jupyter",
     "${templateOption:cloud}",
@@ -39,6 +45,7 @@
   "remoteUser": "root",
   "customizations": {
     "workbench": {
+      "AIRLOCK_ENABLED": true,
       "opens": {
         "extensions": [
           // Source

@@ -1,13 +1,10 @@
-include:
-  - ../jupyter-common/jupyter-common-compose.yaml
 services:
-  # Browser front end, built from the shared ../browser-common image (Selkies + policy baked in).
+  # Keep the browser container across backend recreation.
   app:
+    # Proxy startup and readiness checks require this container name.
     container_name: "application-server"
-    build:
-      context: ../browser-common
-      args:
-        APP_ORIGIN: "jupyterlab:8888"
+    image: workbench-virtual-browser:app
+    pull_policy: never
     restart: always
     ports:
       - "3000:3000"
@@ -26,16 +23,17 @@ services:
 
   jupyterlab:
     container_name: "jupyterlab"
-    build:
-      context: .
-      additional_contexts:
-        jupyter-extension-builder: service:jupyter-common-extension-builder
+    image: workbench-local-snapshot:devcontainer
+    pull_policy: never
     user: "jupyter"
+    # Hardware template options belong only to the backend.
     shm_size: "${templateOption:shmSize}"
     mem_limit: "${templateOption:memoryLimit}"
     restart: always
     volumes:
       - .:/workspace:cached
+      - jupyter-home:/home/jupyter
+      - ${WORKBENCH_SETUP_STATE_DIR:-/home/core/container-state.d/setup}:/var/lib/workbench/setup:ro
       - browser-uploads:/home/jupyter/browser-uploads
     networks:
       - backend-network
@@ -50,4 +48,11 @@ networks:
     external: true
   backend-network:
 volumes:
+  # A host bind mount through the local driver lets Docker seed the image's home files.
+  jupyter-home:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/core/container-state.d/jupyter-home
   browser-uploads:

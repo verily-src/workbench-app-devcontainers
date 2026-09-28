@@ -1,0 +1,13 @@
+# Used only for initial provisioning.
+services:
+  app:
+    build:
+      context: ../browser-common
+      args:
+        APP_ORIGIN: "jupyterlab:8888"
+  jupyterlab:
+    image: workbench-virtual-browser:jupyterlab
+    build:
+      context: .
+      additional_contexts:
+        jupyter-extension-builder: service:jupyter-common-extension-builder

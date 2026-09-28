@@ -37,7 +37,7 @@ control sidebar is hidden.
 ## Configuring
 
 The browser front end (Dockerfile, policy template, Selkies env) lives in `../browser-common`. This
-template only supplies the JupyterLab-specific values in `docker-compose.yaml`, two of which must
+template supplies JupyterLab-specific values in `docker-compose.build.yaml` and `docker-compose.yaml`, two of which must
 match:
 
 - `app.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
@@ -51,3 +51,23 @@ Other configs:
 - `shmSize` / `memoryLimit` apply to the JupyterLab container.
 - Shared Selkies defaults are `ENV` in the `browser-common` image; override any in this service's
   `environment`.
+
+### Hardware changes
+
+After the first successful startup, JupyterLab is snapshotted once to
+`workbench-local-snapshot:devcontainer`. GPU, shared-memory or memory-limit changes
+recreate it from that initial snapshot with the new settings. The browser container
+stays running. First boot also loads `docker-compose.build.yaml`; later recreation
+needs no builds or image pulls. Completed setup stays skipped and startup hooks run.
+
+Packages installed during initial setup survive. Later changes outside mounted
+directories are lost on recreation.
+
+`/home/jupyter` binds to `/home/core/container-state.d/jupyter-home` on the VM
+through a local-driver volume, which seeds the image's home files and ownership on
+first use. Notebooks and other home files survive recreation without being included
+in snapshots. The host path is defined in this template's Compose file, and its
+`initializeCommand` creates the directory before initial startup.
+
+The VM host records setup completion and mounts the marker directory read-only in
+the backend. See the [startup lifecycle](../../startupscript/butane/README.md) for details.

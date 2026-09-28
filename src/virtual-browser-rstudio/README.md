@@ -37,10 +37,25 @@ so they won't save to your local machine. The Selkies sidebar (including file up
 ## Configuring
 
 The browser front end lives in `../browser-common`. This template supplies only the RStudio-specific
-values in `docker-compose.yaml`, two of which must match:
+values in `docker-compose.build.yaml` and `docker-compose.yaml`, two of which must match:
 
 - `app.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
   can reach.
 - `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://rstudio:8787`).
 
 Both are `http://rstudio:8787` here. `URLBlocklist` is `["*"]`, so nothing else loads.
+
+### Hardware changes
+
+After the first successful startup, RStudio is snapshotted once to
+`workbench-local-snapshot:devcontainer`. GPU, shared-memory or memory-limit changes
+recreate it from that initial snapshot with the new settings and existing named
+volumes. The browser container stays running. First boot also loads
+`docker-compose.build.yaml`; later recreation needs no builds or image pulls.
+Completed setup stays skipped and startup hooks run.
+
+Packages installed during initial setup and files in the mounted home directory
+survive. Later changes outside mounted directories are lost on recreation.
+
+The VM host records setup completion and mounts the marker directory read-only in
+the backend. See the [startup lifecycle](../../startupscript/butane/README.md) for details.

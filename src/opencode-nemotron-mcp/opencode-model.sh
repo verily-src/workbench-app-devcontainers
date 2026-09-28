@@ -9,6 +9,8 @@ SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 readonly SCRIPT_DIR
 readonly USER_HOME_DIR="${OPENCODE_HOME:-/config}"
 readonly CATALOG="${SCRIPT_DIR}/models.json"
+AVAILABLE_MODELS="$("${SCRIPT_DIR}/available-models.sh")"
+readonly AVAILABLE_MODELS
 
 usage() {
   echo "Usage: opencode-model [--list | <ollama-model-tag>]"
@@ -16,7 +18,8 @@ usage() {
 }
 
 list_models() {
-  jq -r 'to_entries[] | "\(.key + 1). \(.value.tag) — \(.value.weights) weights; \(.value.gpu)"' "${CATALOG}"
+  jq -r 'to_entries[] | "\(.key + 1). \(.value.tag) — \(.value.weights) weights; \(.value.gpu)"' \
+    <<< "${AVAILABLE_MODELS}"
 }
 
 if (( $# > 1 )); then
@@ -49,11 +52,19 @@ if [[ -z "${MODEL}" ]]; then
     echo "Select a number from the list." >&2
     exit 1
   fi
-  MODEL="$(jq -r --argjson choice "${CHOICE}" '.[$choice - 1].tag // empty' "${CATALOG}")"
+  MODEL="$(jq -r --argjson choice "${CHOICE}" '.[$choice - 1].tag // empty' \
+    <<< "${AVAILABLE_MODELS}")"
 fi
 
 if [[ "${MODEL}" == "prompt" || ! "${MODEL}" =~ ^[[:alnum:]][[:alnum:]_.:/-]*$ ]]; then
   echo "Invalid model tag or selection: ${MODEL}" >&2
+  exit 1
+fi
+
+IN_CATALOG="$(jq -r --arg model "${MODEL}" 'any(.tag == $model)' "${CATALOG}")"
+IS_AVAILABLE="$(jq -r --arg model "${MODEL}" 'any(.tag == $model)' <<< "${AVAILABLE_MODELS}")"
+if [[ "${IN_CATALOG}" == "true" && "${IS_AVAILABLE}" != "true" ]]; then
+  echo "${MODEL} is not available on this GPU. Run opencode-model --list for compatible models." >&2
   exit 1
 fi
 

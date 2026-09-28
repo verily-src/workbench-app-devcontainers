@@ -37,6 +37,7 @@ class ModelTests(unittest.TestCase):
             "OPENCODE_HOME": str(self.home),
             "OLLAMA_MODEL": "",
             "OLLAMA_CONTEXT_LENGTH": "65536",
+            "OPENCODE_GPU_MEMORY_MIB": "15360",
             "TEST_CALLS": str(self.calls),
         }
         # Stub the external boundary, not the scripts or jq configuration logic.
@@ -63,7 +64,7 @@ if name == "curl":
     else:
         sys.exit("Unexpected URL: " + url)
 elif name == "nvidia-smi":
-    print("NVIDIA T4, 15360 MiB")
+    print("15360" if "--query-gpu=memory.total" in args else "NVIDIA T4, 15360 MiB")
 elif name == "id":
     # Exercise the unprivileged picker path even on root-run CI containers.
     print("1000" if args == ["-u"] else "abc")
@@ -131,6 +132,7 @@ elif name == "id":
         config = json.loads(self.config.read_text())
         self.assertEqual(config["model"], "ollama/" + DEFAULT)
         self.assertEqual(config["model"], config["small_model"])
+        self.assertEqual(set(config["provider"]["ollama"]["models"]), {DEFAULT})
         self.assertIn(str(self.home / ".claude/CLAUDE.md"), config["instructions"])
         self.assertIn("/opt/opencode-workbench/workbench-instructions.md", config["instructions"])
         self.assertEqual(config["mcp"]["wb"], {
@@ -160,12 +162,15 @@ elif name == "id":
                 self.run_script("configure-opencode.sh", "abc", str(self.home), ok=False)
                 self.assertEqual(self.config.read_bytes(), old_config)
 
-    def test_picker_pulls_only_selected_model_and_persists_it(self):
+    def test_picker_pulls_eligible_models_and_persists_custom_selection(self):
         self.run_script("opencode-model.sh", CUSTOM_MODEL)
         self.assertEqual(self.selection(), (CUSTOM_MODEL, "ollama/" + CUSTOM_MODEL))
         pulls = [args for name, args in self.read_calls() if name == "ollama" and args[0] == "pull"]
-        self.assertEqual(pulls, [["pull", CUSTOM_MODEL]])
-        self.assertEqual(set(json.loads(self.config.read_text())["provider"]["ollama"]["models"]), {CUSTOM_MODEL})
+        self.assertEqual(pulls, [["pull", DEFAULT], ["pull", CUSTOM_MODEL]])
+        self.assertEqual(
+            set(json.loads(self.config.read_text())["provider"]["ollama"]["models"]),
+            {DEFAULT, CUSTOM_MODEL},
+        )
 
     def test_restart_reuses_cached_weights_without_pull(self):
         self.override.write_text(CUSTOM_MODEL)
@@ -175,6 +180,7 @@ elif name == "id":
         self.assertIn(["ollama", ["show", CUSTOM_MODEL]], self.read_calls())
 
     def test_failed_download_tools_or_load_preserves_saved_selection(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "40960"
         self.override.write_text(LARGE + "\n")
         self.run_script("configure-opencode.sh", "abc", str(self.home))
         old_config = self.config.read_bytes()
@@ -205,17 +211,42 @@ elif name == "id":
 
     def test_listing_and_invalid_choices_never_download(self):
         listing = self.run_script("opencode-model.sh", "--list").stdout
-        self.assertEqual(len(listing.splitlines()), 2)
-        for tag in (DEFAULT, LARGE):
-            self.assertIn(tag, listing)
+        self.assertEqual(len(listing.splitlines()), 1)
+        self.assertIn(DEFAULT, listing)
+        self.assertNotIn(LARGE, listing)
         self.assertNotIn(CUSTOM_MODEL, listing)
-        for args in ([], ["prompt"], ["--bad"], ["bad tag"], [DEFAULT, LARGE]):
+        for args in ([], ["prompt"], ["--bad"], ["bad tag"], [LARGE], [DEFAULT, LARGE]):
             self.run_script("opencode-model.sh", *args, ok=False)
         self.assertEqual(self.read_calls(), [])
 
     def test_interactive_choice_selects_lightning(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "40960"
         self.assertEqual(self.interactive("2"), 0)
         self.assertEqual(self.selection(), (LARGE, "ollama/" + LARGE))
+
+    def test_large_gpu_registers_and_downloads_both_models_for_slash_picker(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "81920"
+        self.run_script("start-ollama.sh")
+        self.run_script("configure-opencode.sh", "abc", str(self.home))
+        config = json.loads(self.config.read_text())
+        self.assertEqual(set(config["provider"]["ollama"]["models"]), {DEFAULT, LARGE})
+        pulls = [args for name, args in self.read_calls() if name == "ollama" and args[0] == "pull"]
+        self.assertEqual(pulls, [["pull", DEFAULT], ["pull", LARGE]])
+
+    def test_catalog_model_that_exceeds_gpu_memory_is_rejected(self):
+        result = self.run_script("configure-opencode.sh", "abc", str(self.home), LARGE, ok=False)
+        self.assertIn("not available on this GPU", result.stderr)
+        self.assertFalse(self.config.exists())
+
+    def test_invalid_gpu_memory_is_rejected_before_configuration(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "not-a-number"
+        result = self.run_script("configure-opencode.sh", "abc", str(self.home), ok=False)
+        self.assertIn("expected a positive MiB value", result.stderr)
+
+    def test_gpu_memory_is_detected_with_nvidia_smi_without_override(self):
+        del self.env["OPENCODE_GPU_MEMORY_MIB"]
+        result = self.run_script("available-models.sh")
+        self.assertEqual([entry["tag"] for entry in json.loads(result.stdout)], [DEFAULT])
 
     def test_interactive_default_selects_nano_4b(self):
         self.assertEqual(self.interactive(""), 0)

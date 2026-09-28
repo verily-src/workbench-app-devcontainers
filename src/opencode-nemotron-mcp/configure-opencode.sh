@@ -21,6 +21,8 @@ readonly SCRIPT_DIR MODEL
 readonly CONFIG_DIR="${USER_HOME_DIR}/.config/opencode"
 readonly CONFIG_FILE="${CONFIG_DIR}/opencode.json"
 readonly CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-65536}"
+AVAILABLE_MODELS="$("${SCRIPT_DIR}/available-models.sh")"
+readonly AVAILABLE_MODELS
 
 if [[ ! "${CONTEXT_LENGTH}" =~ ^[1-9][0-9]*$ ]] || (( CONTEXT_LENGTH < 16384 )); then
   echo "OLLAMA_CONTEXT_LENGTH must be an integer of at least 16384 (65536 recommended)." >&2
@@ -29,10 +31,35 @@ fi
 
 mkdir -p "${CONFIG_DIR}"
 
+if [[ "${MODEL}" != "prompt" ]]; then
+  IN_CATALOG="$(jq -r --arg model "${MODEL}" 'any(.tag == $model)' "${SCRIPT_DIR}/models.json")"
+  IS_AVAILABLE="$(jq -r --arg model "${MODEL}" 'any(.tag == $model)' <<< "${AVAILABLE_MODELS}")"
+  if [[ "${IN_CATALOG}" == "true" && "${IS_AVAILABLE}" != "true" ]]; then
+    echo "${MODEL} is not available on this GPU. Run opencode-model --list for compatible models." >&2
+    exit 1
+  fi
+fi
+
+PROVIDER_MODELS="$(jq --argjson context "${CONTEXT_LENGTH}" \
+  'reduce .[] as $entry ({}; .[$entry.tag] = {
+    name: $entry.name,
+    limit: {context: $context, output: 8192}
+  })' <<< "${AVAILABLE_MODELS}")"
+
+# Preserve explicit custom-tag support. Catalog models are filtered by VRAM;
+# custom tags are an expert override and cannot be sized from local metadata.
+if [[ "${MODEL}" != "prompt" ]] && ! jq -e --arg model "${MODEL}" 'has($model)' \
+  <<< "${PROVIDER_MODELS}" > /dev/null; then
+  PROVIDER_MODELS="$(jq --arg model "${MODEL}" --argjson context "${CONTEXT_LENGTH}" \
+    '.[$model] = {name: $model, limit: {context: $context, output: 8192}}' \
+    <<< "${PROVIDER_MODELS}")"
+fi
+readonly PROVIDER_MODELS
+
 # share=disabled keeps prompts and code off opencode's hosted sharing service.
 # autoupdate=false keeps the version pinned by the Dockerfile.
 jq -n --arg model "${MODEL}" --arg home "${USER_HOME_DIR}" \
-  --argjson context "${CONTEXT_LENGTH}" '{
+  --argjson models "${PROVIDER_MODELS}" '{
   "$schema": "https://opencode.ai/config.json",
   "model": ("ollama/" + $model),
   "small_model": ("ollama/" + $model),
@@ -52,10 +79,7 @@ jq -n --arg model "${MODEL}" --arg home "${USER_HOME_DIR}" \
       "npm": "@ai-sdk/openai-compatible",
       "name": "Ollama (local)",
       "options": { "baseURL": "http://localhost:11434/v1" },
-      "models": { ($model): {
-        "name": $model,
-        "limit": { "context": $context, "output": 8192 }
-      } }
+      "models": $models
     }
   }
 } | if $model == "prompt" then

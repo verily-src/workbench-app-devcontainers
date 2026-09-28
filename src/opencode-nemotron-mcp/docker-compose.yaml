@@ -21,7 +21,8 @@ services:
       OLLAMA_MODEL: "nemotron-3-nano:4b"
       OLLAMA_HOST: "127.0.0.1:11434"
       OLLAMA_MODELS: "/config/.ollama/models"
-      OLLAMA_KEEP_ALIVE: "-1"
+      # Keep the active model warm, but allow predictable one-at-a-time swaps.
+      OLLAMA_KEEP_ALIVE: "5m"
       OLLAMA_FLASH_ATTENTION: "true"
       # Room for OpenCode, Workbench context, and MCP tool definitions.
       OLLAMA_CONTEXT_LENGTH: "65536"

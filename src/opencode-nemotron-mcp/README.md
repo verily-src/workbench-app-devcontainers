@@ -17,17 +17,20 @@ remains separate and retains its Lightning 30B default and existing behavior.
 
 ## Models and GPU guidance
 
-`opencode-model --list` shows the catalog in `models.json`. Only the selected
-model is downloaded, rather than every model in the catalog.
+At startup the app detects the largest attached GPU's VRAM and filters the
+catalog in `models.json`. Every compatible catalog model is downloaded so it is
+immediately usable from OpenCode's `/model` picker. Only one model is kept in
+VRAM at a time.
 
-| Ollama tag | Weight download | Primary GPU target | Other Workbench GPU options |
+| Ollama tag | Weight download | Minimum VRAM | Available on |
 |---|---|---|---|
-| **`nemotron-3-nano:4b`** (default) | **2.8 GB** | **T4 16 GB** | V100 16 GB |
-| `nemotron-3.5-lightning:30b` | 25 GB | A100 40 GB | A100 80 GB, H100 80 GB, H100 80 GB MEGA |
+| **`nemotron-3-nano:4b`** (default) | **2.8 GB** | **15,000 MiB** | T4/V100 16 GB and larger GPUs |
+| `nemotron-3.5-lightning:30b` | 25 GB | 40,000 MiB | A100 40/80 GB and H100 80 GB variants |
 
-The menu offers two choices: **Nano 4B for smaller GPUs** and **Lightning 30B for
-A100/H100 GPUs**. Precision variants and a second 30B model would overlap these
-hardware targets. Custom tags remain available for experimentation.
+On a T4/V100, `/model` offers Nano 4B only. On an A100/H100, it offers Nano 4B
+and Lightning 30B. Capacity thresholds deliberately use MiB rather than GPU
+names so provider-specific labels such as `MEGA` do not affect filtering.
+Custom tags remain available through `opencode-model` for experimentation.
 Sizes and tool support come from the
 [Nano tags](https://ollama.com/library/nemotron-3-nano/tags) and
 [Lightning tag](https://ollama.com/library/nemotron-3.5-lightning:30b).
@@ -63,11 +66,19 @@ for OpenCode plus Workbench context and MCP tools.
    opencode
    ```
 
-The initial startup downloads the selected model and loads it. Subsequent
-restarts reuse cached weights in `/config/.ollama/models`; they do not pull
-the model again. To update an existing tag deliberately, run `ollama pull <tag>`.
+The initial startup downloads every model compatible with the attached GPU and
+loads the default. Subsequent restarts reuse cached weights in
+`/config/.ollama/models`; they do not pull models again. To update an existing
+tag deliberately, run `ollama pull <tag>`.
 
 ### Choose or change a model
+
+Inside OpenCode, use `/model` to switch among the models that fit the attached
+GPU. Ollama loads the selection and evicts the previous model when necessary;
+the first switch can take a few seconds, but the models do not need to fit in
+VRAM concurrently.
+
+The companion command changes the persisted default or selects a custom tag:
 
 ```sh
 opencode-model                         # numbered menu, including GPU guidance
@@ -75,11 +86,13 @@ opencode-model --list                  # inspect choices without downloading
 opencode-model nemotron-3-nano:4b       # noninteractive selection
 ```
 
-The picker downloads the selection, checks Ollama's advertised tool support,
-loads it, then updates both `/config/.opencode-model` and the OpenCode config.
-Start a new OpenCode session after switching. A download or loading failure
-leaves the saved selection and OpenCode config unchanged. Previously downloaded
-models stay cached; use `ollama rm <tag>` to reclaim their disk space.
+The command lists only catalog models compatible with the attached GPU. It
+downloads all compatible choices, checks Ollama's advertised tool support,
+loads the selection, then updates both `/config/.opencode-model` and the
+OpenCode config. Start a new OpenCode session after changing the persisted
+default. A download or loading failure leaves the saved selection and OpenCode
+config unchanged. Previously downloaded models stay cached; use
+`ollama rm <tag>` to reclaim their disk space.
 
 The existing override workflow also works:
 
@@ -112,12 +125,10 @@ For automation, run `opencode-model <tag>` first. A model-dependent command
 without a terminal fails with instructions rather than waiting for input.
 Help, version, model listing, and MCP setup commands remain available.
 
-This implements selection at the first agent launch because devcontainer
+The optional prompt implements initial selection at the first agent launch because devcontainer
 `postCreateCommand`/`postStartCommand` run without an interactive terminal.
 Blocking those hooks on `read` would prevent startup. Other options considered:
 
-- **Automatic GPU selection:** possible using `nvidia-smi`, but total VRAM alone
-  does not account for other workloads or the user's quality/latency preference.
 - **Workbench creation-form selection:** would require platform changes.
   Workbench substitutes a fixed set of template options on the VM, so adding
   a `model` template option here alone does not work.
@@ -162,16 +173,23 @@ cloud services according to the user's existing permissions.
 `OLLAMA_MODEL`, then `nemotron-3-nano:4b`. Both the agent config and Ollama startup
 use it. A saved choice from an earlier version is retained.
 
+`available-models.sh` reads the largest attached GPU's memory with `nvidia-smi`
+and filters `models.json` by `minimum_vram_mib`. `OPENCODE_GPU_MEMORY_MIB` can
+override detection for testing or an operator-controlled deployment.
+
 `configure-opencode.sh` owns `~/.config/opencode/opencode.json` and rewrites it
-on startup and selection. It configures the selected model only, so OpenCode's
-model menu does not offer catalog entries that have not been downloaded. It also
-pins `autoupdate: false`, disables sharing, and registers Workbench MCP/context.
+on startup and selection. It registers every compatible catalog model so
+OpenCode's `/model` picker cannot accidentally select a catalog model that is
+too large for the GPU. This is a usability guard, not a security boundary;
+users can still supply a custom Ollama tag. The script also pins
+`autoupdate: false`, disables sharing, and registers Workbench MCP/context.
 
 `OLLAMA_CONTEXT_LENGTH` defaults to 65536, following
 [Ollama's OpenCode guidance](https://docs.ollama.com/integrations/opencode).
 The same limit is advertised to OpenCode so its context management matches the
 server. Larger contexts consume more VRAM. `OLLAMA_NUM_PARALLEL=1` and
-`OLLAMA_MAX_LOADED_MODELS=1` limit concurrent model memory use on smaller GPUs.
+`OLLAMA_MAX_LOADED_MODELS=1` limit concurrent model memory use; the five-minute
+keep-alive keeps the active model warm while still allowing predictable swaps.
 `OPENCODE_HOME` defaults to `/config` and can redirect state for script testing.
 
 You can also call the local API directly:
@@ -211,8 +229,9 @@ export WB_MCP_TEST_BINARY=/tmp/wb-mcp-server-test
 python3 -m unittest discover -s tests/opencode-nemotron-mcp -v
 ```
 
-These cover configuration, selection, cache reuse, deferred startup, interactive
-input, and download/load failures with mocked Ollama responses. The MCP test uses
+These cover GPU-aware configuration, `/model` registration, selection, cache
+reuse, deferred startup, interactive input, and download/load failures with
+mocked Ollama responses. The MCP test uses
 the real server binary with a fake `wb` CLI for handshake, tool discovery, and
 tool dispatch. It is skipped when `WB_MCP_TEST_BINARY` is unset. Before release,
 build the devcontainer on a Workbench GPU VM, confirm MCP connectivity and a

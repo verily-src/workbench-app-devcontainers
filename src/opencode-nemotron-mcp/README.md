@@ -12,8 +12,6 @@ Code-server IDE with [OpenCode](https://opencode.ai), local
   authenticated user's Workbench/cloud APIs, and model downloads use Ollama's registry.
 
 Use **`src/opencode-nemotron-mcp`** as the template path when creating this app.
-The original [`src/opencode-nemotron`](../opencode-nemotron/README.md) template
-remains separate and retains its Lightning 30B default and existing behavior.
 
 ## Models and GPU guidance
 

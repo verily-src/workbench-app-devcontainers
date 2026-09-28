@@ -49,10 +49,19 @@ if [[ ! "$VERSION_ID" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
+# -reset_status only idles update-engine; postinst already gave the staged
+# partition boot priority, so hand it back to the running /usr partition.
+cancel_staged_update() {
+  local running_usr
+  running_usr="$(rootdev -s /usr)"
+  update_engine_client -reset_status
+  cgpt prioritize "$running_usr"
+}
+
 # A release rollback must not downgrade a running VM.
 if [[ "$(printf '%s\n' "$VERSION_ID" "$TARGET_VERSION" | sort -V | head -n 1)" == "$TARGET_VERSION" ]]; then
   if [[ "$CURRENT_OP" == UPDATE_STATUS_UPDATED_NEED_REBOOT ]]; then
-    update_engine_client -reset_status
+    cancel_staged_update
   fi
   set_metadata "os_update/reboot_required" ""
   set_metadata "os_update/timestamp" ""
@@ -63,7 +72,7 @@ if [[ "$CURRENT_OP" == UPDATE_STATUS_UPDATED_NEED_REBOOT ]]; then
   if [[ "$NEW_VERSION" == "$TARGET_VERSION" ]]; then
     exit 0
   fi
-  update_engine_client -reset_status
+  cancel_staged_update
   set_metadata "os_update/reboot_required" ""
   set_metadata "os_update/timestamp" ""
 fi

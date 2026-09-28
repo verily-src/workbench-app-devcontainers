@@ -6,7 +6,7 @@ readonly VERSION_URL="https://workbench-test.verily.com/api/app/version"
 readonly UPDATE_CONF=$'REBOOT_STRATEGY=off\nSERVER=disabled\n'
 readonly CLEAR=$'metadata os_update/reboot_required=\nmetadata os_update/timestamp=\n'
 readonly UPDATE=$'flatcar-update --to-version 4593.2.10 --disable-afterwards\n'
-readonly RESET=$'reset\n'
+readonly RESET=$'reset\ncgpt prioritize /dev/sda4\n'
 
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" >/dev/null 2>&1 && pwd)"
@@ -22,6 +22,8 @@ setup() {
     CURL_EXIT=0
     UPDATE_EXIT=0
     FLOCK_EXIT=0
+    ROOTDEV_EXIT=0
+    CGPT_EXIT=0
 
     printf '%s' "${UPDATE_CONF}" > "${ROOT}/update.conf"
     : > "${ROOT}/actions"
@@ -29,6 +31,13 @@ setup() {
 set_metadata() { printf 'metadata %s=%s\n' "$1" "$2" >> "$TEST_ROOT/actions"; }
 EOF
     stub flock 'exit "${FLOCK_EXIT:-0}"'
+    stub rootdev '
+[[ "${ROOTDEV_EXIT:-0}" == 0 ]] || exit "$ROOTDEV_EXIT"
+[[ "$*" == "-s /usr" ]] || exit 99
+echo /dev/sda4'
+    stub cgpt '
+echo "cgpt $*" >> "$TEST_ROOT/actions"
+exit "${CGPT_EXIT:-0}"'
     stub update_engine_client '
 case "$*" in
   -status)
@@ -74,6 +83,7 @@ run_update() {
         ENGINE_STATE="${ENGINE_STATE}" STAGED_VERSION="${STAGED_VERSION}" \
         STATUS_EXIT="${STATUS_EXIT}" CURL_EXIT="${CURL_EXIT}" \
         UPDATE_EXIT="${UPDATE_EXIT}" FLOCK_EXIT="${FLOCK_EXIT}" \
+        ROOTDEV_EXIT="${ROOTDEV_EXIT}" CGPT_EXIT="${CGPT_EXIT}" \
         bash "${ROOT}/update-flatcar.sh" "${VERSION_URL}"
 }
 
@@ -252,6 +262,23 @@ expect() {
 
 @test "GROUP invalid" {
     GROUP_CONF="GROUP=nightly"
+    run_update
+    expect failure ""
+}
+
+@test "failed boot-priority restore keeps the reboot notice" {
+    ENGINE_STATE="UPDATE_STATUS_UPDATED_NEED_REBOOT"
+    STAGED_VERSION="4757.2.0"
+    PIN='{"flatcar_stable_version":"4593.2.5"}'
+    CGPT_EXIT=1
+    run_update
+    expect failure "${RESET}"
+}
+
+@test "unknown running partition leaves the staged update alone" {
+    ENGINE_STATE="UPDATE_STATUS_UPDATED_NEED_REBOOT"
+    STAGED_VERSION="4757.2.0"
+    ROOTDEV_EXIT=1
     run_update
     expect failure ""
 }

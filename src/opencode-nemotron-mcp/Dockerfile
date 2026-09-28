@@ -25,7 +25,7 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
     && HOME=/opt/opencode /opt/opencode/.opencode/bin/opencode --version
 
 # Keep the picker available independently of the /workspace bind mount.
-COPY configure-opencode.sh resolve-model.sh start-ollama.sh opencode-model.sh opencode-launch.sh models.json workbench-instructions.md /opt/opencode-workbench/
+COPY available-models.sh configure-opencode.sh resolve-model.sh start-ollama.sh opencode-model.sh opencode-launch.sh models.json workbench-instructions.md /opt/opencode-workbench/
 RUN chmod +x /opt/opencode-workbench/*.sh \
     && ln -s /opt/opencode-workbench/opencode-launch.sh /usr/local/bin/opencode \
     && ln -s /opt/opencode-workbench/opencode-model.sh /usr/local/bin/opencode-model

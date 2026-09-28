@@ -88,6 +88,20 @@ elif name == "id":
     def read_calls(self):
         return [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
 
+    def test_image_copies_every_runtime_model_file(self):
+        dockerfile = (APP / "Dockerfile").read_text()
+        for name in (
+            "available-models.sh",
+            "configure-opencode.sh",
+            "models.json",
+            "opencode-launch.sh",
+            "opencode-model.sh",
+            "resolve-model.sh",
+            "start-ollama.sh",
+        ):
+            with self.subTest(name=name):
+                self.assertIn(name, dockerfile)
+
     def selection(self):
         return self.override.read_text().strip(), json.loads(self.config.read_text())["model"]
 

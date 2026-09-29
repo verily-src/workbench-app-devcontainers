@@ -56,12 +56,14 @@ cat "$TEST_ROOT/pin.json"'
 echo "flatcar-update $*" >> "$TEST_ROOT/actions"
 printf "REBOOT_STRATEGY=off\nSERVER=https://update.flatcar-linux.net/v1/update/\n" > "$TEST_ROOT/update.conf"
 exit "${UPDATE_EXIT:-0}"'
-    for name in reboot systemctl; do
-        stub "${name}" "echo 'unexpected ${name}' >> \"\$TEST_ROOT/actions\"; exit 99"
-    done
-    if [[ "$(uname)" == Darwin ]]; then
-        stub sed 'if [[ $1 == -i ]]; then shift; exec /usr/bin/sed -i "" "$@"; fi; exec /usr/bin/sed "$@"'
-    fi
+    stub reboot "echo 'unexpected reboot' >> \"\$TEST_ROOT/actions\"; exit 99"
+    stub systemctl '
+if [[ "$*" == "try-restart locksmithd.service" ]]; then
+  echo restarted >> "$TEST_ROOT/locksmithd"
+  exit 0
+fi
+echo "unexpected systemctl $*" >> "$TEST_ROOT/actions"
+exit 99'
 
     sed -e "s#/usr/share/flatcar/os-release#${ROOT}/os-release#g" \
         -e "s#/usr/share/flatcar/update.conf#${ROOT}/share-update.conf#g" \
@@ -132,7 +134,7 @@ expect() {
     ENGINE_STATE="UPDATE_STATUS_UPDATED_NEED_REBOOT"
     STAGED_VERSION="4757.2.0"
     run_update
-    expect success "${RESET}${CLEAR}${UPDATE}"
+    expect success "${RESET}${UPDATE}"
 }
 
 @test "rollback without staged update" {
@@ -282,4 +284,45 @@ expect() {
     ROOTDEV_EXIT=1
     run_update
     expect failure ""
+}
+
+@test "restores a missing SERVER line" {
+    printf 'REBOOT_STRATEGY=off\n' > "${ROOT}/update.conf"
+    PIN='{"flatcar_stable_version":"4593.2.5"}'
+    run_update
+    expect success "${CLEAR}"
+}
+
+@test "restores SERVER even when the pin lookup fails" {
+    printf 'REBOOT_STRATEGY=off\nSERVER=https://public.update.flatcar-linux.net/v1/update/\n' > "${ROOT}/update.conf"
+    CURL_EXIT=22
+    run_update
+    expect failure "${CLEAR}"
+}
+
+@test "replaces a NUL-corrupted update.conf" {
+    printf 'REBOOT_STRATEGY=off\n\0\0\0\0' > "${ROOT}/update.conf"
+    PIN='{"flatcar_stable_version":"4593.2.5"}'
+    run_update
+    expect success "${CLEAR}"
+}
+
+@test "recreates a missing update.conf" {
+    rm "${ROOT}/update.conf"
+    PIN='{"flatcar_stable_version":"4593.2.5"}'
+    run_update
+    expect success "${CLEAR}"
+}
+
+@test "restores SERVER on a VM the channel check refuses" {
+    printf 'REBOOT_STRATEGY=off\n' > "${ROOT}/update.conf"
+    GROUP_CONF="GROUP=beta"
+    run_update
+    expect failure ""
+}
+
+@test "restarts locksmithd so it rereads the reboot strategy" {
+    run_update
+    expect success "${CLEAR}${UPDATE}"
+    grep -q restarted "${ROOT}/locksmithd" || { echo "locksmithd not restarted"; return 1; }
 }

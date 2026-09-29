@@ -6,6 +6,30 @@ set -o pipefail
 
 readonly VERSION_URL="${1:?Usage: update-flatcar.sh <version-url>}"
 
+# Restore Ignition's update.conf each run; a crash mid-edit can drop SERVER and
+# REBOOT_STRATEGY. locksmithd reads it only at startup, so restart it.
+disable_updates() {
+  printf 'REBOOT_STRATEGY=off\nSERVER=disabled\n' > /etc/flatcar/update.conf.tmp
+  mv /etc/flatcar/update.conf.tmp /etc/flatcar/update.conf
+  systemctl try-restart locksmithd.service
+}
+
+exec 9>/run/lock/update-flatcar.lock
+flock --nonblock 9 || exit 0
+
+STATUS_OUTPUT="$(update_engine_client -status)"
+CURRENT_OP="$(echo "$STATUS_OUTPUT" | sed -n 's/^CURRENT_OP=//p')"
+NEW_VERSION="$(echo "$STATUS_OUTPUT" | sed -n 's/^NEW_VERSION=//p')"
+case "$CURRENT_OP" in
+  UPDATE_STATUS_IDLE|UPDATE_STATUS_UPDATED_NEED_REBOOT) ;;
+  UPDATE_STATUS_CHECKING_FOR_UPDATE|UPDATE_STATUS_UPDATE_AVAILABLE|UPDATE_STATUS_DOWNLOADING|UPDATE_STATUS_VERIFYING|UPDATE_STATUS_FINALIZING|UPDATE_STATUS_REPORTING_ERROR_EVENT)
+    exit 0
+    ;;
+  *) echo "Unexpected update engine status: $STATUS_OUTPUT" >&2; exit 1 ;;
+esac
+
+disable_updates
+
 # /etc/flatcar/update.conf is overwritten by Ignition with only REBOOT_STRATEGY
 # and SERVER, so the booted channel must come from Flatcar's own copy under
 # /usr/share. Only stable is pinned; a VM booted from another channel's image
@@ -25,20 +49,6 @@ fi
 
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
-
-exec 9>/run/lock/update-flatcar.lock
-flock --nonblock 9 || exit 0
-
-STATUS_OUTPUT="$(update_engine_client -status)"
-CURRENT_OP="$(echo "$STATUS_OUTPUT" | sed -n 's/^CURRENT_OP=//p')"
-NEW_VERSION="$(echo "$STATUS_OUTPUT" | sed -n 's/^NEW_VERSION=//p')"
-case "$CURRENT_OP" in
-  UPDATE_STATUS_IDLE|UPDATE_STATUS_UPDATED_NEED_REBOOT) ;;
-  UPDATE_STATUS_CHECKING_FOR_UPDATE|UPDATE_STATUS_UPDATE_AVAILABLE|UPDATE_STATUS_DOWNLOADING|UPDATE_STATUS_VERIFYING|UPDATE_STATUS_FINALIZING|UPDATE_STATUS_REPORTING_ERROR_EVENT)
-    exit 0
-    ;;
-  *) echo "Unexpected update engine status: $STATUS_OUTPUT" >&2; exit 1 ;;
-esac
 
 if [[ "$CURRENT_OP" == UPDATE_STATUS_IDLE ]]; then
   set_metadata "os_update/reboot_required" ""
@@ -73,15 +83,8 @@ if [[ "$CURRENT_OP" == UPDATE_STATUS_UPDATED_NEED_REBOOT ]]; then
     exit 0
   fi
   cancel_staged_update
-  set_metadata "os_update/reboot_required" ""
-  set_metadata "os_update/timestamp" ""
 fi
 
-# flatcar-update can exit before restoring SERVER when a payload download fails.
-disable_updates() {
-  sed -i '/^SERVER=/d' /etc/flatcar/update.conf
-  echo 'SERVER=disabled' >> /etc/flatcar/update.conf
-}
 trap disable_updates EXIT
 
 flatcar-update --to-version "$TARGET_VERSION" --disable-afterwards

@@ -13,7 +13,9 @@ bats scripts/test/integration
 ```
 
 - `parse-devcontainer.bats`: migration from state files without a memory limit,
-  plus failed container lookups/removals and retries without losing saved state.
+  exact key matching, failed state reads, and failed container lookups/removals
+  with retries without losing saved state. Missing memory keys trigger one
+  recreation even when the new limit is empty.
 - `devcontainer.bats`: stale setup markers, failed startup/snapshot/restore retries,
   and non-airlocked configs ignoring snapshots in either supported config location.
 - `integration/devcontainer.bats`: repeated offline restoration of the same initial
@@ -42,3 +44,5 @@ bats scripts/test/create-custom-app.bats
 ```
 
 Use Bats `--filter` to run a single case. CI runs all unit and integration tests.
+The workflow also runs `tests/update-flatcar.bats` and the Linux-only
+`tests/test-codeartifact.bats` suite.

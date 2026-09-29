@@ -33,7 +33,7 @@ state_changed() {
         bash "$BATS_TEST_TMPDIR/function.sh" "$@"
 }
 
-@test "older state files accept a missing memory key and recreate only for a nonempty limit" {
+@test "older state files recreate once for a missing memory key, including an empty limit" {
     local limit
     for limit in '' 1024m; do
         printf '%s\n' 'gpu=1' 'shm-size=64m' > "$CONTAINER_STATE_FILE"
@@ -41,12 +41,28 @@ state_changed() {
         state_changed 'gpu=1' 'shm-size=64m' "mem-limit=$limit"
         state_changed 'gpu=1' 'shm-size=64m' "mem-limit=$limit"
         [ "$(cat "$CONTAINER_STATE_FILE")" = "$(printf '%s\n' 'gpu=1' 'shm-size=64m' "mem-limit=$limit")" ]
-        if [[ -n "$limit" ]]; then
-            [ "$(cat "$CALLS")" = "$REMOVAL" ]
-        else
-            [ ! -s "$CALLS" ]
-        fi
+        [ "$(cat "$CALLS")" = "$REMOVAL" ]
     done
+}
+
+@test "state comparison matches complete keys regardless of order" {
+    printf '%s\n' 'old-mem-limit=7000m' 'mem-limit-extra=9000m' \
+        'mem-limit=1024m' 'shm-size=64m' 'gpu=1' > "$CONTAINER_STATE_FILE"
+    state_changed 'gpu=1' 'shm-size=64m' 'mem-limit=1024m'
+    [ ! -s "$CALLS" ]
+    [ "$(cat "$CONTAINER_STATE_FILE")" = $'gpu=1\nshm-size=64m\nmem-limit=1024m' ]
+}
+
+@test "failed state-file reads stop before looking up containers or overwriting state" {
+    printf '%s\n' 'gpu=1' > "$CONTAINER_STATE_FILE"
+    # Invoked by the production function in the child shell.
+    # shellcheck disable=SC2317
+    sed() { return 2; }
+    export -f sed
+    run state_changed 'gpu=0'
+    [ "$status" = 2 ]
+    [ ! -s "$CALLS" ]
+    [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=1' ]
 }
 
 @test "failed container lookup leaves state unchanged and retries successfully" {

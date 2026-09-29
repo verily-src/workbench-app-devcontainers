@@ -3,21 +3,25 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
-      - 'startupscript/butane/**'
+      - 'startupscript/**'
       - 'src/virtual-browser-*/**'
+      - 'tests/test-codeartifact.bats'
+      - 'tests/update-flatcar.bats'
       - '.github/workflows/test-scripts.yaml'
   push:
     branches:
       - master
     paths:
       - 'scripts/**'
-      - 'startupscript/butane/**'
+      - 'startupscript/**'
       - 'src/virtual-browser-*/**'
+      - 'tests/test-codeartifact.bats'
+      - 'tests/update-flatcar.bats'
       - '.github/workflows/test-scripts.yaml'
 
 jobs:
   test-create-custom-app:
-    name: "Test startup and scaffolding scripts"
+    name: "Test scripts"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,3 +48,18 @@ jobs:
           docker pull python:3.12-alpine
           docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
           bats scripts/test/integration
+
+      - name: Run update-flatcar tests
+        run: bats tests/update-flatcar.bats
+
+  test-codeartifact:
+    name: "Test CodeArtifact authentication and refresh"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats-core
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+      - name: Run CodeArtifact tests
+        run: bats tests/test-codeartifact.bats

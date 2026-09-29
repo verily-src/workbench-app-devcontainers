@@ -132,7 +132,7 @@ PY
     cat > "$FIXTURE/.devcontainer.json" <<'JSON'
 {"dockerComposeFile":["docker-compose.yaml","docker-compose.build.yaml"],"service":"backend","runServices":["app","backend"],
  "workspaceFolder":"/workspace","remoteUser":"root","userEnvProbe":"none",
- "postStartCommand":"echo user-start >> /startup-log",
+ "postStartCommand":{"remount":"echo user-start >> /startup-log"},
  "customizations":{"workbench":{"AIRLOCK_ENABLED":true}}}
 JSON
     node "$REPO_ROOT/startupscript/butane/jsoncStripComments.mjs" < "$REPO_ROOT/src/virtual-browser-jupyter/.devcontainer.json" > "$FIXTURE/template.json"
@@ -248,6 +248,7 @@ SH
     cat > "$FIXTURE/startupscript/post-startup.sh" <<'SH'
 #!/bin/sh
 set -eu
+test "$WORKBENCH_CONFIGURE_CODEARTIFACT" = true
 echo attempt >> /workspace/attempts
 test ! -f /workspace/fail-setup
 printf '%s\n' "$@" > /workspace/arguments

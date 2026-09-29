@@ -1,0 +1,91 @@
+#!/bin/bash
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+readonly VERSION_URL="${1:?Usage: update-flatcar.sh <version-url>}"
+
+# Restore Ignition's update.conf each run; a crash mid-edit can drop SERVER and
+# REBOOT_STRATEGY. locksmithd, Flatcar's reboot manager, reads it only at
+# startup, so restart it.
+disable_updates() {
+  printf 'REBOOT_STRATEGY=off\nSERVER=disabled\n' > /etc/flatcar/update.conf.tmp
+  mv /etc/flatcar/update.conf.tmp /etc/flatcar/update.conf
+  systemctl try-restart locksmithd.service
+}
+
+exec 9>/run/lock/update-flatcar.lock
+flock --nonblock 9 || exit 0
+
+STATUS_OUTPUT="$(update_engine_client -status)"
+CURRENT_OP="$(echo "$STATUS_OUTPUT" | sed -n 's/^CURRENT_OP=//p')"
+NEW_VERSION="$(echo "$STATUS_OUTPUT" | sed -n 's/^NEW_VERSION=//p')"
+case "$CURRENT_OP" in
+  UPDATE_STATUS_IDLE|UPDATE_STATUS_UPDATED_NEED_REBOOT) ;;
+  UPDATE_STATUS_CHECKING_FOR_UPDATE|UPDATE_STATUS_UPDATE_AVAILABLE|UPDATE_STATUS_DOWNLOADING|UPDATE_STATUS_VERIFYING|UPDATE_STATUS_FINALIZING|UPDATE_STATUS_REPORTING_ERROR_EVENT)
+    exit 0
+    ;;
+  *) echo "Unexpected update engine status: $STATUS_OUTPUT" >&2; exit 1 ;;
+esac
+
+disable_updates
+
+# /etc/flatcar/update.conf is overwritten by Ignition with only REBOOT_STRATEGY
+# and SERVER, so the booted channel must come from Flatcar's own copy under
+# /usr/share. Only stable is pinned; a VM booted from another channel's image
+# must not be moved onto it.
+GROUP="$(sed -n 's/^GROUP=//p' /usr/share/flatcar/update.conf)"
+if [[ "$GROUP" != stable ]]; then
+  echo "Booted channel is '$GROUP'; only stable is pinned" >&2
+  exit 1
+fi
+
+# shellcheck source=/dev/null
+source /usr/share/flatcar/os-release
+if [[ ! "$VERSION_ID" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Invalid running Flatcar version: $VERSION_ID" >&2
+  exit 1
+fi
+
+# shellcheck source=/dev/null
+source /home/core/metadata-utils.sh
+
+if [[ "$CURRENT_OP" == UPDATE_STATUS_IDLE ]]; then
+  set_metadata "os_update/reboot_required" ""
+  set_metadata "os_update/timestamp" ""
+fi
+
+TARGET_VERSION="$(curl --fail --silent --show-error --proto '=https' --proto-redir '=https' \
+  --connect-timeout 10 --max-time 30 --retry 3 "$VERSION_URL" | \
+  jq -er '.flatcar_stable_version | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))')"
+
+# -reset_status only idles update-engine; postinst already gave the staged
+# partition boot priority, so hand it back to the running /usr partition.
+cancel_staged_update() {
+  local running_usr
+  running_usr="$(rootdev -s /usr)"
+  update_engine_client -reset_status
+  cgpt prioritize "$running_usr"
+}
+
+# A release rollback must not downgrade a running VM.
+if [[ "$(printf '%s\n' "$VERSION_ID" "$TARGET_VERSION" | sort -V | head -n 1)" == "$TARGET_VERSION" ]]; then
+  if [[ "$CURRENT_OP" == UPDATE_STATUS_UPDATED_NEED_REBOOT ]]; then
+    cancel_staged_update
+    set_metadata "os_update/reboot_required" ""
+    set_metadata "os_update/timestamp" ""
+  fi
+  exit 0
+fi
+
+if [[ "$CURRENT_OP" == UPDATE_STATUS_UPDATED_NEED_REBOOT ]]; then
+  if [[ "$NEW_VERSION" == "$TARGET_VERSION" ]]; then
+    exit 0
+  fi
+  cancel_staged_update
+fi
+
+trap disable_updates EXIT
+
+flatcar-update --to-version "$TARGET_VERSION" --disable-afterwards

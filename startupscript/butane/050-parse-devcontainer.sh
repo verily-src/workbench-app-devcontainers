@@ -83,13 +83,15 @@ handle_container_state_changed() {
         echo "First run, initializing container state"
         rebuild=true
     else
-        local pair key value previous_value
+        local pair key value previous_pair
         for pair in "$@"; do
             key="${pair%%=*}"
             value="${pair#*=}"
-            previous_value="$(sed -n "s/^${key}=//p" "${CONTAINER_STATE_FILE}")"
-            if [[ "${value}" != "${previous_value}" ]]; then
-                echo "Container state changed: ${key} from ${previous_value} to ${value}"
+            # sed succeeds when a key is absent from an older state file.
+            # Compare full pairs so a missing key differs from an empty value.
+            previous_pair="$(sed -n "/^${key}=/p" "${CONTAINER_STATE_FILE}")"
+            if [[ "${pair}" != "${previous_pair}" ]]; then
+                echo "Container state changed: ${key} from ${previous_pair#*=} to ${value}"
                 rebuild=true
             fi
         done
@@ -137,8 +139,8 @@ DEVCONTAINER_PATH=$(cd "$1" && pwd)
 readonly DEVCONTAINER_PATH
 readonly CLOUD="$2"
 readonly LOGIN="$3"
-readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
-readonly CONTAINER_PORT="${6:-8080}"
+readonly CONTAINER_IMAGE="${4:-debian:trixie}"
+readonly CONTAINER_PORT="${5:-8080}"
 
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'

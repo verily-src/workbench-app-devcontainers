@@ -1,84 +1,44 @@
-# Script Tests
+# Script tests
 
-This directory contains tests for scripts in the `scripts/` directory.
-
-## Prerequisites
-
-Install [bats-core](https://github.com/bats-core/bats-core) to run the tests:
+Run from the repository root. Requires Bats, Node.js and jq; integration tests
+also require Docker with Compose.
 
 ```bash
-# On macOS with Homebrew
-brew install bats-core
+npm ci --prefix startupscript/butane
+bats scripts/test/parse-devcontainer.bats scripts/test/devcontainer.bats
 
-# On Ubuntu/Debian
-sudo apt-get install bats
-
-# Or install from source
-git clone https://github.com/bats-core/bats-core.git
-cd bats-core
-sudo ./install.sh /usr/local
+docker pull python:3.12-alpine
+docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
+bats scripts/test/integration
 ```
 
-## Running Tests
+- `parse-devcontainer.bats`: migration from state files without a memory limit,
+  plus failed container lookups/removals and retries without losing saved state.
+- `devcontainer.bats`: stale setup markers, failed startup/snapshot/restore retries,
+  and non-airlocked configs ignoring snapshots in either supported config location.
+- `integration/devcontainer.bats`: repeated offline restoration of the same initial
+  snapshot, preserving setup-time packages, the running browser, home data, and
+  startup hooks while discarding later writable-layer changes; home bind
+  initialization through Jupyter's host hook, ownership, and exclusion from snapshots;
+  read-only completion markers and standard-app startup/recreation.
+- `integration/parse-devcontainer.bats`: runs the complete parser in Linux against
+  the Jupyter, RStudio, and regular R templates. Covers first creation, unchanged
+  restarts, independent hardware changes, GPU removal, invalid and fallback shared
+  memory, unset memory limits, workspace path normalization, and skipping prefetch
+  only for airlocked snapshots. Also validates first-boot Compose overrides and
+  runtime mounts/images. Docker and cloud metadata are mocked; the parser runs
+  without network access.
 
-### Run all tests
+Integration tests use isolated container/image names and clean up their own
+resources. Missing feature sources and a broken build file catch accidental
+feature installation or rebuilding during restore. Physical GPU transitions
+still require a GPU VM.
 
-```bash
-cd scripts/test
-bats .
-```
-
-### Run a specific test file
+Scaffolding tests create and remove `src/test-app`; run them in a disposable
+checkout:
 
 ```bash
 bats scripts/test/create-custom-app.bats
 ```
 
-### Run a specific test case
-
-```bash
-bats scripts/test/create-custom-app.bats --filter "shows usage"
-```
-
-## Test Coverage
-
-### create-custom-app.bats
-
-Tests for the `create-custom-app.sh` script:
-
-- ✅ Usage/help message validation
-- ✅ Minimal arguments (defaults to root user)
-- ✅ Custom username and home directory
-- ✅ Generated `.devcontainer.json` structure
-- ✅ Generated `docker-compose.yaml` structure
-- ✅ Generated `devcontainer-template.json` with correct defaults
-- ✅ Generated README.md content
-- ✅ Home directory defaults (/root for root, /home/username otherwise)
-- ✅ Valid JSON output
-- ✅ Success message output
-
-## Writing New Tests
-
-Follow the bats format:
-
-```bash
-@test "description of test" {
-    run ./your-script.sh args
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"expected string"* ]]
-}
-```
-
-Use the `setup()` and `teardown()` functions to manage test state:
-
-```bash
-setup() {
-    # Runs before each test
-    TEST_TEMP_DIR="$(mktemp -d)"
-}
-
-teardown() {
-    # Runs after each test
-    rm -rf "${TEST_TEMP_DIR}"
-}
-```
+Use Bats `--filter` to run a single case. CI runs all unit and integration tests.

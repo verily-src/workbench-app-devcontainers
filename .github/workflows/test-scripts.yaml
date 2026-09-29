@@ -3,27 +3,44 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - 'startupscript/butane/**'
+      - 'src/virtual-browser-*/**'
       - '.github/workflows/test-scripts.yaml'
   push:
     branches:
       - master
     paths:
       - 'scripts/**'
+      - 'startupscript/butane/**'
+      - 'src/virtual-browser-*/**'
       - '.github/workflows/test-scripts.yaml'
 
 jobs:
   test-create-custom-app:
-    name: "Test create-custom-app.sh"
+    name: "Test startup and scaffolding scripts"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install bats-core
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install startup script dependencies
+        run: npm ci --prefix startupscript/butane
+
+      - name: Install test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats jq
 
       - name: Run bats tests
         run: |
           cd scripts/test
-          bats create-custom-app.bats
+          bats .
+
+      - name: Test offline recreation with Docker
+        run: |
+          docker pull python:3.12-alpine
+          docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
+          bats scripts/test/integration

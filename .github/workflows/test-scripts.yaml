@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - 'startupscript/**'
+      - 'tests/test-codeartifact.bats'
       - 'startupscript/butane/050-parse-devcontainer.sh'
       - 'startupscript/butane/update-flatcar.sh'
       - 'tests/update-flatcar.bats'
@@ -12,6 +14,8 @@ on:
       - master
     paths:
       - 'scripts/**'
+      - 'startupscript/**'
+      - 'tests/test-codeartifact.bats'
       - 'startupscript/butane/050-parse-devcontainer.sh'
       - 'startupscript/butane/update-flatcar.sh'
       - 'tests/update-flatcar.bats'
@@ -36,3 +40,15 @@ jobs:
 
       - name: Run update-flatcar tests
         run: bats tests/update-flatcar.bats
+
+  test-codeartifact:
+    name: "Test CodeArtifact authentication and refresh"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats-core
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+      - name: Run CodeArtifact tests
+        run: bats tests/test-codeartifact.bats

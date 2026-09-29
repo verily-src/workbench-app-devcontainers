@@ -7,7 +7,8 @@ set -o pipefail
 readonly VERSION_URL="${1:?Usage: update-flatcar.sh <version-url>}"
 
 # Restore Ignition's update.conf each run; a crash mid-edit can drop SERVER and
-# REBOOT_STRATEGY. locksmithd reads it only at startup, so restart it.
+# REBOOT_STRATEGY. locksmithd, Flatcar's reboot manager, reads it only at
+# startup, so restart it.
 disable_updates() {
   printf 'REBOOT_STRATEGY=off\nSERVER=disabled\n' > /etc/flatcar/update.conf.tmp
   mv /etc/flatcar/update.conf.tmp /etc/flatcar/update.conf

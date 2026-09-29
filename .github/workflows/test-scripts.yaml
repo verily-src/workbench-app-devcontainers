@@ -32,7 +32,7 @@ jobs:
       - name: Run bats tests
         run: |
           cd scripts/test
-          bats create-custom-app.bats
+          bats .
 
   test-codeartifact:
     name: "Test CodeArtifact authentication and refresh"
@@ -45,4 +45,3 @@ jobs:
           sudo apt-get install -y bats
       - name: Run CodeArtifact tests
         run: bats tests/test-codeartifact.bats
-          bats .

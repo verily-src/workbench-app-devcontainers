@@ -6,21 +6,28 @@
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   "postCreateCommand": [
+    "env",
+    "WORKBENCH_CONFIGURE_CODEARTIFACT=true",
     "./startupscript/post-startup.sh",
     "jupyter",
     "/home/jupyter",
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
-  // re-mount bucket files on container start up
-  "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
-    "jupyter",
-    "/home/jupyter",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
+  "postStartCommand": {
+    // re-mount bucket files on container start up
+    "remount": [
+      "./startupscript/remount-on-restart.sh",
+      "jupyter",
+      "/home/jupyter",
+      "${templateOption:cloud}",
+      "${templateOption:login}"
+    ],
+    // restart the CodeArtifact token refresh worker, which stops with the container
+    "codeartifact": ["./startupscript/aws/start-codeartifact-refresh.sh", "jupyter"]
+  },
   "features": {
+    "ghcr.io/devcontainers/features/aws-cli@sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef": {},
     "ghcr.io/devcontainers/features/node@sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6": {
       "version": "24.20.0"
     },

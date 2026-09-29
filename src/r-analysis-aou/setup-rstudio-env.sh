@@ -22,3 +22,18 @@ if [ -f "${HOME_DIR}/.aou-env" ]; then
     echo "### END: AoU ###"
   } >> "${RENVIRON_SITE}"
 fi
+
+sed -i '/### BEGIN: VWB ###/,/### END: VWB ###/d' "${RENVIRON_SITE}"
+{
+  echo "### BEGIN: VWB ###"
+  # Extract export statements after the Workbench-specific customizations
+  # marker, skipping PATH edits and unexpanded variables
+  sed '
+    /### BEGIN: Workbench-specific customizations ###/,$!d
+    /^export /!d
+    s/^export //
+    /^PATH=/d
+    /\$/d
+  ' "${HOME_DIR}/.bashrc"
+  echo "### END: VWB ###"
+} >> "${RENVIRON_SITE}"

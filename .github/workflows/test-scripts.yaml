@@ -6,6 +6,8 @@ on:
       - 'startupscript/**'
       - 'tests/test-codeartifact.bats'
       - 'startupscript/butane/050-parse-devcontainer.sh'
+      - 'startupscript/butane/update-flatcar.sh'
+      - 'tests/update-flatcar.bats'
       - '.github/workflows/test-scripts.yaml'
   push:
     branches:
@@ -15,6 +17,8 @@ on:
       - 'startupscript/**'
       - 'tests/test-codeartifact.bats'
       - 'startupscript/butane/050-parse-devcontainer.sh'
+      - 'startupscript/butane/update-flatcar.sh'
+      - 'tests/update-flatcar.bats'
       - '.github/workflows/test-scripts.yaml'
 
 jobs:
@@ -33,6 +37,9 @@ jobs:
         run: |
           cd scripts/test
           bats .
+
+      - name: Run update-flatcar tests
+        run: bats tests/update-flatcar.bats
 
   test-codeartifact:
     name: "Test CodeArtifact authentication and refresh"

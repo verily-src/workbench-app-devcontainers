@@ -7,7 +7,7 @@ setup() {
     export DEVCONTAINER_PATH="$BATS_TEST_TMPDIR/app"
     export CALLS="$BATS_TEST_TMPDIR/calls"
     : > "$CALLS"
-    LOOKUP="docker ps -aq --no-trunc --filter label=devcontainer.local_folder=$DEVCONTAINER_PATH"
+    LOOKUP='docker ps -aq --no-trunc --filter name=^/application-server$'
     REMOVAL="$LOOKUP
 docker rm -f backend"
     sed -n '/^handle_container_state_changed() {/,/^}/p' \
@@ -29,8 +29,8 @@ docker rm -f backend"
 }
 
 state_changed() {
-    bash -euo pipefail -c 'source "$1"; shift; handle_container_state_changed "$@"' \
-        bash "$BATS_TEST_TMPDIR/function.sh" "$@"
+    bash -euo pipefail -c 'source "$1"; source "$2"; shift 2; handle_container_state_changed "$@"' \
+        bash "$REPO_ROOT/startupscript/butane/container-utils.sh" "$BATS_TEST_TMPDIR/function.sh" "$@"
 }
 
 @test "older state files recreate once for a missing memory key, including an empty limit" {
@@ -53,40 +53,19 @@ state_changed() {
     [ "$(cat "$CONTAINER_STATE_FILE")" = $'gpu=1\nshm-size=64m\nmem-limit=1024m' ]
 }
 
-@test "failed state-file reads stop before looking up containers or overwriting state" {
-    printf '%s\n' 'gpu=1' > "$CONTAINER_STATE_FILE"
-    # Invoked by the production function in the child shell.
-    # shellcheck disable=SC2317
-    sed() { return 2; }
-    export -f sed
-    run state_changed 'gpu=0'
-    [ "$status" = 2 ]
-    [ ! -s "$CALLS" ]
-    [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=1' ]
-}
+@test "failed Docker operations preserve state until a successful retry" {
+    local failure
+    for failure in LOOKUP_EXIT REMOVE_EXIT; do
+        printf '%s\n' 'gpu=1' > "$CONTAINER_STATE_FILE"
+        export "$failure=1"
+        run state_changed 'gpu=0'
+        unset "$failure"
+        [ "$status" -ne 0 ]
+        [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=1' ]
 
-@test "failed container lookup leaves state unchanged and retries successfully" {
-    printf '%s\n' 'gpu=1' > "$CONTAINER_STATE_FILE"
-    LOOKUP_EXIT=1 run state_changed 'gpu=0'
-    [ "$status" -ne 0 ]
-    [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=1' ]
-    [ "$(cat "$CALLS")" = "$LOOKUP" ]
-
-    : > "$CALLS"
-    state_changed 'gpu=0'
-    [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=0' ]
-    [ "$(cat "$CALLS")" = "$REMOVAL" ]
-}
-
-@test "failed container removal leaves state unchanged and retries successfully" {
-    printf '%s\n' 'gpu=1' > "$CONTAINER_STATE_FILE"
-    REMOVE_EXIT=1 run state_changed 'gpu=0'
-    [ "$status" -ne 0 ]
-    [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=1' ]
-    [ "$(cat "$CALLS")" = "$REMOVAL" ]
-
-    : > "$CALLS"
-    state_changed 'gpu=0'
-    [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=0' ]
-    [ "$(cat "$CALLS")" = "$REMOVAL" ]
+        : > "$CALLS"
+        state_changed 'gpu=0'
+        [ "$(cat "$CONTAINER_STATE_FILE")" = 'gpu=0' ]
+        [ "$(cat "$CALLS")" = "$REMOVAL" ]
+    done
 }

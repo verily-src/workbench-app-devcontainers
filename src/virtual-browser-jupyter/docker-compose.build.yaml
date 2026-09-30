@@ -1,11 +1,11 @@
 # Used only for initial provisioning.
 services:
-  app:
+  browser:
     build:
       context: ../browser-common
       args:
-        APP_ORIGIN: "jupyterlab:8888"
-  jupyterlab:
+        APP_ORIGIN: "app:8888"
+  app:
     image: workbench-virtual-browser:jupyterlab
     build:
       context: .

@@ -7,6 +7,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
 
 function usage {
   echo "Usage: $0 <path/to/devcontainer> <gcp/aws> <login>"
@@ -76,7 +78,7 @@ detect_gpu() {
 
 handle_container_state_changed() {
     # Each argument is a "key=value" pair representing current container state.
-    # Removes this workspace's devcontainer if any value has changed since last run.
+    # Removes application-server if any value has changed since last run.
     local rebuild=false id
 
     if [[ ! -f "${CONTAINER_STATE_FILE}" ]]; then
@@ -98,7 +100,7 @@ handle_container_state_changed() {
     fi
 
     if [[ "${rebuild}" == "true" ]]; then
-        id=$(docker ps -aq --no-trunc --filter "label=devcontainer.local_folder=$DEVCONTAINER_PATH")
+        id=$(get_application_container)
         [[ -z "$id" ]] || docker rm -f "$id"
     fi
 
@@ -217,13 +219,13 @@ fi
 
 gpu_exists=$(detect_gpu; echo $?)
 readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
-GPU_SERVICE=$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" |
+APP_SERVICE=$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" |
     jq -r '.service')
 
 # Apply GPU runtime configuration if GPU is present
 if [[ "${gpu_exists}" == "0" ]]; then
     echo "NVIDIA GPU detected, applying GPU runtime configuration"
-    apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}" "${GPU_SERVICE}"
+    apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}" "${APP_SERVICE}"
 else
     echo "No NVIDIA GPU detected, skipping GPU runtime configuration"
 fi
@@ -251,5 +253,5 @@ if [[ -f "${SECRETS_YML}" ]]; then
     mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 -o=json '.secrets' /secrets.yml > /home/core/secrets.json
 fi
 
-# Track all hardware settings for the workspace's devcontainer.
+# Track all hardware settings for application-server.
 handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}" "mem-limit=${CONTAINER_MEM_LIMIT}"

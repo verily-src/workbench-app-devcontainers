@@ -5,24 +5,28 @@ also require Docker with Compose.
 
 ```bash
 npm ci --prefix startupscript/butane
-bats scripts/test/parse-devcontainer.bats scripts/test/devcontainer.bats
+bats scripts/test/parse-devcontainer.bats scripts/test/devcontainer.bats scripts/test/container-utils.bats
 
 docker pull python:3.12-alpine
 docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
 bats scripts/test/integration
 ```
 
-- `parse-devcontainer.bats`: migration from state files without a memory limit,
-  exact key matching, failed state reads, and failed container lookups/removals
-  with retries without losing saved state. Missing memory keys trigger one
-  recreation even when the new limit is empty.
+- `parse-devcontainer.bats`: missing memory keys, exact key matching, and failed
+  Docker operations preserving saved state until a successful retry.
 - `devcontainer.bats`: stale setup markers, failed startup/snapshot/restore retries,
-  and non-airlocked configs ignoring snapshots in either supported config location.
+  and ordinary apps ignoring snapshots and creating no Airlock state in either
+  supported config location.
+- `container-utils.bats`: default routing, project-scoped proxy overrides, invalid
+  lookups, readiness requiring both the app and frontend, and metadata errors/overrides.
 - `integration/devcontainer.bats`: repeated offline restoration of the same initial
-  snapshot, preserving setup-time packages, the running browser, home data, and
-  startup hooks while discarding later writable-layer changes; home bind
-  initialization through Jupyter's host hook, ownership, and exclusion from snapshots;
-  read-only completion markers and standard-app startup/recreation.
+  snapshot, preserving setup-time files, the running browser, home data, and
+  startup hooks while discarding later writable-layer changes; named home volume
+  initialization, ownership, and exclusion from snapshots;
+  read-only completion markers, restoration leaving a renamed and stopped browser intact,
+  and standard-app startup/recreation with other devcontainers on the host. The
+  same lifecycle verifies that similar names and proxy labels in another Compose
+  project do not interfere with app lookup.
 - `integration/parse-devcontainer.bats`: runs the complete parser in Linux against
   the Jupyter, RStudio, and regular R templates. Covers first creation, unchanged
   restarts, independent hardware changes, GPU removal, invalid and fallback shared
@@ -30,6 +34,10 @@ bats scripts/test/integration
   only for airlocked snapshots. Also validates first-boot Compose overrides and
   runtime mounts/images. Docker and cloud metadata are mocked; the parser runs
   without network access.
+- `integration/startup-validation.bats`: mandatory proxy-start and readiness checks
+  reject incomplete airlock setup or missing snapshots despite healthy containers;
+  proxy startup starts the selected frontend before inspecting its port and stops
+  on startup failure; ordinary apps retain their existing startup behavior.
 
 Integration tests use isolated container/image names and clean up their own
 resources. Missing feature sources and a broken build file catch accidental

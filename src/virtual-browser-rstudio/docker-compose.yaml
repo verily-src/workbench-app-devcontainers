@@ -1,8 +1,9 @@
 services:
   # Keep the browser container across backend recreation.
-  app:
-    # Proxy startup and readiness checks require this container name.
-    container_name: "application-server"
+  browser:
+    container_name: "browser"
+    labels:
+      com.verily.workbench.proxy-target: "true"
     image: workbench-virtual-browser:app
     pull_policy: never
     # Chromium needs real shared memory to render; the 64MB Docker default causes renderer crashes.
@@ -14,7 +15,7 @@ services:
       - app-network
       - backend-network
     environment:
-      CHROME_CLI: "--kiosk http://rstudio:8787"
+      CHROME_CLI: "--kiosk http://app:8787"
       FILE_MANAGER_PATH: /uploads
       # Run the browser as the backend's user so uploaded files are writable there, not just readable.
       PUID: 1000
@@ -23,8 +24,8 @@ services:
     volumes:
       - browser-uploads:/uploads
 
-  rstudio:
-    container_name: "rstudio"
+  app:
+    container_name: "application-server"
     image: workbench-local-snapshot:devcontainer
     pull_policy: never
     # Hardware template options belong only to the backend.

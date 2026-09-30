@@ -1,8 +1,9 @@
 services:
   # Keep the browser container across backend recreation.
-  app:
-    # Proxy startup and readiness checks require this container name.
-    container_name: "application-server"
+  browser:
+    container_name: "browser"
+    labels:
+      com.verily.workbench.proxy-target: "true"
     image: workbench-virtual-browser:app
     pull_policy: never
     restart: always
@@ -12,7 +13,7 @@ services:
       - app-network
       - backend-network
     environment:
-      CHROME_CLI: "--kiosk http://jupyterlab:8888"
+      CHROME_CLI: "--kiosk http://app:8888"
       FILE_MANAGER_PATH: /uploads
       # Run the browser as the backend's user so uploaded files are writable there, not just readable.
       PUID: 1001
@@ -21,8 +22,8 @@ services:
     volumes:
       - browser-uploads:/uploads
 
-  jupyterlab:
-    container_name: "jupyterlab"
+  app:
+    container_name: "application-server"
     image: workbench-local-snapshot:devcontainer
     pull_policy: never
     user: "jupyter"
@@ -48,11 +49,5 @@ networks:
     external: true
   backend-network:
 volumes:
-  # A host bind mount through the local driver lets Docker seed the image's home files.
   jupyter-home:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /home/core/container-state.d/jupyter-home
   browser-uploads:

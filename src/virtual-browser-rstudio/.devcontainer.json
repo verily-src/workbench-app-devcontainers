@@ -1,8 +1,8 @@
 {
   "name": "RStudio in a Virtual Browser devcontainer template",
   "dockerComposeFile": ["docker-compose.yaml", "docker-compose.build.yaml"],
-  "service": "rstudio",
-  "runServices": ["app", "rstudio"],
+  "service": "app",
+  "runServices": ["browser", "app"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
   // The host records successful setup in a directory mounted read-only here.

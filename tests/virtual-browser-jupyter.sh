@@ -1,7 +1,7 @@
 #!/bin/bash
 set -o errexit
 
-export BACKEND_CONTAINER="jupyterlab"
-export APP_ORIGIN="jupyterlab:8888"
+export BACKEND_CONTAINER="application-server"
+export APP_ORIGIN="app:8888"
 
 bats tests/common/virtual-browser.bats

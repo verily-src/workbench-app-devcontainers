@@ -1,6 +1,62 @@
 #!/bin/bash
 set -euo pipefail
-umask 077
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
+
+load_config() {
+    CONFIG_PATH="${FOLDER}/.devcontainer.json"
+    [[ -f "${CONFIG_PATH}" ]] || CONFIG_PATH="${FOLDER}/.devcontainer/devcontainer.json"
+    CONFIG=$(node "$(dirname "$0")/jsoncStripComments.mjs" < "${CONFIG_PATH}")
+    AIRLOCK_ENABLED=$(jq -r '.customizations.workbench.AIRLOCK_ENABLED // false' <<< "${CONFIG}")
+}
+
+prepare_airlock() {
+    umask 077
+    SNAPSHOT_IMAGE=workbench-local-snapshot:devcontainer
+    export WORKBENCH_SETUP_STATE_DIR="${CONTAINER_STATE_FILE:-/home/core/container-state}.d/setup"
+    POST_CREATE_DONE="${WORKBENCH_SETUP_STATE_DIR}/post-create.done"
+    mkdir -p "${WORKBENCH_SETUP_STATE_DIR}"
+
+    HAS_SNAPSHOT=false
+    if docker image inspect "${SNAPSHOT_IMAGE}" >/dev/null 2>&1; then
+        HAS_SNAPSHOT=true
+        # Preserve the existing browser during restoration.
+        jq '{dockerComposeFile:"docker-compose.yaml", service, runServices:[.service], workspaceFolder, customizations}' \
+            <<< "${CONFIG}" > "${CONFIG_PATH}.tmp"
+        mv "${CONFIG_PATH}.tmp" "${CONFIG_PATH}"
+    elif [[ -z "${PRIMARY}" ]]; then
+        # Clear stale setup state.
+        rm -f "${POST_CREATE_DONE}"
+    fi
+}
+
+build_app() {
+    if [[ -n "${PRIMARY}" ]]; then
+        echo 'Container exists; skipping build'
+        return 0
+    fi
+    if [[ "${AIRLOCK_ENABLED}" == true ]]; then
+        prepare_airlock
+        if [[ "${HAS_SNAPSHOT}" == true ]]; then
+            echo 'Snapshot exists; skipping build'
+            return 0
+        fi
+    fi
+    exec "${CLI}" build --workspace-folder "${FOLDER}"
+}
+
+start_app() {
+    if [[ "${AIRLOCK_ENABLED}" != true ]]; then
+        exec "${CLI}" up --workspace-folder "${FOLDER}"
+    fi
+
+    prepare_airlock
+    "${CLI}" up --workspace-folder "${FOLDER}"
+    touch "${POST_CREATE_DONE}"
+    if [[ "${HAS_SNAPSHOT}" == false ]]; then
+        docker commit application-server "${SNAPSHOT_IMAGE}"
+    fi
+}
 
 [[ $# == 2 && ( "$1" == build || "$1" == up ) ]] || {
     echo "Usage: $0 <build|up> <workspace-folder>" >&2; exit 1;
@@ -8,46 +64,10 @@ umask 077
 CMD=$1
 FOLDER=$(cd "$2" && pwd)
 CLI=${DEVCONTAINER_CLI:-/home/core/node_modules/.bin/devcontainer}
-STATE_DIR="${CONTAINER_STATE_FILE:-/home/core/container-state}.d"
-SNAPSHOT_IMAGE=workbench-local-snapshot:devcontainer
-export WORKBENCH_SETUP_STATE_DIR="$STATE_DIR/setup"
-POST_CREATE_DONE="$WORKBENCH_SETUP_STATE_DIR/post-create.done"
-mkdir -p "$WORKBENCH_SETUP_STATE_DIR"
-exec 9> "$STATE_DIR/lock"
-flock 9
-PRIMARY=$(docker ps -aq --no-trunc --filter "label=devcontainer.local_folder=$FOLDER")
-CONFIG_PATH="$FOLDER/.devcontainer.json"
-[[ -f "$CONFIG_PATH" ]] || CONFIG_PATH="$FOLDER/.devcontainer/devcontainer.json"
-CONFIG=$(node "$(dirname "$0")/jsoncStripComments.mjs" < "$CONFIG_PATH")
-AIRLOCK_ENABLED=$(jq -r '.customizations.workbench.AIRLOCK_ENABLED // false' <<< "$CONFIG")
-HAS_SNAPSHOT=false
-if [[ "$AIRLOCK_ENABLED" == true ]] && docker image inspect "$SNAPSHOT_IMAGE" >/dev/null 2>&1; then
-    HAS_SNAPSHOT=true
-fi
+load_config
+PRIMARY=$(get_application_container)
 
-# A fresh container must run setup even if an earlier container completed it.
-if [[ -z "$PRIMARY" && "$HAS_SNAPSHOT" == false ]]; then
-    rm -f "$POST_CREATE_DONE"
-fi
-
-if [[ "$HAS_SNAPSHOT" == true ]]; then
-    # Restore only the backend; leave the existing browser container untouched.
-    jq '{dockerComposeFile:"docker-compose.yaml", service, runServices:[.service], workspaceFolder, customizations}' \
-        <<< "$CONFIG" > "$CONFIG_PATH.tmp"
-    mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
-fi
-
-if [[ "$CMD" == build && ( -n "$PRIMARY" || "$HAS_SNAPSHOT" == true ) ]]; then
-    echo 'Devcontainer or snapshot already exists; skipping build'
-else
-    "$CLI" "$CMD" --workspace-folder "$FOLDER" --user-data-folder "$STATE_DIR/cli"
-    # The CLI waits for setup and startup hooks; record success only on the host.
-    if [[ "$CMD" == up ]]; then
-        touch "$POST_CREATE_DONE"
-        # Capture the backend once; startup must wait for this required snapshot.
-        if [[ "$AIRLOCK_ENABLED" == true && "$HAS_SNAPSHOT" == false ]]; then
-            PRIMARY=$(docker ps -aq --no-trunc --filter "label=devcontainer.local_folder=$FOLDER")
-            docker commit "$PRIMARY" "$SNAPSHOT_IMAGE"
-        fi
-    fi
-fi
+case "${CMD}" in
+    build) build_app ;;
+    up) start_app ;;
+esac

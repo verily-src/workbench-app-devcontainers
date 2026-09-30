@@ -17,8 +17,7 @@ set -euo pipefail
 echo "docker $*" >> /home/core/calls
 case "$*" in
     'image inspect workbench-local-snapshot:devcontainer') test -f /home/core/snapshot ;;
-    'ps -aq --no-trunc --filter label=devcontainer.local_folder=/home/core/app') cat /home/core/container-id ;;
-    'ps '*) exit 0 ;; # A different workspace label matches no container.
+    'ps -aq --no-trunc --filter name=^/application-server$') cat /home/core/container-id ;;
     'rm -f primary-id') : > /home/core/container-id ;;
     *) echo "Unexpected Docker command: $*" >&2; exit 1 ;;
 esac
@@ -79,13 +78,13 @@ assert_no_call() {
 check_settings() {
     local gpu=$1 shm=$2 memory=$3
     render
-    jq -e --arg service "$SERVICE" --argjson gpu "$gpu" --argjson shm "$shm" --argjson memory "$memory" '
-        .services[$service] |
+    jq -e --argjson gpu "$gpu" --argjson shm "$shm" --argjson memory "$memory" '
+        .services.app |
         (.shm_size | tonumber) == $shm and (.mem_limit // 0 | tonumber) == $memory and
         ((.deploy.resources.reservations.devices // [] | length) == $gpu)
     ' "$CORE/rendered.json"
-    if [[ "$SERVICE" != app ]]; then
-        jq -S '.services.app' "$CORE/rendered.json" > "$CORE/browser.json"
+    if [[ "$AIRLOCKED" == true ]]; then
+        jq -S '.services.browser' "$CORE/rendered.json" > "$CORE/browser.json"
         cmp "$CORE/browser.json" "$CORE/initial-browser.json"
     fi
 }
@@ -94,17 +93,18 @@ check_airlocked_config() {
     local template=$1 file
     local -a compose=(docker compose --project-directory "$REPO_ROOT/src/$template" -f "$CORE/app/docker-compose.yaml")
     node "$REPO_ROOT/startupscript/butane/jsoncStripComments.mjs" < "$CORE/app/.devcontainer.json" > "$CORE/config.json"
-    jq -e '.runServices == ["app", .service] and .remoteUser == "root"' "$CORE/config.json"
-    jq -e --arg service "$SERVICE" --slurpfile config "$CORE/config.json" '
-        (.services | keys) == (["app", $service] | sort) and
-        .services.app.image == "workbench-virtual-browser:app" and
-        .services[$service].image == "workbench-local-snapshot:devcontainer" and
+    jq -e '.runServices == ["browser", .service] and .remoteUser == "root"' "$CORE/config.json"
+    jq -e --arg template "$template" --slurpfile config "$CORE/config.json" '
+        (.services | keys) == ["app", "browser"] and
+        .services.browser.image == "workbench-virtual-browser:app" and
+        .services.browser.labels["com.verily.workbench.proxy-target"] == "true" and
+        .services.app.image == "workbench-local-snapshot:devcontainer" and
         all(.services[]; .pull_policy == "never" and (has("build") | not)) and
-        any(.services[$service].volumes[]; .target == "/var/lib/workbench/setup" and .read_only == true) and
-        (if $service == "jupyterlab" then
-            any(.services[$service].volumes[]; .target == "/home/jupyter" and .source == "jupyter-home") and
-            .volumes["jupyter-home"].driver_opts == {type:"none",o:"bind",device:"/home/core/container-state.d/jupyter-home"} and
-            $config[0].initializeCommand == ["mkdir", "-p", .volumes["jupyter-home"].driver_opts.device]
+        any(.services.app.volumes[]; .target == "/var/lib/workbench/setup" and .read_only == true) and
+        (if $template == "virtual-browser-jupyter" then
+            any(.services.app.volumes[]; .target == "/home/jupyter" and .source == "jupyter-home") and
+            ((.volumes["jupyter-home"].driver_opts // {}) | length == 0) and
+            ($config[0] | has("initializeCommand") | not)
          else true end)
     ' "$CORE/rendered.json"
 
@@ -112,22 +112,23 @@ check_airlocked_config() {
         compose+=(-f "$REPO_ROOT/src/$template/$file")
     done < <(jq -r '.dockerComposeFile[] | select(. != "docker-compose.yaml")' "$CORE/config.json")
     "${compose[@]}" config --format json --no-path-resolution > "$CORE/build.json"
-    jq -e --arg service "$SERVICE" '
-        .services.app.image == "workbench-virtual-browser:app" and
-        (.services.app.build.context | endswith("/browser-common")) and
-        (if $service == "jupyterlab" then
-            .services[$service].image == "workbench-virtual-browser:jupyterlab" and
-            .services[$service].build.additional_contexts["jupyter-extension-builder"] == "service:jupyter-common-extension-builder"
+    jq -e --arg template "$template" '
+        (.services.browser.build.context | endswith("/browser-common")) and
+        .services.browser.environment.CHROME_CLI == ("--kiosk http://" + .services.browser.build.args.APP_ORIGIN) and
+        (.services.browser.build.args.APP_ORIGIN | startswith("app:")) and
+        (if $template == "virtual-browser-jupyter" then
+            .services.app.image == "workbench-virtual-browser:jupyterlab" and
+            .services.app.build.additional_contexts["jupyter-extension-builder"] == "service:jupyter-common-extension-builder"
          else
-            (.services[$service].image | startswith("ghcr.io/rocker-org/devcontainer/tidyverse@sha256:")) and
-            .services[$service].pull_policy == "missing"
+            (.services.app.image | startswith("ghcr.io/rocker-org/devcontainer/tidyverse@sha256:")) and
+            .services.app.pull_policy == "missing"
          end)
     ' "$CORE/build.json"
 }
 
 exercise_lifecycle() {
-    local template=$1 airlocked=$2
-    SERVICE=$3
+    local template=$1
+    AIRLOCKED=$2
     cp "$REPO_ROOT/src/$template/.devcontainer.json" "$CORE/app/.devcontainer.json"
     cp "$REPO_ROOT/src/$template/docker-compose.yaml" "$CORE/app/docker-compose.yaml"
 
@@ -137,27 +138,27 @@ exercise_lifecycle() {
     [ "$(grep -c '^prefetch$' "$CORE/calls")" = 1 ]
     assert_no_call '^docker rm '
     render
-    jq -S '.services.app' "$CORE/rendered.json" > "$CORE/initial-browser.json"
+    jq -S '.services.browser' "$CORE/rendered.json" > "$CORE/initial-browser.json"
     check_settings 0 67108864 7516192768
     [ -f "$CORE/app/startupscript/post-startup.sh" ]
     [ -f "$CORE/app/.devcontainer/features/workbench-tools/devcontainer-feature.json" ]
-    if [[ "$airlocked" == true ]]; then
+    if [[ "$AIRLOCKED" == true ]]; then
         check_airlocked_config "$template"
     fi
 
     printf 'primary-id\n' > "$CORE/container-id"
     # A local snapshot must only suppress prefetch for an airlocked app.
     touch "$CORE/snapshot"
-    if [[ "$airlocked" == true ]]; then
+    if [[ "$AIRLOCKED" == true ]]; then
         # The wrapper writes a minimal config when restoring; the parser must
         # recover the complete original config from its saved template.
-        printf '{"service":"%s"}\n' "$SERVICE" > "$CORE/app/.devcontainer.json"
+        printf '{"service":"app"}\n' > "$CORE/app/.devcontainer.json"
     fi
     : > "$CORE/calls"
     parse
     [ "$(cat "$CORE/container-id")" = primary-id ]
     assert_no_call '^docker (ps|rm) '
-    if [[ "$airlocked" == true ]]; then
+    if [[ "$AIRLOCKED" == true ]]; then
         assert_no_call '^prefetch$'
         jq -e '.AIRLOCK_ENABLED == true' "$CORE/published.json"
     else
@@ -165,8 +166,8 @@ exercise_lifecycle() {
     fi
     check_settings 0 67108864 7516192768
 
-    # Each resource changes independently; a trailing slash must still locate
-    # the same primary container that the wrapper and CLI label.
+    # Each resource changes independently; a trailing slash still addresses
+    # the same app configuration and fixed primary container.
     printf 'MemTotal: 4194304 kB\n' > "$CORE/meminfo"
     : > "$CORE/calls"
     parse /home/core/app/
@@ -212,13 +213,13 @@ exercise_lifecycle() {
 }
 
 @test "complete parser handles Jupyter first creation and airlocked restarts" {
-    exercise_lifecycle virtual-browser-jupyter true jupyterlab
+    exercise_lifecycle virtual-browser-jupyter true
 }
 
 @test "complete parser handles RStudio first creation and airlocked restarts" {
-    exercise_lifecycle virtual-browser-rstudio true rstudio
+    exercise_lifecycle virtual-browser-rstudio true
 }
 
 @test "complete parser handles regular app first creation and restarts" {
-    exercise_lifecycle r-analysis false app
+    exercise_lifecycle r-analysis false
 }

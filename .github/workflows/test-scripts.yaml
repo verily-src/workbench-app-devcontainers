@@ -6,6 +6,8 @@ on:
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
       - 'tests/test-codeartifact.bats'
+      - 'startupscript/butane/050-parse-devcontainer.sh'
+      - 'startupscript/butane/update-flatcar.sh'
       - 'tests/update-flatcar.bats'
       - '.github/workflows/test-scripts.yaml'
   push:
@@ -16,6 +18,8 @@ on:
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
       - 'tests/test-codeartifact.bats'
+      - 'startupscript/butane/050-parse-devcontainer.sh'
+      - 'startupscript/butane/update-flatcar.sh'
       - 'tests/update-flatcar.bats'
       - '.github/workflows/test-scripts.yaml'
 

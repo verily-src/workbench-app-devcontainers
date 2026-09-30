@@ -17,11 +17,13 @@ backend app differs.
 
 Two containers on a shared network:
 
-- `application-server` — Chromium rendered by [Selkies](https://github.com/selkies-project) and
-  streamed on port `3000`. This is the published, proxied container.
-- `rstudio` — RStudio Server on `8787`, reachable only on the internal `app-network`.
+- `browser` — Chromium rendered by [Selkies](https://github.com/selkies-project) and
+  streamed on port `3000`. Its `com.verily.workbench.proxy-target: "true"` label
+  selects it for proxy traffic.
+- `application-server` (Compose service `app`) — RStudio Server on `8787`,
+  reachable only on the internal `backend-network`.
 
-Chromium runs in `--kiosk` mode pointed at `http://rstudio:8787` — fullscreen, no tab strip, address
+Chromium runs in `--kiosk` mode pointed at `http://app:8787` — fullscreen, no tab strip, address
 bar, or window decorations. The Selkies control sidebar is hidden.
 
 ## What's not available
@@ -39,18 +41,19 @@ so they won't save to your local machine. The Selkies sidebar (including file up
 The browser front end lives in `../browser-common`. This template supplies only the RStudio-specific
 values in `docker-compose.build.yaml` and `docker-compose.yaml`, two of which must match:
 
-- `app.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
+- `browser.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
   can reach.
-- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://rstudio:8787`).
+- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://app:8787`).
 
-Both are `http://rstudio:8787` here. `URLBlocklist` is `["*"]`, so nothing else loads.
+Both are `http://app:8787` here. `URLBlocklist` is `["*"]`, so nothing else loads.
 
 ### Hardware changes
 
 After the first successful startup, RStudio is snapshotted once to
 `workbench-local-snapshot:devcontainer`. GPU, shared-memory or memory-limit changes
 recreate it from that initial snapshot with the new settings and existing named
-volumes. The browser container stays running. First boot also loads
+volumes. The browser container stays running; a stopped browser is started without
+recreation on restore. First boot also loads
 `docker-compose.build.yaml`; later recreation needs no builds or image pulls.
 Completed setup stays skipped and startup hooks run.
 

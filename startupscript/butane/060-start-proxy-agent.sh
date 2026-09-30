@@ -16,12 +16,22 @@ fi
 
 readonly PROXY_IMAGE="$1"
 readonly COMPUTE_PLATFORM="$2"
-PORT="$(docker inspect application-server \
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
+# This is a required systemd step even when devcontainer up failures are ignored.
+# Fail before starting the proxy so incomplete airlock provisioning is retried.
+validate_airlock_snapshot
+PROXY_CONTAINER=$(find_proxy_container)
+# Start an existing frontend without recreating it, before reading its published port.
+if [[ "${PROXY_CONTAINER}" != application-server ]]; then
+    docker start "${PROXY_CONTAINER}"
+fi
+PORT="$(docker inspect "${PROXY_CONTAINER}" \
   | jq -r '.[].NetworkSettings.Ports | to_entries[]? | .value[]? | select(.HostIp == "0.0.0.0" or .HostIp == "::") | .HostPort' \
   | head -n 1)"
 readonly PORT
 if [[ -z "${PORT}" ]]; then
-    echo "Error: Application-server port is empty."
+    echo "Error: Proxy target port is empty."
     exit 1
 fi
 

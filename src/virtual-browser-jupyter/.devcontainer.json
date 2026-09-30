@@ -1,12 +1,10 @@
 {
   "name": "JupyterLab in a Virtual Browser devcontainer template",
   "dockerComposeFile": ["docker-compose.yaml", "docker-compose.build.yaml", "../jupyter-common/jupyter-common-compose.yaml"],
-  "service": "jupyterlab",
-  "runServices": ["app", "jupyterlab"],
+  "service": "app",
+  "runServices": ["browser", "app"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  // The local volume driver requires its host bind directory to exist before startup.
-  "initializeCommand": ["mkdir", "-p", "/home/core/container-state.d/jupyter-home"],
   // The host records successful setup in a directory mounted read-only here.
   "postCreateCommand": [
     "sh",

@@ -16,7 +16,7 @@ Repo to store Verily Workbench-specific applications' devcontainer specification
 ## Workbench-specific application requirements
 
 1. The custom app runs in a custom `app-network` bridge network and the app port is exposed on 0:0:0:0 (localhost)
-2. The app's `container_name` must be `application-server`
+2. `.devcontainer.json.service` selects the app service (conventionally `app`), which must use `container_name: application-server`. Proxy traffic defaults to this app. To use a separate frontend, set `com.verily.workbench.proxy-target: "true"` under that service's `labels`, as virtual-browser templates do for `browser`.
 3. In order to run `gcsfuse`, set `--cap-add SYS_ADMIN --device /dev/fuse --security-opt apparmor:unconfined` to the Docker container.
 
 ## What is a dev container?

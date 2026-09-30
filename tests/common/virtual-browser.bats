@@ -1,13 +1,13 @@
 # Smoke test for virtual-browser templates: the app runs behind a streamed Chromium locked down by a
 # managed enterprise policy. Verifies the policy is actually present and enforcing in the browser
-# container (application-server) and that the backend app container is up. Reads the policy on the
+# container (browser) and that the backend app container is up. Reads the policy on the
 # host with jq via `docker exec ... cat`, so the browser image needs no jq of its own.
 
 setup_file() {
     echo "# Running ${BATS_TEST_FILENAME##*/}" >&3
 }
 
-BROWSER_CONTAINER="application-server"
+BROWSER_CONTAINER="browser"
 POLICY_PATH="/etc/chromium/policies/managed/workbench-rbi.json"
 
 @test "browser container is running" {

@@ -3,23 +3,11 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
 
-load_config() {
-    CONFIG_PATH="${FOLDER}/.devcontainer.json"
-    [[ -f "${CONFIG_PATH}" ]] || CONFIG_PATH="${FOLDER}/.devcontainer/devcontainer.json"
-    CONFIG=$(node "$(dirname "$0")/jsoncStripComments.mjs" < "${CONFIG_PATH}")
-    AIRLOCK_ENABLED=$(jq -r '.customizations.workbench.AIRLOCK_ENABLED // false' <<< "${CONFIG}")
-}
-
 prepare_airlock() {
     umask 077
-    SNAPSHOT_IMAGE=workbench-local-snapshot:devcontainer
-    export WORKBENCH_SETUP_STATE_DIR="${CONTAINER_STATE_FILE:-/home/core/container-state}.d/setup"
-    POST_CREATE_DONE="${WORKBENCH_SETUP_STATE_DIR}/post-create.done"
     mkdir -p "${WORKBENCH_SETUP_STATE_DIR}"
 
-    HAS_SNAPSHOT=false
-    if docker image inspect "${SNAPSHOT_IMAGE}" >/dev/null 2>&1; then
-        HAS_SNAPSHOT=true
+    if [[ "${HAS_SNAPSHOT}" == true ]]; then
         # Preserve the existing browser during restoration.
         jq '{dockerComposeFile:"docker-compose.yaml", service, runServices:[.service], workspaceFolder, customizations}' \
             <<< "${CONFIG}" > "${CONFIG_PATH}.tmp"
@@ -64,8 +52,20 @@ start_app() {
 CMD=$1
 FOLDER=$(cd "$2" && pwd)
 CLI=${DEVCONTAINER_CLI:-/home/core/node_modules/.bin/devcontainer}
-load_config
+CONFIG_PATH="${FOLDER}/.devcontainer.json"
+[[ -f "${CONFIG_PATH}" ]] || CONFIG_PATH="${FOLDER}/.devcontainer/devcontainer.json"
+CONFIG=$(node "$(dirname "$0")/jsoncStripComments.mjs" < "${CONFIG_PATH}")
+AIRLOCK_ENABLED=$(jq -r '.customizations.workbench.AIRLOCK_ENABLED // false' <<< "${CONFIG}")
 PRIMARY=$(get_application_container)
+SNAPSHOT_IMAGE=workbench-local-snapshot:devcontainer
+export WORKBENCH_SETUP_STATE_DIR="${CONTAINER_STATE_FILE:-/home/core/container-state}.d/setup"
+POST_CREATE_DONE="${WORKBENCH_SETUP_STATE_DIR}/post-create.done"
+HAS_SNAPSHOT=false
+if [[ "${AIRLOCK_ENABLED}" == true ]] && docker image inspect "${SNAPSHOT_IMAGE}" >/dev/null 2>&1; then
+    HAS_SNAPSHOT=true
+fi
+readonly CMD FOLDER CLI CONFIG_PATH CONFIG AIRLOCK_ENABLED PRIMARY
+readonly SNAPSHOT_IMAGE WORKBENCH_SETUP_STATE_DIR POST_CREATE_DONE HAS_SNAPSHOT
 
 case "${CMD}" in
     build) build_app ;;

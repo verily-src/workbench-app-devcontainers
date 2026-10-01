@@ -37,6 +37,8 @@ services:
       - jupyter-home:/home/jupyter
       - ${WORKBENCH_SETUP_STATE_DIR:-/home/core/container-state.d/setup}:/var/lib/workbench/setup:ro
       - browser-uploads:/home/jupyter/browser-uploads
+    tmpfs:
+      - /home/jupyter/workspace:uid=1001,gid=1001
     networks:
       - backend-network
     cap_add:

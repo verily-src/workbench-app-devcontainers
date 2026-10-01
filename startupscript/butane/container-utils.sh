@@ -17,7 +17,8 @@ find_proxy_container() {
         echo "Error: multiple proxy targets in Compose project ${project}" >&2
         return 1
     fi
-    # Ordinary apps receive traffic directly; a frontend can override the target.
+    # Proxy traffic goes to application-server by default. For virtual-browser apps,
+    # the browser's com.verily.workbench.proxy-target=true label routes it to Chromium/Selkies.
     printf '%s\n' "${id:-${app}}"
 }
 

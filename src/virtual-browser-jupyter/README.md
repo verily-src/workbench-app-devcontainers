@@ -22,7 +22,7 @@ Two containers on a shared network:
   reachable only on the internal `backend-network`.
 
 You see a video stream of Chromium running on the VM, started in `--kiosk` mode at
-`http://app:8888` — fullscreen, no tab strip, address bar, or window decorations, just the
+`http://application-server:8888` — fullscreen, no tab strip, address bar, or window decorations, just the
 JupyterLab UI. The Selkies control sidebar is hidden.
 
 ## What's not available
@@ -44,9 +44,11 @@ match:
 
 - `browser.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
   can reach.
-- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://app:8888`).
+- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://application-server:8888`).
 
-Both are `http://app:8888` here. `URLBlocklist` is `["*"]`, so nothing else loads.
+Both use `application-server:8888` here. The `app` hostname is HSTS-preloaded in
+Chromium and would force HTTPS against the HTTP backend. `URLBlocklist` is `["*"]`,
+so nothing else loads.
 
 Other configs:
 

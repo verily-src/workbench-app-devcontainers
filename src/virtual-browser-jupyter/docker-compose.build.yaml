@@ -4,7 +4,7 @@ services:
     build:
       context: ../browser-common
       args:
-        APP_ORIGIN: "app:8888"
+        APP_ORIGIN: "application-server:8888"
   app:
     image: workbench-virtual-browser:jupyterlab
     build:

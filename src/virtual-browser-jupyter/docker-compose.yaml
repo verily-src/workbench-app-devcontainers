@@ -13,7 +13,8 @@ services:
       - app-network
       - backend-network
     environment:
-      CHROME_CLI: "--kiosk http://app:8888"
+      # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
+      CHROME_CLI: "--kiosk http://application-server:8888"
       FILE_MANAGER_PATH: /uploads
       # Run the browser as the backend's user so uploaded files are writable there, not just readable.
       PUID: 1001

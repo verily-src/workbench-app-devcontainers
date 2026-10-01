@@ -90,7 +90,7 @@ check_settings() {
 }
 
 check_airlocked_config() {
-    local template=$1 file
+    local template=$1 expected_port=$2 file
     local -a compose=(docker compose --project-directory "$REPO_ROOT/src/$template" -f "$CORE/app/docker-compose.yaml")
     node "$REPO_ROOT/startupscript/butane/jsoncStripComments.mjs" < "$CORE/app/.devcontainer.json" > "$CORE/config.json"
     jq -e '.runServices == ["browser", .service] and .remoteUser == "root"' "$CORE/config.json"
@@ -98,6 +98,7 @@ check_airlocked_config() {
         (.services | keys) == ["app", "browser"] and
         .services.browser.image == "workbench-virtual-browser:app" and
         .services.browser.labels["com.verily.workbench.proxy-target"] == "true" and
+        .services.app.container_name == "application-server" and
         .services.app.image == "workbench-local-snapshot:devcontainer" and
         all(.services[]; .pull_policy == "never" and (has("build") | not)) and
         any(.services.app.volumes[]; .target == "/var/lib/workbench/setup" and .read_only == true) and
@@ -112,10 +113,10 @@ check_airlocked_config() {
         compose+=(-f "$REPO_ROOT/src/$template/$file")
     done < <(jq -r '.dockerComposeFile[] | select(. != "docker-compose.yaml")' "$CORE/config.json")
     "${compose[@]}" config --format json --no-path-resolution > "$CORE/build.json"
-    jq -e --arg template "$template" '
+    jq -e --arg template "$template" --arg expected_port "$expected_port" '
         (.services.browser.build.context | endswith("/browser-common")) and
         .services.browser.environment.CHROME_CLI == ("--kiosk http://" + .services.browser.build.args.APP_ORIGIN) and
-        (.services.browser.build.args.APP_ORIGIN | startswith("app:")) and
+        .services.browser.build.args.APP_ORIGIN == (.services.app.container_name + ":" + $expected_port) and
         (if $template == "virtual-browser-jupyter" then
             .services.app.image == "workbench-virtual-browser:jupyterlab" and
             .services.app.build.additional_contexts["jupyter-extension-builder"] == "service:jupyter-common-extension-builder"
@@ -127,7 +128,7 @@ check_airlocked_config() {
 }
 
 exercise_lifecycle() {
-    local template=$1
+    local template=$1 expected_port=${3:-}
     AIRLOCKED=$2
     cp "$REPO_ROOT/src/$template/.devcontainer.json" "$CORE/app/.devcontainer.json"
     cp "$REPO_ROOT/src/$template/docker-compose.yaml" "$CORE/app/docker-compose.yaml"
@@ -143,7 +144,7 @@ exercise_lifecycle() {
     [ -f "$CORE/app/startupscript/post-startup.sh" ]
     [ -f "$CORE/app/.devcontainer/features/workbench-tools/devcontainer-feature.json" ]
     if [[ "$AIRLOCKED" == true ]]; then
-        check_airlocked_config "$template"
+        check_airlocked_config "$template" "$expected_port"
     fi
 
     printf 'primary-id\n' > "$CORE/container-id"
@@ -213,11 +214,11 @@ exercise_lifecycle() {
 }
 
 @test "complete parser handles Jupyter first creation and airlocked restarts" {
-    exercise_lifecycle virtual-browser-jupyter true
+    exercise_lifecycle virtual-browser-jupyter true 8888
 }
 
 @test "complete parser handles RStudio first creation and airlocked restarts" {
-    exercise_lifecycle virtual-browser-rstudio true
+    exercise_lifecycle virtual-browser-rstudio true 8787
 }
 
 @test "complete parser handles regular app first creation and restarts" {

@@ -25,7 +25,7 @@ build/up steps. The browser stays running. Ordinary restarts reuse both containe
 
 Apps use Compose service `app` and container name `application-server`.
 Virtual-browser templates add `browser` for Chromium, which connects to the
-backend through the `app` DNS name.
+backend through its `application-server` Docker DNS name.
 
 Scripts identify the app by its fixed Docker container name, `application-server`.
 Proxy traffic defaults to that app; an optional

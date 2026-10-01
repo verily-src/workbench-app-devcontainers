@@ -23,7 +23,7 @@ Two containers on a shared network:
 - `application-server` (Compose service `app`) — RStudio Server on `8787`,
   reachable only on the internal `backend-network`.
 
-Chromium runs in `--kiosk` mode pointed at `http://app:8787` — fullscreen, no tab strip, address
+Chromium runs in `--kiosk` mode pointed at `http://application-server:8787` — fullscreen, no tab strip, address
 bar, or window decorations. The Selkies control sidebar is hidden.
 
 ## What's not available
@@ -43,9 +43,11 @@ values in `docker-compose.build.yaml` and `docker-compose.yaml`, two of which mu
 
 - `browser.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
   can reach.
-- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://app:8787`).
+- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://application-server:8787`).
 
-Both are `http://app:8787` here. `URLBlocklist` is `["*"]`, so nothing else loads.
+Both use `application-server:8787` here. The `app` hostname is HSTS-preloaded in
+Chromium and would force HTTPS against the HTTP backend. `URLBlocklist` is `["*"]`,
+so nothing else loads.
 
 ### Hardware changes
 

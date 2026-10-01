@@ -15,7 +15,8 @@
 # authentication mechanism for AWS to get released in all environments.  Writing get_metadata_value
 # in terms of get_metadata_value_unprefixed is done for code reuse; this should be collapsed back
 # down into a single get_metadata_value function once this is no longer needed.
-function get_metadata_value_unprefixed() {
+function get_metadata_value_unprefixed() (
+  { set +o xtrace; } 2>/dev/null
   if [[ -z "$1" ]]; then
     echo "usage: get_metadata_value_unprefixed <tag>"
     exit 1
@@ -31,7 +32,7 @@ function get_metadata_value_unprefixed() {
     --region "${region}" \
     --filters "Name=resource-id,Values=${instance_id}" "Name=key,Values=$1" \
     --query "Tags[0].Value" --output text 2>/dev/null
-}
+)
 readonly -f get_metadata_value_unprefixed
 
 function get_metadata_value() {
@@ -46,7 +47,8 @@ function get_metadata_value() {
 readonly -f get_metadata_value
 
 # Sets tags on the EC2 instance with the given key and value. Tags set from the instance is prfixed with vwbapp:
-function set_metadata() {
+function set_metadata() (
+  { set +o xtrace; } 2>/dev/null
   local key="${1}"
   local value="${2}"
 
@@ -76,5 +78,5 @@ function set_metadata() {
     --region "${region}" \
     --resources "${id}" \
     --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
-}
+)
 readonly -f set_metadata

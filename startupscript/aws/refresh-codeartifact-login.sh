@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# Refreshes pip and npm CodeArtifact tokens as the app user. No arguments:
-# refresh once. --start: refresh, then ensure the periodic worker is running.
-set -o xtrace
+# Installed by configure-codeartifact.sh and run as the app user. Uses the
+# instance role to renew pip/npm credentials in the user's config files.
+# No arguments: refresh once. --start: refresh and launch one background worker.
+# Internal --loop mode renews every six hours and retries failures after five minutes.
 set -o errexit
 set -o nounset
 set -o pipefail
@@ -46,6 +47,15 @@ unset npm_config_userconfig
 export PIP_USER=true
 export NPM_CONFIG_USERCONFIG="${CODEARTIFACT_USER_HOME}/.npmrc"
 readonly PIP_CONFIG="${XDG_CONFIG_HOME:-${CODEARTIFACT_USER_HOME}/.config}/pip/pip.conf"
+
+# sudo/login shells can drop the Node feature's container PATH. Use its stable
+# symlink without relying on interactive nvm initialization or changing users.
+readonly NVM_BIN="${NVM_DIR:-/usr/local/share/nvm}/current/bin"
+if ! command -v node > /dev/null || ! command -v npm > /dev/null; then
+  if [[ -x "${NVM_BIN}/node" && -x "${NVM_BIN}/npm" ]]; then
+    export PATH="${NVM_BIN}:${PATH}"
+  fi
+fi
 
 retry() {
   local attempt
@@ -106,7 +116,11 @@ case "${1:-}" in
     delay="${2:-${REFRESH_INTERVAL}}"
     while sleep "${delay}" 9>&-; do
       delay="${REFRESH_INTERVAL}"
-      if ! "$0" 9>&-; then
+      if ! (
+        # The parent worker keeps the lock; this child releases its copy.
+        exec 9>&-
+        refresh
+      ); then
         echo "$(date -u): WARNING: CodeArtifact refresh failed; retrying in ${RETRY_INTERVAL} seconds" >&2
         delay="${RETRY_INTERVAL}"
       fi

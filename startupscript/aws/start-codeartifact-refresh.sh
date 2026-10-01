@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# start-codeartifact-refresh.sh
-#
-# Runs on container start. Refreshes CodeArtifact tokens and restarts the
-# periodic refresh worker, which stops with the container.
+# Runs as root from postStartCommand on every container start. Switches to the
+# app user to refresh tokens and restart the worker, which stops with the container.
+# configure-codeartifact.sh handles initial installation; this wrapper skips
+# containers where that setup did not install the helper.
 
 set -o errexit
 set -o nounset

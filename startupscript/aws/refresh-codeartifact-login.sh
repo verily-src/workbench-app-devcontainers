@@ -116,8 +116,11 @@ case "${1:-}" in
     delay="${2:-${REFRESH_INTERVAL}}"
     while sleep "${delay}" 9>&-; do
       delay="${REFRESH_INTERVAL}"
-      # Close the worker lock in the refresh subshell and its child processes.
-      if ! refresh 9>&-; then
+      if ! (
+        # The parent worker keeps the lock; this child releases its copy.
+        exec 9>&-
+        refresh
+      ); then
         echo "$(date -u): WARNING: CodeArtifact refresh failed; retrying in ${RETRY_INTERVAL} seconds" >&2
         delay="${RETRY_INTERVAL}"
       fi

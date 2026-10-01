@@ -29,6 +29,9 @@ type Secret struct {
 
 func getSecrets() ([]Secret, error) {
 	pipePath := "/tmp/secrets"
+	if err := os.Remove(pipePath); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("removing stale path at %s: %w", pipePath, err)
+	}
 	if err := unix.Mkfifo(pipePath, 0600); err != nil {
 		return nil, err
 	}

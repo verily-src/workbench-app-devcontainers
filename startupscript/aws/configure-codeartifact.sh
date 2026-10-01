@@ -1,6 +1,9 @@
 #!/bin/bash
 
-# Sourced by the AWS post-startup hook for virtual-browser apps. Requires emit,
+# One-time setup, sourced as root by the AWS post-startup hook for virtual-browser
+# apps. Reads the mirror metadata, writes /etc/workbench-codeartifact.conf, installs
+# the refresh helper, and starts it as the app user. Later container starts use
+# start-codeartifact-refresh.sh. Requires emit,
 # get_metadata_value, RUN_AS_LOGIN_USER, CLOUD_SCRIPT_DIR and WORK_DIRECTORY.
 
 readonly CODEARTIFACT_REFRESH_SCRIPT="/usr/local/bin/refresh-codeartifact-login.sh"
@@ -17,11 +20,11 @@ fi
 # Use the instance's own account and region, not the workspace profile's.
 # Keep the IMDS token out of xtrace. wget retries itself because retry's
 # messages go to stdout and would be captured.
-{ set +o xtrace; } 2>/dev/null
-imds_token="$(wget --tries=5 --waitretry=5 --retry-connrefused --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)"
-identity_document="$(wget --tries=5 --waitretry=5 --retry-connrefused --header "X-aws-ec2-metadata-token: ${imds_token}" -q -O - http://169.254.169.254/latest/dynamic/instance-identity/document)"
-unset imds_token
-set -o xtrace
+identity_document="$(
+  { set +o xtrace; } 2>/dev/null
+  imds_token="$(wget --tries=5 --waitretry=5 --retry-connrefused --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)" || exit 1
+  wget --tries=5 --waitretry=5 --retry-connrefused --header "X-aws-ec2-metadata-token: ${imds_token}" -q -O - http://169.254.169.254/latest/dynamic/instance-identity/document
+)"
 CODEARTIFACT_OWNER="$(jq -er '.accountId' <<< "${identity_document}")"
 readonly CODEARTIFACT_OWNER
 CODEARTIFACT_REGION="$(jq -er '.region' <<< "${identity_document}")"

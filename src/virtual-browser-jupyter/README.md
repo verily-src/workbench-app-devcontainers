@@ -23,18 +23,21 @@ Two containers on a shared network:
 
 You see a video stream of Chromium running on the VM, started in `--kiosk` mode at
 `http://application-server:8888` — fullscreen, no tab strip, address bar, or window decorations, just the
-JupyterLab UI. The Selkies control sidebar is hidden.
+JupyterLab UI. The Selkies sidebar provides uploads, display settings, and a clipboard panel for
+pasting text into the session.
 
 ## What's not available
 
 A managed Chromium policy (from the shared `browser-common` image, baked in at build) turns off:
-downloads and export-to-local, file dialogs and file-system access, clipboard-out, printing,
+downloads and export-to-local, file dialogs and file-system access, printing,
 devtools, extensions, new tabs / pop-ups / off-app navigation, incognito and extra profiles, and
 password manager / autofill / translation / notifications.
 
 Notebooks, terminals, and file editing work normally — but JupyterLab's own **Download** / export
-commands rely on the disabled browser actions, so they won't save to your local machine. The Selkies
-control sidebar is hidden.
+commands rely on the disabled browser actions, so they won't save to your local machine. Selkies
+allows clipboard transfer into the session and blocks clipboard transfer out. Automatic paste
+requires clipboard access in your local browser; if it fails, paste text into the sidebar's clipboard
+panel, click back into JupyterLab, and press Ctrl+V (Ctrl+Shift+V in its terminal).
 
 ## Configuring
 

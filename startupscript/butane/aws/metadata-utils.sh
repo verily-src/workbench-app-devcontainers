@@ -5,7 +5,8 @@
 # we are running the AWS CLI in a container.
 
 # Retrieves an instance tag set on the VM. If the tag is not set, it returns the default vaule.
-function get_tag() {
+function get_tag() (
+  { set +o xtrace; } 2>/dev/null
   if [[ $# -lt 3 ]]; then
     echo "usage: get_tag <prefix> <tag> <default-value>"
     exit 1
@@ -27,7 +28,7 @@ function get_tag() {
   else
     echo "${tag_value}"
   fi
-}
+)
 readonly -f get_tag
 
 # EC2 instance uses tags instead of metadata. But to keep the iterface consistent with GCP, this method retrieves tags set by the user.
@@ -46,7 +47,8 @@ readonly -f get_guest_attribute
 
 
 # Sets tags on the EC2 instance with the given key and value. Tags set from the instance is prfixed with vwbapp:
-function set_metadata() {
+function set_metadata() (
+  { set +o xtrace; } 2>/dev/null
   local key="${1}"
   local value="${2}"
 
@@ -75,5 +77,5 @@ function set_metadata() {
     ec2 create-tags \
       --resources "${id}" \
       --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
-}
+)
 readonly -f set_metadata

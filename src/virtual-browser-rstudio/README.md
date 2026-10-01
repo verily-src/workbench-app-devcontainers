@@ -24,17 +24,20 @@ Two containers on a shared network:
   reachable only on the internal `backend-network`.
 
 Chromium runs in `--kiosk` mode pointed at `http://application-server:8787` — fullscreen, no tab strip, address
-bar, or window decorations. The Selkies control sidebar is hidden.
+bar, or window decorations. The Selkies sidebar provides uploads, display settings, and a clipboard
+panel for pasting text into the session.
 
 ## What's not available
 
 The managed Chromium policy (from the shared `browser-common` image) turns off: downloads and
-export-to-local, file dialogs and file-system access, clipboard-out, printing, devtools, extensions,
+export-to-local, file dialogs and file-system access, printing, devtools, extensions,
 new tabs / pop-ups / off-app navigation, incognito and extra profiles, and password manager /
 autofill / translation / notifications.
 
 RStudio itself works normally, but its export/download actions rely on the disabled browser actions,
-so they won't save to your local machine. The Selkies sidebar (including file upload) is hidden.
+so they won't save to your local machine. Selkies allows clipboard transfer into the session and
+blocks clipboard transfer out. Automatic paste requires clipboard access in your local browser;
+if it fails, paste text into the sidebar's clipboard panel, click back into RStudio, and press Ctrl+V.
 
 ## Configuring
 

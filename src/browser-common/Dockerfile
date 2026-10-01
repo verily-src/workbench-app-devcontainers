@@ -2,7 +2,7 @@
 # pixels, locked down by a managed policy. Consuming templates build their own `app` service from this
 # context and set APP_ORIGIN, baked into the policy URLAllowlist (with none, URLBlocklist ["*"] makes
 # it fail closed).
-FROM lscr.io/linuxserver/chromium@sha256:0fb230264d724bebb65bf7d777583de1f637eb4a4dea7e1ced20011456e22c7d
+FROM lscr.io/linuxserver/chromium@sha256:cf6200ccdcb224feaf5d3bde4ce45b3783c926a7496c98059cae1e0db78e5b2f
 
 # Selkies + hardening defaults; a template may override any of these in its compose environment.
 ENV SELKIES_DESKTOP=false \
@@ -23,7 +23,7 @@ ENV SELKIES_DESKTOP=false \
     SELKIES_UI_SIDEBAR_SHOW_SCREEN_SETTINGS="true|locked" \
     SELKIES_UI_SIDEBAR_SHOW_AUDIO_SETTINGS="false|locked" \
     SELKIES_UI_SIDEBAR_SHOW_STATS="false|locked" \
-    SELKIES_UI_SIDEBAR_SHOW_CLIPBOARD="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_CLIPBOARD="true|locked" \
     SELKIES_UI_SIDEBAR_SHOW_APPS="false|locked" \
     SELKIES_UI_SIDEBAR_SHOW_SHARING="false|locked" \
     SELKIES_UI_SIDEBAR_SHOW_GAMEPADS="false|locked" \
@@ -35,7 +35,7 @@ ENV SELKIES_DESKTOP=false \
     SELKIES_ENABLE_SHARING="false|locked" \
     SELKIES_ENABLE_COLLAB="false|locked" \
     SELKIES_ENABLE_SHARED="false|locked" \
-    SELKIES_CLIPBOARD_OUT_ENABLED="false|locked" \
+    SELKIES_ENABLE_CLIPBOARD=in \
     SELKIES_COMMAND_ENABLED="false|locked" \
     SELKIES_FILE_TRANSFERS=upload
 

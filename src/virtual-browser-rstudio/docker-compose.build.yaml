@@ -1,0 +1,10 @@
+# Used only for initial provisioning.
+services:
+  browser:
+    build:
+      context: ../browser-common
+      args:
+        APP_ORIGIN: "application-server:8787"
+  app:
+    image: "ghcr.io/rocker-org/devcontainer/tidyverse@sha256:3a9ecbed900f17da528cdb17c3ddc43045fc9b4be7dbd8c61cb7b8a6439bfa6b"
+    pull_policy: missing

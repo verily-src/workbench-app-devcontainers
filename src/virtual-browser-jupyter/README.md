@@ -15,12 +15,14 @@ Serves JupyterLab through a server-side Chromium session streamed to your browse
 
 Two containers on a shared network:
 
-- `application-server` — Chromium rendered by [Selkies](https://github.com/selkies-project) and
-  streamed on port `3000`. This is the published, proxied container.
-- `jupyterlab` — the JupyterLab server on `8888`, reachable only on the internal `app-network`.
+- `browser` — Chromium rendered by [Selkies](https://github.com/selkies-project) and
+  streamed on port `3000`. Its `com.verily.workbench.proxy-target: "true"` label
+  selects it for proxy traffic.
+- `application-server` (Compose service `app`) — the JupyterLab server on `8888`,
+  reachable only on the internal `backend-network`.
 
 You see a video stream of Chromium running on the VM, started in `--kiosk` mode at
-`http://jupyterlab:8888` — fullscreen, no tab strip, address bar, or window decorations, just the
+`http://application-server:8888` — fullscreen, no tab strip, address bar, or window decorations, just the
 JupyterLab UI. The Selkies sidebar provides uploads, display settings, and a clipboard panel for
 pasting text into the session.
 
@@ -40,17 +42,38 @@ panel, click back into JupyterLab, and press Ctrl+V (Ctrl+Shift+V in its termina
 ## Configuring
 
 The browser front end (Dockerfile, policy template, Selkies env) lives in `../browser-common`. This
-template only supplies the JupyterLab-specific values in `docker-compose.yaml`, two of which must
+template supplies JupyterLab-specific values in `docker-compose.build.yaml` and `docker-compose.yaml`, two of which must
 match:
 
-- `app.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
+- `browser.build.args.APP_ORIGIN` — baked into the policy `URLAllowlist`; the only origin the browser
   can reach.
-- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://jupyterlab:8888`).
+- `CHROME_CLI` URL — the origin Chromium opens (`--kiosk … http://application-server:8888`).
 
-Both are `http://jupyterlab:8888` here. `URLBlocklist` is `["*"]`, so nothing else loads.
+Both use `application-server:8888` here. The `app` hostname is HSTS-preloaded in
+Chromium and would force HTTPS against the HTTP backend. `URLBlocklist` is `["*"]`,
+so nothing else loads.
 
 Other configs:
 
 - `shmSize` / `memoryLimit` apply to the JupyterLab container.
 - Shared Selkies defaults are `ENV` in the `browser-common` image; override any in this service's
   `environment`.
+
+### Hardware changes
+
+After the first successful startup, JupyterLab is snapshotted once to
+`workbench-local-snapshot:devcontainer`. GPU, shared-memory or memory-limit changes
+recreate it from that initial snapshot with the new settings. The browser container
+stays running; a stopped browser is started without recreation on restore. First boot
+also loads `docker-compose.build.yaml`; later recreation
+needs no builds or image pulls. Completed setup stays skipped and startup hooks run.
+
+Packages installed during initial setup survive. Later changes outside mounted
+directories are lost on recreation.
+
+`/home/jupyter` uses the `jupyter-home` named volume. Docker seeds the image's home
+files and ownership on first use. Notebooks and other home files survive recreation
+without being included in snapshots.
+
+The VM host records setup completion and mounts the marker directory read-only in
+the backend. See the [startup lifecycle](../../startupscript/butane/README.md) for details.

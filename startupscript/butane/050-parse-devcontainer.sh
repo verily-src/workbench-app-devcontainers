@@ -7,6 +7,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
 
 function usage {
   echo "Usage: $0 <path/to/devcontainer> <gcp/aws> <login>"
@@ -76,8 +78,8 @@ detect_gpu() {
 
 handle_container_state_changed() {
     # Each argument is a "key=value" pair representing current container state.
-    # Removes the application-server container if any value has changed since last run.
-    local rebuild=false
+    # Removes application-server if any value has changed since last run.
+    local rebuild=false id
 
     if [[ ! -f "${CONTAINER_STATE_FILE}" ]]; then
         echo "First run, initializing container state"
@@ -98,7 +100,8 @@ handle_container_state_changed() {
     fi
 
     if [[ "${rebuild}" == "true" ]]; then
-        docker rm -f application-server
+        id=$(get_application_container)
+        [[ -z "$id" ]] || docker rm -f "$id"
     fi
 
     printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
@@ -108,14 +111,17 @@ apply_gpu_runtime() {
     local DOCKER_COMPOSE_PATH="$1"
     local GPU_RUNTIME_BLOCK_PATH="$2"
     local TEMP_COMPOSE_PATH="${DOCKER_COMPOSE_PATH}.tmp"
+    local SERVICE="${3:-app}"
 
     echo "Applying GPU runtime configuration in ${DOCKER_COMPOSE_PATH}"
 
-    # Use awk to insert the GPU runtime block after the "app:" line in the docker-compose.yaml file
-    awk -v gpu_config_path="$GPU_RUNTIME_BLOCK_PATH" '
-    /^[[:space:]]*app:/ {                 # Match the line containing "app:" (can be indented)
-        print $0;                         # Print the "app:" line as-is
+    # Insert GPU reservations into the application service, including virtual-browser backends.
+    awk -v gpu_config_path="$GPU_RUNTIME_BLOCK_PATH" -v service="$SERVICE" '
+    $0 ~ "^[[:space:]]*" service ":" {
+        print $0;                         # Print the service line as-is
         system("cat " gpu_config_path);   # Insert the GPU runtime block by reading from the specified file
+        print "";                        # Separate the next line even if the snippet has no final newline
+        next;
     }
     {
         print $0;                         # For all other lines, print them unchanged
@@ -131,7 +137,8 @@ if [[ $# -lt 3 ]]; then
     usage
 fi
 
-readonly DEVCONTAINER_PATH="$1"
+DEVCONTAINER_PATH=$(cd "$1" && pwd)
+readonly DEVCONTAINER_PATH
 readonly CLOUD="$2"
 readonly LOGIN="$3"
 readonly CONTAINER_IMAGE="${4:-debian:trixie}"
@@ -188,9 +195,6 @@ if [[ -d "${DEVCONTAINER_FEATURES_PATH}" ]]; then
     rsync -a --ignore-existing "${DEVCONTAINER_FEATURES_PATH}/" "${DEVCONTAINER_PATH}/.devcontainer/features"
 fi
 
-/home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
-    echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2
-
 # shellcheck source=/dev/null
 source '/home/core/metadata-utils.sh'
 SHM_SIZE="$(get_metadata_value "shm-size" "")"
@@ -203,7 +207,7 @@ if [[ ! "${SHM_SIZE}" =~ ^[0-9]+[bBkKmMgG][bB]?$ ]]; then
 fi
 readonly SHM_SIZE
 
-# Calculate memory limit for application-server container
+# Calculate memory limit for the application container
 CONTAINER_MEM_LIMIT=$(calculate_container_memory_limit)
 readonly CONTAINER_MEM_LIMIT
 
@@ -214,21 +218,31 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
 fi
 
 gpu_exists=$(detect_gpu; echo $?)
-handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}" "mem-limit=${CONTAINER_MEM_LIMIT}"
+readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
+APP_SERVICE=$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" |
+    jq -r '.service')
 
 # Apply GPU runtime configuration if GPU is present
 if [[ "${gpu_exists}" == "0" ]]; then
     echo "NVIDIA GPU detected, applying GPU runtime configuration"
-    apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}"
+    apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}" "${APP_SERVICE}"
 else
     echo "No NVIDIA GPU detected, skipping GPU runtime configuration"
 fi
 
 echo 'publishing devcontainer.json to metadata'
-readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
 DEVCONTAINER_CUSTOMIZATIONS="$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" | jq -c .customizations.workbench)"
 readonly DEVCONTAINER_CUSTOMIZATIONS
 set_metadata 'devcontainer/customizations' "${DEVCONTAINER_CUSTOMIZATIONS}"
+
+# Restoring an airlocked snapshot uses its installed features without registry access.
+if [[ $(jq -r '.AIRLOCK_ENABLED // false' <<< "$DEVCONTAINER_CUSTOMIZATIONS") == true ]] &&
+    docker image inspect workbench-local-snapshot:devcontainer >/dev/null 2>&1; then
+    echo "Using initial snapshot; skipping OCI feature prefetch"
+else
+    /home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
+        echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2
+fi
 
 # Convert secrets.yml to JSON for use by credential helpers and provide-secrets
 rm -f /home/core/secrets.json
@@ -238,3 +252,6 @@ if [[ -f "${SECRETS_YML}" ]]; then
   docker run --rm -v "${SECRETS_YML}:/secrets.yml:ro" \
     mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 -o=json '.secrets' /secrets.yml > /home/core/secrets.json
 fi
+
+# Track all hardware settings for application-server.
+handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}" "mem-limit=${CONTAINER_MEM_LIMIT}"

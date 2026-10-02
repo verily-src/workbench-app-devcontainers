@@ -1,95 +1,56 @@
-# Script Tests
+# Script tests
 
-This directory contains tests for scripts in the `scripts/` and `startupscript/` directories.
-
-## Prerequisites
-
-Install [bats-core](https://github.com/bats-core/bats-core) to run the tests:
+Run from the repository root. Requires Bats, Node.js and jq; integration tests
+also require Docker with Compose.
 
 ```bash
-# On macOS with Homebrew
-brew install bats-core
+npm ci --prefix startupscript/butane
+bats scripts/test/parse-devcontainer.bats scripts/test/devcontainer.bats scripts/test/container-utils.bats
 
-# On Ubuntu/Debian
-sudo apt-get install bats
-
-# Or install from source
-git clone https://github.com/bats-core/bats-core.git
-cd bats-core
-sudo ./install.sh /usr/local
+docker pull python:3.12-alpine
+docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
+bats scripts/test/integration
 ```
 
-## Running Tests
+- `parse-devcontainer.bats`: missing memory keys, exact key matching, and failed
+  Docker operations preserving saved state until a successful retry.
+- `devcontainer.bats`: stale setup markers, failed startup/snapshot/restore retries,
+  and ordinary apps ignoring snapshots and creating no Airlock state in either
+  supported config location.
+- `container-utils.bats`: default routing, project-scoped proxy overrides, invalid
+  lookups, readiness requiring both the app and frontend, and metadata errors/overrides.
+- `integration/devcontainer.bats`: repeated offline restoration of the same initial
+  snapshot, preserving setup-time files, the running browser, home data, and
+  startup hooks while discarding later writable-layer changes; named home volume
+  initialization, ownership, and exclusion from snapshots;
+  read-only completion markers, restoration leaving a renamed and stopped browser intact,
+  and standard-app startup/recreation with other devcontainers on the host. The
+  same lifecycle verifies that similar names and proxy labels in another Compose
+  project do not interfere with app lookup.
+- `integration/parse-devcontainer.bats`: runs the complete parser in Linux against
+  the Jupyter, RStudio, and regular R templates. Covers first creation, unchanged
+  restarts, independent hardware changes, GPU removal, invalid and fallback shared
+  memory, unset memory limits, workspace path normalization, and skipping prefetch
+  only for airlocked snapshots. Also validates first-boot Compose overrides and
+  runtime mounts/images. Docker and cloud metadata are mocked; the parser runs
+  without network access.
+- `integration/startup-validation.bats`: mandatory proxy-start and readiness checks
+  reject incomplete airlock setup or missing snapshots despite healthy containers;
+  proxy startup starts the selected frontend before inspecting its port and stops
+  on startup failure; ordinary apps retain their existing startup behavior.
 
-### Run all tests
+Integration tests use isolated container/image names and clean up their own
+resources. Missing feature sources and a broken build file catch accidental
+feature installation or rebuilding during restore. Physical GPU transitions
+still require a GPU VM.
 
-```bash
-cd scripts/test
-bats .
-```
-
-### Run a specific test file
+Scaffolding tests create and remove `src/test-app`; run them in a disposable
+checkout:
 
 ```bash
 bats scripts/test/create-custom-app.bats
 ```
 
-### Run a specific test case
-
-```bash
-bats scripts/test/create-custom-app.bats --filter "shows usage"
-```
-
-## Test Coverage
-
-### create-custom-app.bats
-
-Tests for the `create-custom-app.sh` script:
-
-- ✅ Usage/help message validation
-- ✅ Minimal arguments (defaults to root user)
-- ✅ Custom username and home directory
-- ✅ Generated `.devcontainer.json` structure
-- ✅ Generated `docker-compose.yaml` structure
-- ✅ Generated `devcontainer-template.json` with correct defaults
-- ✅ Generated README.md content
-- ✅ Home directory defaults (/root for root, /home/username otherwise)
-- ✅ Valid JSON output
-- ✅ Success message output
-
-### parse-devcontainer.bats
-
-Tests for container state handling in `startupscript/butane/050-parse-devcontainer.sh`:
-
-- Container removal when the memory limit, GPU state, or shared memory size changes
-- Container preservation when the state is unchanged
-- Exact key matching regardless of line order or similarly named keys
-- Read failures stop startup without removing the container or overwriting state
-- Migration of state files missing the memory limit, including an empty limit, under startup's shell settings
-- Memory limit tracking in the startup script
-
-## Writing New Tests
-
-Follow the bats format:
-
-```bash
-@test "description of test" {
-    run ./your-script.sh args
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"expected string"* ]]
-}
-```
-
-Use the `setup()` and `teardown()` functions to manage test state:
-
-```bash
-setup() {
-    # Runs before each test
-    TEST_TEMP_DIR="$(mktemp -d)"
-}
-
-teardown() {
-    # Runs after each test
-    rm -rf "${TEST_TEMP_DIR}"
-}
-```
+Use Bats `--filter` to run a single case. CI runs all unit and integration tests.
+The workflow also runs `tests/update-flatcar.bats` and the Linux-only
+`tests/test-codeartifact.bats` suite.

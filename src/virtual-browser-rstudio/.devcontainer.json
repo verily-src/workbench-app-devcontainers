@@ -1,14 +1,16 @@
 {
   "name": "RStudio in a Virtual Browser devcontainer template",
-  "dockerComposeFile": "docker-compose.yaml",
-  "service": "rstudio",
-  "runServices": ["app", "rstudio"],
+  "dockerComposeFile": ["docker-compose.yaml", "docker-compose.build.yaml"],
+  "service": "app",
+  "runServices": ["browser", "app"],
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
+  // The host records successful setup in a directory mounted read-only here.
   "postCreateCommand": [
-    "env",
-    "WORKBENCH_CONFIGURE_CODEARTIFACT=true",
-    "./startupscript/post-startup.sh",
+    "sh",
+    "-ec",
+    "if [ ! -f /var/lib/workbench/setup/post-create.done ]; then WORKBENCH_CONFIGURE_CODEARTIFACT=true ./startupscript/post-startup.sh \"$@\"; fi",
+    "--",
     "rstudio",
     "/home/rstudio",
     "${templateOption:cloud}",
@@ -51,5 +53,10 @@
       "version": "16"
     }
   },
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "AIRLOCK_ENABLED": true
+    }
+  }
 }

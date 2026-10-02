@@ -1,11 +1,11 @@
 services:
-  # Browser front end, built from the shared ../browser-common image (Selkies + policy baked in).
-  app:
-    container_name: "application-server"
-    build:
-      context: ../browser-common
-      args:
-        APP_ORIGIN: "rstudio:8787"
+  # Keep the browser container across backend recreation.
+  browser:
+    container_name: "browser"
+    labels:
+      com.verily.workbench.proxy-target: "true"
+    image: workbench-virtual-browser:app
+    pull_policy: never
     # Chromium needs real shared memory to render; the 64MB Docker default causes renderer crashes.
     shm_size: "2gb"
     restart: always
@@ -15,7 +15,8 @@ services:
       - app-network
       - backend-network
     environment:
-      CHROME_CLI: "--kiosk http://rstudio:8787"
+      # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
+      CHROME_CLI: "--kiosk http://application-server:8787"
       FILE_MANAGER_PATH: /uploads
       # Run the browser as the backend's user so uploaded files are writable there, not just readable.
       PUID: 1000
@@ -24,14 +25,17 @@ services:
     volumes:
       - browser-uploads:/uploads
 
-  rstudio:
-    container_name: "rstudio"
-    image: "ghcr.io/rocker-org/devcontainer/tidyverse@sha256:3a9ecbed900f17da528cdb17c3ddc43045fc9b4be7dbd8c61cb7b8a6439bfa6b"
+  app:
+    container_name: "application-server"
+    image: workbench-local-snapshot:devcontainer
+    pull_policy: never
+    # Hardware template options belong only to the backend.
     shm_size: "${templateOption:shmSize}"
     mem_limit: "${templateOption:memoryLimit}"
     restart: always
     volumes:
       - .:/workspace:cached
+      - ${WORKBENCH_SETUP_STATE_DIR:-/home/core/container-state.d/setup}:/var/lib/workbench/setup:ro
       - work:/home/rstudio:cached
       - browser-uploads:/home/rstudio/browser-uploads
     tmpfs:

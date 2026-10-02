@@ -1,13 +1,11 @@
-include:
-  - ../jupyter-common/jupyter-common-compose.yaml
 services:
-  # Browser front end, built from the shared ../browser-common image (Selkies + policy baked in).
-  app:
-    container_name: "application-server"
-    build:
-      context: ../browser-common
-      args:
-        APP_ORIGIN: "jupyterlab:8888"
+  # Keep the browser container across backend recreation.
+  browser:
+    container_name: "browser"
+    labels:
+      com.verily.workbench.proxy-target: "true"
+    image: workbench-virtual-browser:app
+    pull_policy: never
     restart: always
     ports:
       - "3000:3000"
@@ -15,7 +13,8 @@ services:
       - app-network
       - backend-network
     environment:
-      CHROME_CLI: "--kiosk http://jupyterlab:8888"
+      # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
+      CHROME_CLI: "--kiosk http://application-server:8888"
       FILE_MANAGER_PATH: /uploads
       # Run the browser as the backend's user so uploaded files are writable there, not just readable.
       PUID: 1001
@@ -24,19 +23,22 @@ services:
     volumes:
       - browser-uploads:/uploads
 
-  jupyterlab:
-    container_name: "jupyterlab"
-    build:
-      context: .
-      additional_contexts:
-        jupyter-extension-builder: service:jupyter-common-extension-builder
+  app:
+    container_name: "application-server"
+    image: workbench-local-snapshot:devcontainer
+    pull_policy: never
     user: "jupyter"
+    # Hardware template options belong only to the backend.
     shm_size: "${templateOption:shmSize}"
     mem_limit: "${templateOption:memoryLimit}"
     restart: always
     volumes:
       - .:/workspace:cached
+      - jupyter-home:/home/jupyter
+      - ${WORKBENCH_SETUP_STATE_DIR:-/home/core/container-state.d/setup}:/var/lib/workbench/setup:ro
       - browser-uploads:/home/jupyter/browser-uploads
+    tmpfs:
+      - /home/jupyter/workspace:uid=1001,gid=1001
     networks:
       - backend-network
     cap_add:
@@ -50,4 +52,5 @@ networks:
     external: true
   backend-network:
 volumes:
+  jupyter-home:
   browser-uploads:

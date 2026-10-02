@@ -36,7 +36,13 @@
 # Extract ECR registry URLs and associated repository IDs from Workbench resources
 function get_ecr_registries() {
     local raw_resources
-    raw_resources="$(/home/core/wb.sh resource list --format json)" || true
+    # Filter by type so the CLI does not list objects in S3 storage folders,
+    # which fails for folders this VM cannot reach.
+    raw_resources="$(
+        for type in AWS_ECR_EXTERNAL_REPOSITORY AWS_ECR_EXTERNAL_REPOSITORY_REFERENCE; do
+            /home/core/wb.sh resource list --type="${type}" --format json
+        done | jq -s 'add // []'
+    )" || true
 
     # This awk command is used to discard any duplicate entries:
     #

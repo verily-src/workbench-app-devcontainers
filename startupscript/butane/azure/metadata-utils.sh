@@ -26,10 +26,23 @@ function get_tag() {
 }
 readonly -f get_tag
 
-# Azure VM uses tags instead of metadata. But to keep the interface consistent with GCP, this method retrieves tags set by the user.
-# They are prefixed with vwbusr.
+# Azure VM uses tags for read-only metadata prefixed with `vwbusr:`.
+# But to keep the interface consistent with GCP, this method retrieves tags set by the user.
 function get_metadata_value() {
-  get_tag "vwbusr" "${1}" "${2}"
+  if [[ $# -lt 2 ]]; then
+    echo "usage: get_metadata_value <tag> <default-value>"
+    exit 1
+  fi
+
+  local tags
+  tags=$(curl --retry 5 -s -f --noproxy "*" -H "Metadata:true" \
+    "http://169.254.169.254/metadata/instance/compute/tagsList?api-version=2025-04-07") || {
+    echo "${2}"
+    return
+  }
+
+  jq -r --arg key "vwbusr:${1}" --arg default "${2}" \
+    'map(select(.name == $key))[0].value // $default' <<< "${tags}"
 }
 readonly -f get_metadata_value
 

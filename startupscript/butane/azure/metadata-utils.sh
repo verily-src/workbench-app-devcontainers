@@ -24,13 +24,14 @@ readonly -f get_metadata_value
 
 # Retrieves logs and metadata storage credentials for the Azure VM resource from WSM.
 # These credentials are valid for 1 hour, and the CLI reuses cached credentials until 5 minutes before expiry.
-function get_resource_credentials() {
+function get_vm_resource_credentials() {
   /home/core/wb.sh resource credentials --name "$(hostname)" --duration 3600 --format json
 }
+readonly -f get_vm_resource_credentials
 
 # GETs or PUTs vwbapp-prefixed VM metadata from/to Azure Table storage.
 # Tracing is disabled to prevent credential leakage in logs.
-function azure_metadata_request() (
+function metadata_table_request() (
   { set +o xtrace; } 2>/dev/null
 
   # RowKey cannot contain /, so we replace every / with .
@@ -42,7 +43,7 @@ function azure_metadata_request() (
   resource_id=$(source /home/core/agent.env && echo "${BACKEND}") || return 1
 
   local credentials resource_uri request_uri sas_token
-  credentials=$(get_resource_credentials) || return 1
+  credentials=$(get_vm_resource_credentials) || return 1
   resource_uri=$(jq -er '.metadata.resourceUri' <<< "${credentials}") || return 1
   sas_token=$(jq -er '.metadata.sasToken' <<< "${credentials}") || return 1
   request_uri="${resource_uri}(PartitionKey='${resource_id}',RowKey='${row_key}')?${sas_token}"
@@ -76,7 +77,7 @@ function azure_metadata_request() (
     return 1
   fi
 )
-readonly -f azure_metadata_request
+readonly -f metadata_table_request
 
 # guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, this method retrieves the attributes
 # that are set from the instance, e.g. scripts running inside the instance. They are prefixed with vwbapp:
@@ -85,7 +86,7 @@ function get_guest_attribute() {
     echo "usage: get_guest_attribute <key> <default-value>"
     exit 1
   fi
-  azure_metadata_request "${1}" "${2}" GET
+  metadata_table_request "${1}" "${2}" GET
 }
 readonly -f get_guest_attribute
 
@@ -95,6 +96,6 @@ function set_metadata() {
   local value="${2}"
 
   echo "Setting metadata vwbapp:${key} to ${value}"
-  azure_metadata_request "${1}" "${2}" PUT
+  metadata_table_request "${1}" "${2}" PUT
 }
 readonly -f set_metadata

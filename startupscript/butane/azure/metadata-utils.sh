@@ -28,37 +28,49 @@ function get_resource_credentials() {
   /home/core/wb.sh resource credentials --name "$(hostname)" --duration 3600 --format json
 }
 
-# Retrieves vwbapp-prefixed VM metadata from Azure Table storage.
+# GETs or PUTs vwbapp-prefixed VM metadata from/to Azure Table storage.
 # Tracing is disabled to prevent credential leakage in logs.
 function azure_metadata_request() (
   { set +o xtrace; } 2>/dev/null
-  local row_key="vwbapp:${1//\//.}" # RowKey cannot contain /, so we replace every / with .
-  local default="${2}"
+
+  # RowKey cannot contain /, so we replace every / with .
+  local row_key="vwbapp:${1//\//.}"
+  local value_or_default="${2}"
   local http_method="${3}"
 
   local resource_id
   resource_id=$(source /home/core/agent.env && echo "${BACKEND}") || return 1
 
-  local credentials resource_uri sas_token
+  local credentials resource_uri request_uri sas_token
   credentials=$(get_resource_credentials) || return 1
   resource_uri=$(jq -er '.metadata.resourceUri' <<< "${credentials}") || return 1
   sas_token=$(jq -er '.metadata.sasToken' <<< "${credentials}") || return 1
+  request_uri="${resource_uri}(PartitionKey='${resource_id}',RowKey='${row_key}')?${sas_token}"
+
+  local -a request_args=(-X "${http_method}" -H 'Accept: application/json;odata=nometadata')
+  if [[ "${http_method}" == "PUT" ]]; then
+    local payload
+    payload=$(jq -n \
+      --arg PartitionKey "${resource_id}" \
+      --arg RowKey "${row_key}" \
+      --arg Value "${value_or_default}" '$ARGS.named') || return 1
+    request_args+=(-H 'Content-Type: application/json' --data "${payload}")
+  fi
 
   local response_file
   response_file=$(mktemp)
   trap 'rm -f "${response_file}"' EXIT
 
   local http_code
-  http_code=$(
-    curl --retry 5 -s -o "${response_file}" -w '%{http_code}' -H 'Accept: application/json;odata=nometadata' \
-      -X "${http_method}" "${resource_uri}(PartitionKey='${resource_id}',RowKey='${row_key}')?${sas_token}"
-  ) || return 1
+  http_code=$(curl --retry 5 -s -o "${response_file}" -w '%{http_code}' "${request_args[@]}" "${request_uri}") || return 1
 
-  if [[ "${http_method}" == "GET" && "${http_code}" == "200" ]]; then
+  if [[ "${http_method}" == "PUT" && "${http_code}" == "204" ]]; then
+    return
+  elif [[ "${http_method}" == "GET" && "${http_code}" == "200" ]]; then
     jq -er '.Value' "${response_file}"
   elif [[ "${http_method}" == "GET" && "${http_code}" == "404" ]] &&
        jq -e '."odata.error".code | IN("EntityNotFound", "ResourceNotFound")' "${response_file}" >/dev/null; then
-    echo "${default}"
+    echo "${value_or_default}"
   else
     echo "Error: ${http_method} guest attribute ${1} failed: HTTP ${http_code} $(<"${response_file}")" >&2
     return 1
@@ -67,7 +79,7 @@ function azure_metadata_request() (
 readonly -f azure_metadata_request
 
 # guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, this method retrieves the attributes
-# that are set from the instance, e.g. scripts running inside the instance. They are prefixed with vwbapp.
+# that are set from the instance, e.g. scripts running inside the instance. They are prefixed with vwbapp:
 function get_guest_attribute() {
   if [[ $# -lt 2 ]]; then
     echo "usage: get_guest_attribute <key> <default-value>"
@@ -77,12 +89,12 @@ function get_guest_attribute() {
 }
 readonly -f get_guest_attribute
 
-# Sets tags on the Azure VM with the given key and value. Tags set from the VM are is prefixed with vwbapp:
+# Sets metadata for the Azure VM with the given key and value. Metadata keys are prefixed with vwbapp:
 function set_metadata() {
   local key="${1}"
   local value="${2}"
 
-  echo "Creating tag vwbapp:${key} to ${value}"
-  # TODO: write tags via Azure ARM REST API using managed identity
+  echo "Setting metadata vwbapp:${key} to ${value}"
+  azure_metadata_request "${1}" "${2}" PUT
 }
 readonly -f set_metadata

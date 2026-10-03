@@ -28,18 +28,13 @@ function get_resource_credentials() {
   /home/core/wb.sh resource credentials --name "$(hostname)" --duration 3600 --format json
 }
 
-# Guest attributes are not supported on Azure VMs. But to keep the interface consistent with GCP,
-# this method retrieves the attributes that are set from the VM, e.g. scripts running inside the VM.
-# They are prefixed with `vwbapp:` and are stored inside Azure Table storage.
+# Retrieves vwbapp-prefixed VM metadata from Azure Table storage.
 # Tracing is disabled to prevent credential leakage in logs.
-function get_guest_attribute() (
+function azure_metadata_request() (
   { set +o xtrace; } 2>/dev/null
-  if [[ $# -lt 2 ]]; then
-    echo "usage: get_guest_attribute <key> <default-value>"
-    exit 1
-  fi
-  # RowKey cannot contain /, so we replace every / with .
-  local row_key="vwbapp:${1//\//.}"
+  local row_key="vwbapp:${1//\//.}" # RowKey cannot contain /, so we replace every / with .
+  local default="${2}"
+  local http_method="${3}"
 
   local resource_id
   resource_id=$(source /home/core/agent.env && echo "${BACKEND}") || return 1
@@ -56,20 +51,31 @@ function get_guest_attribute() (
   local http_code
   http_code=$(
     curl --retry 5 -s -o "${response_file}" -w '%{http_code}' -H 'Accept: application/json;odata=nometadata' \
-      "${resource_uri}(PartitionKey='${resource_id}',RowKey='${row_key}')?${sas_token}") || return 1
+      -X "${http_method}" "${resource_uri}(PartitionKey='${resource_id}',RowKey='${row_key}')?${sas_token}"
+  ) || return 1
 
-  if [[ "${http_code}" == "200" ]]; then
+  if [[ "${http_method}" == "GET" && "${http_code}" == "200" ]]; then
     jq -er '.Value' "${response_file}"
-  elif [[ "${http_code}" == "404" ]] &&
+  elif [[ "${http_method}" == "GET" && "${http_code}" == "404" ]] &&
        jq -e '."odata.error".code | IN("EntityNotFound", "ResourceNotFound")' "${response_file}" >/dev/null; then
-    echo "${2}"
+    echo "${default}"
   else
-    echo "Error: failed to retrieve guest attribute ${1}: HTTP ${http_code} $(< "${response_file}")" >&2
+    echo "Error: ${http_method} guest attribute ${1} failed: HTTP ${http_code} $(<"${response_file}")" >&2
     return 1
   fi
 )
-readonly -f get_guest_attribute
+readonly -f azure_metadata_request
 
+# guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, this method retrieves the attributes
+# that are set from the instance, e.g. scripts running inside the instance. They are prefixed with vwbapp.
+function get_guest_attribute() {
+  if [[ $# -lt 2 ]]; then
+    echo "usage: get_guest_attribute <key> <default-value>"
+    exit 1
+  fi
+  azure_metadata_request "${1}" "${2}" GET
+}
+readonly -f get_guest_attribute
 
 # Sets tags on the Azure VM with the given key and value. Tags set from the VM are is prefixed with vwbapp:
 function set_metadata() {

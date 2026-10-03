@@ -22,6 +22,12 @@ function get_metadata_value() {
 }
 readonly -f get_metadata_value
 
+# Retrieves logs and metadata storage credentials for the Azure VM resource from WSM.
+# These credentials are valid for 1 hour, and the CLI reuses cached credentials until 5 minutes before expiry.
+function get_resource_credentials() {
+  /home/core/wb.sh resource credentials --name "$(hostname)" --duration 3600 --format json
+}
+
 # guest attributes are not supported on Azure VMs. But to keep the interface consistent with GCP, this method retrieves the attributes
 # that are set from the VM, e.g. scripts running inside the VM. They are prefixed with vwbapp.
 function get_guest_attribute() {

@@ -28,11 +28,46 @@ function get_resource_credentials() {
   /home/core/wb.sh resource credentials --name "$(hostname)" --duration 3600 --format json
 }
 
-# guest attributes are not supported on Azure VMs. But to keep the interface consistent with GCP, this method retrieves the attributes
-# that are set from the VM, e.g. scripts running inside the VM. They are prefixed with vwbapp.
-function get_guest_attribute() {
-  get_tag "vwbapp" "${1}" "${2}"
-}
+# Guest attributes are not supported on Azure VMs. But to keep the interface consistent with GCP,
+# this method retrieves the attributes that are set from the VM, e.g. scripts running inside the VM.
+# They are prefixed with `vwbapp:` and are stored inside Azure Table storage.
+# Tracing is disabled to prevent credential leakage in logs.
+function get_guest_attribute() (
+  { set +o xtrace; } 2>/dev/null
+  if [[ $# -lt 2 ]]; then
+    echo "usage: get_guest_attribute <key> <default-value>"
+    exit 1
+  fi
+  # RowKey cannot contain /, so we replace every / with .
+  local row_key="vwbapp:${1//\//.}"
+
+  local resource_id
+  resource_id=$(source /home/core/agent.env && echo "${BACKEND}") || return 1
+
+  local credentials resource_uri sas_token
+  credentials=$(get_resource_credentials) || return 1
+  resource_uri=$(jq -er '.metadata.resourceUri' <<< "${credentials}") || return 1
+  sas_token=$(jq -er '.metadata.sasToken' <<< "${credentials}") || return 1
+
+  local response_file
+  response_file=$(mktemp)
+  trap 'rm -f "${response_file}"' EXIT
+
+  local http_code
+  http_code=$(
+    curl --retry 5 -s -o "${response_file}" -w '%{http_code}' -H 'Accept: application/json;odata=nometadata' \
+      "${resource_uri}(PartitionKey='${resource_id}',RowKey='${row_key}')?${sas_token}") || return 1
+
+  if [[ "${http_code}" == "200" ]]; then
+    jq -er '.Value' "${response_file}"
+  elif [[ "${http_code}" == "404" ]] &&
+       jq -e '."odata.error".code | IN("EntityNotFound", "ResourceNotFound")' "${response_file}" >/dev/null; then
+    echo "${2}"
+  else
+    echo "Error: failed to retrieve guest attribute ${1}: HTTP ${http_code} $(< "${response_file}")" >&2
+    return 1
+  fi
+)
 readonly -f get_guest_attribute
 
 

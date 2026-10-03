@@ -31,8 +31,8 @@ readonly -f get_vm_resource_credentials
 
 # GETs or PUTs vwbapp-prefixed VM metadata from/to Azure Table storage.
 # Tracing is disabled to prevent credential leakage in logs.
-function metadata_table_request() (
-  { set +o xtrace; } 2>/dev/null
+function _metadata_table_request() (
+  { set -euo pipefail +o xtrace; } 2>/dev/null
 
   # RowKey cannot contain /, so we replace every / with .
   local row_key="vwbapp:${1//\//.}"
@@ -40,13 +40,12 @@ function metadata_table_request() (
   local http_method="${3}"
 
   local resource_id
-  resource_id=$(source /home/core/agent.env && echo "${BACKEND}") || return 1
+  resource_id=$(source /home/core/agent.env && echo "${BACKEND}")
 
-  local credentials resource_uri request_uri sas_token
-  credentials=$(get_vm_resource_credentials) || return 1
-  resource_uri=$(jq -er '.metadata.resourceUri' <<< "${credentials}") || return 1
-  sas_token=$(jq -er '.metadata.sasToken' <<< "${credentials}") || return 1
-  request_uri="${resource_uri}(PartitionKey='${resource_id}',RowKey='${row_key}')?${sas_token}"
+  local request_uri
+  request_uri=$(get_vm_resource_credentials |
+    jq -er --arg entity "(PartitionKey='${resource_id}',RowKey='${row_key}')" \
+      '.metadata | (.resourceUri // empty) + $entity + "?" + (.sasToken // empty)')
 
   local -a request_args=(-X "${http_method}" -H 'Accept: application/json;odata=nometadata')
   if [[ "${http_method}" == "PUT" ]]; then
@@ -54,7 +53,7 @@ function metadata_table_request() (
     payload=$(jq -n \
       --arg PartitionKey "${resource_id}" \
       --arg RowKey "${row_key}" \
-      --arg Value "${value_or_default}" '$ARGS.named') || return 1
+      --arg Value "${value_or_default}" '$ARGS.named')
     request_args+=(-H 'Content-Type: application/json' --data "${payload}")
   fi
 
@@ -63,7 +62,7 @@ function metadata_table_request() (
   trap 'rm -f "${response_file}"' EXIT
 
   local http_code
-  http_code=$(curl --retry 5 -s -o "${response_file}" -w '%{http_code}' "${request_args[@]}" "${request_uri}") || return 1
+  http_code=$(curl --retry 5 -s -o "${response_file}" -w '%{http_code}' "${request_args[@]}" "${request_uri}")
 
   if [[ "${http_method}" == "PUT" && "${http_code}" == "204" ]]; then
     return
@@ -77,7 +76,7 @@ function metadata_table_request() (
     return 1
   fi
 )
-readonly -f metadata_table_request
+readonly -f _metadata_table_request
 
 # guest attributes are not supported on EC2 instances. But to keep the interface consistent with GCP, this method retrieves the attributes
 # that are set from the instance, e.g. scripts running inside the instance. They are prefixed with vwbapp:
@@ -86,7 +85,7 @@ function get_guest_attribute() {
     echo "usage: get_guest_attribute <key> <default-value>"
     exit 1
   fi
-  metadata_table_request "${1}" "${2}" GET
+  _metadata_table_request "${1}" "${2}" GET
 }
 readonly -f get_guest_attribute
 
@@ -96,6 +95,6 @@ function set_metadata() {
   local value="${2}"
 
   echo "Setting metadata vwbapp:${key} to ${value}"
-  metadata_table_request "${1}" "${2}" PUT
+  _metadata_table_request "${1}" "${2}" PUT
 }
 readonly -f set_metadata

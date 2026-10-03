@@ -91,40 +91,52 @@ case "${CLOUD}" in
         ;;
 
     azure)
-        echo "Fetching instance metadata from Azure metadata service..."
-        nonce=$(date -d "+5 minutes" +%s)
-        TOKEN=$(curl -sH Metadata:true "http://169.254.169.254/metadata/attested/document?api-version=2025-04-07&nonce=$nonce" | jq -r .signature)
-        readonly TOKEN # currently unused, see below
+        shopt -s lastpipe
 
-        # For now, we fetch these values from instance tags;
-        # in full implementation these will be returned by WSM based on $TOKEN
-        TAGS=$(curl -sH Metadata:true "http://169.254.169.254/metadata/instance/compute/tagsList?api-version=2025-04-07")
-        readonly TAGS
+        source /home/core/metadata-utils.sh
 
-        vm_tag() {
-            echo "${TAGS}" | jq -r ".[] | select(.name == \"$1\") | .value"
+        CONFIG=/etc/fluent-bit.conf
+        TEMPLATE=/etc/fluent-bit.conf.template
+        chmod 600 "${CONFIG}"
+
+        # Retain the placeholders across service restarts.
+        if [[ ! -f "${TEMPLATE}" ]]; then
+            cp "${CONFIG}" "${TEMPLATE}"
+        fi
+
+        refresh_credentials() {
+            local -
+            set -o allexport +o xtrace
+
+            # shellcheck disable=SC2034
+            get_vm_resource_credentials | jq -er '
+                .logs
+                | (.sasToken // empty) as $sas_token
+                | (.expiryTime // empty | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) as $expiry
+                | .resourceUri
+                | capture(
+                    "^https://(?<account>[^.]+)\\.blob\\.[^/]+/(?<container>[^/]+)(?<path>/.*)$"
+                  )
+                | [.account, .container, .path, $sas_token, $expiry]
+                | @tsv
+            ' | read -r STORAGE_ACCOUNT STORAGE_CONTAINER STORAGE_PATH SAS_TOKEN EXPIRES_AT || return 1
+
+            # shellcheck disable=SC2016
+            envsubst '${STORAGE_ACCOUNT} ${STORAGE_CONTAINER} ${STORAGE_PATH} ${SAS_TOKEN}' \
+                < "${TEMPLATE}" > "${CONFIG}"
         }
-        STORAGE_ACCOUNT=$(vm_tag STORAGE_ACCOUNT)
-        readonly STORAGE_ACCOUNT
-        STORAGE_CONTAINER=$(vm_tag STORAGE_CONTAINER)
-        readonly STORAGE_CONTAINER
-        SAS_TOKEN_1=$(vm_tag SAS_TOKEN_1)
-        readonly SAS_TOKEN_1
-        SAS_TOKEN_2=$(vm_tag SAS_TOKEN_2)
-        readonly SAS_TOKEN_2
 
-        echo "  Storage account: ${STORAGE_ACCOUNT}"
-        echo "  Storage container: ${STORAGE_CONTAINER}"
-        echo "  SAS token: ${SAS_TOKEN_1:0:20}...${SAS_TOKEN_2:0:20}..."
-
-        echo "Starting fluent-bit for Azure Blog log Ingestion..."
-        echo "  Image: ${FLUENT_BIT_IMAGE}"
-
-        DOCKER_ARGS+=(
-            --env "STORAGE_ACCOUNT=${STORAGE_ACCOUNT}"
-            --env "STORAGE_CONTAINER=${STORAGE_CONTAINER}"
-            --env "SAS_TOKEN=${SAS_TOKEN_1}${SAS_TOKEN_2}"
-        )
+        refresh_credentials
+        (
+            while true; do
+                sleep "$((EXPIRES_AT - $(date +%s) - 300))"
+                until refresh_credentials ; do
+                    echo "Failed to refresh Fluent Bit credentials; retrying in 30 seconds" >&2
+                    sleep 30
+                done
+                docker kill --signal=HUP fluent-bit
+            done
+        ) &
         ;;
 
     *)

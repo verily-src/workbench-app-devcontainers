@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# metadata-utils.sh defines helper functions for Azure VM tags. This script is intended to be sourced from other scripts
-# to retrieve or modify VM tags. It is run on the VM host.
+# metadata-utils.sh defines helper functions for Azure VM metadata. This script is intended to be sourced from other scripts
+# to retrieve or modify VM metadata. It is run on the VM host.
 
-# Azure VM uses tags for read-only metadata prefixed with `vwbusr:`.
+# Azure VM uses tags for read-only metadata prefixed with vwbusr:
 function get_metadata_value() {
   if [[ $# -lt 2 ]]; then
     echo "usage: get_metadata_value <tag> <default-value>"

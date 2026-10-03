@@ -13,8 +13,8 @@ function get_metadata_value() {
   local tags
   tags=$(curl --retry 5 -s -f --noproxy "*" -H "Metadata:true" \
     "http://169.254.169.254/metadata/instance/compute/tagsList?api-version=2025-04-07") || {
-    echo "${2}"
-    return
+    echo "Error: failed to fetch instance tags when retrieving ${1} metadata key" >&2
+    return 1
   }
 
   jq -r --arg key "vwbusr:${1}" --arg default "${2}" \

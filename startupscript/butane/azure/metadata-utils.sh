@@ -4,7 +4,6 @@
 # to retrieve or modify VM tags. It is run on the VM host.
 
 # Azure VM uses tags for read-only metadata prefixed with `vwbusr:`.
-# But to keep the interface consistent with GCP, this method retrieves tags set by the user.
 function get_metadata_value() {
   if [[ $# -lt 2 ]]; then
     echo "usage: get_metadata_value <tag> <default-value>"

@@ -99,7 +99,6 @@ case "${CLOUD}" in
         TEMPLATE=/etc/fluent-bit.conf.template
         chmod 600 "${CONFIG}"
 
-        # Retain the placeholders across service restarts.
         if [[ ! -f "${TEMPLATE}" ]]; then
             cp "${CONFIG}" "${TEMPLATE}"
         fi

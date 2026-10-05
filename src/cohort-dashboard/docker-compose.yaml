@@ -1,0 +1,26 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/root:cached
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+volumes:
+  work:
+
+networks:
+  app-network:
+    external: true

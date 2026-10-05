@@ -1,0 +1,5 @@
+panel>=1.5
+hvplot>=0.11
+pandas>=2.2
+sqlalchemy>=2.0
+psycopg[binary]>=3.1

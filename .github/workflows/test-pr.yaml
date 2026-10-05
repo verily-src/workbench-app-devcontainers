@@ -28,7 +28,8 @@ jobs:
             - 'startupscript/**'
             - 'tests/common/**'
         config:
-          - cohort-explorer: {}
+          - cohort-dashboard: {}
+            cohort-explorer: {}
             example: {}
             jupyter-template: {}
             r-analysis:

@@ -65,8 +65,8 @@ TARGET_VERSION="$(curl --fail --silent --show-error --proto '=https' --proto-red
 cancel_staged_update() {
   local running_usr
   running_usr="$(rootdev -s /usr)"
-  update_engine_client -reset_status
   cgpt prioritize "$running_usr"
+  update_engine_client -reset_status
 }
 
 # A release rollback must not downgrade a running VM.

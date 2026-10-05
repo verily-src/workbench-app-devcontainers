@@ -302,28 +302,44 @@ def on_register_s3(_event):
         s3_register_button.loading = False
 
 
-demo_table_button = pn.widgets.Button(name="Create demo table")
+demo_table_button = pn.widgets.Button(name="Create synthetic demo table")
+gtex_button = pn.widgets.Button(name="Load GTEx V8 sample data",
+                                button_type="primary")
 
 
-def on_create_demo_table(_event):
+def _seed(button, action, label):
     engine = active_engine()
     if engine is None:
         pn.state.notifications.warning("Select an Aurora resource first.")
         return
-    demo_table_button.loading = True
+    button.loading = True
     try:
-        name = queries.create_demo_table(engine)
-        lineage.record(engine, "demo_table_created", "table", name,
-                       payload={"rows": 500})
-        pn.state.notifications.success(f"Created {name} — select it above.")
+        action(engine)
+        pn.state.notifications.success(f"{label} ready — select it above.")
         on_resource_change()
     except Exception as e:
-        pn.state.notifications.error(f"Demo table failed: {e}", duration=0)
+        pn.state.notifications.error(f"{label} failed: {e}", duration=0)
     finally:
-        demo_table_button.loading = False
+        button.loading = False
 
 
-demo_table_button.on_click(on_create_demo_table)
+def _seed_demo(engine):
+    name = queries.create_demo_table(engine)
+    lineage.record(engine, "demo_table_created", "table", name,
+                   payload={"rows": 500})
+
+
+def _seed_gtex(engine):
+    rows = queries.load_gtex_samples(engine)
+    lineage.record(engine, "gtex_loaded", "table", "gtex_samples",
+                   payload={"rows": rows, "source": queries.GTEX_SAMPLES_URL},
+                   parents=[("url", queries.GTEX_SAMPLES_URL)])
+
+
+demo_table_button.on_click(
+    lambda _e: _seed(demo_table_button, _seed_demo, "demo_samples"))
+gtex_button.on_click(
+    lambda _e: _seed(gtex_button, _seed_gtex, "gtex_samples"))
 
 
 def poll_resources():
@@ -396,9 +412,11 @@ sidebar = pn.Column(
     pn.Accordion(
         ("Upload CSV/TSV (local dev)", pn.Column(csv_input)),
         ("Seed demo data", pn.Column(
-            pn.pane.Markdown("*Creates a 500-row `demo_samples` table in the "
-                             "selected Aurora database for testing.*"),
-            demo_table_button)),
+            pn.pane.Markdown(
+                "*Loads open-access [GTEx V8](https://gtexportal.org/home/) "
+                "sample attributes (~22k rows) or a 500-row synthetic table "
+                "into the selected Aurora database.*"),
+            gtex_button, demo_table_button)),
         ("Register S3 data (aurora_analytics)", pn.Column(
             pn.pane.Markdown(
                 "*Creates a foreign table reading Parquet/Iceberg directly "

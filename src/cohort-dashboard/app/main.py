@@ -19,8 +19,17 @@ import db
 import lineage
 import queries
 
-logging.basicConfig(level=logging.INFO)
+# force=True because Bokeh configures the root logger before this script
+# runs, which would make a plain basicConfig a silent no-op and hide all
+# app logs from the VM log pipeline.
+logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
+
+
+def short_error(e: Exception, limit: int = 200) -> str:
+    """Database errors can embed entire SQL statements; keep toasts readable."""
+    text = str(e).split("\n")[0]
+    return text if len(text) <= limit else text[:limit] + "…"
 
 pn.extension("tabulator", throttled=True, notifications=True)
 
@@ -238,7 +247,7 @@ def on_resource_change(_event=None):
         table_select.options = {
             f"{t['name']} ({t['kind']})": t["name"] for t in tables}
     except Exception as e:
-        pn.state.notifications.error(f"Could not list tables: {e}", duration=0)
+        pn.state.notifications.error(f"Could not list tables: {short_error(e)}", duration=0)
         table_select.options = []
     finally:
         table_select.loading = False
@@ -257,7 +266,7 @@ def on_load_table(_event):
             payload={"resource_id": resource_select.value, "rows": len(df),
                      "row_cap": queries.ROW_CAP})
     except Exception as e:
-        pn.state.notifications.error(f"Load failed: {e}", duration=0)
+        pn.state.notifications.error(f"Load failed: {short_error(e)}", duration=0)
     finally:
         load_button.loading = False
 
@@ -297,7 +306,7 @@ def on_register_s3(_event):
             parents=[("s3", s3_location_input.value.strip())])
         on_resource_change()
     except Exception as e:
-        pn.state.notifications.error(f"Registration failed: {e}", duration=0)
+        pn.state.notifications.error(f"Registration failed: {short_error(e)}", duration=0)
     finally:
         s3_register_button.loading = False
 
@@ -318,7 +327,7 @@ def _seed(button, action, label):
         pn.state.notifications.success(f"{label} ready — select it above.")
         on_resource_change()
     except Exception as e:
-        pn.state.notifications.error(f"{label} failed: {e}", duration=0)
+        pn.state.notifications.error(f"{label} failed: {short_error(e)}", duration=0)
     finally:
         button.loading = False
 

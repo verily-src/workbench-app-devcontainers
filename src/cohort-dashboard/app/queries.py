@@ -99,8 +99,10 @@ def load_gtex_samples(engine: Engine, name: str = "gtex_samples") -> int:
     """Load the open-access GTEx V8 sample attributes into an Aurora table."""
     df = pd.read_csv(GTEX_SAMPLES_URL, sep="\t", low_memory=False)
     df.columns = [c.lower() for c in df.columns]
-    df.to_sql(name, engine, if_exists="fail", index=False,
-              chunksize=2000, method="multi")
+    # Default executemany, not method="multi": 63 columns x a large chunk
+    # exceeds PostgreSQL's 65535 bind-parameter limit per statement.
+    # if_exists="replace" lets a failed load be retried cleanly.
+    df.to_sql(name, engine, if_exists="replace", index=False, chunksize=1000)
     logger.info("Loaded %d GTEx samples into %s", len(df), name)
     return len(df)
 
@@ -118,7 +120,7 @@ def create_demo_table(engine: Engine, name: str = "demo_samples",
         "age": [20 + rng.randrange(60) for _ in range(rows)],
         "case_control": [rng.choice(["case", "control"]) for _ in range(rows)],
     })
-    df.to_sql(name, engine, if_exists="fail", index=False)
+    df.to_sql(name, engine, if_exists="replace", index=False)
     logger.info("Created demo table %s with %d rows", name, rows)
     return name
 

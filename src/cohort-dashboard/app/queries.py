@@ -90,6 +90,24 @@ def create_s3_foreign_table(engine: Engine, name: str, location: str,
     logger.info("Created foreign table %s -> %s", name, location)
 
 
+def create_demo_table(engine: Engine, name: str = "demo_samples",
+                      rows: int = 500):
+    """Seed a small sample table so a fresh database has data to explore."""
+    import random
+    rng = random.Random(7)
+    tissues = ["liver", "lung", "heart", "skin", "kidney"]
+    df = pd.DataFrame({
+        "sample_id": [f"SAMP-{i:05d}" for i in range(rows)],
+        "tissue": [tissues[rng.randrange(len(tissues))] for _ in range(rows)],
+        "rin_score": [round(5 + rng.random() * 5, 1) for _ in range(rows)],
+        "age": [20 + rng.randrange(60) for _ in range(rows)],
+        "case_control": [rng.choice(["case", "control"]) for _ in range(rows)],
+    })
+    df.to_sql(name, engine, if_exists="fail", index=False)
+    logger.info("Created demo table %s with %d rows", name, rows)
+    return name
+
+
 def infer_filter_kinds(df: pd.DataFrame) -> dict[str, str]:
     """Decide which filter control each column gets: categorical, range, or none."""
     kinds = {}

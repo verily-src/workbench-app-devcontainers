@@ -51,6 +51,13 @@ def test_categorical_filter_updates_counts(loaded_page: Page):
            ).to_be_visible(timeout=10000)
 
 
+def test_lineage_records_csv_upload(loaded_page: Page):
+    loaded_page.locator(".bk-tab", has_text="Lineage").click()
+    expect(loaded_page.get_by_text("csv_uploaded").first).to_be_visible(
+        timeout=10000)
+    expect(loaded_page.get_by_text("samples.csv").first).to_be_visible()
+
+
 def test_add_bar_chart_renders(loaded_page: Page):
     kind_select = loaded_page.locator('select:has(option[value="bar"])')
     kind_select.select_option("bar")

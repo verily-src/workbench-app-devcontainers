@@ -90,6 +90,21 @@ def create_s3_foreign_table(engine: Engine, name: str, location: str,
     logger.info("Created foreign table %s -> %s", name, location)
 
 
+GTEX_SAMPLES_URL = (
+    "https://storage.googleapis.com/adult-gtex/annotations/v8/metadata-files/"
+    "GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
+
+
+def load_gtex_samples(engine: Engine, name: str = "gtex_samples") -> int:
+    """Load the open-access GTEx V8 sample attributes into an Aurora table."""
+    df = pd.read_csv(GTEX_SAMPLES_URL, sep="\t", low_memory=False)
+    df.columns = [c.lower() for c in df.columns]
+    df.to_sql(name, engine, if_exists="fail", index=False,
+              chunksize=2000, method="multi")
+    logger.info("Loaded %d GTEx samples into %s", len(df), name)
+    return len(df)
+
+
 def create_demo_table(engine: Engine, name: str = "demo_samples",
                       rows: int = 500):
     """Seed a small sample table so a fresh database has data to explore."""

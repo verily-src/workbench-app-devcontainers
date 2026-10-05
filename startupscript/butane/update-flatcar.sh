@@ -62,7 +62,6 @@ TARGET_VERSION="$(curl --fail --silent --show-error --proto '=https' --proto-red
 
 # -reset_status only idles update-engine; postinst already gave the staged
 # partition boot priority, so hand it back to the running /usr partition.
-# Prioritize first so a failure leaves NEED_REBOOT and the next poll retries.
 cancel_staged_update() {
   local running_usr
   running_usr="$(rootdev -s /usr)"

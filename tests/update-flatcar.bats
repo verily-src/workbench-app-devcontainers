@@ -6,7 +6,7 @@ readonly VERSION_URL="https://workbench-test.verily.com/api/app/version"
 readonly UPDATE_CONF=$'REBOOT_STRATEGY=off\nSERVER=disabled\n'
 readonly CLEAR=$'metadata os_update/reboot_required=\nmetadata os_update/timestamp=\n'
 readonly UPDATE=$'flatcar-update --to-version 4593.2.10 --disable-afterwards\n'
-readonly RESET=$'reset\ncgpt prioritize /dev/sda4\n'
+readonly RESET=$'cgpt prioritize /dev/sda4\nreset\n'
 
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" >/dev/null 2>&1 && pwd)"
@@ -43,9 +43,13 @@ exit "${CGPT_EXIT:-0}"'
 case "$*" in
   -status)
     [[ "${STATUS_EXIT:-0}" == 0 ]] || exit "$STATUS_EXIT"
+    [[ -f "$TEST_ROOT/engine_state" ]] && ENGINE_STATE="$(cat "$TEST_ROOT/engine_state")"
     printf "CURRENT_OP=%s\nNEW_VERSION=%s\n" "$ENGINE_STATE" "$STAGED_VERSION"
     ;;
-  -reset_status) echo reset >> "$TEST_ROOT/actions" ;;
+  -reset_status)
+    echo reset >> "$TEST_ROOT/actions"
+    echo UPDATE_STATUS_IDLE > "$TEST_ROOT/engine_state"
+    ;;
   *) echo "unexpected update_engine_client $*" >> "$TEST_ROOT/actions"; exit 99 ;;
 esac'
     stub curl '
@@ -275,7 +279,18 @@ expect() {
     PIN='{"flatcar_stable_version":"4593.2.5"}'
     CGPT_EXIT=1
     run_update
-    expect failure "${RESET}"
+    expect failure $'cgpt prioritize /dev/sda4\n'
+}
+
+@test "failed boot-priority restore is retried on the next poll" {
+    ENGINE_STATE="UPDATE_STATUS_UPDATED_NEED_REBOOT"
+    STAGED_VERSION="4757.2.0"
+    PIN='{"flatcar_stable_version":"4593.2.5"}'
+    CGPT_EXIT=1
+    run_update
+    CGPT_EXIT=0
+    run_update
+    expect success $'cgpt prioritize /dev/sda4\n'"${RESET}${CLEAR}"
 }
 
 @test "unknown running partition leaves the staged update alone" {

@@ -18,6 +18,8 @@ readonly -f emit
 
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
+source /home/core/service-utils.sh
+source /home/core/wb/values.sh
 
 IDLE_TIMEOUT_SECONDS="$(get_metadata_value "idle-timeout-seconds" "")"
 readonly IDLE_TIMEOUT_SECONDS
@@ -26,7 +28,7 @@ if [[ -z "${IDLE_TIMEOUT_SECONDS}" || "${IDLE_TIMEOUT_SECONDS}" -eq 0 ]]; then
     exit 0
 fi
 
-# Check uptime first because on VM reboot, the last active timestamp could still be really old. 
+# Check uptime first because on VM reboot, the last active timestamp could still be really old.
 UP_TIME_SECONDS="$(awk '{print int($1)}' /proc/uptime)"
 readonly UP_TIME_SECONDS
 
@@ -61,6 +63,23 @@ set_metadata "notebooks/last_activity" "${LAST_ACTIVE}"
 # Check if the VM has been idle for longer than the timeout.
 if [[ $((NOW - LAST_ACTIVE)) -gt IDLE_TIMEOUT_SECONDS ]]; then
     emit "Shutting down the VM. Now time: ${NOW}. Last active time: ${LAST_ACTIVE}. Idle timeout threshold is: ${IDLE_TIMEOUT_SECONDS}"
+
+    if [[ "${WB_LOGIN_MODE}" == "AZURE_VM" ]] ; then
+      # Azure does not provide a shell command to stop and deallocate a VM
+      # from inside itself, so it must be stopped via WSM
+      set +o xtrace
+      # shellcheck disable=SC2034
+      TOKEN="$(/home/core/wb.sh auth print-access-token)"
+      set -o xtrace
+
+      CLI_SERVER="$(get_metadata_value "terra-cli-server" "prod")"
+      RESOURCE_ID="$(get_metadata_value "wb-resource-id" "")"
+      WORKSPACE_ID=$(get_metadata_value "terra-workspace-id" "")
+      WSM_URL="$(get_service_url "wsm" "${CLI_SERVER}")"
+      curl_with_auth TOKEN -s -f -X POST \
+        "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/resources/controlled/azure/instances/${RESOURCE_ID}/stop"
+    fi
+
     shutdown -h now
 fi
 

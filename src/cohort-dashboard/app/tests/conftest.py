@@ -1,3 +1,4 @@
+import os
 import socket
 import subprocess
 import sys
@@ -20,13 +21,16 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="session")
-def app_url():
+def app_url(tmp_path_factory):
     """Serve the real app once for the whole E2E session."""
     port = _free_port()
+    env = dict(os.environ)
+    env["LINEAGE_DB"] = str(tmp_path_factory.mktemp("lineage") / "lineage.db")
     proc = subprocess.Popen(
         [sys.executable, "-m", "panel", "serve", "main.py",
          "--port", str(port), "--allow-websocket-origin", "*", "--liveness"],
         cwd=APP_DIR,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )

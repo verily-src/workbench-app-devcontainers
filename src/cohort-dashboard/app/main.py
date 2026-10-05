@@ -16,6 +16,7 @@ import pandas as pd
 import panel as pn
 
 import db
+import lineage
 import queries
 
 logging.basicConfig(level=logging.INFO)
@@ -219,6 +220,11 @@ def active_engine():
     return db.get_engine_for_resource(resource_id)
 
 
+def lineage_engine():
+    """Aurora when connected, SQLite file otherwise (local CSV mode)."""
+    return active_engine() or lineage.sqlite_fallback_engine()
+
+
 def on_resource_change(_event=None):
     engine = active_engine()
     if engine is None:
@@ -246,6 +252,10 @@ def on_load_table(_event):
     try:
         df = queries.fetch_table(engine, table_select.value)
         load_dataframe(df, f"{resource_select.value} / {table_select.value}")
+        lineage.record(
+            engine, "table_loaded", "table", table_select.value,
+            payload={"resource_id": resource_select.value, "rows": len(df),
+                     "row_cap": queries.ROW_CAP})
     except Exception as e:
         pn.state.notifications.error(f"Load failed: {e}", duration=0)
     finally:
@@ -258,6 +268,9 @@ def on_csv_upload(_event):
     sep = "\t" if csv_input.filename.lower().endswith((".tsv", ".txt")) else ","
     df = pd.read_csv(io.BytesIO(csv_input.value), sep=sep)
     load_dataframe(df, csv_input.filename)
+    lineage.record(
+        lineage_engine(), "csv_uploaded", "file", csv_input.filename,
+        payload={"rows": len(df), "columns": list(df.columns)})
 
 
 def on_register_s3(_event):
@@ -276,6 +289,12 @@ def on_register_s3(_event):
         )
         pn.state.notifications.success(
             f"Registered {s3_name_input.value} — select it in the table list.")
+        lineage.record(
+            engine, "s3_registered", "table", s3_name_input.value.strip(),
+            payload={"location": s3_location_input.value.strip(),
+                     "format": s3_format_select.value,
+                     "region": state["region"]},
+            parents=[("s3", s3_location_input.value.strip())])
         on_resource_change()
     except Exception as e:
         pn.state.notifications.error(f"Registration failed: {e}", duration=0)
@@ -327,9 +346,16 @@ add_chart_button.on_click(add_chart)
 
 
 def export_tsv() -> io.BytesIO:
+    df = filtered_df()
     buffer = io.BytesIO()
-    filtered_df().to_csv(buffer, sep="\t", index=False)
+    df.to_csv(buffer, sep="\t", index=False)
     buffer.seek(0)
+    lineage.record(
+        lineage_engine(), "export", "export", state["source"],
+        payload={"rows": len(df),
+                 "filters": {col: list(w.value) for col, w in
+                             filter_widgets.items() if w.value}},
+        parents=[("table", state["source"])])
     return buffer
 
 
@@ -358,13 +384,45 @@ sidebar = pn.Column(
     filter_box,
 )
 
-main = pn.Column(
+lineage_grid = pn.widgets.Tabulator(
+    lineage.recent_events(lineage.sqlite_fallback_engine()),
+    pagination="local", page_size=GRID_PAGE_SIZE, disabled=True,
+    sizing_mode="stretch_width", show_index=False)
+lineage_refresh_button = pn.widgets.Button(name="Refresh lineage")
+
+
+def refresh_lineage(_event=None):
+    lineage_grid.value = lineage.recent_events(lineage_engine())
+
+
+lineage_refresh_button.on_click(refresh_lineage)
+
+explore_tab = pn.Column(
     pn.Row(count_pane, pn.Spacer(), export_button),
     pn.Row(chart_kind_select, chart_x_select, chart_y_select, add_chart_button),
     chart_box,
     pn.pane.Markdown("## Rows"),
     grid,
 )
+
+lineage_tab = pn.Column(
+    pn.pane.Markdown(
+        "Loads, S3 registrations, and exports are recorded in the active "
+        "Aurora database (`_lineage_event` / `_lineage_edge`), or a local "
+        "SQLite file when no resource is connected."),
+    lineage_refresh_button,
+    lineage_grid,
+)
+
+main = pn.Tabs(("Explore", explore_tab), ("Lineage", lineage_tab))
+
+
+def on_tab_change(event):
+    if event.new == 1:
+        refresh_lineage()
+
+
+main.param.watch(on_tab_change, "active")
 
 db.warm_resource_cache()
 _resource_poller = pn.state.add_periodic_callback(poll_resources, period=2000)

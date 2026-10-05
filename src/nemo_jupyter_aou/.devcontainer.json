@@ -25,7 +25,7 @@
       "version": "17",
       "jdkDistro": "tem"
     },
-    "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli@sha256:115b3b4a6c7948c660414a6f9aa601674aa1712e9616f7e436760daeeb4b95f2": {},
+    "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli@sha256:e3af02f936916198f58ef4088d3be608372246d208f6f627c902ce62a8ae12ec": {},
     "./.devcontainer/features/workbench-tools": {
       "libPythonVersion": "3.12", // Must match python version in nemo image
       "cloud": "${templateOption:cloud}",

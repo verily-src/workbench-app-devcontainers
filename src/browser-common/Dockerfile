@@ -2,7 +2,7 @@
 # pixels, locked down by a managed policy. Consuming templates build their own `app` service from this
 # context and set APP_ORIGIN, baked into the policy URLAllowlist (with none, URLBlocklist ["*"] makes
 # it fail closed).
-FROM lscr.io/linuxserver/chromium@sha256:cf6200ccdcb224feaf5d3bde4ce45b3783c926a7496c98059cae1e0db78e5b2f
+FROM lscr.io/linuxserver/chromium@sha256:2d32e1b2b28aa92973aa0f58c433c0b045db6e1224d7001eeaa9cde1a474ce13
 
 # Selkies + hardening defaults; a template may override any of these in its compose environment.
 ENV SELKIES_DESKTOP=false \

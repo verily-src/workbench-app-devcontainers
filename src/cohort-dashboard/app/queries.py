@@ -135,6 +135,10 @@ def infer_filter_kinds(df: pd.DataFrame) -> dict[str, str]:
             kinds[col] = "none"
         elif pd.api.types.is_bool_dtype(series):
             kinds[col] = "categorical"
+        elif pd.api.types.is_float_dtype(series):
+            # Floats are measurements: checkboxes over 50 distinct readings
+            # help nobody, so they go to a range slider much sooner.
+            kinds[col] = "categorical" if unique <= 10 else "range"
         elif pd.api.types.is_numeric_dtype(series):
             kinds[col] = "categorical" if unique <= CATEGORICAL_THRESHOLD else "range"
         elif unique <= CATEGORICAL_THRESHOLD:

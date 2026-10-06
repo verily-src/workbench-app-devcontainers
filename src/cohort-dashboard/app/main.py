@@ -1,9 +1,14 @@
 """Cohort Dashboard — no-code cohort exploration over Aurora PostgreSQL.
 
-A Panel app. All data access is SQL against one Aurora connection: native
-tables, views, and aurora_analytics foreign tables that read Parquet or
-Iceberg directly from S3. For local development without a workspace,
-upload a CSV/TSV instead.
+A Panel app styled after the cBioPortal study-summary page: loading a table
+auto-generates a grid of distribution charts, every chart shows the full
+cohort muted with the filtered cohort overlaid, tapping a bar filters the
+cohort, and active filters appear as removable chips. Verily Workbench
+colors throughout; light mode only.
+
+All data access is SQL against one Aurora connection: native tables, views,
+and aurora_analytics foreign tables that read Parquet/Iceberg directly from
+S3. For local development without a workspace, upload a CSV/TSV instead.
 
 Run with:  panel serve main.py --port 8080
 """
@@ -11,10 +16,10 @@ Run with:  panel serve main.py --port 8080
 import io
 import logging
 
-import hvplot.pandas  # noqa: F401 — registers the DataFrame.hvplot accessor
 import pandas as pd
 import panel as pn
 
+import charts
 import db
 import lineage
 import queries
@@ -31,18 +36,68 @@ def short_error(e: Exception, limit: int = 200) -> str:
     text = str(e).split("\n")[0]
     return text if len(text) <= limit else text[:limit] + "…"
 
-pn.extension("tabulator", throttled=True, notifications=True)
+
+VERILY_TEAL = "#087a6a"
+FONT_URL = ("https://fonts.googleapis.com/css2?"
+            "family=Open+Sans:wght@400;600&family=Poppins:wght@500;600"
+            "&display=swap")
+
+CSS = """
+.chart-card {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(33,37,41,.08), 0 4px 16px rgba(33,37,41,.05);
+  padding: 10px 14px 4px 14px;
+}
+.chart-card:hover {
+  box-shadow: 0 2px 6px rgba(33,37,41,.10), 0 8px 24px rgba(33,37,41,.08);
+}
+.card-title {
+  font-family: Poppins, 'Open Sans', sans-serif;
+  font-weight: 500; font-size: 13px; color: #212529;
+}
+.hero-count {
+  font-family: Poppins, 'Open Sans', sans-serif;
+  font-weight: 600; font-size: 26px; color: #212529;
+}
+.hero-count .total { color: #5f6368; font-weight: 500; font-size: 15px; }
+"""
+
+# Panel widgets render in shadow DOM, so page-level CSS cannot reach a
+# button's internals — these are injected per widget via `stylesheets`.
+CHIP_STYLE = """
+:host .bk-btn, :host button {
+  border-radius: 999px; background: #e4f0ed; color: #054f45;
+  border: none; font-size: 12px; padding: 3px 12px;
+}
+:host .bk-btn:hover, :host button:hover { background: #d0e5df; }
+"""
+CHIP_CLEAR_STYLE = """
+:host .bk-btn, :host button {
+  border-radius: 999px; background: transparent; color: #5f6368;
+  border: 1px solid #d5d9dd; font-size: 12px; padding: 3px 12px;
+}
+:host .bk-btn:hover, :host button:hover { background: #eceeef; }
+"""
+QUIET_STYLE = """
+:host .bk-btn, :host button {
+  background: transparent; color: #80868b; border: none;
+  font-size: 14px; padding: 0 4px; box-shadow: none;
+}
+:host .bk-btn:hover, :host button:hover { color: #212529; }
+"""
+
+pn.extension("tabulator", throttled=True, notifications=True, raw_css=[CSS])
 
 GRID_PAGE_SIZE = 25
-BAR_TOP_N = 25
-CHART_OPTS = {"responsive": True, "min_height": 300}
+AUTO_CHART_LIMIT = 8
+CARD_W, CARD_W_WIDE = 390, 800
 
 # panel serve re-runs this script per browser session, so everything below
 # is per-session state. Only the caches inside db.py are shared.
 state = {
     "df": None,            # full loaded DataFrame (capped at queries.ROW_CAP)
     "source": "",          # human-readable datasource label
-    "engine": None,        # SQLAlchemy engine for the active resource
     "region": "us-east-1", # region of the active resource, for foreign tables
 }
 filter_widgets: dict[str, pn.widgets.Widget] = {}
@@ -89,6 +144,19 @@ def build_filter_widgets(df: pd.DataFrame):
     ]
 
 
+def toggle_category(col: str, value: str):
+    """Tap-to-filter: toggle one category in the column's filter widget."""
+    widget = filter_widgets.get(col)
+    if not isinstance(widget, pn.widgets.MultiChoice):
+        return
+    current = list(widget.value)
+    if value in current:
+        current.remove(value)
+    else:
+        current.append(value)
+    widget.value = current  # watcher triggers refresh()
+
+
 def reset_filters(_event=None):
     for widget in filter_widgets.values():
         if isinstance(widget, pn.widgets.MultiChoice):
@@ -98,108 +166,171 @@ def reset_filters(_event=None):
     refresh()
 
 
+def active_filters() -> list[tuple[str, str, callable]]:
+    """(column, display text, clear-callback) per active filter value."""
+    chips = []
+    for col, widget in filter_widgets.items():
+        if isinstance(widget, pn.widgets.MultiChoice):
+            for val in widget.value:
+                chips.append((col, f"{col}: {val}",
+                              lambda c=col, v=val: toggle_category(c, v)))
+        elif isinstance(widget, pn.widgets.RangeSlider):
+            lo, hi = widget.value
+            if (lo, hi) != (widget.start, widget.end):
+                def _clear(w=widget):
+                    w.value = (w.start, w.end)
+                chips.append((col, f"{col}: {lo:g}–{hi:g}", _clear))
+    return chips
+
+
 # ------------------------------------------------------------------- charts
 
 def numeric_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
 
 
-def render_chart(df: pd.DataFrame, config: dict):
-    kind, x, y = config["kind"], config["x"], config.get("y")
-    if df.empty or x not in df.columns:
-        return pn.pane.Markdown("*No data for this chart.*")
-    try:
-        if kind == "bar":
-            counts = (df[x].astype(str).value_counts().head(BAR_TOP_N)
-                      .rename_axis(x).reset_index(name="count"))
-            return counts.hvplot.bar(x=x, y="count", rot=45, **CHART_OPTS)
-        if kind == "histogram":
-            return df.hvplot.hist(x, bins=30, **CHART_OPTS)
-        if kind == "kde":
-            return df.hvplot.kde(x, **CHART_OPTS)
-        if kind == "box":
-            if y:
-                return df.hvplot.box(y=x, by=y, rot=45, **CHART_OPTS)
-            return df.hvplot.box(y=x, **CHART_OPTS)
-        if kind == "scatter":
-            return df.hvplot.scatter(x=x, y=y, alpha=0.5, **CHART_OPTS)
-        if kind == "heatmap":
-            counts = df.groupby([x, y], observed=True).size().reset_index(name="count")
-            return counts.hvplot.heatmap(x=x, y=y, C="count", rot=45, **CHART_OPTS)
-    except Exception as e:
-        return pn.pane.Markdown(f"*Chart failed: {e}*")
-    return pn.pane.Markdown(f"*Unknown chart type: {kind}*")
+def auto_chart_configs(df: pd.DataFrame) -> list[dict]:
+    """cBioPortal-style: one chart per informative column, best form first."""
+    kinds = queries.infer_filter_kinds(df)
+    configs = []
+    for col, kind in kinds.items():
+        if kind == "categorical" and df[col].nunique(dropna=True) >= 2:
+            configs.append({"kind": "bar", "x": col, "wide": False})
+        elif kind == "range":
+            configs.append({"kind": "histogram", "x": col, "wide": False})
+    return configs[:AUTO_CHART_LIMIT]
 
 
-def chart_card(df: pd.DataFrame, config: dict) -> pn.Card:
-    title = f"{config['kind']}: {config['x']}" + (
-        f" × {config['y']}" if config.get("y") else "")
-    remove = pn.widgets.Button(name="✕", width=30, align="end")
+def chart_card(df_full: pd.DataFrame, df_filt: pd.DataFrame,
+               config: dict) -> pn.Column:
+    obj = charts.build(config["kind"], df_full, df_filt, config,
+                       on_tap=toggle_category)
+    body = (pn.pane.HoloViews(obj, sizing_mode="stretch_width",
+                              linked_axes=False)
+            if obj is not None else
+            pn.pane.Markdown("*No data for this chart.*"))
 
-    def _remove(_event):
+    title = config["x"] + (f" × {config['y']}" if config.get("y") else "")
+    close = pn.widgets.Button(name="✕", width=28, align="center",
+                              stylesheets=[QUIET_STYLE])
+    wide = pn.widgets.Button(name="⤢", width=28, align="center",
+                             stylesheets=[QUIET_STYLE])
+
+    def _close(_event):
         chart_configs.remove(config)
         refresh()
 
-    remove.on_click(_remove)
-    return pn.Card(render_chart(df, config), header=pn.Row(
-        pn.pane.Markdown(f"**{title}**"), pn.Spacer(), remove),
-        width=520, collapsible=False)
+    def _wide(_event):
+        config["wide"] = not config.get("wide")
+        refresh()
+
+    close.on_click(_close)
+    wide.on_click(_wide)
+    return pn.Column(
+        pn.Row(pn.pane.HTML(f'<span class="card-title">{title}</span>'),
+               pn.Spacer(), wide, close, height=34),
+        body,
+        css_classes=["chart-card"],
+        width=CARD_W_WIDE if config.get("wide") else CARD_W,
+    )
 
 
-TWO_FIELD_KINDS = ("scatter", "heatmap")
-NUMERIC_KINDS = ("histogram", "kde", "box", "scatter")
+chart_field_input = pn.widgets.AutocompleteInput(
+    name="Add chart", options=[], placeholder="Search columns…",
+    case_sensitive=False, min_characters=0, width=220)
+chart_kind_select = pn.widgets.Select(
+    name="Type", options=["auto", "bar", "histogram", "box", "scatter",
+                          "heatmap"], width=110)
+chart_y_select = pn.widgets.Select(name="Second field", options=[],
+                                   visible=False, width=180)
+add_chart_button = pn.widgets.Button(name="Add", button_type="primary",
+                                     align="end", width=70)
 
 
-def update_chart_selectors():
+def _default_kind(col: str) -> str:
+    df = state["df"]
+    if df is not None and pd.api.types.is_numeric_dtype(df[col]) \
+            and df[col].nunique(dropna=True) > queries.CATEGORICAL_THRESHOLD:
+        return "histogram"
+    return "bar"
+
+
+def on_kind_change(_event=None):
     df = state["df"]
     if df is None:
         return
     kind = chart_kind_select.value
-    if kind in ("bar", "heatmap"):
-        chart_x_select.options = list(df.columns)
-    elif kind in NUMERIC_KINDS:
-        chart_x_select.options = numeric_columns(df)
-    chart_y_select.visible = kind in TWO_FIELD_KINDS or kind == "box"
+    chart_y_select.visible = kind in ("scatter", "heatmap", "box")
     if kind == "scatter":
         chart_y_select.options = numeric_columns(df)
     elif kind == "heatmap":
         chart_y_select.options = list(df.columns)
     elif kind == "box":
-        categorical = [c for c in df.columns
-                       if not pd.api.types.is_numeric_dtype(df[c])]
-        chart_y_select.options = [""] + categorical
+        chart_y_select.options = [""] + [
+            c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
 
 
 def add_chart(_event):
-    if state["df"] is None or not chart_x_select.value:
+    df, col = state["df"], chart_field_input.value
+    if df is None or col not in df.columns:
         return
-    config = {"kind": chart_kind_select.value, "x": chart_x_select.value}
+    kind = chart_kind_select.value
+    if kind == "auto":
+        kind = _default_kind(col)
+    config = {"kind": kind, "x": col,
+              "wide": kind in ("scatter", "heatmap")}
     if chart_y_select.visible and chart_y_select.value:
         config["y"] = chart_y_select.value
     chart_configs.append(config)
+    chart_field_input.value = ""
     refresh()
+
+
+chart_kind_select.param.watch(on_kind_change, "value")
+add_chart_button.on_click(add_chart)
 
 
 # ------------------------------------------------------------------ refresh
 
 def refresh():
+    df_full = state["df"]
     df = filtered_df()
-    total = len(state["df"]) if state["df"] is not None else 0
-    cap_note = (" (display capped)" if total >= queries.ROW_CAP else "")
+    total = len(df_full) if df_full is not None else 0
+    cap_note = (" · display capped" if total >= queries.ROW_CAP else "")
     count_pane.object = (
-        f"### {state['source']}\n**{len(df):,}** of **{total:,}** rows{cap_note}")
+        f'<div class="hero-count">{len(df):,} '
+        f'<span class="total">of {total:,} rows · {state["source"]}'
+        f'{cap_note}</span></div>')
+
+    chips = []
+    for _col, text, clear in active_filters():
+        btn = pn.widgets.Button(name=f"{text} ✕", css_classes=["chip"],
+                                stylesheets=[CHIP_STYLE])
+        btn.on_click(lambda _e, clear=clear: clear())
+        chips.append(btn)
+    if chips:
+        clear_all = pn.widgets.Button(name="Clear all",
+                                      css_classes=["chip-clear"],
+                                      stylesheets=[CHIP_CLEAR_STYLE])
+        clear_all.on_click(reset_filters)
+        chips.append(clear_all)
+    chip_box.objects = chips
+
     grid.value = df
-    chart_box.objects = [chart_card(df, c) for c in chart_configs] or [
-        pn.pane.Markdown("*Add a chart with the controls above.*")
-    ]
+    if df_full is not None:
+        chart_box.objects = [chart_card(df_full, df, c)
+                             for c in chart_configs]
 
 
 def load_dataframe(df: pd.DataFrame, source: str):
     state["df"] = df
     state["source"] = source
     chart_configs.clear()
+    chart_configs.extend(auto_chart_configs(df))
     build_filter_widgets(df)
-    update_chart_selectors()
+    chart_field_input.options = list(df.columns)
+    chart_kind_select.value = "auto"
+    on_kind_change()
     refresh()
     pn.state.notifications.success(f"Loaded {len(df):,} rows from {source}")
 
@@ -247,7 +378,8 @@ def on_resource_change(_event=None):
         table_select.options = {
             f"{t['name']} ({t['kind']})": t["name"] for t in tables}
     except Exception as e:
-        pn.state.notifications.error(f"Could not list tables: {short_error(e)}", duration=0)
+        pn.state.notifications.error(
+            f"Could not list tables: {short_error(e)}", duration=0)
         table_select.options = []
     finally:
         table_select.loading = False
@@ -266,7 +398,8 @@ def on_load_table(_event):
             payload={"resource_id": resource_select.value, "rows": len(df),
                      "row_cap": queries.ROW_CAP})
     except Exception as e:
-        pn.state.notifications.error(f"Load failed: {short_error(e)}", duration=0)
+        pn.state.notifications.error(f"Load failed: {short_error(e)}",
+                                     duration=0)
     finally:
         load_button.loading = False
 
@@ -306,7 +439,8 @@ def on_register_s3(_event):
             parents=[("s3", s3_location_input.value.strip())])
         on_resource_change()
     except Exception as e:
-        pn.state.notifications.error(f"Registration failed: {short_error(e)}", duration=0)
+        pn.state.notifications.error(f"Registration failed: {short_error(e)}",
+                                     duration=0)
     finally:
         s3_register_button.loading = False
 
@@ -327,7 +461,8 @@ def _seed(button, action, label):
         pn.state.notifications.success(f"{label} ready — select it above.")
         on_resource_change()
     except Exception as e:
-        pn.state.notifications.error(f"{label} failed: {short_error(e)}", duration=0)
+        pn.state.notifications.error(f"{label} failed: {short_error(e)}",
+                                     duration=0)
     finally:
         button.loading = False
 
@@ -372,26 +507,16 @@ load_button.on_click(on_load_table)
 csv_input.param.watch(on_csv_upload, "value")
 s3_register_button.on_click(on_register_s3)
 
-count_pane = pn.pane.Markdown("### No data loaded")
+count_pane = pn.pane.HTML('<div class="hero-count">No data loaded</div>')
+chip_box = pn.FlexBox()
 grid = pn.widgets.Tabulator(
     pd.DataFrame(), pagination="local", page_size=GRID_PAGE_SIZE,
     disabled=True, sizing_mode="stretch_width", show_index=False)
 filter_box = pn.Column(pn.pane.Markdown("*Load a table to see filters.*"))
 reset_button = pn.widgets.Button(name="Reset filters")
 reset_button.on_click(reset_filters)
-chart_box = pn.FlexBox()
-
-chart_kind_select = pn.widgets.Select(
-    name="Chart type",
-    options=["bar", "histogram", "kde", "box", "scatter", "heatmap"],
-    width=130)
-chart_x_select = pn.widgets.Select(name="Field", options=[], width=180)
-chart_y_select = pn.widgets.Select(name="Second field", options=[],
-                                   visible=False, width=180)
-add_chart_button = pn.widgets.Button(name="+ Add chart", button_type="primary",
-                                     align="end")
-chart_kind_select.param.watch(lambda _event: update_chart_selectors(), "value")
-add_chart_button.on_click(add_chart)
+chart_box = pn.FlexBox(pn.pane.Markdown(
+    "*Load a table — charts are generated automatically.*"))
 
 
 def export_tsv() -> io.BytesIO:
@@ -454,7 +579,9 @@ lineage_refresh_button.on_click(refresh_lineage)
 
 explore_tab = pn.Column(
     pn.Row(count_pane, pn.Spacer(), export_button),
-    pn.Row(chart_kind_select, chart_x_select, chart_y_select, add_chart_button),
+    chip_box,
+    pn.Row(chart_field_input, chart_kind_select, chart_y_select,
+           add_chart_button),
     chart_box,
     pn.pane.Markdown("## Rows"),
     grid,
@@ -486,5 +613,10 @@ pn.template.FastListTemplate(
     title="Cohort Dashboard",
     sidebar=[sidebar],
     main=[main],
-    accent="#4a148c",
+    header_background=VERILY_TEAL,
+    accent_base_color=VERILY_TEAL,
+    theme_toggle=False,
+    main_layout=None,
+    font="Open Sans",
+    font_url=FONT_URL,
 ).servable()

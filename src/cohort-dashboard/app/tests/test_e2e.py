@@ -1,8 +1,8 @@
 """End-to-end tests: real `panel serve` process driven by Playwright.
 
 These use the CSV-upload datasource, so they need no workspace, wb CLI,
-or Aurora — the same UI code paths (filters, charts, grid, export) are
-exercised against local data.
+or Aurora — the same UI code paths (auto-charts, filters, chips, grid,
+lineage) are exercised against local data.
 """
 
 import re
@@ -33,21 +33,32 @@ def test_app_serves_and_shows_title(page: Page, app_url: str):
         timeout=15000)
 
 
-def test_csv_upload_builds_grid_and_filters(loaded_page: Page):
+def test_csv_upload_builds_grid_filters_and_auto_charts(loaded_page: Page):
     # Grid shows fixture data
     expect(loaded_page.get_by_text("GTEX-0000")).to_be_visible()
-    # Categorical filter for tissue and range slider for rin_score exist
+    # Sidebar filters exist for categorical and numeric columns
     expect(loaded_page.locator(".bk-input-group", has_text="tissue").first
            ).to_be_visible()
     expect(loaded_page.locator(".bk-input-group", has_text="rin_score").first
            ).to_be_visible()
+    # Charts were generated automatically, without clicking Add
+    expect(loaded_page.locator(".chart-card").first).to_be_visible(
+        timeout=10000)
+    expect(loaded_page.locator(".card-title", has_text="tissue")
+           ).to_be_visible()
 
 
-def test_categorical_filter_updates_counts(loaded_page: Page):
+def test_filter_updates_counts_and_shows_chip(loaded_page: Page):
     tissue_filter = loaded_page.locator(".bk-input-group", has_text="tissue")
     tissue_filter.locator("input").click()
     loaded_page.get_by_role("option", name="liver").click()
     expect(loaded_page.get_by_text(re.compile(r"25.*of.*100.*rows"))
+           ).to_be_visible(timeout=10000)
+    # Active filter appears as a chip; clicking it removes the filter
+    chip = loaded_page.locator(".chip", has_text="tissue: liver")
+    expect(chip).to_be_visible()
+    chip.click()
+    expect(loaded_page.get_by_text(re.compile(r"100.*of.*100.*rows"))
            ).to_be_visible(timeout=10000)
 
 
@@ -58,13 +69,11 @@ def test_lineage_records_csv_upload(loaded_page: Page):
     expect(loaded_page.get_by_text("samples.csv").first).to_be_visible()
 
 
-def test_add_bar_chart_renders(loaded_page: Page):
-    kind_select = loaded_page.locator('select:has(option[value="bar"])')
-    kind_select.select_option("bar")
-    field_select = loaded_page.locator('select:has(option[value="tissue"])').first
-    field_select.select_option("tissue")
-    loaded_page.get_by_role("button", name="+ Add chart").click()
-    expect(loaded_page.get_by_text("bar: tissue")).to_be_visible(timeout=10000)
-    # Bokeh canvas appears for the rendered chart
-    expect(loaded_page.locator(".bk-Canvas").first).to_be_visible(
+def test_add_chart_by_search(loaded_page: Page):
+    search = loaded_page.locator('input[placeholder="Search columns…"]')
+    search.click()
+    search.fill("age")
+    search.press("Enter")
+    loaded_page.get_by_role("button", name="Add", exact=True).click()
+    expect(loaded_page.locator(".card-title", has_text="age")).to_be_visible(
         timeout=10000)

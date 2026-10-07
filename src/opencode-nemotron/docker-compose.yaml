@@ -17,8 +17,9 @@ services:
       # Workbench only substitutes a fixed set of template options on the VM
       # (see startupscript/butane/050-parse-devcontainer.sh), so the model tag
       # is set here rather than as a template option.
-      OLLAMA_MODEL: "nemotron-3.5-lightning:30b"
-      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_MODEL: "nemotron-nano-9b:v2"
+      OLLAMA_KEEP_ALIVE: "5m"
+      OLLAMA_MAX_LOADED_MODELS: "1"
       OLLAMA_FLASH_ATTENTION: "true"
       # opencode needs a large context for reliable tool calls.
       OLLAMA_CONTEXT_LENGTH: "32768"

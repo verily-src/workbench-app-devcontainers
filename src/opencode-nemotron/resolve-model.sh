@@ -13,10 +13,20 @@ set -o nounset
 set -o pipefail
 
 readonly MODEL_OVERRIDE_FILE="/config/.opencode-model"
-readonly DEFAULT_MODEL="nemotron-3.5-lightning:30b"
+readonly DEFAULT_MODEL="nemotron-nano-9b:v2"
 
 if [[ -s "${MODEL_OVERRIDE_FILE}" ]]; then
-  tr -d '[:space:]' < "${MODEL_OVERRIDE_FILE}"
+  MODEL="$(tr -d '[:space:]' < "${MODEL_OVERRIDE_FILE}")"
 else
-  echo "${OLLAMA_MODEL:-${DEFAULT_MODEL}}"
+  MODEL="${OLLAMA_MODEL:-${DEFAULT_MODEL}}"
 fi
+
+case "${MODEL}" in
+  nemotron-3-nano:4b|nemotron-nano-9b:v2|nemotron-3.5-lightning:30b)
+    echo "${MODEL}"
+    ;;
+  *)
+    echo "Unsupported model: ${MODEL}" >&2
+    exit 1
+    ;;
+esac

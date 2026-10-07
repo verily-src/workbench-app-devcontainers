@@ -28,15 +28,30 @@ mkdir -p "${CONFIG_DIR}"
 jq -n --arg model "${MODEL}" '{
   "$schema": "https://opencode.ai/config.json",
   "model": ("ollama/" + $model),
-  "small_model": ("ollama/" + $model),
+  "small_model": "ollama/nemotron-3-nano:4b",
   "autoupdate": false,
   "share": "disabled",
+  "enabled_providers": ["ollama"],
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Ollama (local)",
       "options": { "baseURL": "http://localhost:11434/v1" },
-      "models": { ($model): { "name": $model } }
+      "models": {
+        "nemotron-3-nano:4b": {
+          "name": "Nemotron 3 Nano 4B (chat only)",
+          "tool_call": false,
+          "limit": { "context": 32768, "output": 8192 }
+        },
+        "nemotron-nano-9b:v2": {
+          "name": "Nemotron Nano 9B v2 (Bartowski Q4_K_M)",
+          "limit": { "context": 32768, "output": 8192 }
+        },
+        "nemotron-3.5-lightning:30b": {
+          "name": "Nemotron 3.5 Lightning 30B",
+          "limit": { "context": 32768, "output": 8192 }
+        }
+      }
     }
   }
 }' > "${CONFIG_FILE}"

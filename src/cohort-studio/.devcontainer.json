@@ -11,13 +11,20 @@
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
-  "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
-    "root",
-    "/root",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
+  "postStartCommand": {
+    "remount": [
+      "./startupscript/remount-on-restart.sh",
+      "root",
+      "/root",
+      "${templateOption:cloud}",
+      "${templateOption:login}"
+    ],
+    "self-update": [
+      "bash",
+      "-c",
+      "bash /app/self_update.sh >> /tmp/self-update.log 2>&1 || true"
+    ]
+  },
   "features": {
     "ghcr.io/devcontainers/features/java@sha256:8157bab2d8d71e40b2f3128c162fab763e2b11038fdd33784549290a5d386b48": {
       "version": "17",

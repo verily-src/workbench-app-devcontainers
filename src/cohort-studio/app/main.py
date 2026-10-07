@@ -90,6 +90,35 @@ def health():
     return {"ok": True}
 
 
+@app.get("/api/version")
+def version():
+    sha_file = Path("/app/APP_SHA")
+    local = Path(__file__).parent / "APP_SHA"
+    for candidate in (sha_file, local):
+        if candidate.exists():
+            return {"sha": candidate.read_text().strip()}
+    return {"sha": "dev"}
+
+
+@app.post("/api/admin/update")
+def self_update():
+    """Redeploy the branch in place — see self_update.sh.
+
+    Reachable only through the workspace proxy (workspace members), and
+    only ever installs code from this app's pinned GitHub repo/branch.
+    The server restarts itself when an update lands, so the caller should
+    poll /api/version until the sha changes.
+    """
+    script = Path(__file__).parent / "self_update.sh"
+    if not script.exists():
+        raise HTTPException(501, "self_update.sh not present in this build")
+    import subprocess
+    subprocess.Popen(["bash", str(script)],
+                     stdout=open("/tmp/self-update.log", "ab"),
+                     stderr=subprocess.STDOUT)
+    return {"started": True, "log": "/tmp/self-update.log"}
+
+
 @app.get("/api/datasources")
 def datasources():
     ready = db.resources_ready()

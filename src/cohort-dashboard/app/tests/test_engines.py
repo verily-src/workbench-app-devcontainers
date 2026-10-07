@@ -13,10 +13,21 @@ S3_LS_OUTPUT = """\
 2026-10-01 12:00:03       4096 model.bin
 """
 
+S3_LS_RECURSIVE = """\
+2026-10-01 12:00:00    1048576 folder-id/sub/dir/counts.parquet
+2026-10-01 12:00:01       2048 folder-id/top.csv
+2026-10-01 12:00:03       4096 folder-id/sub/model.bin
+"""
+
 
 def test_parse_s3_ls_filters_to_data_files():
     assert duck.parse_s3_ls(S3_LS_OUTPUT) == [
         "samples.parquet", "metadata.csv", "notes.txt"]
+
+
+def test_parse_s3_ls_recursive_strips_folder_prefix():
+    assert duck.parse_s3_ls(S3_LS_RECURSIVE, prefix="folder-id") == [
+        "sub/dir/counts.parquet", "top.csv"]
 
 
 def test_parse_s3_ls_empty():

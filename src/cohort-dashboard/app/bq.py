@@ -9,9 +9,19 @@ import re
 
 import pandas as pd
 
+from cache import ttl_cache
+
 logger = logging.getLogger(__name__)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9_\-]+$")
+_clients: dict = {}
+
+
+def _client(project: str):
+    if project not in _clients:
+        from google.cloud import bigquery
+        _clients[project] = bigquery.Client(project=project)
+    return _clients[project]
 
 
 def _validate(*identifiers: str):
@@ -20,18 +30,18 @@ def _validate(*identifiers: str):
             raise ValueError(f"Invalid BigQuery identifier: {ident!r}")
 
 
+@ttl_cache(ttl=300)
 def list_tables(project: str, dataset: str) -> list[str]:
-    from google.cloud import bigquery
     _validate(project, dataset)
-    client = bigquery.Client(project=project)
-    tables = [t.table_id for t in client.list_tables(f"{project}.{dataset}")]
+    tables = [t.table_id
+              for t in _client(project).list_tables(f"{project}.{dataset}")]
     logger.info("Found %d tables in %s.%s", len(tables), project, dataset)
     return tables
 
 
+@ttl_cache(ttl=600, maxsize=4)
 def fetch_table(project: str, dataset: str, table: str, cap: int) -> pd.DataFrame:
-    from google.cloud import bigquery
+    """Cached capped read. The DataFrame is shared — do not mutate it."""
     _validate(project, dataset, table)
-    client = bigquery.Client(project=project)
     query = f"SELECT * FROM `{project}.{dataset}.{table}` LIMIT {int(cap)}"
-    return client.query(query).to_dataframe()
+    return _client(project).query(query).to_dataframe()

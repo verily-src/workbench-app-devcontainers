@@ -16,6 +16,8 @@ import time
 
 from sqlalchemy import Engine, create_engine
 
+from cache import ttl_cache
+
 logger = logging.getLogger(__name__)
 
 _engines: dict[str, Engine] = {}
@@ -141,6 +143,35 @@ def _refresh_resource_cache():
     configure_aws_profiles()
     for r in list_aurora_resources():
         warm_connection_string(r["id"])
+    threading.Thread(target=_warm_catalogs, daemon=True).start()
+
+
+def _warm_catalogs():
+    """Pre-fill table/file listings so the first click is instant."""
+    for r in list_aurora_resources():
+        try:
+            list_aurora_tables(r["id"])
+        except Exception as e:
+            logger.warning("Failed to warm tables for %s: %s", r["id"], e)
+    import duck  # late import: duck imports db
+    for f in list_s3_folders():
+        try:
+            duck.list_s3_files(f["id"])
+        except Exception as e:
+            logger.warning("Failed to warm S3 files for %s: %s", f["id"], e)
+
+
+@ttl_cache(ttl=300)
+def list_aurora_tables(resource_id: str) -> list[dict]:
+    import queries
+    return queries.list_tables(get_engine_for_resource(resource_id))
+
+
+@ttl_cache(ttl=600, maxsize=4)
+def fetch_aurora_table(resource_id: str, table: str, cap: int):
+    """Cached capped read. The DataFrame is shared — do not mutate it."""
+    import queries
+    return queries.fetch_table(get_engine_for_resource(resource_id), table, cap)
 
 
 def warm_resource_cache():

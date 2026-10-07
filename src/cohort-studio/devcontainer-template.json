@@ -1,0 +1,20 @@
+{
+  "id": "cohort-studio",
+  "version": "0.1.0",
+  "name": "Cohort Studio",
+  "description": "Cohort exploration studio: React/TypeScript UI over a FastAPI backend with Aurora, S3 (DuckDB), and BigQuery engines",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "aws",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "true"
+    }
+  }
+}

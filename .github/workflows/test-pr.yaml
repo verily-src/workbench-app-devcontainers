@@ -29,6 +29,7 @@ jobs:
             - 'tests/common/**'
         config:
           - cohort-dashboard: {}
+            cohort-studio: {}
             cohort-explorer: {}
             example: {}
             jupyter-template: {}

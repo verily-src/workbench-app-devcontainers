@@ -16,6 +16,7 @@ import duckdb
 import pandas as pd
 
 import db
+from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ def parse_s3_ls(output: str) -> list[str]:
     return [f for f in files if f.lower().endswith(DATA_SUFFIXES)]
 
 
+@ttl_cache(ttl=300)
 def list_s3_files(resource_id: str) -> list[str]:
     uri = db.resolve_s3_uri(resource_id)
     result = subprocess.run(
@@ -72,6 +74,8 @@ def fetch_file(uri: str, cap: int, profile: str | None = None) -> pd.DataFrame:
         con.close()
 
 
+@ttl_cache(ttl=600, maxsize=4)
 def fetch_s3_file(resource_id: str, filename: str, cap: int) -> pd.DataFrame:
+    """Cached capped read. The DataFrame is shared — do not mutate it."""
     uri = f"{db.resolve_s3_uri(resource_id)}/{filename}"
     return fetch_file(uri, cap, profile=resource_id)

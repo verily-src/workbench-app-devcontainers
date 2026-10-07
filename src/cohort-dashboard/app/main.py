@@ -465,7 +465,7 @@ def on_resource_change(_event=None):
                 if r["id"] == resource_id and r.get("region"):
                     state["region"] = r["region"]
             with busy(f"Listing tables in {resource_id}…"):
-                tables = queries.list_tables(active_engine())
+                tables = db.list_aurora_tables(resource_id)
             table_select.options = {
                 f"{t['name']} ({t['kind']})": t["name"] for t in tables}
         elif kind == "s3":
@@ -495,7 +495,8 @@ def on_load_table(_event):
     try:
         with busy(f"Loading {table}…"):
             if kind == "aurora":
-                df = queries.fetch_table(active_engine(), table)
+                df = db.fetch_aurora_table(resource_id, table,
+                                           queries.ROW_CAP)
             elif kind == "s3":
                 df = duck.fetch_s3_file(resource_id, table, queries.ROW_CAP)
             else:
@@ -539,6 +540,8 @@ def on_register_s3(_event):
                 file_format=s3_format_select.value,
                 region=state["region"],
             )
+        db.list_aurora_tables.invalidate()
+        db.fetch_aurora_table.invalidate()
         pn.state.notifications.success(
             f"Registered {s3_name_input.value} — select it in the table list.")
         lineage.record(
@@ -571,6 +574,8 @@ def _seed(button, action, label):
     try:
         with busy(f"Seeding {label}…"):
             action(engine)
+        db.list_aurora_tables.invalidate()
+        db.fetch_aurora_table.invalidate()
         pn.state.notifications.success(f"{label} ready — select it above.")
         on_resource_change()
     except Exception as e:

@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "@devcontainers/cli": "^0.80.2",
+    "@devcontainers/cli": "^0.89.0",
     "jsonc-parser": "^3.2.1"
   }
 }

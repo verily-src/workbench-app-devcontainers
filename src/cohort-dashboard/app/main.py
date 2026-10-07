@@ -15,12 +15,15 @@ Run with:  panel serve main.py --port 8080
 
 import io
 import logging
+from contextlib import contextmanager
 
 import pandas as pd
 import panel as pn
 
+import bq
 import charts
 import db
+import duck
 import lineage
 import queries
 
@@ -76,6 +79,18 @@ body {{ font-family: {FONT_STACK}; background: #fafafa; }}
   letter-spacing: -0.02em;
 }}
 .hero-count .total {{ color: #6b6f76; font-weight: 500; font-size: 13px; }}
+.activity {{
+  font-family: {FONT_STACK}; font-size: 12.5px; font-weight: 500;
+  color: #6b6f76; display: flex; align-items: center; gap: 7px;
+}}
+.activity .pulse {{
+  width: 8px; height: 8px; border-radius: 50%; background: {VERILY_TEAL};
+  animation: cd-pulse 1s ease-in-out infinite;
+}}
+@keyframes cd-pulse {{
+  0%, 100% {{ opacity: .25; transform: scale(.8); }}
+  50% {{ opacity: 1; transform: scale(1); }}
+}}
 """
 
 
@@ -382,7 +397,21 @@ def load_dataframe(df: pd.DataFrame, source: str):
 
 # ------------------------------------------------------- datasource loading
 
-resource_select = pn.widgets.Select(name="Aurora resource", options=[])
+activity_pane = pn.pane.HTML("", height=24)
+
+
+@contextmanager
+def busy(message: str):
+    """Show a pulsing activity indicator while a slow operation runs."""
+    activity_pane.object = (
+        f'<div class="activity"><span class="pulse"></span>{message}</div>')
+    try:
+        yield
+    finally:
+        activity_pane.object = ""
+
+
+resource_select = pn.widgets.Select(name="Datasource", options={})
 table_select = pn.widgets.Select(name="Table", options=[])
 load_button = pn.widgets.Button(name="Load table", button_type="primary",
                                 stylesheets=[PRIMARY_BTN])
@@ -400,30 +429,54 @@ s3_register_button = pn.widgets.Button(name="Register S3 data",
                                        stylesheets=[PRIMARY_BTN])
 
 
+def selected_source() -> tuple[str, str] | None:
+    """(kind, id) of the selected datasource: aurora, s3, or bq."""
+    return resource_select.value or None
+
+
 def active_engine():
-    resource_id = resource_select.value
-    if not resource_id:
+    source = selected_source()
+    if not source or source[0] != "aurora":
         return None
-    return db.get_engine_for_resource(resource_id)
+    return db.get_engine_for_resource(source[1])
 
 
 def lineage_engine():
-    """Aurora when connected, SQLite file otherwise (local CSV mode)."""
+    """Aurora when connected, SQLite file otherwise (S3/BQ/CSV modes)."""
     return active_engine() or lineage.sqlite_fallback_engine()
 
 
+def _bq_coords(resource_id: str) -> tuple[str, str]:
+    for d in db.list_bq_datasets():
+        if d["id"] == resource_id:
+            return d["project"], d["dataset"]
+    raise ValueError(f"Unknown BigQuery dataset: {resource_id}")
+
+
 def on_resource_change(_event=None):
-    engine = active_engine()
-    if engine is None:
+    source = selected_source()
+    if source is None:
         return
-    for r in db.list_aurora_resources():
-        if r["id"] == resource_select.value and r.get("region"):
-            state["region"] = r["region"]
+    kind, resource_id = source
     table_select.loading = True
     try:
-        tables = queries.list_tables(engine)
-        table_select.options = {
-            f"{t['name']} ({t['kind']})": t["name"] for t in tables}
+        if kind == "aurora":
+            for r in db.list_aurora_resources():
+                if r["id"] == resource_id and r.get("region"):
+                    state["region"] = r["region"]
+            with busy(f"Listing tables in {resource_id}…"):
+                tables = queries.list_tables(active_engine())
+            table_select.options = {
+                f"{t['name']} ({t['kind']})": t["name"] for t in tables}
+        elif kind == "s3":
+            with busy(f"Listing files in {resource_id}…"):
+                files = duck.list_s3_files(resource_id)
+            table_select.options = {f: f for f in files}
+        elif kind == "bq":
+            project, dataset = _bq_coords(resource_id)
+            with busy(f"Listing tables in {dataset}…"):
+                tables = bq.list_tables(project, dataset)
+            table_select.options = {t: t for t in tables}
     except Exception as e:
         pn.state.notifications.error(
             f"Could not list tables: {short_error(e)}", duration=0)
@@ -433,17 +486,26 @@ def on_resource_change(_event=None):
 
 
 def on_load_table(_event):
-    engine = active_engine()
-    if engine is None or not table_select.value:
+    source = selected_source()
+    if source is None or not table_select.value:
         return
+    kind, resource_id = source
+    table = table_select.value
     load_button.loading = True
     try:
-        df = queries.fetch_table(engine, table_select.value)
-        load_dataframe(df, f"{resource_select.value} / {table_select.value}")
+        with busy(f"Loading {table}…"):
+            if kind == "aurora":
+                df = queries.fetch_table(active_engine(), table)
+            elif kind == "s3":
+                df = duck.fetch_s3_file(resource_id, table, queries.ROW_CAP)
+            else:
+                project, dataset = _bq_coords(resource_id)
+                df = bq.fetch_table(project, dataset, table, queries.ROW_CAP)
+        load_dataframe(df, f"{resource_id} / {table}")
         lineage.record(
-            engine, "table_loaded", "table", table_select.value,
-            payload={"resource_id": resource_select.value, "rows": len(df),
-                     "row_cap": queries.ROW_CAP})
+            lineage_engine(), "table_loaded", "table", table,
+            payload={"resource_id": resource_id, "source_kind": kind,
+                     "rows": len(df), "row_cap": queries.ROW_CAP})
     except Exception as e:
         pn.state.notifications.error(f"Load failed: {short_error(e)}",
                                      duration=0)
@@ -469,13 +531,14 @@ def on_register_s3(_event):
         return
     s3_register_button.loading = True
     try:
-        queries.create_s3_foreign_table(
-            engine,
-            name=s3_name_input.value.strip(),
-            location=s3_location_input.value.strip(),
-            file_format=s3_format_select.value,
-            region=state["region"],
-        )
+        with busy(f"Registering {s3_name_input.value.strip()}…"):
+            queries.create_s3_foreign_table(
+                engine,
+                name=s3_name_input.value.strip(),
+                location=s3_location_input.value.strip(),
+                file_format=s3_format_select.value,
+                region=state["region"],
+            )
         pn.state.notifications.success(
             f"Registered {s3_name_input.value} — select it in the table list.")
         lineage.record(
@@ -506,7 +569,8 @@ def _seed(button, action, label):
         return
     button.loading = True
     try:
-        action(engine)
+        with busy(f"Seeding {label}…"):
+            action(engine)
         pn.state.notifications.success(f"{label} ready — select it above.")
         on_resource_change()
     except Exception as e:
@@ -536,15 +600,27 @@ gtex_button.on_click(
 
 
 def poll_resources():
-    """Populate the resource list once the shared cache warms up."""
+    """Populate the datasource list once the shared cache warms up."""
     if not db.resources_ready():
         return
-    resources = db.list_aurora_resources()
-    resource_select.options = [r["id"] for r in resources]
-    if resources:
-        status_pane.object = f"**{len(resources)}** Aurora resource(s) found"
+    aurora = db.list_aurora_resources()
+    s3 = db.list_s3_folders()
+    bigquery = db.list_bq_datasets()
+    options = {}
+    for r in aurora:
+        options[f"{r['id']} · Aurora"] = ("aurora", r["id"])
+    for r in s3:
+        options[f"{r['id']} · S3"] = ("s3", r["id"])
+    for r in bigquery:
+        options[f"{r['id']} · BigQuery"] = ("bq", r["id"])
+    resource_select.options = options
+    if options:
+        parts = [f"{len(src)} {label}" for src, label in
+                 ((aurora, "Aurora"), (s3, "S3"), (bigquery, "BigQuery"))
+                 if src]
+        status_pane.object = f"**Datasources:** {' · '.join(parts)}"
     else:
-        status_pane.object = ("*No Aurora resources in this workspace. "
+        status_pane.object = ("*No datasources in this workspace. "
                               "Upload a CSV below to explore local data.*")
     _resource_poller.stop()
 
@@ -629,7 +705,7 @@ def refresh_lineage(_event=None):
 lineage_refresh_button.on_click(refresh_lineage)
 
 explore_tab = pn.Column(
-    pn.Row(count_pane, pn.Spacer(), export_button),
+    pn.Row(count_pane, pn.Spacer(), activity_pane, export_button),
     chip_box,
     pn.Row(chart_field_input, chart_kind_select, chart_y_select,
            add_chart_button),

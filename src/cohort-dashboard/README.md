@@ -6,20 +6,23 @@ Python-native sibling of [Cohort Explorer](../cohort-explorer/), built with
 
 ## Design
 
-One idea drives the architecture: **every datasource is a table in Aurora.**
+One idea drives the architecture: **every datasource is a SQL query away.**
 
-- Native tables and views work as before.
-- Files in S3 are not downloaded and seeded into SQLite. Instead they are
-  registered as **foreign tables** through the
-  [`aurora_analytics`](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-analytics-tutorial.html)
-  extension, and Aurora reads the Parquet/Iceberg data directly from S3 with
-  schema auto-inference and result caching.
+| Datasource | Engine | Workbench resource type |
+|---|---|---|
+| Aurora tables & views | SQLAlchemy + psycopg | `AWS_AURORA_DATABASE` |
+| Parquet/CSV in S3 | **DuckDB** reading S3 directly via the per-resource AWS profiles | `AWS_S3_STORAGE_FOLDER` |
+| BigQuery tables (GCP workspaces) | google-cloud-bigquery | `BQ_DATASET` |
+| S3 Parquet/Iceberg as Aurora foreign tables | [`aurora_analytics`](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-analytics-tutorial.html) (needs Aurora PostgreSQL 17.11+) | `AWS_AURORA_DATABASE` |
+| Local CSV/TSV upload | pandas (dev mode, no workspace needed) | — |
 
-Since everything appears in `information_schema`, one SQL code path covers all
-sources — there is no seeding pipeline, no dynamic ORM model, and no separate
-file-inference logic. The React build step is gone too: Panel serves the whole
-UI from Python, and charts (bar, histogram, KDE, box, scatter, heatmap) react
-to filter changes live, with no Apply button.
+Redshift, Athena, and DynamoDB were evaluated and are not reachable inside
+the Workbench credential model (not resource types, so no ABAC credential
+path). DuckDB-over-S3 covers the Athena use case within governance.
+
+There is no seeding pipeline, no dynamic ORM model, and no React build step:
+Panel serves the whole UI from Python, loading a table auto-generates the
+chart dashboard, and filters/charts react live with no Apply button.
 
 ```
 src/cohort-dashboard/

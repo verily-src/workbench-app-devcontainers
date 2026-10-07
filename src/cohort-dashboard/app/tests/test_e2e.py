@@ -19,7 +19,7 @@ pytestmark = pytest.mark.e2e
 @pytest.fixture
 def loaded_page(page: Page, app_url: str) -> Page:
     page.goto(app_url)
-    expect(page.get_by_text("Datasource")).to_be_visible(timeout=15000)
+    expect(page.get_by_text("Datasource").first).to_be_visible(timeout=15000)
     page.get_by_text("Upload CSV/TSV (local dev)").click()
     page.locator('input[type="file"]').set_input_files(FIXTURE_CSV)
     expect(page.get_by_text(re.compile(r"100.*of.*100.*rows"))).to_be_visible(

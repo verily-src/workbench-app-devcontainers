@@ -98,12 +98,47 @@ def _fetch_resources() -> list[dict]:
     return json.loads(result.stdout)
 
 
+_aws_configured = False
+_s3_uri_cache: dict[str, str] = {}
+
+
+def configure_aws_profiles():
+    """Generate per-resource AWS profiles so aws-cli and DuckDB can reach S3."""
+    global _aws_configured
+    if _aws_configured:
+        return
+    try:
+        subprocess.run(["wb", "workspace", "configure-aws"],
+                       capture_output=True, text=True, check=True, timeout=120)
+        logger.info("Configured AWS profiles via wb workspace configure-aws")
+    except Exception as e:
+        logger.warning("Failed to configure AWS profiles: %s", e)
+    import glob
+    import os
+    matches = glob.glob(os.path.expanduser("~/.workbench/aws/*.conf"))
+    if matches:
+        os.environ["AWS_CONFIG_FILE"] = matches[0]
+        logger.info("Set AWS_CONFIG_FILE to %s", matches[0])
+    _aws_configured = True
+
+
+def resolve_s3_uri(resource_id: str) -> str:
+    """s3:// URI of a storage-folder resource, without a trailing slash."""
+    if resource_id not in _s3_uri_cache:
+        result = subprocess.run(
+            ["wb", "resource", "resolve", "--id", resource_id],
+            capture_output=True, text=True, check=True, timeout=120)
+        _s3_uri_cache[resource_id] = result.stdout.strip().rstrip("/")
+    return _s3_uri_cache[resource_id]
+
+
 def _refresh_resource_cache():
     global _resource_cache
     with _resource_cache_lock:
         _resource_cache = _fetch_resources()
         _resource_cache_ready.set()
         logger.info("Resource cache refreshed: %d resources", len(_resource_cache))
+    configure_aws_profiles()
     for r in list_aurora_resources():
         warm_connection_string(r["id"])
 
@@ -140,6 +175,29 @@ def list_aurora_resources(wait: bool = False) -> list[dict]:
             "region": db_data.get("region"),
         })
     return aurora
+
+
+def list_s3_folders(wait: bool = False) -> list[dict]:
+    folders = []
+    for r in _ensure_cache(wait=wait):
+        rtype = r.get("resourceType", "")
+        if "S3" not in rtype:
+            continue
+        folders.append({"id": r.get("id")})
+    return folders
+
+
+def list_bq_datasets(wait: bool = False) -> list[dict]:
+    datasets = []
+    for r in _ensure_cache(wait=wait):
+        if r.get("resourceType") != "BQ_DATASET":
+            continue
+        datasets.append({
+            "id": r.get("id"),
+            "project": r.get("projectId"),
+            "dataset": r.get("datasetId"),
+        })
+    return datasets
 
 
 def get_engine_for_resource(resource_id: str) -> Engine:

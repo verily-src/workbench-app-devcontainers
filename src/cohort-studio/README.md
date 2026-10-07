@@ -68,6 +68,22 @@ Then create the app from the Workbench UI. Known platform issue: first
 boots of custom apps frequently hang in post-startup — if the proxy URL
 403s after ~15 minutes, stop/start the VM once.
 
+### Shipping updates (restart-to-deploy)
+
+App code is baked into the image at VM creation, but this app
+self-updates: `self_update.sh` (in the image) fetches the branch tarball
+from GitHub, swaps the backend, rebuilds the frontend in-container, and
+restarts the server — no-op when the branch hasn't moved.
+
+- **Restart the VM** → `postStartCommand` runs the script → latest
+  branch is live in ~1 minute.
+- **No restart at all**: `POST <app-url>/api/admin/update`, then poll
+  `GET /api/version` until the sha changes. Progress lands in
+  `/tmp/self-update.log` inside the container.
+
+VM recreation is only needed when `.devcontainer.json`, the Dockerfile,
+or the compose file change.
+
 The operational notes in [../cohort-dashboard/README.md](../cohort-dashboard/README.md)
 (datasource support matrix, aurora_analytics requirements, VM debugging)
 apply unchanged.

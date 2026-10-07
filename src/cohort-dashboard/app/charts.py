@@ -44,7 +44,7 @@ def _chrome(plot, element):
         ax.major_tick_line_color = None
         ax.minor_tick_line_color = None
         ax.major_label_text_color = INK_SOFT
-        ax.major_label_text_font = "Open Sans"
+        ax.major_label_text_font = "Inter"
         ax.axis_label_text_color = INK_SOFT
     for g in list(p.xgrid) + list(p.ygrid):
         g.grid_line_color = GRID_LINE

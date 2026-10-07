@@ -24,23 +24,37 @@ DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".txt")
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9._\-/ ()+=]+$")
 
 
-def parse_s3_ls(output: str) -> list[str]:
-    """File names from `aws s3 ls` output lines: 'date time size name'."""
+MAX_LISTING = 500
+
+
+def parse_s3_ls(output: str, prefix: str = "") -> list[str]:
+    """File keys from `aws s3 ls [--recursive]` lines: 'date time size key'.
+
+    With --recursive the key is the full path from the bucket root;
+    passing the folder's own prefix strips it so the UI shows paths
+    relative to the workspace folder (including subfolders).
+    """
     files = []
     for line in output.splitlines():
         parts = line.split(None, 3)
         if len(parts) == 4 and parts[0] != "PRE" and not line.rstrip().endswith("/"):
-            files.append(parts[3])
-    return [f for f in files if f.lower().endswith(DATA_SUFFIXES)]
+            key = parts[3]
+            if prefix and key.startswith(prefix):
+                key = key[len(prefix):].lstrip("/")
+            files.append(key)
+    return [f for f in files if f.lower().endswith(DATA_SUFFIXES)][:MAX_LISTING]
 
 
 @ttl_cache(ttl=300)
 def list_s3_files(resource_id: str) -> list[str]:
+    """Recursive listing: workspace folders often nest files in subfolders."""
     uri = db.resolve_s3_uri(resource_id)
+    # s3://bucket/some/prefix -> "some/prefix" (what --recursive keys start with)
+    prefix = uri.removeprefix("s3://").partition("/")[2]
     result = subprocess.run(
-        ["aws", "s3", "ls", uri + "/", "--profile", resource_id],
+        ["aws", "s3", "ls", uri + "/", "--recursive", "--profile", resource_id],
         capture_output=True, text=True, check=True, timeout=120)
-    files = parse_s3_ls(result.stdout)
+    files = parse_s3_ls(result.stdout, prefix=prefix)
     logger.info("Found %d data files in %s", len(files), uri)
     return files
 

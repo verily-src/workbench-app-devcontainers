@@ -33,6 +33,12 @@ def test_app_serves_and_shows_title(page: Page, app_url: str):
         timeout=15000)
 
 
+def test_dataset_opens_as_tab(loaded_page: Page):
+    # the loaded dataset gets its own closable tab named after the file
+    expect(loaded_page.locator(".bk-tab", has_text="samples.csv")
+           ).to_be_visible()
+
+
 def test_csv_upload_builds_grid_filters_and_auto_charts(loaded_page: Page):
     # Grid shows fixture data
     expect(loaded_page.get_by_text("GTEX-0000")).to_be_visible()

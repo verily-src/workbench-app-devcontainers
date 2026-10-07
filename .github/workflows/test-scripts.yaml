@@ -42,6 +42,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats jq
 
+      # Keep in sync with the sysexts in verily1 workbench/app-manager/static/butane/butane.yaml.tmpl.
+      - name: Install the Docker Compose and Buildx versions VMs use
+        run: |
+          plugins="${HOME}/.docker/cli-plugins"
+          mkdir -p "${plugins}"
+          curl -fsSL -o "${plugins}/docker-compose" https://github.com/docker/compose/releases/download/v2.39.3/docker-compose-linux-x86_64
+          curl -fsSL -o "${plugins}/docker-buildx" https://github.com/docker/buildx/releases/download/v0.28.0/buildx-v0.28.0.linux-amd64
+          echo "065836e21bce25674d2876dc64321ac707808fcd120e1c3ba700b0ce5ce8ff16  ${plugins}/docker-compose" | sha256sum -c
+          echo "696bc104bac3bb708eff1af3f8bbc09fda0fd88f5757c1f9b404a35117889224  ${plugins}/docker-buildx" | sha256sum -c
+          chmod +x "${plugins}/docker-compose" "${plugins}/docker-buildx"
+          docker compose version
+          docker buildx version
+
       - name: Run bats tests
         run: |
           cd scripts/test

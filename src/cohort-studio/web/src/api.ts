@@ -1,0 +1,80 @@
+import type {
+  ChartSpec, ColumnProfile, Filter, QueryResult, Source, TableInfo,
+} from "./types";
+
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const resp = await fetch(url, init);
+  if (!resp.ok) {
+    let detail = `${resp.status}`;
+    try {
+      const body = await resp.json();
+      detail = body.detail ?? detail;
+    } catch { /* non-JSON error body */ }
+    throw new Error(detail);
+  }
+  return resp.json() as Promise<T>;
+}
+
+const post = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export interface OpenResult {
+  dataset_id: string;
+  source: string;
+  rows: number;
+  columns: ColumnProfile[];
+}
+
+export const api = {
+  datasources: () =>
+    request<{ ready: boolean; sources: Source[] }>("/api/datasources"),
+
+  tables: (kind: string, resourceId: string) =>
+    request<TableInfo[]>(
+      `/api/tables?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`),
+
+  openDataset: (kind: string, resourceId: string, table: string) =>
+    request<OpenResult>("/api/datasets/open",
+      post({ kind, resource_id: resourceId, table })),
+
+  uploadDataset: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<OpenResult>("/api/datasets/upload",
+      { method: "POST", body: form });
+  },
+
+  query: (datasetId: string, filters: Filter[], charts: ChartSpec[],
+          page: number) =>
+    request<QueryResult>(`/api/datasets/${datasetId}/query`,
+      post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
+             page, page_size: 50 })),
+
+  closeDataset: (datasetId: string) =>
+    request<{ ok: boolean }>(`/api/datasets/${datasetId}`,
+      { method: "DELETE" }),
+
+  seedGtex: (resourceId: string) =>
+    request<{ rows: number }>(
+      `/api/seed/gtex?resource_id=${encodeURIComponent(resourceId)}`,
+      { method: "POST" }),
+
+  lineage: () =>
+    request<{ columns: string[]; data: unknown[][] }>("/api/lineage"),
+
+  export: async (datasetId: string, filters: Filter[]) => {
+    const resp = await fetch(`/api/datasets/${datasetId}/export`,
+      post({ filters }));
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cohort.tsv";
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+};

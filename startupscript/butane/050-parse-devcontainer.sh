@@ -107,6 +107,29 @@ handle_container_state_changed() {
     printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
 }
 
+update_container_memory_limit() {
+    # Applies a changed memory limit in place. Recreating application-server on
+    # a VM resize would discard its writable layer, including home directories.
+    local previous_pair="$1" pair="$2" limit="${2#*=}" id
+
+    if [[ "${pair}" != "${previous_pair}" ]]; then
+        id=$(get_application_container)
+        if [[ -n "${id}" && -n "${limit}" ]]; then
+            echo "Container memory limit changed from ${previous_pair#*=} to ${limit}"
+            # Compose leaves swap unset, which Docker treats as twice the memory limit.
+            if ! docker update --memory "${limit}" --memory-swap "$(( ${limit%m} * 2 ))m" "${id}"; then
+                # Leave the limit unrecorded so the next boot retries.
+                echo "WARNING: failed to update application-server memory limit" >&2
+                return 0
+            fi
+        elif [[ -n "${id}" ]]; then
+            echo "WARNING: no memory limit computed, keeping the existing application-server limit" >&2
+        fi
+    fi
+
+    printf '%s\n' "${pair}" >> "${CONTAINER_STATE_FILE}"
+}
+
 apply_gpu_runtime() {
     local DOCKER_COMPOSE_PATH="$1"
     local GPU_RUNTIME_BLOCK_PATH="$2"
@@ -253,5 +276,8 @@ if [[ -f "${SECRETS_YML}" ]]; then
     mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 -o=json '.secrets' /secrets.yml > /home/core/secrets.json
 fi
 
-# Track all hardware settings for application-server.
-handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}" "mem-limit=${CONTAINER_MEM_LIMIT}"
+# Read before handle_container_state_changed rewrites the state file.
+applied_mem_limit="$(sed -n '/^mem-limit=/p' "${CONTAINER_STATE_FILE}" 2>/dev/null || true)"
+# GPU and shm-size can only change by recreating application-server.
+handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}"
+update_container_memory_limit "${applied_mem_limit}" "mem-limit=${CONTAINER_MEM_LIMIT}"

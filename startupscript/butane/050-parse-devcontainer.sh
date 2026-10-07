@@ -102,6 +102,29 @@ handle_container_state_changed() {
     printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
 }
 
+update_container_memory_limit() {
+    # Applies a changed memory limit in place. Recreating application-server on
+    # a VM resize would discard its writable layer, including home directories.
+    local previous_pair="$1" pair="$2" limit="${2#*=}" id
+
+    if [[ "${pair}" != "${previous_pair}" ]]; then
+        id=$(docker ps -aq --no-trunc --filter 'name=^/application-server$')
+        if [[ -n "${id}" && -n "${limit}" ]]; then
+            echo "Container memory limit changed from ${previous_pair#*=} to ${limit}"
+            # Compose leaves swap unset, which Docker treats as twice the memory limit.
+            if ! docker update --memory "${limit}" --memory-swap "$(( ${limit%m} * 2 ))m" "${id}"; then
+                # Leave the limit unrecorded so the next boot retries.
+                echo "WARNING: failed to update application-server memory limit" >&2
+                return 0
+            fi
+        elif [[ -n "${id}" ]]; then
+            echo "WARNING: no memory limit computed, keeping the existing application-server limit" >&2
+        fi
+    fi
+
+    printf '%s\n' "${pair}" >> "${CONTAINER_STATE_FILE}"
+}
+
 apply_gpu_runtime() {
     local DOCKER_COMPOSE_PATH="$1"
     local GPU_RUNTIME_BLOCK_PATH="$2"
@@ -212,7 +235,11 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
 fi
 
 gpu_exists=$(detect_gpu; echo $?)
+# Read before handle_container_state_changed rewrites the state file.
+applied_mem_limit="$(sed -n '/^mem-limit=/p' "${CONTAINER_STATE_FILE}" 2>/dev/null || true)"
+# GPU and shm-size can only change by recreating application-server.
 handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}"
+update_container_memory_limit "${applied_mem_limit}" "mem-limit=${CONTAINER_MEM_LIMIT}"
 
 # Apply GPU runtime configuration if GPU is present
 if [[ "${gpu_exists}" == "0" ]]; then

@@ -39,52 +39,96 @@ def short_error(e: Exception, limit: int = 200) -> str:
 
 VERILY_TEAL = "#087a6a"
 FONT_URL = ("https://fonts.googleapis.com/css2?"
-            "family=Open+Sans:wght@400;600&family=Poppins:wght@500;600"
-            "&display=swap")
+            "family=Inter:wght@400;500;600&display=swap")
+FONT_STACK = ("Inter, -apple-system, 'SF Pro Text', 'Segoe UI', "
+              "'Open Sans', sans-serif")
 
-CSS = """
-.chart-card {
+# Linear-inspired chrome: neutral surfaces, 1px borders instead of heavy
+# shadows, Inter at small sizes, Verily teal as the single accent.
+CSS = f"""
+body {{ font-family: {FONT_STACK}; background: #fafafa; }}
+#header {{
+  box-shadow: none !important;
+  border-bottom: 1px solid #e9e8ea;
+}}
+.title {{
+  font-family: {FONT_STACK} !important;
+  font-size: 14px !important; font-weight: 600 !important;
+  letter-spacing: -0.01em;
+}}
+.chart-card {{
   background: #ffffff;
-  border-radius: 14px;
-  box-shadow: 0 1px 3px rgba(33,37,41,.08), 0 4px 16px rgba(33,37,41,.05);
-  padding: 10px 14px 4px 14px;
-}
-.chart-card:hover {
-  box-shadow: 0 2px 6px rgba(33,37,41,.10), 0 8px 24px rgba(33,37,41,.08);
-}
-.card-title {
-  font-family: Poppins, 'Open Sans', sans-serif;
-  font-weight: 500; font-size: 13px; color: #212529;
-}
-.hero-count {
-  font-family: Poppins, 'Open Sans', sans-serif;
-  font-weight: 600; font-size: 26px; color: #212529;
-}
-.hero-count .total { color: #5f6368; font-weight: 500; font-size: 15px; }
+  border: 1px solid #e9e8ea;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
+  padding: 8px 12px 2px 12px;
+  transition: border-color .12s ease;
+}}
+.chart-card:hover {{ border-color: #cfd0d3; }}
+.card-title {{
+  font-family: {FONT_STACK};
+  font-weight: 500; font-size: 12px; color: #3c4043;
+  letter-spacing: -0.01em;
+}}
+.hero-count {{
+  font-family: {FONT_STACK};
+  font-weight: 600; font-size: 22px; color: #17181a;
+  letter-spacing: -0.02em;
+}}
+.hero-count .total {{ color: #6b6f76; font-weight: 500; font-size: 13px; }}
 """
+
+
+def section_label(text: str) -> pn.pane.HTML:
+    """Linear-style sidebar section label: 11px uppercase, muted."""
+    return pn.pane.HTML(
+        f'<div style="font-family:{FONT_STACK};font-size:11px;'
+        f'font-weight:600;letter-spacing:.08em;text-transform:uppercase;'
+        f'color:#6b6f76;margin:14px 0 2px 0;">{text}</div>')
+
 
 # Panel widgets render in shadow DOM, so page-level CSS cannot reach a
 # button's internals — these are injected per widget via `stylesheets`.
-CHIP_STYLE = """
-:host .bk-btn, :host button {
-  border-radius: 999px; background: #e4f0ed; color: #054f45;
-  border: none; font-size: 12px; padding: 3px 12px;
-}
-:host .bk-btn:hover, :host button:hover { background: #d0e5df; }
+PRIMARY_BTN = f"""
+:host .bk-btn, :host button {{
+  background: {VERILY_TEAL}; color: #fff; border: none; border-radius: 6px;
+  font-family: {FONT_STACK}; font-size: 12.5px; font-weight: 500;
+  padding: 5px 14px; box-shadow: 0 1px 2px rgba(0,0,0,.05);
+}}
+:host .bk-btn:hover, :host button:hover {{ background: #065f53; }}
 """
-CHIP_CLEAR_STYLE = """
-:host .bk-btn, :host button {
-  border-radius: 999px; background: transparent; color: #5f6368;
-  border: 1px solid #d5d9dd; font-size: 12px; padding: 3px 12px;
-}
-:host .bk-btn:hover, :host button:hover { background: #eceeef; }
+GHOST_BTN = f"""
+:host .bk-btn, :host button {{
+  background: #fff; color: #3c4043; border: 1px solid #dcdbdd;
+  border-radius: 6px; font-family: {FONT_STACK}; font-size: 12.5px;
+  font-weight: 500; padding: 5px 12px; box-shadow: none;
+}}
+:host .bk-btn:hover, :host button:hover {{
+  background: #f4f4f5; border-color: #c9c8cc;
+}}
 """
-QUIET_STYLE = """
-:host .bk-btn, :host button {
-  background: transparent; color: #80868b; border: none;
-  font-size: 14px; padding: 0 4px; box-shadow: none;
-}
-:host .bk-btn:hover, :host button:hover { color: #212529; }
+CHIP_STYLE = f"""
+:host .bk-btn, :host button {{
+  border-radius: 999px; background: #eef5f3; color: #054f45;
+  border: 1px solid #cfe0dc; font-family: {FONT_STACK};
+  font-size: 12px; padding: 2px 10px;
+}}
+:host .bk-btn:hover, :host button:hover {{ background: #ddebe7; }}
+"""
+CHIP_CLEAR_STYLE = f"""
+:host .bk-btn, :host button {{
+  border-radius: 999px; background: transparent; color: #6b6f76;
+  border: 1px solid #dcdbdd; font-family: {FONT_STACK};
+  font-size: 12px; padding: 2px 10px;
+}}
+:host .bk-btn:hover, :host button:hover {{ background: #f4f4f5; }}
+"""
+QUIET_STYLE = f"""
+:host .bk-btn, :host button {{
+  background: transparent; color: #9095a0; border: none;
+  font-size: 13px; padding: 0 4px; box-shadow: none;
+}}
+:host .bk-btn:hover, :host button:hover {{ color: #17181a; }}
 """
 
 pn.extension("tabulator", throttled=True, notifications=True, raw_css=[CSS])
@@ -244,7 +288,8 @@ chart_kind_select = pn.widgets.Select(
 chart_y_select = pn.widgets.Select(name="Second field", options=[],
                                    visible=False, width=180)
 add_chart_button = pn.widgets.Button(name="Add", button_type="primary",
-                                     align="end", width=70)
+                                     align="end", width=70,
+                                     stylesheets=[PRIMARY_BTN])
 
 
 def _default_kind(col: str) -> str:
@@ -339,7 +384,8 @@ def load_dataframe(df: pd.DataFrame, source: str):
 
 resource_select = pn.widgets.Select(name="Aurora resource", options=[])
 table_select = pn.widgets.Select(name="Table", options=[])
-load_button = pn.widgets.Button(name="Load table", button_type="primary")
+load_button = pn.widgets.Button(name="Load table", button_type="primary",
+                                stylesheets=[PRIMARY_BTN])
 status_pane = pn.pane.Markdown("Connecting to workspace…")
 
 csv_input = pn.widgets.FileInput(accept=".csv,.tsv,.txt", name="Upload CSV/TSV")
@@ -350,7 +396,8 @@ s3_location_input = pn.widgets.TextInput(name="S3 location",
 s3_format_select = pn.widgets.Select(name="Format",
                                      options=["parquet", "iceberg"])
 s3_register_button = pn.widgets.Button(name="Register S3 data",
-                                       button_type="success")
+                                       button_type="primary",
+                                       stylesheets=[PRIMARY_BTN])
 
 
 def active_engine():
@@ -445,9 +492,11 @@ def on_register_s3(_event):
         s3_register_button.loading = False
 
 
-demo_table_button = pn.widgets.Button(name="Create synthetic demo table")
+demo_table_button = pn.widgets.Button(name="Create synthetic demo table",
+                                      stylesheets=[GHOST_BTN])
 gtex_button = pn.widgets.Button(name="Load GTEx V8 sample data",
-                                button_type="primary")
+                                button_type="primary",
+                                stylesheets=[PRIMARY_BTN])
 
 
 def _seed(button, action, label):
@@ -513,7 +562,8 @@ grid = pn.widgets.Tabulator(
     pd.DataFrame(), pagination="local", page_size=GRID_PAGE_SIZE,
     disabled=True, sizing_mode="stretch_width", show_index=False)
 filter_box = pn.Column(pn.pane.Markdown("*Load a table to see filters.*"))
-reset_button = pn.widgets.Button(name="Reset filters")
+reset_button = pn.widgets.Button(name="Reset filters",
+                                 stylesheets=[GHOST_BTN])
 reset_button.on_click(reset_filters)
 chart_box = pn.FlexBox(pn.pane.Markdown(
     "*Load a table — charts are generated automatically.*"))
@@ -535,11 +585,11 @@ def export_tsv() -> io.BytesIO:
 
 export_button = pn.widgets.FileDownload(
     callback=export_tsv, filename="cohort.tsv", label="Export TSV",
-    button_type="default", align="end")
+    button_type="default", align="end", stylesheets=[GHOST_BTN])
 
 sidebar = pn.Column(
     status_pane,
-    pn.pane.Markdown("## Datasource"),
+    section_label("Datasource"),
     resource_select,
     table_select,
     load_button,
@@ -559,7 +609,7 @@ sidebar = pn.Column(
             s3_name_input, s3_location_input, s3_format_select,
             s3_register_button)),
     ),
-    pn.pane.Markdown("## Filters"),
+    section_label("Filters"),
     reset_button,
     filter_box,
 )
@@ -568,7 +618,8 @@ lineage_grid = pn.widgets.Tabulator(
     lineage.recent_events(lineage.sqlite_fallback_engine()),
     pagination="local", page_size=GRID_PAGE_SIZE, disabled=True,
     sizing_mode="stretch_width", show_index=False)
-lineage_refresh_button = pn.widgets.Button(name="Refresh lineage")
+lineage_refresh_button = pn.widgets.Button(name="Refresh lineage",
+                                           stylesheets=[GHOST_BTN])
 
 
 def refresh_lineage(_event=None):
@@ -583,7 +634,7 @@ explore_tab = pn.Column(
     pn.Row(chart_field_input, chart_kind_select, chart_y_select,
            add_chart_button),
     chart_box,
-    pn.pane.Markdown("## Rows"),
+    section_label("Rows"),
     grid,
 )
 
@@ -613,8 +664,10 @@ pn.template.FastListTemplate(
     title="Cohort Dashboard",
     sidebar=[sidebar],
     main=[main],
-    header_background=VERILY_TEAL,
+    header_background="#ffffff",
+    header_color="#17181a",
     accent_base_color=VERILY_TEAL,
+    background_color="#fafafa",
     theme_toggle=False,
     main_layout=None,
     font="Open Sans",

@@ -119,3 +119,10 @@ fi
   cd "${LOCAL_REPO}"
   run_git_command git submodule update --init --recursive
 )
+LOCK_REPO_URL="${HTTPS_URL,,}"
+LOCK_REPO_URL="${LOCK_REPO_URL%/}"
+LOCK_REPO_URL="${LOCK_REPO_URL%.git}"
+readonly LOCK_REPO_URL
+if [[ -f /home/core/dependency-lock.json && "${LOCK_REPO_URL}" == "https://github.com/verily-src/workbench-app-devcontainers" ]]; then
+    node /home/core/dependency-lock.mjs apply "${LOCAL_REPO}" /home/core/dependency-lock.json /home/core
+fi

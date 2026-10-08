@@ -13,6 +13,9 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
+      - jupyter-home:/home/jupyter
+    tmpfs:
+      - /home/jupyter/workspace:uid=1001,gid=1001
     ports:
       - "8888:8888"
     networks:
@@ -26,3 +29,5 @@ services:
 networks:
   app-network:
     external: true
+volumes:
+  jupyter-home:

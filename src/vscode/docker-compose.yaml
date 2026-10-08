@@ -10,7 +10,9 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
-      - work:/home/vscode:cached
+      - work:/config:cached
+    tmpfs:
+      - /config/workspace:uid=911,gid=911
     ports:
       - "8443:8443"
     environment:

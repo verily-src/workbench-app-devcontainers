@@ -12,8 +12,9 @@ docker build -t workbench-parser-test -f scripts/test/integration/parse-devconta
 bats scripts/test/integration
 ```
 
-- `parse-devcontainer.bats`: missing memory keys, exact key matching, and failed
-  Docker operations preserving saved state until a successful retry.
+- `parse-devcontainer.bats`: missing state keys, exact key matching, in-place
+  memory limit updates, and failed Docker operations preserving saved state until
+  a successful retry.
 - `devcontainer.bats`: stale setup markers, failed startup/snapshot/restore retries,
   and ordinary apps ignoring snapshots and creating no Airlock state in either
   supported config location.
@@ -29,8 +30,8 @@ bats scripts/test/integration
   project do not interfere with app lookup.
 - `integration/parse-devcontainer.bats`: runs the complete parser in Linux against
   the Jupyter, RStudio, and regular R templates. Covers first creation, unchanged
-  restarts, independent hardware changes, GPU removal, invalid and fallback shared
-  memory, unset memory limits, workspace path normalization, and skipping prefetch
+  restarts, independent hardware changes, in-place memory updates, GPU removal,
+  invalid and fallback shared memory, unset memory limits, workspace path normalization, and skipping prefetch
   only for airlocked snapshots. Also validates first-boot Compose overrides and
   runtime mounts/images. Docker and cloud metadata are mocked; the parser runs
   without network access.

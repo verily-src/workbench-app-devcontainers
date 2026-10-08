@@ -19,6 +19,7 @@ case "$*" in
     'image inspect workbench-local-snapshot:devcontainer') test -f /home/core/snapshot ;;
     'ps -aq --no-trunc --filter name=^/application-server$') cat /home/core/container-id ;;
     'rm -f primary-id') : > /home/core/container-id ;;
+    'update --memory '*' primary-id') : ;;
     *) echo "Unexpected Docker command: $*" >&2; exit 1 ;;
 esac
 SH
@@ -172,11 +173,12 @@ exercise_lifecycle() {
     printf 'MemTotal: 4194304 kB\n' > "$CORE/meminfo"
     : > "$CORE/calls"
     parse /home/core/app/
-    grep -qx 'docker rm -f primary-id' "$CORE/calls"
-    [ ! -s "$CORE/container-id" ]
+    # Memory changes keep the container and its writable layer.
+    grep -qx 'docker update --memory 3072m --memory-swap 6144m primary-id' "$CORE/calls"
+    assert_no_call '^docker rm '
+    [ "$(cat "$CORE/container-id")" = primary-id ]
     check_settings 0 67108864 3221225472
 
-    printf 'primary-id\n' > "$CORE/container-id"
     printf '128m\n' > "$CORE/shm-size"
     : > "$CORE/calls"
     parse

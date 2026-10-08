@@ -37,6 +37,16 @@ def test_config_update_never_echoes_key():
     assert "sk-ant" not in resp.text
 
 
+def test_chart_palette_roundtrips():
+    body = client.get("/api/config").json()
+    assert body["chart_palette"] == "verily"
+    updated = client.put("/api/config", json={"chart_palette": "indigo"}).json()
+    assert updated["chart_palette"] == "indigo"
+    # unknown palette falls back to default
+    reset = client.put("/api/config", json={"chart_palette": "bogus"}).json()
+    assert reset["chart_palette"] == "verily"
+
+
 def test_mcp_mounted():
     assert any(str(getattr(r, "path", "")) == "/mcp"
                for r in main.app.routes)

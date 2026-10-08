@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, AppConfig, MCPConnection } from "../api";
+import { PALETTE_NAMES, getPalette } from "../palette";
 
-export function SettingsView() {
+export function SettingsView(
+    { onPaletteChange }: { onPaletteChange?: (p: string) => void }) {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [connections, setConnections] = useState<MCPConnection[]>([]);
+  const [palette, setPalette] = useState("verily");
   const [status, setStatus] = useState("");
 
   useEffect(() => {
@@ -13,6 +16,7 @@ export function SettingsView() {
       setCfg(c);
       setModel(c.llm.model);
       setConnections(c.mcp_connections);
+      setPalette(c.chart_palette);
     }).catch(() => undefined);
   }, []);
 
@@ -23,9 +27,12 @@ export function SettingsView() {
         model,
         ...(apiKey ? { api_key: apiKey } : {}),
         mcp_connections: connections,
+        chart_palette: palette,
       });
       setCfg(updated);
       setConnections(updated.mcp_connections);
+      setPalette(updated.chart_palette);
+      onPaletteChange?.(updated.chart_palette);
       setApiKey("");
       setStatus("Saved.");
     } catch (e) {
@@ -84,6 +91,34 @@ export function SettingsView() {
             Test connection
           </button>
         </div>
+      </div>
+
+      <div className="section-label">Chart palette</div>
+      <div className="settings-card">
+        <p className="settings-caption">
+          The colour charts use — the full cohort renders muted and the
+          filtered cohort in the accent.
+        </p>
+        <div className="palette-grid">
+          {PALETTE_NAMES.map((name) => {
+            const p = getPalette(name);
+            return (
+              <button key={name}
+                      className={`palette-swatch${palette === name ? " active" : ""}`}
+                      onClick={() => setPalette(name)}>
+                <span className="palette-dots">
+                  <span style={{ background: p.muted }} />
+                  <span style={{ background: p.accent }} />
+                  <span style={{ background: p.ramp[3] }} />
+                </span>
+                {name}
+              </button>
+            );
+          })}
+        </div>
+        <button className="primary" style={{ marginTop: 10 }} onClick={save}>
+          Save
+        </button>
       </div>
 
       <div className="section-label">MCP server (this app)</div>

@@ -16,6 +16,8 @@ CONFIG_PATH = Path(os.environ.get(
     "STUDIO_CONFIG", str(Path(__file__).parent / "studio_config.json")))
 
 DEFAULT_MODEL = "claude-opus-5"
+DEFAULT_PALETTE = "verily"
+PALETTES = ("verily", "indigo", "amber", "crimson", "slate")
 
 # Seeded MCP client connections, editable in Settings. URLs are left for
 # the user to fill in: the Verily Workbench MCP endpoint has not shipped
@@ -80,6 +82,7 @@ def public_config() -> dict:
                                else "settings" if stored_key else None),
         },
         "mcp_connections": connections,
+        "chart_palette": _load().get("chart_palette") or DEFAULT_PALETTE,
     }
 
 
@@ -92,6 +95,14 @@ def update_llm_config(model: str | None = None,
             llm["model"] = model
         if api_key is not None:
             llm["api_key"] = api_key or None  # empty string clears the key
+        _write(cfg)
+    return public_config()
+
+
+def update_chart_palette(palette: str) -> dict:
+    with _lock:
+        cfg = _load()
+        cfg["chart_palette"] = palette if palette in PALETTES else DEFAULT_PALETTE
         _write(cfg)
     return public_config()
 

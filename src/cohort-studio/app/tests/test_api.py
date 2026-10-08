@@ -119,3 +119,10 @@ def test_materialize_endpoint(monkeypatch):
     assert resp.json() == {"table": "saved_cohort", "resource_id": "db1",
                            "rows": 100}
     assert captured == {"name": "saved_cohort", "rows": 100}
+
+
+def test_upload_rejects_unsupported_file():
+    resp = client.post("/api/datasets/upload", files={
+        "file": ("reads.bam", b"BAM\x01binary", "application/octet-stream")})
+    assert resp.status_code == 400
+    assert "BAM" in resp.json()["detail"]

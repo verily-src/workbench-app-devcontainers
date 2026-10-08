@@ -352,3 +352,17 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .save-aurora { display: inline-flex; align-items: center; gap: 6px; }
 .save-aurora select { width: 160px; }
 .save-aurora input { width: 150px; }
+
+
+/* ---------------------------------------------------------- palette ui */
+.palette-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.palette-swatch {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 14px; text-transform: capitalize; font-size: 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--ink-soft);
+}
+.palette-swatch.active { border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(8,122,106,.15); color: var(--ink); }
+.palette-dots { display: flex; gap: 3px; }
+.palette-dots span { width: 16px; height: 16px; border-radius: 4px; }

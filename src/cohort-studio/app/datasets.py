@@ -137,11 +137,15 @@ def _bar_aggregate(full: pd.DataFrame, filt: pd.DataFrame, x: str) -> dict:
 
 def _histogram_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
                          x: str) -> dict:
-    values = full[x].dropna().astype(float)
+    # Coerce rather than cast: a non-numeric column (e.g. a chart kind
+    # switched to histogram on a categorical field) yields an empty
+    # histogram instead of raising and 500-ing the whole query.
+    values = pd.to_numeric(full[x], errors="coerce").dropna()
     if values.empty:
         return {"kind": "histogram", "x": x, "data": []}
     counts, edges = np.histogram(values, bins=HIST_BINS)
-    filt_counts, _ = np.histogram(filt[x].dropna().astype(float), bins=edges)
+    filt_values = pd.to_numeric(filt[x], errors="coerce").dropna()
+    filt_counts, _ = np.histogram(filt_values, bins=edges)
     data = [{"lo": float(edges[i]), "hi": float(edges[i + 1]),
              "all": int(counts[i]), "selected": int(filt_counts[i])}
             for i in range(len(counts))]
@@ -149,11 +153,14 @@ def _histogram_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
 
 
 def _scatter_aggregate(filt: pd.DataFrame, x: str, y: str) -> dict:
-    sub = filt[[x, y]].dropna()
+    # Coerce both axes: a scatter over a non-numeric column drops those
+    # points instead of raising and 500-ing the query.
+    sub = pd.DataFrame({x: pd.to_numeric(filt[x], errors="coerce"),
+                        y: pd.to_numeric(filt[y], errors="coerce")}).dropna()
     if len(sub) > SCATTER_SAMPLE:
         sub = sub.sample(SCATTER_SAMPLE, random_state=7)
     return {"kind": "scatter", "x": x, "y": y,
-            "data": sub.astype(float).values.tolist()}
+            "data": sub.values.tolist()}
 
 
 def _heatmap_aggregate(filt: pd.DataFrame, x: str, y: str) -> dict:

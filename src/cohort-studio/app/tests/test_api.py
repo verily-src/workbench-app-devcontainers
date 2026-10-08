@@ -221,3 +221,24 @@ def test_join_rejects_bad_how():
         "left_id": d["dataset_id"], "right_id": d["dataset_id"],
         "left_on": "k", "right_on": "k", "how": "cross-sideways"})
     assert resp.status_code == 400
+
+
+def test_numeric_chart_on_categorical_column_does_not_500():
+    # A histogram/scatter chart spec pointed at a categorical column (e.g.
+    # a chart type switched to one that needs numbers) must coerce to an
+    # empty aggregate, never raise and 500 the whole query round-trip.
+    import pandas as pd
+    import datasets as ds_mod
+    opened = ds_mod.open_dataset(pd.DataFrame({
+        "tissue": ["liver", "lung", "skin", "liver"],
+        "other": ["x", "y", "z", "x"]}), "cat")
+    resp = client.post(f"/api/datasets/{opened['dataset_id']}/query", json={
+        "filters": [],
+        "charts": [
+            {"kind": "histogram", "x": "tissue"},
+            {"kind": "scatter", "x": "tissue", "y": "other"}],
+        "page": 0})
+    assert resp.status_code == 200
+    charts = resp.json()["charts"]
+    assert charts[0]["data"] == []  # histogram coerced to empty
+    assert charts[1]["data"] == []  # scatter coerced to empty

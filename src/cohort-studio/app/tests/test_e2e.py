@@ -153,11 +153,21 @@ def test_settings_shows_palette_swatches(page: Page, app_url: str):
 
 
 def test_change_chart_type(loaded_page: Page):
-    # The tissue chart starts as a bar; switch it to a histogram in place.
+    # age is numeric → starts as a histogram; switch it to a bar in place
+    # and confirm the query round-trip does not error.
+    card = loaded_page.locator(".chart-card", has_text="age").first
+    card.locator(".chart-kind").select_option("bar")
+    expect(card.locator(".chart-kind")).to_have_value("bar", timeout=10000)
+    expect(loaded_page.get_by_text(re.compile("Query failed"))
+           ).to_have_count(0)
+
+
+def test_categorical_chart_has_no_numeric_type_option(loaded_page: Page):
+    # tissue is categorical: only "bar" is valid, so the type selector is
+    # hidden entirely (a histogram would be a numeric-only cast).
     card = loaded_page.locator(".chart-card", has_text="tissue").first
-    card.locator(".chart-kind").select_option("histogram")
-    expect(card.locator(".chart-kind")).to_have_value("histogram",
-                                                      timeout=10000)
+    expect(card).to_be_visible()
+    expect(card.locator(".chart-kind")).to_have_count(0)
 
 
 def test_join_two_tabs_into_new_dataset(loaded_page: Page):

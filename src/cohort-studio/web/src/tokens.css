@@ -366,3 +366,16 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   box-shadow: 0 0 0 2px rgba(8,122,106,.15); color: var(--ink); }
 .palette-dots { display: flex; gap: 3px; }
 .palette-dots span { width: 16px; height: 16px; border-radius: 4px; }
+
+
+/* ---------------------------------------------------------- saved views */
+.view-save { display: flex; gap: 6px; margin: 8px 0; }
+.view-save input { flex: 1; }
+.view-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.view-row { display: flex; align-items: center; gap: 4px; }
+.view-load {
+  flex: 1; text-align: left; border: none; background: transparent;
+  color: var(--ink-soft); font-size: 12.5px; padding: 5px 8px;
+  border-radius: var(--radius-sm);
+}
+.view-load:hover { background: var(--hover); color: var(--accent); }

@@ -27,6 +27,7 @@ import lineage
 import llm
 import mcp_server
 import queries
+import views
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
@@ -284,6 +285,21 @@ class MaterializeRequest(BaseModel):
     table: str
 
 
+class ViewSource(BaseModel):
+    kind: str
+    resource_id: str
+    table: str
+
+
+class SaveViewRequest(BaseModel):
+    kind: str          # storage backend: "aurora" or "s3"
+    resource_id: str   # where to store the view
+    name: str
+    source: ViewSource
+    filters: list[Filter] = Field(default_factory=list)
+    charts: list[ChartSpec] = Field(default_factory=list)
+
+
 @app.get("/api/config")
 def get_config():
     cfg = config.public_config()
@@ -378,6 +394,57 @@ def chat_dataset(dataset_id: str, req: ChatRequest):
                    payload={"message": req.message,
                             "actions": result["actions"]})
     return result
+
+
+@app.get("/api/views")
+def list_views(kind: str, resource_id: str):
+    try:
+        return views.list_views(kind, resource_id)
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+
+
+@app.get("/api/views/one")
+def get_view(kind: str, resource_id: str, name: str):
+    try:
+        state = views.get_view(kind, resource_id, name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    if state is None:
+        raise HTTPException(404, f"View {name!r} not found.")
+    return state
+
+
+@app.post("/api/views")
+def save_view(req: SaveViewRequest):
+    state = {
+        "source": req.source.model_dump(),
+        "filters": [{k: v for k, v in f.model_dump().items() if v is not None}
+                    for f in req.filters],
+        "charts": [{k: v for k, v in c.model_dump().items() if v is not None}
+                   for c in req.charts],
+    }
+    try:
+        result = views.save_view(req.kind, req.resource_id, req.name, state)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "view_saved", "view", req.name,
+                   payload={"store": f"{req.kind}:{req.resource_id}",
+                            "source": req.source.table})
+    return result
+
+
+@app.delete("/api/views")
+def delete_view(kind: str, resource_id: str, name: str):
+    try:
+        views.delete_view(kind, resource_id, name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
 
 
 @app.get("/api/lineage")

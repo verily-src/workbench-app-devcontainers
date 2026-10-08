@@ -126,3 +126,52 @@ def test_upload_rejects_unsupported_file():
         "file": ("reads.bam", b"BAM\x01binary", "application/octet-stream")})
     assert resp.status_code == 400
     assert "BAM" in resp.json()["detail"]
+
+
+def test_views_aurora_roundtrip(monkeypatch, tmp_path):
+    import views
+    from sqlalchemy import create_engine
+    import main
+    # File-based SQLite stands in for Aurora: a shared DB across
+    # connections (unlike :memory:, which is per-connection).
+    engine = create_engine(f"sqlite:///{tmp_path/'views.db'}")
+    monkeypatch.setattr(main.db, "get_engine_for_resource", lambda rid: engine)
+    monkeypatch.setattr(views.db, "get_engine_for_resource", lambda rid: engine)
+    monkeypatch.setattr(main.lineage, "record", lambda *a, **k: None)
+    views._prepared.clear()
+
+    state = {"source": {"kind": "s3", "resource_id": "folder", "table": "x.csv"},
+             "filters": [{"column": "tissue", "kind": "categorical",
+                          "values": ["liver"]}],
+             "charts": [{"kind": "bar", "x": "tissue"}]}
+    save = client.post("/api/views", json={
+        "kind": "aurora", "resource_id": "db1", "name": "liver cohort",
+        "source": state["source"], "filters": state["filters"],
+        "charts": state["charts"]})
+    assert save.status_code == 200
+
+    listed = client.get("/api/views?kind=aurora&resource_id=db1").json()
+    assert [v["name"] for v in listed] == ["liver cohort"]
+
+    got = client.get(
+        "/api/views/one?kind=aurora&resource_id=db1&name=liver%20cohort").json()
+    assert got["filters"] == state["filters"]
+    assert got["charts"] == state["charts"]
+    assert got["source"]["table"] == "x.csv"
+
+    client.delete("/api/views?kind=aurora&resource_id=db1&name=liver%20cohort")
+    assert client.get("/api/views?kind=aurora&resource_id=db1").json() == []
+
+
+def test_view_name_validation():
+    import views
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        views._validate("bad/name.json; rm -rf")
+
+
+def test_save_view_rejects_bad_backend():
+    resp = client.post("/api/views", json={
+        "kind": "bq", "resource_id": "d", "name": "v",
+        "source": {"kind": "bq", "resource_id": "d", "table": "t"}})
+    assert resp.status_code == 502 or resp.status_code == 400

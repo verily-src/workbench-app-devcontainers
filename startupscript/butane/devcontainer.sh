@@ -59,6 +59,8 @@ AIRLOCK_ENABLED=$(jq -r '.customizations.workbench.AIRLOCK_ENABLED // false' <<<
 PRIMARY=$(get_application_container)
 SNAPSHOT_IMAGE=workbench-local-snapshot:devcontainer
 export WORKBENCH_SETUP_STATE_DIR="${CONTAINER_STATE_FILE:-/home/core/container-state}.d/setup"
+# Compose grants bake fs.read only for build contexts, not the CLI's generated Dockerfile.
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
 POST_CREATE_DONE="${WORKBENCH_SETUP_STATE_DIR}/post-create.done"
 HAS_SNAPSHOT=false
 if [[ "${AIRLOCK_ENABLED}" == true ]] && docker image inspect "${SNAPSHOT_IMAGE}" >/dev/null 2>&1; then

@@ -1,0 +1,9 @@
+{
+    admin 0.0.0.0:2019
+}
+
+http://:8080 {
+    route {
+        reverse_proxy generator:8080
+    }
+}

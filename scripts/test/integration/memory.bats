@@ -6,7 +6,7 @@ setup() {
     REPORT="${BATS_TEST_TMPDIR}/report"
     jq -n '{schema_version:1,run_id:"memory-integration",app:"example",cloud:"gcp",profile:"cpu",sample:1,
       inputs_hash:"fixture",source_sha:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",machine:{type:"ci",ram_bytes:0,gpu_type:"",gpu_count:0}}' > "${BATS_TEST_TMPDIR}/context.json"
-    jq -n '{status:"pass",workload_sha256:"fixture",expected_containers:["application-server"]}' > "${BATS_TEST_TMPDIR}/workload.json"
+    jq -n '{status:"pass",execution_mode:"cloud",workload_sha256:"fixture",expected_containers:["application-server"]}' > "${BATS_TEST_TMPDIR}/workload.json"
 }
 
 teardown() {
@@ -50,4 +50,21 @@ teardown() {
     jq '.expected_containers += ["browser"]' "${BATS_TEST_TMPDIR}/workload.json" > "${BATS_TEST_TMPDIR}/both.json"
     "${COLLECTOR}" finish "${REPORT}" "${BATS_TEST_TMPDIR}/both.json"
     jq -e '[.cgroups[]|select(.role=="app")]|length==2' "${REPORT}/memory.json"
+}
+
+@test "an observed child removed before finish cannot leave a passing sample" {
+    "${COLLECTOR}" start "${BATS_TEST_TMPDIR}/context.json" "${REPORT}"
+    docker run -d --name application-server --label dependency-memory-integration=true --memory 512m \
+        python:3.12-alpine python -c 'import time; time.sleep(300)' >/dev/null
+    child=$(docker run -d --name dependency-removed-child --label dependency-memory-integration=true --memory 512m \
+        python:3.12-alpine python -c 'import time; data=bytearray(64*1024*1024); time.sleep(300)')
+    for _ in {1..150}; do
+        if jq -es --arg id "${child}" 'any(.[]; .container_id==$id and .final_capture)' "${REPORT}"/cgroups/*.json >/dev/null 2>&1; then break; fi
+        sleep 0.1
+    done
+    jq -es --arg id "${child}" 'any(.[]; .container_id==$id and .final_capture)' "${REPORT}"/cgroups/*.json >/dev/null
+    docker rm -f "${child}" >/dev/null
+    run "${COLLECTOR}" finish "${REPORT}" "${BATS_TEST_TMPDIR}/workload.json"
+    [ "${status}" -ne 0 ]
+    jq -e --arg id "${child}" 'any(.cgroups[]; .container_id==$id and .final_capture==false)' "${REPORT}/memory.json"
 }

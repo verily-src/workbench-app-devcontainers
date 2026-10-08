@@ -96,7 +96,8 @@
       "port": 8443,
       "services": [
         "app"
-      ]
+      ],
+      "home": "/config"
     },
     "ubuntu-example": {
       "kind": "terminal",
@@ -120,7 +121,8 @@
       "port": 8888,
       "services": [
         "app"
-      ]
+      ],
+      "home": "/home/jupyter"
     },
     "nemo_jupyter": {
       "kind": "nemo",

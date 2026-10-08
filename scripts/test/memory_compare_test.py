@@ -17,7 +17,7 @@ def sample(index, peak=400 * MIB):
         "sample": index, "status": "pass", "started_at": "2026-10-08T18:00:00Z", "inputs_hash": "candidate",
         "provenance": {"cold_boot_id": str(index), "workload_sha256": "fixture-v1", "collector_sha256": "collector-v1",
                        "machine": {"type": "test-machine", "ram_bytes": 8 * 1024 * MIB, "gpu_type": "", "gpu_count": 0}},
-        "workload": {"status": "pass"}, "host": {"peak_bytes": peak, "sample_interval_ms": 100}, "gpu": {},
+        "workload": {"status": "pass", "execution_mode": "cloud"}, "host": {"peak_bytes": peak, "sample_interval_ms": 100}, "gpu": {},
         "cgroups": [{"path": "/app", "container_id": "app", "role": "app", "peak_bytes": peak,
                      "limit_bytes": 7 * 1024 * MIB, "swap_peak_bytes": 0, "oom_delta": 0,
                      "oom_kill_delta": 0, "final_capture": True}],

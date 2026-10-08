@@ -1,10 +1,11 @@
 import importlib.util
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 assert os.environ["DC_ACCESS_ENV"] == "test"
-paths = [Path("/app/app.py"), Path("/app/app/app.py"), Path("/workspace/app/app.py")]
+paths = [Path(sys.argv[1])] if len(sys.argv) == 2 else [Path("/app/app.py"), Path("/app/app/app.py"), Path("/workspace/app/app.py")]
 path = next(path for path in paths if path.is_file())
 with patch("google.cloud.bigquery.Client") as factory, patch("subprocess.run") as command:
     command.return_value.returncode = 1

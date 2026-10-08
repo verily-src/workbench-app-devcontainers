@@ -5,6 +5,8 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly SCRIPT_DIR
+readonly EXECUTION_MODE="${DEPENDENCY_WORKLOAD_MODE:-cloud}"
+case "${EXECUTION_MODE}" in cloud|hosted) ;; *) exit 2 ;; esac
 readonly POSTGRES_IMAGE='postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873'
 
 blocked() { echo "$*" >&2; exit 3; }
@@ -88,10 +90,21 @@ expected_services() {
 }
 
 llm_work() {
+    local user_home
+    user_home=$(jq -r --arg app "${APP}" '.apps[$app].home' "${SCRIPT_DIR}/profiles.json")
     timeout 30 docker exec --user "${USER_NAME}" application-server claude --version
     timeout 30 docker exec --user "${USER_NAME}" application-server gemini --version
-    # shellcheck disable=SC2016
-    timeout 180 docker exec --user "${USER_NAME}" application-server bash -lc 'generate-llm-context; test -s "$HOME/CLAUDE.md"'
+    if [[ "${EXECUTION_MODE}" == hosted ]]; then
+        docker exec application-server mkdir -p /tmp/dependency-workload-bin
+        docker cp "${SCRIPT_DIR}/workloads/wb" application-server:/tmp/dependency-workload-bin/wb
+        docker exec application-server chmod 755 /tmp/dependency-workload-bin /tmp/dependency-workload-bin/wb
+        # shellcheck disable=SC2016
+        timeout 180 docker exec --user "${USER_NAME}" application-server bash -c \
+            'export PATH="/tmp/dependency-workload-bin:$PATH"; exec /opt/llm-context/generate-context.sh "$1"' bash "${user_home}"
+    else
+        timeout 180 docker exec --user "${USER_NAME}" application-server /opt/llm-context/generate-context.sh "${user_home}"
+    fi
+    docker exec --user "${USER_NAME}" application-server test -s "${user_home}/.claude/CLAUDE.md"
     docker cp application-server:/opt/llm-context/templates "${OUTPUT_DIR}/generated-templates"
     printf '[]\n' > "${OUTPUT_DIR}/generated-template-results.json"
     for template in file-processor flask-api rshiny-dashboard streamlit-dashboard; do
@@ -186,8 +199,8 @@ case "${APP}" in
 esac
 hash=$(cat "${SCRIPT_DIR}/workload.sh" "${SCRIPT_DIR}/profiles.json" "${SCRIPT_DIR}"/workloads/* | sha256sum | cut -d ' ' -f 1)
 jq -n --arg app "${APP}" --arg profile "${PROFILE}" --arg started "${started}" --arg finished "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg status "${result}" --arg hash "${hash}" --argjson code "${status}" --argjson expected "${expected}" \
-    '{schema_version:1,app:$app,profile:$profile,status:$status,reason:(if $status=="pass" then "" else "See workload.log" end),
+    --arg status "${result}" --arg mode "${EXECUTION_MODE}" --arg hash "${hash}" --argjson code "${status}" --argjson expected "${expected}" \
+    '{schema_version:1,app:$app,profile:$profile,status:$status,execution_mode:$mode,reason:(if $status=="pass" then "" else "See workload.log" end),
       started_at:$started,finished_at:$finished,exit_code:$code,workload_sha256:$hash,fixture_version:1,seed:189771,
       expected_containers:$expected,gpu_workload:($profile!="cpu"),external_llm_inference:"not tested"}' > "${OUTPUT_DIR}/workload.json"
 exit "${status}"

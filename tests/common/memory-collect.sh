@@ -82,9 +82,43 @@ capture_group() {
     mv "${file}.tmp" "${file}"
 }
 
+measured_container() {
+    case "$1:$2" in
+        application-server:*|browser:*|playground:*|proxy-agent:*|fluent-bit:*|dependency-*:*) return 0 ;;
+        app-[0-9]*:app|*:wondershaper|*:db) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+verify_lifecycles() {
+    local directory="$1" metadata="$2" file id started path
+    while read -r id; do
+        [[ -n "${id}" ]] || continue
+        if ! jq -e --arg id "${id}" 'any(.[]; .Id==$id and .State.Running==true)' <<< "${metadata}" >/dev/null; then
+            missing "${directory}" "observed container disappeared or stopped: ${id}"
+        fi
+    done < <(sort -u "${directory}/container-ids.txt")
+    for file in "${directory}"/cgroups/*.json; do
+        [[ -f "${file}" ]] || continue
+        id=$(jq -r '.container_id' "${file}")
+        started=$(jq -r '.started_at' "${file}")
+        path=$(jq -r '.path' "${file}")
+        if [[ ! -r "${CGROUP_ROOT}${path}/memory.peak" ]] ||
+           { [[ -n "${id}" ]] && ! jq -e --arg id "${id}" --arg started "${started}" \
+             'any(.[]; .Id==$id and .State.StartedAt==$started and .State.Running==true)' <<< "${metadata}" >/dev/null; }; then
+            jq '.final_capture=false' "${file}" > "${file}.tmp"; mv "${file}.tmp" "${file}"
+            missing "${directory}" "lost observed cgroup lifecycle: ${path}:${id}:${started}"
+        fi
+    done
+}
+
 container_samples() {
     local directory="$1" ids metadata row id name pid path started finished oom role service seen=0
+    local cursor until events event_id
+    cursor=$(jq -r '.started_at' "${directory}/context.json")
     while :; do
+        metadata='[]'
+        : > "${directory}/current-containers.txt"
         for path in /system.slice /user.slice /init.scope; do
             [[ ! -d "${CGROUP_ROOT}${path}" ]] || capture_group "${directory}" "${path}" '' host-service '' '' false
         done
@@ -101,11 +135,10 @@ container_samples() {
                 id=$(jq -r '.Id' <<< "${row}")
                 name=$(jq -r '.Name | ltrimstr("/")' <<< "${row}")
                 service=$(jq -r '.Config.Labels["com.docker.compose.service"] // ""' <<< "${row}")
-                case "${name}:${service}" in
-                    application-server:*|browser:*|playground:*|proxy-agent:*|fluent-bit:*|dependency-*:*) ;;
-                    app-[0-9]*:app|*:wondershaper|*:db) ;;
-                    *) continue ;;
-                esac
+                measured_container "${name}" "${service}" || continue
+                if [[ $(jq -r '.State.Running' <<< "${row}") == true ]]; then
+                    printf '%s\n' "${name}" >> "${directory}/current-containers.txt"
+                fi
                 pid=$(jq -r '.State.Pid' <<< "${row}")
                 started=$(jq -r '.State.StartedAt' <<< "${row}")
                 finished=$(jq -r '.State.FinishedAt' <<< "${row}")
@@ -124,13 +157,31 @@ container_samples() {
                 case "${name}" in proxy-agent|fluent-bit) role=host-container ;; esac
                 capture_group "${directory}" "${path}" "${id}" "${role}" "${started}" "${finished}" "${oom}"
             done < <(jq -c '.[]' <<< "${metadata}")
+            until=$(date +%s.%N)
+            if events=$(timeout 5 docker events --since "${cursor}" --until "${until}" --filter type=container --filter event=start --format '{{json .}}'); then
+                while IFS= read -r row; do
+                    [[ -n "${row}" ]] || continue
+                    name=$(jq -r '.Actor.Attributes.name // ""' <<< "${row}")
+                    service=$(jq -r '.Actor.Attributes["com.docker.compose.service"] // ""' <<< "${row}")
+                    measured_container "${name}" "${service}" || continue
+                    event_id=$(jq -r '.Actor.ID' <<< "${row}")
+                    printf '%s\n' "${event_id}" >> "${directory}/event-container-ids.txt"
+                done <<< "${events}"
+                cursor="${until}"
+            else
+                missing "${directory}" 'container lifecycle events unavailable'
+            fi
             seen=1
         elif ((seen)); then
             missing "${directory}" 'Docker collection became unavailable'
         fi
+        verify_lifecycles "${directory}" "${metadata}"
         [[ ! -f "${directory}/stop" ]] || break
         sleep 1
     done
+    while read -r event_id; do
+        grep -qx "${event_id}" "${directory}/container-ids.txt" || missing "${directory}" "container lifecycle missed between samples: ${event_id}"
+    done < <(sort -u "${directory}/event-container-ids.txt")
     [[ "${seen}" == 1 ]] || missing "${directory}" 'no containers observed'
 }
 
@@ -164,10 +215,10 @@ start() {
     ram=$(awk '/^MemTotal:/ {printf "%.0f", $2 * 1024}' "${PROC_ROOT}/meminfo")
     boot=$(cat "${PROC_ROOT}/sys/kernel/random/boot_id")
     jq --arg start "$(now)" --arg boot "${boot}" --argjson ram "${ram}" \
-        --arg collector "$(sha256sum "${SCRIPT_DIR}/memory-collect.sh" | cut -d ' ' -f 1)" \
+        --arg collector "$(cat "${SCRIPT_DIR}/memory-collect.sh" "${SCRIPT_DIR}/memory-validate.jq" | sha256sum | cut -d ' ' -f 1)" \
         '. + {started_at:$start,cold_boot_id:$boot,collector_sha256:$collector} | .machine.ram_bytes=$ram' \
         "${context}" > "${directory}/context.json"
-    touch "${directory}/host.tsv" "${directory}/gpu.jsonl" "${directory}/missing.txt" "${directory}/containers.txt" "${directory}/container-ids.txt"
+    touch "${directory}/host.tsv" "${directory}/gpu.jsonl" "${directory}/missing.txt" "${directory}/containers.txt" "${directory}/container-ids.txt" "${directory}/event-container-ids.txt" "${directory}/current-containers.txt"
     nohup bash "${SCRIPT_DIR}/memory-collect.sh" _collect "${directory}" > "${directory}/collector.log" 2>&1 < /dev/null &
     echo $! > "${directory}/collector.pid"
     for _ in {1..50}; do
@@ -197,7 +248,7 @@ finish() {
     jq -s '{samples:length,peak_bytes:([.[].used_bytes]|max),devices:(group_by(.uuid)|map({uuid:.[0].uuid,name:.[0].name,peak_bytes:([.[].used_bytes]|max),total_bytes:.[0].total_bytes}))}' \
         "${directory}/gpu.jsonl" > "${directory}/gpu.json"
     jq -Rn '[inputs] | unique' < "${directory}/missing.txt" > "${directory}/missing.json"
-    jq -Rn '[inputs] | unique' < "${directory}/containers.txt" > "${directory}/containers.json"
+    jq -Rn '[inputs] | unique' < "${directory}/current-containers.txt" > "${directory}/containers.json"
     jq -n --slurpfile context "${directory}/context.json" --slurpfile workload "${workload}" \
       --slurpfile host "${directory}/host.json" --slurpfile gpu "${directory}/gpu.json" \
       --slurpfile groups "${directory}/cgroups.json" --slurpfile missing "${directory}/missing.json" \
@@ -214,6 +265,8 @@ finish() {
                   ($h.sampling_gaps|length)==0 and $workload[0].status=="pass" and
                   all($g[]; .final_capture and .oom_delta==0 and .oom_kill_delta==0) then "pass" else "fail" end),
        reason:"See workload and coverage for failures; headroom and baseline decisions are in memory-compare.py"}' > "${directory}/memory.json"
+    jq -f "${SCRIPT_DIR}/memory-validate.jq" "${directory}/memory.json" > "${directory}/memory.validated.json"
+    mv "${directory}/memory.validated.json" "${directory}/memory.json"
     jq -e '.status=="pass"' "${directory}/memory.json" >/dev/null
 }
 

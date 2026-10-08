@@ -34,6 +34,8 @@ def problems(sample):
     discovered = coverage.get("discovered_containers", [])
     if not expected or not set(expected).issubset(discovered):
         issues.append("missing expected containers")
+    if sample.get("workload", {}).get("execution_mode") != "cloud":
+        issues.append("hosted fixtures are not cloud evidence")
     if not sample.get("workload", {}).get("status") == "pass":
         issues.append("workload did not pass")
     host = sample.get("host", {})
@@ -56,7 +58,7 @@ def problems(sample):
             issues.append("missing cgroup limit")
         if not isinstance(group.get("peak_bytes"), int) or group["peak_bytes"] < 0:
             issues.append("missing cgroup peak")
-        elif isinstance(group.get("limit_bytes"), int) and group["peak_bytes"] * 5 > group["limit_bytes"] * 4:
+        elif ram > 0 and group["peak_bytes"] * 5 > min(group.get("limit_bytes") or ram, ram) * 4:
             issues.append("container has less than 25% headroom")
         if not isinstance(group.get("swap_peak_bytes"), int):
             issues.append("missing swap peak")
@@ -64,8 +66,13 @@ def problems(sample):
             issues.append("swap was used")
     if sample.get("profile") != "cpu":
         gpu = sample.get("gpu", {})
-        if not gpu.get("samples") or not isinstance(gpu.get("peak_bytes"), int):
+        if not gpu.get("samples") or not isinstance(gpu.get("peak_bytes"), int) or not gpu.get("devices"):
             issues.append("missing GPU memory samples")
+        for device in gpu.get("devices", []):
+            if not isinstance(device.get("peak_bytes"), int) or not isinstance(device.get("total_bytes"), int) or device["total_bytes"] <= 0:
+                issues.append("invalid GPU memory counters")
+            elif device["peak_bytes"] * 5 > device["total_bytes"] * 4:
+                issues.append("GPU has less than 25% headroom")
     return sorted(set(issues))
 
 
@@ -107,6 +114,7 @@ def compare(candidates, baselines, unchanged=False):
         baseline_valid = len(baseline) >= 3 and not any(problems(sample) for sample in baseline)
         baseline_boots = [sample["provenance"].get("cold_boot_id") for sample in baseline]
         baseline_valid = baseline_valid and all(baseline_boots) and len(set(baseline_boots)) == len(baseline_boots)
+        baseline_valid = baseline_valid and len({sample["inputs_hash"] for sample in baseline}) == 1
         if unchanged and (not baseline_valid or any(sample["inputs_hash"] != samples[0]["inputs_hash"] for sample in baseline)):
             reasons.append("unchanged smoke requires a complete matching promoted baseline")
             status = "blocked" if status == "pass" else status

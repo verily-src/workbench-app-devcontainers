@@ -10,7 +10,7 @@ setup() {
     printf '536870912\n' > "${CGROUP_ROOT}/app/memory.max"
     printf '0\n' > "${CGROUP_ROOT}/app/memory.swap.peak"
     printf 'low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\n' > "${CGROUP_ROOT}/app/memory.events"
-    sed -n '/^capture_group() {/,/^}/p; /^missing() /p' "${REPO_ROOT}/tests/common/memory-collect.sh" > "${BATS_TEST_TMPDIR}/functions.sh"
+    sed -n '/^capture_group() {/,/^}/p; /^verify_lifecycles() {/,/^}/p; /^missing() /p' "${REPO_ROOT}/tests/common/memory-collect.sh" > "${BATS_TEST_TMPDIR}/functions.sh"
     source "${BATS_TEST_TMPDIR}/functions.sh"
 }
 
@@ -57,4 +57,20 @@ setup() {
     printf 'bad\n' > "${CGROUP_ROOT}/app/memory.max"
     capture_group "${REPORT}" /app app app start '' false
     grep -q 'invalid cgroup limit' "${REPORT}/missing.txt"
+}
+
+@test "LLM context generation uses a bounded synthetic workspace in hosted checks" {
+    mkdir -p "${BATS_TEST_TMPDIR}/bin" "${BATS_TEST_TMPDIR}/home"
+    cp "${REPO_ROOT}/tests/common/workloads/wb" "${BATS_TEST_TMPDIR}/bin/wb"
+    PATH="${BATS_TEST_TMPDIR}/bin:${PATH}" bash "${REPO_ROOT}/features/src/llm-context/generate-context.sh" "${BATS_TEST_TMPDIR}/home"
+    [ -s "${BATS_TEST_TMPDIR}/home/.claude/CLAUDE.md" ]
+    grep -q dependency-fixture "${BATS_TEST_TMPDIR}/home/.claude/CLAUDE.md"
+}
+
+@test "a disappeared observed container invalidates its retained lifecycle record" {
+    capture_group "${REPORT}" /app app app start '' false
+    printf 'app\n' > "${REPORT}/container-ids.txt"
+    verify_lifecycles "${REPORT}" '[]'
+    jq -e '.final_capture==false' "${REPORT}"/cgroups/*.json
+    grep -q 'observed container disappeared' "${REPORT}/missing.txt"
 }

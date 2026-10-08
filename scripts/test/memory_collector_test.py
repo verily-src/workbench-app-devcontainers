@@ -11,7 +11,7 @@ COLLECTOR = ROOT / "tests/common/memory-collect.sh"
 
 
 class CollectorInterfaceTest(unittest.TestCase):
-    def test_two_phase_interface_keeps_peak_after_short_spike(self):
+    def run_interface(self, missed_child=False):
         with tempfile.TemporaryDirectory(prefix="memory-collector-") as tmp:
             directory = Path(tmp)
             cgroup = directory / "cgroup"
@@ -32,11 +32,13 @@ class CollectorInterfaceTest(unittest.TestCase):
                                      "swap.peak": "0", "events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0"}.items():
                     (group / ("memory." + field)).write_text(value + "\n")
             metadata = [{"Id": "a" * 64, "Name": "/application-server", "Config": {"Labels": {}},
-                         "State": {"Pid": 4242, "StartedAt": "2026-10-08T18:00:00Z", "FinishedAt": "", "OOMKilled": False}}]
+                         "State": {"Running": True, "Pid": 4242, "StartedAt": "2026-10-08T18:00:00Z", "FinishedAt": "", "OOMKilled": False}}]
             metadata_path = directory / "docker.json"
             metadata_path.write_text(json.dumps(metadata))
+            events_path = directory / "events.jsonl"
+            events_path.write_text(json.dumps({"Actor": {"ID": "b" * 64, "Attributes": {"name": "dependency-short-child"}}}) + "\n" if missed_child else "")
             scripts = {
-                "docker": f'#!/bin/bash\ncase "$1" in ps) echo {"a" * 64} ;; inspect) cat "{metadata_path}" ;; *) exit 1 ;; esac\n',
+                "docker": f'#!/bin/bash\ncase "$1" in ps) echo {"a" * 64} ;; inspect) cat "{metadata_path}" ;; events) cat "{events_path}" ;; *) exit 1 ;; esac\n',
                 "timeout": '#!/bin/bash\nshift\nexec "$@"\n',
                 "date": '#!/usr/bin/env python3\nimport subprocess,sys,time\nif sys.argv[1:]==["+%s%3N"]: print(int(time.time()*1000))\nelse: sys.exit(subprocess.call(["/bin/date",*sys.argv[1:]]))\n',
             }
@@ -50,7 +52,7 @@ class CollectorInterfaceTest(unittest.TestCase):
             context_path = directory / "context.json"
             context_path.write_text(json.dumps(context))
             workload = directory / "workload.json"
-            workload.write_text(json.dumps({"status": "pass", "workload_sha256": "fixture", "expected_containers": ["application-server"]}))
+            workload.write_text(json.dumps({"status": "pass", "execution_mode": "cloud", "workload_sha256": "fixture", "expected_containers": ["application-server"]}))
             output = directory / "report"
             env = dict(os.environ, MEMORY_CGROUP_ROOT=str(cgroup), MEMORY_PROC_ROOT=str(proc), PATH=str(tools) + os.pathsep + os.environ["PATH"])
             start = subprocess.run(["bash", str(COLLECTOR), "start", str(context_path), str(output)], env=env, capture_output=True, text=True)
@@ -59,17 +61,25 @@ class CollectorInterfaceTest(unittest.TestCase):
             try:
                 (cgroup / "app/memory.peak").write_text("134217728\n")
                 result = subprocess.run(["bash", str(COLLECTOR), "finish", str(output), str(workload)], env=env, capture_output=True, text=True, timeout=20)
-                self.assertEqual(result.returncode, 0, result.stderr + (output / "collector.log").read_text())
+                self.assertEqual(result.returncode, int(missed_child), result.stderr + (output / "collector.log").read_text())
                 report = json.loads((output / "memory.json").read_text())
-                self.assertEqual(report["status"], "pass")
+                self.assertEqual(report["status"], "fail" if missed_child else "pass")
                 self.assertEqual(report["provenance"]["cold_boot_id"], "cold-boot-fixture")
                 self.assertTrue(any(group["peak_bytes"] == 134217728 for group in report["cgroups"]))
                 self.assertGreater(report["host"]["samples"], 0)
+                if missed_child:
+                    self.assertTrue(any("missed between samples" in reason for reason in report["coverage"]["missing_metrics"]))
             finally:
                 (output / "stop").touch()
                 deadline = time.monotonic() + 5
                 while not (output / "collector.exit").exists() and time.monotonic() < deadline:
                     time.sleep(0.1)
+
+    def test_two_phase_interface_keeps_peak_after_short_spike(self):
+        self.run_interface()
+
+    def test_event_for_unobserved_short_child_blocks_the_sample(self):
+        self.run_interface(missed_child=True)
 
 
 if __name__ == "__main__":

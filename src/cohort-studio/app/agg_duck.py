@@ -185,16 +185,21 @@ def query(df, filters: list[dict], chart_specs: list[dict],
     """DuckDB equivalent of datasets.query — identical response shape."""
     columns = set(df.columns)
     where, params = _where(filters, columns)
+    # Add a positional column so the rows page has a deterministic ORDER BY —
+    # SQL row order is undefined without one once DuckDB parallelises a scan.
+    pos_df = df.reset_index(drop=True).rename_axis("__pos__").reset_index()
+    sel = ", ".join(_q(c) for c in df.columns)
     con = duckdb.connect()
     try:
-        con.register("t", df)
+        con.register("t", pos_df)
         agg = _Agg(con, where, params)
         total = len(df)
         filtered = agg.one(f"SELECT COUNT(*) FROM t WHERE {where}", params)[0]
         charts = [_chart(agg, c, columns) for c in chart_specs]
         start = page * page_size
         page_rows = con.execute(
-            f"SELECT * FROM t WHERE {where} LIMIT {page_size} OFFSET {start}",
+            f"SELECT {sel} FROM t WHERE {where} "
+            f"ORDER BY __pos__ LIMIT {page_size} OFFSET {start}",
             params).df()
         rows = {
             "page": page, "page_size": page_size,

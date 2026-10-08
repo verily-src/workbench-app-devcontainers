@@ -95,3 +95,36 @@ def test_connect_no_profile_skips_secret(monkeypatch):
     monkeypatch.setattr(duck.duckdb, "connect", lambda: FakeCon())
     duck._connect(None)
     assert not any("SECRET" in c for c in calls)
+
+
+def test_resolve_credentials_falls_back_to_credential_process(
+        monkeypatch, tmp_path):
+    # Simulate an old aws CLI: export-credentials prints usage, exits 2.
+    class Usage:
+        returncode = 2
+        stdout = "usage: aws <command> <subcommand> help"
+        stderr = ""
+
+    # A config file whose profile's credential_process emits the JSON contract.
+    emitter = tmp_path / "creds.sh"
+    emitter.write_text(
+        '#!/bin/sh\necho \'{"Version":1,"AccessKeyId":"AK",'
+        '"SecretAccessKey":"SK","SessionToken":"TK"}\'\n')
+    emitter.chmod(0o755)
+    cfg = tmp_path / "ws.conf"
+    cfg.write_text(
+        "[profile bench9232_ho_data_internal]\n"
+        f"credential_process = {emitter}\n")
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(cfg))
+
+    real_run = duck.subprocess.run
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["aws", "configure", "export-credentials"]:
+            return Usage()
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(duck.subprocess, "run", fake_run)
+    creds = duck._resolve_credentials("bench9232_ho_data_internal")
+    assert creds["AccessKeyId"] == "AK"
+    assert creds["SessionToken"] == "TK"

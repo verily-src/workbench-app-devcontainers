@@ -8,10 +8,12 @@ read straight from S3 with no cluster and no download step. Also the
 bridge until aurora_analytics (pg 17.11+) is available on the cluster.
 """
 
+import configparser
 import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 
 import duckdb
@@ -68,24 +70,49 @@ def list_s3_files(resource_id: str) -> list[str]:
     return files
 
 
-def _resolve_credentials(profile: str) -> dict:
-    """Export concrete temporary credentials for a wb-generated profile.
+def _run_credential_process(profile: str) -> dict:
+    """Execute the profile's credential_process directly.
 
-    `aws configure export-credentials` runs the profile's credential_process
-    (wb resource credentials via aws-vault) and returns static keys that
-    DuckDB can consume. DuckDB's own credential_chain provider does NOT
-    run credential_process, so this indirection is required for Workbench
-    S3 profiles — without it DuckDB raises "Secret Validation Failure".
+    This is what the aws CLI runs under the hood for the profile, so it
+    works whenever `aws s3 ls --profile X` works — and doesn't depend on
+    the CLI version. The process emits the standard JSON contract
+    {Version, AccessKeyId, SecretAccessKey, SessionToken, Expiration}.
+    """
+    config_file = os.environ.get("AWS_CONFIG_FILE")
+    if not config_file or not os.path.exists(config_file):
+        raise RuntimeError("AWS_CONFIG_FILE is not set — profiles not "
+                           "configured yet.")
+    parser = configparser.RawConfigParser()
+    parser.read(config_file)
+    section = (f"profile {profile}" if parser.has_section(f"profile {profile}")
+               else profile)
+    if not parser.has_section(section) \
+            or not parser.has_option(section, "credential_process"):
+        raise RuntimeError(f"profile {profile} has no credential_process")
+    cmd = shlex.split(parser.get(section, "credential_process"))
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if out.returncode != 0:
+        detail = (out.stderr or out.stdout or "").strip().split("\n")[-1]
+        raise RuntimeError(f"credential_process failed: {detail}")
+    return json.loads(out.stdout)
+
+
+def _resolve_credentials(profile: str) -> dict:
+    """Concrete temporary credentials for a wb-generated AWS profile.
+
+    DuckDB's credential_chain provider does NOT run credential_process,
+    so we resolve the keys ourselves and hand DuckDB a PROVIDER config
+    secret. Prefer `aws configure export-credentials` (CLI >= 2.9); fall
+    back to running the profile's credential_process directly on older
+    CLIs (where that subcommand prints usage and exits non-zero).
     """
     out = subprocess.run(
         ["aws", "configure", "export-credentials",
          "--profile", profile, "--format", "json"],
         capture_output=True, text=True, timeout=60)
-    if out.returncode != 0:
-        detail = (out.stderr or out.stdout or "").strip().split("\n")[-1]
-        raise RuntimeError(
-            f"could not export AWS credentials for {profile}: {detail}")
-    return json.loads(out.stdout)
+    if out.returncode == 0 and out.stdout.strip().startswith("{"):
+        return json.loads(out.stdout)
+    return _run_credential_process(profile)
 
 
 def _connect(profile: str | None, region: str = DEFAULT_REGION):

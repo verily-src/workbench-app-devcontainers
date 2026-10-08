@@ -18,6 +18,42 @@ function autoCharts(columns: Dataset["columns"]): ChartSpec[] {
   return specs.slice(0, AUTO_CHART_LIMIT);
 }
 
+function VersionFooter() {
+  const [sha, setSha] = useState("");
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    api.version().then((v) => setSha(v.sha)).catch(() => undefined);
+  }, []);
+
+  const update = async () => {
+    setUpdating(true);
+    try {
+      await api.adminUpdate();
+      // poll until the server restarts on new code, then reload the page
+      const before = sha;
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        try {
+          const v = await api.version();
+          if (v.sha !== before) { window.location.reload(); return; }
+        } catch { /* server restarting */ }
+      }
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return (
+    <div className="version-footer">
+      <span>{sha ? sha.slice(0, 9) : "…"}</span>
+      <button className="quiet" disabled={updating} onClick={update}>
+        {updating ? "Updating…" : "Update app"}
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [ready, setReady] = useState(false);
@@ -36,14 +72,16 @@ export default function App() {
       try {
         const out = await api.datasources();
         setSources(out.sources);
-        if (out.ready) {
-          setReady(true);
+        if (out.ready) setReady(true);
+        // keep polling while empty: on Workbench VMs the wb CLI often
+        // is not logged in yet when the app starts (backend retries too)
+        if (out.ready && out.sources.length > 0) {
           window.clearInterval(pollRef.current);
         }
       } catch { /* backend still starting */ }
     };
     poll();
-    pollRef.current = window.setInterval(poll, 2000);
+    pollRef.current = window.setInterval(poll, 3000);
     return () => window.clearInterval(pollRef.current);
   }, []);
 
@@ -147,10 +185,10 @@ export default function App() {
           <div className="activity"><span className="pulse" />
             Connecting to workspace…</div>
         ) : (
-          <div style={{ fontSize: 12.5 }}>
+          <div style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
             {sources.length
               ? `${sources.length} datasource(s)`
-              : "No datasources — upload a CSV below."}
+              : "Waiting for workspace datasources… CSV upload works now."}
           </div>
         )}
 
@@ -180,18 +218,27 @@ export default function App() {
           </button>
         </div>
 
-        <div className="section-label">Upload CSV/TSV</div>
-        <input
-          type="file"
-          accept=".csv,.tsv,.txt"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) uploadCsv(f);
-            e.target.value = "";
-          }}
-        />
+        <div className="section-label">Upload</div>
+        <label className="upload-btn">
+          <input
+            type="file"
+            accept=".csv,.tsv,.txt"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadCsv(f);
+              e.target.value = "";
+            }}
+          />
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2">
+            <path d="M12 16V4m0 0l-4 4m4-4l4 4" />
+            <path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2" />
+          </svg>
+          Upload CSV/TSV
+        </label>
 
         <div className="section-label">Filters</div>
+
         {activeDs ? (
           <FilterPanel
             columns={activeDs.columns}
@@ -203,10 +250,12 @@ export default function App() {
             Load a table to see filters.
           </div>
         )}
+        <VersionFooter />
       </aside>
 
       <div className="main">
         <div className="topbar">
+          <span className="logomark" />
           <span className="brand">Cohort Studio</span>
           <div style={{ flex: 1 }} />
           {activity && (

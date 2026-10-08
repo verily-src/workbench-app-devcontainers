@@ -207,3 +207,49 @@ button:disabled { opacity: 0.45; cursor: default; }
 .filter-values input[type="checkbox"] { accent-color: var(--accent);
   width: 13px; height: 13px; }
 .range-inputs { display: flex; gap: 6px; padding-left: 14px; }
+
+/* -------------------------------------------------- modern controls */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6f76' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  padding-right: 28px;
+  cursor: pointer;
+  transition: border-color 0.12s ease;
+}
+select:hover { border-color: #c9c8cc; }
+
+.upload-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--card); color: var(--ink-soft);
+  font-size: 12.5px; font-weight: 500; padding: 6px 12px; cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.upload-btn:hover { background: var(--hover); border-color: #c9c8cc; }
+.upload-btn input[type="file"] { display: none; }
+
+.logomark {
+  width: 16px; height: 16px; border-radius: 5px;
+  background: linear-gradient(135deg, var(--accent) 0%, #0a9c87 100%);
+  box-shadow: 0 1px 2px rgba(8, 122, 106, 0.35);
+}
+
+.version-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 28px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px; color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty { max-width: 560px; margin: 48px auto 0; padding: 56px 32px; }
+
+button.primary:active { transform: translateY(0.5px); }
+button:focus-visible, select:focus-visible, .upload-btn:focus-within {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(8, 122, 106, 0.15);
+}

@@ -124,6 +124,7 @@ def datasources():
     ready = db.resources_ready()
     sources = []
     if ready:
+        db.retry_if_empty()
         for r in db.list_aurora_resources():
             sources.append({"kind": "aurora", "id": r["id"],
                             "label": f"{r['id']} · Aurora"})

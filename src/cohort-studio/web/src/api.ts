@@ -62,6 +62,11 @@ export const api = {
       `/api/seed/gtex?resource_id=${encodeURIComponent(resourceId)}`,
       { method: "POST" }),
 
+  version: () => request<{ sha: string }>("/api/version"),
+
+  adminUpdate: () =>
+    request<{ started: boolean }>("/api/admin/update", { method: "POST" }),
+
   lineage: () =>
     request<{ columns: string[]; data: unknown[][] }>("/api/lineage"),
 

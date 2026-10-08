@@ -182,6 +182,31 @@ def resources_ready() -> bool:
     return _resource_cache_ready.is_set()
 
 
+_retry_lock = threading.Lock()
+_last_retry = 0.0
+_RETRY_COOLDOWN = 20.0
+
+
+def retry_if_empty():
+    """Re-fetch when the cache is 'ready' but empty.
+
+    On a Workbench VM the app container starts before post-startup.sh has
+    logged in the wb CLI, so the first `wb resource list` can fail and the
+    cache ends up ready-with-nothing. Callers hit this on every
+    /api/datasources poll; the cooldown keeps it to one wb call per 20s
+    until resources appear.
+    """
+    global _last_retry
+    if _resource_cache:
+        return
+    with _retry_lock:
+        now = time.monotonic()
+        if now - _last_retry < _RETRY_COOLDOWN:
+            return
+        _last_retry = now
+    threading.Thread(target=_refresh_resource_cache, daemon=True).start()
+
+
 def _ensure_cache(wait: bool = False) -> list[dict]:
     global _last_refresh
     if wait and not _resource_cache_ready.is_set():

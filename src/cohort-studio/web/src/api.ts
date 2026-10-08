@@ -80,6 +80,8 @@ export interface WorkflowJob {
   end_time: string | null;
   output_bucket_uuid: string | null;
   output_bucket_path: string | null;
+  output_bucket_name: string | null;
+  output_bucket_resource: string | null;
   status_message: string | null;
 }
 

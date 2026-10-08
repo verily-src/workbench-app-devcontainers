@@ -65,7 +65,7 @@ def test_connection() -> dict:
         kwargs["base_url"] = cfg["base_url"]
     client = OpenAI(**kwargs)
     client.chat.completions.create(
-        model=cfg["model"], max_tokens=1,
+        model=cfg["model"],
         messages=[{"role": "user", "content": "ping"}])
     return {"ok": True, "provider": cfg["provider"], "model": cfg["model"],
             "display_name": cfg["model"]}
@@ -137,7 +137,7 @@ def _openai_suggestion(cfg: dict, system: str,
     client = OpenAI(**kwargs)
     schema = FilterSuggestion.model_json_schema()
     resp = client.chat.completions.create(
-        model=cfg["model"], max_tokens=4096,
+        model=cfg["model"],
         messages=[{"role": "system", "content": system},
                   {"role": "user", "content": prompt}],
         response_format={"type": "json_schema", "json_schema": {

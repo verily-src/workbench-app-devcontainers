@@ -401,3 +401,36 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 2px 6px; background: var(--surface); margin-right: 4px;
 }
+
+/* -------------------------------------------------------- workflows */
+.nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px; margin-left: 6px;
+  font-size: 10.5px; font-weight: 600; color: #fff;
+  background: var(--accent); border-radius: 8px;
+}
+.wf-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: 10px; letter-spacing: 0.02em;
+}
+.wf-run { background: #e8f0fe; color: #1a56c4; }
+.wf-ok { background: #e6f4ea; color: #1e7e34; }
+.wf-fail { background: #fce8e6; color: #c5221f; }
+.wf-dim { background: var(--surface); color: var(--ink-muted); }
+.wf-pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor; animation: wf-blink 1.4s ease-in-out infinite;
+}
+@keyframes wf-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.wf-dep-banner {
+  display: flex; align-items: center; gap: 8px;
+  background: #fef7e0; border: 1px solid #f2d888; color: #7a5c00;
+  border-radius: var(--radius); padding: 9px 12px; margin-bottom: 12px;
+  font-size: 12.5px;
+}
+.wf-dep-banner .wf-pulse { color: #c58c00; }
+.wf-dep-link {
+  margin-left: auto; color: var(--accent); cursor: pointer;
+  font-weight: 500; white-space: nowrap;
+}

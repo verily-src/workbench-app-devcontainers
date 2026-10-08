@@ -92,9 +92,12 @@ def run(provider: str, model: str, api_key: str, base_url: str | None,
     tool_calls: list[str] = []
 
     for _turn in range(MAX_TURNS):
+        # No explicit max_tokens: the OpenAI reasoning-model line rejects
+        # it (wants max_completion_tokens) and the model field is free
+        # text, so we let the provider default apply.
         resp = client.chat.completions.create(
             model=model, messages=convo,
-            tools=TOOL_SCHEMAS, tool_choice="auto", max_tokens=4096)
+            tools=TOOL_SCHEMAS, tool_choice="auto")
         if resp.usage:
             usage["prompt_tokens"] += resp.usage.prompt_tokens or 0
             usage["completion_tokens"] += resp.usage.completion_tokens or 0

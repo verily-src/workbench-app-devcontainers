@@ -51,6 +51,17 @@ agent history stays inside the workspace governance boundary and is
 exportable to an OTel collector later. View it under **Lineage → Agent
 activity**. See `docs/architecture.md` for diagrams.
 
+## Workflow awareness
+
+The **Workflows** tab lists Workbench workflow jobs (`wb workflow job
+list`) — Nextflow / HealthOmics runs — with a running-count badge in the
+nav. Because each job writes outputs to an S3 bucket resource
+(`outputBucketUuid` / `outputBucketPath`), the Explore tab shows a banner
+when the loaded datasource shares the output bucket of a job that is
+still running, so you know the data may be incomplete. The `wb workflow`
+command is optional: if the container's build or workspace can't reach
+it, the tab degrades to an "unavailable" state and never errors.
+
 ## Development
 
 ```bash

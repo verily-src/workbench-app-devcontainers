@@ -2,6 +2,7 @@ export interface Source {
   kind: "aurora" | "s3" | "bq";
   id: string;
   label: string;
+  uuid?: string;  // resource UUID — matches a workflow job's output bucket
 }
 
 export interface TableInfo {
@@ -60,7 +61,8 @@ export interface Dataset {
   id: string;
   title: string;
   source: string;
-  sourceRef?: { kind: string; resource_id: string; table: string };
+  sourceRef?: { kind: string; resource_id: string; table: string;
+                uuid?: string };
   columns: ColumnProfile[];
   filters: Filter[];
   charts: ChartSpec[];

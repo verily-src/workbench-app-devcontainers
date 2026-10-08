@@ -223,6 +223,43 @@ def test_join_rejects_bad_how():
     assert resp.status_code == 400
 
 
+def test_workflows_lists_jobs_and_counts_running(monkeypatch):
+    import workflows
+    sample = [
+        {"runId": "r1", "displayName": "sarek-run", "status": "RUNNING",
+         "workflowType": "NEXTFLOW", "engineType": "HEALTHOMICS",
+         "createdBy": "a@b.co", "createdDate": "2026-10-08T00:00:00Z",
+         "endTime": None, "outputBucketUuid": "uuid-1",
+         "outputBucketPath": "sarek-run", "statusMessage": None},
+        {"runId": "r2", "displayName": "rnaseq", "status": "COMPLETED",
+         "workflowType": "NEXTFLOW", "engineType": "HEALTHOMICS",
+         "createdBy": "a@b.co", "createdDate": "2026-10-07T00:00:00Z",
+         "endTime": "2026-10-07T01:00:00Z", "outputBucketUuid": "uuid-2",
+         "outputBucketPath": "rnaseq", "statusMessage": "x" * 500},
+    ]
+    monkeypatch.setattr(workflows, "_run", lambda limit: sample)
+    body = client.get("/api/workflows?refresh=true").json()
+    assert body["available"] is True
+    assert body["running_count"] == 1
+    assert body["jobs"][0]["name"] == "sarek-run"
+    assert body["jobs"][0]["output_bucket_uuid"] == "uuid-1"
+    # long status messages are truncated
+    assert len(body["jobs"][1]["status_message"]) == 200
+
+
+def test_workflows_unavailable_when_wb_missing(monkeypatch):
+    import workflows
+
+    def boom(limit):
+        raise FileNotFoundError("wb not found")
+
+    monkeypatch.setattr(workflows, "_run", boom)
+    body = client.get("/api/workflows?refresh=true").json()
+    assert body["available"] is False
+    assert body["jobs"] == []
+    assert body["running_count"] == 0
+
+
 def test_numeric_chart_on_categorical_column_does_not_500():
     # A histogram/scatter chart spec pointed at a categorical column (e.g.
     # a chart type switched to one that needs numbers) must coerce to an

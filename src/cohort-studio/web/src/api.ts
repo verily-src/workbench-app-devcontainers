@@ -69,6 +69,26 @@ export interface AgentTurn {
   status: string;
 }
 
+export interface WorkflowJob {
+  run_id: string;
+  name: string;
+  status: string;
+  workflow_type: string | null;
+  engine_type: string | null;
+  created_by: string | null;
+  created_date: string | null;
+  end_time: string | null;
+  output_bucket_uuid: string | null;
+  output_bucket_path: string | null;
+  status_message: string | null;
+}
+
+export interface WorkflowList {
+  available: boolean;
+  jobs: WorkflowJob[];
+  running_count: number;
+}
+
 export interface OpenResult {
   dataset_id: string;
   source: string;
@@ -134,6 +154,9 @@ export const api = {
 
   agentTurns: () =>
     request<{ turns: AgentTurn[] }>("/api/agent/turns"),
+
+  workflows: (refresh = false) =>
+    request<WorkflowList>(`/api/workflows${refresh ? "?refresh=true" : ""}`),
 
   chat: (datasetId: string, message: string, history: ChatMsg[],
          filters: Filter[], charts: ChartSpec[]) =>

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, OpenResult } from "./api";
+import { api, OpenResult, WorkflowList } from "./api";
 import { DatasetPane } from "./components/DatasetPane";
 import { FilterPanel } from "./components/FilterPanel";
 import { LineageView } from "./components/LineageView";
 import { SettingsView } from "./components/SettingsView";
 import { SavedViews } from "./components/SavedViews";
 import { JoinPanel } from "./components/JoinPanel";
+import { WorkflowsView } from "./components/WorkflowsView";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
 
@@ -69,13 +70,18 @@ export default function App() {
   const [active, setActive] = useState(0);
   const [activity, setActivity] = useState("");
   const [error, setError] = useState("");
-  const [view, setView] = useState<"explore" | "lineage" | "settings">("explore");
+  const [view, setView] = useState<
+    "explore" | "workflows" | "lineage" | "settings">("explore");
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
+  const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
 
   useEffect(() => {
     apiClient.config().then((c) => setPalette(c.chart_palette))
       .catch(() => undefined);
+    // Load workflow jobs once for the running-count badge; the Workflows
+    // view refreshes on its own and has a manual Refresh button.
+    api.workflows().then(setWorkflows).catch(() => undefined);
   }, []);
   const pollRef = useRef<number>();
 
@@ -149,7 +155,8 @@ export default function App() {
     try {
       const opened = await api.openDataset(source.kind, source.id, table);
       openResult(opened, table.split("/").pop() ?? table,
-        { kind: source.kind, resource_id: source.id, table });
+        { kind: source.kind, resource_id: source.id, table,
+          uuid: source.uuid });
     } catch (e) {
       setError(`Load failed: ${(e as Error).message}`);
     } finally {
@@ -234,6 +241,24 @@ export default function App() {
 
   // ---------------- one round trip per state change, per dataset ----------
   const activeDs = datasets[active];
+
+  // Is the active dataset the output of a workflow job that is still
+  // running? Match on the S3 resource UUID (the bucket a job writes to);
+  // if the job reports an output path, require the loaded table to sit
+  // under it, otherwise fall back to the bucket-level match.
+  const TERMINAL = new Set(
+    ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);
+  const dependentJob = (() => {
+    const ref = activeDs?.sourceRef;
+    if (!ref || ref.kind !== "s3" || !ref.uuid || !workflows) return null;
+    return workflows.jobs.find((j) =>
+      !TERMINAL.has((j.status || "").toUpperCase())
+      && j.output_bucket_uuid === ref.uuid
+      && (!j.output_bucket_path
+          || ref.table.includes(j.output_bucket_path)
+          || j.output_bucket_path.includes(ref.table.split("/")[0]))) ?? null;
+  })();
+
   useEffect(() => {
     if (!activeDs) return;
     let cancelled = false;
@@ -333,11 +358,15 @@ export default function App() {
           <span className="logomark" />
           <span className="brand">Cohort Studio</span>
           <nav className="topnav">
-            {(["explore", "lineage", "settings"] as const).map((v) => (
+            {(["explore", "workflows", "lineage", "settings"] as const)
+              .map((v) => (
               <span key={v}
                     className={`topnav-link${view === v ? " active" : ""}`}
                     onClick={() => setView(v)}>
                 {v[0].toUpperCase() + v.slice(1)}
+                {v === "workflows" && (workflows?.running_count ?? 0) > 0 && (
+                  <span className="nav-badge">{workflows!.running_count}</span>
+                )}
               </span>
             ))}
           </nav>
@@ -355,6 +384,8 @@ export default function App() {
         <div className="content">
           {view === "settings" ? (
             <SettingsView onPaletteChange={setPalette} />
+          ) : view === "workflows" ? (
+            <WorkflowsView />
           ) : view === "lineage" ? (
             <LineageView />
           ) : datasets.length === 0 ? (
@@ -395,6 +426,18 @@ export default function App() {
               {showJoin && datasets.length >= 2 && (
                 <JoinPanel datasets={datasets} busy={Boolean(activity)}
                            onJoin={doJoin} onClose={() => setShowJoin(false)} />
+              )}
+              {dependentJob && (
+                <div className="wf-dep-banner">
+                  <span className="wf-pulse" />
+                  This data shares the output bucket of workflow{" "}
+                  <strong>{dependentJob.name}</strong>, which is{" "}
+                  {dependentJob.status} — results may still be incomplete.
+                  <span className="wf-dep-link"
+                        onClick={() => setView("workflows")}>
+                    View workflows
+                  </span>
+                </div>
               )}
               {activeDs && (
                 <DatasetPane

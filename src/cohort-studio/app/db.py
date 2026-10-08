@@ -239,7 +239,8 @@ def list_s3_folders(wait: bool = False) -> list[dict]:
         rtype = r.get("resourceType", "")
         if "S3" not in rtype:
             continue
-        folders.append({"id": r.get("id")})
+        folders.append({"id": r.get("id"), "uuid": r.get("uuid"),
+                        "prefix": r.get("prefix")})
     return folders
 
 

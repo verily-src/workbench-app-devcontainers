@@ -1,0 +1,38 @@
+name: "CI - Maintenance VM Fixtures"
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/maintenance-vm-fixtures.yaml'
+      - 'scripts/test/fixtures/maintenance-releases/sources.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build public scenario images twice
+        run: |
+          jq -r '.releases[] | [.scenario, .version, .source_commit] | @tsv' \
+            scripts/test/fixtures/maintenance-releases/sources.json |
+          while IFS=$'\t' read -r scenario version source_commit; do
+            [[ "$scenario" =~ ^(v1|v2|v3|failure|recovery|rollback)$ ]]
+            [[ "$version" =~ ^[1-9][0-9]{0,15}$ && "$source_commit" =~ ^[0-9a-f]{40}$ ]]
+            startupscript/maintenance/build/build-image.sh \
+              "$version" "$RUNNER_TEMP/scenarios/$scenario" "$source_commit"
+            startupscript/maintenance/build/build-image.sh \
+              "$version" "$RUNNER_TEMP/repeated/$scenario" "$source_commit"
+            cmp "$RUNNER_TEMP/scenarios/$scenario/SHA256SUMS" "$RUNNER_TEMP/repeated/$scenario/SHA256SUMS"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-vm-images
+          path: ${{ runner.temp }}/scenarios/
+          if-no-files-found: error
+          retention-days: 3

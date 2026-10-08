@@ -58,3 +58,40 @@ def test_fetch_file_reads_local_parquet(tmp_path):
 def test_bq_rejects_bad_identifiers():
     with pytest.raises(ValueError):
         bq._validate("proj", "data`set; DROP")
+
+
+def test_connect_builds_config_secret_from_exported_creds(monkeypatch):
+    calls = []
+
+    class FakeCon:
+        def execute(self, sql):
+            calls.append(sql)
+        def close(self):
+            pass
+
+    monkeypatch.setattr(duck.duckdb, "connect", lambda: FakeCon())
+    monkeypatch.setattr(duck, "_resolve_credentials", lambda profile: {
+        "AccessKeyId": "AKIA", "SecretAccessKey": "sk/+=",
+        "SessionToken": "tok", "Expiration": "2026-01-01T00:00:00Z"})
+
+    duck._connect("bench9232_scimilarity_data", region="us-east-1")
+    secret_sql = next(c for c in calls if "CREATE OR REPLACE SECRET" in c)
+    assert "PROVIDER config" in secret_sql
+    assert "credential_chain" not in secret_sql  # the bug we fixed
+    assert "KEY_ID 'AKIA'" in secret_sql
+    assert "SESSION_TOKEN 'tok'" in secret_sql
+    assert "REGION 'us-east-1'" in secret_sql
+
+
+def test_connect_no_profile_skips_secret(monkeypatch):
+    calls = []
+
+    class FakeCon:
+        def execute(self, sql):
+            calls.append(sql)
+        def close(self):
+            pass
+
+    monkeypatch.setattr(duck.duckdb, "connect", lambda: FakeCon())
+    duck._connect(None)
+    assert not any("SECRET" in c for c in calls)

@@ -1,14 +1,16 @@
 """DuckDB engine: SQL over Parquet/CSV files in workspace S3 folders.
 
 This is the Athena-shaped capability inside the Workbench credential
-model: DuckDB's credential_chain provider reads the per-resource AWS
-profiles that `wb workspace configure-aws` generates (via
-AWS_CONFIG_FILE), so files are read straight from S3 with no cluster
-and no download step. Also the bridge until aurora_analytics (pg 17.11+)
-is available on the workspace cluster.
+model: for each read we export concrete temporary credentials from the
+per-resource AWS profile (which `wb workspace configure-aws` backs with
+credential_process) and hand them to a DuckDB S3 secret, so files are
+read straight from S3 with no cluster and no download step. Also the
+bridge until aurora_analytics (pg 17.11+) is available on the cluster.
 """
 
+import json
 import logging
+import os
 import re
 import subprocess
 
@@ -22,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".txt")
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9._\-/ ()+=]+$")
+# Workspace S3 buckets live in the Aurora cluster's region.
+DEFAULT_REGION = os.environ.get("STUDIO_S3_REGION", "us-east-1")
 
 
 MAX_LISTING = 500
@@ -64,14 +68,42 @@ def list_s3_files(resource_id: str) -> list[str]:
     return files
 
 
-def _connect(profile: str | None):
+def _resolve_credentials(profile: str) -> dict:
+    """Export concrete temporary credentials for a wb-generated profile.
+
+    `aws configure export-credentials` runs the profile's credential_process
+    (wb resource credentials via aws-vault) and returns static keys that
+    DuckDB can consume. DuckDB's own credential_chain provider does NOT
+    run credential_process, so this indirection is required for Workbench
+    S3 profiles — without it DuckDB raises "Secret Validation Failure".
+    """
+    out = subprocess.run(
+        ["aws", "configure", "export-credentials",
+         "--profile", profile, "--format", "json"],
+        capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        detail = (out.stderr or out.stdout or "").strip().split("\n")[-1]
+        raise RuntimeError(
+            f"could not export AWS credentials for {profile}: {detail}")
+    return json.loads(out.stdout)
+
+
+def _connect(profile: str | None, region: str = DEFAULT_REGION):
     con = duckdb.connect()
     if profile:
+        creds = _resolve_credentials(profile)
+
+        def lit(v: str) -> str:  # escape single quotes for the SQL literal
+            return v.replace("'", "''")
+
+        parts = ["TYPE s3", "PROVIDER config",
+                 f"KEY_ID '{lit(creds['AccessKeyId'])}'",
+                 f"SECRET '{lit(creds['SecretAccessKey'])}'",
+                 f"REGION '{lit(region)}'"]
+        if creds.get("SessionToken"):
+            parts.append(f"SESSION_TOKEN '{lit(creds['SessionToken'])}'")
         con.execute("INSTALL httpfs; LOAD httpfs;")
-        con.execute(f"""
-            CREATE OR REPLACE SECRET wb (
-                TYPE s3, PROVIDER credential_chain, PROFILE '{profile}'
-            )""")
+        con.execute(f"CREATE OR REPLACE SECRET wb ({', '.join(parts)})")
     return con
 
 
@@ -83,9 +115,10 @@ def _reader_sql(uri: str) -> str:
     return f"read_csv_auto('{uri}')"
 
 
-def fetch_file(uri: str, cap: int, profile: str | None = None) -> pd.DataFrame:
+def fetch_file(uri: str, cap: int, profile: str | None = None,
+               region: str = DEFAULT_REGION) -> pd.DataFrame:
     """Read a Parquet/CSV file (s3:// or local path) into a DataFrame."""
-    con = _connect(profile)
+    con = _connect(profile, region)
     try:
         query = f"SELECT * FROM {_reader_sql(uri)} LIMIT {int(cap)}"
         return con.execute(query).df()

@@ -4,6 +4,7 @@ import { DatasetPane } from "./components/DatasetPane";
 import { FilterPanel } from "./components/FilterPanel";
 import { LineageView } from "./components/LineageView";
 import { SettingsView } from "./components/SettingsView";
+import { SavedViews } from "./components/SavedViews";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
 
@@ -112,9 +113,13 @@ export default function App() {
   }, [sourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ------------------------------------------------- dataset lifecycle ----
-  const openResult = (opened: OpenResult, title: string) => {
+  const openResult = (
+    opened: OpenResult, title: string,
+    sourceRef?: Dataset["sourceRef"],
+    initial?: { filters: Dataset["filters"]; charts: Dataset["charts"] },
+  ) => {
     const existing = datasets.findIndex((d) => d.source === opened.source);
-    if (existing >= 0) {
+    if (existing >= 0 && !initial) {
       setActive(existing);
       return;
     }
@@ -122,13 +127,17 @@ export default function App() {
       id: opened.dataset_id,
       title,
       source: opened.source,
+      sourceRef,
       columns: opened.columns,
-      filters: [],
-      charts: autoCharts(opened.columns),
+      filters: initial?.filters ?? [],
+      charts: initial?.charts ?? autoCharts(opened.columns),
       page: 0,
     };
-    setDatasets((prev) => [...prev, ds]);
-    setActive(datasets.length);
+    setDatasets((prev) => {
+      const next = prev.filter((d) => d.source !== opened.source);
+      setActive(next.length);
+      return [...next, ds];
+    });
   };
 
   const loadTable = async () => {
@@ -137,7 +146,8 @@ export default function App() {
     setError("");
     try {
       const opened = await api.openDataset(source.kind, source.id, table);
-      openResult(opened, table.split("/").pop() ?? table);
+      openResult(opened, table.split("/").pop() ?? table,
+        { kind: source.kind, resource_id: source.id, table });
     } catch (e) {
       setError(`Load failed: ${(e as Error).message}`);
     } finally {
@@ -152,6 +162,24 @@ export default function App() {
       openResult(await api.uploadDataset(file), file.name);
     } catch (e) {
       setError(`Upload failed: ${(e as Error).message}`);
+    } finally {
+      setActivity("");
+    }
+  };
+
+  const loadView = async (store: { kind: string; id: string },
+                          name: string) => {
+    setActivity(`Loading view ${name}…`);
+    setError("");
+    try {
+      const v = await api.getView(store.kind, store.id, name);
+      const opened = await api.openDataset(
+        v.source.kind, v.source.resource_id, v.source.table);
+      openResult(opened, v.source.table.split("/").pop() ?? name,
+        v.source, { filters: v.filters, charts: v.charts });
+      setView("explore");
+    } catch (e) {
+      setError(`Could not load view: ${(e as Error).message}`);
     } finally {
       setActivity("");
     }
@@ -260,6 +288,11 @@ export default function App() {
             Load a table to see filters.
           </div>
         )}
+
+        <div className="section-label">Saved views</div>
+        <SavedViews sources={sources} activeDataset={activeDs}
+                    onLoadView={loadView} />
+
         <VersionFooter />
       </aside>
 

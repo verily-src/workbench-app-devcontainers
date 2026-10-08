@@ -60,6 +60,7 @@ export interface Dataset {
   id: string;
   title: string;
   source: string;
+  sourceRef?: { kind: string; resource_id: string; table: string };
   columns: ColumnProfile[];
   filters: Filter[];
   charts: ChartSpec[];

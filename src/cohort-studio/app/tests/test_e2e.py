@@ -149,3 +149,11 @@ def test_settings_shows_palette_swatches(page: Page, app_url: str):
     page.locator(".topnav-link", has_text="Settings").click()
     expect(page.get_by_text("Chart palette").first).to_be_visible(timeout=10000)
     expect(page.locator(".palette-swatch")).to_have_count(5)
+
+
+def test_saved_views_section_present(loaded_page: Page):
+    # Section renders; with no Aurora/S3 resource in the test workspace it
+    # shows the "no store" message.
+    expect(loaded_page.get_by_text("Saved views").first).to_be_visible()
+    expect(loaded_page.get_by_text(
+        "No Aurora or S3 resource").first).to_be_visible()

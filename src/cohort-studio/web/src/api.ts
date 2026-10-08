@@ -1,5 +1,6 @@
 import type {
-  ChartSpec, ChatMsg, ColumnProfile, Filter, QueryResult, Source, TableInfo,
+  ChartSpec, ChatMsg, ColumnProfile, Dataset, Filter, QueryResult, Source,
+  TableInfo,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -120,6 +121,29 @@ export const api = {
 
   adminUpdate: () =>
     request<{ started: boolean }>("/api/admin/update", { method: "POST" }),
+
+  listViews: (kind: string, resourceId: string) =>
+    request<{ name: string }[]>(
+      `/api/views?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`),
+
+  getView: (kind: string, resourceId: string, name: string) =>
+    request<{ source: { kind: string; resource_id: string; table: string };
+              filters: Filter[]; charts: ChartSpec[] }>(
+      `/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
+      + `&name=${encodeURIComponent(name)}`),
+
+  saveView: (kind: string, resourceId: string, name: string, d: Dataset) =>
+    request<{ name: string }>("/api/views", post({
+      kind, resource_id: resourceId, name,
+      source: d.sourceRef,
+      filters: d.filters,
+      charts: d.charts.map((c: ChartSpec) => ({ kind: c.kind, x: c.x, y: c.y })),
+    })),
+
+  deleteView: (kind: string, resourceId: string, name: string) =>
+    request<{ ok: boolean }>(
+      `/api/views?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
+      + `&name=${encodeURIComponent(name)}`, { method: "DELETE" }),
 
   lineage: () =>
     request<{ columns: string[]; data: unknown[][] }>("/api/lineage"),

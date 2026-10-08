@@ -27,6 +27,7 @@ import db
 import duck
 import lineage
 import llm
+import compare
 import mcp_server
 import queries
 import views
@@ -87,6 +88,12 @@ class JoinRequest(BaseModel):
     left_on: str
     right_on: str
     how: str = "inner"
+
+
+class CompareRequest(BaseModel):
+    filters_a: list[Filter] = Field(default_factory=list)
+    filters_b: list[Filter] = Field(default_factory=list)
+    b_is_rest: bool = False   # group B = complement of A (selected-vs-rest)
 
 
 # ----------------------------------------------------------------- helpers
@@ -252,6 +259,25 @@ def join_datasets(req: JoinRequest):
     return result
 
 
+@app.post("/api/datasets/{dataset_id}/compare")
+def compare_cohorts(dataset_id: str, req: CompareRequest):
+    try:
+        result = compare.compare(
+            dataset_id,
+            [f.model_dump() for f in req.filters_a],
+            [f.model_dump() for f in req.filters_b],
+            b_is_rest=req.b_is_rest)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "compared", "dataset",
+                   datasets.get(dataset_id)["source"],
+                   payload={"a_n": result["a_n"], "b_n": result["b_n"],
+                            "b_is_rest": req.b_is_rest})
+    return result
+
+
 @app.post("/api/datasets/{dataset_id}/query")
 def query_dataset(dataset_id: str, req: QueryRequest):
     try:
@@ -330,11 +356,17 @@ class ViewSource(BaseModel):
     table: str
 
 
+class Cohort(BaseModel):
+    name: str
+    filters: list[Filter] = Field(default_factory=list)
+
+
 class ViewDataset(BaseModel):
     source: ViewSource
     title: str = ""
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
+    cohorts: list[Cohort] = Field(default_factory=list)
 
 
 class SaveViewRequest(BaseModel):
@@ -512,6 +544,11 @@ def save_view(req: SaveViewRequest):
                          if v is not None} for f in d.filters],
             "charts": [{k: v for k, v in c.model_dump().items()
                         if v is not None} for c in d.charts],
+            "cohorts": [{
+                "name": ch.name,
+                "filters": [{k: v for k, v in f.model_dump().items()
+                             if v is not None} for f in ch.filters],
+            } for ch in d.cohorts],
         } for d in req.datasets],
     }
     try:

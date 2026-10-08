@@ -8,6 +8,7 @@ import { SavedViews } from "./components/SavedViews";
 import { JoinPanel } from "./components/JoinPanel";
 import { WorkflowsView } from "./components/WorkflowsView";
 import { Toasts } from "./components/Toasts";
+import { BrandMark } from "./components/BrandMark";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
@@ -197,6 +198,7 @@ export default function App() {
         columns: o.columns,
         filters: d.filters,
         charts: d.charts,
+        cohorts: d.cohorts ?? [],
         page: 0,
       }));
       setDatasets(restored);
@@ -363,8 +365,10 @@ export default function App() {
 
       <div className="main">
         <div className="topbar">
-          <span className="logomark" />
-          <span className="brand">Cohort Studio</span>
+          <BrandMark size={20} />
+          <span className="brand">
+            <span className="brand-verily">verily</span> Cohort Studio
+          </span>
           <nav className="topnav">
             {(["explore", "workflows", "lineage", "settings"] as const)
               .map((v) => (

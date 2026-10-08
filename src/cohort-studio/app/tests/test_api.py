@@ -223,6 +223,56 @@ def test_join_rejects_bad_how():
     assert resp.status_code == 400
 
 
+def test_compare_ranks_the_differing_column_first():
+    import numpy as np
+    import pandas as pd
+    import datasets as ds_mod
+    rng = np.random.RandomState(0)
+    n = 200
+    # 'group' splits the cohort; 'signal' differs by group, 'noise' doesn't.
+    group = np.array(["a"] * (n // 2) + ["b"] * (n // 2))
+    signal = np.where(group == "a", rng.normal(5, 1, n),
+                      rng.normal(8, 1, n))
+    noise = rng.normal(0, 1, n)
+    df = pd.DataFrame({"group": group, "signal": signal, "noise": noise})
+    opened = ds_mod.open_dataset(df, "cmp")
+    resp = client.post(f"/api/datasets/{opened['dataset_id']}/compare", json={
+        "filters_a": [{"column": "group", "kind": "categorical",
+                       "values": ["a"]}],
+        "filters_b": [{"column": "group", "kind": "categorical",
+                       "values": ["b"]}]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["a_n"] == 100 and body["b_n"] == 100
+    by_col = {r["column"]: r for r in body["results"]}
+    # signal is strongly different; noise is not.
+    assert by_col["signal"]["p"] < 0.05
+    assert by_col["signal"]["q"] < 0.05
+    assert by_col["noise"]["p"] > 0.05
+    # ranked by p ascending: signal (and the defining group col) outrank noise
+    ranked = [r["column"] for r in body["results"]]
+    assert ranked.index("signal") < ranked.index("noise")
+
+
+def test_compare_vs_rest_and_small_group_guard():
+    import pandas as pd
+    import datasets as ds_mod
+    df = pd.DataFrame({
+        "tissue": ["liver"] * 3 + ["lung"] * 97,
+        "val": list(range(100))})
+    opened = ds_mod.open_dataset(df, "cmp2")
+    # Group A = the 3 liver rows; B = rest. A is below MIN_GROUP_N → no test.
+    resp = client.post(f"/api/datasets/{opened['dataset_id']}/compare", json={
+        "filters_a": [{"column": "tissue", "kind": "categorical",
+                       "values": ["liver"]}],
+        "b_is_rest": True})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["a_n"] == 3 and body["b_n"] == 97
+    val = next(r for r in body["results"] if r["column"] == "val")
+    assert val["p"] is None and "too small" in val["note"]
+
+
 def test_workflows_lists_jobs_and_counts_running(monkeypatch):
     import workflows
     sample = [

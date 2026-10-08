@@ -264,6 +264,11 @@ class ChatRequest(BaseModel):
     charts: list[ChartSpec] = Field(default_factory=list)
 
 
+class MaterializeRequest(BaseModel):
+    resource_id: str
+    table: str
+
+
 @app.get("/api/config")
 def get_config():
     cfg = config.public_config()
@@ -312,6 +317,28 @@ def ask_dataset(dataset_id: str, req: AskRequest):
                    payload={"question": req.question,
                             "filters": result["filters"]})
     return result
+
+
+@app.post("/api/datasets/{dataset_id}/materialize")
+def materialize_dataset(dataset_id: str, req: MaterializeRequest):
+    """Persist a loaded dataset as a table in an Aurora resource."""
+    try:
+        ds = datasets.get(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    engine = db.get_engine_for_resource(req.resource_id)
+    try:
+        rows = queries.ingest_dataframe(engine, ds["df"], req.table)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    db.list_aurora_tables.invalidate()
+    db.fetch_aurora_table.invalidate()
+    lineage.record(engine, "materialized", "table", req.table,
+                   payload={"resource_id": req.resource_id, "rows": rows,
+                            "from": ds["source"]})
+    return {"table": req.table, "resource_id": req.resource_id, "rows": rows}
 
 
 @app.post("/api/datasets/{dataset_id}/chat")

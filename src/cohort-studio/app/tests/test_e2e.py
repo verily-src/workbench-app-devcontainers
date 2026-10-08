@@ -132,3 +132,11 @@ def test_chat_widget_opens_and_reports_unconfigured(loaded_page: Page):
     # no API key in the test server -> graceful error bubble
     expect(loaded_page.locator(".chat-bubble",
            has_text="Something went wrong")).to_be_visible(timeout=15000)
+
+
+def test_save_to_aurora_control_opens(loaded_page: Page):
+    loaded_page.get_by_role("button", name="Save to Aurora").click()
+    expect(loaded_page.locator(".save-aurora input")).to_be_visible(
+        timeout=10000)
+    # no Aurora resource in the test workspace -> placeholder option shown
+    expect(loaded_page.locator(".save-aurora select")).to_be_visible()

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { ChartSpec, Dataset, Filter } from "../types";
+import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 
@@ -74,6 +74,7 @@ export function DatasetPane({ dataset, onUpdate }: Props) {
           </span>
         </div>
         <div style={{ flex: 1 }} />
+        <SaveToAurora dataset={dataset} />
         <button onClick={() => api.export(dataset.id, filters)}>
           Export TSV
         </button>
@@ -143,6 +144,62 @@ export function DatasetPane({ dataset, onUpdate }: Props) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SaveToAurora({ dataset }: { dataset: Dataset }) {
+  const [open, setOpen] = useState(false);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [resourceId, setResourceId] = useState("");
+  const [table, setTable] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.datasources().then((out) => {
+      const aurora = out.sources.filter((s) => s.kind === "aurora");
+      setSources(aurora);
+      if (aurora[0]) setResourceId(aurora[0].id);
+    }).catch(() => undefined);
+    if (!table) {
+      setTable(dataset.title.replace(/\.[^.]+$/, "")
+        .replace(/[^A-Za-z0-9_]/g, "_").toLowerCase().slice(0, 48));
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = async () => {
+    if (!resourceId || !table) return;
+    setBusy(true);
+    setStatus("");
+    try {
+      const out = await api.materialize(dataset.id, resourceId, table);
+      setStatus(`Saved ${out.rows.toLocaleString()} rows to ${out.table}.`);
+    } catch (e) {
+      setStatus(`Failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return <button onClick={() => setOpen(true)}>Save to Aurora</button>;
+  }
+  return (
+    <div className="save-aurora">
+      <select value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
+        {sources.length === 0 && <option value="">No Aurora resource</option>}
+        {sources.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+      </select>
+      <input type="text" placeholder="table_name" value={table}
+             onChange={(e) => setTable(e.target.value)} />
+      <button className="primary" onClick={save}
+              disabled={busy || !resourceId || !table}>
+        {busy ? "Saving…" : "Save"}
+      </button>
+      <button className="quiet" onClick={() => setOpen(false)}>✕</button>
+      {status && <span className="ask-note">{status}</span>}
     </div>
   );
 }

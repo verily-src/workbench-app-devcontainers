@@ -49,7 +49,11 @@ def app_url(tmp_path_factory):
         raise RuntimeError("uvicorn did not come up in 30s")
     yield url
     proc.terminate()
-    proc.wait(timeout=10)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=10)
 
 
 @pytest.fixture

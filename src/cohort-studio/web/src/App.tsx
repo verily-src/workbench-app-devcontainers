@@ -9,6 +9,7 @@ import { JoinPanel } from "./components/JoinPanel";
 import { WorkflowsView } from "./components/WorkflowsView";
 import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
+import { CommandPalette, Command } from "./components/CommandPalette";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
@@ -78,7 +79,21 @@ export default function App() {
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const alerts = useWorkflowAlerts();
+
+  // ⌘K / Ctrl-K opens the command palette from anywhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     apiClient.config().then((c) => setPalette(c.chart_palette))
@@ -152,6 +167,23 @@ export default function App() {
     });
   };
 
+  // Open a specific table directly (used by the command palette) without
+  // routing through the two-step sidebar source/table selection.
+  const openTableDirect = async (src: Source, tbl: string) => {
+    setActivity(`Loading ${tbl}…`);
+    setError("");
+    try {
+      const opened = await api.openDataset(src.kind, src.id, tbl);
+      openResult(opened, tbl.split("/").pop() ?? tbl,
+        { kind: src.kind, resource_id: src.id, table: tbl, uuid: src.uuid });
+      setView("explore");
+    } catch (e) {
+      setError(`Load failed: ${(e as Error).message}`);
+    } finally {
+      setActivity("");
+    }
+  };
+
   const loadTable = async () => {
     if (!source || !table) return;
     setActivity(`Loading ${table}…`);
@@ -210,6 +242,18 @@ export default function App() {
       setActivity("");
     }
   };
+
+  // Share links: #view=<kind>:<resource>:<name> loads a saved view once
+  // datasources are ready (resolving before that races the empty list).
+  const hashLoaded = useRef(false);
+  useEffect(() => {
+    if (!ready || hashLoaded.current) return;
+    const m = window.location.hash.match(/view=([^:]+):([^:]+):(.+)/);
+    if (m) {
+      hashLoaded.current = true;
+      loadView({ kind: m[1], id: m[2] }, decodeURIComponent(m[3]));
+    }
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doJoin = async (p: { leftId: string; rightId: string;
                              leftOn: string; rightOn: string; how: string }) => {
@@ -283,6 +327,31 @@ export default function App() {
   }, [activeDs?.id, activeDs?.filters, activeDs?.charts, activeDs?.page]);
   // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Command palette entries, built from state already in hand (no fetches).
+  const commands: Command[] = [
+    ...(["explore", "workflows", "lineage", "settings"] as const).map((v) => ({
+      id: `view:${v}`, group: "Go to",
+      label: v[0].toUpperCase() + v.slice(1), run: () => setView(v),
+    })),
+    ...datasets.map((d, i) => ({
+      id: `tab:${d.id}`, group: "Open tab", label: d.title,
+      hint: `${d.result?.filtered?.toLocaleString() ?? "?"} rows`,
+      run: () => { setActive(i); setView("explore"); },
+    })),
+    ...sources.map((s) => ({
+      id: `src:${s.kind}:${s.id}`, group: "Datasource",
+      label: s.id, hint: s.kind.toUpperCase(),
+      run: () => { setSourceKey(`${s.kind}:${s.id}`); setView("explore"); },
+    })),
+    ...(source ? tables.map((t) => ({
+      id: `tbl:${t.name}`, group: `Open from ${source.id}`,
+      label: t.name, hint: t.detail,
+      run: () => openTableDirect(source, t.name),
+    })) : []),
+    { id: "act:upload", group: "Action", label: "Upload a CSV…",
+      run: () => fileRef.current?.click() },
+  ];
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -326,6 +395,7 @@ export default function App() {
         <div className="section-label">Upload</div>
         <label className="upload-btn">
           <input
+            ref={fileRef}
             type="file"
             accept=".csv,.tsv,.txt"
             onChange={(e) => {
@@ -383,6 +453,10 @@ export default function App() {
             ))}
           </nav>
           <div style={{ flex: 1 }} />
+          <button className="cmdk-hint" onClick={() => setCmdOpen(true)}
+                  title="Command palette">
+            <span>⌘K</span>
+          </button>
           {activity && (
             <div className="activity"><span className="pulse" />{activity}</div>
           )}
@@ -464,6 +538,8 @@ export default function App() {
         </div>
       </div>
       <Toasts toasts={alerts.toasts} onDismiss={alerts.dismissToast} />
+      <CommandPalette open={cmdOpen} commands={commands}
+                      onClose={() => setCmdOpen(false)} />
     </div>
   );
 }

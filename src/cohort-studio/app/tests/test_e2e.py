@@ -103,3 +103,20 @@ def test_close_tab_returns_to_empty_state(loaded_page: Page):
     loaded_page.locator(".tab .quiet").click()
     expect(loaded_page.get_by_text("No data loaded")).to_be_visible(
         timeout=10000)
+
+
+def test_settings_view_renders(page: Page, app_url: str):
+    page.goto(app_url)
+    expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
+    page.locator(".topnav-link", has_text="Settings").click()
+    expect(page.get_by_text("AI model").first).to_be_visible(timeout=10000)
+    expect(page.get_by_text("MCP connections").first).to_be_visible()
+    expect(page.get_by_text("Verily Workbench").first).to_be_visible()
+    expect(page.get_by_text("bioRxiv preprints").first).to_be_visible()
+
+
+def test_lineage_view_records_upload(loaded_page: Page):
+    loaded_page.locator(".topnav-link", has_text="Lineage").click()
+    expect(loaded_page.get_by_text("lineage events").first).to_be_visible(
+        timeout=10000)
+    expect(loaded_page.get_by_text("csv_uploaded").first).to_be_visible()

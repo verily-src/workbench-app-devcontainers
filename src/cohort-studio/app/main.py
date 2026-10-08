@@ -8,6 +8,7 @@ The compiled React frontend is served from ./static.
 
 import io
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pandas as pd
@@ -17,21 +18,33 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import bq
+import config
 import datasets
 import db
 import duck
 import lineage
+import llm
+import mcp_server
 import queries
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Cohort Studio")
 
-
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     db.warm_resource_cache()
+    if mcp_server.AVAILABLE:
+        async with mcp_server.mcp.session_manager.run():
+            yield
+    else:
+        yield
+
+
+app = FastAPI(title="Cohort Studio", lifespan=lifespan)
+
+if mcp_server.AVAILABLE:
+    app.mount("/mcp", mcp_server.http_app())
 
 
 # ------------------------------------------------------------------ models
@@ -216,6 +229,76 @@ def export_dataset(dataset_id: str, req: QueryRequest):
 def delete_dataset(dataset_id: str):
     datasets.close_dataset(dataset_id)
     return {"ok": True}
+
+
+class MCPConnection(BaseModel):
+    name: str
+    label: str = ""
+    url: str = ""
+    enabled: bool = False
+    note: str = ""
+    authorization_token: str | None = None
+
+
+class ConfigUpdate(BaseModel):
+    model: str | None = None
+    api_key: str | None = None
+    mcp_connections: list[MCPConnection] | None = None
+
+
+class AskRequest(BaseModel):
+    question: str
+    filters: list[Filter] = Field(default_factory=list)
+
+
+@app.get("/api/config")
+def get_config():
+    cfg = config.public_config()
+    cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
+    return cfg
+
+
+@app.put("/api/config")
+def put_config(req: ConfigUpdate):
+    if req.model is not None or req.api_key is not None:
+        config.update_llm_config(model=req.model, api_key=req.api_key)
+    if req.mcp_connections is not None:
+        config.update_mcp_connections(
+            [c.model_dump() for c in req.mcp_connections])
+    cfg = config.public_config()
+    cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
+    return cfg
+
+
+@app.post("/api/config/llm/test")
+def test_llm():
+    try:
+        return llm.test_connection()
+    except llm.LLMNotConfigured as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+
+
+@app.post("/api/datasets/{dataset_id}/ask")
+def ask_dataset(dataset_id: str, req: AskRequest):
+    try:
+        ds = datasets.get(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    try:
+        result = llm.suggest_filters(
+            req.question,
+            datasets.profile_columns(ds["df"]),
+            [f.model_dump() for f in req.filters])
+    except llm.LLMNotConfigured as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "ask_ai", "dataset", ds["source"],
+                   payload={"question": req.question,
+                            "filters": result["filters"]})
+    return result
 
 
 @app.get("/api/lineage")

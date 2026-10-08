@@ -64,7 +64,7 @@ body {
 .content { flex: 1; overflow-y: auto; padding: 14px 18px; }
 
 /* ----------------------------------------------------------- inputs */
-input[type="text"], input[type="number"], select {
+input[type="text"], input[type="number"], input[type="password"], select {
   width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -253,3 +253,51 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(8, 122, 106, 0.15);
 }
+
+
+/* ------------------------------------------------------------ topnav */
+.topnav { display: flex; gap: 2px; margin-left: 18px; }
+.topnav-link {
+  font-size: 12.5px; font-weight: 500; color: var(--ink-muted);
+  padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer;
+}
+.topnav-link:hover { color: var(--ink); background: var(--hover); }
+.topnav-link.active { color: var(--accent); background: var(--accent-tint); }
+
+/* ---------------------------------------------------------- settings */
+.settings-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px;
+}
+.settings-card input, .settings-card select { margin-bottom: 4px; }
+.settings-caption { font-size: 12.5px; color: var(--ink-muted);
+  margin: 0 0 10px; line-height: 1.45; }
+.settings-hint { font-size: 11.5px; color: var(--ink-faint);
+  font-weight: 400; text-transform: none; letter-spacing: 0; }
+.settings-code {
+  display: block; font-size: 12px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 10px; margin-bottom: 10px; color: var(--ink);
+  font-variant-ligatures: none; overflow-x: auto; white-space: nowrap;
+}
+.settings-status { margin-top: 10px; font-size: 12.5px;
+  color: var(--accent-dark); }
+.mcp-row {
+  display: grid; grid-template-columns: 170px 1fr 180px 28px;
+  gap: 8px; align-items: center; padding: 7px 0;
+  border-top: 1px solid #f2f2f3;
+}
+.mcp-row:first-of-type { border-top: none; }
+.mcp-toggle { display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-soft);
+  cursor: pointer; }
+.mcp-toggle input { accent-color: var(--accent); width: 13px; height: 13px; }
+.mcp-note { grid-column: 1 / -1; margin-top: -3px; }
+
+/* ------------------------------------------------------------ ask ai */
+.ask-ai {
+  display: flex; align-items: center; gap: 8px; margin: 10px 0 2px;
+  color: var(--accent);
+}
+.ask-ai input { flex: 1; max-width: 520px; }
+.ask-note { font-size: 12px; color: var(--ink-muted); }

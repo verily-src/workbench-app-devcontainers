@@ -5,7 +5,7 @@ set -o pipefail
 
 readonly VERSION="${1:?Usage: build-image.sh VERSION OUTPUT_DIR [SOURCE_COMMIT]}"
 readonly OUTPUT_DIR="${2:?Usage: build-image.sh VERSION OUTPUT_DIR [SOURCE_COMMIT]}"
-[[ "$VERSION" =~ ^[1-9][0-9]{0,17}$ ]] || { echo 'Invalid release version' >&2; exit 1; }
+[[ "$VERSION" =~ ^[1-9][0-9]{0,15}$ ]] || { echo 'Invalid release version' >&2; exit 1; }
 REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 SOURCE_COMMIT="${3:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
 readonly REPO_ROOT SOURCE_COMMIT

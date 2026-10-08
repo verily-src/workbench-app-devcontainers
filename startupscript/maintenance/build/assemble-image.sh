@@ -12,7 +12,7 @@ readonly SOURCE=/source/startupscript
 readonly OUTPUT=/output
 readonly IMAGE="workbench_${VERSION}_x86-64.raw"
 readonly BUILDER_BASE=sha256:f610ab94648195aa356059f5b41d6085c9d4d903c072430cdd1af7bdb646106b
-[[ "$VERSION" =~ ^[1-9][0-9]{0,17}$ && "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ && "$SOURCE_EPOCH" =~ ^[0-9]+$ ]]
+[[ "$VERSION" =~ ^[1-9][0-9]{0,15}$ && "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ && "$SOURCE_EPOCH" =~ ^[0-9]+$ ]]
 [[ "$(mksquashfs -version | head -1)" == 'mksquashfs version 4.6.1 '* ]]
 TEMP_DIR="$(mktemp -d)"
 readonly TEMP_DIR

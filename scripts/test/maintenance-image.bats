@@ -19,9 +19,12 @@ setup() {
 }
 
 @test "image versions and source commits are validated before Docker starts" {
-    run bash "$BUILD/build-image.sh" '../bad' "$BATS_TEST_TMPDIR/output"
-    [ "$status" -ne 0 ]
-    [[ "$output" == *'Invalid release version'* ]]
+    local version
+    for version in '../bad' 0 12345678901234567; do
+        run bash "$BUILD/build-image.sh" "$version" "$BATS_TEST_TMPDIR/output"
+        [ "$status" -ne 0 ]
+        [[ "$output" == *'Invalid release version'* ]]
+    done
     run bash "$BUILD/build-image.sh" 1 "$BATS_TEST_TMPDIR/output" master
     [ "$status" -ne 0 ]
     [[ "$output" == *'Use a full source commit'* ]]

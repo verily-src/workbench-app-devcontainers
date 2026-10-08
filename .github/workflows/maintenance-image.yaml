@@ -35,6 +35,7 @@ jobs:
         run: |
           find startupscript/maintenance -name '*.sh' -print0 | xargs -0 shellcheck -e SC1090 -e SC1091
           bats scripts/test/maintenance*.bats
+          bats scripts/test/fixtures/maintenance-vm/scenarios.bats
           bats scripts/test/integration/maintenance-*.bats
 
   image:

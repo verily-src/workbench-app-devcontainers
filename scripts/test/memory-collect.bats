@@ -28,6 +28,26 @@ setup() {
     jq -e '.oom_delta==2 and .oom_kill_delta==1' "${REPORT}"/cgroups/*.json
 }
 
+@test "preexisting host OOM counts are excluded while new OOM events fail the sample" {
+    printf 'low 0\nhigh 0\nmax 10\noom 2\noom_kill 1\n' > "${CGROUP_ROOT}/app/memory.events"
+    capture_group "${REPORT}" /app '' host-service '' '' false true
+    capture_group "${REPORT}" /app '' host-service '' '' false
+    jq -e '.oom_start==2 and .oom_kill_start==1 and .oom_delta==0 and .oom_kill_delta==0' "${REPORT}"/cgroups/*.json
+    printf 'low 0\nhigh 0\nmax 20\noom 4\noom_kill 2\n' > "${CGROUP_ROOT}/app/memory.events"
+    capture_group "${REPORT}" /app '' host-service '' '' false
+    jq -e '.oom_delta==2 and .oom_kill_delta==1' "${REPORT}"/cgroups/*.json
+}
+
+@test "new host groups and reset baseline counters cannot hide OOM events" {
+    printf 'low 0\nhigh 0\nmax 10\noom 2\noom_kill 1\n' > "${CGROUP_ROOT}/app/memory.events"
+    capture_group "${REPORT}" /app '' host-service '' '' false
+    jq -e '.oom_delta==2 and .oom_kill_delta==1' "${REPORT}"/cgroups/*.json
+    capture_group "${REPORT}" /app '' host-service '' '' false true
+    printf 'low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\n' > "${CGROUP_ROOT}/app/memory.events"
+    capture_group "${REPORT}" /app '' host-service '' '' false
+    grep -q 'cgroup OOM counters reset' "${REPORT}/missing.txt"
+}
+
 @test "missing and corrupt counters cannot become passing zero measurements" {
     rm "${CGROUP_ROOT}/app/memory.peak"
     capture_group "${REPORT}" /app app app start '' false

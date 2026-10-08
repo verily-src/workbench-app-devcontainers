@@ -44,7 +44,7 @@ gpu_samples() {
 
 capture_group() {
     local directory="$1" path="$2" id="$3" role="$4" started="$5" finished="$6" docker_oom="$7"
-    local key file peak limit swap events oom killed current previous unlimited=false
+    local key file peak limit swap events oom killed current previous unlimited=false baseline="${8:-false}" oom_start killed_start
     key=$(printf '%s' "${path}:${id}:${started}" | sha256sum | cut -d ' ' -f 1)
     file="${directory}/cgroups/${key}.json"
     if [[ ! -r "${CGROUP_ROOT}${path}/memory.peak" ]]; then
@@ -72,12 +72,22 @@ capture_group() {
     fi
     previous='{}'
     [[ ! -f "${file}" ]] || previous=$(cat "${file}")
+    oom_start=$(jq -r '.oom_start // 0' <<< "${previous}")
+    killed_start=$(jq -r '.oom_kill_start // 0' <<< "${previous}")
+    if [[ "${baseline}" == true ]]; then
+        oom_start="${oom}"; killed_start="${killed}"
+    fi
+    if ((oom < oom_start || killed < killed_start)); then
+        missing "${directory}" "cgroup OOM counters reset: ${path}"; return
+    fi
     jq -nc --arg path "${path}" --arg id "${id}" --arg role "${role}" --arg started "${started}" --arg finished "${finished}" \
         --argjson peak "${peak}" --argjson current "${current}" --argjson limit "${limit}" --argjson swap "${swap}" \
-        --argjson oom "${oom}" --argjson killed "${killed}" --argjson docker_oom "${docker_oom}" --argjson previous "${previous}" --argjson unlimited "${unlimited}" '
+        --argjson oom "${oom}" --argjson killed "${killed}" --argjson oom_start "${oom_start}" --argjson killed_start "${killed_start}" --argjson docker_oom "${docker_oom}" --argjson previous "${previous}" --argjson unlimited "${unlimited}" '
         {path:$path,container_id:$id,role:$role,started_at:$started,finished_at:$finished,
          peak_bytes:([$peak,($previous.peak_bytes // 0)]|max),current_bytes:$current,limit_bytes:$limit,limit_unlimited:$unlimited,
-         swap_peak_bytes:$swap,oom_delta:$oom,oom_kill_delta:([$killed,if $docker_oom then 1 else 0 end]|max),
+         swap_peak_bytes:$swap,oom_start:$oom_start,oom_kill_start:$killed_start,
+         oom_delta:([$oom-$oom_start,($previous.oom_delta // 0)]|max),
+         oom_kill_delta:([$killed-$killed_start,($previous.oom_kill_delta // 0),if $docker_oom then 1 else 0 end]|max),
          final_capture:true}' > "${file}.tmp"
     mv "${file}.tmp" "${file}"
 }
@@ -114,9 +124,10 @@ verify_lifecycles() {
 
 container_samples() {
     local directory="$1" ids metadata row id name pid path started finished oom role service seen=0
-    local cursor until events event_id
+    local cursor until events event_id final_capture=0
     cursor=$(jq -r '.started_at' "${directory}/context.json")
     while :; do
+        [[ ! -f "${directory}/stop" ]] || final_capture=1
         metadata='[]'
         : > "${directory}/current-containers.txt"
         for path in /system.slice /user.slice /init.scope; do
@@ -176,7 +187,7 @@ container_samples() {
             missing "${directory}" 'Docker collection became unavailable'
         fi
         verify_lifecycles "${directory}" "${metadata}"
-        [[ ! -f "${directory}/stop" ]] || break
+        [[ "${final_capture}" == 0 ]] || break
         sleep 1
     done
     while read -r event_id; do
@@ -201,7 +212,7 @@ collect() {
 }
 
 start() {
-    local context="$1" directory="$2" ram boot
+    local context="$1" directory="$2" ram boot path
     jq -e '.schema_version == 1 and (.run_id|type=="string" and length>0) and
       (.app|type=="string") and (.cloud=="gcp" or .cloud=="aws") and
       (.profile=="cpu" or .profile=="t4" or .profile=="a100-80gb") and
@@ -219,6 +230,10 @@ start() {
         '. + {started_at:$start,cold_boot_id:$boot,collector_sha256:$collector} | .machine.ram_bytes=$ram' \
         "${context}" > "${directory}/context.json"
     touch "${directory}/host.tsv" "${directory}/gpu.jsonl" "${directory}/missing.txt" "${directory}/containers.txt" "${directory}/container-ids.txt" "${directory}/event-container-ids.txt" "${directory}/current-containers.txt"
+    # Host service counters include prior workloads on the same boot.
+    for path in /system.slice /user.slice /init.scope; do
+        [[ ! -d "${CGROUP_ROOT}${path}" ]] || capture_group "${directory}" "${path}" '' host-service '' '' false true
+    done
     nohup bash "${SCRIPT_DIR}/memory-collect.sh" _collect "${directory}" > "${directory}/collector.log" 2>&1 < /dev/null &
     echo $! > "${directory}/collector.pid"
     for _ in {1..50}; do

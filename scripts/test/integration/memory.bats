@@ -14,6 +14,10 @@ teardown() {
         touch "${REPORT}/stop"
         "${COLLECTOR}" finish "${REPORT}" "${BATS_TEST_TMPDIR}/workload.json" || true
     fi
+    if [[ -n "${MEMORY_REPORT_ARTIFACT_DIR:-}" && -d "${REPORT}" ]]; then
+        mkdir -p "${MEMORY_REPORT_ARTIFACT_DIR}/${BATS_TEST_NUMBER}"
+        cp -R "${REPORT}/." "${MEMORY_REPORT_ARTIFACT_DIR}/${BATS_TEST_NUMBER}/"
+    fi
     docker ps -aq --filter label=dependency-memory-integration=true | xargs -r docker rm -f >/dev/null
 }
 

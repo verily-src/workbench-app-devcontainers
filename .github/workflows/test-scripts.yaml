@@ -50,10 +50,21 @@ jobs:
           bats .
 
       - name: Test offline recreation with Docker
+        env:
+          MEMORY_REPORT_ARTIFACT_DIR: ${{ runner.temp }}/dependency-memory-reports
         run: |
           docker pull python:3.12-alpine
           docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
           bats scripts/test/integration
+
+      - name: Retain memory collector evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-memory-integration
+          path: ${{ runner.temp }}/dependency-memory-reports
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Test memory comparison and workload contracts
         run: python3 -m unittest discover -s scripts/test -p '*_test.py'

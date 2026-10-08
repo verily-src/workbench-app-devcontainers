@@ -11,7 +11,7 @@ COLLECTOR = ROOT / "tests/common/memory-collect.sh"
 
 
 class CollectorInterfaceTest(unittest.TestCase):
-    def run_interface(self, missed_child=False):
+    def run_interface(self, missed_child=False, host_oom_before=0, host_oom_during=0):
         with tempfile.TemporaryDirectory(prefix="memory-collector-") as tmp:
             directory = Path(tmp)
             cgroup = directory / "cgroup"
@@ -31,6 +31,8 @@ class CollectorInterfaceTest(unittest.TestCase):
                 for field, value in {"peak": "1048576", "current": "1024", "max": "1073741824",
                                      "swap.peak": "0", "events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0"}.items():
                     (group / ("memory." + field)).write_text(value + "\n")
+            host_events = cgroup / "system.slice/memory.events"
+            host_events.write_text(f"oom {host_oom_before}\noom_kill {host_oom_before}\n")
             metadata = [{"Id": "a" * 64, "Name": "/application-server", "Config": {"Labels": {}},
                          "State": {"Running": True, "Pid": 4242, "StartedAt": "2026-10-08T18:00:00Z", "FinishedAt": "", "OOMKilled": False}}]
             metadata_path = directory / "docker.json"
@@ -59,14 +61,20 @@ class CollectorInterfaceTest(unittest.TestCase):
             log = (output / "collector.log").read_text() if (output / "collector.log").exists() else ""
             self.assertEqual(start.returncode, 0, start.stderr + log)
             try:
+                host_events.write_text(f"oom {host_oom_before + host_oom_during}\noom_kill {host_oom_before + host_oom_during}\n")
                 (cgroup / "app/memory.peak").write_text("134217728\n")
                 result = subprocess.run(["bash", str(COLLECTOR), "finish", str(output), str(workload)], env=env, capture_output=True, text=True, timeout=20)
-                self.assertEqual(result.returncode, int(missed_child), result.stderr + (output / "collector.log").read_text())
+                failed = missed_child or host_oom_during > 0
+                self.assertEqual(result.returncode, int(failed), result.stderr + (output / "collector.log").read_text())
                 report = json.loads((output / "memory.json").read_text())
-                self.assertEqual(report["status"], "fail" if missed_child else "pass")
+                self.assertEqual(report["status"], "fail" if failed else "pass")
                 self.assertEqual(report["provenance"]["cold_boot_id"], "cold-boot-fixture")
                 self.assertTrue(any(group["peak_bytes"] == 134217728 for group in report["cgroups"]))
                 self.assertGreater(report["host"]["samples"], 0)
+                host_group = next(group for group in report["cgroups"] if group["path"] == "/system.slice")
+                self.assertEqual(host_group["oom_start"], host_oom_before)
+                self.assertEqual(host_group["oom_delta"], host_oom_during)
+                self.assertEqual(host_group["oom_kill_delta"], host_oom_during)
                 if missed_child:
                     self.assertTrue(any("missed between samples" in reason for reason in report["coverage"]["missing_metrics"]))
             finally:
@@ -77,6 +85,12 @@ class CollectorInterfaceTest(unittest.TestCase):
 
     def test_two_phase_interface_keeps_peak_after_short_spike(self):
         self.run_interface()
+
+    def test_preexisting_host_oom_does_not_fail_a_later_collection(self):
+        self.run_interface(host_oom_before=2)
+
+    def test_host_oom_after_start_fails_even_with_preexisting_events(self):
+        self.run_interface(host_oom_before=2, host_oom_during=1)
 
     def test_event_for_unobserved_short_child_blocks_the_sample(self):
         self.run_interface(missed_child=True)

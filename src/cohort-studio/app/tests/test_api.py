@@ -238,11 +238,19 @@ def test_workflows_lists_jobs_and_counts_running(monkeypatch):
          "outputBucketPath": "rnaseq", "statusMessage": "x" * 500},
     ]
     monkeypatch.setattr(workflows, "_run", lambda limit: sample)
+    monkeypatch.setattr(workflows, "_bucket_map", lambda: {
+        "uuid-1": {"id": "outputs", "bucket_name": "vwb-outputs",
+                   "prefix": "p"}})
     body = client.get("/api/workflows?refresh=true").json()
     assert body["available"] is True
     assert body["running_count"] == 1
     assert body["jobs"][0]["name"] == "sarek-run"
     assert body["jobs"][0]["output_bucket_uuid"] == "uuid-1"
+    # UUID resolved to a human-readable bucket name + resource id
+    assert body["jobs"][0]["output_bucket_name"] == "vwb-outputs"
+    assert body["jobs"][0]["output_bucket_resource"] == "outputs"
+    # a bucket not in the map resolves to None, not an error
+    assert body["jobs"][1]["output_bucket_name"] is None
     # long status messages are truncated
     assert len(body["jobs"][1]["status_message"]) == 200
 

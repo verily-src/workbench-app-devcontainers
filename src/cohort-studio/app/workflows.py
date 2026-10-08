@@ -38,8 +38,20 @@ def _run(limit: int) -> list[dict]:
     return json.loads(result.stdout or "[]")
 
 
-def _normalize(job: dict) -> dict:
+def _bucket_map() -> dict:
+    """UUID -> bucket info, best-effort — never fail the jobs listing."""
+    try:
+        import db
+        return db.bucket_by_uuid()
+    except Exception as e:
+        logger.warning("bucket resolution unavailable: %s", e)
+        return {}
+
+
+def _normalize(job: dict, buckets: dict) -> dict:
     msg = job.get("statusMessage")
+    uuid = job.get("outputBucketUuid")
+    bucket = buckets.get(uuid, {})
     return {
         "run_id": job.get("runId"),
         "name": job.get("displayName") or job.get("runId"),
@@ -49,8 +61,13 @@ def _normalize(job: dict) -> dict:
         "created_by": job.get("createdBy"),
         "created_date": job.get("createdDate"),
         "end_time": job.get("endTime"),
-        "output_bucket_uuid": job.get("outputBucketUuid"),
+        "output_bucket_uuid": uuid,
         "output_bucket_path": job.get("outputBucketPath"),
+        # Resolved from the resource cache so the UI can show a name, not
+        # just an opaque UUID. May be None if the bucket isn't a resource
+        # this workspace can see.
+        "output_bucket_name": bucket.get("bucket_name"),
+        "output_bucket_resource": bucket.get("id"),
         "status_message": msg[:200] if msg else None,
     }
 
@@ -63,7 +80,8 @@ def list_jobs(limit: int = 50, force: bool = False) -> dict:
         return _cache
     try:
         raw = _run(limit)
-        jobs = [_normalize(j) for j in raw]
+        buckets = _bucket_map()
+        jobs = [_normalize(j, buckets) for j in raw]
         running = sum(1 for j in jobs if j["status"] not in TERMINAL)
         out = {"available": True, "jobs": jobs, "running_count": running}
     except FileNotFoundError:

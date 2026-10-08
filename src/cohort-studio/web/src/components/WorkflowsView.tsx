@@ -64,7 +64,7 @@ export function WorkflowsView() {
           <thead>
             <tr>
               <th>status</th><th>name</th><th>engine</th><th>submitted by</th>
-              <th>submitted</th><th>output location</th>
+              <th>submitted</th><th>output bucket</th><th>output path</th>
             </tr>
           </thead>
           <tbody>
@@ -80,6 +80,10 @@ export function WorkflowsView() {
                 <td>{j.engine_type ?? "—"}</td>
                 <td>{j.created_by ?? "—"}</td>
                 <td>{when(j.created_date)}</td>
+                <td title={j.output_bucket_resource ?? undefined}>
+                  {j.output_bucket_name
+                    ?? j.output_bucket_resource ?? "—"}
+                </td>
                 <td>{j.output_bucket_path ?? "—"}</td>
               </tr>
             ))}

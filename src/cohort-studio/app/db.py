@@ -218,6 +218,19 @@ def _ensure_cache(wait: bool = False) -> list[dict]:
     return _resource_cache or []
 
 
+def bucket_by_uuid() -> dict[str, dict]:
+    """Map resource UUID -> {id, bucket_name, prefix} for S3 resources,
+    so callers can resolve a workflow job's outputBucketUuid to a name."""
+    out = {}
+    for r in _ensure_cache():
+        if "S3" not in r.get("resourceType", "") or not r.get("uuid"):
+            continue
+        out[r["uuid"]] = {"id": r.get("id"),
+                          "bucket_name": r.get("bucketName"),
+                          "prefix": r.get("prefix")}
+    return out
+
+
 def list_aurora_resources(wait: bool = False) -> list[dict]:
     aurora = []
     for r in _ensure_cache(wait=wait):

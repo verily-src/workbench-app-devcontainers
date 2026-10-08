@@ -11,10 +11,7 @@ readonly CLOUD="${WORKBENCH_CLOUD:-}"
 readonly METADATA_OPTIONS=(--disable --fail --silent --show-error --noproxy '*' --connect-timeout 1 --max-time 2)
 version="$(jq -er '.active_version | strings | select(test("^[0-9]{1,32}$"))' \
   "$STATE_DIR/boot.json" 2>/dev/null)" || version=unknown
-id="$(jq -er '.actions | to_entries | map(select(.value.status == "failed")) | sort_by(.key) |
-  .[0].key | strings | select(test("^[A-Za-z0-9_-]{1,64}$"))' \
-  "$STATE_DIR/state.json" 2>/dev/null)" || id=unknown
-readonly MESSAGE="Host maintenance failed; release $version; action $id. App startup is blocked."
+readonly MESSAGE="Host maintenance failed; release $version. App startup is blocked."
 
 report_gcp() {
   local failed=0 key value

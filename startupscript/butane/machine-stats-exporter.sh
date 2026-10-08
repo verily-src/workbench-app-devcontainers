@@ -82,6 +82,7 @@ if docker container inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/n
 fi
 
 # --- Output ---
+maintenance_json=$(/usr/lib/workbench/maintenance/status.sh 2>/dev/null) || maintenance_json=null
 jq -nc \
   --argjson cpu_load "${cpu_load_normalized}" \
   --argjson mem_total "${mem_total_bytes}" \
@@ -90,4 +91,5 @@ jq -nc \
   --argjson disks "${disk_json}" \
   --argjson containers "${containers_json}" \
   --argjson proxy_req "${proxy_requests_1m}" \
-  '{cpu_load_normalized: $cpu_load, memory_total_bytes: $mem_total, memory_used_bytes: $mem_used, memory_usage_ratio: $mem_ratio, disks: $disks, containers: $containers, proxy_requests_1m: $proxy_req}'
+  --argjson maintenance "${maintenance_json}" \
+  '{cpu_load_normalized: $cpu_load, memory_total_bytes: $mem_total, memory_used_bytes: $mem_used, memory_usage_ratio: $mem_ratio, disks: $disks, containers: $containers, proxy_requests_1m: $proxy_req, maintenance: $maintenance}'

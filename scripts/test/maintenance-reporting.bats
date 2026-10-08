@@ -66,7 +66,7 @@ report() {
     sed -n '1p' "$TEST_ROOT/calls" | grep -q 'startup_script/message'
     sed -n '2p' "$TEST_ROOT/calls" | grep -q 'startup_script/status'
     grep -q -- '--data-binary ERROR' "$TEST_ROOT/calls"
-    grep -q 'release 202610080003; action repair' "$TEST_ROOT/calls"
+    grep -q 'release 202610080003. App startup is blocked.' "$TEST_ROOT/calls"
     ! grep -q 'PRIVATE_ACTION_OUTPUT\|Docker' "$TEST_ROOT/calls"
     [[ "$output" != *PRIVATE_ACTION_OUTPUT* ]]
 }
@@ -100,7 +100,7 @@ report() {
     printf '%s' invalid > "$STATE_DIR/state.json"
     report gcp
     [ "$status" -eq 0 ]
-    grep -q 'release unknown; action unknown' "$TEST_ROOT/calls"
+    grep -q 'release unknown. App startup is blocked.' "$TEST_ROOT/calls"
     rm "$STATE_DIR/boot.json" "$STATE_DIR/state.json"
     report gcp
     [ "$status" -eq 0 ]
@@ -132,4 +132,12 @@ report() {
 @test "real curl signs the complete AWS request with the temporary session token" {
     run python3 "$REPO_ROOT/scripts/test/fixtures/maintenance-signing.py" "$REPORTER" "$TEST_ROOT"
     [ "$status" -eq 0 ]
+}
+
+@test "remote failure does not blame an unrelated optional or stale action" {
+    printf '%s\n' '{"schema":1,"actions":{"optional-old":{"status":"failed"},"required-current":{"status":"failed"}}}' > "$STATE_DIR/state.json"
+    report gcp
+    [ "$status" -eq 0 ]
+    ! grep -q 'optional-old\|required-current' "$TEST_ROOT/calls"
+    grep -q 'App startup is blocked' "$TEST_ROOT/calls"
 }

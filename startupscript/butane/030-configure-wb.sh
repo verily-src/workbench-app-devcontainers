@@ -40,7 +40,7 @@ if ! docker image inspect "${WB_IMAGE_NAME}" >/dev/null 2>&1; then
     echo "Building Workbench Docker container..."
     (
         cd "${WB_ROOT}" || exit 1
-        docker build --build-arg WORKBENCH_SERVER="${SERVER}" -t "${WB_IMAGE_NAME}" .
+        docker build --file "$(readlink -f "${WB_DOCKERFILE}")" --build-arg WORKBENCH_SERVER="${SERVER}" -t "${WB_IMAGE_NAME}" .
     )
     echo "Docker image built successfully"
 else

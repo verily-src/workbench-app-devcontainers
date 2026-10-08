@@ -30,6 +30,7 @@ import llm
 import mcp_server
 import queries
 import views
+import workflows
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
@@ -154,12 +155,19 @@ def datasources():
             sources.append({"kind": "aurora", "id": r["id"],
                             "label": f"{r['id']} · Aurora"})
         for r in db.list_s3_folders():
-            sources.append({"kind": "s3", "id": r["id"],
+            sources.append({"kind": "s3", "id": r["id"], "uuid": r.get("uuid"),
                             "label": f"{r['id']} · S3"})
         for r in db.list_bq_datasets():
             sources.append({"kind": "bq", "id": r["id"],
                             "label": f"{r['id']} · BigQuery"})
     return {"ready": ready, "sources": sources}
+
+
+@app.get("/api/workflows")
+def workflow_jobs(refresh: bool = False):
+    """Workbench workflow jobs, with running count. Never 500s — an
+    unavailable `wb workflow` command returns available=false."""
+    return workflows.list_jobs(force=refresh)
 
 
 @app.get("/api/tables")

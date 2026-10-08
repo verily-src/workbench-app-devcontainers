@@ -131,6 +131,17 @@ def test_settings_provider_switch_shows_per_provider_key(
     expect(page.get_by_text("Gemini API key").first).to_be_visible()
 
 
+def test_workflows_view_renders(page: Page, app_url: str):
+    # The view mounts and shows the running-count hero plus a Refresh
+    # button, whether or not a workspace (and `wb workflow`) is reachable.
+    page.goto(app_url)
+    expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
+    page.locator(".topnav-link", has_text="Workflows").click()
+    expect(page.get_by_text("workflow job(s) running")).to_be_visible(
+        timeout=10000)
+    expect(page.get_by_role("button", name="Refresh")).to_be_visible()
+
+
 def test_lineage_view_records_upload(loaded_page: Page):
     loaded_page.locator(".topnav-link", has_text="Lineage").click()
     expect(loaded_page.get_by_text("lineage events").first).to_be_visible(

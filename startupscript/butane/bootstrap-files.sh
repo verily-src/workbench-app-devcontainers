@@ -41,6 +41,7 @@ fi
 
 # Common scripts
 download /home/core/install-node.sh "010-install-node.sh"
+download /home/core/dependency-lock.mjs "dependency-lock.mjs"
 download /home/core/create-docker-network.sh "020-create-docker-network.sh"
 download /home/core/configure-wb.sh "030-configure-wb.sh"
 download /home/core/register-key.sh "035-register-key.sh"

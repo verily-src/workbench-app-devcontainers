@@ -219,6 +219,16 @@ def test_derive_column(loaded_page: Page):
                                has_text="age_group")).to_have_count(1)
 
 
+def test_launch_workflow_panel_opens(loaded_page: Page):
+    # Opens the run-workflow panel (does NOT submit — that launches a real
+    # pipeline). Asserts the two-step form renders.
+    loaded_page.get_by_role("button", name="Run workflow ▸").click()
+    panel = loaded_page.locator(".launch-panel")
+    expect(panel).to_be_visible()
+    expect(panel.get_by_text("Run workflow on cohort")).to_be_visible()
+    expect(panel.get_by_role("button", name="Submit job")).to_be_visible()
+
+
 def test_change_chart_type(loaded_page: Page):
     # age is numeric → starts as a histogram; switch it to a bar in place
     # and confirm the query round-trip does not error.

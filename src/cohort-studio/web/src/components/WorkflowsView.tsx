@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, WorkflowList } from "../api";
+import { api, WorkflowJob, WorkflowList } from "../api";
+
+interface Props {
+  isSubscribed: (runId: string) => boolean;
+  onToggleSubscribe: (job: WorkflowJob) => void;
+}
 
 const TERMINAL = new Set(
   ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);
@@ -16,7 +21,7 @@ function statusClass(status: string): string {
 const when = (iso: string | null) =>
   iso ? String(iso).replace("T", " ").slice(0, 16) : "—";
 
-export function WorkflowsView() {
+export function WorkflowsView({ isSubscribed, onToggleSubscribe }: Props) {
   const [data, setData] = useState<WorkflowList | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -65,6 +70,7 @@ export function WorkflowsView() {
             <tr>
               <th>status</th><th>name</th><th>engine</th><th>submitted by</th>
               <th>submitted</th><th>output bucket</th><th>output path</th>
+              <th>alert</th>
             </tr>
           </thead>
           <tbody>
@@ -85,6 +91,14 @@ export function WorkflowsView() {
                     ?? j.output_bucket_resource ?? "—"}
                 </td>
                 <td>{j.output_bucket_path ?? "—"}</td>
+                <td>
+                  {isRunning(j.status) ? (
+                    <button className="wf-sub"
+                            onClick={() => onToggleSubscribe(j)}>
+                      {isSubscribed(j.run_id) ? "🔔 Subscribed" : "Notify me"}
+                    </button>
+                  ) : "—"}
+                </td>
               </tr>
             ))}
           </tbody>

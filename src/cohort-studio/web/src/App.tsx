@@ -7,6 +7,8 @@ import { SettingsView } from "./components/SettingsView";
 import { SavedViews } from "./components/SavedViews";
 import { JoinPanel } from "./components/JoinPanel";
 import { WorkflowsView } from "./components/WorkflowsView";
+import { Toasts } from "./components/Toasts";
+import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
 
@@ -75,6 +77,7 @@ export default function App() {
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
+  const alerts = useWorkflowAlerts();
 
   useEffect(() => {
     apiClient.config().then((c) => setPalette(c.chart_palette))
@@ -390,7 +393,8 @@ export default function App() {
           {view === "settings" ? (
             <SettingsView onPaletteChange={setPalette} />
           ) : view === "workflows" ? (
-            <WorkflowsView />
+            <WorkflowsView isSubscribed={alerts.isSubscribed}
+                           onToggleSubscribe={alerts.toggle} />
           ) : view === "lineage" ? (
             <LineageView />
           ) : datasets.length === 0 ? (
@@ -455,6 +459,7 @@ export default function App() {
           )}
         </div>
       </div>
+      <Toasts toasts={alerts.toasts} onDismiss={alerts.dismissToast} />
     </div>
   );
 }

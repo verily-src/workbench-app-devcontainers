@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
+import { captureCharts, exportDatasetPdf } from "../pdf";
 
 interface Props {
   dataset: Dataset;
@@ -96,6 +97,10 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
         <SaveToAurora dataset={dataset} />
         <button onClick={() => api.export(dataset.id, filters)}>
           Export TSV
+        </button>
+        <button onClick={() => exportDatasetPdf(dataset, captureCharts())}
+                disabled={!result}>
+          Export PDF
         </button>
       </div>
 

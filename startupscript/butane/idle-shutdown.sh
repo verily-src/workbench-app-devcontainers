@@ -16,7 +16,7 @@ function emit() {
 }
 readonly -f emit
 
-# shellcheck source=/dev/null
+source /home/core/agent.env
 source /home/core/metadata-utils.sh
 source /home/core/service-utils.sh
 source /home/core/wb/values.sh
@@ -73,11 +73,10 @@ if [[ $((NOW - LAST_ACTIVE)) -gt IDLE_TIMEOUT_SECONDS ]]; then
       set -o xtrace
 
       CLI_SERVER="$(get_metadata_value "terra-cli-server" "prod")"
-      RESOURCE_ID="$(get_metadata_value "wb-resource-id" "")"
       WORKSPACE_ID=$(get_metadata_value "terra-workspace-id" "")
       WSM_URL="$(get_service_url "wsm" "${CLI_SERVER}")"
       curl_with_auth TOKEN -s -f -X POST \
-        "${WSM_URL}/api/workspaces/v1/~${WORKSPACE_ID}/resources/controlled/azure/instances/${RESOURCE_ID}/stop"
+        "${WSM_URL}/api/workspaces/v1/~${WORKSPACE_ID}/resources/controlled/azure/instances/${BACKEND}/stop"
     fi
 
     shutdown -h now

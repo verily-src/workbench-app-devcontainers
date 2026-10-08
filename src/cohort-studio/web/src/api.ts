@@ -21,6 +21,27 @@ const post = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+export interface MCPConnection {
+  name: string;
+  label: string;
+  url: string;
+  enabled: boolean;
+  note: string;
+  token_set: boolean;
+  authorization_token?: string;
+}
+
+export interface AppConfig {
+  llm: {
+    model: string;
+    api_key_set: boolean;
+    api_key_hint: string | null;
+    api_key_source: string | null;
+  };
+  mcp: { available: boolean; path: string };
+  mcp_connections: MCPConnection[];
+}
+
 export interface OpenResult {
   dataset_id: string;
   source: string;
@@ -63,6 +84,22 @@ export const api = {
       { method: "POST" }),
 
   version: () => request<{ sha: string }>("/api/version"),
+
+  config: () => request<AppConfig>("/api/config"),
+
+  updateConfig: (body: {
+    model?: string; api_key?: string; mcp_connections?: MCPConnection[];
+  }) => request<AppConfig>("/api/config",
+    { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body) }),
+
+  testLlm: () =>
+    request<{ ok: boolean; model: string; display_name: string }>(
+      "/api/config/llm/test", { method: "POST" }),
+
+  ask: (datasetId: string, question: string, filters: Filter[]) =>
+    request<{ filters: Filter[]; explanation: string }>(
+      `/api/datasets/${datasetId}/ask`, post({ question, filters })),
 
   adminUpdate: () =>
     request<{ started: boolean }>("/api/admin/update", { method: "POST" }),

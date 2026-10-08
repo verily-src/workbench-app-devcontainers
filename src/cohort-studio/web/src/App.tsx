@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, OpenResult } from "./api";
 import { DatasetPane } from "./components/DatasetPane";
 import { FilterPanel } from "./components/FilterPanel";
+import { LineageView } from "./components/LineageView";
+import { SettingsView } from "./components/SettingsView";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
 
 const AUTO_CHART_LIMIT = 8;
@@ -64,6 +66,7 @@ export default function App() {
   const [active, setActive] = useState(0);
   const [activity, setActivity] = useState("");
   const [error, setError] = useState("");
+  const [view, setView] = useState<"explore" | "lineage" | "settings">("explore");
   const pollRef = useRef<number>();
 
   // ---- datasource discovery (poll until the wb resource cache warms) ----
@@ -257,6 +260,15 @@ export default function App() {
         <div className="topbar">
           <span className="logomark" />
           <span className="brand">Cohort Studio</span>
+          <nav className="topnav">
+            {(["explore", "lineage", "settings"] as const).map((v) => (
+              <span key={v}
+                    className={`topnav-link${view === v ? " active" : ""}`}
+                    onClick={() => setView(v)}>
+                {v[0].toUpperCase() + v.slice(1)}
+              </span>
+            ))}
+          </nav>
           <div style={{ flex: 1 }} />
           {activity && (
             <div className="activity"><span className="pulse" />{activity}</div>
@@ -269,7 +281,11 @@ export default function App() {
           )}
         </div>
         <div className="content">
-          {datasets.length === 0 ? (
+          {view === "settings" ? (
+            <SettingsView />
+          ) : view === "lineage" ? (
+            <LineageView />
+          ) : datasets.length === 0 ? (
             <div className="empty">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
                    stroke="#9095a0" strokeWidth="1.5">

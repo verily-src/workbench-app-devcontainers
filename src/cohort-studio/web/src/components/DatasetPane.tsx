@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { api } from "../api";
 import type { ChartSpec, Dataset, Filter } from "../types";
 import { ChartCard } from "./ChartCard";
@@ -90,6 +91,8 @@ export function DatasetPane({ dataset, onUpdate }: Props) {
         </div>
       )}
 
+      <AskAI dataset={dataset} onUpdate={onUpdate} />
+
       <AddChart dataset={dataset} onUpdate={onUpdate} />
 
       <div className="chart-grid">
@@ -137,6 +140,50 @@ export function DatasetPane({ dataset, onUpdate }: Props) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function AskAI({ dataset, onUpdate }: Props) {
+  const [question, setQuestion] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const ask = async () => {
+    if (!question.trim()) return;
+    setBusy(true);
+    setNote("");
+    try {
+      const out = await api.ask(dataset.id, question, dataset.filters);
+      onUpdate({ filters: out.filters });
+      setNote(out.explanation);
+      setQuestion("");
+    } catch (e) {
+      setNote(`Ask AI failed: ${(e as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="ask-ai">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" strokeWidth="2">
+        <path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4L12 3z" />
+      </svg>
+      <input
+        type="text"
+        placeholder='Ask AI to filter — e.g. "liver samples with RIN above 7"'
+        value={question}
+        disabled={busy}
+        onChange={(e) => setQuestion(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") ask(); }}
+      />
+      <button className="primary" onClick={ask}
+              disabled={busy || !question.trim()}>
+        {busy ? "Thinking…" : "Ask"}
+      </button>
+      {note && <span className="ask-note">{note}</span>}
     </div>
   );
 }

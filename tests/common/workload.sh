@@ -56,16 +56,25 @@ SQL
 }
 
 playground_work() {
-    local image request id state
-    image=$(docker inspect --format '{{.Image}}' application-server)
-    request=$(jq -nc --arg image "${image}" '{app_name:"dependency-fixture",username:"root",user_home_directory:"/root",port:8080,
-      optional_features:[],dockerfile:("FROM "+$image+"\nRUN mkdir -p /srv && echo dependency-workload-ok > /srv/index.html\nCMD [\"caddy\",\"file-server\",\"--listen\",\":8080\",\"--root\",\"/srv\"]"),caddy_config:""}')
+    local image request id state caddy_config
+    image=$(docker inspect --format '{{.Config.Image}}' application-server)
+    caddy_config='@{{.AppName}} path /{{.AppName}} /{{.AppName}}/*
+route @{{.AppName}} {
+    uri strip_prefix /{{.AppName}}
+    reverse_proxy {{.ContainerName}}:{{.Port}}
+}'
+    request=$(jq -nc --arg image "${image}" --arg caddy "${caddy_config}" '{app_name:"dependency-fixture",username:"root",user_home_directory:"/root",port:8080,
+      optional_features:[],dockerfile:("FROM "+$image+"\nRUN mkdir -p /srv && echo dependency-workload-ok > /srv/index.html\nENTRYPOINT [\"caddy\"]\nCMD [\"file-server\",\"--listen\",\":8080\",\"--root\",\"/srv\"]"),caddy_config:$caddy}')
     id=$(curl --fail --silent --show-error --max-time 15 -H 'Content-Type: application/json' \
         -d "${request}" "http://127.0.0.1:${PORT}/_app" | jq -er '.id')
     printf '%s\n' "${id}" > "${OUTPUT_DIR}/playground-child-id"
     for _ in {1..180}; do
         state=$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:${PORT}/_app/${id}" | jq -r '.status')
-        [[ "${state}" != failed ]] || return 1
+        if [[ "${state}" == failed ]]; then
+            echo 'Playground fixture build failed' >&2
+            curl --fail --silent --show-error --max-time 15 "http://127.0.0.1:${PORT}/_app/logs?tail=100" >&2 || true
+            return 1
+        fi
         if [[ "${state}" == active ]]; then break; fi
         sleep 2
     done

@@ -235,7 +235,17 @@ jobs:
       - name: Test '${{ matrix.app.template }}'
         env:
           DEPENDENCY_WORKLOAD_MODE: hosted
+          DEPENDENCY_WORKLOAD_OUTPUT: ${{ runner.temp }}/dependency-workload
         run: tests/common/test.sh "${{ matrix.app.template }}"
+
+      - name: Retain hosted workload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-workload-${{ matrix.app.template }}
+          path: ${{ runner.temp }}/dependency-workload
+          retention-days: 7
+          if-no-files-found: warn
 
   cloud-fixtures:
     name: "Cloud-only app configuration and synthetic fixtures"

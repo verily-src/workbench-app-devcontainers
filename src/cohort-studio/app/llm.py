@@ -95,26 +95,32 @@ def suggest_filters(question: str, columns: list[dict],
     if suggestion is None:
         return {"filters": current_filters,
                 "explanation": "Could not parse a filter suggestion."}
+    cleaned = validate_filters(
+        [f.model_dump() for f in suggestion.filters], columns)
+    return {"filters": cleaned, "explanation": suggestion.explanation}
 
-    # Server-side validation: drop anything that doesn't fit the profile.
+
+def validate_filters(filters: list[dict], columns: list[dict]) -> list[dict]:
+    """Drop or clamp model-suggested filters that don't fit the profile."""
     by_name = {c["name"]: c for c in columns}
     cleaned = []
-    for f in suggestion.filters:
-        col = by_name.get(f.column)
+    for f in filters:
+        col = by_name.get(f.get("column"))
         if col is None or col["filter_kind"] not in ("categorical", "range"):
             continue
-        if f.kind == "categorical" and col["filter_kind"] == "categorical":
+        if f.get("kind") == "categorical" \
+                and col["filter_kind"] == "categorical":
             allowed = set(col.get("values") or [])
-            values = [v for v in (f.values or []) if v in allowed]
+            values = [v for v in (f.get("values") or []) if v in allowed]
             if values:
-                cleaned.append({"column": f.column, "kind": "categorical",
+                cleaned.append({"column": col["name"], "kind": "categorical",
                                 "values": values})
-        elif f.kind == "range" and col["filter_kind"] == "range":
+        elif f.get("kind") == "range" and col["filter_kind"] == "range":
             lo = col.get("min", float("-inf"))
             hi = col.get("max", float("inf"))
-            fmin = max(f.min if f.min is not None else lo, lo)
-            fmax = min(f.max if f.max is not None else hi, hi)
+            fmin = max(f["min"] if f.get("min") is not None else lo, lo)
+            fmax = min(f["max"] if f.get("max") is not None else hi, hi)
             if fmin <= fmax:
-                cleaned.append({"column": f.column, "kind": "range",
+                cleaned.append({"column": col["name"], "kind": "range",
                                 "min": fmin, "max": fmax})
-    return {"filters": cleaned, "explanation": suggestion.explanation}
+    return cleaned

@@ -1,5 +1,5 @@
 import type {
-  ChartSpec, ColumnProfile, Filter, QueryResult, Source, TableInfo,
+  ChartSpec, ChatMsg, ColumnProfile, Filter, QueryResult, Source, TableInfo,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -96,6 +96,16 @@ export const api = {
   testLlm: () =>
     request<{ ok: boolean; model: string; display_name: string }>(
       "/api/config/llm/test", { method: "POST" }),
+
+  chat: (datasetId: string, message: string, history: ChatMsg[],
+         filters: Filter[], charts: ChartSpec[]) =>
+    request<{ reply: string; filters: Filter[]; charts: ChartSpec[];
+              actions: string[] }>(
+      `/api/datasets/${datasetId}/chat`,
+      post({ message,
+             history: history.map(({ role, content }) => ({ role, content })),
+             filters,
+             charts: charts.map(({ kind, x, y }) => ({ kind, x, y })) })),
 
   ask: (datasetId: string, question: string, filters: Filter[]) =>
     request<{ filters: Filter[]; explanation: string }>(

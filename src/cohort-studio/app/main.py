@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import agent
 import bq
 import config
 import datasets
@@ -251,6 +252,18 @@ class AskRequest(BaseModel):
     filters: list[Filter] = Field(default_factory=list)
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = Field(default_factory=list)
+    filters: list[Filter] = Field(default_factory=list)
+    charts: list[ChartSpec] = Field(default_factory=list)
+
+
 @app.get("/api/config")
 def get_config():
     cfg = config.public_config()
@@ -298,6 +311,28 @@ def ask_dataset(dataset_id: str, req: AskRequest):
     lineage.record(_lineage_engine(), "ask_ai", "dataset", ds["source"],
                    payload={"question": req.question,
                             "filters": result["filters"]})
+    return result
+
+
+@app.post("/api/datasets/{dataset_id}/chat")
+def chat_dataset(dataset_id: str, req: ChatRequest):
+    try:
+        result = agent.chat(
+            dataset_id, req.message,
+            [m.model_dump() for m in req.history],
+            [f.model_dump() for f in req.filters],
+            [{k: v for k, v in c.model_dump().items() if v is not None}
+             for c in req.charts])
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except llm.LLMNotConfigured as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "chat", "dataset",
+                   datasets.get(dataset_id)["source"],
+                   payload={"message": req.message,
+                            "actions": result["actions"]})
     return result
 
 

@@ -86,23 +86,20 @@ function heatmapOption(data: [string, string, number][],
 const trim = (n: number) => (Math.abs(n) >= 100 ? n.toFixed(0)
   : Math.round(n * 100) / 100).toString();
 
-// Which chart kinds make sense for this spec depends on its shape: a
-// two-column chart can be a scatter or a heatmap; a one-column chart a
-// bar or a histogram. Offer only the compatible swaps.
-const KINDS_FOR = (spec: ChartSpec): ChartSpec["kind"][] =>
-  spec.y ? ["scatter", "heatmap"] : ["bar", "histogram"];
-
 interface Props {
   spec: ChartSpec;
   result?: ChartResult;
   palette: string;
+  // Chart kinds compatible with this spec's columns, computed by the
+  // parent from column types (histogram/scatter need numeric columns).
+  kinds: ChartSpec["kind"][];
   onTapCategory: (column: string, value: string) => void;
   onChangeKind: (kind: ChartSpec["kind"]) => void;
   onToggleWide: () => void;
   onClose: () => void;
 }
 
-export function ChartCard({ spec, result, palette, onTapCategory,
+export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             onChangeKind, onToggleWide, onClose }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
@@ -157,11 +154,13 @@ export function ChartCard({ spec, result, palette, onTapCategory,
         <span className="title">
           {spec.x}{spec.y ? ` × ${spec.y}` : ""}
         </span>
-        <select className="chart-kind" title="Chart type" value={spec.kind}
-                onChange={(e) =>
-                  onChangeKind(e.target.value as ChartSpec["kind"])}>
-          {KINDS_FOR(spec).map((k) => <option key={k} value={k}>{k}</option>)}
-        </select>
+        {kinds.length > 1 && (
+          <select className="chart-kind" title="Chart type" value={spec.kind}
+                  onChange={(e) =>
+                    onChangeKind(e.target.value as ChartSpec["kind"])}>
+            {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        )}
         <button className="quiet" title="Toggle width"
                 onClick={onToggleWide}>⤢</button>
         <button className="quiet" title="Remove chart"

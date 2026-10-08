@@ -6,7 +6,6 @@ set -o pipefail
 readonly WORKBENCH_ROOT="${WORKBENCH_ROOT:-}"
 readonly STATE_DIR="${WORKBENCH_ROOT}/var/lib/workbench-maintenance"
 readonly LIB_DIR="${WORKBENCH_ROOT}/usr/lib/workbench"
-readonly SEED_DIR="${WORKBENCH_ROOT}/etc/workbench/maintenance"
 readonly CANONICAL_IMAGE="${WORKBENCH_ROOT}/etc/extensions/workbench.raw"
 
 valid_version() {

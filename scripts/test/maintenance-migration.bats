@@ -59,6 +59,9 @@ setup() {
     "${ACTION}"
     [ -L "${WORKBENCH_ROOT}/home/core/install-node.sh" ]
     [ -L "${WORKBENCH_ROOT}/etc/systemd/system/devcontainer.service" ]
+    [ "$(cat "${WORKBENCH_ROOT}/var/lib/workbench-maintenance/migration-backup/etc/systemd/system/devcontainer.service")" = legacy-unit ]
+    cmp "${REPO_ROOT}/startupscript/butane/010-install-node.sh" "${WORKBENCH_ROOT}/var/lib/workbench-maintenance/migration-backup/home/core/install-node.sh"
+    "${ACTION}"
 }
 
 @test "missing payload and unknown symlink never produce a partial migration" {
@@ -78,4 +81,24 @@ setup() {
     "${ACTION}"
     [ -L "${WORKBENCH_ROOT}/home/core/docker-auth.sh" ]
     [ ! -e "${WORKBENCH_ROOT}/home/core/docker-auth.sh.workbench-tmp" ]
+}
+
+@test "enrollment retires only the checked bootstrap and its generated gate" {
+    mkdir -p "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service.d"
+    printf legacy-bootstrap > "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service"
+    printf '[Unit]\nRequires=workbench-maintenance.service\nAfter=workbench-maintenance.service\n' > "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service.d/30-workbench-maintenance.conf"
+    hash=$(sha256sum "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service" | cut -d ' ' -f 1)
+    printf '%s  /etc/systemd/system/bootstrap-files.service\n' "${hash}" > "${WORKBENCH_ROOT}/etc/workbench/maintenance/managed-files.sha256"
+    "${ACTION}"
+    [ ! -e "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service" ]
+    [ ! -e "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service.d/30-workbench-maintenance.conf" ]
+    [ "$(cat "${WORKBENCH_ROOT}/var/lib/workbench-maintenance/migration-backup/etc/systemd/system/bootstrap-files.service")" = legacy-bootstrap ]
+}
+
+@test "an edited bootstrap gate prevents every file replacement" {
+    mkdir -p "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service.d"
+    printf custom > "${WORKBENCH_ROOT}/etc/systemd/system/bootstrap-files.service.d/30-workbench-maintenance.conf"
+    run "${ACTION}"
+    [ "${status}" -ne 0 ]
+    [ ! -e "${WORKBENCH_ROOT}/home/core/docker-auth.sh" ]
 }

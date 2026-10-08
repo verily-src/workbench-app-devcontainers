@@ -5,6 +5,8 @@ set -o pipefail
 # shellcheck source=boot-common.sh
 source "$(dirname "${BASH_SOURCE[0]}")/boot-common.sh"
 
+readonly SEED_DIR="${WORKBENCH_ROOT}/etc/workbench/maintenance"
+
 merge_trust() {
     local seed="${SEED_DIR}/import-pubring.gpg" admin="${WORKBENCH_ROOT}/etc/systemd/import-pubring.gpg"
     local previous="${WORKBENCH_ROOT}/usr/lib/systemd/import-pubring.gpg" tmp size
@@ -27,9 +29,30 @@ refresh_image() {
     local image="$1" version
     version=$(image_version "${image}")
     link_image "${image}"
-    timeout --signal=TERM --kill-after=5s 20s systemd-sysext refresh &&
+    timeout --signal=TERM --kill-after=5s 15s systemd-sysext refresh &&
         [[ "$(mounted_version)" == "${version}" ]]
 }
+
+download_approved_image() {
+    local updater="${WORKBENCH_ROOT}/usr/lib/systemd/systemd-sysupdate" newest='' image version metadata
+    "${updater}" --component=workbench update >&2
+    for image in "${STATE_DIR}/images/"workbench_*_x86-64.raw; do
+        [[ -f "${image}" ]] || continue
+        version=$(image_version "${image}") || continue
+        newest=$(printf '%s\n%s\n' "${newest}" "${version}" | sort -n | tail -n 1)
+    done
+    [[ -n "${newest}" ]] || return 0
+    metadata=$("${updater}" --component=workbench --json=short list "${newest}")
+    jq -er --arg version "${newest}" \
+        'select(.version == $version and .available and .installed and (.obsolete | not) and (.incomplete | not)) | .version' \
+        <<< "${metadata}"
+}
+
+if [[ "${1:-}" == --download ]]; then
+    download_approved_image
+    exit
+fi
+[[ $# == 0 ]] || exit 2
 
 umask 077
 mkdir -p "${STATE_DIR}/images"
@@ -64,14 +87,7 @@ merge_trust
 
 selected="${old_image}"
 started=${SECONDS}
-if timeout --signal=TERM --kill-after=5s 25s \
-    "${WORKBENCH_ROOT}/usr/lib/systemd/systemd-sysupdate" --component=workbench update; then
-    newest=''
-    for image in "${STATE_DIR}/images/"workbench_*_x86-64.raw; do
-        [[ -f "${image}" ]] || continue
-        version=$(image_version "${image}") || continue
-        newest=$(printf '%s\n%s\n' "${newest}" "${version}" | sort -n | tail -n 1)
-    done
+if newest=$(timeout --signal=TERM --kill-after=5s 25s "$0" --download); then
     [[ -z "${newest}" ]] || selected="${STATE_DIR}/images/workbench_${newest}_x86-64.raw"
 else
     echo 'Workbench download failed; keeping the installed image' >&2
@@ -79,6 +95,9 @@ fi
 printf 'workbench_download_seconds=%s\n' "$((SECONDS - started))"
 
 if [[ -z "${selected}" || ! -f "${selected}" ]]; then
+    selected="${STATE_DIR}/images/workbench_${usable}_x86-64.raw"
+fi
+if [[ ! -f "${selected}" ]]; then
     echo 'No installed Workbench image is available' >&2
     exit 1
 fi
@@ -87,14 +106,18 @@ if [[ "${selected}" != "${old_image}" || "$(mounted_version 2>/dev/null || true)
     started=${SECONDS}
     if ! refresh_image "${selected}"; then
         echo 'Workbench activation failed; restoring the installed image' >&2
-        fallback="${old_image}"
-        if [[ -z "${fallback}" || ! -f "${fallback}" ]]; then
-            fallback="${STATE_DIR}/images/workbench_${usable}_x86-64.raw"
-        fi
-        if [[ ! -f "${fallback}" ]] || ! refresh_image "${fallback}"; then
-            exit 1
-        fi
-        version=$(image_version "${fallback}")
+        restored=false
+        previous="${selected}"
+        for fallback in "${old_image}" "${STATE_DIR}/images/workbench_${usable}_x86-64.raw"; do
+            [[ -f "${fallback}" && "${fallback}" != "${selected}" && "${fallback}" != "${previous}" ]] || continue
+            previous="${fallback}"
+            if refresh_image "${fallback}"; then
+                version=$(image_version "${fallback}")
+                restored=true
+                break
+            fi
+        done
+        [[ "${restored}" == true ]] || exit 1
     fi
     printf 'workbench_activation_seconds=%s\n' "$((SECONDS - started))"
 fi

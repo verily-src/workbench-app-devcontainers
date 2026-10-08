@@ -35,8 +35,15 @@ SH
 #!/bin/bash
 printf 'sysupdate %s\n' "$*" >> "${CALLS}"
 [[ "${DOWNLOAD_EXIT:-0}" == 0 ]] || exit "${DOWNLOAD_EXIT}"
-if [[ -n "${DOWNLOAD_VERSION:-}" ]]; then
-    printf image > "${WORKBENCH_ROOT}/var/lib/workbench-maintenance/images/workbench_${DOWNLOAD_VERSION}_x86-64.raw"
+if [[ "$2" == update ]]; then
+    if [[ -n "${DOWNLOAD_VERSION:-}" ]]; then
+        printf image > "${WORKBENCH_ROOT}/var/lib/workbench-maintenance/images/workbench_${DOWNLOAD_VERSION}_x86-64.raw"
+    fi
+else
+    available=false
+    [[ "$4" != "${APPROVED_VERSION:-${DOWNLOAD_VERSION:-1}}" ]] || available=true
+    jq -n --arg version "$4" --argjson available "${available}" \
+        '{version:$version,available:$available,installed:true,obsolete:false,incomplete:false}'
 fi
 SH
     cat > "${BATS_TEST_TMPDIR}/bin/systemd-sysext" <<'SH'
@@ -45,11 +52,16 @@ printf 'sysext %s\n' "$*" >> "${CALLS}"
 image=$(readlink "${WORKBENCH_ROOT}/etc/extensions/workbench.raw")
 version=${image##*/workbench_}
 version=${version%_x86-64.raw}
-[[ "${version}" != "${BAD_VERSION:-}" ]] || exit 1
+[[ " ${BAD_VERSION:-} " != *" ${version} "* ]] || exit 1
 [[ "${version}" != "${IGNORED_VERSION:-}" ]] || exit 0
 jq -n --arg version "${version}" '{version:$version}' > "${WORKBENCH_ROOT}/usr/lib/workbench/release.json"
 SH
     chmod +x "${BATS_TEST_TMPDIR}/bin/"* "${WORKBENCH_ROOT}/usr/lib/systemd/systemd-sysupdate"
+}
+
+assert_no_call() {
+    run grep -E "$1" "${CALLS}"
+    [ "${status}" = 1 ]
 }
 
 install_cached() {
@@ -64,9 +76,9 @@ install_cached() {
     DOWNLOAD_VERSION=1 run "${BOOTSTRAP}/update-host.sh"
     [ "${status}" = 0 ]
     jq -e '.active_version == "1" and .last_usable_version == ""' "${STATE}/boot.json"
-    grep -q 'timeout --signal=TERM --kill-after=5s 25s .*systemd-sysupdate --component=workbench update' "${CALLS}"
+    grep -q 'timeout --signal=TERM --kill-after=5s 25s .*update-host.sh --download' "${CALLS}"
     grep -q 'systemctl --no-block start workbench-maintenance.service' "${CALLS}"
-    ! grep -q 'start .*docker.service' "${CALLS}"
+    assert_no_call '^systemctl .*start .*docker.service'
     [ "$(cat "${WORKBENCH_ROOT}/etc/systemd/import-pubring.gpg")" = vendorpublic-key ]
 }
 
@@ -76,7 +88,7 @@ install_cached() {
     [ "${status}" = 0 ]
     jq -e '.active_version == "3" and .last_usable_version == "1"' "${STATE}/boot.json"
     [ "$(readlink "${WORKBENCH_ROOT}/etc/extensions/workbench.raw")" = "${STATE}/images/workbench_3_x86-64.raw" ]
-    ! grep -q 'devcontainer\|docker start' "${CALLS}"
+    assert_no_call '^systemctl .*devcontainer|^docker start'
 }
 
 @test "timeout and signature failure preserve mounted cached content without refreshing" {
@@ -86,7 +98,7 @@ install_cached() {
         DOWNLOAD_EXIT="${result}" run "${BOOTSTRAP}/update-host.sh"
         [ "${status}" = 0 ]
         jq -e '.active_version == "1"' "${STATE}/boot.json"
-        ! grep -q '^sysext ' "${CALLS}"
+        assert_no_call '^sysext '
     done
     [ "$(cat "${WORKBENCH_ROOT}/etc/systemd/import-pubring.gpg")" = vendorpublic-key ]
 }
@@ -94,7 +106,7 @@ install_cached() {
 @test "a failed first download holds maintenance and preserves vendor trust" {
     DOWNLOAD_EXIT=124 run "${BOOTSTRAP}/update-host.sh"
     [ "${status}" -ne 0 ]
-    ! grep -q 'start workbench-maintenance.service' "${CALLS}"
+    assert_no_call 'start workbench-maintenance.service'
     [ "$(cat "${WORKBENCH_ROOT}/etc/systemd/import-pubring.gpg")" = vendorpublic-key ]
 }
 
@@ -122,7 +134,7 @@ install_cached() {
 @test "active runtime prevents download or activation" {
     RUNTIME_STATE=active run "${BOOTSTRAP}/update-host.sh"
     [ "${status}" -ne 0 ]
-    ! grep -q '^sysupdate\|^sysext' "${CALLS}"
+    assert_no_call '^sysupdate|^sysext'
 }
 
 @test "required action failure retains the last usable version" {
@@ -150,4 +162,30 @@ SH
     : > "${CALLS}"
     WORKBENCH_MODE=cache "${BOOTSTRAP}/start-host.sh"
     [ "$(tail -n 1 "${CALLS}")" = 'systemctl --no-block start containerd.service docker.service devcontainer.service' ]
+}
+
+@test "withdrawn inactive images are not activated just because they remain cached" {
+    install_cached 1
+    printf image > "${STATE}/images/workbench_3_x86-64.raw"
+    ln -s "${STATE}/images/workbench_3_x86-64.raw" "${STATE}/candidate.raw"
+    APPROVED_VERSION=1 "${BOOTSTRAP}/update-host.sh"
+    jq -e '.active_version == "1"' "${STATE}/boot.json"
+    assert_no_call '^sysext '
+}
+
+@test "an approved installed candidate resumes after a download interruption" {
+    install_cached 1
+    printf image > "${STATE}/images/workbench_3_x86-64.raw"
+    APPROVED_VERSION=3 "${BOOTSTRAP}/update-host.sh"
+    jq -e '.active_version == "3"' "${STATE}/boot.json"
+}
+
+@test "a broken current image does not prevent trying the distinct last usable version" {
+    install_cached 2
+    printf image > "${STATE}/images/workbench_1_x86-64.raw"
+    jq '.last_usable_version = "1"' "${STATE}/boot.json" > "${STATE}/next.json"
+    mv "${STATE}/next.json" "${STATE}/boot.json"
+    DOWNLOAD_VERSION=3 BAD_VERSION='2 3' "${BOOTSTRAP}/update-host.sh"
+    jq -e '.active_version == "1" and .last_usable_version == "1"' "${STATE}/boot.json"
+    [ "$(grep -c '^sysext refresh$' "${CALLS}")" = 3 ]
 }

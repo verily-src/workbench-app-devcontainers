@@ -6,7 +6,8 @@ set -o pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/boot-common.sh"
 
 assert_runtime_stopped
-readonly version="$(mounted_version)"
+version=$(mounted_version)
+readonly version
 [[ "${version}" == "$(boot_value active_version)" ]]
 readonly started=${SECONDS}
 "${LIB_DIR}/maintenance/run-actions.sh" "${LIB_DIR}/maintenance/actions.json" "${STATE_DIR}"

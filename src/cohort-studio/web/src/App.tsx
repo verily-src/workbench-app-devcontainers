@@ -250,10 +250,15 @@ export default function App() {
     ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);
   const dependentJob = (() => {
     const ref = activeDs?.sourceRef;
-    if (!ref || ref.kind !== "s3" || !ref.uuid || !workflows) return null;
+    if (!ref || ref.kind !== "s3" || !workflows) return null;
+    // Restored saved-view tabs have no uuid on the ref; resolve it from
+    // the live sources list by resource id.
+    const uuid = ref.uuid
+      ?? sources.find((s) => s.id === ref.resource_id)?.uuid;
+    if (!uuid) return null;
     return workflows.jobs.find((j) =>
       !TERMINAL.has((j.status || "").toUpperCase())
-      && j.output_bucket_uuid === ref.uuid
+      && j.output_bucket_uuid === uuid
       && (!j.output_bucket_path
           || ref.table.includes(j.output_bucket_path)
           || j.output_bucket_path.includes(ref.table.split("/")[0]))) ?? null;

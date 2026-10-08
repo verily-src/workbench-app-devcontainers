@@ -77,7 +77,10 @@ export function useWorkflowAlerts() {
     let cancelled = false;
     const check = async () => {
       let list: WorkflowJob[];
-      try { list = (await api.workflows(true)).jobs; }
+      // No force: ride the backend's 45s TTL so N subscribed tabs don't
+      // each shell out `wb workflow job list` every poll. Worst-case
+      // notify latency ~65s, fine for minutes-to-hours jobs.
+      try { list = (await api.workflows()).jobs; }
       catch { return; }
       if (cancelled) return;
       const byId = new Map(list.map((j) => [j.run_id, j]));

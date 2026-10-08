@@ -8,6 +8,8 @@ The compiled React frontend is served from ./static.
 
 import io
 import logging
+import time
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -285,6 +287,7 @@ class MCPConnection(BaseModel):
 
 
 class ConfigUpdate(BaseModel):
+    provider: str | None = None
     model: str | None = None
     api_key: str | None = None
     mcp_connections: list[MCPConnection] | None = None
@@ -343,8 +346,10 @@ def get_config():
 
 @app.put("/api/config")
 def put_config(req: ConfigUpdate):
-    if req.model is not None or req.api_key is not None:
-        config.update_llm_config(model=req.model, api_key=req.api_key)
+    if (req.model is not None or req.api_key is not None
+            or req.provider is not None):
+        config.update_llm_config(model=req.model, api_key=req.api_key,
+                                 provider=req.provider)
     if req.mcp_connections is not None:
         config.update_mcp_connections(
             [c.model_dump() for c in req.mcp_connections])
@@ -410,6 +415,12 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
 
 @app.post("/api/datasets/{dataset_id}/chat")
 def chat_dataset(dataset_id: str, req: ChatRequest):
+    trace_id = uuid.uuid4().hex
+    started = time.monotonic()
+    try:
+        source = datasets.get(dataset_id)["source"]
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
     try:
         result = agent.chat(
             dataset_id, req.message,
@@ -420,14 +431,41 @@ def chat_dataset(dataset_id: str, req: ChatRequest):
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
     except llm.LLMNotConfigured as e:
+        _record_turn(trace_id, source, req.message, started,
+                     status="unconfigured", error=str(e))
         raise HTTPException(400, str(e))
     except Exception as e:
+        _record_turn(trace_id, source, req.message, started,
+                     status="error", error=str(e).split("\n")[0][:300])
         raise HTTPException(502, str(e).split("\n")[0][:300])
-    lineage.record(_lineage_engine(), "chat", "dataset",
-                   datasets.get(dataset_id)["source"],
+    _record_turn(trace_id, source, req.message, started, result=result)
+    lineage.record(_lineage_engine(), "chat", "dataset", source,
                    payload={"message": req.message,
                             "actions": result["actions"]})
+    result["trace_id"] = trace_id
     return result
+
+
+def _record_turn(trace_id: str, source: str, message: str, started: float,
+                 result: dict | None = None, status: str = "ok",
+                 error: str | None = None):
+    """Persist one agent turn's OTel-shaped telemetry to Aurora/SQLite."""
+    latency_ms = (time.monotonic() - started) * 1000
+    cfg = config.get_llm_config()
+    lineage.record_turn(
+        _lineage_engine(), trace_id=trace_id,
+        provider=(result or {}).get("provider") or cfg["provider"],
+        model=(result or {}).get("model") or cfg["model"],
+        dataset=source, prompt=message, latency_ms=latency_ms,
+        usage=(result or {}).get("usage"),
+        tool_calls=(result or {}).get("tool_calls"),
+        status=status, error=error)
+
+
+@app.get("/api/agent/turns")
+def agent_turns():
+    df = lineage.recent_turns(_lineage_engine())
+    return {"turns": df.to_dict(orient="records")}
 
 
 @app.get("/api/views")

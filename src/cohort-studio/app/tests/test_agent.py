@@ -106,6 +106,65 @@ def test_chat_endpoint_applies_agent_result(monkeypatch):
     assert body["actions"] == ["Added bar of tissue"]
 
 
+def test_openai_compatible_tool_loop_runs_tools(monkeypatch):
+    # Drive providers.run with a fake OpenAI client: round 1 asks for a
+    # tool, round 2 replies with text. Verify the tool actually executed
+    # and token usage accumulated across turns.
+    import providers
+
+    class Fn:
+        def __init__(self, name, args):
+            self.name, self.arguments = name, args
+
+    class Call:
+        def __init__(self, name, args):
+            self.id, self.function = "call_1", Fn(name, args)
+
+    class Msg:
+        def __init__(self, content, tool_calls):
+            self.content, self.tool_calls = content, tool_calls
+
+        def model_dump(self, exclude_none=False):
+            return {"role": "assistant", "content": self.content}
+
+    class Usage:
+        prompt_tokens, completion_tokens, total_tokens = 10, 4, 14
+
+    class Resp:
+        def __init__(self, msg):
+            self.choices = [type("C", (), {"message": msg})()]
+            self.usage = Usage()
+
+    scripted = [
+        Resp(Msg(None, [Call("add_chart",
+                             '{"kind": "bar", "x": "tissue"}')])),
+        Resp(Msg("Added a bar of tissue.", None)),
+    ]
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            return scripted.pop(0)
+
+    class FakeClient:
+        chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    monkeypatch.setattr(providers, "_client",
+                        lambda api_key, base_url: FakeClient())
+
+    df = pd.read_csv(FIXTURE)
+    columns = datasets.profile_columns(df)
+    ui = {"filters": [], "charts": []}
+    actions = []
+    impls = {fn.__name__: fn
+             for fn in agent.build_tools(df, columns, ui, actions)}
+    out = providers.run("openai", "m-1", "key", None, "sys",
+                        [{"role": "user", "content": "plot tissue"}], impls)
+    assert out["reply"] == "Added a bar of tissue."
+    assert out["tool_calls"] == ["add_chart"]
+    assert out["usage"]["total_tokens"] == 28  # 14 per call × 2 rounds
+    assert ui["charts"] == [{"kind": "bar", "x": "tissue", "wide": False}]
+
+
 def test_chat_unconfigured_is_400(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     import config

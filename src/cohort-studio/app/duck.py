@@ -53,7 +53,12 @@ def list_s3_files(resource_id: str) -> list[str]:
     prefix = uri.removeprefix("s3://").partition("/")[2]
     result = subprocess.run(
         ["aws", "s3", "ls", uri + "/", "--recursive", "--profile", resource_id],
-        capture_output=True, text=True, check=True, timeout=120)
+        capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        # Surface aws's own stderr — "exit status 255" alone is useless.
+        detail = (result.stderr or result.stdout or "").strip().split("\n")[-1]
+        raise RuntimeError(
+            f"aws s3 ls failed for {resource_id}: {detail or 'exit 255'}")
     files = parse_s3_ls(result.stdout, prefix=prefix)
     logger.info("Found %d data files in %s", len(files), uri)
     return files

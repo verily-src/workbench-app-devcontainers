@@ -28,6 +28,7 @@ import duck
 import lineage
 import llm
 import compare
+import derive
 import mcp_server
 import queries
 import views
@@ -94,6 +95,20 @@ class CompareRequest(BaseModel):
     filters_a: list[Filter] = Field(default_factory=list)
     filters_b: list[Filter] = Field(default_factory=list)
     b_is_rest: bool = False   # group B = complement of A (selected-vs-rest)
+
+
+class DeriveRequest(BaseModel):
+    op: str                       # "bin" | "formula" | "map"
+    name: str
+    # op-specific fields (validated in derive.py):
+    column: str | None = None
+    breaks: list[float] | None = None
+    labels: list[str] | None = None
+    left: str | None = None
+    operator: str | None = None
+    right: str | None = None
+    mapping: dict[str, str] | None = None
+    default: str | None = None
 
 
 # ----------------------------------------------------------------- helpers
@@ -275,6 +290,22 @@ def compare_cohorts(dataset_id: str, req: CompareRequest):
                    datasets.get(dataset_id)["source"],
                    payload={"a_n": result["a_n"], "b_n": result["b_n"],
                             "b_is_rest": req.b_is_rest})
+    return result
+
+
+@app.post("/api/datasets/{dataset_id}/derive")
+def derive_column(dataset_id: str, req: DeriveRequest):
+    try:
+        result = derive.derive(dataset_id, req.model_dump())
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "derived_column", "dataset",
+                   datasets.get(dataset_id)["source"],
+                   payload={"op": req.op, "name": result["name"]})
     return result
 
 

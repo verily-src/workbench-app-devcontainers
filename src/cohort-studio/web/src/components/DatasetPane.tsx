@@ -4,6 +4,7 @@ import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 import { ComparePanel } from "./ComparePanel";
+import { DeriveColumn } from "./DeriveColumn";
 import { captureCharts, exportDatasetPdf } from "../pdf";
 
 interface Props {
@@ -23,6 +24,7 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
   const { result, filters, charts } = dataset;
   const cohorts = dataset.cohorts ?? [];
   const [showCompare, setShowCompare] = useState(false);
+  const [showDerive, setShowDerive] = useState(false);
   const [cohortName, setCohortName] = useState("");
 
   const saveCohort = () => {
@@ -155,10 +157,18 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
         <button onClick={() => setShowCompare((v) => !v)}>
           {showCompare ? "Hide compare" : "Compare groups"}
         </button>
+        <button onClick={() => setShowDerive((v) => !v)}>
+          {showDerive ? "Hide add column" : "+ Derived column"}
+        </button>
       </div>
 
       {showCompare && (
         <ComparePanel dataset={dataset} onClose={() => setShowCompare(false)} />
+      )}
+
+      {showDerive && (
+        <DeriveColumn dataset={dataset} onUpdate={onUpdate}
+                      onClose={() => setShowDerive(false)} />
       )}
 
       <AskAI dataset={dataset} onUpdate={onUpdate} />

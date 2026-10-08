@@ -223,6 +223,62 @@ def test_join_rejects_bad_how():
     assert resp.status_code == 400
 
 
+def test_derive_bin_formula_map():
+    import pandas as pd
+    import datasets as ds_mod
+    df = pd.DataFrame({
+        "age": [10, 25, 40, 70],
+        "weight": [40.0, 60.0, 80.0, 90.0],
+        "height_m": [1.5, 1.6, 1.7, 1.8],
+        "tissue": ["liver", "lung", "liver", "skin"]})
+    opened = ds_mod.open_dataset(df, "deriv")
+    did = opened["dataset_id"]
+
+    # bin age into groups
+    r = client.post(f"/api/datasets/{did}/derive", json={
+        "op": "bin", "name": "age_group", "column": "age",
+        "breaks": [0, 18, 65, 120],
+        "labels": ["child", "adult", "senior"]})
+    assert r.status_code == 200
+    cols = {c["name"]: c for c in r.json()["columns"]}
+    assert cols["age_group"]["filter_kind"] == "categorical"
+    assert set(cols["age_group"]["values"]) == {"child", "adult", "senior"}
+
+    # formula: BMI = weight / height_m^2 is two steps; test weight/height_m
+    r = client.post(f"/api/datasets/{did}/derive", json={
+        "op": "formula", "name": "wphm",
+        "left": "weight", "operator": "/", "right": "height_m"})
+    assert r.status_code == 200
+    assert "wphm" in {c["name"] for c in r.json()["columns"]}
+
+    # map tissue -> organ system
+    r = client.post(f"/api/datasets/{did}/derive", json={
+        "op": "map", "name": "system", "column": "tissue",
+        "mapping": {"liver": "digestive", "lung": "respiratory"},
+        "default": "other"})
+    assert r.status_code == 200
+    syscol = next(c for c in r.json()["columns"] if c["name"] == "system")
+    assert set(syscol["values"]) == {"digestive", "respiratory", "other"}
+
+    # the derived columns are queryable and filterable
+    out = client.post(f"/api/datasets/{did}/query", json={
+        "filters": [{"column": "age_group", "kind": "categorical",
+                     "values": ["adult"]}], "charts": []}).json()
+    assert out["filtered"] == 2  # ages 25 and 40
+
+
+def test_derive_rejects_bad_name_and_breaks():
+    import pandas as pd
+    import datasets as ds_mod
+    did = ds_mod.open_dataset(pd.DataFrame({"x": [1, 2, 3]}), "d")["dataset_id"]
+    bad_name = client.post(f"/api/datasets/{did}/derive", json={
+        "op": "bin", "name": "bad;name", "column": "x", "breaks": [0, 5]})
+    assert bad_name.status_code == 400
+    one_break = client.post(f"/api/datasets/{did}/derive", json={
+        "op": "bin", "name": "ok", "column": "x", "breaks": [0]})
+    assert one_break.status_code == 400
+
+
 def test_compare_ranks_the_differing_column_first():
     import numpy as np
     import pandas as pd

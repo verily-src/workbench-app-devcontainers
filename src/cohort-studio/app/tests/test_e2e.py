@@ -182,6 +182,29 @@ def test_settings_shows_palette_swatches(page: Page, app_url: str):
     expect(page.locator(".palette-swatch")).to_have_count(5)
 
 
+def test_save_cohort_and_compare(loaded_page: Page):
+    # Filter to liver, save it as a cohort, then compare current-vs-rest.
+    group = loaded_page.locator(".filter-group", has_text="tissue")
+    group.locator("summary").click()
+    group.get_by_label("liver").check()
+    expect(loaded_page.locator(".hero .count", has_text="25")).to_be_visible(
+        timeout=10000)
+
+    loaded_page.locator(".cohort-name").fill("livers")
+    loaded_page.get_by_role("button", name="Save cohort").click()
+    expect(loaded_page.locator(".cohort-chip", has_text="livers")
+           ).to_be_visible()
+
+    loaded_page.get_by_role("button", name="Compare groups").click()
+    panel = loaded_page.locator(".compare-panel")
+    expect(panel).to_be_visible()
+    panel.get_by_role("button", name="Compare", exact=True).click()
+    # Ranked result table renders with a p-value column and a rin_score row.
+    expect(panel.get_by_role("columnheader", name="p", exact=True)
+           ).to_be_visible(timeout=10000)
+    expect(panel.get_by_role("cell", name="rin_score")).to_be_visible()
+
+
 def test_change_chart_type(loaded_page: Page):
     # age is numeric → starts as a histogram; switch it to a bar in place
     # and confirm the query round-trip does not error.

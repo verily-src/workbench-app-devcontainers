@@ -1,6 +1,6 @@
 import type {
-  ChartSpec, ChatMsg, ColumnProfile, Dataset, Filter, QueryResult, Source,
-  TableInfo,
+  ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, QueryResult,
+  Source, TableInfo,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -91,6 +91,31 @@ export interface WorkflowList {
   running_count: number;
 }
 
+export interface CompareGroupSummary {
+  n: number;
+  median?: number | null;
+  mean?: number | null;
+  top?: { value: string; pct: number }[];
+}
+
+export interface CompareRow {
+  column: string;
+  kind: "range" | "categorical";
+  a: CompareGroupSummary;
+  b: CompareGroupSummary;
+  p: number | null;
+  q: number | null;
+  test?: string;
+  note?: string | null;
+}
+
+export interface CompareResult {
+  a_n: number;
+  b_n: number;
+  n_overlap: number;
+  results: CompareRow[];
+}
+
 export interface OpenResult {
   dataset_id: string;
   source: string;
@@ -128,6 +153,11 @@ export const api = {
     request<OpenResult>("/api/datasets/join", post({
       left_id: leftId, right_id: rightId, left_on: leftOn,
       right_on: rightOn, how })),
+
+  compare: (datasetId: string, filtersA: Filter[], filtersB: Filter[],
+            bIsRest: boolean) =>
+    request<CompareResult>(`/api/datasets/${datasetId}/compare`, post({
+      filters_a: filtersA, filters_b: filtersB, b_is_rest: bIsRest })),
 
   closeDataset: (datasetId: string) =>
     request<{ ok: boolean }>(`/api/datasets/${datasetId}`,
@@ -192,6 +222,7 @@ export const api = {
       datasets: Array<{
         source: { kind: string; resource_id: string; table: string };
         title?: string; filters: Filter[]; charts: ChartSpec[];
+        cohorts?: Cohort[];
       }>;
     }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),
@@ -205,6 +236,7 @@ export const api = {
         title: d.title,
         filters: d.filters,
         charts: d.charts.map((c: ChartSpec) => ({ kind: c.kind, x: c.x, y: c.y })),
+        cohorts: d.cohorts ?? [],
       })),
     })),
 

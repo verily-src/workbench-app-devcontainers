@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
+import { ComparePanel } from "./ComparePanel";
 import { captureCharts, exportDatasetPdf } from "../pdf";
 
 interface Props {
@@ -20,6 +21,19 @@ function describeFilter(f: Filter): string {
 
 export function DatasetPane({ dataset, palette, onUpdate }: Props) {
   const { result, filters, charts } = dataset;
+  const cohorts = dataset.cohorts ?? [];
+  const [showCompare, setShowCompare] = useState(false);
+  const [cohortName, setCohortName] = useState("");
+
+  const saveCohort = () => {
+    const name = cohortName.trim();
+    if (!name || filters.length === 0) return;
+    const rest = cohorts.filter((c) => c.name !== name);
+    onUpdate({ cohorts: [...rest, { name, filters }] });
+    setCohortName("");
+  };
+  const removeCohort = (name: string) =>
+    onUpdate({ cohorts: cohorts.filter((c) => c.name !== name) });
 
   const toggleCategory = (column: string, value: string) => {
     const existing = filters.find((f) => f.column === column);
@@ -115,6 +129,36 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
             Clear all
           </span>
         </div>
+      )}
+
+      <div className="cohort-bar">
+        <span className="cohort-label">Cohorts</span>
+        {cohorts.map((c) => (
+          <span key={c.name} className="cohort-chip"
+                title={`${c.filters.length} filter(s) — click ✕ to remove`}>
+            {c.name}
+            <button className="quiet" onClick={() => removeCohort(c.name)}>
+              ✕
+            </button>
+          </span>
+        ))}
+        <input type="text" className="cohort-name"
+               placeholder={filters.length
+                 ? "name current filters…" : "set filters to save a cohort"}
+               value={cohortName} disabled={filters.length === 0}
+               onChange={(e) => setCohortName(e.target.value)}
+               onKeyDown={(e) => { if (e.key === "Enter") saveCohort(); }} />
+        <button onClick={saveCohort}
+                disabled={!cohortName.trim() || filters.length === 0}>
+          Save cohort
+        </button>
+        <button onClick={() => setShowCompare((v) => !v)}>
+          {showCompare ? "Hide compare" : "Compare groups"}
+        </button>
+      </div>
+
+      {showCompare && (
+        <ComparePanel dataset={dataset} onClose={() => setShowCompare(false)} />
       )}
 
       <AskAI dataset={dataset} onUpdate={onUpdate} />

@@ -57,6 +57,11 @@ export interface ChatMsg {
   actions?: string[];
 }
 
+export interface Cohort {
+  name: string;
+  filters: Filter[];
+}
+
 export interface Dataset {
   id: string;
   title: string;
@@ -66,6 +71,7 @@ export interface Dataset {
   columns: ColumnProfile[];
   filters: Filter[];
   charts: ChartSpec[];
+  cohorts?: Cohort[];
   page: number;
   result?: QueryResult;
   chat?: ChatMsg[];

@@ -375,9 +375,15 @@ def test_duckdb_and_pandas_aggregation_parity(monkeypatch):
     # scatter sampling differs by engine — compare shape only
     assert len(duck_res["charts"][3]["data"]) == len(pandas_res["charts"][3]["data"])
 
-    # same page of rows
+    # same page of rows — page 0 and a later page (pagination order must be
+    # deterministic, i.e. the DuckDB rows query has a stable ORDER BY)
     assert duck_res["rows"]["columns"] == pandas_res["rows"]["columns"]
     assert duck_res["rows"]["data"] == pandas_res["rows"]["data"]
+    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 10 ** 9)
+    p2 = ds_mod.query(did, filters, charts, page=3, page_size=50)
+    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 0)
+    d2 = ds_mod.query(did, filters, charts, page=3, page_size=50)
+    assert d2["rows"]["data"] == p2["rows"]["data"]
 
 
 def test_workflows_lists_jobs_and_counts_running(monkeypatch):

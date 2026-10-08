@@ -111,8 +111,8 @@ plan="$(jq -c '
     end
   ) |
   .order as $order |
-  $manifest + {order: $order, replaced: reduce $order[] as $id ({};
-    .[$id] = [$actions[] | select(.effective_id == $id and .id != $id) | .id])}
+  $manifest + {order: $order, replaced: (reduce $order[] as $id ({};
+    .[$id] = [$actions[] | select(.effective_id == $id and .id != $id) | .id]))}
 ' <<< "$manifest")"
 
 state_tmp=''

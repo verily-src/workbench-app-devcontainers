@@ -187,6 +187,17 @@ def test_join_two_tabs_into_new_dataset(loaded_page: Page):
            ).to_be_visible(timeout=10000)
 
 
+def test_export_pdf_downloads(loaded_page: Page):
+    # Export PDF is fully client-side (charts live in the browser); assert
+    # a real .pdf download is produced with non-empty bytes.
+    with loaded_page.expect_download(timeout=20000) as dl:
+        loaded_page.get_by_role("button", name="Export PDF").click()
+    download = dl.value
+    assert download.suggested_filename.endswith(".pdf")
+    path = download.path()
+    assert path and path.stat().st_size > 1000
+
+
 def test_saved_views_section_present(loaded_page: Page):
     # Section renders; with no Aurora/S3 resource in the test workspace it
     # shows the "no store" message.

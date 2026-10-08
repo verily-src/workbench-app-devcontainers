@@ -44,6 +44,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats jq
 
+      - name: Test memory comparison and workload contracts
+        run: python3 -m unittest discover -s scripts/test -p '*_test.py'
+
       - name: Run bats tests
         run: |
           cd scripts/test
@@ -65,9 +68,6 @@ jobs:
           path: ${{ runner.temp }}/dependency-memory-reports
           retention-days: 7
           if-no-files-found: warn
-
-      - name: Test memory comparison and workload contracts
-        run: python3 -m unittest discover -s scripts/test -p '*_test.py'
 
       - name: Run update-flatcar tests
         run: bats tests/update-flatcar.bats

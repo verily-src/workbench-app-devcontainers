@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - 'tests/common/**'
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
       - 'tests/test-codeartifact.bats'
@@ -15,6 +16,7 @@ on:
       - master
     paths:
       - 'scripts/**'
+      - 'tests/common/**'
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
       - 'tests/test-codeartifact.bats'
@@ -42,16 +44,30 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bats jq
 
+      - name: Test memory comparison and workload contracts
+        run: python3 -m unittest discover -s scripts/test -p '*_test.py'
+
       - name: Run bats tests
         run: |
           cd scripts/test
           bats .
 
       - name: Test offline recreation with Docker
+        env:
+          MEMORY_REPORT_ARTIFACT_DIR: ${{ runner.temp }}/dependency-memory-reports
         run: |
           docker pull python:3.12-alpine
           docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
           bats scripts/test/integration
+
+      - name: Retain memory collector evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-memory-integration
+          path: ${{ runner.temp }}/dependency-memory-reports
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Run update-flatcar tests
         run: bats tests/update-flatcar.bats

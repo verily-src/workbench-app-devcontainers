@@ -1,0 +1,6 @@
+[Unit]
+Description=Schedule the Workbench OS version check
+
+[Timer]
+OnUnitActiveSec=12h
+Unit=check-for-newer-os-update.service

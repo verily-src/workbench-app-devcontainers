@@ -1,0 +1,16 @@
+[Unit]
+Description=Send Workbench host logs
+Requires=workbench-maintenance.service docker.service
+After=workbench-maintenance.service docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/workbench/maintenance.env
+EnvironmentFile=/etc/workbench/app.env
+ExecStartPre=-/usr/bin/docker stop fluent-bit
+ExecStartPre=-/usr/bin/docker rm fluent-bit
+ExecStart=/usr/lib/workbench/maintenance/app-host.sh logging
+ExecStop=/usr/bin/docker stop fluent-bit
+Restart=always
+RestartSec=5s
+TimeoutStartSec=0

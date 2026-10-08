@@ -1,0 +1,12 @@
+[Unit]
+Description=Clear Workbench status at shutdown
+Requires=workbench-maintenance.service
+After=workbench-maintenance.service network.target docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/true
+ExecStop=/bin/bash /home/core/metadata-cleanup.sh
+Restart=on-failure
+RestartSec=1s

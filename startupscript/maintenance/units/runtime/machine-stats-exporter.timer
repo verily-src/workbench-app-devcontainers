@@ -1,0 +1,6 @@
+[Unit]
+Description=Schedule Workbench machine-stats-exporter
+
+[Timer]
+OnCalendar=*:0/1
+Unit=machine-stats-exporter.service

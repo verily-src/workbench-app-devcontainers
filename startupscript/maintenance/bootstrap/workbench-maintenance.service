@@ -1,0 +1,19 @@
+[Unit]
+Description=Apply Workbench host maintenance
+Requires=workbench-update.service
+After=workbench-update.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/workbench/maintenance.env
+EnvironmentFile=/etc/workbench/app.env
+ExecStart=/etc/workbench/maintenance/run-maintenance.sh
+ExecStartPost=/etc/workbench/maintenance/start-host.sh
+ExecStopPost=-/etc/workbench/maintenance/report-failure.sh /var/lib/workbench-maintenance
+TimeoutStopSec=15s
+TimeoutStopFailureMode=kill
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

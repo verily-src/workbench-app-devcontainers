@@ -173,10 +173,22 @@ export default function App() {
     setError("");
     try {
       const v = await api.getView(store.kind, store.id, name);
-      const opened = await api.openDataset(
-        v.source.kind, v.source.resource_id, v.source.table);
-      openResult(opened, v.source.table.split("/").pop() ?? name,
-        v.source, { filters: v.filters, charts: v.charts });
+      const specs = v.datasets ?? [];
+      const opened = await Promise.all(specs.map((d) =>
+        api.openDataset(d.source.kind, d.source.resource_id, d.source.table)
+          .then((o) => ({ o, d }))));
+      const restored: Dataset[] = opened.map(({ o, d }) => ({
+        id: o.dataset_id,
+        title: d.title || d.source.table.split("/").pop() || "view",
+        source: o.source,
+        sourceRef: d.source,
+        columns: o.columns,
+        filters: d.filters,
+        charts: d.charts,
+        page: 0,
+      }));
+      setDatasets(restored);
+      setActive(Math.min(v.active ?? 0, Math.max(0, restored.length - 1)));
       setView("explore");
     } catch (e) {
       setError(`Could not load view: ${(e as Error).message}`);
@@ -290,7 +302,7 @@ export default function App() {
         )}
 
         <div className="section-label">Saved views</div>
-        <SavedViews sources={sources} activeDataset={activeDs}
+        <SavedViews sources={sources} datasets={datasets} active={active}
                     onLoadView={loadView} />
 
         <VersionFooter />

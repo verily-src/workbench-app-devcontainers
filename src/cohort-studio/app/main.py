@@ -291,13 +291,19 @@ class ViewSource(BaseModel):
     table: str
 
 
+class ViewDataset(BaseModel):
+    source: ViewSource
+    title: str = ""
+    filters: list[Filter] = Field(default_factory=list)
+    charts: list[ChartSpec] = Field(default_factory=list)
+
+
 class SaveViewRequest(BaseModel):
     kind: str          # storage backend: "aurora" or "s3"
     resource_id: str   # where to store the view
     name: str
-    source: ViewSource
-    filters: list[Filter] = Field(default_factory=list)
-    charts: list[ChartSpec] = Field(default_factory=list)
+    datasets: list[ViewDataset] = Field(default_factory=list)
+    active: int = 0
 
 
 @app.get("/api/config")
@@ -419,12 +425,20 @@ def get_view(kind: str, resource_id: str, name: str):
 
 @app.post("/api/views")
 def save_view(req: SaveViewRequest):
+    if not req.datasets:
+        raise HTTPException(400, "Nothing to save — open a datasource-backed "
+                            "table first.")
     state = {
-        "source": req.source.model_dump(),
-        "filters": [{k: v for k, v in f.model_dump().items() if v is not None}
-                    for f in req.filters],
-        "charts": [{k: v for k, v in c.model_dump().items() if v is not None}
-                   for c in req.charts],
+        "version": 2,
+        "active": req.active,
+        "datasets": [{
+            "source": d.source.model_dump(),
+            "title": d.title,
+            "filters": [{k: v for k, v in f.model_dump().items()
+                         if v is not None} for f in d.filters],
+            "charts": [{k: v for k, v in c.model_dump().items()
+                        if v is not None} for c in d.charts],
+        } for d in req.datasets],
     }
     try:
         result = views.save_view(req.kind, req.resource_id, req.name, state)
@@ -434,7 +448,7 @@ def save_view(req: SaveViewRequest):
         raise HTTPException(502, str(e).split("\n")[0][:300])
     lineage.record(_lineage_engine(), "view_saved", "view", req.name,
                    payload={"store": f"{req.kind}:{req.resource_id}",
-                            "source": req.source.table})
+                            "datasets": len(req.datasets)})
     return result
 
 

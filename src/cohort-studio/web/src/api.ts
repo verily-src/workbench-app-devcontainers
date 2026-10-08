@@ -127,17 +127,25 @@ export const api = {
       `/api/views?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`),
 
   getView: (kind: string, resourceId: string, name: string) =>
-    request<{ source: { kind: string; resource_id: string; table: string };
-              filters: Filter[]; charts: ChartSpec[] }>(
-      `/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
-      + `&name=${encodeURIComponent(name)}`),
+    request<{
+      version?: number; active?: number;
+      datasets: Array<{
+        source: { kind: string; resource_id: string; table: string };
+        title?: string; filters: Filter[]; charts: ChartSpec[];
+      }>;
+    }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
+       + `&name=${encodeURIComponent(name)}`),
 
-  saveView: (kind: string, resourceId: string, name: string, d: Dataset) =>
+  saveView: (kind: string, resourceId: string, name: string,
+             datasets: Dataset[], active: number) =>
     request<{ name: string }>("/api/views", post({
-      kind, resource_id: resourceId, name,
-      source: d.sourceRef,
-      filters: d.filters,
-      charts: d.charts.map((c: ChartSpec) => ({ kind: c.kind, x: c.x, y: c.y })),
+      kind, resource_id: resourceId, name, active,
+      datasets: datasets.map((d) => ({
+        source: d.sourceRef,
+        title: d.title,
+        filters: d.filters,
+        charts: d.charts.map((c: ChartSpec) => ({ kind: c.kind, x: c.x, y: c.y })),
+      })),
     })),
 
   deleteView: (kind: string, resourceId: string, name: string) =>

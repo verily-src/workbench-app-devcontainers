@@ -140,14 +140,16 @@ def test_views_aurora_roundtrip(monkeypatch, tmp_path):
     monkeypatch.setattr(main.lineage, "record", lambda *a, **k: None)
     views._prepared.clear()
 
-    state = {"source": {"kind": "s3", "resource_id": "folder", "table": "x.csv"},
-             "filters": [{"column": "tissue", "kind": "categorical",
-                          "values": ["liver"]}],
-             "charts": [{"kind": "bar", "x": "tissue"}]}
+    ds = {"source": {"kind": "s3", "resource_id": "folder", "table": "x.csv"},
+          "title": "x",
+          "filters": [{"column": "tissue", "kind": "categorical",
+                       "values": ["liver"]}],
+          "charts": [{"kind": "bar", "x": "tissue"}]}
     save = client.post("/api/views", json={
         "kind": "aurora", "resource_id": "db1", "name": "liver cohort",
-        "source": state["source"], "filters": state["filters"],
-        "charts": state["charts"]})
+        "active": 0, "datasets": [ds, {**ds, "source":
+            {"kind": "aurora", "resource_id": "db1", "table": "t2"},
+            "title": "t2"}]})
     assert save.status_code == 200
 
     listed = client.get("/api/views?kind=aurora&resource_id=db1").json()
@@ -155,9 +157,11 @@ def test_views_aurora_roundtrip(monkeypatch, tmp_path):
 
     got = client.get(
         "/api/views/one?kind=aurora&resource_id=db1&name=liver%20cohort").json()
-    assert got["filters"] == state["filters"]
-    assert got["charts"] == state["charts"]
-    assert got["source"]["table"] == "x.csv"
+    assert got["version"] == 2
+    assert len(got["datasets"]) == 2
+    assert got["datasets"][0]["filters"] == ds["filters"]
+    assert got["datasets"][0]["charts"] == ds["charts"]
+    assert got["datasets"][1]["source"]["table"] == "t2"
 
     client.delete("/api/views?kind=aurora&resource_id=db1&name=liver%20cohort")
     assert client.get("/api/views?kind=aurora&resource_id=db1").json() == []
@@ -172,6 +176,14 @@ def test_view_name_validation():
 
 def test_save_view_rejects_bad_backend():
     resp = client.post("/api/views", json={
-        "kind": "bq", "resource_id": "d", "name": "v",
-        "source": {"kind": "bq", "resource_id": "d", "table": "t"}})
-    assert resp.status_code == 502 or resp.status_code == 400
+        "kind": "bq", "resource_id": "d", "name": "v", "active": 0,
+        "datasets": [{"source": {"kind": "bq", "resource_id": "d",
+                                 "table": "t"}, "title": "t"}]})
+    assert resp.status_code in (400, 502)
+
+
+def test_save_view_rejects_empty():
+    resp = client.post("/api/views", json={
+        "kind": "aurora", "resource_id": "db1", "name": "v",
+        "active": 0, "datasets": []})
+    assert resp.status_code == 400

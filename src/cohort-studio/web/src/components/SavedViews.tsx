@@ -4,13 +4,16 @@ import type { Dataset, Source } from "../types";
 
 interface Props {
   sources: Source[];
-  activeDataset?: Dataset;
+  datasets: Dataset[];
+  active: number;
   onLoadView: (store: { kind: string; id: string }, name: string) => void;
 }
 
 // Views persist to Aurora (a _studio_views row) or S3 (a JSON object),
 // so filters + charts survive the app closing. Browser state does not.
-export function SavedViews({ sources, activeDataset, onLoadView }: Props) {
+export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
+  // Only datasource-backed tabs can be reloaded (uploads have no source).
+  const saveable = datasets.filter((d) => d.sourceRef);
   const stores = sources.filter((s) => s.kind === "aurora" || s.kind === "s3");
   const [store, setStore] = useState("");
   const [views, setViews] = useState<{ name: string }[]>([]);
@@ -31,12 +34,17 @@ export function SavedViews({ sources, activeDataset, onLoadView }: Props) {
   useEffect(refresh, [store]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
-    if (!current || !activeDataset || !name.trim()) return;
+    if (!current || saveable.length === 0 || !name.trim()) return;
     setStatus("Saving…");
     try {
-      await api.saveView(current.kind, current.id, name.trim(), activeDataset);
+      const activeSaveIdx = Math.max(0, saveable.findIndex(
+        (d) => d === datasets[active]));
+      await api.saveView(current.kind, current.id, name.trim(),
+                         saveable, activeSaveIdx);
       setName("");
-      setStatus("Saved.");
+      const skipped = datasets.length - saveable.length;
+      setStatus(`Saved ${saveable.length} tab(s).`
+        + (skipped ? ` ${skipped} upload(s) skipped.` : ""));
       refresh();
     } catch (e) {
       setStatus(`Failed: ${(e as Error).message}`);
@@ -64,19 +72,20 @@ export function SavedViews({ sources, activeDataset, onLoadView }: Props) {
         ))}
       </select>
 
-      {activeDataset?.sourceRef ? (
+      {saveable.length > 0 ? (
         <div className="view-save">
-          <input type="text" placeholder="name this view" value={name}
+          <input type="text"
+                 placeholder={`name this view (${saveable.length} tab${saveable.length > 1 ? "s" : ""})`}
+                 value={name}
                  onChange={(e) => setName(e.target.value)}
                  onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
           <button className="primary" onClick={save} disabled={!name.trim()}>
             Save
           </button>
         </div>
-      ) : activeDataset ? (
+      ) : datasets.length > 0 ? (
         <div className="settings-hint" style={{ margin: "6px 0" }}>
-          Uploaded files can't be saved as reloadable views — load from a
-          datasource to save one.
+          Uploaded files can't be saved — load from a datasource to save a view.
         </div>
       ) : null}
 

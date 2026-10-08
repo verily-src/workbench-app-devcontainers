@@ -187,7 +187,13 @@ def query(df, filters: list[dict], chart_specs: list[dict],
     where, params = _where(filters, columns)
     # Add a positional column so the rows page has a deterministic ORDER BY —
     # SQL row order is undefined without one once DuckDB parallelises a scan.
-    pos_df = df.reset_index(drop=True).rename_axis("__pos__").reset_index()
+    # Pick a sentinel name that can't collide with a real column, and attach
+    # it to a shallow copy (one int column, no data-block copy).
+    pos = "__pos__"
+    while pos in columns:
+        pos += "_"
+    pos_df = df.copy(deep=False)
+    pos_df[pos] = np.arange(len(df))
     sel = ", ".join(_q(c) for c in df.columns)
     con = duckdb.connect()
     try:
@@ -199,7 +205,7 @@ def query(df, filters: list[dict], chart_specs: list[dict],
         start = page * page_size
         page_rows = con.execute(
             f"SELECT {sel} FROM t WHERE {where} "
-            f"ORDER BY __pos__ LIMIT {page_size} OFFSET {start}",
+            f"ORDER BY {_q(pos)} LIMIT {page_size} OFFSET {start}",
             params).df()
         rows = {
             "page": page, "page_size": page_size,

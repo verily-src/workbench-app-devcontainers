@@ -1,10 +1,22 @@
 import { useEffect, useState } from "react";
-import { api, AppConfig, MCPConnection } from "../api";
+import { api, AppConfig, MCPConnection, Provider } from "../api";
 import { PALETTE_NAMES, getPalette } from "../palette";
+
+const PROVIDERS: { id: Provider; label: string; keyLabel: string;
+                   placeholder: string; models: string[] }[] = [
+  { id: "anthropic", label: "Anthropic (Claude)", keyLabel: "Anthropic API key",
+    placeholder: "sk-ant-…",
+    models: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] },
+  { id: "openai", label: "OpenAI", keyLabel: "OpenAI API key",
+    placeholder: "sk-…", models: [] },
+  { id: "gemini", label: "Google Gemini", keyLabel: "Gemini API key",
+    placeholder: "AIza…", models: [] },
+];
 
 export function SettingsView(
     { onPaletteChange }: { onPaletteChange?: (p: string) => void }) {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
+  const [provider, setProvider] = useState<Provider>("anthropic");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [connections, setConnections] = useState<MCPConnection[]>([]);
@@ -14,16 +26,29 @@ export function SettingsView(
   useEffect(() => {
     api.config().then((c) => {
       setCfg(c);
+      setProvider(c.llm.provider);
       setModel(c.llm.model);
       setConnections(c.mcp_connections);
       setPalette(c.chart_palette);
     }).catch(() => undefined);
   }, []);
 
+  // Switching provider in the dropdown recalls that provider's saved
+  // model and clears the (per-provider) key entry box.
+  const pickProvider = (p: Provider) => {
+    setProvider(p);
+    setModel(cfg?.llm.providers[p]?.model ?? "");
+    setApiKey("");
+  };
+
+  const meta = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
+  const providerState = cfg?.llm.providers[provider];
+
   const save = async () => {
     setStatus("Saving…");
     try {
       const updated = await api.updateConfig({
+        provider,
         model,
         ...(apiKey ? { api_key: apiKey } : {}),
         mcp_connections: connections,
@@ -61,33 +86,51 @@ export function SettingsView(
       <div className="section-label">AI model</div>
       <div className="settings-card">
         <p className="settings-caption">
-          Powers "Ask AI" natural-language filtering on datasets. The API
-          key is stored server-side and never shown again.
+          Powers "Ask AI" filtering and the chat assistant. Pick a provider;
+          each keeps its own key and model. Keys are stored server-side and
+          never shown again.
         </p>
-        <div className="field-label">Model</div>
-        <select value={model} onChange={(e) => setModel(e.target.value)}>
-          {["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]
-            .concat(model && !["claude-opus-5", "claude-sonnet-5",
-              "claude-haiku-4-5"].includes(model) ? [model] : [])
-            .map((m) => <option key={m}>{m}</option>)}
+        <div className="field-label">Provider</div>
+        <select value={provider}
+                onChange={(e) => pickProvider(e.target.value as Provider)}>
+          {PROVIDERS.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
         </select>
+        <div className="field-label">Model</div>
+        <input
+          type="text"
+          list="model-suggestions"
+          placeholder={provider === "anthropic"
+            ? "claude-opus-5" : "enter the provider's model id"}
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+        />
+        {meta.models.length > 0 && (
+          <datalist id="model-suggestions">
+            {meta.models.map((m) => <option key={m} value={m} />)}
+          </datalist>
+        )}
         <div className="field-label">
-          Anthropic API key
-          {cfg.llm.api_key_set && (
+          {meta.keyLabel}
+          {providerState?.api_key_set && (
             <span className="settings-hint">
-              {" "}· configured ({cfg.llm.api_key_hint}, via {cfg.llm.api_key_source})
+              {" "}· configured ({providerState.api_key_hint}, via{" "}
+              {providerState.api_key_source})
             </span>
           )}
         </div>
         <input
           type="password"
-          placeholder={cfg.llm.api_key_set ? "Enter a new key to replace" : "sk-ant-…"}
+          placeholder={providerState?.api_key_set
+            ? "Enter a new key to replace" : meta.placeholder}
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
         />
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <button className="primary" onClick={save}>Save</button>
-          <button onClick={testLlm} disabled={!cfg.llm.api_key_set && !apiKey}>
+          <button onClick={testLlm}
+                  disabled={!providerState?.api_key_set && !apiKey}>
             Test connection
           </button>
         </div>

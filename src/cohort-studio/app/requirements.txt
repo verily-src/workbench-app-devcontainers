@@ -9,4 +9,5 @@ duckdb>=1.1
 google-cloud-bigquery>=3.25
 db-dtypes>=1.2
 anthropic>=0.80
+openai>=1.50
 mcp>=1.10

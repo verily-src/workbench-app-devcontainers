@@ -8,6 +8,7 @@ final state for the browser to apply. Conversation history is kept
 client-side; every request is stateless.
 """
 
+import functools
 import json
 import logging
 
@@ -16,6 +17,7 @@ import pandas as pd
 import config
 import datasets
 import llm
+import providers
 
 logger = logging.getLogger(__name__)
 
@@ -168,23 +170,44 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
     )
 
 
+def _provider_label(provider: str) -> str:
+    return {"anthropic": "Anthropic", "openai": "OpenAI",
+            "gemini": "Gemini"}.get(provider, provider)
+
+
 def chat(dataset_id: str, message: str, history: list[dict],
          filters: list[dict], charts: list[dict]) -> dict:
-    import anthropic
-    from anthropic import beta_tool
-
     cfg = config.get_llm_config()
+    provider = cfg["provider"]
+    label = _provider_label(provider)
     if not cfg["api_key"]:
         raise llm.LLMNotConfigured(
-            "No Anthropic API key configured — add one in Settings.")
-    client = anthropic.Anthropic(api_key=cfg["api_key"])
+            f"No {label} API key configured — add one in Settings.")
+    if not cfg["model"]:
+        raise llm.LLMNotConfigured(
+            f"No {label} model set — enter a model name in Settings.")
 
     ds = datasets.get(dataset_id)
     df = ds["df"]
     columns = datasets.profile_columns(df)
     ui = {"filters": list(filters), "charts": list(charts)}
     actions: list[str] = []
-    tools = [beta_tool(fn) for fn in build_tools(df, columns, ui, actions)]
+    system = _system_prompt(ds["source"], df, columns, ui)
+
+    # Wrap each tool so every call is recorded for telemetry; functools.wraps
+    # keeps the signature/docstring the Anthropic schema builder needs.
+    raw_tools = build_tools(df, columns, ui, actions)
+    tool_calls: list[str] = []
+
+    def track(fn):
+        @functools.wraps(fn)
+        def inner(*a, **k):
+            tool_calls.append(fn.__name__)
+            return fn(*a, **k)
+        return inner
+
+    wrapped = [track(fn) for fn in raw_tools]
+    tool_impls = {fn.__name__: w for fn, w in zip(raw_tools, wrapped)}
 
     messages = [
         {"role": m["role"], "content": m["content"]}
@@ -193,13 +216,28 @@ def chat(dataset_id: str, message: str, history: list[dict],
     ]
     messages.append({"role": "user", "content": message})
 
+    if provider == "anthropic":
+        reply, usage = _run_anthropic(cfg, system, messages, wrapped)
+    else:
+        out = providers.run(provider, cfg["model"], cfg["api_key"],
+                            cfg["base_url"], system, messages, tool_impls)
+        reply, usage = out["reply"], out["usage"]
+
+    return {"reply": reply, "filters": ui["filters"], "charts": ui["charts"],
+            "actions": actions, "provider": provider, "model": cfg["model"],
+            "usage": usage, "tool_calls": tool_calls}
+
+
+def _run_anthropic(cfg: dict, system: str, messages: list[dict],
+                   wrapped: list) -> tuple[str, dict]:
+    import anthropic
+    from anthropic import beta_tool
+
+    client = anthropic.Anthropic(api_key=cfg["api_key"])
+    tools = [beta_tool(fn) for fn in wrapped]
     runner = client.beta.messages.tool_runner(
-        model=cfg["model"],
-        max_tokens=8192,
-        system=_system_prompt(ds["source"], df, columns, ui),
-        tools=tools,
-        messages=messages,
-    )
+        model=cfg["model"], max_tokens=8192, system=system,
+        tools=tools, messages=messages)
     final = runner.until_done()
 
     if final.stop_reason == "refusal":
@@ -207,5 +245,8 @@ def chat(dataset_id: str, message: str, history: list[dict],
     else:
         reply = "\n".join(b.text for b in final.content
                           if b.type == "text").strip() or "(done)"
-    return {"reply": reply, "filters": ui["filters"],
-            "charts": ui["charts"], "actions": actions}
+    u = getattr(final, "usage", None)
+    usage = {"prompt_tokens": getattr(u, "input_tokens", 0) or 0,
+             "completion_tokens": getattr(u, "output_tokens", 0) or 0}
+    usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+    return reply, usage

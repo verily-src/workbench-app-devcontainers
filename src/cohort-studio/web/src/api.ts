@@ -32,8 +32,20 @@ export interface MCPConnection {
   authorization_token?: string;
 }
 
+export interface ProviderConfig {
+  model: string;
+  api_key_set: boolean;
+  api_key_hint: string | null;
+  api_key_source: string | null;
+}
+
+export type Provider = "anthropic" | "openai" | "gemini";
+
 export interface AppConfig {
   llm: {
+    provider: Provider;
+    providers: Record<Provider, ProviderConfig>;
+    // Flattened active-provider fields for convenience.
     model: string;
     api_key_set: boolean;
     api_key_hint: string | null;
@@ -42,6 +54,19 @@ export interface AppConfig {
   mcp: { available: boolean; path: string };
   mcp_connections: MCPConnection[];
   chart_palette: string;
+}
+
+export interface AgentTurn {
+  ts: string;
+  trace_id: string;
+  provider: string;
+  model: string;
+  dataset: string;
+  prompt: string;
+  latency_ms: number;
+  total_tokens: number;
+  tool_calls: string;
+  status: string;
 }
 
 export interface OpenResult {
@@ -96,15 +121,19 @@ export const api = {
   config: () => request<AppConfig>("/api/config"),
 
   updateConfig: (body: {
-    model?: string; api_key?: string; mcp_connections?: MCPConnection[];
-    chart_palette?: string;
+    provider?: Provider; model?: string; api_key?: string;
+    mcp_connections?: MCPConnection[]; chart_palette?: string;
   }) => request<AppConfig>("/api/config",
     { method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body) }),
 
   testLlm: () =>
-    request<{ ok: boolean; model: string; display_name: string }>(
+    request<{ ok: boolean; provider: string; model: string;
+              display_name: string }>(
       "/api/config/llm/test", { method: "POST" }),
+
+  agentTurns: () =>
+    request<{ turns: AgentTurn[] }>("/api/agent/turns"),
 
   chat: (datasetId: string, message: string, history: ChatMsg[],
          filters: Filter[], charts: ChartSpec[]) =>

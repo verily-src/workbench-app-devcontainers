@@ -104,18 +104,11 @@ def test_suggest_filters_validation_drops_bad_columns(monkeypatch):
         ]
         explanation = "ok"
 
-    class FakeResponse:
-        stop_reason = "end_turn"
-        parsed_output = FakeParsed()
-
-    class FakeMessages:
-        def parse(self, **kwargs):
-            return FakeResponse()
-
-    class FakeClient:
-        messages = FakeMessages()
-
-    monkeypatch.setattr(llm, "_client", lambda: (FakeClient(), "claude-opus-5"))
+    monkeypatch.setattr(llm, "_cfg", lambda: {
+        "provider": "anthropic", "api_key": "k", "model": "claude-opus-5",
+        "base_url": None})
+    monkeypatch.setattr(llm, "_anthropic_suggestion",
+                        lambda cfg, system, prompt: FakeParsed())
     columns = [
         {"name": "tissue", "filter_kind": "categorical",
          "values": ["liver", "lung"]},
@@ -126,3 +119,62 @@ def test_suggest_filters_validation_drops_bad_columns(monkeypatch):
         {"column": "tissue", "kind": "categorical", "values": ["liver"]},
         {"column": "rin_score", "kind": "range", "min": 5.0, "max": 7.0},
     ]
+
+
+def test_config_defaults_expose_providers():
+    body = client.get("/api/config").json()
+    assert body["llm"]["provider"] == "anthropic"
+    assert set(body["llm"]["providers"]) == {"anthropic", "openai", "gemini"}
+    assert body["llm"]["providers"]["anthropic"]["model"] == "claude-opus-5"
+    # OpenAI/Gemini model IDs are left blank — user sets them.
+    assert body["llm"]["providers"]["openai"]["model"] == ""
+
+
+def test_switch_provider_keeps_per_provider_keys_and_never_echoes():
+    # Set an Anthropic key, then switch to OpenAI with its own key+model.
+    client.put("/api/config", json={
+        "provider": "anthropic", "api_key": "sk-ant-aaaa1111"})
+    resp = client.put("/api/config", json={
+        "provider": "openai", "model": "some-openai-model",
+        "api_key": "sk-openai-bbbb2222"})
+    body = resp.json()
+    assert "sk-ant" not in resp.text and "sk-openai" not in resp.text
+    assert body["llm"]["provider"] == "openai"
+    assert body["llm"]["model"] == "some-openai-model"
+    provs = body["llm"]["providers"]
+    # Both keys are retained independently; hints end in the last 4 chars.
+    assert provs["anthropic"]["api_key_set"] is True
+    assert provs["anthropic"]["api_key_hint"] == "…1111"
+    assert provs["openai"]["api_key_set"] is True
+    assert provs["openai"]["api_key_hint"] == "…2222"
+
+
+def test_agent_turn_recorded(monkeypatch, tmp_path):
+    # A chat turn persists an OTel-shaped row readable via /api/agent/turns.
+    import agent
+    monkeypatch.setattr(main, "_lineage_engine",
+                        lambda: _file_engine(tmp_path))
+
+    def fake_chat(dataset_id, message, history, filters, charts):
+        return {"reply": "ok", "filters": filters, "charts": charts,
+                "actions": [], "provider": "openai", "model": "m-1",
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5,
+                          "total_tokens": 15},
+                "tool_calls": ["run_query", "add_chart"]}
+
+    monkeypatch.setattr(agent, "chat", fake_chat)
+    dataset_id = _open_fixture()
+    resp = client.post(f"/api/datasets/{dataset_id}/chat",
+                       json={"message": "plot it"})
+    assert resp.status_code == 200
+    assert resp.json()["trace_id"]
+    turns = client.get("/api/agent/turns").json()["turns"]
+    assert turns and turns[0]["provider"] == "openai"
+    assert turns[0]["total_tokens"] == 15
+    assert turns[0]["status"] == "ok"
+
+
+def _file_engine(tmp_path):
+    from sqlalchemy import create_engine
+    return create_engine(f"sqlite:///{tmp_path / 'turns.db'}",
+                         connect_args={"check_same_thread": False})

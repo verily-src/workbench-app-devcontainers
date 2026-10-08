@@ -34,25 +34,46 @@ class LLMNotConfigured(RuntimeError):
     pass
 
 
-def _client():
-    import anthropic
+_LABELS = {"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Gemini"}
+
+
+def _cfg() -> dict:
     cfg = config.get_llm_config()
+    label = _LABELS.get(cfg["provider"], cfg["provider"])
     if not cfg["api_key"]:
         raise LLMNotConfigured(
-            "No Anthropic API key configured — add one in Settings.")
-    return anthropic.Anthropic(api_key=cfg["api_key"]), cfg["model"]
+            f"No {label} API key configured — add one in Settings.")
+    if not cfg["model"]:
+        raise LLMNotConfigured(
+            f"No {label} model set — enter a model name in Settings.")
+    return cfg
 
 
 def test_connection() -> dict:
     """Cheap round trip that validates the key and model."""
-    client, model = _client()
-    info = client.models.retrieve(model)
-    return {"ok": True, "model": info.id, "display_name": info.display_name}
+    cfg = _cfg()
+    if cfg["provider"] == "anthropic":
+        import anthropic
+        client = anthropic.Anthropic(api_key=cfg["api_key"])
+        info = client.models.retrieve(cfg["model"])
+        return {"ok": True, "provider": "anthropic", "model": info.id,
+                "display_name": info.display_name}
+    # OpenAI-compatible providers: a 1-token completion proves key+model.
+    from openai import OpenAI
+    kwargs = {"api_key": cfg["api_key"]}
+    if cfg["base_url"]:
+        kwargs["base_url"] = cfg["base_url"]
+    client = OpenAI(**kwargs)
+    client.chat.completions.create(
+        model=cfg["model"], max_tokens=1,
+        messages=[{"role": "user", "content": "ping"}])
+    return {"ok": True, "provider": cfg["provider"], "model": cfg["model"],
+            "display_name": cfg["model"]}
 
 
 def suggest_filters(question: str, columns: list[dict],
                     current_filters: list[dict]) -> dict:
-    client, model = _client()
+    cfg = _cfg()
 
     column_lines = []
     for col in columns:
@@ -81,23 +102,53 @@ def suggest_filters(question: str, columns: list[dict],
         f"Question: {question}"
     )
 
-    response = client.messages.parse(
-        model=model,
-        max_tokens=4096,
-        system=system,
-        messages=[{"role": "user", "content": prompt}],
-        output_format=FilterSuggestion,
-    )
-    if response.stop_reason == "refusal":
-        return {"filters": current_filters,
-                "explanation": "The model declined this request."}
-    suggestion = response.parsed_output
+    if cfg["provider"] == "anthropic":
+        suggestion = _anthropic_suggestion(cfg, system, prompt)
+    else:
+        suggestion = _openai_suggestion(cfg, system, prompt)
     if suggestion is None:
         return {"filters": current_filters,
                 "explanation": "Could not parse a filter suggestion."}
     cleaned = validate_filters(
         [f.model_dump() for f in suggestion.filters], columns)
     return {"filters": cleaned, "explanation": suggestion.explanation}
+
+
+def _anthropic_suggestion(cfg: dict, system: str,
+                          prompt: str) -> "FilterSuggestion | None":
+    import anthropic
+    client = anthropic.Anthropic(api_key=cfg["api_key"])
+    response = client.messages.parse(
+        model=cfg["model"], max_tokens=4096, system=system,
+        messages=[{"role": "user", "content": prompt}],
+        output_format=FilterSuggestion)
+    if response.stop_reason == "refusal":
+        return None
+    return response.parsed_output
+
+
+def _openai_suggestion(cfg: dict, system: str,
+                       prompt: str) -> "FilterSuggestion | None":
+    """OpenAI/Gemini structured output via JSON Schema response format."""
+    from openai import OpenAI
+    kwargs = {"api_key": cfg["api_key"]}
+    if cfg["base_url"]:
+        kwargs["base_url"] = cfg["base_url"]
+    client = OpenAI(**kwargs)
+    schema = FilterSuggestion.model_json_schema()
+    resp = client.chat.completions.create(
+        model=cfg["model"], max_tokens=4096,
+        messages=[{"role": "system", "content": system},
+                  {"role": "user", "content": prompt}],
+        response_format={"type": "json_schema", "json_schema": {
+            "name": "filter_suggestion", "schema": schema}})
+    content = resp.choices[0].message.content or ""
+    try:
+        return FilterSuggestion.model_validate_json(content)
+    except Exception as e:
+        logger.warning("Could not parse %s filter JSON: %s",
+                       cfg["provider"], e)
+        return None
 
 
 def validate_filters(filters: list[dict], columns: list[dict]) -> list[dict]:

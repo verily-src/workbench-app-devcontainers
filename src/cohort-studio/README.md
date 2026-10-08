@@ -27,6 +27,30 @@ and Python keeps the battle-tested engine modules and first-party cloud
 SDKs. The REST contract is the stable boundary: a hot data path could be
 reimplemented behind it later without touching the UI.
 
+## AI providers & agent telemetry
+
+Ask AI (natural-language filtering) and the chat assistant run on a
+configurable provider, chosen in **Settings → AI model**:
+
+- **Anthropic (Claude)** — default, via the native SDK (tool runner for
+  chat, `messages.parse` structured output for Ask AI).
+- **OpenAI** and **Google Gemini** — share one OpenAI-compatible code
+  path (`app/providers.py`); Gemini uses its OpenAI-compatible endpoint
+  (a `base_url` switch). Model IDs are free text — enter the provider's
+  current model, since those IDs change often.
+
+Each provider keeps its own API key and model independently; keys live
+server-side and are never echoed back. Env vars take precedence over the
+stored key: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
+(or `GOOGLE_API_KEY`).
+
+Every chat turn is persisted to the `_agent_turn` table (Aurora when
+connected, SQLite fallback otherwise) with OpenTelemetry-shaped fields —
+trace id, provider, model, latency, token usage, tool calls, status — so
+agent history stays inside the workspace governance boundary and is
+exportable to an OTel collector later. View it under **Lineage → Agent
+activity**. See `docs/architecture.md` for diagrams.
+
 ## Development
 
 ```bash

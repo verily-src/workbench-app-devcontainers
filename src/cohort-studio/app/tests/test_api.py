@@ -412,6 +412,94 @@ def test_workflows_lists_jobs_and_counts_running(monkeypatch):
     assert len(body["jobs"][1]["status_message"]) == 200
 
 
+def test_workflow_registry_lists(monkeypatch):
+    import subprocess
+    import workflows
+
+    class R:
+        returncode = 0
+        stdout = ('[{"id": "hello_world", "displayName": "hello",'
+                  ' "workflowType": "NEXTFLOW", "description": null}]')
+    monkeypatch.setattr(workflows, "_registry_cache", None)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
+    body = client.get("/api/workflows/registry").json()
+    assert body["available"] is True
+    assert body["workflows"][0]["id"] == "hello_world"
+
+
+def test_submit_workflow_builds_args_and_returns_job(monkeypatch):
+    import workflows
+    captured = {}
+
+    def fake_submit(**kwargs):
+        captured.update(kwargs)
+        return {"run_id": "r-new", "name": kwargs["job_id"],
+                "status": "PENDING"}
+    monkeypatch.setattr(workflows, "submit_job", fake_submit)
+    resp = client.post("/api/workflows/submit", json={
+        "workflow": "hello_world", "output_bucket_id": "nextflow_outputs",
+        "job_id": "cohort-run-1",
+        "batch_input_bucket_id": "nextflow_params",
+        "batch_input_csv_path": "cohorts/c.csv",
+        "column_mapping": "input=sample_id"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "PENDING"
+    assert captured["workflow"] == "hello_world"
+    assert captured["batch_input_csv_path"] == "cohorts/c.csv"
+
+
+def test_submit_job_arg_construction(monkeypatch):
+    # Unit-test the wb arg list without launching anything.
+    import subprocess
+    import workflows
+    seen = {}
+
+    class R:
+        returncode = 0
+        stdout = '{"runId": "r1", "displayName": "j", "status": "PENDING"}'
+
+    def fake_run(args, **k):
+        seen["args"] = args
+        return R()
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(workflows, "_bucket_map", lambda: {})
+    job = workflows.submit_job(
+        "wf1", "out-bucket", job_id="jj",
+        batch_input_bucket_id="in-bucket", batch_input_csv_path="c.csv",
+        column_mapping="k=col", row_selection="1:100")
+    a = seen["args"]
+    assert a[:4] == ["wb", "workflow", "job", "run"]
+    assert "--workflow" in a and "wf1" in a
+    assert "--batch-input-csv-path" in a and "c.csv" in a
+    assert "--column-mapping" in a and "k=col" in a
+    assert "--row-selection" in a and "1:100" in a
+    assert job["status"] == "PENDING"
+
+
+def test_export_cohort_writes_csv(monkeypatch):
+    import pandas as pd
+    import datasets as ds_mod
+    import workflows
+    did = ds_mod.open_dataset(pd.DataFrame({
+        "sample_id": ["a", "b", "c"], "tissue": ["liver", "lung", "liver"]}),
+        "co")["dataset_id"]
+    captured = {}
+
+    def fake_export(df, resource_id, path):
+        captured["rows"] = len(df)
+        captured["path"] = path
+        return {"s3_uri": f"s3://x/{path}", "resource_id": resource_id,
+                "path": path, "rows": len(df)}
+    monkeypatch.setattr(workflows, "export_cohort_csv", fake_export)
+    resp = client.post(f"/api/datasets/{did}/export-cohort", json={
+        "resource_id": "nextflow_params", "path": "cohorts/c.csv",
+        "filters": [{"column": "tissue", "kind": "categorical",
+                     "values": ["liver"]}]})
+    assert resp.status_code == 200
+    assert resp.json()["rows"] == 2          # only liver rows exported
+    assert captured["path"] == "cohorts/c.csv"
+
+
 def test_workflows_unavailable_when_wb_missing(monkeypatch):
     import workflows
 

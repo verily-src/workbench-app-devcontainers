@@ -97,6 +97,23 @@ class CompareRequest(BaseModel):
     b_is_rest: bool = False   # group B = complement of A (selected-vs-rest)
 
 
+class ExportCohortRequest(BaseModel):
+    resource_id: str            # S3 bucket resource to write into
+    path: str                   # CSV path within the bucket
+    filters: list[Filter] = Field(default_factory=list)
+
+
+class SubmitJobRequest(BaseModel):
+    workflow: str
+    output_bucket_id: str
+    job_id: str = ""
+    batch_input_bucket_id: str = ""
+    batch_input_csv_path: str = ""
+    column_mapping: str = ""
+    row_selection: str = ""
+    profile: str = ""
+
+
 class DeriveRequest(BaseModel):
     op: str                       # "bin" | "formula" | "map"
     name: str
@@ -190,6 +207,42 @@ def workflow_jobs(refresh: bool = False):
     """Workbench workflow jobs, with running count. Never 500s — an
     unavailable `wb workflow` command returns available=false."""
     return workflows.list_jobs(force=refresh)
+
+
+@app.get("/api/workflows/registry")
+def workflow_registry():
+    return workflows.list_workflows()
+
+
+@app.post("/api/datasets/{dataset_id}/export-cohort")
+def export_cohort(dataset_id: str, req: ExportCohortRequest):
+    try:
+        ds = datasets.get(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    filt = datasets.apply_filters(
+        ds["df"], [f.model_dump() for f in req.filters])
+    try:
+        out = workflows.export_cohort_csv(filt, req.resource_id, req.path)
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "cohort_exported", "dataset",
+                   ds["source"], payload={"to": out["s3_uri"],
+                                          "rows": out["rows"]})
+    return out
+
+
+@app.post("/api/workflows/submit")
+def submit_workflow(req: SubmitJobRequest):
+    try:
+        job = workflows.submit_job(**req.model_dump())
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "workflow_submitted", "workflow",
+                   job.get("name") or req.workflow,
+                   payload={"run_id": job.get("run_id"),
+                            "workflow": req.workflow})
+    return job
 
 
 @app.get("/api/tables")

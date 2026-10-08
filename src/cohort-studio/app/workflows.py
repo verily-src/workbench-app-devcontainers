@@ -102,3 +102,79 @@ def list_jobs(limit: int = 50, force: bool = False) -> dict:
 
 def is_running(status: str) -> bool:
     return (status or "").upper() not in TERMINAL
+
+
+_registry_cache: list | None = None
+_registry_at = 0.0
+
+
+def list_workflows(force: bool = False) -> dict:
+    """Registered workflows for the submit dropdown. Cached ~5 min."""
+    global _registry_cache, _registry_at
+    now = time.monotonic()
+    if _registry_cache is not None and not force and now - _registry_at < 300:
+        return {"available": True, "workflows": _registry_cache}
+    try:
+        result = subprocess.run(
+            ["wb", "workflow", "list", "--format", "JSON", "--limit", "1000"],
+            capture_output=True, text=True, check=True, timeout=30)
+        raw = json.loads(result.stdout or "[]")
+        wfs = [{"id": w.get("id"), "name": w.get("displayName") or w.get("id"),
+                "type": w.get("workflowType"),
+                "description": w.get("description")} for w in raw]
+        _registry_cache, _registry_at = wfs, now
+        return {"available": True, "workflows": wfs}
+    except Exception as e:
+        logger.warning("wb workflow list failed: %s", e)
+        return {"available": False, "workflows": []}
+
+
+def export_cohort_csv(df, resource_id: str, path: str) -> dict:
+    """Write a cohort DataFrame as a CSV into an S3 bucket resource, so it
+    can be fed to a workflow as batch input. Returns the s3:// URI."""
+    import db
+    uri = f"{db.resolve_s3_uri(resource_id)}/{path.lstrip('/')}"
+    out = subprocess.run(
+        ["aws", "s3", "cp", "-", uri, "--profile", resource_id,
+         "--content-type", "text/csv"],
+        input=df.to_csv(index=False), capture_output=True, text=True,
+        timeout=300)
+    if out.returncode != 0:
+        raise RuntimeError(
+            (out.stderr or out.stdout or "").strip().split("\n")[-1][:300])
+    return {"s3_uri": uri, "resource_id": resource_id, "path": path,
+            "rows": int(len(df))}
+
+
+def submit_job(workflow: str, output_bucket_id: str, job_id: str = "",
+               batch_input_bucket_id: str = "", batch_input_csv_path: str = "",
+               column_mapping: str = "", row_selection: str = "",
+               profile: str = "") -> dict:
+    """Launch a workflow job via `wb workflow job run`. Returns the created
+    job (normalized). Raises RuntimeError with the CLI message on failure."""
+    args = ["wb", "workflow", "job", "run", "--workflow", workflow,
+            "--output-bucket-id", output_bucket_id, "--format", "JSON"]
+    if job_id:
+        args += ["--job-id", job_id]
+    if batch_input_bucket_id and batch_input_csv_path:
+        args += ["--batch-input-bucket-id", batch_input_bucket_id,
+                 "--batch-input-csv-path", batch_input_csv_path]
+        if column_mapping:
+            args += ["--column-mapping", column_mapping]
+        if row_selection:
+            args += ["--row-selection", row_selection]
+    if profile:
+        args += ["--profile", profile]
+    out = subprocess.run(args, capture_output=True, text=True, timeout=120)
+    if out.returncode != 0:
+        raise RuntimeError(
+            (out.stderr or out.stdout or "").strip().split("\n")[-1][:300])
+    job = json.loads(out.stdout or "{}")
+    _cache_bust()
+    return _normalize(job, _bucket_map())
+
+
+def _cache_bust():
+    """Drop the jobs cache so a freshly-submitted job shows immediately."""
+    global _cache, _cache_at
+    _cache, _cache_at = None, 0.0

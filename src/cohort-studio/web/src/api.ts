@@ -194,6 +194,22 @@ export const api = {
   workflows: (refresh = false) =>
     request<WorkflowList>(`/api/workflows${refresh ? "?refresh=true" : ""}`),
 
+  workflowRegistry: () =>
+    request<{ available: boolean;
+              workflows: { id: string; name: string; type: string | null;
+                           description: string | null }[] }>(
+      "/api/workflows/registry"),
+
+  exportCohort: (datasetId: string, resourceId: string, path: string,
+                 filters: Filter[]) =>
+    request<{ s3_uri: string; resource_id: string; path: string;
+              rows: number }>(
+      `/api/datasets/${datasetId}/export-cohort`,
+      post({ resource_id: resourceId, path, filters })),
+
+  submitWorkflow: (spec: Record<string, unknown>) =>
+    request<WorkflowJob>("/api/workflows/submit", post(spec)),
+
   chat: (datasetId: string, message: string, history: ChatMsg[],
          filters: Filter[], charts: ChartSpec[]) =>
     request<{ reply: string; filters: Filter[]; charts: ChartSpec[];

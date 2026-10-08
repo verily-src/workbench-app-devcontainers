@@ -5,6 +5,7 @@ import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
+import { LaunchWorkflow } from "./LaunchWorkflow";
 import { captureCharts, exportDatasetPdf } from "../pdf";
 
 interface Props {
@@ -25,6 +26,7 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
   const cohorts = dataset.cohorts ?? [];
   const [showCompare, setShowCompare] = useState(false);
   const [showDerive, setShowDerive] = useState(false);
+  const [showLaunch, setShowLaunch] = useState(false);
   const [cohortName, setCohortName] = useState("");
 
   const saveCohort = () => {
@@ -160,6 +162,9 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
         <button onClick={() => setShowDerive((v) => !v)}>
           {showDerive ? "Hide add column" : "+ Derived column"}
         </button>
+        <button onClick={() => setShowLaunch((v) => !v)}>
+          {showLaunch ? "Hide workflow" : "Run workflow ▸"}
+        </button>
       </div>
 
       {showCompare && (
@@ -169,6 +174,11 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
       {showDerive && (
         <DeriveColumn dataset={dataset} onUpdate={onUpdate}
                       onClose={() => setShowDerive(false)} />
+      )}
+
+      {showLaunch && (
+        <LaunchWorkflow dataset={dataset} onClose={() => setShowLaunch(false)}
+                        onSubmitted={() => undefined} />
       )}
 
       <AskAI dataset={dataset} onUpdate={onUpdate} />

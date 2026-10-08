@@ -9,12 +9,15 @@ services:
     restart: always
     volumes:
       - .:/workspace:cached
+      - jupyter-home:/home/jupyter
       # mount Host machine's docker.sock to container's docker.sock
       - /var/run/docker.sock:/var/run/docker.sock
       # mount Host machine's /etc/group to container's /etc/host-group
       - /etc/group:/etc/host-group
       # mount Host machine's default docker config dir to container's jupyter user docker config dir
       - /etc/docker:/home/jupyter/.docker
+    tmpfs:
+      - /home/jupyter/workspace:uid=1001,gid=1001
     ports:
       - "8888:8888"
     networks:
@@ -28,3 +31,5 @@ services:
 networks:
   app-network:
     external: true
+volumes:
+  jupyter-home:

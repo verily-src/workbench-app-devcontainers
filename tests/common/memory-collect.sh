@@ -188,7 +188,7 @@ finish() {
     [[ ! -f "${directory}/collector.exit" ]] || status=$(cat "${directory}/collector.exit")
     [[ "${status}" == 0 ]] || missing "${directory}" 'collector did not finish successfully'
     [[ -s "${workload}" ]] || { missing "${directory}" 'missing workload report'; printf '{"status":"blocked","reason":"missing workload report"}\n' > "${directory}/missing-workload.json"; workload="${directory}/missing-workload.json"; }
-    grep -qx application-server "${directory}/containers.txt" || missing "${directory}" 'expected container missing: application-server' 
+    grep -qx application-server "${directory}/containers.txt" || missing "${directory}" 'expected container missing: application-server'
     jq -s '.' "${directory}"/cgroups/*.json > "${directory}/cgroups.json" 2>/dev/null || printf '[]\n' > "${directory}/cgroups.json"
     jq -Rn '[inputs | split(" ") | map(tonumber)] |
       {peak_bytes:([.[][1]]|max),ram_bytes:([.[][2]]|max),samples:length,sample_interval_ms:100,

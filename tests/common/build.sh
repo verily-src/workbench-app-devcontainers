@@ -82,6 +82,7 @@ fi
 # Install Devcontainer CLI
 ############################
 export DOCKER_BUILDKIT=1
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
 echo "(*) Installing @devcontainer/cli"
 if [[ -n "${CLI_VERSION}" ]]; then
     CLI_DIR="$(mktemp -d)"

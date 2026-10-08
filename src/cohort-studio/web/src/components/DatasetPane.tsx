@@ -6,6 +6,7 @@ import { ChatWidget } from "./ChatWidget";
 
 interface Props {
   dataset: Dataset;
+  palette: string;
   onUpdate: (changes: Partial<Dataset>) => void;
 }
 
@@ -16,7 +17,7 @@ function describeFilter(f: Filter): string {
   return `${f.column}: ${f.min}–${f.max}`;
 }
 
-export function DatasetPane({ dataset, onUpdate }: Props) {
+export function DatasetPane({ dataset, palette, onUpdate }: Props) {
   const { result, filters, charts } = dataset;
 
   const toggleCategory = (column: string, value: string) => {
@@ -105,6 +106,7 @@ export function DatasetPane({ dataset, onUpdate }: Props) {
             key={`${spec.kind}-${spec.x}-${spec.y ?? ""}-${i}`}
             spec={spec}
             result={result?.charts[i]}
+            palette={palette}
             onTapCategory={toggleCategory}
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
             onClose={() => updateChart(i, null)}
@@ -204,7 +206,8 @@ function SaveToAurora({ dataset }: { dataset: Dataset }) {
   );
 }
 
-function AskAI({ dataset, onUpdate }: Props) {
+function AskAI({ dataset, onUpdate }:
+    { dataset: Dataset; onUpdate: (c: Partial<Dataset>) => void }) {
   const [question, setQuestion] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -248,7 +251,8 @@ function AskAI({ dataset, onUpdate }: Props) {
   );
 }
 
-function AddChart({ dataset, onUpdate }: Props) {
+function AddChart({ dataset, onUpdate }:
+    { dataset: Dataset; onUpdate: (c: Partial<Dataset>) => void }) {
   const numeric = dataset.columns
     .filter((c) => c.filter_kind === "range").map((c) => c.name);
   const all = dataset.columns.map((c) => c.name);

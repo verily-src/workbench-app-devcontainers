@@ -40,6 +40,7 @@ export interface AppConfig {
   };
   mcp: { available: boolean; path: string };
   mcp_connections: MCPConnection[];
+  chart_palette: string;
 }
 
 export interface OpenResult {
@@ -89,6 +90,7 @@ export const api = {
 
   updateConfig: (body: {
     model?: string; api_key?: string; mcp_connections?: MCPConnection[];
+    chart_palette?: string;
   }) => request<AppConfig>("/api/config",
     { method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body) }),

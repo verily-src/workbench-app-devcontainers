@@ -4,6 +4,7 @@ import { DatasetPane } from "./components/DatasetPane";
 import { FilterPanel } from "./components/FilterPanel";
 import { LineageView } from "./components/LineageView";
 import { SettingsView } from "./components/SettingsView";
+import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
 
 const AUTO_CHART_LIMIT = 8;
@@ -67,6 +68,12 @@ export default function App() {
   const [activity, setActivity] = useState("");
   const [error, setError] = useState("");
   const [view, setView] = useState<"explore" | "lineage" | "settings">("explore");
+  const [palette, setPalette] = useState("verily");
+
+  useEffect(() => {
+    apiClient.config().then((c) => setPalette(c.chart_palette))
+      .catch(() => undefined);
+  }, []);
   const pollRef = useRef<number>();
 
   // ---- datasource discovery (poll until the wb resource cache warms) ----
@@ -282,7 +289,7 @@ export default function App() {
         </div>
         <div className="content">
           {view === "settings" ? (
-            <SettingsView />
+            <SettingsView onPaletteChange={setPalette} />
           ) : view === "lineage" ? (
             <LineageView />
           ) : datasets.length === 0 ? (
@@ -317,6 +324,7 @@ export default function App() {
               {activeDs && (
                 <DatasetPane
                   dataset={activeDs}
+                  palette={palette}
                   onUpdate={(changes) => updateDataset(active, changes)}
                 />
               )}

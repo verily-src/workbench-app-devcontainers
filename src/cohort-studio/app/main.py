@@ -188,11 +188,25 @@ def open_dataset(req: OpenRequest):
     return result
 
 
+UPLOAD_SUFFIXES = (".csv", ".tsv", ".txt")
+
+
 @app.post("/api/datasets/upload")
 async def upload_dataset(file: UploadFile):
     name = file.filename or "upload.csv"
+    if not name.lower().endswith(UPLOAD_SUFFIXES):
+        raise HTTPException(
+            400, f"Unsupported file type: {name}. Cohort Studio reads "
+            "tabular data — upload CSV, TSV, or TXT. Formats like BAM, "
+            "VCF, FASTQ, or BED are not row/column tables and can't be "
+            "loaded here.")
     sep = "\t" if name.lower().endswith((".tsv", ".txt")) else ","
-    df = pd.read_csv(io.BytesIO(await file.read()), sep=sep)
+    try:
+        df = pd.read_csv(io.BytesIO(await file.read()), sep=sep)
+    except Exception as e:
+        raise HTTPException(
+            400, f"Could not parse {name} as a {sep!r}-delimited table: "
+            f"{str(e).splitlines()[0][:200]}")
     result = datasets.open_dataset(df, name)
     lineage.record(_lineage_engine(), "csv_uploaded", "file", name,
                    payload={"rows": len(df), "columns": list(df.columns)})
@@ -245,6 +259,7 @@ class ConfigUpdate(BaseModel):
     model: str | None = None
     api_key: str | None = None
     mcp_connections: list[MCPConnection] | None = None
+    chart_palette: str | None = None
 
 
 class AskRequest(BaseModel):
@@ -283,6 +298,8 @@ def put_config(req: ConfigUpdate):
     if req.mcp_connections is not None:
         config.update_mcp_connections(
             [c.model_dump() for c in req.mcp_connections])
+    if req.chart_palette is not None:
+        config.update_chart_palette(req.chart_palette)
     cfg = config.public_config()
     cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
     return cfg

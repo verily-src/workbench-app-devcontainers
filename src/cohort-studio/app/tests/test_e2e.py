@@ -140,3 +140,12 @@ def test_save_to_aurora_control_opens(loaded_page: Page):
         timeout=10000)
     # no Aurora resource in the test workspace -> placeholder option shown
     expect(loaded_page.locator(".save-aurora select")).to_be_visible()
+
+
+
+def test_settings_shows_palette_swatches(page: Page, app_url: str):
+    page.goto(app_url)
+    expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
+    page.locator(".topnav-link", has_text="Settings").click()
+    expect(page.get_by_text("Chart palette").first).to_be_visible(timeout=10000)
+    expect(page.locator(".palette-swatch")).to_have_count(5)

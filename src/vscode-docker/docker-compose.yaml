@@ -17,6 +17,8 @@ services:
       - /etc/group:/etc/host-group
       # mount Host machine's default docker config dir to container's abc user docker config dir
       - /etc/docker:/config/.docker
+    tmpfs:
+      - /config/workspace:uid=911,gid=911
     ports:
       - "8443:8443"
     environment:

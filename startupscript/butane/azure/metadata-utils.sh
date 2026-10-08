@@ -3,6 +3,8 @@
 # metadata-utils.sh defines helper functions for Azure VM metadata. This script is intended to be sourced from other scripts
 # to retrieve or modify VM metadata. It is run on the VM host.
 
+source /home/core/agent.env
+
 # Azure VM uses tags for read-only metadata prefixed with vwbusr:
 function get_metadata_value() {
   if [[ $# -lt 2 ]]; then
@@ -39,19 +41,16 @@ function _metadata_table_request() (
   local value_or_default="${2}"
   local http_method="${3}"
 
-  local resource_id
-  resource_id=$(source /home/core/agent.env && echo "${BACKEND}")
-
   local request_uri
   request_uri=$(get_vm_resource_credentials |
-    jq -er --arg entity "(PartitionKey='${resource_id}',RowKey='${row_key}')" \
+    jq -er --arg entity "(PartitionKey='${BACKEND}',RowKey='${row_key}')" \
       '.metadata | (.resourceUri // empty) + $entity + "?" + (.sasToken // empty)')
 
   local -a request_args=(-X "${http_method}" -H 'Accept: application/json;odata=nometadata')
   if [[ "${http_method}" == "PUT" ]]; then
     local payload
     payload=$(jq -n \
-      --arg PartitionKey "${resource_id}" \
+      --arg PartitionKey "${BACKEND}" \
       --arg RowKey "${row_key}" \
       --arg Value "${value_or_default}" '$ARGS.named')
     request_args+=(-H 'Content-Type: application/json' --data "${payload}")

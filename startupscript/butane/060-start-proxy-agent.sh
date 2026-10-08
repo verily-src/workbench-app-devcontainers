@@ -2,7 +2,7 @@
 
 # start-proxy-agent.sh starts the proxy agent on the VM.
 # Note: This script requires agent-specific environment to be set in /home/core/agent.env on the VM and
-# metadata-utils.sh script to be present in /home/core to get guest attributes for GCE and tag for EC2.
+# metadata-utils.sh script to be present in /home/core to get guest attributes for GCE and tag for EC2 and Azure.
 
 set -o errexit
 set -o nounset
@@ -10,7 +10,7 @@ set -o pipefail
 set -o xtrace
 
 if [[ $# -ne 2 ]]; then
-    echo "usage: $0 <proxyImage> <GCP/EC2>"
+    echo "usage: $0 <proxyImage> <GCP/EC2/AZURE>"
     exit 1
 fi
 
@@ -40,7 +40,7 @@ echo "Proxy agent port should listen at port ${PORT}"
 # shellcheck source=/dev/null
 source /home/core/agent.env
 OPTIONS=()
-if [[ "${COMPUTE_PLATFORM^^}" == "GCP" ]]; then
+if [[ "${COMPUTE_PLATFORM^^}" == @(GCP|AZURE) ]]; then
     OPTIONS+=("--backend=${BACKEND}")
 fi
 

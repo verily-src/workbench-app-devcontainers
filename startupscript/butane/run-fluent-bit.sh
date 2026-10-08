@@ -90,9 +90,57 @@ case "${CLOUD}" in
         )
         ;;
 
+    azure)
+        shopt -s lastpipe
+
+        source /home/core/metadata-utils.sh
+
+        CONFIG=/etc/fluent-bit.conf
+        TEMPLATE=/etc/fluent-bit.conf.template
+        chmod 600 "${CONFIG}"
+
+        if [[ ! -f "${TEMPLATE}" ]]; then
+            cp "${CONFIG}" "${TEMPLATE}"
+        fi
+
+        refresh_credentials() {
+            local -
+            set -o allexport +o xtrace
+
+            # shellcheck disable=SC2034
+            get_vm_resource_credentials | jq -er '
+                .logs
+                | (.sasToken // empty) as $sas_token
+                | (.expiryTime // empty | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) as $expiry
+                | .resourceUri
+                | capture(
+                    "^https://(?<account>[^.]+)\\.blob\\.[^/]+/(?<container>[^/]+)(?<path>/.*)$"
+                  )
+                | [.account, .container, .path, $sas_token, $expiry]
+                | @tsv
+            ' | read -r STORAGE_ACCOUNT STORAGE_CONTAINER STORAGE_PATH SAS_TOKEN EXPIRES_AT || return 1
+
+            # shellcheck disable=SC2016
+            envsubst '${STORAGE_ACCOUNT} ${STORAGE_CONTAINER} ${STORAGE_PATH} ${SAS_TOKEN}' \
+                < "${TEMPLATE}" > "${CONFIG}"
+        }
+
+        refresh_credentials
+        (
+            while true; do
+                sleep "$((EXPIRES_AT - $(date +%s) - 300))"
+                until refresh_credentials ; do
+                    echo "Failed to refresh Fluent Bit credentials; retrying in 30 seconds" >&2
+                    sleep 30
+                done
+                docker kill --signal=HUP fluent-bit
+            done
+        ) &
+        ;;
+
     *)
         echo "Error: Invalid cloud provider '${CLOUD}'"
-        echo "Supported values: gcp, aws"
+        echo "Supported values: gcp, aws, azure"
         exit 1
         ;;
 esac

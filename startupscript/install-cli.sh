@@ -84,10 +84,13 @@ ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' generate-completion > '${USER_
 
 if [[ "${LOG_IN}" == "true" ]]; then
 
-  # For GCP use "APP_DEFAULT_CREDENTIALS", for AWS use "AWS_IAM" as --mode arg to "/usr/bin/wb auth login".
+  # For GCP use "APP_DEFAULT_CREDENTIALS", for AWS use "AWS_IAM", for Azure use "AZURE_VM"
+  # as --mode arg to "/usr/bin/wb auth login".
   LOG_IN_MODE="APP_DEFAULT_CREDENTIALS"
   if [[ "${CLOUD}" == "aws" ]]; then
     LOG_IN_MODE="AWS_IAM"
+  elif [[ "${CLOUD}" == "azure" ]] ; then
+    LOG_IN_MODE="AZURE_VM"
   fi
   readonly LOG_IN_MODE
 

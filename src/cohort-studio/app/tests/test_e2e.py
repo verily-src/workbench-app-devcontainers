@@ -110,6 +110,25 @@ def test_close_tab_returns_to_empty_state(loaded_page: Page):
         timeout=10000)
 
 
+def test_command_palette_navigates(loaded_page: Page):
+    # Ctrl/⌘-K opens the palette; typing + Enter runs the top match.
+    loaded_page.keyboard.press("Control+k")
+    palette = loaded_page.locator(".palette")
+    expect(palette).to_be_visible()
+    palette.locator(".palette-input").fill("Lineage")
+    loaded_page.keyboard.press("Enter")
+    expect(palette).not_to_be_visible()
+    expect(loaded_page.get_by_text("lineage events").first).to_be_visible(
+        timeout=10000)
+
+    # the ⌘K hint button also opens it; an open tab is listed as a command
+    loaded_page.get_by_title("Command palette").click()
+    expect(loaded_page.locator(".palette")).to_be_visible()
+    loaded_page.locator(".palette-input").fill("samples")
+    expect(loaded_page.locator(".palette-item", has_text="samples.csv").first
+           ).to_be_visible()
+
+
 def test_settings_view_renders(page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)

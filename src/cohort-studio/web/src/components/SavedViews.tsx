@@ -57,6 +57,17 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
     refresh();
   };
 
+  // Shareable permalink — the hash never hits the Workbench proxy; a
+  // teammate who opens it loads the same view once datasources are ready.
+  const copyLink = (viewName: string) => {
+    if (!current) return;
+    const url = `${window.location.origin}${window.location.pathname}`
+      + `#view=${current.kind}:${current.id}:${encodeURIComponent(viewName)}`;
+    navigator.clipboard?.writeText(url).then(
+      () => setStatus("Link copied."),
+      () => setStatus(url));
+  };
+
   if (stores.length === 0) {
     return <div className="settings-hint" style={{ padding: "4px 0" }}>
       No Aurora or S3 resource to store views in.</div>;
@@ -100,6 +111,8 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
                       { kind: current.kind, id: current.id }, v.name)}>
               {v.name}
             </button>
+            <button className="quiet" title="Copy share link"
+                    onClick={() => copyLink(v.name)}>🔗</button>
             <button className="quiet" title="Delete"
                     onClick={() => remove(v.name)}>✕</button>
           </div>

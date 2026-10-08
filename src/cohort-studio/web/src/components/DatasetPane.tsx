@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api";
 import type { ChartSpec, Dataset, Filter } from "../types";
 import { ChartCard } from "./ChartCard";
+import { ChatWidget } from "./ChatWidget";
 
 interface Props {
   dataset: Dataset;
@@ -92,6 +93,8 @@ export function DatasetPane({ dataset, onUpdate }: Props) {
       )}
 
       <AskAI dataset={dataset} onUpdate={onUpdate} />
+
+      <ChatWidget dataset={dataset} onUpdate={onUpdate} />
 
       <AddChart dataset={dataset} onUpdate={onUpdate} />
 

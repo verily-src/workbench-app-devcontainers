@@ -50,6 +50,12 @@ export interface QueryResult {
   rows: { page: number; page_size: number; columns: string[]; data: unknown[][] };
 }
 
+export interface ChatMsg {
+  role: "user" | "assistant";
+  content: string;
+  actions?: string[];
+}
+
 export interface Dataset {
   id: string;
   title: string;
@@ -59,4 +65,5 @@ export interface Dataset {
   charts: ChartSpec[];
   page: number;
   result?: QueryResult;
+  chat?: ChatMsg[];
 }

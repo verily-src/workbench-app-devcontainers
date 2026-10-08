@@ -120,3 +120,15 @@ def test_lineage_view_records_upload(loaded_page: Page):
     expect(loaded_page.get_by_text("lineage events").first).to_be_visible(
         timeout=10000)
     expect(loaded_page.get_by_text("csv_uploaded").first).to_be_visible()
+
+
+def test_chat_widget_opens_and_reports_unconfigured(loaded_page: Page):
+    loaded_page.locator(".chat-launcher").click()
+    expect(loaded_page.get_by_text("Data assistant")).to_be_visible(
+        timeout=10000)
+    box = loaded_page.locator(".chat-input input")
+    box.fill("what is the mean rin score?")
+    box.press("Enter")
+    # no API key in the test server -> graceful error bubble
+    expect(loaded_page.locator(".chat-bubble",
+           has_text="Something went wrong")).to_be_visible(timeout=15000)

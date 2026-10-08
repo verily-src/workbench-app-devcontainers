@@ -11,7 +11,7 @@ services:
       - .:/workspace:cached
       - jupyter-home:/home/jupyter
     tmpfs:
-      - /home/jupyter/workspace:uid=1000,gid=1000
+      - /home/jupyter/workspace:uid=1001,gid=1001
     ports:
       - "${templateOption:containerPort}:${templateOption:containerPort}"
     command: "/home/jupyter/.local/bin/jupyter lab"

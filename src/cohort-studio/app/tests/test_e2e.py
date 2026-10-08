@@ -205,6 +205,20 @@ def test_save_cohort_and_compare(loaded_page: Page):
     expect(panel.get_by_role("cell", name="rin_score")).to_be_visible()
 
 
+def test_derive_column(loaded_page: Page):
+    # Bin the numeric 'age' column into groups and confirm it's added.
+    loaded_page.get_by_role("button", name="+ Derived column").click()
+    panel = loaded_page.locator(".derive-panel")
+    expect(panel).to_be_visible()
+    panel.get_by_placeholder("e.g. age_group").fill("age_group")
+    panel.get_by_role("button", name="Add column").click()
+    expect(panel.get_by_text(re.compile(r'Added "age_group"'))).to_be_visible(
+        timeout=10000)
+    # the new column is now offered when adding a chart
+    expect(loaded_page.locator('select[name="x"] option',
+                               has_text="age_group")).to_have_count(1)
+
+
 def test_change_chart_type(loaded_page: Page):
     # age is numeric → starts as a histogram; switch it to a bar in place
     # and confirm the query round-trip does not error.

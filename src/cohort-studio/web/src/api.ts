@@ -159,6 +159,10 @@ export const api = {
     request<CompareResult>(`/api/datasets/${datasetId}/compare`, post({
       filters_a: filtersA, filters_b: filtersB, b_is_rest: bIsRest })),
 
+  derive: (datasetId: string, spec: Record<string, unknown>) =>
+    request<{ name: string; rows: number; columns: ColumnProfile[] }>(
+      `/api/datasets/${datasetId}/derive`, post(spec)),
+
   closeDataset: (datasetId: string) =>
     request<{ ok: boolean }>(`/api/datasets/${datasetId}`,
       { method: "DELETE" }),

@@ -86,6 +86,18 @@ def close_dataset(dataset_id: str):
         _store.pop(dataset_id, None)
 
 
+def set_column(dataset_id: str, name: str, series) -> dict:
+    """Add or replace a column on a dataset. Copies the frame first so a
+    derived column never mutates a DataFrame shared with the engine cache
+    (Aurora/S3 reads are cached and handed out by reference)."""
+    with _lock:
+        ds = get(dataset_id)
+        df = ds["df"].copy()
+        df[name] = series
+        ds["df"] = df
+    return {"name": name, "rows": len(df), "columns": profile_columns(df)}
+
+
 def profile_columns(df: pd.DataFrame) -> list[dict]:
     kinds = queries.infer_filter_kinds(df)
     profile = []

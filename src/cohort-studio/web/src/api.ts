@@ -76,6 +76,12 @@ export const api = {
       post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
              page, page_size: 50 })),
 
+  join: (leftId: string, rightId: string, leftOn: string, rightOn: string,
+         how: string) =>
+    request<OpenResult>("/api/datasets/join", post({
+      left_id: leftId, right_id: rightId, left_on: leftOn,
+      right_on: rightOn, how })),
+
   closeDataset: (datasetId: string) =>
     request<{ ok: boolean }>(`/api/datasets/${datasetId}`,
       { method: "DELETE" }),

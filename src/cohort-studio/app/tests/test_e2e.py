@@ -15,6 +15,7 @@ from playwright.sync_api import Page, expect
 
 APP_DIR = Path(__file__).parent.parent
 FIXTURE_CSV = Path(__file__).parent / "fixtures" / "samples.csv"
+PHENO_CSV = Path(__file__).parent / "fixtures" / "phenotypes.csv"
 
 pytestmark = pytest.mark.e2e
 
@@ -149,6 +150,31 @@ def test_settings_shows_palette_swatches(page: Page, app_url: str):
     page.locator(".topnav-link", has_text="Settings").click()
     expect(page.get_by_text("Chart palette").first).to_be_visible(timeout=10000)
     expect(page.locator(".palette-swatch")).to_have_count(5)
+
+
+def test_change_chart_type(loaded_page: Page):
+    # The tissue chart starts as a bar; switch it to a histogram in place.
+    card = loaded_page.locator(".chart-card", has_text="tissue").first
+    card.locator(".chart-kind").select_option("histogram")
+    expect(card.locator(".chart-kind")).to_have_value("histogram",
+                                                      timeout=10000)
+
+
+def test_join_two_tabs_into_new_dataset(loaded_page: Page):
+    # Load a second table that shares sample_id, then join the two.
+    loaded_page.locator('input[type="file"]').set_input_files(PHENO_CSV)
+    expect(loaded_page.locator(".tab", has_text="phenotypes.csv")
+           ).to_be_visible(timeout=15000)
+    loaded_page.locator(".tab-join").click()
+    panel = loaded_page.locator(".join-panel")
+    expect(panel).to_be_visible()
+    # Keys default to the shared sample_id column; just run the join.
+    panel.get_by_role("button", name=re.compile("Join")).click()
+    # Merged tab carries both source names and the joined columns (bmi).
+    expect(loaded_page.locator(".tab.active", has_text="+")
+           ).to_be_visible(timeout=15000)
+    expect(loaded_page.get_by_role("columnheader", name="bmi")
+           ).to_be_visible(timeout=10000)
 
 
 def test_saved_views_section_present(loaded_page: Page):

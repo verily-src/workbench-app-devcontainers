@@ -78,6 +78,14 @@ class QueryRequest(BaseModel):
     page_size: int = 50
 
 
+class JoinRequest(BaseModel):
+    left_id: str
+    right_id: str
+    left_on: str
+    right_on: str
+    how: str = "inner"
+
+
 # ----------------------------------------------------------------- helpers
 
 def _lineage_engine():
@@ -211,6 +219,26 @@ async def upload_dataset(file: UploadFile):
     result = datasets.open_dataset(df, name)
     lineage.record(_lineage_engine(), "csv_uploaded", "file", name,
                    payload={"rows": len(df), "columns": list(df.columns)})
+    return result
+
+
+@app.post("/api/datasets/join")
+def join_datasets(req: JoinRequest):
+    try:
+        left = datasets.get(req.left_id)
+        right = datasets.get(req.right_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "A dataset expired or is unknown — reload it.")
+    label = f"{left['source']} + {right['source']}"
+    try:
+        result = datasets.join_datasets(
+            req.left_id, req.right_id, req.left_on, req.right_on,
+            req.how, label)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    lineage.record(_lineage_engine(), "joined", "dataset", label,
+                   payload={"left_on": req.left_on, "right_on": req.right_on,
+                            "how": req.how, "rows": result["rows"]})
     return result
 
 

@@ -58,6 +58,29 @@ def get(dataset_id: str) -> dict:
         raise DatasetNotFound(dataset_id)
 
 
+JOIN_HOWS = ("inner", "left", "right", "outer")
+
+
+def join_datasets(left_id: str, right_id: str, left_on: str, right_on: str,
+                  how: str, source: str) -> dict:
+    """Merge two open datasets on a key column into a new dataset.
+
+    Overlapping non-key columns are suffixed _l / _r. The result is
+    capped at ROW_CAP rows (a many-to-many join can blow up)."""
+    if how not in JOIN_HOWS:
+        raise ValueError(f"Join type must be one of {JOIN_HOWS}.")
+    left, right = get(left_id)["df"], get(right_id)["df"]
+    if left_on not in left.columns:
+        raise ValueError(f"Left key {left_on!r} is not a column.")
+    if right_on not in right.columns:
+        raise ValueError(f"Right key {right_on!r} is not a column.")
+    merged = left.merge(right, left_on=left_on, right_on=right_on, how=how,
+                        suffixes=("_l", "_r"))
+    if len(merged) > queries.ROW_CAP:
+        merged = merged.head(queries.ROW_CAP)
+    return open_dataset(merged, source)
+
+
 def close_dataset(dataset_id: str):
     with _lock:
         _store.pop(dataset_id, None)

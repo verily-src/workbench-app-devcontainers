@@ -187,3 +187,37 @@ def test_save_view_rejects_empty():
         "kind": "aurora", "resource_id": "db1", "name": "v",
         "active": 0, "datasets": []})
     assert resp.status_code == 400
+
+
+def test_join_datasets():
+    import pandas as pd
+    import datasets as ds_mod
+    left = ds_mod.open_dataset(pd.DataFrame({
+        "sample_id": ["a", "b", "c"], "tissue": ["liver", "lung", "skin"]}),
+        "left")
+    right = ds_mod.open_dataset(pd.DataFrame({
+        "sample_id": ["a", "b"], "rin": [7.1, 8.2]}), "right")
+    resp = client.post("/api/datasets/join", json={
+        "left_id": left["dataset_id"], "right_id": right["dataset_id"],
+        "left_on": "sample_id", "right_on": "sample_id", "how": "inner"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["rows"] == 2  # inner join keeps a, b
+    cols = {c["name"] for c in body["columns"]}
+    assert {"tissue", "rin"} <= cols
+
+    # bad key -> 400
+    bad = client.post("/api/datasets/join", json={
+        "left_id": left["dataset_id"], "right_id": right["dataset_id"],
+        "left_on": "nope", "right_on": "sample_id", "how": "inner"})
+    assert bad.status_code == 400
+
+
+def test_join_rejects_bad_how():
+    import pandas as pd
+    import datasets as ds_mod
+    d = ds_mod.open_dataset(pd.DataFrame({"k": [1]}), "d")
+    resp = client.post("/api/datasets/join", json={
+        "left_id": d["dataset_id"], "right_id": d["dataset_id"],
+        "left_on": "k", "right_on": "k", "how": "cross-sideways"})
+    assert resp.status_code == 400

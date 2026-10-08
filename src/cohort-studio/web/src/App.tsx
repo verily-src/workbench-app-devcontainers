@@ -5,6 +5,7 @@ import { FilterPanel } from "./components/FilterPanel";
 import { LineageView } from "./components/LineageView";
 import { SettingsView } from "./components/SettingsView";
 import { SavedViews } from "./components/SavedViews";
+import { JoinPanel } from "./components/JoinPanel";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
 
@@ -70,6 +71,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [view, setView] = useState<"explore" | "lineage" | "settings">("explore");
   const [palette, setPalette] = useState("verily");
+  const [showJoin, setShowJoin] = useState(false);
 
   useEffect(() => {
     apiClient.config().then((c) => setPalette(c.chart_palette))
@@ -192,6 +194,24 @@ export default function App() {
       setView("explore");
     } catch (e) {
       setError(`Could not load view: ${(e as Error).message}`);
+    } finally {
+      setActivity("");
+    }
+  };
+
+  const doJoin = async (p: { leftId: string; rightId: string;
+                             leftOn: string; rightOn: string; how: string }) => {
+    setActivity("Joining…");
+    setError("");
+    try {
+      const opened = await api.join(p.leftId, p.rightId, p.leftOn,
+                                    p.rightOn, p.how);
+      // Joined tab is derived (no single datasource) → no sourceRef.
+      openResult(opened, opened.source.split(" + ").map(
+        (x) => x.split("/").pop()?.trim()).join(" + "));
+      setShowJoin(false);
+    } catch (e) {
+      setError(`Join failed: ${(e as Error).message}`);
     } finally {
       setActivity("");
     }
@@ -365,7 +385,17 @@ export default function App() {
                     }}>✕</button>
                   </span>
                 ))}
+                {datasets.length >= 2 && (
+                  <button className="tab-join"
+                          onClick={() => setShowJoin((v) => !v)}>
+                    ⋈ Join
+                  </button>
+                )}
               </div>
+              {showJoin && datasets.length >= 2 && (
+                <JoinPanel datasets={datasets} busy={Boolean(activity)}
+                           onJoin={doJoin} onClose={() => setShowJoin(false)} />
+              )}
               {activeDs && (
                 <DatasetPane
                   dataset={activeDs}

@@ -329,6 +329,57 @@ def test_compare_vs_rest_and_small_group_guard():
     assert val["p"] is None and "too small" in val["note"]
 
 
+def test_duckdb_and_pandas_aggregation_parity(monkeypatch):
+    import numpy as np
+    import pandas as pd
+    import agg_duck
+    import datasets as ds_mod
+
+    rng = np.random.RandomState(1)
+    n = 3000
+    # 15 categories (forces a "Other" bucket beyond BAR_TOP_N=12), a 2nd
+    # categorical for heatmap, and two numeric columns.
+    df = pd.DataFrame({
+        "tissue": rng.choice([f"t{i:02d}" for i in range(15)], size=n),
+        "grp": rng.choice(["x", "y"], size=n),
+        "age": rng.randint(0, 100, size=n),
+        "rin": rng.normal(7, 1.5, size=n).round(2),
+    })
+    did = ds_mod.open_dataset(df, "parity")["dataset_id"]
+    filters = [{"column": "grp", "kind": "categorical", "values": ["x"]},
+               {"column": "age", "kind": "range", "min": 20, "max": 80}]
+    charts = [{"kind": "bar", "x": "tissue"},
+              {"kind": "histogram", "x": "age"},
+              {"kind": "heatmap", "x": "tissue", "y": "grp"},
+              {"kind": "scatter", "x": "age", "y": "rin"}]
+
+    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 10 ** 9)  # pandas
+    pandas_res = ds_mod.query(did, filters, charts, page=0, page_size=50)
+    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 0)        # duckdb
+    duck_res = ds_mod.query(did, filters, charts, page=0, page_size=50)
+
+    assert duck_res["total"] == pandas_res["total"]
+    assert duck_res["filtered"] == pandas_res["filtered"]
+
+    def bar_map(r):
+        return {d["category"]: (d["all"], d["selected"]) for d in r["data"]}
+    assert bar_map(duck_res["charts"][0]) == bar_map(pandas_res["charts"][0])
+
+    # histogram: identical edges + counts (integer data → no edge ambiguity)
+    assert duck_res["charts"][1]["data"] == pandas_res["charts"][1]["data"]
+
+    def heat_map(r):
+        return {(a, b): c for a, b, c in r["data"]}
+    assert heat_map(duck_res["charts"][2]) == heat_map(pandas_res["charts"][2])
+
+    # scatter sampling differs by engine — compare shape only
+    assert len(duck_res["charts"][3]["data"]) == len(pandas_res["charts"][3]["data"])
+
+    # same page of rows
+    assert duck_res["rows"]["columns"] == pandas_res["rows"]["columns"]
+    assert duck_res["rows"]["data"] == pandas_res["rows"]["data"]
+
+
 def test_workflows_lists_jobs_and_counts_running(monkeypatch):
     import workflows
     sample = [

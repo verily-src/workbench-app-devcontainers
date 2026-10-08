@@ -203,6 +203,16 @@ def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
           page: int = 0, page_size: int = 50) -> dict:
     ds = get(dataset_id)
     full = ds["df"]
+    # Large frames take the DuckDB aggregation path (same response shape);
+    # small frames stay on pandas, which is already fast and simpler.
+    import agg_duck
+    if agg_duck.should_use(full):
+        try:
+            return agg_duck.query(full, filters, chart_specs, page, page_size)
+        except Exception as e:  # never fail the query — fall back to pandas
+            import logging
+            logging.getLogger(__name__).warning(
+                "DuckDB agg path failed, falling back to pandas: %s", e)
     filt = apply_filters(full, filters)
     start = page * page_size
     rows_page = filt.iloc[start:start + page_size]

@@ -84,6 +84,14 @@ is showing; the server returns counts, per-chart aggregates (full and
 filtered cohort), and one page of rows — everything for a render in a
 single call. All statistics stay server-side.
 
+Aggregation has two interchangeable backends behind the same response
+shape: pandas (`datasets.py`) for small frames, and DuckDB SQL over the
+in-memory frame (`agg_duck.py`) once row count crosses
+`STUDIO_DUCKDB_AGG_ROWS` (default 50k). The DuckDB path pushes filtering,
+group/count, binning and paging into a vectorised columnar engine; parity
+tests pin its output to the pandas path, and any DuckDB error falls back
+to pandas rather than failing the query.
+
 ```mermaid
 sequenceDiagram
   participant UI as Browser

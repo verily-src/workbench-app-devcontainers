@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - 'tests/common/**'
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
       - 'tests/test-codeartifact.bats'
@@ -15,6 +16,7 @@ on:
       - master
     paths:
       - 'scripts/**'
+      - 'tests/common/**'
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
       - 'tests/test-codeartifact.bats'
@@ -52,6 +54,9 @@ jobs:
           docker pull python:3.12-alpine
           docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
           bats scripts/test/integration
+
+      - name: Test memory comparison and workload contracts
+        run: python3 -m unittest discover -s scripts/test -p '*_test.py'
 
       - name: Run update-flatcar tests
         run: bats tests/update-flatcar.bats

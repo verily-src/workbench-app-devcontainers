@@ -106,6 +106,22 @@ jobs:
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
             ubuntu-example: {}
+            test-app: {}
+            pgweb: {}
+            playground: {}
+            dc-access-logging-app: {}
+            aou-sas: {}
+            vscode-with-llm:
+              filters:
+                - 'features/src/llm-context/**'
+                - 'features/src/wb-mcp-server/**'
+                - 'features/src/gemini-cli/**'
+                - 'features/src/workbench-tools/**'
+            workbench-jupyter-docker:
+              maximize_build_space: true
+              filters:
+                - 'features/src/workbench-tools/**'
+                - 'src/jupyter-common/**'
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:
@@ -160,9 +176,10 @@ jobs:
     name: "Smoke test '${{ matrix.app.template }}'"
     needs: [detect-changes]
     runs-on: ubuntu-latest
-    continue-on-error: true
     if : ${{ needs.detect-changes.outputs.apps != '[]' }}
+    timeout-minutes: 90
     strategy:
+      fail-fast: false
       matrix:
         app: ${{ fromJSON(needs.detect-changes.outputs.apps) }}
     steps:

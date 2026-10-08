@@ -91,7 +91,7 @@ def metrics(samples):
     return values
 
 
-def compare(candidates, baselines, unchanged=False):
+def compare(candidates, baselines, unchanged=False, smoke=False):
     grouped = defaultdict(list)
     baseline_groups = defaultdict(list)
     for sample in candidates:
@@ -103,9 +103,9 @@ def compare(candidates, baselines, unchanged=False):
         reasons = sorted({issue for sample in samples for issue in problems(sample)})
         status = "fail" if reasons else "pass"
         boots = [sample["provenance"].get("cold_boot_id") for sample in samples]
-        required = 1 if unchanged else 3
+        required = 1 if unchanged or smoke else 3
         if len(samples) < required or None in boots or "" in boots or len(set(boots)) != len(boots):
-            reasons.append("need distinct cold boots: smoke plus two repeats for changed inputs")
+            reasons.append(f"need {required} samples from distinct cold boots")
             status = "blocked" if status == "pass" else status
         if len({sample["inputs_hash"] for sample in samples}) != 1:
             reasons.append("candidate samples have different effective inputs")
@@ -119,14 +119,17 @@ def compare(candidates, baselines, unchanged=False):
             reasons.append("unchanged smoke requires a complete matching promoted baseline")
             status = "blocked" if status == "pass" else status
         deltas = []
+        regression_status = "blocked" if baselines else "unverified"
         if baselines and not baseline_valid:
             reasons.append("promoted baseline does not match this profile or is incomplete")
             status = "blocked" if status == "pass" else status
         if status == "pass" and baseline_valid:
+            regression_status = "pass"
             old = metrics(baseline)
             new = metrics(samples)
             if old.keys() != new.keys():
                 status = "blocked"
+                regression_status = "blocked"
                 reasons.append("measured cgroup roles changed")
             else:
                 for name, values in new.items():
@@ -136,6 +139,7 @@ def compare(candidates, baselines, unchanged=False):
                     growth = max(values) - max(old[name])
                     if growth > tolerance:
                         status = "fail"
+                        regression_status = "fail"
                         reasons.append("memory regression: " + name)
                         deltas.append({"metric": name, "growth_bytes": growth, "tolerance_bytes": int(tolerance)})
         decisions.append({
@@ -144,10 +148,12 @@ def compare(candidates, baselines, unchanged=False):
             "needs_baseline_confirmation": bool(deltas), "regressions": deltas,
             "peak_bytes": max(sample["host"].get("peak_bytes", 0) or 0 for sample in samples),
             "baseline_started_at": [sample["started_at"] for sample in baseline],
+            "baseline_status": "valid" if baseline_valid else ("invalid" if baselines else "unavailable"),
+            "regression_status": regression_status,
         })
     recommendations = {}
     for decision in decisions:
-        if decision["status"] != "pass":
+        if smoke or decision["status"] != "pass":
             continue
         key = "/".join(decision[field] for field in ("app", "cloud", "profile"))
         previous = recommendations.get(key)
@@ -167,11 +173,12 @@ def main():
     parser.add_argument("--candidate", nargs="+", required=True, type=Path)
     parser.add_argument("--baseline", nargs="*", default=[], type=Path)
     parser.add_argument("--unchanged", action="store_true")
+    parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     try:
         report = compare([json.loads(path.read_text()) for path in args.candidate],
-                         [json.loads(path.read_text()) for path in args.baseline], args.unchanged)
+                         [json.loads(path.read_text()) for path in args.baseline], args.unchanged, args.smoke)
     except (OSError, ValueError, KeyError, TypeError) as error:
         report = {"schema_version": 1, "status": "fail", "reason": "invalid measurement: " + str(error)}
     args.output.write_text(json.dumps(report, indent=2) + "\n")

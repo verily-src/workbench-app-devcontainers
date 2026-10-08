@@ -3,6 +3,8 @@ against the real FastAPI app, no workspace needed."""
 
 from pathlib import Path
 
+import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 import main
@@ -69,3 +71,51 @@ def test_export_respects_filters():
 def test_unknown_dataset_is_404():
     resp = client.post("/api/datasets/nope/query", json={})
     assert resp.status_code == 404
+
+
+def test_ingest_dataframe_roundtrips_to_sqlite():
+    import queries
+    from sqlalchemy import create_engine
+    df = pd.read_csv(FIXTURE)
+    engine = create_engine("sqlite:///:memory:")
+    n = queries.ingest_dataframe(engine, df, "my_cohort")
+    assert n == 100
+    back = pd.read_sql_query("SELECT * FROM my_cohort", engine)
+    assert len(back) == 100
+    assert list(back.columns) == list(df.columns)
+
+
+def test_ingest_dataframe_rejects_bad_name():
+    import queries
+    from sqlalchemy import create_engine
+    with pytest.raises(ValueError):
+        queries.ingest_dataframe(create_engine("sqlite:///:memory:"),
+                                 pd.DataFrame({"a": [1]}),
+                                 "bad name; DROP TABLE x")
+
+
+def test_materialize_endpoint(monkeypatch):
+    import main
+    import queries
+    captured = {}
+
+    def fake_ingest(engine, df, name, if_exists="replace"):
+        captured["name"] = name
+        captured["rows"] = len(df)
+        return len(df)
+
+    monkeypatch.setattr(queries, "ingest_dataframe", fake_ingest)
+    monkeypatch.setattr(main.db, "get_engine_for_resource", lambda rid: object())
+    monkeypatch.setattr(main.db.list_aurora_tables, "invalidate", lambda: None)
+    monkeypatch.setattr(main.db.fetch_aurora_table, "invalidate", lambda: None)
+    monkeypatch.setattr(main.lineage, "record", lambda *a, **k: None)
+
+    with open(FIXTURE, "rb") as f:
+        dataset_id = client.post("/api/datasets/upload",
+            files={"file": ("samples.csv", f, "text/csv")}).json()["dataset_id"]
+    resp = client.post(f"/api/datasets/{dataset_id}/materialize",
+                       json={"resource_id": "db1", "table": "saved_cohort"})
+    assert resp.status_code == 200
+    assert resp.json() == {"table": "saved_cohort", "resource_id": "db1",
+                           "rows": 100}
+    assert captured == {"name": "saved_cohort", "rows": 100}

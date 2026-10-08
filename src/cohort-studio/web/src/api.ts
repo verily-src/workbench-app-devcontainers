@@ -107,6 +107,11 @@ export const api = {
              filters,
              charts: charts.map(({ kind, x, y }) => ({ kind, x, y })) })),
 
+  materialize: (datasetId: string, resourceId: string, table: string) =>
+    request<{ table: string; resource_id: string; rows: number }>(
+      `/api/datasets/${datasetId}/materialize`,
+      post({ resource_id: resourceId, table })),
+
   ask: (datasetId: string, question: string, filters: Filter[]) =>
     request<{ filters: Filter[]; explanation: string }>(
       `/api/datasets/${datasetId}/ask`, post({ question, filters })),

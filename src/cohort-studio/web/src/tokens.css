@@ -346,3 +346,9 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .chat-input { display: flex; gap: 8px; padding: 10px 12px;
   border-top: 1px solid var(--border); }
 .chat-input input { flex: 1; }
+
+
+/* ------------------------------------------------------- save to aurora */
+.save-aurora { display: inline-flex; align-items: center; gap: 6px; }
+.save-aurora select { width: 160px; }
+.save-aurora input { width: 150px; }

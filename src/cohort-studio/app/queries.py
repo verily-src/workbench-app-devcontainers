@@ -95,6 +95,26 @@ GTEX_SAMPLES_URL = (
     "GTEx_Analysis_v8_Annotations_SampleAttributesDS.txt")
 
 
+def ingest_dataframe(engine: Engine, df: pd.DataFrame, name: str,
+                     if_exists: str = "replace") -> int:
+    """Persist an in-memory DataFrame as an Aurora table.
+
+    Lets a cohort loaded from S3/BigQuery/CSV become a durable, shareable
+    table in the workspace database. chunksize is derived from the column
+    count so a single INSERT never exceeds PostgreSQL's 65535 bind
+    parameters (the bug that broke the first GTEx load).
+    """
+    if not _IDENTIFIER.match(name):
+        raise ValueError(
+            f"Invalid table name {name!r} — use letters, digits, underscores.")
+    ncols = max(1, len(df.columns))
+    chunksize = max(1, min(5000, 60000 // ncols))
+    df.to_sql(name, engine, if_exists=if_exists, index=False,
+              chunksize=chunksize)
+    logger.info("Ingested %d rows into Aurora table %s", len(df), name)
+    return len(df)
+
+
 def load_gtex_samples(engine: Engine, name: str = "gtex_samples") -> int:
     """Load the open-access GTEx V8 sample attributes into an Aurora table."""
     df = pd.read_csv(GTEX_SAMPLES_URL, sep="\t", low_memory=False)

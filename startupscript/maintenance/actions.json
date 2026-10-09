@@ -34,6 +34,33 @@
       ],
       "required": true,
       "replaces": []
+    },
+    {
+      "id": "spike-failure",
+      "script": "actions/spike-failure.sh",
+      "depends_on": [
+        "spike-third"
+      ],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-dependent",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-failure"
+      ],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-independent",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-third"
+      ],
+      "required": false,
+      "replaces": []
     }
   ]
 }

@@ -329,6 +329,22 @@ def test_compare_vs_rest_and_small_group_guard():
     assert val["p"] is None and "too small" in val["note"]
 
 
+def test_duckdb_reads_json_and_csv(tmp_path):
+    import json as _json
+    import duck
+    # ndjson
+    nd = tmp_path / "a.ndjson"
+    nd.write_text("\n".join(_json.dumps(r) for r in
+                  [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]))
+    df = duck.fetch_file(str(nd), cap=10)
+    assert len(df) == 2 and set(df.columns) == {"a", "b"}
+    # json array
+    ja = tmp_path / "a.json"
+    ja.write_text(_json.dumps([{"a": 3}, {"a": 4}, {"a": 5}]))
+    assert len(duck.fetch_file(str(ja), cap=2)) == 2   # cap respected
+    assert ".json" in duck.DATA_SUFFIXES and ".ndjson" in duck.DATA_SUFFIXES
+
+
 def test_duckdb_and_pandas_aggregation_parity(monkeypatch):
     import numpy as np
     import pandas as pd

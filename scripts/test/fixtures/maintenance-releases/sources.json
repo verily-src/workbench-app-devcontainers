@@ -1,36 +1,36 @@
 {
   "schema_version": 1,
-  "bootstrap_source_commit": "2a04e29894825c5f87dedf685b86271982061bdf",
+  "bootstrap_source_commit": "815814a166f9369a05b445521bf11d229a350f57",
   "releases": [
     {
       "scenario": "v1",
-      "version": "20261009005001",
-      "source_commit": "d75f50fd9ab1ac76565aca9d306643d990e0285b"
+      "version": "20261009181501",
+      "source_commit": "e29e7a61aedf1199c98b5613386bba0bf5e908c3"
     },
     {
       "scenario": "v2",
-      "version": "20261009005002",
-      "source_commit": "6b3812d22e2d0f5f1a9bbd7225e845f587b0bc92"
+      "version": "20261009181502",
+      "source_commit": "9373d6fe3c0d33e3ff5e53bd960ab8504e49eb47"
     },
     {
       "scenario": "v3",
-      "version": "20261009005003",
-      "source_commit": "b16192ada1cb825aee05992b921cef05bca7e9e8"
+      "version": "20261009181503",
+      "source_commit": "dcbd14fa7379935e36ecae9365085555306e3920"
     },
     {
       "scenario": "failure",
-      "version": "20261009005004",
-      "source_commit": "18c414435d4adf33fc57af8bbbfd6f24d6a4751e"
+      "version": "20261009181504",
+      "source_commit": "86f7432c5496fb2e6cd9a6cd88286f78d2688ef4"
     },
     {
       "scenario": "recovery",
-      "version": "20261009005005",
-      "source_commit": "c2f6362cca04826b524e881d5cb7e350bfb31c0b"
+      "version": "20261009181505",
+      "source_commit": "dfdc78f3191f5c803920643b35e901e4156fe9d5"
     },
     {
       "scenario": "rollback",
-      "version": "20261009005006",
-      "source_commit": "838740ea9a080a9dabf0f3cd75d61d5d029883c5"
+      "version": "20261009181506",
+      "source_commit": "7f6aa3de7f20f43483b829ac2d5d676a6af88d01"
     }
   ]
 }

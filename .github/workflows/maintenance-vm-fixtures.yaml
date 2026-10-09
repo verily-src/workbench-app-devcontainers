@@ -1,9 +1,5 @@
 name: "CI - Maintenance VM Fixtures"
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/maintenance-vm-fixtures.yaml'
-      - 'scripts/test/fixtures/maintenance-releases/sources.json'
   workflow_dispatch:
 
 permissions:

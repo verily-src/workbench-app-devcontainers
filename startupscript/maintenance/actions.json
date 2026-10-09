@@ -61,6 +61,17 @@
       ],
       "required": false,
       "replaces": []
+    },
+    {
+      "id": "spike-recovery",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-third"
+      ],
+      "required": true,
+      "replaces": [
+        "spike-failure"
+      ]
     }
   ]
 }

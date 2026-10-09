@@ -1,0 +1,6 @@
+[Unit]
+Description=Schedule Workbench idle-shutdown
+
+[Timer]
+OnCalendar=*:0/1
+Unit=idle-shutdown.service

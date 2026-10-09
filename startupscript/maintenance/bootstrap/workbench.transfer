@@ -1,0 +1,14 @@
+[Transfer]
+Verify=yes
+
+[Source]
+Type=url-file
+MatchPattern=workbench_@v_x86-64.raw
+
+[Target]
+Type=regular-file
+Path=/var/lib/workbench-maintenance/images
+MatchPattern=workbench_@v_x86-64.raw
+CurrentSymlink=/var/lib/workbench-maintenance/candidate.raw
+InstancesMax=3
+Mode=0444

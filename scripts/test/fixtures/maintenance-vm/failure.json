@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "actions": [
+    {
+      "id": "link-host-files",
+      "script": "actions/link-host-files.sh",
+      "depends_on": [],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-once",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "link-host-files"
+      ],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-skipped",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-once"
+      ],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-third",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-skipped"
+      ],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-failure",
+      "script": "actions/spike-failure.sh",
+      "depends_on": [
+        "spike-third"
+      ],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-dependent",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-failure"
+      ],
+      "required": true,
+      "replaces": []
+    },
+    {
+      "id": "spike-independent",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-third"
+      ],
+      "required": false,
+      "replaces": []
+    }
+  ]
+}

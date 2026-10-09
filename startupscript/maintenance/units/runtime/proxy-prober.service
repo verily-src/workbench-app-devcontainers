@@ -1,0 +1,8 @@
+[Unit]
+Description=Run Workbench proxy-prober
+Requires=workbench-maintenance.service
+After=workbench-maintenance.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/core/probe-user-access.sh 0.5

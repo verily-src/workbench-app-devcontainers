@@ -1,0 +1,6 @@
+[Unit]
+Description=Schedule Workbench proxy-prober
+
+[Timer]
+OnCalendar=*:0/1
+Unit=proxy-prober.service

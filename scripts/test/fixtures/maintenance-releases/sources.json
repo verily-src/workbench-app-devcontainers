@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "bootstrap_source_commit": "df6cffd856801770157a469baa99b719d5fcf699",
+  "releases": [
+    {
+      "scenario": "v1",
+      "version": "20261009185001",
+      "source_commit": "5bd415f3d42d1cbb3a69d55ad45fee5a53e6189f"
+    },
+    {
+      "scenario": "v2",
+      "version": "20261009185002",
+      "source_commit": "827a4eaf38523d8ec682d8c091618a6368f5ea82"
+    },
+    {
+      "scenario": "v3",
+      "version": "20261009185003",
+      "source_commit": "18f548b23c90b7bc06ec609b109d74378585dadd"
+    },
+    {
+      "scenario": "failure",
+      "version": "20261009185004",
+      "source_commit": "1e77929a7357d865b99f8879a637d493680f289c"
+    },
+    {
+      "scenario": "recovery",
+      "version": "20261009185005",
+      "source_commit": "1271e85c85e1afbc06e19e7e4ee6b1e96483b27f"
+    },
+    {
+      "scenario": "rollback",
+      "version": "20261009185006",
+      "source_commit": "26f12d7e15ee7d18d2ef47f5ce80077f0adc4fc4"
+    }
+  ]
+}

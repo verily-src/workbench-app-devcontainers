@@ -71,7 +71,7 @@ jq -n --arg version "$VERSION" --arg source_commit "$SOURCE_COMMIT" \
 find "$ROOT" -type d -exec chmod 0755 {} +
 find "$ROOT" -type f -exec chmod 0644 {} +
 find "$ROOT/usr/lib/workbench" -type f \
-    \( -name '*.sh' -o -name 'docker-credential-*' -o -name oem-postinst \) -exec chmod 0755 {} +
+    \( -name '*.sh' -o -name jsoncStripComments.mjs -o -name 'docker-credential-*' -o -name oem-postinst \) -exec chmod 0755 {} +
 (
     cd "$ROOT"
     find usr -type f -print0 | sort -z | xargs -0 sha256sum

@@ -7,6 +7,15 @@
       "depends_on": [],
       "required": true,
       "replaces": []
+    },
+    {
+      "id": "spike-once",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "link-host-files"
+      ],
+      "required": true,
+      "replaces": []
     }
   ]
 }

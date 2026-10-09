@@ -25,6 +25,15 @@
       ],
       "required": true,
       "replaces": []
+    },
+    {
+      "id": "spike-third",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-skipped"
+      ],
+      "required": true,
+      "replaces": []
     }
   ]
 }

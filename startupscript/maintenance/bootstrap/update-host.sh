@@ -87,7 +87,7 @@ merge_trust
 
 selected="${old_image}"
 started=${SECONDS}
-if newest=$(timeout --signal=TERM --kill-after=5s 25s "$0" --download); then
+if newest=$(timeout --signal=TERM --kill-after=5s 25s /bin/bash "$0" --download); then
     [[ -z "${newest}" ]] || selected="${STATE_DIR}/images/workbench_${newest}_x86-64.raw"
 else
     echo 'Workbench download failed; keeping the installed image' >&2

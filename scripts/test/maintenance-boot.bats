@@ -82,6 +82,17 @@ install_cached() {
     [ "$(cat "${WORKBENCH_ROOT}/etc/systemd/import-pubring.gpg")" = vendorpublic-key ]
 }
 
+
+@test "seed download works when configuration scripts are not executable" {
+    local seed="${WORKBENCH_ROOT}/etc/workbench/maintenance"
+    cp "${BOOTSTRAP}/update-host.sh" "${BOOTSTRAP}/boot-common.sh" "${seed}/"
+    chmod 0644 "${seed}/update-host.sh" "${seed}/boot-common.sh"
+    DOWNLOAD_VERSION=1 run bash "${seed}/update-host.sh"
+    [ "${status}" = 0 ]
+    jq -e '.active_version == "1"' "${STATE}/boot.json"
+    grep -q 'sysupdate --component=workbench update' "${CALLS}"
+}
+
 @test "a skipped release activates the newest image without running app code" {
     install_cached 1
     DOWNLOAD_VERSION=3 run "${BOOTSTRAP}/update-host.sh"

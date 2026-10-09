@@ -4,33 +4,33 @@
   "releases": [
     {
       "scenario": "v1",
-      "version": "20261008221001",
-      "source_commit": "37ed95003cb6e40f4fe606921aa19531823f9fd1"
+      "version": "20261009005001",
+      "source_commit": "d75f50fd9ab1ac76565aca9d306643d990e0285b"
     },
     {
       "scenario": "v2",
-      "version": "20261008221002",
-      "source_commit": "87daae1a1163a82e0c47a2ae0f95c373ee4f7905"
+      "version": "20261009005002",
+      "source_commit": "6b3812d22e2d0f5f1a9bbd7225e845f587b0bc92"
     },
     {
       "scenario": "v3",
-      "version": "20261008221003",
-      "source_commit": "99fb823f89bf055891c452b549d401c0ae16e02b"
+      "version": "20261009005003",
+      "source_commit": "b16192ada1cb825aee05992b921cef05bca7e9e8"
     },
     {
       "scenario": "failure",
-      "version": "20261008221004",
-      "source_commit": "47488302a2a2c26506ec0e58b4b26ff5638b2521"
+      "version": "20261009005004",
+      "source_commit": "18c414435d4adf33fc57af8bbbfd6f24d6a4751e"
     },
     {
       "scenario": "recovery",
-      "version": "20261008221005",
-      "source_commit": "968bfdeda1e65960d7db49f4c19df716fe0d2ed7"
+      "version": "20261009005005",
+      "source_commit": "c2f6362cca04826b524e881d5cb7e350bfb31c0b"
     },
     {
       "scenario": "rollback",
-      "version": "20261008221006",
-      "source_commit": "e655ed2726ff75b2bae89cab114744838f328466"
+      "version": "20261009005006",
+      "source_commit": "838740ea9a080a9dabf0f3cd75d61d5d029883c5"
     }
   ]
 }

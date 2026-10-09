@@ -16,6 +16,15 @@
       ],
       "required": true,
       "replaces": []
+    },
+    {
+      "id": "spike-skipped",
+      "script": "actions/spike-marker.sh",
+      "depends_on": [
+        "spike-once"
+      ],
+      "required": true,
+      "replaces": []
     }
   ]
 }

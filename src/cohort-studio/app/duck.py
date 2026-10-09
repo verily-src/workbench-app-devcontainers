@@ -24,7 +24,7 @@ from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 
-DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".txt")
+DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".txt", ".json", ".ndjson")
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9._\-/ ()+=]+$")
 # Workspace S3 buckets live in the Aurora cluster's region.
 DEFAULT_REGION = os.environ.get("STUDIO_S3_REGION", "us-east-1")
@@ -135,10 +135,13 @@ def _connect(profile: str | None, region: str = DEFAULT_REGION):
 
 
 def _reader_sql(uri: str) -> str:
-    if not _SAFE_KEY.match(uri.replace("s3://", "")):
+    if not _SAFE_KEY.match(uri.replace("s3://", "").replace("gs://", "")):
         raise ValueError(f"Unsupported characters in path: {uri!r}")
-    if uri.lower().endswith(".parquet"):
+    low = uri.lower()
+    if low.endswith(".parquet"):
         return f"read_parquet('{uri}')"
+    if low.endswith((".json", ".ndjson")):
+        return f"read_json_auto('{uri}')"
     return f"read_csv_auto('{uri}')"
 
 

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "bootstrap_source_commit": "fb9f1f725175b2f090f29f77088654de326c2b8a",
+  "bootstrap_source_commit": "2a04e29894825c5f87dedf685b86271982061bdf",
   "releases": [
     {
       "scenario": "v1",

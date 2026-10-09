@@ -7,33 +7,6 @@
       "depends_on": [],
       "required": true,
       "replaces": []
-    },
-    {
-      "id": "spike-once",
-      "script": "actions/spike-marker.sh",
-      "depends_on": [
-        "link-host-files"
-      ],
-      "required": true,
-      "replaces": []
-    },
-    {
-      "id": "spike-skipped",
-      "script": "actions/spike-marker.sh",
-      "depends_on": [
-        "spike-once"
-      ],
-      "required": true,
-      "replaces": []
-    },
-    {
-      "id": "spike-third",
-      "script": "actions/spike-marker.sh",
-      "depends_on": [
-        "spike-skipped"
-      ],
-      "required": true,
-      "replaces": []
     }
   ]
 }

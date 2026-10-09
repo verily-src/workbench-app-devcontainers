@@ -19,7 +19,9 @@ readonly TEMP_DIR
 trap 'rm -rf "$TEMP_DIR"' EXIT
 readonly ROOT="$TEMP_DIR/root"
 mkdir -p "$ROOT/usr/lib/workbench/butane" "$ROOT/usr/lib/workbench/maintenance" \
-    "$ROOT/usr/lib/systemd/system/workbench" "$ROOT/usr/lib/extension-release.d"
+    "$ROOT/usr/lib/workbench/units" "$ROOT/usr/lib/systemd/system" "$ROOT/usr/lib/extension-release.d"
+# Preserve managed links while resolving units outside systemd's unit search path.
+ln -s ../../workbench/units "$ROOT/usr/lib/systemd/system/workbench"
 
 while IFS= read -r file; do
     [[ -n "$file" && "$file" != /* && "$file" != *..* ]]
@@ -32,7 +34,7 @@ while IFS= read -r -d '' file; do
     relative="${file#"$SOURCE/maintenance/"}"
     case "$relative" in
         build/*) continue ;;
-        units/*) target="$ROOT/usr/lib/systemd/system/workbench/${relative#units/}" ;;
+        units/*) target="$ROOT/usr/lib/workbench/units/${relative#units/}" ;;
         bootstrap/*|*.sh|*.json|*.tsv) target="$ROOT/usr/lib/workbench/maintenance/$relative" ;;
         *) echo "Unlisted maintenance input: $relative" >&2; exit 1 ;;
     esac

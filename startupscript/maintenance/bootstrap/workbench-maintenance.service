@@ -2,6 +2,8 @@
 Description=Apply Workbench host maintenance
 Requires=workbench-update.service
 After=workbench-update.service
+StartLimitIntervalSec=infinity
+StartLimitBurst=1
 
 [Service]
 Type=oneshot

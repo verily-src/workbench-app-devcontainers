@@ -57,12 +57,13 @@ jobs:
       - name: Check the assembled payload
         run: |
           sudo apt-get update
-          sudo apt-get install -y squashfs-tools
+          sudo apt-get install -y squashfs-tools bats
           image="$(find "$RUNNER_TEMP/image-one" -name '*.raw' -print -quit)"
           unsquashfs -d "$RUNNER_TEMP/extracted" "$image"
           (cd "$RUNNER_TEMP/extracted" && sha256sum --check "$RUNNER_TEMP/image-one/payload.sha256")
           ln -s "$RUNNER_TEMP/extracted/usr/lib/workbench/butane/jsoncStripComments.mjs" "$RUNNER_TEMP/parser.mjs"
           printf '{/* public fixture */"value":1}' | node "$RUNNER_TEMP/parser.mjs" | jq -e '.value == 1'
+          MAINTENANCE_IMAGE_ROOT="$RUNNER_TEMP/extracted" bats scripts/test/integration/maintenance-unit-links.bats
       - uses: actions/upload-artifact@v4
         with:
           name: workbench-maintenance-image

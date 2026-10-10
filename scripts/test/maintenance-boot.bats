@@ -27,6 +27,11 @@ printf 'timeout %s\n' "$*" >> "${CALLS}"
 shift 3
 exec "$@"
 SH
+    cat > "${BATS_TEST_TMPDIR}/bin/curl" <<'SH'
+#!/bin/bash
+printf 'curl %s\n' "$*" >> "${CALLS}"
+exit "${PROBE_EXIT:-0}"
+SH
     cat > "${BATS_TEST_TMPDIR}/bin/flock" <<'SH'
 #!/bin/bash
 exit 0
@@ -112,6 +117,16 @@ install_cached() {
         assert_no_call '^sysext '
     done
     [ "$(cat "${WORKBENCH_ROOT}/etc/systemd/import-pubring.gpg")" = vendorpublic-key ]
+}
+
+@test "an unreachable channel keeps the installed image without waiting on sysupdate" {
+    install_cached 1
+    PROBE_EXIT=28 run "${BOOTSTRAP}/update-host.sh"
+    [ "${status}" = 0 ]
+    grep -q '^curl .*--connect-timeout 3 --max-time 5 https://artifacts.example/workbench/dev/SHA256SUMS$' "${CALLS}"
+    assert_no_call '^sysupdate|^sysext '
+    jq -e '.active_version == "1"' "${STATE}/boot.json"
+    grep -q 'systemctl --no-block start workbench-maintenance.service' "${CALLS}"
 }
 
 @test "a failed first download holds maintenance and preserves vendor trust" {

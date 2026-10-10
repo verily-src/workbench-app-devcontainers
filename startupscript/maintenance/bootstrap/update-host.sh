@@ -33,6 +33,10 @@ refresh_image() {
         [[ "$(mounted_version)" == "${version}" ]]
 }
 
+channel_reachable() {
+    curl --fail --silent --show-error --output /dev/null --connect-timeout 3 --max-time 5 "${channel%/}/SHA256SUMS"
+}
+
 download_approved_image() {
     local updater="${WORKBENCH_ROOT}/usr/lib/systemd/systemd-sysupdate" newest='' image version metadata
     "${updater}" --component=workbench update >&2
@@ -87,7 +91,9 @@ merge_trust
 
 selected="${old_image}"
 started=${SECONDS}
-if newest=$(timeout --signal=TERM --kill-after=5s 25s /bin/bash "$0" --download); then
+if ! channel_reachable; then
+    echo 'Workbench channel unreachable; keeping the installed image' >&2
+elif newest=$(timeout --signal=TERM --kill-after=5s 25s /bin/bash "$0" --download); then
     [[ -z "${newest}" ]] || selected="${STATE_DIR}/images/workbench_${newest}_x86-64.raw"
 else
     echo 'Workbench download failed; keeping the installed image' >&2

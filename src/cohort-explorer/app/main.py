@@ -18,9 +18,10 @@ from sqlalchemy.orm import Session
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import are_tables_ready, get_active_resource_id, get_cached_tables, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
-from dynamic_model import DynamicBase, TEXT_STORAGE_TYPES, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_mapping_for_column, get_pk_name, get_range_filters, load_schema_from_disk, set_active_mapping
+from dynamic_model import DynamicBase, TEXT_STORAGE_TYPES, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_entity_column, get_mapping_for_column, get_pk_name, get_range_filters, load_schema_from_disk, set_active_join_mapping, set_active_mapping
+from joins import JoinError, JoinStep, build_select, row_growth_preview, validate_join
 from models import Base, Sample
-from schema import ColumnMapping, get_aurora_storage_types, infer_from_aurora, infer_from_csv, load_mapping_csv, mappings_to_dicts, save_mapping_csv
+from schema import ColumnMapping, get_aurora_storage_types, infer_from_aurora, infer_from_csv, infer_from_join, list_aurora_columns, load_mapping_csv, mappings_to_dicts, save_mapping_csv
 from seed import seed_dynamic, seed_from_tsv
 from starlette.requests import Request
 
@@ -322,6 +323,52 @@ def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+def _steps_from_body(raw_steps: list[dict]) -> list[JoinStep]:
+    if not raw_steps:
+        raise HTTPException(status_code=400, detail="A join needs at least one table")
+    try:
+        return [JoinStep(**s) for s in raw_steps]
+    except TypeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid join step: {e}") from e
+
+
+@app.get("/api/aurora/{resource_id}/tables/{table}/columns")
+def api_aurora_table_columns(resource_id: str, table: str, schema: str = Query("public")) -> list[dict]:
+    try:
+        return list_aurora_columns(resource_id, table, schema=schema)
+    except Exception as e:
+        logger.error("Failed to list columns for %s.%s: %s", resource_id, table, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/joins/validate")
+def api_validate_join(body: dict) -> dict:
+    resource_id = body.get("resource_id", "")
+    steps = _steps_from_body(body.get("steps", []))
+    try:
+        validate_join(resource_id, steps)
+        return {"valid": True}
+    except JoinError as e:
+        return {"valid": False, "error": str(e)}
+    except Exception as e:
+        logger.error("Join validation failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/joins/preview")
+def api_preview_join(body: dict) -> list[dict]:
+    resource_id = body.get("resource_id", "")
+    steps = _steps_from_body(body.get("steps", []))
+    try:
+        validate_join(resource_id, steps)
+        return row_growth_preview(resource_id, steps)
+    except JoinError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error("Join preview failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.post("/api/schema/infer")
 def api_infer_schema(body: dict) -> dict:
     source_type = body.get("source_type")
@@ -340,11 +387,19 @@ def api_infer_schema(body: dict) -> dict:
             resource_id = body.get("resource_id", "")
             table = body.get("table", "")
             mappings = infer_from_aurora(resource_id, table)
+        elif source_type == "join":
+            resource_id = body.get("resource_id", "")
+            steps = _steps_from_body(body.get("join", {}).get("steps", []))
+            validate_join(resource_id, steps)
+            select_sql, output_columns = build_select(resource_id, steps)
+            mappings = infer_from_join(resource_id, select_sql, output_columns)
         else:
             raise HTTPException(status_code=400, detail=f"Unknown source_type: {source_type}")
         return {"mappings": mappings_to_dicts(mappings)}
     except HTTPException:
         raise
+    except JoinError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error("Schema inference failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -356,8 +411,32 @@ def api_confirm_schema(body: dict) -> dict:
     folder_id = body.get("folder_id")
     source_name = body.get("source_name", "schema")
     table_name = body.get("table_name", "data")
+    entity_column = body.get("entity_column") or None
+    join_body = body.get("join")
     resource_id = get_active_resource_id()
     is_aurora = resource_id is not None
+
+    if entity_column and entity_column not in {m["column"] for m in mappings_raw}:
+        raise HTTPException(status_code=400, detail=f"Unknown entity column: {entity_column}")
+
+    if join_body:
+        steps = _steps_from_body(join_body.get("steps", []))
+        try:
+            # Re-derive the join and its column storage types fresh here rather
+            # than trusting the earlier /infer response: stale browser state
+            # must not reintroduce the Aurora numeric-text failure.
+            select_sql, output_columns = build_select(resource_id, steps)
+        except JoinError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        storage_types = {c["output"]: c["pg_type"] for c in output_columns}
+        for mapping in mappings_raw:
+            mapping["storage_type"] = storage_types.get(mapping["column"])
+        mappings = [ColumnMapping(**mapping) for mapping in mappings_raw]
+        set_active_join_mapping(
+            mappings_raw, select_sql, resource_id,
+            table_name=table_name, entity_column=entity_column,
+        )
+        return {"confirmed": True, "columns": len(mappings), "seeded": 0}
 
     if resource_id:
         storage_types = get_aurora_storage_types(resource_id, table_name)
@@ -386,7 +465,7 @@ def api_confirm_schema(body: dict) -> dict:
         except Exception as e:
             logger.warning("Failed to save mapping CSV to S3: %s", e)
 
-    set_active_mapping(mappings_raw, table_name=table_name, needs_pk=not is_aurora)
+    set_active_mapping(mappings_raw, table_name=table_name, needs_pk=not is_aurora, entity_column=entity_column)
 
     seeded = 0
     if not is_aurora:
@@ -545,13 +624,23 @@ def get_counts(
 
     pk_col = get_pk_name()
     count_exprs = [func.count(filtered.c[pk_col]).label("samples")]
-    if hasattr(filtered.c, "subject_id"):
+
+    entity_col = get_entity_column()
+    if entity_col and entity_col in filtered.c:
+        count_exprs.append(func.count(distinct(filtered.c[entity_col])).label("entities"))
+    # Legacy GTEx hardcodes, kept only for the static Sample fallback model
+    # (no dynamic schema active, so there's no user-chosen entity column).
+    elif hasattr(filtered.c, "subject_id"):
         count_exprs.append(func.count(distinct(filtered.c.subject_id)).label("subjects"))
-    if hasattr(filtered.c, "fastq1_path"):
+    if not entity_col and hasattr(filtered.c, "fastq1_path"):
         count_exprs.append(func.count(filtered.c.fastq1_path).label("fastq_pairs"))
 
     row = db.execute(select(*count_exprs)).one()
     result = {"samples": row.samples}
+    if hasattr(row, "entities"):
+        mapping = get_mapping_for_column(entity_col)
+        result["entities"] = row.entities
+        result["entity_label"] = mapping["label"] if mapping else entity_col
     if hasattr(row, "subjects"):
         result["subjects"] = row.subjects
     if hasattr(row, "fastq_pairs"):

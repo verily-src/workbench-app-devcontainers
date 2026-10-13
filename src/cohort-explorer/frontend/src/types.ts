@@ -17,6 +17,8 @@ export interface Counts {
   samples: number;
   subjects?: number;
   fastq_pairs?: number;
+  entities?: number;
+  entity_label?: string;
 }
 
 export type FilterState = Record<string, string[] | number | null>;

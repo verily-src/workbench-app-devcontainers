@@ -88,12 +88,69 @@ export interface AuroraTable {
   type: string;
 }
 
+export interface JoinStep {
+  table: string;
+  schema?: string;
+  join_to?: string;
+  left_key?: string;
+  right_key?: string;
+  join_type?: "inner" | "left" | "full";
+}
+
+export interface JoinConfig {
+  resource_id: string;
+  steps: JoinStep[];
+}
+
+export interface JoinPreviewStep {
+  table: string;
+  row_count: number | null;
+  timed_out: boolean;
+}
+
+export interface AuroraColumn {
+  column: string;
+  type: string;
+}
+
+export async function fetchTableColumns(resourceId: string, table: string, schemaName = "public"): Promise<AuroraColumn[]> {
+  const res = await fetchWithTimeout(
+    `${BASE}/api/aurora/${encodeURIComponent(resourceId)}/tables/${encodeURIComponent(table)}/columns?schema=${encodeURIComponent(schemaName)}`,
+    { timeoutMs: 60_000 },
+  );
+  if (!res.ok) await extractError(res, "Failed to fetch table columns");
+  return res.json();
+}
+
+export async function validateJoin(resourceId: string, steps: JoinStep[]): Promise<{ valid: boolean; error?: string }> {
+  const res = await fetchWithTimeout(`${BASE}/api/joins/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resource_id: resourceId, steps }),
+    timeoutMs: 60_000,
+  });
+  if (!res.ok) await extractError(res, "Join validation failed");
+  return res.json();
+}
+
+export async function previewJoinGrowth(resourceId: string, steps: JoinStep[]): Promise<JoinPreviewStep[]> {
+  const res = await fetchWithTimeout(`${BASE}/api/joins/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resource_id: resourceId, steps }),
+    timeoutMs: 60_000,
+  });
+  if (!res.ok) await extractError(res, "Join preview failed");
+  return res.json();
+}
+
 export async function inferSchema(body: {
-  source_type: "file" | "aurora";
+  source_type: "file" | "aurora" | "join";
   s3_path?: string;
   folder_id?: string;
   resource_id?: string;
   table?: string;
+  join?: JoinConfig;
 }): Promise<{ mappings: ColumnMapping[] }> {
   const res = await fetchWithTimeout(`${BASE}/api/schema/infer`, {
     method: "POST",
@@ -111,6 +168,8 @@ export async function confirmSchema(body: {
   source_name?: string;
   table_name?: string;
   file_path?: string;
+  entity_column?: string;
+  join?: JoinConfig;
 }): Promise<{ confirmed: boolean; columns: number; seeded?: number }> {
   const res = await fetchWithTimeout(`${BASE}/api/schema/confirm`, {
     method: "POST",

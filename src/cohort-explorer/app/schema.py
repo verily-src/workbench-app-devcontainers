@@ -189,6 +189,66 @@ def get_aurora_storage_types(resource_id: str, table: str) -> dict[str, str]:
             return dict(cur.fetchall())
 
 
+def list_aurora_columns(resource_id: str, table: str, schema: str = "public") -> list[dict]:
+    """List a table's columns for the join-builder's key pickers (J07)."""
+    with _connect_aurora(resource_id) as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_schema = %s AND table_name = %s
+                ORDER BY ordinal_position
+            """, (schema, table))
+            return [{"column": row[0], "type": row[1]} for row in cur.fetchall()]
+
+
+def infer_from_join(resource_id: str, select_sql: str, output_columns: list[dict], sample_size: int = 2000) -> list[ColumnMapping]:
+    """Infer a schema for a join's SELECT list in one bounded pass over all
+    columns at once, instead of infer_from_aurora's per-column full-table
+    scans (BENCH-10344 J27 — a joined/fanned-out result is expensive to
+    rescan once per column). Trade-off: classification is based on a sample,
+    like infer_from_csv, not an exact full-table count.
+
+    Sets storage_type from the join's own information_schema lookup (same
+    column that drives infer_from_aurora's text-vs-numeric reclassification),
+    so the text-backed-numeric CAST path in main.py applies to joins too."""
+    pg_type_by_output = {c["output"]: c["pg_type"] for c in output_columns}
+
+    with _connect_aurora(resource_id) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"{select_sql}\nLIMIT %s", (sample_size,))
+            colnames = [d.name for d in cur.description]
+            rows = cur.fetchall()
+
+    samples: dict[str, list[str]] = {name: [] for name in colnames}
+    for row in rows:
+        for name, val in zip(colnames, row):
+            if val is not None and str(val).strip() not in SENTINEL_VALUES:
+                samples[name].append(str(val))
+
+    mappings = []
+    for name in colnames:
+        pg_type = pg_type_by_output.get(name, "text")
+        col_type = PG_TYPE_MAP.get(pg_type, "text")
+        if col_type == "text" and samples[name]:
+            if _is_integer(samples[name]):
+                col_type = "integer"
+            elif _is_float(samples[name]):
+                col_type = "float"
+        unique_count = len(set(samples[name])) if col_type == "text" else CATEGORICAL_THRESHOLD + 1
+        col_filter = _infer_filter(col_type, unique_count)
+        mappings.append(ColumnMapping(
+            column=name,
+            type=col_type,
+            filter=col_filter,
+            label=generate_label(name),
+            storage_type=pg_type,
+        ))
+
+    logger.info("Inferred schema from join (%d tables worth of columns): %d columns", len({c["source_table"] for c in output_columns}), len(mappings))
+    return mappings
+
+
 def infer_from_aurora(resource_id: str, table: str) -> list[ColumnMapping]:
     with _connect_aurora(resource_id) as conn:
         with conn.cursor() as cur:

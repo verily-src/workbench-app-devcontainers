@@ -10,7 +10,7 @@ import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
 import { connectResource, fetchActiveSchema, fetchCounts, fetchFilters, fetchReady, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
-import type { ColumnMapping } from "./api.ts";
+import type { ColumnMapping, JoinConfig } from "./api.ts";
 import SchemaReview from "./components/SchemaReview.tsx";
 import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
 import { DEFAULT_CHART_TYPE, buildEmptyFilters, buildFieldMeta } from "./types.ts";
@@ -74,6 +74,7 @@ export default function App() {
   const [schemaTableName, setSchemaTableName] = useState<string | undefined>();
   const [schemaFilePath, setSchemaFilePath] = useState<string | undefined>();
   const [schemaFolderId, setSchemaFolderId] = useState<string | undefined>();
+  const [schemaJoin, setSchemaJoin] = useState<JoinConfig | undefined>();
   const initialized = useRef(false);
   const fetchIdRef = useRef(0);
 
@@ -313,6 +314,7 @@ export default function App() {
           tableName={schemaTableName}
           filePath={schemaFilePath}
           folderId={schemaFolderId}
+          join={schemaJoin}
           onConfirmed={(confirmed) => {
             setMappings(confirmed);
             const empty = buildEmptyFilters(confirmed);
@@ -328,6 +330,7 @@ export default function App() {
           onBack={() => {
             setSchemaStep("none");
             setResourceId("__local__");
+            setSchemaJoin(undefined);
           }}
         />
       </ThemeProvider>
@@ -346,6 +349,7 @@ export default function App() {
             return;
           }
           setSchemaFolderId(meta.folderId);
+          setSchemaJoin(meta.join);
           setSchemaStep("inferring");
           try {
             const result = await inferSchema({
@@ -354,10 +358,11 @@ export default function App() {
               folder_id: meta.folderId,
               resource_id: meta.sourceType === "aurora" ? id : undefined,
               table: meta.table,
+              join: meta.join,
             });
             setSchemaMappings(result.mappings);
             setSchemaSourceName(meta.sourceName ?? "schema");
-            setSchemaTableName(meta.sourceType === "aurora" ? meta.table : "data");
+            setSchemaTableName(meta.sourceType === "join" ? "joined" : meta.sourceType === "aurora" ? meta.table : "data");
             setSchemaFilePath(meta.sourceType === "file" ? meta.s3Path : undefined);
             setSchemaStep("reviewing");
           } catch (e) {

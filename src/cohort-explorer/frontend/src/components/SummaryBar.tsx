@@ -96,7 +96,15 @@ export default function SummaryBar({
         </Typography>
       ) : counts ? (
         <>
-          {counts.subjects != null && (
+          {counts.entities != null && (
+            <Chip
+              label={`${counts.entities.toLocaleString()} unique ${counts.entity_label ?? "entities"}`}
+              color="primary"
+              variant="outlined"
+              size="small"
+            />
+          )}
+          {counts.entities == null && counts.subjects != null && (
             <Chip
               label={`${counts.subjects.toLocaleString()} subjects`}
               color="primary"

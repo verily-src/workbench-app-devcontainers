@@ -10,10 +10,16 @@ Originally built for GTEx V8 sample data, now datasource- and workflow-agnostic.
 
 On launch, the app shows a datasource selector with two kinds of source:
 
-- **Aurora database** — pick a resource, then pick a table or view. Table lists are pre-warmed at startup so the dropdown is populated when the selector appears.
+- **Aurora database** — pick a resource, then either a single **table or view**, or **Join tables** to combine up to 3 tables on a shared key column (see below). The table/view picker is searchable — type to filter, useful when a resource has hundreds or thousands of tables. Table lists are pre-warmed at startup so the dropdown is populated when the selector appears.
 - **Load from file (S3)** — pick an S3 folder, then a `.csv` / `.tsv` / `.txt` file. The file is downloaded and loaded into a local table.
 
 After you pick a source, the app **infers a schema** (column types + which columns are filterable) and shows a **Schema Review** step where you can adjust column types, filter kinds, and display labels before confirming. Your selection and filters are remembered across page refreshes.
+
+### Joining tables (draft — BENCH-10344)
+
+Under **Aurora database → Join tables**, pick a base table, then add up to 2 more. For each added table: which already-added table it joins to, the key column on each side, and the join type (inner / left / full outer). **Check join** validates the key types and shows the row count after each join step, flagging a join that fans rows out. Once checked, **Connect** runs schema inference over the joined result, same as a single table — including an optional **"Count distinct by"** picker in Schema Review (e.g. a person/patient id), shown in the summary as "N unique \<entity\>".
+
+This is a draft implementation of the no-code join path from [BENCH-10344](https://verily.atlassian.net/browse/BENCH-10344) (currently a gated phase-2 epic). What's covered: the join builder UI, key-type validation, row-growth preview, collision-safe column naming (with Postgres's 63-byte identifier limit handled), correct results on 1:N fan-out joins, and the same text-backed-numeric handling as single-table Aurora sources (a joined column that's Aurora `text` but reclassified as integer/float is loaded as text and only `CAST` for numeric operations — see the "Aurora numeric-text failure" lessons in `CLAUDE.md`). What's **not** yet covered, per the epic's own task list: saved join configs, NULL-key reporting, non-`public` schemas, views-on-views, and general join performance hardening (J16–J28) — see the epic for details.
 
 ### Schema inference
 
@@ -71,8 +77,9 @@ src/cohort-explorer/
 ├── app/
 │   ├── main.py                 # FastAPI endpoints
 │   ├── db.py                   # Aurora/SQLite connections + resource/table caching
-│   ├── dynamic_model.py        # Builds a SQLAlchemy model at runtime from the confirmed schema
-│   ├── schema.py               # Schema inference (CSV + Aurora), mapping CSV I/O
+│   ├── dynamic_model.py        # Builds a SQLAlchemy model at runtime from the confirmed schema (table or join)
+│   ├── schema.py               # Schema inference (CSV + Aurora + joins), mapping CSV I/O
+│   ├── joins.py                # No-code join SQL builder, key-type validation, row-growth preview (BENCH-10344 draft)
 │   ├── models.py               # Static Sample model (fallback / legacy GTEx samples view)
 │   ├── seed.py                 # TSV/CSV loader for SQLite
 │   ├── cohorts.py              # Cohort save/load with S3 persistence
@@ -83,8 +90,10 @@ src/cohort-explorer/
     │   ├── api.ts                     # Backend API client + types
     │   ├── types.ts                   # Filter state, chart config, field meta
     │   └── components/
-    │       ├── ResourceSelector.tsx   # Datasource picker (Aurora table or S3 file)
-    │       ├── SchemaReview.tsx       # Editable inferred-schema table
+    │       ├── ResourceSelector.tsx   # Datasource picker (Aurora table/join or S3 file)
+    │       ├── TableSelect.tsx        # Searchable table/view dropdown (Autocomplete)
+    │       ├── JoinBuilder.tsx        # No-code join builder (up to 3 tables)
+    │       ├── SchemaReview.tsx       # Editable inferred-schema table + entity column picker
     │       ├── FilterPanel.tsx        # Dynamic filter sidebar
     │       ├── DataGrid.tsx           # AG Grid table
     │       ├── SummaryBar.tsx         # Counts + save/export/workflow buttons
@@ -109,8 +118,11 @@ src/cohort-explorer/
 | `GET` | `/api/datasources` | Aurora resources (with pre-warmed tables) + S3 folders + `ready` flag |
 | `POST` | `/api/datasources/refresh` | Force-refresh resource list |
 | `GET` | `/api/s3/files` | List CSV/TSV/TXT files in an S3 folder (cached) |
-| `POST` | `/api/schema/infer` | Infer schema from a file or Aurora table |
-| `POST` | `/api/schema/confirm` | Save the confirmed schema; build dynamic model; seed if file |
+| `POST` | `/api/schema/infer` | Infer schema from a file, an Aurora table, or a join |
+| `POST` | `/api/schema/confirm` | Save the confirmed schema (+ optional entity column / join); build dynamic model; seed if file |
+| `GET` | `/api/aurora/{resource_id}/tables/{table}/columns` | List a table's columns, for the join builder's key pickers |
+| `POST` | `/api/joins/validate` | Validate a join definition (structure + key type compatibility) |
+| `POST` | `/api/joins/preview` | Row count after each join step (fan-out warning) |
 | `GET` | `/api/schema/active` | Current active schema mapping |
 | `POST` | `/api/connect` | Set active datasource |
 | `GET` | `/api/samples` | Query rows with filters (LIMIT-capped) |

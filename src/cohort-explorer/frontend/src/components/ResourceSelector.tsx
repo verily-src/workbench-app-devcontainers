@@ -10,20 +10,25 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import StorageIcon from "@mui/icons-material/Storage";
-import type { AuroraTable, Datasource, S3File, S3Folder } from "../api";
+import type { AuroraTable, Datasource, JoinStep, S3File, S3Folder } from "../api";
 import { connectResource, fetchDatasources, listS3Files, refreshDatasources } from "../api";
+import JoinBuilder from "./JoinBuilder";
+import TableSelect from "./TableSelect";
 
 export interface ConnectionMeta {
-  sourceType: "file" | "aurora";
+  sourceType: "file" | "aurora" | "join";
   folderId?: string;
   s3Path?: string;
   table?: string;
   sourceName?: string;
+  join?: { resource_id: string; steps: JoinStep[] };
 }
 
 interface Props {
@@ -37,6 +42,8 @@ export default function ResourceSelector({ onConnected }: Props) {
   const [selectedFolder, setSelectedFolder] = useState("");
   const [selectedFile, setSelectedFile] = useState("");
   const [selectedTable, setSelectedTable] = useState("");
+  const [auroraMode, setAuroraMode] = useState<"table" | "join">("table");
+  const [joinSteps, setJoinSteps] = useState<JoinStep[] | null>(null);
   const [s3Files, setS3Files] = useState<S3File[]>([]);
   const [auroraTables, setAuroraTables] = useState<AuroraTable[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -131,6 +138,8 @@ export default function ResourceSelector({ onConnected }: Props) {
     setSelected(value);
     setSelectedTable("");
     setAuroraTables([]);
+    setAuroraMode("table");
+    setJoinSteps(null);
     if (value === "__file__" && selectedFolder) {
       setLoadingFiles(true);
       try {
@@ -163,6 +172,14 @@ export default function ResourceSelector({ onConnected }: Props) {
           s3Path: selectedFile,
           sourceName: fileName,
         });
+      } else if (isAuroraMode && auroraMode === "join" && joinSteps) {
+        await connectResource(selected, selectedFolder || undefined);
+        onConnected(selected, {
+          sourceType: "join",
+          folderId: selectedFolder,
+          join: { resource_id: selected, steps: joinSteps },
+          sourceName: joinSteps.map((s) => s.table).join(" + "),
+        });
       } else if (isAuroraMode) {
         await connectResource(selected, selectedFolder || undefined);
         onConnected(selected, {
@@ -191,6 +208,7 @@ export default function ResourceSelector({ onConnected }: Props) {
   const canConnect = (() => {
     if (connecting) return false;
     if (isFileMode) return !!selectedFile;
+    if (isAuroraMode && auroraMode === "join") return !!joinSteps && joinSteps.length >= 2;
     if (isAuroraMode) return !!selectedTable;
     return true;
   })();
@@ -256,24 +274,36 @@ export default function ResourceSelector({ onConnected }: Props) {
           </Box>
 
           {isAuroraMode && (
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Table / View</InputLabel>
-              <Select
-                value={selectedTable}
+            <ToggleButtonGroup
+              value={auroraMode}
+              exclusive
+              size="small"
+              fullWidth
+              sx={{ mb: 2 }}
+              onChange={(_, value) => {
+                if (!value) return;
+                setAuroraMode(value);
+                setJoinSteps(null);
+              }}
+            >
+              <ToggleButton value="table">Single table</ToggleButton>
+              <ToggleButton value="join">Join tables</ToggleButton>
+            </ToggleButtonGroup>
+          )}
+
+          {isAuroraMode && auroraMode === "table" && (
+            <Box sx={{ mb: 2 }}>
+              <TableSelect
                 label="Table / View"
-                onChange={(e) => setSelectedTable(e.target.value)}
-              >
-                {auroraTables.length === 0 ? (
-                  <MenuItem disabled>No tables found</MenuItem>
-                ) : (
-                  auroraTables.map((t) => (
-                    <MenuItem key={t.name} value={t.name}>
-                      {t.name} ({t.type})
-                    </MenuItem>
-                  ))
-                )}
-              </Select>
-            </FormControl>
+                tables={auroraTables}
+                value={selectedTable}
+                onChange={setSelectedTable}
+              />
+            </Box>
+          )}
+
+          {isAuroraMode && auroraMode === "join" && (
+            <JoinBuilder resourceId={selected} tables={auroraTables} onChange={setJoinSteps} />
           )}
 
           {s3Folders.length > 0 && (

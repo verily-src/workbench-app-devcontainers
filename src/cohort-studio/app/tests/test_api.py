@@ -554,3 +554,210 @@ def test_numeric_chart_on_categorical_column_does_not_500():
     charts = resp.json()["charts"]
     assert charts[0]["data"] == []  # histogram coerced to empty
     assert charts[1]["data"] == []  # scatter coerced to empty
+
+
+# ------------------------------------------------- views-only DuckDB catalogs
+
+@pytest.fixture
+def catalog_ws(monkeypatch, tmp_path):
+    """A local directory stands in for the S3 folder `folder1`: the aws
+    CLI (ls/cp) and the S3 secret are faked; DuckDB reads real files."""
+    import subprocess
+    import shutil
+    import duckdb
+    import catalog
+    import duck
+
+    bucket = tmp_path / "bucket"
+    (bucket / "services" / "year=2024").mkdir(parents=True)
+    (bucket / "services" / "year=2025").mkdir(parents=True)
+    pd.read_csv(FIXTURE).to_parquet(bucket / "samples.parquet")
+    pd.DataFrame({"train": [1, 2]}).to_parquet(
+        bucket / "services" / "year=2024" / "p.parquet")
+    pd.DataFrame({"train": [3]}).to_parquet(
+        bucket / "services" / "year=2025" / "p.parquet")
+    prefix = str(bucket).partition("/")[2]
+    calls = []
+
+    class Done:
+        returncode, stdout, stderr = 0, "", ""
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:3] == ["aws", "s3", "ls"]:
+            out = Done()
+            out.stdout = "\n".join(
+                f"2026-10-01 12:00:00 {p.stat().st_size} "
+                f"{prefix}/{p.relative_to(bucket)}"
+                for p in sorted(bucket.rglob("*")) if p.is_file())
+            return out
+        if cmd[:3] == ["aws", "s3", "cp"]:
+            Path(cmd[4]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(cmd[3], cmd[4])
+            return Done()
+        raise AssertionError(f"unexpected subprocess: {cmd}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(duck, "_connect",
+                        lambda profile, region=None: duckdb.connect())
+    monkeypatch.setattr(main.db, "resolve_s3_uri", lambda rid: str(bucket))
+    monkeypatch.setattr(main.db, "resources_ready", lambda: True)
+    monkeypatch.setattr(main.db, "retry_if_empty", lambda: None)
+    monkeypatch.setattr(main.db, "list_aurora_resources", lambda: [])
+    monkeypatch.setattr(main.db, "list_bq_datasets", lambda: [])
+    monkeypatch.setattr(main.db, "list_s3_folders",
+                        lambda: [{"id": "folder1", "uuid": "u1"}])
+    monkeypatch.setattr(catalog, "DISCOVERY_WAIT_S", 10)
+    monkeypatch.delenv("STUDIO_CATALOG_URLS", raising=False)
+    events = []
+    monkeypatch.setattr(main.lineage, "record",
+                        lambda engine, *a, **k: events.append((a, k)))
+    catalog.invalidate()
+    yield {"bucket": bucket, "calls": calls, "events": events}
+    catalog.invalidate()
+
+
+def _prebuilt_catalog(bucket) -> str:
+    import catalog
+    (bucket / "_catalog").mkdir(exist_ok=True)
+    catalog.build_catalog_file(str(bucket / "_catalog" / "c.duckdb"), [
+        ("samples", f"SELECT * FROM read_parquet('{bucket}/samples.parquet')"),
+        ("liver", f"SELECT * FROM read_parquet('{bucket}/samples.parquet') "
+                  "WHERE tissue = 'liver'")])
+    return "folder1/_catalog/c.duckdb"
+
+
+def test_datasources_include_catalogs(catalog_ws):
+    cid = _prebuilt_catalog(catalog_ws["bucket"])
+    body = client.get("/api/datasources").json()
+    assert body["catalogs_pending"] is False
+    cats = [s for s in body["sources"] if s["kind"] == "catalog"]
+    assert cats == [{"kind": "catalog", "id": cid,
+                     "label": f"{cid} · Catalog"}]
+    # the .duckdb file is not a data file of the S3 folder
+    files = client.get("/api/tables?kind=s3&resource_id=folder1").json()
+    assert not any(f["name"].endswith(".duckdb") for f in files)
+
+
+def test_tables_lists_catalog_views(catalog_ws):
+    cid = _prebuilt_catalog(catalog_ws["bucket"])
+    resp = client.get("/api/tables", params={"kind": "catalog",
+                                             "resource_id": cid})
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert [(r["name"], r["detail"]) for r in rows] == [
+        ("liver", "view"), ("samples", "view")]
+    assert "tissue = 'liver'" in rows[0]["sql"]
+    bad = client.get("/api/tables", params={
+        "kind": "catalog", "resource_id": "folder1/samples.parquet"})
+    assert bad.status_code == 400
+
+
+def test_open_catalog_view_records_lineage(catalog_ws):
+    cid = _prebuilt_catalog(catalog_ws["bucket"])
+    resp = client.post("/api/datasets/open", json={
+        "kind": "catalog", "resource_id": cid, "table": "liver"})
+    assert resp.status_code == 200
+    assert resp.json()["rows"] == 25
+    (args, kwargs), = catalog_ws["events"]
+    assert args[0] == "table_loaded" and args[2] == "liver"
+    assert kwargs["payload"]["source_kind"] == "catalog"
+    assert kwargs["payload"]["resource_id"] == cid
+
+    unknown = client.post("/api/datasets/open", json={
+        "kind": "catalog", "resource_id": cid,
+        "table": "liver; DROP VIEW samples"})
+    assert unknown.status_code == 404
+
+
+def test_open_catalog_view_names_unreadable_source(catalog_ws):
+    cid = _prebuilt_catalog(catalog_ws["bucket"])
+    (catalog_ws["bucket"] / "samples.parquet").unlink()
+    resp = client.post("/api/datasets/open", json={
+        "kind": "catalog", "resource_id": cid, "table": "samples"})
+    assert resp.status_code == 502
+    assert "samples.parquet" in resp.json()["detail"]
+
+
+def test_publish_catalog_builds_uploads_and_is_discoverable(catalog_ws):
+    import catalog
+    bucket = catalog_ws["bucket"]
+    client.get("/api/datasources")  # warm discovery before publishing
+    resp = client.post("/api/catalogs/build", json={
+        "resource_id": "folder1", "name": "rail",
+        "views": [{"name": "early_trains",
+                   "sql": "SELECT * FROM services WHERE train < 3"}]})
+    assert resp.status_code == 200, resp.text
+    out = resp.json()
+    assert out["catalog_id"] == "folder1/_catalog/rail.duckdb"
+    assert out["uri"] == f"{bucket}/_catalog/rail.duckdb"
+    assert set(out["views"]) == {"samples", "services", "early_trains"}
+    assert out["skipped"] == []
+    cp = [c for c in catalog_ws["calls"] if c[:3] == ["aws", "s3", "cp"]]
+    assert len(cp) == 1 and cp[0][4] == out["uri"]
+    assert cp[0][cp[0].index("--profile") + 1] == "folder1"
+    uploaded = str(bucket / "_catalog" / "rail.duckdb")
+    assert catalog.verify_views_only(uploaded) == 3
+    (args, kwargs), = [e for e in catalog_ws["events"]
+                       if e[0][0] == "catalog_published"]
+    assert args[2] == out["uri"]
+
+    sources = client.get("/api/datasources").json()["sources"]
+    assert out["catalog_id"] in [s["id"] for s in sources]
+    opened = client.post("/api/datasets/open", json={
+        "kind": "catalog", "resource_id": out["catalog_id"],
+        "table": "services"}).json()
+    assert opened["rows"] == 3
+    early = client.post("/api/datasets/open", json={
+        "kind": "catalog", "resource_id": out["catalog_id"],
+        "table": "early_trains"}).json()
+    assert early["rows"] == 2
+
+
+@pytest.mark.parametrize("payload", [
+    {"name": "bad/name"},
+    {"name": "ok", "views": [{"name": "x", "sql": "DROP TABLE t"}]},
+    {"name": "ok", "views": [{"name": "x",
+                              "sql": "SELECT 1; DELETE FROM t"}]},
+    {"name": "ok", "views": [{"name": "bad name", "sql": "SELECT 1"}]},
+    {"name": "ok", "views": [{"name": "x", "sql": "SELECT * FROM nope"}]},
+])
+def test_publish_catalog_rejects_bad_input(catalog_ws, payload):
+    resp = client.post("/api/catalogs/build",
+                       json={"resource_id": "folder1", **payload})
+    assert resp.status_code == 400
+    assert not any(c[:3] == ["aws", "s3", "cp"] for c in catalog_ws["calls"])
+
+
+def test_saved_view_restores_catalog_tab(catalog_ws, monkeypatch, tmp_path):
+    import views
+    from sqlalchemy import create_engine
+    cid = _prebuilt_catalog(catalog_ws["bucket"])
+    engine = create_engine(f"sqlite:///{tmp_path/'views.db'}")
+    monkeypatch.setattr(views.db, "get_engine_for_resource", lambda rid: engine)
+    views._prepared.clear()
+    source = {"kind": "catalog", "resource_id": cid, "table": "liver"}
+    assert client.post("/api/views", json={
+        "kind": "aurora", "resource_id": "db1", "name": "cat view",
+        "active": 0, "datasets": [{"source": source, "title": "liver"}],
+    }).status_code == 200
+    got = client.get("/api/views/one", params={
+        "kind": "aurora", "resource_id": "db1", "name": "cat view"}).json()
+    assert got["datasets"][0]["source"] == source
+    reopened = client.post("/api/datasets/open", json=got["datasets"][0]["source"])
+    assert reopened.status_code == 200 and reopened.json()["rows"] == 25
+
+
+def test_mcp_tools_handle_catalog(catalog_ws):
+    import json
+    import mcp_server
+    if not mcp_server.AVAILABLE:
+        pytest.skip("mcp not installed")
+    cid = _prebuilt_catalog(catalog_ws["bucket"])
+    listed = json.loads(mcp_server.list_datasources())
+    assert {"kind": "catalog", "id": cid} in listed["sources"]
+    names = [v["name"] for v in json.loads(
+        mcp_server.list_tables("catalog", cid))]
+    assert names == ["liver", "samples"]
+    opened = json.loads(mcp_server.open_dataset("catalog", cid, "liver"))
+    assert opened["rows"] == 25

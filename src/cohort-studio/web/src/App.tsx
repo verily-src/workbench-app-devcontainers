@@ -6,6 +6,7 @@ import { LineageView } from "./components/LineageView";
 import { SettingsView } from "./components/SettingsView";
 import { SavedViews } from "./components/SavedViews";
 import { JoinPanel } from "./components/JoinPanel";
+import { PublishCatalog } from "./components/PublishCatalog";
 import { WorkflowsView } from "./components/WorkflowsView";
 import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
@@ -112,8 +113,9 @@ export default function App() {
         setSources(out.sources);
         if (out.ready) setReady(true);
         // keep polling while empty: on Workbench VMs the wb CLI often
-        // is not logged in yet when the app starts (backend retries too)
-        if (out.ready && out.sources.length > 0) {
+        // is not logged in yet when the app starts (backend retries too).
+        // Catalog discovery lists S3 folders in the background.
+        if (out.ready && out.sources.length > 0 && !out.catalogs_pending) {
           window.clearInterval(pollRef.current);
         }
       } catch { /* backend still starting */ }
@@ -380,7 +382,7 @@ export default function App() {
         <select value={table} onChange={(e) => setTable(e.target.value)}>
           <option value="" disabled>Choose…</option>
           {tables.map((t) => (
-            <option key={t.name} value={t.name}>
+            <option key={t.name} value={t.name} title={t.sql ?? undefined}>
               {t.name} ({t.detail})
             </option>
           ))}
@@ -391,6 +393,12 @@ export default function App() {
             Load table
           </button>
         </div>
+        {source?.kind === "s3" && (
+          <PublishCatalog source={source} onToast={alerts.pushToast}
+                          onPublished={() => api.datasources()
+                            .then((out) => setSources(out.sources))
+                            .catch(() => undefined)} />
+        )}
 
         <div className="section-label">Upload</div>
         <label className="upload-btn">

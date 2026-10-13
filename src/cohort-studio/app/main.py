@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 
 import agent
 import bq
+import catalog
 import config
 import datasets
 import db
@@ -114,6 +115,18 @@ class SubmitJobRequest(BaseModel):
     profile: str = ""
 
 
+class CatalogView(BaseModel):
+    name: str
+    sql: str
+
+
+class BuildCatalogRequest(BaseModel):
+    resource_id: str              # S3 folder to catalog and upload into
+    name: str
+    views: list[CatalogView] = Field(default_factory=list)
+    include_files: bool = True
+
+
 class DeriveRequest(BaseModel):
     op: str                       # "bin" | "formula" | "map"
     name: str
@@ -145,6 +158,14 @@ def _load_frame(kind: str, resource_id: str, table: str) -> pd.DataFrame:
                 return bq.fetch_table(d["project"], d["dataset"], table,
                                       queries.ROW_CAP)
         raise HTTPException(404, f"Unknown BigQuery dataset: {resource_id}")
+    if kind == "catalog":
+        try:
+            return catalog.fetch_catalog_view(resource_id, table,
+                                              queries.ROW_CAP)
+        except catalog.UnknownView as e:
+            raise HTTPException(404, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     raise HTTPException(400, f"Unknown datasource kind: {kind}")
 
 
@@ -188,18 +209,22 @@ def self_update():
 def datasources():
     ready = db.resources_ready()
     sources = []
+    folders = []
     if ready:
         db.retry_if_empty()
         for r in db.list_aurora_resources():
             sources.append({"kind": "aurora", "id": r["id"],
                             "label": f"{r['id']} · Aurora"})
-        for r in db.list_s3_folders():
+        folders = db.list_s3_folders()
+        for r in folders:
             sources.append({"kind": "s3", "id": r["id"], "uuid": r.get("uuid"),
                             "label": f"{r['id']} · S3"})
         for r in db.list_bq_datasets():
             sources.append({"kind": "bq", "id": r["id"],
                             "label": f"{r['id']} · BigQuery"})
-    return {"ready": ready, "sources": sources}
+    catalogs, pending = catalog.discover([r["id"] for r in folders])
+    sources.extend(catalogs)
+    return {"ready": ready, "sources": sources, "catalogs_pending": pending}
 
 
 @app.get("/api/workflows")
@@ -260,11 +285,38 @@ def tables(kind: str, resource_id: str):
                     return [{"name": t, "detail": "table"}
                             for t in bq.list_tables(d["project"], d["dataset"])]
             raise HTTPException(404, f"Unknown dataset: {resource_id}")
+        if kind == "catalog":
+            try:
+                objects = catalog.list_catalog(resource_id)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+            return [{"name": o["name"], "detail": o["kind"], "sql": o["sql"]}
+                    for o in objects]
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
     raise HTTPException(400, f"Unknown kind: {kind}")
+
+
+@app.post("/api/catalogs/build")
+def build_catalog(req: BuildCatalogRequest):
+    """Publish a views-only DuckDB catalog over an S3 folder's data files
+    to `<folder>/_catalog/<name>.duckdb`."""
+    try:
+        out = catalog.publish(req.resource_id, req.name,
+                              [(v.name, v.sql) for v in req.views],
+                              include_files=req.include_files)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "catalog_published", "catalog",
+                   out["uri"], payload={"resource_id": req.resource_id,
+                                        "views": out["views"],
+                                        "skipped": len(out["skipped"]),
+                                        "bytes": out["bytes"]})
+    return out
 
 
 @app.post("/api/datasets/open")

@@ -25,6 +25,7 @@ from cache import ttl_cache
 logger = logging.getLogger(__name__)
 
 DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".txt", ".json", ".ndjson")
+CATALOG_SUFFIX = ".duckdb"
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9._\-/ ()+=]+$")
 # Workspace S3 buckets live in the Aurora cluster's region.
 DEFAULT_REGION = os.environ.get("STUDIO_S3_REGION", "us-east-1")
@@ -33,7 +34,8 @@ DEFAULT_REGION = os.environ.get("STUDIO_S3_REGION", "us-east-1")
 MAX_LISTING = 500
 
 
-def parse_s3_ls(output: str, prefix: str = "") -> list[str]:
+def parse_s3_ls(output: str, prefix: str = "",
+                suffixes: tuple[str, ...] = DATA_SUFFIXES) -> list[str]:
     """File keys from `aws s3 ls [--recursive]` lines: 'date time size key'.
 
     With --recursive the key is the full path from the bucket root;
@@ -48,12 +50,16 @@ def parse_s3_ls(output: str, prefix: str = "") -> list[str]:
             if prefix and key.startswith(prefix):
                 key = key[len(prefix):].lstrip("/")
             files.append(key)
-    return [f for f in files if f.lower().endswith(DATA_SUFFIXES)][:MAX_LISTING]
+    return [f for f in files if f.lower().endswith(suffixes)][:MAX_LISTING]
 
 
 @ttl_cache(ttl=300)
-def list_s3_files(resource_id: str) -> list[str]:
-    """Recursive listing: workspace folders often nest files in subfolders."""
+def _s3_ls(resource_id: str) -> tuple[str, str]:
+    """Raw recursive `aws s3 ls` output and the folder's key prefix.
+
+    Shared by the data-file and catalog listings so one folder costs one
+    aws call per TTL.
+    """
     uri = db.resolve_s3_uri(resource_id)
     # s3://bucket/some/prefix -> "some/prefix" (what --recursive keys start with)
     prefix = uri.removeprefix("s3://").partition("/")[2]
@@ -65,9 +71,22 @@ def list_s3_files(resource_id: str) -> list[str]:
         detail = (result.stderr or result.stdout or "").strip().split("\n")[-1]
         raise RuntimeError(
             f"aws s3 ls failed for {resource_id}: {detail or 'exit 255'}")
-    files = parse_s3_ls(result.stdout, prefix=prefix)
-    logger.info("Found %d data files in %s", len(files), uri)
+    return result.stdout, prefix
+
+
+@ttl_cache(ttl=300)
+def list_s3_files(resource_id: str) -> list[str]:
+    """Recursive listing: workspace folders often nest files in subfolders."""
+    output, prefix = _s3_ls(resource_id)
+    files = parse_s3_ls(output, prefix=prefix)
+    logger.info("Found %d data files in %s", len(files), resource_id)
     return files
+
+
+def list_s3_catalogs(resource_id: str) -> list[str]:
+    """Views-only DuckDB catalog files (*.duckdb) in a folder."""
+    output, prefix = _s3_ls(resource_id)
+    return parse_s3_ls(output, prefix=prefix, suffixes=(CATALOG_SUFFIX,))
 
 
 def _run_credential_process(profile: str) -> dict:
@@ -134,15 +153,20 @@ def _connect(profile: str | None, region: str = DEFAULT_REGION):
     return con
 
 
-def _reader_sql(uri: str) -> str:
-    if not _SAFE_KEY.match(uri.replace("s3://", "").replace("gs://", "")):
+def _reader_sql(uri: str, hive: bool = False) -> str:
+    """Reader call for one file, or (hive=True) a partition glob."""
+    key = uri.replace("s3://", "").replace("gs://", "")
+    if hive:
+        key = key.replace("*", "")
+    if not _SAFE_KEY.match(key):
         raise ValueError(f"Unsupported characters in path: {uri!r}")
+    opts = ", hive_partitioning = true" if hive else ""
     low = uri.lower()
     if low.endswith(".parquet"):
-        return f"read_parquet('{uri}')"
+        return f"read_parquet('{uri}'{opts})"
     if low.endswith((".json", ".ndjson")):
-        return f"read_json_auto('{uri}')"
-    return f"read_csv_auto('{uri}')"
+        return f"read_json_auto('{uri}'{opts})"
+    return f"read_csv_auto('{uri}'{opts})"
 
 
 def fetch_file(uri: str, cap: int, profile: str | None = None,

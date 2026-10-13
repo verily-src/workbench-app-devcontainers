@@ -125,7 +125,13 @@ export interface OpenResult {
 
 export const api = {
   datasources: () =>
-    request<{ ready: boolean; sources: Source[] }>("/api/datasources"),
+    request<{ ready: boolean; sources: Source[];
+              catalogs_pending?: boolean }>("/api/datasources"),
+
+  publishCatalog: (resourceId: string, name: string) =>
+    request<{ catalog_id: string; uri: string; views: string[];
+              skipped: { name: string; error: string }[]; bytes: number }>(
+      "/api/catalogs/build", post({ resource_id: resourceId, name })),
 
   tables: (kind: string, resourceId: string) =>
     request<TableInfo[]>(

@@ -53,6 +53,13 @@ per-resource); S3 access uses a `credential_process` AWS profile wired by
 `wb workspace configure-aws`, exported into a DuckDB `SECRET ... PROVIDER
 config` (DuckDB can't run `credential_process` itself).
 
+Views-only DuckDB catalogs (`catalog.py`) use the same path. The app
+creates the secret from the profile of the folder that holds the
+`.duckdb` file, then attaches the file `READ_ONLY` and queries its views.
+DuckDB reads the Parquet that each view references with that secret.
+Publishing builds the file locally (views only, verified to have no
+tables) and uploads it with `aws s3 cp` to `<folder>/_catalog/`.
+
 ## 2. Restart-to-deploy — what "Update" does
 
 The container runs uvicorn as PID 1 under `restart: always`. Updating is:

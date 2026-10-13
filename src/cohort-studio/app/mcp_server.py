@@ -44,23 +44,32 @@ if AVAILABLE:
     @mcp.tool()
     def list_datasources() -> str:
         """List available datasources (Aurora databases, S3 folders,
-        BigQuery datasets) in the workspace."""
+        BigQuery datasets, views-only DuckDB catalogs) in the workspace."""
+        import catalog
         import db
+        folders = db.list_s3_folders()
+        catalogs, pending = catalog.discover([r["id"] for r in folders])
         sources = ([{"kind": "aurora", "id": r["id"]}
                     for r in db.list_aurora_resources()]
-                   + [{"kind": "s3", "id": r["id"]}
-                      for r in db.list_s3_folders()]
+                   + [{"kind": "s3", "id": r["id"]} for r in folders]
                    + [{"kind": "bq", "id": r["id"]}
-                      for r in db.list_bq_datasets()])
-        return json.dumps({"ready": db.resources_ready(), "sources": sources})
+                      for r in db.list_bq_datasets()]
+                   + [{"kind": "catalog", "id": c["id"]} for c in catalogs])
+        return json.dumps({"ready": db.resources_ready(), "sources": sources,
+                           "catalogs_pending": pending})
 
     @mcp.tool()
     def list_tables(kind: str, resource_id: str) -> str:
-        """List tables (Aurora/BigQuery) or data files (S3) in a
-        datasource. kind is 'aurora', 's3', or 'bq'."""
+        """List tables (Aurora/BigQuery), data files (S3), or views
+        (catalog) in a datasource. kind is 'aurora', 's3', 'bq', or
+        'catalog'."""
         import bq
+        import catalog
         import db
         import duck
+        if kind == "catalog":
+            return json.dumps([{"name": o["name"], "sql": o["sql"]}
+                               for o in catalog.list_catalog(resource_id)])
         if kind == "aurora":
             items = [t["name"] for t in db.list_aurora_tables(resource_id)]
         elif kind == "s3":
@@ -82,6 +91,7 @@ if AVAILABLE:
         and a column profile (names, filter kinds, categorical values,
         numeric ranges)."""
         import bq
+        import catalog
         import datasets
         import db
         import duck
@@ -90,6 +100,9 @@ if AVAILABLE:
             df = db.fetch_aurora_table(resource_id, table, queries.ROW_CAP)
         elif kind == "s3":
             df = duck.fetch_s3_file(resource_id, table, queries.ROW_CAP)
+        elif kind == "catalog":
+            df = catalog.fetch_catalog_view(resource_id, table,
+                                            queries.ROW_CAP)
         elif kind == "bq":
             for d in db.list_bq_datasets():
                 if d["id"] == resource_id:

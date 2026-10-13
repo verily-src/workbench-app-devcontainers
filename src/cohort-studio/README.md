@@ -62,6 +62,41 @@ still running, so you know the data may be incomplete. The `wb workflow`
 command is optional: if the container's build or workspace can't reach
 it, the tab degrades to an "unavailable" state and never errors.
 
+## Views-only DuckDB catalogs
+
+A DuckDB file can hold only `VIEW` definitions that point at data
+elsewhere (see the DuckDB post "A DuckDB Database with No Data in It").
+The file stays a few hundred KB at any data size and works as a shared,
+curated catalog: one URL, many tables.
+
+- **Consume.** Any `*.duckdb` file in a workspace S3 folder shows up as a
+  datasource of kind `catalog`, id `<resource_id>/<path>.duckdb` (for
+  example `my_folder/_catalog/rail.duckdb`). Extra https catalogs:
+  `STUDIO_CATALOG_URLS` (comma-separated `https://` URLs; only listed
+  URLs can be attached). The app creates the S3 secret from the folder's
+  profile, then `ATTACH '<uri>' AS cat (READ_ONLY)`. The table list shows
+  the catalog's views (hover a view to see its SQL). Opening a view runs
+  `SELECT * FROM cat.<view> LIMIT <row cap>`, so each load reads current
+  data.
+- **Build and host.** Select an S3 folder, enter a name, and click
+  **Publish catalog** (`POST /api/catalogs/build`). The app writes a local
+  catalog with one view per data file. A hive-partitioned set
+  (`dir/year=*/…`) becomes one `read_parquet('…/dir/*=*/*.parquet',
+  hive_partitioning = true)` view. Every view uses a fully qualified
+  `s3://` location. The app checks that the file holds no tables, then
+  uploads it to `<folder>/_catalog/<name>.duckdb` with the folder's
+  profile. The API also accepts custom views (`views: [{name, sql}]`,
+  one `SELECT` each).
+- **Update.** You cannot change a catalog in place, because S3 and https
+  attachments are read-only. To update it, publish again with the same
+  name. You can also edit a local copy (`CREATE OR REPLACE VIEW …`, for
+  example to point at a new layout or to rename a column back) and
+  upload the copy.
+- **Limitations.** Readers need access to the catalog file *and* to
+  every source its views reference. A view over a bucket that the
+  folder's profile can't read fails, and the error names that source.
+  Speed depends on the network and on the file layout.
+
 ## Development
 
 ```bash

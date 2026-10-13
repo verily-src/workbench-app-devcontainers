@@ -1,5 +1,5 @@
 export interface Source {
-  kind: "aurora" | "s3" | "bq";
+  kind: "aurora" | "s3" | "bq" | "catalog";
   id: string;
   label: string;
   uuid?: string;  // resource UUID — matches a workflow job's output bucket
@@ -8,6 +8,7 @@ export interface Source {
 export interface TableInfo {
   name: string;
   detail: string;
+  sql?: string | null;  // catalog views: the view definition
 }
 
 export interface ColumnProfile {

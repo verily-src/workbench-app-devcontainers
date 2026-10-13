@@ -106,6 +106,6 @@ export function useWorkflowAlerts() {
     return () => { cancelled = true; window.clearInterval(handle); };
   }, [subs.length, fire]);
 
-  return { isSubscribed, toggle, toasts, dismissToast,
+  return { isSubscribed, toggle, toasts, dismissToast, pushToast,
            subscribedCount: subs.length };
 }

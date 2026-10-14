@@ -111,14 +111,13 @@ case "${CLOUD}" in
             get_vm_resource_credentials | jq -er '
                 .logs
                 | (.sasToken // empty) as $sas_token
-                | (.expiryTime // empty | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) as $expiry
                 | .resourceUri
                 | capture(
                     "^https://(?<account>[^.]+)\\.blob\\.[^/]+/(?<container>[^/]+)(?<path>/.*)$"
                   )
-                | [.account, .container, .path, $sas_token, $expiry]
+                | [.account, .container, .path, $sas_token]
                 | @tsv
-            ' | read -r STORAGE_ACCOUNT STORAGE_CONTAINER STORAGE_PATH SAS_TOKEN EXPIRES_AT || return 1
+            ' | read -r STORAGE_ACCOUNT STORAGE_CONTAINER STORAGE_PATH SAS_TOKEN || return 1
 
             # shellcheck disable=SC2016
             envsubst '${STORAGE_ACCOUNT} ${STORAGE_CONTAINER} ${STORAGE_PATH} ${SAS_TOKEN}' \
@@ -127,13 +126,13 @@ case "${CLOUD}" in
 
         refresh_credentials
         (
-            while true; do
-                sleep "$((EXPIRES_AT - $(date +%s) - 300))"
-                until refresh_credentials ; do
-                    echo "Failed to refresh Fluent Bit credentials; retrying in 30 seconds" >&2
-                    sleep 30
-                done
-                docker kill --signal=HUP fluent-bit
+            while sleep 60; do
+                config_hash=$(sha256sum < "${CONFIG}")
+                if ! refresh_credentials ; then
+                    echo "Failed to refresh Fluent Bit credentials; retrying in 60 seconds" >&2
+                elif [[ "$(sha256sum < "${CONFIG}")" != "${config_hash}" ]]; then
+                    docker kill --signal=HUP fluent-bit
+                fi
             done
         ) &
         ;;

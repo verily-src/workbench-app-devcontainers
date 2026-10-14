@@ -5,6 +5,13 @@
 
 source /home/core/agent.env
 
+# Queries Azure VM Instance Metadata Service (IMDS) given a path and query params
+function _query_imds() {
+  curl --retry 5 -s -f --noproxy "*" -H "Metadata:true" \
+    "http://169.254.169.254/metadata${1}" -G -d "api-version=2025-04-07"
+}
+readonly -f _query_imds
+
 # Azure VM uses tags for read-only metadata prefixed with vwbusr:
 function get_metadata_value() {
   if [[ $# -lt 2 ]]; then
@@ -13,8 +20,7 @@ function get_metadata_value() {
   fi
 
   local tags
-  tags=$(curl --retry 5 -s -f --noproxy "*" -H "Metadata:true" \
-    "http://169.254.169.254/metadata/instance/compute/tagsList?api-version=2025-04-07") || {
+  tags=$(_query_imds "/instance/compute/tagsList") || {
     echo "Error: failed to fetch instance tags when retrieving ${1} metadata key" >&2
     return 1
   }

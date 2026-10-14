@@ -1,0 +1,8 @@
+[Unit]
+Description=Run Workbench proxy-readiness
+Requires=workbench-maintenance.service
+After=workbench-maintenance.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/core/probe-proxy-readiness.sh

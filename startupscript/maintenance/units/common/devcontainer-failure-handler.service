@@ -1,0 +1,10 @@
+[Unit]
+Description=Report Workbench app startup failure
+Requires=workbench-maintenance.service
+After=workbench-maintenance.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/workbench/maintenance.env
+EnvironmentFile=/etc/workbench/app.env
+ExecStart=/usr/lib/workbench/maintenance/app-host.sh failure

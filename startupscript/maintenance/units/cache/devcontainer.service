@@ -1,0 +1,16 @@
+[Unit]
+Description=Run Workbench app scripts
+After=workbench-maintenance.service docker.service
+Wants=docker.service
+Requires=workbench-maintenance.service
+OnFailure=devcontainer-failure-handler.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/workbench/maintenance.env
+EnvironmentFile=/etc/workbench/app.env
+Environment=PATH=/opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+ExecStart=/usr/lib/workbench/maintenance/app-host.sh startup
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal+console

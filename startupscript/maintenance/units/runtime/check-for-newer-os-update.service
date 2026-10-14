@@ -1,0 +1,12 @@
+[Unit]
+Description=Stage an approved Workbench OS version
+Requires=workbench-maintenance.service
+Wants=network-online.target update-engine.service docker.service
+After=workbench-maintenance.service network-online.target update-engine.service docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/workbench/maintenance.env
+EnvironmentFile=/etc/workbench/app.env
+ExecStart=/usr/lib/workbench/maintenance/app-host.sh os-update
+TimeoutStartSec=30min

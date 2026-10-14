@@ -30,6 +30,30 @@ function get_metadata_value() {
 }
 readonly -f get_metadata_value
 
+# Retrieves IMDS attested document with a custom nonce.
+# This token is used to uniquely identify Azure VM in Workbench API calls.
+# See https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service?tabs=linux#attested-data
+function get_access_token() {
+  # The nonce is the token expiry in epoch seconds,
+  # followed by the resource UUID bytes in unpadded URL-safe base64.
+  # It fits within "up to 32 random alphanumeric characters" limit from Azure spec:
+  # https://github.com/Azure/azure-rest-api-specs/blob/main/specification/imds/data-plane/InstanceMetadataService/stable/2023-07-01/imds.json
+  local expires_at resource_id_enc
+  expires_at=$(date -d "+15 minutes" +%s)
+  resource_id_enc=$(
+    printf '%s' "${BACKEND//-/}" | basenc --base16 -d | basenc --base64url | tr -d '=') || return 1
+
+  _query_imds "/attested/document?nonce=${expires_at}${resource_id_enc}" |
+      jq -er 'if (.encoding // "" | ascii_downcase) == "pkcs7"
+              then .signature // empty
+              else error("Azure IMDS returned attested document with unknown encoding: \(.encoding)")
+              end' || {
+    echo "Error: failed to get attested document from Azure IMDS" >&2
+    return 1
+  }
+}
+readonly -f get_access_token
+
 # Retrieves logs and metadata storage credentials for the Azure VM resource from WSM.
 # These credentials are valid for 1 hour, and the CLI reuses cached credentials until 5 minutes before expiry.
 function get_vm_resource_credentials() {

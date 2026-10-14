@@ -204,13 +204,59 @@ def test_join_datasets():
     body = resp.json()
     assert body["rows"] == 2  # inner join keeps a, b
     cols = {c["name"] for c in body["columns"]}
-    assert {"tissue", "rin"} <= cols
+    assert {"tissue", "right → rin"} <= cols
+    assert body["join"]["truncated"] is False
 
     # bad key -> 400
     bad = client.post("/api/datasets/join", json={
         "left_id": left["dataset_id"], "right_id": right["dataset_id"],
         "left_on": "nope", "right_on": "sample_id", "how": "inner"})
     assert bad.status_code == 400
+
+
+def test_join_pipeline_preview_and_suggest():
+    import pandas as pd
+    import datasets as ds_mod
+    base = ds_mod.open_dataset(pd.DataFrame({
+        "sample_id": ["a", "b", "c"], "donor_id": [1, 2, 9]}), "f / samples.csv")
+    visits = ds_mod.open_dataset(pd.DataFrame({
+        "sample_id": ["a", "a", "b"], "visit": [1, 2, 1]}), "f / visits.csv")
+    donors = ds_mod.open_dataset(pd.DataFrame({
+        "id": [1, 2], "sex": ["F", "M"]}), "f / donors.csv")
+    pipeline = {"base_id": base["dataset_id"], "steps": [
+        {"right_id": visits["dataset_id"], "how": "left", "columns": ["visit"],
+         "conditions": [{"left": "sample_id", "op": "=", "right": "sample_id"}]},
+        {"right_id": donors["dataset_id"], "how": "inner", "alias": "donor",
+         "columns": ["sex"],
+         "conditions": [{"left": "donor_id", "op": "=", "right": "id"}]},
+    ]}
+
+    preview = client.post("/api/datasets/join/preview", json=pipeline)
+    assert preview.status_code == 200
+    p = preview.json()
+    assert p["columns"] == ["sample_id", "donor_id", "visits → visit", "donor → sex"]
+    assert [s["rows"] for s in p["steps"]] == [4, 3]
+    assert p["total_rows"] == 3 and len(p["sample"]) == 3
+
+    joined = client.post("/api/datasets/join", json=pipeline)
+    assert joined.status_code == 200
+    assert joined.json()["rows"] == 3
+    assert joined.json()["source"] == "f / samples.csv + f / visits.csv + f / donors.csv"
+
+    anti = client.post("/api/datasets/join/preview", json={
+        "base_id": base["dataset_id"], "steps": [
+            {"right_id": visits["dataset_id"], "how": "anti",
+             "conditions": [{"left": "sample_id", "op": "=", "right": "sample_id"}]}]})
+    assert anti.json()["sample"] == [["c", 9]]
+
+    sug = client.get("/api/datasets/join/suggest", params={
+        "left_id": base["dataset_id"], "right_id": donors["dataset_id"]})
+    assert sug.status_code == 200
+    assert sug.json()[0]["left"] == "donor_id" and sug.json()[0]["right"] == "id"
+
+    gone = client.post("/api/datasets/join/preview", json={
+        "base_id": "missing", "steps": pipeline["steps"]})
+    assert gone.status_code == 404
 
 
 def test_join_rejects_bad_how():

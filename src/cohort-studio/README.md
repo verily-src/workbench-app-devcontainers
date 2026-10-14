@@ -49,6 +49,67 @@ agent history stays inside the workspace governance boundary and is
 exportable to an OTel collector later. View it under **Lineage → Agent
 activity**. See `docs/architecture.md` for diagrams.
 
+## Agents
+
+Studio has two built-in agents and one entry point for outside agents.
+All three work through the same engine layer as the UI (`datasets.py`,
+the datasource engines, `llm.validate_filters`), so an agent can only
+reach data that the UI can reach.
+
+| Agent | Code | Endpoint | Can change the UI |
+|---|---|---|---|
+| Ask AI (filter translator) | `app/llm.py` | `POST /api/datasets/{id}/ask` | Yes: returns a filter set |
+| Chat assistant | `app/agent.py`, `app/providers.py` | `POST /api/datasets/{id}/chat` | Yes: filters and charts |
+| MCP server (outside agents) | `app/mcp_server.py` | `/mcp` (streamable HTTP) | No: read and query only |
+
+**Ask AI** makes one model call with structured output and no tools. It
+turns a question such as "liver samples with RIN above 7" into the
+complete new filter set, using the dataset's column profile and the
+current filters. Refinements add to the filters, "instead" replaces
+them, and "clear" removes them. The result is checked against the column
+profile before it reaches the UI: unknown columns and values are
+dropped, and ranges are clamped to the column's bounds. Each call is recorded in lineage as `ask_ai`.
+
+**Chat assistant** is a tool-using agent for the open dataset. Its system
+prompt holds the dataset name, the column profile and the current
+filters and charts. It is told to ground every number in a tool result
+and to build what the user asks to see rather than describe it. Tools:
+
+- `run_query`: count the rows that match a filter set and preview five.
+- `aggregate`: count, mean, median, min, max, sum or nunique, optionally
+  grouped (top 25 groups) and filtered.
+- `set_filters`: replace the UI filters. The grid, counts and charts
+  update.
+- `add_chart` / `remove_chart`: bar, histogram, scatter or heatmap cards.
+
+Anthropic runs on the SDK's tool runner. OpenAI and Gemini use one
+OpenAI-compatible loop of at most 8 turns. Requests are stateless: the
+browser sends the last 30 messages, and the endpoint returns the final
+filters, charts, a list of the actions taken, and token usage. Every
+turn is saved to `_agent_turn` with a trace id and is listed under
+**Lineage → Agent activity** (`GET /api/agent/turns`).
+
+**MCP server** lets outside agents drive the cohort builder: Claude Code
+and its subagents, a managed agent, or any MCP client. It exposes the
+following tools, in the order an agent typically uses them:
+
+1. `list_datasources`: Aurora databases, S3 folders, BigQuery datasets
+   and views-only DuckDB catalogs.
+2. `list_tables`: tables, data files or catalog views (with their SQL).
+3. `open_dataset`: load a table (up to the row cap) and return a
+   `dataset_id` and column profile.
+4. `query_dataset`: cross-filtered counts and a page of rows.
+
+The MCP server can't change the UI or write data. On a Workbench VM the
+public URL is behind the app proxy, which needs browser cookies, so
+connect from inside the workspace (`http://localhost:8080/mcp` on the
+VM, or a port-forward). The `mcp` package is optional; without it the
+app runs and `/mcp` isn't mounted. Example for Claude Code:
+
+```bash
+claude mcp add --transport http cohort-studio http://localhost:8080/mcp
+```
+
 ## Workflow awareness
 
 The **Workflows** tab lists Workbench workflow jobs (`wb workflow job
@@ -94,6 +155,34 @@ curated catalog: one URL, many tables.
   every source its views reference. A view over a bucket that the
   folder's profile can't read fails, and the error names that source.
   Speed depends on the network and on the file layout.
+
+## Joining datasets
+
+Joins work like Metabase's notebook editor. Open the **Join** panel on a
+loaded dataset (the base), then add up to 6 steps. Each step joins one
+more open dataset onto the result so far:
+
+- **Join type**, shown as a Venn diagram: `inner`, `left`, `right`,
+  `full`, `semi` (keep base rows that have a match) or `anti` (keep base
+  rows with no match). Semi and anti answer "has a visit" and "has no
+  visit" questions and add no columns.
+- **Conditions**: one or more, combined with AND, each using `=`, `!=`,
+  `<`, `<=`, `>` or `>=`. If the two key columns have different types,
+  `=` and `!=` compare them as text and the preview says so. Other
+  operators need matching types.
+- **Columns**: choose which columns of the joined table to bring in.
+  They are named `<alias> → <column>`.
+- **Suggestions**: likely key pairs, found by matching names (including
+  `id` ↔ `<table>_id`) and scored by how many base values appear on the
+  other side.
+
+**Preview** shows the row count after each step and a 20-row sample.
+**Join into new tab** runs the pipeline in DuckDB over the in-memory
+frames and opens the result as a new dataset, capped at the row cap; a
+toast reports the row count and whether the result was truncated.
+
+API: `POST /api/datasets/join`, `POST /api/datasets/join/preview`,
+`GET /api/datasets/join/suggest`. Code: `app/joins.py`.
 
 ## Development
 

@@ -283,6 +283,19 @@ def test_join_two_tabs_into_new_dataset(loaded_page: Page):
            ).to_be_visible(timeout=10000)
 
 
+def test_join_preview_shows_funnel_and_sample(loaded_page: Page):
+    loaded_page.locator('input[type="file"]').set_input_files(PHENO_CSV)
+    expect(loaded_page.locator(".tab", has_text="phenotypes.csv")
+           ).to_be_visible(timeout=15000)
+    loaded_page.locator(".tab-join").click()
+    panel = loaded_page.locator(".join-panel")
+    panel.get_by_role("radio", name="No match").click()
+    panel.get_by_role("button", name="Preview").click()
+    funnel = panel.locator(".join-funnel")
+    expect(funnel).to_contain_text("no match", timeout=10000)
+    expect(panel.locator(".join-sample th").first).to_have_text("sample_id")
+
+
 def test_export_pdf_downloads(loaded_page: Page):
     # Export PDF is fully client-side (charts live in the browser); assert
     # a real .pdf download is produced with non-empty bytes.

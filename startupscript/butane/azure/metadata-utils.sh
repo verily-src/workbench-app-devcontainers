@@ -58,6 +58,17 @@ readonly -f get_access_token
 # These credentials are valid for 1 hour, and the CLI reuses cached credentials until 5 minutes before expiry.
 function get_vm_resource_credentials() (
   { set -euo pipefail +o xtrace; } 2>/dev/null
+
+  cred_cache_dir="/run/metadata-utils"
+  cred_cache_file="${cred_cache_dir}/vm-resource-credentials.json"
+
+  if jq -e '[.logs.expiryTime, .metadata.expiryTime]
+      | map(sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)
+      | min - 300 > now' "${cred_cache_file}" &>/dev/null; then
+    cat "${cred_cache_file}"
+    return
+  fi
+
   declare -F curl_with_auth >/dev/null || source /home/core/service-utils.sh
 
   # shellcheck disable=SC2034
@@ -66,8 +77,18 @@ function get_vm_resource_credentials() (
   workspace_id=$(get_metadata_value "terra-workspace-id" "")
   wsm_url=$(get_service_url "wsm" "${cli_server}")
 
-  curl_with_auth token --retry 5 -s -f \
-    "${wsm_url}/api/workspaces/v1/~${workspace_id}/resources/controlled/azure/instances/${BACKEND}/credential?durationSeconds=3600"
+  mkdir -p "${cred_cache_dir}"
+  chmod 0700 "${cred_cache_dir}"
+  cred_tmp_file=$(mktemp "${cred_cache_dir}/credentials.XXXXXX")
+
+  if ! curl_with_auth token --retry 5 -s -f \
+      "${wsm_url}/api/workspaces/v1/~${workspace_id}/resources/controlled/azure/instances/${BACKEND}/credential?durationSeconds=3600" \
+      > "${cred_tmp_file}" ; then
+    rm -f "${cred_tmp_file}"
+    return 1
+  fi
+  mv "${cred_tmp_file}" "${cred_cache_file}"
+  cat "${cred_cache_file}"
 )
 readonly -f get_vm_resource_credentials
 

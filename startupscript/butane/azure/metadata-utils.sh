@@ -55,14 +55,14 @@ function get_access_token() {
 readonly -f get_access_token
 
 # Retrieves logs and metadata storage credentials for the Azure VM resource from WSM.
-# These credentials are valid for 1 hour, and the CLI reuses cached credentials until 5 minutes before expiry.
+# These credentials are valid for 1 hour, and are cached until 5 minutes before the earliest expiry.
+# Tracing is disabled to prevent credential leakage in logs.
 function get_vm_resource_credentials() (
   { set -euo pipefail +o xtrace; } 2>/dev/null
 
   cred_cache_dir="/run/metadata-utils"
   cred_cache_file="${cred_cache_dir}/vm-resource-credentials.json"
 
-  # use cache up to 5 minutes before minimum expiration time
   if jq -e '[.logs.expiryTime, .metadata.expiryTime]
       | map(sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)
       | min - 300 > now' "${cred_cache_file}" &>/dev/null; then

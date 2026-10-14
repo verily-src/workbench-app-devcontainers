@@ -18,8 +18,25 @@ if [[ ! "${CONTEXT_LENGTH}" =~ ^[1-9][0-9]*$ ]] || (( CONTEXT_LENGTH < 16384 ));
   exit 1
 fi
 
+# A path in this file selects another model store, such as a bucket mount at
+# /config/workspace/<bucket-resource>/<dir>. Its location depends on the
+# workspace, so it cannot be a compose default. It takes effect when the server
+# starts.
+readonly MODEL_STORE_FILE="${OPENCODE_HOME:-/config}/.opencode-model-store"
+if [[ -s "${MODEL_STORE_FILE}" ]]; then
+  OLLAMA_MODELS="$(tr -d '[:space:]' < "${MODEL_STORE_FILE}")"
+  if [[ "${OLLAMA_MODELS}" != /* || ! -d "${OLLAMA_MODELS}" ]]; then
+    echo "Model store '${OLLAMA_MODELS}' in ${MODEL_STORE_FILE} is not an existing absolute directory." >&2
+    echo "Check the bucket mount, or delete ${MODEL_STORE_FILE} to use the local store." >&2
+    exit 1
+  fi
+fi
+
 export OLLAMA_HOST="${OLLAMA_URL}"
 export OLLAMA_MODELS="${OLLAMA_MODELS:-${OPENCODE_HOME:-/config}/.ollama/models}"
+export OLLAMA_NOPRUNE="${OLLAMA_NOPRUNE:-true}"
+export OLLAMA_LOAD_TIMEOUT="${OLLAMA_LOAD_TIMEOUT:-20m}"
+export OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-30m}"
 export OLLAMA_CONTEXT_LENGTH="${CONTEXT_LENGTH}"
 export OLLAMA_NUM_PARALLEL="${OLLAMA_NUM_PARALLEL:-1}"
 export OLLAMA_MAX_LOADED_MODELS="${OLLAMA_MAX_LOADED_MODELS:-1}"
@@ -68,10 +85,11 @@ fi
 prepare_model() {
   local candidate="$1"
 
-  # Cached weights persist in /config. Restarts should not need registry access.
+  # Cached weights persist in the model store. Restarts should not need registry access.
   if ! ollama show "${candidate}" > /dev/null 2>&1; then
     echo "Pulling ${candidate} (this may take several minutes)..."
     ollama pull "${candidate}" 2>&1 | tee -a "${OLLAMA_LOG}"
+    PULLED=true
   fi
 
   local model_info
@@ -93,17 +111,41 @@ done < <(jq -r '.[].tag' <<< "${AVAILABLE_MODELS}")
 if [[ "${IS_AVAILABLE}" != "true" ]]; then
   MODELS_TO_PREPARE+=("${MODEL}")
 fi
+PULLED=false
 for CANDIDATE in "${MODELS_TO_PREPARE[@]}"; do
   prepare_model "${CANDIDATE}"
 done
 
-# Validate sequentially, leaving the selected model resident. A successful
-# generation alone does not prove CUDA worked: Ollama can fall back to CPU.
-for CANDIDATE in "${MODELS_TO_PREPARE[@]}"; do
-  if [[ "${CANDIDATE}" != "${MODEL}" ]]; then
-    "${SCRIPT_DIR}/validate-model.sh" "${CANDIDATE}"
-  fi
-done
-"${SCRIPT_DIR}/validate-model.sh" "${MODEL}"
+# Every model is validated on first start, after a download, after an explicit
+# opencode-model selection, and when the model set, store or context changes.
+# Other restarts validate only the selected model: each cold load can take
+# minutes, and the others have already passed with the same settings.
+readonly VALIDATED_FILE="${OPENCODE_HOME:-/config}/.ollama/validated-models.json"
+VALIDATED="$(jq -nc --arg store "${OLLAMA_MODELS}" --argjson context "${CONTEXT_LENGTH}" \
+  '{store: $store, context_length: $context, models: ($ARGS.positional | sort)}' \
+  --args "${MODELS_TO_PREPARE[@]}")"
+readonly VALIDATED
+VALIDATE_ALL=true
+if [[ "${OPENCODE_VALIDATE_ALL:-false}" != "true" && "${PULLED}" == "false" && -s "${VALIDATED_FILE}" ]] &&
+  jq -e --argjson current "${VALIDATED}" '. == $current' "${VALIDATED_FILE}" > /dev/null 2>&1; then
+  VALIDATE_ALL=false
+fi
 
-echo "Ollama ready with ${MODEL} — logs at ${OLLAMA_LOG}"
+# Validate sequentially, leaving the selected model resident: concurrent reads
+# are slow on a bucket mount. A successful generation alone does not prove CUDA
+# worked: Ollama can fall back to CPU.
+# Any failure, including the selected model's, forces a full check next time.
+rm -f "${VALIDATED_FILE}"
+if [[ "${VALIDATE_ALL}" == "true" ]]; then
+  for CANDIDATE in "${MODELS_TO_PREPARE[@]}"; do
+    if [[ "${CANDIDATE}" != "${MODEL}" ]]; then
+      "${SCRIPT_DIR}/validate-model.sh" "${CANDIDATE}"
+    fi
+  done
+fi
+"${SCRIPT_DIR}/validate-model.sh" "${MODEL}"
+mkdir -p "$(dirname "${VALIDATED_FILE}")"
+printf '%s\n' "${VALIDATED}" > "${VALIDATED_FILE}.tmp"
+mv "${VALIDATED_FILE}.tmp" "${VALIDATED_FILE}"
+
+echo "Ollama ready with ${MODEL} from ${OLLAMA_MODELS} — logs at ${OLLAMA_LOG}"

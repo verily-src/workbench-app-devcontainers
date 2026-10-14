@@ -48,6 +48,9 @@ args = sys.argv[1:]
 with open(os.environ["TEST_CALLS"], "a") as log:
     log.write(json.dumps([name, args]) + "\\n")
 if name == "ollama":
+    # Record the server settings start-ollama.sh exports.
+    with open(os.environ["TEST_CALLS"] + ".env", "a") as log:
+        log.write(json.dumps({k: v for k, v in os.environ.items() if k.startswith("OLLAMA_")}) + "\\n")
     if args[0] == "show":
         sys.exit(0 if os.environ.get("TEST_CACHED") == "1" else 1)
     if args[0] == "pull":
@@ -97,6 +100,14 @@ elif name == "id":
 
     def read_calls(self):
         return [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
+
+    def ollama_env(self):
+        path = Path(str(self.calls) + ".env")
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def loaded_models(self):
+        return [json.loads(args[args.index("-d") + 1])["model"] for name, args in self.read_calls()
+                if name == "curl" and any(a.endswith("/api/generate") for a in args)]
 
     def selection(self):
         return self.override.read_text().strip(), json.loads(self.config.read_text())["model"]
@@ -252,10 +263,99 @@ elif name == "id":
         self.assertEqual(set(config["provider"]["ollama"]["models"]), {DEFAULT, LARGE})
         pulls = [args for name, args in self.read_calls() if name == "ollama" and args[0] == "pull"]
         self.assertEqual(pulls, [["pull", DEFAULT], ["pull", LARGE]])
-        loaded = [json.loads(args[args.index("-d") + 1])["model"] for name, args in self.read_calls()
-                  if name == "curl" and any(a.endswith("/api/generate") for a in args)]
-        self.assertEqual(loaded, [DEFAULT, LARGE])
+        self.assertEqual(self.loaded_models(), [DEFAULT, LARGE])
         self.assertEqual(config["model"], "ollama/" + LARGE)
+
+    def test_restart_validates_only_selected_model(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "40536"
+        self.env["TEST_CACHED"] = "1"
+        self.run_script("start-ollama.sh")
+        self.assertEqual(self.loaded_models(), [DEFAULT, LARGE])
+        self.calls.unlink()
+        self.run_script("start-ollama.sh")
+        self.assertEqual(self.loaded_models(), [LARGE])
+        # A manual override to another validated model is still checked itself.
+        self.calls.unlink()
+        self.override.write_text(DEFAULT)
+        self.run_script("start-ollama.sh")
+        self.assertEqual(self.loaded_models(), [DEFAULT])
+
+    def test_changes_since_last_full_check_revalidate_every_model(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "40536"
+        self.env["TEST_CACHED"] = "1"
+        self.run_script("start-ollama.sh")
+        store = self.root / "store"
+        store.mkdir()
+        changes = {
+            "context": lambda: self.env.__setitem__("OLLAMA_CONTEXT_LENGTH", "32768"),
+            "store": lambda: self.home.joinpath(".opencode-model-store").write_text(str(store)),
+            "download": lambda: self.env.pop("TEST_CACHED"),
+            "explicit selection": None,
+        }
+        for change, apply in changes.items():
+            with self.subTest(change=change):
+                if apply:
+                    apply()
+                self.calls.unlink()
+                if apply:
+                    self.run_script("start-ollama.sh")
+                else:
+                    self.run_script("opencode-model.sh", LARGE)
+                self.assertEqual(self.loaded_models(), [DEFAULT, LARGE])
+
+    def test_failed_full_check_is_repeated_on_next_start(self):
+        self.env["OPENCODE_GPU_MEMORY_MIB"] = "40536"
+        self.env["TEST_CACHED"] = "1"
+        self.env["TEST_FAIL_MODEL"] = DEFAULT
+        self.run_script("start-ollama.sh", ok=False)
+        del self.env["TEST_FAIL_MODEL"]
+        self.run_script("start-ollama.sh")
+        self.calls.unlink()
+        self.env["TEST_FAIL_MODEL"] = LARGE
+        self.run_script("start-ollama.sh", ok=False)
+        self.assertEqual(self.loaded_models(), [LARGE])
+        # The selected model failed, so no model is assumed good any more.
+        del self.env["TEST_FAIL_MODEL"]
+        self.calls.unlink()
+        self.run_script("start-ollama.sh")
+        self.assertEqual(self.loaded_models(), [DEFAULT, LARGE])
+
+    def test_model_store_override_and_shared_store_settings(self):
+        self.env["TEST_CACHED"] = "1"
+        self.env.pop("OLLAMA_MODELS", None)
+        self.run_script("start-ollama.sh")
+        env = self.ollama_env()[-1]
+        self.assertEqual(env["OLLAMA_MODELS"], str(self.home / ".ollama/models"))
+        self.assertEqual((env["OLLAMA_NOPRUNE"], env["OLLAMA_LOAD_TIMEOUT"]), ("true", "20m"))
+        store = self.root / "workspace/models/ollama-store"
+        store.mkdir(parents=True)
+        self.env["OLLAMA_MODELS"] = str(self.root / "compose-default")
+        self.home.joinpath(".opencode-model-store").write_text(f"{store}\n")
+        self.run_script("start-ollama.sh")
+        self.assertEqual(self.ollama_env()[-1]["OLLAMA_MODELS"], str(store))
+
+    def test_missing_model_store_fails_before_network_access(self):
+        for value in (str(self.root / "unmounted"), "relative/store"):
+            with self.subTest(value=value):
+                self.home.joinpath(".opencode-model-store").write_text(value)
+                result = self.run_script("start-ollama.sh", ok=False)
+                self.assertIn("not an existing absolute directory", result.stderr)
+                self.assertEqual(self.read_calls(), [])
+
+    def test_validation_outlasts_ollama_load_timeout_and_uses_server_keep_alive(self):
+        self.run_script("validate-model.sh", DEFAULT)
+        args = next(args for name, args in self.read_calls() if name == "curl" and any(a.endswith("/api/generate") for a in args))
+        self.assertGreater(int(args[args.index("--max-time") + 1]), 20 * 60)
+        self.assertNotIn("keep_alive", json.loads(args[args.index("-d") + 1]))
+
+    def test_every_compose_ollama_setting_reaches_ollama(self):
+        compose = (APP / "docker-compose.yaml").read_text()
+        settings = {line.split(":")[0].strip() for line in compose.splitlines()
+                    if line.strip().startswith("OLLAMA_")}
+        services = (APP / "start-services.sh").read_text()
+        preserved = set(services.split("--preserve-env=")[1].split()[0].split(","))
+        self.assertLessEqual({"OLLAMA_NOPRUNE", "OLLAMA_LOAD_TIMEOUT"}, settings)
+        self.assertLessEqual(settings, preserved)
 
     def test_failure_loading_unselected_lightning_fails_preflight(self):
         self.env["OPENCODE_GPU_MEMORY_MIB"] = "40536"

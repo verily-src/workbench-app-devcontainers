@@ -158,7 +158,7 @@ def main():
             default = config["model"].removeprefix("ollama/")
             env = {**os.environ, "OLLAMA_CONTEXT_LENGTH": str(config["provider"]["ollama"]["models"][default]["limit"]["context"])}
             try:
-                subprocess.run([str(APP / "validate-model.sh"), default], env=env, timeout=630, check=True)
+                subprocess.run([str(APP / "validate-model.sh"), default], env=env, timeout=1530, check=True)
             except (OSError, subprocess.SubprocessError) as exc:
                 report["passed"] = False
                 report["restore_error"] = f"Default model failed GPU preflight: {exc}"

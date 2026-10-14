@@ -47,7 +47,7 @@ jobs:
           node-version: '22'
       - name: Install pinned devcontainer CLI
         run: npm install -g @devcontainers/cli@0.89.0
-      - name: Build all features and exercise model switching without GPU
+      - name: Build all features and exercise model switching and Ollama startup without GPU
         run: |
           set -o pipefail
           bash tests/opencode-nemotron-mcp/build-container.sh 2>&1 | tee "$RUNNER_TEMP/opencode-container-build.log"

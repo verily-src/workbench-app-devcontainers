@@ -18,9 +18,11 @@ Use **`src/opencode-nemotron-mcp`** as the template path when creating this app.
 
 At startup the app detects the largest attached GPU's VRAM and filters the
 catalog in `models.json`. Every compatible catalog model is downloaded so it is
-usable from OpenCode's `/model` picker. Each model is loaded sequentially and
-must pass a full-GPU, configured-context check before startup publishes the
-configuration. Only one model is kept in VRAM at a time, with the default loaded last.
+usable from OpenCode's `/model` picker. On first start, each model is loaded
+sequentially and must pass a full-GPU, configured-context check before startup
+publishes the configuration. Only one model is kept in VRAM at a time, with the
+default loaded last. Later restarts check only the selected model; see
+[Startup checks](#startup-checks).
 
 | Ollama tag | Weight download | Minimum VRAM | Available on |
 |---|---|---|---|
@@ -69,9 +71,10 @@ for OpenCode plus Workbench context and MCP tools.
    ```
 
 The initial startup downloads every model compatible with the attached GPU,
-validates each model on the GPU, and leaves the default loaded. Subsequent restarts reuse cached weights in
-`/config/.ollama/models`; they do not pull models again. To update an existing
-tag deliberately, run `ollama pull <tag>`.
+validates each model on the GPU, and leaves the default loaded. Subsequent
+restarts reuse cached weights in the model store (`/config/.ollama/models`
+unless [moved to a bucket mount](#model-store-on-a-bucket-mount)); they do not
+pull models again. To update an existing tag deliberately, run `ollama pull <tag>`.
 
 ### Choose or change a model
 
@@ -96,7 +99,8 @@ GPU residency at the configured context, then updates both `/config/.opencode-mo
 OpenCode config. Start a new OpenCode session after changing the persisted
 default. A download or loading failure leaves the saved selection and OpenCode
 config unchanged. Previously downloaded models stay cached; use
-`ollama rm <tag>` to reclaim their disk space.
+`ollama rm <tag>` to reclaim their disk space. Do not run `ollama rm` against a
+store that other apps share.
 
 The existing override workflow also works:
 
@@ -144,7 +148,8 @@ LLM template. After Workbench authentication and mounts, `start-services.sh`:
 
 1. Starts the feature's HTTP MCP daemon as `abc` for the other included clients.
 2. Generates context as `abc` after the workspace becomes available.
-3. Starts Ollama as `abc`, checks its pinned version, and validates all eligible models (or defers selection).
+3. Starts Ollama as `abc`, checks its pinned version, and validates the models
+   (or defers selection); see [Startup checks](#startup-checks).
 4. Writes the OpenCode configuration only after those checks succeed.
 
 OpenCode's `mcp.wb` launches `/opt/wb-mcp-server/wb-mcp-server` using the server's
@@ -199,9 +204,94 @@ remain mutable; the GPU acceptance report records the digests actually tested.
 [Ollama's OpenCode guidance](https://docs.ollama.com/integrations/opencode).
 The same limit is advertised to OpenCode so its context management matches the
 server. Larger contexts consume more VRAM. `OLLAMA_NUM_PARALLEL=1` and
-`OLLAMA_MAX_LOADED_MODELS=1` limit concurrent model memory use; the five-minute
-keep-alive keeps the active model warm while still allowing predictable swaps.
+`OLLAMA_MAX_LOADED_MODELS=1` limit concurrent model memory use. Switching models
+still evicts the previous one. `OLLAMA_KEEP_ALIVE=30m` keeps the active model
+loaded between requests: a warm reload of Lightning takes about 9 seconds, but a
+cold one takes minutes. The startup check uses the same keep-alive.
 `OPENCODE_HOME` defaults to `/config` and can redirect state for script testing.
+
+### Startup checks
+
+`start-services.sh` runs on every app start. It publishes the OpenCode
+configuration only if `start-ollama.sh` succeeds. Its checks depend on the
+situation:
+
+| Situation | Models loaded and checked |
+|---|---|
+| First start; a model was downloaded; the compatible model set, model store, or context length changed; or the previous check failed | Every compatible model, one at a time, selected model last |
+| `opencode-model` selection | Every compatible model, one at a time, selected model last |
+| Any other restart | Only the selected model |
+
+The result of the last successful check is recorded in
+`/config/.ollama/validated-models.json`. Delete it to force a full check on the
+next start.
+
+Each restart starts with a cold page cache, so every check reads the model from
+storage. On an `a2-highgpu-1g`, a cold load of a 25 GB model file from the
+local persistent disk took about 13 minutes. That is longer than
+Ollama's default five-minute load limit, so `OLLAMA_LOAD_TIMEOUT` is set to
+`20m`. `validate-model.sh` waits up to 25 minutes, longer than that limit. If you
+raise `OLLAMA_LOAD_TIMEOUT`, keep it below 25 minutes. From a
+[bucket mount](#model-store-on-a-bucket-mount), the Lightning 30B startup check
+passed in about 2.7 minutes on the same VM.
+
+Every `OLLAMA_*` setting in `docker-compose.yaml` must also be listed in
+`--preserve-env` in `start-services.sh`; otherwise it does not reach `ollama serve`.
+
+### Model store on a bucket mount
+
+On VM types with slow local disks, keeping the Ollama model store on a
+Workbench bucket mount makes cold loads several times faster: 3.4–5.8 times in
+tests on an `a2-highgpu-1g`. Inference speed is
+the same in both cases, because the weights are in VRAM once loaded. A store on
+a bucket can also be shared by several apps, and new apps do not need to
+download from the registry.
+
+To use one, write the store's mounted path to `/config/.opencode-model-store`
+and restart the app:
+
+```sh
+echo /config/workspace/<bucket-resource>/ollama-store > /config/.opencode-model-store
+```
+
+The path depends on the workspace's bucket resource name, so it is not a compose
+default. It takes precedence over `OLLAMA_MODELS`. Startup fails with a clear
+message if the path is not an existing directory, for example when the bucket is
+not mounted. Delete the file and restart to return to `/config/.ollama/models`.
+
+Populate the store once, from an app that has already pulled the models.
+Copy straight to the bucket with `gcloud storage`, not through the mount; it is
+faster and avoids partial files. For each model, copy:
+
+- `manifests/registry.ollama.ai/library/<model>/<tag>`
+- every `blobs/sha256-*` file the manifest references (its `config` and `layers` digests)
+- `metadata/sha256-<weights layer digest>.json`, if present
+
+```sh
+store=gs://<bucket>/ollama-store
+manifest=registry.ollama.ai/library/nemotron-3.5-lightning/30b
+cd /config/.ollama/models
+gcloud storage cp "manifests/${manifest}" "${store}/manifests/${manifest}"
+for digest in $(jq -r '.config.digest, .layers[].digest' "manifests/${manifest}"); do
+  gcloud storage cp "blobs/${digest/:/-}" "${store}/blobs/"
+  if [[ -f "metadata/${digest/:/-}.json" ]]; then
+    gcloud storage cp "metadata/${digest/:/-}.json" "${store}/metadata/"
+  fi
+done
+```
+
+Copy every model that is compatible with the target GPU (both catalog models on
+an A100/H100). A missing model is downloaded through the mount instead.
+Use the registry builds that the app pulls, not separately downloaded GGUF
+files: the app depends on the registry build's chat template and tool support.
+
+`OLLAMA_NOPRUNE=true` stops Ollama from deleting blobs it does not recognize at
+startup, because another app might be using or writing them. Treat a shared
+store as read-mostly: update a model by pulling it in one app, and do not run
+`ollama rm` against it. Ollama still loads one model at a time
+(`OLLAMA_MAX_LOADED_MODELS=1`), and startup checks load models one at a time.
+This matters on a mount: gcsfuse reads quickly in sequence but slowly when
+several readers interleave.
 
 You can also call the local API directly:
 
@@ -241,16 +331,19 @@ python3 -m unittest discover -s tests/opencode-nemotron-mcp -v
 ```
 
 These cover GPU-aware configuration, `/model` registration, selection, cache
-reuse, deferred startup, interactive input, and download/load failures with
-mocked Ollama responses. The MCP test uses
+reuse, startup checks (full or selected model only), the model store override,
+deferred startup, interactive input, and download/load failures with mocked
+Ollama responses. The MCP test uses
 the real server binary with a fake `wb` CLI for handshake, tool discovery, and
 tool dispatch. It is skipped when `WB_MCP_TEST_BINARY` is unset.
 
 CI also builds the complete devcontainer with its features and runs the installed
 OpenCode as `abc`. It checks the model list, MCP connection, and a
 Lightning → Nano → Lightning tool round trip in one session against a simulated
-OpenAI-compatible server and fake `wb`. No weights or GPU are required for that
-test. Workbench lifecycle hooks and CUDA inference still require a real VM.
+OpenAI-compatible server and fake `wb`. It also starts the pinned Ollama with a
+model store override and checks the store, prune, load-timeout, and keep-alive
+settings in the server's startup log. No weights or GPU are required for these
+tests. Workbench lifecycle hooks and CUDA inference still require a real VM.
 
 ### Real-GPU acceptance check
 

@@ -13,11 +13,13 @@ if [[ ! "${CONTEXT_LENGTH}" =~ ^[1-9][0-9]*$ ]] || (( CONTEXT_LENGTH < 16384 ));
   exit 1
 fi
 
-echo "Checking ${MODEL} at ${CONTEXT_LENGTH} tokens (load timeout: 10 minutes)..."
-if ! RESPONSE="$(curl -fsS --connect-timeout 5 --max-time 600 "${OLLAMA_URL}/api/generate" \
+# Wait longer than OLLAMA_LOAD_TIMEOUT (20m) so Ollama, not curl, reports a slow
+# load. A cold 30B load from local disk takes about 13 minutes.
+echo "Checking ${MODEL} at ${CONTEXT_LENGTH} tokens (load timeout: 25 minutes)..."
+if ! RESPONSE="$(curl -fsS --connect-timeout 5 --max-time 1500 "${OLLAMA_URL}/api/generate" \
   -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg model "${MODEL}" --argjson context "${CONTEXT_LENGTH}" \
-    '{model: $model, prompt: "warmup", stream: false, keep_alive: "5m",
+    '{model: $model, prompt: "warmup", stream: false,
       options: {num_predict: 1, num_ctx: $context}}')")"; then
   echo "Could not load ${MODEL}. Check ~/ollama-server.log and nvidia-smi; retry opencode-model after correcting the failure." >&2
   exit 1

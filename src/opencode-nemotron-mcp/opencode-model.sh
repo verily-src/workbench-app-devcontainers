@@ -69,7 +69,8 @@ if [[ "${IN_CATALOG}" == "true" && "${IS_AVAILABLE}" != "true" ]]; then
 fi
 
 # Do not change the saved selection/configuration if download or loading fails.
-"${SCRIPT_DIR}/start-ollama.sh" "${MODEL}"
+# An explicit selection re-checks every compatible model, not just this one.
+OPENCODE_VALIDATE_ALL=true "${SCRIPT_DIR}/start-ollama.sh" "${MODEL}"
 "${SCRIPT_DIR}/configure-opencode.sh" "$(id -un)" "${USER_HOME_DIR}" "${MODEL}"
 printf '%s\n' "${MODEL}" > "${USER_HOME_DIR}/.opencode-model.tmp"
 mv "${USER_HOME_DIR}/.opencode-model.tmp" "${USER_HOME_DIR}/.opencode-model"

@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import tempfile
 import threading
@@ -55,6 +56,29 @@ def run(args, env, cwd):
     result = subprocess.run(args, env=env, cwd=cwd, text=True, capture_output=True, timeout=180)
     assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout
+
+
+def check_ollama_server_settings(env, root, home):
+    """Start the pinned Ollama with a store override; no model is loaded."""
+    store = root / "workspace/models/ollama-store"
+    store.mkdir(parents=True)
+    (home / ".opencode-model-store").write_text(f"{store}\n")
+    run([str(APP / "start-ollama.sh")], {**env, "OLLAMA_MODEL": "prompt"}, root)
+    try:
+        log = (home / "ollama-server.log").read_text()
+        config = next(line for line in log.splitlines() if 'msg="server config"' in line)
+        for setting in (f"OLLAMA_MODELS:{store}", "OLLAMA_NOPRUNE:true",
+                        "OLLAMA_LOAD_TIMEOUT:20m0s", "OLLAMA_KEEP_ALIVE:30m0s"):
+            assert setting in config.split(), (setting, config)
+        print("PASS: Ollama server uses the model store override and load settings", flush=True)
+    finally:
+        for process in Path("/proc").glob("[0-9]*"):
+            try:
+                if process.joinpath("cmdline").read_bytes().split(b"\0")[:2] == [b"ollama", b"serve"]:
+                    os.kill(int(process.name), signal.SIGTERM)
+            except OSError:
+                pass
+        (home / ".opencode-model-store").unlink()
 
 
 def main():
@@ -112,6 +136,7 @@ def main():
                 assert any(e.get("type") == "text" for e in events), output
                 print(f"PASS: installed OpenCode -> {model} -> full MCP inventory -> wb_status -> summary", flush=True)
             run(["opencode-gpu-check", "--help"], env, root)
+            check_ollama_server_settings(env, root, home)
         finally:
             server.shutdown()
             server.server_close()

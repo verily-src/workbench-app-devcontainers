@@ -21,9 +21,16 @@ services:
       # Auto selects Lightning on A100/H100, experimental Nano 4B on T4/V100.
       OLLAMA_MODEL: "auto"
       OLLAMA_HOST: "127.0.0.1:11434"
+      # Default model store. To use a store on a bucket mount, write its path to
+      # /config/.opencode-model-store instead; the path depends on the workspace.
       OLLAMA_MODELS: "/config/.ollama/models"
-      # Keep the active model warm, but allow predictable one-at-a-time swaps.
-      OLLAMA_KEEP_ALIVE: "5m"
+      # A store may be shared by several apps; never delete blobs on startup.
+      OLLAMA_NOPRUNE: "true"
+      # A cold 30B load from local disk takes about 13 minutes; Ollama's default is 5m.
+      # validate-model.sh waits 25 minutes, so keep this value below that.
+      OLLAMA_LOAD_TIMEOUT: "20m"
+      # Single-user GPU: a cold reload costs minutes, so keep the active model warm.
+      OLLAMA_KEEP_ALIVE: "30m"
       OLLAMA_FLASH_ATTENTION: "true"
       # Room for OpenCode, Workbench context, and MCP tool definitions.
       OLLAMA_CONTEXT_LENGTH: "65536"

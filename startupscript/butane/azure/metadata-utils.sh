@@ -62,6 +62,7 @@ function get_vm_resource_credentials() (
   cred_cache_dir="/run/metadata-utils"
   cred_cache_file="${cred_cache_dir}/vm-resource-credentials.json"
 
+  # use cache up to 5 minutes before minimum expiration time
   if jq -e '[.logs.expiryTime, .metadata.expiryTime]
       | map(sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)
       | min - 300 > now' "${cred_cache_file}" &>/dev/null; then

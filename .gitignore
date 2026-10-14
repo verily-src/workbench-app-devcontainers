@@ -1,0 +1,24 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local SQLite lineage fallback
+lineage.db
+
+# Node
+node_modules/
+
+# Playwright
+test-results/
+
+# OS
+.DS_Store
+
+# Local agent state
+.claude/settings.local.json
+.claude/worktrees/

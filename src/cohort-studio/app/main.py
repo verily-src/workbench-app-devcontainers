@@ -26,6 +26,7 @@ import config
 import datasets
 import db
 import duck
+import joins
 import lineage
 import llm
 import compare
@@ -84,11 +85,28 @@ class QueryRequest(BaseModel):
     page_size: int = 50
 
 
-class JoinRequest(BaseModel):
-    left_id: str
+class JoinCondition(BaseModel):
+    left: str
+    op: str = "="
+    right: str
+
+
+class JoinStep(BaseModel):
     right_id: str
-    left_on: str
-    right_on: str
+    how: str = "left"
+    conditions: list[JoinCondition] = Field(default_factory=list)
+    columns: list[str] | None = None   # None = every column of the right side
+    alias: str = ""
+
+
+class JoinRequest(BaseModel):
+    """Either a pipeline (base_id + steps) or the single-key shape."""
+    base_id: str = ""
+    steps: list[JoinStep] = Field(default_factory=list)
+    left_id: str = ""
+    right_id: str = ""
+    left_on: str = ""
+    right_on: str = ""
     how: str = "inner"
 
 
@@ -359,24 +377,60 @@ async def upload_dataset(file: UploadFile):
     return result
 
 
-@app.post("/api/datasets/join")
-def join_datasets(req: JoinRequest):
+def _join_pipeline(req: JoinRequest) -> tuple[str, list[dict], list[str]]:
+    """(base id, steps, sources) — the single-key shape becomes one step."""
+    if req.steps:
+        base_id, steps = req.base_id, [s.model_dump() for s in req.steps]
+    else:
+        base_id, steps = req.left_id, [{
+            "right_id": req.right_id, "how": req.how, "columns": None,
+            "conditions": [{"left": req.left_on, "op": "=",
+                            "right": req.right_on}]}]
     try:
-        left = datasets.get(req.left_id)
-        right = datasets.get(req.right_id)
+        sources = [datasets.get(base_id)["source"]] + [
+            datasets.get(s["right_id"])["source"] for s in steps]
     except datasets.DatasetNotFound:
         raise HTTPException(404, "A dataset expired or is unknown — reload it.")
-    label = f"{left['source']} + {right['source']}"
+    for step, source in zip(steps, sources[1:]):
+        step["alias"] = (step.get("alias") or "").strip() \
+            or joins.default_alias(source)
+    return base_id, steps, sources
+
+
+@app.post("/api/datasets/join")
+def join_datasets(req: JoinRequest):
+    base_id, steps, sources = _join_pipeline(req)
     try:
-        result = datasets.join_datasets(
-            req.left_id, req.right_id, req.left_on, req.right_on,
-            req.how, label)
+        out = joins.run(base_id, steps)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    label = " + ".join(sources)
+    result = datasets.open_dataset(out["df"], label)
     lineage.record(_lineage_engine(), "joined", "dataset", label,
-                   payload={"left_on": req.left_on, "right_on": req.right_on,
-                            "how": req.how, "rows": result["rows"]})
-    return result
+                   payload={"steps": [{k: s[k] for k in
+                                       ("how", "conditions", "alias")}
+                                      for s in steps],
+                            "rows": result["rows"],
+                            "truncated": out["stats"]["truncated"]},
+                   parents=[("dataset", s) for s in sources])
+    return {**result, "join": out["stats"]}
+
+
+@app.post("/api/datasets/join/preview")
+def preview_join(req: JoinRequest):
+    base_id, steps, _ = _join_pipeline(req)
+    try:
+        return joins.preview(base_id, steps)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/datasets/join/suggest")
+def suggest_join_keys(left_id: str, right_id: str):
+    try:
+        return joins.suggest(left_id, right_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "A dataset expired or is unknown — reload it.")
 
 
 @app.post("/api/datasets/{dataset_id}/compare")

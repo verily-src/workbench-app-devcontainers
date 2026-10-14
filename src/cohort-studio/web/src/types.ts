@@ -58,6 +58,40 @@ export interface ChatMsg {
   actions?: string[];
 }
 
+export type JoinHow = "left" | "inner" | "right" | "full" | "semi" | "anti";
+export type JoinOp = "=" | "!=" | "<" | "<=" | ">" | ">=";
+
+export interface JoinCondition { left: string; op: JoinOp; right: string }
+
+export interface JoinStep {
+  right_id: string;
+  how: JoinHow;
+  conditions: JoinCondition[];
+  columns: string[] | null;  // null = every column of the joined table
+  alias: string;
+}
+
+export interface JoinStats {
+  base_rows: number;
+  rows: number;
+  total_rows: number;
+  truncated: boolean;
+  steps: { right_rows: number; rows: number; truncated: boolean }[];
+  notes: string[];
+}
+
+export interface JoinPreview extends JoinStats {
+  columns: string[];
+  sample: unknown[][];
+}
+
+export interface JoinSuggestion {
+  left: string;
+  right: string;
+  overlap: number;
+  score: number;
+}
+
 export interface Cohort {
   name: string;
   filters: Filter[];

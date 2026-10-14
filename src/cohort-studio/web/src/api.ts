@@ -1,6 +1,6 @@
 import type {
-  ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, QueryResult,
-  Source, TableInfo,
+  ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
+  JoinStats, JoinStep, JoinSuggestion, QueryResult, Source, TableInfo,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -154,11 +154,18 @@ export const api = {
       post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
              page, page_size: 50 })),
 
-  join: (leftId: string, rightId: string, leftOn: string, rightOn: string,
-         how: string) =>
-    request<OpenResult>("/api/datasets/join", post({
-      left_id: leftId, right_id: rightId, left_on: leftOn,
-      right_on: rightOn, how })),
+  join: (baseId: string, steps: JoinStep[]) =>
+    request<OpenResult & { join: JoinStats }>("/api/datasets/join",
+      post({ base_id: baseId, steps })),
+
+  previewJoin: (baseId: string, steps: JoinStep[]) =>
+    request<JoinPreview>("/api/datasets/join/preview",
+      post({ base_id: baseId, steps })),
+
+  suggestJoin: (leftId: string, rightId: string) =>
+    request<JoinSuggestion[]>(
+      `/api/datasets/join/suggest?left_id=${encodeURIComponent(leftId)}`
+      + `&right_id=${encodeURIComponent(rightId)}`),
 
   compare: (datasetId: string, filtersA: Filter[], filtersB: Filter[],
             bIsRest: boolean) =>

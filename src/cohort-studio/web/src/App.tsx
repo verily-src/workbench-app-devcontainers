@@ -13,7 +13,7 @@ import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
-import type { ChartSpec, Dataset, Source, TableInfo } from "./types";
+import type { ChartSpec, Dataset, JoinStep, Source, TableInfo } from "./types";
 
 const AUTO_CHART_LIMIT = 8;
 
@@ -257,16 +257,22 @@ export default function App() {
     }
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doJoin = async (p: { leftId: string; rightId: string;
-                             leftOn: string; rightOn: string; how: string }) => {
+  const doJoin = async (p: { baseId: string; steps: JoinStep[] }) => {
     setActivity("Joining…");
     setError("");
     try {
-      const opened = await api.join(p.leftId, p.rightId, p.leftOn,
-                                    p.rightOn, p.how);
+      const opened = await api.join(p.baseId, p.steps);
       // Joined tab is derived (no single datasource) → no sourceRef.
       openResult(opened, opened.source.split(" + ").map(
         (x) => x.split("/").pop()?.trim()).join(" + "));
+      const { join } = opened;
+      alerts.pushToast({
+        title: join.truncated ? "Join capped" : "Joined",
+        tone: join.truncated ? "fail" : "ok",
+        body: join.truncated
+          ? `Showing ${join.rows.toLocaleString()} of ${join.total_rows.toLocaleString()} rows.`
+          : `${join.rows.toLocaleString()} rows from ${p.steps.length + 1} tables.`,
+      });
       setShowJoin(false);
     } catch (e) {
       setError(`Join failed: ${(e as Error).message}`);

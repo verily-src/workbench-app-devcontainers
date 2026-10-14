@@ -1,10 +1,8 @@
 # Cohort Studio
 
 Next-generation cohort exploration app: a **React + TypeScript** frontend
-with Linear-inspired design over a **FastAPI** backend that reuses the
-proven engine modules from [Cohort Dashboard](../cohort-dashboard/)
-(Aurora via SQLAlchemy, S3 Parquet/CSV via DuckDB, BigQuery, lineage,
-TTL caching).
+with Linear-inspired design over a **FastAPI** backend (Aurora via
+SQLAlchemy, S3 Parquet/CSV via DuckDB, BigQuery, lineage, TTL caching).
 
 ## Architecture
 
@@ -154,6 +152,33 @@ restarts the server — no-op when the branch hasn't moved.
 VM recreation is only needed when `.devcontainer.json`, the Dockerfile,
 or the compose file change.
 
-The operational notes in [../cohort-dashboard/README.md](../cohort-dashboard/README.md)
-(datasource support matrix, aurora_analytics requirements, VM debugging)
-apply unchanged.
+## Datasources
+
+| Datasource | Engine | Workbench resource type |
+|---|---|---|
+| Aurora tables & views | SQLAlchemy + psycopg | `AWS_AURORA_DATABASE` |
+| Parquet/CSV in S3 | **DuckDB** reading S3 directly via the per-resource AWS profiles | `AWS_S3_STORAGE_FOLDER` |
+| BigQuery tables (GCP workspaces) | google-cloud-bigquery | `BQ_DATASET` |
+| S3 Parquet/Iceberg as Aurora foreign tables | [`aurora_analytics`](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-analytics-tutorial.html) (needs Aurora PostgreSQL 17.11+) | `AWS_AURORA_DATABASE` |
+| Local CSV/TSV upload | pandas (dev mode, no workspace needed) | — |
+
+Redshift, Athena, and DynamoDB were evaluated and are not reachable inside
+the Workbench credential model (not resource types, so no ABAC credential
+path). DuckDB-over-S3 covers the Athena use case within governance.
+
+### Requirements for aurora_analytics
+
+`aurora_analytics` needs cluster-level provisioning that Workbench controls:
+
+- Aurora PostgreSQL **17.11+** (the aurora-resource-demo cluster is 16.9)
+- cluster parameter `aurora_analytics.enabled = true`
+- an IAM role attached to the cluster with `--feature-name AuroraAnalytics`
+  and S3 read access
+- an S3 gateway VPC endpoint if the cluster is in a private subnet
+
+Native tables and views work on any cluster version. Aurora access also
+requires an authenticated `wb` workspace context and VPC network access
+(cloud workstation in-region; not from a laptop).
+
+The VM-debugging rules in [../cohort-explorer/CLAUDE.md](../cohort-explorer/CLAUDE.md)
+apply to this app unchanged.

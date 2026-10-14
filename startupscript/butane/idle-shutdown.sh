@@ -69,7 +69,7 @@ if [[ $((NOW - LAST_ACTIVE)) -gt IDLE_TIMEOUT_SECONDS ]]; then
       # from inside itself, so it must be stopped via WSM
       set +o xtrace
       # shellcheck disable=SC2034
-      TOKEN="$(/home/core/wb.sh auth print-access-token)"
+      TOKEN="$(get_access_token)"
       set -o xtrace
 
       CLI_SERVER="$(get_metadata_value "terra-cli-server" "prod")"

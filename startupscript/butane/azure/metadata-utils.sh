@@ -56,9 +56,19 @@ readonly -f get_access_token
 
 # Retrieves logs and metadata storage credentials for the Azure VM resource from WSM.
 # These credentials are valid for 1 hour, and the CLI reuses cached credentials until 5 minutes before expiry.
-function get_vm_resource_credentials() {
-  /home/core/wb.sh resource credentials --name "$(hostname)" --duration 3600 --format json
-}
+function get_vm_resource_credentials() (
+  { set -euo pipefail +o xtrace; } 2>/dev/null
+  declare -F curl_with_auth >/dev/null || source /home/core/service-utils.sh
+
+  # shellcheck disable=SC2034
+  token=$(get_access_token)
+  cli_server=$(get_metadata_value "terra-cli-server" "prod")
+  workspace_id=$(get_metadata_value "terra-workspace-id" "")
+  wsm_url=$(get_service_url "wsm" "${cli_server}")
+
+  curl_with_auth token --retry 5 -s -f \
+    "${wsm_url}/api/workspaces/v1/~${workspace_id}/resources/controlled/azure/instances/${BACKEND}/credential?durationSeconds=3600"
+)
 readonly -f get_vm_resource_credentials
 
 # GETs or PUTs vwbapp-prefixed VM metadata from/to Azure Table storage.

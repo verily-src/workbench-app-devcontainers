@@ -16,6 +16,8 @@ readonly NODE_TAR="node-${NODE_VERSION}-${PLATFORM}.tar.gz"
 readonly NODE_INSTALL_SRC="https://storage.googleapis.com/bkt-workbench-artifacts/mirror/${NODE_TAR}"
 readonly NODE_INSTALL_PATH="/home/core/${NODE_TAR}"
 readonly DEVCONTAINER_CLI_PATH="/home/core/node_modules/.bin/devcontainer"
+DEVCONTAINER_CLI_VERSION="$(jq -r '.packages["node_modules/@devcontainers/cli"].version' /home/core/package-lock.json)"
+readonly DEVCONTAINER_CLI_VERSION
 
 # Reuse Node and the devcontainer CLI from an earlier boot.
 if [[ "$(node --version 2>/dev/null)" == "${NODE_VERSION}" ]]; then
@@ -30,7 +32,7 @@ else
   rm -f "${NODE_INSTALL_PATH}"
 fi
 
-if [[ -x "${DEVCONTAINER_CLI_PATH}" ]]; then
+if [[ "$("${DEVCONTAINER_CLI_PATH}" --version 2>/dev/null)" == "${DEVCONTAINER_CLI_VERSION}" ]]; then
   echo "Devcontainer CLI is already installed; skipping npm install"
 else
   echo "Installing node packages"

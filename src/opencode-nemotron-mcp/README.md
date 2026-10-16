@@ -205,9 +205,12 @@ remain mutable; the GPU acceptance report records the digests actually tested.
 The same limit is advertised to OpenCode so its context management matches the
 server. Larger contexts consume more VRAM. `OLLAMA_NUM_PARALLEL=1` and
 `OLLAMA_MAX_LOADED_MODELS=1` limit concurrent model memory use. Switching models
-still evicts the previous one. `OLLAMA_KEEP_ALIVE=30m` keeps the active model
-loaded between requests: a warm reload of Lightning takes about 9 seconds, but a
-cold one takes minutes. The startup check uses the same keep-alive.
+still evicts the previous one. `OLLAMA_KEEP_ALIVE=-1` keeps the active model
+loaded, however long it is idle, until a switch or an Ollama restart. An
+unloaded model is reloaded by the next request, and OpenCode waits for it. On an
+`a2-highgpu-1g`, a cold Lightning reload took about 3 minutes from a bucket
+mount and 11–12 minutes from the local disk. The model keeps its VRAM while
+idle; the GPU is dedicated to this app. The startup check uses the same keep-alive.
 `OPENCODE_HOME` defaults to `/config` and can redirect state for script testing.
 
 ### Startup checks

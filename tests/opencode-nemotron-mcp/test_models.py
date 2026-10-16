@@ -322,11 +322,13 @@ elif name == "id":
 
     def test_model_store_override_and_shared_store_settings(self):
         self.env["TEST_CACHED"] = "1"
-        self.env.pop("OLLAMA_MODELS", None)
+        for setting in ("OLLAMA_MODELS", "OLLAMA_NOPRUNE", "OLLAMA_LOAD_TIMEOUT", "OLLAMA_KEEP_ALIVE"):
+            self.env.pop(setting, None)
         self.run_script("start-ollama.sh")
         env = self.ollama_env()[-1]
         self.assertEqual(env["OLLAMA_MODELS"], str(self.home / ".ollama/models"))
-        self.assertEqual((env["OLLAMA_NOPRUNE"], env["OLLAMA_LOAD_TIMEOUT"]), ("true", "20m"))
+        self.assertEqual((env["OLLAMA_NOPRUNE"], env["OLLAMA_LOAD_TIMEOUT"], env["OLLAMA_KEEP_ALIVE"]),
+                         ("true", "20m", "-1"))
         store = self.root / "workspace/models/ollama-store"
         store.mkdir(parents=True)
         self.env["OLLAMA_MODELS"] = str(self.root / "compose-default")

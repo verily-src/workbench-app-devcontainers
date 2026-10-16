@@ -68,7 +68,7 @@ def check_ollama_server_settings(env, root, home):
         log = (home / "ollama-server.log").read_text()
         config = next(line for line in log.splitlines() if 'msg="server config"' in line)
         for setting in (f"OLLAMA_MODELS:{store}", "OLLAMA_NOPRUNE:true",
-                        "OLLAMA_LOAD_TIMEOUT:20m0s", "OLLAMA_KEEP_ALIVE:30m0s"):
+                        "OLLAMA_LOAD_TIMEOUT:20m0s", "OLLAMA_KEEP_ALIVE:2562047h47m16.854775807s"):
             assert setting in config.split(), (setting, config)
         print("PASS: Ollama server uses the model store override and load settings", flush=True)
     finally:

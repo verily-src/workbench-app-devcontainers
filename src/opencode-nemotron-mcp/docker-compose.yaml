@@ -29,8 +29,9 @@ services:
       # A cold 30B load from local disk takes about 13 minutes; Ollama's default is 5m.
       # validate-model.sh waits 25 minutes, so keep this value below that.
       OLLAMA_LOAD_TIMEOUT: "20m"
-      # Single-user GPU: a cold reload costs minutes, so keep the active model warm.
-      OLLAMA_KEEP_ALIVE: "30m"
+      # Single-user GPU: never unload the active model when idle. A cold reload
+      # of Lightning 30B takes about 3 minutes from a bucket mount, 12 from local disk.
+      OLLAMA_KEEP_ALIVE: "-1"
       OLLAMA_FLASH_ATTENTION: "true"
       # Room for OpenCode, Workbench context, and MCP tool definitions.
       OLLAMA_CONTEXT_LENGTH: "65536"

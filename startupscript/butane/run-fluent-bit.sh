@@ -90,9 +90,56 @@ case "${CLOUD}" in
         )
         ;;
 
+    azure)
+        shopt -s lastpipe
+
+        source /home/core/metadata-utils.sh
+
+        CONFIG=/etc/fluent-bit.conf
+        TEMPLATE=/etc/fluent-bit.conf.template
+        chmod 600 "${CONFIG}"
+
+        if [[ ! -f "${TEMPLATE}" ]]; then
+            cp "${CONFIG}" "${TEMPLATE}"
+        fi
+
+        refresh_credentials() {
+            local -
+            set -o allexport +o xtrace
+
+            # shellcheck disable=SC2034
+            get_vm_resource_credentials | jq -er '
+                .logs
+                | (.sasToken // empty) as $sas_token
+                | .resourceUri
+                | capture(
+                    "^https://(?<account>[^.]+)\\.blob\\.[^/]+/(?<container>[^/]+)(?<path>/.*)$"
+                  )
+                | [.account, .container, .path, $sas_token]
+                | @tsv
+            ' | read -r STORAGE_ACCOUNT STORAGE_CONTAINER STORAGE_PATH SAS_TOKEN || return 1
+
+            # shellcheck disable=SC2016
+            envsubst '${STORAGE_ACCOUNT} ${STORAGE_CONTAINER} ${STORAGE_PATH} ${SAS_TOKEN}' \
+                < "${TEMPLATE}" > "${CONFIG}"
+        }
+
+        refresh_credentials
+        (
+            while sleep 60; do
+                config_hash=$(sha256sum < "${CONFIG}")
+                if ! refresh_credentials ; then
+                    echo "Failed to refresh Fluent Bit credentials; retrying in 60 seconds" >&2
+                elif [[ "$(sha256sum < "${CONFIG}")" != "${config_hash}" ]]; then
+                    docker kill --signal=HUP fluent-bit
+                fi
+            done
+        ) &
+        ;;
+
     *)
         echo "Error: Invalid cloud provider '${CLOUD}'"
-        echo "Supported values: gcp, aws"
+        echo "Supported values: gcp, aws, azure"
         exit 1
         ;;
 esac

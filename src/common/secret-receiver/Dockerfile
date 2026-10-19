@@ -1,4 +1,4 @@
-FROM golang@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c
+FROM golang@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade
 WORKDIR /source
 RUN --mount=type=bind,source=.,target=/source,rw \
     mkdir -p /dist && \

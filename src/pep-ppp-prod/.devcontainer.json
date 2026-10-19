@@ -4,7 +4,7 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "./startupscript/post-startup.sh root /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh root; ./setup-claude-code.sh",
+  "postCreateCommand": "./startupscript/post-startup.sh root /config \"${templateOption:cloud}\" \"${templateOption:login}\"; ./sudo-passwordless.sh root",
   "postStartCommand": [
     "./startupscript/remount-on-restart.sh",
     "root",

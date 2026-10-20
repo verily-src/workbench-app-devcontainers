@@ -41,12 +41,19 @@ def _evict():
         del _store[oldest]
 
 
-def open_dataset(df: pd.DataFrame, source: str) -> dict:
+def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
+                 capped: bool | None = None) -> dict:
+    """`origin` describes where the frame was read from, e.g.
+    {"kind": "aurora", "resource_id", "schema", "table"}; joins push down
+    to Aurora only for such datasets. `capped` marks a frame that may be
+    missing rows; by default, one that reached the row cap."""
+    if capped is None:
+        capped = len(df) >= queries.ROW_CAP
     with _lock:
         _evict()
         dataset_id = uuid.uuid4().hex[:12]
-        _store[dataset_id] = {"df": df, "source": source,
-                              "created": time.monotonic()}
+        _store[dataset_id] = {"df": df, "source": source, "origin": origin,
+                              "capped": capped, "created": time.monotonic()}
     return {"dataset_id": dataset_id, "source": source,
             "rows": len(df), "columns": profile_columns(df)}
 
@@ -72,6 +79,7 @@ def set_column(dataset_id: str, name: str, series) -> dict:
         df = ds["df"].copy()
         df[name] = series
         ds["df"] = df
+        ds["origin"] = None  # no longer the table as stored in the source
     return {"name": name, "rows": len(df), "columns": profile_columns(df)}
 
 

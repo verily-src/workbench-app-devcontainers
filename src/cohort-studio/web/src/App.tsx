@@ -269,9 +269,11 @@ export default function App() {
       alerts.pushToast({
         title: join.truncated ? "Join capped" : "Joined",
         tone: join.truncated ? "fail" : "ok",
-        body: join.truncated
-          ? `Showing ${join.rows.toLocaleString()} of ${join.total_rows.toLocaleString()} rows.`
-          : `${join.rows.toLocaleString()} rows from ${p.steps.length + 1} tables.`,
+        body: (join.truncated
+          ? `Showing ${join.rows.toLocaleString()} of ${join.total_rows.toLocaleString()} rows`
+          : `${join.rows.toLocaleString()} rows from ${p.steps.length + 1} tables`)
+          + (join.engine === "aurora" ? " (ran in Aurora)." : " (ran in memory).")
+          + (join.capped_inputs?.length ? " Some inputs were capped — results may be incomplete." : ""),
       });
       setShowJoin(false);
     } catch (e) {

@@ -345,7 +345,10 @@ def open_dataset(req: OpenRequest):
         raise
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
-    result = datasets.open_dataset(df, f"{req.resource_id} / {req.table}")
+    origin = (joins.aurora_origin(req.resource_id, req.table)
+              if req.kind == "aurora" else None)
+    result = datasets.open_dataset(df, f"{req.resource_id} / {req.table}",
+                                   origin=origin)
     lineage.record(_lineage_engine(), "table_loaded", "table", req.table,
                    payload={"resource_id": req.resource_id,
                             "source_kind": req.kind, "rows": len(df)})
@@ -371,7 +374,7 @@ async def upload_dataset(file: UploadFile):
         raise HTTPException(
             400, f"Could not parse {name} as a {sep!r}-delimited table: "
             f"{str(e).splitlines()[0][:200]}")
-    result = datasets.open_dataset(df, name)
+    result = datasets.open_dataset(df, name, capped=False)
     lineage.record(_lineage_engine(), "csv_uploaded", "file", name,
                    payload={"rows": len(df), "columns": list(df.columns)})
     return result
@@ -405,12 +408,14 @@ def join_datasets(req: JoinRequest):
     except ValueError as e:
         raise HTTPException(400, str(e))
     label = " + ".join(sources)
-    result = datasets.open_dataset(out["df"], label)
+    result = datasets.open_dataset(out["df"], label,
+                                   capped=out["stats"]["truncated"])
     lineage.record(_lineage_engine(), "joined", "dataset", label,
                    payload={"steps": [{k: s[k] for k in
                                        ("how", "conditions", "alias")}
                                       for s in steps],
                             "rows": result["rows"],
+                            "engine": out["stats"]["engine"],
                             "truncated": out["stats"]["truncated"]},
                    parents=[("dataset", s) for s in sources])
     return {**result, "join": out["stats"]}
@@ -423,6 +428,18 @@ def preview_join(req: JoinRequest):
         return joins.preview(base_id, steps)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except joins.JoinTimeout as e:
+        raise HTTPException(504, str(e))
+    except joins.JoinEngineError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/api/datasets/join/validate")
+def validate_join(req: JoinRequest):
+    """Per-step and per-condition problems plus the engine that would run;
+    nothing is executed."""
+    base_id, steps, _ = _join_pipeline(req)
+    return joins.validate(base_id, steps)
 
 
 @app.get("/api/datasets/join/suggest")

@@ -95,6 +95,7 @@ if AVAILABLE:
         import datasets
         import db
         import duck
+        import joins
         import queries
         if kind == "aurora":
             df = db.fetch_aurora_table(resource_id, table, queries.ROW_CAP)
@@ -113,8 +114,10 @@ if AVAILABLE:
                 raise ValueError(f"Unknown BigQuery dataset: {resource_id}")
         else:
             raise ValueError(f"Unknown kind: {kind}")
-        return json.dumps(
-            datasets.open_dataset(df, f"{resource_id} / {table}"))
+        return json.dumps(datasets.open_dataset(
+            df, f"{resource_id} / {table}",
+            origin=joins.aurora_origin(resource_id, table)
+            if kind == "aurora" else None))
 
     @mcp.tool()
     def query_dataset(dataset_id: str, filters_json: str = "[]",

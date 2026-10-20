@@ -259,6 +259,87 @@ def test_join_pipeline_preview_and_suggest():
     assert gone.status_code == 404
 
 
+def test_join_validate_endpoint():
+    import datasets as ds_mod
+    base = ds_mod.open_dataset(pd.DataFrame({
+        "sample_id": ["a", "b"], "donor_id": [1, 2]}), "f / samples.csv")
+    codes = ds_mod.open_dataset(pd.DataFrame({
+        "donor": ["1", "2"], "site": ["n", "s"]}), "f / codes.csv")
+    resp = client.post("/api/datasets/join/validate", json={
+        "base_id": base["dataset_id"], "steps": [
+            {"right_id": codes["dataset_id"], "how": "inner",
+             "conditions": [{"left": "donor_id", "op": "=", "right": "donor"},
+                            {"left": "donor_id", "op": "<", "right": "donor"},
+                            {"left": "nope", "op": "=", "right": "site"}]}]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False and body["engine"] == "duckdb"
+    conds = body["steps"][0]["conditions"]
+    assert conds[0]["problem"] is None and "compared as text" in conds[0]["note"]
+    assert "can't compare" in conds[1]["problem"]
+    assert "left side" in conds[2]["problem"]
+    gone = client.post("/api/datasets/join/validate", json={
+        "base_id": "missing", "steps": []})
+    assert gone.status_code == 404
+
+
+def _open_aurora_tables(monkeypatch, fake_aurora, tables: dict, rid="db1"):
+    import db
+    for name, df in tables.items():
+        df.to_sql(name, fake_aurora, schema="public", index=False)
+    monkeypatch.setattr(db, "fetch_aurora_table", lambda r, t, cap:
+                        pd.read_sql_query(f'SELECT * FROM public."{t}"', fake_aurora))
+    monkeypatch.setattr(main.lineage, "record", lambda *a, **k: None)
+    return [client.post("/api/datasets/open", json={
+        "kind": "aurora", "resource_id": rid, "table": name}).json()["dataset_id"]
+        for name in tables]
+
+
+def test_join_of_aurora_tables_runs_in_aurora(monkeypatch, fake_aurora):
+    samples, visits = _open_aurora_tables(monkeypatch, fake_aurora, {
+        "samples": pd.DataFrame({"sample_id": ["a", "b", "c"]}),
+        "visits": pd.DataFrame({"sample_id": ["a", "a", "a", "b"],
+                                "visit": [1, 2, 3, 1]})})
+    upload = client.post("/api/datasets/upload", files={"file": (
+        "extra.csv", b"sample_id,x\na,1\n", "text/csv")}).json()["dataset_id"]
+    step = {"right_id": visits, "how": "inner", "columns": ["visit"],
+            "conditions": [{"left": "sample_id", "op": "=", "right": "sample_id"}]}
+
+    v = client.post("/api/datasets/join/validate",
+                    json={"base_id": samples, "steps": [step]}).json()
+    assert v["ok"] is True and v["engine"] == "aurora"
+    joined = client.post("/api/datasets/join", json={"base_id": samples, "steps": [step]})
+    assert joined.status_code == 200
+    stats = joined.json()["join"]
+    assert stats["engine"] == "aurora" and stats["total_rows"] == 4
+    assert stats["steps"][0]["growth"] == 1.33 and stats["steps"][0]["fanout"] is False
+    assert joined.json()["rows"] == 4
+
+    # Mixing in an upload keeps the whole pipeline in memory.
+    mixed = client.post("/api/datasets/join/preview", json={"base_id": samples, "steps": [
+        step, {**step, "right_id": upload, "columns": ["x"], "alias": "extra"}]})
+    assert mixed.status_code == 200 and mixed.json()["engine"] == "duckdb"
+
+
+def test_aurora_preview_timeout_is_504(monkeypatch, fake_aurora):
+    import joins
+    samples, visits = _open_aurora_tables(monkeypatch, fake_aurora, {
+        "samples": pd.DataFrame({"k": [1]}), "visits": pd.DataFrame({"k": [1]})})
+
+    class Canceled(Exception):
+        sqlstate = "57014"
+
+    class Engine:
+        def begin(self):
+            raise Canceled("canceling statement due to statement timeout")
+
+    monkeypatch.setattr(joins.db, "get_engine_for_resource", lambda rid: Engine())
+    resp = client.post("/api/datasets/join/preview", json={"base_id": samples, "steps": [
+        {"right_id": visits, "conditions": [{"left": "k", "op": "=", "right": "k"}]}]})
+    assert resp.status_code == 504
+    assert "longer than 10 s" in resp.json()["detail"]
+
+
 def test_join_rejects_bad_how():
     import pandas as pd
     import datasets as ds_mod

@@ -71,13 +71,37 @@ export interface JoinStep {
   alias: string;
 }
 
+export type JoinEngine = "aurora" | "duckdb";
+
+export interface JoinStepStats {
+  right_rows: number;
+  rows: number;
+  truncated: boolean;
+  rows_before: number;
+  growth: number | null;  // rows / rows_before
+  fanout: boolean;        // grew past the server's fan-out threshold
+}
+
 export interface JoinStats {
+  engine: JoinEngine;
   base_rows: number;
   rows: number;
   total_rows: number;
   truncated: boolean;
-  steps: { right_rows: number; rows: number; truncated: boolean }[];
+  steps: JoinStepStats[];
   notes: string[];
+  capped_inputs: string[];  // in-memory inputs that hit the load row cap
+}
+
+export interface JoinConditionCheck { problem: string | null; note: string | null }
+
+export interface JoinValidation {
+  ok: boolean;
+  engine: JoinEngine;
+  engine_reason: string;
+  capped_inputs: string[];
+  problems: string[];
+  steps: { problems: string[]; notes: string[]; conditions: JoinConditionCheck[] }[];
 }
 
 export interface JoinPreview extends JoinStats {

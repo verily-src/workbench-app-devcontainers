@@ -388,8 +388,9 @@ def api_infer_schema(body: dict) -> dict:
             table = body.get("table", "")
             mappings = infer_from_aurora(resource_id, table)
         elif source_type == "join":
-            resource_id = body.get("resource_id", "")
-            steps = _steps_from_body(body.get("join", {}).get("steps", []))
+            join_body = body.get("join", {})
+            resource_id = body.get("resource_id") or join_body.get("resource_id", "")
+            steps = _steps_from_body(join_body.get("steps", []))
             validate_join(resource_id, steps)
             select_sql, output_columns = build_select(resource_id, steps)
             mappings = infer_from_join(resource_id, select_sql, output_columns)

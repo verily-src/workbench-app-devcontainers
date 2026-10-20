@@ -10,6 +10,8 @@ set -o xtrace
 
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
 
 # Wait for containers to be healthy with timeout (5 minutes)
 MAX_RETRIES=150
@@ -17,28 +19,34 @@ RETRY_INTERVAL=2
 retry_count=0
 
 while [[ ${retry_count} -lt ${MAX_RETRIES} ]]; do
-    APP_HEALTH="$( (docker inspect --format='{{.State.Health.Status}}' application-server 2>/dev/null || echo "none") | xargs)"
-
-    if docker ps -q --filter "name=proxy-agent" | grep -q . \
-        && docker ps -q --filter "name=application-server" | grep -q . \
-        && [[ "${APP_HEALTH}" == "healthy" || "${APP_HEALTH}" == "none" ]]; then
-        echo "Proxy is ready (application-server health: ${APP_HEALTH})."
+    if PROXY_CONTAINER=$(find_proxy_container) \
+        && containers_ready application-server "${PROXY_CONTAINER}" proxy-agent; then
+        echo "App and proxy containers are ready."
         break
     fi
 
     retry_count=$((retry_count + 1))
     if [[ ${retry_count} -lt ${MAX_RETRIES} ]]; then
-        echo "Waiting for containers to be ready (attempt ${retry_count}/${MAX_RETRIES}, app health: ${APP_HEALTH})..."
+        echo "Waiting for containers to be ready (attempt ${retry_count}/${MAX_RETRIES})..."
         sleep ${RETRY_INTERVAL}
     fi
 done
 
 if [[ ${retry_count} -ge ${MAX_RETRIES} ]]; then
-    echo "Timeout waiting for proxy-agent or application-server to be ready"
+    echo "Timeout waiting for app and proxy containers to be ready"
     status="$(get_guest_attribute "startup_script/status" "")"
     if [[ "${status}" != "ERROR" ]]; then
         set_metadata "startup_script/status" "ERROR"
         set_metadata "startup_script/message" "Timeout waiting for containers to be ready. Please try restarting the VM."
+    fi
+    exit 1
+fi
+
+if ! validate_airlock_snapshot; then
+    status="$(get_guest_attribute "startup_script/status" "")"
+    if [[ "${status}" != "ERROR" ]]; then
+        set_metadata "startup_script/status" "ERROR"
+        set_metadata "startup_script/message" "App setup is incomplete. Please retry startup."
     fi
     exit 1
 fi
@@ -56,7 +64,9 @@ MONITORING_UTILS_FILE="/home/core/monitoring-utils.sh"
 if [[ ! -f "${FIRST_BOOT_FILE}" ]]; then
     # first boot file does not exist
     # record devcontainer end for monitoring
+    # shellcheck source=/dev/null
     source /home/core/service-utils.sh
+    # shellcheck source=/dev/null
     source "${MONITORING_UTILS_FILE}"
 
     # Fetch workspace ID and resourc eID

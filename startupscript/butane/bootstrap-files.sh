@@ -18,6 +18,9 @@ download() {
   local dest="$1"
   local src="$2"
   local mode="${3:-0755}"
+  if [ -e "$dest" ]; then
+    return
+  fi
   mkdir -p "$(dirname "$dest")"
   curl --retry 5 --retry-delay 2 --retry-all-errors -fsSL -o "$dest" "${BASE_URL}/${src}"
   chmod "$mode" "$dest"
@@ -52,10 +55,11 @@ download /home/core/package.json "package.json"
 download /home/core/package-lock.json "package-lock.json"
 download /home/core/jsoncStripComments.mjs "jsoncStripComments.mjs"
 download /home/core/probe-proxy-readiness.sh "probe-proxy-readiness.sh"
+download /home/core/container-utils.sh "container-utils.sh"
 download /home/core/probe-user-access.sh "probe-user-access.sh"
 download /home/core/idle-shutdown.sh "idle-shutdown.sh"
 download /home/core/prefetch-oci-features.sh "prefetch-oci-features.sh"
-download /home/core/check-for-newer-os-update.sh "check-for-newer-os-update.sh"
+download /home/core/update-flatcar.sh "update-flatcar.sh"
 download /home/core/metadata-cleanup.sh "metadata-cleanup.sh"
 download /home/core/monitoring-utils.sh "monitoring-utils.sh"
 download /home/core/machine-stats-exporter.sh "machine-stats-exporter.sh"

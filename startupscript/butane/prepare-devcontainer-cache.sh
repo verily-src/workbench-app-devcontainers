@@ -59,6 +59,13 @@ if [[ -n "${DOCKER_DIR+x}" ]]; then
     popd
 fi
 
+# Report success before docker is stopped. On AWS set_metadata tags the instance
+# by running the AWS CLI in a container, so it cannot run once the docker daemon
+# is gone.
+# shellcheck source=/dev/null
+source '/home/core/metadata-utils.sh'
+set_metadata 'startup_script/status' "COMPLETED"
+
 # Stop docker and prevent it from starting again
 systemctl mask docker
 systemctl stop docker
@@ -73,10 +80,6 @@ find /var/lib/docker \
     ! -name buildkit \
     ! -name engine-id \
     -exec rm -rf {} +
-
-# shellcheck source=/dev/null
-source '/home/core/metadata-utils.sh'
-set_metadata 'startup_script/status' "COMPLETED"
 
 # Shut down the instance to signal that the image is ready to be saved.
 systemctl poweroff

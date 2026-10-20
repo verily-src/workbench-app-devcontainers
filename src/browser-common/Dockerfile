@@ -1,0 +1,55 @@
+# Shared browser front end: a server-side Chromium rendered by Selkies and streamed to the client as
+# pixels, locked down by a managed policy. Consuming templates build their own `app` service from this
+# context and set APP_ORIGIN, baked into the policy URLAllowlist (with none, URLBlocklist ["*"] makes
+# it fail closed).
+FROM lscr.io/linuxserver/chromium@sha256:cf6200ccdcb224feaf5d3bde4ce45b3783c926a7496c98059cae1e0db78e5b2f
+
+# Selkies + hardening defaults; a template may override any of these in its compose environment.
+ENV SELKIES_DESKTOP=false \
+    NO_GAMEPAD=true \
+    HARDEN_DESKTOP=true \
+    HARDEN_KEYBINDS=true \
+    RESTART_APP=true \
+    SELKIES_FRAMERATE=20 \
+    SELKIES_H264_CRF=28 \
+    SELKIES_AUDIO_ENABLED=false \
+    SELKIES_MICROPHONE_ENABLED=false \
+    SELKIES_UI_TITLE="VWB" \
+    SELKIES_UI_SHOW_LOGO="false|locked" \
+    SELKIES_UI_SHOW_SIDEBAR="true|locked" \
+    SELKIES_UI_SHOW_CORE_BUTTONS="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_FILES="true|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_VIDEO_SETTINGS="true|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_SCREEN_SETTINGS="true|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_AUDIO_SETTINGS="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_STATS="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_CLIPBOARD="true|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_APPS="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_SHARING="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_GAMEPADS="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_FULLSCREEN="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_GAMING_MODE="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_TRACKPAD="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_KEYBOARD_BUTTON="false|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_SOFT_BUTTONS="false|locked" \
+    SELKIES_ENABLE_SHARING="false|locked" \
+    SELKIES_ENABLE_COLLAB="false|locked" \
+    SELKIES_ENABLE_SHARED="false|locked" \
+    SELKIES_ENABLE_CLIPBOARD=in \
+    SELKIES_COMMAND_ENABLED="false|locked" \
+    SELKIES_FILE_TRANSFERS=upload
+
+ARG APP_ORIGIN=""
+
+# Chromium applies every *.json under /etc/chromium/policies/managed/ at startup. Baked into the image
+# (not bind-mounted) and chmod 444, so it can't be modified from the user-writable session.
+COPY managed-policy.json.tmpl /tmp/managed-policy.json.tmpl
+RUN mkdir -p /etc/chromium/policies/managed \
+    && sed "s|__APP_ORIGIN__|${APP_ORIGIN}|g" /tmp/managed-policy.json.tmpl \
+       > /etc/chromium/policies/managed/workbench-rbi.json \
+    && rm /tmp/managed-policy.json.tmpl \
+    && chmod 444 /etc/chromium/policies/managed/workbench-rbi.json
+
+# A named volume mounted here inherits these permissions, letting the browser and the backend, which
+# run as different users, both read and write uploads.
+RUN mkdir -p /uploads && chmod 0777 /uploads

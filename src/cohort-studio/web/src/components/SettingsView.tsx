@@ -81,6 +81,12 @@ export function SettingsView(
 
   if (!cfg) return <div className="activity"><span className="pulse" />Loading settings…</div>;
 
+  // The page origin is the Workbench proxy URL, or the internal kiosk
+  // origin (application-server:8080) in the virtual-browser variant.
+  // Neither helps an agent, so lead with the in-workspace address.
+  const mcpLocalUrl = `http://localhost:8080${cfg.mcp.path}`;
+  const mcpPageUrl = `${window.location.origin}${cfg.mcp.path}`;
+
   return (
     <div style={{ maxWidth: 680 }}>
       <div className="section-label">AI model</div>
@@ -172,13 +178,19 @@ export function SettingsView(
         </p>
         <code className="settings-code">
           {cfg.mcp.available
-            ? `${window.location.origin}${cfg.mcp.path}`
+            ? mcpLocalUrl
             : "MCP package not installed in this build"}
         </code>
         <p className="settings-caption">
-          Note: through the Workbench proxy this URL requires browser
-          cookies — agents typically connect from inside the workspace
-          (localhost:8080{cfg.mcp.path} on the VM).
+          Agents connect from inside the workspace: this address works in
+          the app container (terminal or docker exec), and on the VM when
+          port 8080 is published.
+          {cfg.mcp.available && mcpPageUrl !== mcpLocalUrl && (
+            <span className="settings-hint">
+              {" "}This page's address ({mcpPageUrl}) needs browser
+              cookies, so agents usually can't use it.
+            </span>
+          )}
         </p>
       </div>
 

@@ -1,0 +1,51 @@
+services:
+  # Keep the browser container across backend recreation.
+  browser:
+    container_name: "browser"
+    labels:
+      com.verily.workbench.proxy-target: "true"
+    image: workbench-virtual-browser:app
+    pull_policy: never
+    # Chromium needs real shared memory to render; the 64MB Docker default causes renderer crashes.
+    shm_size: "2gb"
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+      - backend-network
+    environment:
+      # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
+      CHROME_CLI: "--kiosk http://application-server:8080"
+      FILE_MANAGER_PATH: /uploads
+      PUID: 1000
+      PGID: 1000
+    # Shared with the backend so uploads from the streamed browser land in /root/browser-uploads.
+    volumes:
+      - browser-uploads:/uploads
+
+  app:
+    container_name: "application-server"
+    image: workbench-virtual-browser:cohort-studio
+    pull_policy: never
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/root:cached
+      - browser-uploads:/root/browser-uploads
+    # No published ports: only the browser reaches the app, over backend-network.
+    networks:
+      - backend-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+  backend-network:
+volumes:
+  work:
+  browser-uploads:

@@ -175,14 +175,37 @@ more open dataset onto the result so far:
 - **Suggestions**: likely key pairs, found by matching names (including
   `id` ↔ `<table>_id`) and scored by how many base values appear on the
   other side.
+- **Table pickers** are searchable: type to filter, arrow keys to move,
+  Enter to choose, Escape to close.
 
-**Preview** shows the row count after each step and a 20-row sample.
-**Join into new tab** runs the pipeline in DuckDB over the in-memory
-frames and opens the result as a new dataset, capped at the row cap; a
-toast reports the row count and whether the result was truncated.
+**Where the join runs.** A badge in the panel shows the engine:
+
+- **Aurora** when the base and every joined table were opened unchanged
+  from the same Aurora database. The whole pipeline runs as one Postgres
+  query over the full tables (one CTE per step; semi and anti joins
+  become `WHERE [NOT] EXISTS`), and only the result is loaded. Full joins
+  with operators other than `=` stay in memory, because Postgres doesn't
+  support them.
+- **In memory** (DuckDB over the loaded frames) for everything else:
+  S3, BigQuery, catalogs, uploads, earlier join results, derived columns,
+  or tables from different databases. If any input was cut at the row
+  cap, a note says the result may be incomplete.
+
+**Checks before and during a run.** The panel validates the steps as you
+edit them and shows problems on each condition: unknown columns, types
+that can't be compared, and keys compared as text. **Preview** shows the
+row count before and after each step and a 20-row sample, and warns when
+a step more than doubles the rows, which usually means a non-unique key.
+On Aurora, preview counts stop after 10 s with an error. A full run
+stops after 40 s and then runs in memory instead, with a note.
+
+**Join into new tab** opens the result as a new dataset, capped at the
+row cap. A toast reports the row count, the engine, and whether the
+result was truncated.
 
 API: `POST /api/datasets/join`, `POST /api/datasets/join/preview`,
-`GET /api/datasets/join/suggest`. Code: `app/joins.py`.
+`POST /api/datasets/join/validate`, `GET /api/datasets/join/suggest`.
+Code: `app/joins.py`.
 
 ## Development
 
@@ -224,6 +247,11 @@ wb app config create \
 Then create the app from the Workbench UI. Known platform issue: first
 boots of custom apps frequently hang in post-startup — if the proxy URL
 403s after ~15 minutes, stop/start the VM once.
+
+For a browser-isolated deployment, where users see Studio only through a
+streamed Chromium session and can't download data, use
+[../virtual-browser-cohort-studio](../virtual-browser-cohort-studio/)
+instead. It runs this same image.
 
 ### Shipping updates (restart-to-deploy)
 

@@ -7,6 +7,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
 
 function usage {
   echo "Usage: $0 <path/to/devcontainer> <gcp/aws> <login>"
@@ -18,21 +20,157 @@ function usage {
   exit 1
 }
 
+calculate_container_memory_limit() {
+    # Query total system memory in bytes
+    local total_mem_bytes
+    total_mem_bytes=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)
+    local total_mem_mb=$((total_mem_bytes / 1024 / 1024))
+
+    # Reserve memory for host OS, proxy-agent, fluent-bit, and other system processes.
+    # Reserve 10% of total memory, floored at 1GB and capped at 4GB.
+    local reserved_10pct=$((total_mem_mb * 10 / 100))
+    local reserved_mb=$((reserved_10pct > 1024 ? reserved_10pct : 1024))
+    reserved_mb=$((reserved_mb > 4096 ? 4096 : reserved_mb))
+
+    # Container gets total - reserved
+    local container_mem_limit_mb=$((total_mem_mb - reserved_mb))
+
+    # Validate that the container memory limit is not negative
+    # If negative or zero, don't set a memory limit (let container use available memory)
+    if [[ "${container_mem_limit_mb}" -le 0 ]]; then
+        echo "WARNING: Calculated container memory limit is ${container_mem_limit_mb}MB (negative or zero)" >&2
+        echo "WARNING: Total memory: ${total_mem_mb}MB, Reserved: ${reserved_mb}MB" >&2
+        echo "WARNING: Not setting a memory limit - container will use available system memory" >&2
+        echo "System memory: ${total_mem_mb}MB, Reserved for host: ${reserved_mb}MB, Container memory limit: none" >&2
+        echo ""  # Return empty string (no limit)
+    else
+        echo "System memory: ${total_mem_mb}MB, Reserved for host: ${reserved_mb}MB, Container memory limit: ${container_mem_limit_mb}m" >&2
+        echo "${container_mem_limit_mb}m"  # Return the limit
+    fi
+}
+
+replace_template_options() {
+    local TEMPLATE_PATH="$1"
+
+    echo "replacing templateOptions in ${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:login}|${LOGIN}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
+    sed -i "s|\${templateOption:shmSize}|${SHM_SIZE}|g" "${TEMPLATE_PATH}"
+
+    # Handle memory limit - delete the line if empty
+    if [[ -z "${CONTAINER_MEM_LIMIT}" ]]; then
+        sed -i "/\${templateOption:memoryLimit}/d" "${TEMPLATE_PATH}"
+    else
+        sed -i "s|\${templateOption:memoryLimit}|${CONTAINER_MEM_LIMIT}|g" "${TEMPLATE_PATH}"
+    fi
+}
+
+detect_gpu() {
+    # Detect NVIDIA GPUs
+    if nvidia-smi > /dev/null 2>&1; then
+        return 0  # GPU detected
+    else
+        return 1  # No GPU detected
+    fi
+}
+
+handle_container_state_changed() {
+    # Each argument is a "key=value" pair representing current container state.
+    # Removes application-server if any value has changed since last run.
+    local rebuild=false id
+
+    if [[ ! -f "${CONTAINER_STATE_FILE}" ]]; then
+        echo "First run, initializing container state"
+        rebuild=true
+    else
+        local pair key value previous_pair
+        for pair in "$@"; do
+            key="${pair%%=*}"
+            value="${pair#*=}"
+            # sed succeeds when a key is absent from an older state file.
+            # Compare full pairs so a missing key differs from an empty value.
+            previous_pair="$(sed -n "/^${key}=/p" "${CONTAINER_STATE_FILE}")"
+            if [[ "${pair}" != "${previous_pair}" ]]; then
+                echo "Container state changed: ${key} from ${previous_pair#*=} to ${value}"
+                rebuild=true
+            fi
+        done
+    fi
+
+    if [[ "${rebuild}" == "true" ]]; then
+        id=$(get_application_container)
+        [[ -z "$id" ]] || docker rm -f "$id"
+    fi
+
+    printf '%s\n' "$@" > "${CONTAINER_STATE_FILE}"
+}
+
+update_container_memory_limit() {
+    # Applies a changed memory limit in place. Recreating application-server on
+    # a VM resize would discard its writable layer, including home directories.
+    local previous_pair="$1" pair="$2" limit="${2#*=}" id
+
+    if [[ "${pair}" != "${previous_pair}" ]]; then
+        id=$(get_application_container)
+        if [[ -n "${id}" && -n "${limit}" ]]; then
+            echo "Container memory limit changed from ${previous_pair#*=} to ${limit}"
+            # Compose leaves swap unset, which Docker treats as twice the memory limit.
+            if ! docker update --memory "${limit}" --memory-swap "$(( ${limit%m} * 2 ))m" "${id}"; then
+                # Leave the limit unrecorded so the next boot retries.
+                echo "WARNING: failed to update application-server memory limit" >&2
+                return 0
+            fi
+        elif [[ -n "${id}" ]]; then
+            echo "WARNING: no memory limit computed, keeping the existing application-server limit" >&2
+        fi
+    fi
+
+    printf '%s\n' "${pair}" >> "${CONTAINER_STATE_FILE}"
+}
+
+apply_gpu_runtime() {
+    local DOCKER_COMPOSE_PATH="$1"
+    local GPU_RUNTIME_BLOCK_PATH="$2"
+    local TEMP_COMPOSE_PATH="${DOCKER_COMPOSE_PATH}.tmp"
+    local SERVICE="${3:-app}"
+
+    echo "Applying GPU runtime configuration in ${DOCKER_COMPOSE_PATH}"
+
+    # Insert GPU reservations into the application service, including virtual-browser backends.
+    awk -v gpu_config_path="$GPU_RUNTIME_BLOCK_PATH" -v service="$SERVICE" '
+    $0 ~ "^[[:space:]]*" service ":" {
+        print $0;                         # Print the service line as-is
+        system("cat " gpu_config_path);   # Insert the GPU runtime block by reading from the specified file
+        print "";                        # Separate the next line even if the snippet has no final newline
+        next;
+    }
+    {
+        print $0;                         # For all other lines, print them unchanged
+    }
+    ' "${DOCKER_COMPOSE_PATH}" > "${TEMP_COMPOSE_PATH}"  # Redirect output to a temporary file
+
+    # Replace the original docker-compose.yaml file with the modified temporary file
+    mv "${TEMP_COMPOSE_PATH}" "${DOCKER_COMPOSE_PATH}"
+}
+
 # Check that the required arguments are provided: devcontainer_path, cloud, login
 if [[ $# -lt 3 ]]; then
     usage
 fi
 
-readonly DEVCONTAINER_PATH="$1"
+DEVCONTAINER_PATH=$(cd "$1" && pwd)
+readonly DEVCONTAINER_PATH
 readonly CLOUD="$2"
 readonly LOGIN="$3"
-readonly CONTAINER_IMAGE="${5:-debian:bullseye}"
-readonly CONTAINER_PORT="${6:-8080}"
+readonly CONTAINER_IMAGE="${4:-debian:trixie}"
+readonly CONTAINER_PORT="${5:-8080}"
 
 readonly DEVCONTAINER_STARTUPSCRIPT_PATH='/home/core/devcontainer/startupscript'
 readonly DEVCONTAINER_FEATURES_PATH='/home/core/devcontainer/features/src'
 readonly NVIDIA_RUNTIME_PATH="${DEVCONTAINER_PATH}/startupscript/butane/nvidia-runtime.yaml"
-readonly GPU_STATE_FILE="/home/core/gpu-state"
+readonly CONTAINER_STATE_FILE="/home/core/container-state"
 
 if [[ -f "${DEVCONTAINER_PATH}/.devcontainer.json" ]]; then
   DEVCONTAINER_CONFIG_PATH="${DEVCONTAINER_PATH}/.devcontainer.json"
@@ -54,12 +192,14 @@ if [[ ! -f "${DEVCONTAINER_CONFIG_PATH}.template" ]]; then
 else
     cp "${DEVCONTAINER_CONFIG_PATH}.template" "${DEVCONTAINER_CONFIG_PATH}"
 fi
+sed -i "1s|^|// DO NOT EDIT: generated from ${DEVCONTAINER_CONFIG_PATH}.template on startup; edits will be overwritten.\n|" "${DEVCONTAINER_CONFIG_PATH}"
 if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
   if [[ ! -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" ]]; then
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template"
   else
     cp "${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
   fi
+  sed -i "1s|^|# DO NOT EDIT: generated from ${DEVCONTAINER_DOCKER_COMPOSE_PATH}.template on startup; edits will be overwritten.\n|" "${DEVCONTAINER_DOCKER_COMPOSE_PATH}"
 fi
 
 # Copy devcontainer post-startup scripts into the devcontainer folder so they
@@ -78,76 +218,21 @@ if [[ -d "${DEVCONTAINER_FEATURES_PATH}" ]]; then
     rsync -a --ignore-existing "${DEVCONTAINER_FEATURES_PATH}/" "${DEVCONTAINER_PATH}/.devcontainer/features"
 fi
 
-/home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
-    echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2
+# shellcheck source=/dev/null
+source '/home/core/metadata-utils.sh'
+SHM_SIZE="$(get_metadata_value "shm-size" "")"
+if [[ -z "${SHM_SIZE}" ]]; then
+    SHM_SIZE="$(get_guest_attribute "config/shm-size" "")"
+fi
+if [[ ! "${SHM_SIZE}" =~ ^[0-9]+[bBkKmMgG][bB]?$ ]]; then
+    echo "WARNING: invalid shm-size '${SHM_SIZE}', using default 64m" >&2
+    SHM_SIZE="64m"
+fi
+readonly SHM_SIZE
 
-replace_template_options() {
-    local TEMPLATE_PATH="$1"
-
-    echo "replacing templateOptions in ${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:login}|${LOGIN}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:cloud}|${CLOUD}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:containerImage}|${CONTAINER_IMAGE}|g" "${TEMPLATE_PATH}"
-    sed -i "s|\${templateOption:containerPort}|${CONTAINER_PORT}|g" "${TEMPLATE_PATH}"
-}
-
-detect_gpu() {
-    # Detect NVIDIA GPUs
-    if nvidia-smi > /dev/null 2>&1; then
-        return 0  # GPU detected
-    else
-        return 1  # No GPU detected
-    fi
-}
-
-handle_gpu_state_changed() {
-    local current_state="$1"
-    local rebuild=false
-
-    # Check if this is first run or if state changed
-    if [[ ! -f "${GPU_STATE_FILE}" ]]; then
-        echo "First run, GPU state: ${current_state} (0=present, 1=absent)"
-        rebuild=true
-    else
-        local previous_state
-        previous_state="$(cat "${GPU_STATE_FILE}")"
-
-        if [[ "${current_state}" != "${previous_state}" ]]; then
-            echo "GPU state changed from ${previous_state} to ${current_state} (0=present, 1=absent)"
-            rebuild=true
-        fi
-    fi
-
-    # Rebuild container if needed
-    if [[ "${rebuild}" == "true" ]]; then
-        docker rm -f application-server
-    fi
-
-    # Update state file
-    echo "${current_state}" > "${GPU_STATE_FILE}"
-}
-
-apply_gpu_runtime() {
-    local DOCKER_COMPOSE_PATH="$1"
-    local GPU_RUNTIME_BLOCK_PATH="$2"
-    local TEMP_COMPOSE_PATH="${DOCKER_COMPOSE_PATH}.tmp"
-
-    echo "Applying GPU runtime configuration in ${DOCKER_COMPOSE_PATH}"
-
-    # Use awk to insert the GPU runtime block after the "app:" line in the docker-compose.yaml file
-    awk -v gpu_config_path="$GPU_RUNTIME_BLOCK_PATH" '
-    /^[[:space:]]*app:/ {                 # Match the line containing "app:" (can be indented)
-        print $0;                         # Print the "app:" line as-is
-        system("cat " gpu_config_path);   # Insert the GPU runtime block by reading from the specified file
-    }
-    {
-        print $0;                         # For all other lines, print them unchanged
-    }
-    ' "${DOCKER_COMPOSE_PATH}" > "${TEMP_COMPOSE_PATH}"  # Redirect output to a temporary file
-
-    # Replace the original docker-compose.yaml file with the modified temporary file
-    mv "${TEMP_COMPOSE_PATH}" "${DOCKER_COMPOSE_PATH}"
-}
+# Calculate memory limit for the application container
+CONTAINER_MEM_LIMIT=$(calculate_container_memory_limit)
+readonly CONTAINER_MEM_LIMIT
 
 # Substitute template options in devcontainer.json and docker-compose.yaml
 replace_template_options "${DEVCONTAINER_CONFIG_PATH}"
@@ -156,23 +241,31 @@ if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
 fi
 
 gpu_exists=$(detect_gpu; echo $?)
-handle_gpu_state_changed "${gpu_exists}"
+readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
+APP_SERVICE=$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" |
+    jq -r '.service')
 
 # Apply GPU runtime configuration if GPU is present
 if [[ "${gpu_exists}" == "0" ]]; then
     echo "NVIDIA GPU detected, applying GPU runtime configuration"
-    apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}"
+    apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}" "${APP_SERVICE}"
 else
     echo "No NVIDIA GPU detected, skipping GPU runtime configuration"
 fi
 
 echo 'publishing devcontainer.json to metadata'
-# shellcheck source=/dev/null
-source '/home/core/metadata-utils.sh'
-readonly JSONC_STRIP_COMMENTS=/home/core/jsoncStripComments.mjs
 DEVCONTAINER_CUSTOMIZATIONS="$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" | jq -c .customizations.workbench)"
 readonly DEVCONTAINER_CUSTOMIZATIONS
 set_metadata 'devcontainer/customizations' "${DEVCONTAINER_CUSTOMIZATIONS}"
+
+# Restoring an airlocked snapshot uses its installed features without registry access.
+if [[ $(jq -r '.AIRLOCK_ENABLED // false' <<< "$DEVCONTAINER_CUSTOMIZATIONS") == true ]] &&
+    docker image inspect workbench-local-snapshot:devcontainer >/dev/null 2>&1; then
+    echo "Using initial snapshot; skipping OCI feature prefetch"
+else
+    /home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
+        echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2
+fi
 
 # Convert secrets.yml to JSON for use by credential helpers and provide-secrets
 rm -f /home/core/secrets.json
@@ -182,3 +275,9 @@ if [[ -f "${SECRETS_YML}" ]]; then
   docker run --rm -v "${SECRETS_YML}:/secrets.yml:ro" \
     mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 -o=json '.secrets' /secrets.yml > /home/core/secrets.json
 fi
+
+# Read before handle_container_state_changed rewrites the state file.
+applied_mem_limit="$(sed -n '/^mem-limit=/p' "${CONTAINER_STATE_FILE}" 2>/dev/null || true)"
+# GPU and shm-size can only change by recreating application-server.
+handle_container_state_changed "gpu=${gpu_exists}" "shm-size=${SHM_SIZE}"
+update_container_memory_limit "${applied_mem_limit}" "mem-limit=${CONTAINER_MEM_LIMIT}"

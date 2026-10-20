@@ -1,0 +1,8 @@
+[Unit]
+Description=Run Workbench machine-stats-exporter
+Requires=workbench-maintenance.service
+After=workbench-maintenance.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/core/machine-stats-exporter.sh

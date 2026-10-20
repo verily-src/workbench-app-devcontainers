@@ -296,6 +296,41 @@ def test_join_preview_shows_funnel_and_sample(loaded_page: Page):
     expect(panel.locator(".join-sample th").first).to_have_text("sample_id")
 
 
+def test_join_table_combobox_and_inline_validation(loaded_page: Page):
+    loaded_page.locator('input[type="file"]').set_input_files(PHENO_CSV)
+    expect(loaded_page.locator(".tab", has_text="phenotypes.csv")
+           ).to_be_visible(timeout=15000)
+    loaded_page.locator(".tab-join").click()
+    panel = loaded_page.locator(".join-panel")
+    expect(panel.locator(".join-engine")).to_have_text("runs in memory",
+                                                       timeout=10000)
+
+    # Searchable table picker: filter, Escape, then pick with the keyboard.
+    combo = panel.get_by_role("combobox", name="Table to join in step 1")
+    combo.click()
+    combo.fill("zzz")
+    expect(panel.get_by_role("listbox")).to_contain_text("No matches")
+    combo.press("Escape")
+    expect(panel.get_by_role("listbox")).to_have_count(0)
+    combo.fill("pheno")
+    expect(panel.get_by_role("option", name=re.compile("phenotypes.csv"))
+           ).to_be_visible()
+    combo.press("Enter")
+    expect(combo).to_have_value("phenotypes.csv")
+
+    # number < text is rejected inline before running, and blocks Join.
+    cond = panel.locator(".join-cond").first
+    cond.locator("select").nth(0).select_option("rin_score")
+    cond.locator("select.join-op").select_option("<")
+    expect(panel.locator(".join-check.join-error")).to_contain_text(
+        "can't compare", timeout=10000)
+    expect(panel.get_by_role("button", name="Join into new tab")).to_be_disabled()
+    cond.locator("select.join-op").select_option("=")
+    expect(panel.locator(".join-check.settings-hint")).to_contain_text(
+        "compared as text", timeout=10000)
+    expect(panel.get_by_role("button", name="Join into new tab")).to_be_enabled()
+
+
 def test_export_pdf_downloads(loaded_page: Page):
     # Export PDF is fully client-side (charts live in the browser); assert
     # a real .pdf download is produced with non-empty bytes.

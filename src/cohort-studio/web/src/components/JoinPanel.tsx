@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type {
-  Dataset, JoinCondition, JoinHow, JoinOp, JoinPreview, JoinStep,
-  JoinSuggestion,
+  Dataset, JoinCondition, JoinEngine, JoinHow, JoinOp, JoinPreview, JoinStep,
+  JoinSuggestion, JoinValidation,
 } from "../types";
+import { Combobox } from "./Combobox";
 
 interface Props {
   datasets: Dataset[];
@@ -23,6 +24,10 @@ const HOWS: { id: JoinHow; label: string; hint: string }[] = [
 const OPS: JoinOp[] = ["=", "!=", "<", "<=", ">", ">="];
 const ARROW = " → ";
 const MAX_STEPS = 6;
+const VALIDATE_DELAY_MS = 300;
+const ENGINE_LABEL: Record<JoinEngine, string> = {
+  aurora: "runs in Aurora", duckdb: "runs in memory",
+};
 
 interface StepState extends JoinStep { touched: boolean; pickCols: boolean }
 
@@ -130,6 +135,22 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
 
   useEffect(() => { setPreview(null); setPreviewErr(""); }, [baseId, steps]);
 
+  // Server-side check of keys and types (no join is run), debounced.
+  const [validation, setValidation] = useState<JoinValidation | null>(null);
+  useEffect(() => {
+    if (!base || steps.some((s) => !s.right_id)) { setValidation(null); return; }
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => {
+      api.validateJoin(baseId, payload(), ctrl.signal)
+        .then(setValidation)
+        .catch(() => { if (!ctrl.signal.aborted) setValidation(null); });
+    }, VALIDATE_DELAY_MS);
+    return () => { clearTimeout(timer); ctrl.abort(); };
+  }, [baseId, steps]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const options = datasets.map((d) => ({ id: d.id, label: d.title, hint: d.source }));
+  const engine = preview?.engine ?? validation?.engine;
+
   const update = (i: number, patch: Partial<StepState>) =>
     setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
 
@@ -152,7 +173,7 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
     ({ right_id, how, conditions, columns, alias }) =>
       ({ right_id, how, conditions, columns, alias: alias.trim() }));
 
-  const valid = Boolean(base) && steps.every((s) =>
+  const valid = Boolean(base) && validation?.ok !== false && steps.every((s) =>
     s.right_id && s.conditions.length > 0
     && s.conditions.every((c) => c.left && c.right));
 
@@ -172,9 +193,8 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
     <div className="join-panel">
       <div className="join-row">
         <label>Start from
-          <select value={baseId} onChange={(e) => changeBase(e.target.value)}>
-            {datasets.map((d) => <option key={d.id} value={d.id}>{d.title}</option>)}
-          </select>
+          <Combobox label="Start from" value={baseId} options={options}
+                    onChange={changeBase} placeholder="Search open tables…" />
         </label>
         <div style={{ flex: 2 }} />
         <button className="quiet" onClick={onClose}>✕</button>
@@ -207,10 +227,10 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
 
             <div className="join-row">
               <label>Table
-                <select value={s.right_id} onChange={(e) => changeRight(i, e.target.value)}>
-                  {datasets.filter((d) => d.id !== baseId).map((d) =>
-                    <option key={d.id} value={d.id}>{d.title}</option>)}
-                </select>
+                <Combobox label={`Table to join in step ${i + 1}`} value={s.right_id}
+                          options={options.filter((o) => o.id !== baseId)}
+                          onChange={(id) => changeRight(i, id)}
+                          placeholder="Search open tables…" />
               </label>
               {addsColumns(s.how) && (
                 <label>Name joined columns as
@@ -220,26 +240,35 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
               )}
             </div>
 
-            {s.conditions.map((c, k) => (
-              <div className="join-cond" key={k}>
-                <span className="join-cond-label">{k === 0 ? "on" : "and"}</span>
-                <select value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
-                  {leftCols.map((col) => <option key={col}>{col}</option>)}
-                </select>
-                <select className="join-op" value={c.op}
-                        onChange={(e) => setCondition(i, k, { op: e.target.value as JoinOp })}>
-                  {OPS.map((o) => <option key={o}>{o}</option>)}
-                </select>
-                <select value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
-                  {rightCols.map((col) => <option key={col}>{col}</option>)}
-                </select>
-                {s.conditions.length > 1 && (
-                  <button className="quiet" title="Remove condition"
-                          onClick={() => update(i, { touched: true,
-                            conditions: s.conditions.filter((_, m) => m !== k) })}>✕</button>
-                )}
-              </div>
-            ))}
+            {s.conditions.map((c, k) => {
+              const check = validation?.steps[i]?.conditions[k];
+              return (
+                <Fragment key={k}>
+                  <div className={`join-cond${check?.problem ? " invalid" : ""}`}>
+                    <span className="join-cond-label">{k === 0 ? "on" : "and"}</span>
+                    <select value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
+                      {leftCols.map((col) => <option key={col}>{col}</option>)}
+                    </select>
+                    <select className="join-op" value={c.op}
+                            onChange={(e) => setCondition(i, k, { op: e.target.value as JoinOp })}>
+                      {OPS.map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                    <select value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
+                      {rightCols.map((col) => <option key={col}>{col}</option>)}
+                    </select>
+                    {s.conditions.length > 1 && (
+                      <button className="quiet" title="Remove condition"
+                              onClick={() => update(i, { touched: true,
+                                conditions: s.conditions.filter((_, m) => m !== k) })}>✕</button>
+                    )}
+                  </div>
+                  {check?.problem && <div className="join-check join-error" role="alert">{check.problem}</div>}
+                  {check?.note && <div className="join-check settings-hint">{check.note}</div>}
+                </Fragment>
+              );
+            })}
+            {(validation?.steps[i]?.problems ?? []).map((p) =>
+              <div key={p} className="join-check join-error" role="alert">{p}</div>)}
             <div className="join-tools">
               <button className="link" onClick={() => update(i, { touched: true,
                 conditions: [...s.conditions, defaultCondition(leftCols, right)] })}>
@@ -286,6 +315,10 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
           </button>
         )}
         <div style={{ flex: 1 }} />
+        {engine && (
+          <span className={`join-engine ${engine}`}
+                title={validation?.engine_reason ?? ""}>{ENGINE_LABEL[engine]}</span>
+        )}
         <button className="quiet" disabled={!valid || previewing} onClick={runPreview}>
           {previewing ? "Previewing…" : "Preview"}
         </button>
@@ -295,6 +328,14 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
         </button>
       </div>
 
+      {(validation?.problems ?? []).map((p) =>
+        <div key={p} className="settings-hint join-error">{p}</div>)}
+      {!preview && (validation?.capped_inputs.length ?? 0) > 0 && (
+        <div className="settings-hint join-warn join-capped">
+          Runs in memory on the loaded rows of {validation!.capped_inputs.join(", ")},
+          which hit the row cap — results may be incomplete.
+        </div>
+      )}
       {previewErr && <div className="settings-hint join-error">{previewErr}</div>}
       {preview && (
         <div className="join-preview">
@@ -303,7 +344,13 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
             {preview.steps.map((st, i) => (
               <span key={i}>→ {HOWS.find((h) => h.id === steps[i]?.how)?.label.toLowerCase()}{" "}
                 {steps[i]?.alias || aliasOf(byId.get(steps[i]?.right_id ?? ""))}:{" "}
-                <strong>{st.rows.toLocaleString()}</strong></span>
+                <strong>{st.rows.toLocaleString()}</strong>
+                {st.fanout && (
+                  <span className="join-warn join-fanout"
+                        title="Rows multiplied: the join key repeats on the joined side.">
+                    {" "}×{st.growth} fan-out
+                  </span>
+                )}</span>
             ))}
             {preview.truncated && <span className="join-warn">capped at {preview.rows.toLocaleString()} rows</span>}
           </div>

@@ -1,6 +1,7 @@
 import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
-  JoinStats, JoinStep, JoinSuggestion, QueryResult, Source, TableInfo,
+  JoinStats, JoinStep, JoinSuggestion, JoinValidation, QueryResult, Source,
+  TableInfo,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -161,6 +162,10 @@ export const api = {
   previewJoin: (baseId: string, steps: JoinStep[]) =>
     request<JoinPreview>("/api/datasets/join/preview",
       post({ base_id: baseId, steps })),
+
+  validateJoin: (baseId: string, steps: JoinStep[], signal?: AbortSignal) =>
+    request<JoinValidation>("/api/datasets/join/validate",
+      { ...post({ base_id: baseId, steps }), signal }),
 
   suggestJoin: (leftId: string, rightId: string) =>
     request<JoinSuggestion[]>(

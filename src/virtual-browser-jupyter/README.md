@@ -23,7 +23,7 @@ Two containers on a shared network:
 
 You see a video stream of Chromium running on the VM, started in `--kiosk` mode at
 `http://application-server:8888` — fullscreen, no tab strip, address bar, or window decorations, just the
-JupyterLab UI. The Selkies sidebar provides uploads, display settings, and a clipboard panel for
+JupyterLab UI. The Selkies sidebar provides display settings and a clipboard panel for
 pasting text into the session.
 
 ## What's not available

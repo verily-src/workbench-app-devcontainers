@@ -15,13 +15,6 @@ services:
     environment:
       # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
       CHROME_CLI: "--kiosk http://application-server:8888"
-      FILE_MANAGER_PATH: /uploads
-      # Run the browser as the backend's user so uploaded files are writable there, not just readable.
-      PUID: 1001
-      PGID: 1001
-    # Shared with the backend so uploads from the streamed browser land in its file browser.
-    volumes:
-      - browser-uploads:/uploads
 
   app:
     container_name: "application-server"
@@ -36,7 +29,6 @@ services:
       - .:/workspace:cached
       - jupyter-home:/home/jupyter
       - ${WORKBENCH_SETUP_STATE_DIR:-/home/core/container-state.d/setup}:/var/lib/workbench/setup:ro
-      - browser-uploads:/home/jupyter/browser-uploads
     tmpfs:
       - /home/jupyter/workspace:uid=1001,gid=1001
     networks:
@@ -53,4 +45,3 @@ networks:
   backend-network:
 volumes:
   jupyter-home:
-  browser-uploads:

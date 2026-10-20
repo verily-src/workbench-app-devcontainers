@@ -24,7 +24,7 @@ Two containers on a shared network:
   reachable only on the internal `backend-network`.
 
 Chromium runs in `--kiosk` mode pointed at `http://application-server:8787` — fullscreen, no tab strip, address
-bar, or window decorations. The Selkies sidebar provides uploads, display settings, and a clipboard
+bar, or window decorations. The Selkies sidebar provides display settings and a clipboard
 panel for pasting text into the session.
 
 ## What's not available

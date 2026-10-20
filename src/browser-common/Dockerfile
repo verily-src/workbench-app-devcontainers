@@ -9,6 +9,7 @@ ENV SELKIES_DESKTOP=false \
     NO_GAMEPAD=true \
     HARDEN_DESKTOP=true \
     HARDEN_KEYBINDS=true \
+    DISABLE_SUDO=true \
     RESTART_APP=true \
     SELKIES_FRAMERATE=20 \
     SELKIES_H264_CRF=28 \

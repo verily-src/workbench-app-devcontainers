@@ -1,0 +1,23 @@
+{
+  "id": "virtual-browser-cohort-studio",
+  "version": "0.1.0",
+  "name": "Cohort Studio in a Virtual Browser",
+  "description": "Cohort Studio served through a streamed, policy-locked Chromium session; the app is not reachable from the proxy network",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/cohort-dashboard/src/virtual-browser-cohort-studio",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "aws",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "true"
+    }
+  },
+  "platforms": ["Any"]
+}

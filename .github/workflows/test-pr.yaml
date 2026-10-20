@@ -29,6 +29,11 @@ jobs:
             - 'tests/common/**'
         config:
           - cohort-studio: {}
+            virtual-browser-cohort-studio:
+              maximize_build_space: true
+              filters:
+                - 'src/browser-common/**'
+                - 'src/cohort-studio/**'
             cohort-explorer: {}
             example: {}
             jupyter-template: {}

@@ -1,0 +1,10 @@
+# Build instructions for both services. Cohort Studio's image is built from its own template.
+services:
+  browser:
+    build:
+      context: ../browser-common
+      args:
+        APP_ORIGIN: "application-server:8080"
+  app:
+    build:
+      context: ../cohort-studio

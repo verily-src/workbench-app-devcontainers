@@ -44,6 +44,10 @@ export TERRA_USER_EMAIL='${OWNER_EMAIL}'
 export OWNER_EMAIL='${OWNER_EMAIL}'
 export PET_SA_EMAIL='${PET_SA_EMAIL}'
 
+# Set up some custom environment variables
+export FOO='BAR'
+export BAR='BAZ'
+
 # Set up workbench-specific convenience variables
 export WORKBENCH_USER_EMAIL='${OWNER_EMAIL}'
 export GOOGLE_SERVICE_ACCOUNT_EMAIL='${PET_SA_EMAIL}'

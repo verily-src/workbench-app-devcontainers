@@ -18,7 +18,7 @@ ENV SELKIES_DESKTOP=false \
     SELKIES_UI_SHOW_LOGO="false|locked" \
     SELKIES_UI_SHOW_SIDEBAR="true|locked" \
     SELKIES_UI_SHOW_CORE_BUTTONS="false|locked" \
-    SELKIES_UI_SIDEBAR_SHOW_FILES="true|locked" \
+    SELKIES_UI_SIDEBAR_SHOW_FILES="false|locked" \
     SELKIES_UI_SIDEBAR_SHOW_VIDEO_SETTINGS="true|locked" \
     SELKIES_UI_SIDEBAR_SHOW_SCREEN_SETTINGS="true|locked" \
     SELKIES_UI_SIDEBAR_SHOW_AUDIO_SETTINGS="false|locked" \
@@ -37,7 +37,7 @@ ENV SELKIES_DESKTOP=false \
     SELKIES_ENABLE_SHARED="false|locked" \
     SELKIES_ENABLE_CLIPBOARD=in \
     SELKIES_COMMAND_ENABLED="false|locked" \
-    SELKIES_FILE_TRANSFERS=upload
+    SELKIES_FILE_TRANSFERS="none|locked"
 
 ARG APP_ORIGIN=""
 
@@ -49,7 +49,3 @@ RUN mkdir -p /etc/chromium/policies/managed \
        > /etc/chromium/policies/managed/workbench-rbi.json \
     && rm /tmp/managed-policy.json.tmpl \
     && chmod 444 /etc/chromium/policies/managed/workbench-rbi.json
-
-# A named volume mounted here inherits these permissions, letting the browser and the backend, which
-# run as different users, both read and write uploads.
-RUN mkdir -p /uploads && chmod 0777 /uploads

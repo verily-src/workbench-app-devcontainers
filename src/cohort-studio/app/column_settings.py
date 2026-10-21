@@ -2,7 +2,7 @@ from copy import deepcopy
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import text
+from sql_utils import statement as text
 from sqlalchemy.exc import DataError
 
 import datasets
@@ -87,7 +87,7 @@ def apply(dataset_id, settings):
                 try:
                     with db.get_engine_for_resource(live["resource_id"]).begin() as conn:
                         conn.execute(text("SET LOCAL statement_timeout = 15000"))
-                        bounds = conn.execute(text(check)).one()
+                        bounds = conn.execute(text(check), live.get("params", {})).one()
                 except DataError as e:
                     raise ValueError(f"Column {name} contains non-numeric or out-of-range values in the database.") from e
                 if any(v is not None and not np.isfinite(v) for v in bounds):

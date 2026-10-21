@@ -2,7 +2,7 @@ import math
 from decimal import Decimal
 
 import pandas as pd
-from sqlalchemy import text
+from sql_utils import statement as text
 
 import db
 
@@ -61,7 +61,7 @@ def _where(filters: list[dict], columns: dict[str, str]):
 
 
 def _query(conn, live_source: dict, sql: str, params: dict):
-    return conn.execute(text(sql), params)
+    return conn.execute(text(sql), {**live_source.get("params", {}), **params})
 
 
 def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
@@ -244,7 +244,7 @@ def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
     generation = query_cache.cache.generation(resource_id)
     key = query_cache.make_key(resource_id, live_source["sql"],
                                live_source["columns"], filters, chart_specs,
-                               page, page_size, entity_column, generation)
+                               page, page_size, entity_column, generation, live_source.get("params", {}))
     if not refresh and ttl > 0:
         cached = query_cache.cache.get(key, ttl)
         if cached is not None:

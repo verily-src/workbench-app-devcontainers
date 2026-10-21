@@ -56,8 +56,9 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
     setBusy(true); setStatus("");
     try {
       const out = await api.derive(dataset.id, spec);
-      onUpdate({ columns: out.columns, sourceRef: undefined,
-        queryScope: "loaded" });
+      onUpdate({ columns: out.columns, sourceRef: out.source_ref ?? undefined,
+        queryScope: out.query_scope ?? "loaded",
+        refreshNonce: (dataset.refreshNonce ?? 0) + 1, refreshing: true });
       setStatus(`Added "${out.name}".`);
       setName("");
     } catch (e) {

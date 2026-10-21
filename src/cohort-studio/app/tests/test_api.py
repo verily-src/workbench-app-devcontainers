@@ -376,10 +376,10 @@ def test_derive_rejects_bad_name_and_breaks():
     did = ds_mod.open_dataset(pd.DataFrame({"x": [1, 2, 3]}), "d")["dataset_id"]
     bad_name = client.post(f"/api/datasets/{did}/derive", json={
         "op": "bin", "name": "bad;name", "column": "x", "breaks": [0, 5]})
-    assert bad_name.status_code == 400
+    assert bad_name.status_code == 422
     one_break = client.post(f"/api/datasets/{did}/derive", json={
         "op": "bin", "name": "ok", "column": "x", "breaks": [0]})
-    assert one_break.status_code == 400
+    assert one_break.status_code == 422
 
 
 def test_compare_ranks_the_differing_column_first():

@@ -6,6 +6,8 @@ import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from joins import ROWID_COLUMN
+
 logger = logging.getLogger(__name__)
 
 BOOLEAN_VALUES = {"true", "false", "yes", "no", "0", "1", "t", "f", "y", "n"}
@@ -228,6 +230,8 @@ def infer_from_join(resource_id: str, select_sql: str, output_columns: list[dict
 
     mappings = []
     for name in colnames:
+        if name == ROWID_COLUMN:
+            continue  # synthetic row id, added back by set_active_join_mapping
         pg_type = pg_type_by_output.get(name, "text")
         col_type = PG_TYPE_MAP.get(pg_type, "text")
         if col_type == "text" and samples[name]:

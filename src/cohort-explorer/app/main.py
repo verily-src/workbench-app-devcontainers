@@ -433,10 +433,14 @@ def api_confirm_schema(body: dict) -> dict:
         for mapping in mappings_raw:
             mapping["storage_type"] = storage_types.get(mapping["column"])
         mappings = [ColumnMapping(**mapping) for mapping in mappings_raw]
-        set_active_join_mapping(
-            mappings_raw, select_sql, resource_id,
-            table_name=table_name, entity_column=entity_column,
-        )
+        try:
+            set_active_join_mapping(
+                mappings_raw, select_sql, resource_id,
+                table_name=table_name, entity_column=entity_column,
+            )
+        except Exception as e:
+            logger.error("Join model build failed: %s", e, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Could not build join model: {e}") from e
         return {"confirmed": True, "columns": len(mappings), "seeded": 0}
 
     if resource_id:

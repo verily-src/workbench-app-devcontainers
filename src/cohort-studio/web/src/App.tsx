@@ -225,8 +225,9 @@ export default function App() {
           .then((o) => ({ o, d }))));
       const restored: Dataset[] = opened.map(({ o, d }) => ({
         id: o.dataset_id,
-        title: d.title || (d.source.kind === "join"
-          ? "Joined dataset" : d.source.table.split("/").pop()) || "view",
+        title: d.title || (d.source.kind === "join" ? "Joined dataset"
+          : d.source.kind === "derived" ? d.source.spec.name
+            : d.source.table.split("/").pop()) || "view",
         source: o.source,
         sourceRef: o.source_ref ?? d.source,
         queryScope: o.query_scope,

@@ -37,7 +37,8 @@ import workflows
 import column_settings
 import live_query
 import query_cache
-from source_models import ColumnSetting, SourceRef, source_dict
+import export_jobs
+from source_models import ColumnSetting, DerivedSpec, SourceRef, source_dict
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
@@ -45,11 +46,14 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.warm_resource_cache()
-    if mcp_server.AVAILABLE:
-        async with mcp_server.mcp.session_manager.run():
+    try:
+        if mcp_server.AVAILABLE:
+            async with mcp_server.mcp.session_manager.run():
+                yield
+        else:
             yield
-    else:
-        yield
+    finally:
+        export_jobs.shutdown()
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
 
@@ -184,18 +188,7 @@ class OmopDomainOpenRequest(BaseModel):
             omop.parse_spec(self.spec)
         return self
 
-class DeriveRequest(BaseModel):
-    op: str
-    name: str
-
-    column: str | None = None
-    breaks: list[float] | None = None
-    labels: list[str] | None = None
-    left: str | None = None
-    operator: str | None = None
-    right: str | None = None
-    mapping: dict[str, str] | None = None
-    default: str | None = None
+DeriveRequest = DerivedSpec
 
 def _lineage_engine():
     return lineage.sqlite_fallback_engine()
@@ -397,8 +390,17 @@ def _open_source(ref, temporary=False):
     children = []
     out = None
     origin = None
+    live = None
+    capped = None
     try:
-        if ref["kind"] == "join":
+        if ref["kind"] == "derived":
+            base = _open_source(ref["base"], temporary=True)
+            children.append(base["dataset_id"])
+            derive.derive(base["dataset_id"], ref["spec"])
+            ds = datasets.get(base["dataset_id"])
+            df, label = ds["df"], ds["source"]
+            live, capped = ds.get("live_source"), ds.get("capped")
+        elif ref["kind"] == "join":
             base = _open_source(ref["base"], temporary=True)
             children.append(base["dataset_id"])
             steps = []
@@ -411,12 +413,13 @@ def _open_source(ref, temporary=False):
                     k: step[k] for k in ("how", "conditions", "columns", "alias") if k in step}})
             out = joins.run(base["dataset_id"], steps)
             df, label = out["df"], " + ".join(labels)
+            live, capped = out.get("live_source"), out["stats"]["truncated"]
         else:
             kind, rid, table = ref["kind"], ref["resource_id"], ref["table"]
             schema = ref.get("schema", "public")
             if kind == "aurora" and schema != "public":
                 sql = f"SELECT * FROM {column_settings._q(schema)}.{column_settings._q(table)} LIMIT {queries.ROW_CAP}"
-                from sqlalchemy import text
+                from sql_utils import statement as text
                 with db.get_engine_for_resource(rid).begin() as conn:
                     if conn.dialect.name == "postgresql":
                         conn.execute(text("SET LOCAL statement_timeout = 15000"))
@@ -431,8 +434,7 @@ def _open_source(ref, temporary=False):
             datasets.close_dataset(child)
     result = datasets.open_dataset(
         df, label, origin=origin, temporary=temporary,
-        capped=out["stats"]["truncated"] if out else None,
-        live_source=out.get("live_source") if out else None)
+        capped=capped, live_source=live)
     dataset_id = result["dataset_id"]
     datasets.get(dataset_id)["source_ref"] = ref
     try:
@@ -556,7 +558,6 @@ def suggest_join_keys(left_id: str, right_id: str):
 
 @app.post("/api/datasets/{dataset_id}/compare")
 def compare_cohorts(dataset_id: str, req: CompareRequest):
-    _require_loaded(dataset_id, "Compare")
     try:
         result = compare.compare(
             dataset_id,
@@ -577,10 +578,8 @@ def compare_cohorts(dataset_id: str, req: CompareRequest):
 
 @app.post("/api/datasets/{dataset_id}/derive")
 def derive_column(dataset_id: str, req: DeriveRequest):
-    _require_loaded(dataset_id, "Derive")
     try:
         result = derive.derive(dataset_id, req.model_dump())
-        datasets.get(dataset_id).pop("source_ref", None)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
     except ValueError as e:
@@ -631,6 +630,48 @@ def _export_frame(ds, filters=None):
     except Exception as e:
         raise HTTPException(504 if "statement timeout" in str(e) else 502,
                             str(e).split("\n")[0][:300])
+
+class StartExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filters: list[Filter] = Field(default_factory=list, max_length=200)
+
+@app.post("/api/datasets/{dataset_id}/exports", status_code=202)
+def start_export(dataset_id: str, req: StartExportRequest):
+    try:
+        ds = datasets.get(dataset_id)
+        if not ds.get("live_source"):
+            raise HTTPException(400, "Background export requires a full Aurora source.")
+        return export_jobs.start(ds["live_source"], [f.model_dump() for f in req.filters])
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except export_jobs.ExportBusy as e:
+        raise HTTPException(429, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+@app.get("/api/exports/{job_id}")
+def export_status(job_id: str):
+    try:
+        return export_jobs.status(job_id)
+    except KeyError:
+        raise HTTPException(404, "Export expired or unknown.")
+
+@app.delete("/api/exports/{job_id}")
+def cancel_export(job_id: str):
+    try:
+        return export_jobs.cancel(job_id)
+    except KeyError:
+        raise HTTPException(404, "Export expired or unknown.")
+
+@app.get("/api/exports/{job_id}/download")
+def download_export(job_id: str):
+    try:
+        path = export_jobs.download(job_id)
+    except KeyError:
+        raise HTTPException(404, "Export expired or unknown.")
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return FileResponse(path, media_type="text/tab-separated-values", filename="cohort.tsv")
 
 @app.post("/api/datasets/{dataset_id}/export")
 def export_dataset(dataset_id: str, req: QueryRequest):

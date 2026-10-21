@@ -216,16 +216,27 @@ to show distinct non-null person or entity IDs separately from rows.
 **Saved views** can restore joins from their table resources, conditions and
 column settings. **Column settings** changes number/text behavior, filter kind
 and labels. Invalid numeric values anywhere in an Aurora column reject the
-change. Uploaded and derived data cannot be restored as source recipes.
+change. A derived column on an Aurora source can be restored from its base
+recipe and validated operation. Uploaded files cannot be restored as sources.
 
 **Large results and caching.** Explore warns at 100,000 rows and marks capped
 previews. Aurora query results are cached in memory for 30 seconds, with a
 visible fetch time. **Refresh data** bypasses the cache and refreshes filter
 choices. The cache holds at most 64 entries and 32 MiB of serialized payload;
 entries above 4 MiB are not cached. Set `STUDIO_QUERY_CACHE_TTL` to 0 to disable
-it, or to a value up to 300 seconds. Exports always query Aurora directly and
-reject more than 100,000 filtered rows. Compare, derive and dataset chat remain
-unavailable for live Aurora results until they support full-source queries.
+it, or to a value up to 300 seconds. Compare and derive operate on the full
+Aurora source; derived columns remain database-backed and their saved views
+store a validated operation, not SQL. Dataset chat remains available only for
+loaded rows.
+
+**Export TSV** on a database-backed tab runs as a background job. It streams
+Aurora rows to a temporary file, reports progress, supports cancellation, and
+offers a download after completion. Limits are 2 concurrent workers, 8
+retained jobs, 2 GiB per file and 4 GiB total. Finished jobs expire after 1
+hour; each job has a 30-minute runtime limit and a 5-minute database statement
+timeout. Temporary files use local app-container disk. The older synchronous
+export, materialization and S3 workflow export still cap at 100,000 rows.
+Studio adds no database service or schema for exports.
 
 Studio uses Aurora storage and internal DuckDB; it does not deploy a separate
 PostgreSQL service. A disposable PostgreSQL process is only a local test fixture

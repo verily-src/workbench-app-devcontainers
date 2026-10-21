@@ -140,6 +140,14 @@ export interface CohortAgentResult {
   trace_id: string;
 }
 
+export interface ExportJob {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | string;
+  rows?: number;
+  bytes?: number;
+  error?: string | null;
+}
+
 export const api = {
   omopAgent: (id: string, message: string,
               history: { role: string; content: string }[], spec: OmopSpec) =>
@@ -222,7 +230,9 @@ export const api = {
       filters_a: filtersA, filters_b: filtersB, b_is_rest: bIsRest })),
 
   derive: (datasetId: string, spec: Record<string, unknown>) =>
-    request<{ name: string; rows: number; columns: ColumnProfile[] }>(
+    request<{ name: string; rows: number; columns: ColumnProfile[];
+              source_ref?: SourceRef | null;
+              query_scope?: "database" | "loaded"; sampled?: boolean }>(
       `/api/datasets/${datasetId}/derive`, post(spec)),
 
   closeDataset: (datasetId: string) =>
@@ -344,4 +354,15 @@ export const api = {
     a.click();
     URL.revokeObjectURL(url);
   },
+  createExport: (datasetId: string, filters: Filter[]) =>
+    request<ExportJob>(`/api/datasets/${encodeURIComponent(datasetId)}/exports`,
+      post({ filters })),
+  exportStatus: (jobId: string) =>
+    request<ExportJob>(`/api/exports/${encodeURIComponent(jobId)}`),
+  cancelExport: (jobId: string) =>
+    request<{ ok?: boolean }>(`/api/exports/${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+    }),
+  exportDownloadUrl: (jobId: string) =>
+    `/api/exports/${encodeURIComponent(jobId)}/download`,
 };

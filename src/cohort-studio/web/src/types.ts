@@ -68,9 +68,24 @@ export interface QueryResult {
   rows: { page: number; page_size: number; columns: string[]; data: unknown[][] };
 }
 
+export interface DerivedSpec {
+  op: "bin" | "formula" | "map";
+  name: string;
+  column?: string;
+  breaks?: number[];
+  labels?: string[];
+  left?: string;
+  operator?: "+" | "-" | "*" | "/";
+  right?: string;
+  mapping?: Record<string, string>;
+  default?: string;
+}
+
 export type SourceRef =
   | { kind: "aurora" | "s3" | "bq" | "catalog"; resource_id: string;
       table: string; schema?: string; uuid?: string; settings?: ColumnSetting[] }
+  | { kind: "derived"; base: SourceRef; spec: DerivedSpec;
+      settings?: ColumnSetting[] }
   | { kind: "join"; base: SourceRef; steps: {
       source: SourceRef; how: JoinHow; conditions: JoinCondition[];
       columns: string[] | null; alias: string;

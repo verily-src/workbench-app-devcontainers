@@ -16,6 +16,7 @@ flowchart TB
     subgraph API["FastAPI (uvicorn, PID 1)"]
       EP["/api/* endpoints"]
       STORE["datasets.py<br/>in-memory DataFrame store<br/>+ server-side cross-filter aggregation"]
+      EXPORT["export_jobs.py<br/>bounded Aurora cursor exports"]
       AGENT["agent.py · providers.py · bedrock.py<br/>Anthropic · OpenAI · Gemini · OpenRouter · Bedrock"]
       OMOP["omop.py · cohort_agent.py<br/>Aurora CDM search, count, proposal, open"]
       VIEWS["views.py · config.py<br/>saved views, settings"]
@@ -36,6 +37,7 @@ flowchart TB
 
   UI -->|"fetch /api/*"| EP
   EP --> STORE
+  EP --> EXPORT
   EP --> AGENT
   EP --> OMOP
   EP --> VIEWS
@@ -45,6 +47,7 @@ flowchart TB
   STORE -->|"wb resource resolve"| AUR
   STORE -->|"credential_process profile"| S3
   STORE --> BQ
+  EXPORT -->|"read-only cursor"| AUR
   VIEWS --> AUR
   VIEWS --> S3
   LIN --> AUR
@@ -161,11 +164,26 @@ heatmap output is bounded and marked when sampled. Full-source profiles supply
 filter choices and numeric ranges. Cross-resource joins remain loaded-frame
 DuckDB operations.
 
+Compare uses `live_compare.py` to query both full-source groups in Aurora.
+Derived columns use `live_derive.py` to compile the validated operation into a
+database expression; the result stays database-scoped. A bounded recursive
+`derived` source recipe records the base and validated operation, so saved
+views can rebuild the derived column without storing SQL. Dataset chat remains
+loaded-frame-only and is hidden for database-scoped sources.
+
 The optional entity column counts distinct non-null values alongside row counts.
 It is selected explicitly; the app never assumes that a joined row is a person.
-Exports and materialization fetch the full selected live source up to 100,000
-rows and reject larger results. Compare, derived columns and dataset chat are
-disabled for live sources until they can operate on the full source.
+
+The database-backed **Export TSV** action uses `export_jobs.py`. It streams an
+Aurora cursor into a temporary TSV and makes the file downloadable only after
+an atomic completion step. The UI polls row progress, supports cancellation,
+and provides a download link for completed jobs. The service allows 2 workers,
+8 retained jobs, 2 GiB per job and 4 GiB total. It removes finished jobs after
+1 hour, stops work after 30 minutes, and applies a 5-minute database statement
+timeout. These limits apply to this asynchronous database export path. The
+older synchronous export, materialization and S3 workflow export still cap at
+100,000 rows. No database service or schema is added for exports; temporary
+files use the app container's local disk.
 
 ### Query cache and large results
 
@@ -180,7 +198,8 @@ Responses report cache status and fetch time. Refresh data invalidates the
 resource cache, runs a fresh query, and refreshes category/range profiles.
 Generation checks prevent an older in-flight request from repopulating an
 invalidated cache. Successful materialization also invalidates the target
-resource. Exports always query Aurora directly. OMOP cohort count retains its
+resource. Background exports always query Aurora directly and bypass this
+cache. OMOP cohort count retains its
 existing behavior and is not cached by this layer.
 
 The UI warns at 100,000 source rows and when loaded data is capped. It states
@@ -195,12 +214,13 @@ can't be reloaded) with its filters and charts, into Aurora (a
 closing. The in-memory DataFrame store is reconstructed by re-opening
 each tab's datasource on load.
 
-`source_models.py` validates recursive table/join recipes. Saved state contains
-resource IDs, schema/table names, join conditions, aliases, selected columns and
-column settings. It never accepts client SQL or session dataset IDs as a durable
-source. Reopening compiles the recipe again and closes temporary input datasets.
-Trees are bounded to 16 sources and four levels. Uploaded or derived frames do
-not have a reloadable recipe. The selected entity column is saved with the view.
+`source_models.py` validates recursive table/join/derived recipes. Saved state
+contains resource IDs, schema/table names, join conditions, aliases, selected
+columns, derived operations and column settings. It never accepts client SQL or
+session dataset IDs as a durable source. Reopening compiles the recipe again
+and closes temporary input datasets. Trees are bounded to 16 sources and four
+levels. Uploaded frames do not have a reloadable recipe. The selected entity
+column is saved with the view.
 
 Column settings keep physical decoding separate from logical number/text
 behavior. Numeric conversions validate the full Aurora column before committing
@@ -234,5 +254,7 @@ not the data or cohort engine.
 | 2026-10-21 | Persist bounded structured source recipes, not SQL. | Reopen joined views after in-app updates without trusting client SQL. |
 | 2026-10-21 | Show rows and explicit distinct-entity counts separately. | One-to-many joins must not inflate person counts. |
 | 2026-10-21 | Validate column conversions before changing stored state. | Text storage must remain decodable; invalid values outside the preview must fail the conversion. |
+| 2026-10-21 | Support full-source compare and derived columns on live Aurora data; keep chat loaded-frame-only. | Avoid making results depend on a capped preview when the source can be queried directly. Save derived operations as validated recursive source recipes. |
+| 2026-10-21 | Stream full-source TSV exports into bounded temporary jobs. | Avoid synchronous whole-result loads; expose progress and cancellation while limiting local disk and concurrent work. |
 
 Record a changed decision here with its date, reason and verification needed.

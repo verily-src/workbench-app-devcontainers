@@ -351,7 +351,7 @@ def test_live_join_export_filters_full_source_and_enforces_row_limit(
     assert "more than 2 rows" in oversized.json()["detail"].lower()
 
 
-def test_database_scoped_operations_are_guarded(client, source_tables):
+def test_database_scoped_chat_is_guarded(client, source_tables):
     rid = source_tables["rid"]
     left = client.post("/api/datasets/open", json={"source_ref":
         _ref(rid, source_tables["people"])})
@@ -366,16 +366,11 @@ def test_database_scoped_operations_are_guarded(client, source_tables):
     assert joined.status_code == 200, joined.text
     dataset_id = joined.json()["dataset_id"]
 
-    operations = (
-        ("compare", {"filters_a": [], "filters_b": []}),
-        ("derive", {"op": "copy", "name": "copy", "column": "status"}),
-        ("chat", {"message": "Describe this dataset."}),
-    )
-    for operation, payload in operations:
-        response = client.post(
-            f"/api/datasets/{dataset_id}/{operation}", json=payload)
-        assert response.status_code == 400, response.text
-        assert "database-scoped" in response.json()["detail"]
+    response = client.post(f"/api/datasets/{dataset_id}/chat", json={
+        "message": "Describe this dataset.",
+    })
+    assert response.status_code == 400, response.text
+    assert "database-scoped" in response.json()["detail"]
 
 
 def test_live_query_cache_refreshes_rows_entities_and_profiles(

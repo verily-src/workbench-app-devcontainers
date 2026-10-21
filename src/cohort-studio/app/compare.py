@@ -33,17 +33,18 @@ def _categorical_test(a: pd.Series, b: pd.Series) -> dict:
     b = b.dropna().astype(str)
 
     top = (pd.concat([a, b]).value_counts().head(CAT_TOP_N).index.tolist())
+    other_key = object()
     def tally(s):
         vc = s.value_counts()
         row = {c: int(vc.get(c, 0)) for c in top}
-        row["Other"] = int(vc.drop(labels=top, errors="ignore").sum())
+        row[other_key] = int(vc.drop(labels=top, errors="ignore").sum())
         return row
     a_row, b_row = tally(a), tally(b)
-    cats = [c for c in list(top) + ["Other"]
+    cats = [c for c in list(top) + [other_key]
             if a_row.get(c, 0) + b_row.get(c, 0) > 0]
     summary = {
-        "a": {"n": int(a.size), "top": _top_share(a_row, a.size)},
-        "b": {"n": int(b.size), "top": _top_share(b_row, b.size)},
+        "a": {"n": int(a.size), "top": _top_share(a_row, a.size, other_key)},
+        "b": {"n": int(b.size), "top": _top_share(b_row, b.size, other_key)},
     }
     if a.size < MIN_GROUP_N or b.size < MIN_GROUP_N:
         return {**summary, "p": None,
@@ -61,12 +62,24 @@ def _categorical_test(a: pd.Series, b: pd.Series) -> dict:
     except ValueError as e:
         return {**summary, "p": None, "note": str(e)[:80]}
 
-def _top_share(row: dict, n: int) -> list:
+def _top_share(row: dict, n: int, other_key=None) -> list:
     if n == 0:
         return []
     ranked = sorted(row.items(), key=lambda kv: kv[1], reverse=True)
-    return [{"value": c, "pct": round(100 * v / n, 1)}
+    return [{"value": "Other (remaining categories)"
+             if c is other_key and other_key is not None else c,
+             "pct": round(100 * v / n, 1)}
             for c, v in ranked[:3] if v > 0]
+
+def _profiles(ds: dict) -> list[dict]:
+    profiles = datasets.profile_columns(ds["df"])
+    settings = {setting["name"]: setting
+                for setting in ds.get("column_settings", [])}
+    for profile in profiles:
+        setting = settings.get(profile["name"], {})
+        if setting.get("filter_kind") is not None:
+            profile["filter_kind"] = setting["filter_kind"]
+    return profiles
 
 def _benjamini_hochberg(pvals: list[float | None]) -> list[float | None]:
 
@@ -102,6 +115,10 @@ def compare(dataset_id: str, filters_a: list[dict], filters_b: list[dict],
             b_is_rest: bool = False) -> dict:
 
     ds = datasets.get(dataset_id)
+    if ds.get("live_source") is not None:
+        import live_compare
+        return live_compare.compare(ds["live_source"], _profiles(ds),
+                                   filters_a, filters_b, b_is_rest)
     df = ds["df"]
     a = datasets.apply_filters(df, filters_a)
     if b_is_rest:
@@ -109,7 +126,7 @@ def compare(dataset_id: str, filters_a: list[dict], filters_b: list[dict],
     else:
         b = datasets.apply_filters(df, filters_b)
 
-    columns = datasets.profile_columns(df)
+    columns = _profiles(ds)
     results = []
     for col in columns:
         kind = col["filter_kind"]

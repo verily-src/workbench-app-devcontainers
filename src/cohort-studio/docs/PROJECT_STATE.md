@@ -15,9 +15,10 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 
 - `wb workspace describe` confirmed `bugbash-nextflowonaws`, UUID `5b932a68-43d4-432b-834c-9662e7dd0151`, server `dev-stable`, AWS environment `dev`.
 - `wb app config list` confirmed **Cohort Studio** uses this repository, branch `cohort-dashboard`, and path `src/cohort-studio`.
-- Latest `wb app list` reported **Cohort_Studio_EC2_MCP** stopped at [dev app](https://workbench-dev.verily.com/app/a54c0049-6905-46c3-93ad-2fe2973cf9b9/). The Oct 7 and Oct 20 Studio instances were also stopped. These are observations, not permanent state.
-- Prior OMOP release: **`c911229deb8dcac409880ba114bba7e36c2d0501`** on `origin/cohort-dashboard`. The unrelated local `db.py` override and `.cursor/settings.json` are excluded. Its release snapshot with original db.py passed **294 tests in 27.90 s** before publication.
-- The prior cleanup release kept the same in-app update path. Its isolated release snapshot, excluding unrelated local edits, passed **127 tests in 20.31 s**. Use the latest `cohort-dashboard` commit in `/api/version` to verify the running app; runtime verification is still pending.
+- Latest `wb app list` check reported all dev Studio instances stopped, including **Cohort_Studio_EC2_MCP** at [dev app](https://workbench-dev.verily.com/app/a54c0049-6905-46c3-93ad-2fe2973cf9b9/). No browser session was available for runtime verification. These are observations, not permanent state.
+- Previous published joins/cache release: **`3eca60141b525b05146c384e6b1c6a24eea62110`** on `origin/cohort-dashboard`. Publication does not verify that a dev app has fetched or run this SHA.
+- Earlier OMOP release: **`c911229deb8dcac409880ba114bba7e36c2d0501`**. Its release snapshot with original db.py passed **294 tests in 27.90 s** before publication.
+- Earlier cleanup release used the same in-app update path and passed **127 tests in 20.31 s** from an isolated snapshot. The unrelated local `db.py` override and `.cursor/settings.json` are excluded from those historical release snapshots.
 - Deployment attempt: `wb app start --id=Cohort_Studio_EC2_MCP --workspace=bugbash-nextflowonaws` failed with `UnsupportedOperationException: Starting this type of app is not supported.` Start the AWS app through the Workbench UI. Its startup self-update should fetch the published branch; the in-app Update action is also available once running. Runtime SHA is **not verified**.
 - Browser automation has no available browser in this session. `wb app update` only supports GCP in the installed CLI. The app's HTTP update endpoint is behind the Workbench browser proxy. No remote update was sent.
 - The existing restart/update mechanism fetches the **pushed** branch. A local test pass does not update the dev instance.
@@ -25,10 +26,11 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 ## Join improvements (2026-10-21)
 
 - Added full Aurora query scope for same-resource joins, explicit distinct entity counts, bounded durable join recipes, column settings, and a common join-key control.
-- Live counts, filters, aggregates and numeric ranges cover the full source. Exports fetch the full filtered result and reject more than 100,000 rows. Compare, derive and dataset chat are disabled for live sources.
-- Added a 30-second bounded in-memory Aurora Explore cache, visible freshness, manual refresh, and large-result warnings. Exports remain fresh and bypass the cache. Cache/warning validation passed in the final 146-test release snapshot.
-- Source recipes use validated Pydantic models and survive saved-view reloads; no client SQL is accepted. Derived/uploaded frames are not durable sources.
-- Final join/cache release snapshot passed **146 tests in 27.67 s**, excluding the unrelated local db.py override. Production frontend build and six new browser cases pass, including refresh cancellation and complete-upload versus capped-preview warnings. This validates local behavior, not live Aurora or Workbench deployment.
+- Live counts, filters, aggregates, numeric ranges, Compare and Derive cover the full source. Dataset chat remains loaded-row-only and is hidden on database-backed tabs.
+- Database-backed **Export TSV** runs as a background Aurora cursor job. The UI shows row progress, supports cancellation, and links the file after completion. Limits: two workers, eight retained jobs, 2 GiB per job, 4 GiB total, one-hour finished-job TTL, 30-minute job runtime and five-minute SQL statement timeout. Files use temporary app-container disk.
+- The older synchronous export, materialization and S3 workflow export still cap at 100,000 rows. No Aurora schema, Aurora resource or DuckDB service was added.
+- Same-resource source recipes use validated Pydantic models and survive saved-view reloads. Derived recipes store a base and validated operation; client SQL is not accepted.
+- Earlier join/cache snapshot passed **146 tests in 27.67 s**, excluding the unrelated local db.py override. Latest frontend build passed and `test_frontend_e2e.py` passed **7 tests**, including streaming export and live Compare/Derive. This is local evidence, not live Aurora or Workbench deployment verification.
 - Independent Codex CLI review (`gpt-6-luna`) found no remaining blocker after checking chart/filter contracts. OpenCode GLM max approved the join/settings scope after its initial defects were fixed. Codex and OpenCode GLM max also approved the cache scope; final browser/suite checks passed. See [review, evidence and next priorities](REVIEW_2026-10-21_JOINS.md).
 
 ## Implemented in this change
@@ -47,7 +49,10 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Verification
 
-- Current join/cache release: **146 passed in 27.67 s**, no skips, from an isolated copy with the unrelated db.py edit excluded. Frontend production build passed. Codex CLI (`gpt-6-luna`) and OpenCode GLM max approved the reviewed scope. See [review evidence](REVIEW_2026-10-21_JOINS.md).
+- Streaming/full-source tools: isolated release snapshot passed **152 tests in 49.35 s**, no skips, with the unrelated db.py edit excluded. Final cleanup, polling and saved-settings fixes are included. Codex and OpenCode GLM max found no confirmed release blocker. See [review and limits](REVIEW_2026-10-21_STREAMING.md).
+
+- Previous join/cache snapshot: **146 passed in 27.67 s**, no skips, from an isolated copy with the unrelated db.py edit excluded. Frontend production build passed. Codex CLI (`gpt-6-luna`) and OpenCode GLM max approved the reviewed scope. See [review evidence](REVIEW_2026-10-21_JOINS.md).
+- Latest UI scope: production build passed; all **7** tests in `app/tests/test_frontend_e2e.py` passed. Browser mocks do not verify live Aurora exports or a deployed Workbench app.
 
 - Prior cleanup suite: **127 passed in 19.74 s**. Standalone unit-test modules and direct helper checks were removed at user request. Browser/MCP HTTP flows, HTTP application outcomes, real database checks and updater subprocess tests remain. Shared database fixtures now live in conftest.py.
 - Comment cleanup preserves runtime tool descriptions, CLI help, machine directives and vendor/legal text. Python executable AST and TypeScript emitted syntax were checked unchanged; the production frontend build passes. The unrelated db.py local override remains untouched.
@@ -101,6 +106,7 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - 2026-10-20: Added generic S3-to-Aurora import CLI and hardened isolated-template build/smoke checks. Full suite passed (292). Recorded CMS SynPUF source ambiguity, failed Aurora network check, and missing Docker runtime. No cloud data load or release performed.
 - 2026-10-21: Published code release c911229 after 294 tests on the release snapshot. CLI start failed for the AWS app; UI start/update and runtime verification remain. Browser-sidecar template changes require a new instance, not an in-app code update.
 - 2026-10-21: Reduced the suite to outcome/boundary tests, removed ordinary code comments, refreshed architecture.md and its decision record, and scoped Jev without implementation. In-app Update is the requested code-release path.
+- 2026-10-21: Published joins/cache release `3eca60141b525b05146c384e6b1c6a24eea62110`. Follow-up release adds full-source Aurora Compare/Derive, durable derived source recipes, and bounded streaming TSV jobs; its isolated snapshot passed 152 tests and independent Codex/OpenCode GLM max review. Latest `wb app list` showed all dev instances stopped; no browser session or live datasource validation was available.
 
 ### Concurrent work detected
 

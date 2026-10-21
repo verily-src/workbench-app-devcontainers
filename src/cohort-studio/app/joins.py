@@ -3,6 +3,7 @@ import re
 
 import duckdb
 import pandas as pd
+from sql_utils import statement as text
 
 import datasets
 import db
@@ -299,13 +300,19 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     resource_id = ((p["base"].get("live_source") or {}).get("resource_id")
                    or (p["base"].get("origin") or {}).get("resource_id"))
     engine = db.get_engine_for_resource(resource_id)
+    params = {}
+    for ds in [p["base"]] + [step["ds"] for step in p["steps"]]:
+        for key, value in (ds.get("live_source") or {}).get("params", {}).items():
+            if key in params and params[key] != value:
+                raise ValueError("Conflicting bound parameters in joined sources.")
+            params[key] = value
     try:
         with engine.begin() as conn:
             if conn.dialect.name == "postgresql":
                 conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
 
             def scalar(q: str) -> int:
-                return int(conn.exec_driver_sql(q, execution_options=_NO_PARAMS).scalar())
+                return int(conn.execute(text(q), params).scalar())
 
             def table_rows(ds: dict) -> int:
                 if ds.get("live_source"):
@@ -320,8 +327,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                 total = scalar(sql["count"](s["no"]))
                 steps.append(_step_stats(before, table_rows(s["ds"]), total, cap))
                 before = total
-            res = conn.exec_driver_sql(sql["select"](min(cap, fetch or cap)),
-                                       execution_options=_NO_PARAMS)
+            res = conn.execute(text(sql["select"](min(cap, fetch or cap))), params)
             df = pd.DataFrame.from_records([tuple(r) for r in res.fetchall()],
                                            columns=p["columns"], coerce_float=True)
     except Exception as e:
@@ -334,6 +340,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
         "resource_id": (p["base"].get("live_source") or {}).get("resource_id")
         or p["base"]["origin"]["resource_id"],
         "sql": sql["unlimited"](),
+        "params": params,
         "columns": columns,
     }
     return {"df": df, "stats": _finish(stats, min(before, cap)),

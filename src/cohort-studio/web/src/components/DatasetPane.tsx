@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import type { ExportJob } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
@@ -35,8 +36,24 @@ function cacheTime(asOf: string): string {
   return Number.isNaN(date.valueOf()) ? asOf : date.toISOString().slice(0, 16).replace("T", " ") + " UTC";
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(1)} ${units[unit]}`;
+}
+
 export function DatasetPane({ dataset, palette, onUpdate }: Props) {
   const { result, filters, charts } = dataset;
+  const [exportJob, setExportJob] = useState<ExportJob | null>(null);
+  const [exportError, setExportError] = useState("");
+  const [cancelingExport, setCancelingExport] = useState(false);
+  const [creatingExport, setCreatingExport] = useState(false);
   const cohorts = dataset.cohorts ?? [];
   const [showCompare, setShowCompare] = useState(false);
   const [showDerive, setShowDerive] = useState(false);
@@ -111,8 +128,76 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
   const scope = result?.scope ?? dataset.queryScope ?? "loaded";
   const entityCount = result?.entity;
   const databaseScoped = scope === "database";
-  const databaseToolReason = "This tool uses loaded rows. Full database support is pending.";
   const largeDataset = Boolean(result && (result.total >= 100_000 || result.sampled));
+  const exportStatus = exportJob?.status.toLowerCase();
+  const exportRunning = exportStatus === "queued" || exportStatus === "running";
+
+  useEffect(() => {
+    if (!exportJob?.id || !exportRunning) return;
+    let stopped = false;
+    let timer = 0;
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const next = await api.exportStatus(exportJob.id);
+        if (stopped) return;
+        setExportJob(next);
+        if (["queued", "running"].includes(next.status.toLowerCase())) {
+          timer = window.setTimeout(poll, 1000);
+        }
+      } catch (e) {
+        if (!stopped) {
+          setExportError(`Export status failed: ${(e as Error).message}`);
+          setExportJob((job) => job ? { ...job, status: "failed" } : job);
+        }
+      }
+    };
+    timer = window.setTimeout(() => {
+      void poll();
+    }, 1000);
+    return () => { stopped = true; window.clearTimeout(timer); };
+  }, [exportJob?.id, exportRunning]);
+
+  const startExport = async () => {
+    if (creatingExport || exportJob) return;
+    setCreatingExport(true);
+    setExportError("");
+    try {
+      if (databaseScoped) setExportJob(await api.createExport(dataset.id, filters));
+      else await api.export(dataset.id, filters);
+    } catch (e) {
+      setExportError((e as Error).message);
+    } finally {
+      setCreatingExport(false);
+    }
+  };
+
+  const cancelExport = async () => {
+    if (!exportJob) return;
+    setCancelingExport(true);
+    try {
+      await api.cancelExport(exportJob.id);
+      setExportJob({ ...exportJob, status: "cancelled" });
+    } catch (e) {
+      setExportError(`Could not cancel export: ${(e as Error).message}`);
+    } finally {
+      setCancelingExport(false);
+    }
+  };
+
+  const clearExport = async () => {
+    if (!exportJob || exportRunning) return;
+    setCancelingExport(true);
+    try {
+      await api.cancelExport(exportJob.id);
+      setExportJob(null);
+      setExportError("");
+    } catch (e) {
+      setExportError(`Could not clear export: ${(e as Error).message}`);
+    } finally {
+      setCancelingExport(false);
+    }
+  };
 
   return (
     <div>
@@ -146,14 +231,38 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
         </label>
         <SaveToAurora dataset={dataset} />
         <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
-        <button onClick={() => api.export(dataset.id, filters)}>
-          Export TSV
+        <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
+          {creatingExport ? "Starting export…" : "Export TSV"}
         </button>
         <button onClick={() => exportDatasetPdf(dataset, captureCharts())}
                 disabled={!result}>
           Export PDF
         </button>
       </div>
+
+      {databaseScoped && exportJob && <div className="export-job" role="status">
+        <span>{exportStatus === "complete"
+          ? `Export ready · ${(exportJob.rows ?? 0).toLocaleString()} rows`
+          : exportRunning
+            ? `Preparing export · ${(exportJob.rows ?? 0).toLocaleString()} rows`
+            : exportStatus === "cancelled" ? "Export cancelled"
+              : exportStatus === "failed" ? `Export failed${exportJob.error ? `: ${exportJob.error}` : ""}`
+                : "Export queued"}</span>
+        {exportRunning && <>
+          <progress />
+          <button className="quiet" onClick={cancelExport} disabled={cancelingExport}>
+            {cancelingExport ? "Cancelling…" : "Cancel export"}
+          </button>
+        </>}
+        {exportStatus === "complete" && <a href={api.exportDownloadUrl(exportJob.id)}>
+          Download TSV{exportJob.bytes ? ` · ${formatBytes(exportJob.bytes)}` : ""}
+        </a>}
+        {!exportRunning && <button className="quiet" onClick={clearExport}
+                                    disabled={cancelingExport}>
+          {cancelingExport ? "Clearing…" : "Clear export"}
+        </button>}
+      </div>}
+      {exportError && <div className="settings-hint" role="alert">{exportError}</div>}
 
       {databaseScoped && <div className="query-cache-row">
         <span className="settings-hint" title={`Cache TTL: ${result?.cache?.ttl_seconds ?? 30} seconds`}>
@@ -174,7 +283,6 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
           : result?.sampled
             ? `This loaded preview has ${result!.total.toLocaleString()} rows. Counts cover only the loaded preview, not the full source. Add filters to narrow the preview.`
             : `This dataset has ${result!.total.toLocaleString()} loaded rows. Large queries may take longer. Add filters to narrow the result.`}</div>
-        {databaseScoped && <div>Exports support up to 100,000 filtered rows. Add filters to export a smaller result.</div>}
       </div>}
 
       {chips.length > 0 && (
@@ -211,12 +319,10 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
                 disabled={!cohortName.trim() || filters.length === 0}>
           Save cohort
         </button>
-        <button disabled={databaseScoped} title={databaseScoped ? databaseToolReason : undefined}
-                onClick={() => setShowCompare((v) => !v)}>
+        <button onClick={() => setShowCompare((v) => !v)}>
           {showCompare ? "Hide compare" : "Compare groups"}
         </button>
-        <button disabled={databaseScoped} title={databaseScoped ? databaseToolReason : undefined}
-                onClick={() => setShowDerive((v) => !v)}>
+        <button onClick={() => setShowDerive((v) => !v)}>
           {showDerive ? "Hide add column" : "+ Derived column"}
         </button>
         <button onClick={() => setShowLaunch((v) => !v)}>
@@ -225,15 +331,14 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
       </div>
 
       {databaseScoped && <div className="settings-hint">
-        Compare, derive, and chat use loaded rows. They are disabled until full
-        database support is available.
+        Chat uses loaded rows and is unavailable for this full-source dataset.
       </div>}
 
-      {showCompare && !databaseScoped && (
+      {showCompare && (
         <ComparePanel dataset={dataset} onClose={() => setShowCompare(false)} />
       )}
 
-      {showDerive && !databaseScoped && (
+      {showDerive && (
         <DeriveColumn dataset={dataset} onUpdate={onUpdate}
                       onClose={() => setShowDerive(false)} />
       )}

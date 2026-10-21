@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert, Box, Button, Chip, CircularProgress, FormControl, IconButton,
   InputLabel, MenuItem, Select, Stack, Tooltip, Typography,
@@ -29,6 +29,23 @@ interface StepState {
   columns: AuroraColumn[];
 }
 
+function hasColumn(columns: AuroraColumn[], name: string): boolean {
+  return columns.some((c) => c.column === name);
+}
+
+// Column names that every table with loaded columns has. Needs two tables to mean anything.
+function commonColumnNames(steps: StepState[]): string[] {
+  const loaded = steps.filter((s) => s.columns.length > 0);
+  if (loaded.length < 2) return [];
+  return loaded[0].columns.map((c) => c.column).filter((name) => loaded.every((s) => hasColumn(s.columns, name)));
+}
+
+// Join a step to the base table on `key`, if both tables have that column.
+function joinToBaseOnKey(step: StepState, base: StepState, key: string): StepState {
+  if (!hasColumn(step.columns, key) || !hasColumn(base.columns, key)) return step;
+  return { ...step, joinTo: base.table, leftKey: key, rightKey: key };
+}
+
 function emptyStep(): StepState {
   return { table: "", joinType: "inner", columns: [] };
 }
@@ -57,6 +74,8 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<JoinPreviewStep[] | null>(null);
+  const [commonKey, setCommonKey] = useState("");
+  const commonColumns = useMemo(() => commonColumnNames(steps), [steps]);
 
   const invalidate = () => {
     onChange(null);
@@ -67,7 +86,11 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
   const loadColumns = async (index: number, table: string) => {
     try {
       const columns = await fetchTableColumns(resourceId, table);
-      setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, columns } : s)));
+      setSteps((prev) => prev.map((s, i) => {
+        if (i !== index) return s;
+        const loaded = { ...s, columns };
+        return i === 0 || !commonKey ? loaded : joinToBaseOnKey(loaded, prev[0], commonKey);
+      }));
     } catch {
       setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, columns: [] } : s)));
     }
@@ -77,6 +100,17 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
     invalidate();
     setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, ...updates } : s)));
   };
+
+  const selectCommonKey = (key: string) => {
+    invalidate();
+    setCommonKey(key);
+    if (key) setSteps((prev) => prev.map((s, i) => (i === 0 ? s : joinToBaseOnKey(s, prev[0], key))));
+  };
+
+  // When the tables share exactly one column, use it as the key without asking.
+  useEffect(() => {
+    if (!commonKey && commonColumns.length === 1) selectCommonKey(commonColumns[0]);
+  }, [commonKey, commonColumns]);
 
   const handleTableChange = (index: number, table: string) => {
     updateStep(index, { table, joinTo: undefined, leftKey: undefined, rightKey: undefined, columns: [] });
@@ -126,6 +160,21 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
         Join up to {MAX_TABLES} tables on a shared key column.
       </Typography>
+      {commonColumns.length > 0 && (
+        <FormControl size="small" sx={{ minWidth: 220, mb: 1.5 }}>
+          <InputLabel>Common key column</InputLabel>
+          <Select
+            label="Common key column"
+            value={commonColumns.includes(commonKey) ? commonKey : ""}
+            onChange={(e) => selectCommonKey(e.target.value)}
+          >
+            {commonColumns.length > 1 && <MenuItem value="">None (set keys per table)</MenuItem>}
+            {commonColumns.map((name) => (
+              <MenuItem key={name} value={name}>{name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
       <Stack spacing={1.5}>
         {steps.map((step, i) => {
           const isBase = i === 0;

@@ -1,5 +1,25 @@
 # Bedrock and cohort-agent plan
 
+## Primary product priority (2026-10-21)
+
+OMOP plus multimodal joining is the central workflow. Visual BI-style joins,
+SQL editing and an isolated assistant must create the same durable query model.
+Do not implement three separate execution paths or silently use capped previews.
+
+Next vertical slice: add a validated OMOP cohort SourceRef with pinned resource,
+CDM/vocabulary schemas and cohort spec. Compile it to a bound full-source Aurora
+query, feed the current join/derive/cache paths, and verify cohort-to-modality
+metadata joins beyond ROW_CAP plus save/reopen. Today OMOP cohort opens return
+capped frames without live_source/source_ref; filtered/enriched clinical tables
+also lose their database origin. This is a correctness gap for the main goal.
+
+Then add entity/grain and cardinality profiling (duplicates, nulls, unmatched
+keys, fan-out), explicit identity mappings and a unified saved model editor.
+A general Aurora SQL editor and isolated join agent are not implemented. The
+existing catalog SELECT view input is not that SQL editor. S3/mixed-source joins
+currently use loaded frames; full-source execution remains separate work.
+
+
 Status: implementation and deployment plan, 2026-10-20. Direct Bedrock Converse and the local cohort specialist are implemented and tested locally. AgentCore remains a plan. No AWS resources were created and no AWS invocation was verified.
 
 ## Current app boundary

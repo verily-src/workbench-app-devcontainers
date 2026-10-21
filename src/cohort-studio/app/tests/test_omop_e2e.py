@@ -100,8 +100,10 @@ def test_omop_cohort_browser_flow(ref, page: Page, omop_app_url: str):
     expected = _expected_before_index(ref)
     assert expected
     page.goto(omop_app_url)
-    page.locator(".topnav-link", has_text="OMOP cohorts").click()
-    page.get_by_label("OMOP datasource").select_option("omopdb")
+    expect(page.locator(".topnav-link", has_text="OMOP cohorts")).to_have_count(0)
+    expect(page.get_by_label("OMOP datasource")).to_have_count(0)
+    page.locator(".sidebar select").nth(0).select_option("aurora:omopdb")
+    page.get_by_label("Explore mode").select_option("omop")
 
     search = page.get_by_label("Concept name, ID or code")
     domain = page.get_by_label("Domain")
@@ -130,17 +132,14 @@ def test_omop_cohort_browser_flow(ref, page: Page, omop_app_url: str):
     page.get_by_role("button", name="Open cohort").click()
     expect(page.locator(".tab.active", has_text="OMOP E2E cohort")).to_be_visible(timeout=15000)
     expect(page.locator(".data-table thead")).to_contain_text("Gastrointestinal hemorrhage events")
-
-
-    page.locator(".topnav-link", has_text="OMOP cohorts").click()
+    expect(page.get_by_label("Explore mode")).to_have_value("tables")
+    page.get_by_label("Explore mode").select_option("omop")
+    expect(page.locator(".omop-rule")).to_have_count(2)
     page.get_by_label("Clinical table").select_option("condition_occurrence")
     page.get_by_role("button", name="Open clinical table").click()
     expect(page.locator(".tab.active", has_text="condition_occurrence")).to_be_visible(timeout=15000)
     expect(page.locator(".data-table thead")).to_contain_text("condition_concept_name")
-
-
-
-    page.locator(".topnav-link", has_text="OMOP cohorts").click()
+    page.get_by_label("Explore mode").select_option("omop")
     page.locator(".omop-rule").nth(1).get_by_role("button", name="Remove criterion 2").click()
     expect(page.locator(".omop-count")).to_have_count(0)
     expect(page.get_by_role("button", name="Open cohort")).to_be_disabled()
@@ -227,8 +226,8 @@ def test_omop_assistant_proposes_and_opens_real_cohort(
 
     monkeypatch.setattr(cohort_agent.providers, "run", fake_provider)
     page.goto(omop_app_url)
-    page.locator(".topnav-link", has_text="OMOP cohorts").click()
-    page.get_by_label("OMOP datasource").select_option("omopdb")
+    page.locator(".sidebar select").nth(0).select_option("aurora:omopdb")
+    page.get_by_label("Explore mode").select_option("omop")
     page.get_by_label("Ask the cohort assistant").fill(
         "Find people with concept 192671 and prepare a cohort.")
     page.get_by_role("button", name="Ask assistant").click()

@@ -79,7 +79,8 @@ export default function App() {
   const [activity, setActivity] = useState("");
   const [error, setError] = useState("");
   const [view, setView] = useState<
-    "explore" | "omop" | "workflows" | "lineage" | "settings">("explore");
+    "explore" | "workflows" | "lineage" | "settings">("explore");
+  const [exploreModes, setExploreModes] = useState<Record<string, "tables" | "omop">>({});
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
@@ -125,6 +126,18 @@ export default function App() {
   }, []);
 
   const source = sources.find((s) => `${s.kind}:${s.id}` === sourceKey);
+  const exploreMode = source?.kind === "aurora"
+    ? exploreModes[sourceKey] ?? "tables" : "tables";
+  const setExploreMode = (mode: "tables" | "omop") => {
+    if (source?.kind === "aurora") {
+      setExploreModes((previous) => ({ ...previous, [sourceKey]: mode }));
+      if (mode === "omop") setView("explore");
+    }
+  };
+  const showExploreTables = () => {
+    setExploreModes({});
+    setView("explore");
+  };
 
   useEffect(() => {
     if (!source) return;
@@ -146,6 +159,7 @@ export default function App() {
     initial?: { filters: Dataset["filters"]; charts: Dataset["charts"];
       entityColumn?: string },
   ) => {
+    showExploreTables();
     const existing = datasets.findIndex((d) => d.source === opened.source);
     if (existing >= 0 && !initial) {
       setActive(existing);
@@ -240,7 +254,7 @@ export default function App() {
       }));
       setDatasets(restored);
       setActive(Math.min(v.active ?? 0, Math.max(0, restored.length - 1)));
-      setView("explore");
+      showExploreTables();
     } catch (e) {
       setError(`Could not load view: ${(e as Error).message}`);
     } finally {
@@ -346,14 +360,14 @@ export default function App() {
   // eslint-disable-line react-hooks/exhaustive-deps
 
   const commands: Command[] = [
-    ...(["explore", "omop", "workflows", "lineage", "settings"] as const).map((v) => ({
+    ...(["explore", "workflows", "lineage", "settings"] as const).map((v) => ({
       id: `view:${v}`, group: "Go to",
       label: v[0].toUpperCase() + v.slice(1), run: () => setView(v),
     })),
     ...datasets.map((d, i) => ({
       id: `tab:${d.id}`, group: "Open tab", label: d.title,
       hint: `${d.result?.filtered?.toLocaleString() ?? "?"} rows`,
-      run: () => { setActive(i); setView("explore"); },
+      run: () => { setActive(i); showExploreTables(); },
     })),
     ...sources.map((s) => ({
       id: `src:${s.kind}:${s.id}`, group: "Datasource",
@@ -393,21 +407,32 @@ export default function App() {
             </option>
           ))}
         </select>
-        <div className="field-label">Table</div>
-        <select value={table} onChange={(e) => setTable(e.target.value)}>
-          <option value="" disabled>Choose…</option>
-          {tables.map((t) => (
-            <option key={t.name} value={t.name} title={t.sql ?? undefined}>
-              {t.name} ({t.detail})
-            </option>
-          ))}
-        </select>
-        <div style={{ marginTop: 10 }}>
-          <button className="primary" onClick={loadTable}
-                  disabled={!table || Boolean(activity)}>
-            Load table
-          </button>
-        </div>
+        {source?.kind === "aurora" && <label className="field-label">
+          Explore mode
+          <select aria-label="Explore mode" value={exploreMode}
+                  onChange={(e) => setExploreMode(e.target.value as "tables" | "omop")}>
+            <option value="tables">Tables and views</option>
+            <option value="omop">OMOP cohorts</option>
+          </select>
+        </label>}
+        {exploreMode === "tables" && <>
+          <div className="field-label">Table</div>
+          <select aria-label="Table" value={table}
+                  onChange={(e) => setTable(e.target.value)}>
+            <option value="" disabled>Choose…</option>
+            {tables.map((t) => (
+              <option key={t.name} value={t.name} title={t.sql ?? undefined}>
+                {t.name} ({t.detail})
+              </option>
+            ))}
+          </select>
+          <div style={{ marginTop: 10 }}>
+            <button className="primary" onClick={loadTable}
+                    disabled={!table || Boolean(activity)}>
+              Load table
+            </button>
+          </div>
+        </>}
         {source?.kind === "s3" && (
           <PublishCatalog source={source} onToast={alerts.pushToast}
                           onPublished={() => api.datasources()
@@ -463,12 +488,12 @@ export default function App() {
             <span className="brand-verily">verily</span> Cohort Studio
           </span>
           <nav className="topnav">
-            {(["explore", "omop", "workflows", "lineage", "settings"] as const)
+            {(["explore", "workflows", "lineage", "settings"] as const)
               .map((v) => (
               <span key={v}
                     className={`topnav-link${view === v ? " active" : ""}`}
                     onClick={() => setView(v)}>
-                {v === "omop" ? "OMOP cohorts" : v[0].toUpperCase() + v.slice(1)}
+                {v[0].toUpperCase() + v.slice(1)}
                 {v === "workflows" && (workflows?.running_count ?? 0) > 0 && (
                   <span className="nav-badge">{workflows!.running_count}</span>
                 )}
@@ -491,15 +516,16 @@ export default function App() {
           )}
         </div>
         <div className="content">
-          <div hidden={view !== "omop"}>
-            <OmopBuilder sources={sources} onOpen={(opened, title) => {
-
+          <div hidden={view !== "explore" || exploreMode !== "omop"}>
+            <OmopBuilder active={view === "explore" && exploreMode === "omop"}
+                          source={source ?? null} onOpen={(opened, title) => {
               openResult(opened, title, undefined,
                 { filters: [], charts: autoCharts(opened.columns) });
+              setExploreMode("tables");
               setView("explore");
             }} />
           </div>
-          {view === "omop" ? null : view === "settings" ? (
+          {view === "explore" && exploreMode === "omop" ? null : view === "settings" ? (
             <SettingsView onPaletteChange={setPalette} />
           ) : view === "workflows" ? (
             <WorkflowsView isSubscribed={alerts.isSubscribed}
@@ -527,7 +553,7 @@ export default function App() {
                 {datasets.map((d, i) => (
                   <span key={d.id}
                         className={`tab${i === active ? " active" : ""}`}
-                        onClick={() => setActive(i)}>
+                        onClick={() => { setActive(i); showExploreTables(); }}>
                     {d.title}
                     <button className="quiet" onClick={(e) => {
                       e.stopPropagation(); closeDataset(i);

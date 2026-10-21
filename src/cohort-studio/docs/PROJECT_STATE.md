@@ -4,6 +4,8 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Active project
 
+- Primary product goal (user clarification): OMOP plus multimodal joins, built visually like BI tools, through a SQL editor, or by an isolated assistant; all routes create one reusable data model/cube. Logical model first, optional cached extract. SQL editor and isolated join agent are planned, not delivered.
+
 - Active app: `src/cohort-studio/` (React/TypeScript/Vite/ECharts + FastAPI).
 - Branch: `cohort-dashboard`; base commit at start of this work: `5fc68f9`.
 - The Panel app under `src/cohort-dashboard/` is superseded.
@@ -12,6 +14,10 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - See [README](../README.md), [architecture and decisions](architecture.md), [root agent rules](../../../AGENTS.md), and [agent next steps](AGENT_PLAN.md). Update architecture.md whenever a design decision changes.
 
 ## Verified delivery state
+
+- User screenshot (2026-10-21) shows the running UI at **103e7218d**, Aurora `cohort-dash-db-20261005` selected, and “No OMOP CDM found”. This supersedes the earlier stopped-app observation; it verifies the displayed version, not successful cohort queries.
+- User clarified CMS SynPUF collection is the source and Aurora is the destination. Do not assume collection data is already in Aurora. Read-only workspace resource listing found the Aurora target but no resource named/described as CMS SynPUF. Files inside existing buckets have not been checked. Collection export/resource path is still required.
+- Requested UI implemented: select an Aurora database in Explore, then choose OMOP cohorts in Explore mode. Removed the global OMOP tab and duplicate database selector. Editors keep separate session state for each visited Aurora resource. Production build passed. Codex found no confirmed blocker; OpenCode GLM max follow-up confirmed the navigation and test-selector fixes. Isolated suite: 152 passed plus one incorrect tab-title assertion; after correction, all 8 frontend browser tests passed in 11.38 s. The unrelated db.py edit was excluded. Review logs: `/tmp/cohort-omop-navigation-codex.txt`, `/tmp/cohort-omop-navigation-glm-final.jsonl`.
 
 - `wb workspace describe` confirmed `bugbash-nextflowonaws`, UUID `5b932a68-43d4-432b-834c-9662e7dd0151`, server `dev-stable`, AWS environment `dev`.
 - `wb app config list` confirmed **Cohort Studio** uses this repository, branch `cohort-dashboard`, and path `src/cohort-studio`.
@@ -30,7 +36,7 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - Database-backed **Export TSV** runs as a background Aurora cursor job. The UI shows row progress, supports cancellation, and links the file after completion. Limits: two workers, eight retained jobs, 2 GiB per job, 4 GiB total, one-hour finished-job TTL, 30-minute job runtime and five-minute SQL statement timeout. Files use temporary app-container disk.
 - The older synchronous export, materialization and S3 workflow export still cap at 100,000 rows. No Aurora schema, Aurora resource or DuckDB service was added.
 - Same-resource source recipes use validated Pydantic models and survive saved-view reloads. Derived recipes store a base and validated operation; client SQL is not accepted.
-- Earlier join/cache snapshot passed **146 tests in 27.67 s**, excluding the unrelated local db.py override. Latest frontend build passed and `test_frontend_e2e.py` passed **7 tests**, including streaming export and live Compare/Derive. This is local evidence, not live Aurora or Workbench deployment verification.
+- Earlier join/cache snapshot passed **146 tests in 27.67 s**, excluding the unrelated local db.py override. The previous streaming release frontend build passed and `test_frontend_e2e.py` passed **7 tests**, including streaming export and live Compare/Derive. This is local evidence, not live Aurora or Workbench deployment verification.
 - Independent Codex CLI review (`gpt-6-luna`) found no remaining blocker after checking chart/filter contracts. OpenCode GLM max approved the join/settings scope after its initial defects were fixed. Codex and OpenCode GLM max also approved the cache scope; final browser/suite checks passed. See [review, evidence and next priorities](REVIEW_2026-10-21_JOINS.md).
 
 ## Implemented in this change
@@ -52,7 +58,7 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - Streaming/full-source tools: isolated release snapshot passed **152 tests in 49.35 s**, no skips, with the unrelated db.py edit excluded. Final cleanup, polling and saved-settings fixes are included. Codex and OpenCode GLM max found no confirmed release blocker. See [review and limits](REVIEW_2026-10-21_STREAMING.md).
 
 - Previous join/cache snapshot: **146 passed in 27.67 s**, no skips, from an isolated copy with the unrelated db.py edit excluded. Frontend production build passed. Codex CLI (`gpt-6-luna`) and OpenCode GLM max approved the reviewed scope. See [review evidence](REVIEW_2026-10-21_JOINS.md).
-- Latest UI scope: production build passed; all **7** tests in `app/tests/test_frontend_e2e.py` passed. Browser mocks do not verify live Aurora exports or a deployed Workbench app.
+- Previous streaming UI scope: production build passed; all **7** tests in `app/tests/test_frontend_e2e.py` passed. Browser mocks do not verify live Aurora exports or a deployed Workbench app.
 
 - Prior cleanup suite: **127 passed in 19.74 s**. Standalone unit-test modules and direct helper checks were removed at user request. Browser/MCP HTTP flows, HTTP application outcomes, real database checks and updater subprocess tests remain. Shared database fixtures now live in conftest.py.
 - Comment cleanup preserves runtime tool descriptions, CLI help, machine directives and vendor/legal text. Python executable AST and TypeScript emitted syntax were checked unchanged; the production frontend build passes. The unrelated db.py local override remains untouched.
@@ -69,6 +75,8 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - OpenCode independent review: **GLM 5.3 Flash, max reasoning**, read-only, requested by user; complete. No verified release blocker or wrong-cohort result found. See [review and triage](REVIEW_2026-10-20.md). Earlier DeepSeek review was stopped when user selected GLM.
 
 ## Remaining limits / next steps
+
+- Highest product priority: durable full-source OMOP cohort inputs for multimodal joins. Current cohort opens are capped frames without saved source recipes. Verify same-Aurora cohort-to-modality joins beyond the preview and save/reopen before calling this a reusable data cube. See AGENT_PLAN and architecture.md.
 
 ### Current requirements
 

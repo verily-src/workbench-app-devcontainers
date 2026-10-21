@@ -41,7 +41,7 @@ RUN curl --retry 3 -fsSL "https://github.com/NVIDIA/OpenShell/releases/download/
     && OPENSHELL_TELEMETRY_ENABLED=false openshell --version
 
 # Keep the picker available independently of the /workspace bind mount.
-COPY available-models.sh configure-opencode.sh resolve-model.sh start-ollama.sh validate-model.sh gpu-check.py opencode-model.sh opencode-launch.sh opencode-sandbox.sh models.json workbench-instructions.md /opt/opencode-workbench/
+COPY available-models.sh configure-opencode.sh find-model-store.sh resolve-model.sh start-ollama.sh validate-model.sh gpu-check.py opencode-model.sh opencode-launch.sh opencode-sandbox.sh models.json workbench-instructions.md /opt/opencode-workbench/
 COPY openshell/policy.yaml /opt/opencode-workbench/openshell/policy.yaml
 RUN chmod +x /opt/opencode-workbench/*.sh \
     && ln -s /opt/opencode-workbench/opencode-launch.sh /usr/local/bin/opencode \

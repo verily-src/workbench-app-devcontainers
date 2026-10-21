@@ -24,12 +24,14 @@ if [[ -s "${SANDBOX_MODE_FILE}" ]]; then
   MODE="$(tr -d '[:space:]' < "${SANDBOX_MODE_FILE}")"
 fi
 
+# Only an interactive launch invokes the model picker.
+if [[ "$("${SCRIPT_DIR}/resolve-model.sh")" == "prompt" ]]; then
+  "${SCRIPT_DIR}/opencode-model.sh"
+fi
+
 if [[ "${MODE}" != "off" ]]; then
   exec "${SCRIPT_DIR}/opencode-sandbox.sh" run "$@"
 fi
 
 echo "OpenCode is running outside the sandbox, with your Workbench credentials." >&2
-if [[ "$("${SCRIPT_DIR}/resolve-model.sh")" == "prompt" ]]; then
-  "${SCRIPT_DIR}/opencode-model.sh"
-fi
 exec /opt/opencode/.opencode/bin/opencode "$@"

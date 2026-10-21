@@ -1,0 +1,40 @@
+# OpenShell gateway for sandboxed OpenCode. Based on OpenShell's
+# deploy/docker/gateway.toml (v0.1.4) and the nemotron-eval OpenShell pilot.
+[openshell]
+version = 2
+
+[openshell.gateway]
+# Reached by the app as openshell-gateway:8080 on app-network. Not published
+# outside the VM: Compose maps it only to the host's 127.0.0.1:8090, where
+# sandbox supervisors (host network) call back.
+bind_address        = "0.0.0.0:8080"
+health_bind_address = "0.0.0.0:8081"
+log_level           = "info"
+compute_driver      = "docker"
+# Plaintext and unauthenticated: only containers on this VM's app-network and
+# supervisors on its loopback can connect. Production would use mTLS and OIDC.
+disable_tls         = true
+
+[openshell.gateway.auth]
+allow_unauthenticated_users = true
+
+[openshell.gateway.gateway_jwt]
+signing_key_path = "/var/lib/openshell/tls/jwt/signing.pem"
+public_key_path  = "/var/lib/openshell/tls/jwt/public.pem"
+kid_path         = "/var/lib/openshell/tls/jwt/kid"
+gateway_id       = "opencode-nemotron"
+
+[openshell.drivers.docker]
+socket_path           = "/var/run/docker.sock"
+# A loopback IP here also makes host.openshell.internal resolve to the VM's
+# loopback inside sandboxes, which is where Ollama is published.
+grpc_endpoint         = "http://127.0.0.1:8090"
+# Built by the sandbox-image service in docker-compose.yaml.
+default_image         = "opencode-agent-sandbox:0.1"
+image_pull_policy     = "if_not_present"
+sandbox_runtime_image = "ghcr.io/nvidia/openshell/sandbox:0.1.4@sha256:ca00c094aeaa60681b8196cda18ab3c5dd5f7d782d4c36798256427b67599070"
+supervisor_image      = "ghcr.io/nvidia/openshell/supervisor:0.1.4@sha256:aa681d8264af6ee860e38349ed3c76609a51778eb6d0f02743df03787b80a290"
+sandbox_label         = "openshell"
+sandbox_pids_limit    = 1024
+# Flatcar uses SELinux, not AppArmor.
+app_armor_profile     = "Unconfined"

@@ -1,0 +1,62 @@
+# Default OpenShell policy for sandboxed OpenCode. Anything not listed is denied.
+#
+# On first start this file is copied to /config/openshell/policy.yaml, which
+# persists across restarts. Edit that copy, then run `opencode-sandbox policy`.
+# Network rules apply to the running sandbox within seconds. Filesystem and
+# process rules apply only to a new sandbox: run `opencode-sandbox reset`.
+#
+# Reference: https://docs.nvidia.com/openshell/latest/how-it-works/policies/schema
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/bin, /sbin, /usr, /lib, /lib64, /etc, /opt, /var/log, /proc, /dev/urandom, /dev/random]
+  # /sandbox is the agent's home and workspace. /dev/tty is for OpenCode's
+  # terminal interface.
+  read_write: [/sandbox, /tmp, /dev/null, /dev/tty]
+
+landlock:
+  # Fail closed. Workbench's Flatcar 6.12 VMs provide Landlock ABI 6.
+  compatibility: hard_requirement
+
+network_policies:
+  # The only way out: the local Nemotron models, through Ollama's
+  # OpenAI-compatible chat API. Ollama's other endpoints, such as /api/pull and
+  # /api/push, reach model registries on the internet and stay blocked.
+  local_models:
+    name: local_models
+    endpoints:
+      - host: host.openshell.internal
+        port: 11434
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: {method: POST, path: /v1/chat/completions}
+          - allow: {method: GET, path: /v1/models}
+    binaries:
+      # Real path of the OpenCode binary in sandbox-image/Dockerfile. Processes
+      # that OpenCode starts are covered too.
+      - path: /opt/opencode/.opencode/bin/opencode
+      # curl can reach the same two endpoints. This adds nothing the agent
+      # couldn't already do through OpenCode, and lets the self-test check the
+      # path rules.
+      - path: /usr/bin/curl
+
+  # To allow another destination, add a rule here. For example, package
+  # downloads from PyPI for `pip install` (pip runs on the Python interpreter):
+  #
+  # pypi:
+  #   name: pypi
+  #   endpoints:
+  #     - host: pypi.org
+  #       port: 443
+  #       protocol: rest
+  #       enforcement: enforce
+  #       access: read-only
+  #     - host: files.pythonhosted.org
+  #       port: 443
+  #       protocol: rest
+  #       enforcement: enforce
+  #       access: read-only
+  #   binaries:
+  #     - path: /usr/bin/python3.11

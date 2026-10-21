@@ -1,0 +1,33 @@
+{
+  "id": "ppp-pep",
+  "version": "0.0.1",
+  "name": "PPP PEP",
+  "description": "A Template to run JupyterLab with the PPP PEP Prod image",
+  "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/ppp-pep",
+  "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "description": "VM cloud environment",
+      "proposals": ["gcp", "aws"],
+      "default": "gcp"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    },
+    "shmSize": {
+      "type": "string",
+      "description": "Shared memory size for the application-server container",
+      "default": "64m"
+    },
+    "memoryLimit": {
+      "type": "string",
+      "description": "Memory limit for the application-server container",
+      "default": "8192m"
+    }
+  },
+  "platforms": ["Any"]
+}

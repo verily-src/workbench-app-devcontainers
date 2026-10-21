@@ -115,7 +115,7 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
-    page.locator(".sidebar select").nth(1).select_option("person")
+    page.get_by_label("Table", exact=True).select_option("person")
     page.get_by_role("button", name="Load table").click()
 
     expect(page.locator(".hero .detail")).to_contain_text(
@@ -167,6 +167,154 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
     for route, response in pending_refresh:
         fulfill(route, response)
     expect(page.get_by_role("button", name="Refresh data")).to_be_enabled()
+
+
+def test_omop_mode_is_per_aurora_source_and_survives_open_result(
+        page: Page, app_url: str, tmp_path):
+    def fulfill(route, body):
+        route.fulfill(status=200, content_type="application/json", json=body)
+
+    sources = [
+        {"kind": "aurora", "id": "aurora-a", "label": "Aurora A"},
+        {"kind": "aurora", "id": "aurora-b", "label": "Aurora B"},
+        {"kind": "aurora", "id": "no-cdm", "label": "No CDM"},
+    ]
+    page.route("**/api/datasources", lambda route: fulfill(route, {
+        "ready": True, "sources": sources, "catalogs_pending": False,
+    }))
+    page.route("**/api/workflows**", lambda route: fulfill(route, {
+        "available": False, "jobs": [], "running_count": 0,
+    }))
+    page.route("**/api/tables?**", lambda route: fulfill(route, [
+        {"name": "person", "detail": "2 rows"},
+    ]))
+    page.route("**/api/omop/aurora-a?*", lambda route: fulfill(route, {
+        "cdm": True, "cdm_schema": "cdm", "vocab_schema": "vocab",
+        "tables": [{"name": "person", "schema": "cdm", "domain": "person",
+                    "rows": 2, "approx": False}],
+    }))
+    page.route("**/api/omop/aurora-b?*", lambda route: fulfill(route, {
+        "cdm": True, "cdm_schema": "cdm", "vocab_schema": "vocab",
+        "tables": [{"name": "person", "schema": "cdm", "domain": "person",
+                    "rows": 2, "approx": False}],
+    }))
+    page.route("**/api/omop/no-cdm?*", lambda route: fulfill(route, {
+        "cdm": False, "vocab_schema": None, "tables": [],
+    }))
+
+    def concepts(route):
+        label = "Condition A" if "/aurora-a/concepts?" in route.request.url else "Condition B"
+        concept_id = 101 if label.endswith("A") else 202
+        fulfill(route, {"concepts": [{"concept_id": concept_id,
+            "concept_name": label, "vocabulary_id": "SNOMED",
+            "domain_id": "Condition", "persons": 1}]})
+
+    page.route("**/api/omop/*/concepts?*", concepts)
+    page.route("**/api/omop/*/cohort/count", lambda route: fulfill(route, {
+        "persons": 1, "total_persons": 2, "attrition": [],
+    }))
+    page.route("**/api/omop/*/domain/open", lambda route: fulfill(route, {
+        "dataset_id": "opened-clinical", "source": "Clinical table",
+        "rows": 1, "columns": [{"name": "person_id", "dtype": "int64",
+                                    "filter_kind": "none"}],
+        "query_scope": "database",
+    }))
+    page.route("**/api/datasets/open", lambda route: fulfill(route, {
+        "dataset_id": "opened-person", "source": "Aurora A / person",
+        "rows": 1, "columns": [{"name": "person_id", "dtype": "int64",
+                                    "filter_kind": "none"}],
+        "query_scope": "database",
+    }))
+    page.route("**/api/datasets/upload", lambda route: fulfill(route, {
+        "dataset_id": "uploaded-dataset", "source": "uploaded.csv",
+        "rows": 1, "columns": [{"name": "person_id", "dtype": "int64",
+                                    "filter_kind": "none"}],
+        "query_scope": "loaded",
+    }))
+    page.route("**/api/datasets/opened-*/query", lambda route: fulfill(route, {
+        "total": 1, "filtered": 1, "scope": "database", "sampled": False,
+        "cache": {"hit": False, "as_of": "2026-10-21T12:00:00Z",
+                  "ttl_seconds": 30},
+        "charts": [], "rows": {"page": 0, "page_size": 50,
+                                 "columns": ["person_id"], "data": [[1]]},
+    }))
+    page.route("**/api/datasets/uploaded-dataset/query", lambda route: fulfill(route, {
+        "total": 1, "filtered": 1, "scope": "loaded", "sampled": False,
+        "charts": [], "rows": {"page": 0, "page_size": 50,
+                                  "columns": ["person_id"], "data": [[1]]},
+    }))
+
+    page.goto(app_url)
+    expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
+    source_select = page.locator(".sidebar select").nth(0)
+    source_select.select_option("aurora:aurora-a")
+    expect(page.get_by_label("Explore mode")).to_have_value("tables")
+    page.get_by_label("Explore mode").select_option("omop")
+    editor = page.locator(".omop-builder:visible > div:not([hidden])")
+    editor.get_by_label("Concept name, ID or code").fill("Aurora A")
+    editor.get_by_role("button", name="Search concepts").click()
+    result_a = editor.locator(".omop-result", has_text="Condition A")
+    expect(result_a).to_be_visible(timeout=10000)
+    result_a.locator("input").check()
+    editor.get_by_role("button", name="Add criterion (1 concepts)").click()
+
+    page.get_by_label("Explore mode").select_option("tables")
+    page.get_by_label("Table", exact=True).select_option("person")
+    page.get_by_role("button", name="Load table").click()
+    expect(page.locator(".tab.active", has_text="person")).to_be_visible(
+        timeout=10000)
+    page.get_by_label("Explore mode").select_option("omop")
+    expect(page.locator(".omop-rule:visible")).to_have_count(1)
+    expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
+
+    editor = page.locator(".omop-builder:visible > div:not([hidden])")
+    editor.get_by_role("button", name="Count cohort").click()
+    editor.get_by_role("button", name="Open clinical table").click()
+    expect(page.locator(".tab.active", has_text="person")).to_be_visible(
+        timeout=10000)
+    expect(page.get_by_label("Explore mode")).to_have_value("tables")
+    page.get_by_label("Explore mode").select_option("omop")
+    expect(page.locator(".omop-rule:visible")).to_have_count(1)
+    expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
+
+    source_select.select_option("aurora:aurora-b")
+    expect(page.get_by_label("Explore mode")).to_have_value("tables")
+    page.get_by_label("Explore mode").select_option("omop")
+    expect(page.locator(".omop-rule:visible")).to_have_count(0)
+    editor = page.locator(".omop-builder:visible > div:not([hidden])")
+    editor.get_by_label("Concept name, ID or code").fill("Aurora B")
+    editor.get_by_role("button", name="Search concepts").click()
+    result_b = editor.locator(".omop-result", has_text="Condition B")
+    expect(result_b).to_be_visible(timeout=10000)
+    result_b.locator("input").check()
+    editor.get_by_role("button", name="Add criterion (1 concepts)").click()
+    expect(page.locator(".omop-rule:visible")).to_contain_text("Condition B")
+
+    source_select.select_option("aurora:aurora-a")
+    expect(page.get_by_label("Explore mode")).to_have_value("omop")
+    expect(page.locator(".omop-rule:visible")).to_have_count(1)
+    expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
+    expect(page.locator(".omop-rule:visible")).not_to_contain_text("Condition B")
+
+    source_select.select_option("aurora:no-cdm")
+    page.get_by_label("Explore mode").select_option("omop")
+    expect(page.get_by_role("status")).to_contain_text(
+        "No OMOP CDM schema is visible in the selected Aurora datasource.")
+    expect(page.locator(".topnav-link", has_text="OMOP cohorts")).to_have_count(0)
+    expect(page.get_by_label("OMOP datasource")).to_have_count(0)
+
+    source_select.select_option("aurora:aurora-a")
+    page.get_by_label("Explore mode").select_option("omop")
+    csv = tmp_path / "uploaded.csv"
+    csv.write_text("person_id\n1\n", encoding="utf-8")
+    page.locator('.sidebar input[type="file"]').set_input_files(str(csv))
+    expect(page.locator(".tab.active", has_text="uploaded.csv")).to_be_visible(
+        timeout=10000)
+    expect(page.locator(".hero .detail")).to_contain_text("uploaded.csv",
+                                                             timeout=10000)
+    expect(page.get_by_role("cell", name="1", exact=True)).to_be_visible(
+        timeout=10000)
+    expect(page.get_by_label("Explore mode")).to_have_value("tables")
 
 
 def test_common_join_key_applies_to_all_steps(loaded_page: Page, tmp_path):
@@ -300,7 +448,7 @@ def test_database_export_job_progress_cancel_and_download(page: Page, app_url: s
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
-    page.locator(".sidebar select").nth(1).select_option("person")
+    page.get_by_label("Table", exact=True).select_option("person")
     page.get_by_role("button", name="Load table").click()
 
     page.get_by_role("button", name="Export TSV").click()
@@ -413,10 +561,10 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
-    page.locator(".sidebar select").nth(1).select_option("events")
+    page.get_by_label("Table", exact=True).select_option("events")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab", has_text="events")).to_be_visible(timeout=10000)
-    page.locator(".sidebar select").nth(1).select_option("people")
+    page.get_by_label("Table", exact=True).select_option("people")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab", has_text="people")).to_be_visible(timeout=10000)
 

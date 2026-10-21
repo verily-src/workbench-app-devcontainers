@@ -321,7 +321,8 @@ or the compose file change.
 
 ### OMOP CDM
 
-Choose **OMOP cohorts**, then select an Aurora resource. Search concepts, add
+In **Explore**, select an Aurora datasource, then open its **OMOP** tools.
+The same datasource selection controls table browsing and cohort building. Search concepts, add
 criteria, set timing and demographics, and click **Count cohort**. Counts and
 attrition query the full database. **Open cohort** loads matching people into
 Explore. **Open clinical table** loads events, optionally restricted to the

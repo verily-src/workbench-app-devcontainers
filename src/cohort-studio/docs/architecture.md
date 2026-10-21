@@ -100,7 +100,39 @@ the new commit SHA; update logs are written to `/tmp/self-update.log` in the
 container. Changes to the devcontainer, Dockerfile, or Compose setup still
 need an app/VM rebuild.
 
+## Product direction: OMOP and multimodal data models
+
+The primary user goal is to join OMOP clinical data with other modalities and
+reuse the result for cohort analysis. Visual relationship editing, SQL editing,
+and an isolated join assistant should create the same saved data model.
+This is a target architecture; the SQL editor and isolated join agent are not
+implemented by the current navigation change.
+
+A model records versioned source references, entity grain, join keys and types,
+relationship cardinality, filters, derived columns and lineage. Validate null
+keys, duplicate keys, unmatched records and join fan-out before applying it.
+Person counts must remain separate from event/sample/image rows. Cross-modal
+identity mappings must be explicit, not guessed from similar column names.
+
+Default “data cube” means a reusable logical query model. Optional cached extracts
+are execution choices with visible scope, freshness and refresh controls. Same-
+resource Aurora queries stay in Aurora; internal DuckDB handles supported mixed
+sources. Current mixed-source joins operate on loaded frames and must not be
+presented as full-source cubes.
+
+The isolated assistant should inspect authorized metadata and aggregate join
+profiles, propose the same typed model as the visual builder, and preview its
+result before application. Browser isolation does not itself isolate agent
+execution or credentials. An agent runtime needs a separate restricted tool
+boundary. Generated SQL must use the same read-only execution and resource
+boundaries as user-authored SQL.
+
 ## 3. OMOP and cohort assistant
+
+OMOP is a capability of the selected Aurora datasource within Explore. It uses
+the shared datasource selector, not a separate global workspace or database.
+Collection data must be exported/accessed and loaded into Aurora before CDM
+detection can find it; selecting a collection does not create clinical tables.
 
 `omop.py` detects a CDM and vocabulary schema on the selected Aurora resource,
 searches concepts, and compiles validated cohort specifications into
@@ -256,5 +288,6 @@ not the data or cohort engine.
 | 2026-10-21 | Validate column conversions before changing stored state. | Text storage must remain decodable; invalid values outside the preview must fail the conversion. |
 | 2026-10-21 | Support full-source compare and derived columns on live Aurora data; keep chat loaded-frame-only. | Avoid making results depend on a capped preview when the source can be queried directly. Save derived operations as validated recursive source recipes. |
 | 2026-10-21 | Stream full-source TSV exports into bounded temporary jobs. | Avoid synchronous whole-result loads; expose progress and cancellation while limiting local disk and concurrent work. |
+| 2026-10-21 | Place OMOP tools under the selected Aurora datasource in Explore. | One datasource selection controls tables and cohort building; collection-to-Aurora loading remains a separate data operation. |
 
 Record a changed decision here with its date, reason and verification needed.

@@ -9,23 +9,35 @@ const openTables = new Set(["person", "observation_period", "condition_occurrenc
 type Rule = OmopCriterion & { names: string[] };
 const numeric = (value: string) => value === "" ? undefined : Number(value);
 
-export function OmopBuilder({ sources, onOpen }: {
-  sources: Source[]; onOpen: (result: OpenResult, title: string) => void;
+export function OmopBuilder({ source, active, onOpen }: {
+  source: Source | null;
+  active: boolean;
+  onOpen: (result: OpenResult, title: string) => void;
 }) {
-  const aurora = sources.filter((s) => s.kind === "aurora");
-  const [rid, setRid] = useState("");
+  const [visited, setVisited] = useState<string[]>([]);
+  const activeRid = active && source?.kind === "aurora" ? source.id : null;
+  useEffect(() => {
+    if (activeRid) {
+      setVisited((previous) => previous.includes(activeRid)
+        ? previous : [...previous, activeRid]);
+    }
+  }, [activeRid]);
+  const resourceIds = [...new Set([
+    ...visited,
+    ...(activeRid ? [activeRid] : []),
+  ])];
 
   return <section className="omop-builder" aria-label="OMOP cohort builder">
     <h2>OMOP cohorts</h2>
     <p className="settings-hint">Build a person cohort from clinical events in an OMOP database.</p>
-    <label className="omop-resource">OMOP datasource
-      <select value={rid} onChange={(e) => setRid(e.target.value)}>
-        <option value="">Choose an Aurora database…</option>
-        {aurora.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-      </select>
-    </label>
-    {!aurora.length && <p>No Aurora databases available. Connect a Workbench workspace with an OMOP resource.</p>}
-    {rid && <Editor key={rid} rid={rid} onOpen={onOpen} />}
+    {active && source?.kind !== "aurora" && <p>
+      Select an Aurora datasource in the sidebar. Selecting a datasource or
+      collection does not import its data or create an OMOP schema.
+    </p>}
+    {resourceIds.map((rid) => <div key={rid} hidden={!active || source?.id !== rid}>
+      <p className="omop-resource">Aurora datasource: {source?.label}</p>
+      <Editor rid={rid} onOpen={onOpen} />
+    </div>)}
   </section>;
 }
 
@@ -86,7 +98,10 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
       {busy && <span role="status">{busy}</span>}
     </div>
     {error && <p role="alert" className="omop-error">{error}</p>}
-    {info && !info.cdm && <p>No OMOP CDM found in this database.</p>}
+    {info && !info.cdm && <p role="status">
+      No OMOP CDM schema is visible in the selected Aurora datasource. Cohort
+      tools query an existing schema. No data was imported automatically.
+    </p>}
     {info?.cdm && <fieldset className="omop-fields" disabled={!!busy}>
       <div className="omop-grid">
         <div>

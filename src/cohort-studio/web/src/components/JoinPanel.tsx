@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type {
   Dataset, JoinCondition, JoinEngine, JoinHow, JoinOp, JoinPreview, JoinStep,
@@ -98,40 +98,55 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
   const [preview, setPreview] = useState<JoinPreview | null>(null);
   const [previewErr, setPreviewErr] = useState("");
   const [previewing, setPreviewing] = useState(false);
+  const previewRequest = useRef(0);
 
   const stepKey = steps.map((s) => s.right_id).join("|");
+  const commonKeys = base?.columns.map((c) => c.name).filter((name) =>
+    steps.length > 0 && steps.every((s) =>
+      byId.get(s.right_id)?.columns.some((c) => c.name === name))) ?? [];
+  const [commonKey, setCommonKey] = useState("");
+
+  useEffect(() => {
+    if (!commonKeys.includes(commonKey)) setCommonKey(commonKeys[0] ?? "");
+  }, [stepKey, baseId, commonKeys.join("|")]);
 
   useEffect(() => {
     let cancelled = false;
-    steps.forEach((s, i) => {
-      if (!s.right_id) return;
+    setSuggestions({});
+    Promise.all(steps.map(async (s, i) => {
+      if (!s.right_id) return [] as JoinSuggestion[];
       const lefts: { id: string; prefix: string }[] = [{ id: baseId, prefix: "" }];
       steps.slice(0, i).forEach((p) => {
         if (addsColumns(p.how)) lefts.push({ id: p.right_id, prefix: `${p.alias}${ARROW}` });
       });
-      Promise.all(lefts.filter((l) => l.id && l.id !== s.right_id).map((l) =>
+      const all = await Promise.all(lefts.filter((l) => l.id && l.id !== s.right_id).map((l) =>
         api.suggestJoin(l.id, s.right_id)
           .then((r) => r.map((x) => ({ ...x, left: l.prefix + x.left })))
-          .catch(() => [] as JoinSuggestion[])))
-        .then((all) => {
-          if (cancelled) return;
-          const leftCols = new Set(outputColumns(base, steps, i, byId));
-          const ranked = all.flat().filter((x) => leftCols.has(x.left))
-            .sort((a, b) => b.score - a.score).slice(0, 3);
-          setSuggestions((prev) => ({ ...prev, [i]: ranked }));
-
-          const top = ranked[0];
-          if (top) setSteps((prev) => prev.map((p, j) =>
-            j === i && !p.touched && p.conditions.length === 1
-              && p.conditions[0].left !== p.conditions[0].right
-              ? { ...p, conditions: [{ left: top.left, op: "=", right: top.right }] }
-              : p));
-        });
+          .catch(() => [] as JoinSuggestion[])));
+      const leftCols = new Set(outputColumns(base, steps, i, byId));
+      return all.flat().filter((x) => leftCols.has(x.left))
+        .sort((a, b) => b.score - a.score).slice(0, 3);
+    })).then((ranked) => {
+      if (cancelled) return;
+      setSuggestions(Object.fromEntries(ranked.map((items, i) => [i, items])));
+      setSteps((prev) => prev.map((p, i) => {
+        const top = ranked[i]?.[0];
+        return top && p.right_id === steps[i]?.right_id && !p.touched
+          && p.conditions.length === 1
+          && p.conditions[0].left !== p.conditions[0].right
+          ? { ...p, conditions: [{ left: top.left, op: "=", right: top.right }] }
+          : p;
+      }));
     });
     return () => { cancelled = true; };
   }, [baseId, stepKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { setPreview(null); setPreviewErr(""); }, [baseId, steps]);
+  useEffect(() => {
+    previewRequest.current += 1;
+    setPreview(null);
+    setPreviewErr("");
+    setPreviewing(false);
+  }, [baseId, steps]);
 
   const [validation, setValidation] = useState<JoinValidation | null>(null);
   useEffect(() => {
@@ -163,6 +178,16 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
     setSuggestions({});
   };
 
+  const applyCommonKey = () => {
+    if (!commonKey) return;
+    setSteps((prev) => prev.map((s) => {
+      const condition = { left: commonKey, op: "=" as const, right: commonKey };
+      return { ...s, touched: true,
+        conditions: s.conditions.length
+          ? [condition, ...s.conditions.slice(1)] : [condition] };
+    }));
+  };
+
   const changeRight = (i: number, id: string) =>
     setSteps((prev) => prev.map((s, j) => (j === i ? newStep(id, prev.slice(0, i)) : s)));
 
@@ -175,14 +200,16 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
     && s.conditions.every((c) => c.left && c.right));
 
   const runPreview = async () => {
+    const requestId = ++previewRequest.current;
     setPreviewing(true);
     setPreviewErr("");
     try {
-      setPreview(await api.previewJoin(baseId, payload()));
+      const result = await api.previewJoin(baseId, payload());
+      if (requestId === previewRequest.current) setPreview(result);
     } catch (e) {
-      setPreviewErr((e as Error).message);
+      if (requestId === previewRequest.current) setPreviewErr((e as Error).message);
     } finally {
-      setPreviewing(false);
+      if (requestId === previewRequest.current) setPreviewing(false);
     }
   };
 
@@ -196,6 +223,23 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
         <div style={{ flex: 2 }} />
         <button className="quiet" onClick={onClose}>✕</button>
       </div>
+
+      {steps.length > 0 && (
+        <div className="join-row">
+          <label>Common key
+            <select value={commonKey} onChange={(e) => setCommonKey(e.target.value)}
+                    disabled={!commonKeys.length}>
+              {commonKeys.map((key) => <option key={key}>{key}</option>)}
+            </select>
+          </label>
+          <button className="link" disabled={!commonKey} onClick={applyCommonKey}>
+            Apply to all joins
+          </button>
+          {!commonKeys.length && <span className="settings-hint">
+            No shared column across the base and all selected tables.
+          </span>}
+        </div>
+      )}
 
       {steps.map((s, i) => {
         const right = byId.get(s.right_id);

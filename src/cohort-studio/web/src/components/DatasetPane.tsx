@@ -3,6 +3,7 @@ import { api } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
+import { ColumnSettings } from "./ColumnSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
 import { LaunchWorkflow } from "./LaunchWorkflow";
@@ -19,6 +20,19 @@ function describeFilter(f: Filter): string {
     return (f.values ?? []).map((v) => `${f.column}: ${v}`).join("|");
   }
   return `${f.column}: ${f.min}–${f.max}`;
+}
+
+function cacheAge(asOf: string): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(asOf)) / 1000));
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+function cacheTime(asOf: string): string {
+  const date = new Date(asOf);
+  return Number.isNaN(date.valueOf()) ? asOf : date.toISOString().slice(0, 16).replace("T", " ") + " UTC";
 }
 
 export function DatasetPane({ dataset, palette, onUpdate }: Props) {
@@ -94,21 +108,44 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
 
   const pageCount = result
     ? Math.max(1, Math.ceil(result.filtered / result.rows.page_size)) : 1;
+  const scope = result?.scope ?? dataset.queryScope ?? "loaded";
+  const entityCount = result?.entity;
+  const databaseScoped = scope === "database";
+  const databaseToolReason = "This tool uses loaded rows. Full database support is pending.";
+  const largeDataset = Boolean(result && (result.total >= 100_000 || result.sampled));
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center" }}>
         <div className="hero">
           <span className="count">
-            {result ? result.filtered.toLocaleString() : "…"}
+            {result ? (dataset.entityColumn && entityCount
+              ? entityCount.filtered.toLocaleString()
+              : result.filtered.toLocaleString()) : "…"}
           </span>
           <span className="detail">
-            of {result?.total.toLocaleString() ?? "…"} rows
+            {dataset.entityColumn && entityCount
+              ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+              : `of ${result?.total.toLocaleString() ?? "…"} rows`}
+            · {scope === "database" ? "counts cover the full database"
+              : result?.sampled ? "capped loaded sample" : "loaded rows"}
             · {dataset.source}
           </span>
         </div>
         <div style={{ flex: 1 }} />
+        <label className="entity-select">Count unique
+          <select value={dataset.entityColumn ?? ""}
+                  onChange={(e) => onUpdate({
+                    entityColumn: e.target.value || undefined,
+                  })}>
+            <option value="">Rows</option>
+            {dataset.columns.map((c) => (
+              <option key={c.name} value={c.name}>{c.label || c.name}</option>
+            ))}
+          </select>
+        </label>
         <SaveToAurora dataset={dataset} />
+        <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
         <button onClick={() => api.export(dataset.id, filters)}>
           Export TSV
         </button>
@@ -117,6 +154,28 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
           Export PDF
         </button>
       </div>
+
+      {databaseScoped && <div className="query-cache-row">
+        <span className="settings-hint" title={`Cache TTL: ${result?.cache?.ttl_seconds ?? 30} seconds`}>
+          {result?.cache
+            ? `${result.cache.hit ? "Cached" : "Fetched"} result · ${cacheAge(result.cache.as_of)} · ${cacheTime(result.cache.as_of)}`
+            : "Database result status unavailable"}
+        </span>
+        <button className="quiet" disabled={dataset.refreshing}
+                onClick={() => onUpdate({ refreshNonce: (dataset.refreshNonce ?? 0) + 1,
+                  refreshing: true })}>
+          {dataset.refreshing ? "Refreshing…" : "Refresh data"}
+        </button>
+      </div>}
+
+      {largeDataset && <div className="large-data-warning" role="status">
+        <div>{scope === "database"
+          ? `This source has ${result!.total.toLocaleString()} rows. Counts cover the full database, but large queries may take longer. Add filters to narrow the result.`
+          : result?.sampled
+            ? `This loaded preview has ${result!.total.toLocaleString()} rows. Counts cover only the loaded preview, not the full source. Add filters to narrow the preview.`
+            : `This dataset has ${result!.total.toLocaleString()} loaded rows. Large queries may take longer. Add filters to narrow the result.`}</div>
+        {databaseScoped && <div>Exports support up to 100,000 filtered rows. Add filters to export a smaller result.</div>}
+      </div>}
 
       {chips.length > 0 && (
         <div className="chips">
@@ -152,10 +211,12 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
                 disabled={!cohortName.trim() || filters.length === 0}>
           Save cohort
         </button>
-        <button onClick={() => setShowCompare((v) => !v)}>
+        <button disabled={databaseScoped} title={databaseScoped ? databaseToolReason : undefined}
+                onClick={() => setShowCompare((v) => !v)}>
           {showCompare ? "Hide compare" : "Compare groups"}
         </button>
-        <button onClick={() => setShowDerive((v) => !v)}>
+        <button disabled={databaseScoped} title={databaseScoped ? databaseToolReason : undefined}
+                onClick={() => setShowDerive((v) => !v)}>
           {showDerive ? "Hide add column" : "+ Derived column"}
         </button>
         <button onClick={() => setShowLaunch((v) => !v)}>
@@ -163,11 +224,16 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
         </button>
       </div>
 
-      {showCompare && (
+      {databaseScoped && <div className="settings-hint">
+        Compare, derive, and chat use loaded rows. They are disabled until full
+        database support is available.
+      </div>}
+
+      {showCompare && !databaseScoped && (
         <ComparePanel dataset={dataset} onClose={() => setShowCompare(false)} />
       )}
 
-      {showDerive && (
+      {showDerive && !databaseScoped && (
         <DeriveColumn dataset={dataset} onUpdate={onUpdate}
                       onClose={() => setShowDerive(false)} />
       )}
@@ -179,7 +245,7 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
 
       <AskAI dataset={dataset} onUpdate={onUpdate} />
 
-      <ChatWidget dataset={dataset} onUpdate={onUpdate} />
+      {databaseScoped ? null : <ChatWidget dataset={dataset} onUpdate={onUpdate} />}
 
       <AddChart dataset={dataset} onUpdate={onUpdate} />
 
@@ -189,6 +255,8 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
             key={`${spec.kind}-${spec.x}-${spec.y ?? ""}-${i}`}
             spec={spec}
             result={result?.charts[i]}
+            columnLabels={Object.fromEntries(dataset.columns.map((c) =>
+              [c.name, c.label || c.name]))}
             palette={palette}
             kinds={allowedKinds(spec)}
             onTapCategory={toggleCategory}
@@ -202,10 +270,16 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
       {result && (
         <>
           <div className="section-label">Rows</div>
+          {result.sampled && <div className="settings-hint">
+            Counts and rows use the capped loaded sample. They do not describe
+            the full source population.
+          </div>}
           <table className="data-table">
             <thead>
               <tr>
-                {result.rows.columns.map((c) => <th key={c}>{c}</th>)}
+                {result.rows.columns.map((c) => (
+                  <th key={c}>{dataset.columns.find((col) => col.name === c)?.label || c}</th>
+                ))}
               </tr>
             </thead>
             <tbody>

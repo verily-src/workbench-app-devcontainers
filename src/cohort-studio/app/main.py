@@ -34,6 +34,10 @@ import omop
 import queries
 import views
 import workflows
+import column_settings
+import live_query
+import query_cache
+from source_models import ColumnSetting, SourceRef, source_dict
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
@@ -63,11 +67,24 @@ if mcp_server.AVAILABLE:
     app.mount("/mcp", mcp_server.http_app())
 
 class OpenRequest(BaseModel):
-    kind: str
-    resource_id: str
-    table: str
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: str | None = None
+    resource_id: str | None = None
+    table: str | None = None
+    source_ref: SourceRef | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if self.source_ref is not None:
+            if any(v is not None for v in (self.kind, self.resource_id, self.table)):
+                raise ValueError("Use source_ref or kind/resource_id/table, not both.")
+            source_dict(self.source_ref)
+        elif not all((self.kind, self.resource_id, self.table)):
+            raise ValueError("Provide kind, resource_id and table.")
+        return self
 
 class Filter(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     column: str
     kind: str
     values: list[str] | None = None
@@ -82,8 +99,14 @@ class ChartSpec(BaseModel):
 class QueryRequest(BaseModel):
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
-    page: int = 0
-    page_size: int = 50
+    page: int = Field(default=0, ge=0, le=10_000_000)
+    page_size: int = Field(default=50, ge=1, le=1000)
+    entity_column: str | None = None
+    refresh: bool = Field(default=False, strict=True)
+
+class ColumnsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    columns: list[ColumnSetting] = Field(max_length=200)
 
 class JoinCondition(BaseModel):
     left: str
@@ -263,8 +286,7 @@ def export_cohort(dataset_id: str, req: ExportCohortRequest):
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
-    filt = datasets.apply_filters(
-        ds["df"], [f.model_dump() for f in req.filters])
+    filt = _export_frame(ds, [f.model_dump() for f in req.filters])
     try:
         out = workflows.export_cohort_csv(filt, req.resource_id, req.path)
     except Exception as e:
@@ -335,19 +357,106 @@ def build_catalog(req: BuildCatalogRequest):
 @app.post("/api/datasets/open")
 def open_dataset(req: OpenRequest):
     try:
-        df = _load_frame(req.kind, req.resource_id, req.table)
+        ref = source_dict(req.source_ref or {
+            "kind": req.kind, "resource_id": req.resource_id, "table": req.table})
+        result = _open_source(ref)
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, str(e).split("\n")[0][:300])
-    origin = (joins.aurora_origin(req.resource_id, req.table)
-              if req.kind == "aurora" else None)
-    result = datasets.open_dataset(df, f"{req.resource_id} / {req.table}",
-                                   origin=origin)
-    lineage.record(_lineage_engine(), "table_loaded", "table", req.table,
-                   payload={"resource_id": req.resource_id,
-                            "source_kind": req.kind, "rows": len(df)})
+        raise HTTPException(504 if isinstance(e, joins.JoinTimeout) or "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
+    lineage.record(_lineage_engine(), "table_loaded", "table", ref.get("table", result["source"]),
+                   payload={"source_kind": ref["kind"], "resource_id": ref.get("resource_id"),
+                            "rows": result["rows"]})
     return result
+
+def _stored_ref(dataset_id):
+    ds = datasets.get(dataset_id)
+    if ds.get("source_ref"):
+        return ds["source_ref"]
+    origin = ds.get("origin") or {}
+    if origin.get("kind") == "aurora":
+        return {"kind": "aurora", "resource_id": origin["resource_id"],
+                "table": origin["table"], "schema": origin.get("schema") or "public"}
+    return None
+
+def _join_ref(base_id, steps):
+    base = _stored_ref(base_id)
+    refs = [_stored_ref(step["right_id"]) for step in steps]
+    if base is None or any(ref is None for ref in refs):
+        return None
+    return source_dict({"kind": "join", "base": base,
+                        "steps": [{"source": ref, **{k: step[k] for k in
+                                   ("how", "conditions", "columns", "alias") if k in step}}
+                                  for step, ref in zip(steps, refs)]})
+
+def _open_source(ref, temporary=False):
+    ref = source_dict(ref)
+    children = []
+    out = None
+    origin = None
+    try:
+        if ref["kind"] == "join":
+            base = _open_source(ref["base"], temporary=True)
+            children.append(base["dataset_id"])
+            steps = []
+            labels = [base["source"]]
+            for step in ref["steps"]:
+                right = _open_source(step["source"], temporary=True)
+                children.append(right["dataset_id"])
+                labels.append(right["source"])
+                steps.append({"right_id": right["dataset_id"], **{
+                    k: step[k] for k in ("how", "conditions", "columns", "alias") if k in step}})
+            out = joins.run(base["dataset_id"], steps)
+            df, label = out["df"], " + ".join(labels)
+        else:
+            kind, rid, table = ref["kind"], ref["resource_id"], ref["table"]
+            schema = ref.get("schema", "public")
+            if kind == "aurora" and schema != "public":
+                sql = f"SELECT * FROM {column_settings._q(schema)}.{column_settings._q(table)} LIMIT {queries.ROW_CAP}"
+                from sqlalchemy import text
+                with db.get_engine_for_resource(rid).begin() as conn:
+                    if conn.dialect.name == "postgresql":
+                        conn.execute(text("SET LOCAL statement_timeout = 15000"))
+                    df = pd.read_sql_query(text(sql), conn)
+            else:
+                df = _load_frame(kind, rid, table)
+            label = f"{rid} / {table}"
+            if kind == "aurora":
+                origin = {"kind": "aurora", "resource_id": rid, "table": table, "schema": schema}
+    finally:
+        for child in children:
+            datasets.close_dataset(child)
+    result = datasets.open_dataset(
+        df, label, origin=origin, temporary=temporary,
+        capped=out["stats"]["truncated"] if out else None,
+        live_source=out.get("live_source") if out else None)
+    dataset_id = result["dataset_id"]
+    datasets.get(dataset_id)["source_ref"] = ref
+    try:
+        if ref.get("settings"):
+            result.update(column_settings.apply(dataset_id, ref["settings"]))
+    except Exception:
+        datasets.close_dataset(dataset_id)
+        raise
+    result["source_ref"] = datasets.get(dataset_id)["source_ref"]
+    if out:
+        result["join"] = out["stats"]
+    return result
+
+@app.patch("/api/datasets/{dataset_id}/columns")
+def configure_columns(dataset_id: str, req: ColumnsRequest):
+    try:
+        return column_settings.apply(dataset_id, [s.model_dump(exclude_none=True) for s in req.columns])
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(504 if isinstance(e, joins.JoinTimeout) or "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
 
 UPLOAD_SUFFIXES = (".csv", ".tsv", ".txt")
 
@@ -395,12 +504,21 @@ def _join_pipeline(req: JoinRequest) -> tuple[str, list[dict], list[str]]:
 def join_datasets(req: JoinRequest):
     base_id, steps, sources = _join_pipeline(req)
     try:
+        ref = _join_ref(base_id, steps)
         out = joins.run(base_id, steps)
+        label = " + ".join(sources)
+        result = datasets.open_dataset(out["df"], label,
+                                       capped=out["stats"]["truncated"],
+                                       live_source=out.get("live_source"))
+        datasets.get(result["dataset_id"])["source_ref"] = ref
+        result["source_ref"] = ref
     except ValueError as e:
         raise HTTPException(400, str(e))
-    label = " + ".join(sources)
-    result = datasets.open_dataset(out["df"], label,
-                                   capped=out["stats"]["truncated"])
+    except joins.JoinTimeout as e:
+        raise HTTPException(504, str(e))
+    except Exception as e:
+        raise HTTPException(504 if "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
     lineage.record(_lineage_engine(), "joined", "dataset", label,
                    payload={"steps": [{k: s[k] for k in
                                        ("how", "conditions", "alias")}
@@ -438,6 +556,7 @@ def suggest_join_keys(left_id: str, right_id: str):
 
 @app.post("/api/datasets/{dataset_id}/compare")
 def compare_cohorts(dataset_id: str, req: CompareRequest):
+    _require_loaded(dataset_id, "Compare")
     try:
         result = compare.compare(
             dataset_id,
@@ -446,6 +565,8 @@ def compare_cohorts(dataset_id: str, req: CompareRequest):
             b_is_rest=req.b_is_rest)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
     lineage.record(_lineage_engine(), "compared", "dataset",
@@ -456,8 +577,10 @@ def compare_cohorts(dataset_id: str, req: CompareRequest):
 
 @app.post("/api/datasets/{dataset_id}/derive")
 def derive_column(dataset_id: str, req: DeriveRequest):
+    _require_loaded(dataset_id, "Derive")
     try:
         result = derive.derive(dataset_id, req.model_dump())
+        datasets.get(dataset_id).pop("source_ref", None)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
     except ValueError as e:
@@ -472,13 +595,42 @@ def derive_column(dataset_id: str, req: DeriveRequest):
 @app.post("/api/datasets/{dataset_id}/query")
 def query_dataset(dataset_id: str, req: QueryRequest):
     try:
-        return datasets.query(
+        result = datasets.query(
             dataset_id,
             [f.model_dump() for f in req.filters],
             [c.model_dump() for c in req.charts],
-            page=req.page, page_size=req.page_size)
+            page=req.page, page_size=req.page_size, entity_column=req.entity_column,
+            refresh=req.refresh)
+        if req.refresh and datasets.get(dataset_id).get("live_source"):
+            result["columns"] = column_settings.profiles(datasets.get(dataset_id))
+        return result
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(504 if "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
+
+def _require_loaded(dataset_id, operation):
+    try:
+        ds = datasets.get(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    if ds.get("live_source"):
+        raise HTTPException(400, f"{operation} is not available for database-scoped datasets.")
+
+def _export_frame(ds, filters=None):
+    try:
+        if ds.get("live_source"):
+            return live_query.fetch_frame(ds["live_source"], filters, max_rows=queries.ROW_CAP)
+        return datasets.apply_filters(ds["df"], filters or [])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(504 if "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
 
 @app.post("/api/datasets/{dataset_id}/export")
 def export_dataset(dataset_id: str, req: QueryRequest):
@@ -486,7 +638,7 @@ def export_dataset(dataset_id: str, req: QueryRequest):
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
-    df = datasets.apply_filters(ds["df"], [f.model_dump() for f in req.filters])
+    df = _export_frame(ds, [f.model_dump() for f in req.filters])
     lineage.record(_lineage_engine(), "export", "export", ds["source"],
                    payload={"rows": len(df)})
     return Response(df.to_csv(sep="\t", index=False),
@@ -534,17 +686,20 @@ class MaterializeRequest(BaseModel):
     resource_id: str
     table: str
 
-class ViewSource(BaseModel):
-    kind: str
-    resource_id: str
-    table: str
-
 class Cohort(BaseModel):
     name: str
     filters: list[Filter] = Field(default_factory=list)
 
 class ViewDataset(BaseModel):
-    source: ViewSource
+    source: SourceRef
+    entity_column: str | None = None
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, value):
+        source_dict(value)
+        return value
+
     title: str = ""
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
@@ -614,15 +769,17 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    frame = _export_frame(ds)
     engine = db.get_engine_for_resource(req.resource_id)
     try:
-        rows = queries.ingest_dataframe(engine, ds["df"], req.table)
+        rows = queries.ingest_dataframe(engine, frame, req.table)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
     db.list_aurora_tables.invalidate()
     db.fetch_aurora_table.invalidate()
+    query_cache.invalidate_resource(req.resource_id)
     lineage.record(engine, "materialized", "table", req.table,
                    payload={"resource_id": req.resource_id, "rows": rows,
                             "from": ds["source"]})
@@ -630,6 +787,7 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
 
 @app.post("/api/datasets/{dataset_id}/chat")
 def chat_dataset(dataset_id: str, req: ChatRequest):
+    _require_loaded(dataset_id, "Chat")
     trace_id = uuid.uuid4().hex
     started = time.monotonic()
     try:
@@ -708,7 +866,8 @@ def save_view(req: SaveViewRequest):
         "version": 2,
         "active": req.active,
         "datasets": [{
-            "source": d.source.model_dump(),
+            "source": source_dict(d.source),
+            "entity_column": d.entity_column,
             "title": d.title,
             "filters": [{k: v for k, v in f.model_dump().items()
                          if v is not None} for f in d.filters],

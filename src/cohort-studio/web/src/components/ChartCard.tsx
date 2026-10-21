@@ -88,6 +88,7 @@ const trim = (n: number) => (Math.abs(n) >= 100 ? n.toFixed(0)
 
 interface Props {
   spec: ChartSpec;
+  columnLabels?: Record<string, string>;
   result?: ChartResult;
   palette: string;
 
@@ -99,7 +100,8 @@ interface Props {
 }
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
-                            onChangeKind, onToggleWide, onClose }: Props) {
+                            columnLabels = {}, onChangeKind, onToggleWide,
+                            onClose }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts>();
@@ -124,7 +126,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         break;
       case "scatter":
         option = scatterOption(result.data as number[][],
-                               spec.x, spec.y ?? "", pal);
+                               columnLabels[spec.x] ?? spec.x,
+                               columnLabels[spec.y ?? ""] ?? spec.y ?? "", pal);
         break;
       case "heatmap":
         option = heatmapOption(result.data as [string, string, number][], pal);
@@ -141,7 +144,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         if (cat && cat !== "Other") onTapCategory(spec.x, cat);
       });
     }
-  }, [result, spec, pal, onTapCategory]);
+  }, [result, spec, pal, onTapCategory, columnLabels]);
 
   const height = result?.kind === "bar"
     ? Math.min(Math.max(170, (result.data.length as number) * 26 + 60), 430)
@@ -151,8 +154,12 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     <div className={`chart-card${spec.wide ? " wide" : ""}`}>
       <div className="head">
         <span className="title">
-          {spec.x}{spec.y ? ` × ${spec.y}` : ""}
+          {columnLabels[spec.x] ?? spec.x}{spec.y
+            ? ` × ${columnLabels[spec.y] ?? spec.y}` : ""}
         </span>
+        {result?.sampled && <span className="badge" title="This chart uses sampled data">
+          Sampled
+        </span>}
         {kinds.length > 1 && (
           <select className="chart-kind" title="Chart type" value={spec.kind}
                   onChange={(e) =>

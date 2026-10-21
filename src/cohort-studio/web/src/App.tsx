@@ -85,6 +85,7 @@ export default function App() {
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const consumedRefreshNonce = useRef<Record<string, number>>({});
   const alerts = useWorkflowAlerts();
 
   useEffect(() => {
@@ -142,7 +143,8 @@ export default function App() {
   const openResult = (
     opened: OpenResult, title: string,
     sourceRef?: Dataset["sourceRef"],
-    initial?: { filters: Dataset["filters"]; charts: Dataset["charts"] },
+    initial?: { filters: Dataset["filters"]; charts: Dataset["charts"];
+      entityColumn?: string },
   ) => {
     const existing = datasets.findIndex((d) => d.source === opened.source);
     if (existing >= 0 && !initial) {
@@ -153,7 +155,9 @@ export default function App() {
       id: opened.dataset_id,
       title,
       source: opened.source,
-      sourceRef,
+      sourceRef: opened.source_ref ?? sourceRef,
+      queryScope: opened.query_scope,
+      entityColumn: initial?.entityColumn,
       columns: opened.columns,
       filters: initial?.filters ?? [],
       charts: initial?.charts ?? autoCharts(opened.columns),
@@ -217,13 +221,16 @@ export default function App() {
       const v = await api.getView(store.kind, store.id, name);
       const specs = v.datasets ?? [];
       const opened = await Promise.all(specs.map((d) =>
-        api.openDataset(d.source.kind, d.source.resource_id, d.source.table)
+        api.openSourceRef(d.source)
           .then((o) => ({ o, d }))));
       const restored: Dataset[] = opened.map(({ o, d }) => ({
         id: o.dataset_id,
-        title: d.title || d.source.table.split("/").pop() || "view",
+        title: d.title || (d.source.kind === "join"
+          ? "Joined dataset" : d.source.table.split("/").pop()) || "view",
         source: o.source,
-        sourceRef: d.source,
+        sourceRef: o.source_ref ?? d.source,
+        queryScope: o.query_scope,
+        entityColumn: d.entity_column ?? undefined,
         columns: o.columns,
         filters: d.filters,
         charts: d.charts,
@@ -313,15 +320,28 @@ export default function App() {
   useEffect(() => {
     if (!activeDs) return;
     let cancelled = false;
-    api.query(activeDs.id, activeDs.filters, activeDs.charts, activeDs.page)
+    const refreshNonce = activeDs.refreshNonce ?? 0;
+    const forceRefresh = refreshNonce > (consumedRefreshNonce.current[activeDs.id] ?? 0);
+    if (forceRefresh) consumedRefreshNonce.current[activeDs.id] = refreshNonce;
+    api.query(activeDs.id, activeDs.filters, activeDs.charts, activeDs.page,
+      activeDs.entityColumn, forceRefresh)
       .then((result) => {
         if (cancelled) return;
         setDatasets((prev) => prev.map((d) =>
-          d.id === activeDs.id ? { ...d, result } : d));
+          d.id === activeDs.id ? { ...d, result,
+            ...(forceRefresh && result.columns
+              ? { columns: result.columns } : {}),
+            refreshing: false } : d));
       })
-      .catch((e) => setError(`Query failed: ${(e as Error).message}`));
+      .catch((e) => {
+        if (cancelled) return;
+        setDatasets((prev) => prev.map((d) => d.id === activeDs.id
+          ? { ...d, refreshing: false } : d));
+        setError(`Query failed: ${(e as Error).message}`);
+      });
     return () => { cancelled = true; };
-  }, [activeDs?.id, activeDs?.filters, activeDs?.charts, activeDs?.page]);
+  }, [activeDs?.id, activeDs?.filters, activeDs?.charts, activeDs?.page,
+      activeDs?.entityColumn, activeDs?.refreshNonce]);
   // eslint-disable-line react-hooks/exhaustive-deps
 
   const commands: Command[] = [

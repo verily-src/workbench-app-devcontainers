@@ -128,19 +128,11 @@ def ref():
 
 
 @pytest.fixture
-def fake_aurora(tmp_path, monkeypatch):
-
-
-
-    from sqlalchemy import create_engine, event
-
-    import db
-    engine = create_engine(f"sqlite:///{tmp_path / 'main.db'}")
-    public = tmp_path / "public.db"
-
-    @event.listens_for(engine, "connect")
-    def _attach(dbapi_conn, _record):
-        dbapi_conn.execute(f"ATTACH DATABASE '{public}' AS public")
-
+def fake_aurora(engine, monkeypatch):
+    """Use the test PostgreSQL engine for Aurora SQL-path tests."""
+    db.fetch_aurora_table.invalidate()
     monkeypatch.setattr(db, "get_engine_for_resource", lambda rid: engine)
-    return engine
+    yield engine
+    with engine.begin() as conn:
+        conn.exec_driver_sql('DROP TABLE IF EXISTS public."samples"')
+        conn.exec_driver_sql('DROP TABLE IF EXISTS public."visits"')

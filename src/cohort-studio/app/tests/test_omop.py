@@ -401,7 +401,8 @@ def test_open_endpoints_and_join_on_person_id(client, engine, ref):
                          json={"spec": spec, "name": "GI bleed"})
     assert cohort.status_code == 200
     cohort = cohort.json()
-    assert set(cohort) == {"dataset_id", "source", "rows", "columns"}
+    assert {"dataset_id", "source", "rows", "columns"} <= set(cohort)
+    assert cohort["query_scope"] == "loaded"
     assert cohort["source"] == f"{RID} / GI bleed" and cohort["rows"] == 40
     assert datasets.get(cohort["dataset_id"])["origin"] is None
     cond = client.post(f"/api/omop/{RID}/domain/open",

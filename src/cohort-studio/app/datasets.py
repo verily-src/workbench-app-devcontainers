@@ -26,22 +26,35 @@ def _evict():
                if now - v["created"] > DATASET_TTL]
     for k in expired:
         del _store[k]
-    while len(_store) > MAX_DATASETS:
-        oldest = min(_store, key=lambda k: _store[k]["created"])
+    normal = [k for k, v in _store.items() if not v.get("temporary")]
+    while len(normal) > MAX_DATASETS:
+        oldest = min(normal, key=lambda k: _store[k]["created"])
         del _store[oldest]
+        normal.remove(oldest)
 
 def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
-                 capped: bool | None = None) -> dict:
+                 capped: bool | None = None,
+                 live_source: dict | None = None,
+                 temporary: bool = False) -> dict:
 
     if capped is None:
         capped = len(df) >= queries.ROW_CAP
+    columns = profile_columns(df)
+    if live_source is not None:
+        import live_query
+        columns = live_query.profile_columns(live_source, columns)
     with _lock:
-        _evict()
+        if not temporary:
+            _evict()
         dataset_id = uuid.uuid4().hex[:12]
         _store[dataset_id] = {"df": df, "source": source, "origin": origin,
-                              "capped": capped, "created": time.monotonic()}
+                              "capped": capped, "live_source": live_source,
+                              "created": time.monotonic(), "temporary": temporary}
     return {"dataset_id": dataset_id, "source": source,
-            "rows": len(df), "columns": profile_columns(df)}
+            "rows": len(df), "columns": columns,
+            "query_scope": "database" if live_source else "loaded",
+            "database": live_source is not None,
+            "sampled": bool(capped)}
 
 def get(dataset_id: str) -> dict:
     try:
@@ -61,6 +74,10 @@ def set_column(dataset_id: str, name: str, series) -> dict:
         df[name] = series
         ds["df"] = df
         ds["origin"] = None
+        ds["live_source"] = None
+        ds.pop("source_ref", None)
+        for key in ("settings_base_df", "settings_base_live", "settings_base_origin"):
+            ds.pop(key, None)
     return {"name": name, "rows": len(df), "columns": profile_columns(df)}
 
 def profile_columns(df: pd.DataFrame) -> list[dict]:
@@ -84,7 +101,7 @@ def apply_filters(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
     for f in filters:
         col = f.get("column")
         if col not in df.columns:
-            continue
+            raise ValueError(f"Unknown filter column: {col!r}.")
         if f.get("kind") == "categorical" and f.get("values"):
             df = df[df[col].astype(str).isin(f["values"])]
         elif f.get("kind") == "range":
@@ -155,14 +172,32 @@ def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
     return {"kind": kind, "x": x, "data": []}
 
 def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
-          page: int = 0, page_size: int = 50) -> dict:
+          page: int = 0, page_size: int = 50,
+          entity_column: str | None = None, refresh: bool = False) -> dict:
     ds = get(dataset_id)
     full = ds["df"]
+
+    if entity_column is not None and entity_column not in full.columns:
+        raise ValueError(f"Unknown entity column: {entity_column!r}.")
+    for item in filters:
+        if item.get("column") not in full.columns:
+            raise ValueError(f"Unknown filter column: {item.get('column')!r}.")
+    if ds.get("live_source") is not None:
+        import live_query
+        return live_query.query(ds["live_source"], filters, chart_specs,
+                                page, page_size, entity_column, refresh=refresh)
 
     import agg_duck
     if agg_duck.should_use(full):
         try:
-            return agg_duck.query(full, filters, chart_specs, page, page_size)
+            out = agg_duck.query(full, filters, chart_specs, page, page_size)
+            out.update(scope="loaded", sampled=bool(ds.get("capped")))
+            if entity_column is not None:
+                filtered = apply_filters(full, filters)
+                out["entity"] = {"column": entity_column,
+                                 "total": int(full[entity_column].nunique(dropna=True)),
+                                 "filtered": int(filtered[entity_column].nunique(dropna=True))}
+            return out
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(
@@ -170,7 +205,7 @@ def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
     filt = apply_filters(full, filters)
     start = page * page_size
     rows_page = filt.iloc[start:start + page_size]
-    return {
+    out = {
         "total": len(full),
         "filtered": len(filt),
         "charts": [chart_aggregate(full, filt, c) for c in chart_specs],
@@ -181,4 +216,11 @@ def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
             "data": rows_page.astype(object).where(rows_page.notna(), None)
                              .values.tolist(),
         },
+        "scope": "loaded",
+        "sampled": bool(ds.get("capped")),
     }
+    if entity_column is not None:
+        out["entity"] = {"column": entity_column,
+                         "total": int(full[entity_column].nunique(dropna=True)),
+                         "filtered": int(filt[entity_column].nunique(dropna=True))}
+    return out

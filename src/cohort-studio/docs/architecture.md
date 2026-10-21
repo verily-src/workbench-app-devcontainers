@@ -115,6 +115,15 @@ applies a proposal in the UI, then uses the existing Count/Open actions. Direct
 Bedrock Converse is implemented; AgentCore is a separate, unprovisioned plan
 ([agent plan](AGENT_PLAN.md)).
 
+### Storage boundary
+
+Production storage is the existing Workbench Aurora resource. DuckDB handles
+loaded-frame analytics and cross-source joins inside Studio. Studio does not
+provision or run a separate PostgreSQL database. Local tests use a disposable
+PostgreSQL process to check the Aurora PostgreSQL SQL/driver contract; this is
+a test fixture, not an application dependency or deployment service. Passing
+those tests does not establish live Aurora connectivity or permissions.
+
 ## 4. One state round-trip (filter / chart change)
 
 The frontend is thin: it sends the current filter set and the charts it
@@ -122,7 +131,7 @@ is showing; the server returns counts, per-chart aggregates (full and
 filtered cohort), and one page of rows — everything for a render in a
 single call. All statistics stay server-side.
 
-Aggregation has two interchangeable backends behind the same response
+Loaded-frame aggregation has two interchangeable backends behind the same response
 shape: pandas (`datasets.py`) for small frames, and DuckDB SQL over the
 in-memory frame (`agg_duck.py`) once row count crosses
 `STUDIO_DUCKDB_AGG_ROWS` (default 50k). The DuckDB path pushes filtering,
@@ -144,6 +153,40 @@ sequenceDiagram
   UI->>UI: ECharts renders "all" vs "selected" per chart
 ```
 
+Aurora joins use a third backend, `live_query.py`. The server retains its compiled
+SELECT and physical column map. Counts, entity counts, filters, chart aggregates
+and pages query that source under a statement timeout. The loaded frame is a
+preview only. Live query errors do not fall back to preview rows. Scatter and
+heatmap output is bounded and marked when sampled. Full-source profiles supply
+filter choices and numeric ranges. Cross-resource joins remain loaded-frame
+DuckDB operations.
+
+The optional entity column counts distinct non-null values alongside row counts.
+It is selected explicitly; the app never assumes that a joined row is a person.
+Exports and materialization fetch the full selected live source up to 100,000
+rows and reject larger results. Compare, derived columns and dataset chat are
+disabled for live sources until they can operate on the full source.
+
+### Query cache and large results
+
+Explore caches successful Aurora query responses in process memory for 30 seconds
+by default. The key includes resource, compiled source, output column order,
+filters, charts, entity selection and page. The LRU budget is 64 entries and
+32 MiB of serialized result data, with a 4 MiB per-entry limit. No cache files
+or extra storage service are created. Actual Python memory includes object
+overhead. `STUDIO_QUERY_CACHE_TTL` sets 0–300 seconds; zero disables caching.
+
+Responses report cache status and fetch time. Refresh data invalidates the
+resource cache, runs a fresh query, and refreshes category/range profiles.
+Generation checks prevent an older in-flight request from repopulating an
+invalidated cache. Successful materialization also invalidates the target
+resource. Exports always query Aurora directly. OMOP cohort count retains its
+existing behavior and is not cached by this layer.
+
+The UI warns at 100,000 source rows and when loaded data is capped. It states
+whether counts cover the database or only the loaded preview. No query is
+silently switched to a sample because its source is large.
+
 ## 5. Saved views / state persistence
 
 A saved view captures every open tab (datasource-backed ones — uploads
@@ -151,6 +194,21 @@ can't be reloaded) with its filters and charts, into Aurora (a
 `_studio_views` row) or S3 (a JSON object), so state survives the app
 closing. The in-memory DataFrame store is reconstructed by re-opening
 each tab's datasource on load.
+
+`source_models.py` validates recursive table/join recipes. Saved state contains
+resource IDs, schema/table names, join conditions, aliases, selected columns and
+column settings. It never accepts client SQL or session dataset IDs as a durable
+source. Reopening compiles the recipe again and closes temporary input datasets.
+Trees are bounded to 16 sources and four levels. Uploaded or derived frames do
+not have a reloadable recipe. The selected entity column is saved with the view.
+
+Column settings keep physical decoding separate from logical number/text
+behavior. Numeric conversions validate the full Aurora column before committing
+the change. Labels and filter kinds are display metadata. The source recipe
+stores settings so reopened views use the same interpretation. Settings are
+reapplied to the original source, so a second type change has the same result
+before and after reopening. Aurora logical numbers use exact numeric storage
+to preserve distinct large IDs; chart coordinates still use floating-point values.
 
 ## 6. Isolated browser deployment
 
@@ -170,5 +228,11 @@ not the data or cohort engine.
 | 2026-10-21 | Prefer browser and HTTP/MCP outcome tests; retain real database and updater-process checks. | Verify user flows and storage behavior without duplicating implementation in unit tests. |
 | 2026-10-21 | Keep explanation in this document; omit ordinary code comments. | Maintain one place for design decisions. Keep required directives, legal text and runtime tool descriptions. |
 | 2026-10-21 | Scope Jev as an optional routing/ranking experiment. | Existing UI routes explicitly; no measured benefit yet. SQL remains authoritative for membership and counts. See [Jev scope](JEV_SCOPE.md). |
+| 2026-10-21 | Use Aurora storage and internal DuckDB; no standalone PostgreSQL service. | User requirement. Disposable PostgreSQL is only a local Aurora-compatibility test fixture. |
+| 2026-10-21 | Query same-resource Aurora joins as live sources. | Filters and counts must include matches beyond the preview cap. Validate against real PostgreSQL with more than 100,000 joined rows. |
+| 2026-10-21 | Add a short-lived bounded in-memory Explore cache with explicit refresh. | Reduce repeated Aurora queries while making freshness visible; never cache exports or silently sample results. |
+| 2026-10-21 | Persist bounded structured source recipes, not SQL. | Reopen joined views after in-app updates without trusting client SQL. |
+| 2026-10-21 | Show rows and explicit distinct-entity counts separately. | One-to-many joins must not inflate person counts. |
+| 2026-10-21 | Validate column conversions before changing stored state. | Text storage must remain decodable; invalid values outside the preview must fail the conversion. |
 
 Record a changed decision here with its date, reason and verification needed.

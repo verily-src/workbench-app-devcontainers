@@ -16,9 +16,18 @@ export interface ColumnProfile {
   name: string;
   filter_kind: "categorical" | "range" | "none";
   dtype: string;
+  logical_type?: "number" | "text" | null;
+  label?: string;
   values?: string[];
   min?: number;
   max?: number;
+}
+
+export interface ColumnSetting {
+  name: string;
+  logical_type: "number" | "text" | null;
+  label?: string;
+  filter_kind: "categorical" | "range" | "none" | null;
 }
 
 export interface Filter {
@@ -43,15 +52,29 @@ export interface ChartResult {
   kind: string;
   x: string;
   y?: string;
+  sampled?: boolean;
   data: BarDatum[] | HistDatum[] | number[][] | [string, string, number][];
 }
 
 export interface QueryResult {
   total: number;
   filtered: number;
+  entity?: { column: string; total: number; filtered: number } | null;
+  scope: "database" | "loaded";
+  sampled?: boolean;
+  cache?: { hit: boolean; as_of: string; ttl_seconds: number };
+  columns?: ColumnProfile[];
   charts: ChartResult[];
   rows: { page: number; page_size: number; columns: string[]; data: unknown[][] };
 }
+
+export type SourceRef =
+  | { kind: "aurora" | "s3" | "bq" | "catalog"; resource_id: string;
+      table: string; schema?: string; uuid?: string; settings?: ColumnSetting[] }
+  | { kind: "join"; base: SourceRef; steps: {
+      source: SourceRef; how: JoinHow; conditions: JoinCondition[];
+      columns: string[] | null; alias: string;
+    }[] };
 
 export interface ChatMsg {
   role: "user" | "assistant";
@@ -126,8 +149,11 @@ export interface Dataset {
   id: string;
   title: string;
   source: string;
-  sourceRef?: { kind: string; resource_id: string; table: string;
-                uuid?: string };
+  sourceRef?: SourceRef;
+  entityColumn?: string;
+  queryScope?: "database" | "loaded";
+  refreshNonce?: number;
+  refreshing?: boolean;
   columns: ColumnProfile[];
   filters: Filter[];
   charts: ChartSpec[];

@@ -2,6 +2,7 @@ export interface Source {
   kind: "aurora" | "s3" | "bq" | "catalog";
   id: string;
   label: string;
+  omop?: { cdm_schema: string; vocab_schema: string | null; version: string | null; persons: number };
   uuid?: string;  // resource UUID — matches a workflow job's output bucket
 }
 
@@ -134,4 +135,44 @@ export interface Dataset {
   page: number;
   result?: QueryResult;
   chat?: ChatMsg[];
+}
+
+export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"
+  | "observation" | "visit" | "device" | "death";
+export interface OmopInfo {
+  cdm: boolean;
+  cdm_schema?: string;
+  vocab_schema?: string | null;
+  version?: string | null;
+  tables?: { name: string; schema: string; domain: string; rows: number; approx: boolean }[];
+}
+export interface OmopConcept {
+  concept_id: number;
+  concept_name: string;
+  vocabulary_id: string;
+  domain_id: string;
+  persons: number | null;
+}
+export interface OmopCriterion {
+  domain: OmopDomain;
+  concept_ids: number[];
+  descendants?: boolean;
+  exclude?: boolean;
+  min_count?: number;
+  start?: string;
+  end?: string;
+  value_min?: number;
+  value_max?: number;
+  index_relation?: "before" | "after";
+}
+export interface OmopSpec {
+  criteria: OmopCriterion[];
+  require_observation: boolean;
+  demographics: { gender_concept_ids?: number[]; age_min?: number; age_max?: number;
+    year_of_birth_min?: number; year_of_birth_max?: number };
+}
+export interface OmopCount {
+  persons: number;
+  total_persons: number;
+  attrition: { label: string; persons: number }[];
 }

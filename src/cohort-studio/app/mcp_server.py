@@ -33,7 +33,8 @@ if AVAILABLE:
         instructions=(
             "Cohort exploration over a Verily Workbench workspace. "
             "Flow: list_datasources -> list_tables -> open_dataset -> "
-            "query_dataset with filters."),
+            "query_dataset with filters. For OMOP CDM databases: "
+            "omop_search_concepts -> omop_count_cohort -> omop_open_cohort."),
     )
 
     def http_app():
@@ -131,3 +132,56 @@ if AVAILABLE:
         result = datasets.query(dataset_id, filters, [], page=page,
                                 page_size=page_size)
         return json.dumps({k: result[k] for k in ("total", "filtered", "rows")})
+
+    def _omop_cdm(resource_id: str):
+        import db
+        import omop
+        known = {r["id"] for r in db.list_aurora_resources()}
+        if resource_id not in known:
+            raise ValueError("Unknown Aurora resource or workspace resources are not ready.")
+        info = omop.detect_resource(resource_id)
+        if info is None:
+            raise ValueError(f"No OMOP CDM found in {resource_id}.")
+        return db.get_engine_for_resource(resource_id), info
+
+    @mcp.tool()
+    def omop_search_concepts(resource_id: str, q: str, domain: str = "",
+                             vocabulary: str = "",
+                             standard_only: bool = True) -> str:
+        """Search OMOP concepts in an Aurora CDM by name words, concept_id
+        or concept_code. domain is condition, drug, procedure,
+        measurement, observation, visit, device (or an OMOP domain_id).
+        Returns concept_id, concept_name, domain_id, vocabulary_id,
+        concept_class_id, concept_code, standard_concept, persons."""
+        import omop
+        engine, info = _omop_cdm(resource_id)
+        return json.dumps(omop.search_concepts(
+            engine, info, q, domain or None, vocabulary or None,
+            standard_only=standard_only), default=str)
+
+    @mcp.tool()
+    def omop_count_cohort(resource_id: str, spec_json: str) -> str:
+        """Count persons in an OMOP cohort. spec_json is
+        {criteria: [{domain, concept_ids: [int], descendants?: bool,
+        exclude?: bool, min_count?: int, value_min?, value_max?,
+        start?: 'YYYY-MM-DD', end?, index_relation?: 'before'|'after'}],
+        demographics?: {gender_concept_ids?, age_min?, age_max?,
+        year_of_birth_min?, year_of_birth_max?},
+        require_observation?: bool}. Criteria are AND-ed. Returns
+        persons, total_persons and cumulative attrition."""
+        import omop
+        engine, info = _omop_cdm(resource_id)
+        return json.dumps(omop.count(engine, info, json.loads(spec_json)))
+
+    @mcp.tool()
+    def omop_open_cohort(resource_id: str, spec_json: str,
+                         name: str = "") -> str:
+        """Open an OMOP cohort (same spec as omop_count_cohort) as a
+        person-level dataset for query_dataset. Returns a dataset_id and
+        a column profile."""
+        import datasets
+        import omop
+        engine, info = _omop_cdm(resource_id)
+        df = omop.open_cohort(engine, info, json.loads(spec_json))
+        return json.dumps(datasets.open_dataset(
+            df, f"{resource_id} / {name.strip() or 'OMOP cohort'}"), default=str)

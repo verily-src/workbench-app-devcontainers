@@ -7,16 +7,19 @@ export APP_ORIGIN="application-server:8080"
 
 echo "Running Cohort Studio in a Virtual Browser smoke test"
 
-# Verify the app process is running
-docker exec "${BACKEND_CONTAINER}" pgrep -f uvicorn
+bash tests/cohort-studio.sh
 
-# Verify the health endpoint responds
-RESPONSE=$(docker exec "${BACKEND_CONTAINER}" \
-    curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health)
-readonly RESPONSE
+# Check the actual kiosk target, not only the baked browser policy.
+CHROME_CLI=$(docker exec browser printenv CHROME_CLI)
+if [[ "${CHROME_CLI}" != "--kiosk http://${APP_ORIGIN}" ]]; then
+    echo "ERROR: Chromium target does not match the allowed Studio origin"
+    exit 1
+fi
 
-if [[ "${RESPONSE}" != "200" ]]; then
-    echo "ERROR: /api/health returned ${RESPONSE}, expected 200"
+# Exercise the browser container's DNS/network path to the real frontend.
+BROWSER_FRONTEND=$(docker exec browser curl -fsS --max-time 10 "http://${APP_ORIGIN}/")
+if [[ "${BROWSER_FRONTEND}" != *'<div id="root">'* ]]; then
+    echo "ERROR: browser container cannot fetch the Studio frontend"
     exit 1
 fi
 

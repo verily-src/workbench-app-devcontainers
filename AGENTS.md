@@ -1,6 +1,8 @@
 # Agent Instructions
 
 - Output tokens are precious. Be succinct.
+- Prefer `uv` for Python environments, dependencies, and test commands.
+- Use Pydantic validation at API boundaries. Keep shared engine validation for non-HTTP callers.
 - Use ASD-STE100 simplified technical English.
 - The user is a technical support engineer. Give the result first. Do not make the user read an essay.
 
@@ -10,3 +12,7 @@
 - Reproduce failures at the real system boundary when possible. For database type errors, test with the real database and driver.
 - Separate storage types from logical application types. Use storage types for decoding and logical types for behavior.
 - State clearly when a change is diagnostic, partial, or complete.
+
+## Project memory
+
+For Cohort Studio work, read `src/cohort-studio/docs/PROJECT_STATE.md` first. Keep it current when verified project state changes; record evidence and limitations, and do not treat unverified deployment or test status as complete. Claude Code should use the same file via the root `CLAUDE.md` pointer.

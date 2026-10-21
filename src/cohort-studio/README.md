@@ -25,7 +25,7 @@ work stays server-side, so the browser never sees more than ~50 rows and
 a few hundred aggregate points.
 
 **Why not a Rust backend:** the backend is I/O orchestration — `wb` CLI
-subprocesses, Postgres, S3, BigQuery. Rust's strengths don't bind here,
+subprocesses, Aurora, S3, BigQuery. Rust's strengths don't bind here,
 and Python keeps the battle-tested engine modules and first-party cloud
 SDKs. The REST contract is the stable boundary: a hot data path could be
 reimplemented behind it later without touching the UI.
@@ -186,21 +186,19 @@ more open dataset onto the result so far:
 - **Suggestions**: likely key pairs, found by matching names (including
   `id` ↔ `<table>_id`) and scored by how many base values appear on the
   other side.
+- **Shared key** applies one common column to all selected join steps.
 - **Table pickers** are searchable: type to filter, arrow keys to move,
   Enter to choose, Escape to close.
 
 **Where the join runs.** A badge in the panel shows the engine:
 
-- **Aurora** when the base and every joined table were opened unchanged
-  from the same Aurora database. The whole pipeline runs as one Postgres
-  query over the full tables (one CTE per step; semi and anti joins
-  become `WHERE [NOT] EXISTS`), and only the result is loaded. Full joins
-  with operators other than `=` stay in memory, because Postgres doesn't
-  support them.
-- **In memory** (DuckDB over the loaded frames) for everything else:
-  S3, BigQuery, catalogs, uploads, earlier join results, derived columns,
-  or tables from different databases. If any input was cut at the row
-  cap, a note says the result may be incomplete.
+- **Aurora** for compatible tables and live join results from the same Aurora
+  resource. Queries operate on the full source; only the preview is capped.
+  Counts, filters, charts and pages continue to run on Aurora.
+- **In memory** uses DuckDB over loaded S3, BigQuery, catalog, upload or derived
+  frames, and tables from different databases. Capped inputs are marked.
+  A live Aurora result cannot be mixed with another resource or silently
+  converted to its capped preview.
 
 **Checks before and during a run.** The panel validates the steps as you
 edit them and shows problems on each condition: unknown columns, types
@@ -208,11 +206,30 @@ that can't be compared, and keys compared as text. **Preview** shows the
 row count before and after each step and a 20-row sample, and warns when
 a step more than doubles the rows, which usually means a non-unique key.
 On Aurora, preview counts stop after 10 s with an error. A full run
-stops after 40 s and then runs in memory instead, with a note.
+stops after 40 s. Original table inputs may fall back to loaded frames with
+an explicit note. Live Aurora inputs never fall back to preview data.
 
-**Join into new tab** opens the result as a new dataset, capped at the
-row cap. A toast reports the row count, the engine, and whether the
-result was truncated.
+**Join into new tab** opens a capped preview and reports the engine and full
+join count. Aurora results keep their full query source. Select **Count unique**
+to show distinct non-null person or entity IDs separately from rows.
+
+**Saved views** can restore joins from their table resources, conditions and
+column settings. **Column settings** changes number/text behavior, filter kind
+and labels. Invalid numeric values anywhere in an Aurora column reject the
+change. Uploaded and derived data cannot be restored as source recipes.
+
+**Large results and caching.** Explore warns at 100,000 rows and marks capped
+previews. Aurora query results are cached in memory for 30 seconds, with a
+visible fetch time. **Refresh data** bypasses the cache and refreshes filter
+choices. The cache holds at most 64 entries and 32 MiB of serialized payload;
+entries above 4 MiB are not cached. Set `STUDIO_QUERY_CACHE_TTL` to 0 to disable
+it, or to a value up to 300 seconds. Exports always query Aurora directly and
+reject more than 100,000 filtered rows. Compare, derive and dataset chat remain
+unavailable for live Aurora results until they support full-source queries.
+
+Studio uses Aurora storage and internal DuckDB; it does not deploy a separate
+PostgreSQL service. A disposable PostgreSQL process is only a local test fixture
+for Aurora-compatible SQL and driver checks.
 
 API: `POST /api/datasets/join`, `POST /api/datasets/join/preview`,
 `POST /api/datasets/join/validate`, `GET /api/datasets/join/suggest`.

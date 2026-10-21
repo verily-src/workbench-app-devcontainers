@@ -164,8 +164,10 @@ def _first_error(p: dict) -> str | None:
 
 def _engine(p: dict) -> tuple[str, str]:
 
-    origins = [ds.get("origin") or {} for ds in
-               [p["base"]] + [s["ds"] for s in p["steps"]]]
+    inputs = [p["base"]] + [s["ds"] for s in p["steps"]]
+    origins = [({"kind": "aurora", "resource_id": ds["live_source"]["resource_id"]}
+                if ds.get("live_source") else ds.get("origin") or {})
+               for ds in inputs]
     if any(o.get("kind") != "aurora" for o in origins):
         return "duckdb", "Not every table was loaded straight from Aurora."
     if len({o["resource_id"] for o in origins}) > 1:
@@ -190,20 +192,22 @@ def validate(base_id: str, steps: list[dict]) -> dict:
                        "conditions": s["checks"]} for s in p["steps"]]}
 
 def _step_sql(step: dict, l_from: str, r_from: str,
-              names: dict[str, str] | None = None) -> str:
+              names: dict[str, str] | None = None,
+              right_names: dict[str, str] | None = None) -> str:
 
     pg = names is not None
     n = names.__getitem__ if pg else (lambda c: c)
+    rn = (right_names or {}).get
     on = []
     for c in step["conds"]:
-        lref, rref = f"l.{_q(n(c['left']))}", f"r.{_q(c['right'])}"
+        lref, rref = f"l.{_q(n(c['left']))}", f"r.{_q(rn(c['right'], c['right']))}"
 
         if c["cast"] or (pg and c["kinds"] == ("text", "text")):
             t = "TEXT" if pg else "VARCHAR"
             lref, rref = f"CAST({lref} AS {t})", f"CAST({rref} AS {t})"
         on.append(f"{lref} {c['op']} {rref}")
     select = [f"l.{_q(n(c))}" for c in step["left"]]
-    select += [f"r.{_q(src)} AS {_q(n(out))}" for src, out in step["cols"]]
+    select += [f"r.{_q(rn(src, src))} AS {_q(n(out))}" for src, out in step["cols"]]
     cols, cond = ", ".join(select), " AND ".join(on)
     if pg and step["how"] in ("semi", "anti"):
         neg = "NOT " if step["how"] == "anti" else ""
@@ -212,6 +216,9 @@ def _step_sql(step: dict, l_from: str, r_from: str,
     return f"SELECT {cols} FROM {l_from} AS l {HOWS[step['how']]} {r_from} AS r ON {cond}"
 
 def _table_ref(ds: dict) -> str:
+    live = ds.get("live_source")
+    if live:
+        return f"({live['sql']})"
     o = ds["origin"]
     return f"{_q(o.get('schema') or PG_SCHEMA)}.{_q(o['table'])}"
 
@@ -219,13 +226,17 @@ def aurora_sql(p: dict) -> dict:
 
     used: set[str] = set()
     names = {c: _pg_name(c, used) for c in p["steps"][0]["left"]}
-    base_cols = ", ".join(_q(c) if names[c] == c else f"{_q(c)} AS {_q(names[c])}"
+    base_names = (p["base"].get("live_source") or {}).get("columns", {})
+    base_cols = ", ".join(
+        f"{_q(base_names.get(c, c))} AS {_q(names[c])}"
                           for c in p["steps"][0]["left"])
-    ctes = [f"s0 AS (SELECT {base_cols} FROM {_table_ref(p['base'])})"]
+    ctes = [f"s0 AS (SELECT {base_cols} FROM {_table_ref(p['base'])} AS base_input)"]
     for s in p["steps"]:
         for _, out in s["cols"]:
             names[out] = _pg_name(out, used)
-        body = _step_sql(s, f"s{s['no'] - 1}", _table_ref(s["ds"]), names)
+        right_names = (s["ds"].get("live_source") or {}).get("columns", {})
+        body = _step_sql(s, f"s{s['no'] - 1}", _table_ref(s["ds"]),
+                         names, right_names)
         ctes.append(f"s{s['no']} AS ({body})")
     last = len(p["steps"])
 
@@ -234,7 +245,8 @@ def aurora_sql(p: dict) -> dict:
 
     return {"ctes": ctes, "names": names,
             "count": lambda i: f"{with_(i)} SELECT count(*) FROM s{i}",
-            "select": lambda limit: f"{with_(last)} SELECT * FROM s{last} LIMIT {int(limit)}"}
+            "select": lambda limit: f"{with_(last)} SELECT * FROM s{last} LIMIT {int(limit)}",
+            "unlimited": lambda: f"{with_(last)} SELECT * FROM s{last}"}
 
 def _step_stats(before: int, right_rows: int, total: int, cap: int) -> dict:
     growth = round(total / before, 2) if before else None
@@ -284,7 +296,9 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                 fetch: int | None = None) -> dict:
 
     sql = aurora_sql(p)
-    engine = db.get_engine_for_resource(p["base"]["origin"]["resource_id"])
+    resource_id = ((p["base"].get("live_source") or {}).get("resource_id")
+                   or (p["base"].get("origin") or {}).get("resource_id"))
+    engine = db.get_engine_for_resource(resource_id)
     try:
         with engine.begin() as conn:
             if conn.dialect.name == "postgresql":
@@ -294,6 +308,8 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                 return int(conn.exec_driver_sql(q, execution_options=_NO_PARAMS).scalar())
 
             def table_rows(ds: dict) -> int:
+                if ds.get("live_source"):
+                    return scalar(f"SELECT count(*) FROM ({_table_ref(ds)}) AS live_input")
                 if not ds.get("capped"):
                     return len(ds["df"])
                 return scalar(f"SELECT count(*) FROM {_table_ref(ds)}")
@@ -313,7 +329,15 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     notes = [f"step {s['no']}: {n}" for s in p["steps"] for n in s["notes"]]
     stats = {"engine": "aurora", "base_rows": base_rows, "steps": steps,
              "notes": notes, "capped_inputs": []}
-    return {"df": df, "stats": _finish(stats, min(before, cap))}
+    columns = {name: sql["names"][name] for name in p["columns"]}
+    live_source = {
+        "resource_id": (p["base"].get("live_source") or {}).get("resource_id")
+        or p["base"]["origin"]["resource_id"],
+        "sql": sql["unlimited"](),
+        "columns": columns,
+    }
+    return {"df": df, "stats": _finish(stats, min(before, cap)),
+            "live_source": live_source}
 
 def _checked_plan(base_id: str, steps: list[dict]) -> dict:
     if not steps:
@@ -321,6 +345,10 @@ def _checked_plan(base_id: str, steps: list[dict]) -> dict:
     if len(steps) > MAX_STEPS:
         raise ValueError(f"At most {MAX_STEPS} joins in one pipeline.")
     p = plan(base_id, steps)
+    has_live = any(ds.get("live_source") for ds in
+                   [p["base"]] + [s["ds"] for s in p["steps"]])
+    if has_live and p["engine"] != "aurora":
+        raise ValueError("A live Aurora join can only join tables from the same Aurora database.")
     error = _first_error(p)
     if error:
         raise ValueError(error)
@@ -333,6 +361,9 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP) -> dict:
         try:
             return _run_aurora(p, cap, RUN_TIMEOUT_MS)
         except (JoinTimeout, JoinEngineError) as e:
+            if any(ds.get("live_source") for ds in
+                   [p["base"]] + [s["ds"] for s in p["steps"]]):
+                raise
             out = _run_duckdb(p, cap)
             out["stats"]["notes"].insert(0, f"{e} Ran in memory instead.")
             return out
@@ -348,6 +379,9 @@ def preview(base_id: str, steps: list[dict]) -> dict:
             raise JoinTimeout(f"{e} The preview stops at {PREVIEW_TIMEOUT_MS // 1000} s; "
                               "joining into a new tab allows longer.") from e
         except JoinEngineError as e:
+            if any(ds.get("live_source") for ds in
+                   [p["base"]] + [s["ds"] for s in p["steps"]]):
+                raise
             out = _run_duckdb(p, queries.ROW_CAP)
             out["stats"]["notes"].insert(0, f"{e} Previewed in memory instead.")
     else:

@@ -109,16 +109,21 @@ if AVAILABLE:
 
     @mcp.tool()
     def query_dataset(dataset_id: str, filters_json: str = "[]",
-                      page: int = 0, page_size: int = 50) -> str:
+                      page: int = 0, page_size: int = 50,
+                      entity_column: str | None = None, refresh: bool = False) -> str:
         """Query an opened dataset with cross-filtering. filters_json is
         a JSON array of {column, kind: 'categorical'|'range',
         values?: [..], min?: n, max?: n}. Returns total/filtered counts
-        and a page of rows."""
+        and a page of rows. entity_column adds distinct entity counts.
+        scope identifies database or loaded-row execution. refresh bypasses
+        the short-lived database query cache."""
         import datasets
         filters = json.loads(filters_json)
         result = datasets.query(dataset_id, filters, [], page=page,
-                                page_size=page_size)
-        return json.dumps({k: result[k] for k in ("total", "filtered", "rows")})
+                                page_size=page_size, entity_column=entity_column, refresh=refresh)
+        return json.dumps({k: result[k] for k in
+                           ("total", "filtered", "rows", "scope", "sampled", "entity", "cache")
+                           if k in result}, default=str)
 
     def _omop_cdm(resource_id: str):
         import db

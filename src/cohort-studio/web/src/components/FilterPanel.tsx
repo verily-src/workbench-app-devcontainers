@@ -45,7 +45,7 @@ export function FilterPanel({ columns, filters, onChange }: Props) {
           <details key={col.name} className="filter-group"
                    open={Boolean(active)}>
             <summary>
-              {col.name}
+              {col.label || col.name}
               {active && <span className="badge">
                 {col.filter_kind === "categorical"
                   ? active.values?.length : "range"}</span>}

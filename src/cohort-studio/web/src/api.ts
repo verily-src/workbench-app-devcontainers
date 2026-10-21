@@ -1,6 +1,7 @@
 import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
-  JoinStats, JoinStep, JoinSuggestion, JoinValidation, QueryResult, Source,
+  ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinValidation, QueryResult, Source,
+  SourceRef,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount,
 } from "./types";
 
@@ -126,6 +127,8 @@ export interface OpenResult {
   source: string;
   rows: number;
   columns: ColumnProfile[];
+  source_ref?: SourceRef;
+  query_scope?: "database" | "loaded";
 }
 
 export interface CohortAgentResult {
@@ -173,6 +176,9 @@ export const api = {
     request<OpenResult>("/api/datasets/open",
       post({ kind, resource_id: resourceId, table })),
 
+  openSourceRef: (source: SourceRef) =>
+    request<OpenResult>("/api/datasets/open", post({ source_ref: source })),
+
   uploadDataset: (file: File) => {
     const form = new FormData();
     form.append("file", file);
@@ -181,10 +187,17 @@ export const api = {
   },
 
   query: (datasetId: string, filters: Filter[], charts: ChartSpec[],
-          page: number) =>
+          page: number, entityColumn?: string, refresh = false) =>
     request<QueryResult>(`/api/datasets/${datasetId}/query`,
       post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
-             page, page_size: 50 })),
+             page, page_size: 50, entity_column: entityColumn ?? null,
+             refresh })),
+
+  updateColumns: (datasetId: string, columns: ColumnSetting[]) =>
+    request<OpenResult>(`/api/datasets/${datasetId}/columns`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columns }),
+    }),
 
   join: (baseId: string, steps: JoinStep[]) =>
     request<OpenResult & { join: JoinStats }>("/api/datasets/join",
@@ -289,9 +302,10 @@ export const api = {
     request<{
       version?: number; active?: number;
       datasets: Array<{
-        source: { kind: string; resource_id: string; table: string };
+        source: SourceRef;
         title?: string; filters: Filter[]; charts: ChartSpec[];
         cohorts?: Cohort[];
+        entity_column?: string | null;
       }>;
     }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),
@@ -306,6 +320,7 @@ export const api = {
         filters: d.filters,
         charts: d.charts.map((c: ChartSpec) => ({ kind: c.kind, x: c.x, y: c.y })),
         cohorts: d.cohorts ?? [],
+        entity_column: d.entityColumn ?? null,
       })),
     })),
 

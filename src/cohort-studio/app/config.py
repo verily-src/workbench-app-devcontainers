@@ -3,8 +3,8 @@
 Stored as JSON next to the app code so it survives server restarts and
 self-updates within a container's lifetime (wiped on VM recreate, which
 is acceptable for a dev workspace — the API key can be re-entered).
-The ANTHROPIC_API_KEY environment variable, when set, takes precedence
-over the stored key.
+Provider API key environment variables, when set, take precedence over
+stored keys. Amazon Bedrock uses the AWS IAM credential chain.
 """
 
 import json
@@ -19,27 +19,29 @@ DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_PALETTE = "verily"
 PALETTES = ("verily", "indigo", "amber", "crimson", "slate")
 
-# The chat agent and Ask AI can run on any of these providers. Anthropic
-# is the default and uses the native SDK; OpenAI and Gemini share one
-# OpenAI-compatible code path (Gemini exposes an OpenAI-shaped endpoint).
+# The chat agent and Ask AI can run on any provider. Anthropic uses the
+# native SDK; OpenAI, Gemini, and OpenRouter share the compatible SDK path.
 DEFAULT_PROVIDER = "anthropic"
-PROVIDERS = ("anthropic", "openai", "gemini")
+PROVIDERS = ("anthropic", "openai", "gemini", "openrouter", "bedrock")
 
-# Per-provider default model. Only Anthropic is pinned — OpenAI/Gemini
+# Per-provider default model. Only Anthropic is pinned — other provider
 # model IDs move fast, so we leave them blank and let the user set one in
 # Settings rather than hardcode an ID that may be retired.
 PROVIDER_DEFAULT_MODEL = {
     "anthropic": DEFAULT_MODEL,
     "openai": "",
     "gemini": "",
+    "openrouter": "",
+    "bedrock": "",
 }
 
 # Where the OpenAI-compatible client points per provider. Anthropic uses
-# its own SDK (no base_url). Gemini's OpenAI-compatible endpoint is
-# stable and documented; OpenAI uses the SDK default.
+# its own SDK (no base_url). Gemini and OpenRouter use documented
+# compatible endpoints; OpenAI uses the SDK default.
 PROVIDER_BASE_URL = {
     "openai": None,
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "openrouter": "https://openrouter.ai/api/v1",
 }
 
 # Environment variables consulted (in order) for each provider's key.
@@ -47,7 +49,12 @@ PROVIDER_ENV_KEYS = {
     "anthropic": ("ANTHROPIC_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
     "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    "openrouter": ("OPENROUTER_API_KEY",),
 }
+
+
+def _aws_region() -> str | None:
+    return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
 
 
 def _env_key(provider: str) -> str | None:
@@ -104,7 +111,8 @@ def get_llm_config() -> dict:
     and base URL — internal use only. Env key wins over the stored key."""
     sec = _llm_section(_load())
     provider = sec["provider"]
-    api_key = _env_key(provider) or sec["keys"].get(provider)
+    api_key = (None if provider == "bedrock"
+               else _env_key(provider) or sec["keys"].get(provider))
     model = (sec["models"].get(provider)
              or PROVIDER_DEFAULT_MODEL.get(provider) or "")
     return {
@@ -112,6 +120,7 @@ def get_llm_config() -> dict:
         "api_key": api_key,
         "model": model,
         "base_url": PROVIDER_BASE_URL.get(provider),
+        "region": _aws_region() if provider == "bedrock" else None,
     }
 
 
@@ -130,8 +139,8 @@ def public_config() -> dict:
 
     providers = {}
     for p in PROVIDERS:
-        env_key = _env_key(p)
-        stored_key = sec["keys"].get(p)
+        env_key = None if p == "bedrock" else _env_key(p)
+        stored_key = None if p == "bedrock" else sec["keys"].get(p)
         key = env_key or stored_key
         providers[p] = {
             "model": sec["models"].get(p) or PROVIDER_DEFAULT_MODEL.get(p) or "",
@@ -139,6 +148,8 @@ def public_config() -> dict:
             "api_key_hint": f"…{key[-4:]}" if key else None,
             "api_key_source": ("environment" if env_key
                                else "settings" if stored_key else None),
+            "auth_method": "iam" if p == "bedrock" else "api_key",
+            "region": _aws_region() if p == "bedrock" else None,
         }
 
     connections = []
@@ -177,7 +188,9 @@ def update_llm_config(model: str | None = None,
         models = sec["models"]
         if model is not None:
             models[target] = model
-        if api_key is not None:
+        if target == "bedrock":
+            keys.pop("bedrock", None)
+        elif api_key is not None:
             if api_key:
                 keys[target] = api_key
             else:

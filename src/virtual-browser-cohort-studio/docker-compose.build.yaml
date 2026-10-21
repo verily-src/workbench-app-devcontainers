@@ -8,3 +8,5 @@ services:
   app:
     build:
       context: ../cohort-studio
+      args:
+        APP_SHA: ${APP_SHA:-unknown}

@@ -644,3 +644,37 @@ button.link:hover { text-decoration: underline; }
 .palette-hint { font-size: 11.5px; color: var(--ink-muted); }
 .palette-empty { padding: 14px; color: var(--ink-muted); font-size: 13px;
   text-align: center; }
+
+/* OMOP person-cohort builder */
+.omop-builder { max-width: 1300px; margin: 0 auto; }
+.omop-builder h2 { color: var(--ink); margin: 8px 0; }
+.omop-builder h3 { margin: 0 0 16px; color: var(--ink); }
+.omop-resource { display: block; max-width: 480px; }
+.omop-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.omop-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: 18px; }
+.omop-card { border: 1px solid var(--border); background: var(--card); border-radius: var(--radius); padding: 18px; margin: 14px 0; }
+.omop-card label { display: block; font-size: 12px; }
+.omop-card label input:not([type=checkbox]), .omop-card select, .omop-resource select { margin: 5px 0 10px; }
+.omop-card input[type=date] { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px; font: inherit; }
+.omop-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.omop-row > label { flex: 1; min-width: 110px; }
+.omop-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.omop-toolbar button { margin-left: auto; }
+.omop-card label.omop-check { display: flex; align-items: center; gap: 6px; margin: 12px 0; }
+.omop-search { max-height: 260px; overflow: auto; margin-top: 12px; border-top: 1px solid var(--border); }
+.omop-card label.omop-result { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.omop-result small { display: block; color: var(--ink-muted); margin-top: 4px; }
+.omop-rule { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 14px; }
+.omop-rule .omop-toolbar { margin: 0 0 12px; }
+.omop-count { font-size: 28px; color: var(--accent); }
+.omop-count span { font-size: 13px; color: var(--ink-muted); }
+.omop-attrition { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+.omop-attrition th, .omop-attrition td { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.omop-attrition th:last-child, .omop-attrition td:last-child { text-align: right; }
+.omop-error { color: #b42318; }
+@media (max-width: 1050px) { .omop-grid { grid-template-columns: 1fr; } }
+
+.omop-card textarea { width: 100%; resize: vertical; margin: 8px 0; padding: 8px; font: inherit; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.omop-chat { max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
+.omop-proposal { margin-top: 12px; padding: 12px; background: var(--accent-tint); border-radius: var(--radius-sm); }
+.omop-proposal pre { overflow-x: auto; max-height: 240px; font-size: 11px; }

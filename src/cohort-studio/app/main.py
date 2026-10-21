@@ -14,12 +14,18 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Body, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi.exception_handlers import (
+    request_validation_exception_handler as default_request_validation_handler,
+)
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import (BaseModel, ConfigDict, Field, RootModel,
+                      field_validator, model_validator)
 
 import agent
+import cohort_agent
 import bq
 import catalog
 import config
@@ -32,6 +38,7 @@ import llm
 import compare
 import derive
 import mcp_server
+import omop
 import queries
 import views
 import workflows
@@ -51,6 +58,18 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request,
+                                     exc: RequestValidationError):
+    if request.url.path.startswith("/api/omop/"):
+        # Do not echo the request: invalid numeric inputs can contain NaN,
+        # which cannot be encoded in a JSON response.
+        details = [{"loc": error["loc"], "msg": error["msg"],
+                    "type": error["type"]} for error in exc.errors()]
+        return JSONResponse(status_code=400, content={"detail": details})
+    return await default_request_validation_handler(request, exc)
 
 if mcp_server.AVAILABLE:
     app.mount("/mcp", mcp_server.http_app())
@@ -145,6 +164,32 @@ class BuildCatalogRequest(BaseModel):
     include_files: bool = True
 
 
+class OmopCohortOpenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    spec: dict = Field(default_factory=dict)
+    name: str = ""
+
+    @model_validator(mode="after")
+    def validate_spec(self):
+        omop.parse_spec(self.spec)
+        return self
+
+
+class OmopDomainOpenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    table: str
+    spec: dict | None = None
+    concept_names: bool = True
+
+    @model_validator(mode="after")
+    def validate_spec(self):
+        if self.spec is not None:
+            omop.parse_spec(self.spec)
+        return self
+
+
 class DeriveRequest(BaseModel):
     op: str                       # "bin" | "formula" | "map"
     name: str
@@ -231,8 +276,12 @@ def datasources():
     if ready:
         db.retry_if_empty()
         for r in db.list_aurora_resources():
-            sources.append({"kind": "aurora", "id": r["id"],
-                            "label": f"{r['id']} · Aurora"})
+            source = {"kind": "aurora", "id": r["id"],
+                      "label": f"{r['id']} · Aurora"}
+            hint = omop.hint(r["id"])
+            if hint:
+                source["omop"] = hint
+            sources.append(source)
         folders = db.list_s3_folders()
         for r in folders:
             sources.append({"kind": "s3", "id": r["id"], "uuid": r.get("uuid"),
@@ -541,6 +590,8 @@ class AskRequest(BaseModel):
 
 
 class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     role: str
     content: str
 
@@ -798,6 +849,154 @@ def seed_gtex(resource_id: str):
     lineage.record(engine, "gtex_loaded", "table", "gtex_samples",
                    payload={"rows": rows})
     return {"rows": rows}
+
+
+# -------------------------------------------------------------------- OMOP
+
+def _omop_error(e: Exception) -> HTTPException:
+    if isinstance(e, ValueError):
+        return HTTPException(400, str(e))
+    if isinstance(e, omop.OmopTimeout):
+        return HTTPException(504, str(e))
+    return HTTPException(502, str(e).split("\n")[0][:300])
+
+
+def _omop_info(resource_id: str, refresh: bool = False) -> dict | None:
+    known = {r["id"] for r in db.list_aurora_resources()}
+    if resource_id not in known:
+        if not known and not db.resources_ready():
+            raise HTTPException(503, "Workspace resources are not ready; retry shortly.")
+        raise HTTPException(404, f"Unknown Aurora resource: {resource_id}")
+    if refresh:
+        omop.invalidate(resource_id)
+    try:
+        return omop.detect_resource(resource_id)
+    except Exception as e:
+        raise _omop_error(e)
+
+
+def _omop_cdm(resource_id: str):
+    info = _omop_info(resource_id)
+    if info is None:
+        raise HTTPException(404, f"No OMOP CDM found in {resource_id}.")
+    return db.get_engine_for_resource(resource_id), info
+
+
+@app.get("/api/omop/{resource_id}")
+def omop_detect(resource_id: str, refresh: bool = False):
+    return omop.public(_omop_info(resource_id, refresh))
+
+
+@app.get("/api/omop/{resource_id}/concepts")
+def omop_concepts(resource_id: str, q: str = "", domain: str = "",
+                  vocabulary: str = "", standard_only: bool = True,
+                  limit: int = 50):
+    engine, info = _omop_cdm(resource_id)
+    try:
+        return {"concepts": omop.search_concepts(
+            engine, info, q, domain or None, vocabulary or None,
+            standard_only=standard_only, limit=limit)}
+    except Exception as e:
+        raise _omop_error(e)
+
+
+class CohortAgentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    message: str = Field(min_length=1, max_length=8000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=30)
+    spec: dict = Field(default_factory=dict)
+
+    @field_validator("message")
+    @classmethod
+    def message_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("message must contain non-whitespace text.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_spec(self):
+        omop.parse_spec(self.spec)
+        return self
+
+
+class OmopSpecRequest(RootModel[dict]):
+    """Raw cohort-spec body validated without replacing its JSON values."""
+    model_config = ConfigDict(strict=True)
+
+    @model_validator(mode="after")
+    def validate_spec(self):
+        omop.parse_spec(self.root)
+        return self
+
+
+@app.post("/api/omop/{resource_id}/cohort/agent")
+def omop_agent(resource_id: str, req: CohortAgentRequest):
+    _, info = _omop_cdm(resource_id)
+    trace_id = uuid.uuid4().hex
+    started = time.monotonic()
+    source = f"{resource_id} / OMOP cohort assistant"
+    try:
+        result = cohort_agent.chat(resource_id, info, req.message,
+                                   [m.model_dump() for m in req.history], req.spec)
+    except llm.LLMNotConfigured as e:
+        _record_turn(trace_id, source, req.message, started,
+                     status="unconfigured", error=str(e))
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        _record_turn(trace_id, source, req.message, started,
+                     status="error", error=str(e).split("\n")[0][:300])
+        raise _omop_error(e)
+    _record_turn(trace_id, source, req.message, started, result=result)
+    result["trace_id"] = trace_id
+    return result
+
+
+@app.post("/api/omop/{resource_id}/cohort/count")
+def omop_count(resource_id: str,
+               req: OmopSpecRequest = Body(default_factory=lambda: OmopSpecRequest({}))):
+    engine, info = _omop_cdm(resource_id)
+    try:
+        return omop.count(engine, info, req.root)
+    except Exception as e:
+        raise _omop_error(e)
+
+
+@app.post("/api/omop/{resource_id}/cohort/open")
+def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest):
+    engine, info = _omop_cdm(resource_id)
+    try:
+        df = omop.open_cohort(engine, info, req.spec)
+        parents = omop.tables_used(info, req.spec)
+    except Exception as e:
+        raise _omop_error(e)
+    name = req.name.strip() or "OMOP cohort"
+    source = f"{resource_id} / {name}"
+    result = datasets.open_dataset(df, source)
+    lineage.record(_lineage_engine(), "omop_cohort_opened", "cohort", source,
+                   payload={"resource_id": resource_id, "spec": req.spec,
+                            "rows": len(df)},
+                   parents=[("table", t) for t in parents])
+    return result
+
+
+@app.post("/api/omop/{resource_id}/domain/open")
+def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest):
+    engine, info = _omop_cdm(resource_id)
+    try:
+        df, origin = omop.open_domain(engine, info, req.table, req.spec,
+                                      concept_names=req.concept_names,
+                                      resource_id=resource_id)
+    except Exception as e:
+        raise _omop_error(e)
+    table = f"{info['cdm_schema']}.{req.table}"
+    source = f"{resource_id} / {table}" + (" (cohort)" if req.spec is not None else "")
+    result = datasets.open_dataset(df, source, origin=origin)
+    lineage.record(_lineage_engine(), "table_loaded", "table", table,
+                   payload={"resource_id": resource_id, "source_kind": "omop",
+                            "rows": len(df), "cohort": req.spec,
+                            "concept_names": req.concept_names})
+    return result
 
 
 # ------------------------------------------------------------ static files

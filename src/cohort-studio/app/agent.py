@@ -1,7 +1,7 @@
 """Chat agent: converse about the active dataset and act on the UI.
 
-Runs the Anthropic SDK's beta tool runner with tools closed over the
-dataset's DataFrame and a mutable UI-state dict (filters + charts). The
+Runs provider-specific tool loops with tools closed over the dataset's
+DataFrame and a mutable UI-state dict (filters + charts). The
 agent answers questions with real numbers computed by its tools, and
 "builds the viz" by mutating the UI state — the endpoint returns the
 final state for the browser to apply. Conversation history is kept
@@ -14,6 +14,7 @@ import logging
 
 import pandas as pd
 
+import bedrock
 import config
 import datasets
 import llm
@@ -172,7 +173,8 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
 
 def _provider_label(provider: str) -> str:
     return {"anthropic": "Anthropic", "openai": "OpenAI",
-            "gemini": "Gemini"}.get(provider, provider)
+            "gemini": "Gemini", "openrouter": "OpenRouter",
+            "bedrock": "Amazon Bedrock"}.get(provider, provider)
 
 
 def chat(dataset_id: str, message: str, history: list[dict],
@@ -180,7 +182,12 @@ def chat(dataset_id: str, message: str, history: list[dict],
     cfg = config.get_llm_config()
     provider = cfg["provider"]
     label = _provider_label(provider)
-    if not cfg["api_key"]:
+    if provider == "bedrock":
+        if not cfg["region"]:
+            raise llm.LLMNotConfigured(
+                "AWS region is required for Amazon Bedrock; set AWS_REGION "
+                "or AWS_DEFAULT_REGION.")
+    elif not cfg["api_key"]:
         raise llm.LLMNotConfigured(
             f"No {label} API key configured — add one in Settings.")
     if not cfg["model"]:
@@ -218,6 +225,10 @@ def chat(dataset_id: str, message: str, history: list[dict],
 
     if provider == "anthropic":
         reply, usage = _run_anthropic(cfg, system, messages, wrapped)
+    elif provider == "bedrock":
+        out = run_bedrock(cfg, system, messages, tool_impls,
+                          providers.TOOL_SCHEMAS)
+        reply, usage = out["reply"], out["usage"]
     else:
         out = providers.run(provider, cfg["model"], cfg["api_key"],
                             cfg["base_url"], system, messages, tool_impls)
@@ -226,6 +237,13 @@ def chat(dataset_id: str, message: str, history: list[dict],
     return {"reply": reply, "filters": ui["filters"], "charts": ui["charts"],
             "actions": actions, "provider": provider, "model": cfg["model"],
             "usage": usage, "tool_calls": tool_calls}
+
+
+def run_bedrock(cfg: dict, system: str, messages: list[dict],
+                tool_impls: dict, tool_schemas: list[dict]) -> dict:
+    """Run Bedrock with supplied schemas and closures for either agent."""
+    return bedrock.run(cfg["model"], cfg.get("region"), system, messages,
+                       tool_schemas, tool_impls)
 
 
 def _run_anthropic(cfg: dict, system: str, messages: list[dict],

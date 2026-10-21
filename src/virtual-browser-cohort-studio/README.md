@@ -17,7 +17,7 @@ HTML, API responses or files. Shares the browser front end with `virtual-browser
 ```text
 your browser
   -> Workbench proxy
-  -> browser:3000            Selkies stream (WebSocket), on app-network + backend-network
+  -> browser:3000            Selkies HTTP/WebSocket stream, on app-network + backend-network
   -> Chromium --kiosk        managed policy: only application-server:8080 allowed
   -> http://application-server:8080   Cohort Studio (FastAPI + React, /api, /mcp),
                                       on backend-network only, no published ports
@@ -65,8 +65,9 @@ wb app config create \
 ```
 
 Then create an app from this config in the workspace. Self-update keeps the backend on the head of
-`cohort-dashboard`: restart the VM to deploy new commits. Changes to the browser front end
-(`../browser-common`) or to this template need a new app.
+`cohort-dashboard`: restart the VM to deploy new commits. The build accepts `APP_SHA`; if no
+commit SHA is supplied, the image reports `unknown` and self-update fetches the branch at startup.
+Changes to the browser front end (`../browser-common`) or to this template need a new app.
 
 ## Configuring
 
@@ -78,3 +79,8 @@ Two values must match:
 
 Both use `application-server:8080`. Do not use the hostname `app`: it is HSTS-preloaded in
 Chromium and forces HTTPS against the HTTP backend.
+
+The Workbench proxy targets the browser container on port `3000`. It must pass the Selkies
+WebSocket upgrade used for the stream. The app has no separate login or auth-header contract;
+Workbench access control applies at the proxy. The browser-to-app leg uses plain HTTP on the
+private Compose network.

@@ -1,5 +1,7 @@
 # Cohort Studio
 
+Shared agent project state and current work status: [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
+
 Next-generation cohort exploration app: a **React + TypeScript** frontend
 with Linear-inspired design over a **FastAPI** backend (Aurora via
 SQLAlchemy, S3 Parquet/CSV via DuckDB, BigQuery, lineage, TTL caching).
@@ -32,15 +34,19 @@ configurable provider, chosen in **Settings → AI model**:
 
 - **Anthropic (Claude)** — default, via the native SDK (tool runner for
   chat, `messages.parse` structured output for Ask AI).
-- **OpenAI** and **Google Gemini** — share one OpenAI-compatible code
-  path (`app/providers.py`); Gemini uses its OpenAI-compatible endpoint
-  (a `base_url` switch). Model IDs are free text — enter the provider's
-  current model, since those IDs change often.
+- **OpenAI**, **Google Gemini**, and **OpenRouter** — share one
+  OpenAI-compatible code path (`app/providers.py`). Gemini and OpenRouter
+  use their documented endpoints; enter the current model ID in Settings.
+- **Amazon Bedrock** — uses the Converse API and the AWS SDK credential
+  chain (IAM role, profile, or environment). It needs `AWS_REGION` or
+  `AWS_DEFAULT_REGION` and a model ID in Settings. It does not use an API
+  key. Choose a Bedrock model that supports Converse tool use.
 
-Each provider keeps its own API key and model independently; keys live
-server-side and are never echoed back. Env vars take precedence over the
-stored key: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
-(or `GOOGLE_API_KEY`).
+Each API-key provider keeps its own key and model; keys live server-side
+and are never echoed back. Environment keys take precedence over stored
+keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (or
+`GOOGLE_API_KEY`), and `OPENROUTER_API_KEY`. Bedrock uses the server's AWS
+IAM credentials and region.
 
 Every chat turn is persisted to the `_agent_turn` table (Aurora when
 connected, SQLite fallback otherwise) with OpenTelemetry-shaped fields —
@@ -62,13 +68,15 @@ reach data that the UI can reach.
 | Chat assistant | `app/agent.py`, `app/providers.py` | `POST /api/datasets/{id}/chat` | Yes: filters and charts |
 | MCP server (outside agents) | `app/mcp_server.py` | `/mcp` (streamable HTTP) | No: read and query only |
 
-**Ask AI** makes one model call with structured output and no tools. It
-turns a question such as "liver samples with RIN above 7" into the
-complete new filter set, using the dataset's column profile and the
-current filters. Refinements add to the filters, "instead" replaces
+**Ask AI** makes one model call with structured output. Bedrock requests
+that structure through a Converse tool schema, so its model must support
+tool use. It turns a question such as "liver samples with RIN above 7"
+into the complete new filter set, using the dataset's column profile and
+the current filters. Refinements add to the filters, "instead" replaces
 them, and "clear" removes them. The result is checked against the column
-profile before it reaches the UI: unknown columns and values are
-dropped, and ranges are clamped to the column's bounds. Each call is recorded in lineage as `ask_ai`.
+profile before it reaches the UI: unknown columns and values are dropped,
+and ranges are clamped to the column's bounds. Each call is recorded in
+lineage as `ask_ai`.
 
 **Chat assistant** is a tool-using agent for the open dataset. Its system
 prompt holds the dataset name, the column profile and the current
@@ -82,12 +90,12 @@ and to build what the user asks to see rather than describe it. Tools:
   update.
 - `add_chart` / `remove_chart`: bar, histogram, scatter or heatmap cards.
 
-Anthropic runs on the SDK's tool runner. OpenAI and Gemini use one
-OpenAI-compatible loop of at most 8 turns. Requests are stateless: the
-browser sends the last 30 messages, and the endpoint returns the final
-filters, charts, a list of the actions taken, and token usage. Every
-turn is saved to `_agent_turn` with a trace id and is listed under
-**Lineage → Agent activity** (`GET /api/agent/turns`).
+Anthropic runs on the SDK's tool runner. OpenAI, Gemini, and OpenRouter
+use one OpenAI-compatible loop; Bedrock uses the Converse tool loop.
+Requests are stateless: the browser sends the last 30 messages, and the
+endpoint returns the final filters, charts, a list of the actions taken,
+and token usage. Every turn is saved to `_agent_turn` with a trace id and
+is listed under **Lineage → Agent activity** (`GET /api/agent/turns`).
 
 **MCP server** lets outside agents drive the cohort builder: Claude Code
 and its subagents, a managed agent, or any MCP client. It exposes the
@@ -212,8 +220,9 @@ Code: `app/joins.py`.
 ```bash
 # Backend (terminal 1)
 cd src/cohort-studio
-python3 -m venv .venv && .venv/bin/pip install -r app/requirements.txt
-cd app && ../.venv/bin/uvicorn main:app --reload --port 8080
+UV_CACHE_DIR=/tmp/studio-uv-cache uv venv .venv
+UV_CACHE_DIR=/tmp/studio-uv-cache uv pip install --python .venv/bin/python -r app/requirements.txt
+cd app && UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python ../.venv/bin/python python -m uvicorn main:app --reload --port 8080
 
 # Frontend with hot reload (terminal 2) — proxies /api to :8080
 cd src/cohort-studio/web
@@ -226,11 +235,11 @@ No workspace needed locally — upload a CSV from the sidebar.
 
 ```bash
 cd src/cohort-studio
-.venv/bin/pip install pytest httpx pytest-playwright
-.venv/bin/playwright install chromium
+UV_CACHE_DIR=/tmp/studio-uv-cache uv pip install --python .venv/bin/python pytest httpx pytest-playwright
+UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m playwright install chromium
 cd web && npm run build && cp -r dist ../app/static && cd ..
-.venv/bin/python -m pytest            # API + engines + Playwright E2E
-.venv/bin/python -m pytest -m "not e2e"  # fast tests only
+UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m pytest            # API + engines + Playwright E2E
+UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m pytest -m "not e2e"  # fast tests only
 ```
 
 ## Deploying
@@ -270,6 +279,64 @@ VM recreation is only needed when `.devcontainer.json`, the Dockerfile,
 or the compose file change.
 
 ## Datasources
+
+### OMOP CDM
+
+Choose **OMOP cohorts**, then select an Aurora resource. Search concepts, add
+criteria, set timing and demographics, and click **Count cohort**. Counts and
+attrition query the full database. **Open cohort** loads matching people into
+Explore. **Open clinical table** loads events, optionally restricted to the
+cohort and enriched with concept names. Open datasets use the app row cap.
+
+The first included criterion defines the index date. Before/after relations are
+strict. Concepts within a criterion use OR; criteria use AND. Age is index year
+minus birth year. Spec edits clear the displayed count.
+
+The **Cohort assistant** searches concepts and proposes validated criteria. It
+also reads workflow and app status. Review the proposal, click **Apply proposed
+cohort**, then Count/Open. It has no workflow or app mutation tools. Select the
+AI provider in Settings. OMOP definitions remain session state and are not
+restored by Saved views.
+
+Browser and MCP tests use a real temporary PostgreSQL fixture. Real Aurora,
+resource-based loading, and full-size vocabulary performance still need
+workspace validation. See [project state](docs/PROJECT_STATE.md) for exact test
+results and release status.
+
+#### Load an OMOP export from S3 into Aurora
+
+Run from the Workbench app container, where the CLI has resource credentials
+and the network can reach Aurora. The importer stages files from a Workbench S3
+resource, then uses PostgreSQL COPY into Aurora in one transaction. It does not
+require an Aurora S3 extension or a new cluster IAM role.
+
+```sh
+cd /app
+python -m omop_load \
+  --resource-id <aurora-resource-id> \
+  --schema cdm_source_name \
+  --s3-resource-id <s3-folder-resource-id> \
+  --s3-path exports/omop/
+```
+
+Use a relative ZIP key instead of a prefix for a ZIP export. Local development
+can use `uv run --no-project --python .venv/bin/python python -m omop_load`
+with `PYTHONPATH=app` from this directory. Studio currently detects one CDM per
+Aurora resource; use separate Aurora resources for sources that must be selected
+independently. Loading several CDM schemas into one database does not add a
+schema selector to the UI.
+An existing CDM is kept unless `--replace` is supplied; that option drops the
+target schema. Temporary staged files are removed after the command ends.
+
+Input must be a self-contained OMOP CSV export: `person`, `observation_period`,
+at least one clinical domain table, `concept`, and `concept_ancestor`.
+Nested CSV and CSV.gz files are supported. Duplicate table files are rejected.
+This command does not convert raw CMS claims, Parquet, or BigQuery tables to
+OMOP. CMS SynPUF is one possible source, but its collection link does not supply
+an S3 path. The actual resource and export format must be identified first.
+
+This is a CLI import path. Live S3-to-Aurora validation is still pending; the
+current machine cannot reach the dev Aurora endpoint.
 
 | Datasource | Engine | Workbench resource type |
 |---|---|---|

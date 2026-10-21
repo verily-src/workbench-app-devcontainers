@@ -1,9 +1,9 @@
-"""OpenAI-compatible chat-agent loop for the OpenAI and Gemini providers.
+"""OpenAI-compatible chat-agent loop for OpenAI, Gemini, and OpenRouter.
 
 Anthropic keeps its native SDK tool runner (see agent.py). OpenAI and
-Gemini share this one manual loop: the official `openai` SDK talks to
-OpenAI directly and to Gemini through its documented OpenAI-compatible
-endpoint (a base_url switch). The tool schemas below mirror, by hand, the
+These providers share this one manual loop: the official `openai` SDK talks
+to OpenAI directly and to Gemini or OpenRouter through their documented
+OpenAI-compatible endpoints (a base_url switch). The tool schemas below mirror, by hand, the
 five callables agent.build_tools() produces — the Anthropic path derives
 them from docstrings, which does not carry over to this wire format.
 """
@@ -80,7 +80,8 @@ def _client(api_key: str, base_url: str | None):
 
 
 def run(provider: str, model: str, api_key: str, base_url: str | None,
-        system: str, messages: list[dict], tool_impls: dict) -> dict:
+        system: str, messages: list[dict], tool_impls: dict,
+        tool_schemas: list[dict] | None = None) -> dict:
     """Drive the OpenAI-compatible tool loop to completion.
 
     tool_impls maps a tool name to the plain callable from
@@ -97,7 +98,8 @@ def run(provider: str, model: str, api_key: str, base_url: str | None,
         # text, so we let the provider default apply.
         resp = client.chat.completions.create(
             model=model, messages=convo,
-            tools=TOOL_SCHEMAS, tool_choice="auto")
+            tools=(tool_schemas if tool_schemas is not None else TOOL_SCHEMAS),
+            tool_choice="auto")
         if resp.usage:
             usage["prompt_tokens"] += resp.usage.prompt_tokens or 0
             usage["completion_tokens"] += resp.usage.completion_tokens or 0

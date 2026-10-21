@@ -3,6 +3,8 @@ services:
     container_name: "application-server"
     build:
       context: .
+      args:
+        APP_SHA: "${APP_SHA:-unknown}"
     restart: always
     volumes:
       - .:/workspace:cached

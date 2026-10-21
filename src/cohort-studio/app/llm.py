@@ -1,16 +1,10 @@
-"""LLM features: natural-language cohort filtering via the Anthropic API.
-
-The configured Claude model translates a question like "liver samples
-with RIN above 7" into this app's filter JSON, validated against the
-dataset's column profile. Uses the official Anthropic SDK with
-structured outputs (messages.parse + Pydantic), so the response is
-schema-valid by construction.
-"""
+"""LLM connection tests and natural-language cohort filter suggestions."""
 
 import logging
 
 from pydantic import BaseModel, Field
 
+import bedrock
 import config
 
 logger = logging.getLogger(__name__)
@@ -34,13 +28,20 @@ class LLMNotConfigured(RuntimeError):
     pass
 
 
-_LABELS = {"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Gemini"}
+_LABELS = {"anthropic": "Anthropic", "openai": "OpenAI",
+           "gemini": "Gemini", "openrouter": "OpenRouter",
+           "bedrock": "Amazon Bedrock"}
 
 
 def _cfg() -> dict:
     cfg = config.get_llm_config()
     label = _LABELS.get(cfg["provider"], cfg["provider"])
-    if not cfg["api_key"]:
+    if cfg["provider"] == "bedrock":
+        if not cfg["region"]:
+            raise LLMNotConfigured(
+                "AWS region is required for Amazon Bedrock; set AWS_REGION "
+                "or AWS_DEFAULT_REGION.")
+    elif not cfg["api_key"]:
         raise LLMNotConfigured(
             f"No {label} API key configured — add one in Settings.")
     if not cfg["model"]:
@@ -52,6 +53,8 @@ def _cfg() -> dict:
 def test_connection() -> dict:
     """Cheap round trip that validates the key and model."""
     cfg = _cfg()
+    if cfg["provider"] == "bedrock":
+        return bedrock.test_connection(cfg["model"], cfg["region"])
     if cfg["provider"] == "anthropic":
         import anthropic
         client = anthropic.Anthropic(api_key=cfg["api_key"])
@@ -104,11 +107,18 @@ def suggest_filters(question: str, columns: list[dict],
 
     if cfg["provider"] == "anthropic":
         suggestion = _anthropic_suggestion(cfg, system, prompt)
+    elif cfg["provider"] == "bedrock":
+        suggestion = _bedrock_suggestion(cfg, system, prompt)
     else:
         suggestion = _openai_suggestion(cfg, system, prompt)
     if suggestion is None:
+        explanation = "Could not parse a filter suggestion."
+        if cfg["provider"] == "bedrock":
+            explanation = (
+                "Bedrock did not return a filter tool result. Choose a model "
+                "that supports Converse tool use.")
         return {"filters": current_filters,
-                "explanation": "Could not parse a filter suggestion."}
+                "explanation": explanation}
     cleaned = validate_filters(
         [f.model_dump() for f in suggestion.filters], columns)
     return {"filters": cleaned, "explanation": suggestion.explanation}
@@ -148,6 +158,44 @@ def _openai_suggestion(cfg: dict, system: str,
     except Exception as e:
         logger.warning("Could not parse %s filter JSON: %s",
                        cfg["provider"], e)
+        return None
+
+
+def _bedrock_suggestion(cfg: dict, system: str,
+                        prompt: str) -> "FilterSuggestion | None":
+    # Converse uses a tool schema for structured output. Model support for
+    # tool use varies; Settings lets the user choose a compatible model.
+    schema = {
+        "type": "object",
+        "properties": {
+            "filters": {"type": "array", "items": {
+                "type": "object",
+                "properties": {
+                    "column": {"type": "string"},
+                    "kind": {"type": "string",
+                             "enum": ["categorical", "range"]},
+                    "values": {"type": "array",
+                               "items": {"type": "string"}},
+                    "min": {"type": "number"},
+                    "max": {"type": "number"},
+                },
+                "required": ["column", "kind"],
+            }},
+            "explanation": {"type": "string"},
+        },
+        "required": ["filters", "explanation"],
+    }
+    data = bedrock.structured_call(
+        cfg["model"], cfg["region"],
+        system + " Return the result by calling the supplied tool.",
+        prompt, "submit_filter_suggestion",
+        "Return the complete cohort filter suggestion.", schema)
+    if not data:
+        return None
+    try:
+        return FilterSuggestion.model_validate(data)
+    except Exception as exc:
+        logger.warning("Could not parse Bedrock filter result: %s", exc)
         return None
 
 

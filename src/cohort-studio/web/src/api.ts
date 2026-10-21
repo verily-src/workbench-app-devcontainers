@@ -1,7 +1,7 @@
 import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   JoinStats, JoinStep, JoinSuggestion, JoinValidation, QueryResult, Source,
-  TableInfo,
+  TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -10,7 +10,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     let detail = `${resp.status}`;
     try {
       const body = await resp.json();
-      detail = body.detail ?? detail;
+      detail = Array.isArray(body.detail)
+        ? body.detail.map((issue: { msg?: string }) => issue.msg || "Invalid request").join("; ")
+        : body.detail ?? detail;
     } catch { /* non-JSON error body */ }
     throw new Error(detail);
   }
@@ -38,9 +40,11 @@ export interface ProviderConfig {
   api_key_set: boolean;
   api_key_hint: string | null;
   api_key_source: string | null;
+  auth_method: "api_key" | "iam";
+  region: string | null;
 }
 
-export type Provider = "anthropic" | "openai" | "gemini";
+export type Provider = "anthropic" | "openai" | "gemini" | "openrouter" | "bedrock";
 
 export interface AppConfig {
   llm: {
@@ -124,7 +128,34 @@ export interface OpenResult {
   columns: ColumnProfile[];
 }
 
+export interface CohortAgentResult {
+  reply: string;
+  concept_names?: Record<string, string>;
+  spec: OmopSpec | null;
+  count: OmopCount | null;
+  reason: string | null;
+  trace_id: string;
+}
+
 export const api = {
+  omopAgent: (id: string, message: string,
+              history: { role: string; content: string }[], spec: OmopSpec) =>
+    request<CohortAgentResult>(`/api/omop/${encodeURIComponent(id)}/cohort/agent`,
+      post({ message, history: history.slice(-30), spec })),
+
+  omopInfo: (id: string, refresh = false) => request<OmopInfo>(
+    `/api/omop/${encodeURIComponent(id)}?refresh=${refresh}`),
+  omopConcepts: (id: string, q: string, domain: string, standard: boolean) =>
+    request<{ concepts: OmopConcept[] }>(`/api/omop/${encodeURIComponent(id)}/concepts?`
+      + new URLSearchParams({ q, domain, standard_only: String(standard) })),
+  omopCount: (id: string, spec: OmopSpec) => request<OmopCount>(
+    `/api/omop/${encodeURIComponent(id)}/cohort/count`, post(spec)),
+  omopOpen: (id: string, spec: OmopSpec, name: string) => request<OpenResult>(
+    `/api/omop/${encodeURIComponent(id)}/cohort/open`, post({ spec, name })),
+  omopDomain: (id: string, table: string, spec: OmopSpec | null, names: boolean) =>
+    request<OpenResult>(`/api/omop/${encodeURIComponent(id)}/domain/open`,
+      post({ table, spec, concept_names: names })),
+
   datasources: () =>
     request<{ ready: boolean; sources: Source[];
               catalogs_pending?: boolean }>("/api/datasources"),

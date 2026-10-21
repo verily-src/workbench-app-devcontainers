@@ -148,8 +148,13 @@ def test_openai_compatible_tool_loop_runs_tools(monkeypatch):
     class FakeClient:
         chat = type("Chat", (), {"completions": FakeCompletions()})()
 
-    monkeypatch.setattr(providers, "_client",
-                        lambda api_key, base_url: FakeClient())
+    client_args = {}
+
+    def fake_client(api_key, base_url):
+        client_args.update(api_key=api_key, base_url=base_url)
+        return FakeClient()
+
+    monkeypatch.setattr(providers, "_client", fake_client)
 
     df = pd.read_csv(FIXTURE)
     columns = datasets.profile_columns(df)
@@ -157,12 +162,15 @@ def test_openai_compatible_tool_loop_runs_tools(monkeypatch):
     actions = []
     impls = {fn.__name__: fn
              for fn in agent.build_tools(df, columns, ui, actions)}
-    out = providers.run("openai", "m-1", "key", None, "sys",
+    out = providers.run("openrouter", "provider/model", "key",
+                        "https://openrouter.ai/api/v1", "sys",
                         [{"role": "user", "content": "plot tissue"}], impls)
     assert out["reply"] == "Added a bar of tissue."
     assert out["tool_calls"] == ["add_chart"]
     assert out["usage"]["total_tokens"] == 28  # 14 per call × 2 rounds
     assert ui["charts"] == [{"kind": "bar", "x": "tissue", "wide": False}]
+    assert client_args == {"api_key": "key",
+                           "base_url": "https://openrouter.ai/api/v1"}
 
 
 def test_chat_unconfigured_is_400(monkeypatch):

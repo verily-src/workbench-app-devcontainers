@@ -11,6 +11,10 @@ const PROVIDERS: { id: Provider; label: string; keyLabel: string;
     placeholder: "sk-…", models: [] },
   { id: "gemini", label: "Google Gemini", keyLabel: "Gemini API key",
     placeholder: "AIza…", models: [] },
+  { id: "openrouter", label: "OpenRouter", keyLabel: "OpenRouter API key",
+    placeholder: "sk-or-…", models: [] },
+  { id: "bedrock", label: "Amazon Bedrock", keyLabel: "",
+    placeholder: "", models: [] },
 ];
 
 export function SettingsView(
@@ -43,6 +47,7 @@ export function SettingsView(
 
   const meta = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
   const providerState = cfg?.llm.providers[provider];
+  const usesBedrockIam = provider === "bedrock";
 
   const save = async () => {
     setStatus("Saving…");
@@ -117,26 +122,43 @@ export function SettingsView(
             {meta.models.map((m) => <option key={m} value={m} />)}
           </datalist>
         )}
-        <div className="field-label">
-          {meta.keyLabel}
-          {providerState?.api_key_set && (
-            <span className="settings-hint">
-              {" "}· configured ({providerState.api_key_hint}, via{" "}
-              {providerState.api_key_source})
-            </span>
-          )}
-        </div>
-        <input
-          type="password"
-          placeholder={providerState?.api_key_set
-            ? "Enter a new key to replace" : meta.placeholder}
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
+        {usesBedrockIam ? (
+          <>
+            <div className="field-label">AWS authentication</div>
+            <p className="settings-caption">
+              Uses the AWS SDK credential chain (IAM role, profile, or
+              environment). No API key is stored. Choose a model that
+              supports Bedrock Converse tool use.
+              {" "}Region: {providerState?.region ||
+                "set AWS_REGION or AWS_DEFAULT_REGION on the server"}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="field-label">
+              {meta.keyLabel}
+              {providerState?.api_key_set && (
+                <span className="settings-hint">
+                  {" "}· configured ({providerState.api_key_hint}, via{" "}
+                  {providerState.api_key_source})
+                </span>
+              )}
+            </div>
+            <input
+              type="password"
+              placeholder={providerState?.api_key_set
+                ? "Enter a new key to replace" : meta.placeholder}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+          </>
+        )}
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <button className="primary" onClick={save}>Save</button>
           <button onClick={testLlm}
-                  disabled={!providerState?.api_key_set && !apiKey}>
+                  disabled={usesBedrockIam
+                    ? !providerState?.region || !providerState?.model
+                    : !providerState?.api_key_set && !apiKey}>
             Test connection
           </button>
         </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, OpenResult, WorkflowList } from "./api";
+import { OmopBuilder } from "./components/OmopBuilder";
 import { DatasetPane } from "./components/DatasetPane";
 import { FilterPanel } from "./components/FilterPanel";
 import { LineageView } from "./components/LineageView";
@@ -40,9 +41,12 @@ function VersionFooter() {
   const update = async () => {
     setUpdating(true);
     try {
+      // Read the baseline at click time; initial version discovery may still
+      // be pending, so comparing against an empty state could reload too soon.
+      const before = (await api.version()).sha;
+      setSha(before);
       await api.adminUpdate();
-      // poll until the server restarts on new code, then reload the page
-      const before = sha;
+      // Poll until the server restarts on new code, then reload the page.
       for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 5000));
         try {
@@ -76,7 +80,7 @@ export default function App() {
   const [activity, setActivity] = useState("");
   const [error, setError] = useState("");
   const [view, setView] = useState<
-    "explore" | "workflows" | "lineage" | "settings">("explore");
+    "explore" | "omop" | "workflows" | "lineage" | "settings">("explore");
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
@@ -339,7 +343,7 @@ export default function App() {
 
   // Command palette entries, built from state already in hand (no fetches).
   const commands: Command[] = [
-    ...(["explore", "workflows", "lineage", "settings"] as const).map((v) => ({
+    ...(["explore", "omop", "workflows", "lineage", "settings"] as const).map((v) => ({
       id: `view:${v}`, group: "Go to",
       label: v[0].toUpperCase() + v.slice(1), run: () => setView(v),
     })),
@@ -456,12 +460,12 @@ export default function App() {
             <span className="brand-verily">verily</span> Cohort Studio
           </span>
           <nav className="topnav">
-            {(["explore", "workflows", "lineage", "settings"] as const)
+            {(["explore", "omop", "workflows", "lineage", "settings"] as const)
               .map((v) => (
               <span key={v}
                     className={`topnav-link${view === v ? " active" : ""}`}
                     onClick={() => setView(v)}>
-                {v[0].toUpperCase() + v.slice(1)}
+                {v === "omop" ? "OMOP cohorts" : v[0].toUpperCase() + v.slice(1)}
                 {v === "workflows" && (workflows?.running_count ?? 0) > 0 && (
                   <span className="nav-badge">{workflows!.running_count}</span>
                 )}
@@ -484,7 +488,16 @@ export default function App() {
           )}
         </div>
         <div className="content">
-          {view === "settings" ? (
+          <div hidden={view !== "omop"}>
+            <OmopBuilder sources={sources} onOpen={(opened, title) => {
+              // A new spec can have the same name as an earlier cohort.
+              // Replace that tab instead of keeping its old dataset and count.
+              openResult(opened, title, undefined,
+                { filters: [], charts: autoCharts(opened.columns) });
+              setView("explore");
+            }} />
+          </div>
+          {view === "omop" ? null : view === "settings" ? (
             <SettingsView onPaletteChange={setPalette} />
           ) : view === "workflows" ? (
             <WorkflowsView isSubscribed={alerts.isSubscribed}

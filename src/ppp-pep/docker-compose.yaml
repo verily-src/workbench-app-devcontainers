@@ -15,7 +15,7 @@ services:
       - /home/jupyter/workspace:uid=1001,gid=1001
     ports:
       - "8888:8888"
-    command: "/home/jupyter/.local/bin/jupyter lab"
+    command: "jupyter lab"
     networks:
       - app-network
     cap_add:

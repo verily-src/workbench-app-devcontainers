@@ -1,6 +1,3 @@
-// Chart palettes. Each is single-hue: the full cohort renders in the muted
-// tint, the filtered cohort in the accent, and heatmaps use the 4-step ramp.
-// Accents are dark enough to clear 3:1 on the light chart surface.
 export interface Palette {
   accent: string;
   muted: string;

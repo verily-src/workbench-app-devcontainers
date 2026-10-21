@@ -8,10 +8,6 @@ interface Props {
   onSubmitted: (name: string) => void;
 }
 
-// Run a Nextflow/HealthOmics workflow on the current cohort: write the
-// filtered rows as an input CSV to a bucket, then submit a job pointing at
-// it. Column-mapping / row-selection are workflow-specific, so they're
-// free-text passthrough rather than hard-wired.
 export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
   const [s3, setS3] = useState<Source[]>([]);
   const [registry, setRegistry] = useState<

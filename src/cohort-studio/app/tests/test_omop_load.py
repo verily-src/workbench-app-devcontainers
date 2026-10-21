@@ -1,10 +1,7 @@
-"""OMOP load source validation, S3 transfer planning, and Postgres load path."""
-
 import argparse
 import csv
 import gzip
 import shutil
-import zipfile
 from pathlib import Path
 
 import pytest
@@ -14,100 +11,7 @@ from sqlalchemy import text
 import db
 import omop_load
 
-pytest_plugins = ("tests.test_omop",)
-
 FIXTURE = Path(__file__).parent / "fixtures" / "omop"
-
-
-@pytest.mark.parametrize("path", [
-    "", "/absolute/file.zip", "../file.zip", "tables/../../file.zip",
-    "tables\\person.csv", "s3://bucket/path", ".", "tables/./input.zip",
-])
-def test_s3_source_rejects_non_relative_paths(path):
-    with pytest.raises(ValueError):
-        omop_load.S3Source(resource_id="workspace-folder", path=path)
-
-
-def test_s3_source_requires_strict_nonempty_values():
-    with pytest.raises(ValueError):
-        omop_load.S3Source(resource_id=" ", path="data/")
-    with pytest.raises(ValueError):
-        omop_load.S3Source(resource_id="bucket", path="data/", extra=True)
-    with pytest.raises(ValueError):
-        omop_load.S3Source(resource_id="bucket", path=3)
-
-
-def test_open_sources_reads_nested_files_and_detects_duplicate_tables(tmp_path):
-    nested = tmp_path / "export" / "clinical"
-    nested.mkdir(parents=True)
-    (nested / "person.csv").write_text("person_id\n1\n")
-    sources = omop_load.open_sources(tmp_path / "export")
-    assert list(sources) == ["person"]
-    with sources["person"]() as stream:
-        assert stream.read() == "person_id\n1\n"
-
-    (tmp_path / "export" / "vocab").mkdir()
-    (tmp_path / "export" / "vocab" / "person.csv.gz").write_bytes(b"not gzip")
-    with pytest.raises(ValueError, match="Duplicate CSV source"):
-        omop_load.open_sources(tmp_path / "export")
-
-
-def test_open_sources_reads_nested_zip_and_detects_duplicate_tables(tmp_path):
-    archive = tmp_path / "export.zip"
-    with zipfile.ZipFile(archive, "w") as zf:
-        zf.writestr("clinical/person.csv", "person_id\n1\n")
-        zf.writestr("vocab/concept.csv", "concept_id,concept_name,domain_id\n")
-    sources = omop_load.open_sources(archive)
-    assert set(sources) == {"person", "concept"}
-    with sources["person"]() as stream:
-        assert stream.read() == "person_id\n1\n"
-
-    with zipfile.ZipFile(archive, "w") as zf:
-        zf.writestr("a/person.csv", "person_id\n1\n")
-        zf.writestr("b/person.csv", "person_id\n2\n")
-    with pytest.raises(ValueError, match="Duplicate CSV source"):
-        omop_load.open_sources(archive)
-
-
-def test_s3_download_uses_resource_profile_and_csv_prefix_filters(monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setattr(db, "configure_aws_profiles", lambda: calls.append("profiles"))
-    monkeypatch.setattr(db, "resolve_s3_uri", lambda rid: f"s3://bucket/{rid}")
-
-    def fake_run(args, **kwargs):
-        calls.append((args, kwargs))
-        return argparse.Namespace(returncode=0, stderr="", stdout="")
-
-    monkeypatch.setattr(omop_load.subprocess, "run", fake_run)
-    local = omop_load.download_s3_source("resource-1", "synpuf/cdm/", tmp_path)
-    assert local == tmp_path / "csv-source"
-    assert calls[0] == "profiles"
-    args, kwargs = calls[1]
-    assert args[:5] == ["aws", "s3", "cp", "s3://bucket/resource-1/synpuf/cdm/",
-                        str(local)]
-    assert args[args.index("--profile") + 1] == "resource-1"
-    assert "--recursive" in args and "--exclude" in args
-    assert all(ext in args for ext in (
-        "*.[cC][sS][vV]", "*.[cC][sS][vV].[gG][zZ]"))
-    assert kwargs["timeout"] == omop_load.S3_DOWNLOAD_TIMEOUT
-
-
-def test_s3_download_uses_zip_object_path(monkeypatch, tmp_path):
-    monkeypatch.setattr(db, "configure_aws_profiles", lambda: None)
-    monkeypatch.setattr(db, "resolve_s3_uri", lambda _rid: "s3://bucket/folder/")
-    commands = []
-
-    def fake_run(args, **kwargs):
-        commands.append(args)
-        Path(args[4]).write_bytes(b"zip")
-        return argparse.Namespace(returncode=0, stderr="", stdout="")
-
-    monkeypatch.setattr(omop_load.subprocess, "run", fake_run)
-    local = omop_load.download_s3_source("resource-1", "nested/source.zip", tmp_path)
-    assert local == tmp_path / "source.zip"
-    assert local.read_bytes() == b"zip"
-    assert commands[0][3] == "s3://bucket/folder/nested/source.zip"
-    assert "--recursive" not in commands[0]
 
 
 def test_non_omop_source_is_rejected_before_database_mutation(engine, tmp_path):

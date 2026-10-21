@@ -1,27 +1,14 @@
-"""MCP server: lets external agents drive the cohort builder.
-
-Exposes the same engine layer the UI uses as MCP tools over streamable
-HTTP at /mcp. An agent (Claude Code, a Managed Agent, any MCP client)
-can list datasources, open tables, and run cross-filtered queries.
-
-Reachability note: on a Workbench VM the public URL sits behind the app
-proxy, which requires browser cookies — so external agents typically
-connect from inside the workspace (localhost:8080/mcp on the VM, or a
-port-forward). The import is guarded so the app runs without the `mcp`
-package installed.
-"""
-
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 
 try:
-    from mcp.server.mcpserver import MCPServer  # mcp >= 2
+    from mcp.server.mcpserver import MCPServer
     AVAILABLE = True
 except ImportError:
     try:
-        from mcp.server.fastmcp import FastMCP as MCPServer  # mcp 1.x
+        from mcp.server.fastmcp import FastMCP as MCPServer
         AVAILABLE = True
     except ImportError:
         AVAILABLE = False
@@ -38,7 +25,7 @@ if AVAILABLE:
     )
 
     def http_app():
-        """ASGI app served at the /mcp mount (path '/' inside the mount)."""
+
         return mcp.streamable_http_app(stateless_http=True,
                                        streamable_http_path="/")
 

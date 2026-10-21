@@ -1,13 +1,3 @@
-"""Chat agent: converse about the active dataset and act on the UI.
-
-Runs provider-specific tool loops with tools closed over the dataset's
-DataFrame and a mutable UI-state dict (filters + charts). The
-agent answers questions with real numbers computed by its tools, and
-"builds the viz" by mutating the UI state — the endpoint returns the
-final state for the browser to apply. Conversation history is kept
-client-side; every request is stateless.
-"""
-
 import functools
 import json
 import logging
@@ -26,10 +16,8 @@ MAX_HISTORY = 30
 CHART_KINDS = ("bar", "histogram", "scatter", "heatmap")
 AGGS = ("count", "mean", "median", "min", "max", "sum", "nunique")
 
-
 def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
                 actions: list[str]):
-    """Plain callables (testable) — decorated with @beta_tool in chat()."""
 
     def run_query(filters_json: str = "[]") -> str:
         """Count rows matching a filter set and preview the first rows.
@@ -141,7 +129,6 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
 
     return [run_query, aggregate, set_filters, add_chart, remove_chart]
 
-
 def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
                    ui: dict) -> str:
     lines = []
@@ -170,12 +157,10 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
         "of sentences; the user can see the grid and charts update."
     )
 
-
 def _provider_label(provider: str) -> str:
     return {"anthropic": "Anthropic", "openai": "OpenAI",
             "gemini": "Gemini", "openrouter": "OpenRouter",
             "bedrock": "Amazon Bedrock"}.get(provider, provider)
-
 
 def chat(dataset_id: str, message: str, history: list[dict],
          filters: list[dict], charts: list[dict]) -> dict:
@@ -201,8 +186,6 @@ def chat(dataset_id: str, message: str, history: list[dict],
     actions: list[str] = []
     system = _system_prompt(ds["source"], df, columns, ui)
 
-    # Wrap each tool so every call is recorded for telemetry; functools.wraps
-    # keeps the signature/docstring the Anthropic schema builder needs.
     raw_tools = build_tools(df, columns, ui, actions)
     tool_calls: list[str] = []
 
@@ -238,13 +221,11 @@ def chat(dataset_id: str, message: str, history: list[dict],
             "actions": actions, "provider": provider, "model": cfg["model"],
             "usage": usage, "tool_calls": tool_calls}
 
-
 def run_bedrock(cfg: dict, system: str, messages: list[dict],
                 tool_impls: dict, tool_schemas: list[dict]) -> dict:
-    """Run Bedrock with supplied schemas and closures for either agent."""
+
     return bedrock.run(cfg["model"], cfg.get("region"), system, messages,
                        tool_schemas, tool_impls)
-
 
 def _run_anthropic(cfg: dict, system: str, messages: list[dict],
                    wrapped: list) -> tuple[str, dict]:

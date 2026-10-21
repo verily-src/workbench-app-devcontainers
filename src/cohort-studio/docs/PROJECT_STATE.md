@@ -8,14 +8,15 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - Branch: `cohort-dashboard`; base commit at start of this work: `5fc68f9`.
 - The Panel app under `src/cohort-dashboard/` is superseded.
 - Use `uv` where available and Pydantic for API boundaries. Shared engine validation also applies to MCP and agent calls.
-- See [README](../README.md), [root agent rules](../../../AGENTS.md), and [agent architecture and next steps](AGENT_PLAN.md).
+- See [README](../README.md), [architecture and decisions](architecture.md), [root agent rules](../../../AGENTS.md), and [agent next steps](AGENT_PLAN.md). Update architecture.md whenever a design decision changes.
 
 ## Verified delivery state
 
 - `wb workspace describe` confirmed `bugbash-nextflowonaws`, UUID `5b932a68-43d4-432b-834c-9662e7dd0151`, server `dev-stable`, AWS environment `dev`.
 - `wb app config list` confirmed **Cohort Studio** uses this repository, branch `cohort-dashboard`, and path `src/cohort-studio`.
 - Latest `wb app list` reported **Cohort_Studio_EC2_MCP** stopped at [dev app](https://workbench-dev.verily.com/app/a54c0049-6905-46c3-93ad-2fe2973cf9b9/). The Oct 7 and Oct 20 Studio instances were also stopped. These are observations, not permanent state.
-- Published release **`c911229deb8dcac409880ba114bba7e36c2d0501`** to `origin/cohort-dashboard` (push succeeded). The unrelated local `db.py` override and `.cursor/settings.json` are excluded. The release snapshot with original db.py passed **294 tests in 27.90 s** before publication.
+- Prior OMOP release: **`c911229deb8dcac409880ba114bba7e36c2d0501`** on `origin/cohort-dashboard`. The unrelated local `db.py` override and `.cursor/settings.json` are excluded. Its release snapshot with original db.py passed **294 tests in 27.90 s** before publication.
+- Current cleanup release keeps the same in-app update path. Its isolated release snapshot, excluding unrelated local edits, passed **127 tests in 20.31 s**. Use the latest `cohort-dashboard` commit in `/api/version` to verify the running app; runtime verification is still pending.
 - Deployment attempt: `wb app start --id=Cohort_Studio_EC2_MCP --workspace=bugbash-nextflowonaws` failed with `UnsupportedOperationException: Starting this type of app is not supported.` Start the AWS app through the Workbench UI. Its startup self-update should fetch the published branch; the in-app Update action is also available once running. Runtime SHA is **not verified**.
 - Browser automation has no available browser in this session. `wb app update` only supports GCP in the installed CLI. The app's HTTP update endpoint is behind the Workbench browser proxy. No remote update was sent.
 - The existing restart/update mechanism fetches the **pushed** branch. A local test pass does not update the dev instance.
@@ -36,6 +37,10 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Verification
 
+- Current cleanup suite: **127 passed in 19.74 s**. Standalone unit-test modules and direct helper checks were removed at user request. Browser/MCP HTTP flows, HTTP application outcomes, real database checks and updater subprocess tests remain. Shared database fixtures now live in conftest.py.
+- Comment cleanup preserves runtime tool descriptions, CLI help, machine directives and vendor/legal text. Python executable AST and TypeScript emitted syntax were checked unchanged; the production frontend build passes. The unrelated db.py local override remains untouched.
+- GLM max review of the test/fixture and comment cleanup found no blockers; 127 tests collected. Transcript: `/tmp/cohort-studio-e2e-review.jsonl`.
+- The following 294-test results describe the previous published release, not the reduced current suite. Provider adapter unit tests were removed; live provider checks remain unverified.
 - Full suite after GLM importer follow-up: **294 passed in 25.21 s**, via `uv`, including Chromium and a real temporary PostgreSQL instance. No skipped OMOP tests in this run. Earlier provider/UI review baseline was 275 tests.
 - New importer tests cover real PostgreSQL nested-export loading, raw claims rejection before schema creation, failed replacement rollback preserving existing data, and pool connection lifetime. S3 download command tests use a mock transport; they do not verify live S3 permissions or Aurora access.
 - Production frontend build and TypeScript checks pass. Vite still reports the existing large bundle warning.
@@ -55,6 +60,8 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - A direct TCP check from this machine to the existing dev Aurora endpoint on port 5432 failed with `Network is unreachable` (2026-10-20). Run real import validation from the Workbench VM with resource credentials and VPC access. No cloud data was changed.
 - Support the browser isolation sidecar, following `src/virtual-browser-jupyter` on master. This branch already has `src/virtual-browser-cohort-studio` and shared `src/browser-common`. The audit confirmed the same two-container routing. The isolated build now accepts `APP_SHA`; its smoke script checks Studio HTML, health and version before the existing browser/network checks. Shell syntax passes. Runtime validation is pending: this machine has neither a Docker daemon nor a Compose plugin. A local browser test alone does not verify Selkies or Workbench proxy routing.
 - In the isolated template, the proxy reaches the browser on port 3000. The backend stays on `backend-network`, with no published port. S3 imports and model calls run on the backend. MCP clients must have private network access; do not expose port 8080 to bypass isolation.
+- User clarified that release means the **in-app Update button**. It fetches pushed code and restarts the existing container, without recreating the Workbench app/VM. Do not substitute CLI app lifecycle actions for this flow.
+- Jev assessment assumes TypeSafe's decision model. [Scope](JEV_SCOPE.md): optional future unified-assistant routing or ranking retrieved concepts, evaluated before use. No adapter is installed or invoked. Existing UI selection and SQL cohort logic remain authoritative.
 
 1. Preserve the concurrent db.py local-mode edit and Cursor settings outside the release. GLM follow-up fixes and final local checks are complete.
 2. Branch publication is complete. Start/update `Cohort_Studio_EC2_MCP` through the UI, then verify `/api/version`, frontend, and real resource operations from inside the workspace. This installed CLI cannot start AWS apps.
@@ -80,6 +87,7 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - 2026-10-20: Adopted uv and Pydantic preferences. Full suite passed. GLM max external review completed; follow-up fixes and final checks are recorded in REVIEW_2026-10-20.md. Release not performed.
 - 2026-10-20: Added generic S3-to-Aurora import CLI and hardened isolated-template build/smoke checks. Full suite passed (292). Recorded CMS SynPUF source ambiguity, failed Aurora network check, and missing Docker runtime. No cloud data load or release performed.
 - 2026-10-21: Published code release c911229 after 294 tests on the release snapshot. CLI start failed for the AWS app; UI start/update and runtime verification remain. Browser-sidecar template changes require a new instance, not an in-app code update.
+- 2026-10-21: Reduced the suite to outcome/boundary tests, removed ordinary code comments, refreshed architecture.md and its decision record, and scoped Jev without implementation. In-app Update is the requested code-release path.
 
 ### Concurrent work detected
 

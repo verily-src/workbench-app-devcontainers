@@ -1,6 +1,3 @@
-/* Linear-inspired design tokens: neutral surfaces, 1px borders,
-   Inter at small sizes, Verily teal as the single accent. */
-
 :root {
   --font: "Inter", -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
   --accent: #087a6a;
@@ -34,8 +31,6 @@ body {
 }
 
 .app { display: flex; height: 100%; }
-
-/* ---------------------------------------------------------- sidebar */
 .sidebar {
   width: 280px; min-width: 280px;
   border-right: 1px solid var(--border);
@@ -49,8 +44,6 @@ body {
   margin: 18px 0 6px;
 }
 .field-label { font-size: 12px; color: var(--ink-soft); margin: 8px 0 3px; }
-
-/* ------------------------------------------------------------- main */
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .topbar {
   height: 46px; min-height: 46px;
@@ -62,8 +55,6 @@ body {
 .topbar .brand { font-size: 14px; font-weight: 600; color: var(--ink);
   letter-spacing: -0.01em; }
 .content { flex: 1; overflow-y: auto; padding: 14px 18px; }
-
-/* ----------------------------------------------------------- inputs */
 input[type="text"], input[type="number"], input[type="password"], select {
   width: 100%;
   border: 1px solid var(--border-strong);
@@ -95,8 +86,6 @@ button.quiet {
 }
 button.quiet:hover { color: var(--ink); background: transparent; }
 button:disabled { opacity: 0.45; cursor: default; }
-
-/* ------------------------------------------------------------- tabs */
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border);
   margin-bottom: 12px; }
 .tab {
@@ -107,8 +96,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .tab:hover { color: var(--ink); }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-/* ------------------------------------------------------------ chips */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
@@ -120,14 +107,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 .chip.clear { background: transparent; color: var(--ink-muted);
   border-color: var(--border-strong); }
 .chip.clear:hover { background: var(--hover); }
-
-/* ------------------------------------------------------------- hero */
 .hero { display: flex; align-items: baseline; gap: 8px; }
 .hero .count { font-size: 22px; font-weight: 600; color: var(--ink);
   letter-spacing: -0.02em; }
 .hero .detail { font-size: 13px; font-weight: 500; color: var(--ink-muted); }
-
-/* ------------------------------------------------------------ cards */
 .chart-grid { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 .chart-card {
   background: var(--card);
@@ -143,8 +126,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .chart-card .head { display: flex; align-items: center; height: 26px; }
 .chart-card .head .title { font-size: 12px; font-weight: 500;
   color: var(--ink-soft); flex: 1; }
-
-/* ------------------------------------------------------------ table */
 .data-table { width: 100%; border-collapse: collapse; background: var(--card);
   border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; }
@@ -161,8 +142,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .data-table tr:hover td { background: #fafbfb; }
 .pager { display: flex; gap: 6px; align-items: center; margin: 8px 0;
   font-size: 12px; color: var(--ink-muted); }
-
-/* ------------------------------------------------------ empty state */
 .empty {
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; padding: 80px 24px; margin-top: 16px;
@@ -172,8 +151,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .empty .title { font-size: 14px; font-weight: 600; color: var(--ink);
   margin-top: 12px; }
 .empty .caption { font-size: 13px; color: var(--ink-muted); margin-top: 4px; }
-
-/* --------------------------------------------------------- activity */
 .activity { display: flex; align-items: center; gap: 7px;
   font-size: 12.5px; font-weight: 500; color: var(--ink-muted); }
 .pulse {
@@ -184,8 +161,6 @@ button:disabled { opacity: 0.45; cursor: default; }
   0%, 100% { opacity: 0.25; transform: scale(0.8); }
   50% { opacity: 1; transform: scale(1); }
 }
-
-/* ----------------------------------------------------- filter panel */
 .filter-group { margin-bottom: 10px; }
 .filter-group summary {
   font-size: 12.5px; font-weight: 500; color: var(--ink-soft);
@@ -207,8 +182,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .filter-values input[type="checkbox"] { accent-color: var(--accent);
   width: 13px; height: 13px; }
 .range-inputs { display: flex; gap: 6px; padding-left: 14px; }
-
-/* -------------------------------------------------- modern controls */
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -258,9 +231,6 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(8, 122, 106, 0.15);
 }
-
-
-/* ------------------------------------------------------------ topnav */
 .topnav { display: flex; gap: 2px; margin-left: 18px; }
 .topnav-link {
   font-size: 12.5px; font-weight: 500; color: var(--ink-muted);
@@ -268,8 +238,6 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 }
 .topnav-link:hover { color: var(--ink); background: var(--hover); }
 .topnav-link.active { color: var(--accent); background: var(--accent-tint); }
-
-/* ---------------------------------------------------------- settings */
 .settings-card {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px;
@@ -298,17 +266,12 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   cursor: pointer; }
 .mcp-toggle input { accent-color: var(--accent); width: 13px; height: 13px; }
 .mcp-note { grid-column: 1 / -1; margin-top: -3px; }
-
-/* ------------------------------------------------------------ ask ai */
 .ask-ai {
   display: flex; align-items: center; gap: 8px; margin: 10px 0 2px;
   color: var(--accent);
 }
 .ask-ai input { flex: 1; max-width: 520px; }
 .ask-note { font-size: 12px; color: var(--ink-muted); }
-
-
-/* -------------------------------------------------------- chat widget */
 .chat-launcher {
   position: fixed; right: 20px; bottom: 20px; z-index: 40;
   display: inline-flex; align-items: center; gap: 7px;
@@ -351,15 +314,9 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .chat-input { display: flex; gap: 8px; padding: 10px 12px;
   border-top: 1px solid var(--border); }
 .chat-input input { flex: 1; }
-
-
-/* ------------------------------------------------------- save to aurora */
 .save-aurora { display: inline-flex; align-items: center; gap: 6px; }
 .save-aurora select { width: 160px; }
 .save-aurora input { width: 150px; }
-
-
-/* ---------------------------------------------------------- palette ui */
 .palette-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .palette-swatch {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -371,9 +328,6 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   box-shadow: 0 0 0 2px rgba(8,122,106,.15); color: var(--ink); }
 .palette-dots { display: flex; gap: 3px; }
 .palette-dots span { width: 16px; height: 16px; border-radius: 4px; }
-
-
-/* ---------------------------------------------------------- saved views */
 .view-save { display: flex; gap: 6px; margin: 8px 0; }
 .view-save input { flex: 1; }
 .view-list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
@@ -384,9 +338,6 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   border-radius: var(--radius-sm);
 }
 .view-load:hover { background: var(--hover); color: var(--accent); }
-
-
-/* ------------------------------------------------------------- join */
 .tab-join {
   border: none; background: transparent; color: var(--accent);
   font-size: 12.5px; font-weight: 500; padding: 7px 10px; cursor: pointer;
@@ -452,8 +403,6 @@ button.link:hover { text-decoration: underline; }
   white-space: nowrap; cursor: help;
 }
 .join-engine.aurora { border-color: var(--accent-tint-border); color: var(--accent); background: var(--accent-tint); }
-
-/* --------------------------------------------------------- combobox */
 .combo { position: relative; }
 .combo-list {
   position: absolute; z-index: 20; top: calc(100% + 2px); left: 0; right: 0;
@@ -482,8 +431,6 @@ button.link:hover { text-decoration: underline; }
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 2px 6px; background: var(--surface); margin-right: 4px;
 }
-
-/* -------------------------------------------------------- workflows */
 .nav-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 16px; height: 16px; padding: 0 4px; margin-left: 6px;
@@ -515,8 +462,6 @@ button.link:hover { text-decoration: underline; }
   margin-left: auto; color: var(--accent); cursor: pointer;
   font-weight: 500; white-space: nowrap;
 }
-
-/* ---------------------------------------------------- workflow alerts */
 .wf-sub {
   font-size: 11px; padding: 3px 9px; border-radius: 999px;
   border: 1px solid var(--accent-tint-border); background: var(--accent-tint);
@@ -548,8 +493,6 @@ button.link:hover { text-decoration: underline; }
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-/* ---------------------------------------------------- cohorts/compare */
 .cohort-bar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin: 10px 0; padding: 8px 10px;
@@ -578,8 +521,6 @@ button.link:hover { text-decoration: underline; }
 .compare-row .compare-vs { color: var(--ink-muted); padding-bottom: 7px; }
 .compare-panel .cmp-sig td { background: #f0f7f5; font-weight: 500; }
 .compare-panel .cmp-note { color: var(--ink-muted); font-size: 11.5px; }
-
-/* ---------------------------------------------------- derived columns */
 .derive-panel {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px; margin-bottom: 12px;
@@ -592,8 +533,6 @@ button.link:hover { text-decoration: underline; }
   font-family: var(--font); font-size: 12.5px; padding: 6px 8px; resize: vertical;
 }
 .derive-actions { display: flex; align-items: center; gap: 8px; }
-
-/* ------------------------------------------------- launch workflow */
 .launch-panel {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px; margin-bottom: 12px;
@@ -606,8 +545,6 @@ button.link:hover { text-decoration: underline; }
 .launch-row label { display: flex; flex-direction: column; gap: 3px;
   font-size: 12px; color: var(--ink-soft); flex: 1; min-width: 150px; }
 .launch-status { margin-top: 8px; }
-
-/* ---------------------------------------------------- command palette */
 .cmdk-hint {
   font-size: 11px; color: var(--ink-muted); padding: 3px 8px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
@@ -644,8 +581,6 @@ button.link:hover { text-decoration: underline; }
 .palette-hint { font-size: 11.5px; color: var(--ink-muted); }
 .palette-empty { padding: 14px; color: var(--ink-muted); font-size: 13px;
   text-align: center; }
-
-/* OMOP person-cohort builder */
 .omop-builder { max-width: 1300px; margin: 0 auto; }
 .omop-builder h2 { color: var(--ink); margin: 8px 0; }
 .omop-builder h3 { margin: 0 0 16px; color: var(--ink); }

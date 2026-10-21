@@ -1,21 +1,3 @@
-"""OMOP Common Data Model (CDM v5.4; v5.3 where it differs) over Postgres.
-
-detect() finds the CDM schema (person + observation_period + a domain
-table) and the vocabulary schema (concept + concept_ancestor), which are
-often the same. A cohort spec — concept-based criteria AND-ed together
-plus demographics — compiles to one parameterized query:
-
-  obs   per-person observation start/end
-  e<i>  persons meeting criterion i, with event count and first date
-  pop   person LEFT JOIN obs and every e<i>, plus the index date
-  flags pop plus one boolean f<k> per attrition step
-
-count() sums the cumulative flags; open_cohort() and open_domain() read
-the members. Identifiers come only from the detected schema names and
-the DOMAINS/KNOWN_TABLES maps, always quoted; every value is a bind
-parameter.
-"""
-
 import datetime as dt
 import logging
 import math
@@ -33,7 +15,6 @@ from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 
-# domain key -> table, main concept column, event date column, value column
 DOMAINS = {
     "condition": {"table": "condition_occurrence", "concept": "condition_concept_id",
                   "date": "condition_start_date"},
@@ -51,14 +32,14 @@ DOMAINS = {
                "date": "device_exposure_start_date"},
     "death": {"table": "death", "concept": "cause_concept_id", "date": "death_date"},
 }
-# concept.domain_id per domain key, for search filters and person counts.
+
 DOMAIN_IDS = {"condition": "Condition", "drug": "Drug", "procedure": "Procedure",
               "measurement": "Measurement", "observation": "Observation",
               "visit": "Visit", "device": "Device"}
 VOCAB_TABLES = ("concept", "concept_ancestor", "vocabulary", "domain",
                 "concept_class", "concept_relationship", "relationship",
                 "concept_synonym", "drug_strength", "source_to_concept_map")
-# Every other CDM table we list, by category.
+
 OTHER_TABLES = {
     "person": "person", "observation_period": "person",
     "visit_detail": "clinical", "specimen": "clinical", "note": "clinical",
@@ -73,7 +54,7 @@ OTHER_TABLES = {
 }
 KNOWN_TABLES = ({d["table"]: k for k, d in DOMAINS.items()} | OTHER_TABLES
                 | {t: "vocabulary" for t in VOCAB_TABLES})
-# open_domain reads person-level tables only.
+
 OPENABLE = ({d["table"] for d in DOMAINS.values()}
             | {"person", "observation_period", "visit_detail", "specimen",
                "condition_era", "drug_era", "dose_era", "payer_plan_period"})
@@ -86,7 +67,7 @@ DETECT_TTL = 300
 DETECT_TIMEOUT_MS = 10_000
 SEARCH_TIMEOUT_MS = 5_000
 COUNT_TIMEOUT_MS = 15_000
-# Below the app proxy's ~60 s limit.
+
 OPEN_TIMEOUT_MS = 40_000
 LABEL_CHARS = 32
 
@@ -96,26 +77,20 @@ _DEMOGRAPHIC_KEYS = {"gender_concept_ids", "age_min", "age_max",
                      "year_of_birth_min", "year_of_birth_max"}
 _SPEC_KEYS = {"criteria", "demographics", "require_observation"}
 
-
 class OmopTimeout(RuntimeError):
     pass
-
 
 class OmopEngineError(RuntimeError):
     pass
 
-
 def _q(ident: str) -> str:
     return '"' + str(ident).replace('"', '""') + '"'
-
 
 def _cdm(info: dict, table: str) -> str:
     return f"{_q(info['cdm_schema'])}.{_q(table)}"
 
-
 def _voc(info: dict, table: str) -> str:
     return f"{_q(info['vocab_schema'])}.{_q(table)}"
-
 
 def _error(e: Exception, timeout_ms: int) -> Exception:
     orig = getattr(e, "orig", None) or e
@@ -123,11 +98,9 @@ def _error(e: Exception, timeout_ms: int) -> Exception:
         return OmopTimeout(f"The query took longer than {timeout_ms / 1000:g} s.")
     return OmopEngineError("Aurora: " + str(orig).split("\n")[0][:300])
 
-
 @contextmanager
 def _session(engine: Engine, timeout_ms: int):
-    """One transaction under a statement timeout; database errors become
-    OmopTimeout / OmopEngineError, ValueError passes through."""
+
     try:
         with engine.begin() as conn:
             conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
@@ -137,11 +110,8 @@ def _session(engine: Engine, timeout_ms: int):
     except Exception as e:
         raise _error(e, timeout_ms) from e
 
-
-# -------------------------------------------------------------- detection
-
 def _version(conn, info: dict) -> str | None:
-    """From cdm_source.cdm_version, else the 5.3 → 5.4 column renames."""
+
     cols = info["columns"]
     if "cdm_version" in cols.get("cdm_source", []):
         try:
@@ -163,10 +133,8 @@ def _version(conn, info: dict) -> str | None:
         return "5.4"
     return None
 
-
 def _row_counts(conn, schema: str, tables: list[str]) -> dict[str, tuple]:
-    """(rows, approx) per table: pg_class.reltuples for big analysed
-    tables, an exact count below EXACT_COUNT_BELOW or when never analysed."""
+
     est = dict(conn.execute(text(
         "SELECT c.relname, c.reltuples FROM pg_class c "
         "JOIN pg_namespace n ON n.oid = c.relnamespace "
@@ -186,9 +154,8 @@ def _row_counts(conn, schema: str, tables: list[str]) -> dict[str, tuple]:
             out[t] = (None, True)
     return out
 
-
 def detect(engine: Engine) -> dict | None:
-    """The CDM layout of a Postgres database, or None when there is none."""
+
     if engine.dialect.name != "postgresql":
         return None
     with _session(engine, DETECT_TIMEOUT_MS) as conn:
@@ -231,13 +198,11 @@ def detect(engine: Engine) -> dict | None:
     info["tables"] = sorted(tables, key=lambda t: order.index(t["name"]))
     return info
 
-
 def public(info: dict | None) -> dict:
-    """The detection result as the API returns it."""
+
     if info is None:
         return {"cdm": False}
     return {k: info[k] for k in ("cdm", "cdm_schema", "vocab_schema", "version", "tables")}
-
 
 @ttl_cache(ttl=DETECT_TTL, maxsize=64)
 def detect_resource(resource_id: str) -> dict | None:
@@ -245,11 +210,9 @@ def detect_resource(resource_id: str) -> dict | None:
     _remember(resource_id, info)
     return info
 
-
 _hints: dict[str, tuple[float, dict | None]] = {}
 _inflight: set[str] = set()
 _hint_lock = threading.Lock()
-
 
 def _remember(resource_id: str, info: dict | None):
     summary = None
@@ -259,7 +222,6 @@ def _remember(resource_id: str, info: dict | None):
                    "version": info["version"], "persons": person.get("rows")}
     with _hint_lock:
         _hints[resource_id] = (time.monotonic() + DETECT_TTL, summary)
-
 
 def _detect_in_background(resource_id: str):
     try:
@@ -271,10 +233,8 @@ def _detect_in_background(resource_id: str):
         with _hint_lock:
             _inflight.discard(resource_id)
 
-
 def hint(resource_id: str) -> dict | None:
-    """Last detection summary for the datasource listing. Never blocks: an
-    unknown or stale resource is detected in a background thread."""
+
     with _hint_lock:
         hit = _hints.get(resource_id)
         if (hit is None or hit[0] <= time.monotonic()) and resource_id not in _inflight:
@@ -282,7 +242,6 @@ def hint(resource_id: str) -> dict | None:
             threading.Thread(target=_detect_in_background, args=(resource_id,),
                              daemon=True).start()
     return hit[1] if hit else None
-
 
 def invalidate(resource_id: str | None = None):
     detect_resource.invalidate()
@@ -292,16 +251,11 @@ def invalidate(resource_id: str | None = None):
         else:
             _hints.pop(resource_id, None)
 
-
-# ---------------------------------------------------------- concept search
-
 def _like(word: str) -> str:
     return "%" + re.sub(r"([\\%_])", r"\\\1", word) + "%"
 
-
 def _person_counts(engine: Engine, info: dict, results: list[dict]):
-    """Distinct persons per concept in its domain table (exact concept, no
-    descendants). Best effort: a timeout or error leaves persons None."""
+
     by_table: dict[str, list[int]] = {}
     for r in results:
         key = next((k for k, v in DOMAIN_IDS.items() if v == r["domain_id"]), None)
@@ -325,12 +279,10 @@ def _person_counts(engine: Engine, info: dict, results: list[dict]):
         if key in by_table:
             r["persons"] = int(counts.get(r["concept_id"], 0))
 
-
 def search_concepts(engine: Engine, info: dict, q: str = "", domain: str | None = None,
                     vocabulary: str | None = None, standard_only: bool = True,
                     limit: int = 50, persons: bool = True) -> list[dict]:
-    """Concepts whose name contains every word of q, or whose concept_id
-    or concept_code equals q. Exact id/code/name matches rank first."""
+
     if not info.get("vocab_schema"):
         raise ValueError("This database has no OMOP vocabulary tables "
                          "(concept, concept_ancestor).")
@@ -372,15 +324,11 @@ def search_concepts(engine: Engine, info: dict, q: str = "", domain: str | None 
         _person_counts(engine, info, results)
     return results
 
-
-# ------------------------------------------------------------ cohort spec
-
 def _int(value, what: str) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)) \
             or (isinstance(value, float) and not value.is_integer()):
         raise ValueError(f"{what} must be an integer.")
     return int(value)
-
 
 def _number(value, what: str) -> float | None:
     if value is None:
@@ -390,7 +338,6 @@ def _number(value, what: str) -> float | None:
     if isinstance(value, float) and not math.isfinite(value):
         raise ValueError(f"{what} must be a finite number.")
     return value
-
 
 def _date(value, what: str) -> dt.date | None:
     if value is None:
@@ -402,14 +349,12 @@ def _date(value, what: str) -> dt.date | None:
     except ValueError:
         raise ValueError(f"{what} must be an ISO date (YYYY-MM-DD).") from None
 
-
 def _bool(value, default: bool, what: str) -> bool:
     if value is None:
         return default
     if not isinstance(value, bool):
         raise ValueError(f"{what} must be true or false.")
     return value
-
 
 def _ids(value, what: str) -> list[int]:
     if value is None:
@@ -420,14 +365,12 @@ def _ids(value, what: str) -> list[int]:
         raise ValueError(f"{what}: at most {MAX_CONCEPTS} concept ids.")
     return list(dict.fromkeys(_int(v, what) for v in value))
 
-
 def _range(lo, hi, what: str):
     if lo is not None and hi is not None and lo > hi:
         raise ValueError(f"{what}: the minimum is greater than the maximum.")
 
-
 def parse_spec(spec: dict | None) -> dict:
-    """Validated cohort spec with defaults filled in. Raises ValueError."""
+
     spec = {} if spec is None else spec
     if not isinstance(spec, dict):
         raise ValueError("The cohort spec must be a JSON object.")
@@ -501,7 +444,6 @@ def parse_spec(spec: dict | None) -> dict:
             "require_observation": _bool(spec.get("require_observation"), True,
                                          "require_observation")}
 
-
 def _check_tables(info: dict, spec: dict):
     need = {"person"} | ({"observation_period"} if spec["require_observation"] else set())
     need |= {DOMAINS[c["domain"]]["table"] for c in spec["criteria"]}
@@ -516,7 +458,6 @@ def _check_tables(info: dict, spec: dict):
         raise ValueError("Descendant expansion needs the concept_ancestor table; "
                          "set descendants to false.")
 
-
 def _concept_names(conn, info: dict, ids: list[int]) -> dict[int, str]:
     if not ids or not info.get("vocab_schema"):
         return {}
@@ -524,9 +465,8 @@ def _concept_names(conn, info: dict, ids: list[int]) -> dict[int, str]:
         f"SELECT concept_id, concept_name FROM {_voc(info, 'concept')} "
         "WHERE concept_id = ANY(CAST(:ids AS BIGINT[]))"), {"ids": ids}).fetchall())
 
-
 def _labels(conn, info: dict, spec: dict) -> list[str]:
-    """Short unique label per criterion from its first concept's name."""
+
     names = _concept_names(conn, info, sorted({i for c in spec["criteria"]
                                                 for i in c["concept_ids"]}))
     labels, used = [], set()
@@ -547,7 +487,6 @@ def _labels(conn, info: dict, spec: dict) -> list[str]:
         labels.append(label)
     return labels
 
-
 def _step_label(c: dict, label: str) -> str:
     out = f"{'Without' if c['exclude'] else 'With'} {label}"
     extra = []
@@ -561,14 +500,11 @@ def _step_label(c: dict, label: str) -> str:
         extra.append(f"{c['index_relation']} index")
     return out + (f" ({', '.join(extra)})" if extra else "")
 
-
 def _fmt(v) -> str:
     return "…" if v is None else f"{v:g}"
 
-
 def compile_spec(info: dict, spec: dict, labels: list[str]) -> dict:
-    """{ctes, params, steps: [(label, flag expr)], inclusion: [(i, label)]}
-    for a parsed spec. Step k's members are rows with f0 … fk true."""
+
     params: dict = {}
 
     def p(value) -> str:
@@ -584,7 +520,7 @@ def compile_spec(info: dict, spec: dict, labels: list[str]) -> dict:
             "obs AS (SELECT person_id, min(observation_period_start_date) AS observation_start, "
             "max(observation_period_end_date) AS observation_end "
             f"FROM {_cdm(info, 'observation_period')} GROUP BY person_id)")
-    # The index criterion's CTE comes first: index_relation joins onto it.
+
     order = ([first] if first is not None else []) + \
         [i for i in range(len(criteria)) if i != first]
     for i in order:
@@ -666,21 +602,18 @@ def compile_spec(info: dict, spec: dict, labels: list[str]) -> dict:
     inclusion = [(i, labels[i]) for i, c in enumerate(criteria) if not c["exclude"]]
     return {"ctes": ctes, "params": params, "steps": steps, "inclusion": inclusion}
 
-
 def _members(steps: list, upto: int | None = None) -> str:
     n = len(steps) if upto is None else upto + 1
     return " AND ".join(f"f{k}" for k in range(n)) or "TRUE"
-
 
 def _prepare(conn, info: dict, spec: dict | None) -> dict:
     spec = parse_spec(spec)
     _check_tables(info, spec)
     return compile_spec(info, spec, _labels(conn, info, spec))
 
-
 def count(engine: Engine, info: dict, spec: dict | None,
           timeout_ms: int | None = None) -> dict:
-    """Cohort size and cumulative attrition, one row per step."""
+
     timeout_ms = timeout_ms or COUNT_TIMEOUT_MS
     with _session(engine, timeout_ms) as conn:
         c = _prepare(conn, info, spec)
@@ -694,18 +627,14 @@ def count(engine: Engine, info: dict, spec: dict | None,
     return {"persons": int(row[-1]), "total_persons": int(row[0]),
             "attrition": attrition}
 
-
 def _read(conn, sql: str, params: dict) -> pd.DataFrame:
     res = conn.execute(text(sql), params)
     return pd.DataFrame.from_records([tuple(r) for r in res.fetchall()],
                                      columns=list(res.keys()), coerce_float=True)
 
-
 def open_cohort(engine: Engine, info: dict, spec: dict | None,
                 cap: int = queries.ROW_CAP) -> pd.DataFrame:
-    """One row per cohort member: demographics as concept names, age at
-    index, observation span, and per inclusion criterion `<label> events`
-    and `<label> first`."""
+
     with _session(engine, OPEN_TIMEOUT_MS) as conn:
         c = _prepare(conn, info, spec)
         if info.get("vocab_schema"):
@@ -736,13 +665,10 @@ def open_cohort(engine: Engine, info: dict, spec: dict | None,
         df[col] = pd.to_datetime(df[col])
     return df
 
-
 def open_domain(engine: Engine, info: dict, table: str, spec: dict | None = None,
                 cap: int = queries.ROW_CAP, concept_names: bool = True,
                 resource_id: str | None = None) -> tuple[pd.DataFrame, dict | None]:
-    """Rows of one person-level table, restricted to the cohort when a
-    spec is given, each *_concept_id followed by its *_concept_name.
-    The origin allows Aurora join pushdown only for the untouched table."""
+
     if table not in OPENABLE or table not in info["columns"]:
         raise ValueError(f"{table!r} is not a person-level table of this CDM.")
     enrich = concept_names and bool(info.get("vocab_schema"))
@@ -769,9 +695,8 @@ def open_domain(engine: Engine, info: dict, table: str, spec: dict | None = None
                   "schema": info["cdm_schema"], "table": table}
     return df, origin
 
-
 def tables_used(info: dict, spec: dict | None) -> list[str]:
-    """Qualified tables a cohort spec reads, for lineage parents."""
+
     spec = parse_spec(spec)
     names = ["person"] + [DOMAINS[c["domain"]]["table"] for c in spec["criteria"]]
     if "observation_period" in info["columns"]:

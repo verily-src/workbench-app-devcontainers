@@ -9,10 +9,8 @@ interface Props {
   onLoadView: (store: { kind: string; id: string }, name: string) => void;
 }
 
-// Views persist to Aurora (a _studio_views row) or S3 (a JSON object),
-// so filters + charts survive the app closing. Browser state does not.
 export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
-  // Only datasource-backed tabs can be reloaded (uploads have no source).
+
   const saveable = datasets.filter((d) => d.sourceRef);
   const stores = sources.filter((s) => s.kind === "aurora" || s.kind === "s3");
   const [store, setStore] = useState("");
@@ -57,8 +55,6 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
     refresh();
   };
 
-  // Shareable permalink — the hash never hits the Workbench proxy; a
-  // teammate who opens it loads the same view once datasources are ready.
   const copyLink = (viewName: string) => {
     if (!current) return;
     const url = `${window.location.origin}${window.location.pathname}`

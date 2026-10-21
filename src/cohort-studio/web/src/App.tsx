@@ -41,18 +41,17 @@ function VersionFooter() {
   const update = async () => {
     setUpdating(true);
     try {
-      // Read the baseline at click time; initial version discovery may still
-      // be pending, so comparing against an empty state could reload too soon.
+
       const before = (await api.version()).sha;
       setSha(before);
       await api.adminUpdate();
-      // Poll until the server restarts on new code, then reload the page.
+
       for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 5000));
         try {
           const v = await api.version();
           if (v.sha !== before) { window.location.reload(); return; }
-        } catch { /* server restarting */ }
+        } catch {  }
       }
     } finally {
       setUpdating(false);
@@ -88,7 +87,6 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const alerts = useWorkflowAlerts();
 
-  // ⌘K / Ctrl-K opens the command palette from anywhere.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -103,26 +101,22 @@ export default function App() {
   useEffect(() => {
     apiClient.config().then((c) => setPalette(c.chart_palette))
       .catch(() => undefined);
-    // Load workflow jobs once for the running-count badge; the Workflows
-    // view refreshes on its own and has a manual Refresh button.
+
     api.workflows().then(setWorkflows).catch(() => undefined);
   }, []);
   const pollRef = useRef<number>();
 
-  // ---- datasource discovery (poll until the wb resource cache warms) ----
   useEffect(() => {
     const poll = async () => {
       try {
         const out = await api.datasources();
         setSources(out.sources);
         if (out.ready) setReady(true);
-        // keep polling while empty: on Workbench VMs the wb CLI often
-        // is not logged in yet when the app starts (backend retries too).
-        // Catalog discovery lists S3 folders in the background.
+
         if (out.ready && out.sources.length > 0 && !out.catalogs_pending) {
           window.clearInterval(pollRef.current);
         }
-      } catch { /* backend still starting */ }
+      } catch {  }
     };
     poll();
     pollRef.current = window.setInterval(poll, 3000);
@@ -145,7 +139,6 @@ export default function App() {
       .finally(() => setActivity(""));
   }, [sourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ------------------------------------------------- dataset lifecycle ----
   const openResult = (
     opened: OpenResult, title: string,
     sourceRef?: Dataset["sourceRef"],
@@ -173,8 +166,6 @@ export default function App() {
     });
   };
 
-  // Open a specific table directly (used by the command palette) without
-  // routing through the two-step sidebar source/table selection.
   const openTableDirect = async (src: Source, tbl: string) => {
     setActivity(`Loading ${tbl}…`);
     setError("");
@@ -249,8 +240,6 @@ export default function App() {
     }
   };
 
-  // Share links: #view=<kind>:<resource>:<name> loads a saved view once
-  // datasources are ready (resolving before that races the empty list).
   const hashLoaded = useRef(false);
   useEffect(() => {
     if (!ready || hashLoaded.current) return;
@@ -266,7 +255,7 @@ export default function App() {
     setError("");
     try {
       const opened = await api.join(p.baseId, p.steps);
-      // Joined tab is derived (no single datasource) → no sourceRef.
+
       openResult(opened, opened.source.split(" + ").map(
         (x) => x.split("/").pop()?.trim()).join(" + "));
       const { join } = opened;
@@ -302,20 +291,14 @@ export default function App() {
         ? { page: 0, ...changes } : {}) } : d));
   }, []);
 
-  // ---------------- one round trip per state change, per dataset ----------
   const activeDs = datasets[active];
 
-  // Is the active dataset the output of a workflow job that is still
-  // running? Match on the S3 resource UUID (the bucket a job writes to);
-  // if the job reports an output path, require the loaded table to sit
-  // under it, otherwise fall back to the bucket-level match.
   const TERMINAL = new Set(
     ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);
   const dependentJob = (() => {
     const ref = activeDs?.sourceRef;
     if (!ref || ref.kind !== "s3" || !workflows) return null;
-    // Restored saved-view tabs have no uuid on the ref; resolve it from
-    // the live sources list by resource id.
+
     const uuid = ref.uuid
       ?? sources.find((s) => s.id === ref.resource_id)?.uuid;
     if (!uuid) return null;
@@ -341,7 +324,6 @@ export default function App() {
   }, [activeDs?.id, activeDs?.filters, activeDs?.charts, activeDs?.page]);
   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Command palette entries, built from state already in hand (no fetches).
   const commands: Command[] = [
     ...(["explore", "omop", "workflows", "lineage", "settings"] as const).map((v) => ({
       id: `view:${v}`, group: "Go to",
@@ -490,8 +472,7 @@ export default function App() {
         <div className="content">
           <div hidden={view !== "omop"}>
             <OmopBuilder sources={sources} onOpen={(opened, title) => {
-              // A new spec can have the same name as an earlier cohort.
-              // Replace that tab instead of keeping its old dataset and count.
+
               openResult(opened, title, undefined,
                 { filters: [], charts: autoCharts(opened.columns) });
               setView("explore");

@@ -1,18 +1,3 @@
-"""DuckDB-backed cross-filter aggregation — a faster path for large frames.
-
-pandas stays the backbone (datasets.py); this mirrors its aggregation in
-DuckDB SQL over the in-memory frame (zero-copy via DuckDB's pandas scan)
-so the O(n) work — filtering, group/count, binning, paging — runs in a
-vectorised columnar engine. It kicks in only above DUCKDB_AGG_ROWS; below
-that pandas is already sub-100ms and simpler.
-
-Output is byte-for-byte identical to datasets.py for the deterministic
-aggregates (counts, bar, histogram, heatmap, rows) — enforced by parity
-tests. Scatter uses DuckDB reservoir sampling, so only its shape matches.
-The small tail work (top-N float sort, "Other" bucket) stays in Python to
-match pandas exactly.
-"""
-
 import os
 
 import duckdb
@@ -20,21 +5,18 @@ import numpy as np
 
 import queries
 
-# Hand large frames to DuckDB; keep small ones on the (simpler) pandas path.
 DUCKDB_AGG_ROWS = int(os.environ.get("STUDIO_DUCKDB_AGG_ROWS", "50000"))
 
 BAR_TOP_N = 12
 HIST_BINS = 24
 SCATTER_SAMPLE = 2000
 
-
 def _q(col: str) -> str:
-    """Quote an identifier for DuckDB (double-quotes, escaped)."""
+
     return '"' + col.replace('"', '""') + '"'
 
-
 def _where(filters: list[dict], columns: set) -> tuple[str, list]:
-    """Build a WHERE clause + params mirroring datasets.apply_filters."""
+
     clauses, params = [], []
     for f in filters:
         col = f.get("column")
@@ -52,7 +34,6 @@ def _where(filters: list[dict], columns: set) -> tuple[str, list]:
                 params.extend([float(lo), float(hi)])
     return (" AND ".join(clauses) if clauses else "TRUE"), params
 
-
 class _Agg:
     def __init__(self, con, where: str, params: list):
         self.con = con
@@ -65,10 +46,9 @@ class _Agg:
     def all(self, sql: str, params: list):
         return self.con.execute(sql, params).fetchall()
 
-
 def _bar(agg: _Agg, x: str) -> dict:
     qx = _q(x)
-    # Full (unfiltered) top categories + non-null total.
+
     full_top = agg.all(
         f"SELECT CAST({qx} AS VARCHAR) v, COUNT(*) c FROM t "
         f"WHERE {qx} IS NOT NULL GROUP BY v ORDER BY c DESC, v LIMIT {BAR_TOP_N}",
@@ -82,7 +62,6 @@ def _bar(agg: _Agg, x: str) -> dict:
         cats_sorted = cats
     full_counts = {r[0]: int(r[1]) for r in full_top}
 
-    # Selected (filtered) counts for the same categories + filtered total.
     sel_total = agg.one(
         f"SELECT COUNT(*) FROM t WHERE ({agg.where}) AND {qx} IS NOT NULL",
         agg.params)[0]
@@ -104,7 +83,6 @@ def _bar(agg: _Agg, x: str) -> dict:
                      "selected": int(other_sel)})
     return {"kind": "bar", "x": x, "data": data}
 
-
 def _histogram(agg: _Agg, x: str) -> dict:
     qx = _q(x)
     mn, mx = agg.one(
@@ -115,7 +93,7 @@ def _histogram(agg: _Agg, x: str) -> dict:
     edges = np.histogram_bin_edges([mn, mx], bins=HIST_BINS, range=(mn, mx))
     mn_e, mx_e = float(edges[0]), float(edges[-1])
     width = (mx_e - mn_e) / HIST_BINS or 1.0
-    # bucket = floor((v - min) / width), clamped to [0, BINS-1]
+
     bucket = (f"LEAST({HIST_BINS - 1}, GREATEST(0, "
               f"CAST(FLOOR((TRY_CAST({qx} AS DOUBLE) - {mn_e}) / {width}) "
               f"AS BIGINT)))")
@@ -134,7 +112,6 @@ def _histogram(agg: _Agg, x: str) -> dict:
             for i in range(HIST_BINS)]
     return {"kind": "histogram", "x": x, "data": data}
 
-
 def _scatter(agg: _Agg, x: str, y: str) -> dict:
     qx, qy = _q(x), _q(y)
     val = (f"SELECT TRY_CAST({qx} AS DOUBLE) a, TRY_CAST({qy} AS DOUBLE) b "
@@ -150,7 +127,6 @@ def _scatter(agg: _Agg, x: str, y: str) -> dict:
     return {"kind": "scatter", "x": x, "y": y,
             "data": [[float(a), float(b)] for a, b in rows]}
 
-
 def _heatmap(agg: _Agg, x: str, y: str) -> dict:
     qx, qy = _q(x), _q(y)
     rows = agg.all(
@@ -159,7 +135,6 @@ def _heatmap(agg: _Agg, x: str, y: str) -> dict:
         f"GROUP BY a, b ORDER BY c DESC, a, b LIMIT 400", agg.params)
     return {"kind": "heatmap", "x": x, "y": y,
             "data": [[a, b, int(c)] for a, b, c in rows]}
-
 
 def _chart(agg: _Agg, chart: dict, columns: set) -> dict:
     kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
@@ -175,20 +150,15 @@ def _chart(agg: _Agg, chart: dict, columns: set) -> dict:
         return _heatmap(agg, x, y)
     return {"kind": kind, "x": x, "data": []}
 
-
 def should_use(df) -> bool:
     return len(df) >= DUCKDB_AGG_ROWS
 
-
 def query(df, filters: list[dict], chart_specs: list[dict],
           page: int, page_size: int) -> dict:
-    """DuckDB equivalent of datasets.query — identical response shape."""
+
     columns = set(df.columns)
     where, params = _where(filters, columns)
-    # Add a positional column so the rows page has a deterministic ORDER BY —
-    # SQL row order is undefined without one once DuckDB parallelises a scan.
-    # Pick a sentinel name that can't collide with a real column, and attach
-    # it to a shallow copy (one int column, no data-block copy).
+
     pos = "__pos__"
     while pos in columns:
         pos += "_"

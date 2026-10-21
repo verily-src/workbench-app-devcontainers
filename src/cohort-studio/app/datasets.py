@@ -1,11 +1,3 @@
-"""In-memory dataset store and server-side cross-filter aggregation.
-
-The frontend is thin: it sends the current filter set and the list of
-charts it is showing, and gets back everything it needs to render in a
-single round trip — counts, per-chart aggregates (full cohort and
-filtered cohort), and a page of rows. All statistics stay server-side.
-"""
-
 import threading
 import time
 import uuid
@@ -25,10 +17,8 @@ SCATTER_SAMPLE = 2000
 _store: dict[str, dict] = {}
 _lock = threading.Lock()
 
-
 class DatasetNotFound(KeyError):
     pass
-
 
 def _evict():
     now = time.monotonic()
@@ -40,13 +30,9 @@ def _evict():
         oldest = min(_store, key=lambda k: _store[k]["created"])
         del _store[oldest]
 
-
 def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
                  capped: bool | None = None) -> dict:
-    """`origin` describes where the frame was read from, e.g.
-    {"kind": "aurora", "resource_id", "schema", "table"}; joins push down
-    to Aurora only for such datasets. `capped` marks a frame that may be
-    missing rows; by default, one that reached the row cap."""
+
     if capped is None:
         capped = len(df) >= queries.ROW_CAP
     with _lock:
@@ -57,31 +43,25 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
     return {"dataset_id": dataset_id, "source": source,
             "rows": len(df), "columns": profile_columns(df)}
 
-
 def get(dataset_id: str) -> dict:
     try:
         return _store[dataset_id]
     except KeyError:
         raise DatasetNotFound(dataset_id)
 
-
 def close_dataset(dataset_id: str):
     with _lock:
         _store.pop(dataset_id, None)
 
-
 def set_column(dataset_id: str, name: str, series) -> dict:
-    """Add or replace a column on a dataset. Copies the frame first so a
-    derived column never mutates a DataFrame shared with the engine cache
-    (Aurora/S3 reads are cached and handed out by reference)."""
+
     with _lock:
         ds = get(dataset_id)
         df = ds["df"].copy()
         df[name] = series
         ds["df"] = df
-        ds["origin"] = None  # no longer the table as stored in the source
+        ds["origin"] = None
     return {"name": name, "rows": len(df), "columns": profile_columns(df)}
-
 
 def profile_columns(df: pd.DataFrame) -> list[dict]:
     kinds = queries.infer_filter_kinds(df)
@@ -100,7 +80,6 @@ def profile_columns(df: pd.DataFrame) -> list[dict]:
         profile.append(entry)
     return profile
 
-
 def apply_filters(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
     for f in filters:
         col = f.get("column")
@@ -113,7 +92,6 @@ def apply_filters(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
             if lo is not None and hi is not None:
                 df = df[df[col].between(lo, hi)]
     return df
-
 
 def _bar_aggregate(full: pd.DataFrame, filt: pd.DataFrame, x: str) -> dict:
     counts = full[x].dropna().astype(str).value_counts()
@@ -131,12 +109,9 @@ def _bar_aggregate(full: pd.DataFrame, filt: pd.DataFrame, x: str) -> dict:
                      "selected": int(selected.reindex(rest).fillna(0).sum())})
     return {"kind": "bar", "x": x, "data": rows}
 
-
 def _histogram_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
                          x: str) -> dict:
-    # Coerce rather than cast: a non-numeric column (e.g. a chart kind
-    # switched to histogram on a categorical field) yields an empty
-    # histogram instead of raising and 500-ing the whole query.
+
     values = pd.to_numeric(full[x], errors="coerce").dropna()
     if values.empty:
         return {"kind": "histogram", "x": x, "data": []}
@@ -148,10 +123,8 @@ def _histogram_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
             for i in range(len(counts))]
     return {"kind": "histogram", "x": x, "data": data}
 
-
 def _scatter_aggregate(filt: pd.DataFrame, x: str, y: str) -> dict:
-    # Coerce both axes: a scatter over a non-numeric column drops those
-    # points instead of raising and 500-ing the query.
+
     sub = pd.DataFrame({x: pd.to_numeric(filt[x], errors="coerce"),
                         y: pd.to_numeric(filt[y], errors="coerce")}).dropna()
     if len(sub) > SCATTER_SAMPLE:
@@ -159,14 +132,12 @@ def _scatter_aggregate(filt: pd.DataFrame, x: str, y: str) -> dict:
     return {"kind": "scatter", "x": x, "y": y,
             "data": sub.values.tolist()}
 
-
 def _heatmap_aggregate(filt: pd.DataFrame, x: str, y: str) -> dict:
     counts = (filt.dropna(subset=[x, y]).astype({x: str, y: str})
               .groupby([x, y], observed=True).size().reset_index(name="n"))
     counts = counts.nlargest(400, "n")
     return {"kind": "heatmap", "x": x, "y": y,
             "data": counts.values.tolist()}
-
 
 def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
                     chart: dict) -> dict:
@@ -183,18 +154,16 @@ def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
         return _heatmap_aggregate(filt, x, y)
     return {"kind": kind, "x": x, "data": []}
 
-
 def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
           page: int = 0, page_size: int = 50) -> dict:
     ds = get(dataset_id)
     full = ds["df"]
-    # Large frames take the DuckDB aggregation path (same response shape);
-    # small frames stay on pandas, which is already fast and simpler.
+
     import agg_duck
     if agg_duck.should_use(full):
         try:
             return agg_duck.query(full, filters, chart_specs, page, page_size)
-        except Exception as e:  # never fail the query — fall back to pandas
+        except Exception as e:
             import logging
             logging.getLogger(__name__).warning(
                 "DuckDB agg path failed, falling back to pandas: %s", e)

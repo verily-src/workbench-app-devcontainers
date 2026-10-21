@@ -1,4 +1,3 @@
-# Build instructions for both services. Cohort Studio's image is built from its own template.
 services:
   browser:
     build:

@@ -13,7 +13,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       detail = Array.isArray(body.detail)
         ? body.detail.map((issue: { msg?: string }) => issue.msg || "Invalid request").join("; ")
         : body.detail ?? detail;
-    } catch { /* non-JSON error body */ }
+    } catch {  }
     throw new Error(detail);
   }
   return resp.json() as Promise<T>;
@@ -50,7 +50,7 @@ export interface AppConfig {
   llm: {
     provider: Provider;
     providers: Record<Provider, ProviderConfig>;
-    // Flattened active-provider fields for convenience.
+
     model: string;
     api_key_set: boolean;
     api_key_hint: string | null;

@@ -16,3 +16,5 @@
 ## Project memory
 
 For Cohort Studio work, read `src/cohort-studio/docs/PROJECT_STATE.md` first. Keep it current when verified project state changes; record evidence and limitations, and do not treat unverified deployment or test status as complete. Claude Code should use the same file via the root `CLAUDE.md` pointer.
+
+Keep `src/cohort-studio/docs/architecture.md` as the single maintained architecture reference. Update it when an architectural decision changes. Prefer E2E tests at the real user boundary before lower-level tests. Keep source comments sparse; add them only for required machine directives, legal notices, or runtime tool docstrings.

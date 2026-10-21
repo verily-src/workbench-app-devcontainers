@@ -1,19 +1,3 @@
-"""Notebook-style joins (Metabase-like) over open datasets.
-
-A join is a base dataset plus ordered steps. Each step joins one more
-dataset onto the result so far, on one or more AND-ed conditions, and
-brings in a chosen subset of its columns named `<alias> → <column>`.
-Semi/anti joins keep only base rows with / without a match — the cohort
-"has a visit" / "has no visit" questions — and add no columns.
-
-plan() checks a pipeline without running it; run(), preview() and
-validate() all go through it. When every input is an untouched table
-load from one Aurora database, the whole pipeline runs as one Postgres
-query over the full tables (CTE s0 = base table, s<i> = step i over
-s<i-1>). Anything else runs in DuckDB over the in-memory frames, which
-are handed over zero-copy, so a step costs one SQL query.
-"""
-
 import hashlib
 import re
 
@@ -26,35 +10,30 @@ import queries
 
 HOWS = {"inner": "INNER JOIN", "left": "LEFT JOIN", "right": "RIGHT JOIN",
         "full": "FULL OUTER JOIN", "semi": "SEMI JOIN", "anti": "ANTI JOIN"}
-# The pre-notebook API called a full outer join "outer".
+
 HOW_ALIASES = {"outer": "full"}
 OPS = ("=", "!=", "<", "<=", ">", ">=")
 MAX_STEPS = 6
 PREVIEW_ROWS = 20
 ARROW = " → "
 SUGGEST_SAMPLE = 5000
-# A step that more than doubles the rows almost always joined on a key
-# that repeats on the right (one sample, many visits).
+
 FANOUT_RATIO = 2.0
 PG_SCHEMA = "public"
 PG_IDENT_BYTES = 63
 PREVIEW_TIMEOUT_MS = 10_000
-# Below the app proxy's ~60 s limit, with room for the in-memory retry.
-RUN_TIMEOUT_MS = 40_000
-_NO_PARAMS = {"no_parameters": True}  # identifiers may contain '%'
 
+RUN_TIMEOUT_MS = 40_000
+_NO_PARAMS = {"no_parameters": True}
 
 class JoinTimeout(RuntimeError):
     pass
 
-
 class JoinEngineError(RuntimeError):
     pass
 
-
 def _q(ident: str) -> str:
     return '"' + str(ident).replace('"', '""') + '"'
-
 
 def _kind(series: pd.Series) -> str:
     if pd.api.types.is_bool_dtype(series):
@@ -65,18 +44,15 @@ def _kind(series: pd.Series) -> str:
         return "time"
     return "text"
 
-
 def aurora_origin(resource_id: str, table: str) -> dict:
-    """Origin of a dataset read with queries.fetch_table (public schema)."""
+
     return {"kind": "aurora", "resource_id": resource_id,
             "schema": PG_SCHEMA, "table": table}
-
 
 def default_alias(source: str) -> str:
     stem = str(source).split("/")[-1].strip()
     stem = re.sub(r"\.(parquet|csv|tsv|txt|json|ndjson)$", "", stem, flags=re.I)
     return stem or "joined"
-
 
 def _output_name(alias: str, col: str, taken: set[str]) -> str:
     name, n = f"{alias}{ARROW}{col}", 2
@@ -85,10 +61,8 @@ def _output_name(alias: str, col: str, taken: set[str]) -> str:
     taken.add(name)
     return name
 
-
 def _pg_name(name: str, used: set[str]) -> str:
-    """Postgres silently cuts identifiers at 63 bytes, which can merge two
-    long `alias → column` names. Cut them here instead, with a hash suffix."""
+
     raw = name.encode()
     if len(raw) <= PG_IDENT_BYTES and name not in used:
         used.add(name)
@@ -102,12 +76,9 @@ def _pg_name(name: str, used: set[str]) -> str:
             return candidate
         n += 1
 
-
-# ------------------------------------------------------------------ plan
-
 def _check_condition(cond: dict, left: dict[str, str], right: dict[str, str],
                      step_no: int) -> tuple[str | None, str | None, dict | None]:
-    """(problem, note, checked condition) for one condition."""
+
     lcol, rcol, op = cond.get("left"), cond.get("right"), cond.get("op", "=")
     if op not in OPS:
         return f"Step {step_no}: operator must be one of {', '.join(OPS)}.", None, None
@@ -124,7 +95,6 @@ def _check_condition(cond: dict, left: dict[str, str], right: dict[str, str],
         return (f"Step {step_no}: can't compare {lcol!r} ({lk}) "
                 f"{op} {rcol!r} ({rk})."), None, None
     return None, f"{lcol} ({lk}) and {rcol} ({rk}) compared as text", checked
-
 
 def _plan_step(step: dict, left: dict[str, str], right_ds: dict,
                step_no: int) -> dict:
@@ -169,10 +139,8 @@ def _plan_step(step: dict, left: dict[str, str], right_ds: dict,
             "out": out, "conds": conds, "cols": cols, "notes": notes,
             "checks": checks, "problems": problems, "errors": errors}
 
-
 def plan(base_id: str, steps: list[dict]) -> dict:
-    """Check a pipeline without running it. Every problem is collected
-    (validate() reports them all); run() raises the first one."""
+
     problems = []
     if not steps:
         problems.append("Add at least one join step.")
@@ -190,15 +158,12 @@ def plan(base_id: str, steps: list[dict]) -> dict:
     out["engine"], out["engine_reason"] = _engine(out)
     return out
 
-
 def _first_error(p: dict) -> str | None:
     return next(iter(p["problems"] + [e for s in p["steps"] for e in s["errors"]]),
                 None)
 
-
 def _engine(p: dict) -> tuple[str, str]:
-    """("aurora" | "duckdb", why). Pushdown needs every input to be an
-    untouched table load from the same Aurora database."""
+
     origins = [ds.get("origin") or {} for ds in
                [p["base"]] + [s["ds"] for s in p["steps"]]]
     if any(o.get("kind") != "aurora" for o in origins):
@@ -210,15 +175,12 @@ def _engine(p: dict) -> tuple[str, str]:
         return "duckdb", "Postgres runs full joins on = conditions only."
     return "aurora", f"All tables are in Aurora database {origins[0]['resource_id']}."
 
-
 def _capped_inputs(p: dict) -> list[str]:
     inputs = [p["base"]] + [s["ds"] for s in p["steps"]]
     return list(dict.fromkeys(ds["source"] for ds in inputs if ds.get("capped")))
 
-
 def validate(base_id: str, steps: list[dict]) -> dict:
-    """Problems per step and per condition, and the engine that would run,
-    without executing anything."""
+
     p = plan(base_id, steps)
     capped = _capped_inputs(p) if p["engine"] == "duckdb" else []
     return {"ok": _first_error(p) is None, "engine": p["engine"],
@@ -227,21 +189,15 @@ def validate(base_id: str, steps: list[dict]) -> dict:
             "steps": [{"problems": s["problems"], "notes": s["notes"],
                        "conditions": s["checks"]} for s in p["steps"]]}
 
-
-# ------------------------------------------------------------------- SQL
-
 def _step_sql(step: dict, l_from: str, r_from: str,
               names: dict[str, str] | None = None) -> str:
-    """One step as a SELECT over l (result so far) and r (joined table).
-    `names` maps logical column names to Postgres-safe ones; without it
-    the SQL is DuckDB's."""
+
     pg = names is not None
     n = names.__getitem__ if pg else (lambda c: c)
     on = []
     for c in step["conds"]:
         lref, rref = f"l.{_q(n(c['left']))}", f"r.{_q(c['right'])}"
-        # Postgres has no implicit uuid/date = text: "text"-kind pairs are
-        # compared as text too (a no-op for real text columns).
+
         if c["cast"] or (pg and c["kinds"] == ("text", "text")):
             t = "TEXT" if pg else "VARCHAR"
             lref, rref = f"CAST({lref} AS {t})", f"CAST({rref} AS {t})"
@@ -255,15 +211,12 @@ def _step_sql(step: dict, l_from: str, r_from: str,
                 f"(SELECT 1 FROM {r_from} AS r WHERE {cond})")
     return f"SELECT {cols} FROM {l_from} AS l {HOWS[step['how']]} {r_from} AS r ON {cond}"
 
-
 def _table_ref(ds: dict) -> str:
     o = ds["origin"]
     return f"{_q(o.get('schema') or PG_SCHEMA)}.{_q(o['table'])}"
 
-
 def aurora_sql(p: dict) -> dict:
-    """The pipeline as Postgres CTEs. Returns the CTEs, the logical → SQL
-    column name map, and count/select builders."""
+
     used: set[str] = set()
     names = {c: _pg_name(c, used) for c in p["steps"][0]["left"]}
     base_cols = ", ".join(_q(c) if names[c] == c else f"{_q(c)} AS {_q(names[c])}"
@@ -283,9 +236,6 @@ def aurora_sql(p: dict) -> dict:
             "count": lambda i: f"{with_(i)} SELECT count(*) FROM s{i}",
             "select": lambda limit: f"{with_(last)} SELECT * FROM s{last} LIMIT {int(limit)}"}
 
-
-# ------------------------------------------------------------------- run
-
 def _step_stats(before: int, right_rows: int, total: int, cap: int) -> dict:
     growth = round(total / before, 2) if before else None
     return {"right_rows": int(right_rows), "rows": int(total),
@@ -293,13 +243,11 @@ def _step_stats(before: int, right_rows: int, total: int, cap: int) -> dict:
             "growth": growth,
             "fanout": growth is not None and growth > FANOUT_RATIO}
 
-
 def _finish(stats: dict, rows: int) -> dict:
     last = stats["steps"][-1]
     stats.update(rows=rows, total_rows=last["rows"],
                  truncated=any(s["truncated"] for s in stats["steps"]))
     return stats
-
 
 def _run_duckdb(p: dict, cap: int) -> dict:
     frame = p["base"]["df"]
@@ -326,18 +274,15 @@ def _run_duckdb(p: dict, cap: int) -> dict:
             f"(capped at {queries.ROW_CAP:,}) — results may be incomplete.")
     return {"df": frame, "stats": _finish(stats, len(frame))}
 
-
 def _aurora_error(e: Exception, timeout_ms: int) -> Exception:
     orig = getattr(e, "orig", None) or e
     if getattr(orig, "sqlstate", None) == "57014":
         return JoinTimeout(f"The join took longer than {timeout_ms // 1000} s in Aurora.")
     return JoinEngineError("Aurora: " + str(orig).split("\n")[0][:300])
 
-
 def _run_aurora(p: dict, cap: int, timeout_ms: int,
                 fetch: int | None = None) -> dict:
-    """Run the pipeline in Postgres. `fetch` limits the rows read back
-    (preview) without changing the counts."""
+
     sql = aurora_sql(p)
     engine = db.get_engine_for_resource(p["base"]["origin"]["resource_id"])
     try:
@@ -370,7 +315,6 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
              "notes": notes, "capped_inputs": []}
     return {"df": df, "stats": _finish(stats, min(before, cap))}
 
-
 def _checked_plan(base_id: str, steps: list[dict]) -> dict:
     if not steps:
         raise ValueError("Add at least one join step.")
@@ -382,10 +326,8 @@ def _checked_plan(base_id: str, steps: list[dict]) -> dict:
         raise ValueError(error)
     return p
 
-
 def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP) -> dict:
-    """Execute the join pipeline. Returns the (capped) frame and stats.
-    An Aurora failure falls back to the in-memory path, with a note."""
+
     p = _checked_plan(base_id, steps)
     if p["engine"] == "aurora":
         try:
@@ -396,10 +338,8 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP) -> dict:
             return out
     return _run_duckdb(p, cap)
 
-
 def preview(base_id: str, steps: list[dict]) -> dict:
-    """Stats plus a sample. On Aurora the counts run under a statement
-    timeout; JoinTimeout is raised when they don't finish."""
+
     p = _checked_plan(base_id, steps)
     if p["engine"] == "aurora":
         try:
@@ -416,10 +356,8 @@ def preview(base_id: str, steps: list[dict]) -> dict:
     return {**out["stats"], "columns": list(df.columns),
             "sample": df.astype(object).where(df.notna(), None).values.tolist()}
 
-
 def suggest(left_id: str, right_id: str, limit: int = 5) -> list[dict]:
-    """Likely key pairs: matching names (incl. `id` ↔ `<table>_id`),
-    compatible types, scored by how many left values appear on the right."""
+
     left_ds, right_ds = datasets.get(left_id), datasets.get(right_id)
     left, right = left_ds["df"], right_ds["df"]
     rname = re.sub(r"[^a-z0-9]", "", default_alias(right_ds["source"]).lower()).removesuffix("s")

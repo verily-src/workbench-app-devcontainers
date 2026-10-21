@@ -14,8 +14,7 @@ export function OmopBuilder({ sources, onOpen }: {
 }) {
   const aurora = sources.filter((s) => s.kind === "aurora");
   const [rid, setRid] = useState("");
-  // Remount the editor when the resource changes: rules and late responses
-  // must never be carried into a different database.
+
   return <section className="omop-builder" aria-label="OMOP cohort builder">
     <h2>OMOP cohorts</h2>
     <p className="settings-hint">Build a person cohort from clinical events in an OMOP database.</p>
@@ -68,7 +67,7 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
   const spec: OmopSpec = { criteria: rules.map(({ names: _names, ...rule }) => rule),
     require_observation: observed, demographics: demo };
   const changeRules = (next: Rule[]) => {
-    // The first included rule defines the index; it cannot be relative to itself.
+
     const first = next.findIndex((r) => !r.exclude);
     setRules(next.map((r, i) => i === first ? { ...r, index_relation: undefined } : r));
     setCount(null);
@@ -177,7 +176,7 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
                 const next = proposal.spec!;
                 changeRules(next.criteria.map((r) => ({ ...r, names: r.concept_ids.map((id) => proposal.concept_names?.[String(id)] || `Concept ${id}`) })));
                 setObserved(next.require_observation); setDemo(next.demographics);
-                // Count again after applying so displayed results always match the editor.
+
                 setCount(null); setProposal(null);
               }}>Apply proposed cohort</button>
             </div>}

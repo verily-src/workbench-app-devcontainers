@@ -70,9 +70,6 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
     }
   }
 
-  // A column is numeric when its server-inferred filter is a range.
-  // Histogram and scatter need numeric columns; offering them on a
-  // categorical field would coerce to empty (and used to 500 the query).
   const isNumeric = (name: string) =>
     dataset.columns.find((c) => c.name === name)?.filter_kind === "range";
   const allowedKinds = (spec: ChartSpec): ChartSpec["kind"][] => {
@@ -83,8 +80,7 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
     } else {
       base = isNumeric(spec.x) ? ["bar", "histogram"] : ["bar"];
     }
-    // Always keep the current kind selectable, even if a stale saved
-    // view carries one that no longer matches the column types.
+
     return base.includes(spec.kind) ? base : [spec.kind, ...base];
   };
 

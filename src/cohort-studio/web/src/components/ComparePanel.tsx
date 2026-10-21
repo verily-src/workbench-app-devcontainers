@@ -7,7 +7,6 @@ interface Props {
   onClose: () => void;
 }
 
-// Pseudo-cohorts always available alongside the user's saved ones.
 const CURRENT = "__current__";
 const REST = "__rest__";
 

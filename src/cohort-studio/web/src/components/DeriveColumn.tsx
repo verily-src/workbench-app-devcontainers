@@ -10,9 +10,6 @@ interface Props {
 
 type Op = "bin" | "formula" | "map";
 
-// Structured derived columns — no free-text formulas. Three shapes cover
-// the common cases: bin a number into ranges, arithmetic on columns, or
-// remap categorical values.
 export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
   const numeric = dataset.columns
     .filter((c) => c.filter_kind === "range").map((c) => c.name);
@@ -24,15 +21,14 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // bin
   const [binCol, setBinCol] = useState(numeric[0] ?? "");
   const [breaks, setBreaks] = useState("0, 18, 65, 120");
   const [labels, setLabels] = useState("");
-  // formula
+
   const [left, setLeft] = useState(numeric[0] ?? "");
   const [operator, setOperator] = useState("/");
   const [right, setRight] = useState(numeric[1] ?? numeric[0] ?? "");
-  // map
+
   const [mapCol, setMapCol] = useState(categorical[0] ?? "");
   const [mapText, setMapText] = useState("");
   const [mapDefault, setMapDefault] = useState("");

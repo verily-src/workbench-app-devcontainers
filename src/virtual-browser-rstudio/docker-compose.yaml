@@ -14,6 +14,8 @@ services:
     networks:
       - app-network
       - backend-network
+    security_opt:
+      - no-new-privileges:true
     environment:
       # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
       CHROME_CLI: "--kiosk http://application-server:8787"

@@ -19,6 +19,11 @@
       "version": "24.20.0"
     },
     "ghcr.io/anthropics/devcontainer-features/claude-code@sha256:cfc2e7d3e9fd3b9b01f8d5cb158508a884c8c0ede2e23ed10f32dea5d4ffe69a": {},
+    "./.devcontainer/features/jupyter": {
+      "installJupyterlab": true,
+      "cloudPlatform": "${templateOption:cloud}",
+      "configureJupyterlabAllowOrigin": "*"
+    },
     "./.devcontainer/features/gemini-cli": { "username": "jupyter" },
     "./.devcontainer/features/workbench-tools": {
       "cloud": "${templateOption:cloud}",

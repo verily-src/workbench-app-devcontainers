@@ -1,6 +1,6 @@
 # Cohort Studio project state
 
-Updated 2026-10-20. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
+Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
 
 ## Active project
 
@@ -15,7 +15,8 @@ Updated 2026-10-20. This is the shared project memory for Codex, Claude, Cursor,
 - `wb workspace describe` confirmed `bugbash-nextflowonaws`, UUID `5b932a68-43d4-432b-834c-9662e7dd0151`, server `dev-stable`, AWS environment `dev`.
 - `wb app config list` confirmed **Cohort Studio** uses this repository, branch `cohort-dashboard`, and path `src/cohort-studio`.
 - Latest `wb app list` reported **Cohort_Studio_EC2_MCP** stopped at [dev app](https://workbench-dev.verily.com/app/a54c0049-6905-46c3-93ad-2fe2973cf9b9/). The Oct 7 and Oct 20 Studio instances were also stopped. These are observations, not permanent state.
-- User requested deployment to the known dev app. Release preparation targets `cohort-dashboard`; remote head before publication was `5fc68f9`. Runtime deployment is not yet verified. The unrelated local `db.py` override and `.cursor/settings.json` are excluded from the release.
+- Published release **`c911229deb8dcac409880ba114bba7e36c2d0501`** to `origin/cohort-dashboard` (push succeeded). The unrelated local `db.py` override and `.cursor/settings.json` are excluded. The release snapshot with original db.py passed **294 tests in 27.90 s** before publication.
+- Deployment attempt: `wb app start --id=Cohort_Studio_EC2_MCP --workspace=bugbash-nextflowonaws` failed with `UnsupportedOperationException: Starting this type of app is not supported.` Start the AWS app through the Workbench UI. Its startup self-update should fetch the published branch; the in-app Update action is also available once running. Runtime SHA is **not verified**.
 - Browser automation has no available browser in this session. `wb app update` only supports GCP in the installed CLI. The app's HTTP update endpoint is behind the Workbench browser proxy. No remote update was sent.
 - The existing restart/update mechanism fetches the **pushed** branch. A local test pass does not update the dev instance.
 
@@ -56,7 +57,7 @@ Updated 2026-10-20. This is the shared project memory for Codex, Claude, Cursor,
 - In the isolated template, the proxy reaches the browser on port 3000. The backend stays on `backend-network`, with no published port. S3 imports and model calls run on the backend. MCP clients must have private network access; do not expose port 8080 to bypass isolation.
 
 1. Preserve the concurrent db.py local-mode edit and Cursor settings outside the release. GLM follow-up fixes and final local checks are complete.
-2. Publish the tested branch for `Cohort_Studio_EC2_MCP`, start/update the app, then verify `/api/version`, frontend, and real resource operations from inside the workspace.
+2. Branch publication is complete. Start/update `Cohort_Studio_EC2_MCP` through the UI, then verify `/api/version`, frontend, and real resource operations from inside the workspace. This installed CLI cannot start AWS apps.
 3. Real Aurora and `omop_load --resource-id` are not verified. Do not load/replace clinical schemas without a specific target and instruction.
 4. Full-size vocabulary search performance is unverified (ILIKE under timeout). Eunomia is a small synthetic fixture, not representative scale.
 5. OpenRouter and Bedrock have no live inference test here. Bedrock needs approved model access, IAM permissions, Region, and network reachability; Workbench resource profiles do not prove Bedrock access.
@@ -78,6 +79,7 @@ Updated 2026-10-20. This is the shared project memory for Codex, Claude, Cursor,
 - 2026-10-20: Added OpenRouter, Bedrock Converse, and specialized cohort assistant with workflow/app status tools. Used lower-cost subagents at user request.
 - 2026-10-20: Adopted uv and Pydantic preferences. Full suite passed. GLM max external review completed; follow-up fixes and final checks are recorded in REVIEW_2026-10-20.md. Release not performed.
 - 2026-10-20: Added generic S3-to-Aurora import CLI and hardened isolated-template build/smoke checks. Full suite passed (292). Recorded CMS SynPUF source ambiguity, failed Aurora network check, and missing Docker runtime. No cloud data load or release performed.
+- 2026-10-21: Published code release c911229 after 294 tests on the release snapshot. CLI start failed for the AWS app; UI start/update and runtime verification remain. Browser-sidecar template changes require a new instance, not an in-app code update.
 
 ### Concurrent work detected
 

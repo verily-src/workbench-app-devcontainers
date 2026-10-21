@@ -1,0 +1,18 @@
+[
+  {
+    "tag": "nemotron-3-nano:4b",
+    "name": "Nemotron 3 Nano 4B (experimental tool calling)",
+    "default_priority": 10,
+    "weights": "2.8 GB",
+    "gpu": "T4 16 GB (primary) or V100 16 GB",
+    "minimum_vram_mib": 15000
+  },
+  {
+    "tag": "nemotron-3.5-lightning:30b",
+    "name": "Nemotron 3.5 Lightning 30B",
+    "default_priority": 20,
+    "weights": "25 GB",
+    "gpu": "A100 40 GB (primary); A100 80 GB, H100 80 GB, or H100 80 GB MEGA",
+    "minimum_vram_mib": 40000
+  }
+]

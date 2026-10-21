@@ -18,19 +18,18 @@ if [[ ! "${CONTEXT_LENGTH}" =~ ^[1-9][0-9]*$ ]] || (( CONTEXT_LENGTH < 16384 ));
   exit 1
 fi
 
-# A path in this file selects another model store, such as a bucket mount at
-# /config/workspace/<bucket-resource>/<dir>. Its location depends on the
-# workspace, so it cannot be a compose default. It takes effect when the server
-# starts.
-readonly MODEL_STORE_FILE="${OPENCODE_HOME:-/config}/.opencode-model-store"
-if [[ -s "${MODEL_STORE_FILE}" ]]; then
-  OLLAMA_MODELS="$(tr -d '[:space:]' < "${MODEL_STORE_FILE}")"
-  if [[ "${OLLAMA_MODELS}" != /* || ! -d "${OLLAMA_MODELS}" ]]; then
-    echo "Model store '${OLLAMA_MODELS}' in ${MODEL_STORE_FILE} is not an existing absolute directory." >&2
-    echo "Check the bucket mount, or delete ${MODEL_STORE_FILE} to use the local store." >&2
-    exit 1
-  fi
+# Model store: an explicit path in /config/.opencode-model-store, else a bucket
+# mount that already holds every model this GPU needs, else the local store
+# (see find-model-store.sh). It takes effect when the server starts.
+MODEL_TAGS=()
+while IFS= read -r TAG; do
+  MODEL_TAGS+=("${TAG}")
+done < <(jq -r '.[].tag' <<< "${AVAILABLE_MODELS}")
+if [[ "${MODEL}" != "prompt" ]] && ! jq -e --arg model "${MODEL}" 'any(.tag == $model)' \
+  <<< "${AVAILABLE_MODELS}" > /dev/null; then
+  MODEL_TAGS+=("${MODEL}")
 fi
+OLLAMA_MODELS="$(OPENCODE_HOME="${OPENCODE_HOME:-/config}" "${SCRIPT_DIR}/find-model-store.sh" "${MODEL_TAGS[@]}")"
 
 export OLLAMA_HOST="${OLLAMA_URL}"
 export OLLAMA_MODELS="${OLLAMA_MODELS:-${OPENCODE_HOME:-/config}/.ollama/models}"

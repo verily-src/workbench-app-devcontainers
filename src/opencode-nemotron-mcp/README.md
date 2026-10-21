@@ -250,17 +250,29 @@ the same in both cases, because the weights are in VRAM once loaded. A store on
 a bucket can also be shared by several apps, and new apps do not need to
 download from the registry.
 
-To use one, write the store's mounted path to `/config/.opencode-model-store`
-and restart the app:
+**New apps find a store on their own.** At startup, if no store is set,
+`find-model-store.sh` looks through the workspace's bucket mounts, at
+`/config/workspace/<bucket-resource>` and one folder below it, for an Ollama
+store (`blobs/` and `manifests/`) that already holds every model this GPU needs.
+The first match, in name order, is used, and startup logs which one. If no
+store holds every model, the app uses `/config/.ollama/models` and downloads
+from the registry as before. A store missing a model is never chosen
+automatically, so the app doesn't write new downloads into a shared bucket you
+didn't pick.
+
+To pin a store, or use one deeper in a bucket, write its mounted path to
+`/config/.opencode-model-store` and restart the app:
 
 ```sh
 echo /config/workspace/<bucket-resource>/ollama-store > /config/.opencode-model-store
 ```
 
-The path depends on the workspace's bucket resource name, so it is not a compose
-default. It takes precedence over `OLLAMA_MODELS`. Startup fails with a clear
-message if the path is not an existing directory, for example when the bucket is
-not mounted. Delete the file and restart to return to `/config/.ollama/models`.
+The file takes precedence over the search and over `OLLAMA_MODELS`. Startup
+fails with a clear message if the path is not an existing directory, for
+example when the bucket is not mounted. Delete the file and restart to return to
+automatic selection. Set `OPENCODE_MODEL_STORE_SEARCH=off` in
+`docker-compose.yaml` to turn the search off, or to a directory to search there
+instead of `/config/workspace`.
 
 Populate the store once, from an app that has already pulled the models.
 Copy straight to the bucket with `gcloud storage`, not through the mount; it is
@@ -284,7 +296,8 @@ done
 ```
 
 Copy every model that is compatible with the target GPU (both catalog models on
-an A100/H100). A missing model is downloaded through the mount instead.
+an A100/H100); automatic selection needs all of them. With a pinned store, a
+missing model is downloaded through the mount instead.
 Use the registry builds that the app pulls, not separately downloaded GGUF
 files: the app depends on the registry build's chat template and tool support.
 

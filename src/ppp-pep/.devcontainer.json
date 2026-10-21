@@ -22,7 +22,8 @@
     "./.devcontainer/features/jupyter": {
       "installJupyterlab": true,
       "cloudPlatform": "${templateOption:cloud}",
-      "configureJupyterlabAllowOrigin": "*"
+      "configureJupyterlabAllowOrigin": "*",
+      "user": "jupyter"
     },
     "./.devcontainer/features/gemini-cli": { "username": "jupyter" },
     "./.devcontainer/features/workbench-tools": {

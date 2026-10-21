@@ -52,3 +52,43 @@ def test_infer_sees_columns_empty_in_first_N_rows(tmp_path):
         f"expected integer, got {by_name['late_populated'].type} — "
         f"did someone lower the sample_size back below {BLANK_ROWS}?"
     )
+
+
+def test_infer_from_join_omits_synthetic_rowid(monkeypatch):
+    """The join SELECT starts with a synthetic _rowid column. It must not
+    appear in the inferred schema: set_active_join_mapping adds its own
+    _rowid, and a second one makes SQLAlchemy raise InvalidRequestError.
+    """
+    import schema
+
+    class FakeCursor:
+        description = [type("Col", (), {"name": n}) for n in ("_rowid", "age")]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, *args):
+            pass
+
+        def fetchall(self):
+            return [(1, "40"), (2, "50")]
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(schema, "_connect_aurora", lambda resource_id: FakeConnection())
+    output_columns = [{"output": "age", "source_table": "t", "source_column": "age", "pg_type": "text"}]
+
+    mappings = schema.infer_from_join("db", "SELECT 1", output_columns)
+
+    assert [m.column for m in mappings] == ["age"]

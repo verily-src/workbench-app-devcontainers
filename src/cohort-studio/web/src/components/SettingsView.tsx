@@ -37,8 +37,6 @@ export function SettingsView(
     }).catch(() => undefined);
   }, []);
 
-  // Switching provider in the dropdown recalls that provider's saved
-  // model and clears the (per-provider) key entry box.
   const pickProvider = (p: Provider) => {
     setProvider(p);
     setModel(cfg?.llm.providers[p]?.model ?? "");
@@ -86,9 +84,6 @@ export function SettingsView(
 
   if (!cfg) return <div className="activity"><span className="pulse" />Loading settings…</div>;
 
-  // The page origin is the Workbench proxy URL, or the internal kiosk
-  // origin (application-server:8080) in the virtual-browser variant.
-  // Neither helps an agent, so lead with the in-workspace address.
   const mcpLocalUrl = `http://localhost:8080${cfg.mcp.path}`;
   const mcpPageUrl = `${window.location.origin}${cfg.mcp.path}`;
 

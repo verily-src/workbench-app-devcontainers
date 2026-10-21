@@ -1,14 +1,4 @@
 #!/bin/bash
-# Self-update: fetch the app's branch from GitHub, stage and validate it,
-# install its dependencies, activate its files, and restart the server.
-#
-# Exists to kill the slow iteration loop on Workbench VMs: app code is
-# baked into the image at VM creation and a new commit normally requires
-# a full VM recreate. With this script, restarting the VM (or calling
-# POST /api/admin/update) redeploys the branch in about a minute.
-#
-# Runs inside the application container. Invoked from postStartCommand on
-# every VM start and from the /api/admin/update endpoint.
 
 set -o errexit
 set -o nounset
@@ -23,8 +13,6 @@ LOCK_FILE="${UPDATE_LOCK_FILE:-/tmp/cohort-studio-self-update.lock}"
 
 log() { echo "[self-update $(date -u +%H:%M:%S)] $*"; }
 
-# flock is provided by util-linux in the Linux devcontainer image. Keep the
-# lock file in place: the kernel releases the advisory lock when fd 9 closes.
 if ! command -v flock >/dev/null 2>&1; then
   log "ERROR: flock is required for safe updates"
   exit 1
@@ -105,6 +93,4 @@ fi
 printf '%s\n' "${remote_sha}" > "${tmp}/APP_SHA"
 mv "${tmp}/APP_SHA" "${SHA_FILE}"
 log "Updated to ${remote_sha:0:9}; restarting server"
-# uvicorn is PID 1; the compose restart policy brings the container back
-# up on the new code. '|| true' because we may be killing our own parent.
 pkill -f uvicorn || true

@@ -15,7 +15,7 @@ function statusClass(status: string): string {
   if (s === "COMPLETED") return "wf-ok";
   if (s === "FAILED") return "wf-fail";
   if (s === "CANCELLED" || s === "CANCELED" || s === "DELETED") return "wf-dim";
-  return "wf-run";  // RUNNING, PENDING, STARTING, STOPPING…
+  return "wf-run";
 }
 
 const when = (iso: string | null) =>

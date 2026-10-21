@@ -9,8 +9,6 @@ interface Props {
   onPublished: () => void;
 }
 
-// Publishes a views-only DuckDB catalog (one view per data file) to
-// <folder>/_catalog/<name>.duckdb. Re-publishing the same name replaces it.
 export function PublishCatalog({ source, onToast, onPublished }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);

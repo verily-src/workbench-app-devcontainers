@@ -1,16 +1,16 @@
-"""Rebuild the OMOP test fixture: a 100-person subset of Eunomia GiBleed 5.5.
 
-    python app/tests/fixtures/omop/make_fixture.py [path/to/GiBleed_5.5.zip]
 
-Picks, deterministically, 40 persons with GI bleed (192671), 40 with a
-diclofenac exposure but no GI bleed, and 20 with neither (every Eunomia
-person has celecoxib or diclofenac, so those 20 are celecoxib users),
-and keeps every row of theirs. Vocabulary tables are kept whole (Eunomia's
-concept table has 445 rows) except concept_ancestor, which keeps the
-rows whose descendant occurs in the subset and whose ancestor is a known
-concept. Writes <table>.csv.gz (non-empty tables only) next to this
-script, gzip mtime 0 so a rebuild is byte-identical.
-"""
+
+
+
+
+
+
+
+
+
+
+
 
 import gzip
 import sys
@@ -21,10 +21,10 @@ import pandas as pd
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE.parents[2]))
 
-import omop_load  # noqa: E402
+import omop_load
 
 GI_BLEED = 192671
-DICLOFENAC = 1124300  # ingredient
+DICLOFENAC = 1124300
 VOCAB = {"concept", "vocabulary", "domain", "concept_class", "concept_relationship",
          "relationship", "concept_synonym", "cdm_source"}
 

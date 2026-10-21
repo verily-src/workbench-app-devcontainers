@@ -6,12 +6,10 @@ interface Props {
   value: string;
   options: ComboOption[];
   onChange: (id: string) => void;
-  label: string;          // accessible name
+  label: string;
   placeholder?: string;
 }
 
-// Searchable single-select (WAI-ARIA combobox + listbox). Typing filters
-// on label and hint; arrows move, Enter picks, Escape restores.
 export function Combobox({ value, options, onChange, label, placeholder }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");

@@ -1,5 +1,3 @@
-"""Read-only Workbench app listing for the cohort agent."""
-
 import json
 import re
 import subprocess
@@ -9,7 +7,6 @@ APP_LIST_TIMEOUT = 20
 MAX_STDOUT_CHARS = 1_000_000
 MAX_APPS = 50
 
-
 def _value(app: dict, *keys):
     for key in keys:
         value = app.get(key)
@@ -17,9 +14,8 @@ def _value(app: dict, *keys):
             return value
     return None
 
-
 def _public_app(app: dict) -> dict:
-    """Project only operational fields; never return arbitrary CLI JSON."""
+
     app_id = _value(app, "id", "appId", "resourceId")
     if not app_id:
         proxy_url = _value(app, "proxyUrl", "proxyURL")
@@ -35,9 +31,8 @@ def _public_app(app: dict) -> dict:
         "workspace_id": _value(app, "workspaceId", "workspace_id"),
     }
 
-
 def list_apps(limit: int = 20) -> dict:
-    """List current workspace apps using a fixed, read-only wb command."""
+
     limit = max(1, min(int(limit), MAX_APPS))
     try:
         result = subprocess.run(
@@ -55,7 +50,6 @@ def list_apps(limit: int = 20) -> dict:
                          if isinstance(a, dict)],
                 "truncated": len(raw) > limit}
     except Exception:
-        # Do not return CLI stdout/stderr: errors may include credentials or
-        # other workspace details. The operation is read-only and retryable.
+
         return {"available": False, "apps": [],
                 "error": "Workbench app listing is unavailable."}

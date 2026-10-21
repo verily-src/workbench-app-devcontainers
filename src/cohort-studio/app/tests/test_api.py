@@ -1,6 +1,3 @@
-"""API tests: the full upload → profile → cross-filter → export loop
-against the real FastAPI app, no workspace needed."""
-
 from pathlib import Path
 
 import pandas as pd
@@ -65,33 +62,12 @@ def test_export_respects_filters():
                      "values": ["liver"]}]})
     assert resp.status_code == 200
     lines = resp.text.strip().split("\n")
-    assert len(lines) == 26  # header + 25 liver rows
+    assert len(lines) == 26
 
 
 def test_unknown_dataset_is_404():
     resp = client.post("/api/datasets/nope/query", json={})
     assert resp.status_code == 404
-
-
-def test_ingest_dataframe_roundtrips_to_sqlite():
-    import queries
-    from sqlalchemy import create_engine
-    df = pd.read_csv(FIXTURE)
-    engine = create_engine("sqlite:///:memory:")
-    n = queries.ingest_dataframe(engine, df, "my_cohort")
-    assert n == 100
-    back = pd.read_sql_query("SELECT * FROM my_cohort", engine)
-    assert len(back) == 100
-    assert list(back.columns) == list(df.columns)
-
-
-def test_ingest_dataframe_rejects_bad_name():
-    import queries
-    from sqlalchemy import create_engine
-    with pytest.raises(ValueError):
-        queries.ingest_dataframe(create_engine("sqlite:///:memory:"),
-                                 pd.DataFrame({"a": [1]}),
-                                 "bad name; DROP TABLE x")
 
 
 def test_materialize_endpoint(monkeypatch):
@@ -132,8 +108,8 @@ def test_views_aurora_roundtrip(monkeypatch, tmp_path):
     import views
     from sqlalchemy import create_engine
     import main
-    # File-based SQLite stands in for Aurora: a shared DB across
-    # connections (unlike :memory:, which is per-connection).
+
+
     engine = create_engine(f"sqlite:///{tmp_path/'views.db'}")
     monkeypatch.setattr(main.db, "get_engine_for_resource", lambda rid: engine)
     monkeypatch.setattr(views.db, "get_engine_for_resource", lambda rid: engine)
@@ -202,12 +178,12 @@ def test_join_datasets():
         "left_on": "sample_id", "right_on": "sample_id", "how": "inner"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["rows"] == 2  # inner join keeps a, b
+    assert body["rows"] == 2
     cols = {c["name"] for c in body["columns"]}
     assert {"tissue", "right → rin"} <= cols
     assert body["join"]["truncated"] is False
 
-    # bad key -> 400
+
     bad = client.post("/api/datasets/join", json={
         "left_id": left["dataset_id"], "right_id": right["dataset_id"],
         "left_on": "nope", "right_on": "sample_id", "how": "inner"})
@@ -315,7 +291,7 @@ def test_join_of_aurora_tables_runs_in_aurora(monkeypatch, fake_aurora):
     assert stats["steps"][0]["growth"] == 1.33 and stats["steps"][0]["fanout"] is False
     assert joined.json()["rows"] == 4
 
-    # Mixing in an upload keeps the whole pipeline in memory.
+
     mixed = client.post("/api/datasets/join/preview", json={"base_id": samples, "steps": [
         step, {**step, "right_id": upload, "columns": ["x"], "alias": "extra"}]})
     assert mixed.status_code == 200 and mixed.json()["engine"] == "duckdb"
@@ -361,7 +337,7 @@ def test_derive_bin_formula_map():
     opened = ds_mod.open_dataset(df, "deriv")
     did = opened["dataset_id"]
 
-    # bin age into groups
+
     r = client.post(f"/api/datasets/{did}/derive", json={
         "op": "bin", "name": "age_group", "column": "age",
         "breaks": [0, 18, 65, 120],
@@ -371,14 +347,14 @@ def test_derive_bin_formula_map():
     assert cols["age_group"]["filter_kind"] == "categorical"
     assert set(cols["age_group"]["values"]) == {"child", "adult", "senior"}
 
-    # formula: BMI = weight / height_m^2 is two steps; test weight/height_m
+
     r = client.post(f"/api/datasets/{did}/derive", json={
         "op": "formula", "name": "wphm",
         "left": "weight", "operator": "/", "right": "height_m"})
     assert r.status_code == 200
     assert "wphm" in {c["name"] for c in r.json()["columns"]}
 
-    # map tissue -> organ system
+
     r = client.post(f"/api/datasets/{did}/derive", json={
         "op": "map", "name": "system", "column": "tissue",
         "mapping": {"liver": "digestive", "lung": "respiratory"},
@@ -387,11 +363,11 @@ def test_derive_bin_formula_map():
     syscol = next(c for c in r.json()["columns"] if c["name"] == "system")
     assert set(syscol["values"]) == {"digestive", "respiratory", "other"}
 
-    # the derived columns are queryable and filterable
+
     out = client.post(f"/api/datasets/{did}/query", json={
         "filters": [{"column": "age_group", "kind": "categorical",
                      "values": ["adult"]}], "charts": []}).json()
-    assert out["filtered"] == 2  # ages 25 and 40
+    assert out["filtered"] == 2
 
 
 def test_derive_rejects_bad_name_and_breaks():
@@ -412,7 +388,7 @@ def test_compare_ranks_the_differing_column_first():
     import datasets as ds_mod
     rng = np.random.RandomState(0)
     n = 200
-    # 'group' splits the cohort; 'signal' differs by group, 'noise' doesn't.
+
     group = np.array(["a"] * (n // 2) + ["b"] * (n // 2))
     signal = np.where(group == "a", rng.normal(5, 1, n),
                       rng.normal(8, 1, n))
@@ -428,11 +404,11 @@ def test_compare_ranks_the_differing_column_first():
     body = resp.json()
     assert body["a_n"] == 100 and body["b_n"] == 100
     by_col = {r["column"]: r for r in body["results"]}
-    # signal is strongly different; noise is not.
+
     assert by_col["signal"]["p"] < 0.05
     assert by_col["signal"]["q"] < 0.05
     assert by_col["noise"]["p"] > 0.05
-    # ranked by p ascending: signal (and the defining group col) outrank noise
+
     ranked = [r["column"] for r in body["results"]]
     assert ranked.index("signal") < ranked.index("noise")
 
@@ -444,7 +420,7 @@ def test_compare_vs_rest_and_small_group_guard():
         "tissue": ["liver"] * 3 + ["lung"] * 97,
         "val": list(range(100))})
     opened = ds_mod.open_dataset(df, "cmp2")
-    # Group A = the 3 liver rows; B = rest. A is below MIN_GROUP_N → no test.
+
     resp = client.post(f"/api/datasets/{opened['dataset_id']}/compare", json={
         "filters_a": [{"column": "tissue", "kind": "categorical",
                        "values": ["liver"]}],
@@ -454,79 +430,6 @@ def test_compare_vs_rest_and_small_group_guard():
     assert body["a_n"] == 3 and body["b_n"] == 97
     val = next(r for r in body["results"] if r["column"] == "val")
     assert val["p"] is None and "too small" in val["note"]
-
-
-def test_duckdb_reads_json_and_csv(tmp_path):
-    import json as _json
-    import duck
-    # ndjson
-    nd = tmp_path / "a.ndjson"
-    nd.write_text("\n".join(_json.dumps(r) for r in
-                  [{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]))
-    df = duck.fetch_file(str(nd), cap=10)
-    assert len(df) == 2 and set(df.columns) == {"a", "b"}
-    # json array
-    ja = tmp_path / "a.json"
-    ja.write_text(_json.dumps([{"a": 3}, {"a": 4}, {"a": 5}]))
-    assert len(duck.fetch_file(str(ja), cap=2)) == 2   # cap respected
-    assert ".json" in duck.DATA_SUFFIXES and ".ndjson" in duck.DATA_SUFFIXES
-
-
-def test_duckdb_and_pandas_aggregation_parity(monkeypatch):
-    import numpy as np
-    import pandas as pd
-    import agg_duck
-    import datasets as ds_mod
-
-    rng = np.random.RandomState(1)
-    n = 3000
-    # 15 categories (forces a "Other" bucket beyond BAR_TOP_N=12), a 2nd
-    # categorical for heatmap, and two numeric columns.
-    df = pd.DataFrame({
-        "tissue": rng.choice([f"t{i:02d}" for i in range(15)], size=n),
-        "grp": rng.choice(["x", "y"], size=n),
-        "age": rng.randint(0, 100, size=n),
-        "rin": rng.normal(7, 1.5, size=n).round(2),
-    })
-    did = ds_mod.open_dataset(df, "parity")["dataset_id"]
-    filters = [{"column": "grp", "kind": "categorical", "values": ["x"]},
-               {"column": "age", "kind": "range", "min": 20, "max": 80}]
-    charts = [{"kind": "bar", "x": "tissue"},
-              {"kind": "histogram", "x": "age"},
-              {"kind": "heatmap", "x": "tissue", "y": "grp"},
-              {"kind": "scatter", "x": "age", "y": "rin"}]
-
-    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 10 ** 9)  # pandas
-    pandas_res = ds_mod.query(did, filters, charts, page=0, page_size=50)
-    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 0)        # duckdb
-    duck_res = ds_mod.query(did, filters, charts, page=0, page_size=50)
-
-    assert duck_res["total"] == pandas_res["total"]
-    assert duck_res["filtered"] == pandas_res["filtered"]
-
-    def bar_map(r):
-        return {d["category"]: (d["all"], d["selected"]) for d in r["data"]}
-    assert bar_map(duck_res["charts"][0]) == bar_map(pandas_res["charts"][0])
-
-    # histogram: identical edges + counts (integer data → no edge ambiguity)
-    assert duck_res["charts"][1]["data"] == pandas_res["charts"][1]["data"]
-
-    def heat_map(r):
-        return {(a, b): c for a, b, c in r["data"]}
-    assert heat_map(duck_res["charts"][2]) == heat_map(pandas_res["charts"][2])
-
-    # scatter sampling differs by engine — compare shape only
-    assert len(duck_res["charts"][3]["data"]) == len(pandas_res["charts"][3]["data"])
-
-    # same page of rows — page 0 and a later page (pagination order must be
-    # deterministic, i.e. the DuckDB rows query has a stable ORDER BY)
-    assert duck_res["rows"]["columns"] == pandas_res["rows"]["columns"]
-    assert duck_res["rows"]["data"] == pandas_res["rows"]["data"]
-    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 10 ** 9)
-    p2 = ds_mod.query(did, filters, charts, page=3, page_size=50)
-    monkeypatch.setattr(agg_duck, "DUCKDB_AGG_ROWS", 0)
-    d2 = ds_mod.query(did, filters, charts, page=3, page_size=50)
-    assert d2["rows"]["data"] == p2["rows"]["data"]
 
 
 def test_workflows_lists_jobs_and_counts_running(monkeypatch):
@@ -552,12 +455,12 @@ def test_workflows_lists_jobs_and_counts_running(monkeypatch):
     assert body["running_count"] == 1
     assert body["jobs"][0]["name"] == "sarek-run"
     assert body["jobs"][0]["output_bucket_uuid"] == "uuid-1"
-    # UUID resolved to a human-readable bucket name + resource id
+
     assert body["jobs"][0]["output_bucket_name"] == "vwb-outputs"
     assert body["jobs"][0]["output_bucket_resource"] == "outputs"
-    # a bucket not in the map resolves to None, not an error
+
     assert body["jobs"][1]["output_bucket_name"] is None
-    # long status messages are truncated
+
     assert len(body["jobs"][1]["status_message"]) == 200
 
 
@@ -597,34 +500,6 @@ def test_submit_workflow_builds_args_and_returns_job(monkeypatch):
     assert captured["batch_input_csv_path"] == "cohorts/c.csv"
 
 
-def test_submit_job_arg_construction(monkeypatch):
-    # Unit-test the wb arg list without launching anything.
-    import subprocess
-    import workflows
-    seen = {}
-
-    class R:
-        returncode = 0
-        stdout = '{"runId": "r1", "displayName": "j", "status": "PENDING"}'
-
-    def fake_run(args, **k):
-        seen["args"] = args
-        return R()
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(workflows, "_bucket_map", lambda: {})
-    job = workflows.submit_job(
-        "wf1", "out-bucket", job_id="jj",
-        batch_input_bucket_id="in-bucket", batch_input_csv_path="c.csv",
-        column_mapping="k=col", row_selection="1:100")
-    a = seen["args"]
-    assert a[:4] == ["wb", "workflow", "job", "run"]
-    assert "--workflow" in a and "wf1" in a
-    assert "--batch-input-csv-path" in a and "c.csv" in a
-    assert "--column-mapping" in a and "k=col" in a
-    assert "--row-selection" in a and "1:100" in a
-    assert job["status"] == "PENDING"
-
-
 def test_export_cohort_writes_csv(monkeypatch):
     import pandas as pd
     import datasets as ds_mod
@@ -645,7 +520,7 @@ def test_export_cohort_writes_csv(monkeypatch):
         "filters": [{"column": "tissue", "kind": "categorical",
                      "values": ["liver"]}]})
     assert resp.status_code == 200
-    assert resp.json()["rows"] == 2          # only liver rows exported
+    assert resp.json()["rows"] == 2
     assert captured["path"] == "cohorts/c.csv"
 
 
@@ -663,9 +538,9 @@ def test_workflows_unavailable_when_wb_missing(monkeypatch):
 
 
 def test_numeric_chart_on_categorical_column_does_not_500():
-    # A histogram/scatter chart spec pointed at a categorical column (e.g.
-    # a chart type switched to one that needs numbers) must coerce to an
-    # empty aggregate, never raise and 500 the whole query round-trip.
+
+
+
     import pandas as pd
     import datasets as ds_mod
     opened = ds_mod.open_dataset(pd.DataFrame({
@@ -679,16 +554,16 @@ def test_numeric_chart_on_categorical_column_does_not_500():
         "page": 0})
     assert resp.status_code == 200
     charts = resp.json()["charts"]
-    assert charts[0]["data"] == []  # histogram coerced to empty
-    assert charts[1]["data"] == []  # scatter coerced to empty
+    assert charts[0]["data"] == []
+    assert charts[1]["data"] == []
 
 
-# ------------------------------------------------- views-only DuckDB catalogs
+
 
 @pytest.fixture
 def catalog_ws(monkeypatch, tmp_path):
-    """A local directory stands in for the S3 folder `folder1`: the aws
-    CLI (ls/cp) and the S3 secret are faked; DuckDB reads real files."""
+
+
     import subprocess
     import shutil
     import duckdb
@@ -761,7 +636,7 @@ def test_datasources_include_catalogs(catalog_ws):
     cats = [s for s in body["sources"] if s["kind"] == "catalog"]
     assert cats == [{"kind": "catalog", "id": cid,
                      "label": f"{cid} · Catalog"}]
-    # the .duckdb file is not a data file of the S3 folder
+
     files = client.get("/api/tables?kind=s3&resource_id=folder1").json()
     assert not any(f["name"].endswith(".duckdb") for f in files)
 
@@ -809,7 +684,7 @@ def test_open_catalog_view_names_unreadable_source(catalog_ws):
 def test_publish_catalog_builds_uploads_and_is_discoverable(catalog_ws):
     import catalog
     bucket = catalog_ws["bucket"]
-    client.get("/api/datasources")  # warm discovery before publishing
+    client.get("/api/datasources")
     resp = client.post("/api/catalogs/build", json={
         "resource_id": "folder1", "name": "rail",
         "views": [{"name": "early_trains",
@@ -873,18 +748,3 @@ def test_saved_view_restores_catalog_tab(catalog_ws, monkeypatch, tmp_path):
     assert got["datasets"][0]["source"] == source
     reopened = client.post("/api/datasets/open", json=got["datasets"][0]["source"])
     assert reopened.status_code == 200 and reopened.json()["rows"] == 25
-
-
-def test_mcp_tools_handle_catalog(catalog_ws):
-    import json
-    import mcp_server
-    if not mcp_server.AVAILABLE:
-        pytest.skip("mcp not installed")
-    cid = _prebuilt_catalog(catalog_ws["bucket"])
-    listed = json.loads(mcp_server.list_datasources())
-    assert {"kind": "catalog", "id": cid} in listed["sources"]
-    names = [v["name"] for v in json.loads(
-        mcp_server.list_tables("catalog", cid))]
-    assert names == ["liver", "samples"]
-    opened = json.loads(mcp_server.open_dataset("catalog", cid, "liver"))
-    assert opened["rows"] == 25

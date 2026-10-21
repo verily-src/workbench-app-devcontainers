@@ -1,12 +1,3 @@
-"""Persistent app configuration (Settings UI backend).
-
-Stored as JSON next to the app code so it survives server restarts and
-self-updates within a container's lifetime (wiped on VM recreate, which
-is acceptable for a dev workspace — the API key can be re-entered).
-Provider API key environment variables, when set, take precedence over
-stored keys. Amazon Bedrock uses the AWS IAM credential chain.
-"""
-
 import json
 import os
 import threading
@@ -19,14 +10,9 @@ DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_PALETTE = "verily"
 PALETTES = ("verily", "indigo", "amber", "crimson", "slate")
 
-# The chat agent and Ask AI can run on any provider. Anthropic uses the
-# native SDK; OpenAI, Gemini, and OpenRouter share the compatible SDK path.
 DEFAULT_PROVIDER = "anthropic"
 PROVIDERS = ("anthropic", "openai", "gemini", "openrouter", "bedrock")
 
-# Per-provider default model. Only Anthropic is pinned — other provider
-# model IDs move fast, so we leave them blank and let the user set one in
-# Settings rather than hardcode an ID that may be retired.
 PROVIDER_DEFAULT_MODEL = {
     "anthropic": DEFAULT_MODEL,
     "openai": "",
@@ -35,16 +21,12 @@ PROVIDER_DEFAULT_MODEL = {
     "bedrock": "",
 }
 
-# Where the OpenAI-compatible client points per provider. Anthropic uses
-# its own SDK (no base_url). Gemini and OpenRouter use documented
-# compatible endpoints; OpenAI uses the SDK default.
 PROVIDER_BASE_URL = {
     "openai": None,
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "openrouter": "https://openrouter.ai/api/v1",
 }
 
-# Environment variables consulted (in order) for each provider's key.
 PROVIDER_ENV_KEYS = {
     "anthropic": ("ANTHROPIC_API_KEY",),
     "openai": ("OPENAI_API_KEY",),
@@ -52,10 +34,8 @@ PROVIDER_ENV_KEYS = {
     "openrouter": ("OPENROUTER_API_KEY",),
 }
 
-
 def _aws_region() -> str | None:
     return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
-
 
 def _env_key(provider: str) -> str | None:
     for var in PROVIDER_ENV_KEYS.get(provider, ()):
@@ -63,14 +43,12 @@ def _env_key(provider: str) -> str | None:
             return os.environ[var]
     return None
 
-
 def _llm_section(cfg: dict) -> dict:
-    """Read the llm config, migrating the old single-provider shape
-    ({api_key, model}) into the per-provider shape on the fly."""
+
     llm = dict(cfg.get("llm", {}))
     keys = dict(llm.get("keys", {}))
     models = dict(llm.get("models", {}))
-    # Back-compat: an older config stored one Anthropic key/model flat.
+
     if "api_key" in llm and "anthropic" not in keys:
         keys["anthropic"] = llm["api_key"]
     if "model" in llm and "anthropic" not in models:
@@ -80,10 +58,6 @@ def _llm_section(cfg: dict) -> dict:
         provider = DEFAULT_PROVIDER
     return {"provider": provider, "keys": keys, "models": models}
 
-# Seeded MCP client connections, editable in Settings. URLs are left for
-# the user to fill in: the Verily Workbench MCP endpoint has not shipped
-# in this wb CLI build, and community research servers (bioRxiv, PubMed)
-# are deployment-specific — we do not guess endpoints.
 DEFAULT_MCP_CONNECTIONS = [
     {"name": "verily-workbench", "label": "Verily Workbench",
      "url": "", "enabled": False,
@@ -98,17 +72,14 @@ DEFAULT_MCP_CONNECTIONS = [
 
 _lock = threading.Lock()
 
-
 def _load() -> dict:
     try:
         return json.loads(CONFIG_PATH.read_text())
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
-
 def get_llm_config() -> dict:
-    """Full LLM config for the active provider, including the secret key
-    and base URL — internal use only. Env key wins over the stored key."""
+
     sec = _llm_section(_load())
     provider = sec["provider"]
     api_key = (None if provider == "bedrock"
@@ -123,17 +94,15 @@ def get_llm_config() -> dict:
         "region": _aws_region() if provider == "bedrock" else None,
     }
 
-
 def get_mcp_connections() -> list[dict]:
-    """Stored MCP client connections, seeded with defaults on first read."""
+
     stored = _load().get("mcp_connections")
     if stored is None:
         return [dict(c) for c in DEFAULT_MCP_CONNECTIONS]
     return stored
 
-
 def public_config() -> dict:
-    """Config safe to return to the browser — secrets are never echoed."""
+
     sec = _llm_section(_load())
     provider = sec["provider"]
 
@@ -163,8 +132,7 @@ def public_config() -> dict:
         "llm": {
             "provider": provider,
             "providers": providers,
-            # Flattened active-provider fields (kept for compatibility
-            # with callers that just want the current model/key state).
+
             "model": active["model"],
             "api_key_set": active["api_key_set"],
             "api_key_hint": active["api_key_hint"],
@@ -174,12 +142,10 @@ def public_config() -> dict:
         "chart_palette": _load().get("chart_palette") or DEFAULT_PALETTE,
     }
 
-
 def update_llm_config(model: str | None = None,
                       api_key: str | None = None,
                       provider: str | None = None) -> dict:
-    """Update LLM settings. `model` and `api_key` apply to `provider`
-    when given, otherwise to the currently-active provider."""
+
     with _lock:
         cfg = _load()
         sec = _llm_section(cfg)
@@ -194,13 +160,12 @@ def update_llm_config(model: str | None = None,
             if api_key:
                 keys[target] = api_key
             else:
-                keys.pop(target, None)  # empty string clears the key
-        # Switching the active provider is an explicit provider= arg.
+                keys.pop(target, None)
+
         new_provider = target if provider in PROVIDERS else sec["provider"]
         cfg["llm"] = {"provider": new_provider, "keys": keys, "models": models}
         _write(cfg)
     return public_config()
-
 
 def update_chart_palette(palette: str) -> dict:
     with _lock:
@@ -209,10 +174,8 @@ def update_chart_palette(palette: str) -> dict:
         _write(cfg)
     return public_config()
 
-
 def update_mcp_connections(connections: list[dict]) -> dict:
-    """Replace the MCP connection list. A connection without an
-    authorization_token keeps any token already stored under its name."""
+
     with _lock:
         cfg = _load()
         existing = {c.get("name"): c for c in cfg.get("mcp_connections", [])}
@@ -236,7 +199,6 @@ def update_mcp_connections(connections: list[dict]) -> dict:
         cfg["mcp_connections"] = cleaned
         _write(cfg)
     return public_config()
-
 
 def _write(cfg: dict):
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))

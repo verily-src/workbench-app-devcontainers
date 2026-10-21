@@ -1,11 +1,3 @@
-"""Cohort Studio — FastAPI backend for the TypeScript cohort explorer.
-
-Thin REST layer over the same proven engine modules the Panel app uses
-(Aurora via SQLAlchemy, S3 Parquet/CSV via DuckDB, BigQuery), with
-server-side cross-filter aggregation (datasets.py) and lineage recording.
-The compiled React frontend is served from ./static.
-"""
-
 import io
 import logging
 import time
@@ -46,7 +38,6 @@ import workflows
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
 
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.warm_resource_cache()
@@ -56,16 +47,13 @@ async def lifespan(_app: FastAPI):
     else:
         yield
 
-
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
-
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_handler(request: Request,
                                      exc: RequestValidationError):
     if request.url.path.startswith("/api/omop/"):
-        # Do not echo the request: invalid numeric inputs can contain NaN,
-        # which cannot be encoded in a JSON response.
+
         details = [{"loc": error["loc"], "msg": error["msg"],
                     "type": error["type"]} for error in exc.errors()]
         return JSONResponse(status_code=400, content={"detail": details})
@@ -74,14 +62,10 @@ async def request_validation_handler(request: Request,
 if mcp_server.AVAILABLE:
     app.mount("/mcp", mcp_server.http_app())
 
-
-# ------------------------------------------------------------------ models
-
 class OpenRequest(BaseModel):
     kind: str
     resource_id: str
     table: str
-
 
 class Filter(BaseModel):
     column: str
@@ -90,12 +74,10 @@ class Filter(BaseModel):
     min: float | None = None
     max: float | None = None
 
-
 class ChartSpec(BaseModel):
     kind: str
     x: str
     y: str | None = None
-
 
 class QueryRequest(BaseModel):
     filters: list[Filter] = Field(default_factory=list)
@@ -103,23 +85,20 @@ class QueryRequest(BaseModel):
     page: int = 0
     page_size: int = 50
 
-
 class JoinCondition(BaseModel):
     left: str
     op: str = "="
     right: str
 
-
 class JoinStep(BaseModel):
     right_id: str
     how: str = "left"
     conditions: list[JoinCondition] = Field(default_factory=list)
-    columns: list[str] | None = None   # None = every column of the right side
+    columns: list[str] | None = None
     alias: str = ""
 
-
 class JoinRequest(BaseModel):
-    """Either a pipeline (base_id + steps) or the single-key shape."""
+
     base_id: str = ""
     steps: list[JoinStep] = Field(default_factory=list)
     left_id: str = ""
@@ -128,18 +107,15 @@ class JoinRequest(BaseModel):
     right_on: str = ""
     how: str = "inner"
 
-
 class CompareRequest(BaseModel):
     filters_a: list[Filter] = Field(default_factory=list)
     filters_b: list[Filter] = Field(default_factory=list)
-    b_is_rest: bool = False   # group B = complement of A (selected-vs-rest)
-
+    b_is_rest: bool = False
 
 class ExportCohortRequest(BaseModel):
-    resource_id: str            # S3 bucket resource to write into
-    path: str                   # CSV path within the bucket
+    resource_id: str
+    path: str
     filters: list[Filter] = Field(default_factory=list)
-
 
 class SubmitJobRequest(BaseModel):
     workflow: str
@@ -151,18 +127,15 @@ class SubmitJobRequest(BaseModel):
     row_selection: str = ""
     profile: str = ""
 
-
 class CatalogView(BaseModel):
     name: str
     sql: str
 
-
 class BuildCatalogRequest(BaseModel):
-    resource_id: str              # S3 folder to catalog and upload into
+    resource_id: str
     name: str
     views: list[CatalogView] = Field(default_factory=list)
     include_files: bool = True
-
 
 class OmopCohortOpenRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -174,7 +147,6 @@ class OmopCohortOpenRequest(BaseModel):
     def validate_spec(self):
         omop.parse_spec(self.spec)
         return self
-
 
 class OmopDomainOpenRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -189,11 +161,10 @@ class OmopDomainOpenRequest(BaseModel):
             omop.parse_spec(self.spec)
         return self
 
-
 class DeriveRequest(BaseModel):
-    op: str                       # "bin" | "formula" | "map"
+    op: str
     name: str
-    # op-specific fields (validated in derive.py):
+
     column: str | None = None
     breaks: list[float] | None = None
     labels: list[str] | None = None
@@ -203,12 +174,8 @@ class DeriveRequest(BaseModel):
     mapping: dict[str, str] | None = None
     default: str | None = None
 
-
-# ----------------------------------------------------------------- helpers
-
 def _lineage_engine():
     return lineage.sqlite_fallback_engine()
-
 
 def _load_frame(kind: str, resource_id: str, table: str) -> pd.DataFrame:
     if kind == "aurora":
@@ -231,13 +198,9 @@ def _load_frame(kind: str, resource_id: str, table: str) -> pd.DataFrame:
             raise HTTPException(400, str(e))
     raise HTTPException(400, f"Unknown datasource kind: {kind}")
 
-
-# --------------------------------------------------------------- endpoints
-
 @app.get("/api/health")
 def health():
     return {"ok": True}
-
 
 @app.get("/api/version")
 def version():
@@ -248,16 +211,9 @@ def version():
             return {"sha": candidate.read_text().strip()}
     return {"sha": "dev"}
 
-
 @app.post("/api/admin/update")
 def self_update():
-    """Redeploy the branch in place — see self_update.sh.
 
-    Reachable only through the workspace proxy (workspace members), and
-    only ever installs code from this app's pinned GitHub repo/branch.
-    The server restarts itself when an update lands, so the caller should
-    poll /api/version until the sha changes.
-    """
     script = Path(__file__).parent / "self_update.sh"
     if not script.exists():
         raise HTTPException(501, "self_update.sh not present in this build")
@@ -266,7 +222,6 @@ def self_update():
                      stdout=open("/tmp/self-update.log", "ab"),
                      stderr=subprocess.STDOUT)
     return {"started": True, "log": "/tmp/self-update.log"}
-
 
 @app.get("/api/datasources")
 def datasources():
@@ -293,18 +248,14 @@ def datasources():
     sources.extend(catalogs)
     return {"ready": ready, "sources": sources, "catalogs_pending": pending}
 
-
 @app.get("/api/workflows")
 def workflow_jobs(refresh: bool = False):
-    """Workbench workflow jobs, with running count. Never 500s — an
-    unavailable `wb workflow` command returns available=false."""
-    return workflows.list_jobs(force=refresh)
 
+    return workflows.list_jobs(force=refresh)
 
 @app.get("/api/workflows/registry")
 def workflow_registry():
     return workflows.list_workflows()
-
 
 @app.post("/api/datasets/{dataset_id}/export-cohort")
 def export_cohort(dataset_id: str, req: ExportCohortRequest):
@@ -323,7 +274,6 @@ def export_cohort(dataset_id: str, req: ExportCohortRequest):
                                           "rows": out["rows"]})
     return out
 
-
 @app.post("/api/workflows/submit")
 def submit_workflow(req: SubmitJobRequest):
     try:
@@ -335,7 +285,6 @@ def submit_workflow(req: SubmitJobRequest):
                    payload={"run_id": job.get("run_id"),
                             "workflow": req.workflow})
     return job
-
 
 @app.get("/api/tables")
 def tables(kind: str, resource_id: str):
@@ -365,11 +314,9 @@ def tables(kind: str, resource_id: str):
         raise HTTPException(502, str(e).split("\n")[0][:300])
     raise HTTPException(400, f"Unknown kind: {kind}")
 
-
 @app.post("/api/catalogs/build")
 def build_catalog(req: BuildCatalogRequest):
-    """Publish a views-only DuckDB catalog over an S3 folder's data files
-    to `<folder>/_catalog/<name>.duckdb`."""
+
     try:
         out = catalog.publish(req.resource_id, req.name,
                               [(v.name, v.sql) for v in req.views],
@@ -384,7 +331,6 @@ def build_catalog(req: BuildCatalogRequest):
                                         "skipped": len(out["skipped"]),
                                         "bytes": out["bytes"]})
     return out
-
 
 @app.post("/api/datasets/open")
 def open_dataset(req: OpenRequest):
@@ -403,9 +349,7 @@ def open_dataset(req: OpenRequest):
                             "source_kind": req.kind, "rows": len(df)})
     return result
 
-
 UPLOAD_SUFFIXES = (".csv", ".tsv", ".txt")
-
 
 @app.post("/api/datasets/upload")
 async def upload_dataset(file: UploadFile):
@@ -428,9 +372,8 @@ async def upload_dataset(file: UploadFile):
                    payload={"rows": len(df), "columns": list(df.columns)})
     return result
 
-
 def _join_pipeline(req: JoinRequest) -> tuple[str, list[dict], list[str]]:
-    """(base id, steps, sources) — the single-key shape becomes one step."""
+
     if req.steps:
         base_id, steps = req.base_id, [s.model_dump() for s in req.steps]
     else:
@@ -447,7 +390,6 @@ def _join_pipeline(req: JoinRequest) -> tuple[str, list[dict], list[str]]:
         step["alias"] = (step.get("alias") or "").strip() \
             or joins.default_alias(source)
     return base_id, steps, sources
-
 
 @app.post("/api/datasets/join")
 def join_datasets(req: JoinRequest):
@@ -469,7 +411,6 @@ def join_datasets(req: JoinRequest):
                    parents=[("dataset", s) for s in sources])
     return {**result, "join": out["stats"]}
 
-
 @app.post("/api/datasets/join/preview")
 def preview_join(req: JoinRequest):
     base_id, steps, _ = _join_pipeline(req)
@@ -482,14 +423,11 @@ def preview_join(req: JoinRequest):
     except joins.JoinEngineError as e:
         raise HTTPException(502, str(e))
 
-
 @app.post("/api/datasets/join/validate")
 def validate_join(req: JoinRequest):
-    """Per-step and per-condition problems plus the engine that would run;
-    nothing is executed."""
+
     base_id, steps, _ = _join_pipeline(req)
     return joins.validate(base_id, steps)
-
 
 @app.get("/api/datasets/join/suggest")
 def suggest_join_keys(left_id: str, right_id: str):
@@ -497,7 +435,6 @@ def suggest_join_keys(left_id: str, right_id: str):
         return joins.suggest(left_id, right_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "A dataset expired or is unknown — reload it.")
-
 
 @app.post("/api/datasets/{dataset_id}/compare")
 def compare_cohorts(dataset_id: str, req: CompareRequest):
@@ -517,7 +454,6 @@ def compare_cohorts(dataset_id: str, req: CompareRequest):
                             "b_is_rest": req.b_is_rest})
     return result
 
-
 @app.post("/api/datasets/{dataset_id}/derive")
 def derive_column(dataset_id: str, req: DeriveRequest):
     try:
@@ -533,7 +469,6 @@ def derive_column(dataset_id: str, req: DeriveRequest):
                    payload={"op": req.op, "name": result["name"]})
     return result
 
-
 @app.post("/api/datasets/{dataset_id}/query")
 def query_dataset(dataset_id: str, req: QueryRequest):
     try:
@@ -544,7 +479,6 @@ def query_dataset(dataset_id: str, req: QueryRequest):
             page=req.page, page_size=req.page_size)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
-
 
 @app.post("/api/datasets/{dataset_id}/export")
 def export_dataset(dataset_id: str, req: QueryRequest):
@@ -560,12 +494,10 @@ def export_dataset(dataset_id: str, req: QueryRequest):
                     headers={"Content-Disposition":
                              "attachment; filename=cohort.tsv"})
 
-
 @app.delete("/api/datasets/{dataset_id}")
 def delete_dataset(dataset_id: str):
     datasets.close_dataset(dataset_id)
     return {"ok": True}
-
 
 class MCPConnection(BaseModel):
     name: str
@@ -575,7 +507,6 @@ class MCPConnection(BaseModel):
     note: str = ""
     authorization_token: str | None = None
 
-
 class ConfigUpdate(BaseModel):
     provider: str | None = None
     model: str | None = None
@@ -583,11 +514,9 @@ class ConfigUpdate(BaseModel):
     mcp_connections: list[MCPConnection] | None = None
     chart_palette: str | None = None
 
-
 class AskRequest(BaseModel):
     question: str
     filters: list[Filter] = Field(default_factory=list)
-
 
 class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -595,29 +524,24 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
-
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = Field(default_factory=list)
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
 
-
 class MaterializeRequest(BaseModel):
     resource_id: str
     table: str
-
 
 class ViewSource(BaseModel):
     kind: str
     resource_id: str
     table: str
 
-
 class Cohort(BaseModel):
     name: str
     filters: list[Filter] = Field(default_factory=list)
-
 
 class ViewDataset(BaseModel):
     source: ViewSource
@@ -626,21 +550,18 @@ class ViewDataset(BaseModel):
     charts: list[ChartSpec] = Field(default_factory=list)
     cohorts: list[Cohort] = Field(default_factory=list)
 
-
 class SaveViewRequest(BaseModel):
-    kind: str          # storage backend: "aurora" or "s3"
-    resource_id: str   # where to store the view
+    kind: str
+    resource_id: str
     name: str
     datasets: list[ViewDataset] = Field(default_factory=list)
     active: int = 0
-
 
 @app.get("/api/config")
 def get_config():
     cfg = config.public_config()
     cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
     return cfg
-
 
 @app.put("/api/config")
 def put_config(req: ConfigUpdate):
@@ -657,7 +578,6 @@ def put_config(req: ConfigUpdate):
     cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
     return cfg
 
-
 @app.post("/api/config/llm/test")
 def test_llm():
     try:
@@ -666,7 +586,6 @@ def test_llm():
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
-
 
 @app.post("/api/datasets/{dataset_id}/ask")
 def ask_dataset(dataset_id: str, req: AskRequest):
@@ -688,10 +607,9 @@ def ask_dataset(dataset_id: str, req: AskRequest):
                             "filters": result["filters"]})
     return result
 
-
 @app.post("/api/datasets/{dataset_id}/materialize")
 def materialize_dataset(dataset_id: str, req: MaterializeRequest):
-    """Persist a loaded dataset as a table in an Aurora resource."""
+
     try:
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
@@ -709,7 +627,6 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
                    payload={"resource_id": req.resource_id, "rows": rows,
                             "from": ds["source"]})
     return {"table": req.table, "resource_id": req.resource_id, "rows": rows}
-
 
 @app.post("/api/datasets/{dataset_id}/chat")
 def chat_dataset(dataset_id: str, req: ChatRequest):
@@ -743,11 +660,10 @@ def chat_dataset(dataset_id: str, req: ChatRequest):
     result["trace_id"] = trace_id
     return result
 
-
 def _record_turn(trace_id: str, source: str, message: str, started: float,
                  result: dict | None = None, status: str = "ok",
                  error: str | None = None):
-    """Persist one agent turn's OTel-shaped telemetry to Aurora/SQLite."""
+
     latency_ms = (time.monotonic() - started) * 1000
     cfg = config.get_llm_config()
     lineage.record_turn(
@@ -759,12 +675,10 @@ def _record_turn(trace_id: str, source: str, message: str, started: float,
         tool_calls=(result or {}).get("tool_calls"),
         status=status, error=error)
 
-
 @app.get("/api/agent/turns")
 def agent_turns():
     df = lineage.recent_turns(_lineage_engine())
     return {"turns": df.to_dict(orient="records")}
-
 
 @app.get("/api/views")
 def list_views(kind: str, resource_id: str):
@@ -772,7 +686,6 @@ def list_views(kind: str, resource_id: str):
         return views.list_views(kind, resource_id)
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
-
 
 @app.get("/api/views/one")
 def get_view(kind: str, resource_id: str, name: str):
@@ -785,7 +698,6 @@ def get_view(kind: str, resource_id: str, name: str):
     if state is None:
         raise HTTPException(404, f"View {name!r} not found.")
     return state
-
 
 @app.post("/api/views")
 def save_view(req: SaveViewRequest):
@@ -820,7 +732,6 @@ def save_view(req: SaveViewRequest):
                             "datasets": len(req.datasets)})
     return result
 
-
 @app.delete("/api/views")
 def delete_view(kind: str, resource_id: str, name: str):
     try:
@@ -829,13 +740,11 @@ def delete_view(kind: str, resource_id: str, name: str):
         raise HTTPException(400, str(e))
     return {"ok": True}
 
-
 @app.get("/api/lineage")
 def lineage_events():
     df = lineage.recent_events(_lineage_engine())
     return {"columns": list(df.columns),
             "data": df.astype(object).where(df.notna(), None).values.tolist()}
-
 
 @app.post("/api/seed/gtex")
 def seed_gtex(resource_id: str):
@@ -850,16 +759,12 @@ def seed_gtex(resource_id: str):
                    payload={"rows": rows})
     return {"rows": rows}
 
-
-# -------------------------------------------------------------------- OMOP
-
 def _omop_error(e: Exception) -> HTTPException:
     if isinstance(e, ValueError):
         return HTTPException(400, str(e))
     if isinstance(e, omop.OmopTimeout):
         return HTTPException(504, str(e))
     return HTTPException(502, str(e).split("\n")[0][:300])
-
 
 def _omop_info(resource_id: str, refresh: bool = False) -> dict | None:
     known = {r["id"] for r in db.list_aurora_resources()}
@@ -874,18 +779,15 @@ def _omop_info(resource_id: str, refresh: bool = False) -> dict | None:
     except Exception as e:
         raise _omop_error(e)
 
-
 def _omop_cdm(resource_id: str):
     info = _omop_info(resource_id)
     if info is None:
         raise HTTPException(404, f"No OMOP CDM found in {resource_id}.")
     return db.get_engine_for_resource(resource_id), info
 
-
 @app.get("/api/omop/{resource_id}")
 def omop_detect(resource_id: str, refresh: bool = False):
     return omop.public(_omop_info(resource_id, refresh))
-
 
 @app.get("/api/omop/{resource_id}/concepts")
 def omop_concepts(resource_id: str, q: str = "", domain: str = "",
@@ -898,7 +800,6 @@ def omop_concepts(resource_id: str, q: str = "", domain: str = "",
             standard_only=standard_only, limit=limit)}
     except Exception as e:
         raise _omop_error(e)
-
 
 class CohortAgentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -919,16 +820,14 @@ class CohortAgentRequest(BaseModel):
         omop.parse_spec(self.spec)
         return self
 
-
 class OmopSpecRequest(RootModel[dict]):
-    """Raw cohort-spec body validated without replacing its JSON values."""
+
     model_config = ConfigDict(strict=True)
 
     @model_validator(mode="after")
     def validate_spec(self):
         omop.parse_spec(self.root)
         return self
-
 
 @app.post("/api/omop/{resource_id}/cohort/agent")
 def omop_agent(resource_id: str, req: CohortAgentRequest):
@@ -951,7 +850,6 @@ def omop_agent(resource_id: str, req: CohortAgentRequest):
     result["trace_id"] = trace_id
     return result
 
-
 @app.post("/api/omop/{resource_id}/cohort/count")
 def omop_count(resource_id: str,
                req: OmopSpecRequest = Body(default_factory=lambda: OmopSpecRequest({}))):
@@ -960,7 +858,6 @@ def omop_count(resource_id: str,
         return omop.count(engine, info, req.root)
     except Exception as e:
         raise _omop_error(e)
-
 
 @app.post("/api/omop/{resource_id}/cohort/open")
 def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest):
@@ -979,7 +876,6 @@ def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest):
                    parents=[("table", t) for t in parents])
     return result
 
-
 @app.post("/api/omop/{resource_id}/domain/open")
 def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest):
     engine, info = _omop_cdm(resource_id)
@@ -997,9 +893,6 @@ def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest):
                             "rows": len(df), "cohort": req.spec,
                             "concept_names": req.concept_names})
     return result
-
-
-# ------------------------------------------------------------ static files
 
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():

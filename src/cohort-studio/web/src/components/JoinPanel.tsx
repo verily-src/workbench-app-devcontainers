@@ -36,7 +36,6 @@ const aliasOf = (d?: Dataset) =>
 
 const addsColumns = (how: JoinHow) => how !== "semi" && how !== "anti";
 
-// Two-circle diagram of which rows a join keeps (left circle = left side).
 function Venn({ how }: { how: JoinHow }) {
   const a = { cx: 7, cy: 7, r: 5.5 }, b = { cx: 14, cy: 7, r: 5.5 };
   const id = `venn-${how}`;
@@ -102,7 +101,6 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
 
   const stepKey = steps.map((s) => s.right_id).join("|");
 
-  // Suggest keys against the base and every earlier joined table.
   useEffect(() => {
     let cancelled = false;
     steps.forEach((s, i) => {
@@ -121,7 +119,7 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
           const ranked = all.flat().filter((x) => leftCols.has(x.left))
             .sort((a, b) => b.score - a.score).slice(0, 3);
           setSuggestions((prev) => ({ ...prev, [i]: ranked }));
-          // A same-named default key stands; otherwise take the best guess.
+
           const top = ranked[0];
           if (top) setSteps((prev) => prev.map((p, j) =>
             j === i && !p.touched && p.conditions.length === 1
@@ -135,7 +133,6 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
 
   useEffect(() => { setPreview(null); setPreviewErr(""); }, [baseId, steps]);
 
-  // Server-side check of keys and types (no join is run), debounced.
   const [validation, setValidation] = useState<JoinValidation | null>(null);
   useEffect(() => {
     if (!base || steps.some((s) => !s.right_id)) { setValidation(null); return; }

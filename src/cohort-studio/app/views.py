@@ -1,16 +1,3 @@
-"""Saved views: persist a dataset's filters + charts so they survive the
-app closing or the VM being recreated.
-
-A view records which table it came from plus the current filters and
-charts. Two durable, shareable backends — you pick where to store it:
-
-  • Aurora  — a `_studio_views` row in a workspace database (queryable SQL).
-  • S3      — a `_studio_views/<name>.json` object in a workspace storage
-              folder (no writable DB needed; works for any datasource).
-
-Browser per-tab state is lost when the app closes; a saved view isn't.
-"""
-
 import getpass
 import json
 import logging
@@ -34,18 +21,16 @@ view_table = Table(
     Column("name", Text, nullable=False),
     Column("created_by", Text),
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
-    Column("state", Text, nullable=False),  # JSON: {source, filters, charts}
+    Column("state", Text, nullable=False),
 )
 _prepared: set[int] = set()
 _actor_cache: str | None = None
-
 
 def _validate(name: str):
     if not _SAFE_NAME.match(name):
         raise ValueError(
             "View name may use letters, digits, spaces, dot, dash, "
             "underscore (max 80 chars).")
-
 
 def _actor() -> str:
     global _actor_cache
@@ -61,9 +46,6 @@ def _actor() -> str:
         _actor_cache = getpass.getuser()
     return _actor_cache
 
-
-# ----------------------------------------------------------------- dispatch
-
 def save_view(kind: str, resource_id: str, name: str, state: dict) -> dict:
     _validate(name)
     if kind == "aurora":
@@ -74,14 +56,12 @@ def save_view(kind: str, resource_id: str, name: str, state: dict) -> dict:
         raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
     return {"name": name}
 
-
 def list_views(kind: str, resource_id: str) -> list[dict]:
     if kind == "aurora":
         return _aurora_list(resource_id)
     if kind == "s3":
         return _s3_list(resource_id)
     raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
-
 
 def get_view(kind: str, resource_id: str, name: str) -> dict | None:
     _validate(name)
@@ -91,16 +71,12 @@ def get_view(kind: str, resource_id: str, name: str) -> dict | None:
         return _s3_get(resource_id, name)
     raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
 
-
 def delete_view(kind: str, resource_id: str, name: str):
     _validate(name)
     if kind == "aurora":
         _aurora_delete(resource_id, name)
     elif kind == "s3":
         _s3_delete(resource_id, name)
-
-
-# ------------------------------------------------------------------- Aurora
 
 def _engine(resource_id: str) -> Engine:
     engine = db.get_engine_for_resource(resource_id)
@@ -109,7 +85,6 @@ def _engine(resource_id: str) -> Engine:
         _prepared.add(id(engine))
     return engine
 
-
 def _aurora_save(resource_id: str, name: str, state: dict):
     engine = _engine(resource_id)
     with engine.connect() as conn:
@@ -117,7 +92,6 @@ def _aurora_save(resource_id: str, name: str, state: dict):
         conn.execute(insert(view_table).values(
             name=name, created_by=_actor(), state=json.dumps(state)))
         conn.commit()
-
 
 def _aurora_list(resource_id: str) -> list[dict]:
     engine = _engine(resource_id)
@@ -129,7 +103,6 @@ def _aurora_list(resource_id: str) -> list[dict]:
                  "created_at": str(r[2]) if r[2] is not None else None}
                 for r in conn.execute(query).fetchall()]
 
-
 def _aurora_get(resource_id: str, name: str) -> dict | None:
     engine = _engine(resource_id)
     query = select(view_table.c.state).where(view_table.c.name == name)
@@ -137,19 +110,14 @@ def _aurora_get(resource_id: str, name: str) -> dict | None:
         row = conn.execute(query).fetchone()
     return json.loads(row[0]) if row else None
 
-
 def _aurora_delete(resource_id: str, name: str):
     engine = _engine(resource_id)
     with engine.connect() as conn:
         conn.execute(delete(view_table).where(view_table.c.name == name))
         conn.commit()
 
-
-# ----------------------------------------------------------------------- S3
-
 def _s3_key(resource_id: str, name: str) -> str:
     return f"{db.resolve_s3_uri(resource_id)}/{VIEW_PREFIX}/{name}.json"
-
 
 def _s3_save(resource_id: str, name: str, state: dict):
     payload = json.dumps({**state, "created_by": _actor()})
@@ -161,12 +129,11 @@ def _s3_save(resource_id: str, name: str, state: dict):
         raise RuntimeError(
             (out.stderr or out.stdout or "").strip().split("\n")[-1])
 
-
 def _s3_list(resource_id: str) -> list[dict]:
     uri = f"{db.resolve_s3_uri(resource_id)}/{VIEW_PREFIX}/"
     out = subprocess.run(["aws", "s3", "ls", uri, "--profile", resource_id],
                          capture_output=True, text=True, timeout=120)
-    if out.returncode != 0:  # folder may not exist yet → no views
+    if out.returncode != 0:
         return []
     names = []
     for line in out.stdout.splitlines():
@@ -176,7 +143,6 @@ def _s3_list(resource_id: str) -> list[dict]:
                           "created_by": None, "created_at": None})
     return names
 
-
 def _s3_get(resource_id: str, name: str) -> dict | None:
     out = subprocess.run(
         ["aws", "s3", "cp", _s3_key(resource_id, name), "-",
@@ -185,7 +151,6 @@ def _s3_get(resource_id: str, name: str) -> dict | None:
     if out.returncode != 0:
         return None
     return json.loads(out.stdout)
-
 
 def _s3_delete(resource_id: str, name: str):
     subprocess.run(

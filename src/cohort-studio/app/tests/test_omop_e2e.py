@@ -1,5 +1,3 @@
-"""Browser-to-Postgres OMOP cohort flow."""
-
 import socket
 import threading
 import time
@@ -19,7 +17,6 @@ import datasets
 import db
 import main
 
-pytest_plugins = ("tests.test_omop",)
 pytestmark = pytest.mark.e2e
 
 APP_DIR = Path(__file__).parent.parent
@@ -29,7 +26,7 @@ DICLOFENAC = 1124300
 
 @pytest.fixture(scope="session")
 def omop_app_url(engine, tmp_path_factory):
-    """Serve the real app and API, with only Workbench discovery isolated."""
+
     if not (APP_DIR / "static" / "index.html").exists():
         pytest.skip("frontend is not built")
 
@@ -134,15 +131,15 @@ def test_omop_cohort_browser_flow(ref, page: Page, omop_app_url: str):
     expect(page.locator(".tab.active", has_text="OMOP E2E cohort")).to_be_visible(timeout=15000)
     expect(page.locator(".data-table thead")).to_contain_text("Gastrointestinal hemorrhage events")
 
-    # Open a real clinical domain table through the same HTTP-to-Postgres path.
+
     page.locator(".topnav-link", has_text="OMOP cohorts").click()
     page.get_by_label("Clinical table").select_option("condition_occurrence")
     page.get_by_role("button", name="Open clinical table").click()
     expect(page.locator(".tab.active", has_text="condition_occurrence")).to_be_visible(timeout=15000)
     expect(page.locator(".data-table thead")).to_contain_text("condition_concept_name")
 
-    # Editing a rule clears the old count. Reopening the same cohort name must
-    # replace its dataset with the broader one-rule result.
+
+
     page.locator(".topnav-link", has_text="OMOP cohorts").click()
     page.locator(".omop-rule").nth(1).get_by_role("button", name="Remove criterion 2").click()
     expect(page.locator(".omop-count")).to_have_count(0)

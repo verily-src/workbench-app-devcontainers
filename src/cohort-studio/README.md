@@ -8,6 +8,9 @@ SQLAlchemy, S3 Parquet/CSV via DuckDB, BigQuery, lineage, TTL caching).
 
 ## Architecture
 
+See [the maintained architecture and flow diagrams](docs/architecture.md) for
+providers, data access, updates, OMOP, and the isolated-browser deployment.
+
 ```
 Browser (React/TS, ECharts)  ── REST ──  FastAPI (app/main.py)
    thin: renders aggregates              datasets.py: in-memory store +
@@ -237,10 +240,16 @@ No workspace needed locally — upload a CSV from the sidebar.
 cd src/cohort-studio
 UV_CACHE_DIR=/tmp/studio-uv-cache uv pip install --python .venv/bin/python pytest httpx pytest-playwright
 UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m playwright install chromium
-cd web && npm run build && cp -r dist ../app/static && cd ..
-UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m pytest            # API + engines + Playwright E2E
-UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m pytest -m "not e2e"  # fast tests only
+cd web && npm run build && mkdir -p ../app/static && cp -R dist/. ../app/static/ && cd ..
+UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m pytest
+UV_CACHE_DIR=/tmp/studio-uv-cache uv run --no-project --python .venv/bin/python python -m pytest -m e2e
 ```
+
+The suite keeps browser/MCP flows, HTTP outcomes, real database operations,
+and updater-process checks. Implementation unit tests are removed. Some HTTP
+tests replace cloud/model calls; they do not prove live provider or Workbench
+access. OMOP tests require PostgreSQL binaries (`STUDIO_PG_BIN` can set their
+location). Use the full suite for releases; `-m e2e` selects the browser/MCP flows.
 
 ## Deploying
 
@@ -262,20 +271,22 @@ streamed Chromium session and can't download data, use
 [../virtual-browser-cohort-studio](../virtual-browser-cohort-studio/)
 instead. It runs this same image.
 
-### Shipping updates (restart-to-deploy)
+### In-app updates
 
 App code is baked into the image at VM creation, but this app
 self-updates: `self_update.sh` (in the image) fetches the branch tarball
-from GitHub, swaps the backend, rebuilds the frontend in-container, and
-restarts the server — no-op when the branch hasn't moved.
+from GitHub, stages and validates the backend, rebuilds the frontend, and
+replaces the running app files. The script stops uvicorn and Compose restarts
+the container on the new files. This in-app update does not recreate the
+Workbench app or VM. The operation is a no-op when the branch has not moved.
 
 - **Restart the VM** → `postStartCommand` runs the script → latest
   branch is live in ~1 minute.
-- **No restart at all**: `POST <app-url>/api/admin/update`, then poll
+- **Update in the running app**: `POST <app-url>/api/admin/update`, then poll
   `GET /api/version` until the sha changes. Progress lands in
   `/tmp/self-update.log` inside the container.
 
-VM recreation is only needed when `.devcontainer.json`, the Dockerfile,
+An app/VM rebuild is only needed when `.devcontainer.json`, the Dockerfile,
 or the compose file change.
 
 ## Datasources

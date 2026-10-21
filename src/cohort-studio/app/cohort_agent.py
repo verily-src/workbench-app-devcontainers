@@ -1,11 +1,3 @@
-"""Read-only OMOP cohort assistant plus Workbench status tools.
-
-The endpoint supplies one verified resource id and its detected OMOP
-metadata. Tools are closed over that resource. The model can propose a
-validated spec and request aggregate counts, but cannot open rows, write
-to the database, or mutate workflows/apps.
-"""
-
 import functools
 import json
 from datetime import date, datetime
@@ -61,7 +53,6 @@ COHORT_TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {}}}},
 ]
 
-
 def _jsonable(value):
     if isinstance(value, (date, datetime)):
         return value.isoformat()
@@ -71,13 +62,11 @@ def _jsonable(value):
         return [_jsonable(v) for v in value]
     return value
 
-
 def _parse_spec_json(raw: str) -> dict:
     try:
         return omop.parse_spec(json.loads(raw))
     except (json.JSONDecodeError, TypeError) as e:
         raise ValueError("spec_json must contain a JSON object.") from e
-
 
 def _check_grounded(spec: dict, known_concepts: set[int]):
     requested = {concept_id for criterion in spec["criteria"]
@@ -88,10 +77,9 @@ def _check_grounded(spec: dict, known_concepts: set[int]):
         raise ValueError("Search for concept IDs before using them. "
                          f"Not found in current spec or search results: {sample}.")
 
-
 def build_tools(resource_id: str, info: dict, current_spec: dict | None,
                 state: dict):
-    """Create callables closed over a resource verified by the endpoint."""
+
     engine = db.get_engine_for_resource(resource_id)
     normalized_current = omop.parse_spec(_jsonable(current_spec))
     grounded = {concept_id for criterion in normalized_current["criteria"]
@@ -169,7 +157,6 @@ def build_tools(resource_id: str, info: dict, current_spec: dict | None,
     return [search_concepts, count_cohort, propose_cohort,
             list_workflow_jobs, list_workbench_apps]
 
-
 def _system_prompt(resource_id: str, info: dict, spec: dict) -> str:
     return (
         "You are the cohort-building assistant inside Workbench Cohort "
@@ -205,11 +192,10 @@ def _system_prompt(resource_id: str, info: dict, spec: dict) -> str:
         "reply concise."
     )
 
-
 def chat(resource_id: str, info: dict, message: str,
          history: list[dict] | None = None,
          current_spec: dict | None = None) -> dict:
-    """Run cohort tools against one endpoint-verified OMOP resource."""
+
     cfg = config.get_llm_config()
     provider = cfg["provider"]
     label = {"anthropic": "Anthropic", "openai": "OpenAI",

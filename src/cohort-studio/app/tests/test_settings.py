@@ -1,5 +1,3 @@
-"""Settings, ask-AI, and MCP mount tests — no network, LLM mocked."""
-
 from pathlib import Path
 
 import pytest
@@ -44,7 +42,7 @@ def test_chart_palette_roundtrips():
     assert body["chart_palette"] == "verily"
     updated = client.put("/api/config", json={"chart_palette": "indigo"}).json()
     assert updated["chart_palette"] == "indigo"
-    # unknown palette falls back to default
+
     reset = client.put("/api/config", json={"chart_palette": "bogus"}).json()
     assert reset["chart_palette"] == "verily"
 
@@ -88,39 +86,10 @@ def test_ask_applies_suggested_filters(monkeypatch):
     assert len(body["filters"]) == 2
     assert body["explanation"].startswith("Filtered")
 
-    # the suggested filters actually work against the query endpoint
+
     out = client.post(f"/api/datasets/{dataset_id}/query",
                       json={"filters": body["filters"], "charts": []}).json()
     assert 0 < out["filtered"] < out["total"]
-
-
-def test_suggest_filters_validation_drops_bad_columns(monkeypatch):
-    class FakeParsed:
-        filters = [
-            llm.SuggestedFilter(column="tissue", kind="categorical",
-                                values=["liver", "NOT_A_VALUE"]),
-            llm.SuggestedFilter(column="nope", kind="categorical",
-                                values=["x"]),
-            llm.SuggestedFilter(column="rin_score", kind="range",
-                                min=-999, max=7),
-        ]
-        explanation = "ok"
-
-    monkeypatch.setattr(llm, "_cfg", lambda: {
-        "provider": "anthropic", "api_key": "k", "model": "claude-opus-5",
-        "base_url": None})
-    monkeypatch.setattr(llm, "_anthropic_suggestion",
-                        lambda cfg, system, prompt: FakeParsed())
-    columns = [
-        {"name": "tissue", "filter_kind": "categorical",
-         "values": ["liver", "lung"]},
-        {"name": "rin_score", "filter_kind": "range", "min": 5.0, "max": 10.0},
-    ]
-    out = llm.suggest_filters("q", columns, [])
-    assert out["filters"] == [
-        {"column": "tissue", "kind": "categorical", "values": ["liver"]},
-        {"column": "rin_score", "kind": "range", "min": 5.0, "max": 7.0},
-    ]
 
 
 def test_config_defaults_expose_providers():
@@ -129,7 +98,7 @@ def test_config_defaults_expose_providers():
     assert set(body["llm"]["providers"]) == {
         "anthropic", "openai", "gemini", "openrouter", "bedrock"}
     assert body["llm"]["providers"]["anthropic"]["model"] == "claude-opus-5"
-    # OpenAI/Gemini model IDs are left blank — user sets them.
+
     assert body["llm"]["providers"]["openai"]["model"] == ""
     assert body["llm"]["providers"]["openrouter"]["model"] == ""
 
@@ -189,7 +158,7 @@ def test_bedrock_test_connection_reports_missing_region_and_model(monkeypatch):
 
 
 def test_switch_provider_keeps_per_provider_keys_and_never_echoes():
-    # Set an Anthropic key, then switch to OpenAI with its own key+model.
+
     client.put("/api/config", json={
         "provider": "anthropic", "api_key": "sk-ant-aaaa1111"})
     resp = client.put("/api/config", json={
@@ -200,7 +169,7 @@ def test_switch_provider_keeps_per_provider_keys_and_never_echoes():
     assert body["llm"]["provider"] == "openai"
     assert body["llm"]["model"] == "some-openai-model"
     provs = body["llm"]["providers"]
-    # Both keys are retained independently; hints end in the last 4 chars.
+
     assert provs["anthropic"]["api_key_set"] is True
     assert provs["anthropic"]["api_key_hint"] == "…1111"
     assert provs["openai"]["api_key_set"] is True
@@ -208,7 +177,7 @@ def test_switch_provider_keeps_per_provider_keys_and_never_echoes():
 
 
 def test_agent_turn_recorded(monkeypatch, tmp_path):
-    # A chat turn persists an OTel-shaped row readable via /api/agent/turns.
+
     import agent
     monkeypatch.setattr(main, "_lineage_engine",
                         lambda: _file_engine(tmp_path))

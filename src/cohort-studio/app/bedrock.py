@@ -1,9 +1,6 @@
-"""Amazon Bedrock Converse adapter using the AWS SDK credential chain."""
-
 import json
 
 MAX_TURNS = 8
-
 
 def _client(region: str):
     import boto3
@@ -12,7 +9,6 @@ def _client(region: str):
         "bedrock-runtime", region_name=region,
         config=Config(connect_timeout=10, read_timeout=60,
                       retries={"max_attempts": 2, "mode": "standard"}))
-
 
 def _tools(schemas: list[dict]) -> list[dict]:
     tools = []
@@ -26,17 +22,15 @@ def _tools(schemas: list[dict]) -> list[dict]:
         }})
     return tools
 
-
 def _messages(messages: list[dict]) -> list[dict]:
     return [{"role": m["role"], "content": [{"text": m["content"]}]}
             for m in messages if m.get("role") in ("user", "assistant")
             and m.get("content")]
 
-
 def run(model: str, region: str, system: str, messages: list[dict],
         tool_schemas: list[dict], tool_impls: dict,
         client=None) -> dict:
-    """Run a Converse client-side tool loop and return common agent fields."""
+
     if not region:
         raise ValueError("AWS region is required; set AWS_REGION or AWS_DEFAULT_REGION.")
     if not model:
@@ -68,8 +62,6 @@ def run(model: str, region: str, system: str, messages: list[dict],
             return {"reply": reply, "usage": usage,
                     "tool_calls": calls, "turns": turn + 1}
 
-        # Converse requires the exact assistant message to be included before
-        # the user-role message that returns the matching toolUseIds.
         convo.append(output)
         results = []
         for use in tool_uses:
@@ -104,11 +96,10 @@ def run(model: str, region: str, system: str, messages: list[dict],
             "steps — try narrowing the request.", "usage": usage,
             "tool_calls": calls, "turns": MAX_TURNS}
 
-
 def structured_call(model: str, region: str, system: str, prompt: str,
                     name: str, description: str, schema: dict,
                     client=None) -> dict | None:
-    """Ask a model for structured output by defining a single Converse tool."""
+
     if not region:
         raise ValueError("AWS region is required; set AWS_REGION or AWS_DEFAULT_REGION.")
     if not model:
@@ -128,7 +119,6 @@ def structured_call(model: str, region: str, system: str, prompt: str,
         if block.get("toolUse", {}).get("name") == name:
             return block["toolUse"].get("input")
     return None
-
 
 def test_connection(model: str, region: str) -> dict:
     if not region:

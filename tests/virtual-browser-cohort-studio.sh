@@ -9,14 +9,12 @@ echo "Running Cohort Studio in a Virtual Browser smoke test"
 
 bash tests/cohort-studio.sh
 
-# Check the actual kiosk target, not only the baked browser policy.
 CHROME_CLI=$(docker exec browser printenv CHROME_CLI)
 if [[ "${CHROME_CLI}" != "--kiosk http://${APP_ORIGIN}" ]]; then
     echo "ERROR: Chromium target does not match the allowed Studio origin"
     exit 1
 fi
 
-# Exercise the browser container's DNS/network path to the real frontend.
 BROWSER_FRONTEND=$(docker exec browser curl -fsS --max-time 10 "http://${APP_ORIGIN}/")
 if [[ "${BROWSER_FRONTEND}" != *'<div id="root">'* ]]; then
     echo "ERROR: browser container cannot fetch the Studio frontend"

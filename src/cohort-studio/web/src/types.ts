@@ -3,13 +3,13 @@ export interface Source {
   id: string;
   label: string;
   omop?: { cdm_schema: string; vocab_schema: string | null; version: string | null; persons: number };
-  uuid?: string;  // resource UUID — matches a workflow job's output bucket
+  uuid?: string;
 }
 
 export interface TableInfo {
   name: string;
   detail: string;
-  sql?: string | null;  // catalog views: the view definition
+  sql?: string | null;
 }
 
 export interface ColumnProfile {
@@ -68,7 +68,7 @@ export interface JoinStep {
   right_id: string;
   how: JoinHow;
   conditions: JoinCondition[];
-  columns: string[] | null;  // null = every column of the joined table
+  columns: string[] | null;
   alias: string;
 }
 
@@ -79,8 +79,8 @@ export interface JoinStepStats {
   rows: number;
   truncated: boolean;
   rows_before: number;
-  growth: number | null;  // rows / rows_before
-  fanout: boolean;        // grew past the server's fan-out threshold
+  growth: number | null;
+  fanout: boolean;
 }
 
 export interface JoinStats {
@@ -91,7 +91,7 @@ export interface JoinStats {
   truncated: boolean;
   steps: JoinStepStats[];
   notes: string[];
-  capped_inputs: string[];  // in-memory inputs that hit the load row cap
+  capped_inputs: string[];
 }
 
 export interface JoinConditionCheck { problem: string | null; note: string | null }

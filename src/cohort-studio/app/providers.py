@@ -1,13 +1,3 @@
-"""OpenAI-compatible chat-agent loop for OpenAI, Gemini, and OpenRouter.
-
-Anthropic keeps its native SDK tool runner (see agent.py). OpenAI and
-These providers share this one manual loop: the official `openai` SDK talks
-to OpenAI directly and to Gemini or OpenRouter through their documented
-OpenAI-compatible endpoints (a base_url switch). The tool schemas below mirror, by hand, the
-five callables agent.build_tools() produces — the Anthropic path derives
-them from docstrings, which does not carry over to this wire format.
-"""
-
 import json
 import logging
 
@@ -15,8 +5,6 @@ logger = logging.getLogger(__name__)
 
 MAX_TURNS = 8
 
-# OpenAI function-tool schemas mirroring agent.build_tools(). Keep arg
-# names in sync with the callables there.
 TOOL_SCHEMAS = [
     {"type": "function", "function": {
         "name": "run_query",
@@ -70,7 +58,6 @@ TOOL_SCHEMAS = [
             "required": ["index"]}}},
 ]
 
-
 def _client(api_key: str, base_url: str | None):
     from openai import OpenAI
     kwargs = {"api_key": api_key}
@@ -78,24 +65,17 @@ def _client(api_key: str, base_url: str | None):
         kwargs["base_url"] = base_url
     return OpenAI(**kwargs)
 
-
 def run(provider: str, model: str, api_key: str, base_url: str | None,
         system: str, messages: list[dict], tool_impls: dict,
         tool_schemas: list[dict] | None = None) -> dict:
-    """Drive the OpenAI-compatible tool loop to completion.
 
-    tool_impls maps a tool name to the plain callable from
-    agent.build_tools(). Returns {reply, usage, tool_calls, turns}.
-    """
     client = _client(api_key, base_url)
     convo = [{"role": "system", "content": system}] + messages
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     tool_calls: list[str] = []
 
     for _turn in range(MAX_TURNS):
-        # No explicit max_tokens: the OpenAI reasoning-model line rejects
-        # it (wants max_completion_tokens) and the model field is free
-        # text, so we let the provider default apply.
+
         resp = client.chat.completions.create(
             model=model, messages=convo,
             tools=(tool_schemas if tool_schemas is not None else TOOL_SCHEMAS),
@@ -106,7 +86,7 @@ def run(provider: str, model: str, api_key: str, base_url: str | None,
             usage["total_tokens"] += resp.usage.total_tokens or 0
         choice = resp.choices[0]
         msg = choice.message
-        # Append the assistant turn verbatim so tool_call_ids line up.
+
         convo.append(msg.model_dump(exclude_none=True))
         if not msg.tool_calls:
             return {"reply": (msg.content or "(done)").strip(), "usage": usage,
@@ -124,7 +104,7 @@ def run(provider: str, model: str, api_key: str, base_url: str | None,
             else:
                 try:
                     result = impl(**kwargs)
-                except Exception as e:  # tool errors feed back to the model
+                except Exception as e:
                     result = json.dumps({"error": str(e)})
             convo.append({"role": "tool", "tool_call_id": call.id,
                           "content": result})

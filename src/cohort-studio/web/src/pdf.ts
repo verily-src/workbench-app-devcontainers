@@ -16,9 +16,6 @@ const safeName = (s: string) =>
 
 export interface ChartImage { title: string; dataUrl: string }
 
-// Snapshot every rendered chart on the page as a PNG. ECharts draws to a
-// <canvas>, so toDataURL gives us a crisp image without touching the
-// chart instances (which live inside ChartCard).
 export function captureCharts(): ChartImage[] {
   const cards = document.querySelectorAll<HTMLElement>(
     ".chart-grid .chart-card");
@@ -31,8 +28,6 @@ export function captureCharts(): ChartImage[] {
   return out;
 }
 
-// Build a one-click report: header, active filters, every chart, and a
-// page of the filtered rows. All client-side — the charts only exist here.
 export function exportDatasetPdf(dataset: Dataset, charts: ChartImage[]) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();

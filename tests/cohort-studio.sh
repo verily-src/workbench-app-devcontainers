@@ -6,10 +6,8 @@ readonly CONTAINER_NAME="application-server"
 
 echo "Running Cohort Studio smoke test"
 
-# Verify the app process is running
 docker exec "${CONTAINER_NAME}" pgrep -f uvicorn
 
-# Verify the health endpoint responds
 readonly RESPONSE=$(docker exec "${CONTAINER_NAME}" \
     curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/health)
 
@@ -18,7 +16,6 @@ if [[ "${RESPONSE}" != "200" ]]; then
     exit 1
 fi
 
-# Verify the server returns the built React app, not only the API process.
 readonly FRONTEND=$(docker exec "${CONTAINER_NAME}" \
     curl -fsS http://localhost:8080/)
 if [[ "${FRONTEND}" != *'<div id="root">'* ]]; then
@@ -26,8 +23,6 @@ if [[ "${FRONTEND}" != *'<div id="root">'* ]]; then
     exit 1
 fi
 
-# A fresh image may still report unknown before its first self-update. If the
-# caller provides an expected build commit, require an exact match.
 readonly VERSION=$(docker exec "${CONTAINER_NAME}" \
     curl -fsS http://localhost:8080/api/version)
 readonly APP_SHA=$(docker exec "${CONTAINER_NAME}" python3 -c \

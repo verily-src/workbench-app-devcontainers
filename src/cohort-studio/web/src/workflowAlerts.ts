@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, WorkflowJob } from "./api";
 
-// Subscribe to a running workflow job and get a browser notification +
-// in-app toast when it reaches a terminal state. Subscriptions persist in
-// localStorage so they survive reloads and view switches; while any are
-// active we poll /api/workflows so completion is caught even if the user
-// is on another tab.
-
 const TERMINAL = new Set(
   ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);
 const STORE_KEY = "cohort-studio.workflow-subs";
@@ -35,7 +29,7 @@ export function useWorkflowAlerts() {
   const pushToast = useCallback((t: Omit<Toast, "id">) => {
     const id = `t${toastSeq.current++}`;
     setToasts((prev) => [...prev, { ...t, id }]);
-    // Auto-dismiss after 8s; the user can also close it.
+
     window.setTimeout(() =>
       setToasts((prev) => prev.filter((x) => x.id !== id)), 8000);
   }, []);
@@ -54,8 +48,7 @@ export function useWorkflowAlerts() {
       save(next);
       return next;
     });
-    // Ask for OS notification permission on first opt-in (best effort —
-    // through the Workbench proxy this may be denied; the toast still works).
+
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().catch(() => undefined);
     }
@@ -67,19 +60,16 @@ export function useWorkflowAlerts() {
     const body = `${sub.name} — ${status}`;
     pushToast({ title, body, tone: ok ? "ok" : "fail" });
     if ("Notification" in window && Notification.permission === "granted") {
-      try { new Notification(title, { body }); } catch { /* ignore */ }
+      try { new Notification(title, { body }); } catch {  }
     }
   }, [pushToast]);
 
-  // Poll only while there is something to watch for.
   useEffect(() => {
     if (subs.length === 0) return;
     let cancelled = false;
     const check = async () => {
       let list: WorkflowJob[];
-      // No force: ride the backend's 45s TTL so N subscribed tabs don't
-      // each shell out `wb workflow job list` every poll. Worst-case
-      // notify latency ~65s, fine for minutes-to-hours jobs.
+
       try { list = (await api.workflows()).jobs; }
       catch { return; }
       if (cancelled) return;
@@ -102,7 +92,7 @@ export function useWorkflowAlerts() {
       }
     };
     const handle = window.setInterval(check, POLL_MS);
-    check();  // check immediately so a since-finished job notifies at once
+    check();
     return () => { cancelled = true; window.clearInterval(handle); };
   }, [subs.length, fire]);
 

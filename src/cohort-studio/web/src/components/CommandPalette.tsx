@@ -14,9 +14,6 @@ interface Props {
   onClose: () => void;
 }
 
-// Linear-style ⌘K palette: fuzzy-filter every navigable thing (views, open
-// tabs, datasources, tables, actions) and run it. All client-side — the
-// command list is built by App from state it already holds.
 export function CommandPalette({ open, commands, onClose }: Props) {
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
@@ -29,7 +26,7 @@ export function CommandPalette({ open, commands, onClose }: Props) {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return commands;
-    // Subsequence match so "wfhello" finds "Workflows: hello".
+
     const matches = (s: string) => {
       let i = 0;
       for (const ch of s.toLowerCase()) if (ch === needle[i]) i++;

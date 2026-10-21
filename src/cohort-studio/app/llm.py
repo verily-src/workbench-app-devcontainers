@@ -1,5 +1,3 @@
-"""LLM connection tests and natural-language cohort filter suggestions."""
-
 import logging
 
 from pydantic import BaseModel, Field
@@ -9,7 +7,6 @@ import config
 
 logger = logging.getLogger(__name__)
 
-
 class SuggestedFilter(BaseModel):
     column: str
     kind: str = Field(description="'categorical' or 'range'")
@@ -17,21 +14,17 @@ class SuggestedFilter(BaseModel):
     min: float | None = None
     max: float | None = None
 
-
 class FilterSuggestion(BaseModel):
     filters: list[SuggestedFilter]
     explanation: str = Field(
         description="One sentence describing the applied interpretation")
 
-
 class LLMNotConfigured(RuntimeError):
     pass
-
 
 _LABELS = {"anthropic": "Anthropic", "openai": "OpenAI",
            "gemini": "Gemini", "openrouter": "OpenRouter",
            "bedrock": "Amazon Bedrock"}
-
 
 def _cfg() -> dict:
     cfg = config.get_llm_config()
@@ -49,9 +42,8 @@ def _cfg() -> dict:
             f"No {label} model set — enter a model name in Settings.")
     return cfg
 
-
 def test_connection() -> dict:
-    """Cheap round trip that validates the key and model."""
+
     cfg = _cfg()
     if cfg["provider"] == "bedrock":
         return bedrock.test_connection(cfg["model"], cfg["region"])
@@ -61,7 +53,7 @@ def test_connection() -> dict:
         info = client.models.retrieve(cfg["model"])
         return {"ok": True, "provider": "anthropic", "model": info.id,
                 "display_name": info.display_name}
-    # OpenAI-compatible providers: a 1-token completion proves key+model.
+
     from openai import OpenAI
     kwargs = {"api_key": cfg["api_key"]}
     if cfg["base_url"]:
@@ -72,7 +64,6 @@ def test_connection() -> dict:
         messages=[{"role": "user", "content": "ping"}])
     return {"ok": True, "provider": cfg["provider"], "model": cfg["model"],
             "display_name": cfg["model"]}
-
 
 def suggest_filters(question: str, columns: list[dict],
                     current_filters: list[dict]) -> dict:
@@ -123,7 +114,6 @@ def suggest_filters(question: str, columns: list[dict],
         [f.model_dump() for f in suggestion.filters], columns)
     return {"filters": cleaned, "explanation": suggestion.explanation}
 
-
 def _anthropic_suggestion(cfg: dict, system: str,
                           prompt: str) -> "FilterSuggestion | None":
     import anthropic
@@ -136,10 +126,9 @@ def _anthropic_suggestion(cfg: dict, system: str,
         return None
     return response.parsed_output
 
-
 def _openai_suggestion(cfg: dict, system: str,
                        prompt: str) -> "FilterSuggestion | None":
-    """OpenAI/Gemini structured output via JSON Schema response format."""
+
     from openai import OpenAI
     kwargs = {"api_key": cfg["api_key"]}
     if cfg["base_url"]:
@@ -160,11 +149,9 @@ def _openai_suggestion(cfg: dict, system: str,
                        cfg["provider"], e)
         return None
 
-
 def _bedrock_suggestion(cfg: dict, system: str,
                         prompt: str) -> "FilterSuggestion | None":
-    # Converse uses a tool schema for structured output. Model support for
-    # tool use varies; Settings lets the user choose a compatible model.
+
     schema = {
         "type": "object",
         "properties": {
@@ -198,9 +185,8 @@ def _bedrock_suggestion(cfg: dict, system: str,
         logger.warning("Could not parse Bedrock filter result: %s", exc)
         return None
 
-
 def validate_filters(filters: list[dict], columns: list[dict]) -> list[dict]:
-    """Drop or clamp model-suggested filters that don't fit the profile."""
+
     by_name = {c["name"]: c for c in columns}
     cleaned = []
     for f in filters:

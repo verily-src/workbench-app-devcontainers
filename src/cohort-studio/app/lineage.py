@@ -1,15 +1,3 @@
-"""Lineage and audit events.
-
-Events are written to the same Aurora database the dashboard queries, so
-they stay inside the workspace governance boundary and are queryable with
-plain SQL. In local CSV mode (no workspace) they fall back to a SQLite
-file so the lineage UI still works.
-
-DynamoDB was evaluated and rejected: it is not a Workbench resource type,
-and workspace credentials are ABAC-scoped to individual resources, so no
-credential path to DynamoDB exists. See README for the full comparison.
-"""
-
 import getpass
 import json
 import logging
@@ -33,7 +21,7 @@ event_table = Table(
     Column("event_type", Text, nullable=False),
     Column("entity_type", Text, nullable=False),
     Column("entity_id", Text, nullable=False),
-    # JSON stored as text so the same DDL works on PostgreSQL and SQLite
+
     Column("payload", Text, nullable=False, default="{}"),
 )
 
@@ -44,11 +32,6 @@ edge_table = Table(
     Column("parent_entity_id", Text, nullable=False),
 )
 
-# OpenTelemetry-shaped record of one chat-agent turn. Stored in Aurora so
-# the agent's history lives inside the workspace governance boundary and
-# is exportable to an OTel collector later (fields map to span attributes:
-# gen_ai.system / gen_ai.request.model / usage.*). No live OTLP exporter
-# runs in the Workbench VM, so we persist rather than emit.
 agent_turn_table = Table(
     "_agent_turn", metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
@@ -63,7 +46,7 @@ agent_turn_table = Table(
     Column("prompt_tokens", Integer, nullable=False, default=0),
     Column("completion_tokens", Integer, nullable=False, default=0),
     Column("total_tokens", Integer, nullable=False, default=0),
-    # JSON-as-text for portability across PostgreSQL and SQLite.
+
     Column("tool_calls", Text, nullable=False, default="[]"),
     Column("status", Text, nullable=False, default="ok"),
     Column("error", Text, nullable=True),
@@ -72,9 +55,8 @@ agent_turn_table = Table(
 _actor_cache: str | None = None
 _prepared_engines: set[int] = set()
 
-
 def _actor() -> str:
-    """The workspace user email, or the OS user outside a workspace."""
+
     global _actor_cache
     if _actor_cache:
         return _actor_cache
@@ -87,23 +69,20 @@ def _actor() -> str:
         _actor_cache = getpass.getuser()
     return _actor_cache
 
-
 def sqlite_fallback_engine() -> Engine:
     db_path = os.environ.get(
         "LINEAGE_DB", str(Path(__file__).parent / "lineage.db"))
     return create_engine(f"sqlite:///{db_path}",
                          connect_args={"check_same_thread": False})
 
-
 def _ensure_tables(engine: Engine):
     if id(engine) not in _prepared_engines:
         metadata.create_all(engine)
         _prepared_engines.add(id(engine))
 
-
 def record(engine: Engine, event_type: str, entity_type: str, entity_id: str,
            payload: dict | None = None, parents: list[tuple[str, str]] | None = None):
-    """Append one event. Never raises — lineage must not break the app."""
+
     try:
         _ensure_tables(engine)
         with engine.connect() as conn:
@@ -125,12 +104,11 @@ def record(engine: Engine, event_type: str, entity_type: str, entity_id: str,
     except Exception as e:
         logger.warning("Failed to record lineage event %s: %s", event_type, e)
 
-
 def record_turn(engine: Engine, trace_id: str, provider: str, model: str,
                 dataset: str, prompt: str, latency_ms: int,
                 usage: dict | None = None, tool_calls: list | None = None,
                 status: str = "ok", error: str | None = None):
-    """Append one agent-turn telemetry record. Never raises."""
+
     try:
         _ensure_tables(engine)
         usage = usage or {}
@@ -148,7 +126,6 @@ def record_turn(engine: Engine, trace_id: str, provider: str, model: str,
     except Exception as e:
         logger.warning("Failed to record agent turn: %s", e)
 
-
 def recent_turns(engine: Engine, limit: int = 100) -> pd.DataFrame:
     cols = ["ts", "trace_id", "actor", "provider", "model", "dataset",
             "prompt", "latency_ms", "prompt_tokens", "completion_tokens",
@@ -163,7 +140,6 @@ def recent_turns(engine: Engine, limit: int = 100) -> pd.DataFrame:
     except Exception as e:
         logger.warning("Failed to read agent turns: %s", e)
         return pd.DataFrame(columns=cols)
-
 
 def recent_events(engine: Engine, limit: int = 200) -> pd.DataFrame:
     try:

@@ -1,18 +1,5 @@
 """Load OHDSI Eunomia GiBleed (or any CDM CSV export) into Postgres as an
-OMOP CDM v5.4 schema.
-
-    python -m omop_load --url postgresql://user@host/db [--schema cdm] [--replace]
-    python -m omop_load --resource-id <aurora resource>   # Workbench workspace
-
-The default source is Eunomia's GiBleed_5.5.zip (~2.7k Synthea persons),
-downloaded once to ~/.cache/cohort-studio/eunomia. Its columns are a
-superset of 5.4, so it loads into the official 5.4 DDL (omop_ddl/) with
-the 5.5-only columns dropped; 5.3 exports are renamed to 5.4 names.
---source takes a local zip or a directory of <table>.csv[.gz] files.
-Tables load in one transaction via COPY, then get primary keys, indexes
-on person_id and the domain concept columns, and ANALYZE. Vocabulary
-tables go into the same schema.
-"""
+OMOP CDM v5.4 schema."""
 
 import argparse
 import csv
@@ -35,8 +22,8 @@ CACHE_DIR = Path(os.environ.get("STUDIO_EUNOMIA_CACHE",
                                 "~/.cache/cohort-studio/eunomia")).expanduser()
 DDL = Path(__file__).parent / "omop_ddl" / "OMOPCDM_postgresql_5.4_ddl.sql"
 CDM_VERSION = "v5.4"
-CDM_VERSION_CONCEPT_ID = 756265  # "OMOP CDM Version 5.4.0"
-# CDM 5.3 column names renamed in 5.4.
+CDM_VERSION_CONCEPT_ID = 756265
+
 RENAMES_53 = {
     "admitting_source_concept_id": "admitted_from_concept_id",
     "admitting_source_value": "admitted_from_source_value",
@@ -49,9 +36,7 @@ _TABLE = re.compile(r"CREATE TABLE @cdmDatabaseSchema\.(\w+) \((.*?)\);", re.S)
 _COLUMN = re.compile(r'^\s*"?(\w+)"?\s+(.+?)\s+(NOT NULL|NULL)\s*,?\s*$')
 S3_DOWNLOAD_TIMEOUT = 3600
 
-
 class S3Source(BaseModel):
-    """A Workbench S3 folder and a relative ZIP key or CSV prefix."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -79,13 +64,11 @@ class S3Source(BaseModel):
             raise ValueError("S3 path must name a ZIP key or CSV prefix.")
         return value
 
-
 def _q(ident: str) -> str:
     return '"' + ident.replace('"', '""') + '"'
 
-
 def parse_ddl(path: Path = DDL) -> dict[str, dict]:
-    """table -> {sql, columns: [(name, not_null)]} from the OHDSI DDL."""
+
     out = {}
     for table, body in _TABLE.findall(path.read_text()):
         cols = []
@@ -97,9 +80,8 @@ def parse_ddl(path: Path = DDL) -> dict[str, dict]:
                       "columns": cols}
     return out
 
-
 def fetch(url: str = EUNOMIA_URL, cache_dir: Path = CACHE_DIR) -> Path:
-    """The zip at url, downloaded once into cache_dir."""
+
     cache_dir.mkdir(parents=True, exist_ok=True)
     target = cache_dir / url.rsplit("/", 1)[-1]
     if not target.exists():
@@ -109,13 +91,8 @@ def fetch(url: str = EUNOMIA_URL, cache_dir: Path = CACHE_DIR) -> Path:
         tmp.rename(target)
     return target
 
-
 def open_sources(source: Path) -> dict:
-    """table -> zero-arg opener of a text stream, from a zip or CSV tree.
 
-    Nested exports are supported. Two files with the same table basename are
-    rejected instead of silently choosing one.
-    """
     out = {}
 
     def add(table: str, opener, source_name: str):
@@ -155,9 +132,8 @@ def open_sources(source: Path) -> dict:
                 zf.open(n), encoding="utf-8-sig", newline=""), name)
     return out
 
-
 def _validate_sources(sources: dict, ddl: dict[str, dict]):
-    """Check that input is a recognizable OMOP export before DDL changes."""
+
     import omop
 
     missing = {"person", "observation_period", "concept", "concept_ancestor"} - set(sources)
@@ -202,9 +178,8 @@ def _validate_sources(sources: dict, ddl: dict[str, dict]):
         raise ValueError("No clinical event CSV has the required person, concept, "
                          "and event date columns.")
 
-
 def download_s3_source(resource_id: str, path: str, destination: Path) -> Path:
-    """Download one ZIP object or all CSV files under a relative S3 prefix."""
+
     import db
 
     source = S3Source(resource_id=resource_id, path=path)
@@ -234,9 +209,8 @@ def download_s3_source(resource_id: str, path: str, destination: Path) -> Path:
         raise RuntimeError("S3 ZIP download completed but the local file is missing.")
     return local
 
-
 def _copy(cur, schema: str, table: str, stream, ddl_cols: dict[str, bool]) -> list[str]:
-    """COPY the CSV columns the DDL knows; returns the dropped ones."""
+
     reader = csv.reader(stream)
     raw_header = next(reader)
     header = [RENAMES_53.get(h.strip().lower(), h.strip().lower()) for h in raw_header]
@@ -250,10 +224,8 @@ def _copy(cur, schema: str, table: str, stream, ddl_cols: dict[str, bool]) -> li
             cp.write_row([row[i] if row[i] != "" else None for i in keep])
     return [h for h in header if h not in ddl_cols]
 
-
 def _primary_key(cur, t: str, cols: str, log) -> bool:
-    """Some exports repeat ids (GiBleed_5.3 drug_exposure); those tables
-    get a plain index instead."""
+
     import psycopg
     try:
         with cur.connection.transaction():
@@ -263,7 +235,6 @@ def _primary_key(cur, t: str, cols: str, log) -> bool:
         log(f"  {t}: duplicate ({cols}), indexed without a primary key")
         cur.execute(f"CREATE INDEX ON {t} ({cols})")
         return False
-
 
 def _keys_and_indexes(cur, schema: str, tables: dict[str, list[str]], log=print):
     import omop
@@ -283,11 +254,9 @@ def _keys_and_indexes(cur, schema: str, tables: dict[str, list[str]], log=print)
         if table == "concept":
             cur.execute(f"CREATE INDEX ON {t} (concept_code)")
 
-
 def load(conn, source: Path, schema: str = "cdm", replace: bool = False,
          log=print) -> dict[str, int]:
-    """Create and fill `schema` on a psycopg connection; returns row counts.
-    Without replace, an existing CDM in the schema is left as is."""
+
     if not _SCHEMA.match(schema):
         raise ValueError(f"Invalid schema name {schema!r}.")
     s = _q(schema)
@@ -335,7 +304,6 @@ def load(conn, source: Path, schema: str = "cdm", replace: bool = False,
     conn.commit()
     return counts
 
-
 def _counts(cur, schema: str, tables: list[str]) -> dict[str, int]:
     out = {}
     for t in tables:
@@ -343,15 +311,13 @@ def _counts(cur, schema: str, tables: list[str]) -> dict[str, int]:
         out[t] = cur.fetchone()[0]
     return out
 
-
 def _connect(args):
     if args.url:
         import psycopg
         return psycopg.connect(args.url)
     import db
-    # Keep SQLAlchemy's pool proxy checked out until the caller closes it.
-    return db.get_engine_for_resource(args.resource_id).raw_connection()
 
+    return db.get_engine_for_resource(args.resource_id).raw_connection()
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -373,7 +339,7 @@ def main(argv=None) -> int:
             s3_source = S3Source(resource_id=args.s3_resource_id, path=args.s3_path)
         except ValueError as e:
             ap.error(str(e))
-        # Keep the downloaded source alive only for this import.
+
         with tempfile.TemporaryDirectory(prefix="omop-s3-") as temp_dir:
             try:
                 local_source = download_s3_source(
@@ -400,7 +366,6 @@ def main(argv=None) -> int:
     print(f"{sum(1 for n in counts.values() if n)} non-empty of {len(counts)} tables "
           f"in schema {args.schema}")
     return 0
-
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent))

@@ -90,8 +90,7 @@ interface Props {
   spec: ChartSpec;
   result?: ChartResult;
   palette: string;
-  // Chart kinds compatible with this spec's columns, computed by the
-  // parent from column types (histogram/scatter need numeric columns).
+
   kinds: ChartSpec["kind"][];
   onTapCategory: (column: string, value: string) => void;
   onChangeKind: (kind: ChartSpec["kind"]) => void;

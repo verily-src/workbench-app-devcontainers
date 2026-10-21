@@ -1,6 +1,3 @@
-"""End-to-end: uvicorn serving the compiled React frontend, driven by
-Playwright. Uses CSV upload, so no workspace/Aurora is needed."""
-
 import os
 import re
 import socket
@@ -111,7 +108,7 @@ def test_close_tab_returns_to_empty_state(loaded_page: Page):
 
 
 def test_command_palette_navigates(loaded_page: Page):
-    # Ctrl/⌘-K opens the palette; typing + Enter runs the top match.
+
     loaded_page.keyboard.press("Control+k")
     palette = loaded_page.locator(".palette")
     expect(palette).to_be_visible()
@@ -121,7 +118,7 @@ def test_command_palette_navigates(loaded_page: Page):
     expect(loaded_page.get_by_text("lineage events").first).to_be_visible(
         timeout=10000)
 
-    # the ⌘K hint button also opens it; an open tab is listed as a command
+
     loaded_page.get_by_title("Command palette").click()
     expect(loaded_page.locator(".palette")).to_be_visible()
     loaded_page.locator(".palette-input").fill("samples")
@@ -146,7 +143,7 @@ def test_settings_provider_switch_shows_per_provider_key(
     page.locator(".topnav-link", has_text="Settings").click()
     provider = page.locator(".settings-card select").first
     expect(provider).to_be_visible(timeout=10000)
-    # Default provider is Anthropic; its key field label is shown.
+
     expect(page.get_by_text("Anthropic API key").first).to_be_visible()
     provider.select_option("openai")
     expect(page.get_by_text("OpenAI API key").first).to_be_visible()
@@ -155,8 +152,8 @@ def test_settings_provider_switch_shows_per_provider_key(
 
 
 def test_workflows_view_renders(page: Page, app_url: str):
-    # The view mounts and shows the running-count hero plus a Refresh
-    # button, whether or not a workspace (and `wb workflow`) is reachable.
+
+
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.locator(".topnav-link", has_text="Workflows").click()
@@ -179,7 +176,7 @@ def test_chat_widget_opens_and_reports_unconfigured(loaded_page: Page):
     box = loaded_page.locator(".chat-input input")
     box.fill("what is the mean rin score?")
     box.press("Enter")
-    # no API key in the test server -> graceful error bubble
+
     expect(loaded_page.locator(".chat-bubble",
            has_text="Something went wrong")).to_be_visible(timeout=15000)
 
@@ -188,7 +185,7 @@ def test_save_to_aurora_control_opens(loaded_page: Page):
     loaded_page.get_by_role("button", name="Save to Aurora").click()
     expect(loaded_page.locator(".save-aurora input")).to_be_visible(
         timeout=10000)
-    # no Aurora resource in the test workspace -> placeholder option shown
+
     expect(loaded_page.locator(".save-aurora select")).to_be_visible()
 
 
@@ -202,7 +199,7 @@ def test_settings_shows_palette_swatches(page: Page, app_url: str):
 
 
 def test_save_cohort_and_compare(loaded_page: Page):
-    # Filter to liver, save it as a cohort, then compare current-vs-rest.
+
     group = loaded_page.locator(".filter-group", has_text="tissue")
     group.locator("summary").click()
     group.get_by_label("liver").check()
@@ -218,14 +215,14 @@ def test_save_cohort_and_compare(loaded_page: Page):
     panel = loaded_page.locator(".compare-panel")
     expect(panel).to_be_visible()
     panel.get_by_role("button", name="Compare", exact=True).click()
-    # Ranked result table renders with a p-value column and a rin_score row.
+
     expect(panel.get_by_role("columnheader", name="p", exact=True)
            ).to_be_visible(timeout=10000)
     expect(panel.get_by_role("cell", name="rin_score")).to_be_visible()
 
 
 def test_derive_column(loaded_page: Page):
-    # Bin the numeric 'age' column into groups and confirm it's added.
+
     loaded_page.get_by_role("button", name="+ Derived column").click()
     panel = loaded_page.locator(".derive-panel")
     expect(panel).to_be_visible()
@@ -233,14 +230,14 @@ def test_derive_column(loaded_page: Page):
     panel.get_by_role("button", name="Add column").click()
     expect(panel.get_by_text(re.compile(r'Added "age_group"'))).to_be_visible(
         timeout=10000)
-    # the new column is now offered when adding a chart
+
     expect(loaded_page.locator('select[name="x"] option',
                                has_text="age_group")).to_have_count(1)
 
 
 def test_launch_workflow_panel_opens(loaded_page: Page):
-    # Opens the run-workflow panel (does NOT submit — that launches a real
-    # pipeline). Asserts the two-step form renders.
+
+
     loaded_page.get_by_role("button", name="Run workflow ▸").click()
     panel = loaded_page.locator(".launch-panel")
     expect(panel).to_be_visible()
@@ -249,8 +246,8 @@ def test_launch_workflow_panel_opens(loaded_page: Page):
 
 
 def test_change_chart_type(loaded_page: Page):
-    # age is numeric → starts as a histogram; switch it to a bar in place
-    # and confirm the query round-trip does not error.
+
+
     card = loaded_page.locator(".chart-card", has_text="age").first
     card.locator(".chart-kind").select_option("bar")
     expect(card.locator(".chart-kind")).to_have_value("bar", timeout=10000)
@@ -259,24 +256,24 @@ def test_change_chart_type(loaded_page: Page):
 
 
 def test_categorical_chart_has_no_numeric_type_option(loaded_page: Page):
-    # tissue is categorical: only "bar" is valid, so the type selector is
-    # hidden entirely (a histogram would be a numeric-only cast).
+
+
     card = loaded_page.locator(".chart-card", has_text="tissue").first
     expect(card).to_be_visible()
     expect(card.locator(".chart-kind")).to_have_count(0)
 
 
 def test_join_two_tabs_into_new_dataset(loaded_page: Page):
-    # Load a second table that shares sample_id, then join the two.
+
     loaded_page.locator('input[type="file"]').set_input_files(PHENO_CSV)
     expect(loaded_page.locator(".tab", has_text="phenotypes.csv")
            ).to_be_visible(timeout=15000)
     loaded_page.locator(".tab-join").click()
     panel = loaded_page.locator(".join-panel")
     expect(panel).to_be_visible()
-    # Keys default to the shared sample_id column; just run the join.
+
     panel.get_by_role("button", name=re.compile("Join")).click()
-    # Merged tab carries both source names and the joined columns (bmi).
+
     expect(loaded_page.locator(".tab.active", has_text="+")
            ).to_be_visible(timeout=15000)
     expect(loaded_page.get_by_role("columnheader", name="bmi")
@@ -305,7 +302,7 @@ def test_join_table_combobox_and_inline_validation(loaded_page: Page):
     expect(panel.locator(".join-engine")).to_have_text("runs in memory",
                                                        timeout=10000)
 
-    # Searchable table picker: filter, Escape, then pick with the keyboard.
+
     combo = panel.get_by_role("combobox", name="Table to join in step 1")
     combo.click()
     combo.fill("zzz")
@@ -318,7 +315,7 @@ def test_join_table_combobox_and_inline_validation(loaded_page: Page):
     combo.press("Enter")
     expect(combo).to_have_value("phenotypes.csv")
 
-    # number < text is rejected inline before running, and blocks Join.
+
     cond = panel.locator(".join-cond").first
     cond.locator("select").nth(0).select_option("rin_score")
     cond.locator("select.join-op").select_option("<")
@@ -332,8 +329,8 @@ def test_join_table_combobox_and_inline_validation(loaded_page: Page):
 
 
 def test_export_pdf_downloads(loaded_page: Page):
-    # Export PDF is fully client-side (charts live in the browser); assert
-    # a real .pdf download is produced with non-empty bytes.
+
+
     with loaded_page.expect_download(timeout=20000) as dl:
         loaded_page.get_by_role("button", name="Export PDF").click()
     download = dl.value
@@ -343,8 +340,8 @@ def test_export_pdf_downloads(loaded_page: Page):
 
 
 def test_saved_views_section_present(loaded_page: Page):
-    # Section renders; with no Aurora/S3 resource in the test workspace it
-    # shows the "no store" message.
+
+
     expect(loaded_page.get_by_text("Saved views").first).to_be_visible()
     expect(loaded_page.get_by_text(
         "No Aurora or S3 resource").first).to_be_visible()

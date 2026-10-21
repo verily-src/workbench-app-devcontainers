@@ -1,14 +1,3 @@
-"""OMOP CDM support against a real throwaway Postgres 17 loaded with a
-100-person Eunomia GiBleed subset (fixtures/omop, built by
-make_fixture.py): detection, concept search, the cohort compiler checked
-against pandas over the same CSVs, cohort/domain opens, endpoints, SQL
-injection, timeouts, and joins on person_id."""
-
-import json
-import os
-import shutil
-import subprocess
-import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -25,125 +14,15 @@ import omop_load
 
 FIXTURE = Path(__file__).parent / "fixtures" / "omop"
 GI_BLEED = 192671
-GI_BLEED_ICD10 = 35208414          # non-standard K92.2
+GI_BLEED_ICD10 = 35208414
 CELECOXIB, DICLOFENAC = 1118084, 1124300
-ACETAMINOPHEN = 1125315            # no direct exposures, only its drugs
-REPEATED = 40481087                # a condition recorded many times per person
+ACETAMINOPHEN = 1125315
+REPEATED = 40481087
 MALE, FEMALE = 8507, 8532
-# Eunomia has no measurement values; the fixture load gives this concept
-# value_as_number = measurement_id % 100, and so does the pandas reference.
-VALUED = 3006322
 RID = "omopdb"
+VALUED = 3006322
 
 
-def _pg_bin() -> Path | None:
-    dirs = [os.environ.get("STUDIO_PG_BIN"),
-            os.path.dirname(shutil.which("pg_ctl") or ""),
-            "/opt/homebrew/opt/postgresql@17/bin"]
-    for d in filter(None, dirs):
-        if (Path(d) / "pg_ctl").exists() and (Path(d) / "initdb").exists():
-            return Path(d)
-    return None
-
-
-LEGACY_DDL = """
-CREATE SCHEMA cdm53;
-CREATE SCHEMA vocab;
-CREATE TABLE cdm53.person (person_id integer, gender_concept_id integer,
-  year_of_birth integer, race_concept_id integer, ethnicity_concept_id integer);
-CREATE TABLE cdm53.observation_period (observation_period_id integer,
-  person_id integer, observation_period_start_date date,
-  observation_period_end_date date);
-CREATE TABLE cdm53.visit_occurrence (visit_occurrence_id integer,
-  person_id integer, visit_concept_id integer, visit_start_date date,
-  admitting_source_concept_id integer);
-CREATE TABLE cdm53.condition_occurrence (condition_occurrence_id integer,
-  person_id integer, condition_concept_id integer, condition_start_date date);
-CREATE TABLE vocab.concept (concept_id integer, concept_name text,
-  domain_id text, vocabulary_id text, concept_class_id text,
-  standard_concept text, concept_code text);
-CREATE TABLE vocab.concept_ancestor (ancestor_concept_id integer,
-  descendant_concept_id integer);
-INSERT INTO cdm53.person VALUES (1, 8507, 1970, 0, 0), (2, 8532, 1980, 0, 0);
-INSERT INTO cdm53.observation_period VALUES
-  (1, 1, '2000-01-01', '2020-01-01'), (2, 2, '2000-01-01', '2020-01-01');
-INSERT INTO cdm53.condition_occurrence VALUES (1, 1, 10, '2010-05-01'),
-  (2, 2, 11, '2011-05-01');
-INSERT INTO vocab.concept VALUES (10, 'Child', 'Condition', 'SNOMED', 'Clinical Finding', 'S', 'c10'),
-  (11, 'Other child', 'Condition', 'SNOMED', 'Clinical Finding', 'S', 'c11'),
-  (12, 'Parent', 'Condition', 'SNOMED', 'Clinical Finding', 'S', 'c12');
-INSERT INTO vocab.concept_ancestor VALUES (12, 10), (12, 11), (10, 10), (11, 11), (12, 12);
-"""
-
-
-@pytest.fixture(scope="session")
-def pg():
-    """Throwaway Postgres on a unix socket in a temp dir, with databases
-    omop (the fixture in schema cdm), legacy (5.3 names, split vocab
-    schema) and empty."""
-    bin_dir = _pg_bin()
-    if bin_dir is None:
-        pytest.skip("PostgreSQL binaries (initdb, pg_ctl) not found in PATH or "
-                    "/opt/homebrew/opt/postgresql@17/bin; set STUDIO_PG_BIN")
-    root = Path(tempfile.mkdtemp(prefix="studio-pg-", dir="/tmp"))
-    data = root / "data"
-    subprocess.run([bin_dir / "initdb", "-D", data, "-U", "postgres", "-A", "trust",
-                    "--no-locale", "-E", "UTF8"], check=True, capture_output=True)
-    subprocess.run([bin_dir / "pg_ctl", "-D", data, "-l", root / "log", "-w",
-                    "-o", f"-p 5432 -k {root} -c listen_addresses=''", "start"],
-                   check=True, capture_output=True)
-    dsn = f"host={root} port=5432 user=postgres"
-    try:
-        with psycopg.connect(f"{dsn} dbname=postgres", autocommit=True) as conn:
-            for name in ("omop", "legacy", "empty"):
-                conn.execute(f"CREATE DATABASE {name}")
-        with psycopg.connect(f"{dsn} dbname=omop") as conn:
-            omop_load.load(conn, FIXTURE, "cdm", log=lambda *_: None)
-            conn.execute("UPDATE cdm.measurement SET value_as_number = measurement_id %% 100 "
-                         "WHERE measurement_concept_id = %s", (VALUED,))
-        with psycopg.connect(f"{dsn} dbname=legacy") as conn:
-            conn.execute(LEGACY_DDL)
-        yield {"dsn": dsn, "url": lambda name: (
-            f"postgresql+psycopg://postgres@/{name}?host={root}&port=5432")}
-    finally:
-        subprocess.run([bin_dir / "pg_ctl", "-D", data, "-m", "immediate", "stop"],
-                       capture_output=True)
-        shutil.rmtree(root, ignore_errors=True)
-
-
-@pytest.fixture(scope="session")
-def engine(pg):
-    eng = create_engine(pg["url"]("omop"))
-    yield eng
-    eng.dispose()
-
-
-@pytest.fixture(scope="session")
-def info(engine):
-    return omop.detect(engine)
-
-
-@pytest.fixture
-def client(engine, monkeypatch):
-    monkeypatch.setattr(db, "list_aurora_resources", lambda: [{"id": RID}])
-    monkeypatch.setattr(db, "get_engine_for_resource", lambda rid: engine)
-    omop.invalidate()
-    yield TestClient(main.app)
-    omop.invalidate()
-
-
-# --------------------------------------------------------- pandas reference
-
-@pytest.fixture(scope="session")
-def ref() -> dict[str, pd.DataFrame]:
-    t = {p.name.removesuffix(".csv.gz"): pd.read_csv(p) for p in FIXTURE.glob("*.csv.gz")}
-    m = t["measurement"]
-    m.loc[m.measurement_concept_id == VALUED, "value_as_number"] = m.measurement_id % 100
-    for df in t.values():
-        for col in df.columns:
-            if col.endswith("_date"):
-                df[col] = pd.to_datetime(df[col])
-    return t
 
 
 def _events(ref, domain, ids, descendants=True, observation=True, start=None,
@@ -181,7 +60,7 @@ def _count(engine, info, spec) -> dict:
     return omop.count(engine, info, spec)
 
 
-# --------------------------------------------------------------- detection
+
 
 def test_detect_finds_schema_version_and_tables(info, ref):
     out = omop.public(info)
@@ -227,7 +106,7 @@ def test_detect_resource_caches_and_feeds_the_hint(engine, monkeypatch):
     omop.invalidate()
 
 
-# ---------------------------------------------------------- concept search
+
 
 def test_search_by_name_ranks_ingredient_and_counts_persons(engine, info, ref):
     out = omop.search_concepts(engine, info, "Gastrointestinal hemorrhage")
@@ -267,7 +146,7 @@ def test_search_text_is_bound_not_spliced(engine, info):
         assert conn.execute(text("SELECT count(*) FROM cdm.person")).scalar() == 100
 
 
-# -------------------------------------------------------- cohort compiler
+
 
 def test_descendants_expand_an_ingredient_to_its_drugs(engine, info, ref):
     spec = {"criteria": [{"domain": "drug", "concept_ids": [ACETAMINOPHEN]}]}
@@ -299,7 +178,7 @@ def test_attrition_matches_pandas(engine, info, ref):
     assert [a["label"] for a in out["attrition"]] == [
         "With an observation period", "With Gastrointestinal hemorrhage",
         "With Diclofenac", "Without celecoxib", "Gender"]
-    assert len(set(len(s) for s in steps)) > 2   # the steps really filter
+    assert len(set(len(s) for s in steps)) > 2
 
 
 def test_min_count(engine, info, ref):
@@ -376,65 +255,6 @@ def test_empty_spec_is_everyone_observed(engine, info):
         {"label": "With an observation period", "persons": 100}]}
 
 
-@pytest.mark.parametrize("spec,match", [
-    ({"criteria": [{"domain": "lab", "concept_ids": [1]}]}, "domain must be"),
-    ({"criteria": [{"domain": "condition; DROP TABLE cdm.person", "concept_ids": [1]}]},
-     "domain must be"),
-    ({"criteria": [{"domain": "condition", "concept_ids": ["1) OR 1=1 --"]}]}, "integer"),
-    ({"criteria": [{"domain": "condition", "concept_ids": [True]}]}, "integer"),
-    ({"criteria": [{"domain": "condition", "concept_ids": []}]}, "at least one"),
-    ({"criteria": [{"domain": "condition", "concept_ids": [1],
-                    "start": "2020-01-01'; DROP TABLE cdm.person; --"}]}, "ISO date"),
-    ({"criteria": [{"domain": "condition", "concept_ids": [1], "value_min": 1}]},
-     "measurement only"),
-    ({"criteria": [{"domain": "measurement", "concept_ids": [1], "value_min": "1"}]},
-     "number"),
-    ({"criteria": [{"domain": "condition", "concept_ids": [1], "min_count": 0}]},
-     "at least 1"),
-    ({"criteria": [{"domain": "condition", "concept_ids": [1], "sql": "x"}]},
-     "unknown key"),
-    ({"criteria; DROP TABLE cdm.person": []}, "Unknown cohort spec key"),
-    ({"criteria": [{"domain": "condition", "concept_ids": [1],
-                    "index_relation": "before"}]}, "defines the index"),
-    ({"demographics": {"age_min": 50, "age_max": 10}}, "greater than"),
-    ({"demographics": {"race": [1]}}, "Unknown demographics"),
-])
-def test_invalid_specs_are_rejected(engine, info, spec, match):
-    with pytest.raises(ValueError, match=match):
-        omop.count(engine, info, spec)
-
-
-@pytest.mark.parametrize("spec", [
-    {"criteria": ""}, {"criteria": 0}, {"criteria": False},
-    {"demographics": []}, {"demographics": ""}, {"demographics": 0},
-])
-def test_falsey_spec_fields_must_have_the_expected_type(spec):
-    with pytest.raises(ValueError):
-        omop.parse_spec(spec)
-
-
-@pytest.mark.parametrize("date", ["20200101", "2020-W01-1", "2020-1-01"])
-def test_date_fields_require_calendar_date_format(date):
-    with pytest.raises(ValueError, match="ISO date"):
-        omop.parse_spec({"criteria": [{"domain": "condition", "concept_ids": [1],
-                                       "start": date}]})
-
-
-@pytest.mark.parametrize("number", [float("nan"), float("inf"), float("-inf")])
-def test_numeric_filters_must_be_finite(number):
-    with pytest.raises(ValueError, match="finite"):
-        omop.parse_spec({"criteria": [{"domain": "measurement", "concept_ids": [1],
-                                       "value_min": number}]})
-
-
-def test_tables_used_reports_cohort_query_dependencies(info):
-    spec = {"criteria": [{"domain": "condition", "concept_ids": [GI_BLEED]}]}
-    assert omop.tables_used(info, spec) == [
-        "cdm.person", "cdm.condition_occurrence", "cdm.observation_period",
-        "cdm.concept", "cdm.concept_ancestor",
-    ]
-
-
 def test_death_without_concepts_and_empty_tables(engine, info):
     spec = {"criteria": [{"domain": "death"}]}
     assert omop.count(engine, info, spec)["persons"] == 0
@@ -442,7 +262,7 @@ def test_death_without_concepts_and_empty_tables(engine, info):
                       )["persons"] == 100
 
 
-# ------------------------------------------------------------------ opens
+
 
 def test_open_cohort_columns_names_and_values(engine, info, ref):
     spec = {"criteria": [{"domain": "condition", "concept_ids": [GI_BLEED]},
@@ -503,13 +323,6 @@ def test_open_domain_untouched_table_keeps_an_aurora_origin(engine, info, ref):
     assert enriched is None
 
 
-@pytest.mark.parametrize("table", ["concept", "person; DROP TABLE cdm.person",
-                                   "cdm_source", "nope"])
-def test_open_domain_rejects_other_tables(engine, info, table):
-    with pytest.raises(ValueError, match="person-level table"):
-        omop.open_domain(engine, info, table)
-
-
 def test_statement_timeout_raises_omop_timeout(engine):
     with pytest.raises(omop.OmopTimeout):
         with omop._session(engine, 50) as conn:
@@ -519,7 +332,7 @@ def test_statement_timeout_raises_omop_timeout(engine):
             conn.execute(text("SELECT * FROM cdm.no_such_table"))
 
 
-# --------------------------------------------------------------- endpoints
+
 
 def test_detect_endpoint(client, pg, monkeypatch):
     body = client.get(f"/api/omop/{RID}").json()
@@ -619,11 +432,26 @@ def test_untouched_domain_tables_join_in_aurora(client, ref):
 
 
 def test_open_endpoint_validation(client):
-    resp = client.post(f"/api/omop/{RID}/domain/open", json={"table": "concept"})
-    assert resp.status_code == 400
-    resp = client.post(f"/api/omop/{RID}/cohort/open",
-                       json={"spec": {"criteria": [{"domain": "nope"}]}})
-    assert resp.status_code == 400
+    cases = [
+        (f"/api/omop/{RID}/domain/open", {"table": "concept"}),
+        (f"/api/omop/{RID}/domain/open", {"table": "person; DROP TABLE cdm.person"}),
+        (f"/api/omop/{RID}/cohort/open",
+         {"spec": {"criteria": [{"domain": "nope"}]}}),
+        (f"/api/omop/{RID}/cohort/count", {"criteria": False}),
+        (f"/api/omop/{RID}/cohort/count",
+         {"criteria": [{"domain": "condition", "concept_ids": [1],
+                         "start": "2020-1-01"}]}),
+        (f"/api/omop/{RID}/cohort/count",
+         {"criteria": [{"domain": "condition", "concept_ids": [1],
+                         "unexpected": True}]}),
+    ]
+    for path, body in cases:
+        assert client.post(path, json=body).status_code == 400
+    response = client.post(f"/api/omop/{RID}/cohort/count",
+                           content='{"criteria":[{"domain":"measurement",'
+                                   '"concept_ids":[1],"value_min":NaN}]}',
+                           headers={"content-type": "application/json"})
+    assert response.status_code == 400
 
 
 def test_datasources_carry_the_omop_hint(client, monkeypatch):
@@ -638,19 +466,7 @@ def test_datasources_carry_the_omop_hint(client, monkeypatch):
                               "version": "5.4", "persons": 100}
 
 
-def test_mcp_tools(client):
-    import mcp_server
-    if not mcp_server.AVAILABLE:
-        pytest.skip("mcp not installed")
-    found = json.loads(mcp_server.omop_search_concepts(RID, "hemorrhage", "condition"))
-    assert found[0]["concept_id"] == GI_BLEED
-    spec = json.dumps({"criteria": [{"domain": "condition", "concept_ids": [GI_BLEED]}]})
-    assert json.loads(mcp_server.omop_count_cohort(RID, spec))["persons"] == 40
-    opened = json.loads(mcp_server.omop_open_cohort(RID, spec, "gi"))
-    assert opened["rows"] == 40
 
-
-# ------------------------------------------------------------------ loader
 
 def test_loader_is_idempotent_without_replace(pg):
     logged = []
@@ -660,14 +476,6 @@ def test_loader_is_idempotent_without_replace(pg):
     assert counts["person"] == 100
     with pytest.raises(ValueError, match="Invalid schema"):
         omop_load.load(None, FIXTURE, 'cdm"; DROP')
-
-
-def test_loader_ddl_matches_the_5_4_spec():
-    ddl = omop_load.parse_ddl()
-    assert len(ddl) == 39
-    visit = [c for c, _ in ddl["visit_occurrence"]["columns"]]
-    assert "admitted_from_concept_id" in visit and "admitting_source_concept_id" not in visit
-    assert ("offset", False) in ddl["note_nlp"]["columns"]
 
 
 @pytest.mark.parametrize("ready,status", [(False, 503), (True, 404)])

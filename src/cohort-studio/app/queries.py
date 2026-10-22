@@ -26,14 +26,20 @@ def _quote(identifier: str) -> str:
 def list_tables(engine: Engine) -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT table_name, table_type
+            SELECT table_schema, table_name, table_type
             FROM information_schema.tables
-            WHERE table_schema = 'public'
-            ORDER BY table_name
+            WHERE table_schema <> 'information_schema'
+              AND left(table_schema, 3) <> 'pg_'
+            ORDER BY table_schema, table_name
         """)).fetchall()
     return [
-        {"name": name, "kind": TABLE_TYPE_LABELS.get(ttype, "table")}
-        for name, ttype in rows
+        {
+            "name": table if schema == "public" else f"{schema}.{table}",
+            "table": table,
+            "schema": schema,
+            "kind": TABLE_TYPE_LABELS.get(ttype, "table"),
+        }
+        for schema, table, ttype in rows
     ]
 
 def fetch_table(engine: Engine, table: str, cap: int = ROW_CAP) -> pd.DataFrame:

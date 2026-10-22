@@ -150,6 +150,22 @@ applies a proposal in the UI, then uses the existing Count/Open actions. Direct
 Bedrock Converse is implemented; AgentCore is a separate, unprovisioned plan
 ([agent plan](AGENT_PLAN.md)).
 
+### CMS SynPUF export and import path
+
+The canonical source is public BigQuery `bigquery-public-data.cms_synthetic_patient_data_omop`.
+Select 100,000 distinct person IDs with the documented deterministic order, then
+export their linked clinical rows, selected-event costs, and local CSV.GZ files
+with a checksum manifest. Keep the full concept vocabulary, relationship, and
+drug-strength tables; restrict concept ancestry to descendants observed in the
+selected records. Stage the bundle through a resource-scoped Workbench S3
+resource, then load it into a new `cms_synpuf_100k` schema on the existing Aurora
+resource in one transaction. Do not deploy a separate PostgreSQL service.
+
+The source has no `cdm_source` or `visit_occurrence`, so its CDM version remains
+unknown and no visit rows are invented. Preserve `procedure_dat` in the export
+and map it to `procedure_date` during load. Export and loader code are present;
+the export and Aurora load are not yet verified complete.
+
 ### Storage boundary
 
 Production storage is the existing Workbench Aurora resource. DuckDB handles
@@ -289,5 +305,10 @@ not the data or cohort engine.
 | 2026-10-21 | Support full-source compare and derived columns on live Aurora data; keep chat loaded-frame-only. | Avoid making results depend on a capped preview when the source can be queried directly. Save derived operations as validated recursive source recipes. |
 | 2026-10-21 | Stream full-source TSV exports into bounded temporary jobs. | Avoid synchronous whole-result loads; expose progress and cancellation while limiting local disk and concurrent work. |
 | 2026-10-21 | Place OMOP tools under the selected Aurora datasource in Explore. | One datasource selection controls tables and cohort building; collection-to-Aurora loading remains a separate data operation. |
+| 2026-10-21 | Export the authorized SynPUF sample from canonical public BigQuery, stage it in resource-scoped S3, and load a new schema in existing Aurora. | Keep the sample deterministic and linked, preserve vocabulary while bounding ancestry, retain unknown source CDM version, and avoid a standalone PostgreSQL deployment. |
 
 Record a changed decision here with its date, reason and verification needed.
+
+### Aurora schema browser and join workspace (2026-10-22)
+
+The normal Aurora browser lists accessible non-system schemas. Public names remain unchanged; other tables display as `schema.table`. API metadata carries schema and table separately, and opening uses a structured source reference so joins and saved views keep the same schema. The join editor hides the active dataset toolbar and charts until closed or a result is opened. Unrelated first columns are not default join keys.

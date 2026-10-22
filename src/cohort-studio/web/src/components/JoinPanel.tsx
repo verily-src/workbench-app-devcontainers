@@ -73,8 +73,7 @@ function outputColumns(base: Dataset | undefined, steps: StepState[],
 function defaultCondition(leftCols: string[], right?: Dataset): JoinCondition {
   const rightCols = right?.columns.map((c) => c.name) ?? [];
   const shared = leftCols.find((c) => rightCols.includes(c));
-  return { left: shared ?? leftCols[0] ?? "", op: "=",
-           right: shared ?? rightCols[0] ?? "" };
+  return { left: shared ?? "", op: "=", right: shared ?? "" };
 }
 
 export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
@@ -133,7 +132,7 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
         const top = ranked[i]?.[0];
         return top && p.right_id === steps[i]?.right_id && !p.touched
           && p.conditions.length === 1
-          && p.conditions[0].left !== p.conditions[0].right
+          && (!p.conditions[0].left || !p.conditions[0].right)
           ? { ...p, conditions: [{ left: top.left, op: "=", right: top.right }] }
           : p;
       }));
@@ -288,6 +287,7 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
                   <div className={`join-cond${check?.problem ? " invalid" : ""}`}>
                     <span className="join-cond-label">{k === 0 ? "on" : "and"}</span>
                     <select value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
+                      <option value="" disabled>Choose column</option>
                       {leftCols.map((col) => <option key={col}>{col}</option>)}
                     </select>
                     <select className="join-op" value={c.op}
@@ -295,6 +295,7 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
                       {OPS.map((o) => <option key={o}>{o}</option>)}
                     </select>
                     <select value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
+                      <option value="" disabled>Choose column</option>
                       {rightCols.map((col) => <option key={col}>{col}</option>)}
                     </select>
                     {s.conditions.length > 1 && (

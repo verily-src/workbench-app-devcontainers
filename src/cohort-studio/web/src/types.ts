@@ -8,6 +8,8 @@ export interface Source {
 
 export interface TableInfo {
   name: string;
+  table?: string;
+  schema?: string;
   detail: string;
   sql?: string | null;
 }

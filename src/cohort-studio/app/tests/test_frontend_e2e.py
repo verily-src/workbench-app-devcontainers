@@ -591,3 +591,119 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
         timeout=10000)
     reopened = opened_join.value.request.post_data_json["source_ref"]
     assert reopened["steps"][0]["source"]["table"] == "people"
+
+
+def test_aurora_schema_tables_open_with_explicit_schema_and_join(
+        page: Page, app_url: str):
+    opened_refs = []
+
+    def fulfill(route, body, status=200):
+        route.fulfill(status=status, content_type="application/json", json=body)
+
+    page.route("**/api/datasources", lambda route: fulfill(route, {
+        "ready": True,
+        "sources": [{"kind": "aurora", "id": "fixture", "label": "Fixture"}],
+        "catalogs_pending": False,
+    }))
+    page.route("**/api/workflows**", lambda route: fulfill(route, {
+        "available": False, "jobs": [], "running_count": 0,
+    }))
+    page.route("**/api/tables?**", lambda route: fulfill(route, [
+        {"name": "person", "table": "person", "schema": "public",
+         "detail": "table"},
+        {"name": "cdm.person", "table": "person", "schema": "cdm",
+         "detail": "table"},
+    ]))
+
+    def open_table(route):
+        body = route.request.post_data_json
+        source_ref = body.get("source_ref") or {
+            "kind": body.get("kind"), "resource_id": body.get("resource_id"),
+            "table": body.get("table"), "schema": "public",
+        }
+        opened_refs.append(source_ref)
+        schema = source_ref["schema"]
+        table_name = source_ref["table"]
+        label = table_name if schema == "public" else f"{schema}.{table_name}"
+        fulfill(route, {
+            "dataset_id": f"opened-{schema}", "source": f"fixture / {label}",
+            "rows": 2,
+            "columns": [{"name": "person_id", "dtype": "int64",
+                         "filter_kind": "none"}],
+            "source_ref": source_ref, "query_scope": "database",
+        })
+
+    page.route("**/api/datasets/open", open_table)
+    page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
+        "total": 2, "filtered": 2, "scope": "database", "sampled": False,
+        "entity": None,
+        "cache": {"hit": False, "as_of": "2026-10-22T12:00:00Z",
+                  "ttl_seconds": 30},
+        "charts": [],
+        "rows": {"page": 0, "page_size": 50, "columns": ["person_id"],
+                 "data": [[1], [2]]},
+    }))
+    page.route("**/api/datasets/join/suggest?**", lambda route: fulfill(route, []))
+    page.route("**/api/datasets/join/validate", lambda route: fulfill(route, {
+        "ok": True, "engine": "aurora", "engine_reason": "",
+        "capped_inputs": [], "problems": [],
+        "steps": [{"problems": [], "notes": [],
+                    "conditions": [{"problem": None, "note": None}]}],
+    }))
+
+    def join(route):
+        body = route.request.post_data_json
+        base_ref = next(ref for ref in opened_refs
+                        if ref["schema"] == "public")
+        cdm_ref = next(ref for ref in opened_refs if ref["schema"] == "cdm")
+        assert body["steps"][0]["conditions"] == [
+            {"left": "person_id", "op": "=", "right": "person_id"}]
+        fulfill(route, {
+            "dataset_id": "joined-schemas", "source": "fixture / person + cdm.person",
+            "rows": 2,
+            "columns": [{"name": "person_id", "dtype": "int64",
+                         "filter_kind": "none"}],
+            "source_ref": {"kind": "join", "base": base_ref,
+                           "steps": [{"source": cdm_ref,
+                                      **{key: body["steps"][0][key] for key in
+                                         ("how", "conditions", "columns", "alias")}}]},
+            "query_scope": "database",
+            "join": {"engine": "aurora", "base_rows": 2, "rows": 2,
+                     "total_rows": 2, "truncated": False, "steps": [],
+                     "notes": [], "capped_inputs": []},
+        })
+
+    page.route("**/api/datasets/join", join)
+    page.goto(app_url)
+    expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
+    page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
+    table_select = page.get_by_label("Table", exact=True)
+    expect(table_select.locator("option", has_text="cdm.person")).to_have_count(1)
+    table_select.select_option("person")
+    page.get_by_role("button", name="Load table").click()
+    expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
+    table_select.select_option("cdm.person")
+    page.get_by_role("button", name="Load table").click()
+    expect(page.locator(".tab", has_text="cdm.person")).to_be_visible(timeout=10000)
+
+    assert opened_refs == [
+        {"kind": "aurora", "resource_id": "fixture", "table": "person",
+         "schema": "public"},
+        {"kind": "aurora", "resource_id": "fixture", "table": "person",
+         "schema": "cdm"},
+    ]
+    expect(page.locator(".tab")).to_have_count(2)
+    page.locator(".tab-join").click()
+    panel = page.locator(".join-panel")
+    expect(panel).to_be_visible()
+    expect(panel.get_by_label("Common key")).to_have_value("person_id")
+    expect(page.get_by_role("button", name="Save to Aurora")).to_have_count(0)
+    expect(page.locator(".cohort-bar")).to_have_count(0)
+    panel.get_by_role("button", name="✕").click()
+    expect(page.get_by_role("button", name="Save to Aurora")).to_be_visible()
+    expect(page.locator(".cohort-bar")).to_be_visible()
+    page.locator(".tab-join").click()
+    panel = page.locator(".join-panel")
+    panel.get_by_role("button", name="Join into new tab").click()
+    expect(page.locator(".tab", has_text="person + cdm.person")).to_be_visible(
+        timeout=10000)

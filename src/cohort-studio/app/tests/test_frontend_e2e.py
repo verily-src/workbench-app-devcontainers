@@ -707,3 +707,258 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
     panel.get_by_role("button", name="Join into new tab").click()
     expect(page.locator(".tab", has_text="person + cdm.person")).to_be_visible(
         timeout=10000)
+
+
+def _durable_join_page(page: Page, app_url: str):
+    opened_counts = {"people": 0, "events": 0}
+    open_requests = []
+    join_requests = []
+    query_dataset_ids = []
+    refs = {
+        "people": {"kind": "aurora", "resource_id": "fixture",
+                    "table": "people", "schema": "public"},
+        "events": {"kind": "aurora", "resource_id": "fixture",
+                   "table": "events", "schema": "public"},
+    }
+    columns = [{"name": "person_id", "dtype": "int64", "filter_kind": "none"}]
+
+    def fulfill(route, body, status=200):
+        route.fulfill(status=status, content_type="application/json", json=body)
+
+    page.route("**/api/datasources", lambda route: fulfill(route, {
+        "ready": True,
+        "sources": [{"kind": "aurora", "id": "fixture", "label": "Fixture"}],
+        "catalogs_pending": False,
+    }))
+    page.route("**/api/workflows**", lambda route: fulfill(route, {
+        "available": False, "jobs": [], "running_count": 0,
+    }))
+    page.route("**/api/tables?**", lambda route: fulfill(route, [
+        {"name": name, "table": name, "schema": "public", "detail": "table"}
+        for name in ("people", "events")
+    ]))
+
+    def open_source(route):
+        body = route.request.post_data_json
+        ref = body["source_ref"]
+        name = ref["table"]
+        open_requests.append(body)
+        opened_counts[name] += 1
+        dataset_id = f"{name}-{opened_counts[name]}"
+        fulfill(route, {
+            "dataset_id": dataset_id, "source": f"fixture / {name}",
+            "rows": 2, "columns": columns,
+            "source_ref": refs[name], "query_scope": "database",
+        })
+
+    page.route("**/api/datasets/open", open_source)
+    def query(route):
+        query_dataset_ids.append(route.request.url.split("/api/datasets/", 1)[1]
+                                 .split("/", 1)[0])
+        fulfill(route, {
+            "total": 2, "filtered": 2, "scope": "database", "sampled": False,
+            "entity": None, "charts": [],
+            "rows": {"page": 0, "page_size": 50,
+                     "columns": ["person_id"], "data": [[1], [2]]},
+        })
+
+    page.route("**/api/datasets/*/query", query)
+    page.route("**/api/datasets/join/validate", lambda route: fulfill(route, {
+        "ok": True, "engine": "aurora", "engine_reason": "",
+        "capped_inputs": [], "problems": [],
+        "steps": [{"problems": [], "notes": [],
+                    "conditions": [{"problem": None, "note": None}]}],
+    }))
+    page.route("**/api/datasets/join/suggest?**", lambda route: fulfill(route, []))
+    page.goto(app_url)
+    expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
+    page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
+    for name in ("people", "events"):
+        page.get_by_label("Table", exact=True).select_option(name)
+        page.get_by_role("button", name="Load table").click()
+        expect(page.locator(".tab", has_text=name)).to_be_visible(timeout=10000)
+    page.locator(".tab-join").click()
+    return refs, open_requests, join_requests, query_dataset_ids
+
+
+def test_join_expiry_reopens_durable_inputs_and_retries_once(page: Page, app_url: str):
+    refs, open_requests, join_requests, _ = _durable_join_page(page, app_url)
+
+    def fulfill(route, body, status=200):
+        route.fulfill(status=status, content_type="application/json", json=body)
+
+    def join(route):
+        body = route.request.post_data_json
+        join_requests.append(body)
+        if len(join_requests) == 1:
+            fulfill(route, {"detail": {"code": "DATASET_EXPIRED",
+                                       "message": "dataset expired"}}, 404)
+            return
+        assert body["base_id"] == "people-2"
+        assert body["steps"][0]["right_id"] == "events-2"
+        fulfill(route, {
+            "dataset_id": "joined-recovered", "source": "fixture / people + events",
+            "rows": 2, "columns": [{"name": "person_id", "dtype": "int64",
+                                     "filter_kind": "none"}],
+            "source_ref": {"kind": "join", "base": refs["people"],
+                           "steps": [{"source": refs["events"], "how": "left",
+                                      "conditions": [{"left": "person_id",
+                                                      "op": "=", "right": "person_id"}],
+                                      "alias": "events"}]},
+            "query_scope": "database",
+            "join": {"engine": "aurora", "base_rows": 2, "rows": 2,
+                     "total_rows": 2, "truncated": False, "steps": [],
+                     "notes": [], "capped_inputs": []},
+        })
+
+    page.route("**/api/datasets/join", join)
+    panel = page.locator(".join-panel")
+    panel.get_by_role("button", name="Join into new tab").click()
+    expect(page.locator(".tab", has_text="people + events")).to_be_visible(
+        timeout=10000)
+    assert len(join_requests) == 2
+    assert len(open_requests) == 4
+    assert [body["source_ref"]["table"] for body in open_requests[2:]] == [
+        "people", "events",
+    ]
+
+
+def test_join_non_expiry_error_does_not_reopen_inputs(page: Page, app_url: str):
+    _, open_requests, join_requests, _ = _durable_join_page(page, app_url)
+
+    def reject_join(route):
+        join_requests.append(route.request.post_data_json)
+        route.fulfill(status=404, content_type="application/json", json={
+            "detail": {"code": "INVALID_JOIN", "message": "join rejected"},
+        })
+
+    page.route("**/api/datasets/join", reject_join)
+    page.locator(".join-panel").get_by_role(
+        "button", name="Join into new tab").click()
+    expect(page.get_by_text("Join failed: join rejected", exact=False)).to_be_visible(
+        timeout=10000)
+    assert len(join_requests) == 1
+    assert len(open_requests) == 2
+
+
+def test_failed_join_recovery_closes_reopened_inputs_and_stops_after_one_retry(
+        page: Page, app_url: str):
+    _, open_requests, join_requests, query_dataset_ids = _durable_join_page(page, app_url)
+    closed = []
+
+    def join(route):
+        join_requests.append(route.request.post_data_json)
+        if len(join_requests) == 1:
+            route.fulfill(status=404, content_type="application/json", json={
+                "detail": {"code": "DATASET_EXPIRED", "message": "expired"},
+            })
+            return
+        route.fulfill(status=503, content_type="application/json", json={
+            "detail": "retry rejected",
+        })
+
+    def close(route):
+        if route.request.method != "DELETE":
+            route.fallback()
+            return
+        closed.append(route.request.url.rsplit("/", 1)[-1])
+        route.fulfill(status=200, content_type="application/json", json={"ok": True})
+
+    page.route("**/api/datasets/join", join)
+    page.route("**/api/datasets/*", close)
+    page.locator(".join-panel").get_by_role(
+        "button", name="Join into new tab").click()
+    expect(page.get_by_text("Automatic recovery failed: retry rejected", exact=False)
+           ).to_be_visible(timeout=10000)
+    assert len(join_requests) == 2
+    assert len(open_requests) == 4
+    assert sorted(closed) == ["events-2", "people-2"]
+
+
+def test_recovered_repeat_join_opens_new_result_and_queries_new_id(
+        page: Page, app_url: str):
+    refs, _, _, query_ids = _durable_join_page(page, app_url)
+    calls = []
+
+    def fulfill(route, body, status=200):
+        route.fulfill(status=status, content_type="application/json", json=body)
+
+    def result(dataset_id):
+        return {
+            "dataset_id": dataset_id, "source": "fixture / people + events",
+            "rows": 2, "columns": [{"name": "person_id", "dtype": "int64",
+                                     "filter_kind": "none"}],
+            "source_ref": {"kind": "join", "base": refs["people"],
+                           "steps": [{"source": refs["events"], "how": "left",
+                                      "conditions": [{"left": "person_id",
+                                                      "op": "=", "right": "person_id"}],
+                                      "alias": "events"}]},
+            "query_scope": "database",
+            "join": {"engine": "aurora", "base_rows": 2, "rows": 2,
+                     "total_rows": 2, "truncated": False, "steps": [],
+                     "notes": [], "capped_inputs": []},
+        }
+
+    def join(route):
+        calls.append(route.request.post_data_json)
+        if len(calls) == 1:
+            fulfill(route, result("joined-original"))
+        elif len(calls) == 2:
+            fulfill(route, {"detail": {"code": "DATASET_EXPIRED",
+                                       "message": "expired"}}, 404)
+        else:
+            assert calls[-1]["base_id"] == "people-2"
+            assert calls[-1]["steps"][0]["right_id"] == "events-2"
+            fulfill(route, result("joined-recovered"))
+
+    page.route("**/api/datasets/join", join)
+    page.locator(".join-panel").get_by_role(
+        "button", name="Join into new tab").click()
+    expect(page.locator(".tab", has_text="people + events")).to_have_count(
+        1, timeout=10000)
+
+    page.locator(".tab-join").click()
+    with page.expect_request(lambda request:
+            request.url.endswith("/api/datasets/joined-recovered/query")) as queried:
+        page.locator(".join-panel").get_by_role(
+            "button", name="Join into new tab").click()
+    expect(page.locator(".tab", has_text="people + events")).to_have_count(
+        2, timeout=10000)
+    assert queried.value.url.endswith("/api/datasets/joined-recovered/query")
+    assert calls[1]["base_id"] == "people-1"
+    assert calls[1]["steps"][0]["right_id"] == "events-1"
+    assert len(calls) == 3
+    assert "joined-recovered" in query_ids
+
+
+def test_expired_upload_join_shows_reopen_guidance(loaded_page: Page, tmp_path):
+    second = tmp_path / "events.csv"
+    second.write_text("sample_id,event\nGTEX-0000,visit\n", encoding="utf-8")
+    loaded_page.locator('input[type="file"]').set_input_files(str(second))
+    expect(loaded_page.locator(".tab", has_text="events.csv")).to_be_visible(
+        timeout=10000)
+    opened = []
+    joins = []
+
+    def reject_open(route):
+        opened.append(route.request.post_data_json)
+        route.fulfill(status=500, content_type="application/json", json={
+            "detail": "unexpected source reopen",
+        })
+
+    def expire_join(route):
+        joins.append(route.request.post_data_json)
+        route.fulfill(status=404, content_type="application/json", json={
+            "detail": {"code": "DATASET_EXPIRED", "message": "dataset expired"},
+        })
+
+    loaded_page.route("**/api/datasets/open", reject_open)
+    loaded_page.route("**/api/datasets/join", expire_join)
+    loaded_page.locator(".tab-join").click()
+    panel = loaded_page.locator(".join-panel")
+    panel.get_by_role("button", name="Join into new tab").click()
+    expect(loaded_page.get_by_text(
+        "The join inputs expired. Reopen the source or upload the data again, then retry the join.",
+        exact=False)).to_be_visible(timeout=10000)
+    assert len(joins) == 1
+    assert opened == []

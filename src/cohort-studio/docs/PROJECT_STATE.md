@@ -1,6 +1,6 @@
 # Cohort Studio project state
 
-Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
+Updated 2026-10-22. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
 
 ## Active project
 
@@ -14,6 +14,10 @@ Updated 2026-10-21. This is the shared project memory for Codex, Claude, Cursor,
 - See [README](../README.md), [architecture and decisions](architecture.md), [root agent rules](../../../AGENTS.md), and [agent next steps](AGENT_PLAN.md). Update architecture.md whenever a design decision changes.
 
 ## Verified delivery state
+
+- Schema browser/join UI fix (2026-10-22): normal Aurora listing now includes accessible non-system schemas with separate schema/table metadata. Opening, joins and saved-view reopen preserve schema; same-named tables remain distinct. Join editing hides the prior dataset toolbar/charts, and unrelated first columns are no longer default join keys. Production frontend build passed. Combined browser and real PostgreSQL API outcomes: **10 passed in 13.38s**. Dev deployment pending verification.
+
+- **2026-10-22 CMS SynPUF import COMPLETE:** SSM `8c48e559-4d0f-4382-84b6-32577eebfc06` succeeded. Aurora `cohort-dash-db-20261005`, schema `cms_synpuf_100k`: 24 tables, 121,444,089 rows, 100,000 distinct people. Source/file/loaded counts and person references passed. Running Studio HTTP detection returned `cdm:true`; default cohort counts 90,085 persons with observation periods out of 100,000 total. CDM version correctly remains null. This supersedes all export/waiting/stopped/import-in-progress notes below. Do not rerun import. Clinical concept search, nontrivial cohorts, and multimodal joins still need live outcome validation.
 
 - User screenshot (2026-10-21) shows the running UI at **103e7218d**, Aurora `cohort-dash-db-20261005` selected, and “No OMOP CDM found”. This supersedes the earlier stopped-app observation; it verifies the displayed version, not successful cohort queries.
 - User clarified CMS SynPUF collection is the source and Aurora is the destination. Do not assume collection data is already in Aurora. Read-only workspace resource listing found the Aurora target but no resource named/described as CMS SynPUF. Files inside existing buckets have not been checked. Collection export/resource path is still required.

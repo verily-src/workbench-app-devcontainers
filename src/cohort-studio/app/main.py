@@ -305,7 +305,8 @@ def submit_workflow(req: SubmitJobRequest):
 def tables(kind: str, resource_id: str):
     try:
         if kind == "aurora":
-            return [{"name": t["name"], "detail": t["kind"]}
+            return [{"name": t["name"], "table": t["table"],
+                     "schema": t["schema"], "detail": t["kind"]}
                     for t in db.list_aurora_tables(resource_id)]
         if kind == "s3":
             return [{"name": f, "detail": "file"}
@@ -426,7 +427,9 @@ def _open_source(ref, temporary=False):
                     df = pd.read_sql_query(text(sql), conn)
             else:
                 df = _load_frame(kind, rid, table)
-            label = f"{rid} / {table}"
+            label_table = (table if kind != "aurora" or schema == "public"
+                           else f"{schema}.{table}")
+            label = f"{rid} / {label_table}"
             if kind == "aurora":
                 origin = {"kind": "aurora", "resource_id": rid, "table": table, "schema": schema}
     finally:

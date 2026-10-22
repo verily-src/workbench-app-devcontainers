@@ -188,7 +188,11 @@ export default function App() {
     setActivity(`Loading ${tbl}…`);
     setError("");
     try {
-      const opened = await api.openDataset(src.kind, src.id, tbl);
+      const info = tables.find((t) => t.name === tbl);
+      const opened = src.kind === "aurora" && info?.schema && info?.table
+        ? await api.openSourceRef({ kind: "aurora", resource_id: src.id,
+            table: info.table, schema: info.schema })
+        : await api.openDataset(src.kind, src.id, tbl);
       openResult(opened, tbl.split("/").pop() ?? tbl,
         { kind: src.kind, resource_id: src.id, table: tbl, uuid: src.uuid });
       setView("explore");
@@ -201,18 +205,7 @@ export default function App() {
 
   const loadTable = async () => {
     if (!source || !table) return;
-    setActivity(`Loading ${table}…`);
-    setError("");
-    try {
-      const opened = await api.openDataset(source.kind, source.id, table);
-      openResult(opened, table.split("/").pop() ?? table,
-        { kind: source.kind, resource_id: source.id, table,
-          uuid: source.uuid });
-    } catch (e) {
-      setError(`Load failed: ${(e as Error).message}`);
-    } finally {
-      setActivity("");
-    }
+    await openTableDirect(source, table);
   };
 
   const uploadCsv = async (file: File) => {
@@ -553,7 +546,7 @@ export default function App() {
                 {datasets.map((d, i) => (
                   <span key={d.id}
                         className={`tab${i === active ? " active" : ""}`}
-                        onClick={() => { setActive(i); showExploreTables(); }}>
+                        onClick={() => { setActive(i); setShowJoin(false); showExploreTables(); }}>
                     {d.title}
                     <button className="quiet" onClick={(e) => {
                       e.stopPropagation(); closeDataset(i);
@@ -571,7 +564,7 @@ export default function App() {
                 <JoinPanel datasets={datasets} busy={Boolean(activity)}
                            onJoin={doJoin} onClose={() => setShowJoin(false)} />
               )}
-              {dependentJob && (
+              {dependentJob && !showJoin && (
                 <div className="wf-dep-banner">
                   <span className="wf-pulse" />
                   This data shares the output bucket of workflow{" "}
@@ -583,7 +576,7 @@ export default function App() {
                   </span>
                 </div>
               )}
-              {activeDs && (
+              {activeDs && (!showJoin || datasets.length < 2) && (
                 <DatasetPane
                   dataset={activeDs}
                   palette={palette}

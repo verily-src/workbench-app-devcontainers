@@ -1,0 +1,1276 @@
+{
+  "source": "bigquery-public-data:cms_synthetic_patient_data_omop",
+  "tables": [
+    {
+      "table": "care_site",
+      "rows": 320545,
+      "bytes": 9721712,
+      "modified": "1571417689272",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "care_site_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "care_site_name",
+            "type": "STRING"
+          },
+          {
+            "name": "place_of_service_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "location_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "care_site_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "place_of_service_source_value",
+            "type": "STRING"
+          }
+        ]
+      }
+    },
+    {
+      "table": "concept",
+      "rows": 3902588,
+      "bytes": 532689655,
+      "modified": "1571417961358",
+      "schema": {
+        "fields": [
+          {
+            "name": "concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "concept_name",
+            "type": "STRING"
+          },
+          {
+            "name": "domain_id",
+            "type": "STRING"
+          },
+          {
+            "name": "vocabulary_id",
+            "type": "STRING"
+          },
+          {
+            "name": "concept_class_id",
+            "type": "STRING"
+          },
+          {
+            "name": "standard_concept",
+            "type": "STRING"
+          },
+          {
+            "name": "concept_code",
+            "type": "STRING"
+          },
+          {
+            "name": "valid_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "valid_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "invalid_reason",
+            "type": "STRING"
+          }
+        ]
+      }
+    },
+    {
+      "table": "concept_ancestor",
+      "rows": 118150608,
+      "bytes": 3780819456,
+      "modified": "1571417689368",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "ancestor_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "descendant_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "min_levels_of_separation",
+            "type": "INTEGER"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "max_levels_of_separation",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "concept_class",
+      "rows": 300,
+      "bytes": 13526,
+      "modified": "1571417690133",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "concept_class_id",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "concept_class_name",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "concept_class_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "concept_relationship",
+      "rows": 26727250,
+      "bytes": 1246030039,
+      "modified": "1571418097092",
+      "schema": {
+        "fields": [
+          {
+            "name": "concept_id_1",
+            "type": "INTEGER"
+          },
+          {
+            "name": "concept_id_2",
+            "type": "INTEGER"
+          },
+          {
+            "name": "relationship_id",
+            "type": "STRING"
+          },
+          {
+            "name": "valid_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "valid_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "invalid_reason",
+            "type": "STRING"
+          }
+        ]
+      }
+    },
+    {
+      "table": "condition_era",
+      "rows": 223393336,
+      "bytes": 10722880128,
+      "modified": "1571418263733",
+      "schema": {
+        "fields": [
+          {
+            "name": "condition_era_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "condition_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "condition_era_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "condition_era_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "condition_occurrence_count",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "condition_occurrence",
+      "rows": 289182385,
+      "bytes": 22731021195,
+      "modified": "1571418430985",
+      "schema": {
+        "fields": [
+          {
+            "name": "condition_occurrence_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "condition_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "condition_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "condition_start_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "condition_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "condition_end_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "condition_type_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "stop_reason",
+            "type": "STRING"
+          },
+          {
+            "name": "provider_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_occurrence_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_detail_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "condition_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "condition_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "condition_status_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "condition_status_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "cost",
+      "rows": 748940384,
+      "bytes": 65820769595,
+      "modified": "1571417692549",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "cost_id",
+            "type": "INTEGER"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "cost_event_id",
+            "type": "INTEGER"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "cost_domain_id",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "cost_type_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "currency_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "total_charge",
+            "type": "FLOAT"
+          },
+          {
+            "name": "total_cost",
+            "type": "FLOAT"
+          },
+          {
+            "name": "total_paid",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_by_payer",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_by_patient",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_patient_copay",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_patient_coinsurance",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_patient_deductible",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_by_primary",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_ingredient_cost",
+            "type": "FLOAT"
+          },
+          {
+            "name": "paid_dispensing_fee",
+            "type": "FLOAT"
+          },
+          {
+            "name": "payer_plan_period_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "amount_allowed",
+            "type": "FLOAT"
+          },
+          {
+            "name": "revenue_code_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "revenue_code_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "drg_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "drg_source_value",
+            "type": "STRING"
+          }
+        ]
+      }
+    },
+    {
+      "table": "death",
+      "rows": 107644,
+      "bytes": 3444608,
+      "modified": "1571418576851",
+      "schema": {
+        "fields": [
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "death_date",
+            "type": "DATE"
+          },
+          {
+            "name": "death_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "death_type_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "cause_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "cause_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "cause_source_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "device_exposure",
+      "rows": 4465485,
+      "bytes": 352648515,
+      "modified": "1571418702386",
+      "schema": {
+        "fields": [
+          {
+            "name": "device_exposure_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "device_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "device_exposure_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "device_exposure_start_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "device_exposure_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "device_exposure_end_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "device_type_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "unique_device_id",
+            "type": "STRING"
+          },
+          {
+            "name": "quantity",
+            "type": "INTEGER"
+          },
+          {
+            "name": "provider_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_occurrence_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_detail_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "device_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "device_source_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "domain",
+      "rows": 39,
+      "bytes": 1450,
+      "modified": "1571417694271",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "domain_id",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "domain_name",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "domain_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "dose_era",
+      "rows": 122262518,
+      "bytes": 6846701008,
+      "modified": "1571418804091",
+      "schema": {
+        "fields": [
+          {
+            "name": "dose_era_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "drug_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "unit_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "dose_value",
+            "type": "FLOAT"
+          },
+          {
+            "name": "dose_era_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "dose_era_end_date",
+            "type": "DATE"
+          }
+        ]
+      }
+    },
+    {
+      "table": "drug_era",
+      "rows": 122266452,
+      "bytes": 6846921312,
+      "modified": "1571418908306",
+      "schema": {
+        "fields": [
+          {
+            "name": "drug_era_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "drug_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "drug_era_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "drug_era_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "drug_exposure_count",
+            "type": "INTEGER"
+          },
+          {
+            "name": "gap_days",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "drug_exposure",
+      "rows": 126048050,
+      "bytes": 10623961782,
+      "modified": "1571419177720",
+      "schema": {
+        "fields": [
+          {
+            "name": "drug_type_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "stop_reason",
+            "type": "STRING"
+          },
+          {
+            "name": "refills",
+            "type": "INTEGER"
+          },
+          {
+            "name": "quantity",
+            "type": "FLOAT"
+          },
+          {
+            "name": "days_supply",
+            "type": "INTEGER"
+          },
+          {
+            "name": "sig",
+            "type": "STRING"
+          },
+          {
+            "name": "route_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "lot_number",
+            "type": "STRING"
+          },
+          {
+            "name": "provider_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_occurrence_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_detail_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "drug_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "drug_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "route_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "dose_unit_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "drug_exposure_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "drug_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "drug_exposure_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "drug_exposure_start_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "drug_exposure_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "drug_exposure_end_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "verbatim_end_date",
+            "type": "DATE"
+          }
+        ]
+      }
+    },
+    {
+      "table": "drug_strength",
+      "rows": 2415413,
+      "bytes": 136787297,
+      "modified": "1571419374196",
+      "schema": {
+        "fields": [
+          {
+            "name": "drug_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "ingredient_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "amount_value",
+            "type": "FLOAT"
+          },
+          {
+            "name": "amount_unit_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "numerator_value",
+            "type": "FLOAT"
+          },
+          {
+            "name": "numerator_unit_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "denominator_value",
+            "type": "FLOAT"
+          },
+          {
+            "name": "denominator_unit_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "box_size",
+            "type": "INTEGER"
+          },
+          {
+            "name": "valid_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "valid_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "invalid_reason",
+            "type": "STRING"
+          }
+        ]
+      }
+    },
+    {
+      "table": "location",
+      "rows": 3185,
+      "bytes": 85995,
+      "modified": "1571417696662",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "location_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "address_1",
+            "type": "STRING"
+          },
+          {
+            "name": "address_2",
+            "type": "STRING"
+          },
+          {
+            "name": "city",
+            "type": "STRING"
+          },
+          {
+            "name": "state",
+            "type": "STRING"
+          },
+          {
+            "name": "zip",
+            "type": "STRING"
+          },
+          {
+            "name": "county",
+            "type": "STRING"
+          },
+          {
+            "name": "location_source_value",
+            "type": "STRING"
+          }
+        ]
+      }
+    },
+    {
+      "table": "observation",
+      "rows": 37531051,
+      "bytes": 2957617922,
+      "modified": "1571419545574",
+      "schema": {
+        "fields": [
+          {
+            "name": "observation_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "observation_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "observation_date",
+            "type": "DATE"
+          },
+          {
+            "name": "observation_datetime",
+            "type": "DATETIME"
+          },
+          {
+            "name": "observation_type_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "value_as_number",
+            "type": "FLOAT"
+          },
+          {
+            "name": "value_as_string",
+            "type": "STRING"
+          },
+          {
+            "name": "value_as_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "qualifier_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "unit_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "provider_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_occurrence_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_detail_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "observation_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "observation_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "unit_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "qualifier_source_value",
+            "type": "STRING"
+          }
+        ]
+      }
+    },
+    {
+      "table": "observation_period",
+      "rows": 2098515,
+      "bytes": 83940600,
+      "modified": "1571419633689",
+      "schema": {
+        "fields": [
+          {
+            "name": "observation_period_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "observation_period_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "observation_period_end_date",
+            "type": "DATE"
+          },
+          {
+            "name": "period_type_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "payer_plan_period",
+      "rows": 7789512,
+      "bytes": 370530708,
+      "modified": "1571419720778",
+      "schema": {
+        "fields": [
+          {
+            "name": "payer_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "payer_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "payer_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "plan_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "plan_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "plan_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "sponsor_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "sponsor_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "sponsor_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "family_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "stop_reason_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "stop_reason_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "stop_reason_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "payer_plan_period_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "payer_plan_period_start_date",
+            "type": "DATE"
+          },
+          {
+            "name": "payer_plan_period_end_date",
+            "type": "DATE"
+          }
+        ]
+      }
+    },
+    {
+      "table": "person",
+      "rows": 2326856,
+      "bytes": 211743896,
+      "modified": "1571419828697",
+      "schema": {
+        "fields": [
+          {
+            "name": "race_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "ethnicity_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "location_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "provider_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "care_site_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "gender_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "gender_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "race_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "race_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "ethnicity_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "ethnicity_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "gender_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "year_of_birth",
+            "type": "INTEGER"
+          },
+          {
+            "name": "month_of_birth",
+            "type": "INTEGER"
+          },
+          {
+            "name": "day_of_birth",
+            "type": "INTEGER"
+          },
+          {
+            "name": "birth_datetime",
+            "type": "DATETIME"
+          }
+        ]
+      }
+    },
+    {
+      "table": "procedure_occurrence",
+      "rows": 278769529,
+      "bytes": 19658886391,
+      "modified": "1571419944401",
+      "schema": {
+        "fields": [
+          {
+            "name": "procedure_type_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "modifier_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "quantity",
+            "type": "INTEGER"
+          },
+          {
+            "name": "provider_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_occurrence_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "visit_detail_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "procedure_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "procedure_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "modifier_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "procedure_occurrence_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "person_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "procedure_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "procedure_dat",
+            "type": "DATE"
+          },
+          {
+            "name": "procedure_datetime",
+            "type": "DATETIME"
+          }
+        ]
+      }
+    },
+    {
+      "table": "provider",
+      "rows": 905492,
+      "bytes": 36219512,
+      "modified": "1571417699334",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "provider_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "provider_name",
+            "type": "STRING"
+          },
+          {
+            "name": "npi",
+            "type": "STRING"
+          },
+          {
+            "name": "dea",
+            "type": "STRING"
+          },
+          {
+            "name": "specialty_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "care_site_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "year_of_birth",
+            "type": "INTEGER"
+          },
+          {
+            "name": "gender_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "provider_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "specialty_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "specialty_source_concept_id",
+            "type": "INTEGER"
+          },
+          {
+            "name": "gender_source_value",
+            "type": "STRING"
+          },
+          {
+            "name": "gender_source_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "relationship",
+      "rows": 410,
+      "bytes": 32220,
+      "modified": "1571417699565",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "relationship_id",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "relationship_name",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "is_hierarchical",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "defines_ancestry",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "reverse_relationship_id",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "relationship_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    },
+    {
+      "table": "vocabulary",
+      "rows": 42,
+      "bytes": 4627,
+      "modified": "1571417699997",
+      "schema": {
+        "fields": [
+          {
+            "mode": "REQUIRED",
+            "name": "vocabulary_id",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "vocabulary_name",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "vocabulary_reference",
+            "type": "STRING"
+          },
+          {
+            "name": "vocabulary_version",
+            "type": "STRING"
+          },
+          {
+            "mode": "REQUIRED",
+            "name": "vocabulary_concept_id",
+            "type": "INTEGER"
+          }
+        ]
+      }
+    }
+  ]
+}

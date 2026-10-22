@@ -41,7 +41,6 @@ services:
       - /dev/fuse
     security_opt:
       - apparmor:unconfined
-      - no-new-privileges:true
 networks:
   app-network:
     external: true

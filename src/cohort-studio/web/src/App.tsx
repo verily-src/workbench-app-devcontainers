@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, OpenResult, WorkflowList } from "./api";
+import { api, ApiError, OpenResult, WorkflowList } from "./api";
 import { OmopBuilder } from "./components/OmopBuilder";
 import { DatasetPane } from "./components/DatasetPane";
 import { FilterPanel } from "./components/FilterPanel";
@@ -14,9 +14,11 @@ import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
-import type { ChartSpec, Dataset, JoinStep, Source, TableInfo } from "./types";
+import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, TableInfo } from "./types";
 
 const AUTO_CHART_LIMIT = 8;
+
+class JoinRecoveryError extends Error {}
 
 function autoCharts(columns: Dataset["columns"]): ChartSpec[] {
   const specs: ChartSpec[] = [];
@@ -158,10 +160,12 @@ export default function App() {
     sourceRef?: Dataset["sourceRef"],
     initial?: { filters: Dataset["filters"]; charts: Dataset["charts"];
       entityColumn?: string },
+    options?: { forceNewTab?: boolean },
   ) => {
     showExploreTables();
+    const forceNewTab = options?.forceNewTab ?? false;
     const existing = datasets.findIndex((d) => d.source === opened.source);
-    if (existing >= 0 && !initial) {
+    if (existing >= 0 && !initial && !forceNewTab) {
       setActive(existing);
       return;
     }
@@ -178,7 +182,7 @@ export default function App() {
       page: 0,
     };
     setDatasets((prev) => {
-      const next = prev.filter((d) => d.source !== opened.source);
+      const next = forceNewTab ? prev : prev.filter((d) => d.source !== opened.source);
       setActive(next.length);
       return [...next, ds];
     });
@@ -269,10 +273,64 @@ export default function App() {
     setActivity("Joining…");
     setError("");
     try {
-      const opened = await api.join(p.baseId, p.steps);
+      let opened: OpenResult & { join: JoinStats };
+      try {
+        opened = await api.join(p.baseId, p.steps);
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 404
+            || e.code !== "DATASET_EXPIRED") throw e;
+
+        const inputIds = [...new Set([
+          p.baseId, ...p.steps.map((s) => s.right_id),
+        ])];
+        const inputs = new Map(datasets.map((d) => [d.id, d]));
+        if (inputIds.some((id) => !inputs.get(id)?.sourceRef)) {
+          throw new JoinRecoveryError(
+            "The join inputs expired. Reopen the source or upload the data "
+            + "again, then retry the join.");
+        }
+
+        const reopened = new Map<string, OpenResult>();
+        const createdIds: string[] = [];
+        try {
+          for (const id of inputIds) {
+            const sourceRef = inputs.get(id)!.sourceRef!;
+            const result = await api.openSourceRef(sourceRef);
+            reopened.set(id, result);
+            createdIds.push(result.dataset_id);
+          }
+          const base = reopened.get(p.baseId)!;
+          const retrySteps = p.steps.map((step) => ({
+            ...step,
+            right_id: reopened.get(step.right_id)!.dataset_id,
+          }));
+          opened = await api.join(base.dataset_id, retrySteps);
+        } catch (retryError) {
+          await Promise.allSettled(createdIds.map((id) => api.closeDataset(id)));
+          const reason = retryError instanceof Error ? retryError.message : "unknown error";
+          throw new JoinRecoveryError(
+            `The join inputs expired. Automatic recovery failed: ${reason}. `
+            + "Reopen the source or upload the data again, then retry.");
+        }
+
+        setDatasets((prev) => prev.map((dataset) => {
+          const fresh = reopened.get(dataset.id);
+          if (!fresh) return dataset;
+          return {
+            ...dataset,
+            id: fresh.dataset_id,
+            source: fresh.source,
+            sourceRef: fresh.source_ref ?? dataset.sourceRef,
+            queryScope: fresh.query_scope,
+            columns: fresh.columns,
+            result: undefined,
+          };
+        }));
+      }
 
       openResult(opened, opened.source.split(" + ").map(
-        (x) => x.split("/").pop()?.trim()).join(" + "));
+        (x) => x.split("/").pop()?.trim()).join(" + "), undefined, undefined,
+      { forceNewTab: true });
       const { join } = opened;
       alerts.pushToast({
         title: join.truncated ? "Join capped" : "Joined",
@@ -285,7 +343,9 @@ export default function App() {
       });
       setShowJoin(false);
     } catch (e) {
-      setError(`Join failed: ${(e as Error).message}`);
+      const message = (e as Error).message;
+      setError(e instanceof JoinRecoveryError
+        ? message : `Join failed: ${message}`);
     } finally {
       setActivity("");
     }

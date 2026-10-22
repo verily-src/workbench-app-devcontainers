@@ -499,7 +499,10 @@ def _join_pipeline(req: JoinRequest) -> tuple[str, list[dict], list[str]]:
         sources = [datasets.get(base_id)["source"]] + [
             datasets.get(s["right_id"])["source"] for s in steps]
     except datasets.DatasetNotFound:
-        raise HTTPException(404, "A dataset expired or is unknown — reload it.")
+        raise HTTPException(404, {
+            "code": "DATASET_EXPIRED",
+            "message": "A dataset expired or is unknown — reload it.",
+        })
     for step, source in zip(steps, sources[1:]):
         step["alias"] = (step.get("alias") or "").strip() \
             or joins.default_alias(source)

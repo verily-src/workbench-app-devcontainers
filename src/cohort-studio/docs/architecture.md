@@ -270,6 +270,14 @@ and closes temporary input datasets. Trees are bounded to 16 sources and four
 levels. Uploaded frames do not have a reloadable recipe. The selected entity
 column is saved with the view.
 
+Join execution returns `DATASET_EXPIRED` for missing input handles. The browser
+reopens inputs from durable source recipes and retries once with new IDs. It
+keeps tab filters and charts, updates handles only after success, and closes new
+handles if recovery fails. Uploaded data needs another upload. Other failures,
+including query timeouts, do not trigger this retry.
+Each join opens a new result tab, even when an earlier result has the same source
+label. The label is not an identity for the join conditions or result.
+
 Column settings keep physical decoding separate from logical number/text
 behavior. Numeric conversions validate the full Aurora column before committing
 the change. Labels and filter kinds are display metadata. The source recipe

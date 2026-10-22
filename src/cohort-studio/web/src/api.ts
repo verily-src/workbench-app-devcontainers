@@ -9,15 +9,32 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, init);
   if (!resp.ok) {
     let detail = `${resp.status}`;
+    let code: string | undefined;
     try {
       const body = await resp.json();
-      detail = Array.isArray(body.detail)
-        ? body.detail.map((issue: { msg?: string }) => issue.msg || "Invalid request").join("; ")
-        : body.detail ?? detail;
+      code = typeof body.code === "string" ? body.code : undefined;
+      if (Array.isArray(body.detail)) {
+        detail = body.detail.map((issue: { msg?: string }) =>
+          issue.msg || "Invalid request").join("; ");
+      } else if (typeof body.detail === "string") {
+        detail = body.detail;
+      } else if (body.detail && typeof body.detail === "object") {
+        code = typeof body.detail.code === "string" ? body.detail.code : code;
+        detail = typeof body.detail.message === "string"
+          ? body.detail.message : detail;
+      }
     } catch {  }
-    throw new Error(detail);
+    throw new ApiError(resp.status, code, detail);
   }
   return resp.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  constructor(readonly status: number, readonly code: string | undefined,
+              message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 const post = (body: unknown): RequestInit => ({

@@ -70,6 +70,20 @@ def test_unknown_dataset_is_404():
     assert resp.status_code == 404
 
 
+def test_join_unknown_dataset_returns_structured_404():
+    resp = client.post("/api/datasets/join", json={
+        "base_id": "expired-dataset", "steps": [{
+            "right_id": "other-dataset", "how": "inner",
+            "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}],
+        }],
+    })
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == {
+        "code": "DATASET_EXPIRED",
+        "message": "A dataset expired or is unknown — reload it.",
+    }
+
+
 def test_materialize_endpoint(monkeypatch):
     import main
     import queries

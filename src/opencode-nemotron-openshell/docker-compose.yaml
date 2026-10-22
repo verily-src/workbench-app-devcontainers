@@ -8,6 +8,7 @@ services:
     volumes:
       - .:/workspace:cached
       - work:/config:cached
+      - port-guard-status:/opt/port-guard:ro
     ports:
       # Workbench's proxy agent only finds ports published on all interfaces.
       # port-guard below drops connections to it from other VMs.
@@ -123,33 +124,28 @@ services:
     restart: "no"
     network_mode: none
 
-  # Drops connections to code-server's port that arrive on the VM's network
-  # card, so other VMs in the network cannot reach it without Workbench sign-in.
-  # The Workbench proxy agent dials out and reaches the port locally, so it is
-  # not affected. The rule sits in the raw table, before Docker's NAT, and stays
-  # in place after this container exits.
+  # Closes code-server's port to other VMs: see port-guard.sh. Its status is
+  # readable in the app at /opt/port-guard/port-guard.
   port-guard:
-    image: alpine:3.20
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     network_mode: host
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    restart: on-failure
-    command:
-      - sh
-      - -euc
-      - |
-        apk add --no-cache iptables >/dev/null
-        nic=$$(ip route show default | awk '{print $$5; exit}')
-        [ -n "$$nic" ] || { echo "port-guard: no default interface" >&2; exit 1; }
-        rule="-i $$nic -p tcp --dport 8443 -j DROP"
-        iptables -t raw -C PREROUTING $$rule 2>/dev/null || iptables -t raw -I PREROUTING $$rule
-        # IPv6 is usually off on Workbench VMs; best effort.
-        ip6tables -t raw -C PREROUTING $$rule 2>/dev/null || ip6tables -t raw -I PREROUTING $$rule 2>/dev/null || true
-        echo "port-guard: dropping tcp/8443 arriving on $$nic"
+    restart: always
+    environment:
+      GUARDED_PORT: "8443"
+    command: ["sh", "/port-guard.sh"]
+    volumes:
+      - type: bind
+        source: ./port-guard.sh
+        target: /port-guard.sh
+        read_only: true
+      - port-guard-status:/status
 
 networks:
   app-network:
     external: true
 volumes:
   work:
+  port-guard-status:

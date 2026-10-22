@@ -37,7 +37,7 @@ code-server (you: Workbench credentials, wb, gcloud, Claude Code)
 | `openshell-gateway` | OpenShell control plane. Holds the VM's Docker socket and creates sandboxes. Reachable only from this VM |
 | `openshell-init` | Generates the gateway's keys, then exits |
 | `sandbox-image` | Builds the sandbox image `opencode-agent-sandbox:0.1`, then exits |
-| `port-guard` | Drops connections to port 8443 from other VMs, so code-server is reachable only through Workbench sign-in |
+| `port-guard` | Drops connections to port 8443 from other VMs, so code-server is reachable only through Workbench sign-in (`port-guard.sh`). Re-applies its rule every minute and writes its status, with packet counters, to `/opt/port-guard/port-guard` in the app |
 | Sandbox (created on first `opencode`) | OpenCode and anything it runs. User `sandbox` (uid 1500); only `/sandbox` and `/tmp` are writable |
 
 The sandbox reaches Ollama as `host.openshell.internal:11434`, which OpenShell's
@@ -177,7 +177,12 @@ Workbench MCP tools and full network access. Delete the file to go back.
   gateway are unreachable;
 - Ollama's `/api/pull` and `/api/tags` are refused, and its chat endpoint answers;
 - OpenCode in the sandbox completes a call to the local model;
-- OpenShell logged the blocked internet request.
+- OpenShell logged the blocked internet request;
+- port-guard reports its rule in place within the last 5 minutes.
+
+The app can't test its own network card, so the self-test ends with a `curl`
+command to run from another app in the workspace: it should time out, not
+return HTTP 302. `opencode-sandbox status` shows port-guard's full status.
 
 ### Logs
 
@@ -201,6 +206,11 @@ covers that, in the sandbox under `/sandbox/.local/share/opencode`. OpenShell
 - **OpenCode tries to install its plugin package from npm on start.** The
   sandbox blocks it, OpenCode works without it, and the attempt appears in
   the log as denied.
+- **port-guard is a host firewall rule set from a container.** On the first
+  test app it didn't take effect, and code-server was reachable from other VMs.
+  Check it from another VM after every new deployment. A platform-level fix
+  (the proxy agent connecting without a published port, or a VM firewall rule)
+  would be better.
 - OpenShell is version 0.x; expect changes.
 
 ## Model selection

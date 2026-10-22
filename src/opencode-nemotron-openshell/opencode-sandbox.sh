@@ -23,6 +23,8 @@ readonly DOWNLOAD_DIR="${USER_HOME_DIR}/sandbox-downloads"
 # The sandbox reaches the app's Ollama through the VM's loopback.
 readonly SANDBOX_OLLAMA_URL="http://host.openshell.internal:11434/v1"
 readonly CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-65536}"
+# Written every minute by the port-guard container (port-guard.sh).
+readonly PORT_GUARD_STATUS="/opt/port-guard/port-guard"
 
 export OPENSHELL_GATEWAY_ENDPOINT="${OPENSHELL_GATEWAY_ENDPOINT:-http://openshell-gateway:8080}"
 export OPENSHELL_TELEMETRY_ENABLED=false
@@ -202,6 +204,32 @@ cmd_status() {
   openshell sandbox get "${SANDBOX_NAME}" 2>&1 || echo "  not created yet; \`opencode\` creates it"
   echo
   echo "Policy file: ${POLICY}"
+  echo
+  echo "port-guard (${PORT_GUARD_STATUS}):"
+  cat "${PORT_GUARD_STATUS}" 2> /dev/null || echo "  no status: the port-guard container has not written one"
+}
+
+# The VM's internal IP, for checking from another VM that code-server is closed.
+vm_internal_ip() {
+  curl -fsS -m 3 -H 'Metadata-Flavor: Google' \
+    http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip 2> /dev/null ||
+    echo "<this VM's internal IP>"
+}
+
+# port-guard's status must be recent and report the rule in place.
+check_port_guard() {
+  local label="code-server is closed to other VMs (port-guard rule in place)"
+  local updated age
+  updated="$(sed -n 's/^time=//p' "${PORT_GUARD_STATUS}" 2> /dev/null || true)"
+  age=$(( $(date +%s) - ${updated:-0} ))
+  if grep -q '^state=ok' "${PORT_GUARD_STATUS}" 2> /dev/null && (( age < 300 )); then
+    PASSED=$((PASSED + 1))
+    printf 'PASS  %s\n' "${label}"
+  else
+    FAILED=$((FAILED + 1))
+    printf 'FAIL  %s\n      status: %s\n' "${label}" \
+      "$(head -c 600 "${PORT_GUARD_STATUS}" 2> /dev/null || echo "missing; port-guard has not run")"
+  fi
 }
 
 cmd_policy() {
@@ -316,8 +344,14 @@ cmd_selftest() {
     echo "FAIL  OpenShell logged the blocked internet request (see opencode-sandbox logs)"
   fi
 
+  check_port_guard
+
   echo
   echo "${PASSED} passed, ${FAILED} failed"
+  echo
+  echo "This app can't test its own network card. To confirm code-server is closed, run from another"
+  echo "app in the workspace (it should time out, not return HTTP 302):"
+  printf '  curl -m 5 -o /dev/null -w "%%{http_code}\\n" http://%s:8443/\n' "$(vm_internal_ip)"
   (( FAILED == 0 ))
 }
 

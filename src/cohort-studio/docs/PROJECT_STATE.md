@@ -15,6 +15,8 @@ Updated 2026-10-22. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Verified delivery state
 
+- Dev app verified healthy at `9c81943`; Vertex AI provider is present but project/location/model remain unset (no live inference). **Synthetic genetics demo COMPLETE:** Aurora `genetics_demo` has 5,000 linked samples, 200 annotated synthetic variants, and 1,000,000 genotypes. Live Dashboard API join to OMOP returned 5,000 rows using Aurora; planted pattern matched 500 persons/10,000 genotype rows. Table listing/open passed. Annotated CSVs and manifest uploaded to `nextflow_outputs/_studio_imports/genetics_demo/20261022/csv/`. Real database tests: 3 passed. See [demo guide](imports/GENETICS_DEMO.md). No OMOP source tables changed.
+
 - Vertex AI provider implemented separately from Gemini API-key access. Uses server ADC and environment project/location, refreshes tokens per model call, and shares validation across filters and both assistants. Focused backend suite: 27 passed; no live Vertex inference or billing validation yet. User project/license clarification pending; do not claim free access.
 
 - Schema browser/join UI fix (2026-10-22): normal Aurora listing now includes accessible non-system schemas with separate schema/table metadata. Opening, joins and saved-view reopen preserve schema; same-named tables remain distinct. Join editing hides the prior dataset toolbar/charts, and unrelated first columns are no longer default join keys. Production frontend build passed. Combined browser and real PostgreSQL API outcomes: **10 passed in 13.38s**. Live dev update verified at `5359072`: table API lists imported schema, and normal open of `cms_synpuf_100k.death` returns 4,466 rows with schema retained.

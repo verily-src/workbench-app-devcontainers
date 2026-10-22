@@ -7,8 +7,8 @@ services:
     volumes:
       - .:/workspace:cached
       - work:/home/ubuntu:cached
-    ports:
-      - "8080:8080"
+    # ports:
+    #   - "8080:8080"
     environment:
       USER: "root"
       DEFAULT_WORKSPACE: "/config"

@@ -2,7 +2,8 @@ version: "2.4"
 services:
   app:
     container_name: "application-server"
-    image: "gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-prod"
+    build:
+      context: .
     restart: always
     volumes:
       - .:/workspace:cached

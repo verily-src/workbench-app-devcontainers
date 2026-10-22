@@ -329,3 +329,12 @@ UI structure and primary labels carry navigation. Remove redundant taglines and
 helper text; retain data scope, errors and warnings that affect decisions.
 Shared provider validation serves UI and agent paths to keep their behavior
 consistent. Root agent instructions record this UX/DX/AX decision rule.
+
+### Synthetic genetics demo (2026-10-22)
+
+Genetics demo data lives in a separate Aurora schema. `samples.person_id` links
+to the existing synthetic OMOP people; sample_id and variant_id link genotype
+facts to sample and variant annotations. IDs, gene names, coordinates and
+consequences are fabricated and marked synthetic. A seeded planted pattern
+provides a known outcome for join/filter checks, not scientific association
+evidence. CSV exports read committed tables and include provenance.

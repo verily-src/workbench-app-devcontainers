@@ -11,7 +11,8 @@ DEFAULT_PALETTE = "verily"
 PALETTES = ("verily", "indigo", "amber", "crimson", "slate")
 
 DEFAULT_PROVIDER = "anthropic"
-PROVIDERS = ("anthropic", "openai", "gemini", "openrouter", "bedrock")
+PROVIDERS = ("anthropic", "openai", "gemini", "openrouter", "bedrock",
+             "vertexai")
 
 PROVIDER_DEFAULT_MODEL = {
     "anthropic": DEFAULT_MODEL,
@@ -19,6 +20,7 @@ PROVIDER_DEFAULT_MODEL = {
     "gemini": "",
     "openrouter": "",
     "bedrock": "",
+    "vertexai": "",
 }
 
 PROVIDER_BASE_URL = {
@@ -36,6 +38,14 @@ PROVIDER_ENV_KEYS = {
 
 def _aws_region() -> str | None:
     return os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+
+def _vertex_project() -> str | None:
+    return (os.environ.get("GOOGLE_CLOUD_PROJECT")
+            or os.environ.get("VERTEXAI_PROJECT"))
+
+def _vertex_location() -> str | None:
+    return (os.environ.get("GOOGLE_CLOUD_LOCATION")
+            or os.environ.get("VERTEXAI_LOCATION"))
 
 def _env_key(provider: str) -> str | None:
     for var in PROVIDER_ENV_KEYS.get(provider, ()):
@@ -82,17 +92,20 @@ def get_llm_config() -> dict:
 
     sec = _llm_section(_load())
     provider = sec["provider"]
-    api_key = (None if provider == "bedrock"
+    api_key = (None if provider in ("bedrock", "vertexai")
                else _env_key(provider) or sec["keys"].get(provider))
     model = (sec["models"].get(provider)
              or PROVIDER_DEFAULT_MODEL.get(provider) or "")
-    return {
+    out = {
         "provider": provider,
         "api_key": api_key,
         "model": model,
         "base_url": PROVIDER_BASE_URL.get(provider),
         "region": _aws_region() if provider == "bedrock" else None,
     }
+    if provider == "vertexai":
+        out.update(project=_vertex_project(), location=_vertex_location())
+    return out
 
 def get_mcp_connections() -> list[dict]:
 
@@ -108,18 +121,25 @@ def public_config() -> dict:
 
     providers = {}
     for p in PROVIDERS:
-        env_key = None if p == "bedrock" else _env_key(p)
-        stored_key = None if p == "bedrock" else sec["keys"].get(p)
+        env_key = None if p in ("bedrock", "vertexai") else _env_key(p)
+        stored_key = None if p in ("bedrock", "vertexai") else sec["keys"].get(p)
         key = env_key or stored_key
-        providers[p] = {
+        project = _vertex_project() if p == "vertexai" else None
+        location = _vertex_location() if p == "vertexai" else None
+        state = {
             "model": sec["models"].get(p) or PROVIDER_DEFAULT_MODEL.get(p) or "",
             "api_key_set": bool(key),
             "api_key_hint": f"…{key[-4:]}" if key else None,
             "api_key_source": ("environment" if env_key
                                else "settings" if stored_key else None),
-            "auth_method": "iam" if p == "bedrock" else "api_key",
+            "auth_method": ("iam" if p == "bedrock" else
+                            "adc" if p == "vertexai" else "api_key"),
             "region": _aws_region() if p == "bedrock" else None,
         }
+        if p == "vertexai":
+            state.update(project=project, location=location,
+                         configured=bool(project and location))
+        providers[p] = state
 
     connections = []
     for c in get_mcp_connections():
@@ -154,8 +174,8 @@ def update_llm_config(model: str | None = None,
         models = sec["models"]
         if model is not None:
             models[target] = model
-        if target == "bedrock":
-            keys.pop("bedrock", None)
+        if target in ("bedrock", "vertexai"):
+            keys.pop(target, None)
         elif api_key is not None:
             if api_key:
                 keys[target] = api_key

@@ -312,3 +312,20 @@ Record a changed decision here with its date, reason and verification needed.
 ### Aurora schema browser and join workspace (2026-10-22)
 
 The normal Aurora browser lists accessible non-system schemas. Public names remain unchanged; other tables display as `schema.table`. API metadata carries schema and table separately, and opening uses a structured source reference so joins and saved views keep the same schema. The join editor hides the active dataset toolbar and charts until closed or a result is opened. Unrelated first columns are not default join keys.
+
+### Vertex AI and concise UI (2026-10-22)
+
+Vertex AI is a separate `vertexai` provider from the Gemini Developer API. Set
+`GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` (aliases `VERTEXAI_PROJECT` and
+`VERTEXAI_LOCATION`) in the app environment. Select the model in Settings. The
+server must have ADC through an appropriate service identity or supported
+credential configuration; a local gcloud CLI login is not proof of app ADC.
+The project needs Vertex AI API access, appropriate prediction permissions, and
+applicable billing/quota. Credentials refresh before inference; no Vertex API
+key or bearer token is persisted. Configured project/location does not prove
+credentials or model access. No live Vertex inference has been verified.
+
+UI structure and primary labels carry navigation. Remove redundant taglines and
+helper text; retain data scope, errors and warnings that affect decisions.
+Shared provider validation serves UI and agent paths to keep their behavior
+consistent. Root agent instructions record this UX/DX/AX decision rule.

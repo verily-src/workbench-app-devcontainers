@@ -17,6 +17,10 @@ def isolated_config(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("AWS_REGION", raising=False)
     monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_LOCATION", raising=False)
+    monkeypatch.delenv("VERTEXAI_LOCATION", raising=False)
 
 
 def test_config_defaults():
@@ -96,7 +100,8 @@ def test_config_defaults_expose_providers():
     body = client.get("/api/config").json()
     assert body["llm"]["provider"] == "anthropic"
     assert set(body["llm"]["providers"]) == {
-        "anthropic", "openai", "gemini", "openrouter", "bedrock"}
+        "anthropic", "openai", "gemini", "openrouter", "bedrock",
+        "vertexai"}
     assert body["llm"]["providers"]["anthropic"]["model"] == "claude-opus-5"
 
     assert body["llm"]["providers"]["openai"]["model"] == ""
@@ -155,6 +160,51 @@ def test_bedrock_test_connection_reports_missing_region_and_model(monkeypatch):
     no_model = client.post("/api/config/llm/test")
     assert no_model.status_code == 400
     assert "No Amazon Bedrock model set" in no_model.json()["detail"]
+
+
+def test_vertexai_config_uses_adc_env_and_never_stores_api_key(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "studio-project")
+    monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    monkeypatch.setenv("VERTEXAI_PROJECT", "lower-priority-project")
+    monkeypatch.setenv("VERTEXAI_LOCATION", "global")
+    resp = client.put("/api/config", json={
+        "provider": "vertexai", "model": "google/gemini-model",
+        "api_key": "must-not-be-saved"})
+    assert resp.status_code == 200
+    assert "must-not-be-saved" not in resp.text
+    body = resp.json()
+    state = body["llm"]["providers"]["vertexai"]
+    assert body["llm"]["provider"] == "vertexai"
+    assert state["model"] == "google/gemini-model"
+    assert state["auth_method"] == "adc"
+    assert state["api_key_set"] is False
+    assert state["project"] == "studio-project"
+    assert state["location"] == "us-central1"
+    assert state["configured"] is True
+    assert config.get_llm_config() == {
+        "provider": "vertexai", "api_key": None,
+        "model": "google/gemini-model", "base_url": None,
+        "region": None, "project": "studio-project",
+        "location": "us-central1"}
+
+
+def test_vertexai_test_connection_reports_missing_project_location_model(
+        monkeypatch):
+    client.put("/api/config", json={"provider": "vertexai", "model": "model-id"})
+    no_project = client.post("/api/config/llm/test")
+    assert no_project.status_code == 400
+    assert "GOOGLE_CLOUD_PROJECT" in no_project.json()["detail"]
+
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "studio-project")
+    no_location = client.post("/api/config/llm/test")
+    assert no_location.status_code == 400
+    assert "GOOGLE_CLOUD_LOCATION" in no_location.json()["detail"]
+
+    monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    client.put("/api/config", json={"provider": "vertexai", "model": ""})
+    no_model = client.post("/api/config/llm/test")
+    assert no_model.status_code == 400
+    assert "No Google Vertex AI model set" in no_model.json()["detail"]
 
 
 def test_switch_provider_keeps_per_provider_keys_and_never_echoes():

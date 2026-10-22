@@ -1,6 +1,8 @@
 import json
 import logging
 
+import vertexai_auth
+
 logger = logging.getLogger(__name__)
 
 MAX_TURNS = 8
@@ -67,19 +69,36 @@ def _client(api_key: str, base_url: str | None):
 
 def run(provider: str, model: str, api_key: str, base_url: str | None,
         system: str, messages: list[dict], tool_impls: dict,
-        tool_schemas: list[dict] | None = None) -> dict:
+        tool_schemas: list[dict] | None = None,
+        vertex_config: dict | None = None) -> dict:
 
-    client = _client(api_key, base_url)
+    vertex_auth = None
+    if provider == "vertexai":
+        if not vertex_config:
+            raise vertexai_auth.VertexAuthUnavailable(
+                "Vertex AI project and location are required.")
+        client, credentials, request = vertexai_auth.new_client(
+            vertex_config.get("project"), vertex_config.get("location"))
+        vertex_auth = (credentials, request)
+    else:
+        client = _client(api_key, base_url)
     convo = [{"role": "system", "content": system}] + messages
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     tool_calls: list[str] = []
 
     for _turn in range(MAX_TURNS):
 
-        resp = client.chat.completions.create(
-            model=model, messages=convo,
-            tools=(tool_schemas if tool_schemas is not None else TOOL_SCHEMAS),
-            tool_choice="auto")
+        try:
+            if vertex_auth:
+                vertexai_auth.refresh_client(client, *vertex_auth)
+            resp = client.chat.completions.create(
+                model=model, messages=convo,
+                tools=(tool_schemas if tool_schemas is not None else TOOL_SCHEMAS),
+                tool_choice="auto")
+        except Exception:
+            if provider == "vertexai":
+                client.close()
+            raise
         if resp.usage:
             usage["prompt_tokens"] += resp.usage.prompt_tokens or 0
             usage["completion_tokens"] += resp.usage.completion_tokens or 0
@@ -89,6 +108,8 @@ def run(provider: str, model: str, api_key: str, base_url: str | None,
 
         convo.append(msg.model_dump(exclude_none=True))
         if not msg.tool_calls:
+            if provider == "vertexai":
+                client.close()
             return {"reply": (msg.content or "(done)").strip(), "usage": usage,
                     "tool_calls": tool_calls, "turns": _turn + 1}
         for call in msg.tool_calls:
@@ -109,6 +130,8 @@ def run(provider: str, model: str, api_key: str, base_url: str | None,
             convo.append({"role": "tool", "tool_call_id": call.id,
                           "content": result})
 
+    if provider == "vertexai":
+        client.close()
     return {"reply": "I wasn't able to finish that in a reasonable number of "
             "steps — try narrowing the request.", "usage": usage,
             "tool_calls": tool_calls, "turns": MAX_TURNS}

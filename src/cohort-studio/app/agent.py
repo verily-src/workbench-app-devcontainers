@@ -9,6 +9,7 @@ import config
 import datasets
 import llm
 import providers
+import vertexai_auth
 
 logger = logging.getLogger(__name__)
 
@@ -157,27 +158,11 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
         "of sentences; the user can see the grid and charts update."
     )
 
-def _provider_label(provider: str) -> str:
-    return {"anthropic": "Anthropic", "openai": "OpenAI",
-            "gemini": "Gemini", "openrouter": "OpenRouter",
-            "bedrock": "Amazon Bedrock"}.get(provider, provider)
-
 def chat(dataset_id: str, message: str, history: list[dict],
          filters: list[dict], charts: list[dict]) -> dict:
     cfg = config.get_llm_config()
     provider = cfg["provider"]
-    label = _provider_label(provider)
-    if provider == "bedrock":
-        if not cfg["region"]:
-            raise llm.LLMNotConfigured(
-                "AWS region is required for Amazon Bedrock; set AWS_REGION "
-                "or AWS_DEFAULT_REGION.")
-    elif not cfg["api_key"]:
-        raise llm.LLMNotConfigured(
-            f"No {label} API key configured — add one in Settings.")
-    if not cfg["model"]:
-        raise llm.LLMNotConfigured(
-            f"No {label} model set — enter a model name in Settings.")
+    llm.validate_config(cfg)
 
     ds = datasets.get(dataset_id)
     df = ds["df"]
@@ -213,8 +198,13 @@ def chat(dataset_id: str, message: str, history: list[dict],
                           providers.TOOL_SCHEMAS)
         reply, usage = out["reply"], out["usage"]
     else:
-        out = providers.run(provider, cfg["model"], cfg["api_key"],
-                            cfg["base_url"], system, messages, tool_impls)
+        try:
+            out = providers.run(
+                provider, cfg["model"], cfg["api_key"], cfg["base_url"],
+                system, messages, tool_impls,
+                vertex_config=(cfg if provider == "vertexai" else None))
+        except vertexai_auth.VertexAuthUnavailable as exc:
+            raise llm.LLMNotConfigured(str(exc)) from exc
         reply, usage = out["reply"], out["usage"]
 
     return {"reply": reply, "filters": ui["filters"], "charts": ui["charts"],

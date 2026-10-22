@@ -232,7 +232,7 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
             </select>
           </label>
           <button className="link" disabled={!commonKey} onClick={applyCommonKey}>
-            Apply to all joins
+            Apply key to all
           </button>
           {!commonKeys.length && <span className="settings-hint">
             No shared column across the base and all selected tables.

@@ -41,11 +41,14 @@ export interface ProviderConfig {
   api_key_set: boolean;
   api_key_hint: string | null;
   api_key_source: string | null;
-  auth_method: "api_key" | "iam";
+  auth_method: "api_key" | "iam" | "adc";
   region: string | null;
+  project?: string | null;
+  location?: string | null;
+  configured?: boolean;
 }
 
-export type Provider = "anthropic" | "openai" | "gemini" | "openrouter" | "bedrock";
+export type Provider = "anthropic" | "openai" | "gemini" | "openrouter" | "bedrock" | "vertexai";
 
 export interface AppConfig {
   llm: {

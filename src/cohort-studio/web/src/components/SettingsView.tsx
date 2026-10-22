@@ -15,6 +15,8 @@ const PROVIDERS: { id: Provider; label: string; keyLabel: string;
     placeholder: "sk-or-…", models: [] },
   { id: "bedrock", label: "Amazon Bedrock", keyLabel: "",
     placeholder: "", models: [] },
+  { id: "vertexai", label: "Google Vertex AI", keyLabel: "",
+    placeholder: "", models: [] },
 ];
 
 export function SettingsView(
@@ -46,6 +48,7 @@ export function SettingsView(
   const meta = PROVIDERS.find((p) => p.id === provider) ?? PROVIDERS[0];
   const providerState = cfg?.llm.providers[provider];
   const usesBedrockIam = provider === "bedrock";
+  const usesVertexAdc = provider === "vertexai";
 
   const save = async () => {
     setStatus("Saving…");
@@ -91,11 +94,6 @@ export function SettingsView(
     <div style={{ maxWidth: 680 }}>
       <div className="section-label">AI model</div>
       <div className="settings-card">
-        <p className="settings-caption">
-          Powers "Ask AI" filtering and the chat assistant. Pick a provider;
-          each keeps its own key and model. Keys are stored server-side and
-          never shown again.
-        </p>
         <div className="field-label">Provider</div>
         <select value={provider}
                 onChange={(e) => pickProvider(e.target.value as Provider)}>
@@ -117,16 +115,28 @@ export function SettingsView(
             {meta.models.map((m) => <option key={m} value={m} />)}
           </datalist>
         )}
-        {usesBedrockIam ? (
+        {usesVertexAdc ? (
           <>
-            <div className="field-label">AWS authentication</div>
-            <p className="settings-caption">
-              Uses the AWS SDK credential chain (IAM role, profile, or
-              environment). No API key is stored. Choose a model that
-              supports Bedrock Converse tool use.
-              {" "}Region: {providerState?.region ||
-                "set AWS_REGION or AWS_DEFAULT_REGION on the server"}
-            </p>
+            <dl className="settings-caption">
+              <div><dt>Project</dt><dd>{providerState?.project || "Not configured"}</dd></div>
+              <div><dt>Location</dt><dd>{providerState?.location || "Not configured"}</dd></div>
+              <div><dt>Authentication</dt><dd>Application Default Credentials</dd></div>
+            </dl>
+            {!providerState?.configured && (
+              <p className="settings-hint" role="status">
+                Vertex AI is not configured.
+              </p>
+            )}
+          </>
+        ) : usesBedrockIam ? (
+          <>
+            <dl className="settings-caption">
+              <div><dt>Region</dt><dd>{providerState?.region || "Not configured"}</dd></div>
+              <div><dt>Authentication</dt><dd>AWS credential chain (IAM)</dd></div>
+            </dl>
+            {!providerState?.region && (
+              <p className="settings-hint" role="status">AWS Region is not configured.</p>
+            )}
           </>
         ) : (
           <>
@@ -151,7 +161,11 @@ export function SettingsView(
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <button className="primary" onClick={save}>Save</button>
           <button onClick={testLlm}
-                  disabled={usesBedrockIam
+                  disabled={usesVertexAdc
+                    ? !providerState?.configured || !providerState?.model
+                      || provider !== cfg.llm.provider
+                      || model !== providerState?.model
+                    : usesBedrockIam
                     ? !providerState?.region || !providerState?.model
                     : !providerState?.api_key_set && !apiKey}>
             Test connection

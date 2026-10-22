@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 import bedrock
 import config
+import vertexai_auth
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +25,28 @@ class LLMNotConfigured(RuntimeError):
 
 _LABELS = {"anthropic": "Anthropic", "openai": "OpenAI",
            "gemini": "Gemini", "openrouter": "OpenRouter",
-           "bedrock": "Amazon Bedrock"}
+           "bedrock": "Amazon Bedrock", "vertexai": "Google Vertex AI"}
 
-def _cfg() -> dict:
-    cfg = config.get_llm_config()
+def validate_config(cfg: dict) -> dict:
     label = _LABELS.get(cfg["provider"], cfg["provider"])
     if cfg["provider"] == "bedrock":
         if not cfg["region"]:
             raise LLMNotConfigured(
                 "AWS region is required for Amazon Bedrock; set AWS_REGION "
                 "or AWS_DEFAULT_REGION.")
+    elif cfg["provider"] == "vertexai":
+        if not cfg.get("project"):
+            raise LLMNotConfigured(
+                "Google Cloud project is required for Vertex AI; set "
+                "GOOGLE_CLOUD_PROJECT or VERTEXAI_PROJECT.")
+        if not cfg.get("location"):
+            raise LLMNotConfigured(
+                "Vertex AI location is required; set GOOGLE_CLOUD_LOCATION "
+                "or VERTEXAI_LOCATION.")
+        try:
+            vertexai_auth.endpoint(cfg["project"], cfg["location"])
+        except ValueError as exc:
+            raise LLMNotConfigured(str(exc)) from exc
     elif not cfg["api_key"]:
         raise LLMNotConfigured(
             f"No {label} API key configured — add one in Settings.")
@@ -41,6 +54,24 @@ def _cfg() -> dict:
         raise LLMNotConfigured(
             f"No {label} model set — enter a model name in Settings.")
     return cfg
+
+def _cfg() -> dict:
+    return validate_config(config.get_llm_config())
+
+def _openai_client(cfg: dict):
+    if cfg["provider"] == "vertexai":
+        try:
+            client, credentials, request = vertexai_auth.new_client(
+                cfg["project"], cfg["location"])
+            vertexai_auth.refresh_client(client, credentials, request)
+            return client, credentials, request
+        except vertexai_auth.VertexAuthUnavailable as exc:
+            raise LLMNotConfigured(str(exc)) from exc
+    from openai import OpenAI
+    kwargs = {"api_key": cfg["api_key"]}
+    if cfg["base_url"]:
+        kwargs["base_url"] = cfg["base_url"]
+    return OpenAI(**kwargs), None, None
 
 def test_connection() -> dict:
 
@@ -54,14 +85,13 @@ def test_connection() -> dict:
         return {"ok": True, "provider": "anthropic", "model": info.id,
                 "display_name": info.display_name}
 
-    from openai import OpenAI
-    kwargs = {"api_key": cfg["api_key"]}
-    if cfg["base_url"]:
-        kwargs["base_url"] = cfg["base_url"]
-    client = OpenAI(**kwargs)
-    client.chat.completions.create(
-        model=cfg["model"],
-        messages=[{"role": "user", "content": "ping"}])
+    client, _, _ = _openai_client(cfg)
+    try:
+        client.chat.completions.create(
+            model=cfg["model"],
+            messages=[{"role": "user", "content": "ping"}])
+    finally:
+        client.close()
     return {"ok": True, "provider": cfg["provider"], "model": cfg["model"],
             "display_name": cfg["model"]}
 
@@ -129,25 +159,24 @@ def _anthropic_suggestion(cfg: dict, system: str,
 def _openai_suggestion(cfg: dict, system: str,
                        prompt: str) -> "FilterSuggestion | None":
 
-    from openai import OpenAI
-    kwargs = {"api_key": cfg["api_key"]}
-    if cfg["base_url"]:
-        kwargs["base_url"] = cfg["base_url"]
-    client = OpenAI(**kwargs)
+    client, _, _ = _openai_client(cfg)
     schema = FilterSuggestion.model_json_schema()
-    resp = client.chat.completions.create(
-        model=cfg["model"],
-        messages=[{"role": "system", "content": system},
-                  {"role": "user", "content": prompt}],
-        response_format={"type": "json_schema", "json_schema": {
-            "name": "filter_suggestion", "schema": schema}})
-    content = resp.choices[0].message.content or ""
     try:
-        return FilterSuggestion.model_validate_json(content)
-    except Exception as e:
-        logger.warning("Could not parse %s filter JSON: %s",
-                       cfg["provider"], e)
-        return None
+        resp = client.chat.completions.create(
+            model=cfg["model"],
+            messages=[{"role": "system", "content": system},
+                      {"role": "user", "content": prompt}],
+            response_format={"type": "json_schema", "json_schema": {
+                "name": "filter_suggestion", "schema": schema}})
+        content = resp.choices[0].message.content or ""
+        try:
+            return FilterSuggestion.model_validate_json(content)
+        except Exception as e:
+            logger.warning("Could not parse %s filter JSON: %s",
+                           cfg["provider"], e)
+            return None
+    finally:
+        client.close()
 
 def _bedrock_suggestion(cfg: dict, system: str,
                         prompt: str) -> "FilterSuggestion | None":

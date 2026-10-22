@@ -18,3 +18,9 @@
 For Cohort Studio work, read `src/cohort-studio/docs/PROJECT_STATE.md` first. Keep it current when verified project state changes; record evidence and limitations, and do not treat unverified deployment or test status as complete. Claude Code should use the same file via the root `CLAUDE.md` pointer.
 
 Keep `src/cohort-studio/docs/architecture.md` as the single maintained architecture reference. Update it when an architectural decision changes. Prefer E2E tests at the real user boundary before lower-level tests. Keep source comments sparse; add them only for required machine directives, legal notices, or runtime tool docstrings.
+
+## Product decisions
+
+- Prefer decisions that improve user, developer, and agent experience together. Preserve existing behavior and verify outcomes at the relevant boundary.
+- Remove redundant taglines, helper text, and secondary labels. Make screens understandable through layout, grouping, and clear primary labels.
+- Retain accessible labels, errors, data scope, counts, and warnings needed to make a correct decision. Keep setup details in Settings or developer documentation.

@@ -336,7 +336,7 @@ def test_common_join_key_applies_to_all_steps(loaded_page: Page, tmp_path):
     combo.press("Enter")
 
     panel.get_by_label("Common key").select_option("sample_id")
-    panel.get_by_role("button", name="Apply to all joins").click()
+    panel.get_by_role("button", name="Apply key to all").click()
     expect(panel.locator(".join-step")).to_have_count(2)
     for step in panel.locator(".join-step").all():
         condition = step.locator(".join-cond").first

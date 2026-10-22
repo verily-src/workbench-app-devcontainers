@@ -29,10 +29,9 @@ export function OmopBuilder({ source, active, onOpen }: {
 
   return <section className="omop-builder" aria-label="OMOP cohort builder">
     <h2>OMOP cohorts</h2>
-    <p className="settings-hint">Build a person cohort from clinical events in an OMOP database.</p>
     {active && source?.kind !== "aurora" && <p>
-      Select an Aurora datasource in the sidebar. Selecting a datasource or
-      collection does not import its data or create an OMOP schema.
+      Select an Aurora datasource with an existing OMOP schema. Selecting a
+      datasource does not import data.
     </p>}
     {resourceIds.map((rid) => <div key={rid} hidden={!active || source?.id !== rid}>
       <p className="omop-resource">Aurora datasource: {source?.label}</p>
@@ -106,7 +105,7 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
       <div className="omop-grid">
         <div>
           <section className="omop-card">
-            <h3>1. Find concepts</h3>
+            <h3>Find concepts</h3>
             <div className="omop-row">
               <label>Domain<select value={domain} onChange={(e) => {
                 setDomain(e.target.value as OmopDomain); setSelected([]); setResults(null);
@@ -127,7 +126,7 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
                 <span><strong>{c.concept_name}</strong><small>{c.concept_id} · {c.vocabulary_id} · {c.persons === null ? "Person count unknown" : `${c.persons.toLocaleString()} persons (exact concept)`}</small></span>
               </label>)}
             </div>}
-            <p className="settings-hint">Concepts within one rule use OR. Rules use AND. Descendants are included by default.</p>
+            <p className="settings-hint">Concepts use OR; criteria use AND.</p>
             <button disabled={domain !== "death" && !selected.length} onClick={() => {
               changeRules([...rules, { domain, concept_ids: selected.map((c) => c.concept_id),
                 names: selected.map((c) => c.concept_name), descendants: !!info.vocab_schema, min_count: 1 }]);
@@ -135,8 +134,8 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
             }}>Add criterion{selected.length ? ` (${selected.length} concepts)` : ""}</button>
           </section>
           <section className="omop-card">
-            <h3>2. Define cohort</h3>
-            <p className="settings-hint">Index date is the first event in the first included criterion. Without one, it is the first observation start. Age uses index year minus birth year.</p>
+            <h3>Define cohort</h3>
+            <p className="settings-hint">Index date is the first included event, or the first observation start. Age is measured at index.</p>
             {!rules.length && <p>No event criteria: all persons who meet the observation and demographic filters.</p>}
             {rules.map((r, i) => <div className="omop-rule" key={i} aria-label={`Criterion ${i + 1}`}>
               <div className="omop-toolbar"><strong>{i + 1}. {r.names.join(" OR ") || "Death"}</strong>
@@ -172,7 +171,6 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
         <div>
           <section className="omop-card" aria-label="Cohort assistant">
             <h3>Cohort assistant</h3>
-            <p className="settings-hint">Describe a cohort, or ask about running Workbench workflows and apps. Select an AI provider in Settings.</p>
             <div className="omop-chat" aria-live="polite">
               {history.map((m, i) => <p key={i}><strong>{m.role === "user" ? "You" : "Assistant"}:</strong> {m.content}</p>)}
             </div>
@@ -197,7 +195,7 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
             </div>}
           </section>
           <section className="omop-card">
-            <h3>3. Count and explore</h3>
+            <h3>Count and explore</h3>
             <button className="primary" onClick={() => run("Counting cohort…", async () => {
               const out = await api.omopCount(rid, spec); if (mounted.current) setCount(out);
             })}>Count cohort</button>

@@ -8,6 +8,7 @@ import db
 import llm
 import omop
 import providers
+import vertexai_auth
 import workbench_apps
 import workflows
 
@@ -198,18 +199,7 @@ def chat(resource_id: str, info: dict, message: str,
 
     cfg = config.get_llm_config()
     provider = cfg["provider"]
-    label = {"anthropic": "Anthropic", "openai": "OpenAI",
-             "gemini": "Gemini", "openrouter": "OpenRouter",
-             "bedrock": "Amazon Bedrock"}.get(provider, provider)
-    if provider == "bedrock" and not cfg.get("region"):
-        raise llm.LLMNotConfigured(
-            "AWS region required; set AWS_REGION or AWS_DEFAULT_REGION")
-    if provider != "bedrock" and not cfg.get("api_key"):
-        raise llm.LLMNotConfigured(
-            f"No {label} API key configured — add one in Settings.")
-    if not cfg.get("model"):
-        raise llm.LLMNotConfigured(
-            f"No {label} model set — enter a model name in Settings.")
+    llm.validate_config(cfg)
 
     spec = omop.parse_spec(current_spec)
     state: dict = {}
@@ -241,9 +231,13 @@ def chat(resource_id: str, info: dict, message: str,
             cfg, system, messages, impls, COHORT_TOOL_SCHEMAS)
         reply, usage = out["reply"], out["usage"]
     else:
-        out = providers.run(
-            provider, cfg["model"], cfg["api_key"], cfg.get("base_url"),
-            system, messages, impls, tool_schemas=COHORT_TOOL_SCHEMAS)
+        try:
+            out = providers.run(
+                provider, cfg["model"], cfg["api_key"], cfg.get("base_url"),
+                system, messages, impls, tool_schemas=COHORT_TOOL_SCHEMAS,
+                vertex_config=(cfg if provider == "vertexai" else None))
+        except vertexai_auth.VertexAuthUnavailable as exc:
+            raise llm.LLMNotConfigured(str(exc)) from exc
         reply, usage = out["reply"], out["usage"]
 
     final_spec = state.get("spec")

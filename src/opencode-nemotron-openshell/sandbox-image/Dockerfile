@@ -30,7 +30,8 @@ RUN useradd --uid 1500 --home-dir /sandbox --create-home --shell /bin/bash sandb
 
 # Nothing in the sandbox may reach the internet, so turn off OpenCode features
 # that would try: model catalog fetches, LSP and plugin downloads, updates and
-# session sharing.
+# session sharing. `sandbox exec` doesn't pass these to processes, so
+# opencode-sandbox.sh sets them again; they apply here to `docker run` tests.
 ENV HOME=/sandbox \
     OPENCODE_DISABLE_AUTOUPDATE=true \
     OPENCODE_DISABLE_MODELS_FETCH=true \

@@ -139,6 +139,18 @@ sandbox_config() {
   }'
 }
 
+# OpenCode features that would reach the internet. The image sets these too,
+# but `sandbox exec` does not pass the image's environment to the process.
+readonly OPENCODE_OFFLINE_ENV=(
+  HOME=/sandbox
+  OPENCODE_DISABLE_AUTOUPDATE=true
+  OPENCODE_DISABLE_MODELS_FETCH=true
+  OPENCODE_DISABLE_LSP_DOWNLOAD=true
+  OPENCODE_DISABLE_DEFAULT_PLUGINS=true
+  OPENCODE_DISABLE_SHARE=true
+  OPENCODE_DISABLE_CLAUDE_CODE=true
+)
+
 # Runs OpenCode in the sandbox with the config passed in the environment. The
 # config is base64-encoded so it survives the remote command line unchanged.
 exec_opencode() {
@@ -148,6 +160,7 @@ exec_opencode() {
   config="$(sandbox_config | base64 -w0)"
   # shellcheck disable=SC2016 # Expanded inside the sandbox, not here.
   openshell sandbox exec "${SANDBOX_NAME}" --workdir "${SANDBOX_WORKDIR}" "${tty_flag}" -- \
+    env "${OPENCODE_OFFLINE_ENV[@]}" \
     bash -c 'export OPENCODE_CONFIG_CONTENT="$(printf %s "$1" | base64 -d)"; shift; exec opencode "$@"' \
     opencode-sandbox "${config}" "$@"
 }
@@ -159,7 +172,8 @@ cmd_run() {
 
 cmd_shell() {
   ensure_sandbox
-  exec openshell sandbox exec "${SANDBOX_NAME}" --workdir "${SANDBOX_WORKDIR}" --tty -- bash -l
+  exec openshell sandbox exec "${SANDBOX_NAME}" --workdir "${SANDBOX_WORKDIR}" --tty -- \
+    env "${OPENCODE_OFFLINE_ENV[@]}" bash -l
 }
 
 cmd_upload() {
@@ -289,9 +303,12 @@ cmd_selftest() {
       "$(tail -c 400 <<< "${opencode_output}")"
   fi
 
+  # Read the whole log before searching it: with pipefail, `grep -q` closing the
+  # pipe early would make the pipeline fail even when it matches.
   sleep 2
-  if openshell logs "${SANDBOX_NAME}" --source sandbox --since 10m -n 1000 2> /dev/null |
-    grep -q 'DENIED.*example\.com'; then
+  local log
+  log="$(openshell logs "${SANDBOX_NAME}" --source sandbox --since 30m -n 2000 2> /dev/null || true)"
+  if grep -q 'DENIED.*example\.com' <<< "${log}"; then
     PASSED=$((PASSED + 1))
     echo "PASS  OpenShell logged the blocked internet request"
   else

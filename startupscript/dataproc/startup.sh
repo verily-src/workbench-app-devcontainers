@@ -139,6 +139,10 @@ readonly WORKBENCH_SSH_AGENT_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/ssh-agent-star
 readonly WORKBENCH_SSH_AGENT_SERVICE_NAME="workbench-ssh-agent.service"
 readonly WORKBENCH_SSH_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_SSH_AGENT_SERVICE_NAME}"
 
+readonly WORKBENCH_FLUENT_BIT_CONFIG="/etc/fluent-bit/workbench.conf"
+readonly WORKBENCH_FLUENT_BIT_SERVICE_NAME="workbench-fluentbit.service"
+readonly WORKBENCH_FLUENT_BIT_SERVICE="/etc/systemd/system/${WORKBENCH_FLUENT_BIT_SERVICE_NAME}"
+
 # Variables for optional software frameworks
 readonly HAIL_SCRIPT_PATH="${USER_WORKBENCH_CONFIG_DIR}/install-hail.py"
 
@@ -313,6 +317,49 @@ grep -q '^Defaults logfile=' /etc/sudoers || \
 # Disable word-wrap so invocations aren't split across Cloud Logging entries.
 grep -q '^Defaults loglinelen=' /etc/sudoers || \
   echo 'Defaults loglinelen=0' >> /etc/sudoers
+
+# Second, independent Fluent Bit process (reusing the fluentbit-ucp binary), kept
+# separate from Dataproc's own config so a future image update won't overwrite it.
+emit "Configuring sudo audit log collection..."
+mkdir -p "$(dirname "${WORKBENCH_FLUENT_BIT_CONFIG}")"
+cat << EOF > "${WORKBENCH_FLUENT_BIT_CONFIG}"
+[SERVICE]
+    Flush 5
+
+[INPUT]
+    Name tail
+    Tag sudo.audit
+    Path /var/log/workbench/sudo-audit.log
+    DB /var/tmp/fluentbit.sudo-audit.pos
+    Read_from_Head true
+    Mem_Buf_Limit 10MB
+
+[OUTPUT]
+    Name stackdriver
+    Match sudo.audit
+    Resource gce_instance
+    Severity_Key severity
+EOF
+
+cat << EOF > "${WORKBENCH_FLUENT_BIT_SERVICE}"
+[Unit]
+Description=Fluent Bit agent for Workbench-specific logging
+After=network.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=1
+User=root
+ExecStart=/opt/fluent-bit/bin/fluent-bit -c ${WORKBENCH_FLUENT_BIT_CONFIG}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable "${WORKBENCH_FLUENT_BIT_SERVICE_NAME}"
+systemctl start "${WORKBENCH_FLUENT_BIT_SERVICE_NAME}"
 
 # Remove default user bashrc to ensure that the user's bashrc is sourced in non interactive shells
 ${RUN_AS_LOGIN_USER} "rm -f '${USER_BASHRC}'"

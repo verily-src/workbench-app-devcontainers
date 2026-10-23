@@ -4,6 +4,21 @@
   "service": "app",
   "shutdownAction": "none",
   "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh",
+    "jupyter",
+    "/home/jupyter",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  // re-mount bucket files on container start up
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "jupyter",
+    "/home/jupyter",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
   "remoteUser": "root",
   "customizations": {
     "workbench": {

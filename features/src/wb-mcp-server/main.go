@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -90,11 +91,56 @@ type ContentItem struct {
 
 // Global variables
 var (
-	workspaceBaseURL     string
-	dataExplorerURL      string
-	cachedWorkspaceUUID  string // populated once at startup from wb status
-	httpClient           = &http.Client{Timeout: 60 * time.Second}
+	workspaceBaseURL    string
+	dataExplorerURL     string
+	cachedWorkspaceUUID string // populated once at startup from wb status
+	httpClient          = &http.Client{Timeout: 60 * time.Second}
+
+	// Spawning the wb CLI (a JVM) costs several seconds per call, so the results
+	// below are cached. All of them are guarded by cacheMu.
+	cacheMu             sync.Mutex
+	cachedToken         string
+	cachedTokenExpiry   time.Time
+	cachedGoogleProject string                // current workspace's Google project, from wb status
+	workspaceIdCache    = map[string]string{} // user-facing ID -> UUID
+	toolResultCache     = map[string]cachedResult{}
 )
+
+const (
+	// Access tokens live for about an hour; a 401 also forces a refresh.
+	tokenTTL = 30 * time.Minute
+	// wb status rarely changes, but a user can switch workspaces in a terminal.
+	statusTTL  = 5 * time.Minute
+	appListTTL = 30 * time.Second
+)
+
+type cachedResult struct {
+	output  string
+	expires time.Time
+}
+
+// readOnlyTools don't change Workbench state, so calling them keeps cached results.
+// Any other tool call clears toolResultCache. Apart from the cloud CLI passthroughs
+// (which can't change the cached Workbench results), keep in sync with the auto-allow
+// list in install.sh.
+var readOnlyTools = map[string]bool{
+	"bq_query": true, "bq_execute": true, "gcloud_execute": true, "gsutil_execute": true,
+	"wb_status": true, "wb_workspace_list": true, "workspace_get": true,
+	"workspace_list_resources": true, "workspace_list_data_collections": true,
+	"workspace_list_all": true, "workspace_list_users": true, "resource_list_tree": true,
+	"resource_check_access": true, "app_list": true, "app_get_url": true,
+	"underlay_list": true, "underlay_get_schema": true, "underlay_list_entities": true,
+	"underlay_get_entity": true, "underlay_list_criteria_selectors": true,
+	"folder_list_tree": true, "auth_status": true, "resolve": true, "server_status": true,
+	"server_list": true, "study_list": true, "study_list_cohorts": true,
+	"data_query_hints": true, "data_sample_instances": true, "cohort_count_instances": true,
+	"export_list_models": true, "export_describe": true, "export_preview": true,
+	"workflow_list": true, "workflow_describe": true, "workflow_job_list": true,
+	"workflow_job_describe": true, "group_list": true, "group_describe": true,
+	"pod_list": true, "pod_describe": true, "organization_list": true, "version": true,
+	"platform_list_data_collections": true, "aurora_list_tables": true,
+	"aurora_describe_table": true, "s3_list_objects": true, "s3_read_file": true,
+}
 
 // Tool definitions
 var wbTools = []Tool{
@@ -134,10 +180,10 @@ var wbTools = []Tool{
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"id":          map[string]interface{}{"type": "string", "description": "User-facing workspace ID (must be unique)"},
-				"podId":       map[string]interface{}{"type": "string", "description": "Pod ID (required) - get from pod_list"},
-				"name":        map[string]interface{}{"type": "string", "description": "Display name for the workspace"},
-				"description": map[string]interface{}{"type": "string", "description": "Workspace description"},
+				"id":             map[string]interface{}{"type": "string", "description": "User-facing workspace ID (must be unique)"},
+				"podId":          map[string]interface{}{"type": "string", "description": "Pod ID (required) - get from pod_list"},
+				"name":           map[string]interface{}{"type": "string", "description": "Display name for the workspace"},
+				"description":    map[string]interface{}{"type": "string", "description": "Workspace description"},
 				"organizationId": map[string]interface{}{"type": "string", "description": "Organization ID (optional)"},
 			},
 			Required: []string{"id", "podId"},
@@ -298,10 +344,10 @@ var wbTools = []Tool{
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"resourceId":  map[string]interface{}{"type": "string", "description": "Resource ID for the reference"},
+				"resourceId":   map[string]interface{}{"type": "string", "description": "Resource ID for the reference"},
 				"resourceType": map[string]interface{}{"type": "string", "enum": []string{"gcs-bucket", "bq-dataset", "bq-table"}, "description": "Type of resource"},
-				"path":        map[string]interface{}{"type": "string", "description": "Cloud path (e.g., gs://bucket-name)"},
-				"description": map[string]interface{}{"type": "string", "description": "Reference description"},
+				"path":         map[string]interface{}{"type": "string", "description": "Cloud path (e.g., gs://bucket-name)"},
+				"description":  map[string]interface{}{"type": "string", "description": "Reference description"},
 			},
 			Required: []string{"resourceId", "resourceType", "path"},
 		},
@@ -376,7 +422,7 @@ var wbTools = []Tool{
 		},
 	},
 	{
-		Name:        "workspace_list_data_collections",
+		Name: "workspace_list_data_collections",
 		Description: `List all data collections in the current workspace and their associated resources.
 
 Use this when a user asks:
@@ -833,12 +879,12 @@ clinical searches, underlay name for schema exploration).`,
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"workspaceId":  map[string]interface{}{"type": "string", "description": "Workspace ID"},
-				"workflowId":   map[string]interface{}{"type": "string", "description": "Workflow ID"},
-				"bucketId":     map[string]interface{}{"type": "string", "description": "BUCKET NAME (not UUID) - e.g., 'cohort_exports'. Get from workspace_list_resources metadata.name field."},
-				"path":         map[string]interface{}{"type": "string", "description": "Path to workflow definition file in bucket (e.g., 'workflows/myworkflow.wdl')"},
-				"displayName":  map[string]interface{}{"type": "string", "description": "Workflow display name"},
-				"description":  map[string]interface{}{"type": "string", "description": "Description of the workflow"},
+				"workspaceId": map[string]interface{}{"type": "string", "description": "Workspace ID"},
+				"workflowId":  map[string]interface{}{"type": "string", "description": "Workflow ID"},
+				"bucketId":    map[string]interface{}{"type": "string", "description": "BUCKET NAME (not UUID) - e.g., 'cohort_exports'. Get from workspace_list_resources metadata.name field."},
+				"path":        map[string]interface{}{"type": "string", "description": "Path to workflow definition file in bucket (e.g., 'workflows/myworkflow.wdl')"},
+				"displayName": map[string]interface{}{"type": "string", "description": "Workflow display name"},
+				"description": map[string]interface{}{"type": "string", "description": "Description of the workflow"},
 			},
 			Required: []string{"workspaceId", "workflowId", "bucketId", "path"},
 		},
@@ -881,13 +927,13 @@ clinical searches, underlay name for schema exploration).`,
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"workspaceId":      map[string]interface{}{"type": "string", "description": "Workspace ID"},
-				"workflowId":       map[string]interface{}{"type": "string", "description": "Workflow ID"},
-				"outputBucketId":   map[string]interface{}{"type": "string", "description": "BUCKET NAME (not UUID) for outputs - e.g., 'cohort_exports'"},
-				"jobId":            map[string]interface{}{"type": "string", "description": "Optional job ID"},
-				"description":      map[string]interface{}{"type": "string", "description": "Job description"},
-				"outputPath":       map[string]interface{}{"type": "string", "description": "Output path in bucket"},
-				"inputs":           map[string]interface{}{"type": "object", "description": "Job inputs as key-value pairs"},
+				"workspaceId":    map[string]interface{}{"type": "string", "description": "Workspace ID"},
+				"workflowId":     map[string]interface{}{"type": "string", "description": "Workflow ID"},
+				"outputBucketId": map[string]interface{}{"type": "string", "description": "BUCKET NAME (not UUID) for outputs - e.g., 'cohort_exports'"},
+				"jobId":          map[string]interface{}{"type": "string", "description": "Optional job ID"},
+				"description":    map[string]interface{}{"type": "string", "description": "Job description"},
+				"outputPath":     map[string]interface{}{"type": "string", "description": "Output path in bucket"},
+				"inputs":         map[string]interface{}{"type": "object", "description": "Job inputs as key-value pairs"},
 			},
 			Required: []string{"workspaceId", "workflowId", "outputBucketId"},
 		},
@@ -948,34 +994,46 @@ clinical searches, underlay name for schema exploration).`,
 	},
 
 	{
-		Name:        "bq_execute",
-		Description: "Execute BigQuery command in workspace context. Use this to run bq CLI commands with workspace's BigQuery access.",
+		Name:        "bq_query",
+		Description: "Run a GoogleSQL (standard SQL) query in BigQuery in the workspace's Google project and return the rows as CSV. Use this for any SQL, e.g. sql=\"SELECT COUNT(*) FROM `project.dataset.table`\".",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"command": map[string]interface{}{"type": "string", "description": "BigQuery command (without 'bq' prefix)"},
+				"sql":     map[string]interface{}{"type": "string", "description": "GoogleSQL query text, not a bq command line"},
+				"maxRows": map[string]interface{}{"type": "integer", "description": "Maximum rows to return (default 100)"},
+			},
+			Required: []string{"sql"},
+		},
+	},
+	{
+		Name:        "bq_execute",
+		Description: "Run a bq CLI command in the workspace's Google project. For SQL queries, use bq_query instead. Examples of command: \"ls\", \"ls project:dataset\", \"show --schema project:dataset.table\", \"head -n 10 project:dataset.table\".",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"command": map[string]interface{}{"type": "string", "description": "bq arguments without the 'bq' prefix, e.g. \"show --schema project:dataset.table\". Quote arguments that contain spaces."},
 			},
 			Required: []string{"command"},
 		},
 	},
 	{
 		Name:        "gcloud_execute",
-		Description: "Execute gcloud command in workspace context. Use this to run gcloud CLI commands with workspace's GCP project.",
+		Description: "Run a gcloud CLI command in the workspace's Google project. Examples of command: \"storage ls gs://bucket/\", \"storage cat gs://bucket/path/file.csv\", \"config list\".",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"command": map[string]interface{}{"type": "string", "description": "gcloud command (without 'gcloud' prefix)"},
+				"command": map[string]interface{}{"type": "string", "description": "gcloud arguments without the 'gcloud' prefix, e.g. \"storage ls gs://bucket/\". Quote arguments that contain spaces."},
 			},
 			Required: []string{"command"},
 		},
 	},
 	{
 		Name:        "gsutil_execute",
-		Description: "Execute gsutil command in workspace context. Use this to run gsutil CLI commands for GCS operations.",
+		Description: "Run a gsutil command for Cloud Storage (GCS). Use this to list, read or measure files in buckets. Examples of command: \"ls gs://bucket/\", \"ls -l gs://bucket/folder/\", \"cat gs://bucket/file.txt\", \"du -s gs://bucket/\".",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"command": map[string]interface{}{"type": "string", "description": "gsutil command (without 'gsutil' prefix)"},
+				"command": map[string]interface{}{"type": "string", "description": "gsutil arguments without the 'gsutil' prefix, e.g. \"ls gs://bucket/\". Quote paths that contain spaces."},
 			},
 			Required: []string{"command"},
 		},
@@ -1437,9 +1495,9 @@ INPUT:
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"studyId":                map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
-				"cohortId":               map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
-				"allCriteriaFromCohort":  map[string]interface{}{"type": "boolean", "description": "Export all criteria (true) or variable set (false)"},
+				"studyId":               map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
+				"cohortId":              map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
+				"allCriteriaFromCohort": map[string]interface{}{"type": "boolean", "description": "Export all criteria (true) or variable set (false)"},
 			},
 			Required: []string{"studyId", "cohortId"},
 		},
@@ -1496,18 +1554,18 @@ WORKFLOW:
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"studyId":        map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
-				"cohortId":       map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
+				"studyId":  map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
+				"cohortId": map[string]interface{}{"type": "string", "description": "From cohort_create_in_workspace"},
 				"exportRequests": map[string]interface{}{
-					"type": "array",
+					"type":        "array",
 					"description": "Array of export requests",
 					"items": map[string]interface{}{
 						"type": "object",
 						"properties": map[string]interface{}{
-							"exportModel":         map[string]interface{}{"type": "string", "description": "Export model name"},
-							"inputs":              map[string]interface{}{"type": "object", "description": "Model input parameters"},
-							"includeAnnotations":  map[string]interface{}{"type": "boolean", "default": true},
-							"compressFiles":       map[string]interface{}{"type": "boolean", "default": true},
+							"exportModel":        map[string]interface{}{"type": "string", "description": "Export model name"},
+							"inputs":             map[string]interface{}{"type": "object", "description": "Model input parameters"},
+							"includeAnnotations": map[string]interface{}{"type": "boolean", "default": true},
+							"compressFiles":      map[string]interface{}{"type": "boolean", "default": true},
 						},
 						"required": []string{"exportModel"},
 					},
@@ -1728,13 +1786,12 @@ func initializeConfig() error {
 	workspaceBaseURL = "https://workbench.verily.com/api/wsm"
 	dataExplorerURL = "https://workbench.verily.com/api/de"
 
-	cmd := exec.Command("wb", "status", "--format=json")
-	output, err := cmd.CombinedOutput()
+	output, err := refreshStatus()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: wb status failed, using default URLs: %v\n", err)
 	} else {
 		var status map[string]interface{}
-		if err := json.Unmarshal(output, &status); err != nil {
+		if err := json.Unmarshal([]byte(output), &status); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to parse wb status JSON, using default URLs: %v\n", err)
 		} else {
 			// Extract server URLs
@@ -1746,8 +1803,9 @@ func initializeConfig() error {
 			} else {
 				fmt.Fprintf(os.Stderr, "Warning: server info not found in wb status, using default URLs\n")
 			}
-			// Best-effort workspace UUID cache at startup. If this fails (e.g. auth not
-			// ready yet), getCurrentWorkspaceUUID() will retry lazily at call time.
+			// Best-effort workspace UUID cache at startup. wb status usually includes the
+			// UUID; if not (e.g. auth not ready yet), getCurrentWorkspaceUUID() will retry
+			// lazily at call time.
 			if _, startupErr := getCurrentWorkspaceUUID(); startupErr != nil {
 				fmt.Fprintf(os.Stderr, "Warning: could not resolve workspace UUID at startup (will retry on first use): %v\n", startupErr)
 			}
@@ -1766,12 +1824,112 @@ func initializeConfig() error {
 	return nil
 }
 
+// refreshStatus runs `wb status --format=json`, records the current workspace's
+// UUID and Google project, and caches the output for wb_status.
+func refreshStatus() (string, error) {
+	out, err := exec.Command("wb", "status", "--format=json").Output()
+	if err != nil {
+		return string(out), err
+	}
+	var status struct {
+		Workspace struct {
+			ID              string `json:"id"`
+			UUID            string `json:"uuid"`
+			GoogleProjectID string `json:"googleProjectId"`
+		} `json:"workspace"`
+	}
+	if err := json.Unmarshal(out, &status); err != nil {
+		return string(out), err
+	}
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	if isUUID(status.Workspace.UUID) {
+		// The workspace may have changed since the last refresh.
+		cachedWorkspaceUUID = status.Workspace.UUID
+		if status.Workspace.ID != "" {
+			workspaceIdCache[status.Workspace.ID] = status.Workspace.UUID
+		}
+	}
+	cachedGoogleProject = status.Workspace.GoogleProjectID
+	toolResultCache["wb_status"] = cachedResult{output: string(out), expires: time.Now().Add(statusTTL)}
+	return string(out), nil
+}
+
+// cachedToolCall returns a cached result for key if it hasn't expired, otherwise
+// runs fn and caches a successful result for ttl.
+func cachedToolCall(key string, ttl time.Duration, fn func() (string, error)) (string, error) {
+	cacheMu.Lock()
+	if r, ok := toolResultCache[key]; ok && time.Now().Before(r.expires) {
+		cacheMu.Unlock()
+		return r.output, nil
+	}
+	cacheMu.Unlock()
+	out, err := fn()
+	if err == nil {
+		cacheMu.Lock()
+		toolResultCache[key] = cachedResult{output: out, expires: time.Now().Add(ttl)}
+		cacheMu.Unlock()
+	}
+	return out, err
+}
+
+// switchesWorkspace reports whether a tool call may change the current workspace or server.
+func switchesWorkspace(params CallToolParams) bool {
+	if params.Name == "server_set" {
+		return true
+	}
+	if params.Name != "wb_execute" {
+		return false
+	}
+	command, _ := params.Arguments["command"].(string)
+	fields := strings.Fields(command)
+	return len(fields) >= 2 && (fields[0] == "workspace" || fields[0] == "server") && fields[1] == "set"
+}
+
+// resetCurrentWorkspace forgets the current workspace's UUID and project so that
+// they are looked up again on next use.
+func resetCurrentWorkspace() {
+	cacheMu.Lock()
+	cachedWorkspaceUUID = ""
+	cachedGoogleProject = ""
+	cacheMu.Unlock()
+}
+
+func clearToolResultCache() {
+	cacheMu.Lock()
+	toolResultCache = map[string]cachedResult{}
+	cacheMu.Unlock()
+}
+
+// currentGoogleProject returns the current workspace's Google project, refreshing
+// wb status if it is not known yet.
+func currentGoogleProject() string {
+	cacheMu.Lock()
+	project := cachedGoogleProject
+	cacheMu.Unlock()
+	if project == "" {
+		refreshStatus()
+		cacheMu.Lock()
+		project = cachedGoogleProject
+		cacheMu.Unlock()
+	}
+	return project
+}
+
 // resolveWorkspaceId resolves an arbitrary user-facing workspace ID to its UUID
 // by searching the full workspace list. Used by tools that accept an explicit
 // workspaceId parameter. For the CURRENT workspace, use getCurrentWorkspaceUUID().
 func resolveWorkspaceId(workspaceId string) (string, error) {
 	if isUUID(workspaceId) {
 		return workspaceId, nil // already a UUID
+	}
+	// The current workspace and earlier lookups are cached, which avoids listing
+	// up to 5,000 workspaces on every call.
+	cacheMu.Lock()
+	uuid, ok := workspaceIdCache[workspaceId]
+	cacheMu.Unlock()
+	if ok {
+		return uuid, nil
 	}
 	for _, limit := range []int{100, 5000} {
 		listUrl := fmt.Sprintf("%s/api/workspaces/v1?offset=0&limit=%d", workspaceBaseURL, limit)
@@ -1792,6 +1950,9 @@ func resolveWorkspaceId(workspaceId string) (string, error) {
 			ufid, _ := wsMap["userFacingId"].(string)
 			id, _ := wsMap["id"].(string)
 			if ufid == workspaceId || id == workspaceId {
+				cacheMu.Lock()
+				workspaceIdCache[workspaceId] = id
+				cacheMu.Unlock()
 				return id, nil
 			}
 		}
@@ -1829,8 +1990,11 @@ func isUUID(s string) bool {
 //
 // The result is cached so subsequent calls within the same server session are instant.
 func getCurrentWorkspaceUUID() (string, error) {
-	if cachedWorkspaceUUID != "" {
-		return cachedWorkspaceUUID, nil
+	cacheMu.Lock()
+	current := cachedWorkspaceUUID
+	cacheMu.Unlock()
+	if current != "" {
+		return current, nil
 	}
 
 	// Layer 1: wb workspace describe — most direct path.
@@ -1841,14 +2005,14 @@ func getCurrentWorkspaceUUID() (string, error) {
 		if json.Unmarshal(out, &desc) == nil {
 			// Some Workbench versions return uuid directly.
 			if uuid, ok := desc["uuid"].(string); ok && isUUID(uuid) {
-				cachedWorkspaceUUID = uuid
+				setCurrentWorkspaceUUID(uuid)
 				fmt.Fprintf(os.Stderr, "Resolved workspace UUID from describe: %s\n", uuid)
 				return uuid, nil
 			}
 			// id may be the UUID on some versions, or userFacingId on others.
 			if id, ok := desc["id"].(string); ok {
 				if isUUID(id) {
-					cachedWorkspaceUUID = id
+					setCurrentWorkspaceUUID(id)
 					fmt.Fprintf(os.Stderr, "Resolved workspace UUID from describe.id: %s\n", id)
 					return id, nil
 				}
@@ -1872,7 +2036,7 @@ func getCurrentWorkspaceUUID() (string, error) {
 						userFacingId = ufid
 					} else if id, ok := ws["id"].(string); ok {
 						if isUUID(id) {
-							cachedWorkspaceUUID = id
+							setCurrentWorkspaceUUID(id)
 							return id, nil
 						}
 						userFacingId = id
@@ -1911,7 +2075,7 @@ func getCurrentWorkspaceUUID() (string, error) {
 			id, _ := wsMap["id"].(string)
 			if ufid == userFacingId || id == userFacingId {
 				// id in the workspace list API is always the UUID.
-				cachedWorkspaceUUID = id
+				setCurrentWorkspaceUUID(id)
 				fmt.Fprintf(os.Stderr, "Resolved workspace UUID from list (limit=%d): %s\n", limit, id)
 				return id, nil
 			}
@@ -1921,34 +2085,76 @@ func getCurrentWorkspaceUUID() (string, error) {
 	return "", fmt.Errorf("workspace '%s' not found in accessible workspaces", userFacingId)
 }
 
+func setCurrentWorkspaceUUID(uuid string) {
+	cacheMu.Lock()
+	cachedWorkspaceUUID = uuid
+	cacheMu.Unlock()
+}
+
+// getToken returns a cached access token, fetching a new one from the wb CLI
+// when the cached one is older than tokenTTL.
 func getToken() (string, error) {
+	cacheMu.Lock()
+	if cachedToken != "" && time.Now().Before(cachedTokenExpiry) {
+		token := cachedToken
+		cacheMu.Unlock()
+		return token, nil
+	}
+	cacheMu.Unlock()
+
 	cmd := exec.Command("wb", "auth", "print-access-token")
-	output, err := cmd.CombinedOutput()
+	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get access token: %v", err)
 	}
-	return strings.TrimSpace(string(output)), nil
+	token := strings.TrimSpace(string(output))
+	cacheMu.Lock()
+	cachedToken = token
+	cachedTokenExpiry = time.Now().Add(tokenTTL)
+	cacheMu.Unlock()
+	return token, nil
 }
 
+func invalidateToken() {
+	cacheMu.Lock()
+	cachedToken = ""
+	cacheMu.Unlock()
+}
 
 func makeAPIRequest(method, url string, body interface{}) ([]byte, error) {
-	token, err := getToken()
+	respBody, status, err := doAPIRequest(method, url, body)
+	if status == http.StatusUnauthorized {
+		// The cached token may have expired early; retry once with a fresh one.
+		invalidateToken()
+		respBody, status, err = doAPIRequest(method, url, body)
+	}
 	if err != nil {
 		return nil, err
+	}
+	if status < 200 || status >= 300 {
+		return nil, fmt.Errorf("API error (%d): %s", status, string(respBody))
+	}
+	return respBody, nil
+}
+
+func doAPIRequest(method, url string, body interface{}) ([]byte, int, error) {
+	token, err := getToken()
+	if err != nil {
+		return nil, 0, err
 	}
 
 	var reqBody io.Reader
 	if body != nil {
 		jsonData, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request: %v", err)
+			return nil, 0, fmt.Errorf("failed to marshal request: %v", err)
 		}
 		reqBody = bytes.NewBuffer(jsonData)
 	}
 
 	req, err := http.NewRequest(method, url, reqBody)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -1956,20 +2162,15 @@ func makeAPIRequest(method, url string, body interface{}) ([]byte, error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, resp.StatusCode, err
 	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))
-	}
-
-	return respBody, nil
+	return respBody, resp.StatusCode, nil
 }
 
 func executeWbCommand(args []string) (string, error) {
@@ -1982,6 +2183,152 @@ func executeShellCommand(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
+}
+
+// splitCommandLine splits a command line into arguments the way a POSIX shell
+// would split words: single quotes, double quotes and backslash escapes are
+// honored. Nothing else is interpreted, so pipes, redirects, `;` and `$(...)`
+// stay literal text.
+func splitCommandLine(line string) ([]string, error) {
+	var args []string
+	var cur strings.Builder
+	inWord := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == '\'':
+			end := strings.IndexByte(line[i+1:], '\'')
+			if end < 0 {
+				return nil, fmt.Errorf("unterminated single quote")
+			}
+			cur.WriteString(line[i+1 : i+1+end])
+			i += end + 1
+			inWord = true
+		case c == '"':
+			i++
+			for ; i < len(line) && line[i] != '"'; i++ {
+				if line[i] == '\\' && i+1 < len(line) && strings.IndexByte("\"\\$`", line[i+1]) >= 0 {
+					i++
+				}
+				cur.WriteByte(line[i])
+			}
+			if i >= len(line) {
+				return nil, fmt.Errorf("unterminated double quote")
+			}
+			inWord = true
+		case c == '\\' && i+1 < len(line):
+			i++
+			cur.WriteByte(line[i])
+			inWord = true
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			if inWord {
+				args = append(args, cur.String())
+				cur.Reset()
+				inWord = false
+			}
+		default:
+			cur.WriteByte(c)
+			inWord = true
+		}
+	}
+	if inWord {
+		args = append(args, cur.String())
+	}
+	return args, nil
+}
+
+// executeCloudCLI runs bq, gcloud or gsutil directly in the current workspace's
+// Google project. Going through `wb <tool>` adds about 9 s of JVM startup per call.
+// It falls back to the wb passthrough when the CLI isn't installed, or when the
+// command uses $WORKBENCH_* variables that only wb defines.
+func executeCloudCLI(name, command string) (string, error) {
+	if _, err := exec.LookPath(name); err != nil || referencesUndefinedWorkbenchVar(command) {
+		return executeWbCommand(append([]string{name}, strings.Fields(command)...))
+	}
+	args, err := splitCommandLine(command)
+	if err != nil {
+		return "", fmt.Errorf("could not parse command: %v", err)
+	}
+	for i, a := range args {
+		args[i] = os.Expand(a, func(v string) string {
+			if strings.HasPrefix(v, "WORKBENCH_") {
+				return os.Getenv(v)
+			}
+			return "$" + v
+		})
+	}
+	cmd := exec.Command(name, args...)
+	cmd.Env = os.Environ()
+	if project := currentGoogleProject(); project != "" {
+		cmd.Env = append(cmd.Env, "CLOUDSDK_CORE_PROJECT="+project, "GOOGLE_CLOUD_PROJECT="+project)
+	}
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+// referencesUndefinedWorkbenchVar reports whether command uses a $WORKBENCH_*
+// variable that isn't set in this process's environment.
+func referencesUndefinedWorkbenchVar(command string) bool {
+	undefined := false
+	os.Expand(command, func(v string) string {
+		if strings.HasPrefix(v, "WORKBENCH_") {
+			if _, ok := os.LookupEnv(v); !ok {
+				undefined = true
+			}
+		}
+		return ""
+	})
+	return undefined
+}
+
+// isSQL reports whether a bq_execute command is a bare SQL query rather than a
+// bq subcommand.
+func isSQL(command string) bool {
+	first := strings.ToUpper(strings.Fields(command + " x")[0])
+	return first == "SELECT" || first == "WITH" || strings.HasPrefix(first, "(SELECT")
+}
+
+func executeBQQuery(sql string, maxRows int) (string, error) {
+	args := []string{"query", "--use_legacy_sql=false", "--format=csv", fmt.Sprintf("--max_rows=%d", maxRows), sql}
+	if _, err := exec.LookPath("bq"); err != nil {
+		// wb joins its arguments and runs them through a shell, so the query must be quoted.
+		args[len(args)-1] = "'" + strings.ReplaceAll(sql, "'", `'\''`) + "'"
+		return executeWbCommand(append([]string{"bq"}, args...))
+	}
+	cmd := exec.Command("bq", args...)
+	cmd.Env = os.Environ()
+	if project := currentGoogleProject(); project != "" {
+		cmd.Env = append(cmd.Env, "CLOUDSDK_CORE_PROJECT="+project, "GOOGLE_CLOUD_PROJECT="+project)
+	}
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
+// credentialsNotice is printed by Google auth libraries on every call that uses
+// user credentials. It is noise for an agent, so it is removed from tool output.
+var credentialsNotice = []string{
+	"You are authenticating using user credentials",
+	"To learn more about service account credentials",
+}
+
+func cleanToolOutput(output string) string {
+	if !strings.Contains(output, credentialsNotice[0]) && !strings.Contains(output, credentialsNotice[1]) {
+		return output
+	}
+	var kept []string
+	for _, line := range strings.Split(output, "\n") {
+		noisy := false
+		for _, n := range credentialsNotice {
+			if strings.Contains(line, n) {
+				noisy = true
+				break
+			}
+		}
+		if !noisy {
+			kept = append(kept, line)
+		}
+	}
+	return strings.TrimLeft(strings.Join(kept, "\n"), "\n :")
 }
 
 func getAuroraConnString(resourceName, accessMode string) (string, error) {
@@ -2036,8 +2383,11 @@ func ensureAWSConfig() string {
 	entries, err := os.ReadDir(wbDir)
 	if err == nil {
 		// Prefer config matching the current workspace UUID
-		if cachedWorkspaceUUID != "" {
-			target := cachedWorkspaceUUID + ".conf"
+		cacheMu.Lock()
+		current := cachedWorkspaceUUID
+		cacheMu.Unlock()
+		if current != "" {
+			target := current + ".conf"
 			for _, e := range entries {
 				if e.Name() == target {
 					return wbDir + "/" + e.Name()
@@ -2104,12 +2454,27 @@ func requireStrings(args map[string]interface{}, keys ...string) ([]string, erro
 }
 
 func handleCallTool(params CallToolParams) CallToolResult {
+	if !readOnlyTools[params.Name] {
+		// The call may change workspace state, so cached results could go stale.
+		clearToolResultCache()
+	}
+	if switchesWorkspace(params) {
+		resetCurrentWorkspace()
+	}
+	result := callTool(params)
+	for i := range result.Content {
+		result.Content[i].Text = cleanToolOutput(result.Content[i].Text)
+	}
+	return result
+}
+
+func callTool(params CallToolParams) CallToolResult {
 	var output string
 	var err error
 
 	switch params.Name {
 	case "wb_status":
-		output, err = executeWbCommand([]string{"status"})
+		output, err = cachedToolCall("wb_status", statusTTL, refreshStatus)
 	case "wb_workspace_list":
 		args := []string{"workspace", "list"}
 		if format, ok := params.Arguments["format"].(string); ok && format == "json" {
@@ -2236,10 +2601,10 @@ func handleCallTool(params CallToolParams) CallToolResult {
 
 			// Build structured result with all meaningful metadata fields
 			dc := map[string]interface{}{
-				"id":             userFacingId,
-				"uuid":           uuid,
-				"name":           name,
-				"workbenchUrl":   collectionURL,
+				"id":           userFacingId,
+				"uuid":         uuid,
+				"name":         name,
+				"workbenchUrl": collectionURL,
 			}
 
 			// Overview
@@ -3351,7 +3716,9 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"app", "delete", "--id=" + appId, "--quiet"})
 
 	case "app_list":
-		output, err = executeWbCommand([]string{"app", "list"})
+		output, err = cachedToolCall("app_list", appListTTL, func() (string, error) {
+			return executeWbCommand([]string{"app", "list"})
+		})
 
 	case "app_start":
 		appId, reqErr := requireString(params.Arguments, "appId")
@@ -3592,26 +3959,45 @@ func handleCallTool(params CallToolParams) CallToolResult {
 	case "version":
 		output, err = executeWbCommand([]string{"version"})
 
+	case "bq_query":
+		sql, reqErr := requireString(params.Arguments, "sql")
+		if reqErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		}
+		maxRows := 100
+		if v, ok := params.Arguments["maxRows"].(float64); ok && v > 0 {
+			maxRows = int(v)
+		}
+		output, err = executeBQQuery(sql, maxRows)
+
 	case "bq_execute":
 		command, reqErr := requireString(params.Arguments, "command")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		output, err = executeWbCommand(append([]string{"bq"}, strings.Fields(command)...))
+		if isSQL(command) {
+			// Models often send raw SQL here; run it as a query rather than fail.
+			output, err = executeBQQuery(command, 100)
+			break
+		}
+		output, err = executeCloudCLI("bq", command)
+		if err != nil {
+			output += "\nHint: command takes bq arguments without the 'bq' prefix, e.g. \"ls\" or \"show --schema project:dataset.table\". To run SQL, use the bq_query tool."
+		}
 
 	case "gcloud_execute":
 		command, reqErr := requireString(params.Arguments, "command")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		output, err = executeWbCommand(append([]string{"gcloud"}, strings.Fields(command)...))
+		output, err = executeCloudCLI("gcloud", command)
 
 	case "gsutil_execute":
 		command, reqErr := requireString(params.Arguments, "command")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		output, err = executeWbCommand(append([]string{"gsutil"}, strings.Fields(command)...))
+		output, err = executeCloudCLI("gsutil", command)
 
 	case "git_execute":
 		command, reqErr := requireString(params.Arguments, "command")

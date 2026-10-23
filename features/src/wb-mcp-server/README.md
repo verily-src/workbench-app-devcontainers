@@ -92,9 +92,24 @@ Uses `filter_build_attribute`, `filter_build_relationship`, `filter_build_boolea
 ## Internals
 
 ### Authentication
-- Auto-fetches bearer token from `wb auth print-access-token`
-- Refreshes every 55 minutes
-- Gets API URLs from `wb status`
+- Fetches a bearer token from `wb auth print-access-token` and caches it for 30 minutes
+- Fetches a new token early if an API call returns 401
+- Gets API URLs, the workspace UUID and its Google project from `wb status` at startup
+
+### Latency
+Each `wb` CLI call starts a JVM and takes several seconds, so the server avoids it where it can:
+- `wb_status` is served from a 5-minute cache (filled at startup), and `app_list` from a 30-second cache.
+  Any tool call that may change workspace state clears these caches.
+- Workspace IDs are resolved to UUIDs once and cached.
+- `bq_execute`, `bq_query`, `gcloud_execute` and `gsutil_execute` run `bq`/`gcloud`/`gsutil` directly in the
+  workspace's Google project, not through `wb`. Arguments are split like shell words (quotes and backslashes
+  are honored) but never run through a shell. If the CLI isn't installed, or the command uses a
+  `$WORKBENCH_*` variable that isn't set in the server's environment, the call falls back to `wb <tool>`.
+
+### BigQuery
+- `bq_query` takes GoogleSQL in its `sql` argument and returns CSV.
+- `bq_execute` takes `bq` arguments (`ls`, `show --schema project:dataset.table`, ...). Bare SQL sent to
+  `bq_execute` is run as a query.
 
 ### Data Collections
 Data collection workspaces contain underlays (data models):

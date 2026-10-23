@@ -281,8 +281,8 @@ generate_claude_md() {
         mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
 | `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
 | `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
-| `list_files` | `aws s3 ls` | List files in an S3 storage folder |
-| `read_file` | `aws s3 cp <key> -` | Read contents of a file from S3 |
+| `s3_list_objects` | `aws s3 ls` | List files in an S3 storage folder |
+| `s3_read_file` | `aws s3 cp <key> -` | Read contents of a file from S3 |
 | `resource_create_bucket` | `wb resource create s3-storage-folder` | Create a new S3 storage folder |
 | `resource_delete` | `wb resource delete` | Delete a resource |
 | `resource_check_access` | — | Check if IAM role has access to a resource |'
@@ -385,9 +385,8 @@ wb resource add-ref aurora-database --name external-db
         mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
 | `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
 | `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
-| `bq_execute` | `bq query` | Run SQL queries against BigQuery |
-| `list_files` | `gcloud storage ls` | List files in a GCS bucket |
-| `read_file` | `gcloud storage cat` | Read contents of a file |
+| `bq_query` | `bq query` | Run SQL queries against BigQuery (`sql` argument) |
+| `gsutil_execute` | `gsutil ls` / `gsutil cat` | List or read files in a GCS bucket (e.g. `ls gs://<bucket>/`) |
 | `resource_create_bucket` | `wb resource create gcs-bucket` | Create a new GCS bucket |
 | `resource_delete` | `wb resource delete` | Delete a resource |
 | `resource_check_access` | — | Check if service account has access to a resource |
@@ -398,7 +397,9 @@ wb resource add-ref aurora-database --name external-db
 | MCP Tool | Description |
 |----------|-------------|
 | `gcloud_execute` | Run any `gcloud` command |
-| `bq_execute` | Run any `bq` SQL query |'
+| `gsutil_execute` | Run any `gsutil` command |
+| `bq_query` | Run a BigQuery SQL query |
+| `bq_execute` | Run any other `bq` command (`ls`, `show --schema`, `head`) |'
 
         cloud_path_hint='# Look for: bucketName, projectId+datasetId, gitRepoUrl'
 

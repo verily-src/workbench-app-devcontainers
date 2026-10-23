@@ -8,6 +8,7 @@
 
 ## Change validation
 
+- Always validate changes locally where possible before shipping or declaring them complete. Use a local app or container and test the user outcome at the relevant boundary. Record what passed and any checks that could not run; local validation does not replace required live verification.
 - Test the user outcome. A better error message is not a fix when the user needs the operation to succeed.
 - Reproduce failures at the real system boundary when possible. For database type errors, test with the real database and driver.
 - Separate storage types from logical application types. Use storage types for decoding and logical types for behavior.

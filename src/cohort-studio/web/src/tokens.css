@@ -353,6 +353,11 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .join-advanced summary { width: fit-content; cursor: pointer; }
 .join-evidence { flex-basis: 100%; color: var(--ink-muted); font-size: 11px; }
 .join-evidence summary { width: fit-content; cursor: pointer; }
+.explore-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 5px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.explore-toggle button { padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-muted); font: inherit; cursor: pointer; }
+.explore-toggle button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px #0002; font-weight: 600; }
+.omop-summary-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.omop-summary-charts .chart-card { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
 .join-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
 .column-settings { position: relative; }
 .column-settings-panel { position: absolute; z-index: 5; right: 0; top: 100%; width: min(760px, 82vw); max-height: 65vh; overflow: auto; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px #0002; }
@@ -600,12 +605,12 @@ button.link:hover { text-decoration: underline; }
 .omop-builder { max-width: 1300px; margin: 0 auto; }
 .omop-builder h2 { color: var(--ink); margin: 8px 0; }
 .omop-builder h3 { margin: 0 0 16px; color: var(--ink); }
-.omop-resource { display: block; max-width: 480px; }
 .omop-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
-.omop-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: 18px; }
+.omop-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 18px; }
+.omop-grid > div, .omop-card { min-width: 0; }
 .omop-card { border: 1px solid var(--border); background: var(--card); border-radius: var(--radius); padding: 18px; margin: 14px 0; }
 .omop-card label { display: block; font-size: 12px; }
-.omop-card label input:not([type=checkbox]), .omop-card select, .omop-resource select { margin: 5px 0 10px; }
+.omop-card label input:not([type=checkbox]), .omop-card select { margin: 5px 0 10px; }
 .omop-card input[type=date] { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px; font: inherit; }
 .omop-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .omop-row > label { flex: 1; min-width: 110px; }
@@ -623,7 +628,7 @@ button.link:hover { text-decoration: underline; }
 .omop-attrition th, .omop-attrition td { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .omop-attrition th:last-child, .omop-attrition td:last-child { text-align: right; }
 .omop-error { color: #b42318; }
-@media (max-width: 1050px) { .omop-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1050px) { .omop-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .omop-card textarea { width: 100%; resize: vertical; margin: 8px 0; padding: 8px; font: inherit; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
 .omop-chat { max-height: 240px; overflow-y: auto; white-space: pre-wrap; }

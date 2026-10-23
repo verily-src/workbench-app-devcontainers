@@ -133,11 +133,14 @@ export default function App() {
   const setExploreMode = (mode: "tables" | "omop") => {
     if (source?.kind === "aurora") {
       setExploreModes((previous) => ({ ...previous, [sourceKey]: mode }));
-      if (mode === "omop") setView("explore");
+      setShowJoin(false);
+      setView("explore");
     }
   };
   const showExploreTables = () => {
-    setExploreModes({});
+    if (source?.kind === "aurora") {
+      setExploreModes((previous) => ({ ...previous, [sourceKey]: "tables" }));
+    }
     setView("explore");
   };
 
@@ -460,14 +463,15 @@ export default function App() {
             </option>
           ))}
         </select>
-        {source?.kind === "aurora" && <label className="field-label">
-          Explore mode
-          <select aria-label="Explore mode" value={exploreMode}
-                  onChange={(e) => setExploreMode(e.target.value as "tables" | "omop")}>
-            <option value="tables">Tables and views</option>
-            <option value="omop">OMOP cohorts</option>
-          </select>
-        </label>}
+        {source?.kind === "aurora" && <div className="field-label">
+          Explore view
+          <div className="explore-toggle" role="group" aria-label="Explore view">
+            <button type="button" aria-pressed={exploreMode === "tables"}
+                    onClick={() => setExploreMode("tables")}>Tables</button>
+            <button type="button" aria-pressed={exploreMode === "omop"}
+                    onClick={() => setExploreMode("omop")}>OMOP</button>
+          </div>
+        </div>}
         {exploreMode === "tables" && <>
           <div className="field-label">Table</div>
           <select aria-label="Table" value={table}
@@ -513,7 +517,7 @@ export default function App() {
           Upload CSV/TSV
         </label>
 
-        {!showJoin && <>
+        {!showJoin && exploreMode === "tables" && <>
         <div className="section-label">Filters</div>
 
         {activeDs ? (
@@ -573,6 +577,7 @@ export default function App() {
         <div className="content">
           <div hidden={view !== "explore" || exploreMode !== "omop"}>
             <OmopBuilder active={view === "explore" && exploreMode === "omop"}
+                          palette={palette}
                           source={source ?? null} onOpen={(opened, title) => {
               openResult(opened, title, undefined,
                 { filters: [], charts: autoCharts(opened.columns) });

@@ -48,6 +48,7 @@ export interface ChartSpec {
 }
 
 export interface BarDatum { category: string; all: number; selected: number }
+export interface PersonBarDatum { category: string; value: number }
 export interface HistDatum { lo: number; hi: number; all: number; selected: number }
 
 export interface ChartResult {
@@ -55,7 +56,7 @@ export interface ChartResult {
   x: string;
   y?: string;
   sampled?: boolean;
-  data: BarDatum[] | HistDatum[] | number[][] | [string, string, number][];
+  data: BarDatum[] | PersonBarDatum[] | HistDatum[] | number[][] | [string, string, number][];
 }
 
 export interface QueryResult {
@@ -225,4 +226,16 @@ export interface OmopCount {
   persons: number;
   total_persons: number;
   attrition: { label: string; persons: number }[];
+}
+export interface OmopSummary {
+  scope: "database";
+  persons: number;
+  total_persons: number;
+  attrition: { label: string; persons: number }[];
+  charts: {
+    gender: { category: string; concept_id: number | null; persons: number }[];
+    age_at_index: { category: string; lo: number | null; hi: number | null; persons: number }[];
+    domains: { domain: OmopDomain; label: string;
+      concepts: { concept_id: number; label: string; persons: number }[] }[];
+  };
 }

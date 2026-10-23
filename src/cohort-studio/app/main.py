@@ -1052,6 +1052,15 @@ class OmopSpecRequest(RootModel[dict]):
         omop.parse_spec(self.root)
         return self
 
+class OmopSummaryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    spec: dict
+
+    @model_validator(mode="after")
+    def validate_spec(self):
+        omop.parse_spec(self.spec)
+        return self
+
 @app.post("/api/omop/{resource_id}/cohort/agent")
 def omop_agent(resource_id: str, req: CohortAgentRequest):
     _, info = _omop_cdm(resource_id)
@@ -1079,6 +1088,14 @@ def omop_count(resource_id: str,
     engine, info = _omop_cdm(resource_id)
     try:
         return omop.count(engine, info, req.root)
+    except Exception as e:
+        raise _omop_error(e)
+
+@app.post("/api/omop/{resource_id}/cohort/summary")
+def omop_cohort_summary(resource_id: str, req: OmopSummaryRequest):
+    engine, info = _omop_cdm(resource_id)
+    try:
+        return omop.cohort_summary(engine, info, req.spec)
     except Exception as e:
         raise _omop_error(e)
 

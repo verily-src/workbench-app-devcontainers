@@ -2,7 +2,7 @@ import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef,
-  TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount,
+  TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -181,6 +181,9 @@ export const api = {
       + new URLSearchParams({ q, domain, standard_only: String(standard) })),
   omopCount: (id: string, spec: OmopSpec) => request<OmopCount>(
     `/api/omop/${encodeURIComponent(id)}/cohort/count`, post(spec)),
+  omopSummary: (id: string, spec: OmopSpec, signal?: AbortSignal) =>
+    request<OmopSummary>(`/api/omop/${encodeURIComponent(id)}/cohort/summary`,
+      { ...post({ spec }), signal }),
   omopOpen: (id: string, spec: OmopSpec, name: string) => request<OpenResult>(
     `/api/omop/${encodeURIComponent(id)}/cohort/open`, post({ spec, name })),
   omopDomain: (id: string, table: string, spec: OmopSpec | null, names: boolean) =>

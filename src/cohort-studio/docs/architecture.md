@@ -376,3 +376,27 @@ The local Compose stack runs PostgreSQL, an idempotent synthetic fixture seed,
 and the built Studio app. A local-only launcher registers that database without
 Workbench credentials or changes to production `db.py`. See
 [local validation](LOCAL_VALIDATION.md) for commands and verification limits.
+
+### Automatic OMOP cohort summaries (2026-10-23)
+
+Performance policy: keep live query recipes or ordinary views as the default.
+Ordinary views do not cache results. Measure Aurora plans and timings before
+adding materialized views for repeated expensive summaries. Any materialized
+result needs an explicit refresh policy and visible freshness; do not create
+one per transient filter combination. This release adds no materialized views
+or OMOP summary cache.
+
+Tables and OMOP are explicit views of the selected Aurora datasource. OMOP
+criteria and demographics trigger a debounced aggregate summary request, without
+opening patient rows or requiring an AI provider. The existing strict cohort
+compiler remains authoritative for cohort membership and attrition. Gender and
+age charts count cohort people; selected-domain charts join those people to
+clinical tables and vocabulary through fixed OMOP columns and count distinct
+people per concept. Domains are aggregated separately to prevent event fanout.
+Domain charts describe all recorded domain events for the selected people;
+criterion event windows determine membership, not the domain-history window.
+
+The summary runs in a read-only repeatable-read transaction with a total query
+budget. Browser request cancellation and stale-response guards prevent an old
+filter selection from replacing a newer chart. This browser cancellation alone
+does not guarantee immediate cancellation of an already-running database query.

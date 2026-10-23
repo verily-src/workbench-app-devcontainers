@@ -7,6 +7,16 @@ from tests.test_e2e import app_url, loaded_page
 pytestmark = pytest.mark.e2e
 
 
+def set_explore_view(page: Page, mode: str):
+    page.get_by_role("button", name="OMOP" if mode == "omop" else "Tables",
+                     exact=True).click()
+
+
+def expect_explore_view(page: Page, mode: str):
+    expect(page.get_by_role("button", name="OMOP" if mode == "omop" else "Tables",
+                            exact=True)).to_have_attribute("aria-pressed", "true")
+
+
 def test_entity_count_and_column_settings(loaded_page: Page):
     entity = loaded_page.locator(".entity-select select")
     entity.select_option("sample_id")
@@ -213,6 +223,15 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     page.route("**/api/omop/*/cohort/count", lambda route: fulfill(route, {
         "persons": 1, "total_persons": 2, "attrition": [],
     }))
+    page.route("**/api/omop/*/cohort/summary", lambda route: fulfill(route, {
+        "scope": "database", "persons": 1, "total_persons": 2,
+        "attrition": [{"label": "All persons", "persons": 2}],
+        "charts": {
+            "gender": [{"category": "Female", "concept_id": 8532, "persons": 1}],
+            "age_at_index": [{"category": "18–29", "lo": 18, "hi": 29, "persons": 1}],
+            "domains": [],
+        },
+    }))
     page.route("**/api/omop/*/domain/open", lambda route: fulfill(route, {
         "dataset_id": "opened-clinical", "source": "Clinical table",
         "rows": 1, "columns": [{"name": "person_id", "dtype": "int64",
@@ -248,9 +267,29 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     source_select = page.locator(".sidebar select").nth(0)
     source_select.select_option("aurora:aurora-a")
-    expect(page.get_by_label("Explore mode")).to_have_value("tables")
-    page.get_by_label("Explore mode").select_option("omop")
+    expect_explore_view(page, "tables")
+    set_explore_view(page, "omop")
     editor = page.locator(".omop-builder:visible > div:not([hidden])")
+    summary = editor.get_by_label("OMOP cohort summary")
+    expect(summary).to_contain_text("1 of 2 persons", timeout=10000)
+    expect(summary.locator(".chart-card .title", has_text="Gender")).to_be_visible()
+    expect(summary.locator(".chart-card .title", has_text="Age at index")).to_be_visible()
+    expect(editor.get_by_role("button", name="Open cohort")).to_be_enabled()
+    plot = summary.locator(".chart-card canvas").first.bounding_box()
+    assert plot and plot["width"] > 100 and plot["height"] > 100
+    expect(page.get_by_role("heading", name="Filters")).to_have_count(0)
+    for width in (1280, 900):
+        page.set_viewport_size({"width": width, "height": 1200})
+        chart_box = summary.locator(".chart-card").first.bounding_box()
+        assert chart_box and chart_box["x"] >= 0
+        assert chart_box["x"] + chart_box["width"] <= width
+    page.set_viewport_size({"width": 1280, "height": 1200})
+    columns = editor.locator(".omop-grid > div")
+    left_box, right_box = columns.nth(0).bounding_box(), columns.nth(1).bounding_box()
+    assert left_box and right_box and right_box["x"] > left_box["x"]
+    page.set_viewport_size({"width": 900, "height": 1200})
+    left_box, right_box = columns.nth(0).bounding_box(), columns.nth(1).bounding_box()
+    assert left_box and right_box and right_box["y"] > left_box["y"]
     editor.get_by_label("Concept name, ID or code").fill("Aurora A")
     editor.get_by_role("button", name="Search concepts").click()
     result_a = editor.locator(".omop-result", has_text="Condition A")
@@ -258,12 +297,12 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     result_a.locator("input").check()
     editor.get_by_role("button", name="Add criterion (1 concepts)").click()
 
-    page.get_by_label("Explore mode").select_option("tables")
+    set_explore_view(page, "tables")
     page.get_by_label("Table", exact=True).select_option("person")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab.active", has_text="person")).to_be_visible(
         timeout=10000)
-    page.get_by_label("Explore mode").select_option("omop")
+    set_explore_view(page, "omop")
     expect(page.locator(".omop-rule:visible")).to_have_count(1)
     expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
 
@@ -272,14 +311,14 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     editor.get_by_role("button", name="Open clinical table").click()
     expect(page.locator(".tab.active", has_text="person")).to_be_visible(
         timeout=10000)
-    expect(page.get_by_label("Explore mode")).to_have_value("tables")
-    page.get_by_label("Explore mode").select_option("omop")
+    expect_explore_view(page, "tables")
+    set_explore_view(page, "omop")
     expect(page.locator(".omop-rule:visible")).to_have_count(1)
     expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
 
     source_select.select_option("aurora:aurora-b")
-    expect(page.get_by_label("Explore mode")).to_have_value("tables")
-    page.get_by_label("Explore mode").select_option("omop")
+    expect_explore_view(page, "tables")
+    set_explore_view(page, "omop")
     expect(page.locator(".omop-rule:visible")).to_have_count(0)
     editor = page.locator(".omop-builder:visible > div:not([hidden])")
     editor.get_by_label("Concept name, ID or code").fill("Aurora B")
@@ -291,20 +330,20 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     expect(page.locator(".omop-rule:visible")).to_contain_text("Condition B")
 
     source_select.select_option("aurora:aurora-a")
-    expect(page.get_by_label("Explore mode")).to_have_value("omop")
+    expect_explore_view(page, "omop")
     expect(page.locator(".omop-rule:visible")).to_have_count(1)
     expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
     expect(page.locator(".omop-rule:visible")).not_to_contain_text("Condition B")
 
     source_select.select_option("aurora:no-cdm")
-    page.get_by_label("Explore mode").select_option("omop")
+    set_explore_view(page, "omop")
     expect(page.get_by_role("status")).to_contain_text(
         "No OMOP CDM schema is visible in the selected Aurora datasource.")
     expect(page.locator(".topnav-link", has_text="OMOP cohorts")).to_have_count(0)
     expect(page.get_by_label("OMOP datasource")).to_have_count(0)
 
     source_select.select_option("aurora:aurora-a")
-    page.get_by_label("Explore mode").select_option("omop")
+    set_explore_view(page, "omop")
     csv = tmp_path / "uploaded.csv"
     csv.write_text("person_id\n1\n", encoding="utf-8")
     page.locator('.sidebar input[type="file"]').set_input_files(str(csv))
@@ -314,7 +353,7 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
                                                              timeout=10000)
     expect(page.get_by_role("cell", name="1", exact=True)).to_be_visible(
         timeout=10000)
-    expect(page.get_by_label("Explore mode")).to_have_value("tables")
+    expect_explore_view(page, "tables")
 
 
 def test_common_join_key_applies_to_all_steps(loaded_page: Page, tmp_path):

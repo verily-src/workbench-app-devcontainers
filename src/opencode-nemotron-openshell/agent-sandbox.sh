@@ -1,11 +1,13 @@
 #!/bin/bash
 
-# Runs OpenCode in an NVIDIA OpenShell sandbox and manages that sandbox.
+# Runs the agent harness (OpenCode by default) in an NVIDIA OpenShell sandbox
+# and manages that sandbox.
 #
-# The sandbox holds no credentials and can reach only what the policy in
-# /config/openshell/policy.yaml allows: by default, Ollama's chat API for the
-# local Nemotron models. Every connection it makes is checked and logged by
-# OpenShell. See README.md, "Sandboxed OpenCode".
+# The sandbox holds no credentials and can reach only what the policy allows: by
+# default, Ollama's chat API for the local Nemotron models. Every connection it
+# makes is checked and logged by OpenShell. The harness, the program that runs in
+# the sandbox, is defined in /config/openshell/harness.yaml. See README.md,
+# "Sandboxed agent" and "Harness".
 
 set -o errexit
 set -o nounset
@@ -14,14 +16,20 @@ set -o pipefail
 SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 readonly SCRIPT_DIR
 readonly USER_HOME_DIR="${OPENCODE_HOME:-/config}"
-readonly SANDBOX_NAME="${OPENCODE_SANDBOX_NAME:-opencode-agent}"
-readonly SANDBOX_IMAGE="${OPENCODE_SANDBOX_IMAGE:-opencode-agent-sandbox:0.2}"
-readonly SANDBOX_WORKDIR="/sandbox/work"
+# The harness (harness.yaml) decides the sandbox's name, image, program and
+# working directory; load_harness sets these.
+SANDBOX_NAME=""
+SANDBOX_IMAGE=""
+SANDBOX_WORKDIR=""
 readonly DEFAULT_POLICY="${SCRIPT_DIR}/openshell/policy.yaml"
 readonly POLICY="${USER_HOME_DIR}/openshell/policy.yaml"
 # Data access (README, "Data access"): rules generated from data-access.yaml are
 # added to policy.yaml in policy.effective.yaml, the file the sandbox runs with.
 readonly DEFAULT_DATA_ACCESS="${SCRIPT_DIR}/openshell/data-access.yaml"
+readonly HARNESS_DIR="${SCRIPT_DIR}/openshell/harnesses"
+readonly DEFAULT_HARNESS="opencode"
+# The active harness. AGENT_HARNESS points one run at another file.
+readonly HARNESS="${AGENT_HARNESS:-${USER_HOME_DIR}/openshell/harness.yaml}"
 readonly DATA_ACCESS="${USER_HOME_DIR}/openshell/data-access.yaml"
 readonly EFFECTIVE_POLICY="${USER_HOME_DIR}/openshell/policy.effective.yaml"
 readonly GOOGLE_PROFILE="${SCRIPT_DIR}/openshell/google-cloud-profile.yaml"
@@ -38,25 +46,26 @@ export NO_COLOR=1
 
 usage() {
   cat <<EOF
-Usage: opencode-sandbox <command> [arguments]
+Usage: agent-sandbox <command> [arguments]     (also installed as opencode-sandbox)
 
-  run [opencode args]      Start OpenCode in the sandbox (what \`opencode\` does)
+  run [args]               Start the harness in the sandbox (\`opencode\` does this for OpenCode)
+  harness [name]           List the shipped harnesses, or make one the active harness
   shell                    Open a shell in the sandbox
   upload <path> [dest]     Copy files into the sandbox (default: ${SANDBOX_WORKDIR})
   download <path> [dest]   Copy files out of the sandbox (default: ${DOWNLOAD_DIR})
   status                   Show the gateway, the sandbox and the policy file
-  policy                   Apply ${POLICY} and ${DATA_ACCESS} to the running sandbox
+  policy                   Apply ${POLICY}, ${DATA_ACCESS} and the harness to the running sandbox
   logs [count]             Show the sandbox's recent network decisions (default 100)
   rules                    List rules OpenShell drafted from blocked connections
   approve <chunk-id>       Approve a drafted rule for this sandbox
   reject <chunk-id>        Reject a drafted rule
-  reset --yes              Delete the sandbox and its files, then create a new one
+  reset --yes              Delete the harness's sandbox and its files, then create a new one
   selftest                 Check the sandbox's isolation and model access
 EOF
 }
 
 die() {
-  echo "opencode-sandbox: $*" >&2
+  echo "agent-sandbox: $*" >&2
   exit 1
 }
 
@@ -74,7 +83,41 @@ wait_for_gateway() {
   die "the OpenShell gateway is not reachable. On the VM, check: docker logs openshell-gateway"
 }
 
-# Writes the effective policy: policy.yaml plus the data-access rules, if on.
+# Reads the active harness (copying the default into place on first use) and
+# sets the sandbox's name, image and working directory from it.
+HARNESS_JSON=""
+load_harness() {
+  if [[ ! -s "${HARNESS}" ]]; then
+    mkdir -p "$(dirname "${HARNESS}")"
+    cp "${HARNESS_DIR}/${DEFAULT_HARNESS}.yaml" "${HARNESS}"
+    echo "Wrote the default harness (${DEFAULT_HARNESS}) to ${HARNESS}" >&2
+  fi
+  HARNESS_JSON="$(python3 "${SCRIPT_DIR}/openshell/harness.py" "${HARNESS}")" ||
+    die "invalid harness ${HARNESS}"
+  SANDBOX_NAME="${AGENT_SANDBOX_NAME:-${OPENCODE_SANDBOX_NAME:-agent-$(jq -r .name <<< "${HARNESS_JSON}")}}"
+  SANDBOX_IMAGE="${AGENT_SANDBOX_IMAGE:-${OPENCODE_SANDBOX_IMAGE:-$(jq -r .image <<< "${HARNESS_JSON}")}}"
+  SANDBOX_WORKDIR="$(jq -r .workdir <<< "${HARNESS_JSON}")"
+}
+
+cmd_harness() {
+  if (( $# == 0 )); then
+    local file name
+    echo "Shipped harnesses (active: $(jq -r .name <<< "${HARNESS_JSON}")):"
+    for file in "${HARNESS_DIR}"/*.yaml; do
+      name="$(basename "${file}" .yaml)"
+      printf '  %s\n' "${name}"
+    done
+    echo "Switch with: agent-sandbox harness <name>, then agent-sandbox reset --yes"
+    return 0
+  fi
+  (( $# == 1 )) && [[ "$1" =~ ^[a-z0-9-]+$ && -f "${HARNESS_DIR}/$1.yaml" ]] ||
+    die "no shipped harness named '${1:-}'. Run: agent-sandbox harness"
+  cp "${HARNESS_DIR}/$1.yaml" "${HARNESS}"
+  echo "Active harness is now $1 (${HARNESS}). Each harness has its own sandbox: \`agent-sandbox reset --yes\` creates it."
+}
+
+# Writes the effective policy: policy.yaml, the harness's binaries, and the
+# data-access rules if on.
 ensure_policy() {
   mkdir -p "$(dirname "${POLICY}")"
   if [[ ! -s "${POLICY}" ]]; then
@@ -89,8 +132,8 @@ ensure_policy() {
   rendered="$(mktemp)"
   # data-access.yaml leaves project_id blank to mean this workspace's project.
   GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2> /dev/null || true)}" \
-    python3 "${SCRIPT_DIR}/openshell/render-policy.py" "${POLICY}" "${DATA_ACCESS}" \
-    > "${rendered}" || { rm -f "${rendered}"; die "could not build the sandbox policy from ${POLICY} and ${DATA_ACCESS}"; }
+    python3 "${SCRIPT_DIR}/openshell/render-policy.py" "${POLICY}" "${DATA_ACCESS}" "${HARNESS}" \
+    > "${rendered}" || { rm -f "${rendered}"; die "could not build the sandbox policy from ${POLICY}, ${DATA_ACCESS} and ${HARNESS}"; }
   mv "${rendered}" "${EFFECTIVE_POLICY}"
 }
 
@@ -132,8 +175,8 @@ ensure_sandbox() {
   ensure_policy
   if ! openshell sandbox get "${SANDBOX_NAME}" > /dev/null 2>&1; then
     echo "Creating sandbox ${SANDBOX_NAME} from ${SANDBOX_IMAGE} with ${EFFECTIVE_POLICY}..." >&2
-    # No trailing command: OpenShell keeps a login shell running, and OpenCode
-    # starts with `sandbox exec`. Proposals for blocked connections always wait
+    # No trailing command: OpenShell keeps a login shell running, and the
+    # harness starts with `sandbox exec`. Proposals for blocked connections always wait
     # for a person (--approval-mode manual).
     local provider_args=()
     if data_access_enabled; then
@@ -153,92 +196,75 @@ ensure_sandbox() {
   esac
 }
 
-# OpenCode config for the sandbox: local Ollama only, no MCP servers, no
-# sharing or updates, and no web fetches (the policy would block them anyway).
-sandbox_config() {
-  local model available models
+# What every harness gets: HOME, and the image's venv (with the Google client
+# libraries) ahead of the system Python. The harness's own env is added after.
+readonly BASE_ENV=(
+  HOME=/sandbox
+  PATH=/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+)
+
+# The model the harness must use, running the picker first if none is chosen.
+agent_model() {
+  local model
   model="$(OPENCODE_HOME="${USER_HOME_DIR}" "${SCRIPT_DIR}/resolve-model.sh")"
   if [[ "${model}" == "prompt" ]]; then
     "${SCRIPT_DIR}/opencode-model.sh" >&2
     model="$(OPENCODE_HOME="${USER_HOME_DIR}" "${SCRIPT_DIR}/resolve-model.sh")"
   fi
-  available="$("${SCRIPT_DIR}/available-models.sh")"
-  models="$(jq --argjson context "${CONTEXT_LENGTH}" \
-    'reduce .[] as $entry ({}; .[$entry.tag] = {
-      name: $entry.name,
-      limit: {context: $context, output: 8192}
-    })' <<< "${available}")"
-  if ! jq -e --arg model "${model}" 'has($model)' <<< "${models}" > /dev/null; then
-    models="$(jq --arg model "${model}" --argjson context "${CONTEXT_LENGTH}" \
-      '.[$model] = {name: $model, limit: {context: $context, output: 8192}}' <<< "${models}")"
-  fi
-  jq -nc --arg model "${model}" --arg url "${SANDBOX_OLLAMA_URL}" --argjson models "${models}" '{
-    "$schema": "https://opencode.ai/config.json",
-    "model": ("ollama/" + $model),
-    "small_model": ("ollama/" + $model),
-    "enabled_providers": ["ollama"],
-    "autoupdate": false,
-    "share": "disabled",
-    "instructions": ["/opt/opencode-sandbox/instructions.md"],
-    "permission": {"webfetch": "deny"},
-    "provider": {
-      "ollama": {
-        "npm": "@ai-sdk/openai-compatible",
-        "name": "Ollama (local)",
-        "options": {"baseURL": $url},
-        "models": $models
-      }
-    }
-  }'
+  printf '%s\n' "${model}"
 }
 
-# OpenCode features that would reach the internet. The image sets these too,
-# but `sandbox exec` does not pass the image's environment to the process.
-readonly OPENCODE_OFFLINE_ENV=(
-  HOME=/sandbox
-  # The image's venv, with the Google client libraries, ahead of the system Python.
-  PATH=/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-  OPENCODE_DISABLE_AUTOUPDATE=true
-  OPENCODE_DISABLE_MODELS_FETCH=true
-  OPENCODE_DISABLE_LSP_DOWNLOAD=true
-  OPENCODE_DISABLE_DEFAULT_PLUGINS=true
-  OPENCODE_DISABLE_SHARE=true
-  OPENCODE_DISABLE_CLAUDE_CODE=true
-)
-
-# Runs OpenCode in the sandbox with the config passed in the environment. The
-# config is base64-encoded so it survives the remote command line unchanged.
-exec_opencode() {
+# Runs the harness in the sandbox. Every harness gets OLLAMA_BASE_URL and
+# AGENT_MODEL. If it has a config hook, the hook's output is passed in the
+# variable the harness names, base64-encoded so it survives the remote command
+# line unchanged.
+exec_harness() {
   local tty_flag="$1"
   shift
-  local config
-  config="$(sandbox_config | base64 -w0)"
+  local model hook config_env config="" env_args=()
+  model="$(agent_model)"
+  hook="$(jq -r '.config.hook // empty' <<< "${HARNESS_JSON}")"
+  config_env="$(jq -r '.config.env // empty' <<< "${HARNESS_JSON}")"
+  # A relative hook path is relative to the framework directory.
+  if [[ -n "${hook}" && "${hook}" != /* ]]; then
+    hook="${SCRIPT_DIR}/${hook}"
+  fi
+  if [[ -n "${hook}" ]]; then
+    config="$(AGENT_MODEL="${model}" OLLAMA_BASE_URL="${SANDBOX_OLLAMA_URL}" AGENT_CONTEXT_LENGTH="${CONTEXT_LENGTH}" \
+      OPENCODE_HOME="${USER_HOME_DIR}" "${hook}" | base64 -w0)" ||
+      die "the harness config hook ${hook} failed"
+  fi
+  mapfile -t env_args < <(jq -r '.env | to_entries[] | "\(.key)=\(.value)"' <<< "${HARNESS_JSON}")
+  local command=()
+  mapfile -t command < <(jq -r '.command[]' <<< "${HARNESS_JSON}")
   # shellcheck disable=SC2016 # Expanded inside the sandbox, not here.
   openshell sandbox exec "${SANDBOX_NAME}" --workdir "${SANDBOX_WORKDIR}" "${tty_flag}" -- \
-    env "${OPENCODE_OFFLINE_ENV[@]}" \
-    bash -c 'export OPENCODE_CONFIG_CONTENT="$(printf %s "$1" | base64 -d)"; shift; exec opencode "$@"' \
-    opencode-sandbox "${config}" "$@"
+    env "${BASE_ENV[@]}" ${env_args[@]+"${env_args[@]}"} "OLLAMA_BASE_URL=${SANDBOX_OLLAMA_URL}" "AGENT_MODEL=${model}" \
+    bash -c 'if [[ -n "$1" ]]; then export "$2=$(printf %s "$1" | base64 -d)"; fi; shift 2; exec "$@"' \
+    agent-sandbox "${config}" "${config_env}" "${command[@]}" "$@"
 }
 
 cmd_run() {
   ensure_sandbox
-  exec_opencode --tty "$@"
+  exec_harness --tty "$@"
 }
 
 cmd_shell() {
   ensure_sandbox
+  local env_args=()
+  mapfile -t env_args < <(jq -r '.env | to_entries[] | "\(.key)=\(.value)"' <<< "${HARNESS_JSON}")
   exec openshell sandbox exec "${SANDBOX_NAME}" --workdir "${SANDBOX_WORKDIR}" --tty -- \
-    env "${OPENCODE_OFFLINE_ENV[@]}" bash -l
+    env "${BASE_ENV[@]}" ${env_args[@]+"${env_args[@]}"} bash -l
 }
 
 cmd_upload() {
-  (( $# >= 1 && $# <= 2 )) || die "usage: opencode-sandbox upload <path> [dest]"
+  (( $# >= 1 && $# <= 2 )) || die "usage: agent-sandbox upload <path> [dest]"
   ensure_sandbox
   openshell sandbox upload "${SANDBOX_NAME}" "$1" "${2:-${SANDBOX_WORKDIR}}"
 }
 
 cmd_download() {
-  (( $# >= 1 && $# <= 2 )) || die "usage: opencode-sandbox download <path> [dest]"
+  (( $# >= 1 && $# <= 2 )) || die "usage: agent-sandbox download <path> [dest]"
   ensure_sandbox
   local source="$1"
   if [[ "${source}" != /* ]]; then
@@ -312,14 +338,14 @@ cmd_rules() {
 cmd_decide() {
   local decision="$1"
   shift
-  (( $# == 1 )) || die "usage: opencode-sandbox ${decision} <chunk-id> (see opencode-sandbox rules)"
+  (( $# == 1 )) || die "usage: agent-sandbox ${decision} <chunk-id> (see agent-sandbox rules)"
   wait_for_gateway
   openshell rule "${decision}" "${SANDBOX_NAME}" --chunk-id "$1"
 }
 
 cmd_reset() {
   [[ "${1:-}" == "--yes" ]] ||
-    die "reset deletes the sandbox and every file in it. Download what you need, then run: opencode-sandbox reset --yes"
+    die "reset deletes the sandbox and every file in it. Download what you need, then run: agent-sandbox reset --yes"
   wait_for_gateway
   openshell sandbox delete "${SANDBOX_NAME}" > /dev/null 2>&1 || true
   ensure_sandbox
@@ -422,17 +448,25 @@ cmd_selftest() {
   check "local model chat endpoint answers" '"choices"' \
     "curl -sS -m 170 ${ollama}/v1/chat/completions -H 'Content-Type: application/json' -d '${chat_body}'"
 
-  # Small models sometimes answer with reasoning only, so check that OpenCode
-  # completed a model call rather than what the model said.
-  local opencode_output
-  opencode_output="$(exec_opencode --no-tty run --format json "Reply with exactly one word: ready" 2>&1 || true)"
-  if grep -q '"type":"step_finish".*"reason":"stop"' <<< "${opencode_output}"; then
-    PASSED=$((PASSED + 1))
-    echo "PASS  OpenCode in the sandbox gets an answer from the local model"
+  # Small models sometimes answer with reasoning only, so the harness check
+  # looks for a completed model call rather than what the model said.
+  local harness_name harness_expect harness_output
+  harness_name="$(jq -r .name <<< "${HARNESS_JSON}")"
+  harness_expect="$(jq -r '.selftest.expect // empty' <<< "${HARNESS_JSON}")"
+  if [[ -z "${harness_expect}" ]]; then
+    echo "SKIP  harness ${harness_name} defines no selftest"
   else
-    FAILED=$((FAILED + 1))
-    printf 'FAIL  OpenCode in the sandbox gets an answer from the local model\n      got: %s\n' \
-      "$(tail -c 400 <<< "${opencode_output}")"
+    local harness_args=()
+    mapfile -t harness_args < <(jq -r '.selftest.args[]' <<< "${HARNESS_JSON}")
+    harness_output="$(exec_harness --no-tty ${harness_args[@]+"${harness_args[@]}"} 2>&1 || true)"
+    if grep -Eq "${harness_expect}" <<< "${harness_output}"; then
+      PASSED=$((PASSED + 1))
+      echo "PASS  harness ${harness_name} in the sandbox gets an answer from the local model"
+    else
+      FAILED=$((FAILED + 1))
+      printf 'FAIL  harness %s in the sandbox gets an answer from the local model\n      got: %s\n' \
+        "${harness_name}" "$(tail -c 400 <<< "${harness_output}")"
+    fi
   fi
 
   # Read the whole log before searching it: with pipefail, `grep -q` closing the
@@ -445,7 +479,7 @@ cmd_selftest() {
     echo "PASS  OpenShell logged the blocked internet request"
   else
     FAILED=$((FAILED + 1))
-    echo "FAIL  OpenShell logged the blocked internet request (see opencode-sandbox logs)"
+    echo "FAIL  OpenShell logged the blocked internet request (see agent-sandbox logs)"
   fi
 
   if data_access_enabled; then
@@ -470,6 +504,11 @@ main() {
     shift
   fi
   case "${command}" in
+    -h|--help|help) usage; return 0 ;;
+  esac
+  load_harness
+  case "${command}" in
+    harness) cmd_harness "$@" ;;
     run) cmd_run "$@" ;;
     shell) cmd_shell ;;
     upload) cmd_upload "$@" ;;
@@ -481,7 +520,6 @@ main() {
     approve|reject) cmd_decide "${command}" "$@" ;;
     reset) cmd_reset "$@" ;;
     selftest) cmd_selftest ;;
-    -h|--help|help) usage ;;
     *) usage >&2; exit 1 ;;
   esac
 }

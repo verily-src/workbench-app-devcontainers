@@ -33,13 +33,11 @@ network_policies:
         rules:
           - allow: {method: POST, path: /v1/chat/completions}
           - allow: {method: GET, path: /v1/models}
+    # render-policy.py replaces this list with the harness's binaries (harness.yaml)
+    # plus curl. curl can reach the same two endpoints; that adds nothing the agent
+    # couldn't already do through its harness, and lets the self-test check the
+    # path rules. Processes a listed program starts are covered too.
     binaries:
-      # Real path of the OpenCode binary in sandbox-image/Dockerfile. Processes
-      # that OpenCode starts are covered too.
-      - path: /opt/opencode/.opencode/bin/opencode
-      # curl can reach the same two endpoints. This adds nothing the agent
-      # couldn't already do through OpenCode, and lets the self-test check the
-      # path rules.
       - path: /usr/bin/curl
 
   # To allow another destination, add a rule here. For example, package

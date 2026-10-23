@@ -18,7 +18,7 @@ class LauncherTests(unittest.TestCase):
         self.record = self.dir / "sandbox-args"
         shutil.copy(APP / "opencode-launch.sh", self.dir / "opencode-launch.sh")
         # Stand-ins for the scripts the launcher hands off to.
-        self.stub("opencode-sandbox.sh", f'printf "%s\\n" "$@" > "{self.record}"')
+        self.stub("agent-sandbox.sh", f'printf "%s\\n" "$@" > "{self.record}"')
         self.stub("resolve-model.sh", 'echo "${STUB_MODEL:-nemotron:test}"')
         self.stub("opencode-model.sh", f'touch "{self.dir}/picker-ran"')
 

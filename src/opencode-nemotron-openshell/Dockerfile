@@ -41,11 +41,13 @@ RUN curl --retry 3 -fsSL "https://github.com/NVIDIA/OpenShell/releases/download/
     && OPENSHELL_TELEMETRY_ENABLED=false openshell --version
 
 # Keep the picker available independently of the /workspace bind mount.
-COPY available-models.sh find-model-store.sh resolve-model.sh start-ollama.sh validate-model.sh gpu-check.py opencode-model.sh opencode-launch.sh opencode-sandbox.sh models.json workbench-instructions.md /opt/opencode-workbench/
-COPY openshell/policy.yaml openshell/data-access.yaml openshell/render-policy.py openshell/google-cloud-profile.yaml /opt/opencode-workbench/openshell/
-RUN chmod +x /opt/opencode-workbench/*.sh \
+COPY available-models.sh find-model-store.sh resolve-model.sh start-ollama.sh validate-model.sh gpu-check.py opencode-model.sh opencode-launch.sh agent-sandbox.sh models.json workbench-instructions.md /opt/opencode-workbench/
+COPY openshell/policy.yaml openshell/data-access.yaml openshell/render-policy.py openshell/harness.py openshell/google-cloud-profile.yaml /opt/opencode-workbench/openshell/
+COPY openshell/harnesses /opt/opencode-workbench/openshell/harnesses
+RUN chmod +x /opt/opencode-workbench/*.sh /opt/opencode-workbench/openshell/harnesses/*.sh \
     && ln -s /opt/opencode-workbench/opencode-launch.sh /usr/local/bin/opencode \
-    && ln -s /opt/opencode-workbench/opencode-sandbox.sh /usr/local/bin/opencode-sandbox \
+    && ln -s /opt/opencode-workbench/agent-sandbox.sh /usr/local/bin/agent-sandbox \
+    && ln -s /opt/opencode-workbench/agent-sandbox.sh /usr/local/bin/opencode-sandbox \
     && ln -s /opt/opencode-workbench/opencode-model.sh /usr/local/bin/opencode-model \
     && chmod +x /opt/opencode-workbench/gpu-check.py \
     && ln -s /opt/opencode-workbench/gpu-check.py /usr/local/bin/opencode-gpu-check

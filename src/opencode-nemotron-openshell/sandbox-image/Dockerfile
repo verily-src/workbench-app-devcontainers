@@ -1,5 +1,5 @@
 # Workload image for OpenShell sandboxes running OpenCode. OpenShell replaces
-# the image's entrypoint with its supervisor; opencode-sandbox.sh starts
+# the image's entrypoint with its supervisor; agent-sandbox.sh starts
 # OpenCode with `openshell sandbox exec`.
 FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 
@@ -30,6 +30,7 @@ RUN python3 -m venv /opt/venv \
 
 COPY sandbox-image/sandbox-instructions.md /opt/opencode-sandbox/instructions.md
 COPY sandbox-image/data-probe.py /opt/opencode-sandbox/data-probe.py
+COPY sandbox-image/examples /opt/opencode-sandbox/examples
 
 # /sandbox is the only writable directory besides /tmp, so it is also HOME:
 # OpenCode keeps its sessions and logs under ~/.local/share/opencode.
@@ -39,7 +40,7 @@ RUN useradd --uid 1500 --home-dir /sandbox --create-home --shell /bin/bash sandb
 # Nothing in the sandbox may reach the internet, so turn off OpenCode features
 # that would try: model catalog fetches, LSP and plugin downloads, updates and
 # session sharing. `sandbox exec` doesn't pass these to processes, so
-# opencode-sandbox.sh sets them again; they apply here to `docker run` tests.
+# agent-sandbox.sh sets them again; they apply here to `docker run` tests.
 ENV HOME=/sandbox \
     OPENCODE_DISABLE_AUTOUPDATE=true \
     OPENCODE_DISABLE_MODELS_FETCH=true \

@@ -48,7 +48,7 @@ services:
       # Bound memory use on smaller GPUs, including when switching models.
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_MAX_LOADED_MODELS: "1"
-      # OpenShell: `opencode` always runs the agent in a sandbox (see opencode-sandbox.sh).
+      # OpenShell: `opencode` always runs the agent in a sandbox (see agent-sandbox.sh).
       OPENSHELL_GATEWAY_ENDPOINT: "http://openshell-gateway:8080"
       OPENSHELL_TELEMETRY_ENABLED: "false"
     networks:

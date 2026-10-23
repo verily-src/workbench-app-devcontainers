@@ -22,4 +22,4 @@ if [[ "$("${SCRIPT_DIR}/resolve-model.sh")" == "prompt" ]]; then
   "${SCRIPT_DIR}/opencode-model.sh"
 fi
 
-exec "${SCRIPT_DIR}/opencode-sandbox.sh" run "$@"
+exec "${SCRIPT_DIR}/agent-sandbox.sh" run "$@"

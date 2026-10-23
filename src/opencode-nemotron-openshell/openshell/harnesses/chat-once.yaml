@@ -1,0 +1,13 @@
+# Example second harness: a Python script that sends one chat request to the
+# local model. It is the smallest possible harness and exercises the same
+# contract as OpenCode, with no OpenCode-specific code in the framework.
+#   agent-sandbox harness chat-once && agent-sandbox reset --yes && agent-sandbox run
+name: chat-once
+image: opencode-agent-sandbox:0.2
+binaries:
+  - /usr/bin/python3.11
+workdir: /sandbox/work
+command: [python3, /opt/opencode-sandbox/examples/chat-once.py]
+selftest:
+  args: []
+  expect: "finish: "

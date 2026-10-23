@@ -13,7 +13,7 @@ credentials and, by default, can reach nothing but the local models. Every
 connection it attempts is checked against a policy you can edit, and logged.
 
 - Code-server UI on port 8443, closed to other VMs in the network.
-- `opencode` starts OpenCode in the sandbox; `opencode-sandbox` manages it.
+- `opencode` starts OpenCode in the sandbox; `agent-sandbox` manages it and runs any other [harness](#harness).
 - Ollama API on `127.0.0.1:11434` inside the container, also published on the
   VM's loopback for the sandbox.
 - OpenShell 0.1.4 gateway in its own container, with telemetry off.
@@ -38,7 +38,7 @@ code-server (you: Workbench credentials, wb, gcloud, Claude Code)
 | `openshell-init` | Generates the gateway's keys, then exits |
 | `sandbox-image` | Builds the sandbox image `opencode-agent-sandbox:0.2`, then exits |
 | `port-guard` | Drops connections to port 8443 from other VMs, so code-server is reachable only through Workbench sign-in (`port-guard.sh`). Re-applies its rule every minute and writes its status, with packet counters, to `/opt/port-guard/port-guard` in the app |
-| Sandbox (created on first `opencode`) | OpenCode and anything it runs. User `sandbox` (uid 1500); only `/sandbox` and `/tmp` are writable |
+| Sandbox (created on first `opencode`) | The harness (OpenCode by default) and anything it runs. User `sandbox` (uid 1500); only `/sandbox` and `/tmp` are writable |
 
 The sandbox reaches Ollama as `host.openshell.internal:11434`, which OpenShell's
 Docker driver maps to the VM's loopback. The default policy allows only
@@ -97,25 +97,25 @@ for OpenCode plus Workbench context and MCP tools.
 2. Check the sandbox once after the app's first start (about a minute):
 
    ```sh
-   opencode-sandbox selftest
+   agent-sandbox selftest
    ```
 
    All checks should pass before you rely on the sandbox; see [Self-test](#self-test).
 3. Copy a project into the sandbox and start the agent:
 
    ```sh
-   opencode-sandbox upload ~/repos/<your-repo>   # lands in /sandbox/work/<your-repo>
+   agent-sandbox upload ~/repos/<your-repo>   # lands in /sandbox/work/<your-repo>
    opencode                                      # opens in /sandbox/work
    ```
 
 4. Copy results back out:
 
    ```sh
-   opencode-sandbox download <your-repo>          # to ~/sandbox-downloads/
+   agent-sandbox download <your-repo>          # to ~/sandbox-downloads/
    ```
 
 The sandbox has its own filesystem: it cannot see `/config`, your repos or bucket
-mounts. Files in it persist until `opencode-sandbox reset`, but download
+mounts. Files in it persist until `agent-sandbox reset`, but download
 anything you want to keep, and save it to a bucket.
 
 The initial startup downloads every model compatible with the attached GPU,
@@ -124,27 +124,70 @@ restarts reuse cached weights in the model store (`/config/.ollama/models`
 unless [moved to a bucket mount](#model-store-on-a-bucket-mount)); they do not
 pull models again. To update an existing tag deliberately, run `ollama pull <tag>`.
 
-## Sandboxed OpenCode
+## Sandboxed agent
+
+The framework runs one agent program, the **harness**, in the sandbox. OpenCode is
+the default; [another harness](#harness) is a config file. `agent-sandbox` manages
+the sandbox (`agent-sandbox` is the same command under its phase 1 name).
 
 ### Commands
 
 | Command | What it does |
 |---|---|
-| `opencode [args]` | Start OpenCode in the sandbox, creating the sandbox if needed |
-| `opencode-sandbox shell` | A shell in the sandbox |
-| `opencode-sandbox upload <path> [dest]` / `download <path> [dest]` | Copy files in or out |
-| `opencode-sandbox status` | The gateway, the sandbox and the policy file |
-| `opencode-sandbox logs [count]` | Recent network decisions: program, destination, allowed or denied, and why |
-| `opencode-sandbox rules` | Rules OpenShell drafted from blocked connections, waiting for you |
-| `opencode-sandbox approve <chunk-id>` / `reject <chunk-id>` | Decide a drafted rule. Approval changes only this sandbox |
-| `opencode-sandbox policy` | Apply your edited policy file to the running sandbox |
-| `opencode-sandbox reset --yes` | Delete the sandbox and its files, and create a new one |
-| `opencode-sandbox selftest` | Check isolation and model access |
+| `opencode [args]` | Start the default harness (OpenCode) in the sandbox, creating the sandbox if needed |
+| `agent-sandbox run [args]` | Start the active harness, whichever it is |
+| `agent-sandbox harness [name]` | List the shipped harnesses, or make one active |
+| `agent-sandbox shell` | A shell in the sandbox |
+| `agent-sandbox upload <path> [dest]` / `download <path> [dest]` | Copy files in or out |
+| `agent-sandbox status` | The gateway, the sandbox and the policy file |
+| `agent-sandbox logs [count]` | Recent network decisions: program, destination, allowed or denied, and why |
+| `agent-sandbox rules` | Rules OpenShell drafted from blocked connections, waiting for you |
+| `agent-sandbox approve <chunk-id>` / `reject <chunk-id>` | Decide a drafted rule. Approval changes only this sandbox |
+| `agent-sandbox policy` | Apply your edited policy, data-access and harness files to the running sandbox |
+| `agent-sandbox reset --yes` | Delete the active harness's sandbox and its files, and create a new one |
+| `agent-sandbox selftest` | Check isolation and model access |
 
-Inside the sandbox, OpenCode runs autonomously: you are asked only when it tries
-to reach something outside the policy. Its config allows only the local Ollama
-provider, has no MCP servers, disables sharing, updates and web fetches, and
+Inside the sandbox the agent runs autonomously: you are asked only when it tries
+to reach something outside the policy. OpenCode's config allows only the local
+Ollama provider, has no MCP servers, disables sharing, updates and web fetches, and
 tells the agent it is sandboxed (`sandbox-image/sandbox-instructions.md`).
+
+### Harness
+
+A harness is the agent program that runs in the sandbox. Everything the
+framework needs to know about it is one file, `/config/openshell/harness.yaml`
+(copied on first start from `openshell/harnesses/opencode.yaml`, which explains
+each field):
+
+| Field | Meaning |
+|---|---|
+| `name` | Names the sandbox, `agent-<name>`. Each harness has its own sandbox |
+| `image` | Image the sandbox is created from |
+| `binaries` | Real paths of the programs allowed to call Ollama's chat API. `render-policy.py` writes them into the policy's `local_models` rule |
+| `command`, `workdir`, `env` | What to run, where, and its extra environment. Arguments to `agent-sandbox run` are appended to `command` |
+| `config` (optional) | A hook that prints the harness's configuration in the app, and the variable the sandbox receives it in. For OpenCode, the JSON in `OPENCODE_CONFIG_CONTENT` |
+| `selftest` (optional) | Arguments to run and a `grep -E` pattern the output must match |
+
+Every harness gets two variables: `OLLAMA_BASE_URL` (Ollama's OpenAI-compatible
+API, the only thing the default policy lets it reach) and `AGENT_MODEL`. The
+framework alone decides what the sandbox may reach; a harness file can't widen
+the policy, only name which programs use the model endpoint.
+
+To try the second shipped harness, a 20-line Python script that sends one chat
+request:
+
+```sh
+agent-sandbox harness chat-once
+agent-sandbox reset --yes     # creates agent-chat-once
+agent-sandbox run "Reply with exactly one word: ready"
+agent-sandbox selftest        # the same isolation checks, run for this harness
+```
+
+To bring your own, copy one of the files, change it, and keep it as
+`/config/openshell/harness.yaml`. The image must contain your program and its
+dependencies; the framework builds only the OpenCode image. Networks and data
+beyond the model need rules in `policy.yaml` or [Data access](#data-access), as
+for any harness.
 
 ### Policy
 
@@ -153,11 +196,11 @@ The default policy is `openshell/policy.yaml`. On first start it is copied to
 edit. It is never overwritten; delete it to get the current default again.
 
 - **Network rules** apply to the running sandbox within seconds:
-  `opencode-sandbox policy`. The file has a commented example.
+  `agent-sandbox policy`. The file has a commented example.
 - **Filesystem and process rules** apply only to a new sandbox:
-  `opencode-sandbox reset --yes`.
+  `agent-sandbox reset --yes`.
 - When the agent is blocked, OpenShell drafts a narrow rule (one program, one
-  host). `opencode-sandbox rules` lists them; approve only what you understand.
+  host). `agent-sandbox rules` lists them; approve only what you understand.
   Planted instructions in files or data can make an agent ask for exactly the
   wrong destination.
 
@@ -167,8 +210,8 @@ Off by default. When on, the sandbox can query BigQuery and read Cloud Storage
 buckets that you list, with restrictions the human user doesn't have. Edit
 `/config/openshell/data-access.yaml` (copied from `openshell/data-access.yaml` on
 first start), set `enabled: true` and list your project, datasets and buckets,
-then run `opencode-sandbox reset --yes` once (a credential provider attaches
-only to a new sandbox). Later edits apply with `opencode-sandbox policy`.
+then run `agent-sandbox reset --yes` once (a credential provider attaches
+only to a new sandbox). Later edits apply with `agent-sandbox policy`.
 
 ```yaml
 enabled: true
@@ -214,7 +257,7 @@ That is your choice as the human; OpenShell doesn't see or restrict it.
 
 ### Self-test
 
-`opencode-sandbox selftest` checks, in the live sandbox, that:
+`agent-sandbox selftest` checks, in the live sandbox, that:
 
 - it runs as a non-root user and system folders are read-only;
 - it holds no cloud credentials and no `gcloud`, `wb`, `bq` or `gsutil`;
@@ -230,7 +273,7 @@ That is your choice as the human; OpenShell doesn't see or restrict it.
 
 The app can't test its own network card, so the self-test ends with a `curl`
 command to run from another app in the workspace: it should time out, not
-return HTTP 302. `opencode-sandbox status` shows port-guard's full status.
+return HTTP 302. `agent-sandbox status` shows port-guard's full status.
 
 ### Logs
 
@@ -238,7 +281,7 @@ OpenShell logs every network decision the sandbox makes, allowed and denied,
 with the program, the destination, the policy rule and the reason. It does not
 log commands or file activity inside the sandbox; OpenCode's own session log
 covers that, in the sandbox under `/sandbox/.local/share/opencode`. OpenShell
-0.1.4 keeps its log on the gateway (`opencode-sandbox logs`) and has no export.
+0.1.4 keeps its log on the gateway (`agent-sandbox logs`) and has no export.
 
 ### Limits
 
@@ -358,7 +401,7 @@ Ollama startup use it. A saved choice from an earlier version is retained.
 and filters `models.json` by `minimum_vram_mib`. `OPENCODE_GPU_MEMORY_MIB` can
 override detection for testing or an operator-controlled deployment.
 
-The sandbox's OpenCode configuration is built at launch by `opencode-sandbox.sh`.
+The sandbox's OpenCode configuration is built at launch by the harness config hook (`openshell/harnesses/opencode-config.sh`).
 It registers every compatible catalog model so OpenCode's `/model` picker cannot
 accidentally select a catalog model that is too large for the GPU. This is a
 usability guard, not a security boundary; users can still supply a custom Ollama
@@ -505,17 +548,17 @@ curl http://localhost:11434/v1/models
 ollama list
 nvidia-smi
 ollama ps
-opencode-sandbox status
-opencode-sandbox logs 200
-opencode-sandbox selftest
+agent-sandbox status
+agent-sandbox logs 200
+agent-sandbox selftest
 ```
 
 | Symptom | Check |
 |---|---|
 | `the OpenShell gateway is not reachable` | On the VM: `docker logs openshell-gateway`. Gateway state is in `/var/lib/openshell` on the VM |
-| Sandbox creation fails | `opencode-sandbox status`; on the VM, `docker ps -a --filter label=openshell` and the sandbox's supervisor container logs |
-| OpenCode in the sandbox can't reach the model | `opencode-sandbox logs` for a denied `host.openshell.internal:11434` request; check that `ollama ps` shows the model and that port 11434 is published on the VM's loopback |
-| Something legitimate is blocked | `opencode-sandbox logs` shows the program and destination. Add a rule to `/config/openshell/policy.yaml`, then `opencode-sandbox policy` |
+| Sandbox creation fails | `agent-sandbox status`; on the VM, `docker ps -a --filter label=openshell` and the sandbox's supervisor container logs |
+| OpenCode in the sandbox can't reach the model | `agent-sandbox logs` for a denied `host.openshell.internal:11434` request; check that `ollama ps` shows the model and that port 11434 is published on the VM's loopback |
+| Something legitimate is blocked | `agent-sandbox logs` shows the program and destination. Add a rule to `/config/openshell/policy.yaml`, then `agent-sandbox policy` |
 
 The regression tests and CI below belong to `src/opencode-nemotron-mcp` and
 cover the shared model scripts; they also pass against this folder.

@@ -55,6 +55,7 @@ DOCKER_ARGS=(
     -v /etc/fluent-bit/severity.lua:/fluent-bit/scripts/severity.lua:ro
     -v /var/log/journal:/var/log/journal:ro
     -v /var/lib/docker/containers:/var/lib/docker/containers:ro
+    -v /var/log/sudo-audit:/var/log/sudo-audit:ro
     -v /var/lib/fluent-bit:/var/lib/fluent-bit
 )
 

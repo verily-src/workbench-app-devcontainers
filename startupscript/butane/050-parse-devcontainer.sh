@@ -155,6 +155,21 @@ apply_gpu_runtime() {
     mv "${TEMP_COMPOSE_PATH}" "${DOCKER_COMPOSE_PATH}"
 }
 
+apply_sudo_audit_mount() {
+    local DOCKER_COMPOSE_PATH="$1"
+    local SERVICE="${2:-app}"
+
+    echo "Applying sudo audit log mount in ${DOCKER_COMPOSE_PATH}"
+
+    # Appends to the volumes list via yq; a text-splice like apply_gpu_runtime's would create
+    # a duplicate "volumes:" key and fail Compose parsing wherever an app already has one.
+    # --user root: the yq image's default user can't write the root-owned compose file.
+    docker run --rm --user root -v "${DOCKER_COMPOSE_PATH}:/compose.yaml" \
+        mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 \
+        -i ".services.${SERVICE}.volumes += [\"/var/log/sudo-audit:/var/log/sudo-audit\"]" \
+        /compose.yaml
+}
+
 # Check that the required arguments are provided: devcontainer_path, cloud, login
 if [[ $# -lt 3 ]]; then
     usage
@@ -251,6 +266,11 @@ if [[ "${gpu_exists}" == "0" ]]; then
     apply_gpu_runtime "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${NVIDIA_RUNTIME_PATH}" "${APP_SERVICE}"
 else
     echo "No NVIDIA GPU detected, skipping GPU runtime configuration"
+fi
+
+# Unlike GPU, mount the sudo audit log directory unconditionally.
+if [[ -f "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" ]]; then
+    apply_sudo_audit_mount "${DEVCONTAINER_DOCKER_COMPOSE_PATH}" "${APP_SERVICE}"
 fi
 
 echo 'publishing devcontainer.json to metadata'

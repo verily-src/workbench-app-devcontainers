@@ -12,7 +12,7 @@ credentials and tools in code-server. The agent runs in a sandbox that holds no
 credentials and, by default, can reach nothing but the local models. Every
 connection it attempts is checked against a policy you can edit, and logged.
 
-- Code-server UI on port 8443, closed to other VMs in the network.
+- Code-server UI on port 8443. A temporary firewall rule, `port-guard`, closes it to other VMs (see [Limits](#limits)); it is not part of the agent's isolation.
 - `opencode` starts OpenCode in the sandbox; `agent-sandbox` manages it and runs any other [harness](#harness).
 - Ollama API on `127.0.0.1:11434` inside the container, also published on the
   VM's loopback for the sandbox.
@@ -37,7 +37,7 @@ code-server (you: Workbench credentials, wb, gcloud, Claude Code)
 | `openshell-gateway` | OpenShell control plane. Holds the VM's Docker socket and creates sandboxes. Reachable only from this VM |
 | `openshell-init` | Generates the gateway's keys, then exits |
 | `sandbox-image` | Builds the sandbox image `opencode-agent-sandbox:0.2`, then exits |
-| `port-guard` | Drops connections to port 8443 from other VMs, so code-server is reachable only through Workbench sign-in (`port-guard.sh`). Re-applies its rule every minute and writes its status, with packet counters, to `/opt/port-guard/port-guard` in the app |
+| `port-guard` | Outside the framework, and temporary. Protects *your* code-server, not the agent's sandbox: it drops connections to port 8443 from other VMs, so code-server is reachable only through Workbench sign-in. Re-applies its rule every minute and writes its status to `/opt/port-guard/port-guard` in the app |
 | Sandbox (created on first `opencode`) | The harness (OpenCode by default) and anything it runs. User `sandbox` (uid 1500); only `/sandbox` and `/tmp` are writable |
 
 The sandbox reaches Ollama as `host.openshell.internal:11434`, which OpenShell's
@@ -266,7 +266,8 @@ That is your choice as the human; OpenShell doesn't see or restrict it.
 - Ollama's `/api/pull` and `/api/tags` are refused, and its chat endpoint answers;
 - OpenCode in the sandbox completes a call to the local model;
 - OpenShell logged the blocked internet request;
-- port-guard reports its rule in place within the last 5 minutes;
+- the gateway's audit JSONL is being written (skipped if the folder is not mounted);
+- port-guard reports its rule in place within the last 5 minutes (a check on your code-server's exposure, not on the sandbox);
 - with data access on: the Google token is a placeholder, a BigQuery query runs,
   and table deletes, `insertAll`, dataset browsing, queries billed to another
   project, `curl` to BigQuery, bucket writes and unlisted buckets are all denied.
@@ -275,13 +276,40 @@ The app can't test its own network card, so the self-test ends with a `curl`
 command to run from another app in the workspace: it should time out, not
 return HTTP 302. `agent-sandbox status` shows port-guard's full status.
 
-### Logs
+### Audit log
 
 OpenShell logs every network decision the sandbox makes, allowed and denied,
 with the program, the destination, the policy rule and the reason. It does not
 log commands or file activity inside the sandbox; OpenCode's own session log
-covers that, in the sandbox under `/sandbox/.local/share/opencode`. OpenShell
-0.1.4 keeps its log on the gateway (`agent-sandbox logs`) and has no export.
+covers that, in the sandbox under `/sandbox/.local/share/opencode`.
+`agent-sandbox logs` shows the recent decisions.
+
+What is kept, where, and what is not (OpenShell 0.1.4, Docker driver):
+
+| Record | Where | Lifetime |
+|---|---|---|
+| The sandbox's decisions (connections, requests, policy and rule changes) | The gateway, in memory: the last 2,000 lines per sandbox | Lost when the sandbox is deleted or the gateway restarts. `agent-sandbox audit save` and `reset` copy them to `/config/openshell/audit/` first |
+| Gateway events: sandbox created or deleted, policy updated, rule approved | `/var/lib/openshell/audit/gateway-ocsf.jsonl` on the VM (OCSF JSONL, daily rotation, 30 files; `[openshell.gateway.ocsf_log]` in `gateway.toml`) | Survives sandbox resets. Lost if the app is deleted |
+| OpenShell's full JSON records of the sandbox's decisions (`ocsf_json_enabled`, which the wrapper turns on) | The supervisor container's stderr and tmpfs, on the VM | Not reachable from the app or the agent. Keeping them needs a collector on the VM that reads the supervisor container's Docker logs. This framework has none |
+
+So the durable, complete record of what the agent was allowed and denied is not
+available from inside the app, and the gateway's JSONL does not contain it. What
+you can keep from the app is the 2,000-line snapshot of the sandbox's decisions
+and the gateway's JSONL of control-plane events.
+
+```sh
+agent-sandbox audit save                          # to /config/openshell/audit/
+agent-sandbox audit export gs://my-bucket/audit   # save, then copy to a bucket
+```
+
+`audit export` is a command you run; nothing runs in the background. Exporting
+before you stop or delete the app keeps the record outside the VM.
+
+The agent can't change any of this. The supervisor's files are in its own
+container, the gateway's file is on the host, and neither is mounted in the
+sandbox (`/var/log` there is read-only). OpenShell documents all of these
+sources as best-effort collection, not a guaranteed complete audit history:
+queues are bounded and drop records under load.
 
 ### Limits
 
@@ -296,11 +324,17 @@ covers that, in the sandbox under `/sandbox/.local/share/opencode`. OpenShell
 - **OpenCode tries to install its plugin package from npm on start.** The
   sandbox blocks it, OpenCode works without it, and the attempt appears in
   the log as denied.
-- **port-guard is a host firewall rule set from a container.** On the first
-  test app it didn't take effect, and code-server was reachable from other VMs.
-  Check it from another VM after every new deployment. A platform-level fix
-  (the proxy agent connecting without a published port, or a VM firewall rule)
-  would be better.
+- **port-guard is outside the framework, and temporary.** OpenShell already
+  refuses port 8443 from the sandbox. port-guard protects your code-server from
+  other VMs in the network, a Workbench-level exposure that likely affects every
+  code-server app and should be fixed in the platform (the proxy agent connecting
+  without a published port, or a VM firewall rule). It is a host firewall rule
+  set from a container; on the first test app it didn't take effect and
+  code-server was reachable from other VMs. Check it from another VM after every
+  new deployment.
+- **The audit trail is partial.** See [Audit log](#audit-log): the sandbox's
+  decisions are kept only as a 2,000-line snapshot, and the full JSON records
+  need a collector on the VM.
 - OpenShell is version 0.x; expect changes.
 
 ## Model selection

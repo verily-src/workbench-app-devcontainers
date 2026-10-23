@@ -40,6 +40,11 @@ readonly CONTEXT_LENGTH="${OLLAMA_CONTEXT_LENGTH:-65536}"
 # Written every minute by the port-guard container (port-guard.sh).
 readonly PORT_GUARD_STATUS="/opt/port-guard/port-guard"
 
+# Audit log (README, "Audit log"). Snapshots of the sandbox's decisions are kept
+# here, and survive `reset`. The gateway's own JSONL is mounted read-only.
+readonly AUDIT_DIR="${USER_HOME_DIR}/openshell/audit"
+readonly GATEWAY_AUDIT_DIR="${AGENT_GATEWAY_AUDIT_DIR:-/var/lib/openshell-audit}"
+
 export OPENSHELL_GATEWAY_ENDPOINT="${OPENSHELL_GATEWAY_ENDPOINT:-http://openshell-gateway:8080}"
 export OPENSHELL_TELEMETRY_ENABLED=false
 export NO_COLOR=1
@@ -59,7 +64,9 @@ Usage: agent-sandbox <command> [arguments]     (also installed as opencode-sandb
   rules                    List rules OpenShell drafted from blocked connections
   approve <chunk-id>       Approve a drafted rule for this sandbox
   reject <chunk-id>        Reject a drafted rule
-  reset --yes              Delete the harness's sandbox and its files, then create a new one
+  audit save               Save the sandbox's recent decisions and the gateway's audit log to ${AUDIT_DIR}
+  audit export <gs://dest> Save, then copy the saved files to a bucket
+  reset --yes              Save the audit log, delete the harness's sandbox and its files, then create a new one
   selftest                 Check the sandbox's isolation and model access
 EOF
 }
@@ -173,6 +180,8 @@ sandbox_phase() {
 ensure_sandbox() {
   wait_for_gateway
   ensure_policy
+  # OpenShell's full JSON audit records for every sandbox. Best effort.
+  openshell settings set --global --key ocsf_json_enabled --value true > /dev/null 2>&1 || true
   if ! openshell sandbox get "${SANDBOX_NAME}" > /dev/null 2>&1; then
     echo "Creating sandbox ${SANDBOX_NAME} from ${SANDBOX_IMAGE} with ${EFFECTIVE_POLICY}..." >&2
     # No trailing command: OpenShell keeps a login shell running, and the
@@ -311,6 +320,24 @@ check_port_guard() {
   fi
 }
 
+# The gateway's JSONL must be written and parse as OCSF. It records gateway
+# events (sandbox lifecycle, policy changes), not the sandbox's own decisions.
+check_gateway_audit() {
+  local label="gateway audit log is written as OCSF JSONL"
+  if [[ ! -d "${GATEWAY_AUDIT_DIR}" ]]; then
+    echo "SKIP  ${label} (${GATEWAY_AUDIT_DIR} is not mounted)"
+    return 0
+  fi
+  if gateway_audit 2> /dev/null | head -n 1 | jq -e '.class_uid' > /dev/null 2>&1; then
+    PASSED=$((PASSED + 1))
+    printf 'PASS  %s\n' "${label}"
+  else
+    FAILED=$((FAILED + 1))
+    printf 'FAIL  %s\n      nothing parseable in %s; is [openshell.gateway.ocsf_log] set and the gateway restarted?\n' \
+      "${label}" "${GATEWAY_AUDIT_DIR}"
+  fi
+}
+
 cmd_policy() {
   wait_for_gateway
   ensure_policy
@@ -343,10 +370,70 @@ cmd_decide() {
   openshell rule "${decision}" "${SANDBOX_NAME}" --chunk-id "$1"
 }
 
+# The gateway's audit files, oldest first. They are owner-only, so read with sudo.
+gateway_audit() {
+  local files=()
+  [[ -d "${GATEWAY_AUDIT_DIR}" ]] || return 1
+  shopt -s nullglob
+  files=("${GATEWAY_AUDIT_DIR}"/gateway-ocsf.jsonl.* "${GATEWAY_AUDIT_DIR}"/gateway-ocsf.jsonl)
+  shopt -u nullglob
+  (( ${#files[@]} > 0 )) || return 1
+  cat "${files[@]}" 2> /dev/null || sudo -n cat "${files[@]}"
+}
+
+# Saves what OpenShell can show now: the sandbox's last 2,000 log lines (the
+# gateway keeps no more, in memory, and drops them when the sandbox is deleted)
+# and the gateway's JSONL. Prints the files it wrote.
+audit_save() {
+  local stamp file
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "${AUDIT_DIR}"
+  file="${AUDIT_DIR}/${SANDBOX_NAME}-${stamp}.log"
+  if openshell logs "${SANDBOX_NAME}" --source all -n 2000 > "${file}" 2> /dev/null && [[ -s "${file}" ]]; then
+    echo "${file}"
+  else
+    rm -f "${file}"
+  fi
+  file="${AUDIT_DIR}/gateway-ocsf-${stamp}.jsonl"
+  if gateway_audit > "${file}" 2> /dev/null && [[ -s "${file}" ]]; then
+    echo "${file}"
+  else
+    rm -f "${file}"
+  fi
+}
+
+cmd_audit() {
+  wait_for_gateway
+  local saved
+  case "${1:-}" in
+    save)
+      saved="$(audit_save)"
+      [[ -n "${saved}" ]] || die "nothing to save: no sandbox log and no gateway audit file"
+      echo "${saved}"
+      ;;
+    export)
+      [[ "${2:-}" =~ ^gs://[a-z0-9][a-z0-9._-]*(/.*)?$ ]] || die "usage: agent-sandbox audit export gs://<bucket>[/<folder>]"
+      saved="$(audit_save)"
+      [[ -n "${saved}" ]] || die "nothing to export: no sandbox log and no gateway audit file"
+      local files=()
+      mapfile -t files <<< "${saved}"
+      gcloud storage cp "${files[@]}" "${2%/}/"
+      ;;
+    *) die "usage: agent-sandbox audit save | audit export gs://<bucket>[/<folder>]" ;;
+  esac
+}
+
 cmd_reset() {
   [[ "${1:-}" == "--yes" ]] ||
     die "reset deletes the sandbox and every file in it. Download what you need, then run: agent-sandbox reset --yes"
   wait_for_gateway
+  # Deleting the sandbox drops its log from the gateway.
+  local saved
+  saved="$(audit_save 2> /dev/null || true)"
+  if [[ -n "${saved}" ]]; then
+    echo "Saved the audit log before deleting the sandbox:" >&2
+    echo "${saved}" >&2
+  fi
   openshell sandbox delete "${SANDBOX_NAME}" > /dev/null 2>&1 || true
   ensure_sandbox
   echo "Created a new sandbox ${SANDBOX_NAME}."
@@ -486,6 +573,7 @@ cmd_selftest() {
     selftest_data_access
   fi
 
+  check_gateway_audit
   check_port_guard
 
   echo
@@ -518,6 +606,7 @@ main() {
     logs) cmd_logs "$@" ;;
     rules) cmd_rules ;;
     approve|reject) cmd_decide "${command}" "$@" ;;
+    audit) cmd_audit "$@" ;;
     reset) cmd_reset "$@" ;;
     selftest) cmd_selftest ;;
     *) usage >&2; exit 1 ;;

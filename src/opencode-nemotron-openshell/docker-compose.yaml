@@ -9,6 +9,14 @@ services:
       - .:/workspace:cached
       - work:/config:cached
       - port-guard-status:/opt/port-guard:ro
+      # The gateway's audit log (gateway.toml), read-only. Only this folder, not
+      # the gateway's keys.
+      - type: bind
+        source: /var/lib/openshell/audit
+        target: /var/lib/openshell-audit
+        read_only: true
+        bind:
+          create_host_path: true
     ports:
       # Workbench's proxy agent only finds ports published on all interfaces.
       # port-guard below drops connections to it from other VMs.

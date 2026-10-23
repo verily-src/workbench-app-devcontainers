@@ -15,6 +15,15 @@ compute_driver      = "docker"
 # supervisors on its loopback can connect. Production would use mTLS and OIDC.
 disable_tls         = true
 
+# Audit log: gateway-origin OCSF events (sandbox lifecycle, policy changes, rule
+# approvals) as JSONL on the VM's disk, so they survive sandbox resets. It does
+# not hold the sandbox's allow/deny decisions: see README, "Audit log". The
+# gateway writes it owner-only; `agent-sandbox audit` reads it with sudo.
+[openshell.gateway.ocsf_log]
+path     = "/var/lib/openshell/audit/gateway-ocsf.jsonl"
+rotation = "daily"
+max_files = 30
+
 [openshell.gateway.auth]
 allow_unauthenticated_users = true
 

@@ -4,6 +4,7 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Active project
 
+- Standing validation rule: always validate changes locally where possible before shipping or declaring them complete. Prefer local app/container E2E checks of the user outcome. Record results and limits; verify cloud-specific behavior in the live environment separately. This rule is also in root AGENTS.md, shared with Claude through CLAUDE.md.
 - Next update scoped 2026-10-23: source selection inside the join builder,
   schema-first key discovery and optional Jev/TypeSafe ranking, with bounded
   local probes and user-applied recommendations. See [scope](JEV_SCOPE.md).
@@ -36,7 +37,24 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
   `http://127.0.0.1:8081` (Compose project `cohort-local-validation`). Workbench
   browser isolation and live Jev are not covered by this result. See
   [local validation](LOCAL_VALIDATION.md). User requested automatic OMOP charts
-  after this work; clarifying whether before or after Open cohort.
+  after this work: cohort selections/filters should automatically build
+  visualizations and use fixed OMOP relationships. Hardcoded behavior is
+  authorized; TypeSafe credentials will be added later. This follow-up is implemented, with a visible Tables/OMOP toggle separate
+  from database selection. Final release validation covered all 193 tests:
+  191 passed in the full run; two old dropdown selectors failed and were
+  corrected. All three OMOP browser flows then passed in 4.13s. Container
+  build passed; real container joins and filter-driven charts passed. Chart
+  bounds at 1280/900 and stale-response guards passed browser checks.
+  OpenCode GLM max summary review found no blocker. Deployment pending.
+
+- AWS access check 2026-10-23: developer profile `vwb-Developer-535002863113`
+  can list KMS keys and Secrets Manager entries in `us-east-1`. No secret values
+  were read or created. App-role GetSecretValue/Decrypt and secret-write access
+  are not verified. Recommended storage is Secrets Manager encrypted by KMS;
+  no secret-store adapter or IAM change has been made. Bedrock/AgentCore access
+  audit completed: developer and app roles are denied service listing; app-role
+  simulation denies invocation. No paid calls or IAM changes were made. See
+  [access evidence and enablement steps](AWS_AI_ACCESS.md).
 
 - Join expiry recovery (2026-10-22): structured `DATASET_EXPIRED` response; browser reopens durable inputs and retries once, preserving tab configuration. Non-expiry errors do not retry; uploads require re-upload. API suite: 39 passed. Browser suite: 14 passed, including failure cleanup and repeated same-label results querying a new ID. Codex and OpenCode GLM max reviews passed after the repeated-result fix. Deployed and verified at `4226cb9`: SSM `1897f444-ec13-4a0d-a03b-ecec80c99a1e` reproduced a structured expired handle, reopened sources, and joined samples to OMOP person in Aurora with 5,000 rows, no truncation. Test-created handles were closed. Browser automation used local mocked API flows; live Aurora validation used the deployed HTTP API. The screenshot's `cost.cost_event_id = variants.variant_id` is not a valid relationship. Use person → samples (`person_id`) → genotypes (`sample_id`) → variants (`variant_id`). Correct full-source genetics joins succeeded in live Aurora (1,000,000 result rows; bounded preview). Earlier statement timeout was not reproduced and is not claimed fixed. The global eight-dataset cache can evict open tab handles; diagnostic opens may have contributed.
 

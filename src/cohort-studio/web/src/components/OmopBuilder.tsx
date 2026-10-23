@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, OpenResult, CohortAgentResult } from "../api";
-import type { OmopConcept, OmopCount, OmopCriterion, OmopDomain, OmopInfo, OmopSpec, Source } from "../types";
+import type { OmopConcept, OmopCount, OmopCriterion, OmopDomain, OmopInfo, OmopSpec, OmopSummary, Source } from "../types";
+import { ChartCard } from "./ChartCard";
 
 const domains: OmopDomain[] = ["condition", "drug", "procedure", "measurement", "observation", "visit", "device", "death"];
 const openTables = new Set(["person", "observation_period", "condition_occurrence", "drug_exposure",
@@ -9,9 +10,10 @@ const openTables = new Set(["person", "observation_period", "condition_occurrenc
 type Rule = OmopCriterion & { names: string[] };
 const numeric = (value: string) => value === "" ? undefined : Number(value);
 
-export function OmopBuilder({ source, active, onOpen }: {
+export function OmopBuilder({ source, active, palette, onOpen }: {
   source: Source | null;
   active: boolean;
+  palette: string;
   onOpen: (result: OpenResult, title: string) => void;
 }) {
   const [visited, setVisited] = useState<string[]>([]);
@@ -34,13 +36,15 @@ export function OmopBuilder({ source, active, onOpen }: {
       datasource does not import data.
     </p>}
     {resourceIds.map((rid) => <div key={rid} hidden={!active || source?.id !== rid}>
-      <p className="omop-resource">Aurora datasource: {source?.label}</p>
-      <Editor rid={rid} onOpen={onOpen} />
+      <Editor rid={rid} active={active && source?.id === rid} palette={palette} onOpen={onOpen} />
     </div>)}
   </section>;
 }
 
-function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: string) => void }) {
+function Editor({ rid, active, palette, onOpen }: {
+  rid: string; active: boolean; palette: string;
+  onOpen: (r: OpenResult, title: string) => void;
+}) {
   const [info, setInfo] = useState<OmopInfo | null>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [domain, setDomain] = useState<OmopDomain>("condition");
@@ -51,6 +55,9 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
   const [observed, setObserved] = useState(true);
   const [demo, setDemo] = useState<OmopSpec["demographics"]>({});
   const [count, setCount] = useState<OmopCount | null>(null);
+  const [summary, setSummary] = useState<OmopSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
   const [name, setName] = useState("OMOP cohort");
   const [table, setTable] = useState("person");
   const [restrict, setRestrict] = useState(true);
@@ -77,11 +84,62 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
   }, [rid]);
   const spec: OmopSpec = { criteria: rules.map(({ names: _names, ...rule }) => rule),
     require_observation: observed, demographics: demo };
+  const specKey = JSON.stringify(spec);
+  const specVersion = useRef(0);
+  const currentSpec = useRef(spec);
+  currentSpec.current = spec;
+  const summaryValid = [...rules.flatMap((rule) => [rule.min_count, rule.value_min,
+    rule.value_max]), demo.age_min, demo.age_max, demo.year_of_birth_min,
+    demo.year_of_birth_max].every((value) => value === undefined || Number.isFinite(value))
+    && rules.every((rule) => (rule.min_count === undefined
+        || (Number.isInteger(rule.min_count) && rule.min_count >= 1))
+      && (!rule.start || !rule.end || rule.start <= rule.end)
+      && (rule.value_min === undefined || rule.value_max === undefined
+        || rule.value_min <= rule.value_max))
+    && (demo.age_min === undefined || demo.age_max === undefined || demo.age_min <= demo.age_max)
+    && (demo.year_of_birth_min === undefined || demo.year_of_birth_max === undefined
+      || demo.year_of_birth_min <= demo.year_of_birth_max);
+  const clearSummary = () => { setSummary(null); setSummaryError(""); };
+  const invalidateSpecResult = () => {
+    specVersion.current += 1;
+    setCount(null);
+    clearSummary();
+  };
+  useEffect(() => {
+    if (!active) return;
+    setSummary(null);
+    setSummaryError("");
+    if (!info?.cdm || !summaryValid) return;
+    let cancelled = false;
+    const requestVersion = specVersion.current;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSummaryLoading(true);
+      api.omopSummary(rid, spec, controller.signal).then((data) => {
+        if (!cancelled && requestVersion === specVersion.current
+            && JSON.stringify(currentSpec.current) === specKey) setSummary(data);
+      }).catch((error) => {
+        if (!cancelled && requestVersion === specVersion.current
+            && error.name !== "AbortError")
+          setSummaryError((error as Error).message);
+      }).finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    }, 600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
+      setSummaryLoading(false);
+    };
+  }, [active, rid, info?.cdm, info?.cdm_schema, info?.vocab_schema,
+      specKey, summaryValid]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const changeRules = (next: Rule[]) => {
 
     const first = next.findIndex((r) => !r.exclude);
     setRules(next.map((r, i) => i === first ? { ...r, index_relation: undefined } : r));
-    setCount(null);
+    invalidateSpecResult();
   };
   const update = (i: number, patch: Partial<Rule>) => changeRules(rules.map((r, j) => j === i ? { ...r, ...patch } : r));
   const first = rules.findIndex((r) => !r.exclude);
@@ -89,6 +147,41 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
     const out = await api.omopInfo(rid, true);
     if (mounted.current) { setInfo(out); setCount(null); }
   });
+  const countCohort = () => {
+    const requestSpec = spec;
+    const requestVersion = specVersion.current;
+    const requestKey = JSON.stringify(requestSpec);
+    return run("Counting cohort…", async () => {
+      const out = await api.omopCount(rid, requestSpec);
+      if (mounted.current && requestVersion === specVersion.current
+          && JSON.stringify(currentSpec.current) === requestKey) setCount(out);
+    });
+  };
+  const openCohort = () => {
+    const requestSpec = spec;
+    const requestName = name.trim();
+    return run("Opening cohort…", async () => {
+      const out = await api.omopOpen(rid, requestSpec, requestName);
+      if (mounted.current) onOpen(out, requestName);
+    });
+  };
+  const summaryCharts = summary ? [
+    { title: "Gender", data: summary.charts.gender.map((item) =>
+      ({ category: item.category, value: item.persons })) },
+    { title: "Age at index", data: summary.charts.age_at_index.map((item) =>
+      ({ category: item.category, value: item.persons })) },
+    ...summary.charts.domains.map((item) => ({
+      title: `All recorded ${item.domain} events for cohort`,
+      data: item.concepts.map((concept) =>
+        ({ category: concept.label, value: concept.persons })),
+    })),
+    { title: "Attrition", data: summary.attrition.map((item) =>
+      ({ category: item.label, value: item.persons })) },
+  ].filter((chart) => chart.data.length > 0) : [];
+  const currentCount: OmopCount | null = count ?? (summary ? {
+    persons: summary.persons, total_persons: summary.total_persons,
+    attrition: summary.attrition,
+  } : null);
 
   return <>
     <div className="omop-toolbar">
@@ -159,12 +252,12 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
               </div>
               <label className="omop-check"><input type="checkbox" checked={r.descendants ?? true} onChange={(e) => update(i, { descendants: e.target.checked })} />Include descendants</label>
             </div>)}
-            <label className="omop-check"><input type="checkbox" checked={observed} onChange={(e) => { setObserved(e.target.checked); setCount(null); }} />Require events within an observation period (except death)</label>
+            <label className="omop-check"><input type="checkbox" checked={observed} onChange={(e) => { setObserved(e.target.checked); invalidateSpecResult(); }} />Require events within an observation period (except death)</label>
             <div className="omop-row">
-              <label>Gender<select value={demo.gender_concept_ids?.[0] ?? ""} onChange={(e) => { setDemo({ ...demo, gender_concept_ids: e.target.value ? [Number(e.target.value)] : [] }); setCount(null); }}>
+              <label>Gender<select value={demo.gender_concept_ids?.[0] ?? ""} onChange={(e) => { setDemo({ ...demo, gender_concept_ids: e.target.value ? [Number(e.target.value)] : [] }); invalidateSpecResult(); }}>
                 <option value="">Any</option><option value="8532">Female</option><option value="8507">Male</option></select></label>
               {([['age_min', 'Minimum age'], ['age_max', 'Maximum age'], ['year_of_birth_min', 'Birth year from'], ['year_of_birth_max', 'Birth year to']] as const).map(([key, label]) =>
-                <label key={key}>{label}<input type="number" value={demo[key] ?? ""} onChange={(e) => { setDemo({ ...demo, [key]: numeric(e.target.value) }); setCount(null); }} /></label>)}
+                <label key={key}>{label}<input type="number" value={demo[key] ?? ""} onChange={(e) => { setDemo({ ...demo, [key]: numeric(e.target.value) }); invalidateSpecResult(); }} /></label>)}
             </div>
           </section>
         </div>
@@ -194,22 +287,36 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
               }}>Apply proposed cohort</button>
             </div>}
           </section>
+          <section className="omop-card" aria-label="OMOP cohort summary">
+            <h3>Cohort summary</h3>
+            {summaryLoading && <span role="status">Updating charts…</span>}
+            {summaryError && <p role="alert" className="omop-error">{summaryError}</p>}
+            {summary && <>
+              <p>{summary.persons.toLocaleString()} of {summary.total_persons.toLocaleString()} persons</p>
+              <div className="omop-summary-charts">
+                {summaryCharts.map((chart) => (
+                  <ChartCard key={chart.title} spec={{ kind: "bar", x: chart.title }}
+                    result={{ kind: "bar", x: chart.title, data: chart.data }}
+                    palette={palette} kinds={["bar"]} readOnly
+                    compactCategoryLabels
+                    onTapCategory={() => undefined} onChangeKind={() => undefined}
+                    onToggleWide={() => undefined} onClose={() => undefined} />
+                ))}
+              </div>
+            </>}
+          </section>
           <section className="omop-card">
             <h3>Count and explore</h3>
-            <button className="primary" onClick={() => run("Counting cohort…", async () => {
-              const out = await api.omopCount(rid, spec); if (mounted.current) setCount(out);
-            })}>Count cohort</button>
-            {count && <div aria-label="Cohort count">
-              <p className="omop-count">{count.persons.toLocaleString()} <span>of {count.total_persons.toLocaleString()} persons</span></p>
+            <button className="primary" onClick={countCohort}>Count cohort</button>
+            {currentCount && <div aria-label="Cohort count">
+              <p className="omop-count">{currentCount.persons.toLocaleString()} <span>of {currentCount.total_persons.toLocaleString()} persons</span></p>
               <table className="omop-attrition"><thead><tr><th>Step</th><th>Persons</th></tr></thead><tbody>
-                {[{ label: "All persons", persons: count.total_persons }, ...count.attrition].map((step, i) =>
+                {[{ label: "All persons", persons: currentCount.total_persons }, ...currentCount.attrition].map((step, i) =>
                   <tr key={i}><td>{step.label}</td><td>{step.persons.toLocaleString()}</td></tr>)}
               </tbody></table>
             </div>}
             <label>Cohort name<input type="text" value={name} onChange={(e) => setName(e.target.value)} /></label>
-            <button disabled={!count || !name.trim()} onClick={() => run("Opening cohort…", async () => {
-              const out = await api.omopOpen(rid, spec, name.trim()); if (mounted.current) onOpen(out, name.trim());
-            })}>Open cohort</button>
+            <button disabled={!currentCount || !name.trim()} onClick={openCohort}>Open cohort</button>
             <p className="settings-hint">Counts use the full database. Open datasets use the app row limit.</p>
           </section>
           <section className="omop-card">
@@ -220,7 +327,7 @@ function Editor({ rid, onOpen }: { rid: string; onOpen: (r: OpenResult, title: s
             </select></label>
             <label className="omop-check"><input type="checkbox" checked={restrict} onChange={(e) => setRestrict(e.target.checked)} />Restrict to current cohort</label>
             <label className="omop-check"><input type="checkbox" checked={names} onChange={(e) => setNames(e.target.checked)} />Add concept names</label>
-            <button disabled={restrict && !count} onClick={() => run("Opening clinical table…", async () => {
+            <button disabled={restrict && !currentCount} onClick={() => run("Opening clinical table…", async () => {
               const out = await api.omopDomain(rid, table, restrict ? spec : null, names);
               if (mounted.current) onOpen(out, table);
             })}>Open clinical table</button>

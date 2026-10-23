@@ -1,7 +1,7 @@
 import * as echarts from "echarts";
 import { useEffect, useRef } from "react";
 import { getPalette, type Palette } from "../palette";
-import type { BarDatum, ChartResult, ChartSpec, HistDatum } from "../types";
+import type { BarDatum, PersonBarDatum, ChartResult, ChartSpec, HistDatum } from "../types";
 
 const INK_SOFT = "#5f6368";
 const GRID_LINE = "#e8eaed";
@@ -14,19 +14,29 @@ const AXIS = {
   splitLine: { lineStyle: { color: GRID_LINE } },
 };
 
-function barOption(data: BarDatum[], pal: Palette): echarts.EChartsOption {
+function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCategoryLabels = false): echarts.EChartsOption {
   const cats = data.map((d) => d.category);
+  const singleSeries = data.length > 0 && "value" in data[0];
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
     xAxis: { type: "value", ...AXIS },
     yAxis: { type: "category", data: cats, ...AXIS,
+             ...(compactCategoryLabels ? { axisLabel: { ...AXIS.axisLabel, width: 140, overflow: "truncate" as const } } : {}),
              splitLine: { show: false } },
-    tooltip: { trigger: "axis", axisPointer: { type: "none" } },
-    series: [
-      { type: "bar", name: "all", data: data.map((d) => d.all),
+    tooltip: { trigger: "axis", axisPointer: { type: "none" },
+      ...(compactCategoryLabels ? { formatter: (items: unknown) => {
+        const item = Array.isArray(items) ? items[0] as { axisValue?: string; value?: number } : items as { axisValue?: string; value?: number };
+        return `${item?.axisValue ?? ""}<br/>persons: ${item?.value ?? ""}`;
+      } } : {}) },
+    series: singleSeries ? [
+      { type: "bar", name: "persons", data: data.map((d) =>
+        "value" in d ? d.value : d.selected),
+        itemStyle: { color: pal.accent, borderRadius: 3 }, barWidth: "62%" },
+    ] : [
+      { type: "bar", name: "all", data: data.map((d) => "all" in d ? d.all : 0),
         itemStyle: { color: pal.muted, borderRadius: 3 }, barWidth: "62%",
         emphasis: { itemStyle: { color: pal.muted } } },
-      { type: "bar", name: "selected", data: data.map((d) => d.selected),
+      { type: "bar", name: "selected", data: data.map((d) => "selected" in d ? d.selected : 0),
         itemStyle: { color: pal.accent, borderRadius: 3 }, barWidth: "62%",
         barGap: "-100%", cursor: "pointer" },
     ],
@@ -97,11 +107,13 @@ interface Props {
   onChangeKind: (kind: ChartSpec["kind"]) => void;
   onToggleWide: () => void;
   onClose: () => void;
+  readOnly?: boolean;
+  compactCategoryLabels?: boolean;
 }
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onToggleWide,
-                            onClose }: Props) {
+                            onClose, readOnly = false, compactCategoryLabels = false }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts>();
@@ -119,7 +131,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     let option: echarts.EChartsOption;
     switch (result.kind) {
       case "bar":
-        option = barOption(result.data as BarDatum[], pal);
+        option = barOption(result.data as (BarDatum | PersonBarDatum)[], pal, compactCategoryLabels);
         break;
       case "histogram":
         option = histogramOption(result.data as HistDatum[], pal);
@@ -137,14 +149,14 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     }
     chart.current.setOption(option, true);
     chart.current.off("click");
-    if (result.kind === "bar") {
+    if (result.kind === "bar" && !readOnly) {
       const bars = result.data as BarDatum[];
       chart.current.on("click", (params) => {
         const cat = bars[params.dataIndex]?.category;
         if (cat && cat !== "Other") onTapCategory(spec.x, cat);
       });
     }
-  }, [result, spec, pal, onTapCategory, columnLabels]);
+  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels]);
 
   const height = result?.kind === "bar"
     ? Math.min(Math.max(170, (result.data.length as number) * 26 + 60), 430)
@@ -160,17 +172,19 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         {result?.sampled && <span className="badge" title="This chart uses sampled data">
           Sampled
         </span>}
-        {kinds.length > 1 && (
+        {!readOnly && kinds.length > 1 && (
           <select className="chart-kind" title="Chart type" value={spec.kind}
                   onChange={(e) =>
                     onChangeKind(e.target.value as ChartSpec["kind"])}>
             {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         )}
-        <button className="quiet" title="Toggle width"
-                onClick={onToggleWide}>⤢</button>
-        <button className="quiet" title="Remove chart"
-                onClick={onClose}>✕</button>
+        {!readOnly && <>
+          <button className="quiet" title="Toggle width"
+                  onClick={onToggleWide}>⤢</button>
+          <button className="quiet" title="Remove chart"
+                  onClick={onClose}>✕</button>
+        </>}
       </div>
       <div ref={ref} style={{ width: "100%", height }} />
     </div>

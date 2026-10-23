@@ -67,6 +67,7 @@ DETECT_TTL = 300
 DETECT_TIMEOUT_MS = 10_000
 SEARCH_TIMEOUT_MS = 5_000
 COUNT_TIMEOUT_MS = 15_000
+SUMMARY_TIMEOUT_MS = 30_000
 
 OPEN_TIMEOUT_MS = 40_000
 LABEL_CHARS = 32
@@ -626,6 +627,117 @@ def count(engine: Engine, info: dict, spec: dict | None,
                  for (label, _), n in zip(c["steps"], row[1:])]
     return {"persons": int(row[-1]), "total_persons": int(row[0]),
             "attrition": attrition}
+
+def cohort_summary(engine: Engine, info: dict, spec: dict | None) -> dict:
+    spec = {} if spec is None else spec
+    deadline = time.monotonic() + SUMMARY_TIMEOUT_MS / 1000
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            conn.exec_driver_sql(f"SET LOCAL statement_timeout = {SUMMARY_TIMEOUT_MS}")
+            c = _prepare(conn, info, spec)
+            def execute(sql, params):
+                remaining = int((deadline - time.monotonic()) * 1000)
+                if remaining < 1:
+                    raise OmopTimeout(f"The query took longer than {SUMMARY_TIMEOUT_MS / 1000:g} s.")
+                conn.exec_driver_sql(f"SET LOCAL statement_timeout = {remaining}")
+                return conn.execute(text(sql), params)
+
+            attrition_sql = ", ".join(
+                ["count(*)"] + [f"count(*) FILTER (WHERE {_members(c['steps'], k)})"
+                                  for k in range(len(c["steps"]))])
+            row = execute(f"WITH {', '.join(c['ctes'])} "
+                          f"SELECT {attrition_sql} FROM flags", c["params"]).fetchone()
+            attrition = [{"label": label, "persons": int(n)}
+                         for (label, _), n in zip(c["steps"], row[1:])]
+            charts_ctes = ", ".join(c["ctes"] + [
+                "cohort AS (SELECT DISTINCT ON (person_id) person_id, "
+                "gender_concept_id, year_of_birth, index_date FROM flags "
+                f"WHERE {_members(c['steps'])} ORDER BY person_id)"])
+            concept_join = (f"LEFT JOIN {_voc(info, 'concept')} AS v "
+                            "ON v.concept_id = cohort.gender_concept_id"
+                            if info.get("vocab_schema") else "")
+            gender_label = ("COALESCE(MAX(v.concept_name), "
+                            "CASE WHEN cohort.gender_concept_id IS NULL "
+                            "OR cohort.gender_concept_id <= 0 THEN 'Unknown / not recorded' "
+                            "ELSE CAST(cohort.gender_concept_id AS TEXT) END)"
+                            if info.get("vocab_schema") else
+                            "CASE WHEN cohort.gender_concept_id IS NULL "
+                            "OR cohort.gender_concept_id <= 0 THEN 'Unknown / not recorded' "
+                            "ELSE CAST(cohort.gender_concept_id AS TEXT) END")
+            genders = execute(
+                f"WITH {charts_ctes} SELECT cohort.gender_concept_id, {gender_label} AS category, "
+                "count(DISTINCT cohort.person_id) AS persons FROM cohort "
+                f"{concept_join} GROUP BY cohort.gender_concept_id "
+                "ORDER BY persons DESC, cohort.gender_concept_id NULLS FIRST",
+                c["params"]).fetchall()
+            bins = [
+                ("under_18", "Under 18", None, 17),
+                ("18_29", "18–29", 18, 29),
+                ("30_44", "30–44", 30, 44),
+                ("45_59", "45–59", 45, 59),
+                ("60_74", "60–74", 60, 74),
+                ("75_plus", "75+", 75, None),
+                ("unknown", "Unknown", None, None),
+            ]
+            values = ", ".join(
+                f"({i}, :label_{i}, :lo_{i}, :hi_{i})" for i in range(len(bins)))
+            bin_params = {f"label_{i}": label for i, (_, label, _, _) in enumerate(bins)}
+            bin_params.update({f"lo_{i}": lo for i, (_, _, lo, _) in enumerate(bins)})
+            bin_params.update({f"hi_{i}": hi for i, (_, _, _, hi) in enumerate(bins)})
+            age = "(CAST(EXTRACT(YEAR FROM index_date) AS INTEGER) - year_of_birth)"
+            age_conditions = []
+            for i, (_, _, lo, hi) in enumerate(bins[:-1]):
+                if lo is None:
+                    interval = f"{age} <= :hi_{i}"
+                elif hi is None:
+                    interval = f"{age} >= :lo_{i}"
+                else:
+                    interval = f"{age} >= :lo_{i} AND {age} <= :hi_{i}"
+                age_conditions.append(f"(b.bin = {i} AND {age} IS NOT NULL AND {interval})")
+            age_join = " OR ".join(age_conditions)
+            age_join += f" OR (b.bin = {len(bins) - 1} AND {age} IS NULL)"
+            age_rows = execute(
+                f"WITH {charts_ctes}, bins AS (SELECT * FROM (VALUES {values}) "
+                "AS b(bin, category, lo, hi)) SELECT b.bin, b.category, b.lo, b.hi, "
+                f"count(DISTINCT cohort.person_id) AS persons FROM bins b LEFT JOIN cohort ON ({age_join}) "
+                "GROUP BY b.bin, b.category, b.lo, b.hi ORDER BY b.bin",
+                c["params"] | bin_params).fetchall()
+            domain_charts = []
+            for domain in dict.fromkeys(item["domain"] for item in (spec.get("criteria") or [])):
+                d = DOMAINS[domain]
+                concept_col = f"e.{_q(d['concept'])}"
+                label = (f"COALESCE(MAX(v.concept_name), CAST({concept_col} AS TEXT))"
+                         if info.get("vocab_schema") else f"CAST({concept_col} AS TEXT)")
+                concept_join = (f"LEFT JOIN {_voc(info, 'concept')} AS v "
+                                f"ON v.concept_id = {concept_col}"
+                                if info.get("vocab_schema") else "")
+                top = execute(
+                    f"WITH {charts_ctes} SELECT {concept_col}, {label} AS label, "
+                    f"count(DISTINCT e.person_id) AS persons FROM {_cdm(info, d['table'])} AS e "
+                    "JOIN cohort ON cohort.person_id = e.person_id "
+                    f"{concept_join} WHERE {concept_col} IS NOT NULL "
+                    f"GROUP BY {concept_col} ORDER BY persons DESC, {concept_col} LIMIT 10",
+                    c["params"]).fetchall()
+                domain_charts.append({"domain": domain, "label": domain.capitalize(),
+                                      "concepts": [{"concept_id": int(cid), "label": name,
+                                                    "persons": int(persons)}
+                                                   for cid, name, persons in top]})
+        return {"scope": "database", "persons": int(row[-1]),
+                "total_persons": int(row[0]), "attrition": attrition,
+                "charts": {
+                    "gender": [{"concept_id": cid, "category": category,
+                                "persons": int(persons)}
+                               for cid, category, persons in genders],
+                    "age_at_index": [{"category": category, "lo": lo, "hi": hi,
+                                      "persons": int(persons)}
+                                     for _, category, lo, hi, persons in age_rows],
+                    "domains": domain_charts,
+                }}
+    except (ValueError, OmopTimeout, OmopEngineError):
+        raise
+    except Exception as e:
+        raise _error(e, SUMMARY_TIMEOUT_MS) from e
 
 def _read(conn, sql: str, params: dict) -> pd.DataFrame:
     res = conn.execute(text(sql), params)

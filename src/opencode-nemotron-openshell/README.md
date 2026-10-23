@@ -205,11 +205,12 @@ agent's identity narrow. Load jobs and the Storage Read API (gRPC,
 write tables from a bucket the agent may read, the latter is blocked, so use
 `create_bqstorage_client=False` when reading dataframes.
 
-### Running without the sandbox
+### Agents outside the framework
 
-Write `off` to `/config/.opencode-sandbox` to run OpenCode directly in the app
-container, as in `opencode-nemotron-mcp`: with your Workbench credentials, the
-Workbench MCP tools and full network access. Delete the file to go back.
+This app has no unsandboxed mode: `opencode` always starts the agent in the
+sandbox. An agent you start yourself in code-server (Claude Code, a hand-run
+OpenCode) runs with your own credentials and network, outside the framework.
+That is your choice as the human; OpenShell doesn't see or restrict it.
 
 ### Self-test
 
@@ -247,9 +248,8 @@ covers that, in the sandbox under `/sandbox/.local/share/opencode`. OpenShell
 - **Ollama has no authentication** and listens on all interfaces inside the
   container, so other containers on this VM's `app-network` can reach it. It is
   not reachable from other VMs.
-- **No Workbench MCP tools in the sandbox yet.** The Workbench MCP server runs
-  only without the sandbox. BigQuery and Cloud Storage are reachable through
-  [Data access](#data-access), with the gap described there.
+- **No Workbench MCP tools in the sandbox.** BigQuery and Cloud Storage are
+  reachable through [Data access](#data-access), with the gap described there.
 - **OpenCode tries to install its plugin package from npm on start.** The
   sandbox blocks it, OpenCode works without it, and the attempt appears in
   the log as denied.
@@ -317,7 +317,7 @@ existing app. Cancelling the menu leaves the selection unset.
 
 For automation, run `opencode-model <tag>` first. A model-dependent command
 without a terminal fails with instructions rather than waiting for input.
-Help, version, model listing, and MCP setup commands remain available.
+Help and version remain available.
 
 The optional prompt implements initial selection at the first agent launch because devcontainer
 `postCreateCommand`/`postStartCommand` run without an interactive terminal.
@@ -327,41 +327,25 @@ Blocking those hooks on `read` would prevent startup. Other options considered:
   Workbench substitutes a fixed set of template options on the VM, so adding
   a `model` template option here alone does not work.
 
-## Workbench MCP and workspace context
+## Workbench tools for you, not the agent
 
-These apply to OpenCode [run without the sandbox](#running-without-the-sandbox),
-and to Claude Code in code-server. This app reuses the `wb-mcp-server` and `llm-context` features from the Jupyter
-LLM template. After Workbench authentication and mounts, `start-services.sh`:
+This app still installs the `wb-mcp-server` and `llm-context` features from the
+Jupyter LLM template, for Claude Code and other tools you run yourself in
+code-server. After Workbench authentication and mounts, `start-services.sh`:
 
-1. Starts the feature's HTTP MCP daemon as `abc` for the other included clients.
-2. Generates context as `abc` after the workspace becomes available.
+1. Starts the feature's HTTP MCP daemon as `abc`.
+2. Generates Workbench context as `abc` once the workspace is available.
 3. Starts Ollama as `abc`, checks its pinned version, and validates the models
    (or defers selection); see [Startup checks](#startup-checks).
-4. Writes the OpenCode configuration only after those checks succeed.
 
-OpenCode's `mcp.wb` launches `/opt/wb-mcp-server/wb-mcp-server` using the server's
-native stdio transport. OpenCode manages that process as the agent user. This
-uses the same binary as the feature's HTTP daemon, without relying on its HTTP
-transport compatibility or readiness. It uses the user's existing `wb`
-authentication; no hosted LLM API key or separate MCP OAuth login is needed.
-OpenCode's `instructions` setting loads
-`/config/.claude/CLAUDE.md` explicitly, including when working in a nested repo.
-The context generator also installs its Workbench guides in `~/.claude/skills/`.
-A short OpenCode instruction file maps the guides' Claude-style tool names to
-the `wb_` tool names exposed in OpenCode.
-
-Try asking: "List the resources in my Workbench workspace."
+The sandboxed agent gets none of this: no Workbench MCP tools, no `wb` login, no
+Workbench context files. It reaches data only through the rules in
+[Data access](#data-access).
 
 ```sh
-opencode mcp list
 wb workspace describe
 generate-llm-context   # refresh after authentication or workspace changes
 ```
-
-If context is not ready during startup, the generator retries and logs how to
-refresh it later; local coding remains available. Context and MCP outputs are
-sent to the selected local model, while executing tools can call Workbench and
-cloud services according to the user's existing permissions.
 
 ## Configuration
 
@@ -374,12 +358,12 @@ Ollama startup use it. A saved choice from an earlier version is retained.
 and filters `models.json` by `minimum_vram_mib`. `OPENCODE_GPU_MEMORY_MIB` can
 override detection for testing or an operator-controlled deployment.
 
-`configure-opencode.sh` owns `~/.config/opencode/opencode.json` and rewrites it
-on startup and selection. It registers every compatible catalog model so
-OpenCode's `/model` picker cannot accidentally select a catalog model that is
-too large for the GPU. This is a usability guard, not a security boundary;
-users can still supply a custom Ollama tag. The script also pins
-`autoupdate: false`, disables sharing, enables only Ollama, and registers Workbench MCP/context.
+The sandbox's OpenCode configuration is built at launch by `opencode-sandbox.sh`.
+It registers every compatible catalog model so OpenCode's `/model` picker cannot
+accidentally select a catalog model that is too large for the GPU. This is a
+usability guard, not a security boundary; users can still supply a custom Ollama
+tag. It also pins `autoupdate: false`, disables sharing, enables only Ollama, and
+registers no MCP servers.
 
 OpenCode is pinned to 1.18.22. `ollama-release.json` pins Ollama 0.34.4 and the
 SHA-256 of its Linux amd64 release archive. The build verifies that checksum;

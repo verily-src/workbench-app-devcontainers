@@ -29,9 +29,6 @@ sudo -H -u "${USER_NAME}" \
   --preserve-env=OPENCODE_HOME,OPENCODE_GPU_MEMORY_MIB,OPENCODE_MODEL_STORE_SEARCH,OLLAMA_MODEL,OLLAMA_HOST,OLLAMA_BIND_ADDRESS,OLLAMA_MODELS,OLLAMA_NOPRUNE,OLLAMA_LOAD_TIMEOUT,OLLAMA_KEEP_ALIVE,OLLAMA_FLASH_ATTENTION,OLLAMA_CONTEXT_LENGTH,OLLAMA_NUM_PARALLEL,OLLAMA_MAX_LOADED_MODELS \
   "${SCRIPT_DIR}/start-ollama.sh"
 
-# Publish the picker only after the load checks pass (see start-ollama.sh).
-"${SCRIPT_DIR}/configure-opencode.sh" "${USER_NAME}" "${USER_HOME_DIR}"
-
 # Put the default sandbox policy where the user can edit it. The sandbox itself
 # is created on the first `opencode` launch, once the gateway is up.
 sudo -H -u "${USER_NAME}" mkdir -p "${USER_HOME_DIR}/openshell"

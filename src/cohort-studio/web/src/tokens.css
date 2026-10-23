@@ -347,6 +347,12 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px;
 }
+.join-source-picker { display: grid; gap: 8px; margin: 8px 0 12px; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.join-connection { margin: -2px 0 8px 28px; color: var(--ink-muted); font-size: 12px; }
+.join-advanced { margin: 4px 0 8px 28px; color: var(--ink-muted); font-size: 12px; }
+.join-advanced summary { width: fit-content; cursor: pointer; }
+.join-evidence { flex-basis: 100%; color: var(--ink-muted); font-size: 11px; }
+.join-evidence summary { width: fit-content; cursor: pointer; }
 .join-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
 .column-settings { position: relative; }
 .column-settings-panel { position: absolute; z-index: 5; right: 0; top: 100%; width: min(760px, 82vw); max-height: 65vh; overflow: auto; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px #0002; }

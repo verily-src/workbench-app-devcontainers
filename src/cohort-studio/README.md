@@ -2,6 +2,8 @@
 
 Shared agent project state and current work status: [`docs/PROJECT_STATE.md`](docs/PROJECT_STATE.md).
 
+Local container stack and real browser tests: [local validation](docs/LOCAL_VALIDATION.md).
+
 Next-generation cohort exploration app: a **React + TypeScript** frontend
 with Linear-inspired design over a **FastAPI** backend (Aurora via
 SQLAlchemy, S3 Parquet/CSV via DuckDB, BigQuery, lineage, TTL caching).

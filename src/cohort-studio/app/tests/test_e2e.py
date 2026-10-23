@@ -271,8 +271,10 @@ def test_join_two_tabs_into_new_dataset(loaded_page: Page):
     loaded_page.locator(".tab-join").click()
     panel = loaded_page.locator(".join-panel")
     expect(panel).to_be_visible()
+    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
 
-    panel.get_by_role("button", name=re.compile("Join")).click()
+    panel.get_by_role("button", name="Join into new tab").click()
 
     expect(loaded_page.locator(".tab.active", has_text="+")
            ).to_be_visible(timeout=15000)
@@ -286,6 +288,8 @@ def test_join_preview_shows_funnel_and_sample(loaded_page: Page):
            ).to_be_visible(timeout=15000)
     loaded_page.locator(".tab-join").click()
     panel = loaded_page.locator(".join-panel")
+    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
     panel.get_by_role("radio", name="No match").click()
     panel.get_by_role("button", name="Preview").click()
     funnel = panel.locator(".join-funnel")
@@ -315,6 +319,8 @@ def test_join_table_combobox_and_inline_validation(loaded_page: Page):
     combo.press("Enter")
     expect(combo).to_have_value("phenotypes.csv")
 
+    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
 
     cond = panel.locator(".join-cond").first
     cond.locator("select").nth(0).select_option("rin_score")

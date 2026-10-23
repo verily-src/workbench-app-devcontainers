@@ -2,14 +2,17 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type {
   Dataset, JoinCondition, JoinEngine, JoinHow, JoinOp, JoinPreview, JoinStep,
-  JoinSuggestion, JoinValidation,
+  JoinRecommendation, JoinSuggestion, JoinValidation, Source, SourceRef, TableInfo,
 } from "../types";
 import { Combobox } from "./Combobox";
 
 interface Props {
   datasets: Dataset[];
+  sources: Source[];
   busy: boolean;
   onJoin: (p: { baseId: string; steps: JoinStep[] }) => void;
+  onSourceOpened: (opened: Awaited<ReturnType<typeof api.openSourceRef>>,
+                   title: string, sourceRef: SourceRef) => void;
   onClose: () => void;
 }
 
@@ -30,6 +33,7 @@ const ENGINE_LABEL: Record<JoinEngine, string> = {
 };
 
 interface StepState extends JoinStep { touched: boolean; pickCols: boolean }
+type KeyRecommendation = JoinRecommendation & { sourceTitle: string };
 
 const aliasOf = (d?: Dataset) =>
   (d?.title ?? "joined").replace(/\.(parquet|csv|tsv|txt|json|ndjson)$/i, "");
@@ -71,15 +75,100 @@ function outputColumns(base: Dataset | undefined, steps: StepState[],
 }
 
 function defaultCondition(leftCols: string[], right?: Dataset): JoinCondition {
-  const rightCols = right?.columns.map((c) => c.name) ?? [];
-  const shared = leftCols.find((c) => rightCols.includes(c));
-  return { left: shared ?? "", op: "=", right: shared ?? "" };
+  void leftCols;
+  void right;
+  return { left: "", op: "=", right: "" };
 }
 
-export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
+const directAurora = (ref?: SourceRef) => ref?.kind === "aurora" && "table" in ref;
+
+export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onClose }: Props) {
   const byId = useMemo(() => new Map(datasets.map((d) => [d.id, d])), [datasets]);
   const [baseId, setBaseId] = useState(datasets[0]?.id ?? "");
   const base = byId.get(baseId);
+  const [resourceKey, setResourceKey] = useState("");
+  const [sourceTables, setSourceTables] = useState<TableInfo[]>([]);
+  const [sourceSchema, setSourceSchema] = useState("");
+  const [sourceTable, setSourceTable] = useState("");
+  const [sourceBusy, setSourceBusy] = useState(false);
+  const [sourceError, setSourceError] = useState("");
+  const selectedSource = sources.find((source) =>
+    `${source.kind}:${source.id}` === resourceKey);
+
+  useEffect(() => {
+    if (!resourceKey && sources.length) {
+      const first = sources[0];
+      setResourceKey(`${first.kind}:${first.id}`);
+    }
+  }, [resourceKey, sources]);
+
+  useEffect(() => {
+    if (!selectedSource) { setSourceTables([]); setSourceTable(""); return; }
+    let cancelled = false;
+    setSourceTables([]);
+    setSourceSchema("");
+    setSourceTable("");
+    setSourceError("");
+    api.tables(selectedSource.kind, selectedSource.id).then((items) => {
+      if (!cancelled) setSourceTables(items);
+    }).catch((error) => {
+      if (!cancelled) setSourceError((error as Error).message);
+    });
+    return () => { cancelled = true; };
+  }, [resourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addSourceTable = async () => {
+    if (!selectedSource) return;
+    if (baseId && steps.every((step) => step.right_id) && steps.length >= MAX_STEPS) {
+      setSourceError(`A join can include up to ${MAX_STEPS} additional tables.`);
+      return;
+    }
+    const info = sourceTables.find((item) => item.name === sourceTable);
+    if (!info) return;
+    const sourceRef: SourceRef = {
+      kind: selectedSource.kind, resource_id: selectedSource.id,
+      ...(selectedSource.uuid ? { uuid: selectedSource.uuid } : {}),
+      ...(info.schema ? { schema: info.schema } : {}),
+      table: info.table ?? info.name,
+    };
+    setSourceBusy(true);
+    setSourceError("");
+    try {
+      const opened = await api.openSourceRef(sourceRef);
+      const duplicateCount = datasets.filter((dataset) => {
+        const ref = dataset.sourceRef;
+        return ref && "table" in ref && ref.kind === sourceRef.kind
+          && ref.resource_id === sourceRef.resource_id
+          && ref.schema === sourceRef.schema && ref.table === sourceRef.table;
+      }).length;
+      const title = duplicateCount ? `${info.name} (${duplicateCount + 1})` : info.name;
+      onSourceOpened(opened, title, sourceRef);
+      if (!baseId) {
+        setBaseId(opened.dataset_id);
+        setSteps([{ right_id: "", how: "left", alias: "joined", columns: null,
+          touched: false, pickCols: false,
+          conditions: [{ left: "", op: "=", right: "" }] }]);
+      } else {
+        setSteps((previous) => {
+          const add = (): StepState => ({
+            right_id: opened.dataset_id, how: "left", alias: title,
+            columns: null, touched: false, pickCols: false,
+            conditions: [{ left: "", op: "=", right: "" }],
+          });
+          const emptyIndex = previous.findIndex((step) => !step.right_id);
+          if (emptyIndex >= 0) return previous.map((step, i) =>
+            i === emptyIndex ? add() : step);
+          if (previous.length < MAX_STEPS) return [...previous, add()];
+          return previous;
+        });
+      }
+      setSourceTable("");
+    } catch (error) {
+      setSourceError((error as Error).message);
+    } finally {
+      setSourceBusy(false);
+    }
+  };
 
   const newStep = (rightId: string, prior: StepState[]): StepState => {
     const right = byId.get(rightId);
@@ -93,13 +182,19 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
     datasets.find((d) => d.id !== exclude)?.id ?? "";
   const [steps, setSteps] = useState<StepState[]>(() =>
     [newStep(firstOther(baseId), [])]);
+  const canAddSource = !baseId || steps.some((step) => !step.right_id)
+    || steps.length < MAX_STEPS;
   const [suggestions, setSuggestions] = useState<Record<number, JoinSuggestion[]>>({});
+  const [recommendations, setRecommendations] = useState<Record<number, KeyRecommendation[]>>({});
+  const [recommendationWarnings, setRecommendationWarnings] = useState<string[]>([]);
   const [preview, setPreview] = useState<JoinPreview | null>(null);
   const [previewErr, setPreviewErr] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const previewRequest = useRef(0);
 
   const stepKey = steps.map((s) => s.right_id).join("|");
+  const recommendationKey = steps.map((s) =>
+    `${s.right_id}:${s.how}:${s.alias}:${s.columns?.join(",") ?? "*"}`).join("|");
   const commonKeys = base?.columns.map((c) => c.name).filter((name) =>
     steps.length > 0 && steps.every((s) =>
       byId.get(s.right_id)?.columns.some((c) => c.name === name))) ?? [];
@@ -118,7 +213,13 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
       steps.slice(0, i).forEach((p) => {
         if (addsColumns(p.how)) lefts.push({ id: p.right_id, prefix: `${p.alias}${ARROW}` });
       });
-      const all = await Promise.all(lefts.filter((l) => l.id && l.id !== s.right_id).map((l) =>
+      const recommendationPairs = lefts.filter((l) => {
+        const leftDataset = byId.get(l.id);
+        const rightDataset = byId.get(s.right_id);
+        return l.id && l.id !== s.right_id
+          && !(directAurora(leftDataset?.sourceRef) && directAurora(rightDataset?.sourceRef));
+      });
+      const all = await Promise.all(recommendationPairs.map((l) =>
         api.suggestJoin(l.id, s.right_id)
           .then((r) => r.map((x) => ({ ...x, left: l.prefix + x.left })))
           .catch(() => [] as JoinSuggestion[])));
@@ -128,17 +229,56 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
     })).then((ranked) => {
       if (cancelled) return;
       setSuggestions(Object.fromEntries(ranked.map((items, i) => [i, items])));
-      setSteps((prev) => prev.map((p, i) => {
-        const top = ranked[i]?.[0];
-        return top && p.right_id === steps[i]?.right_id && !p.touched
-          && p.conditions.length === 1
-          && (!p.conditions[0].left || !p.conditions[0].right)
-          ? { ...p, conditions: [{ left: top.left, op: "=", right: top.right }] }
-          : p;
-      }));
     });
     return () => { cancelled = true; };
-  }, [baseId, stepKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [baseId, recommendationKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let cancelled = false;
+    setRecommendations({});
+    setRecommendationWarnings([]);
+    const requests = steps.map(async (step, stepIndex) => {
+      const right = byId.get(step.right_id);
+      if (!directAurora(right?.sourceRef)) return { stepIndex, candidates: [], warnings: [] };
+      const lefts: { dataset: Dataset; prefix: string }[] = [];
+      if (base && directAurora(base.sourceRef)) lefts.push({ dataset: base, prefix: "" });
+      steps.slice(0, stepIndex).forEach((prior) => {
+        const dataset = byId.get(prior.right_id);
+        if (addsColumns(prior.how) && dataset && directAurora(dataset.sourceRef))
+          lefts.push({ dataset, prefix: `${prior.alias}${ARROW}` });
+      });
+      const results = await Promise.all(lefts.map(async (left) => {
+        try {
+          const result = await api.recommendJoin(left.dataset.sourceRef!, right?.sourceRef!);
+          return {
+            candidates: result.candidates.map((candidate) => ({
+              ...candidate,
+              keys: candidate.keys.map((key) => ({ ...key, left: left.prefix + key.left })),
+              sourceTitle: left.dataset.title,
+            })),
+            warnings: result.warnings,
+          };
+        } catch { return { candidates: [], warnings: [] }; }
+      }));
+      const visibleLeftCols = new Set(outputColumns(base, steps, stepIndex, byId));
+      const visibleRightCols = new Set(right?.columns.map((column) => column.name) ?? []);
+      const methodOrder = { foreign_key: 0, exact_name: 1, jev: 2 };
+      const candidates = results.flatMap((result) => result.candidates)
+        .filter((candidate) => candidate.keys.length > 0 && candidate.keys.every((key) =>
+          visibleLeftCols.has(key.left) && visibleRightCols.has(key.right)))
+        .sort((a, b) => methodOrder[a.method] - methodOrder[b.method])
+        .slice(0, 3);
+      return { stepIndex, candidates,
+        warnings: results.flatMap((result) => result.warnings) };
+    });
+    Promise.all(requests).then((results) => {
+      if (cancelled) return;
+      setRecommendations(Object.fromEntries(results.map((result) =>
+        [result.stepIndex, result.candidates])));
+      setRecommendationWarnings([...new Set(results.flatMap((result) => result.warnings))]);
+    });
+    return () => { cancelled = true; };
+  }, [baseId, recommendationKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     previewRequest.current += 1;
@@ -160,6 +300,9 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
   }, [baseId, steps]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = datasets.map((d) => ({ id: d.id, label: d.title, hint: d.source }));
+  const schemas = [...new Set(sourceTables.map((item) => item.schema ?? ""))];
+  const visibleSourceTables = sourceTables.filter((item) =>
+    !sourceSchema || (item.schema ?? "") === sourceSchema);
   const engine = preview?.engine ?? validation?.engine;
 
   const update = (i: number, patch: Partial<StepState>) =>
@@ -217,13 +360,50 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
       <div className="join-row">
         <label>Start from
           <Combobox label="Start from" value={baseId} options={options}
-                    onChange={changeBase} placeholder="Search open tables…" />
+                    onChange={changeBase} placeholder="Choose a table…" />
         </label>
         <div style={{ flex: 2 }} />
         <button className="quiet" onClick={onClose}>✕</button>
       </div>
 
-      {steps.length > 0 && (
+      {sources.length > 0 && (
+        <div className="join-source-picker">
+          <strong>Add a source table</strong>
+          <div className="join-row">
+            <label>Datasource
+              <select aria-label="Join datasource" value={resourceKey}
+                      onChange={(e) => setResourceKey(e.target.value)}>
+                {sources.map((item) => (
+                  <option key={`${item.kind}:${item.id}`} value={`${item.kind}:${item.id}`}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>Schema
+              <select aria-label="Join schema" value={sourceSchema}
+                      onChange={(e) => { setSourceSchema(e.target.value); setSourceTable(""); }}>
+                <option value="">All schemas</option>
+                {schemas.map((schema) => (
+                  <option key={schema} value={schema}>{schema || "Default schema"}</option>
+                ))}
+              </select>
+            </label>
+            <Combobox label="Source table to add" value={sourceTable}
+                      options={visibleSourceTables.map((item) => ({
+                        id: item.name, label: item.name, hint: item.detail,
+                      }))}
+                      onChange={setSourceTable} placeholder="Search tables…" />
+            <button className="primary" disabled={!sourceTable || sourceBusy || busy || !canAddSource}
+                    onClick={addSourceTable}>
+              {sourceBusy ? "Adding…" : "Add table"}
+            </button>
+          </div>
+          {sourceError && <div className="join-error" role="alert">{sourceError}</div>}
+        </div>
+      )}
+
+      {steps.length > 1 && commonKeys.length > 0 && (
         <div className="join-row">
           <label>Common key
             <select value={commonKey} onChange={(e) => setCommonKey(e.target.value)}
@@ -234,9 +414,6 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
           <button className="link" disabled={!commonKey} onClick={applyCommonKey}>
             Apply key to all
           </button>
-          {!commonKeys.length && <span className="settings-hint">
-            No shared column across the base and all selected tables.
-          </span>}
         </div>
       )}
 
@@ -272,13 +449,43 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
                           onChange={(id) => changeRight(i, id)}
                           placeholder="Search open tables…" />
               </label>
-              {addsColumns(s.how) && (
-                <label>Name joined columns as
-                  <input value={s.alias} onChange={(e) => update(i, { alias: e.target.value })}
-                         placeholder={aliasOf(right)} />
-                </label>
-              )}
             </div>
+
+            <details className="join-advanced">
+              <summary>Advanced</summary>
+              <div className="join-row">
+                {addsColumns(s.how) && (
+                  <label>Name joined columns as
+                    <input value={s.alias} onChange={(e) => update(i, { alias: e.target.value })}
+                           placeholder={aliasOf(right)} />
+                  </label>
+                )}
+                <button className="link" onClick={() => update(i, { touched: true,
+                  conditions: [...s.conditions, defaultCondition(leftCols, right)] })}>
+                  + condition
+                </button>
+                {addsColumns(s.how) && (
+                  <button className="link" onClick={() => update(i, { pickCols: !s.pickCols })}>
+                    columns: {picked.length === rightCols.length ? "all" : `${picked.length}/${rightCols.length}`} ▾
+                  </button>
+                )}
+              </div>
+              {addsColumns(s.how) && s.pickCols && (
+                <div className="join-cols">
+                  <button className="link" onClick={() => update(i, { columns: null })}>all</button>
+                  <button className="link" onClick={() => update(i, { columns: [] })}>none</button>
+                  {rightCols.map((col) => (
+                    <label key={col} className="join-col">
+                      <input type="checkbox" checked={picked.includes(col)}
+                             onChange={(e) => update(i, { columns: e.target.checked
+                               ? rightCols.filter((x) => x === col || picked.includes(x))
+                               : picked.filter((x) => x !== col) })} />
+                      {col}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </details>
 
             {s.conditions.map((c, k) => {
               const check = validation?.steps[i]?.conditions[k];
@@ -286,7 +493,8 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
                 <Fragment key={k}>
                   <div className={`join-cond${check?.problem ? " invalid" : ""}`}>
                     <span className="join-cond-label">{k === 0 ? "on" : "and"}</span>
-                    <select value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
+                    <select aria-label={`Left key step ${i + 1} condition ${k + 1}`}
+                            value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
                       <option value="" disabled>Choose column</option>
                       {leftCols.map((col) => <option key={col}>{col}</option>)}
                     </select>
@@ -294,7 +502,8 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
                             onChange={(e) => setCondition(i, k, { op: e.target.value as JoinOp })}>
                       {OPS.map((o) => <option key={o}>{o}</option>)}
                     </select>
-                    <select value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
+                    <select aria-label={`Right key step ${i + 1} condition ${k + 1}`}
+                            value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
                       <option value="" disabled>Choose column</option>
                       {rightCols.map((col) => <option key={col}>{col}</option>)}
                     </select>
@@ -312,10 +521,28 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
             {(validation?.steps[i]?.problems ?? []).map((p) =>
               <div key={p} className="join-check join-error" role="alert">{p}</div>)}
             <div className="join-tools">
-              <button className="link" onClick={() => update(i, { touched: true,
-                conditions: [...s.conditions, defaultCondition(leftCols, right)] })}>
-                + condition
-              </button>
+              {(recommendations[i] ?? []).map((candidate, candidateIndex) => (
+                <Fragment key={`${candidate.method}-${candidateIndex}`}>
+                  <button className="chip"
+                          onClick={() => update(i, { touched: true,
+                            conditions: candidate.keys.map((key) => ({
+                              left: key.left, op: "=" as const, right: key.right,
+                            })) })}>
+                    Apply {candidate.sourceTitle}: {candidate.keys.map((key) =>
+                      `${key.left} = ${key.right}`).join(" AND ")}
+                    {` · ${candidate.method === "foreign_key" ? "foreign key"
+                      : candidate.method === "exact_name" ? "matching names" : "Jev suggestion"}`}
+                    {candidate.method === "jev" && candidate.confidence != null
+                      ? ` · ${Math.round(candidate.confidence * 100)}% confidence` : ""}
+                  </button>
+                  {candidate.evidence.length > 0 && (
+                    <details className="join-evidence">
+                      <summary>Evidence</summary>
+                      {candidate.evidence.join("; ")}
+                    </details>
+                  )}
+                </Fragment>
+              ))}
               {(suggestions[i] ?? []).map((sg) => (
                 <button key={`${sg.left}|${sg.right}`} className="chip"
                         title={`${Math.round(sg.overlap * 100)}% of left values found`}
@@ -324,30 +551,19 @@ export function JoinPanel({ datasets, busy, onJoin, onClose }: Props) {
                   {sg.left} = {sg.right} · {Math.round(sg.overlap * 100)}%
                 </button>
               ))}
-              {addsColumns(s.how) && (
-                <button className="link" onClick={() => update(i, { pickCols: !s.pickCols })}>
-                  columns: {picked.length === rightCols.length ? "all" : `${picked.length}/${rightCols.length}`} ▾
-                </button>
-              )}
             </div>
-            {addsColumns(s.how) && s.pickCols && (
-              <div className="join-cols">
-                <button className="link" onClick={() => update(i, { columns: null })}>all</button>
-                <button className="link" onClick={() => update(i, { columns: [] })}>none</button>
-                {rightCols.map((col) => (
-                  <label key={col} className="join-col">
-                    <input type="checkbox" checked={picked.includes(col)}
-                           onChange={(e) => update(i, { columns: e.target.checked
-                             ? rightCols.filter((x) => x === col || picked.includes(x))
-                             : picked.filter((x) => x !== col) })} />
-                    {col}
-                  </label>
-                ))}
-              </div>
-            )}
           </div>
         );
       })}
+
+      {recommendationWarnings.length > 0 && (
+        <details className="join-evidence">
+          <summary>Recommendation details</summary>
+          {[...new Set(recommendationWarnings)].map((warning) => (
+            <div key={warning}>{warning}</div>
+          ))}
+        </details>
+      )}
 
       <div className="join-row">
         {steps.length < MAX_STEPS && datasets.length >= 2 && (

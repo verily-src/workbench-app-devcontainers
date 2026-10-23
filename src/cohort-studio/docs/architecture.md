@@ -300,6 +300,8 @@ not the data or cohort engine.
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-10-23 | Select sources inside the join builder; use schema constraints before optional Jev classification/ranking. | Remove the need to open tabs first. Keep database evidence separate from model confidence and require users to apply suggested keys. |
+| 2026-10-23 | Validate the running app in a local container stack with PostgreSQL and synthetic fixtures. | Test real browser/API/driver behavior before a dev Aurora smoke test; local PostgreSQL does not verify Workbench access or browser isolation. |
 | 2026-10-21 | Use the in-app Update action for code releases. | Fetch and build inside the existing container; no Workbench app recreation. Infrastructure changes remain separate. |
 | 2026-10-21 | Prefer browser and HTTP/MCP outcome tests; retain real database and updater-process checks. | Verify user flows and storage behavior without duplicating implementation in unit tests. |
 | 2026-10-21 | Keep explanation in this document; omit ordinary code comments. | Maintain one place for design decisions. Keep required directives, legal text and runtime tool descriptions. |
@@ -346,3 +348,31 @@ facts to sample and variant annotations. IDs, gene names, coordinates and
 consequences are fabricated and marked synthetic. A seeded planted pattern
 provides a known outcome for join/filter checks, not scientific association
 evidence. CSV exports read committed tables and include provenance.
+
+### Source selection and key recommendations (2026-10-23)
+
+The join workspace can start empty and add tables by resource/schema/name.
+Each step shows keys and join type; additional conditions, aliases and output
+columns live under Advanced. Recommendations are applied explicitly. For later
+steps the UI checks the base and prior sources, maps keys to their output aliases,
+and excludes columns removed by earlier steps.
+
+`POST /api/joins/recommend` takes two validated Aurora source references.
+`join_discovery.py` reads schema constraints and types in a read-only transaction
+with a three-second statement timeout. A projected `LIMIT 1` probe returns only
+non-null flags, not field values. It does not measure overlap or cardinality.
+Declared foreign keys rank first, retaining composite keys. Compatible names
+are considered only for identifier-shaped or declared key columns.
+
+Optional Jev classification uses the TypeSafe System One endpoint, with
+`TYPESAFE_API_KEY` and an explicit `STUDIO_JEV_MODEL` (or `TYPESAFE_MODEL`). It
+classifies qualified identifiers and ranks bounded candidate pairs. Invalid
+answers, timeouts and abstention leave deterministic recommendations intact.
+No row values are sent to the model. Model probability is not a match rate.
+The normal chat/provider loop is unchanged. Schema metadata and recommendations
+use bounded process caches with a default 30-second TTL and explicit refresh.
+
+The local Compose stack runs PostgreSQL, an idempotent synthetic fixture seed,
+and the built Studio app. A local-only launcher registers that database without
+Workbench credentials or changes to production `db.py`. See
+[local validation](LOCAL_VALIDATION.md) for commands and verification limits.

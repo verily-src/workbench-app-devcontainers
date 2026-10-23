@@ -570,6 +570,8 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
 
     page.locator(".tab-join").click()
     panel = page.locator(".join-panel")
+    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
     expect(panel.get_by_role("button", name="Join into new tab")).to_be_enabled(
         timeout=10000)
     panel.get_by_role("button", name="Join into new tab").click()
@@ -696,7 +698,8 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
     page.locator(".tab-join").click()
     panel = page.locator(".join-panel")
     expect(panel).to_be_visible()
-    expect(panel.get_by_label("Common key")).to_have_value("person_id")
+    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
     expect(page.get_by_role("button", name="Save to Aurora")).to_have_count(0)
     expect(page.locator(".cohort-bar")).to_have_count(0)
     panel.get_by_role("button", name="✕").click()
@@ -704,9 +707,121 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
     expect(page.locator(".cohort-bar")).to_be_visible()
     page.locator(".tab-join").click()
     panel = page.locator(".join-panel")
+    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
     panel.get_by_role("button", name="Join into new tab").click()
     expect(page.locator(".tab", has_text="person + cdm.person")).to_be_visible(
         timeout=10000)
+
+
+def test_join_can_select_source_schema_and_apply_key_recommendation(
+        page: Page, app_url: str):
+    refs = []
+
+    def fulfill(route, body, status=200):
+        route.fulfill(status=status, content_type="application/json", json=body)
+
+    page.route("**/api/datasources", lambda route: fulfill(route, {
+        "ready": True,
+        "sources": [{"kind": "aurora", "id": "fixture", "label": "Fixture"}],
+        "catalogs_pending": False,
+    }))
+    page.route("**/api/workflows**", lambda route: fulfill(route, {
+        "available": False, "jobs": [], "running_count": 0,
+    }))
+    page.route("**/api/tables?**", lambda route: fulfill(route, [
+        {"name": "public.person", "table": "person", "schema": "public",
+         "detail": "table"},
+        {"name": "genetics.samples", "table": "samples", "schema": "genetics",
+         "detail": "table"},
+    ]))
+
+    def open_source(route):
+        ref = route.request.post_data_json["source_ref"]
+        refs.append(ref)
+        name = ref["table"]
+        fulfill(route, {
+            "dataset_id": f"opened-{ref['schema']}",
+            "source": f"fixture / {ref['schema']}.{name}", "rows": 2,
+            "columns": [{"name": "person_id", "dtype": "int64",
+                         "filter_kind": "none"}],
+            "source_ref": ref, "query_scope": "database",
+        })
+
+    page.route("**/api/datasets/open", open_source)
+    page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
+        "total": 2, "filtered": 2, "scope": "database", "sampled": False,
+        "entity": None, "charts": [],
+        "rows": {"page": 0, "page_size": 50, "columns": ["person_id"],
+                 "data": [[1], [2]]},
+    }))
+    page.route("**/api/joins/recommend", lambda route: fulfill(route, {
+        "candidates": [{
+            "keys": [{"left": "person_id", "right": "person_id"}],
+            "method": "foreign_key", "evidence": ["Declared foreign key"],
+            "confidence": None,
+        }], "warnings": [],
+        "jev": {"status": "not_configured", "configured": False, "model": ""},
+    }))
+    page.route("**/api/datasets/join/suggest?**", lambda route: fulfill(route, []))
+    page.route("**/api/datasets/join/validate", lambda route: fulfill(route, {
+        "ok": True, "engine": "aurora", "engine_reason": "",
+        "capped_inputs": [], "problems": [],
+        "steps": [{"problems": [], "notes": [],
+                    "conditions": [{"problem": None, "note": None}]}],
+    }))
+
+    def join(route):
+        body = route.request.post_data_json
+        assert body["steps"][0]["conditions"] == [
+            {"left": "person_id", "op": "=", "right": "person_id"}]
+        fulfill(route, {
+            "dataset_id": "joined-source-first", "source": "fixture / samples + person",
+            "rows": 2, "columns": [{"name": "person_id", "dtype": "int64",
+                                      "filter_kind": "none"}],
+            "source_ref": {"kind": "join", "base": refs[0], "steps": [
+                {"source": refs[1], "how": "left", "conditions": body["steps"][0]["conditions"],
+                 "columns": None, "alias": "person"}]},
+            "query_scope": "database",
+            "join": {"engine": "aurora", "base_rows": 2, "rows": 2,
+                     "total_rows": 2, "truncated": False, "steps": [],
+                     "notes": [], "capped_inputs": []},
+        })
+
+    page.route("**/api/datasets/join", join)
+    page.goto(app_url)
+    page.get_by_role("button", name="Join tables").click()
+    panel = page.locator(".join-panel")
+    panel.get_by_label("Join schema").select_option("genetics")
+    table = panel.get_by_role("combobox", name="Source table to add")
+    table.fill("samples")
+    table.press("Enter")
+    panel.get_by_role("button", name="Add table").click()
+    expect(page.locator(".tab", has_text="genetics.samples")).to_be_visible(
+        timeout=10000)
+
+    panel.get_by_label("Join schema").select_option("public")
+    table.fill("person")
+    table.press("Enter")
+    panel.get_by_role("button", name="Add table").click()
+    expect(panel.get_by_role("button", name="Apply genetics.samples: person_id = person_id · foreign key")
+           ).to_be_visible(timeout=10000)
+    expect(panel.get_by_label("Left key step 1 condition 1")).to_have_value("")
+    panel.get_by_role("button", name="Apply genetics.samples: person_id = person_id · foreign key").click()
+    expect(panel.get_by_label("Left key step 1 condition 1")).to_have_value("person_id")
+    expect(panel.locator(".join-evidence")).not_to_have_attribute("open", "")
+    panel.locator(".join-evidence summary").click()
+    expect(panel.locator(".join-evidence")).to_have_attribute("open", "")
+    expect(panel.locator(".join-evidence")).to_contain_text("Declared foreign key")
+    panel.get_by_role("button", name="Join into new tab").click()
+    expect(page.locator(".tab", has_text="samples + person")).to_be_visible(
+        timeout=10000)
+    assert refs == [
+        {"kind": "aurora", "resource_id": "fixture",
+         "schema": "genetics", "table": "samples"},
+        {"kind": "aurora", "resource_id": "fixture",
+         "schema": "public", "table": "person"},
+    ]
 
 
 def _durable_join_page(page: Page, app_url: str):
@@ -778,6 +893,9 @@ def _durable_join_page(page: Page, app_url: str):
         page.get_by_role("button", name="Load table").click()
         expect(page.locator(".tab", has_text=name)).to_be_visible(timeout=10000)
     page.locator(".tab-join").click()
+    panel = page.locator(".join-panel")
+    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
     return refs, open_requests, join_requests, query_dataset_ids
 
 
@@ -918,6 +1036,9 @@ def test_recovered_repeat_join_opens_new_result_and_queries_new_id(
         1, timeout=10000)
 
     page.locator(".tab-join").click()
+    panel = page.locator(".join-panel")
+    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
     with page.expect_request(lambda request:
             request.url.endswith("/api/datasets/joined-recovered/query")) as queried:
         page.locator(".join-panel").get_by_role(
@@ -956,6 +1077,8 @@ def test_expired_upload_join_shows_reopen_guidance(loaded_page: Page, tmp_path):
     loaded_page.route("**/api/datasets/join", expire_join)
     loaded_page.locator(".tab-join").click()
     panel = loaded_page.locator(".join-panel")
+    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
+    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
     panel.get_by_role("button", name="Join into new tab").click()
     expect(loaded_page.get_by_text(
         "The join inputs expired. Reopen the source or upload the data again, then retry the join.",

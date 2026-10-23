@@ -36,7 +36,7 @@ code-server (you: Workbench credentials, wb, gcloud, Claude Code)
 | `application-server` | Code-server, Ollama on the GPU, the `openshell` CLI. No Docker socket |
 | `openshell-gateway` | OpenShell control plane. Holds the VM's Docker socket and creates sandboxes. Reachable only from this VM |
 | `openshell-init` | Generates the gateway's keys, then exits |
-| `sandbox-image` | Builds the sandbox image `opencode-agent-sandbox:0.1`, then exits |
+| `sandbox-image` | Builds the sandbox image `opencode-agent-sandbox:0.2`, then exits |
 | `port-guard` | Drops connections to port 8443 from other VMs, so code-server is reachable only through Workbench sign-in (`port-guard.sh`). Re-applies its rule every minute and writes its status, with packet counters, to `/opt/port-guard/port-guard` in the app |
 | Sandbox (created on first `opencode`) | OpenCode and anything it runs. User `sandbox` (uid 1500); only `/sandbox` and `/tmp` are writable |
 
@@ -161,6 +161,50 @@ edit. It is never overwritten; delete it to get the current default again.
   Planted instructions in files or data can make an agent ask for exactly the
   wrong destination.
 
+### Data access
+
+Off by default. When on, the sandbox can query BigQuery and read Cloud Storage
+buckets that you list, with restrictions the human user doesn't have. Edit
+`/config/openshell/data-access.yaml` (copied from `openshell/data-access.yaml` on
+first start), set `enabled: true` and list your project, datasets and buckets,
+then run `opencode-sandbox reset --yes` once (a credential provider attaches
+only to a new sandbox). Later edits apply with `opencode-sandbox policy`.
+
+```yaml
+enabled: true
+project_id: my-workspace-project
+bigquery:
+  datasets:
+    - {project: my-workspace-project, dataset: synthetic_allofus}
+storage:
+  buckets: [synthetic-allofus-poc-my-workspace-project]
+```
+
+Everything here is OpenShell configuration; there is no gate service or
+middleware. `render-policy.py` adds two rules to `policy.yaml` and writes the
+result to `/config/openshell/policy.effective.yaml`, the file the sandbox runs
+with. `policy.yaml` stays as you wrote it.
+
+| Restriction | How |
+|---|---|
+| No Google credential in the sandbox | The `google-cloud` provider (`wb-gcp`) is created from this app's Application Default Credentials. The refresh token stays at the gateway; the sandbox sees a placeholder, and the proxy swaps in the real token only on requests a rule allows. |
+| Cloud Storage is read-only, even where you can write | `GET` only, on the listed buckets. Uploads and deletes are denied. |
+| No BigQuery changes through the API | Only query jobs run (`POST` to `jobs` and `queries`, in your project). `DELETE`, `PATCH`, `PUT`, `insertAll` and uploads are not listed, so they are denied. |
+| BigQuery scope | Table and dataset lookups only in the listed datasets; jobs only in your project; no dataset listing. |
+| Only the Python client reaches Google | The rules name one interpreter (`/usr/bin/python3.11`; venvs resolve to it). `curl` is blocked. |
+
+Workbench still applies first: the agent acts as you, so your IAM roles,
+read-only settings and data collection policies bind it too.
+
+**Known gap.** OpenShell rules see the method and path, not the request body. A
+BigQuery `DELETE FROM` or `DROP TABLE` is a query job like any other, so it
+passes. A SQL statement can also name any table you can read, in any project.
+Rely on Workbench for both (read-only resources, IAM, data policies) and keep the
+agent's identity narrow. Load jobs and the Storage Read API (gRPC,
+`bigquerystorage.googleapis.com`) are not covered by a rule: the former can
+write tables from a bucket the agent may read, the latter is blocked, so use
+`create_bqstorage_client=False` when reading dataframes.
+
 ### Running without the sandbox
 
 Write `off` to `/config/.opencode-sandbox` to run OpenCode directly in the app
@@ -178,7 +222,10 @@ Workbench MCP tools and full network access. Delete the file to go back.
 - Ollama's `/api/pull` and `/api/tags` are refused, and its chat endpoint answers;
 - OpenCode in the sandbox completes a call to the local model;
 - OpenShell logged the blocked internet request;
-- port-guard reports its rule in place within the last 5 minutes.
+- port-guard reports its rule in place within the last 5 minutes;
+- with data access on: the Google token is a placeholder, a BigQuery query runs,
+  and table deletes, `insertAll`, dataset browsing, queries billed to another
+  project, `curl` to BigQuery, bucket writes and unlisted buckets are all denied.
 
 The app can't test its own network card, so the self-test ends with a `curl`
 command to run from another app in the workspace: it should time out, not
@@ -200,9 +247,9 @@ covers that, in the sandbox under `/sandbox/.local/share/opencode`. OpenShell
 - **Ollama has no authentication** and listens on all interfaces inside the
   container, so other containers on this VM's `app-network` can reach it. It is
   not reachable from other VMs.
-- **No Workbench tools or data in the sandbox yet.** The Workbench MCP server
-  runs only without the sandbox. Governed data access (read-only SQL and
-  storage through a gate outside the sandbox) is the next step.
+- **No Workbench MCP tools in the sandbox yet.** The Workbench MCP server runs
+  only without the sandbox. BigQuery and Cloud Storage are reachable through
+  [Data access](#data-access), with the gap described there.
 - **OpenCode tries to install its plugin package from npm on start.** The
   sandbox blocks it, OpenCode works without it, and the attempt appears in
   the log as denied.

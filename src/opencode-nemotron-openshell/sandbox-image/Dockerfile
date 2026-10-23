@@ -21,7 +21,15 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
     && ln -s /opt/opencode/.opencode/bin/opencode /usr/local/bin/opencode \
     && HOME=/tmp opencode --version
 
+# Google client libraries for data access (README, "Data access"). They find
+# their credentials through OpenShell's metadata emulator, never a key file. The
+# venv's python is the real /usr/bin/python3.11 the data-access rules name.
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir google-cloud-bigquery==3.46.2 requests \
+    && chmod -R a+rX /opt/venv
+
 COPY sandbox-image/sandbox-instructions.md /opt/opencode-sandbox/instructions.md
+COPY sandbox-image/data-probe.py /opt/opencode-sandbox/data-probe.py
 
 # /sandbox is the only writable directory besides /tmp, so it is also HOME:
 # OpenCode keeps its sessions and logs under ~/.local/share/opencode.

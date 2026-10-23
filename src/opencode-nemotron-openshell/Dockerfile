@@ -4,7 +4,7 @@ ARG OPENCODE_VERSION=1.18.22
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git jq openjdk-17-jre-headless \
-        python3 python3-pip python3-venv ripgrep zstd \
+        python3 python3-pip python3-venv python3-yaml ripgrep zstd \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /config/extensions /config/.cache \
     && chown -R abc:abc /config
@@ -42,7 +42,7 @@ RUN curl --retry 3 -fsSL "https://github.com/NVIDIA/OpenShell/releases/download/
 
 # Keep the picker available independently of the /workspace bind mount.
 COPY available-models.sh configure-opencode.sh find-model-store.sh resolve-model.sh start-ollama.sh validate-model.sh gpu-check.py opencode-model.sh opencode-launch.sh opencode-sandbox.sh models.json workbench-instructions.md /opt/opencode-workbench/
-COPY openshell/policy.yaml /opt/opencode-workbench/openshell/policy.yaml
+COPY openshell/policy.yaml openshell/data-access.yaml openshell/render-policy.py openshell/google-cloud-profile.yaml /opt/opencode-workbench/openshell/
 RUN chmod +x /opt/opencode-workbench/*.sh \
     && ln -s /opt/opencode-workbench/opencode-launch.sh /usr/local/bin/opencode \
     && ln -s /opt/opencode-workbench/opencode-sandbox.sh /usr/local/bin/opencode-sandbox \

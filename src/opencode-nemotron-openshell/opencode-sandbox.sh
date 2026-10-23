@@ -15,10 +15,16 @@ SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 readonly SCRIPT_DIR
 readonly USER_HOME_DIR="${OPENCODE_HOME:-/config}"
 readonly SANDBOX_NAME="${OPENCODE_SANDBOX_NAME:-opencode-agent}"
-readonly SANDBOX_IMAGE="${OPENCODE_SANDBOX_IMAGE:-opencode-agent-sandbox:0.1}"
+readonly SANDBOX_IMAGE="${OPENCODE_SANDBOX_IMAGE:-opencode-agent-sandbox:0.2}"
 readonly SANDBOX_WORKDIR="/sandbox/work"
 readonly DEFAULT_POLICY="${SCRIPT_DIR}/openshell/policy.yaml"
 readonly POLICY="${USER_HOME_DIR}/openshell/policy.yaml"
+# Data access (README, "Data access"): rules generated from data-access.yaml are
+# added to policy.yaml in policy.effective.yaml, the file the sandbox runs with.
+readonly DEFAULT_DATA_ACCESS="${SCRIPT_DIR}/openshell/data-access.yaml"
+readonly DATA_ACCESS="${USER_HOME_DIR}/openshell/data-access.yaml"
+readonly EFFECTIVE_POLICY="${USER_HOME_DIR}/openshell/policy.effective.yaml"
+readonly GOOGLE_PROFILE="${SCRIPT_DIR}/openshell/google-cloud-profile.yaml"
 readonly DOWNLOAD_DIR="${USER_HOME_DIR}/sandbox-downloads"
 # The sandbox reaches the app's Ollama through the VM's loopback.
 readonly SANDBOX_OLLAMA_URL="http://host.openshell.internal:11434/v1"
@@ -39,7 +45,7 @@ Usage: opencode-sandbox <command> [arguments]
   upload <path> [dest]     Copy files into the sandbox (default: ${SANDBOX_WORKDIR})
   download <path> [dest]   Copy files out of the sandbox (default: ${DOWNLOAD_DIR})
   status                   Show the gateway, the sandbox and the policy file
-  policy                   Apply ${POLICY} to the running sandbox
+  policy                   Apply ${POLICY} and ${DATA_ACCESS} to the running sandbox
   logs [count]             Show the sandbox's recent network decisions (default 100)
   rules                    List rules OpenShell drafted from blocked connections
   approve <chunk-id>       Approve a drafted rule for this sandbox
@@ -68,12 +74,52 @@ wait_for_gateway() {
   die "the OpenShell gateway is not reachable. On the VM, check: docker logs openshell-gateway"
 }
 
+# Writes the effective policy: policy.yaml plus the data-access rules, if on.
 ensure_policy() {
+  mkdir -p "$(dirname "${POLICY}")"
   if [[ ! -s "${POLICY}" ]]; then
-    mkdir -p "$(dirname "${POLICY}")"
     cp "${DEFAULT_POLICY}" "${POLICY}"
     echo "Wrote the default sandbox policy to ${POLICY}" >&2
   fi
+  if [[ ! -s "${DATA_ACCESS}" ]]; then
+    cp "${DEFAULT_DATA_ACCESS}" "${DATA_ACCESS}"
+    echo "Wrote the default data-access settings to ${DATA_ACCESS}" >&2
+  fi
+  local rendered
+  rendered="$(mktemp)"
+  # data-access.yaml leaves project_id blank to mean this workspace's project.
+  GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2> /dev/null || true)}" \
+    python3 "${SCRIPT_DIR}/openshell/render-policy.py" "${POLICY}" "${DATA_ACCESS}" \
+    > "${rendered}" || { rm -f "${rendered}"; die "could not build the sandbox policy from ${POLICY} and ${DATA_ACCESS}"; }
+  mv "${rendered}" "${EFFECTIVE_POLICY}"
+}
+
+data_access_enabled() {
+  grep -qE '^enabled:[[:space:]]*true' "${DATA_ACCESS}" 2> /dev/null
+}
+
+data_access_provider() {
+  sed -n 's/^provider:[[:space:]]*\([A-Za-z0-9._-]*\).*/\1/p' "${DATA_ACCESS}" | head -n 1
+}
+
+# Creates the google-cloud provider from this app's Application Default
+# Credentials. The refresh token stays at the gateway; the sandbox only ever
+# sees a placeholder.
+ensure_provider() {
+  local provider
+  provider="$(data_access_provider)"
+  provider="${provider:-wb-gcp}"
+  if openshell provider get "${provider}" > /dev/null 2>&1; then
+    return 0
+  fi
+  if ! openshell provider list-profiles 2> /dev/null | grep -q '^google-cloud '; then
+    openshell profile import --file "${GOOGLE_PROFILE}" --global > /dev/null
+  fi
+  local project="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2> /dev/null || true)}"
+  [[ -n "${project}" ]] || die "no Google Cloud project: set project_id in ${DATA_ACCESS}"
+  echo "Creating the ${provider} credential provider from this app's Application Default Credentials..." >&2
+  openshell provider create --name "${provider}" --type google-cloud --from-gcloud-adc \
+    --config "project_id=${project}" --config region=global > /dev/null
 }
 
 sandbox_phase() {
@@ -85,13 +131,18 @@ ensure_sandbox() {
   wait_for_gateway
   ensure_policy
   if ! openshell sandbox get "${SANDBOX_NAME}" > /dev/null 2>&1; then
-    echo "Creating sandbox ${SANDBOX_NAME} from ${SANDBOX_IMAGE} with ${POLICY}..." >&2
+    echo "Creating sandbox ${SANDBOX_NAME} from ${SANDBOX_IMAGE} with ${EFFECTIVE_POLICY}..." >&2
     # No trailing command: OpenShell keeps a login shell running, and OpenCode
     # starts with `sandbox exec`. Proposals for blocked connections always wait
     # for a person (--approval-mode manual).
+    local provider_args=()
+    if data_access_enabled; then
+      ensure_provider
+      provider_args=(--provider "$(data_access_provider)")
+    fi
     openshell sandbox create --name "${SANDBOX_NAME}" --from "${SANDBOX_IMAGE}" \
-      --policy "${POLICY}" --no-auto-providers --no-tty --detach \
-      --approval-mode manual --label app=opencode-nemotron > /dev/null
+      --policy "${EFFECTIVE_POLICY}" --no-auto-providers --no-tty --detach \
+      --approval-mode manual --label app=opencode-nemotron ${provider_args[@]+"${provider_args[@]}"} > /dev/null
     return 0
   fi
   case "$(sandbox_phase)" in
@@ -145,6 +196,8 @@ sandbox_config() {
 # but `sandbox exec` does not pass the image's environment to the process.
 readonly OPENCODE_OFFLINE_ENV=(
   HOME=/sandbox
+  # The image's venv, with the Google client libraries, ahead of the system Python.
+  PATH=/opt/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   OPENCODE_DISABLE_AUTOUPDATE=true
   OPENCODE_DISABLE_MODELS_FETCH=true
   OPENCODE_DISABLE_LSP_DOWNLOAD=true
@@ -235,7 +288,14 @@ check_port_guard() {
 cmd_policy() {
   wait_for_gateway
   ensure_policy
-  openshell policy set "${SANDBOX_NAME}" --policy "${POLICY}" --wait
+  # A provider attaches only when a sandbox is created; its project variable
+  # shows whether this sandbox has it.
+  if data_access_enabled && openshell sandbox get "${SANDBOX_NAME}" > /dev/null 2>&1 &&
+    ! openshell sandbox exec "${SANDBOX_NAME}" --no-tty -- sh -c 'test -n "${GCP_PROJECT_ID:-}"' > /dev/null 2>&1; then
+    echo "Note: this sandbox was created before data access was on, so it has no Google credential provider." >&2
+    echo "      Run \`opencode-sandbox reset --yes\` once to attach it." >&2
+  fi
+  openshell policy set "${SANDBOX_NAME}" --policy "${EFFECTIVE_POLICY}" --wait
   echo "Network rules are live. Filesystem and process changes need \`opencode-sandbox reset --yes\`."
 }
 
@@ -283,6 +343,50 @@ check() {
     FAILED=$((FAILED + 1))
     printf 'FAIL  %s\n      expected "%s", got: %s\n' "${label}" "${expected}" "$(tail -c 400 <<< "${output}")"
   fi
+}
+
+# Data-access checks: only when data-access.yaml turns it on. Each request is
+# sent from inside the sandbox by data-probe.py, which prints "denied" when
+# OpenShell blocks it.
+selftest_data_access() {
+  local probe="/opt/venv/bin/python /opt/opencode-sandbox/data-probe.py"
+  local config project dataset bucket bq
+  config="$(python3 -c '
+import sys, yaml
+c = yaml.safe_load(open(sys.argv[1])) or {}
+b = c.get("bigquery") or {}
+d = (b.get("datasets") or [{}])[0]
+s = (c.get("storage") or {}).get("buckets") or [""]
+print(c.get("project_id") or "", d.get("project", ""), d.get("dataset", ""), s[0])' "${DATA_ACCESS}")"
+  read -r project _ dataset bucket <<< "${config}"
+  project="${project:-${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2> /dev/null)}}"
+  bq="https://bigquery.googleapis.com/bigquery/v2/projects"
+
+  # shellcheck disable=SC2016 # Expanded inside the sandbox.
+  check "Google token in the sandbox is a placeholder" "placeholder" \
+    'case "${GCP_ADC_ACCESS_TOKEN:-}" in openshell:resolve:*) echo placeholder;; "") echo missing;; *) echo REAL-TOKEN;; esac'
+  check "BigQuery query runs with the Python client" "rows=1" \
+    "${probe} --query 'SELECT 1' ${project}"
+  if [[ -n "${dataset}" ]]; then
+    check "approved dataset can be looked up" "HTTP 200" "${probe} GET ${bq}/${project}/datasets/${dataset}"
+    check "tables can't be deleted through the API" "denied" \
+      "${probe} DELETE ${bq}/${project}/datasets/${dataset}/tables/selftest-missing"
+    check "rows can't be streamed into tables (insertAll)" "denied" \
+      "${probe} POST ${bq}/${project}/datasets/${dataset}/tables/selftest-missing/insertAll '{\"rows\":[]}'"
+  fi
+  check "datasets can't be browsed" "denied" "${probe} GET ${bq}/${project}/datasets"
+  check "queries can't be billed to another project" "denied" \
+    "${probe} POST ${bq}/bigquery-public-data/queries '{\"query\":\"SELECT 1\",\"useLegacySql\":false}'"
+  check "curl can't reach BigQuery (only the Python client)" "blocked" \
+    "curl -sS -m 10 -o /dev/null ${bq}/${project}/datasets 2> /dev/null && echo reachable || echo blocked"
+  if [[ -n "${bucket}" ]]; then
+    check "approved bucket can be read" "HTTP 200" \
+      "${probe} GET https://storage.googleapis.com/storage/v1/b/${bucket}/o"
+    check "approved bucket can't be written" "denied" \
+      "${probe} POST 'https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=selftest.txt' x"
+  fi
+  check "other buckets can't be read" "denied" \
+    "${probe} GET https://storage.googleapis.com/storage/v1/b/selftest-not-approved-${project}/o"
 }
 
 cmd_selftest() {
@@ -342,6 +446,10 @@ cmd_selftest() {
   else
     FAILED=$((FAILED + 1))
     echo "FAIL  OpenShell logged the blocked internet request (see opencode-sandbox logs)"
+  fi
+
+  if data_access_enabled; then
+    selftest_data_access
   fi
 
   check_port_guard

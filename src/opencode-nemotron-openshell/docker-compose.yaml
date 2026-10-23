@@ -116,7 +116,7 @@ services:
 
   # Builds the sandbox workload image, then exits.
   sandbox-image:
-    image: opencode-agent-sandbox:0.1
+    image: opencode-agent-sandbox:0.2
     build:
       context: .
       dockerfile: sandbox-image/Dockerfile

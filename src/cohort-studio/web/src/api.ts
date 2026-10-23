@@ -2,7 +2,7 @@ import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef,
-  TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary,
+  TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -250,6 +250,9 @@ export const api = {
   recommendJoin: (left: SourceRef, right: SourceRef) =>
     request<{ candidates: JoinRecommendation[]; warnings: string[] }>(
       "/api/joins/recommend", post({ left, right })),
+
+  previewSql: (resourceId: string, sql: string) =>
+    request<SqlPreview>("/api/sql/preview", post({ resource_id: resourceId, sql })),
 
   compare: (datasetId: string, filtersA: Filter[], filtersB: Filter[],
             bIsRest: boolean) =>

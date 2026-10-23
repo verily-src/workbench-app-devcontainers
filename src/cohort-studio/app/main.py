@@ -39,6 +39,7 @@ import live_query
 import query_cache
 import export_jobs
 import join_discovery
+import sql_source
 from source_models import ColumnSetting, DerivedSpec, SourceRef, source_dict
 
 logging.basicConfig(level=logging.INFO, force=True)
@@ -87,6 +88,24 @@ class OpenRequest(BaseModel):
         elif not all((self.kind, self.resource_id, self.table)):
             raise ValueError("Provide kind, resource_id and table.")
         return self
+
+class SQLPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    resource_id: str = Field(min_length=1, max_length=256)
+    sql: str = Field(min_length=1, max_length=sql_source.MAX_SQL_LENGTH)
+    name: str | None = Field(default=None, max_length=128)
+
+    @field_validator("sql")
+    @classmethod
+    def validate_sql(cls, value: str) -> str:
+        return sql_source.normalize(value)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("SQL source name cannot be blank.")
+        return value
 
 class Filter(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
@@ -357,6 +376,8 @@ def open_dataset(req: OpenRequest):
         result = _open_source(ref)
     except HTTPException:
         raise
+    except sql_source.SQLTimeout as e:
+        raise HTTPException(504, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -366,6 +387,17 @@ def open_dataset(req: OpenRequest):
                    payload={"source_kind": ref["kind"], "resource_id": ref.get("resource_id"),
                             "rows": result["rows"]})
     return result
+
+@app.post("/api/sql/preview")
+def preview_sql_source(req: SQLPreviewRequest):
+    try:
+        return sql_source.preview(req.resource_id, req.sql, req.name)
+    except sql_source.SQLTimeout as e:
+        raise HTTPException(504, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
 
 def _stored_ref(dataset_id):
     ds = datasets.get(dataset_id)
@@ -416,6 +448,14 @@ def _open_source(ref, temporary=False):
             out = joins.run(base["dataset_id"], steps)
             df, label = out["df"], " + ".join(labels)
             live, capped = out.get("live_source"), out["stats"]["truncated"]
+        elif ref["kind"] == "sql":
+            df, normalized, capped = sql_source.fetch(
+                ref["resource_id"], ref["sql"], queries.ROW_CAP)
+            ref["sql"] = normalized
+            name = ref.get("name") or "SQL query"
+            label = f"{ref['resource_id']} / {name}"
+            live = {"resource_id": ref["resource_id"], "sql": normalized,
+                    "params": {}, "columns": {column: column for column in df.columns}}
         else:
             kind, rid, table = ref["kind"], ref["resource_id"], ref["table"]
             schema = ref.get("schema", "public")

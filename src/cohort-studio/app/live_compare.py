@@ -181,6 +181,7 @@ def compare(live_source, profiles, filters_a, filters_b, b_is_rest=False):
     results = []
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         a_n = int(conn.execute(text(f"SELECT COUNT(*) FROM {table} WHERE ({a_where})"),
                                {**source_params, **a_params}).scalar_one())

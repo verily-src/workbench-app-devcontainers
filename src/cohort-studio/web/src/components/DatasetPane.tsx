@@ -201,7 +201,7 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center" }}>
+      <div className="dataset-toolbar">
         <div className="hero">
           <span className="count">
             {result ? (dataset.entityColumn && entityCount
@@ -217,7 +217,6 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
             · {dataset.source}
           </span>
         </div>
-        <div style={{ flex: 1 }} />
         <label className="entity-select">Count unique
           <select value={dataset.entityColumn ?? ""}
                   onChange={(e) => onUpdate({

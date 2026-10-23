@@ -356,7 +356,7 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .explore-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 5px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
 .explore-toggle button { padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-muted); font: inherit; cursor: pointer; }
 .explore-toggle button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px #0002; font-weight: 600; }
-.omop-summary-charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.omop-summary-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 10px; min-width: 0; }
 .omop-summary-charts .chart-card { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
 .join-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
 .column-settings { position: relative; }
@@ -634,3 +634,17 @@ button.link:hover { text-decoration: underline; }
 .omop-chat { max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
 .omop-proposal { margin-top: 12px; padding: 12px; background: var(--accent-tint); border-radius: var(--radius-sm); }
 .omop-proposal pre { overflow-x: auto; max-height: 240px; font-size: 11px; }
+
+.omop-results-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.omop-results-heading h3 { margin: 0; margin-right: auto; }
+.omop-results-heading .explore-toggle { margin: 0; }
+.omop-summary-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; }
+.omop-summary-tables caption { text-align: left; font-weight: 600; padding: 8px 0; }
+.dataset-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.dataset-toolbar .hero { flex: 1 1 360px; min-width: 0; margin: 0; }
+.dataset-toolbar .detail { overflow-wrap: anywhere; }
+.entity-select { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.entity-select select { width: 160px; max-width: 30vw; }
+
+.join-sql-editor { width: 100%; min-height: 160px; box-sizing: border-box; font-family: monospace; }
+.join-sql-preview { overflow: auto; max-height: 240px; }

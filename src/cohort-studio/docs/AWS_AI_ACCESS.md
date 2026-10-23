@@ -89,3 +89,14 @@ not prove model availability, inference acceptance, account-level model
 agreements, network reachability to inference endpoints, or AgentCore runtime
 behavior. Invoke APIs were not called. No Secrets Manager values or credential
 material were read.
+
+## Browser isolation and API calls
+
+The browser sidecar runs the browser; it is not the cohort agent or an AI
+gateway. Studio's backend calls the regional Bedrock Runtime API with IAM
+credentials. No Bedrock key or direct AWS access is required in the browser.
+A later AgentCore integration would call the deployed agent runtime API from
+the same backend. Browser isolation does not grant AWS IAM permissions or
+configure service networking. End-to-end operation in the isolated Workbench
+app remains unverified. Bedrock can use a private VPC endpoint where required:
+[AWS PrivateLink documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html).

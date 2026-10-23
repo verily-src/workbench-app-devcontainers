@@ -5,6 +5,7 @@ pandas>=2.2
 numpy>=1.26
 scipy>=1.14
 sqlalchemy>=2.0
+sqlglot>=26.0
 psycopg[binary]>=3.1
 duckdb>=1.1
 google-cloud-bigquery>=3.25

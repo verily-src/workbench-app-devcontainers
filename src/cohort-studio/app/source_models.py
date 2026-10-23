@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, TypeAdapter, field_validator,
+                      model_validator)
+
+import sql_source
 
 
 class DerivedSpec(BaseModel):
@@ -54,6 +57,28 @@ class TableSource(BaseModel):
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
+class SQLSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["sql"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    sql: str = Field(min_length=1, max_length=20_000)
+    name: str | None = Field(default=None, max_length=128)
+    settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
+
+    @field_validator("sql")
+    @classmethod
+    def validate_sql(cls, value: str) -> str:
+        return sql_source.normalize(value)
+
+    @model_validator(mode="after")
+    def validate_source(self):
+        if not self.sql.strip():
+            raise ValueError("SQL query is required.")
+        if self.name is not None and not self.name.strip():
+            raise ValueError("SQL source name cannot be blank.")
+        return self
+
+
 class SourceCondition(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     left: str = Field(min_length=1)
@@ -86,10 +111,12 @@ class DerivedSource(BaseModel):
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
-SourceRef = Annotated[Union[TableSource, JoinSource, DerivedSource], Field(discriminator="kind")]
+SourceRef = Annotated[Union[TableSource, SQLSource, JoinSource, DerivedSource],
+                      Field(discriminator="kind")]
 SourceStep.model_rebuild()
 JoinSource.model_rebuild()
 DerivedSource.model_rebuild()
+SQLSource.model_rebuild()
 SOURCE_ADAPTER = TypeAdapter(SourceRef)
 
 

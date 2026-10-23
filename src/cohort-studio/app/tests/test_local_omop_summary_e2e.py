@@ -120,5 +120,23 @@ def test_local_omop_summary_charts_follow_cohort_filters(page: Page,
     assert reset["persons"] == 20
     expect(summary_region).to_contain_text("20 of 100 persons")
     assert cohort_open_requests == []
-    page.evaluate("window.scrollTo(0, 0)")
+    summary_region.get_by_role("button", name="Table", exact=True).click()
+    expect(summary_region.get_by_role("table", name="Gender", exact=True)).to_contain_text("20")
+    summary_region.get_by_role("button", name="Charts", exact=True).click()
+    with page.expect_response(lambda response: response.url.endswith("/cohort/open")) as people_response:
+        summary_region.get_by_role("button", name="View people", exact=True).click()
+    assert people_response.value.json()["rows"] == 20
+    expect(explore.get_by_role("button", name="Tables")).to_have_attribute("aria-pressed", "true")
+    explore.get_by_role("button", name="OMOP").click()
+    page.get_by_label("Clinical table").select_option("person")
+    page.get_by_label("Restrict to current cohort", exact=True).uncheck()
+    page.get_by_label("Add concept names", exact=True).uncheck()
+    with page.expect_response(lambda response: response.url.endswith("/domain/open")) as table_response:
+        page.get_by_role("button", name="Open clinical table", exact=True).click()
+    assert table_response.value.request.post_data_json["spec"] is None
+    assert table_response.value.json()["rows"] == 100
+    expect(explore.get_by_role("button", name="Tables")).to_have_attribute("aria-pressed", "true")
+    explore.get_by_role("button", name="OMOP").click()
+    expect(summary_region).to_contain_text("20 of 100 persons", timeout=15000)
+    summary_region.scroll_into_view_if_needed()
     page.screenshot(path="/tmp/local-omop-summary.png", full_page=True)

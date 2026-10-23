@@ -92,8 +92,26 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
   const [sourceTable, setSourceTable] = useState("");
   const [sourceBusy, setSourceBusy] = useState(false);
   const [sourceError, setSourceError] = useState("");
+  const [sourceMode, setSourceMode] = useState<"table" | "sql">("table");
+  const [sqlName, setSqlName] = useState("");
+  const [sqlText, setSqlText] = useState("");
+  const [sqlPreview, setSqlPreview] = useState<Awaited<ReturnType<typeof api.previewSql>> | null>(null);
+  const [sqlPreviewInput, setSqlPreviewInput] = useState("");
+  const [sqlPreviewResourceId, setSqlPreviewResourceId] = useState("");
+  const [sqlBusy, setSqlBusy] = useState(false);
+  const [sqlError, setSqlError] = useState("");
+  const sqlRequest = useRef(0);
   const selectedSource = sources.find((source) =>
     `${source.kind}:${source.id}` === resourceKey);
+
+  const invalidateSqlPreview = () => {
+    sqlRequest.current += 1;
+    setSqlBusy(false);
+    setSqlPreview(null);
+    setSqlPreviewInput("");
+    setSqlPreviewResourceId("");
+    setSqlError("");
+  };
 
   useEffect(() => {
     if (!resourceKey && sources.length) {
@@ -116,6 +134,30 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
     });
     return () => { cancelled = true; };
   }, [resourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const attachOpenedSource = (opened: Awaited<ReturnType<typeof api.openSourceRef>>,
+                              title: string, sourceRef: SourceRef) => {
+    onSourceOpened(opened, title, sourceRef);
+    if (!baseId) {
+      setBaseId(opened.dataset_id);
+      setSteps([{ right_id: "", how: "left", alias: "joined", columns: null,
+        touched: false, pickCols: false,
+        conditions: [{ left: "", op: "=", right: "" }] }]);
+    } else {
+      setSteps((previous) => {
+        const add = (): StepState => ({
+          right_id: opened.dataset_id, how: "left", alias: title,
+          columns: null, touched: false, pickCols: false,
+          conditions: [{ left: "", op: "=", right: "" }],
+        });
+        const emptyIndex = previous.findIndex((step) => !step.right_id);
+        if (emptyIndex >= 0) return previous.map((step, i) =>
+          i === emptyIndex ? add() : step);
+        if (previous.length < MAX_STEPS) return [...previous, add()];
+        return previous;
+      });
+    }
+  };
 
   const addSourceTable = async () => {
     if (!selectedSource) return;
@@ -142,29 +184,53 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
           && ref.schema === sourceRef.schema && ref.table === sourceRef.table;
       }).length;
       const title = duplicateCount ? `${info.name} (${duplicateCount + 1})` : info.name;
-      onSourceOpened(opened, title, sourceRef);
-      if (!baseId) {
-        setBaseId(opened.dataset_id);
-        setSteps([{ right_id: "", how: "left", alias: "joined", columns: null,
-          touched: false, pickCols: false,
-          conditions: [{ left: "", op: "=", right: "" }] }]);
-      } else {
-        setSteps((previous) => {
-          const add = (): StepState => ({
-            right_id: opened.dataset_id, how: "left", alias: title,
-            columns: null, touched: false, pickCols: false,
-            conditions: [{ left: "", op: "=", right: "" }],
-          });
-          const emptyIndex = previous.findIndex((step) => !step.right_id);
-          if (emptyIndex >= 0) return previous.map((step, i) =>
-            i === emptyIndex ? add() : step);
-          if (previous.length < MAX_STEPS) return [...previous, add()];
-          return previous;
-        });
-      }
+      attachOpenedSource(opened, title, sourceRef);
       setSourceTable("");
     } catch (error) {
       setSourceError((error as Error).message);
+    } finally {
+      setSourceBusy(false);
+    }
+  };
+
+  const previewSql = async () => {
+    if (selectedSource?.kind !== "aurora") return;
+    const requestId = ++sqlRequest.current;
+    const resourceId = selectedSource.id;
+    const query = sqlText.trim();
+    setSqlBusy(true);
+    setSqlError("");
+    setSqlPreview(null);
+    try {
+      const result = await api.previewSql(resourceId, query);
+      if (requestId === sqlRequest.current) {
+        setSqlPreview(result);
+        setSqlPreviewInput(query);
+        setSqlPreviewResourceId(resourceId);
+      }
+    } catch (error) {
+      if (requestId === sqlRequest.current) setSqlError((error as Error).message);
+    } finally {
+      if (requestId === sqlRequest.current) setSqlBusy(false);
+    }
+  };
+
+  const addSqlSource = async () => {
+    const preview = sqlPreview;
+    if (!preview || sqlPreviewResourceId !== selectedSource?.id
+        || sqlPreviewInput !== sqlText.trim()) return;
+    setSourceBusy(true);
+    setSqlError("");
+    try {
+      const requestedName = sqlName.trim() || "SQL result";
+      const duplicateCount = datasets.filter((dataset) => dataset.title === requestedName).length;
+      const title = duplicateCount ? `${requestedName} (${duplicateCount + 1})` : requestedName;
+      const sourceRef: SourceRef = { ...preview.source_ref, name: title };
+      const opened = await api.openSourceRef(sourceRef);
+      attachOpenedSource(opened, title, sourceRef);
+      setSqlPreview(null);
+    } catch (error) {
+      setSqlError((error as Error).message);
     } finally {
       setSourceBusy(false);
     }
@@ -368,11 +434,20 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
 
       {sources.length > 0 && (
         <div className="join-source-picker">
-          <strong>Add a source table</strong>
+          <strong>Add a source</strong>
+          <div className="explore-toggle" role="group" aria-label="Source type">
+            <button type="button" aria-pressed={sourceMode === "table"}
+                    onClick={() => setSourceMode("table")}>Table</button>
+            <button type="button" aria-pressed={sourceMode === "sql"}
+                    disabled={selectedSource?.kind !== "aurora"}
+                    onClick={() => setSourceMode("sql")}>SQL</button>
+          </div>
           <div className="join-row">
             <label>Datasource
               <select aria-label="Join datasource" value={resourceKey}
-                      onChange={(e) => setResourceKey(e.target.value)}>
+                      disabled={sourceBusy}
+                      onChange={(e) => { invalidateSqlPreview(); setResourceKey(e.target.value);
+                        if (!e.target.value.startsWith("aurora:")) setSourceMode("table"); }}>
                 {sources.map((item) => (
                   <option key={`${item.kind}:${item.id}`} value={`${item.kind}:${item.id}`}>
                     {item.label}
@@ -380,7 +455,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
                 ))}
               </select>
             </label>
-            <label>Schema
+            {sourceMode === "table" && <><label>Schema
               <select aria-label="Join schema" value={sourceSchema}
                       onChange={(e) => { setSourceSchema(e.target.value); setSourceTable(""); }}>
                 <option value="">All schemas</option>
@@ -397,9 +472,45 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
             <button className="primary" disabled={!sourceTable || sourceBusy || busy || !canAddSource}
                     onClick={addSourceTable}>
               {sourceBusy ? "Adding…" : "Add table"}
-            </button>
+            </button></>}
           </div>
-          {sourceError && <div className="join-error" role="alert">{sourceError}</div>}
+          {sourceMode === "table" && sourceError && <div className="join-error" role="alert">{sourceError}</div>}
+          {sourceMode === "sql" && <div>
+            <div className="join-row">
+              <label>SQL source name
+                <input value={sqlName} maxLength={80} placeholder="e.g. visits" disabled={sourceBusy}
+                       onChange={(event) => setSqlName(event.target.value)} />
+              </label>
+            </div>
+            <label>SQL query
+              <textarea className="join-sql-editor" aria-label="SQL query" value={sqlText}
+                        disabled={sourceBusy} spellCheck={false} placeholder="SELECT … FROM schema.table"
+                        onChange={(event) => { invalidateSqlPreview(); setSqlText(event.target.value); }} />
+            </label>
+            <div className="join-row">
+              <button className="primary" disabled={!selectedSource || selectedSource.kind !== "aurora"
+                || !sqlText.trim() || sqlBusy || sourceBusy || busy || !canAddSource}
+                      onClick={previewSql}>
+                {sqlBusy ? "Previewing…" : "Preview SQL"}
+              </button>
+              {sqlPreview && <button disabled={sourceBusy || busy || !canAddSource}
+                onClick={addSqlSource}>{sourceBusy ? "Adding…" : "Add SQL source"}</button>}
+            </div>
+            {sqlError && <div className="join-error" role="alert">{sqlError}</div>}
+            {sqlPreview && <div className="join-sql-preview" aria-label="SQL preview">
+              <p>{sqlPreview.rows} preview rows{sqlPreview.truncated ? " (more rows available)" : ""}</p>
+              <table><thead><tr>{sqlPreview.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+                <tbody>{sqlPreview.sample.map((row, index) => <tr key={index}>
+                  {sqlPreview.columns.map((column, cell) => {
+                    const value = row[cell];
+                    const display = value == null ? "NULL"
+                      : typeof value === "object" ? JSON.stringify(value) : String(value);
+                    return <td key={`${column}-${cell}`}>{display}</td>;
+                  })}
+                </tr>)}</tbody>
+              </table>
+            </div>}
+          </div>}
         </div>
       )}
 
@@ -493,7 +604,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
                 <Fragment key={k}>
                   <div className={`join-cond${check?.problem ? " invalid" : ""}`}>
                     <span className="join-cond-label">{k === 0 ? "on" : "and"}</span>
-                    <select aria-label={`Left key step ${i + 1} condition ${k + 1}`}
+                    <select disabled={sourceBusy || busy} aria-label={`Left key step ${i + 1} condition ${k + 1}`}
                             value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
                       <option value="" disabled>Choose column</option>
                       {leftCols.map((col) => <option key={col}>{col}</option>)}
@@ -502,7 +613,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
                             onChange={(e) => setCondition(i, k, { op: e.target.value as JoinOp })}>
                       {OPS.map((o) => <option key={o}>{o}</option>)}
                     </select>
-                    <select aria-label={`Right key step ${i + 1} condition ${k + 1}`}
+                    <select disabled={sourceBusy || busy} aria-label={`Right key step ${i + 1} condition ${k + 1}`}
                             value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
                       <option value="" disabled>Choose column</option>
                       {rightCols.map((col) => <option key={col}>{col}</option>)}
@@ -577,10 +688,10 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
           <span className={`join-engine ${engine}`}
                 title={validation?.engine_reason ?? ""}>{ENGINE_LABEL[engine]}</span>
         )}
-        <button className="quiet" disabled={!valid || previewing} onClick={runPreview}>
+        <button className="quiet" disabled={!valid || previewing || sourceBusy || busy} onClick={runPreview}>
           {previewing ? "Previewing…" : "Preview"}
         </button>
-        <button className="primary" disabled={!valid || busy}
+        <button className="primary" disabled={!valid || busy || sourceBusy}
                 onClick={() => onJoin({ baseId, steps: payload() })}>
           {busy ? "Joining…" : "Join into new tab"}
         </button>

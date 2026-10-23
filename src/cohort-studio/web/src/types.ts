@@ -85,6 +85,7 @@ export interface DerivedSpec {
 }
 
 export type SourceRef =
+  | { kind: "sql"; resource_id: string; sql: string; name?: string }
   | { kind: "aurora" | "s3" | "bq" | "catalog"; resource_id: string;
       table: string; schema?: string; uuid?: string; settings?: ColumnSetting[] }
   | { kind: "derived"; base: SourceRef; spec: DerivedSpec;
@@ -93,6 +94,14 @@ export type SourceRef =
       source: SourceRef; how: JoinHow; conditions: JoinCondition[];
       columns: string[] | null; alias: string;
     }[] };
+
+export interface SqlPreview {
+  source_ref: Extract<SourceRef, { kind: "sql" }>;
+  columns: string[];
+  sample: unknown[][];
+  rows: number;
+  truncated: boolean;
+}
 
 export interface ChatMsg {
   role: "user" | "assistant";

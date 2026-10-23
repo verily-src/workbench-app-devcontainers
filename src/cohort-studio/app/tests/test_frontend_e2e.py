@@ -18,7 +18,12 @@ def expect_explore_view(page: Page, mode: str):
 
 
 def test_entity_count_and_column_settings(loaded_page: Page):
+    loaded_page.set_viewport_size({"width": 2048, "height": 1100})
     entity = loaded_page.locator(".entity-select select")
+    select_box = entity.bounding_box()
+    export_box = loaded_page.get_by_role("button", name="Export TSV", exact=True).bounding_box()
+    assert select_box and export_box
+    assert abs(select_box["y"] + select_box["height"] / 2 - export_box["y"] - export_box["height"] / 2) < 2
     entity.select_option("sample_id")
     expect(loaded_page.locator(".hero .count")).to_have_text("100", timeout=10000)
     expect(loaded_page.locator(".hero .detail")).to_contain_text(
@@ -275,6 +280,13 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     expect(summary.locator(".chart-card .title", has_text="Gender")).to_be_visible()
     expect(summary.locator(".chart-card .title", has_text="Age at index")).to_be_visible()
     expect(editor.get_by_role("button", name="Open cohort")).to_be_enabled()
+    grid_box = editor.locator(".omop-grid").bounding_box()
+    summary_box = summary.bounding_box()
+    assert grid_box and summary_box and summary_box["y"] >= grid_box["y"] + grid_box["height"]
+    summary.get_by_role("button", name="Table", exact=True).click()
+    expect(summary.get_by_role("table", name="Gender", exact=True)).to_be_visible()
+    expect(summary.get_by_role("table", name="Gender", exact=True)).to_contain_text("Female")
+    summary.get_by_role("button", name="Charts", exact=True).click()
     plot = summary.locator(".chart-card canvas").first.bounding_box()
     assert plot and plot["width"] > 100 and plot["height"] > 100
     expect(page.get_by_role("heading", name="Filters")).to_have_count(0)

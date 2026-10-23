@@ -12,7 +12,7 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
   browser flows. OpenCode GLM max frontend/backend review and the independent
   security recheck found no remaining blocker after fixes. See [review](SQL_SOURCE_REVIEW.md). Workflow demo is scoped in
   [DEMO_WORKFLOW_SCOPE.md](DEMO_WORKFLOW_SCOPE.md); no job submitted. These
-  follow-up changes are not deployed yet.
+  follow-up changes are deployed at `ad62261`, verified below.
 
 - Standing validation rule: always validate changes locally where possible before shipping or declaring them complete. Prefer local app/container E2E checks of the user outcome. Record results and limits; verify cloud-specific behavior in the live environment separately. This rule is also in root AGENTS.md, shared with Claude through CLAUDE.md.
 - Next update scoped 2026-10-23: source selection inside the join builder,
@@ -32,6 +32,20 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
 - See [README](../README.md), [architecture and decisions](architecture.md), [root agent rules](../../../AGENTS.md), and [agent next steps](AGENT_PLAN.md). Update architecture.md whenever a design decision changes.
 
 ## Verified delivery state
+
+- **2026-10-23 SQL/UI release deployed:** `ad62261767ed1c8d8c8074204c15d0e0fdc69429`
+  on Cohort_Studio_EC2_MCP via the existing update endpoint. Update SSM
+  `5202e26e-a9c9-4be8-ad39-807120ca318a`; live validation SSM
+  `d0653e3f-d480-48ba-b48a-cfb33912843e` succeeded and verified version.
+  Custom SQL preview returned 20 rows; opening selected 100 people with
+  samples, joining genotypes returned 20,000 rows and matched independent
+  SQL. Saved SQL join recipe reopened successfully. Preview request 14.28s,
+  source open 1.92s, join 0.60s, live query 0.13s, reopen 0.78s. These are
+  single-call timings, including request/setup costs, not a load benchmark.
+  Test-created dataset handles were closed. Final isolated local suite:
+  216 passed in 72.93s; final chart screenshot check also passed (4.89s).
+  Browser validation was local; live validation used app HTTP APIs inside
+  the Workbench container. Workflow demo remains scoped only.
 
 - **2026-10-23 release deployed:** `d7b01a834bbc0853d72944f9f57e863f0dc93549`
   on Cohort_Studio_EC2_MCP through the existing in-app update endpoint.

@@ -8,7 +8,7 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
 - Next update scoped 2026-10-23: source selection inside the join builder,
   schema-first key discovery and optional Jev/TypeSafe ranking, with bounded
   local probes and user-applied recommendations. See [scope](JEV_SCOPE.md).
-  Implemented and validated locally; deployment pending. User also requires a
+  Deployed and verified at `d7b01a8` on 2026-10-23. User also requires a
   simpler builder and real container/browser validation with local PostgreSQL
   as the Aurora substitute. Production storage remains Aurora.
 
@@ -22,6 +22,20 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
 - See [README](../README.md), [architecture and decisions](architecture.md), [root agent rules](../../../AGENTS.md), and [agent next steps](AGENT_PLAN.md). Update architecture.md whenever a design decision changes.
 
 ## Verified delivery state
+
+- **2026-10-23 release deployed:** `d7b01a834bbc0853d72944f9f57e863f0dc93549`
+  on Cohort_Studio_EC2_MCP through the existing in-app update endpoint.
+  Update SSM `db6b18c5-4af0-4fb9-a77a-3e785c450bc8`; live checks
+  `abb6457e-b588-4bec-8d05-0aab844a3f50` succeeded. Version verified.
+  Live Aurora recommendations returned person_id, sample_id and variant_id
+  in 0.41/0.05/0.06 seconds. Default summary: 90,085/100,000 persons in
+  3.21 seconds; impossible-age cohort: zero in 0.45 seconds. Condition 75344
+  cohort: 3,006 persons in 5.89 seconds, matching independent SQL. Gender
+  and age totals matched membership. These are single-call timings, not a
+  load benchmark. Browser checks were local; streamed Workbench browser
+  isolation remains unverified. No materialized views or OMOP summary cache
+  were added. TypeSafe remains unconfigured. Unrelated db.py and .cursor
+  edits were preserved and excluded from release.
 
 - 2026-10-23 source-first join update: source/schema/table picker can start from
   an empty workspace; key recommendations are explicit Apply actions, support
@@ -45,7 +59,7 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
   corrected. All three OMOP browser flows then passed in 4.13s. Container
   build passed; real container joins and filter-driven charts passed. Chart
   bounds at 1280/900 and stale-response guards passed browser checks.
-  OpenCode GLM max summary review found no blocker. Deployment pending.
+  OpenCode GLM max summary review found no blocker. Deployed as recorded below.
 
 - AWS access check 2026-10-23: developer profile `vwb-Developer-535002863113`
   can list KMS keys and Secrets Manager entries in `us-east-1`. No secret values

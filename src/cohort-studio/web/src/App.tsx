@@ -241,7 +241,8 @@ export default function App() {
         id: o.dataset_id,
         title: d.title || (d.source.kind === "join" ? "Joined dataset"
           : d.source.kind === "derived" ? d.source.spec.name
-            : d.source.table.split("/").pop()) || "view",
+            : d.source.kind === "sql" ? d.source.name || "SQL result"
+              : d.source.table.split("/").pop()) || "view",
         source: o.source,
         sourceRef: o.source_ref ?? d.source,
         queryScope: o.query_scope,

@@ -152,6 +152,7 @@ def _run(job, source, filters):
                 job["connection"] = conn.connection.driver_connection
             try:
                 conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
                 conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
                 _check(job, started)
                 result = conn.execution_options(yield_per=BATCH_ROWS).execute(text(sql), params)

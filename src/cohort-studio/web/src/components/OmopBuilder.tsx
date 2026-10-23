@@ -56,6 +56,7 @@ function Editor({ rid, active, palette, onOpen }: {
   const [demo, setDemo] = useState<OmopSpec["demographics"]>({});
   const [count, setCount] = useState<OmopCount | null>(null);
   const [summary, setSummary] = useState<OmopSummary | null>(null);
+  const [summaryView, setSummaryView] = useState<"charts" | "table">("charts");
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
   const [name, setName] = useState("OMOP cohort");
@@ -287,24 +288,6 @@ function Editor({ rid, active, palette, onOpen }: {
               }}>Apply proposed cohort</button>
             </div>}
           </section>
-          <section className="omop-card" aria-label="OMOP cohort summary">
-            <h3>Cohort summary</h3>
-            {summaryLoading && <span role="status">Updating charts…</span>}
-            {summaryError && <p role="alert" className="omop-error">{summaryError}</p>}
-            {summary && <>
-              <p>{summary.persons.toLocaleString()} of {summary.total_persons.toLocaleString()} persons</p>
-              <div className="omop-summary-charts">
-                {summaryCharts.map((chart) => (
-                  <ChartCard key={chart.title} spec={{ kind: "bar", x: chart.title }}
-                    result={{ kind: "bar", x: chart.title, data: chart.data }}
-                    palette={palette} kinds={["bar"]} readOnly
-                    compactCategoryLabels
-                    onTapCategory={() => undefined} onChangeKind={() => undefined}
-                    onToggleWide={() => undefined} onClose={() => undefined} />
-                ))}
-              </div>
-            </>}
-          </section>
           <section className="omop-card">
             <h3>Count and explore</h3>
             <button className="primary" onClick={countCohort}>Count cohort</button>
@@ -334,6 +317,35 @@ function Editor({ rid, active, palette, onOpen }: {
           </section>
         </div>
       </div>
+          <section className="omop-card" aria-label="OMOP cohort summary">
+            <div className="omop-results-heading"><h3>Cohort summary</h3>
+              <div className="explore-toggle" role="group" aria-label="Summary view">
+                <button aria-pressed={summaryView === "charts"} onClick={() => setSummaryView("charts")}>Charts</button>
+                <button aria-pressed={summaryView === "table"} onClick={() => setSummaryView("table")}>Table</button>
+              </div>
+              <button disabled={!currentCount || !name.trim()} onClick={openCohort}>View people</button>
+            </div>
+            {summaryLoading && <span role="status">Updating charts…</span>}
+            {summaryError && <p role="alert" className="omop-error">{summaryError}</p>}
+            {summary && <>
+              <p>{summary.persons.toLocaleString()} of {summary.total_persons.toLocaleString()} persons</p>
+              {summaryView === "charts" ? <div className="omop-summary-charts">
+                {summaryCharts.map((chart) => (
+                  <ChartCard key={chart.title} spec={{ kind: "bar", x: chart.title }}
+                    result={{ kind: "bar", x: chart.title, data: chart.data }}
+                    palette={palette} kinds={["bar"]} readOnly
+                    compactCategoryLabels
+                    onTapCategory={() => undefined} onChangeKind={() => undefined}
+                    onToggleWide={() => undefined} onClose={() => undefined} />
+                ))}
+              </div> : <div className="omop-summary-tables">{summaryCharts.map((chart) => (
+                <table key={chart.title} aria-label={chart.title} className="omop-attrition">
+                  <caption>{chart.title}</caption><thead><tr><th>Category</th><th>Persons</th></tr></thead>
+                  <tbody>{chart.data.map((row, i) => <tr key={i}><td>{row.category}</td><td>{row.value.toLocaleString()}</td></tr>)}</tbody>
+                </table>
+              ))}</div>}
+            </>}
+          </section>
     </fieldset>}
   </>;
 }

@@ -86,7 +86,10 @@ def apply(dataset_id, settings):
                          f"FROM ({live['sql']}) AS src")
                 try:
                     with db.get_engine_for_resource(live["resource_id"]).begin() as conn:
-                        conn.execute(text("SET LOCAL statement_timeout = 15000"))
+                        if conn.dialect.name == "postgresql":
+                            conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                            conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+                            conn.exec_driver_sql("SET LOCAL statement_timeout = 15000")
                         bounds = conn.execute(text(check), live.get("params", {})).one()
                 except DataError as e:
                     raise ValueError(f"Column {name} contains non-numeric or out-of-range values in the database.") from e

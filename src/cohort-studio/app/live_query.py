@@ -70,6 +70,7 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
     result = []
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         for profile in profiles:
             entry = dict(profile)
@@ -201,6 +202,7 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
     order = "to_jsonb(live)::text"
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         total = int(_query(conn, live_source,
                            f"SELECT COUNT(*) FROM {table}", {}).scalar_one())
@@ -276,6 +278,7 @@ def fetch_frame(live_source: dict, filters: list[dict] | None = None,
     table = f"({live_source['sql']}) AS live"
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         rows = _query(conn, live_source,
                       f"SELECT {select} FROM {table} WHERE {where} LIMIT :limit",

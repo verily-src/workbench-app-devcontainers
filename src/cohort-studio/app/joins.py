@@ -309,6 +309,8 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     try:
         with engine.begin() as conn:
             if conn.dialect.name == "postgresql":
+                conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+                conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
                 conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
 
             def scalar(q: str) -> int:

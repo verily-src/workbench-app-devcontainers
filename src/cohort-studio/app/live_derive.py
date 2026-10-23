@@ -123,6 +123,8 @@ def preview(live_source: dict) -> tuple[pd.DataFrame, bool]:
     params = {**live_source.get("params", {}), "_studio_preview_limit": cap + 1}
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         if conn.dialect.name == "postgresql":
+            conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
             conn.exec_driver_sql("SET LOCAL statement_timeout = 15000")
         frame = pd.read_sql_query(text(sql), conn, params=params)
     frame = frame.rename(columns={physical: logical

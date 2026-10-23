@@ -4,6 +4,16 @@ Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Active project
 
+- Follow-up 2026-10-23: charts below cohort filters, chart/table result toggle,
+  independent clinical-table opens, and aligned dataset toolbar implemented
+  locally. Custom read-only Aurora SQL sources in the join builder are
+  implemented, including preview, full-source joins and durable saved recipes.
+  Final isolated suite: **216 passed in 72.93s**, including three real-container
+  browser flows. OpenCode GLM max frontend/backend review and the independent
+  security recheck found no remaining blocker after fixes. See [review](SQL_SOURCE_REVIEW.md). Workflow demo is scoped in
+  [DEMO_WORKFLOW_SCOPE.md](DEMO_WORKFLOW_SCOPE.md); no job submitted. These
+  follow-up changes are not deployed yet.
+
 - Standing validation rule: always validate changes locally where possible before shipping or declaring them complete. Prefer local app/container E2E checks of the user outcome. Record results and limits; verify cloud-specific behavior in the live environment separately. This rule is also in root AGENTS.md, shared with Claude through CLAUDE.md.
 - Next update scoped 2026-10-23: source selection inside the join builder,
   schema-first key discovery and optional Jev/TypeSafe ranking, with bounded

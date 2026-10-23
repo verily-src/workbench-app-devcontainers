@@ -400,3 +400,30 @@ The summary runs in a read-only repeatable-read transaction with a total query
 budget. Browser request cancellation and stale-response guards prevent an old
 filter selection from replacing a newer chart. This browser cancellation alone
 does not guarantee immediate cancellation of an already-running database query.
+
+### Cohort result presentation (2026-10-23)
+
+Cohort criteria and demographics stay above the result area. The result area
+spans the workspace and switches between charts and aggregate tables. Opening
+cohort people is separate from opening a selected clinical table; the latter
+can use the current cohort or the whole table. Dataset count controls and
+export actions use one wrapping, aligned toolbar.
+
+The proposed workflow demo uses the existing Workbench workflow/S3 handoff.
+It is scoped, not implemented or submitted; see [demo scope](DEMO_WORKFLOW_SCOPE.md).
+
+### Custom Aurora SQL sources (2026-10-23)
+
+The join builder accepts a named SQL source through Preview then Add. The
+backend validates a single read-only PostgreSQL query with a SQL parser,
+schema-qualified table names, and an allowlist of built-in functions. DML,
+DDL, locking, system schemas, external databases, custom types/functions and
+schema-qualified operators are rejected. Each execution uses a read-only
+transaction, a controlled search path and a statement timeout. Preview is
+bounded; same-Aurora joins and live analytics query the full source.
+
+The saved source recipe stores resource, normalized SQL, name and column
+settings. Reopen validates the query again using the same resource resolver
+as normal Aurora sources. A preview is not an authorization token. Editing
+a query invalidates its preview. This is an Aurora SQL editor, not an Athena
+connector. Existing resource permissions remain authoritative.

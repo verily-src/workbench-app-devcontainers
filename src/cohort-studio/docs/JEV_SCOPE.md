@@ -1,5 +1,42 @@
 # Jev fit and evaluation scope
 
+## Join recommendation update — 2026-10-23
+
+User requested source selection inside the join builder and Jev-assisted key
+recommendations. This is now the proposed first Jev use, superseding the earlier
+intent-routing priority below. Implementation is in progress; deployment and
+live model inference are not verified.
+
+- Select resource, schema and tables directly without loading dataset tabs.
+  Start with Aurora; retain existing loaded/cross-source join behavior.
+- Read accessible column types, PK/FK/unique constraints, indexes and table
+  descriptions. Declared relationships take precedence over model suggestions.
+- Use Jev typed choices to classify candidate columns as person, sample,
+  variant, clinical event, concept, other or unknown, then rank a bounded list
+  of compatible candidate pairs. Include abstention. Confidence is model
+  confidence, not measured match rate or proof of a valid relationship.
+- Inspect one projected row locally as a cheap first probe. `LIMIT 1` does not
+  establish uniqueness, overlap or cardinality. If needed, use capped samples
+  and indexed existence probes with read-only statement timeouts. Avoid full
+  distinct counts and full joins during recommendation. Mark sampled evidence.
+- Send schema metadata and local aggregate/type-shape summaries to the decision
+  service, not raw records or identifiers. Use a separate validated decision
+  adapter, server credentials, strict Pydantic models and existing resource access.
+- Return candidate IDs, key pairs, evidence, confidence and any bridge path.
+  Show up to three suggestions; users apply/edit keys and choose join type.
+  No match means no recommendation. Bridge suggestions use discovered relations,
+  never invented tables. Backend SQL generation remains deterministic.
+- Cache within the resource/access context by schema signature and model version,
+  with TTL, refresh and invalidation after imports. Do not depend on dataset IDs.
+- Validate person→samples→genotypes→variants, composite keys, misleading matching
+  names, unrelated cost_event_id/variant_id, null samples, duplicates, missing
+  indexes, timeouts, unavailable Jev and backend restarts at API/browser boundaries.
+
+Rechecked TypeSafe introduction and Choice documentation on 2026-10-23. The
+model supports typed options and probabilities; local evidence must establish
+database facts. SQL editing, autonomous execution and workflow actions remain
+outside this update.
+
 ## Finding
 
 Assumption: “Jev” means TypeSafe’s Jev System One decision model. It fits a small classifier or chooser in Cohort Studio. It does not fit as a replacement for the cohort assistant or the OMOP query engine.

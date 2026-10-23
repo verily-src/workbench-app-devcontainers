@@ -157,6 +157,13 @@ export interface JoinSuggestion {
   score: number;
 }
 
+export interface JoinRecommendation {
+  keys: { left: string; right: string }[];
+  method: "foreign_key" | "exact_name" | "jev";
+  evidence: string[];
+  confidence: number | null;
+}
+
 export interface Cohort {
   name: string;
   filters: Filter[];

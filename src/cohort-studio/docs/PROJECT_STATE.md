@@ -1,8 +1,15 @@
 # Cohort Studio project state
 
-Updated 2026-10-22. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
+Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
 
 ## Active project
+
+- Next update scoped 2026-10-23: source selection inside the join builder,
+  schema-first key discovery and optional Jev/TypeSafe ranking, with bounded
+  local probes and user-applied recommendations. See [scope](JEV_SCOPE.md).
+  Implemented and validated locally; deployment pending. User also requires a
+  simpler builder and real container/browser validation with local PostgreSQL
+  as the Aurora substitute. Production storage remains Aurora.
 
 - Primary product goal (user clarification): OMOP plus multimodal joins, built visually like BI tools, through a SQL editor, or by an isolated assistant; all routes create one reusable data model/cube. Logical model first, optional cached extract. SQL editor and isolated join agent are planned, not delivered.
 
@@ -14,6 +21,22 @@ Updated 2026-10-22. This is the shared project memory for Codex, Claude, Cursor,
 - See [README](../README.md), [architecture and decisions](architecture.md), [root agent rules](../../../AGENTS.md), and [agent next steps](AGENT_PLAN.md). Update architecture.md whenever a design decision changes.
 
 ## Verified delivery state
+
+- 2026-10-23 source-first join update: source/schema/table picker can start from
+  an empty workspace; key recommendations are explicit Apply actions, support
+  composite foreign keys and later-step aliases, and retain manual joins.
+  Optional Jev uses TypeSafe credentials plus an explicit model; schema and
+  non-null flags only, no row values. No credential is set here, so live Jev
+  inference remains unverified. Codex frontend and OpenCode GLM max backend
+  reviews found no release blocker; review follow-ups were fixed.
+  Isolated release snapshot with committed `db.py`: **190 passed in 57.86s**,
+  no skips, including the real container browser flow. PostgreSQL 16 container
+  flow selected four tables inside the builder, previewed/executed joins, and
+  verified 2,000 rows, 100 people and 20 variants. Local stack is available at
+  `http://127.0.0.1:8081` (Compose project `cohort-local-validation`). Workbench
+  browser isolation and live Jev are not covered by this result. See
+  [local validation](LOCAL_VALIDATION.md). User requested automatic OMOP charts
+  after this work; clarifying whether before or after Open cohort.
 
 - Join expiry recovery (2026-10-22): structured `DATASET_EXPIRED` response; browser reopens durable inputs and retries once, preserving tab configuration. Non-expiry errors do not retry; uploads require re-upload. API suite: 39 passed. Browser suite: 14 passed, including failure cleanup and repeated same-label results querying a new ID. Codex and OpenCode GLM max reviews passed after the repeated-result fix. Deployed and verified at `4226cb9`: SSM `1897f444-ec13-4a0d-a03b-ecec80c99a1e` reproduced a structured expired handle, reopened sources, and joined samples to OMOP person in Aurora with 5,000 rows, no truncation. Test-created handles were closed. Browser automation used local mocked API flows; live Aurora validation used the deployed HTTP API. The screenshot's `cost.cost_event_id = variants.variant_id` is not a valid relationship. Use person → samples (`person_id`) → genotypes (`sample_id`) → variants (`variant_id`). Correct full-source genetics joins succeeded in live Aurora (1,000,000 result rows; bounded preview). Earlier statement timeout was not reproduced and is not claimed fixed. The global eight-dataset cache can evict open tab handles; diagnostic opens may have contributed.
 

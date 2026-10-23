@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: cohort_local
+      POSTGRES_USER: cohort_local
+      POSTGRES_PASSWORD: cohort_local
+    ports:
+      - "127.0.0.1:${STUDIO_LOCAL_PG_PORT:-55432}:5432"
+    volumes:
+      - cohort-local-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cohort_local -d cohort_local"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    environment:
+      LOCAL_DB_URL: postgresql://cohort_local:cohort_local@postgres:5432/cohort_local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "scripts/local_seed.py"]
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    environment:
+      LOCAL_DB_URL: postgresql://cohort_local:cohort_local@postgres:5432/cohort_local
+      LOCAL_RESOURCE_ID: local-postgres
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      STUDIO_JEV_MODEL: ${STUDIO_JEV_MODEL:-}
+    ports:
+      - "127.0.0.1:${STUDIO_LOCAL_PORT:-8080}:8080"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/api/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  cohort-local-db:

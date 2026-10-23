@@ -1,6 +1,6 @@
 import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
-  ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinValidation, QueryResult, Source,
+  ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount,
 } from "./types";
@@ -243,6 +243,10 @@ export const api = {
     request<JoinSuggestion[]>(
       `/api/datasets/join/suggest?left_id=${encodeURIComponent(leftId)}`
       + `&right_id=${encodeURIComponent(rightId)}`),
+
+  recommendJoin: (left: SourceRef, right: SourceRef) =>
+    request<{ candidates: JoinRecommendation[]; warnings: string[] }>(
+      "/api/joins/recommend", post({ left, right })),
 
   compare: (datasetId: string, filtersA: Filter[], filtersB: Filter[],
             bIsRest: boolean) =>

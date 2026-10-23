@@ -7,6 +7,7 @@ from sqlalchemy import text
 from pydantic import ValidationError
 
 import genetics_demo
+import db
 
 
 def test_demo_load_appears_in_schema_browser_and_joins_omop(client, engine, tmp_path):
@@ -19,6 +20,8 @@ def test_demo_load_appears_in_schema_browser_and_joins_omop(client, engine, tmp_
         finally:
             raw.close()
         assert counts == {"samples": 2, "variants": 20, "genotypes": 40}
+        db.list_aurora_tables.invalidate()
+        db.fetch_aurora_table.invalidate()
         listed = client.get("/api/tables", params={"kind": "aurora", "resource_id": "omopdb"})
         assert listed.status_code == 200
         found = {(row["schema"], row["table"]) for row in listed.json()}

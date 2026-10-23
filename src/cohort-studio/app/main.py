@@ -38,6 +38,7 @@ import column_settings
 import live_query
 import query_cache
 import export_jobs
+import join_discovery
 from source_models import ColumnSetting, DerivedSpec, SourceRef, source_dict
 
 logging.basicConfig(level=logging.INFO, force=True)
@@ -555,6 +556,21 @@ def validate_join(req: JoinRequest):
     base_id, steps, _ = _join_pipeline(req)
     return joins.validate(base_id, steps)
 
+@app.post("/api/joins/recommend")
+def recommend_join(req: join_discovery.RecommendRequest):
+    try:
+        result = join_discovery.recommend(req)
+        if not result.candidates:
+            result.warnings.append("No compatible join-key candidate was found.")
+        return result.model_dump(mode="json")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        original = getattr(e, "orig", None) or e
+        if getattr(original, "sqlstate", None) == "57014":
+            raise HTTPException(504, "Join discovery timed out.")
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+
 @app.get("/api/datasets/join/suggest")
 def suggest_join_keys(left_id: str, right_id: str):
     try:
@@ -827,6 +843,7 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
     db.list_aurora_tables.invalidate()
     db.fetch_aurora_table.invalidate()
     query_cache.invalidate_resource(req.resource_id)
+    join_discovery.invalidate_resource(req.resource_id)
     lineage.record(engine, "materialized", "table", req.table,
                    payload={"resource_id": req.resource_id, "rows": rows,
                             "from": ds["source"]})

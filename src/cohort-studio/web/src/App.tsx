@@ -513,6 +513,7 @@ export default function App() {
           Upload CSV/TSV
         </label>
 
+        {!showJoin && <>
         <div className="section-label">Filters</div>
 
         {activeDs ? (
@@ -527,6 +528,7 @@ export default function App() {
           </div>
         )}
 
+        </>}
         <div className="section-label">Saved views</div>
         <SavedViews sources={sources} datasets={datasets} active={active}
                     onLoadView={loadView} />
@@ -585,7 +587,7 @@ export default function App() {
                            onToggleSubscribe={alerts.toggle} />
           ) : view === "lineage" ? (
             <LineageView />
-          ) : datasets.length === 0 ? (
+          ) : datasets.length === 0 && !showJoin ? (
             <div className="empty">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
                    stroke="#9095a0" strokeWidth="1.5">
@@ -595,10 +597,11 @@ export default function App() {
                 <rect x="3" y="16" width="7" height="5" rx="1.5" />
               </svg>
               <div className="title">No data loaded</div>
-              <div className="caption">
-                Choose a datasource in the sidebar, or upload a CSV.
-                Each table opens in its own tab.
-              </div>
+              {sources.length > 0 && (
+                <button className="primary" onClick={() => setShowJoin(true)}>
+                  ⋈ Join tables
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -613,15 +616,18 @@ export default function App() {
                     }}>✕</button>
                   </span>
                 ))}
-                {datasets.length >= 2 && (
+                {(datasets.length >= 2 || sources.length > 0) && (
                   <button className="tab-join"
                           onClick={() => setShowJoin((v) => !v)}>
                     ⋈ Join
                   </button>
                 )}
               </div>
-              {showJoin && datasets.length >= 2 && (
-                <JoinPanel datasets={datasets} busy={Boolean(activity)}
+              {showJoin && (
+                <JoinPanel datasets={datasets} sources={sources} busy={Boolean(activity)}
+                           onSourceOpened={(opened, title, sourceRef) =>
+                             openResult(opened, title, sourceRef, undefined,
+                               { forceNewTab: true })}
                            onJoin={doJoin} onClose={() => setShowJoin(false)} />
               )}
               {dependentJob && !showJoin && (
@@ -636,7 +642,7 @@ export default function App() {
                   </span>
                 </div>
               )}
-              {activeDs && (!showJoin || datasets.length < 2) && (
+              {activeDs && !showJoin && (
                 <DatasetPane
                   dataset={activeDs}
                   palette={palette}

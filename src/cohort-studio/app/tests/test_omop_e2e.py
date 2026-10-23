@@ -209,7 +209,7 @@ def test_omop_assistant_proposes_and_opens_real_cohort(
         "model": "test/deterministic", "base_url": "https://example.invalid"})
 
     def fake_provider(_provider, _model, _key, _base, _system, _messages,
-                      tool_impls, tool_schemas=None):
+                      tool_impls, tool_schemas=None, vertex_config=None):
         assert [s["function"]["name"] for s in tool_schemas][:3] == [
             "search_concepts", "count_cohort", "propose_cohort"]
         found = json.loads(tool_impls["search_concepts"]("192671", "condition"))

@@ -1,0 +1,12 @@
+.venv
+web/node_modules
+web/dist
+app/static
+**/__pycache__
+**/.pytest_cache
+**/test-results
+**/studio_config.json
+**/.env
+**/.env.*
+**/*.log
+.git

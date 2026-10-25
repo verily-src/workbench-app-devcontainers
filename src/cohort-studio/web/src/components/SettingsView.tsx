@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { KnowledgeBase } from "./KnowledgeBase";
 import { api, AppConfig, MCPConnection, Provider } from "../api";
 import { PALETTE_NAMES, getPalette } from "../palette";
 
@@ -17,6 +18,8 @@ const PROVIDERS: { id: Provider; label: string; keyLabel: string;
     placeholder: "", models: [] },
   { id: "vertexai", label: "Google Vertex AI", keyLabel: "",
     placeholder: "", models: [] },
+  { id: "openweight", label: "Openweight (self-hosted)", keyLabel: "Optional API key",
+    placeholder: "Optional", models: [] },
 ];
 
 export function SettingsView(
@@ -49,6 +52,7 @@ export function SettingsView(
   const providerState = cfg?.llm.providers[provider];
   const usesBedrockIam = provider === "bedrock";
   const usesVertexAdc = provider === "vertexai";
+  const usesOpenweight = provider === "openweight";
 
   const save = async () => {
     setStatus("Saving…");
@@ -68,6 +72,17 @@ export function SettingsView(
       setStatus("Saved.");
     } catch (e) {
       setStatus(`Save failed: ${(e as Error).message}`);
+    }
+  };
+
+  const removeApiKey = async () => {
+    setStatus("Removing API key…");
+    try {
+      const updated = await api.updateConfig({ provider, api_key: "" });
+      setCfg(updated);
+      setStatus("API key removed.");
+    } catch (e) {
+      setStatus(`Key removal failed: ${(e as Error).message}`);
     }
   };
 
@@ -105,17 +120,33 @@ export function SettingsView(
         <input
           type="text"
           list="model-suggestions"
-          placeholder={provider === "anthropic"
-            ? "claude-opus-5" : "enter the provider's model id"}
+          placeholder={provider === "anthropic" ? "claude-opus-5"
+            : usesOpenweight ? "Set in app environment"
+              : "enter the provider's model id"}
           value={model}
           onChange={(e) => setModel(e.target.value)}
+          readOnly={usesOpenweight}
         />
         {meta.models.length > 0 && (
           <datalist id="model-suggestions">
             {meta.models.map((m) => <option key={m} value={m} />)}
           </datalist>
         )}
-        {usesVertexAdc ? (
+        {usesOpenweight ? (
+          <>
+            <dl className="settings-caption">
+              <div><dt>Endpoint</dt><dd>{providerState?.endpoint_host || "Not configured"}</dd></div>
+              <div><dt>Authentication</dt><dd>Optional server key</dd></div>
+            </dl>
+            {!providerState?.configured && <p className="settings-hint" role="status">
+              Set STUDIO_OPENWEIGHT_BASE_URL and STUDIO_OPENWEIGHT_MODEL in the app environment.
+            </p>}
+            <div className="field-label">Optional API key</div>
+            <input type="password" placeholder={providerState?.api_key_set
+              ? "Enter a new key to replace" : "Optional"} value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)} />
+          </>
+        ) : usesVertexAdc ? (
           <>
             <dl className="settings-caption">
               <div><dt>Project</dt><dd>{providerState?.project || "Not configured"}</dd></div>
@@ -144,8 +175,7 @@ export function SettingsView(
               {meta.keyLabel}
               {providerState?.api_key_set && (
                 <span className="settings-hint">
-                  {" "}· configured ({providerState.api_key_hint}, via{" "}
-                  {providerState.api_key_source})
+                  {" "}· configured ({providerState.api_key_source})
                 </span>
               )}
             </div>
@@ -158,10 +188,15 @@ export function SettingsView(
             />
           </>
         )}
+        {!usesBedrockIam && !usesVertexAdc && providerState?.api_key_set && (
+          <button className="quiet" onClick={removeApiKey}>Remove API key</button>
+        )}
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
           <button className="primary" onClick={save}>Save</button>
           <button onClick={testLlm}
-                  disabled={usesVertexAdc
+                  disabled={usesOpenweight
+                    ? !providerState?.configured || provider !== cfg.llm.provider
+                    : usesVertexAdc
                     ? !providerState?.configured || !providerState?.model
                       || provider !== cfg.llm.provider
                       || model !== providerState?.model
@@ -276,6 +311,7 @@ export function SettingsView(
         </div>
       </div>
 
+      <KnowledgeBase />
       {status && <div className="settings-status">{status}</div>}
     </div>
   );

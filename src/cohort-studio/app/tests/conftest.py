@@ -63,6 +63,10 @@ def _pg_bin():
 
 @pytest.fixture(scope="session")
 def pg():
+    external_url = os.environ.get("STUDIO_TEST_DATABASE_URL")
+    if external_url:
+        yield {"dsn": external_url, "url": lambda _name: external_url}
+        return
     bin_dir = _pg_bin()
     if bin_dir is None:
         pytest.skip("PostgreSQL binaries not found; set STUDIO_PG_BIN")

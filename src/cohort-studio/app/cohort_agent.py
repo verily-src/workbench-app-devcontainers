@@ -1,8 +1,11 @@
+import knowledge
+import agent_sessions
 import functools
 import json
 from datetime import date, datetime
 
 import agent
+import agent_instructions
 import config
 import db
 import llm
@@ -160,6 +163,10 @@ def build_tools(resource_id: str, info: dict, current_spec: dict | None,
 
 def _system_prompt(resource_id: str, info: dict, spec: dict) -> str:
     return (
+        agent_instructions.system_guidance(
+            "bioinformatics and OMOP cohort data science",
+            tool_schemas=COHORT_TOOL_SCHEMAS,
+        ) + "\n\n"
         "You are the cohort-building assistant inside Workbench Cohort "
         "Studio. You help the user build a person-level OMOP cohort and "
         "inspect running Workbench workflows and apps.\n\n"
@@ -195,7 +202,7 @@ def _system_prompt(resource_id: str, info: dict, spec: dict) -> str:
 
 def chat(resource_id: str, info: dict, message: str,
          history: list[dict] | None = None,
-         current_spec: dict | None = None) -> dict:
+         current_spec: dict | None = None, on_step=None) -> dict:
 
     cfg = config.get_llm_config()
     provider = cfg["provider"]
@@ -222,20 +229,33 @@ def chat(resource_id: str, info: dict, message: str,
         if item.get("role") in ("user", "assistant") and item.get("content")
     ]
     messages.append({"role": "user", "content": message})
-    system = _system_prompt(resource_id, info, spec)
+    system = _system_prompt(resource_id, info, spec) + knowledge.context(message)
+    stored_history = agent_sessions.start(system, cfg, message)
+    if stored_history is not None:
+        messages = [
+            {"role": item["role"], "content": item["content"]}
+            for item in stored_history[-agent.MAX_HISTORY:]
+            if item.get("role") in ("user", "assistant") and item.get("content")
+        ]
+        messages.append({"role": "user", "content": message})
 
-    if provider == "anthropic":
-        reply, usage = agent._run_anthropic(cfg, system, messages, wrapped)
-    elif provider == "bedrock":
+    step = None
+    if stored_history is not None or on_step is not None:
+        def step(event):
+            agent_sessions.event(event)
+            if on_step:
+                on_step(event)
+
+    if provider == "bedrock":
         out = agent.run_bedrock(
-            cfg, system, messages, impls, COHORT_TOOL_SCHEMAS)
-        reply, usage = out["reply"], out["usage"]
+            cfg, system, messages, impls, COHORT_TOOL_SCHEMAS, on_step=step)
     else:
         try:
             out = providers.run(
                 provider, cfg["model"], cfg["api_key"], cfg.get("base_url"),
                 system, messages, impls, tool_schemas=COHORT_TOOL_SCHEMAS,
-                vertex_config=(cfg if provider == "vertexai" else None))
+                vertex_config=(cfg if provider == "vertexai" else None),
+                **({"on_step": step} if step else {}))
         except vertexai_auth.VertexAuthUnavailable as exc:
             raise llm.LLMNotConfigured(str(exc)) from exc
         reply, usage = out["reply"], out["usage"]
@@ -252,8 +272,8 @@ def chat(resource_id: str, info: dict, message: str,
                        if str(concept_id) in final_names}
     else:
         final_names = {}
-    return {"reply": reply, "spec": final_spec,
+    return {"reply": out["reply"], "spec": final_spec,
             "count": final_count, "concept_names": final_names,
             "reason": state.get("reason"),
-            "tool_calls": tool_calls, "provider": provider,
-            "model": cfg["model"], "usage": usage}
+            "tool_calls": out.get("tool_calls", tool_calls), "provider": provider,
+            "model": cfg["model"], "usage": out["usage"]}

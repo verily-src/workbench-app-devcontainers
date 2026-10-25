@@ -1,3 +1,4 @@
+import knowledge
 import functools
 import json
 import logging
@@ -5,6 +6,8 @@ import logging
 import pandas as pd
 
 import bedrock
+import agent_sessions
+import agent_instructions
 import config
 import datasets
 import llm
@@ -143,6 +146,10 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
         else:
             lines.append(f"- {col['name']} (free text, not filterable)")
     return (
+        agent_instructions.system_guidance(
+            "bioinformatics, data science, and data engineering",
+            tool_schemas=providers.TOOL_SCHEMAS,
+        ) + "\n\n"
         "You are the data assistant inside Cohort Studio, a cohort "
         "exploration app. The user is looking at one dataset and your "
         "tools act directly on their screen.\n\n"
@@ -159,7 +166,7 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
     )
 
 def chat(dataset_id: str, message: str, history: list[dict],
-         filters: list[dict], charts: list[dict]) -> dict:
+         filters: list[dict], charts: list[dict], on_step=None) -> dict:
     cfg = config.get_llm_config()
     provider = cfg["provider"]
     llm.validate_config(cfg)
@@ -169,7 +176,10 @@ def chat(dataset_id: str, message: str, history: list[dict],
     columns = datasets.profile_columns(df)
     ui = {"filters": list(filters), "charts": list(charts)}
     actions: list[str] = []
-    system = _system_prompt(ds["source"], df, columns, ui)
+    system = _system_prompt(ds["source"], df, columns, ui) + knowledge.context(message)
+    stored_history = agent_sessions.start(system, cfg, message)
+    if stored_history is not None:
+        history = stored_history
 
     raw_tools = build_tools(df, columns, ui, actions)
     tool_calls: list[str] = []
@@ -191,51 +201,40 @@ def chat(dataset_id: str, message: str, history: list[dict],
     ]
     messages.append({"role": "user", "content": message})
 
-    if provider == "anthropic":
-        reply, usage = _run_anthropic(cfg, system, messages, wrapped)
-    elif provider == "bedrock":
+    step = None
+    if stored_history is not None or on_step is not None:
+        def step(event):
+            agent_sessions.event(event)
+            if on_step:
+                on_step(event)
+
+    if provider == "bedrock":
         out = run_bedrock(cfg, system, messages, tool_impls,
-                          providers.TOOL_SCHEMAS)
-        reply, usage = out["reply"], out["usage"]
+                          providers.TOOL_SCHEMAS, on_step=step)
     else:
         try:
             out = providers.run(
                 provider, cfg["model"], cfg["api_key"], cfg["base_url"],
                 system, messages, tool_impls,
-                vertex_config=(cfg if provider == "vertexai" else None))
+                vertex_config=(cfg if provider == "vertexai" else None),
+                **({"on_step": step} if step else {}))
         except vertexai_auth.VertexAuthUnavailable as exc:
             raise llm.LLMNotConfigured(str(exc)) from exc
-        reply, usage = out["reply"], out["usage"]
 
-    return {"reply": reply, "filters": ui["filters"], "charts": ui["charts"],
+    return {"reply": out["reply"], "filters": ui["filters"], "charts": ui["charts"],
             "actions": actions, "provider": provider, "model": cfg["model"],
-            "usage": usage, "tool_calls": tool_calls}
+            "usage": out["usage"], "tool_calls": out.get("tool_calls", tool_calls)}
 
 def run_bedrock(cfg: dict, system: str, messages: list[dict],
-                tool_impls: dict, tool_schemas: list[dict]) -> dict:
+                tool_impls: dict, tool_schemas: list[dict], on_step=None) -> dict:
 
     return bedrock.run(cfg["model"], cfg.get("region"), system, messages,
-                       tool_schemas, tool_impls)
+                       tool_schemas, tool_impls, on_step=on_step)
 
 def _run_anthropic(cfg: dict, system: str, messages: list[dict],
-                   wrapped: list) -> tuple[str, dict]:
-    import anthropic
-    from anthropic import beta_tool
-
-    client = anthropic.Anthropic(api_key=cfg["api_key"])
-    tools = [beta_tool(fn) for fn in wrapped]
-    runner = client.beta.messages.tool_runner(
-        model=cfg["model"], max_tokens=8192, system=system,
-        tools=tools, messages=messages)
-    final = runner.until_done()
-
-    if final.stop_reason == "refusal":
-        reply = "I can't help with that request."
-    else:
-        reply = "\n".join(b.text for b in final.content
-                          if b.type == "text").strip() or "(done)"
-    u = getattr(final, "usage", None)
-    usage = {"prompt_tokens": getattr(u, "input_tokens", 0) or 0,
-             "completion_tokens": getattr(u, "output_tokens", 0) or 0}
-    usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
-    return reply, usage
+                   wrapped: list, on_step=None) -> tuple[str, dict]:
+    tool_impls = {fn.__name__: fn for fn in wrapped}
+    result = providers.run("anthropic", cfg["model"], cfg["api_key"], None,
+                           system, messages, tool_impls,
+                           tool_schemas=providers.TOOL_SCHEMAS, on_step=on_step)
+    return result["reply"], result["usage"]

@@ -6,6 +6,7 @@ from pydantic import (BaseModel, ConfigDict, Field, TypeAdapter, field_validator
                       model_validator)
 
 import sql_source
+import internal_data
 
 
 class DerivedSpec(BaseModel):
@@ -55,6 +56,12 @@ class TableSource(BaseModel):
     schema_name: str | None = Field(default=None, alias="schema", max_length=128)
     uuid: str | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
+
+    @model_validator(mode="after")
+    def public_source(self):
+        if self.kind == "aurora":
+            internal_data.require_public_source(self.schema_name, self.table)
+        return self
 
 
 class SQLSource(BaseModel):

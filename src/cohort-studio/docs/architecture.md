@@ -17,7 +17,8 @@ flowchart TB
       EP["/api/* endpoints"]
       STORE["datasets.py<br/>in-memory DataFrame store<br/>+ server-side cross-filter aggregation"]
       EXPORT["export_jobs.py<br/>bounded Aurora cursor exports"]
-      AGENT["agent.py · providers.py · bedrock.py<br/>Anthropic · OpenAI · Gemini · OpenRouter · Bedrock"]
+      EXT["external_sources.py<br/>Athena and Glue reads"]
+      AGENT["agent.py · cohort_agent.py · agent_runtime.py<br/>LangGraph · provider adapters · validated tools"]
       OMOP["omop.py · cohort_agent.py<br/>Aurora CDM search, count, proposal, open"]
       VIEWS["views.py · config.py<br/>saved views, settings"]
       LIN["lineage.py<br/>_lineage_event table"]
@@ -30,6 +31,7 @@ flowchart TB
     AUR[("Aurora PostgreSQL")]
     S3[("S3 — Parquet/CSV<br/>via DuckDB")]
     BQ[("BigQuery")]
+    ATHENA[("Athena engine 3<br/>Glue + Iceberg")]
   end
 
   LLM["Model APIs<br/>Anthropic · OpenAI-compatible · Bedrock Converse"]
@@ -38,6 +40,7 @@ flowchart TB
   UI -->|"fetch /api/*"| EP
   EP --> STORE
   EP --> EXPORT
+  EP --> EXT
   EP --> AGENT
   EP --> OMOP
   EP --> VIEWS
@@ -47,6 +50,7 @@ flowchart TB
   STORE -->|"wb resource resolve"| AUR
   STORE -->|"credential_process profile"| S3
   STORE --> BQ
+  EXT --> ATHENA
   EXPORT -->|"read-only cursor"| AUR
   VIEWS --> AUR
   VIEWS --> S3
@@ -60,8 +64,28 @@ per-resource); S3 access uses a `credential_process` AWS profile wired by
 config` (DuckDB can't run `credential_process` itself).
 Bedrock Converse uses the AWS SDK credential chain and a configured Region;
 Workbench's resource-scoped S3 credentials are not known to grant model API
-access. AgentCore identity and network requirements remain open in the
+access. User-entered provider and Jev API keys use one server-configured
+Secrets Manager secret encrypted by a customer KMS key when available. Otherwise,
+keys use local AES-GCM encryption with a separate random key file. The secret
+directory is mode 0700 and files are mode 0600, beside STUDIO_CONFIG unless
+STUDIO_LOCAL_SECRET_DIR is set. Thread and file locks serialize access. Recovery
+merges local changes and deletion markers into KMS storage before removing the
+local copy. A durable mount must preserve both local files across container
+replacement; this does not protect against compromise of the app account.
+Deployment environment
+keys take precedence; legacy local keys remain readable until an explicit,
+read-back-verified migration removes them. Public settings expose key-presence
+booleans and source labels only. See [AI access and key storage](AWS_AI_ACCESS.md).
+AgentCore identity and network requirements remain open in the
 [agent plan](AGENT_PLAN.md).
+
+Athena resources use `STUDIO_ATHENA_RESOURCES` server configuration. Each
+resource names an AWS Region, Glue catalog, enabled Athena engine 3 workgroup,
+query-result S3 location and explicit database allowlist. The app uses a
+server-side AWS profile or the app credential chain. The enforced workgroup
+must set a positive per-query bytes-scanned cutoff. Athena handles Glue tables
+and Iceberg; S3 Parquet files continue through DuckDB. See
+[external source setup](EXTERNAL_SOURCES.md).
 
 Views-only DuckDB catalogs (`catalog.py`) use the same path. The app
 creates the secret from the profile of the folder that holds the
@@ -142,13 +166,22 @@ import CLI accepts a self-contained CSV/CSV.gz OMOP export (or ZIP), stages it
 from a selected Workbench S3 resource, and uses PostgreSQL `COPY` into Aurora.
 It does not convert raw claims, Parquet, or BigQuery tables into OMOP.
 
-`cohort_agent.py` is a server-side specialist using the configured LLM provider.
-Its tools are bound to the selected Aurora resource and return concept search,
-aggregate counts, validated proposals, and read-only workflow/app status. It
-does not write database rows or mutate workflows/apps. The user reviews and
-applies a proposal in the UI, then uses the existing Count/Open actions. Direct
-Bedrock Converse is implemented; AgentCore is a separate, unprovisioned plan
-([agent plan](AGENT_PLAN.md)).
+`agent_runtime.py` runs dataset and cohort chats as a LangGraph StateGraph with
+model and tool execution nodes. Provider adapters normalize OpenAI-compatible,
+Vertex AI, Anthropic, and Bedrock responses into LangChain messages. Each tool
+call is checked against its JSON schema through Pydantic before its bound
+function runs. Tool errors returned to the model are sanitized, and each chat
+stops after eight model turns, ten minutes, 16 calls in one response, or 64
+calls total. Tool results are capped at 64 KiB. Model SDK retries are disabled
+and request timeouts are bounded. LangSmith tracing is disabled so prompts,
+history, and tool data stay in the app's own telemetry path. Session storage is
+managed separately from the graph. Dataset tools act on the selected in-memory
+dataset; cohort tools are bound to the selected Aurora resource and return
+concept search, aggregate counts, validated proposals, and read-only
+workflow/app status. The cohort
+assistant does not write database rows or mutate workflows/apps. The user
+reviews and applies a proposal in the UI, then uses the existing Count/Open
+actions. AgentCore is a separate, unprovisioned plan ([agent plan](AGENT_PLAN.md)).
 
 ### CMS SynPUF export and import path
 
@@ -204,13 +237,14 @@ sequenceDiagram
   UI->>UI: ECharts renders "all" vs "selected" per chart
 ```
 
-Aurora joins use a third backend, `live_query.py`. The server retains its compiled
-SELECT and physical column map. Counts, entity counts, filters, chart aggregates
-and pages query that source under a statement timeout. The loaded frame is a
-preview only. Live query errors do not fall back to preview rows. Scatter and
-heatmap output is bounded and marked when sampled. Full-source profiles supply
-filter choices and numeric ranges. Cross-resource joins remain loaded-frame
-DuckDB operations.
+Aurora table opens, SQL sources, and same-database joins use a third backend,
+`live_query.py`. The server retains the source SQL and physical column map.
+Counts, entity counts, filters, chart aggregates and pages query the full source
+under a statement timeout. The in-memory frame is a 100,000-row preview only and
+does not mark a live dataset as sampled. Live query errors do not fall back to
+preview rows. Scatter and heatmap output is bounded and marked when sampled.
+Full-source profiles supply filter choices and numeric ranges. Cross-resource
+joins remain loaded-frame DuckDB operations and require explicit consent.
 
 Compare uses `live_compare.py` to query both full-source groups in Aurora.
 Derived columns use `live_derive.py` to compile the validated operation into a
@@ -250,9 +284,10 @@ resource. Background exports always query Aurora directly and bypass this
 cache. OMOP cohort count retains its
 existing behavior and is not cached by this layer.
 
-The UI warns at 100,000 source rows and when loaded data is capped. It states
-whether counts cover the database or only the loaded preview. No query is
-silently switched to a sample because its source is large.
+The UI gives a brief performance warning for large sources. It states whether
+counts cover the database or only loaded rows. Database query pages have no row
+limit; 100,000 rows is only the in-memory preview size. Export, workflow, and
+materialization limits remain separate from dashboard exploration.
 
 ## 5. Saved views / state persistence
 
@@ -308,6 +343,7 @@ not the data or cohort engine.
 | 2026-10-21 | Scope Jev as an optional routing/ranking experiment. | Existing UI routes explicitly; no measured benefit yet. SQL remains authoritative for membership and counts. See [Jev scope](JEV_SCOPE.md). |
 | 2026-10-21 | Use Aurora storage and internal DuckDB; no standalone PostgreSQL service. | User requirement. Disposable PostgreSQL is only a local Aurora-compatibility test fixture. |
 | 2026-10-21 | Query same-resource Aurora joins as live sources. | Filters and counts must include matches beyond the preview cap. Validate against real PostgreSQL with more than 100,000 joined rows. |
+| 2026-10-24 | Open Aurora tables as live sources and keep preview caps out of dashboard sampled status. | Dashboard pages and aggregates query the full database source; the in-memory frame stays bounded. Cross-source loaded-row consent remains explicit. |
 | 2026-10-21 | Add a short-lived bounded in-memory Explore cache with explicit refresh. | Reduce repeated Aurora queries while making freshness visible; never cache exports or silently sample results. |
 | 2026-10-21 | Persist bounded structured source recipes, not SQL. | Reopen joined views after in-app updates without trusting client SQL. |
 | 2026-10-21 | Show rows and explicit distinct-entity counts separately. | One-to-many joins must not inflate person counts. |
@@ -339,6 +375,75 @@ UI structure and primary labels carry navigation. Remove redundant taglines and
 helper text; retain data scope, errors and warnings that affect decisions.
 Shared provider validation serves UI and agent paths to keep their behavior
 consistent. Root agent instructions record this UX/DX/AX decision rule.
+
+### Openweight model service (2026-10-24)
+
+`openweight` uses the existing OpenAI-compatible adapter for chat, tools, and
+filter suggestions. The service endpoint and model are administrator settings:
+set `STUDIO_OPENWEIGHT_BASE_URL` and `STUDIO_OPENWEIGHT_MODEL` in the app
+environment. The endpoint may use HTTP for private inference, but it cannot
+contain URL credentials, a query, or a fragment. Settings shows only its
+hostname and does not accept a browser-provided endpoint. The API key is
+optional; set `STUDIO_OPENWEIGHT_API_KEY` or save it through the encrypted
+model-key store. It has no local settings-file fallback. The model service is
+separate from the isolated agent runtime. This provider does not download a
+model, allocate a GPU, or provision a model server. Local compatibility tests
+use a fake OpenAI-compatible endpoint; they do not verify a deployed model.
+
+#### Deferred reference: Qwen/Qwen3.8-27B serving profile
+
+The selected checkpoint is Apache-2.0 BF16; Hugging Face lists 55.6 GB of
+files. For a 32K context test with one sequence, the proposed `openweight`
+settings are:
+
+```text
+STUDIO_OPENWEIGHT_BASE_URL=http://<private-model-host>:8000/v1
+STUDIO_OPENWEIGHT_MODEL=Qwen/Qwen3.8-27B
+# STUDIO_OPENWEIGHT_API_KEY is optional; use only when the private server requires it.
+```
+
+The profile command below uses the official vLLM 0.17.0+ recipe's Qwen tool
+parsers and vLLM's matching server options. It caps context at 32,768 tokens
+and one running sequence. To cap at 16,384, change `--max-model-len` to
+`16384`. Keep the listener on a private network and allow only the Studio app
+to reach port 8000.
+
+```bash
+vllm serve Qwen/Qwen3.8-27B \
+  --tensor-parallel-size 1 \
+  --max-model-len 32768 \
+  --max-num-seqs 1 \
+  --reasoning-parser qwen3 \
+  --enable-auto-tool-choice \
+  --tool-call-parser qwen3_coder \
+  --default-chat-template-kwargs '{"enable_thinking":false}' \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+The model card says thinking is enabled by default. The server template turns
+it off so private reasoning does not enter assistant messages or Aurora
+conversation history. The app stores only final message content. This profile
+is not hardware-validated. Approximate GPU memory starts at 51.8 GiB for
+55.6 GB of BF16 checkpoint files. A rough full-attention KV estimate is about
+1 GiB at 16K and 2 GiB at 32K, using the model card's 16 full-attention
+layers, four KV heads, 256 dimensions, and BF16 K/V. This excludes recurrent
+linear-attention state, runtime buffers, activations and vision processing;
+measure peak usage before selecting hardware. Do not treat this as a fit
+guarantee.
+
+AWS publishes `p5.4xlarge` with one H100 and 80 GB HBM3, which is a plausible
+single-GPU candidate for this BF16 profile. A single G6e L40S has 48 GB and
+cannot hold the BF16 checkpoint as listed. Region availability, quota, price,
+and account GPU inventory remain unchecked. No AWS resource was created. The
+vLLM recipe provides a pip/CLI launch, not an official verified Compose image
+profile, so the app Compose files do not start a model server. No weights were
+downloaded.
+
+References: [Qwen model card](https://huggingface.co/Qwen/Qwen3.8-27B),
+[official vLLM Qwen recipe](https://recipes.vllm.ai/Qwen/Qwen3.8-27B),
+[vLLM 0.17.0 serve options](https://docs.vllm.ai/en/v0.17.0/cli/serve/),
+[AWS accelerated instance specs](https://aws.amazon.com/ec2/instance-types/accelerated-computing/).
 
 ### Synthetic genetics demo (2026-10-22)
 
@@ -427,3 +532,100 @@ settings. Reopen validates the query again using the same resource resolver
 as normal Aurora sources. A preview is not an authorization token. Editing
 a query invalidates its preview. This is an Aurora SQL editor, not an Athena
 connector. Existing resource permissions remain authoritative.
+
+### Scoped knowledge layer (2026-10-23; not implemented)
+
+Veibot knowledge ingestion will reuse registered sources, with bounded ingestion
+workers and versioned chunks in Aurora. pgvector and a local EmbeddingGemma 2
+encoder are candidates pending extension/grant and instance benchmarks. Structured
+counts and joins remain SQL operations; retrieval provides cited evidence. A
+single typed capability registry should serve both the agent and local MCP.
+See [knowledge scope](KNOWLEDGE_BASE_SCOPE.md) for boundaries and acceptance checks.
+
+### Snapshot and connector execution decisions (2026-10-23)
+
+PostgreSQL/RDS shares the Aurora SQL execution path through a resource router;
+existing Workbench resolution remains intact. Server metadata may register
+PostgreSQL Secrets Manager references, S3 locations and Athena workgroups.
+PostgreSQL connections require verified TLS and default to read-only. Athena
+reads Glue catalog tables, including Iceberg, using enforced engine-3 workgroups
+with a scan cap. Cross-source joins require explicit consent to use loaded rows.
+They do not claim full federated execution.
+
+Eligible same-database saved joins use native PostgreSQL materialized views.
+A registry stores generated physical names, original recipes and logical column
+maps. Snapshot creation and saved-view state publication are transactional;
+refresh is explicit, atomic and currently blocking. There is no implicit
+CONCURRENTLY promise without a proven unique key/index. Lock acquisition is
+bounded. Old unshared snapshots are cleaned during saved-view mutations, with
+saved/open references and dependency closure protected. The current application
+uses one process: dataset handles and jobs remain process-local. A process-local
+lock closes open-versus-cleanup races; multi-worker deployment requires durable
+leases and a shared job registry before it is supported.
+
+Saving an open live join reuses its trusted server-held query rather than
+reopening and profiling all its sources. Reopening an expired recipe can still
+require database reads. Materialization avoids repeated joins but does not imply
+an index or incremental refresh; measure plans and data volume before adding
+indexes. No blanket indexes are created on arbitrary projections.
+
+### Text knowledge base (2026-10-24)
+
+Initial retrieval uses SQLite FTS5 with BM25, not embeddings. The small app-owned
+store is separate from Aurora clinical data and DuckDB analytics. It defaults to
+knowledge.sqlite3 beside STUDIO_CONFIG; STUDIO_KNOWLEDGE_PATH selects a persistent
+volume location. The instance shares one corpus; there is no per-user corpus ACL.
+Limits are 100 documents and 200,000 characters each. Documents are deduplicated
+by text SHA-256 and split into overlapping bounded passages. Search accepts only
+quoted word tokens, returns at most ten passages, and binds all SQL values.
+
+Settings uploads UTF-8 text or accepts pasted text. No URL fetch, S3 importer,
+PDF parser, model download, or vector extension is included. Existing assistants
+retrieve four passages per question, send them to the configured model provider,
+and request KB document/passage citations. Retrieved text is untrusted evidence,
+not tool authorization or live analytical results. MCP provides read-only search.
+Document creation/removal stays in the user-facing API. Local persistence does
+not imply backup or survival of container replacement; deploy with a persistent
+path before relying on those guarantees.
+
+### Private conversations in the existing backend (2026-10-24)
+
+The Aurora resource for private agent state is explicitly selected with
+STUDIO_AGENT_RESOURCE_ID. Migration creates `_studio_agent` and revokes PUBLIC
+schema/table/sequence grants. Application source validation and listing exclude
+internal data. Database administrators still retain their database privileges;
+UI hiding is not a substitute for separate database roles.
+
+Prompts are versioned by digest. Conversations retain user and final assistant
+messages, with token-like secrets redacted. Raw tool rows, tool arguments, and
+model reasoning are not stored in telemetry. Events store status, timing and
+usage. Conversations survive app process restarts; history requires the same
+browser-owner cookie and a matching source scope. Clearing cookies or replacing
+an unpersisted browser profile loses that owner binding; cross-device account
+recovery is not implemented. Uploaded ephemeral datasets require reopening the
+original context. Session concurrency uses a renewable database lease. Interrupted
+runs do not replay tools automatically. Runtime context uses the last 30 messages,
+while the history API pages the full saved conversation. Telemetry cleanup is an
+explicit administrator command; conversations are not removed by it.
+
+The managed Workbench Aurora role rejects GRANT/REVOKE. On 2026-10-24 the user
+chose shared, non-private storage in that database under `_studio_agent`.
+The explicit migration option `--managed-access` leaves existing managed
+permissions unchanged. Database readers may access conversations and telemetry;
+prefixes and table-picker/SQL-source exclusions provide application organization,
+not database privacy. API keys remain outside these tables in encrypted storage.
+Without this option migration still requests private permissions, which require
+an administrator on this managed resource.
+
+The application remains in the monorepo and existing container topology.
+LangGraph runs in the Studio backend and calls model APIs. The experimental
+agent sidecar and gateway were removed at the user's request. No separate model
+container or GPU deployment is part of this update. LangSmith tracing is disabled;
+Aurora is the private conversation and telemetry store.
+
+Hosting decision (2026-10-24): use one application container for Studio and its
+agent runtime, with general inference-provider APIs and available models.
+Do not download Qwen or provision a GPU under the current scope. Bedrock model
+inference and AgentCore runtime hosting remain future options, pending verified
+access and integration tests. Existing browser-isolation infrastructure remains
+unchanged; it is not a separate agent runtime.

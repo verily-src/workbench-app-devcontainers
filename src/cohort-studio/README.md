@@ -384,13 +384,15 @@ current machine cannot reach the dev Aurora endpoint.
 |---|---|---|
 | Aurora tables & views | SQLAlchemy + psycopg | `AWS_AURORA_DATABASE` |
 | Parquet/CSV in S3 | **DuckDB** reading S3 directly via the per-resource AWS profiles | `AWS_S3_STORAGE_FOLDER` |
+| Athena/Glue tables, including Iceberg | Athena engine 3 via server-configured boto3 access | `STUDIO_ATHENA_RESOURCES` |
 | BigQuery tables (GCP workspaces) | google-cloud-bigquery | `BQ_DATASET` |
 | S3 Parquet/Iceberg as Aurora foreign tables | [`aurora_analytics`](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/aurora-analytics-tutorial.html) (needs Aurora PostgreSQL 17.11+) | `AWS_AURORA_DATABASE` |
 | Local CSV/TSV upload | pandas (dev mode, no workspace needed) | — |
 
-Redshift, Athena, and DynamoDB were evaluated and are not reachable inside
-the Workbench credential model (not resource types, so no ABAC credential
-path). DuckDB-over-S3 covers the Athena use case within governance.
+Athena requires an allowlisted server resource and an enforced engine 3
+workgroup with a positive per-query bytes-scanned cutoff. See
+[external source configuration](docs/EXTERNAL_SOURCES.md). Redshift and
+DynamoDB are not supported.
 
 ### Requirements for aurora_analytics
 
@@ -408,3 +410,45 @@ requires an authenticated `wb` workspace context and VPC network access
 
 The VM-debugging rules in [../cohort-explorer/CLAUDE.md](../cohort-explorer/CLAUDE.md)
 apply to this app unchanged.
+
+### Agent conversation memory
+
+Dataset and OMOP assistants use LangGraph inside the existing backend and call
+model APIs. No agent or model container is required. Set
+`STUDIO_AGENT_RESOURCE_ID` to the exact Aurora resource for private memory in the
+backend environment. With the same setting, run from the Studio directory:
+
+For an existing container, an administrator can instead write
+`{"resource_id":"cohort-dash-db-20261005"}` to `agent_store_config.json` beside
+`STUDIO_CONFIG` (default `/app/studio_config.json` in the deployed app). Use the
+exact datasource ID listed by the app. The environment variable takes precedence.
+Runtime, migration, and cleanup share the same validated configuration.
+
+```sh
+uv run --no-project --python .venv/bin/python scripts/migrate_agent_store.py
+```
+
+For the approved shared-storage setup on Workbench, append `--managed-access`.
+This keeps existing database permissions: `_studio_agent` tables are hidden in
+Studio, but database readers may read conversations and telemetry. It does not
+store API keys there. Omit the option when private database permissions are required.
+
+The resource needs schema/table creation permissions for this migration and write
+access for runtime sessions. The `_studio_agent` schema is internal and excluded
+from table selection, SQL sources, and joins. The browser can restore only its own
+conversation for the same dataset source or OMOP resource. Keep the browser
+profile/cookies to retain the owner binding; cross-device account recovery is not
+implemented. Runtime context uses the latest 30 messages; the full saved history
+is available through paged chat history. Failed turns have a saved failure marker
+and are not replayed automatically.
+
+The optional maintenance command removes expired run telemetry (30 days by default,
+configured by `STUDIO_AGENT_RETENTION_DAYS`) and preserves conversations:
+
+```sh
+uv run --no-project --python .venv/bin/python scripts/cleanup_agent_store.py
+```
+
+Recognized credential patterns are redacted from stored text, and raw tool rows and model reasoning are
+not included in telemetry. LangSmith external tracing is disabled. Aurora setup
+and live verification are required before deploying this memory update.

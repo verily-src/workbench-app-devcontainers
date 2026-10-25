@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import internal_data
 from sqlalchemy import Engine
 from sqlglot import Dialect, exp, parse
 from sqlglot.tokens import TokenType
@@ -82,6 +83,7 @@ def normalize(sql: str) -> str:
                 raise ValueError("Cross-database SQL references are not allowed.")
             if id(node) in cte_table_ids:
                 continue
+            internal_data.require_public_source(node.db, node.name)
             schema = (node.db or "").casefold()
             if not schema:
                 raise ValueError("Use schema-qualified table names in SQL sources.")

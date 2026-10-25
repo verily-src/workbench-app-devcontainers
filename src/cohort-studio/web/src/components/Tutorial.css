@@ -1,0 +1,38 @@
+.tutorial-trigger {
+  padding: 5px 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--card); color: var(--ink);
+}
+.tutorial-overlay {
+  position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center;
+  padding: 20px; background: rgba(23, 24, 26, 0.38);
+}
+.tutorial-dialog {
+  width: min(480px, 100%); padding: 22px; background: var(--card);
+  color: var(--ink); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+}
+.tutorial-heading, .tutorial-actions, .tutorial-actions > div {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.tutorial-count { margin: 0; color: var(--ink-muted); font-size: 12px; }
+.tutorial-close {
+  width: 34px; height: 34px; padding: 0; color: var(--ink-muted);
+  background: transparent; border: 1px solid var(--border); font-size: 22px;
+}
+.tutorial-dialog h2 { margin: 16px 0 8px; font-size: 20px; }
+.tutorial-dialog > p:not(.tutorial-count) {
+  min-height: 84px; margin: 0; color: var(--ink-soft); line-height: 1.55;
+}
+.tutorial-progress { display: flex; gap: 6px; margin: 20px 0; }
+.tutorial-progress span { flex: 1; height: 3px; border-radius: 2px; background: var(--border); }
+.tutorial-progress span.current, .tutorial-progress span.done { background: var(--accent); }
+.tutorial-actions { border-top: 1px solid var(--border); padding-top: 14px; }
+.tutorial-actions > div { justify-content: flex-end; }
+.tutorial-actions button { min-height: 36px; }
+@media (max-width: 520px) {
+  .tutorial-dialog { padding: 18px; }
+  .tutorial-dialog > p:not(.tutorial-count) { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-overlay, .tutorial-dialog { scroll-behavior: auto; }
+}

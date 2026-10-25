@@ -11,6 +11,9 @@ export function ChatWidget({ dataset, onUpdate }: Props) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [before, setBefore] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const history = dataset.chat ?? [];
 
@@ -18,17 +21,31 @@ export function ChatWidget({ dataset, onUpdate }: Props) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [history.length, busy, open]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setRestoring(true); setHistoryError("");
+    api.chatHistory("dataset", dataset.id, dataset.chatSessionId).then(out => {
+      if (cancelled) return;
+      onUpdate({ chat: out.messages, chatSessionId: out.session_id ?? undefined });
+      setBefore(out.has_more ? out.next_before_message_id : null);
+    }).catch(e => { if (!cancelled) setHistoryError(e.message); })
+      .finally(() => { if (!cancelled) setRestoring(false); });
+    return () => { cancelled = true; };
+  }, [open, dataset.id]);
+
   const send = async () => {
     const message = input.trim();
-    if (!message || busy) return;
+    if (!message || busy || restoring) return;
     setInput("");
     setBusy(true);
     const withUser: ChatMsg[] = [...history, { role: "user", content: message }];
     onUpdate({ chat: withUser });
     try {
       const out = await api.chat(dataset.id, message, history,
-        dataset.filters, dataset.charts);
+        dataset.filters, dataset.charts, dataset.chatSessionId);
       onUpdate({
+        chatSessionId: out.session_id,
         filters: out.filters,
         charts: out.charts,
         chat: [...withUser, { role: "assistant", content: out.reply,
@@ -90,18 +107,28 @@ export function ChatWidget({ dataset, onUpdate }: Props) {
           </div>
         )}
       </div>
+      {historyError && <p role="alert">{historyError}</p>}
+      {before !== null && <button disabled={busy || restoring} onClick={async () => {
+        setRestoring(true);
+        try {
+          const out = await api.chatHistory("dataset", dataset.id, dataset.chatSessionId, before);
+          onUpdate({ chat: [...out.messages, ...history] });
+          setBefore(out.has_more ? out.next_before_message_id : null);
+        } catch (e) { setHistoryError((e as Error).message); }
+        finally { setRestoring(false); }
+      }}>Earlier messages</button>}
       <div className="chat-input">
         <input
           type="text"
           placeholder="Ask about the data…"
           value={input}
-          disabled={busy}
+          disabled={busy || restoring}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") send(); }}
           autoFocus
         />
         <button className="primary" onClick={send}
-                disabled={busy || !input.trim()}>
+                disabled={busy || restoring || !input.trim()}>
           Send
         </button>
       </div>

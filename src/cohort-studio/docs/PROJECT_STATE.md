@@ -1,8 +1,163 @@
 # Cohort Studio project state
 
-Updated 2026-10-23. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
+Updated 2026-10-24. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
+
+## Latest local change
+
+- **Storage decision superseding the private-schema blocker, 2026-10-24:**
+  user explicitly accepts non-private agent storage in the existing Aurora
+  database under the `_studio_agent` prefix. Migration now supports explicit
+  `--managed-access`, which leaves all Workbench-managed permissions unchanged.
+  Default migration still requests private permissions. Prefix/UI exclusions
+  are not database privacy; database readers may read conversation data.
+  API keys remain in encrypted storage, not these tables. Six local checks
+  passed, including managed migration and persisted conversation round-trip.
+
+- **Isolated release verification, 2026-10-24:** candidate backend suite passed
+  70 checks; production frontend build passed. Candidate Chromium checks first
+  caught a missing tab-identity fix during selective assembly. After restoring
+  dataset-ID updates and keying ChatWidget by dataset ID, all four browser
+  checks passed in 8.83s (history restoration, late replies, knowledge UI,
+  tutorial). The stale API-key hint UI/type mismatch was also removed.
+  Candidate still awaits approved Aurora private-schema provisioning; do not
+  tell the user to update or claim live key migration has occurred.
+
+- **Integrated local validation, 2026-10-24:** 81 checks passed in 12.12s
+  covering real PostgreSQL memory storage and sessions, provider adapters,
+  encrypted local keys/recovery, admin configuration, knowledge retrieval,
+  and Chromium chat/tutorial flows. Disposable database was removed afterward.
+  Tutorial supports five steps, keyboard close/focus return, and saved progress.
+  Shared typed admin configuration is the first structural refactor; broad
+  routing/module changes remain separate. This run validates the working tree;
+  the isolated release candidate has its own validation gate.
+
+- **Live release blocker, 2026-10-24:** AWS SSO is restored; the app instance
+  `i-0e9d71494595f205c` is healthy on `ad62261767`. The datasource resolver
+  needs `cohort-dash-db-20261005`, not the resource UUID. Migration command
+  `9115528e-59b9-4b25-8794-34f0e9bbc6f3` failed because Workbench's database
+  policy prohibits the app role from running GRANT/REVOKE. The transaction
+  rolled back; memory configuration was not written. Do not remove permission
+  controls to bypass this rule. Administrator-provisioned private storage or
+  an approved dedicated Aurora resource is required before enabling memory.
+  The isolated release candidate is `/private/tmp/cohort-memory-release`;
+  nothing has been published or deployed. Tutorial browser flow and build
+  passed locally; encrypted local-key checks passed (40, one socket test
+  excluded pending integrated run). OpenCode read the memory files but did not
+  return a verdict before it was stopped; review remains incomplete.
+
+- **Release preparation, 2026-10-24:** all 70 local memory checks passed in
+  9.65s using PostgreSQL and Chromium. AWS SSO expired and refresh failed;
+  live Aurora setup and release verification remain blocked pending login.
+  User authorized encrypted local key storage when KMS is unavailable; this
+  fallback is being implemented and is not yet verified. Prepare a separate
+  memory release snapshot to exclude paused join changes. After validation,
+  refactor incrementally for clear module boundaries and typed interfaces,
+  preserving user behavior; do not combine an untested broad rewrite with release.
+
+- **Hosting decision, 2026-10-24:** one application container hosts Studio and
+  LangGraph; inference uses general provider APIs and available models. No Qwen
+  download or GPU provisioning. Bedrock/AgentCore hosting is deferred until
+  access is available and verified. Existing browser isolation is unchanged.
+
+- **Memory-only verification, 2026-10-24:** the final integrated run passed 69
+  checks and found one real PostgreSQL long-reply storage failure. Fixed the
+  message column from varchar(24000) to text, retaining application validation;
+  all 14 affected store/session/OMOP checks then passed in 1.78s. Chromium
+  verified history restoration and that a late reply cannot update another tab.
+  The production frontend build passed. Tests used a temporary database in the
+  existing local PostgreSQL container and removed it afterward, avoiding the
+  host initdb shared-memory limit. No live Aurora migration or deployment ran.
+- Conversation history now resumes the latest owned session when no session ID
+  is supplied. Failed/expired turns retain a generic failure message. Browser
+  requests no longer send conversation contents as authoritative history.
+  Independent review found the tab-index race, now fixed with dataset-ID updates;
+  its OMOP resource-race report was not confirmed because Editors are keyed by
+  resource ID. OpenCode GLM max produced no output in two attempts and was
+  stopped; no successful OpenCode verdict is claimed.
+
+- **2026-10-24, in progress / not deployed:** dataset and OMOP chat now use
+  LangGraph with bounded, validated tools and provider adapters. Aurora
+  `_studio_agent` stores versioned prompts, sessions, messages and step telemetry.
+  Conversations are retained; the cleanup command expires telemetry after 30 days.
+  Browser-owner cookies bind sessions; histories restore through owner-scoped APIs.
+  Internal schemas and legacy agent telemetry tables are excluded from public
+  table/SQL sources; the user-facing agent-turn feed is disabled. Requires explicit
+  STUDIO_AGENT_RESOURCE_ID and the migration script before live chat can run.
+  Integrated local checks before sidecar cancellation: **60 passed in 9.97s**, including real PostgreSQL
+  history/ownership tests, Chromium chat restore,
+  and fake OpenAI-compatible openweight endpoint. Frontend build passed.
+- **Latest scope:** keep the monorepo and existing container layout. LangGraph
+  runs inside the Studio backend with API inference. The experimental agent
+  sidecar/gateway files, broker and temporary containers were removed at the
+  user's request. Self-hosted Qwen/GPU work is deferred; no weights downloaded
+  or GPU resource created. Focus now is durable agent memory.
+- Large-join/disk-backed exploration edits are paused and remain uncommitted
+  draft work, not a verified release. Their last expanded test found a
+  count-by-group iterator bug, now fixed but not reverified after local PostgreSQL
+  hit the OS shared-memory limit. Do not ship these as part of a memory-only
+  update without separate validation.
+
+- **2026-10-24, local only:** Aurora table opens now keep a database-backed
+  source recipe. The frame in memory remains a 100,000-row preview; dashboard
+  counts, filters, charts, and row pages use the full Aurora query. Live-backed
+  datasets and derived columns no longer report the preview as a sampled
+  dashboard. Cross-resource joins still require consent and use loaded rows.
+  Targeted local validation passed: **40 tests** in `test_live_derive.py` and
+  `test_api.py`, including a real PostgreSQL fixture with 100,005 joined rows
+  and a query matching a row beyond the preview. S3, BigQuery, Athena, and
+  catalog-source full-source paging are not covered by this change. No deploy.
+
+- **2026-10-24, local only:** the OpenAI-compatible `openweight` provider can
+  use an administrator-configured endpoint and model. The Qwen/Qwen3.8-27B
+  profile documents the official vLLM parser flags, non-thinking mode,
+  bounded context, and an estimated memory budget. Config wiring test passed;
+  fake endpoint/settings tests passed earlier. No model weights were
+  downloaded and no model service or GPU instance was created. AWS account
+  capacity, quota, placement, and pricing remain unchecked.
 
 ## Active project
+
+- **2026-10-24, local only:** initial knowledge base uses SQLite FTS5 keyword
+  search, without embeddings. Settings supports text paste and UTF-8 TXT/MD/CSV/TSV
+  upload, search, and deletion. Dataset, OMOP, and join assistants receive up to
+  four matching passages with source citations and untrusted-content instructions;
+  MCP exposes read-only `search_knowledge_base`. Seven API/agent checks passed;
+  frontend production build passed. Real Chromium → local HTTP flow passed
+  upload, reload, cited search, and removal (1 passed in 10.07s). No live deployment or provider inference verified.
+  Storage is app-instance shared, capped at 100 documents / 200,000 characters
+  per document. Set STUDIO_KNOWLEDGE_PATH on persistent storage for durability
+  across container replacement. S3 ingestion and embeddings remain deferred.
+
+- **In progress, 2026-10-23 (not deployed):** PostgreSQL/RDS, registered S3
+  Parquet, Athena/Glue Iceberg reads, Add data source, explicit loaded-row
+  cross-source joins, saved materialized snapshots and refresh jobs, a durable
+  Count by group workflow, Veibot join proposals, Jev Settings, MCP connection
+  tests, and Secrets Manager/KMS key storage. Full integrated validation and
+  final review are still running; do not treat this working tree as released.
+- Local evidence so far: PostgreSQL connector discovery/OMOP/join/reopen/read-only
+  checks passed against the running local PostgreSQL container. Workflow save,
+  cache-clear, reopen and query passed against disposable PostgreSQL. Browser
+  tests for connectors, snapshot job UI and Count by group passed before later
+  Add source/Veibot/Settings additions; those additions need the final suite.
+- OpenCode GLM max reviewed this update and identified Glue GetTables page size
+  and Athena final-page deadline handling; both are fixed with boundary tests.
+  Codex Luna findings about common column settings and explicit MV projections
+  were checked against the code and not confirmed. Follow-up review is pending.
+- **Live checks:** SSM `69a0433d-9a4b-4415-bd04-301bd05b0dc6` confirmed all three
+  MCP entries (Workbench, bioRxiv, PubMed) have empty URLs and are disabled.
+  SSM `27cc0c31-127a-4193-a004-18d15b6f04e2` confirmed the current app lists one
+  Aurora database and nine S3 folders. No live MCP handshake is possible until
+  an endpoint is configured.
+- **IAM constraint:** live IAM simulation for `v0SaasDevAppInstance` returned
+  implicitDeny for Secrets Manager GetSecretValue/CreateSecret/PutSecretValue
+  and KMS Encrypt/Decrypt. No role policy was changed, and no user key was
+  migrated or stored in AWS. New key writes fail closed when secure storage is
+  unavailable; existing legacy keys remain readable until explicit migration.
+- Knowledge-base integration is **scoped only** in
+  [KNOWLEDGE_BASE_SCOPE.md](KNOWLEDGE_BASE_SCOPE.md): registered sources,
+  versioned ingestion, candidate local EmbeddingGemma 2 embeddings, Aurora
+  pgvector pending extension/grant checks, and actual MCP tool discovery.
+  No embedding model, vector index, or knowledge ingestion job is installed.
 
 - Follow-up 2026-10-23: charts below cohort filters, chart/table result toggle,
   independent clinical-table opens, and aligned dataset toolbar implemented

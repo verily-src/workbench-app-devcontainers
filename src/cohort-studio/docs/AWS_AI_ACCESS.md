@@ -100,3 +100,47 @@ the same backend. Browser isolation does not grant AWS IAM permissions or
 configure service networking. End-to-end operation in the isolated Workbench
 app remains unverified. Bedrock can use a private VPC endpoint where required:
 [AWS PrivateLink documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html).
+
+## User API key storage
+
+Anthropic, OpenAI, Gemini, OpenRouter, and Jev user-entered keys are stored in
+one Secrets Manager secret as a provider-key map when available. Configure that
+backend with these server environment values:
+
+- `STUDIO_LLM_SECRET_ID`: the secret name or ARN.
+- `STUDIO_LLM_KMS_KEY_ID`: the customer KMS key ARN. The key and secret must
+  use the same AWS Region.
+- `AWS_REGION` or `AWS_DEFAULT_REGION`.
+
+The app role needs `secretsmanager:DescribeSecret`, `GetSecretValue`,
+`CreateSecret`, and `PutSecretValue` on that secret, plus `kms:GenerateDataKey`
+and `kms:Decrypt` on the configured key. The KMS key policy must allow the app
+role. These are the Secrets Manager calls for writes and reads when using a
+customer-managed key ([AWS permission details](https://docs.aws.amazon.com/secretsmanager/latest/userguide/security-encryption.html)).
+This repository does not change IAM. The app checks that an
+existing secret uses the configured KMS key before it writes. A failed or
+unconfigured write uses an AES-GCM encrypted local store, never plaintext in
+the settings file. The local key and ciphertext are separate mode-0600 files
+in a mode-0700 directory beside STUDIO_CONFIG (override STUDIO_LOCAL_SECRET_DIR).
+Preserve both files on a durable mount. The app account can decrypt these files;
+local encryption does not protect against compromise of that account.
+Deployment environment keys still take precedence.
+
+Old keys in `app/studio_config.json` remain readable for compatibility. They
+do not move automatically. To move them into the available encrypted backend,
+run this one-time operation from the app directory:
+
+```sh
+python -c 'import config; print(config.migrate_legacy_keys())'
+```
+
+The operation reads the legacy keys, writes them to the encrypted store, reads
+them back to confirm the values, and only then removes the migrated keys from
+the local file. If write or verification fails, the legacy file remains. The
+public config reports only key-presence booleans and source labels; it does not
+return hints or key values. The app role's Secret Manager and KMS permissions
+have not been rechecked for this integration.
+The earlier 2026-10-23 app-role audit found no Secrets Manager or KMS grant;
+local encrypted storage is used until an administrator grants these scoped
+permissions. Recovery merges local updates and deletion markers before removing
+the local copy. No role or KMS resources were changed here.

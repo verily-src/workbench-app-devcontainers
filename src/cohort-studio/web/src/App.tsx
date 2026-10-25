@@ -7,6 +7,7 @@ import { LineageView } from "./components/LineageView";
 import { SettingsView } from "./components/SettingsView";
 import { SavedViews } from "./components/SavedViews";
 import { JoinPanel } from "./components/JoinPanel";
+import { SourcePicker } from "./components/SourcePicker";
 import { PublishCatalog } from "./components/PublishCatalog";
 import { WorkflowsView } from "./components/WorkflowsView";
 import { Toasts } from "./components/Toasts";
@@ -87,6 +88,8 @@ export default function App() {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [table, setTable] = useState("");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [renamingDatasetId, setRenamingDatasetId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [active, setActive] = useState(0);
   const [activity, setActivity] = useState("");
   const [error, setError] = useState("");
@@ -444,6 +447,18 @@ export default function App() {
         ? { page: 0, ...changes } : {}) } : d));
   }, []);
 
+  const saveDatasetName = (dataset: Dataset) => {
+    const title = renameDraft.trim().slice(0, 128);
+    if (!title) return;
+    setDatasets((previous) => previous.map((item) => item.id !== dataset.id ? item : {
+      ...item, title,
+      ...(item.sourceRef?.kind === "sql"
+        ? { sourceRef: { ...item.sourceRef, name: title } } : {}),
+    }));
+    setRenamingDatasetId(null);
+    setRenameDraft("");
+  };
+
   const activeDs = datasets[active];
   const joinBuilderDatasets = editingJoin ? [...datasets, ...editingJoin.inputs] : datasets;
 
@@ -529,16 +544,9 @@ export default function App() {
           </div>
         )}
 
-        <div className="section-label">Datasource</div>
-        <select value={sourceKey}
-                onChange={(e) => setSourceKey(e.target.value)}>
-          <option value="" disabled>Choose…</option>
-          {sources.map((s) => (
-            <option key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+        <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
+          loading={!ready || Boolean(activity)} busy={Boolean(activity)}
+          onSourceKeyChange={setSourceKey} onTableChange={setTable} onLoadTable={loadTable} />
         {source?.kind === "aurora" && <div className="field-label">
           Explore view
           <div className="explore-toggle" role="group" aria-label="Explore view">
@@ -548,24 +556,6 @@ export default function App() {
                     onClick={() => setExploreMode("omop")}>OMOP</button>
           </div>
         </div>}
-        {exploreMode === "tables" && <>
-          <div className="field-label">Table</div>
-          <select aria-label="Table" value={table}
-                  onChange={(e) => setTable(e.target.value)}>
-            <option value="" disabled>Choose…</option>
-            {tables.map((t) => (
-              <option key={t.name} value={t.name} title={t.sql ?? undefined}>
-                {t.name} ({t.detail})
-              </option>
-            ))}
-          </select>
-          <div style={{ marginTop: 10 }}>
-            <button className="primary" onClick={loadTable}
-                    disabled={!table || Boolean(activity)}>
-              Load table
-            </button>
-          </div>
-        </>}
         {source?.kind === "s3" && (
           <PublishCatalog source={source} onToast={alerts.pushToast}
                           onPublished={() => api.datasources()
@@ -692,7 +682,29 @@ export default function App() {
                   <span key={d.id}
                         className={`tab${i === active ? " active" : ""}`}
                         onClick={() => { closeJoinPanel(); setActive(i); showExploreTables(); }}>
-                    {d.title}
+                    {renamingDatasetId === d.id ? <form className="tab-rename"
+                      onClick={(event) => event.stopPropagation()}
+                      onSubmit={(event) => { event.preventDefault(); saveDatasetName(d); }}>
+                      <input type="text" autoFocus aria-label="Name for SQL result" maxLength={128}
+                        value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.preventDefault(); setRenamingDatasetId(null); setRenameDraft("");
+                          }
+                        }} />
+                      <button type="submit" className="quiet" disabled={!renameDraft.trim()}
+                        aria-label="Save SQL result name">Save</button>
+                      <button type="button" className="quiet" aria-label="Cancel rename"
+                        onClick={() => { setRenamingDatasetId(null); setRenameDraft(""); }}>Cancel</button>
+                    </form> : <>
+                      <span>{d.title}</span>
+                      {d.sourceRef?.kind === "sql" && <button type="button" className="quiet"
+                        aria-label={`Rename SQL result ${d.title}`}
+                        onClick={(event) => {
+                          event.stopPropagation(); setActive(i); setRenamingDatasetId(d.id);
+                          setRenameDraft(d.title);
+                        }}>Rename</button>}
+                    </>}
                     <button className="quiet" onClick={(e) => {
                       e.stopPropagation(); closeDataset(i);
                     }}>✕</button>

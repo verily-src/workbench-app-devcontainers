@@ -508,7 +508,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           {sourceMode === "sql" && <div>
             <div className="join-row">
               <label>SQL source name
-                <input value={sqlName} maxLength={80} placeholder="e.g. visits" disabled={sourceBusy}
+                <input type="text" value={sqlName} maxLength={128} placeholder="e.g. visits" disabled={sourceBusy}
                        onChange={(event) => setSqlName(event.target.value)} />
               </label>
             </div>

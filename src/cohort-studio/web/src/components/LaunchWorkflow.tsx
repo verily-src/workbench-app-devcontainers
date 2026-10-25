@@ -12,6 +12,8 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
   const [s3, setS3] = useState<Source[]>([]);
   const [registry, setRegistry] = useState<
     { id: string; name: string }[]>([]);
+  const [registryLoading, setRegistryLoading] = useState(true);
+  const [registryError, setRegistryError] = useState("");
   const [workflow, setWorkflow] = useState("");
   const [outputBucket, setOutputBucket] = useState("");
   const [inputBucket, setInputBucket] = useState("");
@@ -34,8 +36,10 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
     }).catch(() => undefined);
     api.workflowRegistry().then((r) => {
       setRegistry(r.workflows);
+      if (!r.available) setRegistryError("Workflow registry is unavailable.");
       if (r.workflows[0]) setWorkflow(r.workflows[0].id);
-    }).catch(() => undefined);
+    }).catch(() => setRegistryError("Could not load workflows."))
+      .finally(() => setRegistryLoading(false));
   }, []);
 
   const writeCsv = async () => {
@@ -87,14 +91,26 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
         <button className="quiet" onClick={onClose}>✕</button>
       </div>
 
+      <div className="launch-step launch-workflow-picker">
+          <label>Workflow
+            <select aria-label="Workflow" value={workflow} disabled={registryLoading || !!registryError}
+                    onChange={(e) => setWorkflow(e.target.value)}>
+              {registry.length === 0 && <option value="">{registryLoading ? "Loading workflows…" : "No registered workflows"}</option>}
+              {registry.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>))}
+            </select>
+          </label>
+        {registryError && <p role="alert">{registryError}</p>}
+      </div>
+
       <div className="launch-step">
-        <div className="field-label">1 · Write cohort as input CSV (optional)</div>
+        <div className="field-label">Input CSV (S3)</div>
         <div className="launch-row">
-          <select value={inputBucket}
+          <select aria-label="Input S3 folder" value={inputBucket}
                   onChange={(e) => setInputBucket(e.target.value)}>
             {s3.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
           </select>
-          <input type="text" value={csvPath}
+          <input aria-label="Input CSV path" type="text" value={csvPath}
                  onChange={(e) => setCsvPath(e.target.value)} />
           <button onClick={writeCsv} disabled={!inputBucket || busy !== ""}>
             {busy === "export" ? "Writing…" : "Write CSV"}
@@ -103,18 +119,10 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
       </div>
 
       <div className="launch-step">
-        <div className="field-label">2 · Submit the job</div>
+        <div className="field-label">Run settings</div>
         <div className="launch-row">
-          <label>Workflow
-            <select value={workflow}
-                    onChange={(e) => setWorkflow(e.target.value)}>
-              {registry.length === 0 && <option value="">(none found)</option>}
-              {registry.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>))}
-            </select>
-          </label>
-          <label>Output bucket
-            <select value={outputBucket}
+          <label>Output S3 folder
+            <select aria-label="Output S3 folder" value={outputBucket}
                     onChange={(e) => setOutputBucket(e.target.value)}>
               {s3.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
             </select>

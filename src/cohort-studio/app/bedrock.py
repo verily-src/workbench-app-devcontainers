@@ -1,14 +1,18 @@
 import json
 
-MAX_TURNS = 8
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+
+import agent_runtime
+
+MAX_TURNS = agent_runtime.MAX_TURNS
 
 def _client(region: str):
     import boto3
     from botocore.config import Config
     return boto3.client(
         "bedrock-runtime", region_name=region,
-        config=Config(connect_timeout=10, read_timeout=60,
-                      retries={"max_attempts": 2, "mode": "standard"}))
+        config=Config(connect_timeout=5, read_timeout=60,
+                      retries={"total_max_attempts": 1, "mode": "standard"}))
 
 def _tools(schemas: list[dict]) -> list[dict]:
     tools = []
@@ -22,79 +26,74 @@ def _tools(schemas: list[dict]) -> list[dict]:
         }})
     return tools
 
-def _messages(messages: list[dict]) -> list[dict]:
-    return [{"role": m["role"], "content": [{"text": m["content"]}]}
-            for m in messages if m.get("role") in ("user", "assistant")
-            and m.get("content")]
+def _messages(messages: list[BaseMessage]) -> list[dict]:
+    convo = []
+    for message in messages:
+        if isinstance(message, SystemMessage):
+            continue
+        if isinstance(message, HumanMessage):
+            convo.append({"role": "user", "content": [{"text": message.content}]})
+        elif isinstance(message, AIMessage):
+            content = ([{"text": message.content}] if message.content else [])
+            content.extend({"toolUse": {"toolUseId": call["id"],
+                                         "name": call["name"],
+                                         "input": call["args"]}}
+                           for call in message.tool_calls)
+            convo.append({"role": "assistant", "content": content})
+        elif isinstance(message, ToolMessage):
+            try:
+                parsed = json.loads(message.content)
+            except (TypeError, json.JSONDecodeError):
+                parsed = None
+            block = {"toolResult": {"toolUseId": message.tool_call_id,
+                                    "content": ([{"json": parsed}]
+                                                if isinstance(parsed, dict)
+                                                else [{"text": str(message.content)}])}}
+            if convo and convo[-1]["role"] == "user":
+                convo[-1]["content"].append(block)
+            else:
+                convo.append({"role": "user", "content": [block]})
+    return convo
 
 def run(model: str, region: str, system: str, messages: list[dict],
         tool_schemas: list[dict], tool_impls: dict,
-        client=None) -> dict:
+        client=None, on_step=None) -> dict:
 
     if not region:
         raise ValueError("AWS region is required; set AWS_REGION or AWS_DEFAULT_REGION.")
     if not model:
         raise ValueError("Bedrock model ID is required; set it in Settings.")
+    owns_client = client is None
     client = client or _client(region)
-    convo = _messages(messages)
     tool_config = {"tools": _tools(tool_schemas), "toolChoice": {"auto": {}}}
-    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    calls = []
-
-    for turn in range(MAX_TURNS):
+    def invoke(model_messages, _schemas):
         response = client.converse(
             modelId=model,
             system=[{"text": system}],
-            messages=convo,
+            messages=_messages(model_messages),
             toolConfig=tool_config,
         )
         used = response.get("usage", {})
-        usage["prompt_tokens"] += used.get("inputTokens", 0) or 0
-        usage["completion_tokens"] += used.get("outputTokens", 0) or 0
-        usage["total_tokens"] += used.get("totalTokens", 0) or 0
         output = response.get("output", {}).get("message", {})
         content = output.get("content", [])
         tool_uses = [block["toolUse"] for block in content
                      if "toolUse" in block]
-        if not tool_uses:
-            reply = "\n".join(block["text"] for block in content
-                               if "text" in block).strip() or "(done)"
-            return {"reply": reply, "usage": usage,
-                    "tool_calls": calls, "turns": turn + 1}
+        calls = [{"name": use["name"], "args": use.get("input") or {},
+                  "id": use["toolUseId"]} for use in tool_uses]
+        usage = {"input_tokens": used.get("inputTokens", 0) or 0,
+                 "output_tokens": used.get("outputTokens", 0) or 0,
+                 "total_tokens": used.get("totalTokens", 0) or 0}
+        return AIMessage(content="\n".join(block["text"] for block in content
+                                            if "text" in block),
+                         tool_calls=calls, usage_metadata=usage)
 
-        convo.append(output)
-        results = []
-        for use in tool_uses:
-            name = use["name"]
-            calls.append(name)
-            impl = tool_impls.get(name)
-            status = None
-            if impl is None:
-                result = json.dumps({"error": f"unknown tool {name}"})
-                status = "error"
-            else:
-                try:
-                    args = use.get("input") or {}
-                    result = impl(**args)
-                except Exception as exc:
-                    result = str(exc)
-                    status = "error"
-            try:
-                parsed = json.loads(result)
-            except (TypeError, json.JSONDecodeError):
-                parsed = None
-            result_content = ([{"json": parsed}] if isinstance(parsed, dict)
-                              else [{"text": str(result)}])
-            result_block = {"toolUseId": use["toolUseId"],
-                            "content": result_content}
-            if status:
-                result_block["status"] = status
-            results.append({"toolResult": result_block})
-        convo.append({"role": "user", "content": results})
-
-    return {"reply": "I wasn't able to finish that in a reasonable number of "
-            "steps — try narrowing the request.", "usage": usage,
-            "tool_calls": calls, "turns": MAX_TURNS}
+    try:
+        return agent_runtime.run("bedrock", model, system, messages, tool_impls,
+                                 tool_schemas, invoke, on_step=on_step)
+    finally:
+        close = getattr(client, "close", None)
+        if owns_client and callable(close):
+            close()
 
 def structured_call(model: str, region: str, system: str, prompt: str,
                     name: str, description: str, schema: dict,

@@ -56,16 +56,16 @@ export interface MCPConnection {
 export interface ProviderConfig {
   model: string;
   api_key_set: boolean;
-  api_key_hint: string | null;
   api_key_source: string | null;
   auth_method: "api_key" | "iam" | "adc";
   region: string | null;
   project?: string | null;
   location?: string | null;
   configured?: boolean;
+  endpoint_host?: string | null;
 }
 
-export type Provider = "anthropic" | "openai" | "gemini" | "openrouter" | "bedrock" | "vertexai";
+export type Provider = "anthropic" | "openai" | "gemini" | "openrouter" | "bedrock" | "vertexai" | "openweight";
 
 export interface AppConfig {
   llm: {
@@ -74,12 +74,18 @@ export interface AppConfig {
 
     model: string;
     api_key_set: boolean;
-    api_key_hint: string | null;
     api_key_source: string | null;
   };
   mcp: { available: boolean; path: string };
   mcp_connections: MCPConnection[];
   chart_palette: string;
+}
+
+export interface ChatHistory {
+  session_id: string | null;
+  messages: { role: "user" | "assistant"; content: string; message_id: number }[];
+  has_more: boolean;
+  next_before_message_id: number | null;
 }
 
 export interface AgentTurn {
@@ -152,6 +158,7 @@ export interface OpenResult {
 }
 
 export interface CohortAgentResult {
+  session_id?: string;
   reply: string;
   concept_names?: Record<string, string>;
   spec: OmopSpec | null;
@@ -169,10 +176,18 @@ export interface ExportJob {
 }
 
 export const api = {
+  chatHistory: (kind: "dataset" | "omop", id: string, sessionId?: string, before?: number) => {
+    const path = kind === "dataset" ? `/api/datasets/${encodeURIComponent(id)}/chat/history`
+      : `/api/omop/${encodeURIComponent(id)}/cohort/agent/history`;
+    const query = new URLSearchParams();
+    if (sessionId) query.set("session_id", sessionId);
+    if (before !== undefined) query.set("before", String(before));
+    return request<ChatHistory>(`${path}?${query}`);
+  },
   omopAgent: (id: string, message: string,
-              history: { role: string; content: string }[], spec: OmopSpec) =>
+              _history: { role: string; content: string }[], spec: OmopSpec, sessionId?: string) =>
     request<CohortAgentResult>(`/api/omop/${encodeURIComponent(id)}/cohort/agent`,
-      post({ message, history: history.slice(-30), spec })),
+      post({ message, spec, session_id: sessionId })),
 
   omopInfo: (id: string, refresh = false) => request<OmopInfo>(
     `/api/omop/${encodeURIComponent(id)}?refresh=${refresh}`),
@@ -312,13 +327,12 @@ export const api = {
   submitWorkflow: (spec: Record<string, unknown>) =>
     request<WorkflowJob>("/api/workflows/submit", post(spec)),
 
-  chat: (datasetId: string, message: string, history: ChatMsg[],
-         filters: Filter[], charts: ChartSpec[]) =>
-    request<{ reply: string; filters: Filter[]; charts: ChartSpec[];
+  chat: (datasetId: string, message: string, _history: ChatMsg[],
+         filters: Filter[], charts: ChartSpec[], sessionId?: string) =>
+    request<{ session_id?: string; reply: string; filters: Filter[]; charts: ChartSpec[];
               actions: string[] }>(
       `/api/datasets/${datasetId}/chat`,
-      post({ message,
-             history: history.map(({ role, content }) => ({ role, content })),
+      post({ message, session_id: sessionId,
              filters,
              charts: charts.map(({ kind, x, y }) => ({ kind, x, y })) })),
 

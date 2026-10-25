@@ -106,6 +106,7 @@ export interface SqlPreview {
 export interface ChatMsg {
   role: "user" | "assistant";
   content: string;
+  message_id?: number;
   actions?: string[];
 }
 
@@ -195,6 +196,7 @@ export interface Dataset {
   page: number;
   result?: QueryResult;
   chat?: ChatMsg[];
+  chatSessionId?: string;
 }
 
 export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"

@@ -349,7 +349,7 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
 
       <AskAI dataset={dataset} onUpdate={onUpdate} />
 
-      {databaseScoped ? null : <ChatWidget dataset={dataset} onUpdate={onUpdate} />}
+      {databaseScoped ? null : <ChatWidget key={dataset.id} dataset={dataset} onUpdate={onUpdate} />}
 
       <AddChart dataset={dataset} onUpdate={onUpdate} />
 

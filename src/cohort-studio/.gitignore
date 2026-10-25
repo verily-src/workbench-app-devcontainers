@@ -12,3 +12,7 @@ web/dist/
 
 # Playwright
 test-results/
+
+app/knowledge.sqlite3*
+app/.studio-secrets/
+app/agent_store_config.json

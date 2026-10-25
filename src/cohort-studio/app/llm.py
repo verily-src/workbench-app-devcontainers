@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 import bedrock
 import config
 import vertexai_auth
+import agent_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ class LLMNotConfigured(RuntimeError):
 
 _LABELS = {"anthropic": "Anthropic", "openai": "OpenAI",
            "gemini": "Gemini", "openrouter": "OpenRouter",
-           "bedrock": "Amazon Bedrock", "vertexai": "Google Vertex AI"}
+           "bedrock": "Amazon Bedrock", "vertexai": "Google Vertex AI",
+           "openweight": "Openweight"}
 
 def validate_config(cfg: dict) -> dict:
     label = _LABELS.get(cfg["provider"], cfg["provider"])
@@ -47,10 +49,19 @@ def validate_config(cfg: dict) -> dict:
             vertexai_auth.endpoint(cfg["project"], cfg["location"])
         except ValueError as exc:
             raise LLMNotConfigured(str(exc)) from exc
+    elif cfg["provider"] == "openweight":
+        if not cfg.get("base_url"):
+            raise LLMNotConfigured(
+                "Openweight endpoint is not configured. Set a valid "
+                "STUDIO_OPENWEIGHT_BASE_URL in the app environment.")
     elif not cfg["api_key"]:
         raise LLMNotConfigured(
             f"No {label} API key configured — add one in Settings.")
     if not cfg["model"]:
+        if cfg["provider"] == "openweight":
+            raise LLMNotConfigured(
+                "No Openweight model is configured; set "
+                "STUDIO_OPENWEIGHT_MODEL in the app environment.")
         raise LLMNotConfigured(
             f"No {label} model set — enter a model name in Settings.")
     return cfg
@@ -68,7 +79,7 @@ def _openai_client(cfg: dict):
         except vertexai_auth.VertexAuthUnavailable as exc:
             raise LLMNotConfigured(str(exc)) from exc
     from openai import OpenAI
-    kwargs = {"api_key": cfg["api_key"]}
+    kwargs = {"api_key": cfg["api_key"] or "not-required"}
     if cfg["base_url"]:
         kwargs["base_url"] = cfg["base_url"]
     return OpenAI(**kwargs), None, None
@@ -110,7 +121,10 @@ def suggest_filters(question: str, columns: list[dict],
                 f"- {col['name']} (numeric; min={col.get('min')}, "
                 f"max={col.get('max')})")
 
-    system = (
+    system = agent_instructions.system_guidance(
+        "bioinformatics and data science",
+        output_schema=FilterSuggestion.model_json_schema(),
+    ) + "\n\n" + (
         "You translate a question about a tabular cohort into filters.\n"
         "Rules: only use the filterable columns listed; categorical filter "
         "values must come from the listed values (match case exactly); "

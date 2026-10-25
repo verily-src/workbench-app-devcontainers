@@ -1,4 +1,5 @@
 import logging
+import internal_data
 import re
 
 import pandas as pd
@@ -40,6 +41,7 @@ def list_tables(engine: Engine) -> list[dict]:
             "kind": TABLE_TYPE_LABELS.get(ttype, "table"),
         }
         for schema, table, ttype in rows
+        if not internal_data.is_internal(schema, table)
     ]
 
 def fetch_table(engine: Engine, table: str, cap: int = ROW_CAP) -> pd.DataFrame:

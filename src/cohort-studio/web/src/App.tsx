@@ -12,6 +12,7 @@ import { WorkflowsView } from "./components/WorkflowsView";
 import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
+import { Tutorial } from "./components/Tutorial";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, TableInfo } from "./types";
@@ -363,10 +364,10 @@ export default function App() {
       datasets.length - 2)));
   };
 
-  const updateDataset = useCallback((index: number,
+  const updateDataset = useCallback((datasetId: string,
                                      changes: Partial<Dataset>) => {
-    setDatasets((prev) => prev.map((d, i) =>
-      i === index ? { ...d, ...changes, ...(changes.filters || changes.charts
+    setDatasets((prev) => prev.map((d) =>
+      d.id === datasetId ? { ...d, ...changes, ...(changes.filters || changes.charts
         ? { page: 0, ...changes } : {}) } : d));
   }, []);
 
@@ -525,7 +526,7 @@ export default function App() {
           <FilterPanel
             columns={activeDs.columns}
             filters={activeDs.filters}
-            onChange={(filters) => updateDataset(active, { filters })}
+            onChange={(filters) => updateDataset(activeDs.id, { filters })}
           />
         ) : (
           <div style={{ color: "var(--ink-muted)" }}>
@@ -565,6 +566,7 @@ export default function App() {
                   title="Command palette">
             <span>⌘K</span>
           </button>
+          <Tutorial />
           {activity && (
             <div className="activity"><span className="pulse" />{activity}</div>
           )}
@@ -652,7 +654,7 @@ export default function App() {
                 <DatasetPane
                   dataset={activeDs}
                   palette={palette}
-                  onUpdate={(changes) => updateDataset(active, changes)}
+                  onUpdate={(changes) => updateDataset(activeDs.id, changes)}
                 />
               )}
             </>

@@ -2,6 +2,7 @@ import io
 import logging
 import time
 import uuid
+from typing import Literal
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,6 +18,10 @@ from pydantic import (BaseModel, ConfigDict, Field, RootModel,
                       field_validator, model_validator)
 
 import agent
+import agent_sessions
+import agent_store
+import knowledge
+import secret_store
 import cohort_agent
 import bq
 import catalog
@@ -58,6 +63,22 @@ async def lifespan(_app: FastAPI):
         export_jobs.shutdown()
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
+app.include_router(knowledge.router)
+app.middleware("http")(agent_sessions.preserve_owner_cookie)
+
+@app.exception_handler(agent_store.AgentStoreError)
+async def agent_store_error(_request: Request, exc: agent_store.AgentStoreError):
+    status = (409 if isinstance(exc, agent_store.AgentStoreBusy) else
+              404 if isinstance(exc, (agent_store.AgentStoreNotFound,
+                                     agent_store.AgentStoreOwnershipError)) else 503)
+    detail = ("This conversation already has a running turn." if status == 409 else
+              "Conversation not found." if status == 404 else
+              "Conversation storage is unavailable. Contact the app administrator.")
+    return JSONResponse(status_code=status, content={"detail": detail})
+
+@app.exception_handler(secret_store.SecretStoreError)
+async def secret_store_error(_request: Request, exc: secret_store.SecretStoreError):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_handler(request: Request,
@@ -754,19 +775,15 @@ def delete_dataset(dataset_id: str):
     datasets.close_dataset(dataset_id)
     return {"ok": True}
 
-class MCPConnection(BaseModel):
-    name: str
-    label: str = ""
-    url: str = ""
-    enabled: bool = False
-    note: str = ""
-    authorization_token: str | None = None
+class MCPConnection(config.MCPConnectionSettings):
+    pass
 
 class ConfigUpdate(BaseModel):
-    provider: str | None = None
-    model: str | None = None
-    api_key: str | None = None
-    mcp_connections: list[MCPConnection] | None = None
+    model_config = ConfigDict(extra="forbid", strict=True)
+    provider: config.StoredProvider | None = None
+    model: str | None = Field(default=None, max_length=256)
+    api_key: str | None = Field(default=None, max_length=8192)
+    mcp_connections: list[MCPConnection] | None = Field(default=None, max_length=128)
     chart_palette: str | None = None
 
 class AskRequest(BaseModel):
@@ -776,12 +793,14 @@ class AskRequest(BaseModel):
 class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    role: str
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=24000)
 
 class ChatRequest(BaseModel):
-    message: str
-    history: list[ChatMessage] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid", strict=True)
+    session_id: str | None = Field(default=None, pattern=r"^[0-9a-fA-F-]{36}$")
+    message: str = Field(min_length=1, max_length=8000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=30)
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
 
@@ -835,6 +854,10 @@ def put_config(req: ConfigUpdate):
     cfg = config.public_config()
     cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
     return cfg
+
+@app.post("/api/config/keys/migrate")
+def migrate_model_keys():
+    return config.migrate_legacy_keys()
 
 @app.post("/api/config/llm/test")
 def test_llm():
@@ -890,7 +913,7 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
     return {"table": req.table, "resource_id": req.resource_id, "rows": rows}
 
 @app.post("/api/datasets/{dataset_id}/chat")
-def chat_dataset(dataset_id: str, req: ChatRequest):
+def chat_dataset(dataset_id: str, req: ChatRequest, request: Request, response: Response):
     _require_loaded(dataset_id, "Chat")
     trace_id = uuid.uuid4().hex
     started = time.monotonic()
@@ -899,48 +922,52 @@ def chat_dataset(dataset_id: str, req: ChatRequest):
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
     try:
-        result = agent.chat(
-            dataset_id, req.message,
-            [m.model_dump() for m in req.history],
-            [f.model_dump() for f in req.filters],
-            [{k: v for k, v in c.model_dump().items() if v is not None}
-             for c in req.charts])
+        llm.validate_config(config.get_llm_config())
+        with agent_sessions.bind(agent_sessions.owner(request, response),
+                                 agent_sessions.dataset_scope(dataset_id), req.session_id):
+            result = agent.chat(
+                dataset_id, req.message,
+                [m.model_dump() for m in req.history],
+                [f.model_dump() for f in req.filters],
+                [{k: v for k, v in c.model_dump().items() if v is not None}
+                 for c in req.charts])
+            agent_sessions.finish(result)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
     except llm.LLMNotConfigured as e:
         _record_turn(trace_id, source, req.message, started,
                      status="unconfigured", error=str(e))
         raise HTTPException(400, str(e))
+    except agent_store.AgentStoreError:
+        raise
     except Exception as e:
         _record_turn(trace_id, source, req.message, started,
                      status="error", error=str(e).split("\n")[0][:300])
         raise HTTPException(502, str(e).split("\n")[0][:300])
     _record_turn(trace_id, source, req.message, started, result=result)
-    lineage.record(_lineage_engine(), "chat", "dataset", source,
-                   payload={"message": req.message,
-                            "actions": result["actions"]})
-    result["trace_id"] = trace_id
+    result.setdefault("trace_id", trace_id)
     return result
+
+@app.get("/api/datasets/{dataset_id}/chat/history")
+def dataset_chat_history(dataset_id: str, request: Request, response: Response,
+                         session_id: uuid.UUID | None = None, before: int | None = None):
+    return agent_sessions.history(agent_sessions.owner(request, response),
+                                  agent_sessions.dataset_scope(dataset_id), session_id, before)
+
+@app.get("/api/omop/{resource_id}/cohort/agent/history")
+def cohort_chat_history(resource_id: str, request: Request, response: Response,
+                        session_id: uuid.UUID | None = None, before: int | None = None):
+    return agent_sessions.history(agent_sessions.owner(request, response),
+                                  "omop:" + resource_id, session_id, before)
 
 def _record_turn(trace_id: str, source: str, message: str, started: float,
                  result: dict | None = None, status: str = "ok",
                  error: str | None = None):
-
-    latency_ms = (time.monotonic() - started) * 1000
-    cfg = config.get_llm_config()
-    lineage.record_turn(
-        _lineage_engine(), trace_id=trace_id,
-        provider=(result or {}).get("provider") or cfg["provider"],
-        model=(result or {}).get("model") or cfg["model"],
-        dataset=source, prompt=message, latency_ms=latency_ms,
-        usage=(result or {}).get("usage"),
-        tool_calls=(result or {}).get("tool_calls"),
-        status=status, error=error)
+    return None
 
 @app.get("/api/agent/turns")
 def agent_turns():
-    df = lineage.recent_turns(_lineage_engine())
-    return {"turns": df.to_dict(orient="records")}
+    return {"turns": []}
 
 @app.get("/api/views")
 def list_views(kind: str, resource_id: str):
@@ -1067,6 +1094,7 @@ def omop_concepts(resource_id: str, q: str = "", domain: str = "",
 class CohortAgentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
+    session_id: str | None = Field(default=None, pattern=r"^[0-9a-fA-F-]{36}$")
     message: str = Field(min_length=1, max_length=8000)
     history: list[ChatMessage] = Field(default_factory=list, max_length=30)
     spec: dict = Field(default_factory=dict)
@@ -1102,24 +1130,30 @@ class OmopSummaryRequest(BaseModel):
         return self
 
 @app.post("/api/omop/{resource_id}/cohort/agent")
-def omop_agent(resource_id: str, req: CohortAgentRequest):
+def omop_agent(resource_id: str, req: CohortAgentRequest, request: Request, response: Response):
     _, info = _omop_cdm(resource_id)
     trace_id = uuid.uuid4().hex
     started = time.monotonic()
     source = f"{resource_id} / OMOP cohort assistant"
     try:
-        result = cohort_agent.chat(resource_id, info, req.message,
-                                   [m.model_dump() for m in req.history], req.spec)
+        llm.validate_config(config.get_llm_config())
+        with agent_sessions.bind(agent_sessions.owner(request, response),
+                                 "omop:" + resource_id, req.session_id):
+            result = cohort_agent.chat(resource_id, info, req.message,
+                                       [m.model_dump() for m in req.history], req.spec)
+            agent_sessions.finish(result)
     except llm.LLMNotConfigured as e:
         _record_turn(trace_id, source, req.message, started,
                      status="unconfigured", error=str(e))
         raise HTTPException(400, str(e))
+    except agent_store.AgentStoreError:
+        raise
     except Exception as e:
         _record_turn(trace_id, source, req.message, started,
                      status="error", error=str(e).split("\n")[0][:300])
         raise _omop_error(e)
     _record_turn(trace_id, source, req.message, started, result=result)
-    result["trace_id"] = trace_id
+    result.setdefault("trace_id", trace_id)
     return result
 
 @app.post("/api/omop/{resource_id}/cohort/count")

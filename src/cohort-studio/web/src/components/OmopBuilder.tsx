@@ -67,6 +67,20 @@ function Editor({ rid, active, palette, onOpen }: {
   const [error, setError] = useState("");
   const [prompt, setPrompt] = useState("");
   const [history, setHistory] = useState<{ role: string; content: string }[]>([]);
+  const [chatSessionId, setChatSessionId] = useState<string>();
+  const [historyBefore, setHistoryBefore] = useState<number | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    setHistory([]); setChatSessionId(undefined); setHistoryBefore(null); setHistoryLoading(true); setHistoryError("");
+    api.chatHistory("omop", rid).then(out => {
+      if (cancelled) return;
+      setHistory(out.messages); setChatSessionId(out.session_id ?? undefined);
+      setHistoryBefore(out.has_more ? out.next_before_message_id : null);
+    }).catch(e => { if (!cancelled) setHistoryError(e.message); }).finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [rid]);
   const [proposal, setProposal] = useState<CohortAgentResult | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -266,14 +280,21 @@ function Editor({ rid, active, palette, onOpen }: {
           <section className="omop-card" aria-label="Cohort assistant">
             <h3>Cohort assistant</h3>
             <div className="omop-chat" aria-live="polite">
+              {historyBefore !== null && <button disabled={historyLoading || !!busy} onClick={() => run("Loading history…", async () => {
+                const out = await api.chatHistory("omop", rid, chatSessionId, historyBefore);
+                setHistory([...out.messages, ...history]);
+                setHistoryBefore(out.has_more ? out.next_before_message_id : null);
+              })}>Earlier messages</button>}
               {history.map((m, i) => <p key={i}><strong>{m.role === "user" ? "You" : "Assistant"}:</strong> {m.content}</p>)}
             </div>
+            {historyError && <p role="alert">{historyError}</p>}
             <label>Ask the cohort assistant<textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} maxLength={8000} /></label>
-            <button disabled={!prompt.trim()} onClick={() => run("Asking cohort assistant…", async () => {
+            <button disabled={!prompt.trim() || historyLoading || !!busy} onClick={() => run("Asking cohort assistant…", async () => {
               const message = prompt.trim();
-              const out = await api.omopAgent(rid, message, history, spec);
+              const out = await api.omopAgent(rid, message, history, spec, chatSessionId);
               if (!mounted.current) return;
-              setHistory([...history, { role: "user", content: message }, { role: "assistant", content: out.reply }].slice(-30));
+              setChatSessionId(out.session_id);
+              setHistory([...history, { role: "user", content: message }, { role: "assistant", content: out.reply }]);
               setPrompt(""); setProposal(out.spec ? out : null);
             })}>Ask assistant</button>
             {proposal?.spec && <div className="omop-proposal">

@@ -4,6 +4,33 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **DEMO registered, 2026-10-25:** Workbench workflow `cohort-genetics-demo`
+  (UUID `dc95c029-5a41-42f7-81bc-49e2e7a69173`) points to
+  `nextflow_resources/cohort-studio/demo-v1/main.nf`. Synthetic input and variant
+  dictionary are uploaded beside the definition. Real local Nextflow execution
+  and the pinned Linux runtime both produced summary, dictionary and manifest.
+  Combined candidate API/browser suite passed 67 checks; a later regular-workflow
+  regression test uses the actual CLI helper. Cloud smoke run
+  `6901dae0-3e34-47c3-b490-8a6e15ab4c6c` failed before execution because a future
+  output URI was treated as an S3 input. Corrected cloud params use plain output
+  bucket/key; retry pending. No successful cloud output is claimed yet.
+  Jev key Settings save/remove is locally validated through the encrypted store;
+  Jev API connectivity is not verified. App changes are not deployed yet.
+
+- **LOCAL validated, 2026-10-25:** Knowledge Base now separates built-in
+  assistant guidance from attached project documents. Attachments enrich context
+  and do not replace trusted instructions. Shared-corpus/provider disclosure is
+  retained. Root and candidate frontend builds passed; document upload, search,
+  reload and removal browser test passed in both trees (one each). Not deployed.
+  AI Settings Save/Test feedback also passed three mocked browser tests; live
+  provider inference remains unverified.
+
+- **DEPLOYED, 2026-10-25:** `1a220565ba8961ee8bc8bed37084c60519fa2f5c`
+  is active on the existing dev app. After SSO refresh, SSM
+  `eb3ed61f-416c-420b-bc4e-09187ed5d262` verified APP_SHA, health OK,
+  staged imports, frontend/backend activation and restart. This supersedes
+  the earlier activation-pending status.
+
 - **UI PATCH validated, 2026-10-25:** contained wide SQL editors/results within
   the main pane; SQL result tabs now support inline naming with saved-view
   persistence. Sidebar selection is source type → datasource → schema → table;
@@ -15,15 +42,22 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
   and 1440px. Live registry check found 18 registered workflows, but no demo
   analysis input/output contract has been verified. No workflow was submitted.
 
-- **RELEASE CANDIDATE, 2026-10-25:** selectively assembled on deployed `194f397b5`
-  in `/private/tmp/cohort-memory-publish`. Candidate backend + browser suite:
-  **148 passed in 39.49s** using the existing local PostgreSQL container and a
-  newly built frontend. A further built-browser check passed for the mixed-source
-  scan control and `allow_loaded` request propagation. PyArrow is now an explicit runtime dependency. Keeps
-  existing synchronous saved-view recipes; materialized snapshot jobs, new
-  connector registration, and Veibot draft UI are excluded. Root `app/db.py`
-  and unrelated root drafts are unchanged. Deployment and live verification
-  will be recorded after completion.
+- **DEPLOYED, 2026-10-25:** `2f623574a28a3fc6bc1b6b379300bb1539f03f04`
+  published from the isolated worktree and activated through `/api/admin/update`
+  on the existing dev app. SSM `9f756f1d-9f7a-4e53-ae33-71139c581c81` verified
+  running SHA, health 200 and successful staged activation/restart. Candidate
+  backend/browser suite passed **148 checks in 39.49s**, plus a focused browser
+  recheck for cross-source scan consent. PyArrow is an explicit dependency.
+  Release keeps synchronous saved-view recipes; materialized-view jobs, new
+  datasource registration and Veibot drafts remain excluded. Root worktree and
+  `app/db.py` were preserved. Live smoke
+  `1c0c4b26-3626-4223-bd8e-a28162c11a06` passed: JSONB metadata table opens
+  (1 row, 7 columns); generated Aurora SQL validates; the real join returns
+  10 expected rows with a durable source recipe; unified saved views returns
+  1 view and no unavailable stores. Temporary datasets were closed. Live model
+  inference and streamed-browser interaction were not tested in this release.
+
+Local-only indexed work queue: `docs/LOCAL_BACKLOG.md` (do not commit or publish).
 
 - **LOCAL ONLY, 2026-10-25:** fixed JSONB table profiling (`unhashable dict`),
   SQL CAST validation inside JOIN predicates, SQL source page ordering, and

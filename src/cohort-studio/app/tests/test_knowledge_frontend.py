@@ -9,6 +9,11 @@ def test_upload_search_and_remove_document(page, app_url):
     page.goto(app_url)
     page.locator(".topnav").get_by_text("Settings", exact=True).click()
     section = page.get_by_role("region", name="Knowledge base")
+    expect(section.get_by_role("heading", name="Built-in assistant guidance")).to_be_visible()
+    expect(section).to_contain_text("bioinformatics, data science, data engineering, OMOP and cohort work")
+    expect(section.get_by_role("heading", name="Attached project documents")).to_be_visible()
+    expect(section).to_contain_text("They add project context without replacing built-in guidance")
+    expect(section).to_contain_text("Relevant passages may be sent to your selected AI provider")
     for width in (1280, 760):
         page.set_viewport_size({"width": width, "height": 900})
         title_box = section.get_by_label("Document title").bounding_box()
@@ -16,7 +21,7 @@ def test_upload_search_and_remove_document(page, app_url):
         assert text_box["y"] > title_box["y"] + title_box["height"]
         assert section.evaluate("el => el.scrollWidth <= el.clientWidth")
     page.set_viewport_size({"width": 1280, "height": 900})
-    section.get_by_label("Upload text file").set_input_files({
+    section.get_by_label("Attach document").set_input_files({
         "name": "test-genetics-dictionary.txt", "mimeType": "text/plain",
         "buffer": b"kb_unique_sample_key links a specimen to the clinical record."})
     expect(section.get_by_label("Document title")).to_have_value("test-genetics-dictionary.txt")
@@ -25,7 +30,7 @@ def test_upload_search_and_remove_document(page, app_url):
     expect(remove).to_be_visible()
     page.reload()
     page.locator(".topnav").get_by_text("Settings", exact=True).click()
-    section.get_by_label("Search knowledge").fill("kb_unique_sample_key")
+    section.get_by_label("Search attached documents").fill("kb_unique_sample_key")
     section.get_by_role("button", name="Search documents").click()
     expect(section.locator("article")).to_contain_text("KB:")
     expect(section.locator("article")).to_contain_text("links a specimen")

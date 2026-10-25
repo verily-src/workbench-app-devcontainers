@@ -1,6 +1,7 @@
 .knowledge-base { max-width: 960px; }
 .knowledge-base h2 { margin: 0 0 8px; }
 .knowledge-base h3 { margin: 0; font-size: 14px; color: var(--ink); }
+.knowledge-base > .knowledge-section-label { margin-top: 16px; }
 .knowledge-editor, .knowledge-library { display: grid; gap: 16px; padding-top: 20px; }
 .knowledge-library { margin-top: 24px; border-top: 1px solid var(--border); }
 .knowledge-base label { display: grid; gap: 6px; min-width: 0; font-size: 12px; font-weight: 500; }

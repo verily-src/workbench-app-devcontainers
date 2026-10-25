@@ -1,7 +1,9 @@
 import json
 import logging
+import re
 import subprocess
 import time
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +12,60 @@ _cache: dict | None = None
 _cache_at = 0.0
 
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"}
+
+def _validate_job_inputs(batch_input_bucket_id: str,
+                         batch_input_csv_path: str,
+                         params_file_bucket_id: str,
+                         params_file_path: str) -> None:
+    if bool(batch_input_bucket_id) != bool(batch_input_csv_path):
+        raise ValueError("Batch input bucket and CSV path must be provided together.")
+    if bool(params_file_bucket_id) != bool(params_file_path):
+        raise ValueError("Params file bucket and path must be provided together.")
+    if batch_input_bucket_id and params_file_bucket_id:
+        raise ValueError("Batch CSV input and params-file input cannot be combined.")
+
+def _safe_object_path(path: str) -> str:
+    normalized = path.strip().lstrip("/")
+    if (not normalized or "\\" in normalized
+            or any(part in {".", ".."} for part in normalized.split("/"))):
+        raise ValueError("S3 object path is invalid.")
+    return normalized
+
+def _safe_path_segment(value: str) -> str:
+    if (not value or value in {".", ".."}
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value) is None):
+        raise ValueError("Demo job name must be one safe path segment.")
+    return value
+
+def s3_bucket_key(resource_uri: str, *path_parts: str) -> tuple[str, str]:
+    parsed = urlsplit(resource_uri)
+    if (parsed.scheme != "s3" or not parsed.netloc or parsed.query
+            or parsed.fragment):
+        raise ValueError("Output resource must resolve to an S3 URI.")
+    prefix = parsed.path.strip("/")
+    suffix = "/".join(_safe_object_path(part) for part in path_parts)
+    key = "/".join(part for part in (prefix, suffix) if part)
+    if not key:
+        raise ValueError("Output S3 key must not be empty.")
+    return parsed.netloc, key
+
+def write_params_json(resource_id: str, path: str, params: dict) -> dict:
+    try:
+        import database as db
+    except ModuleNotFoundError:
+        import db
+
+    object_path = _safe_object_path(path)
+    uri = f"{db.resolve_s3_uri(resource_id)}/{object_path}"
+    out = subprocess.run(
+        ["aws", "s3", "cp", "-", uri, "--profile", resource_id,
+         "--content-type", "application/json"],
+        input=json.dumps(params), capture_output=True, text=True, timeout=120)
+    if out.returncode != 0:
+        raise RuntimeError(
+            (out.stderr or out.stdout or "S3 params upload failed.")
+            .strip().split("\n")[-1][:300])
+    return {"s3_uri": uri, "resource_id": resource_id, "path": object_path}
 
 def _run(limit: int) -> list[dict]:
 
@@ -94,7 +150,7 @@ def list_workflows(force: bool = False) -> dict:
             capture_output=True, text=True, check=True, timeout=30)
         raw = json.loads(result.stdout or "[]")
         wfs = [{"id": w.get("id"), "name": w.get("displayName") or w.get("id"),
-                "type": w.get("workflowType"),
+                "type": w.get("workflowType") or w.get("type"),
                 "description": w.get("description")} for w in raw]
         _registry_cache, _registry_at = wfs, now
         return {"available": True, "workflows": wfs}
@@ -120,13 +176,20 @@ def export_cohort_csv(df, resource_id: str, path: str) -> dict:
 def submit_job(workflow: str, output_bucket_id: str, job_id: str = "",
                batch_input_bucket_id: str = "", batch_input_csv_path: str = "",
                column_mapping: str = "", row_selection: str = "",
-               profile: str = "") -> dict:
+               profile: str = "", output_path: str = "",
+               params_file_bucket_id: str = "",
+               params_file_path: str = "") -> dict:
+
+    _validate_job_inputs(batch_input_bucket_id, batch_input_csv_path,
+                         params_file_bucket_id, params_file_path)
 
     args = ["wb", "workflow", "job", "run", "--workflow", workflow,
             "--output-bucket-id", output_bucket_id, "--format", "JSON"]
     if job_id:
         args += ["--job-id", job_id]
-    if batch_input_bucket_id and batch_input_csv_path:
+    if output_path:
+        args += ["--output-path", output_path]
+    if batch_input_bucket_id:
         args += ["--batch-input-bucket-id", batch_input_bucket_id,
                  "--batch-input-csv-path", batch_input_csv_path]
         if column_mapping:
@@ -135,6 +198,9 @@ def submit_job(workflow: str, output_bucket_id: str, job_id: str = "",
             args += ["--row-selection", row_selection]
     if profile:
         args += ["--profile", profile]
+    if params_file_bucket_id:
+        args += ["--params-file-bucket-id", params_file_bucket_id,
+                 "--params-file-path", params_file_path]
     out = subprocess.run(args, capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         raise RuntimeError(

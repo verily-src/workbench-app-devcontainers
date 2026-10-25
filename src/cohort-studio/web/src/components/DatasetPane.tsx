@@ -60,6 +60,15 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
   const [showDerive, setShowDerive] = useState(false);
   const [showLaunch, setShowLaunch] = useState(false);
   const [cohortName, setCohortName] = useState("");
+  const [chatDraft, setChatDraft] = useState<{ id: string; text: string; datasetId: string } | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatDraftNumber, setChatDraftNumber] = useState(0);
+
+  useEffect(() => {
+    setChatDraft(null);
+    setChatOpen(false);
+    setChatDraftNumber(0);
+  }, [dataset.id]);
 
   const saveCohort = () => {
     const name = cohortName.trim();
@@ -350,9 +359,16 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
                         onSubmitted={() => undefined} />
       )}
 
-      <AskAI dataset={dataset} onUpdate={onUpdate} />
+      {(databaseScoped || !chatOpen) && <AskAI dataset={dataset} onUpdate={onUpdate}
+        databaseScoped={databaseScoped} onOpenChatDraft={(text) => {
+          const id = chatDraftNumber + 1;
+          setChatDraftNumber(id);
+          setChatDraft({ id: `${dataset.id}-${id}`, text, datasetId: dataset.id });
+        }} />}
 
-      {databaseScoped ? null : <ChatWidget key={dataset.id} dataset={dataset} onUpdate={onUpdate} />}
+      {databaseScoped ? null : <ChatWidget key={dataset.id} dataset={dataset}
+        onUpdate={onUpdate} draft={chatDraft?.datasetId === dataset.id ? chatDraft : null}
+        onOpenChange={setChatOpen} />}
 
       <AddChart dataset={dataset} onUpdate={onUpdate} />
 
@@ -472,14 +488,20 @@ function SaveToAurora({ dataset }: { dataset: Dataset }) {
   );
 }
 
-function AskAI({ dataset, onUpdate }:
-    { dataset: Dataset; onUpdate: (c: Partial<Dataset>) => void }) {
+function AskAI({ dataset, onUpdate, databaseScoped, onOpenChatDraft }:
+    { dataset: Dataset; onUpdate: (c: Partial<Dataset>) => void;
+      databaseScoped: boolean; onOpenChatDraft: (text: string) => void }) {
   const [question, setQuestion] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
   const ask = async () => {
     if (!question.trim()) return;
+    if (!databaseScoped) {
+      onOpenChatDraft(question.trim());
+      setQuestion("");
+      return;
+    }
     setBusy(true);
     setNote("");
     try {
@@ -502,7 +524,9 @@ function AskAI({ dataset, onUpdate }:
       </svg>
       <input
         type="text"
-        placeholder='Ask AI to filter — e.g. "liver samples with RIN above 7"'
+        placeholder={databaseScoped
+          ? 'Ask AI to filter — e.g. "liver samples with RIN above 7"'
+          : "Ask the assistant…"}
         value={question}
         disabled={busy}
         onChange={(e) => setQuestion(e.target.value)}
@@ -510,7 +534,7 @@ function AskAI({ dataset, onUpdate }:
       />
       <button className="primary" onClick={ask}
               disabled={busy || !question.trim()}>
-        {busy ? "Thinking…" : "Ask"}
+        {databaseScoped ? (busy ? "Thinking…" : "Ask") : "Open chat"}
       </button>
       {note && <span className="ask-note">{note}</span>}
     </div>

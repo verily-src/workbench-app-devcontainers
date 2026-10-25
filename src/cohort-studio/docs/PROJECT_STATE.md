@@ -4,6 +4,8 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **Assistant/settings hotfix, validated locally; deployment pending:** provider Save sends only provider fields; MCP Save omits read-only `token_set`. Five real Chromium/API settings checks passed. Disk-backed assistant tools use full-source DuckDB with current UI filters and bounded previews; 12 agent/runtime checks passed in each tree. Inline questions open the existing dataset chat for loaded/disk-backed sources; database-backed filter-only behavior remains supported. User's live request reached Anthropic but failed for insufficient credits; user is adding credit, so live inference remains unverified. This supersedes the earlier no-key observation.
+
 - **LIVE demo verified, 2026-10-25:** release `31515dc27fa0435f866083425c74566b38cc9d9f`
   is active and healthy (SSM `a60624b4-bf0d-4222-b7ef-48767b35a67a`). Settings
   now exposes encrypted Jev key save/remove, provider Save/Test feedback,

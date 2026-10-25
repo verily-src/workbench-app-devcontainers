@@ -5,9 +5,11 @@ import type { ChatMsg, Dataset } from "../types";
 interface Props {
   dataset: Dataset;
   onUpdate: (changes: Partial<Dataset>) => void;
+  draft?: { id: string; text: string } | null;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function ChatWidget({ dataset, onUpdate }: Props) {
+export function ChatWidget({ dataset, onUpdate, draft, onOpenChange }: Props) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,6 +22,16 @@ export function ChatWidget({ dataset, onUpdate }: Props) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [history.length, busy, open]);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (!draft) return;
+    setInput(draft.text);
+    setOpen(true);
+  }, [draft?.id, dataset.id]);
 
   useEffect(() => {
     if (!open) return;

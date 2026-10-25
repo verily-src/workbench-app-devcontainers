@@ -23,6 +23,11 @@ AGGS = ("count", "mean", "median", "min", "max", "sum", "nunique")
 def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
                 actions: list[str], disk_source: dict | None = None):
 
+    def scoped_filters(filters_json: str) -> list[dict]:
+        requested = llm.validate_filters(json.loads(filters_json), columns)
+        active = llm.validate_filters(ui["filters"], columns)
+        return active + requested
+
     def run_query(filters_json: str = "[]") -> str:
         """Count rows matching a filter set and preview the first rows.
 
@@ -30,24 +35,28 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
             filters_json: JSON array of filters, each
                 {"column": str, "kind": "categorical"|"range",
                  "values"?: [str], "min"?: number, "max"?: number}.
-                Pass "[]" for the full dataset.
+                Pass "[]" to keep the current UI filters.
         """
-        filters = llm.validate_filters(json.loads(filters_json), columns)
+        filters = scoped_filters(filters_json)
         if disk_source:
             import disk_data
             result = disk_data.query(disk_source, filters, [], 0, 5)
+            total_rows = (disk_data.aggregate(
+                disk_source, "count", "", "", ui["filters"])["result"]
+                if ui["filters"] else result["total"])
             preview = pd.DataFrame(result["rows"]["data"],
                                    columns=result["rows"]["columns"])
             return json.dumps({
-                "total_rows": result["total"],
+                "total_rows": total_rows,
                 "matching_rows": result["filtered"],
                 "preview": preview.astype(object).where(preview.notna(), None)
                     .to_dict(orient="records"),
             }, default=str)
+        total_rows = len(datasets.apply_filters(df, ui["filters"]))
         sub = datasets.apply_filters(df, filters)
         preview = sub.head(5).astype(object).where(sub.head(5).notna(), None)
         return json.dumps({
-            "total_rows": len(df),
+            "total_rows": total_rows,
             "matching_rows": len(sub),
             "preview": preview.to_dict(orient="records"),
         }, default=str)
@@ -62,15 +71,16 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
                 for agg=count without a column.
             group_by: Optional categorical column to group by (top 25
                 groups by size).
-            filters_json: JSON array of filters to apply first (same
-                shape as run_query). Pass "[]" for none.
+            filters_json: JSON array of filters to apply in addition to
+                current UI filters (same shape as run_query). Pass "[]" for
+                current UI filters only.
         """
         if agg not in AGGS:
             return json.dumps({"error": f"agg must be one of {AGGS}"})
         for name in (column, group_by):
             if name and name not in df.columns:
                 return json.dumps({"error": f"unknown column: {name}"})
-        filters = llm.validate_filters(json.loads(filters_json), columns)
+        filters = scoped_filters(filters_json)
         if disk_source:
             import disk_data
             return json.dumps(disk_data.aggregate(
@@ -204,7 +214,14 @@ def chat(dataset_id: str, message: str, history: list[dict],
     row_count = (ds["disk_source"].get("rows") if ds.get("disk_source")
                  else len(df))
     system = _system_prompt(ds["source"], df, columns, ui, row_count=row_count) + knowledge.context(message)
-    if ds.get("live_source") and not ds.get("disk_source"):
+    if ds.get("disk_source"):
+        system += (
+            "\nTool data scope: the complete source is stored on disk and tools "
+            "query it through DuckDB. Do not treat the in-memory preview as the "
+            "complete source. Row previews contain at most five rows; grouped "
+            "aggregates return at most 25 groups. Preserve the user's filters "
+            "when running tools.")
+    elif ds.get("live_source"):
         system += ("\nTool data scope: bounded loaded preview. The database may contain "
                    "additional rows. Never present preview counts as full-database totals.")
     stored_history = agent_sessions.start(system, cfg, message)

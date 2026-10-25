@@ -304,7 +304,7 @@ export const api = {
   updateConfig: (body: {
     provider?: Provider; model?: string; api_key?: string;
     jev_api_key?: string; jev_model?: string;
-    mcp_connections?: MCPConnection[]; chart_palette?: string;
+    mcp_connections?: Omit<MCPConnection, "token_set">[]; chart_palette?: string;
   }) => request<AppConfig>("/api/config",
     { method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body) }),

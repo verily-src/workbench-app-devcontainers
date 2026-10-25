@@ -50,3 +50,37 @@ def test_late_chat_reply_cannot_update_another_dataset(loaded_page):
     expect(page.get_by_role("button", name="Chat", exact=True)).to_be_visible()
     page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
     expect(page.locator(".chart-grid").get_by_text("tissue", exact=True)).to_have_count(0)
+
+
+def test_inline_ask_opens_chat_with_draft_and_applies_filters(loaded_page):
+    page = loaded_page
+    history = [{"role": "user", "content": "Previous question", "message_id": 1},
+               {"role": "assistant", "content": "Previous answer", "message_id": 2}]
+    page.route("**/chat/history?*", lambda route: route.fulfill(json={
+        "session_id": None, "messages": history, "has_more": False,
+        "next_before_message_id": None}))
+    calls = []
+    def chat(route):
+        calls.append(route.request.post_data_json)
+        route.fulfill(json={"session_id": None, "reply": "Filtered to liver", "actions": [],
+                            "filters": [{"column": "tissue", "kind": "categorical",
+                                         "values": ["liver"]}], "charts": []})
+    page.route("**/chat", chat)
+    ask_calls = []
+    page.route("**/ask", lambda route: ask_calls.append(route.request.url))
+
+    page.get_by_placeholder("Ask the assistant…").fill("Keep liver samples")
+    page.get_by_role("button", name="Open chat", exact=True).click()
+    expect(page.get_by_text("Previous answer", exact=True)).to_be_visible()
+    ask_input = page.get_by_placeholder("Ask about the data…")
+    expect(ask_input).to_have_value("Keep liver samples")
+    expect(page.get_by_role("button", name="Open chat", exact=True)).to_have_count(0)
+    ask_input.fill("Keep liver samples")
+    page.get_by_role("button", name="Send", exact=True).click()
+    expect(page.get_by_text("Filtered to liver", exact=True)).to_be_visible()
+    expect(page.locator(".chip", has_text="tissue: liver")).to_be_visible()
+    assert len(calls) == 1
+    assert calls[0]["message"] == "Keep liver samples"
+    assert "history" not in calls[0]
+    expect(page.get_by_text("Previous answer", exact=True)).to_be_visible()
+    assert ask_calls == []

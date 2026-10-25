@@ -18,7 +18,7 @@ TOOL_SCHEMAS = [
             "filters_json": {"type": "string", "description":
                 "JSON array of filters, each {\"column\", \"kind\": "
                 "\"categorical\"|\"range\", \"values\"?, \"min\"?, "
-                "\"max\"?}. Pass \"[]\" for the full dataset."}},
+                "\"max\"?}. Pass \"[]\" to keep current UI filters."}},
             "required": ["filters_json"]}}},
     {"type": "function", "function": {
         "name": "aggregate",
@@ -31,7 +31,8 @@ TOOL_SCHEMAS = [
             "group_by": {"type": "string", "description":
                 "Optional categorical column to group by."},
             "filters_json": {"type": "string", "description":
-                "JSON array of filters to apply first. \"[]\" for none."}},
+                "JSON array of filters in addition to current UI filters. "
+                "Pass \"[]\" for current UI filters only."}},
             "required": ["agg"]}}},
     {"type": "function", "function": {
         "name": "set_filters",

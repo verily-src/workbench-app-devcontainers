@@ -39,7 +39,7 @@ def test_custom_sql_preview_open_join_and_saved_source_reopen(client, engine):
         opened = opened.json()
         ids.append(opened["dataset_id"])
         assert opened["rows"] == 100_000
-        assert opened["sampled"] is True
+        assert opened["sampled"] is False
         assert opened["query_scope"] == "database"
         assert opened["source_ref"]["kind"] == "sql"
 
@@ -50,6 +50,25 @@ def test_custom_sql_preview_open_join_and_saved_source_reopen(client, engine):
         assert query.json()["total"] == 100_001
         assert query.json()["entity"]["total"] == 100_001
         assert query.json()["rows"]["data"][0] == [1, "sample-1"]
+
+        descending_sql = sql.removesuffix("ORDER BY person_id") + "ORDER BY person_id DESC"
+        descending_preview = client.post("/api/sql/preview", json={
+            "resource_id": RID, "sql": descending_sql,
+        })
+        assert descending_preview.status_code == 200, descending_preview.text
+        assert descending_preview.json()["sample"][0] == [100_001, "sample-100001"]
+        descending_open = client.post("/api/datasets/open", json={
+            "source_ref": descending_preview.json()["source_ref"],
+        })
+        assert descending_open.status_code == 200, descending_open.text
+        ids.append(descending_open.json()["dataset_id"])
+        descending_query = client.post(
+            f"/api/datasets/{descending_open.json()['dataset_id']}/query", json={
+                "page": 0, "page_size": 5,
+            })
+        assert descending_query.status_code == 200, descending_query.text
+        assert descending_query.json()["rows"]["data"][0] == [
+            100_001, "sample-100001"]
 
         people = client.post("/api/datasets/open", json={
             "source_ref": {"kind": "aurora", "resource_id": RID,
@@ -77,6 +96,41 @@ def test_custom_sql_preview_open_join_and_saved_source_reopen(client, engine):
             datasets.close_dataset(dataset_id)
         with engine.begin() as conn:
             conn.execute(text(f'DROP TABLE IF EXISTS public."{table}"'))
+
+
+def test_jsonb_table_opens_profiles_and_returns_structured_values(client, engine):
+    schema = f"genetics_jsonb_{uuid.uuid4().hex[:8]}"
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f'CREATE SCHEMA "{schema}"')
+        conn.exec_driver_sql(f'''CREATE TABLE "{schema}".import_metadata (
+            metadata jsonb, items jsonb, absent jsonb
+        )''')
+        conn.exec_driver_sql(
+            f'''INSERT INTO "{schema}".import_metadata VALUES (
+                '{{"nested":{{"n":7}}}}'::jsonb, '[1,2]'::jsonb, NULL
+            )''')
+    try:
+        opened = client.post("/api/datasets/open", json={
+            "source_ref": {"kind": "aurora", "resource_id": RID,
+                           "schema": schema, "table": "import_metadata"},
+        })
+        assert opened.status_code == 200, opened.text
+        body = opened.json()
+        try:
+            assert {column["name"]: column["filter_kind"] for column in body["columns"]} == {
+                "metadata": "none", "items": "none", "absent": "none",
+            }
+
+            rows = client.post(f"/api/datasets/{body['dataset_id']}/query", json={
+                "page": 0, "page_size": 5,
+            })
+            assert rows.status_code == 200, rows.text
+            assert rows.json()["rows"]["data"] == [[{"nested": {"n": 7}}, [1, 2], None]]
+        finally:
+            datasets.close_dataset(body["dataset_id"])
+    finally:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
 
 
 @pytest.mark.parametrize("sql", [

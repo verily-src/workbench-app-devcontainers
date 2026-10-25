@@ -25,36 +25,59 @@ def _evict():
     expired = [k for k, v in _store.items()
                if now - v["created"] > DATASET_TTL]
     for k in expired:
-        del _store[k]
+        _drop(k)
     normal = [k for k, v in _store.items() if not v.get("temporary")]
     while len(normal) > MAX_DATASETS:
         oldest = min(normal, key=lambda k: _store[k]["created"])
-        del _store[oldest]
+        _drop(oldest)
         normal.remove(oldest)
+
+
+def _drop(dataset_id: str):
+    dataset = _store.pop(dataset_id, None)
+    if dataset and dataset.get("disk_source"):
+        import disk_data
+        disk_data.remove(dataset["disk_source"])
 
 def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
                  capped: bool | None = None,
                  live_source: dict | None = None,
+                 disk_source: dict | None = None,
                  temporary: bool = False) -> dict:
 
+    if live_source is not None or disk_source is not None:
+        capped = False
     if capped is None:
         capped = len(df) >= queries.ROW_CAP
-    columns = profile_columns(df)
-    if live_source is not None:
-        import live_query
-        columns = live_query.profile_columns(live_source, columns)
+    try:
+        columns = profile_columns(df)
+        if live_source is not None:
+            import live_query
+            columns = live_query.profile_columns(live_source, columns)
+        elif disk_source is not None:
+            import disk_data
+            columns = disk_data.profile_columns(disk_source, columns)
+    except Exception:
+        if disk_source is not None:
+            import disk_data
+            disk_data.remove(disk_source)
+        raise
     with _lock:
         if not temporary:
             _evict()
         dataset_id = uuid.uuid4().hex[:12]
         _store[dataset_id] = {"df": df, "source": source, "origin": origin,
                               "capped": capped, "live_source": live_source,
+                              "disk_source": disk_source,
                               "created": time.monotonic(), "temporary": temporary}
+    estimate_source = disk_source or live_source or {}
     return {"dataset_id": dataset_id, "source": source,
             "rows": len(df), "columns": columns,
             "query_scope": "database" if live_source else "loaded",
             "database": live_source is not None,
-            "sampled": bool(capped)}
+            "sampled": bool(capped),
+            "estimated_bytes": estimate_source.get("estimated_bytes"),
+            "large_warning": bool(estimate_source.get("large_warning"))}
 
 def get(dataset_id: str) -> dict:
     try:
@@ -64,12 +87,20 @@ def get(dataset_id: str) -> dict:
 
 def close_dataset(dataset_id: str):
     with _lock:
-        _store.pop(dataset_id, None)
+        _drop(dataset_id)
+
+
+def clear():
+    with _lock:
+        for dataset_id in list(_store):
+            _drop(dataset_id)
 
 def set_column(dataset_id: str, name: str, series) -> dict:
 
     with _lock:
         ds = get(dataset_id)
+        if ds.get("disk_source"):
+            raise ValueError("Derived columns are not available for disk-backed sources.")
         df = ds["df"].copy()
         df[name] = series
         ds["df"] = df
@@ -184,8 +215,16 @@ def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
             raise ValueError(f"Unknown filter column: {item.get('column')!r}.")
     if ds.get("live_source") is not None:
         import live_query
+        import disk_data
+        disk_data.guard_live_query(ds["live_source"], chart_specs, entity_column)
         return live_query.query(ds["live_source"], filters, chart_specs,
                                 page, page_size, entity_column, refresh=refresh)
+    if ds.get("disk_source") is not None:
+        if refresh:
+            raise ValueError("Refresh is not available for a disk-backed source.")
+        import disk_data
+        return disk_data.query(ds["disk_source"], filters, chart_specs,
+                               page, page_size, entity_column)
 
     import agg_duck
     if agg_duck.should_use(full):

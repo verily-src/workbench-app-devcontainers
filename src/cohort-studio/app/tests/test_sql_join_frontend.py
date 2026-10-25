@@ -6,7 +6,7 @@ from tests.test_e2e import app_url
 pytestmark = pytest.mark.e2e
 
 
-def test_sql_source_preview_adds_durable_join_input(page: Page, app_url: str):
+def test_sql_mode_opens_result_without_visual_join_controls(page: Page, app_url: str):
     opened_sources = []
 
     def fulfill(route, body, status=200):
@@ -58,6 +58,12 @@ def test_sql_source_preview_adds_durable_join_input(page: Page, app_url: str):
     page.get_by_role("button", name="Join tables").click()
     panel = page.locator(".join-panel")
     panel.get_by_role("button", name="SQL", exact=True).click()
+    expect(panel.get_by_role("radiogroup", name="Join type")).to_have_count(0)
+    expect(panel.get_by_role("button", name="Join into new tab")).to_have_count(0)
+    expect(panel.get_by_label("Start from")).to_have_count(0)
+    panel.get_by_role("button", name="Table", exact=True).click()
+    expect(panel.get_by_role("radiogroup", name="Join type")).to_be_visible()
+    panel.get_by_role("button", name="SQL", exact=True).click()
     panel.get_by_label("SQL source name").fill("person slice")
     editor = panel.get_by_label("SQL query")
     editor.fill("SELECT person_id, gender FROM cdm.person")
@@ -67,12 +73,13 @@ def test_sql_source_preview_adds_durable_join_input(page: Page, app_url: str):
 
     editor.fill("SELECT person_id FROM cdm.person")
     expect(panel.get_by_label("SQL preview")).to_have_count(0)
-    expect(panel.get_by_role("button", name="Add SQL source")).to_have_count(0)
+    expect(panel.get_by_role("button", name="Open SQL result")).to_have_count(0)
 
     editor.fill("SELECT person_id, gender FROM cdm.person")
     panel.get_by_role("button", name="Preview SQL").click()
     expect(panel.get_by_label("SQL preview")).to_be_visible(timeout=10000)
-    panel.get_by_role("button", name="Add SQL source").click()
+    panel.get_by_role("button", name="Open SQL result").click()
     expect(page.locator(".tab", has_text="person slice")).to_be_visible(timeout=10000)
-    expect(panel.get_by_label("Start from")).to_have_value("person slice")
+    expect(panel).to_have_count(0)
+    expect(page.get_by_text("Female", exact=True)).to_be_visible()
     assert opened_sources == [source_ref]

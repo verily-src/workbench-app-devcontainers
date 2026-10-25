@@ -3,6 +3,7 @@ import type {
   ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
+  SavedViewList,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -245,17 +246,18 @@ export const api = {
       body: JSON.stringify({ columns }),
     }),
 
-  join: (baseId: string, steps: JoinStep[]) =>
+  join: (baseId: string, steps: JoinStep[], allowLoaded = false) =>
     request<OpenResult & { join: JoinStats }>("/api/datasets/join",
-      post({ base_id: baseId, steps })),
+      post({ base_id: baseId, steps, allow_loaded: allowLoaded })),
 
-  previewJoin: (baseId: string, steps: JoinStep[]) =>
+  previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false) =>
     request<JoinPreview>("/api/datasets/join/preview",
-      post({ base_id: baseId, steps })),
+      post({ base_id: baseId, steps, allow_loaded: allowLoaded })),
 
-  validateJoin: (baseId: string, steps: JoinStep[], signal?: AbortSignal) =>
+  validateJoin: (baseId: string, steps: JoinStep[], signal?: AbortSignal,
+                 allowLoaded = false) =>
     request<JoinValidation>("/api/datasets/join/validate",
-      { ...post({ base_id: baseId, steps }), signal }),
+      { ...post({ base_id: baseId, steps, allow_loaded: allowLoaded }), signal }),
 
   suggestJoin: (leftId: string, rightId: string) =>
     request<JoinSuggestion[]>(
@@ -351,6 +353,8 @@ export const api = {
   listViews: (kind: string, resourceId: string) =>
     request<{ name: string }[]>(
       `/api/views?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`),
+
+  listAllViews: () => request<SavedViewList>("/api/views/all"),
 
   getView: (kind: string, resourceId: string, name: string) =>
     request<{

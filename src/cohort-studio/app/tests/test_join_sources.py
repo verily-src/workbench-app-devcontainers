@@ -1,6 +1,9 @@
 import uuid
+import time
 
 import pytest
+import pandas as pd
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 import datasets
@@ -91,6 +94,10 @@ def source_tables(client, engine, monkeypatch):
         "view_name": f"join-source-{suffix}",
     }
     datasets._store.clear()
+    client.delete("/api/views", params={
+        "kind": "aurora", "resource_id": "omopdb",
+        "name": f"join-source-{suffix}",
+    })
     with engine.begin() as conn:
         for table in (people, detail, numeric, invalid, large_ids, padded_ids):
             conn.execute(text(f'DROP TABLE IF EXISTS public."{table}"'))
@@ -100,6 +107,124 @@ def source_tables(client, engine, monkeypatch):
 
 def _ref(rid, table):
     return {"kind": "aurora", "resource_id": rid, "table": table}
+
+
+def test_aurora_sql_compilation_keeps_parameters_out_of_sql():
+    left = datasets.open_dataset(pd.DataFrame({"person_id": [1], "tag": ["a"]}), "left")
+    right = datasets.open_dataset(pd.DataFrame({"person_id": [1], "event": ["v"]}), "right")
+    datasets.get(left["dataset_id"])["live_source"] = {
+        "resource_id": "db1",
+        "sql": "SELECT person_id, 'colon:literal'::text AS tag "
+               "FROM public.people WHERE person_id >= :base_min",
+        "params": {"base_min": 1},
+        "columns": {"person_id": "person_id", "tag": "tag"},
+    }
+    datasets.get(right["dataset_id"])["live_source"] = {
+        "resource_id": "db1",
+        "sql": "SELECT person_id, event FROM public.detail WHERE person_id >= :right_min",
+        "params": {"right_min": 2},
+        "columns": {"person_id": "person_id", "event": "event"},
+    }
+    client = TestClient(main.app)
+    payload = {"base_id": left["dataset_id"], "steps": [{
+        "right_id": right["dataset_id"], "how": "inner", "columns": ["event"],
+        "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}],
+    }]}
+    response = client.post("/api/datasets/join/validate", json=payload)
+    assert response.status_code == 200, response.text
+    generated = response.json()["generated_sql"]
+    assert generated["engine"] == "aurora"
+    assert generated["parameters"] == {"base_min": 1, "right_min": 2}
+    assert "'colon:literal'" in generated["sql"]
+    assert set(text(generated["sql"])._bindparams) == {"base_min", "right_min"}
+    datasets.get(right["dataset_id"])["live_source"]["params"] = {"base_min": 2}
+    invalid = client.post("/api/datasets/join/validate", json=payload).json()
+    assert invalid["ok"] is False and invalid["generated_sql"] is None
+    assert "Conflicting bound parameters" in invalid["problems"][0]
+    datasets.close_dataset(left["dataset_id"])
+    datasets.close_dataset(right["dataset_id"])
+
+
+def test_validate_generated_aurora_sql_preserves_live_params_and_literals(
+        client, source_tables, engine):
+    left = client.post("/api/datasets/open", json={"source_ref": _ref(
+        source_tables["rid"], source_tables["people"])})
+    right = client.post("/api/datasets/open", json={"source_ref": _ref(
+        source_tables["rid"], source_tables["detail"])})
+    assert left.status_code == right.status_code == 200
+    left_id, right_id = left.json()["dataset_id"], right.json()["dataset_id"]
+    left_ds, right_ds = datasets.get(left_id), datasets.get(right_id)
+    left_ds["df"]["source_marker"] = "colon:literal"
+    left_ds["live_source"].update(
+        sql=(f'SELECT person_id, status, score_text, '
+             f"'colon:literal'::text AS source_marker FROM public.\"{source_tables['people']}\" "
+             "WHERE person_id >= :base_min"),
+        params={"base_min": 1},
+    )
+    right_ds["live_source"].update(
+        sql=(f'SELECT person_id, event FROM public.\"{source_tables["detail"]}\" '
+             "WHERE person_id >= :right_min"),
+        params={"right_min": 1},
+    )
+    response = client.post("/api/datasets/join/validate", json={
+        "base_id": left_id,
+        "steps": [{"right_id": right_id, "how": "inner", "columns": ["event"],
+                   "conditions": [{"left": "person_id", "op": "=",
+                                   "right": "person_id"}]}],
+    })
+    assert response.status_code == 200, response.text
+    generated = response.json()["generated_sql"]
+    assert generated["engine"] == "aurora"
+    assert generated["parameters"] == {"base_min": 1, "right_min": 1}
+    assert "'colon:literal'" in generated["sql"]
+    assert ":base_min" in generated["sql"] and ":right_min" in generated["sql"]
+    assert "ghost" not in generated["parameters"]
+    with engine.connect() as conn:
+        rows = conn.execute(text(generated["sql"]), generated["parameters"]).fetchall()
+    assert len(rows) == 4
+
+
+def test_validate_generated_duckdb_sql_uses_staged_aliases():
+    base = datasets.open_dataset(pd.DataFrame({"sample_id": ["a", "b"]}), "base")
+    visits = datasets.open_dataset(pd.DataFrame({"sample_id": ["a"], "visit": [1]}),
+                                  "visits")
+    outcomes = datasets.open_dataset(pd.DataFrame({"sample_id": ["a"], "result": ["ok"]}),
+                                    "outcomes")
+    client = TestClient(main.app)
+    response = client.post("/api/datasets/join/validate", json={
+        "base_id": base["dataset_id"], "steps": [
+        {"right_id": visits["dataset_id"], "how": "left", "columns": ["visit"],
+         "conditions": [{"left": "sample_id", "op": "=", "right": "sample_id"}]},
+        {"right_id": outcomes["dataset_id"], "how": "left", "columns": ["result"],
+         "conditions": [{"left": "sample_id", "op": "=", "right": "sample_id"}]},
+    ]})
+    assert response.status_code == 200, response.text
+    generated = response.json()["generated_sql"]
+    assert generated["engine"] == "duckdb"
+    assert generated["parameters"] == {}
+    assert generated["staged_inputs"] == ["source_0", "source_1", "source_2"]
+    assert '"source_0" AS l LEFT JOIN "source_1" AS r' in generated["sql"]
+    assert '"step_1" AS l LEFT JOIN "source_2" AS r' in generated["sql"]
+    assert "/tmp/" not in generated["sql"]
+    for dataset in (base, visits, outcomes):
+        datasets.close_dataset(dataset["dataset_id"])
+
+
+def _complete_saved_view_job(client, response):
+    assert response.status_code == 200, response.text
+    job_id = response.json().get("job_id")
+    assert job_id
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        status = client.get(f"/api/views/jobs/{job_id}")
+        assert status.status_code == 200, status.text
+        job = status.json()
+        if job["status"] == "complete":
+            return job
+        if job["status"] == "failed":
+            pytest.fail(f"Saved-view materialization failed: {job.get('error')}")
+        time.sleep(0.01)
+    pytest.fail("Saved-view materialization did not complete.")
 
 
 def test_join_source_is_durable_and_restores_saved_view(
@@ -175,6 +300,7 @@ def test_join_source_is_durable_and_restores_saved_view(
         "kind": "aurora", "resource_id": rid,
         "name": view_name,
     })
+
 
 
 def test_column_override_uses_postgres_storage_values(

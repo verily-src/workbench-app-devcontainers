@@ -178,16 +178,61 @@ def _engine(p: dict) -> tuple[str, str]:
         return "duckdb", "Postgres runs full joins on = conditions only."
     return "aurora", f"All tables are in Aurora database {origins[0]['resource_id']}."
 
+def _bound_params(p: dict) -> dict:
+    params = {}
+    for ds in [p["base"]] + [step["ds"] for step in p["steps"]]:
+        for key, value in (ds.get("live_source") or {}).get("params", {}).items():
+            if key in params and params[key] != value:
+                raise ValueError("Conflicting bound parameters in joined sources.")
+            params[key] = value
+    return params
+
+def _duckdb_sql(p: dict) -> dict:
+    relations = {id(p["base"]): '"source_0"'}
+    staged_inputs = ["source_0"]
+    ctes = []
+    for step in p["steps"]:
+        dataset = step["ds"]
+        if id(dataset) not in relations:
+            alias = f"source_{len(staged_inputs)}"
+            relations[id(dataset)] = _q(alias)
+            staged_inputs.append(alias)
+        name = f"step_{step['no']}"
+        left = relations[id(p["base"])] if step["no"] == 1 else _q(f"step_{step['no'] - 1}")
+        sql = _step_sql(step, left, relations[id(dataset)])
+        ctes.append(f"{_q(name)} AS ({sql})")
+    final = _q(f"step_{len(p['steps'])}")
+    statement = "WITH " + ", ".join(ctes) + f" SELECT * FROM {final}"
+    return {"engine": "duckdb", "sql": statement, "parameters": {},
+            "staged_inputs": staged_inputs}
+
+def _generated_sql(p: dict) -> dict:
+    if p["engine"] == "aurora":
+        return {"engine": "aurora", "sql": aurora_sql(p)["unlimited"](),
+                "parameters": _bound_params(p)}
+    return _duckdb_sql(p)
+
 def _capped_inputs(p: dict) -> list[str]:
     inputs = [p["base"]] + [s["ds"] for s in p["steps"]]
-    return list(dict.fromkeys(ds["source"] for ds in inputs if ds.get("capped")))
+    return list(dict.fromkeys(ds["source"] for ds in inputs
+                              if ds.get("capped") and not ds.get("live_source")
+                              and not ds.get("disk_source")))
 
 def validate(base_id: str, steps: list[dict]) -> dict:
 
     p = plan(base_id, steps)
     capped = _capped_inputs(p) if p["engine"] == "duckdb" else []
-    return {"ok": _first_error(p) is None, "engine": p["engine"],
+    error = _first_error(p)
+    generated = None
+    if error is None:
+        try:
+            generated = _generated_sql(p)
+        except ValueError as exc:
+            p["problems"].append(str(exc))
+            error = str(exc)
+    return {"ok": error is None, "engine": p["engine"],
             "engine_reason": p["engine_reason"], "capped_inputs": capped,
+            "generated_sql": generated,
             "problems": p["problems"],
             "steps": [{"problems": s["problems"], "notes": s["notes"],
                        "conditions": s["checks"]} for s in p["steps"]]}
@@ -300,12 +345,27 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     resource_id = ((p["base"].get("live_source") or {}).get("resource_id")
                    or (p["base"].get("origin") or {}).get("resource_id"))
     engine = db.get_engine_for_resource(resource_id)
-    params = {}
+    params = _bound_params(p)
+    import disk_data
+    live_sources = []
     for ds in [p["base"]] + [step["ds"] for step in p["steps"]]:
-        for key, value in (ds.get("live_source") or {}).get("params", {}).items():
-            if key in params and params[key] != value:
-                raise ValueError("Conflicting bound parameters in joined sources.")
-            params[key] = value
+        live = ds.get("live_source")
+        if live:
+            live_sources.append(live)
+        elif ds.get("origin"):
+            origin = ds["origin"]
+            columns = list(ds["df"].columns)
+            live_sources.append({
+                "resource_id": origin["resource_id"], "params": {},
+                "sql": (f"SELECT * FROM {_q(origin.get('schema') or PG_SCHEMA)}."
+                        f"{_q(origin['table'])}"),
+                "columns": {name: name for name in columns},
+            })
+    source_estimate = disk_data.guard_live_join(live_sources, {
+        "resource_id": resource_id, "params": params,
+        "sql": sql["unlimited"](),
+        "columns": {name: name for name in p["columns"]},
+    })
     try:
         with engine.begin() as conn:
             if conn.dialect.name == "postgresql":
@@ -327,7 +387,10 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
             steps = []
             for s in p["steps"]:
                 total = scalar(sql["count"](s["no"]))
-                steps.append(_step_stats(before, table_rows(s["ds"]), total, cap))
+                step_stats = _step_stats(before, table_rows(s["ds"]), total, cap)
+                step_stats["truncated"] = False
+                step_stats["preview_rows"] = min(total, cap)
+                steps.append(step_stats)
                 before = total
             res = conn.execute(text(sql["select"](min(cap, fetch or cap))), params)
             df = pd.DataFrame.from_records([tuple(r) for r in res.fetchall()],
@@ -336,7 +399,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
         raise _aurora_error(e, timeout_ms) from e
     notes = [f"step {s['no']}: {n}" for s in p["steps"] for n in s["notes"]]
     stats = {"engine": "aurora", "base_rows": base_rows, "steps": steps,
-             "notes": notes, "capped_inputs": []}
+             "notes": notes, "capped_inputs": [], **source_estimate}
     columns = {name: sql["names"][name] for name in p["columns"]}
     live_source = {
         "resource_id": (p["base"].get("live_source") or {}).get("resource_id")
@@ -348,7 +411,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     return {"df": df, "stats": _finish(stats, min(before, cap)),
             "live_source": live_source}
 
-def _checked_plan(base_id: str, steps: list[dict]) -> dict:
+def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict:
     if not steps:
         raise ValueError("Add at least one join step.")
     if len(steps) > MAX_STEPS:
@@ -356,16 +419,17 @@ def _checked_plan(base_id: str, steps: list[dict]) -> dict:
     p = plan(base_id, steps)
     has_live = any(ds.get("live_source") for ds in
                    [p["base"]] + [s["ds"] for s in p["steps"]])
-    if has_live and p["engine"] != "aurora":
-        raise ValueError("A live Aurora join can only join tables from the same Aurora database.")
+    if has_live and p["engine"] != "aurora" and not allow_loaded:
+        raise ValueError("Cross-source joins require explicit approval to read each full source.")
     error = _first_error(p)
     if error:
         raise ValueError(error)
     return p
 
-def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP) -> dict:
+def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
+        allow_loaded: bool = False) -> dict:
 
-    p = _checked_plan(base_id, steps)
+    p = _checked_plan(base_id, steps, allow_loaded)
     if p["engine"] == "aurora":
         try:
             return _run_aurora(p, cap, RUN_TIMEOUT_MS)
@@ -376,11 +440,12 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP) -> dict:
             out = _run_duckdb(p, cap)
             out["stats"]["notes"].insert(0, f"{e} Ran in memory instead.")
             return out
-    return _run_duckdb(p, cap)
+    import disk_data
+    return disk_data.run_join(p)
 
-def preview(base_id: str, steps: list[dict]) -> dict:
+def preview(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict:
 
-    p = _checked_plan(base_id, steps)
+    p = _checked_plan(base_id, steps, allow_loaded)
     if p["engine"] == "aurora":
         try:
             out = _run_aurora(p, queries.ROW_CAP, PREVIEW_TIMEOUT_MS, fetch=PREVIEW_ROWS)
@@ -394,10 +459,16 @@ def preview(base_id: str, steps: list[dict]) -> dict:
             out = _run_duckdb(p, queries.ROW_CAP)
             out["stats"]["notes"].insert(0, f"{e} Previewed in memory instead.")
     else:
-        out = _run_duckdb(p, queries.ROW_CAP)
+        import disk_data
+        out = disk_data.run_join(p)
     df = out["df"].head(PREVIEW_ROWS)
-    return {**out["stats"], "columns": list(df.columns),
-            "sample": df.astype(object).where(df.notna(), None).values.tolist()}
+    result = {**out["stats"], "columns": list(df.columns),
+              "sample": df.astype(object).where(df.notna(), None).values.tolist(),
+              "sample_truncated": int(out["stats"].get("total_rows", 0)) > len(df)}
+    if out.get("disk_source"):
+        import disk_data
+        disk_data.remove(out["disk_source"])
+    return result
 
 def suggest(left_id: str, right_id: str, limit: int = 5) -> list[dict]:
 

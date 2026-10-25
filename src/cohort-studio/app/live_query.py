@@ -2,6 +2,8 @@ import math
 from decimal import Decimal
 
 import pandas as pd
+import sqlglot
+from sqlglot import exp
 from sql_utils import statement as text
 
 import db
@@ -62,6 +64,41 @@ def _where(filters: list[dict], columns: dict[str, str]):
 
 def _query(conn, live_source: dict, sql: str, params: dict):
     return conn.execute(text(sql), {**live_source.get("params", {}), **params})
+
+
+def _requested_order(live_source: dict) -> str | None:
+    try:
+        query = sqlglot.parse_one(live_source["sql"], read="postgres")
+    except Exception:
+        return None
+    order = query.args.get("order")
+    if order is None:
+        return None
+    columns = live_source["columns"]
+    physical_names = set(columns.values())
+    output_names = list(columns.values())
+    for term in order.expressions:
+        target = term.this
+        if isinstance(target, exp.Literal) and not target.is_string:
+            try:
+                position = int(target.this)
+            except (TypeError, ValueError):
+                return None
+            if not 1 <= position <= len(output_names):
+                return None
+            term.set("this", exp.column(output_names[position - 1], table="live"))
+        for column in term.find_all(exp.Column):
+            if column.name in columns:
+                physical = columns[column.name]
+            elif column.name in physical_names:
+                physical = column.name
+            else:
+                return None
+            column.set("this", exp.to_identifier(physical, quoted=True))
+            column.set("table", exp.to_identifier("live", quoted=True))
+            column.set("db", None)
+            column.set("catalog", None)
+    return ", ".join(term.sql(dialect="postgres") for term in order.expressions)
 
 
 def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
@@ -199,7 +236,7 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         f"live.{_q(pg_name)} AS {_q(logical)}"
         for logical, pg_name in columns.items())
     table = f"({live_source['sql']}) AS live"
-    order = "to_jsonb(live)::text"
+    order = _requested_order(live_source) or "to_jsonb(live)::text"
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")

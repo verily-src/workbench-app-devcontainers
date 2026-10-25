@@ -132,7 +132,11 @@ def infer_filter_kinds(df: pd.DataFrame) -> dict[str, str]:
     kinds = {}
     for col in df.columns:
         series = df[col].dropna()
-        unique = series.nunique()
+        try:
+            unique = series.nunique()
+        except TypeError:
+            kinds[col] = "none"
+            continue
         if unique == 0:
             kinds[col] = "none"
         elif pd.api.types.is_bool_dtype(series):

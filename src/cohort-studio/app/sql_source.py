@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import pandas as pd
 import internal_data
+import pandas as pd
 from sqlalchemy import Engine
 from sqlglot import Dialect, exp, parse
 from sqlglot.tokens import TokenType
@@ -21,7 +21,7 @@ _SAFE_FUNCTIONS = {
     "current_timestamp", "date_part", "date_trunc", "extract", "floor", "greatest",
     "json_agg", "json_build_object", "jsonb_agg", "jsonb_build_object", "left",
     "length", "least", "ln", "log", "lower", "ltrim", "max", "min", "mod",
-    "nullif", "power", "regexp_match", "regexp_replace", "replace", "right",
+    "nullif", "power", "regexp_like", "regexp_match", "regexp_replace", "replace", "right",
     "round", "rtrim", "sign", "split_part", "sqrt", "stddev", "stddev_pop",
     "stddev_samp", "string_agg", "sum", "to_char", "to_date", "to_number",
     "to_timestamp", "timestamp_trunc", "trim", "upper", "variance", "var_pop", "var_samp",
@@ -91,16 +91,20 @@ def normalize(sql: str) -> str:
                     or schema.startswith("pg_toast")):
                 raise ValueError("System schemas cannot be queried as SQL sources.")
         if isinstance(node, exp.Func):
+            if isinstance(node, (exp.And, exp.Or, exp.Not, exp.Case, exp.If)):
+                continue
             function = (node.name if isinstance(node, exp.Anonymous)
                         else node.sql_name()).casefold()
             if isinstance(node.parent, exp.Dot):
                 raise ValueError("Schema-qualified SQL functions are not allowed.")
             if function not in _SAFE_FUNCTIONS:
                 raise ValueError(f"SQL function {function!r} is not allowed.")
+            child = node
             parent = node.parent
             while parent is not None and not isinstance(parent, (exp.Select, exp.From, exp.Join)):
+                child = parent
                 parent = parent.parent
-            if isinstance(parent, (exp.From, exp.Join)):
+            if isinstance(parent, exp.From) or (isinstance(parent, exp.Join) and parent.this is child):
                 raise ValueError("Table-valued SQL functions are not allowed.")
     try:
         normalized = query.sql(dialect="postgres")

@@ -14,6 +14,7 @@ interface Props {
   dataset: Dataset;
   palette: string;
   onUpdate: (changes: Partial<Dataset>) => void;
+  onEditJoin: (datasetId: string) => void;
 }
 
 function describeFilter(f: Filter): string {
@@ -48,7 +49,7 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[unit]}`;
 }
 
-export function DatasetPane({ dataset, palette, onUpdate }: Props) {
+export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
@@ -229,6 +230,8 @@ export function DatasetPane({ dataset, palette, onUpdate }: Props) {
           </select>
         </label>
         <SaveToAurora dataset={dataset} />
+        {dataset.sourceRef?.kind === "join" && <button className="quiet"
+          onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
           {creatingExport ? "Starting export…" : "Export TSV"}

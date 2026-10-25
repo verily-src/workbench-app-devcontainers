@@ -10,7 +10,8 @@ interface Props {
   datasets: Dataset[];
   sources: Source[];
   busy: boolean;
-  onJoin: (p: { baseId: string; steps: JoinStep[] }) => void;
+  onJoin: (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean }) => void;
+  initialPlan?: { title: string; baseId: string; steps: JoinStep[]; allowLoaded: boolean };
   onSourceOpened: (opened: Awaited<ReturnType<typeof api.openSourceRef>>,
                    title: string, sourceRef: SourceRef) => void;
   onClose: () => void;
@@ -82,9 +83,19 @@ function defaultCondition(leftCols: string[], right?: Dataset): JoinCondition {
 
 const directAurora = (ref?: SourceRef) => ref?.kind === "aurora" && "table" in ref;
 
-export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onClose }: Props) {
+function sourceResources(ref?: SourceRef): string[] {
+  if (!ref) return [];
+  if (ref.kind === "join") return [
+    ...sourceResources(ref.base), ...ref.steps.flatMap((step) => sourceResources(step.source)),
+  ];
+  if (ref.kind === "derived") return sourceResources(ref.base);
+  return [ref.resource_id];
+}
+
+export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
+                            onSourceOpened, onClose }: Props) {
   const byId = useMemo(() => new Map(datasets.map((d) => [d.id, d])), [datasets]);
-  const [baseId, setBaseId] = useState(datasets[0]?.id ?? "");
+  const [baseId, setBaseId] = useState(initialPlan?.baseId ?? datasets[0]?.id ?? "");
   const base = byId.get(baseId);
   const [resourceKey, setResourceKey] = useState("");
   const [sourceTables, setSourceTables] = useState<TableInfo[]>([]);
@@ -227,8 +238,9 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
       const title = duplicateCount ? `${requestedName} (${duplicateCount + 1})` : requestedName;
       const sourceRef: SourceRef = { ...preview.source_ref, name: title };
       const opened = await api.openSourceRef(sourceRef);
-      attachOpenedSource(opened, title, sourceRef);
+      onSourceOpened(opened, title, sourceRef);
       setSqlPreview(null);
+      onClose();
     } catch (error) {
       setSqlError((error as Error).message);
     } finally {
@@ -246,8 +258,9 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
 
   const firstOther = (exclude: string) =>
     datasets.find((d) => d.id !== exclude)?.id ?? "";
-  const [steps, setSteps] = useState<StepState[]>(() =>
-    [newStep(firstOther(baseId), [])]);
+  const [steps, setSteps] = useState<StepState[]>(() => initialPlan
+    ? initialPlan.steps.map((step) => ({ ...step, touched: true, pickCols: false }))
+    : [newStep(firstOther(baseId), [])]);
   const canAddSource = !baseId || steps.some((step) => !step.right_id)
     || steps.length < MAX_STEPS;
   const [suggestions, setSuggestions] = useState<Record<number, JoinSuggestion[]>>({});
@@ -257,6 +270,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
   const [previewErr, setPreviewErr] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const previewRequest = useRef(0);
+  const [allowLoaded, setAllowLoaded] = useState(initialPlan?.allowLoaded ?? false);
 
   const stepKey = steps.map((s) => s.right_id).join("|");
   const recommendationKey = steps.map((s) =>
@@ -265,6 +279,12 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
     steps.length > 0 && steps.every((s) =>
       byId.get(s.right_id)?.columns.some((c) => c.name === name))) ?? [];
   const [commonKey, setCommonKey] = useState("");
+  const selectedInputs = [base, ...steps.map((step) => byId.get(step.right_id))]
+    .filter((dataset): dataset is Dataset => Boolean(dataset));
+  const resources = new Set(selectedInputs.flatMap((dataset) => sourceResources(dataset.sourceRef)));
+  const hasUnbackedLoaded = selectedInputs.some((dataset) =>
+    dataset.queryScope === "loaded" && !dataset.sourceRef);
+  const crossSource = resources.size > 1 || (resources.size > 0 && hasUnbackedLoaded);
 
   useEffect(() => {
     if (!commonKeys.includes(commonKey)) setCommonKey(commonKeys[0] ?? "");
@@ -355,15 +375,16 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
 
   const [validation, setValidation] = useState<JoinValidation | null>(null);
   useEffect(() => {
+    setValidation(null);
     if (!base || steps.some((s) => !s.right_id)) { setValidation(null); return; }
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      api.validateJoin(baseId, payload(), ctrl.signal)
+      api.validateJoin(baseId, payload(), ctrl.signal, crossSource && allowLoaded)
         .then(setValidation)
         .catch(() => { if (!ctrl.signal.aborted) setValidation(null); });
     }, VALIDATE_DELAY_MS);
     return () => { clearTimeout(timer); ctrl.abort(); };
-  }, [baseId, steps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [baseId, steps, crossSource, allowLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = datasets.map((d) => ({ id: d.id, label: d.title, hint: d.source }));
   const schemas = [...new Set(sourceTables.map((item) => item.schema ?? ""))];
@@ -412,7 +433,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
     setPreviewing(true);
     setPreviewErr("");
     try {
-      const result = await api.previewJoin(baseId, payload());
+      const result = await api.previewJoin(baseId, payload(), crossSource && allowLoaded);
       if (requestId === previewRequest.current) setPreview(result);
     } catch (e) {
       if (requestId === previewRequest.current) setPreviewErr((e as Error).message);
@@ -421,13 +442,22 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
     }
   };
 
+  const changeAllowLoaded = (value: boolean) => {
+    setAllowLoaded(value);
+    previewRequest.current += 1;
+    setPreview(null);
+    setPreviewErr("");
+    setPreviewing(false);
+  };
+
   return (
     <div className="join-panel">
       <div className="join-row">
-        <label>Start from
+        {initialPlan && <strong>Edit {initialPlan.title}</strong>}
+        {!initialPlan && sourceMode === "table" && <label>Start from
           <Combobox label="Start from" value={baseId} options={options}
                     onChange={changeBase} placeholder="Choose a table…" />
-        </label>
+        </label>}
         <div style={{ flex: 2 }} />
         <button className="quiet" onClick={onClose}>✕</button>
       </div>
@@ -493,8 +523,8 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
                       onClick={previewSql}>
                 {sqlBusy ? "Previewing…" : "Preview SQL"}
               </button>
-              {sqlPreview && <button disabled={sourceBusy || busy || !canAddSource}
-                onClick={addSqlSource}>{sourceBusy ? "Adding…" : "Add SQL source"}</button>}
+              {sqlPreview && <button disabled={sourceBusy || busy}
+                onClick={addSqlSource}>{sourceBusy ? "Opening…" : "Open SQL result"}</button>}
             </div>
             {sqlError && <div className="join-error" role="alert">{sqlError}</div>}
             {sqlPreview && <div className="join-sql-preview" aria-label="SQL preview">
@@ -514,6 +544,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
         </div>
       )}
 
+      {sourceMode === "table" && <>
       {steps.length > 1 && commonKeys.length > 0 && (
         <div className="join-row">
           <label>Common key
@@ -688,17 +719,43 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
           <span className={`join-engine ${engine}`}
                 title={validation?.engine_reason ?? ""}>{ENGINE_LABEL[engine]}</span>
         )}
-        <button className="quiet" disabled={!valid || previewing || sourceBusy || busy} onClick={runPreview}>
+        <button className="quiet" disabled={!valid || previewing || sourceBusy || busy
+          || (crossSource && !allowLoaded)} onClick={runPreview}>
           {previewing ? "Previewing…" : "Preview"}
         </button>
-        <button className="primary" disabled={!valid || busy || sourceBusy}
-                onClick={() => onJoin({ baseId, steps: payload() })}>
-          {busy ? "Joining…" : "Join into new tab"}
+        <button className="primary" disabled={!valid || busy || sourceBusy
+          || (crossSource && !allowLoaded)}
+                onClick={() => onJoin({ baseId, steps: payload(), allowLoaded: crossSource && allowLoaded })}>
+          {busy ? "Joining…" : initialPlan ? "Create edited join in new tab" : "Join into new tab"}
         </button>
       </div>
 
+      {crossSource && <div className="settings-hint join-warn">
+        <label><input type="checkbox" checked={allowLoaded} disabled={busy || previewing}
+          onChange={(event) => changeAllowLoaded(event.target.checked)} />
+          Allow full-source cross-source join
+        </label>
+        <div>{allowLoaded
+          ? "Studio will scan each complete source and stage the join on disk. The operation stops above 1 TB."
+          : "Cross-source joins require your approval to scan complete sources."}</div>
+      </div>}
+
       {(validation?.problems ?? []).map((p) =>
         <div key={p} className="settings-hint join-error">{p}</div>)}
+      {validation?.generated_sql && <details className="join-evidence">
+        <summary>Generated SQL</summary>
+        <div className="settings-hint">Engine: {validation.generated_sql.engine === "aurora" ? "Aurora" : "DuckDB"}</div>
+        {validation.generated_sql.staged_inputs?.length ? <div className="settings-hint">
+          Staged inputs: {validation.generated_sql.staged_inputs.join(", ")}
+        </div> : null}
+        <pre aria-label="Generated SQL" style={{ overflowX: "auto", whiteSpace: "pre-wrap", maxHeight: 260 }}>
+          {validation.generated_sql.sql}
+        </pre>
+        <div className="settings-hint">Parameters</div>
+        <pre aria-label="SQL parameters" style={{ overflowX: "auto", whiteSpace: "pre-wrap", maxHeight: 180 }}>
+          {JSON.stringify(validation.generated_sql.parameters, null, 2)}
+        </pre>
+      </details>}
       {!preview && (validation?.capped_inputs.length ?? 0) > 0 && (
         <div className="settings-hint join-warn join-capped">
           Runs in memory on the loaded rows of {validation!.capped_inputs.join(", ")},
@@ -736,6 +793,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, onSourceOpened, onC
           </div>
         </div>
       )}
+      </>}
     </div>
   );
 }

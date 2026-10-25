@@ -21,7 +21,7 @@ CHART_KINDS = ("bar", "histogram", "scatter", "heatmap")
 AGGS = ("count", "mean", "median", "min", "max", "sum", "nunique")
 
 def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
-                actions: list[str]):
+                actions: list[str], disk_source: dict | None = None):
 
     def run_query(filters_json: str = "[]") -> str:
         """Count rows matching a filter set and preview the first rows.
@@ -33,6 +33,17 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
                 Pass "[]" for the full dataset.
         """
         filters = llm.validate_filters(json.loads(filters_json), columns)
+        if disk_source:
+            import disk_data
+            result = disk_data.query(disk_source, filters, [], 0, 5)
+            preview = pd.DataFrame(result["rows"]["data"],
+                                   columns=result["rows"]["columns"])
+            return json.dumps({
+                "total_rows": result["total"],
+                "matching_rows": result["filtered"],
+                "preview": preview.astype(object).where(preview.notna(), None)
+                    .to_dict(orient="records"),
+            }, default=str)
         sub = datasets.apply_filters(df, filters)
         preview = sub.head(5).astype(object).where(sub.head(5).notna(), None)
         return json.dumps({
@@ -60,6 +71,10 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
             if name and name not in df.columns:
                 return json.dumps({"error": f"unknown column: {name}"})
         filters = llm.validate_filters(json.loads(filters_json), columns)
+        if disk_source:
+            import disk_data
+            return json.dumps(disk_data.aggregate(
+                disk_source, agg, column, group_by, filters), default=str)
         sub = datasets.apply_filters(df, filters)
         if group_by:
             grouped = sub.groupby(sub[group_by].astype(str), observed=True)
@@ -90,6 +105,11 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
         """
         cleaned = llm.validate_filters(json.loads(filters_json), columns)
         ui["filters"] = cleaned
+        if disk_source:
+            import disk_data
+            count = disk_data.query(disk_source, cleaned, [], 0, 1)["filtered"]
+            actions.append(f"Filters: {reason}" if cleaned else "Filters cleared")
+            return json.dumps({"applied": cleaned, "matching_rows": count})
         count = len(datasets.apply_filters(df, cleaned))
         actions.append(f"Filters: {reason}" if cleaned else "Filters cleared")
         return json.dumps({"applied": cleaned, "matching_rows": count})
@@ -134,7 +154,7 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
     return [run_query, aggregate, set_filters, add_chart, remove_chart]
 
 def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
-                   ui: dict) -> str:
+                   ui: dict, row_count: int | None = None) -> str:
     lines = []
     for col in columns:
         if col["filter_kind"] == "categorical":
@@ -145,6 +165,7 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
                          f"{col.get('max')})")
         else:
             lines.append(f"- {col['name']} (free text, not filterable)")
+    row_count = len(df) if row_count is None else row_count
     return (
         agent_instructions.system_guidance(
             "bioinformatics, data science, and data engineering",
@@ -153,7 +174,7 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
         "You are the data assistant inside Cohort Studio, a cohort "
         "exploration app. The user is looking at one dataset and your "
         "tools act directly on their screen.\n\n"
-        f"Dataset: {source} ({len(df):,} rows)\n"
+        f"Dataset: {source} ({row_count:,} rows)\n"
         f"Columns:\n{chr(10).join(lines)}\n\n"
         f"Current UI filters: {json.dumps(ui['filters'])}\n"
         f"Current charts: {json.dumps(ui['charts'])}\n\n"
@@ -173,15 +194,25 @@ def chat(dataset_id: str, message: str, history: list[dict],
 
     ds = datasets.get(dataset_id)
     df = ds["df"]
-    columns = datasets.profile_columns(df)
+    if ds.get("disk_source"):
+        import column_settings
+        columns = column_settings.profiles(ds)
+    else:
+        columns = datasets.profile_columns(df)
     ui = {"filters": list(filters), "charts": list(charts)}
     actions: list[str] = []
-    system = _system_prompt(ds["source"], df, columns, ui) + knowledge.context(message)
+    row_count = (ds["disk_source"].get("rows") if ds.get("disk_source")
+                 else len(df))
+    system = _system_prompt(ds["source"], df, columns, ui, row_count=row_count) + knowledge.context(message)
+    if ds.get("live_source") and not ds.get("disk_source"):
+        system += ("\nTool data scope: bounded loaded preview. The database may contain "
+                   "additional rows. Never present preview counts as full-database totals.")
     stored_history = agent_sessions.start(system, cfg, message)
     if stored_history is not None:
         history = stored_history
 
-    raw_tools = build_tools(df, columns, ui, actions)
+    raw_tools = build_tools(df, columns, ui, actions,
+                            disk_source=ds.get("disk_source"))
     tool_calls: list[str] = []
 
     def track(fn):

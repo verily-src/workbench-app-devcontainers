@@ -4,6 +4,70 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **RELEASE CANDIDATE, 2026-10-25:** selectively assembled on deployed `194f397b5`
+  in `/private/tmp/cohort-memory-publish`. Candidate backend + browser suite:
+  **148 passed in 39.49s** using the existing local PostgreSQL container and a
+  newly built frontend. A further built-browser check passed for the mixed-source
+  scan control and `allow_loaded` request propagation. PyArrow is now an explicit runtime dependency. Keeps
+  existing synchronous saved-view recipes; materialized snapshot jobs, new
+  connector registration, and Veibot draft UI are excluded. Root `app/db.py`
+  and unrelated root drafts are unchanged. Deployment and live verification
+  will be recorded after completion.
+
+- **LOCAL ONLY, 2026-10-25:** fixed JSONB table profiling (`unhashable dict`),
+  SQL CAST validation inside JOIN predicates, SQL source page ordering, and
+  streamed database cursor initialization. BigQuery retains its sampled loader.
+  Disk-backed S3/catalog and cross-source joins retain full staged data; each
+  DuckDB connection has a 2 GB memory limit and a 1 TB spill limit, with a 10 GB
+  warning and a 1 TB data budget. Current-batch bytes are checked before insertion;
+  registration failures remove owned files. No change to native Aurora S3 access.
+  Saved Views now aggregate permitted stores without a datasource picker. SQL
+  mode hides visual join controls. Edit join restores durable input recipes and
+  creates a revised result tab without replacing the original. Visual preview
+  exposes compiler SQL and bound parameters separately. Knowledge storage is
+  separated into `knowledge_store.py`; its UI now has grouped, responsive fields.
+  Local PostgreSQL checks: API + SQL source **63 passed**, join source + live
+  derive/compare **13 passed**, disk data **5 passed**. Newly built browser/API
+  checks for knowledge, saved views, edit join and SQL mode **8 passed**; frontend
+  build passed (existing bundle-size warning). Codex Luna follow-up found no
+  confirmed blocker in disk budgeting/cleanup, knowledge service or SQL generation.
+  OpenCode GLM max found a UI/API contract mismatch: SQL was read from preview
+  instead of validation. Fixed the binding; the corrected built-browser check
+  passed and now verifies SQL before Preview, clearing on invalid key selection,
+  and restoration after selecting a valid key. Preview deliberately has no SQL
+  field. This additional check supersedes the earlier mock-based SQL-display claim.
+  OpenCode's narrow recheck confirmed the blocker is resolved. Its broader review
+  confirmed SQL-mode separation, original-result retention and temporary-input
+  cleanup; it noted duplicate DuckDB SQL builders as maintenance debt.
+  These changes are not published or deployed; live remains `194f397b5`.
+  Demo scope: [OMOP + genetics round trip](DEMO_OMOP_GENETICS.md). No notebook or
+  workflow job was run as part of that scope.
+
+- **S3 incident verified, 2026-10-25:** `bench9232_ho_data` has the correct bucket
+  and empty prefix, and the Workbench resource profile resolves to the expected
+  external-access role. AWS explicitly denies ListBucket because no VPC endpoint
+  policy permits it. Internal `bench9232_ho_data_internal` lists 28 files. Evidence:
+  SSM `7dcbb268-843f-42b0-a981-32d6a806a7bd`. Profile regeneration did not resolve
+  the external denial. No IAM, endpoint policy, or alternate access route was
+  changed. The deployed memory release did not change the S3 listing implementation.
+
+- **DEPLOYED and storage-verified, 2026-10-25:** `194f397b5cd706b76a2b5fdcc9a8614bb302daa5`
+  is published on `cohort-dashboard` and running in the existing dev app via
+  `/api/admin/update`. Health passed; update log verified staged imports,
+  backend/frontend activation, and restart. Candidate release: 70 backend +
+  4 Chromium checks, plus 6 managed-migration checks. Live Aurora conversation
+  round-trip/owner isolation passed. History HTTP endpoint returned 200.
+  Key migration found zero legacy keys; active Anthropic provider has no key,
+  so live model inference remains unverified until a provider is configured.
+  Synthetic-key verification `43ac38e7-099d-4d60-af46-056bde749b14` passed AES-GCM
+  persistence, mode-0600 files, read after a fresh process, and cleanup. No user
+  key was displayed or added. Same database `_studio_agent` uses unchanged
+  managed permissions (not private). Refresh the app to test; Tutorial is in
+  the header and provider setup is in Settings.
+  Release commits were made in detached `/private/tmp/cohort-memory-publish`;
+  root worktree/index were preserved and local root branch remains at old HEAD.
+  Do not blindly stage the root tree: it still contains paused/unreleased work.
+
 - **Live storage verified, 2026-10-25:** resumed the existing dev app. Managed
   migration `a1d3d00c-b2d0-42dc-bad3-9eb80f02a626` created all five `_studio_agent`
   tables and saved `/app/agent_store_config.json` for `cohort-dash-db-20261005`.

@@ -51,3 +51,23 @@ def test_assistant_receives_cited_untrusted_evidence(client, monkeypatch):
         assert "sample_key identifies the specimen" in captured["system"]
     finally:
         datasets.close_dataset(data["dataset_id"])
+
+
+def test_context_without_a_store_does_not_create_a_database(tmp_path, monkeypatch):
+    path = tmp_path / "missing" / "knowledge.sqlite3"
+    monkeypatch.setenv("STUDIO_KNOWLEDGE_PATH", str(path))
+
+    assert knowledge.context("anything") == ""
+    assert not path.exists()
+
+
+def test_context_reads_the_same_store_as_the_http_api(client):
+    payload = {"title": "Study notes", "text": "cohort_ref links each person to a study."}
+    response = client.post("/api/knowledge", json=payload)
+    assert response.status_code == 200
+
+    result = client.post("/api/knowledge/search", json={"query": "cohort_ref"})
+    assert result.status_code == 200
+    context = knowledge.context("cohort_ref")
+    assert response.json()["id"] in context
+    assert "cohort_ref links each person" in context

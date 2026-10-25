@@ -4,6 +4,35 @@ Current architecture and key flows for Cohort Studio. Update this document
 when an architectural decision changes. Render diagrams with any Mermaid
 viewer (GitHub renders them inline).
 
+### Local changes awaiting release (2026-10-25)
+
+The following decisions are implemented and locally tested, but are not in live
+release `194f397b5`:
+
+- S3/catalog data and cross-source joins use owned DuckDB files. Dashboard paging,
+  filters and aggregates query the staged data instead of a 100,000-row sample.
+  Connections use a 2 GB RAM limit and bounded disk spill. Estimated and actual
+  byte guards warn at 10 GB and reject beyond 1 TB; streaming checks each batch
+  before insertion. Failed registration deletes its owned data and spill files.
+  These limits do not guarantee that the host has 1 TB free disk space.
+- Aurora queries remain database-backed. Explicit SQL column ordering survives
+  dashboard paging. BigQuery retains its sampled compatibility path; Athena
+  full-source dashboard loading is not implemented.
+- Join recipes are durable source references. Editing resolves those inputs and
+  produces a new result tab; cancellation or failure preserves the original.
+  Validation returns the actual compiler SQL, engine and separate bound values.
+  DuckDB SQL uses logical staged aliases rather than physical file paths.
+- Saved views are listed across permitted stores. Each entry retains its storage
+  identity so opening, deletion and sharing use the correct store automatically.
+- `knowledge.py` owns validated HTTP requests and prompt context formatting;
+  `knowledge_store.py` owns SQLite/FTS persistence and retrieval. The knowledge
+  base remains app-shared; relevant passages go to the selected inference provider.
+
+The demo's cohort-to-genetics-to-workflow handoff is scoped in
+[DEMO_OMOP_GENETICS.md](DEMO_OMOP_GENETICS.md). Exact cohort membership must persist
+across the join. Notebook execution, artifact handoff and linked run provenance
+remain explicit gaps, not completed capabilities.
+
 ## 1. Overall architecture
 
 ```mermaid
@@ -590,7 +619,7 @@ path before relying on those guarantees.
 
 ### Private conversations in the existing backend (2026-10-24)
 
-The Aurora resource for private agent state is explicitly selected with
+The Aurora resource for agent state is explicitly selected with
 STUDIO_AGENT_RESOURCE_ID. Migration creates `_studio_agent` and revokes PUBLIC
 schema/table/sequence grants. Application source validation and listing exclude
 internal data. Database administrators still retain their database privileges;
@@ -621,7 +650,7 @@ The application remains in the monorepo and existing container topology.
 LangGraph runs in the Studio backend and calls model APIs. The experimental
 agent sidecar and gateway were removed at the user's request. No separate model
 container or GPU deployment is part of this update. LangSmith tracing is disabled;
-Aurora is the private conversation and telemetry store.
+Aurora stores conversations and telemetry with the configured database permissions.
 
 Hosting decision (2026-10-24): use one application container for Studio and its
 agent runtime, with general inference-provider APIs and available models.

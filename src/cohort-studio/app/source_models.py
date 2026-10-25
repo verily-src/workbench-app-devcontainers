@@ -105,6 +105,7 @@ class SourceStep(BaseModel):
 class JoinSource(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["join"]
+    allow_loaded: bool = False
     base: SourceRef
     steps: list[SourceStep] = Field(min_length=1, max_length=6)
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
@@ -152,6 +153,8 @@ def source_dict(source) -> dict:
         if node["kind"] == "derived":
             compact(node["base"])
         if node["kind"] == "join":
+            if not node.get("allow_loaded"):
+                node.pop("allow_loaded", None)
             compact(node["base"])
             for step in node["steps"]:
                 compact(step["source"])

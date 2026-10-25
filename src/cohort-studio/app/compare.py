@@ -72,6 +72,9 @@ def _top_share(row: dict, n: int, other_key=None) -> list:
             for c, v in ranked[:3] if v > 0]
 
 def _profiles(ds: dict) -> list[dict]:
+    if ds.get("disk_source"):
+        import column_settings
+        return column_settings.profiles(ds)
     profiles = datasets.profile_columns(ds["df"])
     settings = {setting["name"]: setting
                 for setting in ds.get("column_settings", [])}
@@ -119,6 +122,10 @@ def compare(dataset_id: str, filters_a: list[dict], filters_b: list[dict],
         import live_compare
         return live_compare.compare(ds["live_source"], _profiles(ds),
                                    filters_a, filters_b, b_is_rest)
+    if ds.get("disk_source") is not None:
+        import disk_data
+        return disk_data.compare(ds["disk_source"], _profiles(ds),
+                                 filters_a, filters_b, b_is_rest)
     df = ds["df"]
     a = datasets.apply_filters(df, filters_a)
     if b_is_rest:

@@ -22,6 +22,24 @@ def test_health():
     assert client.get("/api/health").json() == {"ok": True}
 
 
+def test_bigquery_keeps_sampled_loading_available(monkeypatch):
+    monkeypatch.setattr(main.queries, "ROW_CAP", 3)
+    monkeypatch.setattr(main, "_load_frame", lambda kind, rid, table: pd.DataFrame({
+        "person_id": [1, 2, 3], "group": ["A", "B", "A"]}))
+    opened = client.post("/api/datasets/open", json={
+        "kind": "bq", "resource_id": "demo", "table": "person"})
+    assert opened.status_code == 200, opened.text
+    body = opened.json()
+    try:
+        assert body["sampled"] is True
+        result = client.post(f"/api/datasets/{body['dataset_id']}/query", json={
+            "filters": [], "charts": [], "page": 0, "page_size": 10})
+        assert result.status_code == 200, result.text
+        assert result.json()["total"] == 3
+    finally:
+        main.datasets.close_dataset(body["dataset_id"])
+
+
 def test_upload_profiles_columns():
     body = _open_fixture()
     assert body["rows"] == 100
@@ -157,6 +175,38 @@ def test_views_aurora_roundtrip(monkeypatch, tmp_path):
     assert client.get("/api/views?kind=aurora&resource_id=db1").json() == []
 
 
+def test_all_saved_views_keep_store_refs_and_report_partial_failures(monkeypatch):
+    import views
+
+    monkeypatch.setattr(main.db, "list_aurora_resources", lambda: [
+        {"id": "clinical-db"}, {"kind": "postgres", "id": "postgres:lab"},
+    ])
+    monkeypatch.setattr(main.db, "list_s3_folders", lambda: [
+        {"id": "clinical-lake"}, {"id": "working-lake"},
+    ])
+
+    def list_one(kind, resource_id):
+        if resource_id == "clinical-lake":
+            raise RuntimeError("S3 permission denied")
+        return [{"name": "shared cohort", "created_at": None}]
+
+    monkeypatch.setattr(views, "list_views", list_one)
+    response = client.get("/api/views/all")
+
+    assert response.status_code == 200
+    result = response.json()
+    assert [(item["kind"], item["resource_id"])
+            for item in result["views"]] == [
+        ("aurora", "clinical-db"), ("s3", "working-lake"),
+    ]
+    assert result["views"][0]["store_label"] == "clinical-db · Aurora"
+    assert result["views"][0]["materialized_sources"] == 0
+    assert result["unavailable"] == [{
+        "kind": "s3", "resource_id": "clinical-lake",
+        "label": "clinical-lake · S3", "error": "S3 permission denied",
+    }]
+
+
 def test_view_name_validation():
     import views
     import pytest as _pytest
@@ -169,7 +219,7 @@ def test_save_view_rejects_bad_backend():
         "kind": "bq", "resource_id": "d", "name": "v", "active": 0,
         "datasets": [{"source": {"kind": "bq", "resource_id": "d",
                                  "table": "t"}, "title": "t"}]})
-    assert resp.status_code in (400, 502)
+    assert resp.status_code == 422
 
 
 def test_save_view_rejects_empty():
@@ -229,7 +279,7 @@ def test_join_pipeline_preview_and_suggest():
     assert p["total_rows"] == 3 and len(p["sample"]) == 3
 
     joined = client.post("/api/datasets/join", json=pipeline)
-    assert joined.status_code == 200
+    assert joined.status_code == 200, joined.text
     assert joined.json()["rows"] == 3
     assert joined.json()["source"] == "f / samples.csv + f / visits.csv + f / donors.csv"
 
@@ -299,14 +349,15 @@ def test_join_of_aurora_tables_runs_in_aurora(monkeypatch, fake_aurora):
                     json={"base_id": samples, "steps": [step]}).json()
     assert v["ok"] is True and v["engine"] == "aurora"
     joined = client.post("/api/datasets/join", json={"base_id": samples, "steps": [step]})
-    assert joined.status_code == 200
+    assert joined.status_code == 200, joined.text
     stats = joined.json()["join"]
     assert stats["engine"] == "aurora" and stats["total_rows"] == 4
     assert stats["steps"][0]["growth"] == 1.33 and stats["steps"][0]["fanout"] is False
     assert joined.json()["rows"] == 4
 
 
-    mixed = client.post("/api/datasets/join/preview", json={"base_id": samples, "steps": [
+    mixed = client.post("/api/datasets/join/preview", json={"base_id": samples,
+        "allow_loaded": True, "steps": [
         step, {**step, "right_id": upload, "columns": ["x"], "alias": "extra"}]})
     assert mixed.status_code == 200 and mixed.json()["engine"] == "duckdb"
 
@@ -316,18 +367,23 @@ def test_aurora_preview_timeout_is_504(monkeypatch, fake_aurora):
     samples, visits = _open_aurora_tables(monkeypatch, fake_aurora, {
         "samples": pd.DataFrame({"k": [1]}), "visits": pd.DataFrame({"k": [1]})})
 
-    class Canceled(Exception):
-        sqlstate = "57014"
-
-    class Engine:
-        def begin(self):
-            raise Canceled("canceling statement due to statement timeout")
-
-    monkeypatch.setattr(joins.db, "get_engine_for_resource", lambda rid: Engine())
-    resp = client.post("/api/datasets/join/preview", json={"base_id": samples, "steps": [
-        {"right_id": visits, "conditions": [{"left": "k", "op": "=", "right": "k"}]}]})
-    assert resp.status_code == 504
-    assert "longer than 10 s" in resp.json()["detail"]
+    with fake_aurora.begin() as connection:
+        connection.exec_driver_sql(
+            'CREATE VIEW public.slow_samples AS SELECT k FROM public.samples '
+            'CROSS JOIN (SELECT pg_sleep(0.05)) delay')
+    try:
+        slow = client.post("/api/datasets/open", json={
+            "kind": "aurora", "resource_id": "db1", "table": "slow_samples"})
+        assert slow.status_code == 200, slow.text
+        monkeypatch.setattr(joins, "PREVIEW_TIMEOUT_MS", 1)
+        resp = client.post("/api/datasets/join/preview", json={
+            "base_id": slow.json()["dataset_id"], "steps": [
+                {"right_id": visits, "conditions": [{"left": "k", "op": "=", "right": "k"}]}]})
+        assert resp.status_code == 504, resp.text
+        assert "longer than" in resp.json()["detail"]
+    finally:
+        with fake_aurora.begin() as connection:
+            connection.exec_driver_sql('DROP VIEW public.slow_samples')
 
 
 def test_join_rejects_bad_how():
@@ -673,7 +729,7 @@ def test_open_catalog_view_records_lineage(catalog_ws):
     cid = _prebuilt_catalog(catalog_ws["bucket"])
     resp = client.post("/api/datasets/open", json={
         "kind": "catalog", "resource_id": cid, "table": "liver"})
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     assert resp.json()["rows"] == 25
     (args, kwargs), = catalog_ws["events"]
     assert args[0] == "table_loaded" and args[2] == "liver"
@@ -691,7 +747,7 @@ def test_open_catalog_view_names_unreadable_source(catalog_ws):
     (catalog_ws["bucket"] / "samples.parquet").unlink()
     resp = client.post("/api/datasets/open", json={
         "kind": "catalog", "resource_id": cid, "table": "samples"})
-    assert resp.status_code == 502
+    assert resp.status_code == 422, resp.text
     assert "samples.parquet" in resp.json()["detail"]
 
 

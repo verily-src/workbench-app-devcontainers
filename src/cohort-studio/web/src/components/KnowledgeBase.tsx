@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./KnowledgeBase.css";
 
 type Document = { id: string; title: string };
 type Passage = { citation: string; title: string; text: string };
@@ -30,11 +31,14 @@ export function KnowledgeBase() {
     try { await action(); } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
-  return <section className="settings-card" aria-label="Knowledge base">
+  return <section className="settings-card knowledge-base" aria-label="Knowledge base">
     <h2>Knowledge base</h2>
-    <p>Shared within this app. Relevant passages are sent to your selected AI provider when you ask the assistant.</p>
-    <label>Document title<input value={title} maxLength={200} onChange={e => setTitle(e.target.value)} /></label>
-    <label>Document text<textarea value={text} maxLength={200000} rows={5} style={{ display: "block", width: "100%" }} onChange={e => setText(e.target.value)} /></label>
+    <p className="settings-caption">Shared within this app. Relevant passages are sent to your selected AI provider when you ask the assistant.</p>
+    <div className="knowledge-editor">
+    <h3>Add document</h3>
+    <label>Document title<input type="text" value={title} maxLength={200} onChange={e => setTitle(e.target.value)} /></label>
+    <label>Document text<textarea value={text} maxLength={200000} rows={6} onChange={e => setText(e.target.value)} /></label>
+    <div className="knowledge-actions">
     <label>Upload text file<input type="file" accept=".txt,.md,.csv,.tsv" disabled={busy} onChange={e => {
       const file = e.target.files?.[0];
       if (file) void run(async () => {
@@ -44,19 +48,26 @@ export function KnowledgeBase() {
       });
       e.target.value = "";
     }} /></label>
-    <button disabled={busy || !title.trim() || !text.trim()} onClick={() => void run(async () => {
+    <button className="primary" disabled={busy || !title.trim() || !text.trim()} onClick={() => void run(async () => {
       await call("", { title, text }, "POST"); setTitle(""); setText(""); await refresh();
     })}>Add document</button>
-    <ul>{documents.map(document => <li key={document.id}>{document.title} <button disabled={busy}
+    </div>
+    </div>
+    <div className="knowledge-library">
+    <h3>Documents <span className="knowledge-count">{documents.length}</span></h3>
+    <ul className="knowledge-documents">{documents.map(document => <li key={document.id}><span>{document.title}</span> <button disabled={busy}
       aria-label={`Remove ${document.title}`} onClick={() => void run(async () => {
         await call(`/${document.id}`, undefined, "DELETE"); setResults([]); await refresh();
       })}>Remove</button></li>)}</ul>
-    <label>Search knowledge<input value={query} maxLength={1000} onChange={e => setQuery(e.target.value)} /></label>
+    <div className="knowledge-search">
+    <label>Search knowledge<input type="text" value={query} maxLength={1000} onChange={e => setQuery(e.target.value)} /></label>
     <button disabled={busy || !query.trim()} onClick={() => void run(async () => {
       setResults(await call<Passage[]>("/search", { query }, "POST")); setSearched(true);
     })}>Search documents</button>
+    </div>
     {searched && results.length === 0 && <p role="status">No matching passages.</p>}
     {results.map(p => <article key={p.citation}><h3>{p.title}</h3><code>{p.citation}</code><p style={{ whiteSpace: "pre-wrap" }}>{p.text}</p></article>)}
-    {error && <p role="alert">{error}</p>}
+    </div>
+    {error && <p className="knowledge-error" role="alert">{error}</p>}
   </section>;
 }

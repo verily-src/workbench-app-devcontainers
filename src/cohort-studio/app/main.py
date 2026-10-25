@@ -187,11 +187,16 @@ class CompareRequest(BaseModel):
     b_is_rest: bool = False
 
 class ExportCohortRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     resource_id: str
     path: str
     filters: list[Filter] = Field(default_factory=list)
+    workflow: str = ""
 
 class SubmitJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     workflow: str
     output_bucket_id: str
     job_id: str = ""
@@ -200,6 +205,31 @@ class SubmitJobRequest(BaseModel):
     column_mapping: str = ""
     row_selection: str = ""
     profile: str = ""
+    output_path: str = ""
+    params_file_bucket_id: str = ""
+    params_file_path: str = ""
+    demo_input_resource_id: str = ""
+    demo_input_csv_path: str = ""
+    demo_output_path: str = ""
+
+    @model_validator(mode="after")
+    def validate_workflow_inputs(self):
+        workflows._validate_job_inputs(
+            self.batch_input_bucket_id, self.batch_input_csv_path,
+            self.params_file_bucket_id, self.params_file_path)
+        demo_values = (self.demo_input_resource_id, self.demo_input_csv_path,
+                       self.demo_output_path)
+        if self.workflow == "cohort-genetics-demo":
+            if not all(demo_values):
+                raise ValueError("Demo input resource, CSV path, and output path are required.")
+            workflows._safe_path_segment(self.job_id)
+            if self.params_file_bucket_id != self.demo_input_resource_id:
+                raise ValueError("Demo params and input CSV must use the same S3 resource.")
+            if self.batch_input_bucket_id:
+                raise ValueError("The Nextflow demo uses a params file, not batch CSV input.")
+        elif any(demo_values):
+            raise ValueError("Demo input fields are only valid for cohort-genetics-demo.")
+        return self
 
 class CatalogView(BaseModel):
     name: str
@@ -326,9 +356,32 @@ def export_cohort(dataset_id: str, req: ExportCohortRequest):
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    if req.workflow == "cohort-genetics-demo" and ds.get("capped"):
+        raise HTTPException(
+            413, "Genetics demo requires a complete, uncapped cohort dataset.")
+    if req.workflow == "cohort-genetics-demo":
+        try:
+            export_path = workflows._safe_object_path(req.path)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     filt = _export_frame(ds, [f.model_dump() for f in req.filters])
+    if req.workflow == "cohort-genetics-demo":
+        required = ["person_id", "sample_id", "variant_id", "dosage",
+                    "gender_concept_id", "year_of_birth"]
+        missing = [column for column in required if column not in filt.columns]
+        if missing:
+            raise HTTPException(
+                400, "Genetics demo export is missing required columns: "
+                + ", ".join(missing))
+        if len(filt) >= queries.ROW_CAP:
+            raise HTTPException(
+                413, "Genetics demo export reached the synchronous row limit; "
+                "reduce the cohort before exporting.")
+        filt = filt[required]
     try:
-        out = workflows.export_cohort_csv(filt, req.resource_id, req.path)
+        out = workflows.export_cohort_csv(
+            filt, req.resource_id,
+            export_path if req.workflow == "cohort-genetics-demo" else req.path)
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
     lineage.record(_lineage_engine(), "cohort_exported", "dataset",
@@ -339,13 +392,45 @@ def export_cohort(dataset_id: str, req: ExportCohortRequest):
 @app.post("/api/workflows/submit")
 def submit_workflow(req: SubmitJobRequest):
     try:
-        job = workflows.submit_job(**req.model_dump())
+        params_uri = None
+        if req.workflow == "cohort-genetics-demo":
+            input_path = workflows._safe_object_path(req.demo_input_csv_path)
+            output_path = workflows._safe_object_path(req.demo_output_path)
+            job_segment = workflows._safe_path_segment(req.job_id)
+            input_uri = f"{db.resolve_s3_uri(req.demo_input_resource_id)}/{input_path}"
+            output_bucket, output_key = workflows.s3_bucket_key(
+                db.resolve_s3_uri(req.output_bucket_id), output_path, job_segment)
+            params = {
+                "input": input_uri,
+                "input_uri": input_uri,
+                "variant_id": "SYN_VAR_0021",
+                "output_bucket": output_bucket,
+                "output_key": output_key,
+                "workflow_id": req.workflow,
+            }
+            written = workflows.write_params_json(
+                req.params_file_bucket_id, req.params_file_path, params)
+            params_uri = written["s3_uri"]
+            job = workflows.submit_job(
+                workflow=req.workflow, output_bucket_id=req.output_bucket_id,
+                job_id=req.job_id, profile="healthomics",
+                output_path=output_path,
+                params_file_bucket_id=req.params_file_bucket_id,
+                params_file_path=req.params_file_path)
+        else:
+            job = workflows.submit_job(**req.model_dump(exclude={
+                "demo_input_resource_id", "demo_input_csv_path",
+                "demo_output_path",
+            }))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
     lineage.record(_lineage_engine(), "workflow_submitted", "workflow",
                    job.get("name") or req.workflow,
                    payload={"run_id": job.get("run_id"),
-                            "workflow": req.workflow})
+                            "workflow": req.workflow,
+                            "params_uri": params_uri})
     return job
 
 @app.get("/api/tables")
@@ -849,6 +934,8 @@ class ConfigUpdate(BaseModel):
     provider: config.StoredProvider | None = None
     model: str | None = Field(default=None, max_length=256)
     api_key: str | None = Field(default=None, max_length=8192)
+    jev_api_key: str | None = Field(default=None, max_length=8192)
+    jev_model: str | None = Field(default=None, max_length=256)
     mcp_connections: list[MCPConnection] | None = Field(default=None, max_length=128)
     chart_palette: str | None = None
 
@@ -914,6 +1001,8 @@ def put_config(req: ConfigUpdate):
             or req.provider is not None):
         config.update_llm_config(model=req.model, api_key=req.api_key,
                                  provider=req.provider)
+    if req.jev_model is not None or req.jev_api_key is not None:
+        config.update_jev_config(model=req.jev_model, api_key=req.jev_api_key)
     if req.mcp_connections is not None:
         config.update_mcp_connections(
             [c.model_dump() for c in req.mcp_connections])

@@ -22,15 +22,31 @@ const PROVIDERS: { id: Provider; label: string; keyLabel: string;
     placeholder: "Optional", models: [] },
 ];
 
+function safeProviderError(error: unknown, secret: string) {
+  const message = error instanceof Error ? error.message : "Unknown error";
+  const withoutCurrentKey = secret
+    ? message.split(secret).join("[redacted]") : message;
+  return withoutCurrentKey
+    .replace(/\b(?:sk-ant-[A-Za-z0-9_-]+|sk-or-v1-[A-Za-z0-9_-]+|sk-proj-[A-Za-z0-9_-]+|AIza[A-Za-z0-9_-]{20,})\b/g,
+      "[redacted]")
+    .slice(0, 240);
+}
+
 export function SettingsView(
     { onPaletteChange }: { onPaletteChange?: (p: string) => void }) {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [provider, setProvider] = useState<Provider>("anthropic");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [jevToken, setJevToken] = useState("");
+  const [jevModel, setJevModel] = useState("");
+  const [jevBusy, setJevBusy] = useState(false);
+  const [jevStatus, setJevStatus] = useState("");
   const [connections, setConnections] = useState<MCPConnection[]>([]);
   const [palette, setPalette] = useState("verily");
   const [status, setStatus] = useState("");
+  const [providerBusy, setProviderBusy] = useState("");
+  const [providerStatus, setProviderStatus] = useState("");
 
   useEffect(() => {
     api.config().then((c) => {
@@ -39,6 +55,7 @@ export function SettingsView(
       setModel(c.llm.model);
       setConnections(c.mcp_connections);
       setPalette(c.chart_palette);
+      setJevModel(c.jev?.model ?? "");
     }).catch(() => undefined);
   }, []);
 
@@ -55,7 +72,8 @@ export function SettingsView(
   const usesOpenweight = provider === "openweight";
 
   const save = async () => {
-    setStatus("Saving…");
+    setProviderBusy("save");
+    setProviderStatus("Saving provider settings…");
     try {
       const updated = await api.updateConfig({
         provider,
@@ -69,9 +87,45 @@ export function SettingsView(
       setPalette(updated.chart_palette);
       onPaletteChange?.(updated.chart_palette);
       setApiKey("");
-      setStatus("Saved.");
-    } catch (e) {
-      setStatus(`Save failed: ${(e as Error).message}`);
+      setProviderStatus("Provider settings saved securely.");
+    } catch (error) {
+      setProviderStatus(`Save failed: ${safeProviderError(error, apiKey)}`);
+    } finally {
+      setProviderBusy("");
+    }
+  };
+
+  const saveJev = async () => {
+    setJevBusy(true);
+    setJevStatus("Saving Jev settings…");
+    try {
+      const updated = await api.updateConfig({
+        jev_model: jevModel,
+        ...(jevToken ? { jev_api_key: jevToken } : {}),
+      });
+      setCfg(updated);
+      setJevModel(updated.jev.model);
+      setJevToken("");
+      setJevStatus("Settings saved. Connection not tested.");
+    } catch (error) {
+      setJevStatus(`Save failed: ${safeProviderError(error, jevToken)}`);
+    } finally {
+      setJevBusy(false);
+    }
+  };
+
+  const removeJevToken = async () => {
+    setJevBusy(true);
+    setJevStatus("Removing saved token…");
+    try {
+      const updated = await api.updateConfig({ jev_api_key: "" });
+      setCfg(updated);
+      setJevToken("");
+      setJevStatus("Saved token removed.");
+    } catch (error) {
+      setJevStatus(`Removal failed: ${safeProviderError(error, jevToken)}`);
+    } finally {
+      setJevBusy(false);
     }
   };
 
@@ -87,12 +141,23 @@ export function SettingsView(
   };
 
   const testLlm = async () => {
-    setStatus("Testing connection…");
+    setProviderBusy("test");
+    setProviderStatus("Saving settings before testing…");
     try {
+      const updated = await api.updateConfig({
+        provider, model, ...(apiKey ? { api_key: apiKey } : {}),
+      });
+      setCfg(updated);
+      setProvider(updated.llm.provider);
+      setModel(updated.llm.model);
+      setApiKey("");
+      setProviderStatus("Testing connection…");
       const out = await api.testLlm();
-      setStatus(`Connected: ${out.display_name} (${out.model})`);
-    } catch (e) {
-      setStatus(`Test failed: ${(e as Error).message}`);
+      setProviderStatus(`Connected: ${out.display_name} (${out.model}).`);
+    } catch (error) {
+      setProviderStatus(`Connection test failed: ${safeProviderError(error, apiKey)}`);
+    } finally {
+      setProviderBusy("");
     }
   };
 
@@ -181,6 +246,7 @@ export function SettingsView(
             </div>
             <input
               type="password"
+              aria-label={meta.keyLabel}
               placeholder={providerState?.api_key_set
                 ? "Enter a new key to replace" : meta.placeholder}
               value={apiKey}
@@ -192,9 +258,11 @@ export function SettingsView(
           <button className="quiet" onClick={removeApiKey}>Remove API key</button>
         )}
         <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-          <button className="primary" onClick={save}>Save</button>
-          <button onClick={testLlm}
-                  disabled={usesOpenweight
+          <button className="primary" onClick={save} disabled={!!providerBusy}>
+            {providerBusy === "save" ? "Saving…" : "Save"}
+          </button>
+          <button onClick={testLlm} disabled={!!providerBusy || (
+                  usesOpenweight
                     ? !providerState?.configured || provider !== cfg.llm.provider
                     : usesVertexAdc
                     ? !providerState?.configured || !providerState?.model
@@ -202,10 +270,48 @@ export function SettingsView(
                       || model !== providerState?.model
                     : usesBedrockIam
                     ? !providerState?.region || !providerState?.model
-                    : !providerState?.api_key_set && !apiKey}>
-            Test connection
+                    : (!providerState?.api_key_set && !apiKey) || !model)}>
+            {providerBusy === "test" ? "Testing…" : "Test connection"}
           </button>
         </div>
+        {providerStatus && <div className="settings-status" role="status">
+          {providerStatus}
+        </div>}
+      </div>
+
+      <div className="section-label">Jev join recommendations</div>
+      <div className="settings-card">
+        <p className="settings-caption">
+          Optional TypeSafe token for join suggestions. It is not used for chat.
+          Saving does not test the connection.
+        </p>
+        <div className="field-label">
+          TypeSafe API token
+          {cfg.jev.api_key_set && <span className="settings-hint">
+            {` · configured (${cfg.jev.api_key_source || "server setting"})`}
+          </span>}
+        </div>
+        <input type="password" aria-label="TypeSafe API token"
+          autoComplete="new-password"
+          disabled={cfg.jev.api_key_source === "environment" || jevBusy}
+          placeholder={cfg.jev.api_key_source === "environment"
+            ? "Configured by environment"
+            : cfg.jev.api_key_set ? "Enter a new token to replace" : "Enter token"}
+          value={jevToken} onChange={(e) => setJevToken(e.target.value)} />
+        <div className="field-label">Jev model (optional)</div>
+        <input type="text" aria-label="Jev model" value={jevModel}
+          placeholder="Use server default" disabled={jevBusy}
+          onChange={(e) => setJevModel(e.target.value)} />
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button className="primary" onClick={saveJev} disabled={jevBusy}>
+            {jevBusy ? "Saving…" : "Save Jev settings"}
+          </button>
+          {cfg.jev.api_key_set && cfg.jev.api_key_source !== "environment" &&
+            <button className="quiet" onClick={removeJevToken} disabled={jevBusy}>
+              Remove saved token
+            </button>}
+        </div>
+        {jevStatus && <div className="settings-status" role="status">{jevStatus}</div>}
       </div>
 
       <div className="section-label">Chart palette</div>

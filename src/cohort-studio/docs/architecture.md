@@ -104,7 +104,9 @@ replacement; this does not protect against compromise of the app account.
 Deployment environment
 keys take precedence; legacy local keys remain readable until an explicit,
 read-back-verified migration removes them. Public settings expose key-presence
-booleans and source labels only. See [AI access and key storage](AWS_AI_ACCESS.md).
+booleans and source labels only. Settings can replace or remove the Jev token;
+saving does not test the provider connection. Join discovery reports whether
+Jev was used or unavailable. See [AI access and key storage](AWS_AI_ACCESS.md).
 AgentCore identity and network requirements remain open in the
 [agent plan](AGENT_PLAN.md).
 
@@ -600,6 +602,12 @@ indexes. No blanket indexes are created on arbitrary projections.
 
 ### Text knowledge base (2026-10-24)
 
+Settings separates built-in assistant guidance from attached project documents.
+`AGENT_GUIDE.md` and `agent_instructions.py` define the trusted role, available
+capabilities, scientific checks, and tool limits. Attached documents enrich
+retrieved context; they do not replace these instructions or grant tool access.
+The UI retains the shared-corpus and selected-provider disclosure.
+
 Initial retrieval uses SQLite FTS5 with BM25, not embeddings. The small app-owned
 store is separate from Aurora clinical data and DuckDB analytics. It defaults to
 knowledge.sqlite3 beside STUDIO_CONFIG; STUDIO_KNOWLEDGE_PATH selects a persistent
@@ -658,3 +666,21 @@ Do not download Qwen or provision a GPU under the current scope. Bedrock model
 inference and AgentCore runtime hosting remain future options, pending verified
 access and integration tests. Existing browser-isolation infrastructure remains
 unchanged; it is not a separate agent runtime.
+
+### Cohort genetics Nextflow demo (2026-10-25)
+
+The demo is a registered Workbench Nextflow workflow, not another app container.
+The launcher exports the selected dataset filters to S3, projects six validated
+columns, and rejects capped inputs. An export fingerprint prevents reuse after
+source, path or filter changes. Only the demo uses the dedicated params-file
+adapter; existing batch workflows keep their CLI contract.
+
+Workflow tasks use a digest-pinned existing ECR image and an offline Pydantic
+archive built with uv. The task validates one variant and unique people/samples,
+then writes carrier counts by gender and birth decade, a synthetic dictionary,
+and a hash/count manifest. Dictionary annotations do not determine carrier status.
+Outputs publish through the HealthOmics mount `/mnt/workflow/pubdir`. Output
+bucket/key are plain metadata parameters, because passing a future S3 URI caused
+input validation to fail. Workbench appends the job name to the selected output
+path. The manifest does not claim a Workbench run UUID or source tables unless
+provided. No IAM changes or new compute service are required.

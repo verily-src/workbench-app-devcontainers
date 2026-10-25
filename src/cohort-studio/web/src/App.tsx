@@ -96,6 +96,8 @@ export default function App() {
   const [view, setView] = useState<
     "explore" | "workflows" | "lineage" | "settings">("explore");
   const [exploreModes, setExploreModes] = useState<Record<string, "tables" | "omop">>({});
+  const [tutorialOmopOpenedCount, setTutorialOmopOpenedCount] = useState(0);
+  const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
   const [editingJoin, setEditingJoin] = useState<JoinEdit | null>(null);
@@ -117,7 +119,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    apiClient.config().then((c) => setPalette(c.chart_palette))
+    apiClient.config().then((c) => {
+      setPalette(c.chart_palette);
+      setTutorialAssistantConfigured(Boolean(c.llm?.providers?.[c.llm.provider]?.configured));
+    })
       .catch(() => undefined);
 
     api.workflows().then(setWorkflows).catch(() => undefined);
@@ -142,6 +147,10 @@ export default function App() {
   }, []);
 
   const source = sources.find((s) => `${s.kind}:${s.id}` === sourceKey);
+  const refreshTutorialAssistantStatus = () => {
+    void apiClient.config().then((config) => setTutorialAssistantConfigured(
+      Boolean(config.llm?.providers?.[config.llm.provider]?.configured))).catch(() => undefined);
+  };
   const exploreMode = source?.kind === "aurora"
     ? exploreModes[sourceKey] ?? "tables" : "tables";
   const setExploreMode = (mode: "tables" | "omop") => {
@@ -509,7 +518,10 @@ export default function App() {
   const commands: Command[] = [
     ...(["explore", "workflows", "lineage", "settings"] as const).map((v) => ({
       id: `view:${v}`, group: "Go to",
-      label: v[0].toUpperCase() + v.slice(1), run: () => setView(v),
+      label: v[0].toUpperCase() + v.slice(1), run: () => {
+        if (view === "settings" && v !== "settings") refreshTutorialAssistantStatus();
+        setView(v);
+      },
     })),
     ...datasets.map((d, i) => ({
       id: `tab:${d.id}`, group: "Open tab", label: d.title,
@@ -553,6 +565,7 @@ export default function App() {
             <button type="button" aria-pressed={exploreMode === "tables"}
                     onClick={() => setExploreMode("tables")}>Tables</button>
             <button type="button" aria-pressed={exploreMode === "omop"}
+                    data-tutorial-target="omop-toggle"
                     onClick={() => setExploreMode("omop")}>OMOP</button>
           </div>
         </div>}
@@ -615,9 +628,13 @@ export default function App() {
           <nav className="topnav">
             {(["explore", "workflows", "lineage", "settings"] as const)
               .map((v) => (
-              <span key={v}
+              <span key={v} data-tutorial-target={`nav-${v}`}
                     className={`topnav-link${view === v ? " active" : ""}`}
-                    onClick={() => { if (v !== "explore") closeJoinPanel(); setView(v); }}>
+                    onClick={() => {
+                      if (view === "settings" && v !== "settings") refreshTutorialAssistantStatus();
+                      if (v !== "explore") closeJoinPanel();
+                      setView(v);
+                    }}>
                 {v[0].toUpperCase() + v.slice(1)}
                 {v === "workflows" && (workflows?.running_count ?? 0) > 0 && (
                   <span className="nav-badge">{workflows!.running_count}</span>
@@ -630,7 +647,16 @@ export default function App() {
                   title="Command palette">
             <span>⌘K</span>
           </button>
-          <Tutorial />
+          <Tutorial progress={{
+            sourceChosen: Boolean(sourceKey), dataLoaded: datasets.length > 0,
+            hasSources: sources.length > 0, omopAvailable: source?.kind === "aurora",
+            omopActive: view === "explore" && exploreMode === "omop",
+            omopOpenedCount: tutorialOmopOpenedCount, joinPanelOpen: showJoin,
+            joinCreated: datasets.some((dataset) => dataset.sourceRef?.kind === "join"),
+            view, hasDataset: Boolean(activeDs),
+            chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),
+            assistantConfigured: tutorialAssistantConfigured,
+          }} />
           {activity && (
             <div className="activity"><span className="pulse" />{activity}</div>
           )}
@@ -646,6 +672,7 @@ export default function App() {
             <OmopBuilder active={view === "explore" && exploreMode === "omop"}
                           palette={palette}
                           source={source ?? null} onOpen={(opened, title) => {
+              setTutorialOmopOpenedCount((count) => count + 1);
               openResult(opened, title, undefined,
                 { filters: [], charts: autoCharts(opened.columns) });
               setExploreMode("tables");
@@ -670,7 +697,8 @@ export default function App() {
               </svg>
               <div className="title">No data loaded</div>
               {sources.length > 0 && (
-                <button className="primary" onClick={() => setShowJoin(true)}>
+                  <button className="primary" data-tutorial-target="join-button"
+                    onClick={() => setShowJoin(true)}>
                   ⋈ Join tables
                 </button>
               )}
@@ -711,7 +739,7 @@ export default function App() {
                   </span>
                 ))}
                 {(datasets.length >= 2 || sources.length > 0) && (
-                  <button className="tab-join"
+                  <button className="tab-join" data-tutorial-target="join-button"
                           onClick={() => { if (showJoin) closeJoinPanel(); else setShowJoin(true); }}>
                     ⋈ Join
                   </button>

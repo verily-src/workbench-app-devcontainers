@@ -80,6 +80,12 @@ export interface AppConfig {
   mcp: { available: boolean; path: string };
   mcp_connections: MCPConnection[];
   chart_palette: string;
+  jev: {
+    model: string;
+    api_key_set: boolean;
+    api_key_source: string | null;
+    secure_key_store_available?: boolean;
+  };
 }
 
 export interface ChatHistory {
@@ -297,15 +303,20 @@ export const api = {
 
   updateConfig: (body: {
     provider?: Provider; model?: string; api_key?: string;
+    jev_api_key?: string; jev_model?: string;
     mcp_connections?: MCPConnection[]; chart_palette?: string;
   }) => request<AppConfig>("/api/config",
     { method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body) }),
 
-  testLlm: () =>
-    request<{ ok: boolean; provider: string; model: string;
-              display_name: string }>(
-      "/api/config/llm/test", { method: "POST" }),
+  testLlm: (timeoutMs = 30000) => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    return request<{ ok: boolean; provider: string; model: string;
+                     display_name: string }>(
+      "/api/config/llm/test", { method: "POST", signal: controller.signal })
+      .finally(() => window.clearTimeout(timer));
+  },
 
   agentTurns: () =>
     request<{ turns: AgentTurn[] }>("/api/agent/turns"),
@@ -320,11 +331,11 @@ export const api = {
       "/api/workflows/registry"),
 
   exportCohort: (datasetId: string, resourceId: string, path: string,
-                 filters: Filter[]) =>
+                 filters: Filter[], workflow?: string) =>
     request<{ s3_uri: string; resource_id: string; path: string;
               rows: number }>(
       `/api/datasets/${datasetId}/export-cohort`,
-      post({ resource_id: resourceId, path, filters })),
+      post({ resource_id: resourceId, path, filters, workflow })),
 
   submitWorkflow: (spec: Record<string, unknown>) =>
     request<WorkflowJob>("/api/workflows/submit", post(spec)),

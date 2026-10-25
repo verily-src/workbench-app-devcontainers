@@ -90,6 +90,24 @@ def test_config_update_never_echoes_key():
     assert "sk-ant-secret-key-1234" not in config.CONFIG_PATH.read_text()
 
 
+def test_jev_token_api_saves_only_to_secret_store_and_can_remove():
+    token = "test-only-jev-token-not-for-live-use"
+    saved = client.put("/api/config", json={
+        "jev_api_key": token, "jev_model": "ranker-v1"})
+    assert saved.status_code == 200
+    assert token not in saved.text
+    assert secret_store.read_keys()["jev"] == token
+    assert token not in config.CONFIG_PATH.read_text()
+    assert saved.json()["jev"]["api_key_set"] is True
+    assert saved.json()["jev"]["model"] == "ranker-v1"
+
+    removed = client.put("/api/config", json={"jev_api_key": ""})
+    assert removed.status_code == 200
+    assert token not in removed.text
+    assert "jev" not in secret_store.read_keys()
+    assert removed.json()["jev"]["api_key_set"] is False
+
+
 def test_chart_palette_roundtrips():
     body = client.get("/api/config").json()
     assert body["chart_palette"] == "verily"

@@ -1,5 +1,21 @@
 # OMOP and synthetic genetics demo
 
+## Nextflow implementation (2026-10-25)
+
+`cohort-genetics-demo` is registered in Workbench. The source and local test
+instructions are in `workflows/cohort-genetics-demo/README.md`. A synthetic
+mapping file is available at `nextflow_resources` →
+`cohort-studio/demo-v1/variant_dictionary.csv`; join it using `variant_id`.
+The first cloud smoke test failed before execution; corrected run validation is
+in progress. Local Nextflow and the pinned offline container passed.
+
+The launcher exports the six required columns from the filtered dataset, rejects
+capped exports, writes a Nextflow params file, and submits the HealthOmics profile.
+Changes to filters or input locations invalidate the previous export. The app
+patch is locally validated but not yet deployed. The older gaps below describe
+the original scope; workflow registration is now complete, while actual cloud
+outputs and assistant interpretation remain unverified.
+
 ## Scope
 
 Demonstrate a descriptive comparison of simulated carriers and noncarriers for
@@ -41,9 +57,8 @@ be described as a genetic, clinical, or causal finding.
   app metadata for the cohort assistant; it cannot open or change an app.
 - The workspace must have an available Jupyter app and a permitted way for
   that app to read the chosen input S3 object and write a separate output
-  prefix. Confirm the app and access with its owner. Do not submit a job or
-  change permissions as part of this scope.
-- No registered workflow has been verified against the CSV contract below.
+  prefix. Confirm the app and access with its owner. A small Nextflow smoke job is now authorized and submitted; no permissions were changed.
+- The new Nextflow workflow passes the CSV contract locally; cloud verification is pending.
   Preferred automation is a registered Workbench workflow that consumes the
   input CSV and writes the summary and manifest to S3. Studio can submit such
   a workflow and show its status, but an owner must verify its registration,

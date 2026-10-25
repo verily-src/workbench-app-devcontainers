@@ -33,13 +33,15 @@ export function KnowledgeBase() {
   };
   return <section className="settings-card knowledge-base" aria-label="Knowledge base">
     <h2>Knowledge base</h2>
-    <p className="settings-caption">Shared within this app. Relevant passages are sent to your selected AI provider when you ask the assistant.</p>
+    <h3 className="knowledge-section-label">Built-in assistant guidance</h3>
+    <p className="settings-caption">Versioned guidance covers bioinformatics, data science, data engineering, OMOP and cohort work, source scope, careful joins, and tool and evidence limits.</p>
+    <h3 className="knowledge-section-label">Attached project documents <span className="knowledge-count">{documents.length}</span></h3>
+    <p className="settings-caption">Documents are shared within this app. They add project context without replacing built-in guidance. Relevant passages may be sent to your selected AI provider with your question.</p>
     <div className="knowledge-editor">
-    <h3>Add document</h3>
     <label>Document title<input type="text" value={title} maxLength={200} onChange={e => setTitle(e.target.value)} /></label>
     <label>Document text<textarea value={text} maxLength={200000} rows={6} onChange={e => setText(e.target.value)} /></label>
     <div className="knowledge-actions">
-    <label>Upload text file<input type="file" accept=".txt,.md,.csv,.tsv" disabled={busy} onChange={e => {
+    <label>Attach document<input type="file" accept=".txt,.md,.csv,.tsv" disabled={busy} onChange={e => {
       const file = e.target.files?.[0];
       if (file) void run(async () => {
         if (file.size > 200000) throw new Error("File limit is 200 KB.");
@@ -54,13 +56,12 @@ export function KnowledgeBase() {
     </div>
     </div>
     <div className="knowledge-library">
-    <h3>Documents <span className="knowledge-count">{documents.length}</span></h3>
     <ul className="knowledge-documents">{documents.map(document => <li key={document.id}><span>{document.title}</span> <button disabled={busy}
       aria-label={`Remove ${document.title}`} onClick={() => void run(async () => {
         await call(`/${document.id}`, undefined, "DELETE"); setResults([]); await refresh();
       })}>Remove</button></li>)}</ul>
     <div className="knowledge-search">
-    <label>Search knowledge<input type="text" value={query} maxLength={1000} onChange={e => setQuery(e.target.value)} /></label>
+    <label>Search attached documents<input type="text" value={query} maxLength={1000} onChange={e => setQuery(e.target.value)} /></label>
     <button disabled={busy || !query.trim()} onClick={() => void run(async () => {
       setResults(await call<Passage[]>("/search", { query }, "POST")); setSearched(true);
     })}>Search documents</button>

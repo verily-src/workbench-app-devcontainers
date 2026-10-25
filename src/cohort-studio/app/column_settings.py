@@ -33,6 +33,9 @@ def profiles(ds):
                     col["min"], col["max"] = float(values.min()), float(values.max())
     if ds.get("live_source"):
         result = live_query.profile_columns(ds["live_source"], result)
+    elif ds.get("disk_source"):
+        import disk_data
+        result = disk_data.profile_columns(ds["disk_source"], result)
     return result
 
 

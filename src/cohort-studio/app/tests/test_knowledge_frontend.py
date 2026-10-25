@@ -9,6 +9,13 @@ def test_upload_search_and_remove_document(page, app_url):
     page.goto(app_url)
     page.locator(".topnav").get_by_text("Settings", exact=True).click()
     section = page.get_by_role("region", name="Knowledge base")
+    for width in (1280, 760):
+        page.set_viewport_size({"width": width, "height": 900})
+        title_box = section.get_by_label("Document title").bounding_box()
+        text_box = section.get_by_label("Document text").bounding_box()
+        assert text_box["y"] > title_box["y"] + title_box["height"]
+        assert section.evaluate("el => el.scrollWidth <= el.clientWidth")
+    page.set_viewport_size({"width": 1280, "height": 900})
     section.get_by_label("Upload text file").set_input_files({
         "name": "test-genetics-dictionary.txt", "mimeType": "text/plain",
         "buffer": b"kb_unique_sample_key links a specimen to the clinical record."})

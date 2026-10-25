@@ -80,6 +80,35 @@ def derive(dataset_id: str, spec: dict) -> dict:
         raise ValueError(f"Unknown op: {op}")
     ds = datasets.get(dataset_id)
     df = ds["df"]
+    if ds.get("disk_source"):
+        import column_settings
+        import disk_data
+
+        preview, disk = disk_data.derive(ds["disk_source"], normalized)
+        remaining_settings = [s for s in ds.get("column_settings", [])
+                              if s.get("name") != name]
+        source_ref = None
+        if ds.get("source_ref"):
+            source_ref = source_dict({"kind": "derived", "base": ds["source_ref"],
+                                      "spec": normalized,
+                                      "settings": remaining_settings})
+        baseline = {**ds, "df": preview, "disk_source": disk,
+                    "column_settings": remaining_settings}
+        columns = column_settings.profiles(baseline)
+        old_disk = ds["disk_source"]
+        ds["df"] = preview
+        ds["disk_source"] = disk
+        ds["source_ref"] = source_ref
+        ds["column_settings"] = remaining_settings
+        ds.pop("settings_base_df", None)
+        ds.pop("settings_base_live", None)
+        ds.pop("settings_base_origin", None)
+        disk_data.remove(old_disk)
+        return {"dataset_id": dataset_id, "source": ds["source"], "name": name,
+                "rows": len(preview), "columns": columns, "source_ref": source_ref,
+                "query_scope": "loaded", "sampled": False,
+                "estimated_bytes": disk.get("estimated_bytes"),
+                "large_warning": disk.get("large_warning", False)}
     series = _OPS[op](df, normalized)
     live_source = ds.get("live_source")
     if not live_source and (ds.get("origin") or {}).get("kind") == "aurora":
@@ -97,7 +126,7 @@ def derive(dataset_id: str, spec: dict) -> dict:
         import live_derive
 
         live = live_derive.build(live_source, df, {**normalized, "name": name})
-        preview, capped = live_derive.preview(live)
+        preview, _preview_capped = live_derive.preview(live)
         if name not in preview.columns:
             raise ValueError("The derived column could not be created in the database.")
         remaining_settings = [s for s in ds.get("column_settings", [])
@@ -113,7 +142,7 @@ def derive(dataset_id: str, spec: dict) -> dict:
         ds["df"] = preview
         ds["live_source"] = live
         ds["origin"] = None
-        ds["capped"] = capped
+        ds["capped"] = False
         ds["source_ref"] = source_ref
         ds["column_settings"] = remaining_settings
         ds["settings_base_df"] = preview
@@ -121,5 +150,5 @@ def derive(dataset_id: str, spec: dict) -> dict:
         ds["settings_base_origin"] = None
         return {"dataset_id": dataset_id, "source": ds["source"], "name": name,
                 "rows": len(preview), "columns": columns, "source_ref": source_ref,
-                "query_scope": "database", "sampled": capped}
+                "query_scope": "database", "sampled": False}
     return datasets.set_column(dataset_id, name, series)

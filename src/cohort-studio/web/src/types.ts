@@ -90,10 +90,30 @@ export type SourceRef =
       table: string; schema?: string; uuid?: string; settings?: ColumnSetting[] }
   | { kind: "derived"; base: SourceRef; spec: DerivedSpec;
       settings?: ColumnSetting[] }
-  | { kind: "join"; base: SourceRef; steps: {
+  | { kind: "join"; base: SourceRef; allow_loaded?: boolean; steps: {
       source: SourceRef; how: JoinHow; conditions: JoinCondition[];
       columns: string[] | null; alias: string;
     }[] };
+
+export interface SavedViewEntry {
+  kind: "aurora" | "s3";
+  resource_id: string;
+  store_label: string;
+  name: string;
+}
+
+export interface SavedViewStoreError {
+  kind: "aurora" | "s3";
+  resource_id: string;
+  label: string;
+  error: string;
+}
+
+export interface SavedViewList {
+  views: SavedViewEntry[];
+  unavailable: SavedViewStoreError[];
+}
+
 
 export interface SqlPreview {
   source_ref: Extract<SourceRef, { kind: "sql" }>;
@@ -151,6 +171,8 @@ export interface JoinValidation {
   ok: boolean;
   engine: JoinEngine;
   engine_reason: string;
+  generated_sql?: { engine: JoinEngine; sql: string;
+    parameters: Record<string, unknown>; staged_inputs?: string[] } | null;
   capped_inputs: string[];
   problems: string[];
   steps: { problems: string[]; notes: string[]; conditions: JoinConditionCheck[] }[];
@@ -159,6 +181,7 @@ export interface JoinValidation {
 export interface JoinPreview extends JoinStats {
   columns: string[];
   sample: unknown[][];
+  sample_truncated?: boolean;
 }
 
 export interface JoinSuggestion {

@@ -92,7 +92,7 @@ def test_derived_live_source_covers_full_database_and_reopens_recipe(
     assert joined.status_code == 200, joined.text
     dataset_id = joined.json()["dataset_id"]
     assert joined.json()["rows"] == 100_000
-    assert joined.json()["sampled"] is True
+    assert joined.json()["sampled"] is False
 
     mapped = client.post(f"/api/datasets/{dataset_id}/derive", json={
         "op": "map", "name": "mapped_text", "column": "mapping :ghost",
@@ -101,7 +101,7 @@ def test_derived_live_source_covers_full_database_and_reopens_recipe(
     })
     assert mapped.status_code == 200, mapped.text
     assert mapped.json()["query_scope"] == "database"
-    assert mapped.json()["sampled"] is True
+    assert mapped.json()["sampled"] is False
     late = _query(client, dataset_id, [100005])
     assert late.status_code == 200, late.text
     assert late.json()["total"] == 100_005

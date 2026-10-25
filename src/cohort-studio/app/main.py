@@ -13,6 +13,7 @@ from fastapi.exception_handlers import (
 )
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 from pydantic import (BaseModel, ConfigDict, Field, RootModel,
                       field_validator, model_validator)
@@ -29,6 +30,7 @@ import config
 import datasets
 import db
 import duck
+import disk_data
 import joins
 import lineage
 import llm
@@ -61,6 +63,7 @@ async def lifespan(_app: FastAPI):
             yield
     finally:
         export_jobs.shutdown()
+        datasets.clear()
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
 app.include_router(knowledge.router)
@@ -166,7 +169,9 @@ class JoinStep(BaseModel):
     alias: str = ""
 
 class JoinRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
 
+    allow_loaded: bool = Field(default=False, strict=True)
     base_id: str = ""
     steps: list[JoinStep] = Field(default_factory=list)
     left_id: str = ""
@@ -174,6 +179,7 @@ class JoinRequest(BaseModel):
     left_on: str = ""
     right_on: str = ""
     how: str = "inner"
+
 
 class CompareRequest(BaseModel):
     filters_a: list[Filter] = Field(default_factory=list)
@@ -399,6 +405,10 @@ def open_dataset(req: OpenRequest):
         raise
     except sql_source.SQLTimeout as e:
         raise HTTPException(504, str(e))
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -408,6 +418,7 @@ def open_dataset(req: OpenRequest):
                    payload={"source_kind": ref["kind"], "resource_id": ref.get("resource_id"),
                             "rows": result["rows"]})
     return result
+
 
 @app.post("/api/sql/preview")
 def preview_sql_source(req: SQLPreviewRequest):
@@ -446,6 +457,7 @@ def _open_source(ref, temporary=False):
     out = None
     origin = None
     live = None
+    disk = None
     capped = None
     try:
         if ref["kind"] == "derived":
@@ -466,9 +478,10 @@ def _open_source(ref, temporary=False):
                 labels.append(right["source"])
                 steps.append({"right_id": right["dataset_id"], **{
                     k: step[k] for k in ("how", "conditions", "columns", "alias") if k in step}})
-            out = joins.run(base["dataset_id"], steps)
+            out = joins.run(base["dataset_id"], steps, allow_loaded=ref.get("allow_loaded", False))
             df, label = out["df"], " + ".join(labels)
             live, capped = out.get("live_source"), out["stats"]["truncated"]
+            disk = out.get("disk_source")
         elif ref["kind"] == "sql":
             df, normalized, capped = sql_source.fetch(
                 ref["resource_id"], ref["sql"], queries.ROW_CAP)
@@ -480,13 +493,23 @@ def _open_source(ref, temporary=False):
         else:
             kind, rid, table = ref["kind"], ref["resource_id"], ref["table"]
             schema = ref.get("schema", "public")
-            if kind == "aurora" and schema != "public":
-                sql = f"SELECT * FROM {column_settings._q(schema)}.{column_settings._q(table)} LIMIT {queries.ROW_CAP}"
-                from sql_utils import statement as text
-                with db.get_engine_for_resource(rid).begin() as conn:
-                    if conn.dialect.name == "postgresql":
-                        conn.execute(text("SET LOCAL statement_timeout = 15000"))
-                    df = pd.read_sql_query(text(sql), conn)
+            if kind == "aurora":
+                sql = (f"SELECT * FROM {column_settings._q(schema)}."
+                       f"{column_settings._q(table)}")
+                df, normalized, capped = sql_source.fetch(
+                    rid, sql, queries.ROW_CAP)
+                live = {"resource_id": rid, "sql": normalized, "params": {},
+                        "columns": {column: column for column in df.columns}}
+            elif kind == "s3":
+                df, disk = disk_data.open_s3(ref)
+            elif kind == "catalog":
+                try:
+                    df, disk = disk_data.open_catalog(ref)
+                except catalog.UnknownView as e:
+                    raise HTTPException(404, str(e))
+            elif kind == "bq":
+                df = _load_frame(kind, rid, table)
+                capped = len(df) >= queries.ROW_CAP
             else:
                 df = _load_frame(kind, rid, table)
             label_table = (table if kind != "aurora" or schema == "public"
@@ -494,12 +517,14 @@ def _open_source(ref, temporary=False):
             label = f"{rid} / {label_table}"
             if kind == "aurora":
                 origin = {"kind": "aurora", "resource_id": rid, "table": table, "schema": schema}
+        if live is not None:
+            live = disk_data.estimate_live_source(live)
     finally:
         for child in children:
             datasets.close_dataset(child)
     result = datasets.open_dataset(
         df, label, origin=origin, temporary=temporary,
-        capped=capped, live_source=live)
+        capped=capped, live_source=live, disk_source=disk)
     dataset_id = result["dataset_id"]
     datasets.get(dataset_id)["source_ref"] = ref
     try:
@@ -512,6 +537,7 @@ def _open_source(ref, temporary=False):
     if out:
         result["join"] = out["stats"]
     return result
+
 
 @app.patch("/api/datasets/{dataset_id}/columns")
 def configure_columns(dataset_id: str, req: ColumnsRequest):
@@ -575,13 +601,20 @@ def join_datasets(req: JoinRequest):
     base_id, steps, sources = _join_pipeline(req)
     try:
         ref = _join_ref(base_id, steps)
-        out = joins.run(base_id, steps)
+        if ref and req.allow_loaded:
+            ref["allow_loaded"] = True
+        out = joins.run(base_id, steps, allow_loaded=req.allow_loaded)
         label = " + ".join(sources)
         result = datasets.open_dataset(out["df"], label,
                                        capped=out["stats"]["truncated"],
-                                       live_source=out.get("live_source"))
+                                       live_source=out.get("live_source"),
+                                       disk_source=out.get("disk_source"))
         datasets.get(result["dataset_id"])["source_ref"] = ref
         result["source_ref"] = ref
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except joins.JoinTimeout as e:
@@ -599,17 +632,23 @@ def join_datasets(req: JoinRequest):
                    parents=[("dataset", s) for s in sources])
     return {**result, "join": out["stats"]}
 
+
 @app.post("/api/datasets/join/preview")
 def preview_join(req: JoinRequest):
     base_id, steps, _ = _join_pipeline(req)
     try:
-        return joins.preview(base_id, steps)
+        return joins.preview(base_id, steps, allow_loaded=req.allow_loaded)
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except joins.JoinTimeout as e:
         raise HTTPException(504, str(e))
     except joins.JoinEngineError as e:
         raise HTTPException(502, str(e))
+
 
 @app.post("/api/datasets/join/validate")
 def validate_join(req: JoinRequest):
@@ -689,11 +728,16 @@ def query_dataset(dataset_id: str, req: QueryRequest):
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
 
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(504 if "statement timeout" in str(e) else 502,
                             str(e).split("\n")[0][:300])
+
 
 def _require_loaded(dataset_id, operation):
     try:
@@ -705,14 +749,22 @@ def _require_loaded(dataset_id, operation):
 
 def _export_frame(ds, filters=None):
     try:
+        if ds.get("disk_source"):
+            return disk_data.export_frame(ds["disk_source"], filters or [],
+                                          queries.ROW_CAP)
         if ds.get("live_source"):
             return live_query.fetch_frame(ds["live_source"], filters, max_rows=queries.ROW_CAP)
         return datasets.apply_filters(ds["df"], filters or [])
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(504 if "statement timeout" in str(e) else 502,
                             str(e).split("\n")[0][:300])
+
 
 class StartExportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -762,6 +814,19 @@ def export_dataset(dataset_id: str, req: QueryRequest):
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    if ds.get("disk_source"):
+        try:
+            path = disk_data.export_tsv(ds["disk_source"],
+                [f.model_dump() for f in req.filters], queries.ROW_CAP)
+        except disk_data.OperationTooLarge as e:
+            raise HTTPException(413, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        lineage.record(_lineage_engine(), "export", "export", ds["source"],
+                       payload={"row_limit": queries.ROW_CAP})
+        return FileResponse(path, media_type="text/tab-separated-values",
+                            filename="cohort.tsv",
+                            background=BackgroundTask(disk_data.remove_file, path))
     df = _export_frame(ds, [f.model_dump() for f in req.filters])
     lineage.record(_lineage_engine(), "export", "export", ds["source"],
                    payload={"rows": len(df)})
@@ -769,6 +834,7 @@ def export_dataset(dataset_id: str, req: QueryRequest):
                     media_type="text/tab-separated-values",
                     headers={"Content-Disposition":
                              "attachment; filename=cohort.tsv"})
+
 
 @app.delete("/api/datasets/{dataset_id}")
 def delete_dataset(dataset_id: str):
@@ -828,11 +894,13 @@ class ViewDataset(BaseModel):
     cohorts: list[Cohort] = Field(default_factory=list)
 
 class SaveViewRequest(BaseModel):
-    kind: str
-    resource_id: str
-    name: str
-    datasets: list[ViewDataset] = Field(default_factory=list)
-    active: int = 0
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["aurora", "s3"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    name: str = Field(pattern=r"^[A-Za-z0-9 ._-]{1,80}$")
+    datasets: list[ViewDataset] = Field(default_factory=list, max_length=16)
+    active: int = Field(default=0, ge=0)
+
 
 @app.get("/api/config")
 def get_config():
@@ -874,10 +942,12 @@ def ask_dataset(dataset_id: str, req: AskRequest):
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    if ds.get("disk_source"):
+        raise HTTPException(400, "Dataset chat is not available for disk-backed sources.")
     try:
         result = llm.suggest_filters(
             req.question,
-            datasets.profile_columns(ds["df"]),
+            column_settings.profiles(ds),
             [f.model_dump() for f in req.filters])
     except llm.LLMNotConfigured as e:
         raise HTTPException(400, str(e))
@@ -887,6 +957,7 @@ def ask_dataset(dataset_id: str, req: AskRequest):
                    payload={"question": req.question,
                             "filters": result["filters"]})
     return result
+
 
 @app.post("/api/datasets/{dataset_id}/materialize")
 def materialize_dataset(dataset_id: str, req: MaterializeRequest):
@@ -914,13 +985,17 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
 
 @app.post("/api/datasets/{dataset_id}/chat")
 def chat_dataset(dataset_id: str, req: ChatRequest, request: Request, response: Response):
-    _require_loaded(dataset_id, "Chat")
     trace_id = uuid.uuid4().hex
     started = time.monotonic()
     try:
-        source = datasets.get(dataset_id)["source"]
+        dataset = datasets.get(dataset_id)
+        source = dataset["source"]
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    if dataset.get("live_source"):
+        raise HTTPException(400,
+            "Chat is not available for database-scoped datasets. "
+            "Use the full-source filters and charts to explore this result.")
     try:
         llm.validate_config(config.get_llm_config())
         with agent_sessions.bind(agent_sessions.owner(request, response),
@@ -948,6 +1023,7 @@ def chat_dataset(dataset_id: str, req: ChatRequest, request: Request, response: 
     result.setdefault("trace_id", trace_id)
     return result
 
+
 @app.get("/api/datasets/{dataset_id}/chat/history")
 def dataset_chat_history(dataset_id: str, request: Request, response: Response,
                          session_id: uuid.UUID | None = None, before: int | None = None):
@@ -968,6 +1044,44 @@ def _record_turn(trace_id: str, source: str, message: str, started: float,
 @app.get("/api/agent/turns")
 def agent_turns():
     return {"turns": []}
+
+@app.get("/api/views/all")
+def list_all_saved_views():
+    stores = []
+    discovery_errors = []
+    try:
+        for resource in db.list_aurora_resources():
+            if resource.get("kind") == "postgres" or not resource.get("id"):
+                continue
+            resource_id = resource["id"]
+            stores.append({"kind": "aurora", "resource_id": resource_id,
+                           "label": f"{resource_id} · Aurora"})
+    except Exception as exc:
+        discovery_errors.append({
+            "kind": "aurora", "resource_id": "", "label": "Aurora",
+            "error": str(exc).split("\n")[0][:300]
+                    or "Aurora resources could not be listed.",
+        })
+    try:
+        for resource in db.list_s3_folders():
+            if not resource.get("id"):
+                continue
+            resource_id = resource["id"]
+            stores.append({"kind": "s3", "resource_id": resource_id,
+                           "label": f"{resource_id} · S3"})
+    except Exception as exc:
+        discovery_errors.append({
+            "kind": "s3", "resource_id": "", "label": "S3 resources",
+            "error": str(exc).split("\n")[0][:300]
+                    or "S3 resources could not be listed.",
+        })
+    unique = {}
+    for store in stores:
+        unique[(store["kind"], store["resource_id"])] = store
+    result = views.list_all_views(list(unique.values()))
+    result["unavailable"] = discovery_errors + result["unavailable"]
+    return result
+
 
 @app.get("/api/views")
 def list_views(kind: str, resource_id: str):

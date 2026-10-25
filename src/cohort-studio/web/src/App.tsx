@@ -15,11 +15,20 @@ import { CommandPalette, Command } from "./components/CommandPalette";
 import { Tutorial } from "./components/Tutorial";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
-import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, TableInfo } from "./types";
+import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 
 const AUTO_CHART_LIMIT = 8;
 
 class JoinRecoveryError extends Error {}
+
+interface JoinEdit {
+  originalDatasetId: string;
+  originalTitle: string;
+  baseId: string;
+  steps: JoinStep[];
+  allowLoaded: boolean;
+  inputs: Dataset[];
+}
 
 function autoCharts(columns: Dataset["columns"]): ChartSpec[] {
   const specs: ChartSpec[] = [];
@@ -86,6 +95,7 @@ export default function App() {
   const [exploreModes, setExploreModes] = useState<Record<string, "tables" | "omop">>({});
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
+  const [editingJoin, setEditingJoin] = useState<JoinEdit | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -192,6 +202,61 @@ export default function App() {
     });
   };
 
+  const closeEditInputs = (edit: JoinEdit) =>
+    Promise.allSettled(edit.inputs.map((dataset) => api.closeDataset(dataset.id)));
+
+  const closeJoinPanel = () => {
+    if (editingJoin) void closeEditInputs(editingJoin);
+    setEditingJoin(null);
+    setShowJoin(false);
+  };
+
+  const editJoin = async (datasetId: string) => {
+    const original = datasets.find((dataset) => dataset.id === datasetId);
+    const ref = original?.sourceRef;
+    if (!original || ref?.kind !== "join") return;
+    setActivity("Restoring join inputs…");
+    setError("");
+    const inputIds = new Map<string, string>();
+    datasets.forEach((dataset) => {
+      if (dataset.sourceRef) inputIds.set(JSON.stringify(dataset.sourceRef), dataset.id);
+    });
+    const openedInputs: Dataset[] = [];
+    const openInput = async (sourceRef: SourceRef): Promise<string> => {
+      const key = JSON.stringify(sourceRef);
+      const existing = inputIds.get(key);
+      if (existing) return existing;
+      const opened = await api.openSourceRef(sourceRef);
+      const title = sourceRef.kind === "join" ? "Joined input"
+        : sourceRef.kind === "derived" ? sourceRef.spec.name
+          : sourceRef.kind === "sql" ? sourceRef.name || "SQL result"
+            : sourceRef.table.split("/").pop() ?? sourceRef.table;
+      const input: Dataset = {
+        id: opened.dataset_id, title, source: opened.source,
+        sourceRef: opened.source_ref ?? sourceRef, queryScope: opened.query_scope,
+        columns: opened.columns, filters: [], charts: autoCharts(opened.columns),
+        cohorts: [], page: 0,
+      };
+      openedInputs.push(input);
+      inputIds.set(key, input.id);
+      return input.id;
+    };
+    try {
+      const baseId = await openInput(ref.base);
+      const steps: JoinStep[] = [];
+      for (const step of ref.steps)
+        steps.push({ ...step, right_id: await openInput(step.source) });
+      setEditingJoin({ originalDatasetId: original.id, originalTitle: original.title,
+        baseId, steps, allowLoaded: ref.allow_loaded ?? false, inputs: openedInputs });
+      setShowJoin(true);
+    } catch (error) {
+      await Promise.allSettled(openedInputs.map((dataset) => api.closeDataset(dataset.id)));
+      setError(`Could not edit join: ${(error as Error).message}. The existing result is unchanged.`);
+    } finally {
+      setActivity("");
+    }
+  };
+
   const openTableDirect = async (src: Source, tbl: string) => {
     setActivity(`Loading ${tbl}…`);
     setError("");
@@ -270,17 +335,17 @@ export default function App() {
     const m = window.location.hash.match(/view=([^:]+):([^:]+):(.+)/);
     if (m) {
       hashLoaded.current = true;
-      loadView({ kind: m[1], id: m[2] }, decodeURIComponent(m[3]));
+      loadView({ kind: m[1], id: decodeURIComponent(m[2]) }, decodeURIComponent(m[3]));
     }
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doJoin = async (p: { baseId: string; steps: JoinStep[] }) => {
+  const doJoin = async (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean }) => {
     setActivity("Joining…");
     setError("");
     try {
       let opened: OpenResult & { join: JoinStats };
       try {
-        opened = await api.join(p.baseId, p.steps);
+        opened = await api.join(p.baseId, p.steps, p.allowLoaded);
       } catch (e) {
         if (!(e instanceof ApiError) || e.status !== 404
             || e.code !== "DATASET_EXPIRED") throw e;
@@ -288,7 +353,8 @@ export default function App() {
         const inputIds = [...new Set([
           p.baseId, ...p.steps.map((s) => s.right_id),
         ])];
-        const inputs = new Map(datasets.map((d) => [d.id, d]));
+        const inputs = new Map([...datasets, ...(editingJoin?.inputs ?? [])]
+          .map((d) => [d.id, d]));
         if (inputIds.some((id) => !inputs.get(id)?.sourceRef)) {
           throw new JoinRecoveryError(
             "The join inputs expired. Reopen the source or upload the data "
@@ -309,7 +375,7 @@ export default function App() {
             ...step,
             right_id: reopened.get(step.right_id)!.dataset_id,
           }));
-          opened = await api.join(base.dataset_id, retrySteps);
+          opened = await api.join(base.dataset_id, retrySteps, p.allowLoaded);
         } catch (retryError) {
           await Promise.allSettled(createdIds.map((id) => api.closeDataset(id)));
           const reason = retryError instanceof Error ? retryError.message : "unknown error";
@@ -346,6 +412,10 @@ export default function App() {
           + (join.engine === "aurora" ? " (ran in Aurora)." : " (ran in memory).")
           + (join.capped_inputs?.length ? " Some inputs were capped — results may be incomplete." : ""),
       });
+      if (editingJoin) {
+        await closeEditInputs(editingJoin);
+        setEditingJoin(null);
+      }
       setShowJoin(false);
     } catch (e) {
       const message = (e as Error).message;
@@ -358,6 +428,9 @@ export default function App() {
 
   const closeDataset = (index: number) => {
     const ds = datasets[index];
+    if (editingJoin && (ds.id === editingJoin.originalDatasetId
+        || ds.id === editingJoin.baseId
+        || editingJoin.steps.some((step) => step.right_id === ds.id))) closeJoinPanel();
     api.closeDataset(ds.id).catch(() => undefined);
     setDatasets((prev) => prev.filter((_, i) => i !== index));
     setActive((a) => Math.max(0, a > index ? a - 1 : Math.min(a,
@@ -372,6 +445,7 @@ export default function App() {
   }, []);
 
   const activeDs = datasets[active];
+  const joinBuilderDatasets = editingJoin ? [...datasets, ...editingJoin.inputs] : datasets;
 
   const TERMINAL = new Set(
     ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);
@@ -553,7 +627,7 @@ export default function App() {
               .map((v) => (
               <span key={v}
                     className={`topnav-link${view === v ? " active" : ""}`}
-                    onClick={() => setView(v)}>
+                    onClick={() => { if (v !== "explore") closeJoinPanel(); setView(v); }}>
                 {v[0].toUpperCase() + v.slice(1)}
                 {v === "workflows" && (workflows?.running_count ?? 0) > 0 && (
                   <span className="nav-badge">{workflows!.running_count}</span>
@@ -617,7 +691,7 @@ export default function App() {
                 {datasets.map((d, i) => (
                   <span key={d.id}
                         className={`tab${i === active ? " active" : ""}`}
-                        onClick={() => { setActive(i); setShowJoin(false); showExploreTables(); }}>
+                        onClick={() => { closeJoinPanel(); setActive(i); showExploreTables(); }}>
                     {d.title}
                     <button className="quiet" onClick={(e) => {
                       e.stopPropagation(); closeDataset(i);
@@ -626,17 +700,22 @@ export default function App() {
                 ))}
                 {(datasets.length >= 2 || sources.length > 0) && (
                   <button className="tab-join"
-                          onClick={() => setShowJoin((v) => !v)}>
+                          onClick={() => { if (showJoin) closeJoinPanel(); else setShowJoin(true); }}>
                     ⋈ Join
                   </button>
                 )}
               </div>
               {showJoin && (
-                <JoinPanel datasets={datasets} sources={sources} busy={Boolean(activity)}
+                <JoinPanel key={editingJoin?.originalDatasetId ?? "new"}
+                           datasets={joinBuilderDatasets} sources={sources} busy={Boolean(activity)}
+                           initialPlan={editingJoin ? {
+                             title: editingJoin.originalTitle, baseId: editingJoin.baseId,
+                             steps: editingJoin.steps, allowLoaded: editingJoin.allowLoaded,
+                           } : undefined}
                            onSourceOpened={(opened, title, sourceRef) =>
                              openResult(opened, title, sourceRef, undefined,
                                { forceNewTab: true })}
-                           onJoin={doJoin} onClose={() => setShowJoin(false)} />
+                           onJoin={doJoin} onClose={closeJoinPanel} />
               )}
               {dependentJob && !showJoin && (
                 <div className="wf-dep-banner">
@@ -655,6 +734,7 @@ export default function App() {
                   dataset={activeDs}
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
+                  onEditJoin={editJoin}
                 />
               )}
             </>

@@ -45,6 +45,8 @@ export function SettingsView(
   const [connections, setConnections] = useState<MCPConnection[]>([]);
   const [palette, setPalette] = useState("verily");
   const [status, setStatus] = useState("");
+  const [paletteStatus, setPaletteStatus] = useState("");
+  const [connectionsStatus, setConnectionsStatus] = useState("");
   const [providerBusy, setProviderBusy] = useState("");
   const [providerStatus, setProviderStatus] = useState("");
 
@@ -76,22 +78,49 @@ export function SettingsView(
     setProviderStatus("Saving provider settings…");
     try {
       const updated = await api.updateConfig({
-        provider,
-        model,
-        ...(apiKey ? { api_key: apiKey } : {}),
-        mcp_connections: connections,
-        chart_palette: palette,
+        provider, model, ...(apiKey ? { api_key: apiKey } : {}),
       });
       setCfg(updated);
-      setConnections(updated.mcp_connections);
-      setPalette(updated.chart_palette);
-      onPaletteChange?.(updated.chart_palette);
       setApiKey("");
       setProviderStatus("Provider settings saved securely.");
     } catch (error) {
       setProviderStatus(`Save failed: ${safeProviderError(error, apiKey)}`);
     } finally {
       setProviderBusy("");
+    }
+  };
+
+  const savePalette = async () => {
+    setPaletteStatus("Saving palette…");
+    try {
+      const updated = await api.updateConfig({ chart_palette: palette });
+      setCfg(updated);
+      setPalette(updated.chart_palette);
+      onPaletteChange?.(updated.chart_palette);
+      setPaletteStatus("Palette saved.");
+    } catch (error) {
+      setPaletteStatus(`Save failed: ${safeProviderError(error, "")}`);
+    }
+  };
+
+  const saveConnections = async () => {
+    setConnectionsStatus("Saving connections…");
+    try {
+      const updated = await api.updateConfig({
+        mcp_connections: connections.map(({ name, label, url, enabled, note, authorization_token }) => ({
+          name, label, url, enabled, note,
+          ...(authorization_token === undefined ? {} : { authorization_token }),
+        })),
+      });
+      setCfg(updated);
+      setConnections(updated.mcp_connections);
+      setConnectionsStatus("Connections saved.");
+    } catch (error) {
+      let message = safeProviderError(error, "");
+      for (const connection of connections) {
+        if (connection.authorization_token) message = message.split(connection.authorization_token).join("[redacted]");
+      }
+      setConnectionsStatus(`Save failed: ${message}`);
     }
   };
 
@@ -337,9 +366,10 @@ export function SettingsView(
             );
           })}
         </div>
-        <button className="primary" style={{ marginTop: 10 }} onClick={save}>
+        <button className="primary" style={{ marginTop: 10 }} onClick={savePalette}>
           Save
         </button>
+        {paletteStatus && <div className="settings-status" role="status">{paletteStatus}</div>}
       </div>
 
       <div className="section-label">MCP server (this app)</div>
@@ -413,10 +443,11 @@ export function SettingsView(
             enabled: false, note: "", token_set: false }])}>
             Add connection
           </button>
-          <button className="primary" onClick={save}>Save</button>
+          <button className="primary" onClick={saveConnections}>Save</button>
         </div>
       </div>
 
+      {connectionsStatus && <div className="settings-status" role="status">{connectionsStatus}</div>}
       <KnowledgeBase />
       {status && <div className="settings-status">{status}</div>}
     </div>

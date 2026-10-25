@@ -1031,8 +1031,6 @@ def ask_dataset(dataset_id: str, req: AskRequest):
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
-    if ds.get("disk_source"):
-        raise HTTPException(400, "Dataset chat is not available for disk-backed sources.")
     try:
         result = llm.suggest_filters(
             req.question,

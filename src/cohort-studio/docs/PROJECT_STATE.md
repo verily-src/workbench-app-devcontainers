@@ -1,8 +1,23 @@
 # Cohort Studio project state
 
-Updated 2026-10-24. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
+Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
 
 ## Latest local change
+
+- **Live storage verified, 2026-10-25:** resumed the existing dev app. Managed
+  migration `a1d3d00c-b2d0-42dc-bad3-9eb80f02a626` created all five `_studio_agent`
+  tables and saved `/app/agent_store_config.json` for `cohort-dash-db-20261005`.
+  Verification `c7bacae3-66b3-4eee-953a-899e2a2f71c0` passed a real Aurora
+  conversation write/read and cross-owner rejection; synthetic records were
+  removed. Existing database permissions were unchanged. Isolated release commit
+  `367249557d6112fe60f78e972140431b04c283a1` is prepared; publication and app
+  activation are tracked separately below when verified.
+
+- **2026-10-25:** approved managed-access migration is implemented and tested
+  locally, but its live attempt could not start (SSM InvalidInstanceId). Follow-up
+  EC2/SSM checks failed because AWS SSO expired. Refresh SSO and confirm the app
+  instance is running before retrying. No successful live migration, release
+  publication, key migration, or app update has occurred.
 
 - **Storage decision superseding the private-schema blocker, 2026-10-24:**
   user explicitly accepts non-private agent storage in the existing Aurora

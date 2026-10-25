@@ -4,6 +4,29 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **LIVE demo verified, 2026-10-25:** release `31515dc27fa0435f866083425c74566b38cc9d9f`
+  is active and healthy (SSM `a60624b4-bf0d-4222-b7ef-48767b35a67a`). Settings
+  now exposes encrypted Jev key save/remove, provider Save/Test feedback,
+  interactive tutorial, and separate built-in guidance/document enrichment.
+  The real OMOP cohort count/open matched at **29,553 people** (gender 8532,
+  birth years 1930–1950, required observation). Joining those exact member IDs
+  with Aurora synthetic genotypes and the S3 dictionary produced **1,475 people**.
+  The live app exported and submitted all rows (SSM
+  `5671fc01-f920-46cb-b829-6bddb6f9c9fa`). Workbench run
+  `ceea2bdc-50fa-4922-a1a3-53e2a3e2b3fe`, HealthOmics **4806228**, completed.
+  Final manifest includes engine ID and `/pubdir` paths. Live output/API check
+  `6b5461e5-fcfc-4894-9569-9587a88ab95d` verified six summary strata,
+  **431 synthetic carriers + 1,044 noncarriers = 1,475**, exact manifest URIs,
+  and successful dashboard open/query. A separate 10-row Aurora/S3 join passed
+  (`dd3fd7b2-bb51-48b9-91c4-9a506ea035e2`). Provider configuration reports
+  Anthropic / claude-opus-5 with no saved key; live interpretation is unverified.
+  Jev connectivity remains unverified. No IAM changes were made.
+  Validation: 67 combined candidate checks, focused real-helper regression,
+  10 workflow analysis checks including engine-path CLI coverage, and three
+  workflow browser checks including managed-folder defaults. OpenCode GLM max
+  found no confirmed code blocker; its requested live workflow check is now done.
+  Follow-up source patch includes corrected manifest paths and managed S3 defaults.
+
 - **DEMO registered, 2026-10-25:** Workbench workflow `cohort-genetics-demo`
   (UUID `dc95c029-5a41-42f7-81bc-49e2e7a69173`) points to
   `nextflow_resources/cohort-studio/demo-v1/main.nf`. Synthetic input and variant

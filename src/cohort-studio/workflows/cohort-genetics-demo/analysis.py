@@ -5,6 +5,7 @@ import csv
 import hashlib
 import json
 import math
+import os
 import shutil
 import sys
 from collections import Counter
@@ -204,6 +205,9 @@ def analyze(
         raise ValueError("variant_id must not be empty")
     if cohort_size is not None and cohort_size < 0:
         raise ValueError("cohort_size must be zero or greater")
+    engine_run_id = os.environ.get("AWS_WORKFLOW_RUN_ID") or None
+    if engine_run_id is not None and not engine_run_id.isdigit():
+        raise ValueError("AWS_WORKFLOW_RUN_ID must be a numeric HealthOmics run ID")
 
     row_count, people, status_counts, grouped = _read_and_summarize(input_path, variant_id)
     dictionary_rows = _validate_dictionary(variant_dictionary_path, variant_id)
@@ -219,6 +223,8 @@ def analyze(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     prefix = output_uri_prefix.rstrip("/") if output_uri_prefix else str(output_dir)
+    if prefix.startswith("s3://") and engine_run_id:
+        prefix = f"{prefix}/{engine_run_id}/pubdir"
     summary_uri = f"{prefix}/carrier_summary.csv"
     dictionary_output_uri = f"{prefix}/variant_dictionary.csv"
     manifest_uri = f"{prefix}/run_manifest.json"
@@ -288,6 +294,7 @@ def analyze(
         "execution": {
             "workflow_id": workflow_id,
             "run_id": run_id,
+            "engine_run_id": engine_run_id,
             "time_utc": datetime.now(timezone.utc).isoformat(),
             "python_version": sys.version.split()[0],
             "command": sys.argv,

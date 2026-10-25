@@ -47,7 +47,10 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
     api.datasources().then((out) => {
       const buckets = out.sources.filter((s) => s.kind === "s3");
       setS3(buckets);
-      if (buckets[0]) { setOutputBucket(buckets[0].id); setInputBucket(buckets[0].id); }
+      if (buckets[0]) {
+        setOutputBucket(buckets.find(s => s.id === "nextflow_outputs")?.id ?? buckets[0].id);
+        setInputBucket(buckets.find(s => s.id === "nextflow_params")?.id ?? buckets[0].id);
+      }
     }).catch(() => undefined);
     api.workflowRegistry().then((r) => {
       setRegistry(r.workflows);

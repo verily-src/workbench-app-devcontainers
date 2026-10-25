@@ -682,5 +682,7 @@ and a hash/count manifest. Dictionary annotations do not determine carrier statu
 Outputs publish through the HealthOmics mount `/mnt/workflow/pubdir`. Output
 bucket/key are plain metadata parameters, because passing a future S3 URI caused
 input validation to fail. Workbench appends the job name to the selected output
-path. The manifest does not claim a Workbench run UUID or source tables unless
+path. HealthOmics adds its engine run ID and `pubdir`; the task reads
+`AWS_WORKFLOW_RUN_ID` to record the final artifact URIs. The manifest does not
+claim a Workbench run UUID or source tables unless
 provided. No IAM changes or new compute service are required.

@@ -115,6 +115,30 @@ def test_missing_cohort_size_does_not_claim_unmatched_count(tmp_path):
     assert manifest["source"]["tables"] == []
 
 
+def test_healthomics_outputs_use_engine_run_and_pubdir_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("AWS_WORKFLOW_RUN_ID", "4281245")
+    output = tmp_path / "out"
+    run = _run(SAMPLE, output, "--output-uri-prefix",
+               "s3://results/workflow/job-7/", "--run-id", "workbench-run-9")
+    assert run.returncode == 0, run.stderr
+    manifest = json.loads((output / "run_manifest.json").read_text())
+
+    expected_prefix = "s3://results/workflow/job-7/4281245/pubdir"
+    assert manifest["outputs"] == {
+        "carrier_summary_csv": f"{expected_prefix}/carrier_summary.csv",
+        "variant_dictionary_csv": f"{expected_prefix}/variant_dictionary.csv",
+        "manifest_json": f"{expected_prefix}/run_manifest.json",
+    }
+    assert manifest["execution"]["engine_run_id"] == "4281245"
+    assert manifest["execution"]["run_id"] == "workbench-run-9"
+
+
+def test_rejects_non_numeric_healthomics_run_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("AWS_WORKFLOW_RUN_ID", "not-a-run-id")
+    with pytest.raises(ValueError, match="numeric HealthOmics run ID"):
+        analysis.analyze(SAMPLE, tmp_path / "out")
+
+
 def test_dictionary_requires_unique_key_and_selected_variant(tmp_path):
     source = tmp_path / "dictionary.csv"
     header = ",".join(analysis.DICTIONARY_COLUMNS)

@@ -135,3 +135,18 @@ def test_existing_workflow_keeps_batch_csv_submission(
         "batch_input_csv_path": "cohort-studio/existing.csv",
         "column_mapping": "", "row_selection": "",
     }]
+
+
+def test_workflow_prefers_managed_demo_folders(loaded_workflow_page: Page):
+    page = loaded_workflow_page
+    _stub_launch_routes(page, [], [])
+    page.route("**/api/datasources", lambda route: route.fulfill(json={
+        "ready": True, "sources": [
+            {"kind": "s3", "id": "external-data", "label": "External"},
+            {"kind": "s3", "id": "nextflow_params", "label": "Params"},
+            {"kind": "s3", "id": "nextflow_outputs", "label": "Outputs"},
+        ], "catalogs_pending": False,
+    }))
+    _open_launch(page)
+    expect(page.get_by_label("Input S3 folder")).to_have_value("nextflow_params")
+    expect(page.get_by_label("Output S3 folder")).to_have_value("nextflow_outputs")

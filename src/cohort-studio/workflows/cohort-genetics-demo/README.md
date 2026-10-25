@@ -93,9 +93,12 @@ one input S3 object and a unique output S3 prefix. For example:
 ```
 
 Use the `healthomics` profile. The process publishes its three declared outputs
-to `/mnt/workflow/pubdir`, the HealthOmics publication directory. Configure the
-job output bucket and path as the same unique prefix recorded in
-`output_bucket` and `output_key`. Workbench appends the job name to the submitted output path. The workflow reconstructs the manifest URI internally so HealthOmics does not treat a future output URI as an input object. The workflow does not read Aurora or upload files itself.
+to `/mnt/workflow/pubdir`, the HealthOmics publication directory. Workbench
+appends the job name to the submitted output path. The workflow uses that path
+as `output_uri_prefix` and records each output as
+`<output_uri_prefix>/<AWS_WORKFLOW_RUN_ID>/pubdir/<filename>`. It stores the
+numeric task value in `execution.engine_run_id`; the optional `run_id` remains
+the Workbench run ID. The workflow does not read Aurora or upload files itself.
 Set `run_id` if the workflow runner exposes it
 as a parameter; Workbench does not automatically inject its returned run ID
 into the workflow process.
@@ -117,3 +120,11 @@ uv --cache-dir /tmp/uv-cache run --no-project \
 The analysis boundary tests pass. The packaged Nextflow workflow and the
 analysis in the pinned Linux image were also run locally. The HealthOmics
 workflow was not registered or run, and no cloud resource was changed.
+
+## Verified cloud execution
+
+Workbench run `ceea2bdc-50fa-4922-a1a3-53e2a3e2b3fe` / HealthOmics `4806228`
+completed with 1,475 records selected by the OMOP cohort and joined to synthetic
+genotypes and an S3 dictionary. Six summary rows total 431 carriers and 1,044
+noncarriers. The live app reopened the summary and verified manifest URIs.
+See [demo runbook](../../docs/DEMO_OMOP_GENETICS.md) for the exact inputs and paths.

@@ -16,6 +16,7 @@ import cohort_agent
 import datasets
 import db
 import main
+from tests.test_agent_store import agent_store
 
 pytestmark = pytest.mark.e2e
 
@@ -102,7 +103,8 @@ def test_omop_cohort_browser_flow(ref, page: Page, omop_app_url: str):
     page.goto(omop_app_url)
     expect(page.locator(".topnav-link", has_text="OMOP cohorts")).to_have_count(0)
     expect(page.get_by_label("OMOP datasource")).to_have_count(0)
-    page.locator(".sidebar select").nth(0).select_option("aurora:omopdb")
+    page.get_by_label("Source type", exact=True).select_option("aurora")
+    page.get_by_label("Datasource", exact=True).select_option("aurora:omopdb")
     page.get_by_role("group", name="Explore view").get_by_role("button", name="OMOP").click()
 
     search = page.get_by_label("Concept name, ID or code")
@@ -200,16 +202,17 @@ def test_omop_mcp_streamable_http(omop_app_url: str):
 
 
 def test_omop_assistant_proposes_and_opens_real_cohort(
-        monkeypatch, page: Page, omop_app_url: str):
+        monkeypatch, agent_store, page: Page, omop_app_url: str):
     import config
 
+    monkeypatch.setenv("STUDIO_AGENT_RESOURCE_ID", "omopdb")
     datasets._store.clear()
     monkeypatch.setattr(config, "get_llm_config", lambda: {
         "provider": "openrouter", "api_key": "e2e-test-key",
         "model": "test/deterministic", "base_url": "https://example.invalid"})
 
     def fake_provider(_provider, _model, _key, _base, _system, _messages,
-                      tool_impls, tool_schemas=None, vertex_config=None):
+                      tool_impls, tool_schemas=None, vertex_config=None, on_step=None):
         assert [s["function"]["name"] for s in tool_schemas][:3] == [
             "search_concepts", "count_cohort", "propose_cohort"]
         found = json.loads(tool_impls["search_concepts"]("192671", "condition"))
@@ -226,7 +229,8 @@ def test_omop_assistant_proposes_and_opens_real_cohort(
 
     monkeypatch.setattr(cohort_agent.providers, "run", fake_provider)
     page.goto(omop_app_url)
-    page.locator(".sidebar select").nth(0).select_option("aurora:omopdb")
+    page.get_by_label("Source type", exact=True).select_option("aurora")
+    page.get_by_label("Datasource", exact=True).select_option("aurora:omopdb")
     page.get_by_role("group", name="Explore view").get_by_role("button", name="OMOP").click()
     page.get_by_label("Ask the cohort assistant").fill(
         "Find people with concept 192671 and prepare a cohort.")

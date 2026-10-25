@@ -4,6 +4,17 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **UI PATCH validated, 2026-10-25:** contained wide SQL editors/results within
+  the main pane; SQL result tabs now support inline naming with saved-view
+  persistence. Sidebar selection is source type → datasource → schema → table;
+  S3 offers folder/file filtering. Workflow selection is first, separate from
+  input/output S3 folders; unavailable registry is reported. Candidate build
+  and root TypeScript check passed. Nine targeted checks passed across runs,
+  including real PostgreSQL-backed OMOP browser/MCP/cohort-assistant flows
+  (provider stub, real tools/storage). Wide SQL layout was inspected at 900px
+  and 1440px. Live registry check found 18 registered workflows, but no demo
+  analysis input/output contract has been verified. No workflow was submitted.
+
 - **RELEASE CANDIDATE, 2026-10-25:** selectively assembled on deployed `194f397b5`
   in `/private/tmp/cohort-memory-publish`. Candidate backend + browser suite:
   **148 passed in 39.49s** using the existing local PostgreSQL container and a

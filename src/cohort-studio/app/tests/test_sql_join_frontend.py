@@ -8,6 +8,7 @@ pytestmark = pytest.mark.e2e
 
 def test_sql_mode_opens_result_without_visual_join_controls(page: Page, app_url: str):
     opened_sources = []
+    wide_sql = "SELECT person_id, gender FROM cdm.person " + "/* " + "wide_column " * 200 + "*/"
 
     def fulfill(route, body, status=200):
         route.fulfill(status=status, content_type="application/json", json=body)
@@ -23,16 +24,16 @@ def test_sql_mode_opens_result_without_visual_join_controls(page: Page, app_url:
     page.route("**/api/tables?**", lambda route: fulfill(route, []))
 
     source_ref = {"kind": "sql", "resource_id": "fixture",
-                  "sql": "SELECT person_id, gender FROM cdm.person",
+                  "sql": wide_sql,
                   "name": "person slice"}
 
     def preview(route):
         body = route.request.post_data_json
         assert body == {"resource_id": "fixture",
-                        "sql": "SELECT person_id, gender FROM cdm.person"}
+                        "sql": wide_sql}
         fulfill(route, {"source_ref": source_ref,
-                        "columns": ["person_id", "gender"],
-                        "sample": [[7, "Female"], [8, "Male"]],
+                        "columns": ["person_id", "gender"] + [f"column_{i}" for i in range(60)],
+                        "sample": [[7, "Female"] + ["wide value " * 30 for _ in range(60)]],
                         "rows": 2, "truncated": False})
 
     def open_source(route):
@@ -66,16 +67,25 @@ def test_sql_mode_opens_result_without_visual_join_controls(page: Page, app_url:
     panel.get_by_role("button", name="SQL", exact=True).click()
     panel.get_by_label("SQL source name").fill("person slice")
     editor = panel.get_by_label("SQL query")
-    editor.fill("SELECT person_id, gender FROM cdm.person")
+    editor.fill(wide_sql)
     panel.get_by_role("button", name="Preview SQL").click()
     expect(panel.get_by_label("SQL preview")).to_contain_text("Female", timeout=10000)
     expect(panel.get_by_label("SQL preview")).to_contain_text("2 preview rows")
+    for width in (1440, 900):
+        page.set_viewport_size({"width": width, "height": 1000})
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        assert panel.evaluate("el => el.scrollWidth <= el.clientWidth")
+        box = panel.get_by_label("SQL source name").bounding_box()
+        assert box["width"] > 200
+        assert page.locator(".sidebar").bounding_box()["x"] == 0
+    page.screenshot(path="/private/tmp/cohort-sql-layout.png", full_page=True)
+
 
     editor.fill("SELECT person_id FROM cdm.person")
     expect(panel.get_by_label("SQL preview")).to_have_count(0)
     expect(panel.get_by_role("button", name="Open SQL result")).to_have_count(0)
 
-    editor.fill("SELECT person_id, gender FROM cdm.person")
+    editor.fill(wide_sql)
     panel.get_by_role("button", name="Preview SQL").click()
     expect(panel.get_by_label("SQL preview")).to_be_visible(timeout=10000)
     panel.get_by_role("button", name="Open SQL result").click()

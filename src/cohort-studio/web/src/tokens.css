@@ -648,3 +648,19 @@ button.link:hover { text-decoration: underline; }
 
 .join-sql-editor { width: 100%; min-height: 160px; box-sizing: border-box; font-family: monospace; }
 .join-sql-preview { overflow: auto; max-height: 240px; }
+
+.main, .content { min-width: 0; }
+.join-panel, .join-source-picker, .join-source-picker > *, .join-sql-preview { min-width: 0; max-width: 100%; }
+.join-source-picker { grid-template-columns: minmax(0, 1fr); }
+.join-row { flex-wrap: wrap; }
+.join-row > label { min-width: 0; }
+.join-sql-editor { display: block; max-width: 100%; resize: vertical; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.join-sql-preview { width: 100%; overflow: auto; }
+.join-sql-preview table { width: max-content; min-width: 100%; border-collapse: collapse; }
+.join-sql-preview th, .join-sql-preview td { max-width: 320px; overflow-wrap: anywhere; padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.join-evidence pre { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.view-save { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.view-save > .settings-hint { grid-column: 1 / -1; overflow-wrap: anywhere; }
+
+.tab-rename { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tab-rename input { min-width: 140px; max-width: 280px; }

@@ -285,8 +285,9 @@ class AgentStore:
                     usage=usage, error_class=None)
 
     def fail(self, context: TurnContext, *, error_class: str,
-             usage: dict[str, int | None] | None = None) -> None:
-        self._close(context, status="failed", assistant_message=FAILED_TURN_MESSAGE,
+             usage: dict[str, int | None] | None = None,
+             assistant_message: str = FAILED_TURN_MESSAGE) -> None:
+        self._close(context, status="failed", assistant_message=assistant_message,
                     usage=usage, error_class=error_class)
 
     def latest(self, *, owner: str, scope: str) -> uuid.UUID | None:

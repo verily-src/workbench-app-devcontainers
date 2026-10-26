@@ -707,7 +707,7 @@ applied through CSS variables; chart labels and palettes react to theme changes.
 
 The Agent view uses the existing provider adapters, LangGraph tool runtime and
 Aurora conversation store in the app container. Its workspace-scoped history is
-bound to the browser's owner cookie. Ten bounded tools inspect exposed Aurora/S3
+bound to the browser's owner cookie. Twelve bounded tools inspect exposed Aurora/S3
 sources, search OMOP concepts, count cohorts, request Jev join recommendations,
 build/query dashboards and prepare the registered genetics demo workflow.
 Jev evidence does not prove join validity. Raw SQL and workflow submission are not
@@ -718,6 +718,20 @@ chart APIs as Explore. Agent-created dataset ownership is held in a bounded
 in-process registry; app restart expires these handles, but conversation text
 remains in Aurora. Inspection and concept grounding must occur in the current
 turn before a new dashboard is built.
+
+Studio Agent permits up to 16 model turns; ordinary dataset chat stays at eight.
+Both retain the 600-second and 64-tool-call limits. A ready workflow proposal
+is an approval boundary: the agent returns the proposal and stops.
+The runtime returns per-tool outcomes. Safe input errors include corrective field
+information; database and provider exceptions remain redacted. Consecutive failed
+calls are bounded, and an intervening successful tool permits a corrected retry.
+Step/time limits and repeated-failure stops persist the actual reply with failed
+run status. Cohort specs are validated before use without reparsing converted
+date objects. Agent filters validate fields and column names, then preserve exact predicates.
+Dropdown categories are display suggestions, not the allowed identifier universe;
+high-cardinality identifiers can be filtered through bound database parameters.
+OMOP cohort output retains gender/race/ethnicity concept IDs alongside existing
+labels. The additive ID columns support joins and canonical workflow inputs.
 
 Workflow proposals are owner-bound records in `_studio_agent.workflow_plans`
 in the existing Aurora database. Pending plans expire after 30 minutes; submitted

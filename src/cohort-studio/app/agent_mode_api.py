@@ -3,6 +3,7 @@ import json
 import threading
 import time
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -34,6 +35,15 @@ class AgentRequest(BaseModel):
         if not value.strip():
             raise ValueError("Enter a request.")
         return value.strip()
+
+
+class AgentFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    column: str = Field(min_length=1, max_length=512)
+    kind: Literal["categorical", "range"]
+    values: list[str] | None = Field(default=None, max_length=1000)
+    min: float | None = None
+    max: float | None = None
 
 
 class ApprovalRequest(BaseModel):
@@ -150,7 +160,7 @@ class Operations:
         for criterion in parsed["criteria"]:
             if not set(criterion.get("concept_ids", [])) <= self.concepts.get(resource_id, set()):
                 raise ValueError("Search concepts in this turn before using their IDs.")
-        return parsed
+        return spec
 
     def count_cohort(self, resource_id, spec_json):
         self._resource("aurora", resource_id)
@@ -189,7 +199,15 @@ class Operations:
             raise ValueError("Use at most eight charts and thirty filters.")
         main = _main()
         charts = [main.ChartSpec.model_validate(c).model_dump(exclude_none=True) for c in charts]
-        filters = llm.validate_filters(filters, column_settings.profiles(datasets.get(dataset_id)))
+        filters = [AgentFilter.model_validate(f).model_dump(exclude_none=True) for f in filters]
+        columns = {c["name"] for c in column_settings.profiles(datasets.get(dataset_id))}
+        for f in filters:
+            if f["column"] not in columns:
+                raise ValueError("Unknown filter column. Use the dashboard column metadata; no filters were applied.")
+            if f["kind"] == "categorical" and not f.get("values"):
+                raise ValueError("Categorical filters require at least one value.")
+            if f["kind"] == "range" and (f.get("min") is None or f.get("max") is None or f["min"] > f["max"]):
+                raise ValueError("Range filters require min and max with min <= max.")
         return charts, filters
 
     def build_dashboard(self, source_json, title, charts_json="[]", filters_json="[]"):
@@ -222,10 +240,11 @@ class Operations:
                 "total": result["total"], "filtered": result["filtered"],
                 "scope": result.get("scope"), "columns": opened["columns"], "charts": result["charts"]}
 
-    def query_dashboard(self, dataset_id, filters_json="[]", charts_json="[]"):
+    def query_dashboard(self, dataset_id, filters_json="[]", charts_json="[]", entity_column=""):
         entry = _owned(self.owner, dataset_id)
         charts, filters = self._view_options(dataset_id, charts_json, filters_json)
-        return datasets.query(dataset_id, entry["filters"] + filters, charts, 0, 5)
+        return datasets.query(dataset_id, entry["filters"] + filters, charts, 0, 5,
+                              entity_column=entity_column or None)
 
     def list_workflows(self):
         import agent_workflows

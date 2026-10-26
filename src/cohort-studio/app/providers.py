@@ -175,7 +175,8 @@ def _anthropic_call(client, model: str, messages: list[BaseMessage], schemas: li
 def run(provider: str, model: str, api_key: str, base_url: str | None,
         system: str, messages: list[dict], tool_impls: dict,
         tool_schemas: list[dict] | None = None,
-        vertex_config: dict | None = None, on_step=None) -> dict:
+        vertex_config: dict | None = None, on_step=None,
+        max_turns: int = agent_runtime.MAX_TURNS) -> dict:
     schemas = tool_schemas if tool_schemas is not None else TOOL_SCHEMAS
     vertex_auth = None
     if provider == "vertexai":
@@ -203,7 +204,8 @@ def run(provider: str, model: str, api_key: str, base_url: str | None,
 
     try:
         return agent_runtime.run(provider, model, system, messages, tool_impls,
-                                 schemas, invoke, on_step=on_step)
+                                 schemas, invoke, on_step=on_step,
+                                 max_turns=max_turns)
     finally:
         close = getattr(client, "close", None)
         if callable(close):

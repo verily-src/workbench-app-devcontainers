@@ -146,6 +146,8 @@ export interface StudioAgentResponse {
   session_id: string;
   trace_id: string;
   tool_calls: string[];
+  tool_results?: { name: string; status: "completed" | "failed" }[];
+  limit_reached?: boolean;
   actions: AgentDashboardAction[];
   workflow_plans: AgentWorkflowPlan[];
 }

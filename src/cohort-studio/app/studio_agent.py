@@ -1,15 +1,17 @@
 import json
+import re
 from datetime import date, datetime
 
 import agent
 import agent_instructions
+import agent_runtime
 import agent_sessions
 import config
 import knowledge
 import llm
 import providers
 import vertexai_auth
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
 class ChatInput(BaseModel):
@@ -32,7 +34,7 @@ _TOOLS = [
                  "default": "aurora"},
         "query": {"type": "string", "maxLength": 256, "default": ""},
     }, ["resource_id"]),
-    ("inspect_table", "Inspect a validated source reference and its metadata.", {
+    ("inspect_table", "Inspect an Aurora table or S3 file only. For OMOP cohort or join recipes, build_dashboard returns the output column metadata.", {
         "source_json": {"type": "string", "minLength": 2, "maxLength": 16000},
     }, ["source_json"]),
     ("search_concepts", "Search the selected OMOP CDM for concept names and IDs.", {
@@ -40,24 +42,27 @@ _TOOLS = [
         "q": {"type": "string", "minLength": 1, "maxLength": 1000},
         "domain": {"type": "string", "maxLength": 64, "default": ""},
     }, ["resource_id", "q"]),
-    ("count_cohort", "Count people and attrition for a validated OMOP cohort spec.", {
+    ("count_cohort", "Count people and attrition for an OMOP spec. spec_json is an object with only criteria, demographics, and require_observation. Criterion keys: domain, concept_ids, descendants, exclude, min_count, start/end ISO dates, index_relation ('before' or 'after' relative to the first included criterion), and measurement-only value_min/value_max. Demographic keys: gender_concept_ids, age_min/age_max, year_of_birth_min/year_of_birth_max. Search concepts first; use only returned IDs. Only death can omit concept_ids.", {
         "resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
-        "spec_json": {"type": "string", "minLength": 2, "maxLength": 20000},
+        "spec_json": {"type": "string", "minLength": 2, "maxLength": 20000,
+                       "description": "JSON object with only criteria, demographics, and require_observation. Each criterion uses domain, concept_ids, descendants, exclude, min_count, value_min/value_max (measurement only), start/end (ISO dates), and index_relation (before/after relative to the first included criterion). Use concept IDs returned by search_concepts. Demographics uses gender_concept_ids, age_min/age_max, and year_of_birth_min/year_of_birth_max."},
     }, ["resource_id", "spec_json"]),
-    ("recommend_join", "Return deterministic and Jev join-key evidence. Jev scores are probabilities, not proof.", {
+    ("recommend_join", "Return deterministic and Jev join-key evidence. Jev scores are probabilities, not proof. Inspect both source tables and use returned column names.", {
         "left_json": {"type": "string", "minLength": 2, "maxLength": 16000},
         "right_json": {"type": "string", "minLength": 2, "maxLength": 16000},
     }, ["left_json", "right_json"]),
-    ("build_dashboard", "Propose a dashboard title, charts and filters for review.", {
+    ("build_dashboard", "Propose a dashboard title, charts and filters for review. Chart entries use kind and exact x column; scatter/heatmap also need y. Filters are {column,kind:'categorical',values:[strings]} or {column,kind:'range',min:number,max:number}. The result includes source columns; for joined sources use these exact projected names, where right-side columns are named alias → column.", {
         "source_json": {"type": "string", "minLength": 2, "maxLength": 16000},
         "title": {"type": "string", "minLength": 1, "maxLength": 128},
         "charts_json": {"type": "string", "maxLength": 8000, "default": "[]"},
         "filters_json": {"type": "string", "maxLength": 8000, "default": "[]"},
     }, ["source_json", "title"]),
-    ("query_dashboard", "Query an owned dashboard using its saved filters plus requested filters; return full-scope counts and at most five preview rows.", {
+    ("query_dashboard", "Query an owned dashboard using its saved filters plus requested filters; return full-scope counts and at most five preview rows. Filters are {column,kind:'categorical',values:[strings]} or {column,kind:'range',min:number,max:number}; use exact inspected output names.", {
         "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
         "filters_json": {"type": "string", "maxLength": 8000, "default": "[]"},
         "charts_json": {"type": "string", "maxLength": 8000, "default": "[]"},
+        "entity_column": {"type": "string", "maxLength": 512, "default": "",
+                          "description": "Set person_id to count distinct people. The entity result reports distinct total/filtered separately from row counts."},
     }, ["dataset_id"]),
     ("workflow_status", "Refresh an owned workflow plan's run status. Completion does not verify its outputs.", {
         "plan_id": {"type": "string", "minLength": 1, "maxLength": 64},
@@ -66,7 +71,7 @@ _TOOLS = [
         "plan_id": {"type": "string", "minLength": 1, "maxLength": 64},
     }, ["plan_id"]),
     ("list_workflows", "List available workflow metadata. This does not submit a run.", {}),
-    ("prepare_workflow", "Prepare a workflow proposal for user review. This never submits a run.", {
+    ("prepare_workflow", "Prepare a workflow proposal for user review. This never submits a run. The genetics demo needs unique person_id, sample_id, variant_id, dosage, gender_concept_id and year_of_birth columns. Project redundant join keys out with each join step columns list before preparation; ambiguous suffixes block mapping.", {
         "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
         "input_resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
         "output_resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
@@ -122,6 +127,31 @@ def _tool_result(name: str, callback, args: dict) -> str:
     return encoded
 
 
+def _tool_error(name: str, error: Exception) -> dict[str, str]:
+    if name == "count_cohort" and type(error).__name__ == "OmopTimeout":
+        return {"code": "query_timeout",
+                "message": "The cohort count exceeded the database time limit. Simplify the criteria or narrow the date range, then retry once."}
+    if isinstance(error, ValidationError):
+        issues = error.errors(include_input=False)[:6]
+        fields = [".".join(str(part) for part in issue.get("loc", ())) or "input"
+                  for issue in issues]
+        return {"code": "invalid_tool_input",
+                "message": "Invalid input fields: " + ", ".join(fields) + "."}
+    if isinstance(error, ValueError):
+        lines = str(error).splitlines()
+        message = (lines[0] if lines and lines[0].strip() else
+                   "The requested fields are invalid.")[:240]
+        if re.search(r"(?i)(password|passwd|secret|token|credential|authorization|api[_ -]?key|://[^/\s:]+:[^@\s]+@|\bsk-[A-Za-z0-9_-]{8,}|\bAKIA[A-Z0-9]{16}\b|\bgh[pousr]_[A-Za-z0-9_]{12,}\b)", message):
+            message = "The tool could not validate its input. Check the requested fields and try again."
+        return {"code": "invalid_cohort_spec" if name == "count_cohort" else "invalid_tool_input",
+                "message": message}
+    if name == "count_cohort":
+        return {"code": "cohort_service_unavailable",
+                "message": "The OMOP data service could not complete the cohort count. Check the selected Aurora source or try again later."}
+    return {"code": "tool_error",
+            "message": "The tool could not complete this request. Check its inputs and source availability."}
+
+
 def build_tools(operations: dict) -> list:
     allowed = {name for name, *_ in _TOOLS}
     unknown = set(operations) - allowed
@@ -137,7 +167,10 @@ def build_tools(operations: dict) -> list:
             try:
                 return _tool_result(_name, _callback, args)
             except Exception as exc:
-                return json.dumps({"error": str(exc).split("\n")[0][:300]})
+                failure = _tool_error(_name, exc)
+                return agent_runtime.AgentToolResult(
+                    json.dumps({"error": failure["message"], "code": failure["code"]}),
+                    failure=failure)
 
         invoke.__name__ = name
         tools.append(invoke)
@@ -154,6 +187,8 @@ def _system_prompt() -> str:
         "available sources and metadata. Ground OMOP concept IDs in real "
         "concept search results before counting a cohort. Distinguish persons "
         "from event rows and report the data scope and evidence for claims. "
+        "Use query_dashboard with entity_column=person_id to verify distinct "
+        "people in joined results; row totals alone do not establish this. "
         "Treat Jev recommendations as probabilistic evidence only; metadata, "
         "key names, entity levels and row-level checks remain important. "
         "Dashboard and workflow tools return proposals for the user to review. "
@@ -161,6 +196,18 @@ def _system_prompt() -> str:
         "open_workflow_results before interpreting outputs. Distinguish summary "
         "strata rows from people counts; sum the people field, never count strata "
         "as people. Report checksum versus legacy counts/schema evidence accurately. "
+        "For count_cohort, use a JSON object with root keys criteria, demographics, "
+        "and require_observation. Each criterion is an object with domain, "
+        "concept_ids, descendants, exclude, min_count, optional start/end ISO "
+        "dates, optional index_relation ('before' or 'after' relative to the "
+        "first included criterion), and measurement-only value_min/value_max. "
+        "The domain is condition, drug, procedure, measurement, observation, "
+        "visit, device, or death; only death may omit concept_ids. Demographics "
+        "uses gender_concept_ids, age_min, age_max, year_of_birth_min, and "
+        "year_of_birth_max. Search concepts first and copy exact IDs from the "
+        "results. Do not use gender_concept_id or place demographics on a criterion. "
+        "If count_cohort returns a validation error, correct the named field once; "
+        "do not repeat the same failed call. If the service is unavailable, report it. "
         "Never submit a workflow or make an external change. Do not write or "
         "execute raw SQL. Do not invent table metadata, concepts, counts, "
         "join evidence or workflow capabilities.\n"
@@ -173,9 +220,28 @@ def _system_prompt() -> str:
         "\"steps\":[{\"source\":<source>,\"how\":\"inner\","
         "\"conditions\":[{\"left\":\"person_id\",\"op\":\"=\","
         "\"right\":\"person_id\"}],\"alias\":\"genetics\"}]}. "
+        "Each join step may include columns, a list of right-side source fields "
+        "to retain. Use it to omit duplicate keys while retaining fields needed "
+        "by later join conditions. For a cohort-to-genetics workflow, keep "
+        "sample_id from samples, variant_id and dosage from genotypes, and "
+        "only annotation fields from variants; omit repeated person_id, "
+        "sample_id and variant_id fields. The OMOP cohort already retains "
+        "gender_concept_id and year_of_birth. Verify the returned output "
+        "columns map uniquely to all six workflow inputs before preparation. "
         "Use exact recipes and IDs returned by tools. Chart specs are objects "
         "such as {\"kind\":\"bar\",\"x\":\"gender\"}; filters are "
         "arrays of validated categorical or numeric range filters. "
+        "Filter objects must use exactly the source column name and either "
+        "{\"column\":\"<column>\",\"kind\":\"categorical\",\"values\":[\"<value>\"]} "
+        "or {\"column\":\"<column>\",\"kind\":\"range\",\"min\":40,\"max\":65}. "
+        "Chart objects use {\"kind\":\"bar\",\"x\":\"<column>\"}; "
+        "scatter and heatmap also need y. For joins, use the columns returned "
+        "by build_dashboard for the joined source. Use exact projected column "
+        "names; right-side columns use "
+        "the form alias → column. Never guess demographic or join field names. "
+        "After a workflow preparation returns a READY approval plan, stop and "
+        "present its details for user approval. Do not continue extra analysis "
+        "unless the user asks for it. "
         "`list_sources` may return dashboard dataset IDs for later workflow "
         "proposals or dashboard queries. Do not invent IDs or resource paths.\n"
     )
@@ -204,16 +270,24 @@ def chat(message: str, operations: dict, on_step=None) -> dict:
                 on_step(event)
     if provider == "bedrock":
         out = agent.run_bedrock(cfg, system, messages, impls, TOOL_SCHEMAS,
-                                on_step=step)
+                                on_step=step,
+                                max_turns=agent_runtime.MAX_ALLOWED_TURNS)
     else:
         try:
             out = providers.run(
                 provider, cfg["model"], cfg["api_key"], cfg.get("base_url"),
                 system, messages, impls, tool_schemas=TOOL_SCHEMAS,
                 vertex_config=(cfg if provider == "vertexai" else None),
+                max_turns=agent_runtime.MAX_ALLOWED_TURNS,
                 **({"on_step": step} if step else {}))
         except vertexai_auth.VertexAuthUnavailable as exc:
             raise llm.LLMNotConfigured(str(exc)) from exc
     return {"reply": out["reply"], "usage": out["usage"],
             "tool_calls": out.get("tool_calls", []),
+            "tool_results": out.get("tool_results", []),
+            "limit_reached": out.get("limit_reached", False),
+            **({"limit_reason": out["limit_reason"]}
+               if out.get("limit_reason") else {}),
+            **({"stop_reason": out["stop_reason"]}
+               if out.get("stop_reason") else {}),
             "provider": provider, "model": cfg["model"]}

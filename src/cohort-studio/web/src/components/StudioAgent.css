@@ -10,6 +10,7 @@
 .studio-agent-message.user .studio-agent-bubble { background: var(--accent); color: var(--on-accent); }
 .studio-agent-tools, .studio-agent-card { width: min(82%, 720px); box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--card); color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-size: 13px; }
 .studio-agent-tools ul, .studio-agent-card ul { margin: 2px 0 0; padding-left: 20px; }
+.studio-agent-limit { max-width: min(82%, 720px); margin: 0; color: var(--ink-muted); font-size: 13px; }
 .studio-agent-column-mapping { display: grid; grid-template-columns: 1fr; gap: 4px; align-items: baseline; }
 .studio-agent-column-mapping strong { grid-column: 1 / -1; }
 .studio-agent-column-mapping code { overflow-wrap: anywhere; }

@@ -45,6 +45,15 @@ def _open_disk_fixture(tmp_path):
     return opened["dataset_id"], complete
 
 
+def test_run_bedrock_forwards_optional_turn_budget(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(agent.bedrock, "run",
+                        lambda *args, **kwargs: seen.update(kwargs) or {})
+    agent.run_bedrock({"model": "model", "region": "us-east-1"}, "system",
+                      [], {}, [], max_turns=15)
+    assert seen["max_turns"] == 15
+
+
 def test_chat_endpoint_applies_agent_result(monkeypatch):
     monkeypatch.setattr(main.llm, "validate_config", lambda _cfg: None)
     monkeypatch.setattr(main.agent_sessions, "bind", lambda *_args: nullcontext())

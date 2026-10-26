@@ -273,9 +273,11 @@ def test_open_cohort_columns_names_and_values(engine, info, ref):
         "person_id", "gender", "race", "ethnicity", "year_of_birth", "age",
         "index_date", "observation_start", "observation_end",
         "Gastrointestinal hemorrhage events", "Gastrointestinal hemorrhage first",
-        "celecoxib +1 events", "celecoxib +1 first"]
+        "celecoxib +1 events", "celecoxib +1 first",
+        "gender_concept_id", "race_concept_id", "ethnicity_concept_id"]
     assert len(df) == omop.count(engine, info, spec)["persons"] > 0
     assert set(df.gender) <= {"MALE", "FEMALE"}
+    assert set(df.gender_concept_id) <= {8507, 8532}
     gi = _events(ref, "condition", [GI_BLEED]).groupby("person_id").date
     row = df.iloc[0]
     pid = row.person_id
@@ -292,7 +294,8 @@ def test_labels_are_short_and_unique(engine, info):
     cols = list(omop.open_cohort(engine, info, spec).columns)
     assert "Gastrointestinal hemorrhage (2) events" in cols
     long = {"criteria": [{"domain": "drug", "concept_ids": [40162359]}]}
-    label = omop.open_cohort(engine, info, long).columns[-1].removesuffix(" first")
+    label = next(c.removesuffix(" first") for c in omop.open_cohort(engine, info, long).columns
+                 if c.endswith(" first"))
     assert label.endswith("…") and len(label) == omop.LABEL_CHARS
 
 

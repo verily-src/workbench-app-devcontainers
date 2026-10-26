@@ -231,3 +231,106 @@ def test_pending_workflow_reopens_aurora_source_after_restart(workspace, monkeyp
     assert response.json()["status"] == "submitted", response.json()
     assert calls == ["export", "submit"]
     assert not agent_mode_api._dashboards
+
+
+def test_agent_counts_demographics_and_dated_events_against_database(workspace):
+    import omop
+    ops = agent_mode_api.Operations("count-validation-owner")
+    engine, info = main._omop_cdm("omopdb")
+    demo = {"criteria": [], "require_observation": True,
+            "demographics": {"gender_concept_ids": [8532],
+                             "year_of_birth_min": 1930, "year_of_birth_max": 1950}}
+    assert ops.count_cohort("omopdb", json.dumps(demo)) == omop.count(engine, info, demo)
+    concepts = ops.search_concepts("omopdb", "192671", "condition")["concepts"]
+    assert any(c["concept_id"] == 192671 for c in concepts)
+    dated = {"criteria": [{"domain": "condition", "concept_ids": [192671],
+                           "start": "1900-01-01", "end": "2100-01-01"}]}
+    result = ops.count_cohort("omopdb", json.dumps(dated))
+    assert result == omop.count(engine, info, dated)
+    assert result["persons"] == 40
+
+
+def test_agent_rejects_filters_instead_of_silently_broadening_cohort(workspace):
+    ops = agent_mode_api.Operations("filter-validation-owner")
+    ref = {"kind": "aurora", "resource_id": "omopdb", "schema": "cdm", "table": "person"}
+    ops.inspect_table(json.dumps(ref))
+    built = ops.build_dashboard(json.dumps(ref), "People")
+    for filters in [
+        [{"column": "unknown_column", "kind": "categorical", "values": ["8532"]}],
+    ]:
+        with pytest.raises(ValueError, match="no filters were applied"):
+            ops.query_dashboard(built["dataset_id"], json.dumps(filters))
+    with pytest.raises(ValueError, match="Extra inputs"):
+        ops.query_dashboard(built["dataset_id"], json.dumps([
+            {"column": "year_of_birth", "kind": "range", "operator": "<", "value": 1950}]))
+    assert ops.query_dashboard(built["dataset_id"])["filtered"] == 100
+
+
+def test_agent_filters_high_cardinality_ids_without_dropdown_membership(workspace):
+    from sqlalchemy import text
+    ops = agent_mode_api.Operations("identifier-filter-owner")
+    ref = {"kind": "aurora", "resource_id": "omopdb", "schema": "cdm", "table": "person"}
+    ops.inspect_table(json.dumps(ref))
+    built = ops.build_dashboard(json.dumps(ref), "People")
+    engine, _ = main._omop_cdm("omopdb")
+    with engine.connect() as conn:
+        selected = str(conn.execute(text("SELECT person_id FROM cdm.person ORDER BY person_id DESC LIMIT 1")).scalar_one())
+    filters = [{"column": "person_id", "kind": "categorical", "values": [selected]}]
+    result = ops.query_dashboard(built["dataset_id"], json.dumps(filters))
+    assert result["filtered"] == 1
+    assert str(result["rows"]["data"][0][result["rows"]["columns"].index("person_id")]) == selected
+    missing = [{"column": "person_id", "kind": "categorical", "values": ["not-a-person"]}]
+    assert ops.query_dashboard(built["dataset_id"], json.dumps(missing))["filtered"] == 0
+
+
+def test_agent_omop_dashboard_preserves_demographic_concept_ids(workspace):
+    ops = agent_mode_api.Operations("omop-identifiers-owner")
+    ref = {"kind": "omop_cohort", "resource_id": "omopdb", "membership_mode": "live",
+           "spec": {"criteria": [], "require_observation": True}}
+    built = ops.build_dashboard(json.dumps(ref), "OMOP people")
+    names = {c["name"] for c in built["columns"]}
+    assert {"gender", "gender_concept_id", "race_concept_id", "ethnicity_concept_id"} <= names
+    result = ops.query_dashboard(built["dataset_id"])
+    assert result["filtered"] == 100
+
+
+def test_projected_omop_genetics_join_prepares_complete_workflow(workspace, monkeypatch, engine):
+    from sqlalchemy import text
+    import agent_workflows
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE cdm.agent_samples AS SELECT person_id, 'sample_' || person_id AS sample_id FROM cdm.person ORDER BY person_id LIMIT 5"))
+        conn.execute(text("CREATE TABLE cdm.agent_genotypes AS SELECT sample_id, v.variant_id, 1 AS dosage FROM cdm.agent_samples CROSS JOIN (VALUES ('SYN_VAR_0021'), ('OTHER_VARIANT')) AS v(variant_id)"))
+        conn.execute(text("CREATE TABLE cdm.agent_variants AS SELECT DISTINCT variant_id, 'SYN_GENE'::text AS gene FROM cdm.agent_genotypes"))
+    tables = ["person", "agent_samples", "agent_genotypes", "agent_variants"]
+    monkeypatch.setattr(main, "tables", lambda *args: [
+        {"name": "cdm." + name, "schema": "cdm", "table": name} for name in tables])
+    monkeypatch.setattr(main, "datasources", lambda: {"sources": [
+        {"kind": "aurora", "id": "omopdb"}, {"kind": "s3", "id": "input"}, {"kind": "s3", "id": "output"}]})
+    monkeypatch.setattr(main.workflows, "list_workflows", lambda: {"available": True, "workflows": [
+        {"id": "cohort-genetics-demo", "type": "NEXTFLOW"}]})
+    monkeypatch.setattr(agent_mode_api.db, "resolve_s3_uri", lambda rid: "s3://test-bucket/" + rid)
+    ops = agent_mode_api.Operations("projected-workflow-owner")
+    refs = {name: {"kind": "aurora", "resource_id": "omopdb", "schema": "cdm", "table": name} for name in tables}
+    for ref in refs.values():
+        ops.inspect_table(json.dumps(ref))
+    source = {"kind": "join", "base": {"kind": "omop_cohort", "resource_id": "omopdb",
+              "membership_mode": "live", "spec": {}}, "steps": []}
+    for name, alias, left, right, columns in [
+        ("agent_samples", "samples", "person_id", "person_id", ["sample_id"]),
+        ("agent_genotypes", "genotypes", "samples → sample_id", "sample_id", ["variant_id", "dosage"]),
+        ("agent_variants", "variants", "genotypes → variant_id", "variant_id", ["gene"]),
+    ]:
+        source["steps"].append({"source": refs[name], "alias": alias, "how": "inner", "columns": columns,
+                                "conditions": [{"left": left, "op": "=", "right": right}]})
+    filters = [{"column": "genotypes → variant_id", "kind": "categorical", "values": ["SYN_VAR_0021"]}]
+    built = ops.build_dashboard(json.dumps(source), "Projected genetics", filters_json=json.dumps(filters))
+    assert built["total"] == 10 and built["filtered"] == 5
+    distinct = ops.query_dashboard(built["dataset_id"], entity_column="person_id")
+    assert distinct["entity"] == {"column": "person_id", "total": 5, "filtered": 5}
+    assert ops.actions[0]["dataset"]["query_scope"] == "database"
+    plan = ops.prepare_workflow(built["dataset_id"], "input", "output")
+    assert plan["status"] == "ready", plan
+    assert plan["rows"] == 5
+    assert set(plan["column_mapping"]) == set(agent_workflows.REQUIRED_INPUT_COLUMNS)
+    assert plan["column_mapping"]["sample_id"] == "samples → sample_id"
+    assert plan["column_mapping"]["variant_id"] == "genotypes → variant_id"

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 import agent_store as store_module
+import agent_sessions
 import config
 import datasets
 import main
@@ -15,6 +16,50 @@ import queries
 import sql_source
 from source_models import source_dict
 from tests.test_agent_store import agent_store
+
+
+def test_limited_agent_turn_is_failed_and_keeps_its_reply(agent_store, monkeypatch):
+    monkeypatch.setattr(store_module, "AgentStore", lambda: agent_store)
+    owner, scope = "limited-turn-owner", "agent-mode"
+    with agent_sessions.bind(owner, scope, None):
+        agent_sessions.start("system", {"provider": "test", "model": "model"}, "Count cohort")
+        result = agent_sessions.finish({
+            "reply": "I stopped after the turn limit. Correct the spec and retry.",
+            "usage": {"prompt_tokens": 12, "completion_tokens": 4},
+            "limit_reached": True, "limit_reason": "turn_budget"})
+    assert result["run_status"] == "failed"
+    history = agent_store.history(session_id=result["session_id"], owner=owner, scope=scope)
+    assert history.messages[-1].content == result["reply"]
+    with agent_store.engine.connect() as conn:
+        from sqlalchemy import text
+        row = conn.execute(text("SELECT status, error_class FROM _studio_agent.runs")).one()
+    assert row == ("failed", "AgentLimitReached")
+
+
+def test_agent_events_keep_only_allowlisted_error_and_limit_codes():
+    recorded = []
+    store = SimpleNamespace(record_event=lambda *args, **kwargs: recorded.append((args, kwargs)))
+    turn = SimpleNamespace(run_id="run-id")
+    session = agent_sessions.Session(store, "owner", "scope", None, turn=turn)
+    token = agent_sessions._current.set(session)
+    try:
+        agent_sessions.event({"type": "tool_end", "turn": 3, "tool_name": "count_cohort",
+                              "error_code": "invalid_cohort_spec",
+                              "error": "contains literal secret text"})
+        agent_sessions.event({"type": "tool_end", "turn": 4, "tool_name": "count_cohort",
+                              "error_code": "password=not-for-storage"})
+        agent_sessions.event({"type": "runtime_limit", "turn": 5,
+                              "reason": "turn_budget", "error": "private detail"})
+        agent_sessions.event({"type": "runtime_limit", "turn": 6,
+                              "reason": "private detail"})
+    finally:
+        agent_sessions._current.reset(token)
+
+    assert recorded[0][1]["metadata"]["error_code"] == "invalid_cohort_spec"
+    assert "error" not in recorded[0][1]["metadata"]
+    assert "error_code" not in recorded[1][1]["metadata"]
+    assert recorded[2][1]["metadata"]["limit_reason"] == "turn_budget"
+    assert "limit_reason" not in recorded[3][1]["metadata"]
 
 
 def test_http_chat_reopens_server_history_and_hides_internal_data(agent_store, engine, monkeypatch):

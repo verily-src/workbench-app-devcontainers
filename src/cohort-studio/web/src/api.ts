@@ -112,8 +112,33 @@ export interface AgentWorkflowPlan {
   input_resource_id: string;
   output_resource_id: string;
   output_path?: string;
-  status: "ready" | "blocked";
+  status: "ready" | "blocked" | "submitting" | "submission_unknown" | "submitted" | "running" | "completed" | "failed";
   errors: string[];
+  run?: AgentWorkflowRun | null;
+  results_location?: AgentWorkflowResultsLocation | null;
+}
+
+export interface AgentWorkflowRun {
+  run_id?: string;
+  status?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+export interface AgentWorkflowResultsLocation {
+  output_bucket_uuid?: string;
+  output_bucket_resource?: string;
+  output_bucket_path?: string;
+}
+
+export interface AgentWorkflowVerification {
+  verified: true;
+  run_id: string;
+  rows?: number;
+  integrity?: string;
+  summary_sha256?: string;
+  source_ref?: SourceRef;
+  [key: string]: unknown;
 }
 
 export interface StudioAgentResponse {
@@ -127,14 +152,12 @@ export interface StudioAgentResponse {
 
 export interface AgentWorkflowApproval {
   status: string;
-  run?: { run_id?: string; status?: string; [key: string]: unknown } | null;
-  results_location?: string | null;
+  run?: AgentWorkflowRun | null;
+  results_location?: AgentWorkflowResultsLocation | null;
   error?: string | null;
 }
 
-export interface AgentWorkflowStatus extends AgentWorkflowApproval {
-  output?: unknown;
-}
+export type AgentWorkflowStatus = AgentWorkflowPlan;
 
 export interface AgentTurn {
   ts: string;
@@ -242,11 +265,16 @@ export const api = {
     request<StudioAgentResponse>("/api/agent/chat",
       post({ message, session_id: sessionId })),
   approveAgentWorkflow: (planId: string) =>
-    request<AgentWorkflowApproval>(
+    request<AgentWorkflowPlan>(
       `/api/agent/workflows/${encodeURIComponent(planId)}/approve`, post({})),
   agentWorkflowStatus: (planId: string) =>
-    request<AgentWorkflowStatus>(
+    request<AgentWorkflowPlan>(
       `/api/agent/workflows/${encodeURIComponent(planId)}/status`),
+  agentWorkflowPlans: () =>
+    request<{ plans: AgentWorkflowPlan[] }>("/api/agent/workflows"),
+  openAgentWorkflowResults: (planId: string) =>
+    request<{ action: AgentDashboardAction; verification: AgentWorkflowVerification }>(
+      `/api/agent/workflows/${encodeURIComponent(planId)}/results/open`, post({})),
   omopAgent: (id: string, message: string,
               _history: { role: string; content: string }[], spec: OmopSpec, sessionId?: string) =>
     request<CohortAgentResult>(`/api/omop/${encodeURIComponent(id)}/cohort/agent`,

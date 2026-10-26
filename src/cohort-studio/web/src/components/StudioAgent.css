@@ -13,6 +13,12 @@
 .studio-agent-column-mapping { display: grid; grid-template-columns: 1fr; gap: 4px; align-items: baseline; }
 .studio-agent-column-mapping strong { grid-column: 1 / -1; }
 .studio-agent-column-mapping code { overflow-wrap: anywhere; }
+.studio-agent-plans { max-height: 34vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px 4px 8px; }
+.studio-agent-plans h2 { margin: 0; font-size: 15px; }
+.studio-agent-plans .workflow-plan { width: 100%; }
+.studio-agent-verified { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border: 1px solid var(--border); border-left: 4px solid var(--success, #24835b); border-radius: 8px; background: var(--card); color: var(--ink); padding: 10px 12px; margin-bottom: 10px; }
+.studio-agent-verified > div { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 13px; }
+.studio-agent-verified > div strong { width: 100%; }
 .studio-agent-card button { margin-top: 4px; }
 .studio-agent-input { display: flex; align-items: end; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
 .studio-agent-input textarea { flex: 1; resize: vertical; min-height: 54px; max-height: 180px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; background: var(--card); color: var(--ink); font: inherit; }

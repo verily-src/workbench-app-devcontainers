@@ -59,6 +59,12 @@ _TOOLS = [
         "filters_json": {"type": "string", "maxLength": 8000, "default": "[]"},
         "charts_json": {"type": "string", "maxLength": 8000, "default": "[]"},
     }, ["dataset_id"]),
+    ("workflow_status", "Refresh an owned workflow plan's run status. Completion does not verify its outputs.", {
+        "plan_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    }, ["plan_id"]),
+    ("open_workflow_results", "Verify a completed owned workflow's manifest and summary, then open its results dashboard. Returns verification evidence and bounded rows for interpretation.", {
+        "plan_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    }, ["plan_id"]),
     ("list_workflows", "List available workflow metadata. This does not submit a run.", {}),
     ("prepare_workflow", "Prepare a workflow proposal for user review. This never submits a run.", {
         "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
@@ -151,6 +157,10 @@ def _system_prompt() -> str:
         "Treat Jev recommendations as probabilistic evidence only; metadata, "
         "key names, entity levels and row-level checks remain important. "
         "Dashboard and workflow tools return proposals for the user to review. "
+        "Use list_workflows to recover your saved plans. After completion use "
+        "open_workflow_results before interpreting outputs. Distinguish summary "
+        "strata rows from people counts; sum the people field, never count strata "
+        "as people. Report checksum versus legacy counts/schema evidence accurately. "
         "Never submit a workflow or make an external change. Do not write or "
         "execute raw SQL. Do not invent table metadata, concepts, counts, "
         "join evidence or workflow capabilities.\n"

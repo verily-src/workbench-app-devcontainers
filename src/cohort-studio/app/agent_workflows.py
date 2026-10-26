@@ -1,12 +1,13 @@
 import copy
 import hashlib
 import json
-import threading
-import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import queries
+import agent_plan_store
+import agent_store
 
 
 WORKFLOW_ID = "cohort-genetics-demo"
@@ -16,10 +17,6 @@ REQUIRED_INPUT_COLUMNS = (
 )
 PLAN_TTL = 30 * 60
 MAX_PLANS = 128
-
-_lock = threading.RLock()
-_plans: dict[str, dict] = {}
-
 
 class PlanNotFound(KeyError):
     pass
@@ -62,6 +59,8 @@ def _public(plan: dict) -> dict:
         "id": plan["id"],
         "workflow": WORKFLOW_ID,
         "dataset_id": plan["dataset_id"],
+        "filters": json.loads(plan["filters_json"]),
+        **({"source_ref": copy.deepcopy(plan["source_ref"])} if plan.get("source_ref") else {}),
         "rows": plan["rows"],
         "required_columns": list(REQUIRED_INPUT_COLUMNS),
         "column_mapping": copy.deepcopy(plan["column_mapping"]),
@@ -79,19 +78,21 @@ def _public(plan: dict) -> dict:
     }
 
 
-def _purge_locked(now: float) -> None:
-    expired = [key for key, value in _plans.items()
-               if now - value["created"] >= PLAN_TTL]
-    for key in expired:
-        _plans.pop(key, None)
-    while len(_plans) >= MAX_PLANS:
-        oldest = min(_plans, key=lambda key: _plans[key]["created"])
-        _plans.pop(oldest, None)
+def _repo(store=None):
+    return store if store is not None else agent_plan_store.AgentPlanStore()
+
+
+def _translate_store_error(error):
+    if isinstance(error, agent_store.AgentStoreOwnershipError):
+        raise PlanOwnerMismatch(str(error)) from error
+    if isinstance(error, agent_store.AgentStoreNotFound):
+        raise PlanNotFound(str(error)) from error
+    raise error
 
 
 def prepare(dataset_id: str, input_resource_id: str,
             output_resource_id: str, filters: list[dict], owner: str, *,
-            inspect_dataset, list_workflows, resolve_s3_resource) -> dict:
+            inspect_dataset, list_workflows, resolve_s3_resource, store=None) -> dict:
     owner = owner.strip() if isinstance(owner, str) else ""
     if not owner:
         raise PlanError("An authenticated owner is required.")
@@ -107,6 +108,7 @@ def prepare(dataset_id: str, input_resource_id: str,
     errors = []
     rows = 0
     column_mapping = {}
+    info = {}
     try:
         info = inspect_dataset(dataset_id, json.loads(frozen_filters))
         rows = int(info.get("rows", 0))
@@ -155,17 +157,19 @@ def prepare(dataset_id: str, input_resource_id: str,
             errors.append(f"The {role} S3 resource could not be validated: "
                           f"{_safe_error(error)}")
 
-    now = time.monotonic()
     plan_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=PLAN_TTL)
     input_path = f"cohort-studio/agent-plans/{plan_id}/cohort.csv"
     params_path = f"cohort-studio/agent-plans/{plan_id}/params.json"
     output_path = f"cohort-studio/agent-plans/{plan_id}/results"
     plan = {
         "id": plan_id,
-        "owner": owner,
-        "created": now,
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
         "dataset_id": dataset_id,
         "filters_json": frozen_filters,
+        "source_ref": copy.deepcopy(info.get("source_ref")) if isinstance(info, dict) else None,
         "dataset_fingerprint": dataset_fingerprint,
         "column_mapping": column_mapping,
         "rows": rows,
@@ -182,32 +186,39 @@ def prepare(dataset_id: str, input_resource_id: str,
         "status": "blocked" if errors else "ready",
         "errors": errors,
     }
-    with _lock:
-        _purge_locked(now)
-        _plans[plan_id] = plan
-        return _public(plan)
+    try:
+        _repo(store).save(plan_id, owner, plan, expires_at)
+    except agent_store.AgentStoreError as error:
+        _translate_store_error(error)
+    return _public(plan)
 
 
-def _owned_plan(plan_id: str, owner: str) -> dict:
-    plan = _plans.get(plan_id)
-    if plan is None or time.monotonic() - plan["created"] >= PLAN_TTL:
-        _plans.pop(plan_id, None)
-        raise PlanNotFound(plan_id)
-    if plan["owner"] != owner:
-        raise PlanOwnerMismatch(plan_id)
-    return plan
+def get_plan(plan_id: str, owner: str, *, store=None) -> dict:
+    try:
+        return _public(_repo(store).get(plan_id, owner))
+    except agent_store.AgentStoreError as error:
+        _translate_store_error(error)
+
+
+def list_plans(owner: str, *, limit: int = 30, store=None) -> list[dict]:
+    try:
+        return [_public(plan) for plan in _repo(store).list(owner, limit=limit)]
+    except agent_store.AgentStoreError as error:
+        _translate_store_error(error)
 
 
 def approve(plan_id: str, owner: str, *, inspect_dataset, export_cohort,
-            submit_workflow) -> dict:
-    with _lock:
-        plan = _owned_plan(plan_id, owner)
-        if plan["status"] != "ready":
-            return _public(plan)
-        plan["status"] = "submitting"
-        snapshot = copy.deepcopy(plan)
+            submit_workflow, store=None) -> dict:
+    repository = _repo(store)
+    try:
+        snapshot = repository.claim(plan_id, owner)
+        if snapshot is None:
+            return _public(repository.get(plan_id, owner))
+    except agent_store.AgentStoreError as error:
+        _translate_store_error(error)
 
     filters = json.loads(snapshot["filters_json"])
+    submission_started = False
     try:
         current = inspect_dataset(snapshot["dataset_id"], copy.deepcopy(filters))
         if _fingerprint(current) != snapshot["dataset_fingerprint"]:
@@ -235,12 +246,9 @@ def approve(plan_id: str, owner: str, *, inspect_dataset, export_cohort,
             raise _PlanValidationFailure("Export row count changed after preparation; no workflow was submitted.")
         if exported.get("s3_uri") != snapshot["input_uri"]:
             raise _PlanValidationFailure("Export did not write to the approved input path; no workflow was submitted.")
-        with _lock:
-            plan = _owned_plan(plan_id, owner)
-            plan["export"] = {
-                "s3_uri": exported["s3_uri"],
-                "rows": snapshot["rows"],
-            }
+        snapshot["export"] = {"s3_uri": exported["s3_uri"], "rows": snapshot["rows"]}
+        repository.update(plan_id, owner, snapshot)
+        submission_started = True
         run = submit_workflow(
             WORKFLOW_ID, snapshot["input_resource_id"], snapshot["input_path"],
             snapshot["output_resource_id"], snapshot["output_path"],
@@ -248,60 +256,91 @@ def approve(plan_id: str, owner: str, *, inspect_dataset, export_cohort,
             snapshot["job_id"])
         if not isinstance(run, dict):
             raise _PlanValidationFailure("Workflow submit returned no job metadata.")
+        if not isinstance(run.get("run_id"), str) or not run["run_id"].strip():
+            raise _PlanValidationFailure("Workflow submit returned no run ID.")
         safe_run = {key: run[key] for key in (
             "run_id", "name", "status", "workflow_type", "engine_type",
             "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
                     if run.get(key) is not None}
-        with _lock:
-            plan = _owned_plan(plan_id, owner)
-            plan["run"] = safe_run
-            plan["status"] = "submitted"
-            if any(run.get(key) is not None for key in (
-                    "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")):
-                plan["results_location"] = {
-                    key: run[key] for key in (
-                        "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
-                    if run.get(key) is not None}
-            return _public(plan)
+        snapshot["run"] = safe_run
+        snapshot["status"] = "submitted"
+        if any(run.get(key) is not None for key in (
+                "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")):
+            snapshot["results_location"] = {
+                key: run[key] for key in (
+                    "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
+                if run.get(key) is not None}
+        repository.update(plan_id, owner, snapshot)
+        return _public(snapshot)
     except Exception as error:
-        with _lock:
-            plan = _owned_plan(plan_id, owner)
-            plan["status"] = "failed"
-            plan["errors"] = [_safe_error(error)]
-            return _public(plan)
+        snapshot["status"] = "submission_unknown" if submission_started else "failed"
+        snapshot["errors"] = (["Submission state is unknown. Check workflow jobs before taking action."]
+                               if submission_started else [_safe_error(error)])
+        try:
+            repository.update(plan_id, owner, snapshot)
+        except agent_store.AgentStoreError as store_error:
+            _translate_store_error(store_error)
+        return _public(snapshot)
 
 
-def status(plan_id: str, owner: str, *, list_jobs) -> dict:
-    with _lock:
-        plan = _owned_plan(plan_id, owner)
-        snapshot = copy.deepcopy(plan)
+def status(plan_id: str, owner: str, *, list_jobs, store=None) -> dict:
+    repository = _repo(store)
+    try:
+        snapshot = copy.deepcopy(repository.get(plan_id, owner))
+    except agent_store.AgentStoreError as error:
+        _translate_store_error(error)
     run_id = (snapshot.get("run") or {}).get("run_id")
-    if snapshot["status"] not in {"submitted", "running"} or not run_id:
+    recovering = snapshot["status"] in {"submitting", "submission_unknown"}
+    if not recovering and (snapshot["status"] not in {"submitted", "running"} or not run_id):
         return _public(snapshot)
     try:
-        jobs = list_jobs(force=True)
-        job = next((item for item in jobs.get("jobs", [])
-                    if item.get("run_id") == run_id), None)
+        try:
+            jobs = list_jobs(limit=1000, force=True)
+        except TypeError as error:
+            if "limit" not in str(error):
+                raise
+            jobs = list_jobs(force=True)
+        job = None
+        if recovering and jobs.get("available", True):
+            expected_output = f"{snapshot['output_path'].strip('/')}/{snapshot['job_id']}"
+            matches = [item for item in jobs.get("jobs", [])
+                       if item.get("name") == snapshot["job_id"]
+                       and item.get("output_bucket_resource") == snapshot["output_resource_id"]
+                       and isinstance(item.get("output_bucket_path"), str)
+                       and item["output_bucket_path"].strip("/") == expected_output]
+            if len(matches) > 1:
+                snapshot["status"] = "submission_unknown"
+                snapshot["errors"] = ["Multiple workflow jobs match this plan; check jobs before taking action."]
+            elif matches:
+                job = matches[0]
+            else:
+                snapshot["status"] = "submission_unknown"
+                snapshot["errors"] = ["No exact matching workflow job was found. Check workflow jobs manually."]
+        elif run_id and jobs.get("available", True):
+            job = next((item for item in jobs.get("jobs", [])
+                        if item.get("run_id") == run_id), None)
         if job:
             safe_run = {key: job[key] for key in (
                 "run_id", "name", "status", "workflow_type", "engine_type",
                 "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
                         if job.get(key) is not None}
-            with _lock:
-                plan = _owned_plan(plan_id, owner)
-                plan["run"] = safe_run
-                status_value = (safe_run.get("status") or "").upper()
-                plan["status"] = (
+            snapshot["run"] = safe_run
+            status_value = (safe_run.get("status") or "").upper()
+            snapshot["status"] = (
                     "completed" if status_value == "COMPLETED" else
                     "failed" if status_value in {"FAILED", "CANCELLED", "CANCELED", "DELETED"}
                     else "running")
-                if any(safe_run.get(key) is not None for key in (
-                        "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")):
-                    plan["results_location"] = {
-                        key: safe_run[key] for key in (
-                            "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
-                        if safe_run.get(key) is not None}
-                return _public(plan)
+            if any(safe_run.get(key) is not None for key in (
+                    "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")):
+                snapshot["results_location"] = {
+                    key: safe_run[key] for key in (
+                        "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
+                    if safe_run.get(key) is not None}
+            repository.update(plan_id, owner, snapshot)
+            return _public(snapshot)
+        if recovering and jobs.get("available", True):
+            repository.update(plan_id, owner, snapshot)
+            return _public(snapshot)
     except Exception:
         pass
     return _public(snapshot)

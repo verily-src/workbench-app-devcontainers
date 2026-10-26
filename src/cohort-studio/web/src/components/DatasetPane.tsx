@@ -392,7 +392,17 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
 
       <AddChart dataset={dataset} onUpdate={onUpdate} />
 
-      <div className="chart-grid">
+      {dataset.queryError && <div className="query-error" role="alert">
+        <span>{dataset.queryError}{result ? " Showing the last successful result." : ""}</span>
+        <button type="button" className="quiet" onClick={() => onUpdate({
+          refreshNonce: (dataset.refreshNonce ?? 0) + 1, refreshing: true,
+        })}>Retry query</button>
+      </div>}
+      {!result && dataset.queryLoading && <p className="query-state" role="status">
+        Loading data and charts…
+      </p>}
+
+      {result && <div className="chart-grid">
         {charts.map((spec, i) => (
           <ChartCard
             key={`${spec.kind}-${spec.x}-${spec.y ?? ""}-${i}`}
@@ -408,7 +418,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
             onClose={() => updateChart(i, null)}
           />
         ))}
-      </div>
+      </div>}
 
       {result && (
         <>

@@ -220,6 +220,8 @@ export interface Dataset {
   queryScope?: "database" | "loaded";
   refreshNonce?: number;
   refreshing?: boolean;
+  queryLoading?: boolean;
+  queryError?: string;
   columns: ColumnProfile[];
   filters: Filter[];
   charts: ChartSpec[];

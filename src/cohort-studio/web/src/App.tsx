@@ -15,7 +15,7 @@ import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
 import { Tutorial } from "./components/Tutorial";
-import type { AgentDashboardAction } from "./api";
+import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
@@ -90,6 +90,9 @@ export default function App() {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [table, setTable] = useState("");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [workflowVerification, setWorkflowVerification] = useState<{
+    result: AgentWorkflowVerification; datasetId: string; strata?: number;
+  } | null>(null);
   const [renamingDatasetId, setRenamingDatasetId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [active, setActive] = useState(0);
@@ -499,6 +502,8 @@ export default function App() {
     const refreshNonce = activeDs.refreshNonce ?? 0;
     const forceRefresh = refreshNonce > (consumedRefreshNonce.current[activeDs.id] ?? 0);
     if (forceRefresh) consumedRefreshNonce.current[activeDs.id] = refreshNonce;
+    setDatasets((prev) => prev.map((dataset) => dataset.id === activeDs.id
+      ? { ...dataset, queryLoading: true, queryError: undefined } : dataset));
     api.query(activeDs.id, activeDs.filters, activeDs.charts, activeDs.page,
       activeDs.entityColumn, forceRefresh)
       .then((result) => {
@@ -507,13 +512,16 @@ export default function App() {
           d.id === activeDs.id ? { ...d, result,
             ...(forceRefresh && result.columns
               ? { columns: result.columns } : {}),
-            refreshing: false } : d));
+            refreshing: false, queryLoading: false, queryError: undefined } : d));
       })
       .catch((e) => {
         if (cancelled) return;
+        const detail = e instanceof ApiError
+          ? `${e.status}: ${e.message}`
+          : e instanceof Error ? e.message : "Check the connection and try again.";
         setDatasets((prev) => prev.map((d) => d.id === activeDs.id
-          ? { ...d, refreshing: false } : d));
-        setError(`Query failed: ${(e as Error).message}`);
+          ? { ...d, refreshing: false, queryLoading: false,
+              queryError: `Query failed: ${detail}` } : d));
       });
     return () => { cancelled = true; };
   }, [activeDs?.id, activeDs?.filters, activeDs?.charts, activeDs?.page,
@@ -673,6 +681,20 @@ export default function App() {
           )}
         </div>
         <div className="content">
+          {view === "explore" && workflowVerification?.result.verified
+            && datasets[active]?.id === workflowVerification.datasetId && (
+            <aside className="studio-agent-verified" role="status">
+              <div><strong>Verified workflow results</strong>
+                <span>Run {workflowVerification.result.run_id}</span>
+                {workflowVerification.result.rows !== undefined && <span>{workflowVerification.result.rows.toLocaleString()} people</span>}
+                {workflowVerification.strata !== undefined && <span>{workflowVerification.strata.toLocaleString()} strata</span>}
+                {workflowVerification.result.integrity && <span>Integrity: {String(workflowVerification.result.integrity)
+                  .replace(/[_-]+/g, " ")}</span>}
+              </div>
+              <button type="button" className="quiet" aria-label="Dismiss verification details"
+                onClick={() => setWorkflowVerification(null)}>Dismiss</button>
+            </aside>
+          )}
           <div hidden={view !== "explore" || exploreMode !== "omop"}>
             <OmopBuilder active={view === "explore" && exploreMode === "omop"}
                           palette={palette}
@@ -685,7 +707,10 @@ export default function App() {
             }} />
           </div>
           {view === "explore" && exploreMode === "omop" ? null : view === "agent" ? (
-            <StudioAgent onOpenDashboard={(action: AgentDashboardAction) => {
+            <StudioAgent onOpenDashboard={(action: AgentDashboardAction, verification?: AgentWorkflowVerification) => {
+              setWorkflowVerification(verification?.verified
+                ? { result: verification, datasetId: action.dataset.dataset_id,
+                    strata: action.dataset.rows } : null);
               openResult(action.dataset, action.title, action.dataset.source_ref,
                 { filters: action.filters, charts: action.charts },
                 { forceNewTab: true });

@@ -14,6 +14,15 @@ import agent_store_config
 DDL = """
 CREATE SCHEMA IF NOT EXISTS _studio_agent;
 REVOKE ALL ON SCHEMA _studio_agent FROM PUBLIC;
+CREATE TABLE IF NOT EXISTS _studio_agent.dashboard_artifacts (
+    owner_hash char(64) NOT NULL,
+    dataset_id varchar(12) NOT NULL,
+    payload jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (owner_hash, dataset_id)
+);
+CREATE INDEX IF NOT EXISTS dashboard_artifacts_owner_updated_idx
+    ON _studio_agent.dashboard_artifacts (owner_hash, updated_at DESC);
 CREATE SEQUENCE IF NOT EXISTS _studio_agent.prompt_version_seq;
 CREATE TABLE IF NOT EXISTS _studio_agent.prompts (
     digest char(64) PRIMARY KEY,

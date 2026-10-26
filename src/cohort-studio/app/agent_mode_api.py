@@ -9,6 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+import agent_guardrails
 import agent_sessions
 import datasets
 import column_settings
@@ -106,7 +107,8 @@ def _inspect_dataset(owner, dataset_id, filters):
 
 
 class Operations:
-    def __init__(self, owner):
+    def __init__(self, owner, user_message=""):
+        self.user_message = user_message
         self.owner = owner
         self.actions = []
         self.workflow_plans = []
@@ -304,10 +306,12 @@ class Operations:
     def search_pubmed(self, query, limit=5):
         import config
         import literature
+        agent_guardrails.validate_literature_query(self.user_message, query)
         return literature.search_pubmed(query, limit=limit, api_key=config.get_ncbi_api_key() or "")
 
     def search_biorxiv(self, query, start_date, end_date, limit=5):
         import literature
+        agent_guardrails.validate_literature_query(self.user_message, query)
         return literature.search_biorxiv(query, start_date, end_date, limit=limit)
 
     def callbacks(self):
@@ -321,7 +325,7 @@ class Operations:
 def chat(req: AgentRequest, request: Request, response: Response):
     import studio_agent
     owner = agent_sessions.owner(request, response)
-    operations = Operations(owner)
+    operations = Operations(owner, user_message=req.message)
     try:
         with agent_sessions.bind(owner, _SCOPE,
                                  str(req.session_id) if req.session_id else None,

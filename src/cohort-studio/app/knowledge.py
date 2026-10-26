@@ -75,3 +75,9 @@ def index_status():
 def index_documents():
     knowledge_vectors.schedule(store)
     return knowledge_vectors.status(store)
+
+
+def add_reference(messages, query):
+    evidence = context(query)
+    if evidence:
+        messages.insert(max(0, len(messages) - 1), {"role": "reference", "content": evidence})

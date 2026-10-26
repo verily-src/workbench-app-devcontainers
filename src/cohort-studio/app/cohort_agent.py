@@ -170,10 +170,6 @@ def _system_prompt(resource_id: str, info: dict, spec: dict) -> str:
         "You are the cohort-building assistant inside Workbench Cohort "
         "Studio. You help the user build a person-level OMOP cohort and "
         "inspect running Workbench workflows and apps.\n\n"
-        f"Selected OMOP resource: {resource_id}\n"
-        f"CDM version: {info.get('version') or 'unknown'}; "
-        f"CDM schema: {info.get('cdm_schema')}\n"
-        f"Current cohort spec: {json.dumps(_jsonable(spec))}\n\n"
         "Cohort spec contract: top-level keys are criteria, demographics, "
         "require_observation. Criteria are AND-ed, in order. Each criterion "
         "has domain (condition, drug, procedure, measurement, observation, "
@@ -229,7 +225,7 @@ def chat(resource_id: str, info: dict, message: str,
         if item.get("role") in ("user", "assistant") and item.get("content")
     ]
     messages.append({"role": "user", "content": message})
-    system = _system_prompt(resource_id, info, spec) + knowledge.context(message)
+    system = _system_prompt(resource_id, info, spec)
     stored_history = agent_sessions.start(system, cfg, message)
     if stored_history is not None:
         messages = [
@@ -238,6 +234,9 @@ def chat(resource_id: str, info: dict, message: str,
             if item.get("role") in ("user", "assistant") and item.get("content")
         ]
         messages.append({"role": "user", "content": message})
+
+    knowledge.add_reference(messages, message)
+    messages.insert(len(messages) - 1, {"role": "reference", "content": json.dumps({"resource_id": resource_id, "cdm": info, "cohort": _jsonable(spec)}, default=str)})
 
     step = None
     if stored_history is not None or on_step is not None:

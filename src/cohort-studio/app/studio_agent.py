@@ -274,7 +274,7 @@ def chat(message: str, operations: dict, on_step=None) -> dict:
     cfg = config.get_llm_config()
     provider = cfg["provider"]
     llm.validate_config(cfg)
-    system = _system_prompt() + knowledge.context(request.message)
+    system = _system_prompt()
     stored_history = agent_sessions.start(system, cfg, request.message)
     messages = []
     if stored_history is not None:
@@ -283,6 +283,7 @@ def chat(message: str, operations: dict, on_step=None) -> dict:
                     if item.get("role") in ("user", "assistant")
                     and item.get("content")]
     messages.append({"role": "user", "content": request.message})
+    knowledge.add_reference(messages, request.message)
     impls = {tool.__name__: tool for tool in build_tools(operations)}
     step = None
     if stored_history is not None or on_step is not None:

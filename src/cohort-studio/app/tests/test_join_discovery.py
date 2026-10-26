@@ -5,6 +5,8 @@ import pytest
 from sqlalchemy import text
 
 import join_discovery
+import config
+import secret_store
 
 
 def _ref(table, resource="omopdb"):
@@ -102,8 +104,9 @@ def test_generic_id_does_not_create_a_key_recommendation(
     assert response.json()["jev"]["status"] == "not_configured"
 
 
+@pytest.mark.parametrize("key_source", ["environment", "saved"])
 def test_jev_receives_metadata_only_and_returns_validated_classification(
-        client, engine, monkeypatch):
+        client, engine, monkeypatch, tmp_path, key_source):
     suffix = uuid.uuid4().hex[:8]
     left, right = f"jd_person_{suffix}", f"jd_subject_{suffix}"
     with engine.begin() as conn:
@@ -116,8 +119,27 @@ def test_jev_receives_metadata_only_and_returns_validated_classification(
         conn.execute(text(f'INSERT INTO public."{right}" VALUES (987654321, 44, ' 
                           "'F')"))
     join_discovery.invalidate_resource("omopdb")
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test-secret")
-    monkeypatch.setenv("STUDIO_JEV_MODEL", "jev-test-pinned")
+    token = "test-secret"
+    if key_source == "environment":
+        monkeypatch.setenv("TYPESAFE_API_KEY", token)
+        monkeypatch.setenv("STUDIO_JEV_MODEL", "jev-test-pinned")
+    else:
+        monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "studio-config.json")
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        monkeypatch.delenv("STUDIO_JEV_MODEL", raising=False)
+        monkeypatch.delenv("TYPESAFE_MODEL", raising=False)
+        stored = {}
+        monkeypatch.setattr(secret_store, "read_keys", lambda: dict(stored))
+        monkeypatch.setattr(secret_store, "write_keys",
+                            lambda values: stored.update(values))
+        monkeypatch.setattr(secret_store, "remove_key", stored.pop)
+        monkeypatch.setattr(secret_store, "key_source",
+                            lambda name: "local_encrypted" if name in stored else None)
+        monkeypatch.setattr(secret_store, "is_available", lambda: True)
+        monkeypatch.setattr(secret_store, "is_configured", lambda: True)
+        config.update_jev_config(api_key=token, model="jev-test-pinned")
+        assert config.get_integration_key("jev") == token
+        assert config._load()["jev"]["model"] == "jev-test-pinned"
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     requests = []
     roles = ("person", "sample", "variant", "clinical_event",
@@ -173,6 +195,11 @@ def test_jev_receives_metadata_only_and_returns_validated_classification(
     request, payload = requests[0]
     assert request.full_url == "https://api.typesafe.ai/v1/systemone"
     assert request.get_header("Authorization") == "Bearer test-secret"
+    public_config = client.get("/api/config").json()["jev"]
+    assert public_config["api_key_set"] is True
+    assert public_config["api_key_source"] == (
+        "environment" if key_source == "environment" else "local_encrypted")
+    assert token not in json.dumps(public_config)
     assert "987654321" not in json.dumps(payload)
     assert "987654322" not in json.dumps(payload)
     assert "sample_row_non_null" in json.dumps(payload)

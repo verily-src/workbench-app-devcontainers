@@ -7,6 +7,7 @@ from pydantic import (BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 import sql_source
 import internal_data
+import omop
 
 
 class DerivedSpec(BaseModel):
@@ -86,6 +87,31 @@ class SQLSource(BaseModel):
         return self
 
 
+class OmopCohortSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["omop_cohort"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    spec: dict
+    membership_mode: Literal["live"] = "live"
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
+
+    @field_validator("spec")
+    @classmethod
+    def validate_spec(cls, value: dict) -> dict:
+        return omop.parse_spec(value)
+
+    @field_validator("name")
+    @classmethod
+    def nonblank_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Cohort source name cannot be blank.")
+        return value
+
+
 class SourceCondition(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     left: str = Field(min_length=1)
@@ -119,12 +145,14 @@ class DerivedSource(BaseModel):
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
-SourceRef = Annotated[Union[TableSource, SQLSource, JoinSource, DerivedSource],
+SourceRef = Annotated[Union[TableSource, SQLSource, OmopCohortSource,
+                            JoinSource, DerivedSource],
                       Field(discriminator="kind")]
 SourceStep.model_rebuild()
 JoinSource.model_rebuild()
 DerivedSource.model_rebuild()
 SQLSource.model_rebuild()
+OmopCohortSource.model_rebuild()
 SOURCE_ADAPTER = TypeAdapter(SourceRef)
 
 

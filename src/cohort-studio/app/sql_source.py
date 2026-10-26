@@ -21,7 +21,7 @@ _SAFE_FUNCTIONS = {
     "current_timestamp", "date_part", "date_trunc", "extract", "floor", "greatest",
     "json_agg", "json_build_object", "jsonb_agg", "jsonb_build_object", "left",
     "length", "least", "ln", "log", "lower", "ltrim", "max", "min", "mod",
-    "nullif", "power", "regexp_like", "regexp_match", "regexp_replace", "replace", "right",
+    "nullif", "exists", "power", "regexp_like", "regexp_match", "regexp_replace", "replace", "right",
     "round", "rtrim", "sign", "split_part", "sqrt", "stddev", "stddev_pop",
     "stddev_samp", "string_agg", "sum", "to_char", "to_date", "to_number",
     "to_timestamp", "timestamp_trunc", "trim", "upper", "variance", "var_pop", "var_samp",

@@ -81,7 +81,8 @@ def _ensure_tables(engine: Engine):
         _prepared_engines.add(id(engine))
 
 def record(engine: Engine, event_type: str, entity_type: str, entity_id: str,
-           payload: dict | None = None, parents: list[tuple[str, str]] | None = None):
+           payload: dict | None = None,
+           parents: list[tuple[str, str]] | None = None) -> int | None:
 
     try:
         _ensure_tables(engine)
@@ -101,8 +102,80 @@ def record(engine: Engine, event_type: str, entity_type: str, entity_id: str,
                     parent_entity_id=parent_id,
                 ))
             conn.commit()
+            return event_id
     except Exception as e:
         logger.warning("Failed to record lineage event %s: %s", event_type, e)
+        return None
+
+def has_event(engine: Engine, event_type: str, entity_type: str,
+              entity_id: str) -> bool:
+    try:
+        _ensure_tables(engine)
+        query = (select(event_table.c.id)
+                 .where(event_table.c.event_type == event_type,
+                        event_table.c.entity_type == entity_type,
+                        event_table.c.entity_id == entity_id)
+                 .limit(1))
+        with engine.connect() as conn:
+            return conn.execute(query).first() is not None
+    except Exception as e:
+        logger.warning("Failed to check lineage entity: %s", e)
+        return False
+
+def latest_event_id(engine: Engine, event_type: str, entity_type: str,
+                    entity_id: str) -> int | None:
+    try:
+        _ensure_tables(engine)
+        query = (select(event_table.c.id)
+                 .where(event_table.c.event_type == event_type,
+                        event_table.c.entity_type == entity_type,
+                        event_table.c.entity_id == entity_id)
+                 .order_by(event_table.c.id.desc()).limit(1))
+        with engine.connect() as conn:
+            return conn.execute(query).scalar_one_or_none()
+    except Exception as e:
+        logger.warning("Failed to resolve lineage event: %s", e)
+        return None
+
+def latest_cohort_event_id(engine: Engine, dataset_id: str) -> int | None:
+    try:
+        _ensure_tables(engine)
+        query = (select(event_table.c.id, event_table.c.payload)
+                 .where(event_table.c.event_type == "omop_cohort_opened",
+                        event_table.c.entity_type == "cohort")
+                 .order_by(event_table.c.id.desc()).limit(1000))
+        with engine.connect() as conn:
+            for event_id, payload in conn.execute(query):
+                if json.loads(payload).get("dataset_id") == dataset_id:
+                    return event_id
+    except Exception as e:
+        logger.warning("Failed to resolve cohort lineage event: %s", e)
+    return None
+
+def event_parent(event_id: int | None) -> tuple[str, str] | None:
+    return ("event", str(event_id)) if event_id is not None else None
+
+def safe_source_ref(source_ref: dict | None) -> dict | None:
+    if not isinstance(source_ref, dict):
+        return None
+    safe = {key: source_ref[key] for key in (
+        "kind", "resource_id", "table", "schema", "uuid", "materialized_id")
+        if isinstance(source_ref.get(key), (str, int))}
+    if isinstance(source_ref.get("base"), dict):
+        safe["base"] = safe_source_ref(source_ref["base"])
+    steps = source_ref.get("steps")
+    if isinstance(steps, list):
+        safe_steps = []
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            item = {key: step[key] for key in ("alias", "how")
+                    if isinstance(step.get(key), str)}
+            if isinstance(step.get("source"), dict):
+                item["source"] = safe_source_ref(step["source"])
+            safe_steps.append(item)
+        safe["steps"] = safe_steps
+    return safe
 
 def record_turn(engine: Engine, trace_id: str, provider: str, model: str,
                 dataset: str, prompt: str, latency_ms: int,

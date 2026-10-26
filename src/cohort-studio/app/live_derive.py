@@ -4,6 +4,7 @@ import uuid
 
 import pandas as pd
 import db
+import disk_data
 import queries
 from sql_utils import statement as text
 
@@ -113,7 +114,10 @@ def build(live_source: dict, frame: pd.DataFrame, spec: dict) -> dict:
     params = dict(live_source.get("params", {}))
     params.update(new_params)
     columns[name] = alias
-    return {**live_source, "sql": sql, "columns": columns, "params": params}
+    values = {**live_source, "sql": sql, "columns": columns, "params": params}
+    if isinstance(live_source, disk_data.CompiledSourceQuery):
+        return live_source.with_metadata(sql=sql, columns=columns, params=params)
+    return values
 
 
 def preview(live_source: dict) -> tuple[pd.DataFrame, bool]:

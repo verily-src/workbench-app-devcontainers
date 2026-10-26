@@ -30,8 +30,10 @@ release `194f397b5`:
 
 The demo's cohort-to-genetics-to-workflow handoff is scoped in
 [DEMO_OMOP_GENETICS.md](DEMO_OMOP_GENETICS.md). Exact cohort membership must persist
-across the join. Notebook execution, artifact handoff and linked run provenance
-remain explicit gaps, not completed capabilities.
+across the join. The Nextflow demo and S3 artifact round trip are verified.
+Lineage records exact dataset IDs and event IDs for cohort, exported input,
+parameter file and submitted run; output metadata records returned identifiers.
+Automatic output-file discovery and notebook execution remain separate work.
 
 ## 1. Overall architecture
 
@@ -191,8 +193,13 @@ detection can find it; selecting a collection does not create clinical tables.
 
 `omop.py` detects a CDM and vocabulary schema on the selected Aurora resource,
 searches concepts, and compiles validated cohort specifications into
-parameterized SQL. Counts and attrition stay in Aurora; opening a cohort or
-clinical table loads rows into the existing in-memory dataset store. The S3
+parameterized SQL. Cohorts retain a validated `omop_cohort` source recipe with
+`membership_mode: live`; reopening reruns the criteria against current Aurora data.
+This is not a frozen membership snapshot. Cohort counts, paging, joins and derived
+columns query Aurora; only a bounded preview stays in memory. Internal compiler
+queries carry a typed wrapper so OMOP CTE/EXISTS SQL can use resource guards
+without relaxing validation for user SQL. Clinical table loading retains its
+existing behavior. The S3
 import CLI accepts a self-contained CSV/CSV.gz OMOP export (or ZIP), stages it
 from a selected Workbench S3 resource, and uses PostgreSQL `COPY` into Aurora.
 It does not convert raw claims, Parquet, or BigQuery tables into OMOP.
@@ -686,3 +693,12 @@ path. HealthOmics adds its engine run ID and `pubdir`; the task reads
 `AWS_WORKFLOW_RUN_ID` to record the final artifact URIs. The manifest does not
 claim a Workbench run UUID or source tables unless
 provided. No IAM changes or new compute service are required.
+
+### Filter history and appearance (2026-10-25)
+
+Database filter questions retain the last 25 question/result entries on the dataset.
+Saved views serialize these entries through bounded Pydantic fields; reopening a
+view restores them. Unsaved browser state is not a durable conversation store.
+Dataset tool chat continues to use the existing server-owned session history.
+Appearance is a browser preference (light, dark or system), stored locally and
+applied through CSS variables; chart labels and palettes react to theme changes.

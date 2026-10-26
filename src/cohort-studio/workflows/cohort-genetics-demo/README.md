@@ -118,8 +118,8 @@ uv --cache-dir /tmp/uv-cache run --no-project \
 ```
 
 The analysis boundary tests pass. The packaged Nextflow workflow and the
-analysis in the pinned Linux image were also run locally. The HealthOmics
-workflow was not registered or run, and no cloud resource was changed.
+analysis in the pinned Linux image were also run locally. Cloud execution
+was verified separately as recorded below.
 
 ## Verified cloud execution
 

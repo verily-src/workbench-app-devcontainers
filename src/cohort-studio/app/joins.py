@@ -138,7 +138,8 @@ def _plan_step(step: dict, left: dict[str, str], right_ds: dict,
                 out[name] = rkinds[c]
     return {"no": step_no, "how": how, "ds": right_ds, "left": list(left),
             "out": out, "conds": conds, "cols": cols, "notes": notes,
-            "checks": checks, "problems": problems, "errors": errors}
+            "checks": checks, "problems": problems, "errors": errors,
+            "alias": (step.get("alias") or "").strip() or "joined"}
 
 def plan(base_id: str, steps: list[dict]) -> dict:
 
@@ -186,6 +187,29 @@ def _bound_params(p: dict) -> dict:
                 raise ValueError("Conflicting bound parameters in joined sources.")
             params[key] = value
     return params
+
+
+def _source_ref(p: dict) -> dict | None:
+    base = p["base"].get("source_ref")
+    if base is None:
+        return None
+    steps = []
+    for step in p["steps"]:
+        source = step["ds"].get("source_ref")
+        if source is None:
+            return None
+        columns = [source_name for source_name, _ in step["cols"]]
+        all_columns = list(step["ds"]["df"].columns)
+        steps.append({
+            "source": source,
+            "how": step["how"],
+            "conditions": [{"left": cond["left"], "op": cond["op"],
+                            "right": cond["right"]} for cond in step["conds"]],
+            "columns": None if columns == all_columns else columns,
+            "alias": step["alias"],
+        })
+    from source_models import source_dict
+    return source_dict({"kind": "join", "base": base, "steps": steps})
 
 def _duckdb_sql(p: dict) -> dict:
     relations = {id(p["base"]): '"source_0"'}
@@ -361,11 +385,15 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                         f"{_q(origin['table'])}"),
                 "columns": {name: name for name in columns},
             })
-    source_estimate = disk_data.guard_live_join(live_sources, {
+    output_source = {
         "resource_id": resource_id, "params": params,
         "sql": sql["unlimited"](),
         "columns": {name: name for name in p["columns"]},
-    })
+    }
+    source_ref = _source_ref(p)
+    if source_ref and disk_data._contains_omop_cohort(source_ref):
+        output_source = disk_data._compiled_omop_query(source_ref, output_source)
+    source_estimate = disk_data.guard_live_join(live_sources, output_source)
     try:
         with engine.begin() as conn:
             if conn.dialect.name == "postgresql":
@@ -408,6 +436,8 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
         "params": params,
         "columns": columns,
     }
+    if source_ref and disk_data._contains_omop_cohort(source_ref):
+        live_source = disk_data._compiled_omop_query(source_ref, live_source)
     return {"df": df, "stats": _finish(stats, min(before, cap)),
             "live_source": live_source}
 

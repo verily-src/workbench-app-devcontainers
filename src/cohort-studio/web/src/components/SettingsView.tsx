@@ -3,6 +3,18 @@ import { KnowledgeBase } from "./KnowledgeBase";
 import { api, AppConfig, MCPConnection, Provider } from "../api";
 import { PALETTE_NAMES, getPalette } from "../palette";
 
+type ThemePreference = "light" | "dark" | "system";
+const THEME_KEY = "cohort-studio-theme";
+
+function savedTheme(): ThemePreference {
+  try {
+    const value = window.localStorage.getItem(THEME_KEY);
+    return value === "dark" || value === "light" ? value : "system";
+  } catch {
+    return "system";
+  }
+}
+
 const PROVIDERS: { id: Provider; label: string; keyLabel: string;
                    placeholder: string; models: string[] }[] = [
   { id: "anthropic", label: "Anthropic (Claude)", keyLabel: "Anthropic API key",
@@ -44,6 +56,7 @@ export function SettingsView(
   const [jevStatus, setJevStatus] = useState("");
   const [connections, setConnections] = useState<MCPConnection[]>([]);
   const [palette, setPalette] = useState("verily");
+  const [theme, setTheme] = useState<ThemePreference>(savedTheme);
   const [status, setStatus] = useState("");
   const [paletteStatus, setPaletteStatus] = useState("");
   const [connectionsStatus, setConnectionsStatus] = useState("");
@@ -60,6 +73,11 @@ export function SettingsView(
       setJevModel(c.jev?.model ?? "");
     }).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { window.localStorage.setItem(THEME_KEY, theme); } catch {}
+  }, [theme]);
 
   const pickProvider = (p: Provider) => {
     setProvider(p);
@@ -341,6 +359,17 @@ export function SettingsView(
             </button>}
         </div>
         {jevStatus && <div className="settings-status" role="status">{jevStatus}</div>}
+      </div>
+
+      <div className="section-label">Appearance</div>
+      <div className="settings-card">
+        <label className="field-label" htmlFor="theme-preference">Theme</label>
+        <select id="theme-preference" value={theme}
+                onChange={(event) => setTheme(event.target.value as ThemePreference)}>
+          <option value="system">Use system setting</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
       </div>
 
       <div className="section-label">Chart palette</div>

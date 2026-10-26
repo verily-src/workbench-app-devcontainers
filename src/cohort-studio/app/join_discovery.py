@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 from typing import Literal
 
+import config
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import inspect
 from sqlalchemy.sql.sqltypes import Boolean, Date, DateTime, Float, Integer, LargeBinary, Numeric, String, Time
@@ -364,15 +365,13 @@ def _jev_column(name: str, col: dict) -> dict:
 
 
 def _jev(left_ref: AuroraTableRef, right_ref: AuroraTableRef,
-         left: dict, right: dict, warnings: list[str]) -> list[dict]:
-    api_key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+         left: dict, right: dict, warnings: list[str], api_key: str,
+         model: str) -> list[dict]:
     if not api_key:
-        warnings.append("Jev is not configured; set TYPESAFE_API_KEY on the server.")
+        warnings.append("Jev is not configured; add a token in Settings.")
         return []
-    model = (os.environ.get("STUDIO_JEV_MODEL")
-             or os.environ.get("TYPESAFE_MODEL") or "").strip()
     if not model:
-        warnings.append("Jev is not configured; set STUDIO_JEV_MODEL to a TypeSafe model name.")
+        warnings.append("Jev is not configured; select a TypeSafe model in Settings.")
         return []
     lc, rc = _columns(left), _columns(right)
     order_l = sorted(lc, key=lambda n: (
@@ -478,8 +477,9 @@ def _jev(left_ref: AuroraTableRef, right_ref: AuroraTableRef,
 def recommend(req: RecommendRequest) -> JoinRecommendation:
     left, right = _metadata(req.left, req.refresh), _metadata(req.right, req.refresh)
     model = (os.environ.get("STUDIO_JEV_MODEL")
-             or os.environ.get("TYPESAFE_MODEL") or "").strip()
-    api_key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+             or os.environ.get("TYPESAFE_MODEL")
+             or config._load().get("jev", {}).get("model") or "").strip()
+    api_key = (config.get_integration_key("jev") or "").strip()
     signature = hashlib.sha256(json.dumps([
         req.left.resource_id, req.right.resource_id,
         _signature(left), _signature(right), model,
@@ -498,8 +498,8 @@ def recommend(req: RecommendRequest) -> JoinRecommendation:
         warnings.append("At least one table had no row for the bounded probe.")
     deterministic = _deterministic(req.left, req.right, left, right)
     warning_start = len(warnings)
-    jev = _jev(req.left, req.right, left, right, warnings)
-    if not os.environ.get("TYPESAFE_API_KEY", "").strip() or not model:
+    jev = _jev(req.left, req.right, left, right, warnings, api_key, model)
+    if not api_key or not model:
         jev_status = "not_configured"
     elif any("Jev request failed" in item or "Jev returned" in item or "Jev response" in item
              for item in warnings[warning_start:]):
@@ -516,8 +516,7 @@ def recommend(req: RecommendRequest) -> JoinRecommendation:
     result = JoinRecommendation.model_validate({
         "candidates": unique[:MAX_CANDIDATES], "warnings": warnings,
         "jev": {"status": jev_status,
-                "configured": bool(os.environ.get("TYPESAFE_API_KEY", "").strip()
-                                   and model),
+                "configured": bool(api_key and model),
                 "model": model}})
     if ttl:
         resources = (req.left.resource_id, req.right.resource_id)

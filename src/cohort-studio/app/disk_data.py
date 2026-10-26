@@ -40,6 +40,62 @@ class SourceSizeUnknown(ValueError):
     pass
 
 
+_COMPILED_SOURCE_TOKEN = object()
+
+
+class CompiledSourceQuery(dict):
+    __slots__ = ("source_ref",)
+
+    def __init__(self, values: dict, source_ref: dict, token=None):
+        if token is not _COMPILED_SOURCE_TOKEN:
+            raise TypeError("Compiled source queries are created by source compilers.")
+        self.source_ref = source_ref
+        super().__init__(values)
+
+    def with_metadata(self, **metadata):
+        return CompiledSourceQuery({**self, **metadata}, self.source_ref,
+                                   _COMPILED_SOURCE_TOKEN)
+
+
+def _contains_omop_cohort(ref: dict) -> bool:
+    if ref["kind"] == "omop_cohort":
+        return True
+    if ref["kind"] == "join":
+        return (_contains_omop_cohort(ref["base"])
+                or any(_contains_omop_cohort(step["source"])
+                       for step in ref["steps"]))
+    if ref["kind"] == "derived":
+        return _contains_omop_cohort(ref["base"])
+    return False
+
+
+def _compiled_omop_query(source_ref: dict, live_source: dict) -> CompiledSourceQuery:
+    from source_models import source_dict
+
+    ref = source_dict(source_ref)
+    if not _contains_omop_cohort(ref):
+        raise ValueError("Only OMOP cohort compiler output can use this query type.")
+    resources = set()
+
+    def collect(node):
+        if "resource_id" in node:
+            resources.add(node["resource_id"])
+        if node["kind"] == "join":
+            collect(node["base"])
+            for step in node["steps"]:
+                collect(step["source"])
+        elif node["kind"] == "derived":
+            collect(node["base"])
+
+    collect(ref)
+    if resources != {live_source.get("resource_id")}:
+        raise ValueError("OMOP cohort compiled queries must use one matching resource.")
+    if not isinstance(live_source.get("sql"), str) or not isinstance(
+            live_source.get("columns"), dict):
+        raise ValueError("Compiled source query is incomplete.")
+    return CompiledSourceQuery(live_source, ref, _COMPILED_SOURCE_TOKEN)
+
+
 def _q(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
@@ -318,6 +374,12 @@ def _walk_plan(node: dict):
 
 
 def _validated_live_sql(live_source: dict) -> str:
+    if isinstance(live_source, CompiledSourceQuery):
+        from source_models import source_dict
+
+        if source_dict(live_source.source_ref) != live_source.source_ref:
+            raise ValueError("Compiled source query reference is invalid.")
+        return live_source["sql"]
     import sql_source
 
     expression = sqlglot.parse_one(live_source.get("sql"), read="postgres")
@@ -371,8 +433,11 @@ def _estimate_live_bytes(live_source: dict) -> int:
 def estimate_live_source(live_source: dict) -> dict:
     estimate = _estimate_live_bytes(live_source)
     _budget(estimate)
-    return {**live_source, "estimated_bytes": estimate,
-            "large_warning": estimate >= LARGE_OPERATION_BYTES}
+    metadata = {"estimated_bytes": estimate,
+                "large_warning": estimate >= LARGE_OPERATION_BYTES}
+    if isinstance(live_source, CompiledSourceQuery):
+        return live_source.with_metadata(**metadata)
+    return {**live_source, **metadata}
 
 
 def guard_live_query(live_source: dict, charts: list[dict],

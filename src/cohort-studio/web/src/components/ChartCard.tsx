@@ -1,5 +1,5 @@
 import * as echarts from "echarts";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";
 import type { BarDatum, PersonBarDatum, ChartResult, ChartSpec, HistDatum } from "../types";
 
@@ -7,21 +7,30 @@ const INK_SOFT = "#5f6368";
 const GRID_LINE = "#e8eaed";
 const FONT = "Inter, sans-serif";
 
-const AXIS = {
+function lighten(color: string, amount: number): string {
+  const value = color.match(/^#([0-9a-f]{6})$/i)?.[1];
+  if (!value) return color;
+  const channels = [0, 2, 4].map((offset) =>
+    Math.round(parseInt(value.slice(offset, offset + 2), 16) * (1 - amount) + 255 * amount));
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+const AXIS = (ink = INK_SOFT, grid = GRID_LINE) => ({
   axisLine: { show: false },
   axisTick: { show: false },
-  axisLabel: { color: INK_SOFT, fontFamily: FONT, fontSize: 11 },
-  splitLine: { lineStyle: { color: GRID_LINE } },
-};
+  axisLabel: { color: ink, fontFamily: FONT, fontSize: 11 },
+  splitLine: { lineStyle: { color: grid } },
+});
 
-function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCategoryLabels = false): echarts.EChartsOption {
+function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCategoryLabels = false, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+  const axis = AXIS(ink, grid);
   const cats = data.map((d) => d.category);
   const singleSeries = data.length > 0 && "value" in data[0];
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: "value", ...AXIS },
-    yAxis: { type: "category", data: cats, ...AXIS,
-             ...(compactCategoryLabels ? { axisLabel: { ...AXIS.axisLabel, width: 140, overflow: "truncate" as const } } : {}),
+    xAxis: { type: "value", ...axis },
+    yAxis: { type: "category", data: cats, ...axis,
+             ...(compactCategoryLabels ? { axisLabel: { ...axis.axisLabel, width: 140, overflow: "truncate" as const } } : {}),
              splitLine: { show: false } },
     tooltip: { trigger: "axis", axisPointer: { type: "none" },
       ...(compactCategoryLabels ? { formatter: (items: unknown) => {
@@ -43,14 +52,15 @@ function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCat
   };
 }
 
-function histogramOption(data: HistDatum[], pal: Palette): echarts.EChartsOption {
+function histogramOption(data: HistDatum[], pal: Palette, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+  const axis = AXIS(ink, grid);
   const labels = data.map((d) => `${trim(d.lo)}–${trim(d.hi)}`);
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: "category", data: labels, ...AXIS,
-             axisLabel: { ...AXIS.axisLabel, interval: 5 },
+    xAxis: { type: "category", data: labels, ...axis,
+             axisLabel: { ...axis.axisLabel, interval: 5 },
              splitLine: { show: false } },
-    yAxis: { type: "value", ...AXIS },
+    yAxis: { type: "value", ...axis },
     tooltip: { trigger: "axis", axisPointer: { type: "none" } },
     series: [
       { type: "bar", name: "all", data: data.map((d) => d.all),
@@ -63,11 +73,12 @@ function histogramOption(data: HistDatum[], pal: Palette): echarts.EChartsOption
 }
 
 function scatterOption(data: number[][], x: string, y: string,
-                       pal: Palette): echarts.EChartsOption {
+                       pal: Palette, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+  const axis = AXIS(ink, grid);
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: "value", name: x, ...AXIS },
-    yAxis: { type: "value", name: y, ...AXIS },
+    xAxis: { type: "value", name: x, ...axis },
+    yAxis: { type: "value", name: y, ...axis },
     tooltip: { trigger: "item" },
     series: [{ type: "scatter", data, symbolSize: 6,
                itemStyle: { color: pal.accent, opacity: 0.45 } }],
@@ -75,16 +86,17 @@ function scatterOption(data: number[][], x: string, y: string,
 }
 
 function heatmapOption(data: [string, string, number][],
-                       pal: Palette): echarts.EChartsOption {
+                       pal: Palette, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+  const axis = AXIS(ink, grid);
   const xs = [...new Set(data.map((d) => d[0]))];
   const ys = [...new Set(data.map((d) => d[1]))];
   const max = Math.max(1, ...data.map((d) => d[2]));
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: "category", data: xs, ...AXIS,
-             axisLabel: { ...AXIS.axisLabel, rotate: 45 },
+    xAxis: { type: "category", data: xs, ...axis,
+             axisLabel: { ...axis.axisLabel, rotate: 45 },
              splitLine: { show: false } },
-    yAxis: { type: "category", data: ys, ...AXIS,
+    yAxis: { type: "category", data: ys, ...axis,
              splitLine: { show: false } },
     tooltip: {},
     visualMap: { show: false, min: 0, max,
@@ -117,6 +129,20 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts>();
+  const [themeVersion, setThemeVersion] = useState(0);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setThemeVersion((value) => value + 1);
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", update);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener("change", update);
+    };
+  }, []);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -128,21 +154,33 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
 
   useEffect(() => {
     if (!chart.current || !result) return;
+    const styles = getComputedStyle(document.documentElement);
+    const ink = styles.getPropertyValue("--chart-ink").trim() || INK_SOFT;
+    const grid = styles.getPropertyValue("--chart-grid").trim() || GRID_LINE;
+    const dark = styles.colorScheme === "dark";
+    const ramp = ["--chart-ramp-1", "--chart-ramp-2", "--chart-ramp-3", "--chart-ramp-4"]
+      .map((name) => styles.getPropertyValue(name).trim()).filter(Boolean) as
+      [string, string, string, string];
+    const chartPalette: Palette = dark
+      ? { ...pal, accent: lighten(pal.accent, 0.35),
+          muted: styles.getPropertyValue("--chart-muted").trim() || pal.muted,
+          ramp: ramp.length === 4 ? ramp : pal.ramp }
+      : pal;
     let option: echarts.EChartsOption;
     switch (result.kind) {
       case "bar":
-        option = barOption(result.data as (BarDatum | PersonBarDatum)[], pal, compactCategoryLabels);
+        option = barOption(result.data as (BarDatum | PersonBarDatum)[], chartPalette, compactCategoryLabels, ink, grid);
         break;
       case "histogram":
-        option = histogramOption(result.data as HistDatum[], pal);
+        option = histogramOption(result.data as HistDatum[], chartPalette, ink, grid);
         break;
       case "scatter":
         option = scatterOption(result.data as number[][],
                                columnLabels[spec.x] ?? spec.x,
-                               columnLabels[spec.y ?? ""] ?? spec.y ?? "", pal);
+                               columnLabels[spec.y ?? ""] ?? spec.y ?? "", chartPalette, ink, grid);
         break;
       case "heatmap":
-        option = heatmapOption(result.data as [string, string, number][], pal);
+        option = heatmapOption(result.data as [string, string, number][], chartPalette, ink, grid);
         break;
       default:
         return;
@@ -156,7 +194,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         if (cat && cat !== "Other") onTapCategory(spec.x, cat);
       });
     }
-  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels]);
+  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion]);
 
   const height = result?.kind === "bar"
     ? Math.min(Math.max(170, (result.data.length as number) * 26 + 60), 430)

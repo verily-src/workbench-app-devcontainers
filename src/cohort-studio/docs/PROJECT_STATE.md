@@ -4,7 +4,20 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
-- **Assistant/settings hotfix, validated locally; deployment pending:** provider Save sends only provider fields; MCP Save omits read-only `token_set`. Five real Chromium/API settings checks passed. Disk-backed assistant tools use full-source DuckDB with current UI filters and bounded previews; 12 agent/runtime checks passed in each tree. Inline questions open the existing dataset chat for loaded/disk-backed sources; database-backed filter-only behavior remains supported. User's live request reached Anthropic but failed for insufficient credits; user is adding credit, so live inference remains unverified. This supersedes the earlier no-key observation.
+- **Release candidate validated (2026-10-25), not yet deployed:** live OMOP recipes reopen and join in Aurora; derived queries retain compiler validation. `EXISTS` works for same-database semi joins while unsafe nested functions remain rejected. Workflow lineage links exact dataset/cohort, export, parameters and run events. Jev recommendations use encrypted Settings credentials with environment overrides. Aurora filter questions have collapsible history (last 25), retained in saved views. Settings adds Light/Dark/System appearance with persistent browser preference and chart contrast. Validation: combined PostgreSQL/API suite 106 passed; separate focused derive/SQL suite 81 passed; browser regression run 12 passed and one test-selector failure, corrected history browser/API rerun 2 passed in both trees; theme screenshot inspected. OpenCode GLM max static review found no confirmed blockers; it did not independently run the suite. Live Jev inference, new live OMOP reopen and deployment verification remain pending.
+
+- **DEPLOYED assistant/settings hotfix 75f3a12e88d8d895b12485225dcb56bc62aa264e:** SSM `59334b4d-a590-4da1-aade-325b249df2a3` verified APP_SHA, healthy API, staged imports and successful restart. Local validation: five settings browser/API checks, three chat browser checks, 12 agent/runtime checks. Inline questions open the same dataset chat for loaded/disk-backed sources. Provider credit-dependent inference and live browser clicks remain unverified. OMOP recipe and workflow lineage improvements remain separate uncommitted changes.
+
+- **Local fixes, not deployed (2026-10-25):** provider Save now sends only provider fields; MCP saves omit read-only `token_set`. Real Chromium/API checks: 5 passed. Disk-backed assistant tools use DuckDB with current filters and bounded previews; agent/runtime checks: 12 passed in each tree. Live user request reached Anthropic but failed for insufficient credits; user is adding credit. This supersedes the earlier no-key observation. Inline filter Ask now opens the same dataset Chat for loaded/disk-backed datasets (three Chromium checks passed); database-backed filter-only support remains separate until live-source chat is supported. Existing live instance has no browser sidecar; isolation enforcement is unverified.
+
+- **Final patch DEPLOYED, 2026-10-25:** `29df2b9095d0d3dfbb36591ebb20e03c17203dc0`
+  is active and healthy. SSM `c83661f2-4866-4c38-91df-616a37402c83` verified
+  APP_SHA, health, staged imports and successful activation/restart. This adds
+  managed S3 folder defaults and records the verified HealthOmics artifact paths.
+  Final live evidence: 29,553-person OMOP cohort → 1,475 matched genotypes →
+  completed Nextflow run → six aggregate strata reopened through dashboard API.
+  Chat interpretation still needs a saved provider key. Browser-side live clicks
+  and Jev API connectivity were not verified. Indexed backlog remains local-only.
 
 - **LIVE demo verified, 2026-10-25:** release `31515dc27fa0435f866083425c74566b38cc9d9f`
   is active and healthy (SSM `a60624b4-bf0d-4222-b7ef-48767b35a67a`). Settings

@@ -105,6 +105,22 @@ def _normalize(job: dict, buckets: dict) -> dict:
         "status_message": msg[:200] if msg else None,
     }
 
+def lineage_submission_metadata(workflow: str, job: dict,
+                               input_uri: str | None = None,
+                               params_uri: str | None = None) -> dict:
+    metadata = {
+        "workflow": workflow,
+        "workflow_id": workflow,
+        "run_id": job.get("run_id"),
+        "status": job.get("status"),
+        "input_uri": input_uri,
+        "params_uri": params_uri,
+        "output_bucket_uuid": job.get("output_bucket_uuid"),
+        "output_bucket_resource": job.get("output_bucket_resource"),
+        "output_bucket_path": job.get("output_bucket_path"),
+    }
+    return {key: value for key, value in metadata.items() if value is not None}
+
 def list_jobs(limit: int = 50, force: bool = False) -> dict:
 
     global _cache, _cache_at

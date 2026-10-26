@@ -12,8 +12,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
-Provider = Literal["anthropic", "openai", "gemini", "openrouter", "openweight", "jev"]
-_PROVIDERS = {"anthropic", "openai", "gemini", "openrouter", "openweight", "jev"}
+Provider = Literal["anthropic", "openai", "gemini", "openrouter", "openweight", "jev", "ncbi"]
+_PROVIDERS = {"anthropic", "openai", "gemini", "openrouter", "openweight", "jev", "ncbi"}
 _MCP_KEY = re.compile(r"^mcp:[A-Za-z0-9_-]{1,64}$")
 _KEY_ARN = re.compile(
     r"^arn:(aws|aws-us-gov|aws-cn):kms:([a-z0-9-]+):[0-9]{12}:key/[0-9a-f-]{36}$")

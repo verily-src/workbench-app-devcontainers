@@ -1,3 +1,4 @@
+import { AgentText } from "./AgentText";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { streamAgent, cancelAgent } from "../agentStreaming";
@@ -445,7 +446,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         )}
         {messages.map((message, index) => (
           <article key={`${index}-${message.role}`} className={`studio-agent-message ${message.role}`}>
-            <div className="studio-agent-bubble">{message.content}</div>
+            <div className="studio-agent-bubble">{message.role === "assistant" ? <AgentText text={message.content} /> : message.content}</div>
             {message.toolResults && message.toolResults.length > 0 ? (
               <details className="studio-agent-tools" aria-label="Tool results">
                 <summary>Tool results ({message.toolResults.length})</summary>

@@ -3,8 +3,6 @@ import { api, MCPConnection } from "../api";
 import "./AgentIntegrations.css";
 
 const literature = [
-  { name: "pubmed", label: "PubMed" },
-  { name: "biorxiv", label: "bioRxiv" },
   { name: "arxiv", label: "arXiv" },
 ];
 
@@ -21,12 +19,14 @@ export function AgentIntegrations({ onOpenSettings }: { onOpenSettings: () => vo
     return () => { cancelled = true; };
   }, []);
   const items = [...literature, ...connections.filter((item) =>
-    !literature.some((known) => known.name === item.name))];
+    !(["pubmed", "biorxiv"].includes(item.name)) && !literature.some((known) => known.name === item.name))];
   return <details className="agent-integrations">
     <summary>Integrations</summary>
     <div className="agent-integrations-body">
       <div className="agent-integration"><strong>Studio data & workflows</strong><span>Built in</span></div>
-      <p>External connections are setup-only. Agent tool access is not enabled yet.</p>
+      <div className="agent-integration"><strong>PubMed</strong><span>Built in · optional NCBI key</span></div>
+      <div className="agent-integration"><strong>bioRxiv</strong><span>Built in · date-window search</span></div>
+      <p>Other MCP connections are setup-only.</p>
       {status === "loading" ? <span role="status">Loading connections…</span>
         : status === "error" ? <span role="alert">Could not load integrations.</span>
         : <ul>{items.map((item) => {

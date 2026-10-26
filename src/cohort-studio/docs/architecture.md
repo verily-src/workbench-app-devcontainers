@@ -817,3 +817,22 @@ Local staging has a two-operation concurrency bound and a 1 GB free-storage floo
 in addition to the existing 10 GB warning and 1 TB guard. PostgreSQL paging uses
 projected primary keys when safe; explicit order remains authoritative and joins
 retain their fallback. These limits are per process. Counts remain full-source.
+
+
+## Direct literature adapters (2026-10-26)
+
+Studio Agent and the local MCP server expose `search_pubmed` and `search_biorxiv`.
+They call fixed official HTTPS APIs in the app container; no external MCP deployment is required.
+PubMed uses NCBI ESearch and EFetch. Its optional NCBI key is read from `NCBI_API_KEY`
+or the existing encrypted secret store (KMS where configured, local encryption otherwise).
+The key is never returned in public configuration or tool results. Literature requests use public
+research terms; the Agent must not send patient identifiers or private dataset records.
+
+bioRxiv queries filter metadata in an explicit date interval with a bounded page scan.
+Results include coverage and preprint status; absence of matches does not establish absence
+of literature. PubMed identifiers and bioRxiv DOI links are returned with provenance.
+Retrieved content is untrusted evidence, never Agent instructions. Chat renders citation links
+as escaped React text and HTTPS anchors; it does not render arbitrary HTML.
+
+Other external MCP connections remain setup/test-only; these built-in adapters do not change that.
+API references: https://www.ncbi.nlm.nih.gov/books/NBK25501/ and https://api.biorxiv.org/.

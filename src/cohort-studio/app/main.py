@@ -8,9 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import Body, FastAPI, HTTPException, Request, Response, UploadFile
-from fastapi.exception_handlers import (
-    request_validation_exception_handler as default_request_validation_handler,
-)
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
@@ -93,12 +90,10 @@ async def secret_store_error(_request: Request, exc: secret_store.SecretStoreErr
 @app.exception_handler(RequestValidationError)
 async def request_validation_handler(request: Request,
                                      exc: RequestValidationError):
-    if request.url.path.startswith("/api/omop/") or request.url.path == "/api/sources":
-
-        details = [{"loc": error["loc"], "msg": error["msg"],
-                    "type": error["type"]} for error in exc.errors()]
-        return JSONResponse(status_code=422 if request.url.path == "/api/sources" else 400, content={"detail": details})
-    return await default_request_validation_handler(request, exc)
+    details = [{"loc": error["loc"], "msg": error["msg"],
+                "type": error["type"]} for error in exc.errors()]
+    status = 400 if request.url.path.startswith("/api/omop/") else 422
+    return JSONResponse(status_code=status, content={"detail": details})
 
 if mcp_server.AVAILABLE:
     app.mount("/mcp", mcp_server.http_app())
@@ -1051,6 +1046,8 @@ class ConfigUpdate(BaseModel):
     api_key: str | None = Field(default=None, max_length=8192)
     jev_api_key: str | None = Field(default=None, max_length=8192)
     jev_model: str | None = Field(default=None, max_length=256)
+    ncbi_api_key: str | None = Field(default=None, max_length=128,
+                                     pattern=r"^[A-Za-z0-9_-]*$")
     mcp_connections: list[MCPConnection] | None = Field(default=None, max_length=128)
     chart_palette: str | None = None
 
@@ -1132,6 +1129,8 @@ def put_config(req: ConfigUpdate):
                                  provider=req.provider)
     if req.jev_model is not None or req.jev_api_key is not None:
         config.update_jev_config(model=req.jev_model, api_key=req.jev_api_key)
+    if req.ncbi_api_key is not None:
+        config.update_literature_config(ncbi_api_key=req.ncbi_api_key)
     if req.mcp_connections is not None:
         config.update_mcp_connections(
             [c.model_dump() for c in req.mcp_connections])

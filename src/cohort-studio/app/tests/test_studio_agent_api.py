@@ -369,3 +369,31 @@ def test_projected_omop_genetics_join_prepares_complete_workflow(workspace, monk
         boundary = conn.execute(text("SELECT count(*) FROM _studio_agent.events WHERE run_id=:id AND kind='approval_required'"),
                                 {"id": reply["trace_id"]}).scalar_one()
     assert boundary == 1
+
+
+def test_agent_literature_tools_return_citations_and_preserve_history(workspace, monkeypatch):
+    import literature
+    calls = []
+    monkeypatch.setattr(config, "get_ncbi_api_key", lambda: "private-ncbi-key")
+    def pubmed(query, limit=5, api_key=""):
+        calls.append((query, limit, api_key))
+        return {"articles": [{"title": "Example study", "pmid": "123", "url": "https://pubmed.ncbi.nlm.nih.gov/123/"}]}
+    monkeypatch.setattr(literature, "search_pubmed", pubmed)
+    monkeypatch.setattr(literature, "search_biorxiv", lambda query, start_date, end_date, limit=5: {
+        "articles": [], "coverage": "bounded date-window scan"})
+    def provider(provider, model, api_key, base_url, system, messages, impls, **kwargs):
+        assert "untrusted data" in system and "preprints" in system
+        result = json.loads(impls["search_pubmed"](query="genetic association", limit=3))
+        assert result["articles"][0]["pmid"] == "123"
+        assert "private-ncbi-key" not in json.dumps(result)
+        preprints = json.loads(impls["search_biorxiv"](query="genetics", start_date="2026-01-01", end_date="2026-01-02"))
+        assert "bounded" in preprints["coverage"]
+        return {"reply": "Found [Example study](https://pubmed.ncbi.nlm.nih.gov/123/).", "usage": {}, "tool_calls": ["search_pubmed", "search_biorxiv"]}
+    monkeypatch.setattr(providers, "run", provider)
+    response = workspace.post("/api/agent/chat", json={"message": "Find genetics literature"})
+    assert response.status_code == 200, response.text
+    assert calls == [("genetic association", 3, "private-ncbi-key")]
+    assert response.json()["actions"] == []
+    history = workspace.get("/api/agent/chat/history").json()
+    assert history["messages"][-1]["content"] == response.json()["reply"]
+    assert "private-ncbi-key" not in response.text + json.dumps(history)

@@ -54,6 +54,9 @@ export function SettingsView(
   const [jevModel, setJevModel] = useState("");
   const [jevBusy, setJevBusy] = useState(false);
   const [jevStatus, setJevStatus] = useState("");
+  const [ncbiKey, setNcbiKey] = useState("");
+  const [ncbiBusy, setNcbiBusy] = useState(false);
+  const [ncbiStatus, setNcbiStatus] = useState("");
   const [connections, setConnections] = useState<MCPConnection[]>([]);
   const [palette, setPalette] = useState("verily");
   const [theme, setTheme] = useState<ThemePreference>(savedTheme);
@@ -174,6 +177,31 @@ export function SettingsView(
     } finally {
       setJevBusy(false);
     }
+  };
+
+  const saveNcbiKey = async () => {
+    setNcbiBusy(true);
+    setNcbiStatus("Saving PubMed settings…");
+    try {
+      const updated = await api.updateConfig({ ncbi_api_key: ncbiKey });
+      setCfg(updated);
+      setNcbiKey("");
+      setNcbiStatus("PubMed settings saved securely.");
+    } catch (error) {
+      setNcbiStatus(`Save failed: ${safeProviderError(error, ncbiKey)}`);
+    } finally { setNcbiBusy(false); }
+  };
+
+  const removeNcbiKey = async () => {
+    setNcbiBusy(true);
+    setNcbiStatus("Removing saved key…");
+    try {
+      const updated = await api.updateConfig({ ncbi_api_key: "" });
+      setCfg(updated);
+      setNcbiStatus("Saved PubMed key removed.");
+    } catch (error) {
+      setNcbiStatus(`Removal failed: ${safeProviderError(error, ncbiKey)}`);
+    } finally { setNcbiBusy(false); }
   };
 
   const removeApiKey = async () => {
@@ -361,6 +389,28 @@ export function SettingsView(
         {jevStatus && <div className="settings-status" role="status">{jevStatus}</div>}
       </div>
 
+      <div className="section-label">Literature</div>
+      <div className="settings-card">
+        <p className="settings-caption">PubMed can use an optional NCBI API key for higher request limits. bioRxiv does not need a key.</p>
+        <label className="field-label" htmlFor="ncbi-api-key">NCBI API key
+          {cfg.literature?.ncbi_api_key_set && <span className="settings-hint">
+            {` · configured (${cfg.literature?.ncbi_api_key_source || "server setting"})`}
+          </span>}
+        </label>
+        <input id="ncbi-api-key" type="password" autoComplete="new-password"
+          disabled={ncbiBusy || cfg.literature?.ncbi_api_key_source === "environment"}
+          placeholder={cfg.literature?.ncbi_api_key_source === "environment" ? "Configured by environment" : cfg.literature?.ncbi_api_key_set ? "Enter a new key to replace" : "Optional NCBI API key"}
+          value={ncbiKey} onChange={(event) => setNcbiKey(event.target.value)} />
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <button className="primary" onClick={saveNcbiKey} disabled={ncbiBusy || !ncbiKey.trim()}>
+            {ncbiBusy ? "Saving…" : "Save NCBI key"}
+          </button>
+          {cfg.literature?.ncbi_api_key_set && cfg.literature?.ncbi_api_key_source !== "environment" &&
+            <button className="quiet" onClick={removeNcbiKey} disabled={ncbiBusy}>Remove saved key</button>}
+        </div>
+        {ncbiStatus && <div className="settings-status" role="status">{ncbiStatus}</div>}
+      </div>
+
       <div className="section-label">Appearance</div>
       <div className="settings-card">
         <label className="field-label" htmlFor="theme-preference">Theme</label>
@@ -425,12 +475,11 @@ export function SettingsView(
         </p>
       </div>
 
-      <div className="section-label">MCP connections</div>
+      <div className="section-label">Other MCP connections</div>
       <div className="settings-card">
         <p className="settings-caption">
-          External MCP servers this app (and its AI features) may use.
-          Verily Workbench and common research sources are pre-seeded —
-          fill in a URL and enable to activate.
+          Optional external MCP servers for this app and its AI features.
+          Built-in PubMed and bioRxiv search do not use these connections.
         </p>
         {connections.map((c, i) => (
           <div key={c.name} className="mcp-row">

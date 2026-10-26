@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import subprocess
+import cloud_cli
 import threading
 import time
 
@@ -40,7 +41,7 @@ def _actor() -> str:
     if _actor_cache:
         return _actor_cache
     try:
-        result = subprocess.run(["wb", "auth", "status", "--format", "json"],
+        result = cloud_cli.run(["wb", "auth", "status", "--format", "json"],
                                 capture_output=True, text=True, check=True,
                                 timeout=10)
         _actor_cache = json.loads(result.stdout).get("userEmail") \
@@ -58,6 +59,7 @@ def save_view(kind: str, resource_id: str, name: str, state: dict) -> dict:
         _s3_save(resource_id, name, portable_recipe_state(state))
     else:
         raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
+    invalidate_listing(kind, resource_id)
     return {"name": name}
 
 def list_views(kind: str, resource_id: str) -> list[dict]:
@@ -68,8 +70,12 @@ def list_views(kind: str, resource_id: str) -> list[dict]:
     raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
 
 _LIST_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="saved-view-list")
-_LIST_SLOTS = threading.BoundedSemaphore(4)
-LIST_DEADLINE_SECONDS = 15.0
+_LIST_LOCK = threading.RLock()
+_LIST_CACHE = {}
+_LIST_PENDING = {}
+_LIST_EPOCH = {}
+LIST_DEADLINE_SECONDS = 0.25
+LIST_CACHE_SECONDS = 60
 
 
 def _list_store(store):
@@ -85,37 +91,48 @@ def _list_store(store):
                 "error": str(exc).split("\n")[0][:300] or "Saved views could not be listed."}]}
 
 
+def invalidate_listing(kind, resource_id):
+    with _LIST_LOCK:
+        key = (kind, resource_id)
+        _LIST_CACHE.pop(key, None)
+        _LIST_EPOCH[key] = _LIST_EPOCH.get(key, 0) + 1
+
+
 def list_all_views(stores: list[dict]) -> dict:
-    result = {"views": [], "unavailable": []}
-    deadline = time.monotonic() + LIST_DEADLINE_SECONDS
-    for offset in range(0, len(stores), 4):
-        pending = {}
-        for store in stores[offset:offset + 4]:
-            if time.monotonic() >= deadline:
-                result["unavailable"].append({**store, "error": "Listing deadline reached. Retry to check this store."})
-            elif not _LIST_SLOTS.acquire(blocking=False):
-                result["unavailable"].append({**store, "error": "Saved-view listing is busy. Retry shortly."})
-            else:
-                try:
-                    future = _LIST_POOL.submit(_list_store, store)
-                except Exception:
-                    _LIST_SLOTS.release()
-                    raise
-                future.add_done_callback(lambda _future: _LIST_SLOTS.release())
-                pending[future] = store
-        if not pending:
-            continue
-        done, unfinished = wait(pending, timeout=max(0, deadline - time.monotonic()))
-        for future, store in pending.items():
-            if future in unfinished:
-                future.cancel()
-                result["unavailable"].append({**store, "error": "Listing timed out. Retry to check this store."})
-            else:
-                value = future.result()
-                result["views"].extend(value["views"])
-                result["unavailable"].extend(value["unavailable"])
-    result["views"].sort(key=lambda item: (item["name"].casefold(),
-                                             item["store_label"].casefold()))
+    result = {"views": [], "unavailable": [], "pending": []}
+    keys = {(s["kind"], s["resource_id"]) for s in stores}
+    with _LIST_LOCK:
+        for key in list(_LIST_CACHE):
+            if key not in keys:
+                _LIST_CACHE.pop(key, None)
+        for store in stores:
+            key = (store["kind"], store["resource_id"])
+            cached = _LIST_CACHE.get(key)
+            if key in _LIST_PENDING or (cached and time.monotonic() - cached[0] < LIST_CACHE_SECONDS):
+                continue
+            if len(_LIST_PENDING) >= 64:
+                continue
+            future = _LIST_POOL.submit(_list_store, store)
+            _LIST_PENDING[key] = future
+            def complete(done, key=key, epoch=_LIST_EPOCH.get(key, 0)):
+                with _LIST_LOCK:
+                    if epoch == _LIST_EPOCH.get(key, 0):
+                        _LIST_CACHE[key] = (time.monotonic(), done.result())
+                    _LIST_PENDING.pop(key, None)
+            future.add_done_callback(complete)
+        pending = list(_LIST_PENDING.values())
+    if pending:
+        wait(pending, timeout=LIST_DEADLINE_SECONDS)
+    with _LIST_LOCK:
+        for store in stores:
+            key = (store["kind"], store["resource_id"])
+            cached = _LIST_CACHE.get(key)
+            if cached:
+                result["views"].extend(cached[1]["views"])
+                result["unavailable"].extend(cached[1]["unavailable"])
+            if key in _LIST_PENDING or not cached:
+                result["pending"].append(store)
+    result["views"].sort(key=lambda item: (item["name"].casefold(), item["store_label"].casefold()))
     return result
 
 
@@ -133,6 +150,7 @@ def delete_view(kind: str, resource_id: str, name: str):
         _aurora_delete(resource_id, name)
     elif kind == "s3":
         _s3_delete(resource_id, name)
+    invalidate_listing(kind, resource_id)
 
 def _engine(resource_id: str) -> Engine:
     engine = db.get_engine_for_resource(resource_id)
@@ -213,7 +231,7 @@ def _s3_save(resource_id: str, name: str, state: dict):
             Bucket=bucket, Key=key, Body=payload.encode("utf-8"),
             ContentType="application/json")
         return
-    out = subprocess.run(
+    out = cloud_cli.run(
         ["aws", "s3", "cp", "-", _s3_key(resource_id, name),
          "--profile", resource_id, "--content-type", "application/json"],
         input=payload, capture_output=True, text=True, timeout=120)
@@ -241,9 +259,9 @@ def _s3_list(resource_id: str) -> list[dict]:
                                                  if item.get("LastModified") else None)})
         return names
     uri = f"{db.resolve_s3_uri(resource_id)}/{VIEW_PREFIX}/"
-    out = subprocess.run(["aws", "s3", "ls", uri, "--profile", resource_id,
+    out = cloud_cli.run(["aws", "s3", "ls", uri, "--profile", resource_id,
                           "--cli-connect-timeout", "5", "--cli-read-timeout", "10"],
-                         capture_output=True, text=True, timeout=15)
+                         capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         raise RuntimeError("S3 saved views could not be listed. Check access and retry.")
     names = []
@@ -268,7 +286,7 @@ def _s3_get(resource_id: str, name: str) -> dict | None:
             if code in {"NoSuchKey", "NotFound", "404"}:
                 return None
             raise RuntimeError("Registered S3 view could not be read.") from None
-    out = subprocess.run(
+    out = cloud_cli.run(
         ["aws", "s3", "cp", _s3_key(resource_id, name), "-",
          "--profile", resource_id],
         capture_output=True, text=True, timeout=120)
@@ -284,7 +302,7 @@ def _s3_delete(resource_id: str, name: str):
         boto3.Session(region_name=region).client("s3", region_name=region).delete_object(
             Bucket=bucket, Key=key)
         return
-    subprocess.run(
+    cloud_cli.run(
         ["aws", "s3", "rm", _s3_key(resource_id, name),
          "--profile", resource_id],
         capture_output=True, text=True, timeout=120)

@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import subprocess
+import cloud_cli
 
 import duckdb
 import pandas as pd
@@ -41,7 +42,7 @@ def _s3_ls(resource_id: str) -> tuple[str, str]:
     uri = db.resolve_s3_uri(resource_id)
 
     prefix = uri.removeprefix("s3://").partition("/")[2]
-    result = subprocess.run(
+    result = cloud_cli.run(
         ["aws", "s3", "ls", uri + "/", "--recursive", "--profile", resource_id],
         capture_output=True, text=True, timeout=120)
     if result.returncode != 0:
@@ -126,7 +127,7 @@ def _run_credential_process(profile: str) -> dict:
             or not parser.has_option(section, "credential_process"):
         raise RuntimeError(f"profile {profile} has no credential_process")
     cmd = shlex.split(parser.get(section, "credential_process"))
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    out = cloud_cli.run(cmd, capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         detail = (out.stderr or out.stdout or "").strip().split("\n")[-1]
         raise RuntimeError(f"credential_process failed: {detail}")
@@ -134,7 +135,7 @@ def _run_credential_process(profile: str) -> dict:
 
 def _resolve_credentials(profile: str) -> dict:
 
-    out = subprocess.run(
+    out = cloud_cli.run(
         ["aws", "configure", "export-credentials",
          "--profile", profile, "--format", "json"],
         capture_output=True, text=True, timeout=60)

@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import subprocess
+import cloud_cli
 import time
 from urllib.parse import urlsplit
 
@@ -69,7 +70,7 @@ def write_params_json(resource_id: str, path: str, params: dict) -> dict:
 
     object_path = _safe_object_path(path)
     uri = f"{db.resolve_s3_uri(resource_id)}/{object_path}"
-    out = subprocess.run(
+    out = cloud_cli.run(
         ["aws", "s3", "cp", "-", uri, "--profile", resource_id,
          "--content-type", "application/json"],
         input=json.dumps(params), capture_output=True, text=True, timeout=120)
@@ -81,7 +82,7 @@ def write_params_json(resource_id: str, path: str, params: dict) -> dict:
 
 def _run(limit: int) -> list[dict]:
 
-    result = subprocess.run(
+    result = cloud_cli.run(
         ["wb", "workflow", "job", "list", "--format", "JSON",
          "--limit", str(limit)],
         capture_output=True, text=True, check=True, timeout=30)
@@ -179,7 +180,7 @@ def list_workflows(force: bool = False) -> dict:
     if _registry_cache is not None and not force and now - _registry_at < 300:
         return {"available": True, "workflows": _registry_cache}
     try:
-        result = subprocess.run(
+        result = cloud_cli.run(
             ["wb", "workflow", "list", "--format", "JSON", "--limit", "1000"],
             capture_output=True, text=True, check=True, timeout=30)
         raw = json.loads(result.stdout or "[]")
@@ -196,7 +197,7 @@ def export_cohort_csv(df, resource_id: str, path: str) -> dict:
 
     import db
     uri = f"{db.resolve_s3_uri(resource_id)}/{path.lstrip('/')}"
-    out = subprocess.run(
+    out = cloud_cli.run(
         ["aws", "s3", "cp", "-", uri, "--profile", resource_id,
          "--content-type", "text/csv"],
         input=df.to_csv(index=False), capture_output=True, text=True,
@@ -235,7 +236,7 @@ def submit_job(workflow: str, output_bucket_id: str, job_id: str = "",
     if params_file_bucket_id:
         args += ["--params-file-bucket-id", params_file_bucket_id,
                  "--params-file-path", params_file_path]
-    out = subprocess.run(args, capture_output=True, text=True, timeout=120)
+    out = cloud_cli.run(args, capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         raise RuntimeError(
             (out.stderr or out.stdout or "").strip().split("\n")[-1][:300])

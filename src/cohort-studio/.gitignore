@@ -16,3 +16,6 @@ test-results/
 app/knowledge.sqlite3*
 app/.studio-secrets/
 app/agent_store_config.json
+
+app/.studio-models/
+app/.studio-data-jobs.sqlite3*

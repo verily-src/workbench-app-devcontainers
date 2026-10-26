@@ -16,6 +16,13 @@ async function call<T>(path = "", body?: unknown, method = "GET"): Promise<T> {
 }
 
 export function KnowledgeBase() {
+  const [index, setIndex] = useState<{ indexed: number; passages: number; running: boolean; error?: string }>();
+  useEffect(() => {
+    const refreshIndex = () => call<typeof index>("/index/status").then(setIndex).catch(() => {});
+    void refreshIndex();
+    const timer = setInterval(refreshIndex, 2000);
+    return () => clearInterval(timer);
+  }, []);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -37,6 +44,13 @@ export function KnowledgeBase() {
     <p className="settings-caption">Versioned guidance covers bioinformatics, data science, data engineering, OMOP and cohort work, source scope, careful joins, and tool and evidence limits.</p>
     <h3 className="knowledge-section-label">Attached project documents <span className="knowledge-count">{documents.length}</span></h3>
     <p className="settings-caption">Documents are shared within this app. They add project context without replacing built-in guidance. Relevant passages may be sent to your selected AI provider with your question.</p>
+    <div className="knowledge-actions" aria-label="Semantic index">
+      <span role="status">Local semantic search{index ? ` · ${index.indexed}/${index.passages} passages${index.running ? " · indexing" : ""}` : ""}</span>
+      <button disabled={index?.running} onClick={() => void run(async () => {
+        setIndex(await call<typeof index>("/index/rebuild", {}, "POST"));
+      })}>Index documents</button>
+      {index?.error && <span role="alert">{index.error}</span>}
+    </div>
     <div className="knowledge-editor">
     <label>Document title<input type="text" value={title} maxLength={200} onChange={e => setTitle(e.target.value)} /></label>
     <label>Document text<textarea value={text} maxLength={200000} rows={6} onChange={e => setText(e.target.value)} /></label>

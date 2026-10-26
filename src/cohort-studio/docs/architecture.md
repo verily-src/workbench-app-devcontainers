@@ -780,3 +780,11 @@ failed refreshes retain the previous successful result.
 ### HealthOmics workflow staging paths (2026-10-26)
 
 Agent plans use compact UUID-based output paths and short job names. Preparation and the demo submit boundary validate the resulting Workbench definition URI, including its intermediate-files path and generated run UUID, against the HealthOmics 256-character limit before submission. Failed job recovery persists the actual service error; recovery never submits a replacement run. Source: https://docs.aws.amazon.com/omics/latest/api/API_CreateWorkflow.html.
+
+### Query reuse and tab recovery (2026-10-26)
+
+Generated Aurora joins retain parameterized SQL for execution. The copyable SQL representation uses PostgreSQL typed literal rendering and then the normal custom-source validator. Unsupported parameters do not fall back to unsafe string interpolation. User-authored sources still reject bind placeholders. Read-only unnest expressions support OMOP descendant queries; table-valued functions remain rejected.
+
+An open browser tab with a saved source recipe can reopen after a dataset-expired response through the existing source API. Its filters, charts and title are preserved, stale results are cleared, and a repeated expiry stops automatic recovery. This does not persist unsaved browser tabs across a browser reload. Uploaded sources without a recipe must be uploaded again.
+
+The join picker groups available sources by type and labels S3 entries as files. Aurora-to-S3 execution continues through the existing DuckDB path with explicit cross-source consent and visible data scope; the S3 loader is unchanged.

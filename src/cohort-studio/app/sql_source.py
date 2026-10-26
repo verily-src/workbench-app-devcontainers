@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import internal_data
 import pandas as pd
-from sqlalchemy import Engine
+from datetime import date, datetime
+from decimal import Decimal
+import math
+from uuid import UUID
+from sqlalchemy import Engine, bindparam
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.types import ARRAY, BigInteger, Boolean, Date, DateTime, Float, Numeric, Text, Uuid
 from sqlglot import Dialect, exp, parse
 from sqlglot.tokens import TokenType
 from sqlglot.errors import ParseError, TokenError
@@ -16,15 +22,15 @@ PREVIEW_LIMIT = 20
 MAX_COLUMNS = 200
 MAX_SQL_LENGTH = 20_000
 _SAFE_FUNCTIONS = {
-    "abs", "avg", "array_agg", "array_to_string", "btrim", "cast", "ceil", "ceiling",
+    "abs", "array", "avg", "array_agg", "array_to_string", "btrim", "cast", "ceil", "ceiling",
     "coalesce", "concat", "concat_ws", "count", "current_date",
     "current_timestamp", "date_part", "date_trunc", "extract", "floor", "greatest",
     "json_agg", "json_build_object", "jsonb_agg", "jsonb_build_object", "left",
     "length", "least", "ln", "log", "lower", "ltrim", "max", "min", "mod",
-    "nullif", "exists", "power", "regexp_like", "regexp_match", "regexp_replace", "replace", "right",
+    "nullif", "exists", "explode", "power", "regexp_like", "regexp_match", "regexp_replace", "replace", "right",
     "round", "rtrim", "sign", "split_part", "sqrt", "stddev", "stddev_pop",
     "stddev_samp", "string_agg", "sum", "to_char", "to_date", "to_number",
-    "to_timestamp", "timestamp_trunc", "trim", "upper", "variance", "var_pop", "var_samp",
+    "to_timestamp", "timestamp_trunc", "trim", "unnest", "upper", "variance", "var_pop", "var_samp",
 }
 _BLOCKED_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "pg_temp"}
 
@@ -113,6 +119,65 @@ def normalize(sql: str) -> str:
     if len(normalized) > MAX_SQL_LENGTH:
         raise ValueError(f"Normalized SQL is limited to {MAX_SQL_LENGTH:,} characters.")
     return normalized
+
+
+def _literal_type(value):
+    if value is None:
+        raise ValueError("SQL parameter type cannot be inferred.")
+    if isinstance(value, bool):
+        return Boolean()
+    if isinstance(value, int):
+        return BigInteger()
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("Non-finite SQL parameters cannot be inlined.")
+        return Float()
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("Non-finite SQL parameters cannot be inlined.")
+        return Numeric()
+    if isinstance(value, datetime):
+        return DateTime(timezone=value.tzinfo is not None)
+    if isinstance(value, date):
+        return Date()
+    if isinstance(value, UUID):
+        return Uuid()
+    if isinstance(value, str):
+        return Text()
+    if isinstance(value, (list, tuple)):
+        if not value or len(value) > 10_000:
+            raise ValueError("SQL array parameters cannot be inlined safely.")
+        items = [item for item in value if item is not None]
+        if not items:
+            raise ValueError("SQL array parameter type cannot be inferred.")
+        if any(isinstance(item, (list, tuple)) for item in items):
+            raise ValueError("Nested SQL arrays cannot be inlined safely.")
+        item_type = _literal_type(items[0])
+        if any(type(item) is not type(items[0]) or
+               type(_literal_type(item)) is not type(item_type)
+               for item in items[1:]):
+            raise ValueError("Mixed-type SQL arrays cannot be inlined safely.")
+        return ARRAY(item_type)
+    raise ValueError("SQL parameter type cannot be inlined safely.")
+
+
+def inline_parameters(sql: str, parameters: dict) -> str:
+    if not isinstance(parameters, dict):
+        raise ValueError("SQL parameters must be an object.")
+    statement = text(sql)
+    expected = set(statement._bindparams)
+    if expected != set(parameters):
+        raise ValueError("SQL parameter names do not match the generated query.")
+    binds = [bindparam(name, value=parameters[name],
+                       type_=_literal_type(parameters[name]))
+             for name in sorted(expected)]
+    try:
+        rendered = str(statement.bindparams(*binds).compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True}))
+    except Exception as exc:
+        raise ValueError("SQL parameter values cannot be rendered safely.") from exc
+    return normalize(rendered)
 
 
 def _engine(resource_id: str) -> Engine:

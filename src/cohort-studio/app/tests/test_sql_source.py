@@ -1,4 +1,6 @@
 import uuid
+from datetime import date
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
@@ -184,6 +186,36 @@ def test_exists_subquery_is_allowed_but_nested_unsafe_functions_are_not():
     with pytest.raises(ValueError, match="pg_read_file.*not allowed"):
         sql_source.normalize(
             "SELECT EXISTS (SELECT pg_read_file('/etc/passwd') FROM cdm.person)")
+
+
+def test_inline_parameters_uses_typed_postgres_literals_and_checks_bind_set():
+    sql = ("SELECT CAST(:label AS TEXT), CAST(:day AS DATE), "
+           "CAST(:ids AS BIGINT[]), CAST(:amount AS NUMERIC)")
+    rendered = sql_source.inline_parameters(sql, {
+        "label": "O'Reilly", "day": date(2024, 5, 6),
+        "ids": [12, 34], "amount": Decimal("12.50"),
+    })
+    assert "O''Reilly" in rendered
+    assert "'2024-05-06' AS DATE" in rendered
+    assert "ARRAY[12, 34]" in rendered
+    assert "12.50" in rendered
+    assert ":label" not in rendered and ":ids" not in rendered
+    assert sql_source.normalize(rendered) == rendered
+    with pytest.raises(ValueError, match="names do not match"):
+        sql_source.inline_parameters("SELECT :value", {"other": 1})
+    with pytest.raises(ValueError, match="cannot be inlined safely"):
+        sql_source.inline_parameters("SELECT :value", {"value": object()})
+    for values in ([1, float("inf")], [Decimal("1"), Decimal("NaN")], [[1], [2]]):
+        with pytest.raises(ValueError, match="inlined safely|Non-finite"):
+            sql_source.inline_parameters("SELECT :values", {"values": values})
+
+
+def test_unnest_is_allowed_only_as_a_read_only_select_expression():
+    normalized = sql_source.normalize(
+        "SELECT unnest(CAST(ARRAY[1, 2] AS BIGINT[])) AS concept_id")
+    assert "UNNEST" in normalized.upper()
+    with pytest.raises(ValueError, match="Table-valued SQL functions"):
+        sql_source.normalize("SELECT x FROM unnest(ARRAY[1, 2]) AS x")
 
 
 def test_custom_sql_obeys_database_statement_timeout(client, monkeypatch):

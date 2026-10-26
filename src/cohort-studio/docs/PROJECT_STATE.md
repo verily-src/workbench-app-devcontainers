@@ -4,6 +4,8 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- Live 7b31892cf counts verified (200 total/distinct; one filtered/distinct). Saved-view listing exceeded90seconds, so deadline hardening added:15-second response budget, global four-operation cap, completed-store results retained and S3 failures explicit. Temporary dataset closed. Follow-up validation/deployment pending.
+
 - Async/batch pass locally validated, deployment pending: CSV processing moved off event loop and reads upload spool; saved-view listings use shared four-worker bounded batches; mixed-domain concept counts use one UNION ALL statement; row/filtered/entity dashboard counts share one aggregate scan in the existing snapshot. 66 PostgreSQL/API regression checks passed, including upload/health concurrency and partial listing failures. Long source-open/join jobs remain worker-thread requests.
 
 - DEPLOYED 1a544af70903492874b617e12c88cb6d06b63b98: Data sources header shares 46px navigation height/background/border; removed sidebar offset. Build and two browser checks passed; screenshot inspected. Update9647f2ad-ec75-4fac-9d0e-f75e35bce209; active SHA/health verified f526ada8-825a-4965-b6f6-3b8af4a0c503.

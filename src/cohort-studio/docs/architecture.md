@@ -846,7 +846,10 @@ blocking drivers would block the event loop. CSV upload parsing now follows this
 reads the existing UploadFile spool directly, avoiding a second full-file bytes allocation.
 
 Saved-view listing uses a shared four-worker pool with at most four submitted operations per
-request wave. Failures remain per-store and sorting is deterministic. This pool is dedicated
+request wave, four pending/running operations globally, and a 15-second response deadline.
+Completed stores remain visible when another store times out; remaining operations keep
+their slot until they finish. S3 listing has explicit connect/read/subprocess limits and access
+failures are reported rather than converted to empty results. Sorting is deterministic. This pool is dedicated
 to read-only discovery; it is not used for writes or workflow submissions.
 
 OMOP concept person counts across domains use one parameterized UNION ALL statement.

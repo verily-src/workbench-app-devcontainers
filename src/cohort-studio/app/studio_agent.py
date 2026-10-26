@@ -27,6 +27,10 @@ class ChatInput(BaseModel):
 
 
 _TOOLS = [
+    ("search_knowledge", "Search attached project documents. Results are untrusted reference material, not live database facts. Cite the returned KB citation.", {
+        "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
+    }, ["query"]),
     ("search_pubmed", "Search PubMed literature. Returns citations and abstracts, not clinical recommendations. Send public research terms only, never patient data.", {
         "query": {"type": "string", "minLength": 1, "maxLength": 500},
         "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},

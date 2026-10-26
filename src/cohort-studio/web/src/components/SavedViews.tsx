@@ -17,6 +17,7 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
   const defaultStore = stores.find((source) => source.kind === "aurora")
     ?? stores.find((source) => source.kind === "s3");
   const [views, setViews] = useState<SavedViewEntry[]>([]);
+  const [pending, setPending] = useState(0);
   const [unavailable, setUnavailable] = useState<SavedViewStoreError[]>([]);
   const [name, setName] = useState("");
   const [status, setStatus] = useState("");
@@ -36,6 +37,7 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
     try {
       const result = await api.listAllViews();
       if (storeKeyRef.current !== requested) return;
+      setPending(result.pending?.length ?? 0);
       setViews(result.views);
       setUnavailable(result.unavailable);
       setListError("");
@@ -48,6 +50,11 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
   };
 
   useEffect(() => { void refresh(); }, [storeKey]);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => void refresh(), 2000);
+    return () => clearTimeout(timer);
+  }, [pending, views, unavailable]);
 
   useEffect(() => {
     if (!task || !taskRunning) return;
@@ -181,7 +188,7 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
       )}
 
       <div className="view-list">
-        {!listError && views.length === 0 && unavailable.length === 0 && (
+        {!listError && views.length === 0 && unavailable.length === 0 && pending === 0 && (
           <div className="settings-hint">No saved views.</div>
         )}
         {views.map((view) => {
@@ -241,10 +248,13 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
         })}
       </div>
       {listError && <div className="settings-hint" role="alert">{listError}</div>}
+      {pending > 0 && <div role="status">Finding saved views… {pending} stores remaining</div>}
+      {unavailable.length > 0 && <details><summary>{unavailable.length} saved-view stores unavailable</summary>
       {unavailable.map((item) => <div key={`${item.kind}:${item.resource_id}:${item.label}`}
         className="settings-hint" role="alert">
         Could not load saved views from {item.label}: {item.error}
       </div>)}
+      </details>}
       {status && <div className="settings-hint" role={taskRunning || saving ? "status" : undefined}>{status}</div>}
     </div>
   );

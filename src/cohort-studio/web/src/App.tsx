@@ -15,6 +15,7 @@ import { StudioAgent } from "./components/StudioAgent";
 import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
+import { DataJobs } from "./components/DataJobs";
 import { Tutorial } from "./components/Tutorial";
 import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
@@ -735,6 +736,7 @@ export default function App() {
             </div>
           )}
         </div>
+        <DataJobs onOpen={result => openResult(result, result.source, result.source_ref)} />
         <div className="content">
           {view === "explore" && workflowVerification?.result.verified
             && datasets[active]?.id === workflowVerification.datasetId && (

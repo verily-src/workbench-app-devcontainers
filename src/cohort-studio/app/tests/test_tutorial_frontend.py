@@ -28,13 +28,13 @@ def test_tutorial_highlights_real_controls_and_waits_for_actions(page: Page, app
     def open_dataset(route):
         body = route.request.post_data_json
         source_ref = body["source_ref"]
-        route.fulfill(status=200, content_type="application/json", json={
+        route.fulfill(status=200, content_type="application/json", json={"job_id":"tutorial-job", "kind":"open", "status":"complete", "result": {
             "dataset_id": "tutorial-person", "source": "db-main / person", "rows": 10,
             "columns": [{"name": "person_id", "filter_kind": "none"}],
             "source_ref": source_ref, "query_scope": "database",
-        })
+        }})
 
-    page.route("**/api/datasets/open", open_dataset)
+    page.route("**/api/data-jobs/open", open_dataset)
     page.route("**/api/datasets/tutorial-person/query", lambda route: fulfill(route, {
         "total": 10, "filtered": 10, "scope": "database", "charts": [],
         "rows": {"page": 0, "page_size": 50, "columns": ["person_id"], "data": [[1]]},

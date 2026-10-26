@@ -11,6 +11,7 @@ against Aurora, so the SQLite/S3/seeding machinery is gone.
 import json
 import logging
 import subprocess
+import cloud_cli
 import threading
 import time
 
@@ -39,7 +40,7 @@ def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ",
     last_err = None
     for attempt in range(retries):
         try:
-            result = subprocess.run(
+            result = cloud_cli.run(
                 [
                     "wb", "resource", "resolve",
                     "--id", resource_id,
@@ -81,7 +82,7 @@ def warm_connection_string(resource_id: str):
 
 def _fetch_resources() -> list[dict]:
     try:
-        result = subprocess.run(
+        result = cloud_cli.run(
             ["wb", "resource", "list", "--format", "json"],
             capture_output=True,
             text=True,
@@ -110,7 +111,7 @@ def configure_aws_profiles():
     if _aws_configured:
         return
     try:
-        subprocess.run(["wb", "workspace", "configure-aws"],
+        cloud_cli.run(["wb", "workspace", "configure-aws"],
                        capture_output=True, text=True, check=True, timeout=120)
         logger.info("Configured AWS profiles via wb workspace configure-aws")
     except Exception as e:
@@ -127,7 +128,7 @@ def configure_aws_profiles():
 def resolve_s3_uri(resource_id: str) -> str:
     """s3:// URI of a storage-folder resource, without a trailing slash."""
     if resource_id not in _s3_uri_cache:
-        result = subprocess.run(
+        result = cloud_cli.run(
             ["wb", "resource", "resolve", "--id", resource_id],
             capture_output=True, text=True, check=True, timeout=120)
         _s3_uri_cache[resource_id] = result.stdout.strip().rstrip("/")

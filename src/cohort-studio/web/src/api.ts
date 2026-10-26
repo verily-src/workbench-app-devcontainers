@@ -44,6 +44,47 @@ const post = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+export interface DataJob {
+  job_id: string; kind: string; status: string; result?: OpenResult;
+  error?: string | { code?: string; message?: string }; status_code?: number;
+}
+
+export function pendingDataJobs(): string[] {
+  try { return JSON.parse(sessionStorage.getItem("studio-data-jobs") || "[]") as string[]; }
+  catch { return []; }
+}
+
+export function forgetDataJob(id: string) {
+  try { sessionStorage.setItem("studio-data-jobs", JSON.stringify(pendingDataJobs().filter(value => value !== id))); }
+  catch { /* Storage can be disabled by the browser. */ }
+}
+
+let dataSubmissions: Promise<unknown> = Promise.resolve();
+
+async function dataJob<T>(kind: string, body: unknown): Promise<T> {
+  const started = dataSubmissions.then(() => request<DataJob>(`/api/data-jobs/${kind}`, post(body)));
+  dataSubmissions = started.catch(() => undefined);
+  let job = await started;
+  try { sessionStorage.setItem("studio-data-jobs", JSON.stringify([...pendingDataJobs(), job.job_id])); } catch { }
+  const notify = (value: DataJob | null) => window.dispatchEvent(
+    new CustomEvent("studio-data-job", { detail: { id: job.job_id, job: value } }));
+  try {
+    while (["queued", "running", "cancelling"].includes(job.status)) {
+      notify(job);
+      await new Promise(resolve => setTimeout(resolve, 750));
+      job = await request<DataJob>(`/api/data-jobs/${job.job_id}`);
+    }
+    forgetDataJob(job.job_id);
+    if (job.status === "complete") return job.result as T;
+    if (job.status === "cancelled") throw new Error("Operation cancelled.");
+    if (job.status === "interrupted") throw new Error("The app restarted. Retry the operation.");
+    const detail = job.error;
+    throw new ApiError(job.status_code ?? 500,
+      typeof detail === "object" ? detail.code : undefined,
+      typeof detail === "object" ? detail.message ?? "Data operation failed." : detail ?? "Data operation failed.");
+  } finally { notify(null); }
+}
+
 export interface MCPConnection {
   name: string;
   label: string;
@@ -330,11 +371,10 @@ export const api = {
       `/api/tables?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`),
 
   openDataset: (kind: string, resourceId: string, table: string) =>
-    request<OpenResult>("/api/datasets/open",
-      post({ kind, resource_id: resourceId, table })),
+    dataJob<OpenResult>("open", { kind, resource_id: resourceId, table }),
 
   openSourceRef: (source: SourceRef) =>
-    request<OpenResult>("/api/datasets/open", post({ source_ref: source })),
+    dataJob<OpenResult>("open", { source_ref: source }),
 
   uploadDataset: (file: File) => {
     const form = new FormData();
@@ -357,8 +397,8 @@ export const api = {
     }),
 
   join: (baseId: string, steps: JoinStep[], allowLoaded = false) =>
-    request<OpenResult & { join: JoinStats }>("/api/datasets/join",
-      post({ base_id: baseId, steps, allow_loaded: allowLoaded })),
+    dataJob<OpenResult & { join: JoinStats }>("join",
+      { base_id: baseId, steps, allow_loaded: allowLoaded }),
 
   previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false) =>
     request<JoinPreview>("/api/datasets/join/preview",

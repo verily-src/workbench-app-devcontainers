@@ -33,6 +33,7 @@ def _copy(job: dict) -> dict:
 
 
 def submit(name: str, total_sources: int, work, key: str | None = None, owner: str | None = None) -> dict:
+    global _executor
     if not isinstance(name, str) or not name:
         raise ValueError("Saved view name is required.")
     if not isinstance(total_sources, int) or isinstance(total_sources, bool) or total_sources < 0:
@@ -40,6 +41,8 @@ def submit(name: str, total_sources: int, work, key: str | None = None, owner: s
     now = time.monotonic()
     with _lock:
         _prune(now)
+        if _executor._shutdown:
+            _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="saved-view")
         if key is not None and any(
                 job.get("key") == key and job["status"] in {"queued", "running"}
                 for job in _jobs.values()):

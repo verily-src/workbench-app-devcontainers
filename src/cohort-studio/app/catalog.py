@@ -3,6 +3,7 @@ import os
 import posixpath
 import re
 import subprocess
+import cloud_cli
 import tempfile
 import threading
 import time
@@ -289,7 +290,7 @@ def build_catalog_file(path: str, views: list[tuple[str, str]],
     return {"views": created, "skipped": skipped}
 
 def _upload(local: str, target: str, profile: str):
-    out = subprocess.run(
+    out = cloud_cli.run(
         ["aws", "s3", "cp", local, target, "--profile", profile,
          "--content-type", "application/octet-stream"],
         capture_output=True, text=True, timeout=300)

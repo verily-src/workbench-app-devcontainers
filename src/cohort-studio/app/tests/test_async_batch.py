@@ -142,8 +142,15 @@ def test_slow_store_does_not_hide_completed_views_or_queue_unbounded_work(client
         assert response.status_code == 200
         assert time.monotonic() - start < 1
         assert [v['name'] for v in response.json()['views']] == ['ready']
-        assert response.json()['unavailable'][0]['resource_id'] == 'slow'
-        assert 'timed out' in response.json()['unavailable'][0]['error']
+        assert response.json()['pending'][0]['resource_id'] == 'slow'
+        assert response.json()['unavailable'] == []
+        assert client.get('/api/views/all').json()['pending'][0]['resource_id'] == 'slow'
     finally:
         release.set()
         assert finished.wait(2)
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        result = client.get('/api/views/all').json()
+        if not result['pending']:
+            break
+    assert {v['name'] for v in result['views']} == {'ready', 'slow'}

@@ -123,6 +123,7 @@ export interface SavedViewStoreError {
 }
 
 export interface SavedViewList {
+  pending?: { kind: string; resource_id: string; label: string }[];
   views: SavedViewEntry[];
   unavailable: SavedViewStoreError[];
 }

@@ -18,6 +18,7 @@ import agent
 import agent_sessions
 import agent_store
 import knowledge
+import knowledge_vectors
 import secret_store
 import cohort_agent
 import bq
@@ -42,6 +43,7 @@ import views
 import materialized_sources
 import saved_snapshots
 import view_jobs
+import data_jobs
 import workflows
 import column_settings
 import live_query
@@ -57,6 +59,8 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.warm_resource_cache()
+    if knowledge.store.path.exists():
+        knowledge_vectors.schedule(knowledge.store)
     try:
         if mcp_server.AVAILABLE:
             async with mcp_server.mcp.session_manager.run():
@@ -64,6 +68,8 @@ async def lifespan(_app: FastAPI):
         else:
             yield
     finally:
+        knowledge_vectors.shutdown()
+        data_jobs.shutdown()
         export_jobs.shutdown()
         view_jobs.shutdown()
         datasets.clear()
@@ -825,6 +831,52 @@ def join_datasets(req: JoinRequest):
                             "truncated": out["stats"]["truncated"]},
                    parents=[("dataset", s) for s in sources])
     return {**result, "join": out["stats"]}
+
+
+class DataJobResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    job_id: str
+    kind: Literal["open", "join"]
+    status: Literal["queued", "running", "cancelling", "cancelled", "complete", "failed", "interrupted"]
+    result: dict | None = None
+    error: str | dict | list | None = None
+    status_code: int | None = None
+
+
+def _submit_data_job(kind, req, request, response):
+    owner = agent_sessions.owner(request, response)
+    work = lambda: open_dataset(req) if kind == "open" else join_datasets(req)
+    try:
+        return data_jobs.manager().submit(kind, owner, work,
+            lambda result: datasets.close_dataset(result["dataset_id"]))
+    except data_jobs.Busy as exc:
+        raise HTTPException(429, str(exc)) from exc
+
+
+@app.post("/api/data-jobs/open", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
+def start_open_job(req: OpenRequest, request: Request, response: Response):
+    return _submit_data_job("open", req, request, response)
+
+
+@app.post("/api/data-jobs/join", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
+def start_join_job(req: JoinRequest, request: Request, response: Response):
+    return _submit_data_job("join", req, request, response)
+
+
+@app.get("/api/data-jobs/{job_id}", response_model=DataJobResponse, response_model_exclude_none=True)
+def get_data_job(job_id: str, request: Request, response: Response):
+    job = data_jobs.manager().get(job_id, agent_sessions.owner(request, response))
+    if job is None:
+        raise HTTPException(404, "Data job not found")
+    return job
+
+
+@app.post("/api/data-jobs/{job_id}/cancel", response_model=DataJobResponse, response_model_exclude_none=True)
+def cancel_data_job(job_id: str, request: Request, response: Response):
+    job = data_jobs.manager().cancel(job_id, agent_sessions.owner(request, response))
+    if job is None:
+        raise HTTPException(404, "Data job not found")
+    return job
 
 
 @app.post("/api/datasets/join/preview")

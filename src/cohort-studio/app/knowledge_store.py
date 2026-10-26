@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterator
 
 import config
+import knowledge_vectors
 
 
 class KnowledgeStoreFull(RuntimeError):
@@ -37,6 +38,7 @@ class KnowledgeStore:
         try:
             db.execute("CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, title TEXT NOT NULL, digest TEXT UNIQUE NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)")
             db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS passages USING fts5(document_id UNINDEXED, passage UNINDEXED, title, text, tokenize='unicode61')")
+            db.execute("CREATE TABLE IF NOT EXISTS embeddings (document_id TEXT NOT NULL, passage INTEGER NOT NULL, model TEXT NOT NULL, vector BLOB NOT NULL, PRIMARY KEY(document_id,passage,model))")
             with db:
                 yield db
         finally:
@@ -73,6 +75,7 @@ class KnowledgeStore:
 
     def delete_document(self, document_id: str) -> None:
         with self.connection() as db:
+            db.execute("DELETE FROM embeddings WHERE document_id=?", (document_id,))
             db.execute("DELETE FROM passages WHERE document_id=?", (document_id,))
             db.execute("DELETE FROM documents WHERE id=?", (document_id,))
 
@@ -86,6 +89,24 @@ class KnowledgeStore:
         return self._search(path, query, limit)
 
     def _search(self, path: Path, query: str, limit: int) -> list[dict]:
+        if not isinstance(query, str) or not query.strip() or len(query) > 1000:
+            return []
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10:
+            raise ValueError("Search limit must be between 1 and 10")
+        lexical = self._keyword_search(path, query, limit)
+        try:
+            semantic = knowledge_vectors.search(self, query, limit)
+        except Exception:
+            semantic = []
+        ranked = {}
+        for results in (lexical, semantic):
+            for rank, row in enumerate(results, 1):
+                key = row['citation']
+                score, _ = ranked.get(key, (0, row))
+                ranked[key] = (score + 1 / (60 + rank), row)
+        return [row for _, row in sorted(ranked.values(), key=lambda item: (-item[0], item[1]['citation']))[:limit]]
+
+    def _keyword_search(self, path: Path, query: str, limit: int) -> list[dict]:
         terms = list(dict.fromkeys(re.findall(r"\w+", query.lower())))[:32]
         if not terms:
             return []

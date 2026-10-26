@@ -297,6 +297,10 @@ class Operations:
         return {"dataset_id": did, "verification": result["verification"],
                 "preview": datasets.query(did, [], [], 0, 20)}
 
+    def search_knowledge(self, query, limit=5):
+        import knowledge
+        return knowledge.search(knowledge.Search(query=query, limit=limit))
+
     def search_pubmed(self, query, limit=5):
         import config
         import literature
@@ -307,7 +311,7 @@ class Operations:
         return literature.search_biorxiv(query, start_date, end_date, limit=limit)
 
     def callbacks(self):
-        names = ("search_pubmed", "search_biorxiv", "list_sources", "list_tables", "inspect_table", "search_concepts", "count_cohort",
+        names = ("search_knowledge", "search_pubmed", "search_biorxiv", "list_sources", "list_tables", "inspect_table", "search_concepts", "count_cohort",
                  "recommend_join", "build_dashboard", "query_dashboard", "list_workflows", "prepare_workflow",
                  "workflow_status", "open_workflow_results")
         return {name: getattr(self, name) for name in names}

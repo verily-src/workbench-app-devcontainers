@@ -86,6 +86,11 @@ export interface AppConfig {
     api_key_source: string | null;
     secure_key_store_available?: boolean;
   };
+  literature?: {
+    ncbi_api_key_set: boolean;
+    ncbi_api_key_source: string | null;
+    secure_key_store_available?: boolean;
+  };
 }
 
 export interface ChatHistory {
@@ -403,6 +408,7 @@ export const api = {
   updateConfig: (body: {
     provider?: Provider; model?: string; api_key?: string;
     jev_api_key?: string; jev_model?: string;
+    ncbi_api_key?: string;
     mcp_connections?: Omit<MCPConnection, "token_set">[]; chart_palette?: string;
   }) => request<AppConfig>("/api/config",
     { method: "PUT", headers: { "Content-Type": "application/json" },

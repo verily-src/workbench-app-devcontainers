@@ -39,6 +39,12 @@ class JevConfigUpdate(BaseModel):
     api_key: str | None = Field(default=None, max_length=8192)
     model: str | None = Field(default=None, max_length=256)
 
+
+class LiteratureConfigUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    ncbi_api_key: str | None = Field(default=None, max_length=128,
+                                     pattern=r"^[A-Za-z0-9_-]*$")
+
 class MCPConnectionSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     name: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
@@ -284,6 +290,30 @@ def update_jev_config(api_key: str | None = None,
         _write(cfg)
     return public_config()
 
+
+def get_ncbi_api_key() -> str | None:
+    env_key = os.environ.get("NCBI_API_KEY")
+    if env_key:
+        return env_key
+    try:
+        return secret_store.read_keys().get("ncbi")
+    except secret_store.SecretStoreError:
+        return None
+
+
+def update_literature_config(ncbi_api_key: str | None = None) -> dict:
+    request = LiteratureConfigUpdate.model_validate({"ncbi_api_key": ncbi_api_key})
+    key = request.ncbi_api_key
+    with _lock:
+        if key is not None:
+            if key == "":
+                secret_store.remove_key("ncbi")
+            else:
+                secure_keys = secret_store.read_keys()
+                secure_keys["ncbi"] = key
+                secret_store.write_keys(secure_keys)
+    return public_config()
+
 def public_config() -> dict:
 
     cfg = _load()
@@ -338,6 +368,8 @@ def public_config() -> dict:
     jev_secure_key = secure_keys.get("jev")
     jev_env_key = os.environ.get("TYPESAFE_API_KEY")
     jev_key = jev_env_key or jev_secure_key or legacy_jev_key
+    ncbi_secure_key = secure_keys.get("ncbi")
+    ncbi_env_key = os.environ.get("NCBI_API_KEY")
     return {
         "llm": {
             "provider": provider,
@@ -359,6 +391,12 @@ def public_config() -> dict:
             "secure_key_store_configured": secret_store.is_configured(),
             "secure_key_store_available": secure_store_available,
             "legacy_key_present": bool(legacy_jev_key),
+        },
+        "literature": {
+            "ncbi_api_key_set": bool(ncbi_env_key or ncbi_secure_key),
+            "ncbi_api_key_source": ("environment" if ncbi_env_key else
+                                    secret_store.key_source("ncbi") if ncbi_secure_key else None),
+            "secure_key_store_available": secure_store_available,
         },
         "mcp_connections": connections,
         "chart_palette": _load().get("chart_palette") or DEFAULT_PALETTE,

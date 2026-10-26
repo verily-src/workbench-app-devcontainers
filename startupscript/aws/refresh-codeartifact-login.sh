@@ -14,6 +14,7 @@ source /etc/workbench-codeartifact.conf
 readonly STATE_DIR="${CODEARTIFACT_USER_HOME}/.workbench"
 readonly REFRESH_INTERVAL=21600 # Six hours, halfway through the token lifetime.
 readonly RETRY_INTERVAL=300
+readonly LOG_FILE="${CODEARTIFACT_USER_HOME}/.workbench/codeartifact-refresh.log"
 mkdir -p "${STATE_DIR}"
 
 # Authenticate with the instance role, not the user's workspace credentials.
@@ -57,6 +58,10 @@ if ! command -v node > /dev/null || ! command -v npm > /dev/null; then
   fi
 fi
 
+log() {
+  echo "$(date -u): $*"
+}
+
 retry() {
   local attempt
   for ((attempt = 1; attempt <= 5; attempt++)); do
@@ -80,16 +85,33 @@ refresh() (
 
   local status=0
   # Attempt both logins even if one package manager fails.
-  retry aws codeartifact login --tool npm \
-    --domain "${CODEARTIFACT_DOMAIN}" --domain-owner "${CODEARTIFACT_OWNER}" \
-    --repository npm-mirror --region "${CODEARTIFACT_REGION}" --duration-seconds 43200 || status=1
-  retry aws codeartifact login --tool pip \
-    --domain "${CODEARTIFACT_DOMAIN}" --domain-owner "${CODEARTIFACT_OWNER}" \
-    --repository pypi-mirror --region "${CODEARTIFACT_REGION}" --duration-seconds 43200 || status=1
+  local tool repository
+  for tool in npm pip; do
+    repository="${tool}-mirror"
+    if [[ "${tool}" == pip ]]; then
+      repository="pypi-mirror"
+    fi
+    if retry aws codeartifact login --tool "${tool}" \
+      --domain "${CODEARTIFACT_DOMAIN}" --domain-owner "${CODEARTIFACT_OWNER}" \
+      --repository "${repository}" --region "${CODEARTIFACT_REGION}" --duration-seconds 43200; then
+      log "CodeArtifact ${tool} token refreshed"
+    else
+      log "WARNING: CodeArtifact ${tool} token refresh failed"
+      status=1
+    fi
+  done
   # The login may recreate the files with default permissions.
   chmod 600 "${NPM_CONFIG_USERCONFIG}" "${PIP_CONFIG}" || status=1
   return "${status}"
 )
+
+# One-shot runs also append to the log (the loop worker's output is already
+# redirected there), so the last "token refreshed" line shows the last success.
+case "${1:-}" in
+  "" | --start)
+    exec > >(tee -a "${LOG_FILE}") 2>&1
+    ;;
+esac
 
 case "${1:-}" in
   "")
@@ -105,7 +127,7 @@ case "${1:-}" in
     fi
     # Outlives the lifecycle hook. Its lock dies with the container, so
     # postStart can start a new one.
-    nohup "$0" --loop "${delay}" < /dev/null >> "${STATE_DIR}/codeartifact-refresh.log" 2>&1 &
+    nohup "$0" --loop "${delay}" < /dev/null >> "${LOG_FILE}" 2>&1 &
     exit "${status}"
     ;;
   --loop)
@@ -121,7 +143,7 @@ case "${1:-}" in
         exec 9>&-
         refresh
       ); then
-        echo "$(date -u): WARNING: CodeArtifact refresh failed; retrying in ${RETRY_INTERVAL} seconds" >&2
+        log "Retrying CodeArtifact refresh in ${RETRY_INTERVAL} seconds"
         delay="${RETRY_INTERVAL}"
       fi
     done

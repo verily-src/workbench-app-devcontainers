@@ -9,6 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+import agent_artifacts
 import agent_guardrails
 import agent_sessions
 import datasets
@@ -147,7 +148,9 @@ class Operations:
                            "verification": value.get("verification")}
                           for key, value in _dashboards.items() if value["owner"] == self.owner]
         return {"sources": [{"kind": kind, "id": rid} for kind, rid in sorted(self.available)],
-                "dashboards": dashboards[-20:]}
+                "dashboards": dashboards[-20:],
+                "saved_dashboards": [{k: a[k] for k in ("dataset_id", "title", "source_ref")}
+                                     for a in agent_artifacts.list_saved(self.owner)]}
 
     def list_tables(self, resource_id, kind="aurora", query=""):
         self._resource(kind, resource_id)
@@ -245,6 +248,9 @@ class Operations:
                 charts = [{"kind": "histogram" if c["filter_kind"] == "range" else "bar", "x": c["name"]}
                           for c in opened["columns"] if c["filter_kind"] in {"range", "categorical"}][:4]
             result = datasets.query(dataset_id, filters, charts, 0, 5)
+            agent_artifacts.save(self.owner, {"dataset_id": dataset_id, "title": title[:128],
+                "source_ref": ref, "filters": filters, "charts": charts,
+                "columns": [{"name": c["name"], "dtype": c.get("dtype")} for c in opened["columns"]]})
         except Exception:
             datasets.close_dataset(dataset_id)
             raise
@@ -261,6 +267,45 @@ class Operations:
         return {"dataset_id": dataset_id, "title": title[:128], "source_ref": ref,
                 "total": result["total"], "filtered": result["filtered"],
                 "scope": result.get("scope"), "columns": opened["columns"], "charts": result["charts"]}
+
+    def open_dashboard(self, dataset_id):
+        if len(self.actions) >= 4:
+            raise ValueError("At most four dashboards can be opened in one turn.")
+        saved = agent_artifacts.get(self.owner, dataset_id)
+        if saved["plan_id"]:
+            return self.open_workflow_results(saved["plan_id"])
+        ref = saved["source_ref"]
+        def check(source):
+            if source["kind"] == "join":
+                if source.get("allow_loaded"):
+                    raise ValueError("Reopen this preview in the visual join builder.")
+                check(source["base"])
+                for step in source["steps"]:
+                    check(step["source"])
+            elif source["kind"] in {"aurora", "s3"}:
+                self._table(source)
+            elif source["kind"] == "omop_cohort":
+                self._resource("aurora", source["resource_id"])
+            else:
+                raise ValueError("This saved source cannot be reopened by the Agent.")
+        check(ref)
+        opened = _main()._open_source(ref)
+        did = opened["dataset_id"]
+        try:
+            columns = [{"name": c["name"], "dtype": c.get("dtype")} for c in opened["columns"]]
+            if columns != saved["columns"]:
+                raise ValueError("The source schema changed. Inspect it and rebuild the dashboard.")
+            charts, filters = self._view_options(did, json.dumps(saved["charts"]), json.dumps(saved["filters"]))
+            result = datasets.query(did, filters, charts, 0, 5)
+        except Exception:
+            datasets.close_dataset(did)
+            raise
+        with _lock:
+            _dashboards[did] = {"owner": self.owner, "title": saved["title"],
+                "source_ref": ref, "filters": filters, "created": time.monotonic()}
+        self.actions.append({"dataset": opened, "title": saved["title"], "charts": charts, "filters": filters})
+        return {"dataset_id": did, "saved_dataset_id": dataset_id, "title": saved["title"],
+                "total": result["total"], "filtered": result["filtered"], "scope": result.get("scope")}
 
     def query_dashboard(self, dataset_id, filters_json="[]", charts_json="[]", entity_column=""):
         entry = _owned(self.owner, dataset_id)
@@ -321,7 +366,7 @@ class Operations:
 
     def callbacks(self):
         names = ("search_knowledge", "search_pubmed", "search_biorxiv", "list_sources", "list_tables", "inspect_table", "search_concepts", "count_cohort",
-                 "recommend_join", "build_dashboard", "query_dashboard", "check_grain", "list_workflows", "prepare_workflow",
+                 "recommend_join", "build_dashboard", "open_dashboard", "query_dashboard", "check_grain", "list_workflows", "prepare_workflow",
                  "workflow_status", "open_workflow_results")
         return {name: getattr(self, name) for name in names}
 
@@ -461,6 +506,8 @@ def _open_workflow_result(owner, plan_id):
     charts = [{"kind": "scatter", "x": "people", "y": "share_within_status"}]
     try:
         datasets.query(did, [], charts, 0, 5)
+        agent_artifacts.save(owner, {"dataset_id": did, "title": title, "source_ref": ref,
+            "filters": [], "charts": charts, "plan_id": plan_id})
     except Exception:
         datasets.close_dataset(did)
         raise

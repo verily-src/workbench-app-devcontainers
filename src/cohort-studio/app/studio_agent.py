@@ -41,7 +41,10 @@ _TOOLS = [
         "end_date": {"type": "string", "description": "YYYY-MM-DD"},
         "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
     }, ["query", "start_date", "end_date"]),
-    ("list_sources", "List sources visible in the current workspace.", {}),
+    ("list_sources", "List sources, open dashboards and saved dashboards. Use open_dashboard to restore a saved dashboard after restart; use its returned dataset_id for queries.", {}),
+    ("open_dashboard", "Reopen an owned saved dashboard, restoring filters and charts and querying current data. Returns a new dataset_id. Workflow results are verified again.", {
+        "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    }, ["dataset_id"]),
     ("list_tables", "List table metadata for a selected datasource, optionally filtering names.", {
         "resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
         "kind": {"type": "string", "enum": ["aurora", "s3"],

@@ -17,7 +17,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITES = {
-    "agent": ["test_agent_runtime.py", "test_studio_agent.py", "test_studio_agent_api.py",
+    "agent": ["test_agent_runtime.py", "test_studio_agent.py", "test_studio_agent_api.py", "test_agent_artifacts.py",
               "test_agent_instructions.py", "test_provider_adapters.py", "test_knowledge.py",
               "test_prompt_guardrails.py", "test_agent_workflows.py", "test_agent_results.py"],
     "jev": ["test_join_discovery.py"],

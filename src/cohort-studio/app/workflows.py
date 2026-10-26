@@ -13,6 +13,18 @@ _cache_at = 0.0
 
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"}
 
+def validate_healthomics_output(resource_uri: str, output_path: str, job_id: str) -> None:
+    definition_uri = (
+        f"{resource_uri.rstrip('/')}/{output_path.strip('/')}/{job_id}/"
+        f"_workbench_intermediate_files/{'0' * 36}/nextflow-def.zip"
+    )
+    if len(definition_uri) > 256:
+        raise ValueError(
+            "Output location is too long for HealthOmics workflow staging "
+            f"({len(definition_uri)} characters; maximum 256). Choose a shorter output path or job name."
+        )
+
+
 def _validate_job_inputs(batch_input_bucket_id: str,
                          batch_input_csv_path: str,
                          params_file_bucket_id: str,
@@ -105,7 +117,7 @@ def _normalize(job: dict, buckets: dict) -> dict:
 
         "output_bucket_name": bucket.get("bucket_name"),
         "output_bucket_resource": bucket.get("id"),
-        "status_message": msg[:200] if msg else None,
+        "status_message": msg[:1000] if msg else None,
     }
 
 def lineage_submission_metadata(workflow: str, job: dict,

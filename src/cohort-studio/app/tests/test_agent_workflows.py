@@ -43,7 +43,7 @@ def test_prepare_validates_workflow_resources_and_full_filtered_dataset():
         column: column for column in plans.REQUIRED_INPUT_COLUMNS}
     assert plan["input_resource_id"] == "input"
     assert plan["output_resource_id"] == "output"
-    assert plan["output_path"] == f"cohort-studio/agent-plans/{plan['id']}/results"
+    assert plan["output_path"] == f"cohort-studio/r/{plan['id'].replace('-', '')}"
     assert plan["errors"] == []
 
 
@@ -85,9 +85,9 @@ def test_approval_exports_frozen_filters_submits_once_and_refreshes_exact_run():
         assert args == (
             plans.WORKFLOW_ID, "input",
             f"cohort-studio/agent-plans/{plan['id']}/cohort.csv",
-            "output", f"cohort-studio/agent-plans/{plan['id']}/results",
+            "output", plan["output_path"],
             "input", f"cohort-studio/agent-plans/{plan['id']}/params.json",
-            f"cohort-genetics-{plan['id'][:12]}")
+            f"cg-{plan['id'].replace('-', '')[:12]}")
         return {"run_id": "run-123", "name": "genetics-demo",
                 "status": "PENDING", "output_bucket_resource": "output",
                 "output_bucket_path": "results/job-123", "secret": "do-not-return"}
@@ -232,7 +232,7 @@ def test_uncertain_submission_reconciles_after_restart_without_resubmit(agent_st
     assert "response lost" not in str(unknown)
 
     reopened_store = AgentPlanStore(engine=agent_store_fixture.engine)
-    job_id = f"cohort-genetics-{plan['id'][:12]}"
+    job_id = f"cg-{plan['id'].replace('-', '')[:12]}"
     expected_path = f"{plan['output_path']}/{job_id}"
     decoys = [
         {"run_id": "wrong-resource", "name": job_id, "status": "RUNNING",
@@ -347,3 +347,33 @@ def test_invalid_join_mapping_and_raw_exception_details_are_not_returned():
     failure = RuntimeError(f"provider failure: {secret} token=supersecret")
     safe = plans._safe_error(failure)
     assert secret not in safe and "supersecret" not in safe
+
+
+def test_managed_output_prefix_fits_healthomics_and_reports_failed_run():
+    uri = "s3://v0-saas-dev-us-east-1-workbench/nextflow_outputs-bugbash-nextflowonaws"
+    options = callbacks(output_uri=uri)
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **options)
+    assert plan["status"] == "ready"
+    snapshot = plans._repo().get(plan["id"], "alice")
+    definition = f"{uri}/{plan['output_path']}/{snapshot['job_id']}/_workbench_intermediate_files/{uuid.uuid4()}/nextflow-def.zip"
+    assert len(definition) <= 256
+    snapshot["status"] = "submission_unknown"
+    snapshot["errors"] = ["No exact matching workflow job was found."]
+    plans._repo().update(plan["id"], "alice", snapshot)
+    failure = "definitionUri failed to satisfy constraint: maximum 256"
+    result = plans.status(plan["id"], "alice", list_jobs=lambda **_: {"jobs": [{
+        "run_id": "existing-run", "name": snapshot["job_id"], "status": "FAILED",
+        "output_bucket_resource": "output",
+        "output_bucket_path": f"{plan['output_path']}/{snapshot['job_id']}",
+        "status_message": failure,
+    }]})
+    assert result["status"] == "failed"
+    assert result["run"]["run_id"] == "existing-run"
+    assert result["errors"] == [failure]
+    assert plans._repo().get(plan["id"], "alice")["errors"] == [failure]
+
+
+def test_prepare_blocks_overlong_healthomics_resource_prefix():
+    result = prepare(output_uri="s3://bucket/" + "x" * 240)
+    assert result["status"] == "blocked"
+    assert "maximum 256" in result["errors"][0]

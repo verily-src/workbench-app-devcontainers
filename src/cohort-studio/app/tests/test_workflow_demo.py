@@ -275,3 +275,19 @@ def test_workflow_submit_rejects_mixed_batch_and_params(monkeypatch):
             "workflow", "output", batch_input_bucket_id="input",
             batch_input_csv_path="cohort.csv", params_file_bucket_id="input",
             params_file_path="params.json")
+
+
+def test_demo_rejects_definition_uri_overflow_before_writes_or_submission(monkeypatch):
+    monkeypatch.setattr(main.db, "resolve_s3_uri", lambda _: "s3://bucket/" + "x" * 230)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Invalid output path must not write params or submit a job")
+    monkeypatch.setattr(main.workflows, "write_params_json", forbidden)
+    monkeypatch.setattr(main.workflows, "submit_job", forbidden)
+    response = client.post("/api/workflows/submit", json={
+        "workflow": "cohort-genetics-demo", "output_bucket_id": "output",
+        "job_id": "test", "params_file_bucket_id": "input",
+        "params_file_path": "params.json", "demo_input_resource_id": "input",
+        "demo_input_csv_path": "cohort.csv", "demo_output_path": "results",
+    })
+    assert response.status_code == 400, response.text
+    assert "maximum 256" in response.json()["detail"]

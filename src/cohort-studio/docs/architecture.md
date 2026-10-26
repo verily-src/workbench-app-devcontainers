@@ -776,3 +776,7 @@ values remain excluded. Without effective filters, full counts and chart buckets
 serve both full and selected results. Full-source semantics and stable paging are
 unchanged. Dataset-level query errors stop initial loading and provide retry;
 failed refreshes retain the previous successful result.
+
+### HealthOmics workflow staging paths (2026-10-26)
+
+Agent plans use compact UUID-based output paths and short job names. Preparation and the demo submit boundary validate the resulting Workbench definition URI, including its intermediate-files path and generated run UUID, against the HealthOmics 256-character limit before submission. Failed job recovery persists the actual service error; recovery never submits a replacement run. Source: https://docs.aws.amazon.com/omics/latest/api/API_CreateWorkflow.html.

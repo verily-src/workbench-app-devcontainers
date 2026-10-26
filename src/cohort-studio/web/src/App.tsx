@@ -10,10 +10,12 @@ import { JoinPanel } from "./components/JoinPanel";
 import { SourcePicker } from "./components/SourcePicker";
 import { PublishCatalog } from "./components/PublishCatalog";
 import { WorkflowsView } from "./components/WorkflowsView";
+import { StudioAgent } from "./components/StudioAgent";
 import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
 import { Tutorial } from "./components/Tutorial";
+import type { AgentDashboardAction } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
@@ -94,7 +96,7 @@ export default function App() {
   const [activity, setActivity] = useState("");
   const [error, setError] = useState("");
   const [view, setView] = useState<
-    "explore" | "workflows" | "lineage" | "settings">("explore");
+    "explore" | "agent" | "workflows" | "lineage" | "settings">("explore");
   const [exploreModes, setExploreModes] = useState<Record<string, "tables" | "omop">>({});
   const [tutorialOmopOpenedCount, setTutorialOmopOpenedCount] = useState(0);
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
@@ -629,7 +631,7 @@ export default function App() {
             <span className="brand-verily">verily</span> Cohort Studio
           </span>
           <nav className="topnav">
-            {(["explore", "workflows", "lineage", "settings"] as const)
+            {(["explore", "agent", "workflows", "lineage", "settings"] as const)
               .map((v) => (
               <span key={v} data-tutorial-target={`nav-${v}`}
                     className={`topnav-link${view === v ? " active" : ""}`}
@@ -682,7 +684,15 @@ export default function App() {
               setView("explore");
             }} />
           </div>
-          {view === "explore" && exploreMode === "omop" ? null : view === "settings" ? (
+          {view === "explore" && exploreMode === "omop" ? null : view === "agent" ? (
+            <StudioAgent onOpenDashboard={(action: AgentDashboardAction) => {
+              openResult(action.dataset, action.title, action.dataset.source_ref,
+                { filters: action.filters, charts: action.charts },
+                { forceNewTab: true });
+              setExploreMode("tables");
+              setView("explore");
+            }} />
+          ) : view === "settings" ? (
             <SettingsView onPaletteChange={setPalette} />
           ) : view === "workflows" ? (
             <WorkflowsView isSubscribed={alerts.isSubscribed}

@@ -702,3 +702,29 @@ view restores them. Unsaved browser state is not a durable conversation store.
 Dataset tool chat continues to use the existing server-owned session history.
 Appearance is a browser preference (light, dark or system), stored locally and
 applied through CSS variables; chart labels and palettes react to theme changes.
+
+### Studio Agent mode (2026-10-25)
+
+The Agent view uses the existing provider adapters, LangGraph tool runtime and
+Aurora conversation store in the app container. Its workspace-scoped history is
+bound to the browser's owner cookie. Ten bounded tools inspect exposed Aurora/S3
+sources, search OMOP concepts, count cohorts, request Jev join recommendations,
+build/query dashboards and prepare the registered genetics demo workflow.
+Jev evidence does not prove join validity. Raw SQL and workflow submission are not
+model tools. Cross-source loaded-preview consent stays in the visual join builder.
+
+Dashboard recipes use the same source validators, query engines, filters and
+chart APIs as Explore. Agent-created dataset ownership is held in a bounded
+in-process registry; app restart expires these handles, but conversation text
+remains in Aurora. Inspection and concept grounding must occur in the current
+turn before a new dashboard is built.
+
+Workflow proposals are owner-bound, immutable in-process plans with a 30-minute
+expiry. Explicit UI approval rechecks the source fingerprint, full filtered row
+count and canonical-to-source column map. Unique alias suffixes can map joined
+fields; ambiguous fields block preparation. Export projects the six workflow
+columns and stays below the synchronous export limit. A lock claims approval
+before export/submission; repeats cannot submit twice. Failed submission is not
+automatically retried because the remote outcome may be unknown. Run status
+matches the exact Workbench run ID. Output location metadata is not verification
+of output files; automated output validation/reopening remains a follow-up.

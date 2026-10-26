@@ -4,6 +4,10 @@ Updated 2026-10-25. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **Agent mode candidate, not deployed:** bounded Aurora/S3 discovery, Jev join evidence, OMOP/dashboard recipes and owner-scoped Aurora history. Explicit workflow approval validates joined-column mapping and prevents duplicate submission. Local combined PostgreSQL/API suite: 97 passed; Agent browser test and both builds passed. The older cohort-agent test now uses real session storage and configured provider fixtures, and passes. OpenCode GLM max static review: no confirmed blockers; noted in-process TTL/cap limits and ambiguous remote failures. It did not run tests independently. Live inference and output verification not claimed.
+
+- **Final active release 4a147d99e62c4bd9c79e610fbc43a00260a9acd2:** SSM `322b0dbc-552a-400e-ba30-f36288233707` verified SHA, healthy API and successful restart. Includes default Jev model fallback; 51 isolated Jev/settings checks passed. Live OMOP reopen and Jev inference passed immediately before this follow-up on 790219ca1. Agent mode is a next-phase local backlog item, not implemented by this release.
+
 - **LIVE checks passed on 790219ca1:** SSM `edd81d00-0721-4f9a-882c-39479c60a584` verified OMOP saved-source reopen at 29,553 people with matching first-page data and database scope. Jev token was readable but model blank; setting `jev-latest` resolved it. SSM `7603f89b-2648-4d8e-a1a2-a4653cf9ceb6` returned `used/configured:true`, valid sample_id recommendation and no Jev warnings. A follow-up code default uses `jev-latest` when no model is saved; explicit environment/saved models remain honored. Model reference: https://docs.typesafe.ai/models.
 
 - **DEPLOYED 790219ca12bd22b612e899b4c5b617445fb67cb9:** SSM `70a661a3-3b5c-436e-b29b-e0747ca02bfd` verified the active SHA, healthy API and successful staging/restart. Includes live OMOP source recipes, workflow lineage, saved Jev token resolution, collapsible saved filter history and Light/Dark/System appearance. Live OMOP/Jev checks running; no live UI clicks or new workflow run are claimed yet.

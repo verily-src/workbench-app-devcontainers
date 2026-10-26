@@ -193,6 +193,7 @@ class ExportCohortRequest(BaseModel):
     path: str
     filters: list[Filter] = Field(default_factory=list)
     workflow: str = ""
+    column_mapping: dict[str, str] = Field(default_factory=dict, max_length=6)
 
 class SubmitJobRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -368,7 +369,12 @@ def export_cohort(dataset_id: str, req: ExportCohortRequest):
     if req.workflow == "cohort-genetics-demo":
         required = ["person_id", "sample_id", "variant_id", "dosage",
                     "gender_concept_id", "year_of_birth"]
-        missing = [column for column in required if column not in filt.columns]
+        if set(req.column_mapping) - set(required):
+            raise HTTPException(400, "Unknown workflow output column.")
+        selected = [req.column_mapping.get(column, column) for column in required]
+        if len(set(selected)) != len(selected):
+            raise HTTPException(400, "Workflow columns must map to distinct source fields.")
+        missing = [column for column in selected if column not in filt.columns]
         if missing:
             raise HTTPException(
                 400, "Genetics demo export is missing required columns: "
@@ -377,7 +383,8 @@ def export_cohort(dataset_id: str, req: ExportCohortRequest):
             raise HTTPException(
                 413, "Genetics demo export reached the synchronous row limit; "
                 "reduce the cohort before exporting.")
-        filt = filt[required]
+        filt = filt[selected].copy()
+        filt.columns = required
     try:
         out = workflows.export_cohort_csv(
             filt, req.resource_id,
@@ -1506,6 +1513,9 @@ def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest):
                             "rows": len(df), "cohort": req.spec,
                             "concept_names": req.concept_names})
     return result
+
+from agent_mode_api import router as agent_mode_router
+app.include_router(agent_mode_router)
 
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():

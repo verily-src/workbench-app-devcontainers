@@ -1,0 +1,20 @@
+.studio-agent { max-width: 940px; height: calc(100vh - 150px); min-height: 420px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.studio-agent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.studio-agent-head h1 { margin: 0; font-size: 20px; }
+.studio-agent-head p { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; }
+.studio-agent-messages { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 10px 4px; }
+.studio-agent-empty { margin: auto; color: var(--ink-muted); }
+.studio-agent-message { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.studio-agent-message.user { align-items: flex-end; }
+.studio-agent-bubble { max-width: min(82%, 720px); white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 13px; border-radius: 12px; background: var(--surface); color: var(--ink); }
+.studio-agent-message.user .studio-agent-bubble { background: var(--accent); color: var(--on-accent); }
+.studio-agent-tools, .studio-agent-card { width: min(82%, 720px); box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--card); color: var(--ink); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-size: 13px; }
+.studio-agent-tools ul, .studio-agent-card ul { margin: 2px 0 0; padding-left: 20px; }
+.studio-agent-column-mapping { display: grid; grid-template-columns: 1fr; gap: 4px; align-items: baseline; }
+.studio-agent-column-mapping strong { grid-column: 1 / -1; }
+.studio-agent-column-mapping code { overflow-wrap: anywhere; }
+.studio-agent-card button { margin-top: 4px; }
+.studio-agent-input { display: flex; align-items: end; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
+.studio-agent-input textarea { flex: 1; resize: vertical; min-height: 54px; max-height: 180px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; background: var(--card); color: var(--ink); font: inherit; }
+.studio-agent-error { margin: 0; color: var(--danger, #b42318); font-size: 13px; }
+@media (max-width: 700px) { .studio-agent { height: calc(100vh - 125px); } .studio-agent-bubble, .studio-agent-tools, .studio-agent-card { max-width: 95%; width: 95%; } }

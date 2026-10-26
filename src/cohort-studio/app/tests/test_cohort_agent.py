@@ -2,6 +2,7 @@ import json
 
 import cohort_agent
 import main
+from tests.test_agent_store import agent_store
 from fastapi.testclient import TestClient
 
 INFO = {"version": "5.4", "cdm_schema": "cdm", "vocab_schema": "vocab"}
@@ -32,25 +33,27 @@ def test_endpoint_reports_missing_config_with_400(monkeypatch):
     assert "No OpenRouter API key" in response.json()["detail"]
 
 
-def test_endpoint_returns_result_and_records_turn(monkeypatch):
+def test_endpoint_returns_result_and_preserves_conversation(monkeypatch, agent_store):
+    import agent_store as storage
+    import config
+    import providers
+    monkeypatch.setattr(storage, "AgentStore", lambda: agent_store)
     monkeypatch.setattr(main, "_omop_cdm", lambda _rid: (object(), INFO))
-    monkeypatch.setattr(cohort_agent, "chat", lambda *args, **kwargs: {
-        "reply": "Proposed asthma cohort.", "spec": {"criteria": []},
-        "count": None, "reason": "asthma", "provider": "openrouter",
-        "model": "model", "usage": {"total_tokens": 9},
-        "tool_calls": ["propose_cohort"]})
-    recorded = []
-    monkeypatch.setattr(main, "_record_turn", lambda *a, **k: recorded.append((a, k)))
-    response = client.post("/api/omop/test-resource/cohort/agent", json={
-        "message": "Build an asthma cohort",
-        "history": [{"role": "user", "content": "Earlier"}],
-        "spec": {"criteria": []}})
-    assert response.status_code == 200
+    monkeypatch.setattr(config, "get_llm_config", lambda: {
+        "provider": "openrouter", "api_key": "test-key", "model": "test", "base_url": None})
+    monkeypatch.setattr(providers, "run", lambda *args, **kwargs: {
+        "reply": "Which clinical events should define the cohort?",
+        "usage": {"prompt_tokens": 5, "completion_tokens": 4}, "tool_calls": []})
+    local = TestClient(main.app)
+    response = local.post("/api/omop/test-resource/cohort/agent", json={
+        "message": "Build a cohort", "spec": {"criteria": []}})
+    assert response.status_code == 200, response.text
     body = response.json()
-    assert body["reply"] == "Proposed asthma cohort."
-    assert body["reason"] == "asthma"
-    assert body["trace_id"]
-    assert recorded[-1][1]["result"]["usage"]["total_tokens"] == 9
+    assert body["session_id"]
+    assert body["spec"] is None
+    history = local.get("/api/omop/test-resource/cohort/agent/history").json()
+    assert history["session_id"] == body["session_id"]
+    assert history["messages"][-1]["content"] == body["reply"]
 
 
 def test_omop_request_validation_is_strict_and_returns_400():

@@ -95,6 +95,47 @@ export interface ChatHistory {
   next_before_message_id: number | null;
 }
 
+export interface AgentDashboardAction {
+  dataset: OpenResult;
+  title: string;
+  charts: ChartSpec[];
+  filters: Filter[];
+}
+
+export interface AgentWorkflowPlan {
+  id: string;
+  workflow: string;
+  dataset_id: string;
+  rows: number;
+  required_columns: string[];
+  column_mapping?: Record<string, string>;
+  input_resource_id: string;
+  output_resource_id: string;
+  output_path?: string;
+  status: "ready" | "blocked";
+  errors: string[];
+}
+
+export interface StudioAgentResponse {
+  reply: string;
+  session_id: string;
+  trace_id: string;
+  tool_calls: string[];
+  actions: AgentDashboardAction[];
+  workflow_plans: AgentWorkflowPlan[];
+}
+
+export interface AgentWorkflowApproval {
+  status: string;
+  run?: { run_id?: string; status?: string; [key: string]: unknown } | null;
+  results_location?: string | null;
+  error?: string | null;
+}
+
+export interface AgentWorkflowStatus extends AgentWorkflowApproval {
+  output?: unknown;
+}
+
 export interface AgentTurn {
   ts: string;
   trace_id: string;
@@ -191,6 +232,21 @@ export const api = {
     if (before !== undefined) query.set("before", String(before));
     return request<ChatHistory>(`${path}?${query}`);
   },
+  agentChatHistory: (sessionId?: string, before?: number) => {
+    const query = new URLSearchParams();
+    if (sessionId) query.set("session_id", sessionId);
+    if (before !== undefined) query.set("before", String(before));
+    return request<ChatHistory>(`/api/agent/chat/history?${query}`);
+  },
+  agentChat: (message: string, sessionId?: string) =>
+    request<StudioAgentResponse>("/api/agent/chat",
+      post({ message, session_id: sessionId })),
+  approveAgentWorkflow: (planId: string) =>
+    request<AgentWorkflowApproval>(
+      `/api/agent/workflows/${encodeURIComponent(planId)}/approve`, post({})),
+  agentWorkflowStatus: (planId: string) =>
+    request<AgentWorkflowStatus>(
+      `/api/agent/workflows/${encodeURIComponent(planId)}/status`),
   omopAgent: (id: string, message: string,
               _history: { role: string; content: string }[], spec: OmopSpec, sessionId?: string) =>
     request<CohortAgentResult>(`/api/omop/${encodeURIComponent(id)}/cohort/agent`,

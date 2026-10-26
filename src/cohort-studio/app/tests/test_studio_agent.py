@@ -174,3 +174,24 @@ def test_count_tool_returns_safe_actionable_validation_and_timeout_errors():
     assert "AKIA" not in json.dumps(secret)
     empty = invoke(lambda **_args: (_ for _ in ()).throw(ValueError("")))
     assert empty["error"]
+
+
+@pytest.mark.parametrize("name,status", [("prepare_workflow", "blocked"), ("list_sources", "ready")])
+def test_only_ready_workflow_preparation_stops_runtime(name, status):
+    from langchain_core.messages import AIMessage
+    calls = []
+    impls = {tool.__name__: tool for tool in studio_agent.build_tools({
+        name: lambda **args: {"status": status},
+    })}
+    args = ({"dataset_id": "d", "input_resource_id": "input", "output_resource_id": "output"}
+            if name == "prepare_workflow" else {})
+    def model_call(*unused):
+        calls.append(1)
+        if len(calls) == 1:
+            return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": "1"}])
+        return AIMessage(content="Tool result reviewed.")
+    result = agent_runtime.run("openai", "test", "system", [], impls,
+                               studio_agent.TOOL_SCHEMAS, model_call)
+    assert len(calls) == 2
+    assert "completion_reason" not in result
+    assert result["reply"] == "Tool result reviewed."

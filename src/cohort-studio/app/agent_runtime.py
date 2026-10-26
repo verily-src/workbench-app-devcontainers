@@ -28,15 +28,18 @@ class AgentState(TypedDict):
     failed_signatures: dict[str, str]
     failure_counts: dict[str, int]
     stop_reply: str
+    completion_reply: str
     limit_reached: bool
     limit_reason: str
     reply: str
 
 
 class AgentToolResult(str):
-    def __new__(cls, value: str, failure: dict[str, str] | None = None):
+    def __new__(cls, value: str, failure: dict[str, str] | None = None,
+                completion_reply: str = ""):
         result = super().__new__(cls, value)
         result.failure = failure
+        result.completion_reply = completion_reply
         return result
 
 
@@ -195,6 +198,7 @@ def run(provider: str, model: str, system: str, messages: list[dict],
         stop_reply = state["stop_reply"]
         limit_reached = state["limit_reached"]
         limit_reason = ""
+        completion_reply = ""
         for call in assistant.tool_calls:
             name = call.get("name", "")
             call_id = call.get("id") or f"tool-{state['turns']}-{len(calls)}"
@@ -203,6 +207,7 @@ def run(provider: str, model: str, system: str, messages: list[dict],
             signature = _signature(name, call.get("args") or {})
             error = None
             failure_text = "The tool call failed."
+            tool_value = None
             try:
                 if stop_reply:
                     result = json.dumps({"error": "Execution stopped after repeated tool failures.",
@@ -293,9 +298,14 @@ def run(provider: str, model: str, system: str, messages: list[dict],
             if error:
                 event["error_code"] = error
             emit(event)
+            if not error and isinstance(tool_value, AgentToolResult) and tool_value.completion_reply:
+                completion_reply = tool_value.completion_reply
+                emit({"type": "approval_required", "turn": state["turns"], "tool_name": name})
+                break
         return {"messages": results, "tool_calls": calls, "tool_results": tool_results,
                 "failed_signatures": failed_signatures, "failure_counts": failure_counts,
-                "stop_reply": stop_reply, "limit_reached": limit_reached,
+                "stop_reply": stop_reply, "completion_reply": completion_reply,
+                "limit_reached": limit_reached,
                 **({"limit_reason": limit_reason} if limit_reason else {})}
 
     def route_after_model(state: AgentState) -> str:
@@ -308,6 +318,8 @@ def run(provider: str, model: str, system: str, messages: list[dict],
         return "tools"
 
     def route_after_tools(state: AgentState) -> str:
+        if state["completion_reply"]:
+            return "complete"
         if state["stop_reply"]:
             return "stop"
         if state["limit_reached"] or state["turns"] >= max_turns or time.monotonic() >= deadline:
@@ -329,13 +341,15 @@ def run(provider: str, model: str, system: str, messages: list[dict],
     graph.add_node("tools", execute_tools)
     graph.add_node("limit", limit)
     graph.add_node("stop", stop)
+    graph.add_node("complete", lambda state: {"reply": state["completion_reply"]})
     graph.add_edge(START, "model")
     graph.add_conditional_edges("model", route_after_model,
                                 {"tools": "tools", "limit": "limit", END: END})
     graph.add_conditional_edges("tools", route_after_tools,
-                                {"model": "model", "limit": "limit", "stop": "stop"})
+                                {"model": "model", "limit": "limit", "stop": "stop", "complete": "complete"})
     graph.add_edge("limit", END)
     graph.add_edge("stop", END)
+    graph.add_edge("complete", END)
     with tracing_context(enabled=False):
         result = graph.compile().invoke({
             "messages": initial_messages,
@@ -346,6 +360,7 @@ def run(provider: str, model: str, system: str, messages: list[dict],
             "failed_signatures": {},
             "failure_counts": {},
             "stop_reply": "",
+            "completion_reply": "",
             "limit_reached": False,
             "limit_reason": "",
             "reply": "",
@@ -356,4 +371,5 @@ def run(provider: str, model: str, system: str, messages: list[dict],
             "limit_reached": result.get("limit_reached", False),
             **({"limit_reason": result["limit_reason"]}
                if result.get("limit_reason") else {}),
+            **({"completion_reason": "approval_required"} if result.get("completion_reply") else {}),
             **({"stop_reason": "tool_failures"} if result.get("stop_reply") else {})}

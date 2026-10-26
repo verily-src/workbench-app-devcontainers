@@ -3,10 +3,11 @@ import json
 import threading
 import time
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 import agent_sessions
 import datasets
@@ -28,6 +29,7 @@ class AgentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     message: str = Field(min_length=1, max_length=8000)
     session_id: uuid.UUID | None = Field(default=None, strict=False)
+    new_session: bool = False
 
     @field_validator("message")
     @classmethod
@@ -35,6 +37,12 @@ class AgentRequest(BaseModel):
         if not value.strip():
             raise ValueError("Enter a request.")
         return value.strip()
+
+    @model_validator(mode="after")
+    def session_choice(self):
+        if self.new_session and self.session_id is not None:
+            raise ValueError("Choose an existing conversation or start a new one.")
+        return self
 
 
 class AgentFilter(BaseModel):
@@ -48,6 +56,18 @@ class AgentFilter(BaseModel):
 
 class ApprovalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class AgentSessionSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: uuid.UUID
+    title: str = Field(max_length=80)
+    updated_at: datetime
+
+
+class AgentSessionsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sessions: list[AgentSessionSummary] = Field(max_length=50)
 
 
 def _main():
@@ -290,7 +310,9 @@ def chat(req: AgentRequest, request: Request, response: Response):
     owner = agent_sessions.owner(request, response)
     operations = Operations(owner)
     try:
-        with agent_sessions.bind(owner, _SCOPE, str(req.session_id) if req.session_id else None):
+        with agent_sessions.bind(owner, _SCOPE,
+                                 str(req.session_id) if req.session_id else None,
+                                 new_session=req.new_session):
             result = studio_agent.chat(req.message, operations.callbacks())
             agent_sessions.finish(result)
         return {**result, "actions": operations.actions, "workflow_plans": operations.workflow_plans}
@@ -302,6 +324,15 @@ def chat(req: AgentRequest, request: Request, response: Response):
 def history(request: Request, response: Response, session_id: uuid.UUID | None = None,
             before: int | None = None):
     return agent_sessions.history(agent_sessions.owner(request, response), _SCOPE, session_id, before)
+
+
+@router.get("/chat/sessions", response_model=AgentSessionsResponse,
+             description="Lists up to 50 recent sessions for this owner and workspace. Older sessions remain available by explicit session ID.")
+def list_sessions(request: Request, response: Response):
+    from agent_store import AgentStore
+    sessions = AgentStore().list_sessions(
+        owner=agent_sessions.owner(request, response), scope=_SCOPE, limit=50)
+    return AgentSessionsResponse(sessions=sessions)
 
 
 

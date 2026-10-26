@@ -76,6 +76,10 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     page.route("**/api/agent/workflows", lambda route: fulfill(route, {
         "plans": stored_plans,
     }))
+    page.route("**/api/agent/chat/sessions", lambda route: fulfill(route, {
+        "sessions": [{"session_id": session_id, "title": "Liver cohort analysis",
+                      "updated_at": "2026-10-26T12:00:00Z"}],
+    }))
 
     def chat(route):
         body = route.request.post_data_json
@@ -155,7 +159,9 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     box.fill("Analyze the liver cohort and prepare a summary workflow")
     page.get_by_role("button", name="Send", exact=True).click()
     expect(page.get_by_text(reply, exact=True)).to_be_visible()
-    expect(page.get_by_text("Tool results", exact=True)).to_be_visible()
+    tool_results = page.locator("details[aria-label='Tool results']")
+    expect(tool_results.locator("summary")).to_contain_text("Tool results (2)")
+    tool_results.locator("summary").click()
     expect(page.get_by_text("count_cohort · Completed", exact=True)).to_be_visible()
     expect(page.get_by_text("prepare_dashboard · Completed", exact=True)).to_be_visible()
     plan_card = page.locator(".workflow-plan", has_text="cohort-summary")
@@ -211,10 +217,12 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     expect(page.get_by_text("Earlier answer", exact=True)).to_be_visible()
     expect(page.get_by_text(reply, exact=True)).to_be_visible()
     assert chat_requests == [{"message": "Analyze the liver cohort and prepare a summary workflow",
-                              "session_id": session_id}]
+                              "session_id": session_id, "new_session": False}]
     box.fill("Run into the agent limit")
     page.get_by_role("button", name="Send", exact=True).click()
+    failed_steps = page.locator("details[aria-label='Tool results']").last
+    failed_steps.locator("summary").click()
     expect(page.get_by_text("inspect_table · Failed", exact=True)).to_be_visible()
-    expect(page.get_by_text("The agent stopped at its time or step limit. Some requested steps may not have run.", exact=True)).to_be_visible()
+    expect(page.get_by_text("The agent stopped before completing the request. Review the failed steps before retrying.", exact=True)).to_be_visible()
     assert chat_requests[-1] == {"message": "Run into the agent limit",
-                                 "session_id": session_id}
+                                 "session_id": session_id, "new_session": False}

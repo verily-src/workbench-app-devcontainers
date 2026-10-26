@@ -1,0 +1,7 @@
+.agent-integrations { border-top: 1px solid var(--border); padding-top: 10px; font-size: 12px; }
+.agent-integrations > summary { cursor: pointer; color: var(--ink-soft); }
+.agent-integrations-body { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; max-height: 280px; overflow-y: auto; }
+.agent-integrations-body p { margin: 0; color: var(--ink-muted); line-height: 1.45; }
+.agent-integrations-body ul { display: flex; flex-direction: column; gap: 9px; list-style: none; margin: 0; padding: 0; }
+.agent-integration { display: flex; flex-direction: column; gap: 2px; }
+.agent-integration > :last-child { font-size: 11px; color: var(--ink-muted); }

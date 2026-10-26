@@ -334,3 +334,38 @@ def test_projected_omop_genetics_join_prepares_complete_workflow(workspace, monk
     assert set(plan["column_mapping"]) == set(agent_workflows.REQUIRED_INPUT_COLUMNS)
     assert plan["column_mapping"]["sample_id"] == "samples → sample_id"
     assert plan["column_mapping"]["variant_id"] == "genotypes → variant_id"
+
+    import agent_runtime
+    import agent_sessions
+    import studio_agent
+    from langchain_core.messages import AIMessage
+    model_calls = []
+    def provider(_provider, _model, _key, _base, system, messages, impls, **kwargs):
+        def model_call(*args):
+            model_calls.append(1)
+            assert len(model_calls) == 1, "No paid model call is needed after the ready plan"
+            return AIMessage(content="", tool_calls=[
+                {"name": "prepare_workflow", "id": "prepare", "args": {
+                    "dataset_id": built["dataset_id"], "input_resource_id": "input", "output_resource_id": "output"}},
+                {"name": "list_sources", "id": "unnecessary", "args": {}},
+            ])
+        return agent_runtime.run("openai", "test", system, messages, impls,
+                                 kwargs["tool_schemas"], model_call, on_step=kwargs.get("on_step"), max_turns=1)
+    monkeypatch.setattr(providers, "run", provider)
+    with agent_sessions.bind(ops.owner, "workspace:agent-mode", None):
+        reply = studio_agent.chat("Prepare this workflow and stop for approval", ops.callbacks())
+        agent_sessions.finish(reply)
+    assert reply["completion_reason"] == "approval_required"
+    assert reply["run_status"] == "completed"
+    assert not reply["limit_reached"]
+    assert reply["tool_calls"] == ["prepare_workflow"]
+    assert "No workflow has been submitted" in reply["reply"]
+    assert ops.workflow_plans[-1]["status"] == "ready"
+    with store_module.AgentStore().engine.connect() as conn:
+        status = conn.execute(text("SELECT status FROM _studio_agent.runs WHERE run_id=:id"),
+                              {"id": reply["trace_id"]}).scalar_one()
+    assert status == "completed"
+    with store_module.AgentStore().engine.connect() as conn:
+        boundary = conn.execute(text("SELECT count(*) FROM _studio_agent.events WHERE run_id=:id AND kind='approval_required'"),
+                                {"id": reply["trace_id"]}).scalar_one()
+    assert boundary == 1

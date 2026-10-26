@@ -67,12 +67,16 @@ class Session:
     session_id: str | None
     turn: object = None
     timings: dict = field(default_factory=dict)
+    new_session: bool = False
 
 
 @contextmanager
-def bind(owner_id: str, scope: str, session_id: str | None):
+def bind(owner_id: str, scope: str, session_id: str | None, *, new_session: bool = False):
+    if new_session and session_id is not None:
+        raise ValueError("Choose an existing conversation or start a new one.")
     from agent_store import AgentStore
-    session = Session(AgentStore(), owner_id, scope, session_id)
+    session = Session(AgentStore(), owner_id, scope, session_id,
+                      new_session=new_session)
     token = _current.set(session)
     try:
         yield session
@@ -88,7 +92,9 @@ def start(system: str, cfg: dict, message: str) -> list[dict] | None:
     session = _current.get()
     if session is None:
         return None
-    identifier = session.session_id or session.store.latest(owner=session.owner, scope=session.scope)
+    identifier = session.session_id
+    if identifier is None and not session.new_session:
+        identifier = session.store.latest(owner=session.owner, scope=session.scope)
     session.turn = session.store.begin(
         session_id=identifier, owner=session.owner, scope=session.scope,
         system_prompt=system, user_message=message,

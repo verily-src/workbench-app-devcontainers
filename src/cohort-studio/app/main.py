@@ -1,4 +1,6 @@
 import execution
+import grain
+import operational_store
 import logging
 import time
 import uuid
@@ -74,6 +76,7 @@ async def lifespan(_app: FastAPI):
         export_jobs.shutdown()
         view_jobs.shutdown()
         datasets.clear()
+        operational_store.shutdown()
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
 app.middleware("http")(execution.trace_request)
@@ -1686,6 +1689,44 @@ def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest):
 
 from agent_mode_api import router as agent_mode_router
 app.include_router(agent_mode_router)
+
+
+@app.get("/api/performance")
+def performance(request: Request, response: Response):
+    return operational_store.store().summary(agent_sessions.owner(request, response))
+
+
+@app.get("/api/datasets/{dataset_id}/grain")
+def get_grain(dataset_id: str):
+    try:
+        return grain.get(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+
+
+@app.put("/api/datasets/{dataset_id}/grain")
+def save_grain(dataset_id: str, req: grain.Definition):
+    try:
+        return grain.save(dataset_id, req.model_dump())
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.post("/api/datasets/{dataset_id}/grain/check")
+def check_grain(dataset_id: str):
+    try:
+        return grain.check(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except execution.Busy as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": "1"})
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception:
+        raise HTTPException(502, "Could not check the key. Retry or narrow the source.")
+
 
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():

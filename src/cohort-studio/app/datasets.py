@@ -1,3 +1,4 @@
+import sqlite3
 import execution
 import count_contract
 import threading
@@ -210,6 +211,11 @@ def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
           entity_column: str | None = None, refresh: bool = False) -> dict:
     result = _query(dataset_id, filters, chart_specs, page, page_size, entity_column, refresh)
     result["count_contract"] = count_contract.describe(entity_column, result)
+    import grain
+    try:
+        result["count_contract"]["declared_grain"] = grain.get(dataset_id)
+    except (OSError, sqlite3.Error):
+        result["count_contract"]["declared_grain"] = {"definition": None, "available": False}
     return result
 
 def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],

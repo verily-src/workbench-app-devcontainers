@@ -4,6 +4,7 @@ import type { ExportJob } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
+import { GrainSettings } from "./GrainSettings";
 import { ColumnSettings } from "./ColumnSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
@@ -262,6 +263,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         {dataset.sourceRef?.kind === "join" && <button className="quiet"
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
+        <GrainSettings key={dataset.id} dataset={dataset} onUpdate={onUpdate} />
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
           {creatingExport ? "Starting export…" : "Export TSV"}
         </button>

@@ -21,6 +21,8 @@ SUITES = {
               "test_agent_instructions.py", "test_provider_adapters.py", "test_knowledge.py",
               "test_prompt_guardrails.py", "test_agent_workflows.py", "test_agent_results.py"],
     "jev": ["test_join_discovery.py"],
+    "engineering": ["test_grain_performance.py", "test_execution_contract.py", "test_data_jobs.py",
+                    "test_export_jobs.py", "test_saved_snapshots.py"],
     "demo": ["test_demo_roundtrip.py", "test_stage_storage.py", "test_join_s3_api.py"],
 }
 
@@ -77,6 +79,7 @@ def pg():
                              host=details["host"], port=int(details.get("port", 5432)), database=name).render_as_string(hide_password=False)
             env = {**os.environ, "COHORT_TEST_APP": str(ROOT / "app"), "COHORT_TEST_SCRIPTS": str(ROOT / "scripts"),
                    "COHORT_TEST_DB_URL": url, "COHORT_TEST_PG_DSN": dsn,
+                   "STUDIO_OPERATIONS_PATH": str(suite / "operations.sqlite3"),
                    "STUDIO_KNOWLEDGE_PATH": str(suite / "knowledge.sqlite3"), "STUDIO_KB_EMBEDDINGS": "off"}
             if args.nextflow:
                 env["STUDIO_EVAL_NEXTFLOW"] = str(Path(args.nextflow).resolve())

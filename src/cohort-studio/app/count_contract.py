@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CountContract(BaseModel):
@@ -24,3 +24,16 @@ def describe(entity_column=None, result=None):
                                "unique_non_null" if result["entity"]["total"] == total else
                                "duplicates_or_nulls")
     return contract.model_dump()
+
+
+class Definition(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    entity: Literal['person', 'sample', 'variant', 'event', 'summary', 'other']
+    keys: list[str] = Field(min_length=1, max_length=8)
+
+    @field_validator('keys')
+    @classmethod
+    def validate_keys(cls, values):
+        if len(set(values)) != len(values) or any(not v.strip() or len(v) > 512 for v in values):
+            raise ValueError('Use distinct, nonblank key columns.')
+        return values

@@ -741,3 +741,10 @@ button.link:hover { text-decoration: underline; }
 .tab-rename input { min-width: 140px; max-width: 280px; }
 
 .app-agent > .sidebar { display: none; }
+
+.performance-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.performance-table th, .performance-table td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
+.performance-table th:nth-child(n+3), .performance-table td:nth-child(n+3) { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) {
+  .column-settings-panel { position: fixed; top: 80px; left: 12px; right: 12px; width: auto; max-height: calc(100vh - 100px); }
+}

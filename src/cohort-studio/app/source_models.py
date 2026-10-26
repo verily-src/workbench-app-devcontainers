@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Union
 from pydantic import (BaseModel, ConfigDict, Field, TypeAdapter, field_validator,
                       model_validator)
 
+from count_contract import Definition
 import sql_source
 import internal_data
 import omop
@@ -56,6 +57,7 @@ class TableSource(BaseModel):
     table: str = Field(min_length=1, max_length=2048)
     schema_name: str | None = Field(default=None, alias="schema", min_length=1, max_length=128)
     uuid: str | None = None
+    grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
     @model_validator(mode="after")
@@ -71,6 +73,7 @@ class SQLSource(BaseModel):
     resource_id: str = Field(min_length=1, max_length=256)
     sql: str = Field(min_length=1, max_length=20_000)
     name: str | None = Field(default=None, max_length=128)
+    grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
     @field_validator("sql")
@@ -92,6 +95,7 @@ class MaterializedSource(BaseModel):
     kind: Literal["materialized"]
     resource_id: str = Field(min_length=1, max_length=256)
     materialized_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
@@ -102,6 +106,7 @@ class OmopCohortSource(BaseModel):
     spec: dict
     membership_mode: Literal["live"] = "live"
     name: str | None = Field(default=None, min_length=1, max_length=128)
+    grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
     @field_validator("spec")
@@ -142,6 +147,7 @@ class JoinSource(BaseModel):
     allow_loaded: bool = False
     base: SourceRef
     steps: list[SourceStep] = Field(min_length=1, max_length=6)
+    grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
@@ -150,6 +156,7 @@ class DerivedSource(BaseModel):
     kind: Literal["derived"]
     base: SourceRef
     spec: DerivedSpec
+    grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 

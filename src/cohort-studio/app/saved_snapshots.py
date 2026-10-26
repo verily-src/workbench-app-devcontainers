@@ -239,6 +239,8 @@ def portable_recipe_state(state: dict) -> dict:
             recipe = expand(metadata["recipe"], visiting | {key})
             if source.get("settings"):
                 recipe["settings"] = source["settings"]
+            if source.get("grain"):
+                recipe["grain"] = source["grain"]
             return source_dict(recipe)
         if kind == "join":
             source["base"] = expand(source["base"], visiting)
@@ -316,6 +318,8 @@ def save(resource_id: str, name: str, state: dict, compile_source,
                     source_ref = dict(metadata["source_ref"])
                     if source.get("settings"):
                         source_ref["settings"] = source["settings"]
+                    if source.get("grain"):
+                        source_ref["grain"] = source["grain"]
                     dataset["source"] = source_ref
                     dataset["snapshot"] = _snapshot_meta(metadata)
                     candidates.add(source_ref["materialized_id"])
@@ -332,6 +336,8 @@ def save(resource_id: str, name: str, state: dict, compile_source,
                 source_ref = dict(metadata["source_ref"])
                 if source.get("settings"):
                     source_ref["settings"] = source["settings"]
+                if source.get("grain"):
+                    source_ref["grain"] = source["grain"]
                 dataset["source"] = source_ref
                 dataset["snapshot"] = _snapshot_meta(metadata)
                 candidates.add(source_ref["materialized_id"])

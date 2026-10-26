@@ -51,3 +51,5 @@ Keep live provider evaluations separate, use public synthetic metadata, and
 record the provider/model version. Run the live demo with explicit workflow
 approval and verify its exact run ID and output checksums before interpreting
 results. Existing live-demo evidence is in `DEMO_OMOP_GENETICS.md`.
+
+The `engineering` suite covers persistent grain/key contracts, composite-key checks in PostgreSQL and DuckDB, saved snapshots, owner-aware admission, metrics privacy/retention/restart, and export jobs. It is included in `all`. Metrics use a fresh SQLite file per run.

@@ -268,6 +268,11 @@ class Operations:
         return datasets.query(dataset_id, entry["filters"] + filters, charts, 0, 5,
                               entity_column=entity_column or None)
 
+    def check_grain(self, dataset_id):
+        _owned(self.owner, dataset_id)
+        import grain
+        return grain.check(dataset_id)
+
     def list_workflows(self):
         import agent_workflows
         return {"registry": workflows.list_workflows(), "jobs": workflows.list_jobs(),
@@ -316,7 +321,7 @@ class Operations:
 
     def callbacks(self):
         names = ("search_knowledge", "search_pubmed", "search_biorxiv", "list_sources", "list_tables", "inspect_table", "search_concepts", "count_cohort",
-                 "recommend_join", "build_dashboard", "query_dashboard", "list_workflows", "prepare_workflow",
+                 "recommend_join", "build_dashboard", "query_dashboard", "check_grain", "list_workflows", "prepare_workflow",
                  "workflow_status", "open_workflow_results")
         return {name: getattr(self, name) for name in names}
 

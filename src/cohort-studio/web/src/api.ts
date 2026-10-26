@@ -1,7 +1,7 @@
 import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
-  SourceRef,
+  SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
   SavedViewJob, SavedViewList,
 } from "./types";
@@ -304,6 +304,10 @@ export interface ExportJob {
 }
 
 export const api = {
+  grain: (id: string) => request<GrainInfo>(`/api/datasets/${id}/grain`),
+  saveGrain: (id: string, definition: GrainDefinition) => request<GrainInfo>(`/api/datasets/${id}/grain`, {...post(definition), method: "PUT"}),
+  checkGrain: (id: string) => request<GrainCheck>(`/api/datasets/${id}/grain/check`, post({})),
+  performance: () => request<PerformanceSummary>("/api/performance"),
   createSource: (body: CreateSourceRequest) =>
     request<{ kind: string; id: string; label: string }>("/api/sources", post(body)),
 

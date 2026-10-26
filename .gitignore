@@ -22,3 +22,5 @@ test-results/
 # Local agent state
 .claude/settings.local.json
 .claude/worktrees/
+
+.studio-operations.sqlite3*

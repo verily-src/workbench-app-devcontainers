@@ -1,3 +1,4 @@
+import { PerformancePanel } from "./PerformancePanel";
 import { useEffect, useState } from "react";
 import { KnowledgeBase } from "./KnowledgeBase";
 import { api, AppConfig, MCPConnection, Provider } from "../api";
@@ -526,6 +527,7 @@ export function SettingsView(
       </div>
 
       {connectionsStatus && <div className="settings-status" role="status">{connectionsStatus}</div>}
+      <PerformancePanel />
       <KnowledgeBase />
       {status && <div className="settings-status">{status}</div>}
     </div>

@@ -200,6 +200,29 @@ def test_jev_receives_metadata_only_and_returns_validated_classification(
     ]
     assert body["candidates"][0]["method"] == "jev"
     assert body["candidates"][0]["confidence"] == 0.9
+    assert {item["column"] for item in body["classifications"]} == {
+        "person_id", "subject_id", "age", "gender"}
+    assert all(item["role"] == "person" and item["probability"] == 0.9
+               for item in body["classifications"])
+    opened = []
+    try:
+        for table in (left, right):
+            response = client.post("/api/datasets/open", json={"source_ref": _ref(table)})
+            assert response.status_code == 200, response.text
+            opened.append(response.json()["dataset_id"])
+        joined = client.post("/api/datasets/join", json={
+            "base_id": opened[0], "steps": [{"right_id": opened[1], "how": "inner",
+            "conditions": [{"left": key["left"], "right": key["right"], "op": "="}
+                           for key in body["candidates"][0]["keys"]]}]})
+        assert joined.status_code == 200, joined.text
+        opened.append(joined.json()["dataset_id"])
+        assert joined.json()["rows"] == 1
+        queried = client.post(f"/api/datasets/{opened[-1]}/query", json={}).json()
+        assert queried["rows"]["data"][0][0] == 987654321
+    finally:
+        import datasets
+        for did in opened:
+            datasets.close_dataset(did)
     assert len(requests) == 2
     request, payload = requests[0]
     assert request.full_url == "https://api.typesafe.ai/v1/systemone"
@@ -262,3 +285,40 @@ def test_jev_failure_or_invalid_answer_keeps_only_deterministic_candidate(
         with engine.begin() as conn:
             conn.execute(text(f'DROP TABLE IF EXISTS public."{left}"'))
             conn.execute(text(f'DROP TABLE IF EXISTS public."{right}"'))
+
+
+@pytest.mark.parametrize("left_role,right_role,probability,right_family,expected", [
+    ("person", "person", 0.9, "number", True),
+    ("sample", "sample", 0.9, "number", True),
+    ("variant", "variant", 0.9, "number", True),
+    ("person", "clinical_event", 0.9, "number", False),
+    ("concept", "variant", 0.9, "number", False),
+    ("unknown", "unknown", 0.9, "number", False),
+    ("person", "person", 0.55, "number", False),
+    ("person", "person", 0.9, "text", False),
+])
+def test_jev_entity_classification_abstains_without_compatible_evidence(
+        monkeypatch, left_role, right_role, probability, right_family, expected):
+    def metadata(name, family):
+        return {"columns": [{"name": name, "type": "INTEGER" if family == "number" else "TEXT",
+                "family": family, "primary_key": False, "unique": False,
+                "indexed": False, "probe_non_null": True}]}
+    roles = join_discovery._ROLES
+    def choice(role, options, confidence):
+        return {"type": "choice", "choice": role, "confidence": confidence,
+                "probabilities": {key: confidence if key == role else (1-confidence)/(len(options)-1)
+                                  for key in options}}
+    def decide(key, model, state, questions):
+        if "best_pair" in questions:
+            return {"best_pair": choice("pair_0", questions["best_pair"]["criteria"], 0.9)}
+        return {"l0": choice(left_role, roles, probability),
+                "r0": choice(right_role, roles, probability)}
+    monkeypatch.setattr(join_discovery, "_decision", decide)
+    classified = []
+    result = join_discovery._jev(
+        join_discovery.AuroraTableRef.model_validate(_ref("left")),
+        join_discovery.AuroraTableRef.model_validate(_ref("right")),
+        metadata("entity_id", "number"), metadata("subject_id", right_family),
+        [], "fixture-key", "fixture-model", classified)
+    assert bool(result) is expected
+    assert [(c["side"], c["role"]) for c in classified] == [("left", left_role), ("right", right_role)]

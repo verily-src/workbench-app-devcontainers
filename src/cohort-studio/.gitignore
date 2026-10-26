@@ -19,3 +19,5 @@ app/agent_store_config.json
 
 app/.studio-models/
 app/.studio-data-jobs.sqlite3*
+
+.eval-results/

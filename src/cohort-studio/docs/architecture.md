@@ -882,3 +882,21 @@ evidence. Studio Agent external literature searches enforce current user intent
 and query-term provenance before calling the adapter. This check is independent
 of model output. Direct MCP consumers retain their own authorization policy.
 Local runtime/provider regression checks pass; deployment status is in PROJECT_STATE.
+
+### Repeatable evaluations and staged storage
+
+`scripts/evaluate_studio.py` runs deterministic agent, Jev, and demo contracts
+against fresh loopback PostgreSQL databases. The demo runs real local Nextflow,
+with file-backed S3/HealthOmics adapters. Reports separate this evidence from
+live model quality and cloud/browser acceptance. See EVALUATIONS.md.
+
+Cross-source PostgreSQL staging creates DuckDB columns from driver result
+metadata, never from an empty preview. Dates, time zones, nullable large integers
+and bounded decimals retain their storage types. Unconstrained or over-wide
+decimals use exact text instead of a lossy double; JSON/other unsupported scalar
+storage uses text. Display/filter classification is separate from storage.
+
+Join recommendations include typed Jev classifications (side, column, entity
+role, probability). They are probabilistic metadata evidence, not observed key
+coverage. Low-probability alternative pairs are excluded; foreign keys and
+deterministic checks retain priority. No raw cell values enter Jev requests.

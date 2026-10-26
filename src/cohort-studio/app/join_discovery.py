@@ -70,11 +70,20 @@ class JevStatus(BaseModel):
     model: str
 
 
+class FieldClassification(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    side: Literal["left", "right"]
+    column: str = Field(min_length=1, max_length=512)
+    role: Literal["person", "sample", "variant", "clinical_event", "concept", "other", "unknown"]
+    probability: float = Field(ge=0, le=1)
+
+
 class JoinRecommendation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     candidates: list[JoinCandidate] = Field(max_length=MAX_CANDIDATES)
     warnings: list[str] = Field(max_length=32)
     jev: JevStatus
+    classifications: list[FieldClassification] = Field(default_factory=list, max_length=128)
 
 
 def _ttl() -> int:
@@ -366,7 +375,7 @@ def _jev_column(name: str, col: dict) -> dict:
 
 def _jev(left_ref: AuroraTableRef, right_ref: AuroraTableRef,
          left: dict, right: dict, warnings: list[str], api_key: str,
-         model: str) -> list[dict]:
+         model: str, classifications: list[dict] | None = None) -> list[dict]:
     if not api_key:
         warnings.append("Jev is not configured; add a token in Settings.")
         return []
@@ -401,12 +410,15 @@ def _jev(left_ref: AuroraTableRef, right_ref: AuroraTableRef,
         warnings.append(str(exc) + " Showing metadata matches only.")
         return []
     classes = {"left": {}, "right": {}}
+    classified = []
     invalid_classification = False
     for side, names, prefix in (("left", order_l, "l"), ("right", order_r, "r")):
         for i, name in enumerate(names):
             result = _choice(answers.get(f"{prefix}{i}"), set(_ROLES))
             if result:
                 role_probability = result[2][result[0]]
+                classified.append({"side": side, "column": name, "role": result[0],
+                                   "probability": role_probability})
                 if result[0] not in {"other", "unknown"} and role_probability >= 0.6:
                     classes[side][name] = (result[0], role_probability)
             else:
@@ -414,6 +426,8 @@ def _jev(left_ref: AuroraTableRef, right_ref: AuroraTableRef,
     if invalid_classification:
         warnings.append("Jev returned an invalid classification; Jev abstained.")
         return []
+    if classifications is not None:
+        classifications.extend(classified)
     pairs = []
     for lname in order_l:
         lrole = classes["left"].get(lname)
@@ -462,7 +476,7 @@ def _jev(left_ref: AuroraTableRef, right_ref: AuroraTableRef,
     out = []
     for i in list(indices)[:MAX_CANDIDATES]:
         probability = probabilities.get(f"pair_{i}")
-        if probability <= 0:
+        if probability < 0.5:
             continue
         pair = pairs[i]
         out.append(_candidate(
@@ -496,7 +510,8 @@ def recommend(req: RecommendRequest) -> JoinRecommendation:
         warnings.append("At least one table had no row for the bounded probe.")
     deterministic = _deterministic(req.left, req.right, left, right)
     warning_start = len(warnings)
-    jev = _jev(req.left, req.right, left, right, warnings, api_key, model)
+    classifications = []
+    jev = _jev(req.left, req.right, left, right, warnings, api_key, model, classifications)
     if not api_key or not model:
         jev_status = "not_configured"
     elif any("Jev request failed" in item or "Jev returned" in item or "Jev response" in item
@@ -513,6 +528,7 @@ def recommend(req: RecommendRequest) -> JoinRecommendation:
             unique.append(candidate)
     result = JoinRecommendation.model_validate({
         "candidates": unique[:MAX_CANDIDATES], "warnings": warnings,
+        "classifications": classifications,
         "jev": {"status": jev_status,
                 "configured": bool(api_key and model),
                 "model": model}})

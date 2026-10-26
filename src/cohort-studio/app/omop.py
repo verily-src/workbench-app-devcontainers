@@ -262,16 +262,22 @@ def _person_counts(engine: Engine, info: dict, results: list[dict]):
         key = next((k for k, v in DOMAIN_IDS.items() if v == r["domain_id"]), None)
         if key and DOMAINS[key]["table"] in info["columns"]:
             by_table.setdefault(key, []).append(r["concept_id"])
+    if not by_table:
+        return
+    parts = []
+    params = {}
+    for index, (key, ids) in enumerate(by_table.items()):
+        d = DOMAINS[key]
+        bind = f"ids_{index}"
+        parts.append(
+            f"SELECT {_q(d['concept'])} AS concept_id, count(DISTINCT person_id) AS persons "
+            f"FROM {_cdm(info, d['table'])} "
+            f"WHERE {_q(d['concept'])} = ANY(CAST(:{bind} AS BIGINT[])) GROUP BY 1")
+        params[bind] = ids
     counts: dict[int, int] = {}
     try:
         with _session(engine, SEARCH_TIMEOUT_MS) as conn:
-            for key, ids in by_table.items():
-                d = DOMAINS[key]
-                counts |= dict(conn.execute(text(
-                    f"SELECT {_q(d['concept'])}, count(DISTINCT person_id) "
-                    f"FROM {_cdm(info, d['table'])} "
-                    f"WHERE {_q(d['concept'])} = ANY(CAST(:ids AS BIGINT[])) GROUP BY 1"),
-                    {"ids": ids}).fetchall())
+            counts = dict(conn.execute(text(" UNION ALL ".join(parts)), params).fetchall())
     except (OmopTimeout, OmopEngineError) as e:
         logger.info("Concept person counts skipped: %s", e)
         return

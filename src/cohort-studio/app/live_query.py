@@ -324,12 +324,26 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") == "histogram")
         numeric_types = _numeric_columns(conn, live_source, needed_numeric)
         where, params = _where(filters, columns, numeric_types)
-        total = int(_query(conn, live_source,
-                           f"SELECT COUNT(*) FROM {table}", {}).scalar_one())
         has_filters = where != "TRUE"
-        filtered = (int(_query(conn, live_source,
-                               f"SELECT COUNT(*) FROM {table} WHERE {where}", params).scalar_one())
-                    if has_filters else total)
+        aggregates = ["COUNT(*)"]
+        if has_filters:
+            aggregates.append(f"COUNT(*) FILTER (WHERE {where})")
+        if entity_column is not None:
+            col = f"live.{_q(columns[entity_column])}"
+            aggregates.append(f"COUNT(DISTINCT {col})")
+            if has_filters:
+                aggregates.append(f"COUNT(DISTINCT {col}) FILTER (WHERE {where})")
+        counts = _query(conn, live_source,
+                        f"SELECT {', '.join(aggregates)} FROM {table}", params).one()
+        total = int(counts[0])
+        filtered = int(counts[1]) if has_filters else total
+        entity = None
+        if entity_column is not None:
+            index = 2 if has_filters else 1
+            entity_total = int(counts[index])
+            entity_filtered = int(counts[index + 1]) if has_filters else entity_total
+            entity = {"column": entity_column, "total": entity_total,
+                      "filtered": entity_filtered}
         charts = [_chart(conn, live_source, chart, where, params, columns,
                          numeric_types, has_filters)
                   for chart in chart_specs]
@@ -339,17 +353,6 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
                       {**params, "limit": page_size, "offset": page * page_size}).all()
         names = list(columns)
         row_data = [[_json_value(value) for value in row] for row in rows]
-        entity = None
-        if entity_column is not None:
-            col = f"live.{_q(columns[entity_column])}"
-            entity_total = int(_query(conn, live_source,
-                                      f"SELECT COUNT(DISTINCT {col}) FROM {table}",
-                                      {}).scalar_one())
-            entity_filtered = int(_query(conn, live_source,
-                                         f"SELECT COUNT(DISTINCT {col}) FROM {table} "
-                                         f"WHERE {where}", params).scalar_one())
-            entity = {"column": entity_column, "total": entity_total,
-                      "filtered": entity_filtered}
     return {"total": total, "filtered": filtered, "charts": charts,
             "rows": {"page": page, "page_size": page_size,
                      "columns": names, "data": row_data},

@@ -836,3 +836,27 @@ as escaped React text and HTTPS anchors; it does not render arbitrary HTML.
 
 Other external MCP connections remain setup/test-only; these built-in adapters do not change that.
 API references: https://www.ncbi.nlm.nih.gov/books/NBK25501/ and https://api.biorxiv.org/.
+
+
+## Async and batching review (2026-10-26)
+
+Blocking database, filesystem and cloud SDK endpoints remain synchronous FastAPI handlers,
+which execute in worker threads. Changing their signatures to async without replacing the
+blocking drivers would block the event loop. CSV upload parsing now follows this rule and
+reads the existing UploadFile spool directly, avoiding a second full-file bytes allocation.
+
+Saved-view listing uses a shared four-worker pool with at most four submitted operations per
+request wave. Failures remain per-store and sorting is deterministic. This pool is dedicated
+to read-only discovery; it is not used for writes or workflow submissions.
+
+OMOP concept person counts across domains use one parameterized UNION ALL statement.
+Dashboard total/filtered rows and optional distinct-entity counts use one aggregate SELECT
+with FILTER, under the existing repeatable-read read-only transaction. Chart and page queries
+remain in the same snapshot. Chart queries are not fanned out to independent connections,
+which could produce inconsistent charts and increase Aurora contention.
+
+Existing background mechanisms retained: resource/catalog warmup, OMOP detection, Agent
+stream/cancel, export jobs and saved-snapshot jobs. Dependent Agent steps and workflow
+submission remain ordered. Long source-open/join requests still use worker threads and their
+existing budgets; durable queued jobs with independent cancellation are a separate future
+change, not claimed by this release.

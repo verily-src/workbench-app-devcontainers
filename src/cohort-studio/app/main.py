@@ -1,4 +1,3 @@
-import io
 import logging
 import time
 import uuid
@@ -749,7 +748,7 @@ def configure_columns(dataset_id: str, req: ColumnsRequest):
 UPLOAD_SUFFIXES = (".csv", ".tsv", ".txt")
 
 @app.post("/api/datasets/upload")
-async def upload_dataset(file: UploadFile):
+def upload_dataset(file: UploadFile):
     name = file.filename or "upload.csv"
     if not name.lower().endswith(UPLOAD_SUFFIXES):
         raise HTTPException(
@@ -759,7 +758,7 @@ async def upload_dataset(file: UploadFile):
             "loaded here.")
     sep = "\t" if name.lower().endswith((".tsv", ".txt")) else ","
     try:
-        df = pd.read_csv(io.BytesIO(await file.read()), sep=sep)
+        df = pd.read_csv(file.file, sep=sep)
     except Exception as e:
         raise HTTPException(
             400, f"Could not parse {name} as a {sep!r}-delimited table: "

@@ -154,3 +154,19 @@ def test_slow_store_does_not_hide_completed_views_or_queue_unbounded_work(client
         if not result['pending']:
             break
     assert {v['name'] for v in result['views']} == {'ready', 'slow'}
+
+
+def test_s3_saved_view_empty_prefix_is_not_an_access_failure(client, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(views, '_registered_s3_view_location', lambda *args: None)
+    monkeypatch.setattr(views.db, 'resolve_s3_uri', lambda rid: 's3://bucket/project')
+    response = SimpleNamespace(returncode=0, stdout='{"Contents":[]}', stderr='')
+    def run(args, **kwargs):
+        assert args[:3] == ['aws', 's3api', 'list-objects-v2']
+        assert args[args.index('--prefix')+1] == 'project/_studio_views/'
+        return response
+    monkeypatch.setattr(views.cloud_cli, 'run', run)
+    result = client.get('/api/views?kind=s3&resource_id=empty-test')
+    assert result.status_code == 200 and result.json() == []
+    response.returncode = 1
+    assert client.get('/api/views?kind=s3&resource_id=empty-test').status_code == 502

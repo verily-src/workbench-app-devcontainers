@@ -258,19 +258,27 @@ def _s3_list(resource_id: str) -> list[dict]:
                                   "created_at": (item.get("LastModified").isoformat()
                                                  if item.get("LastModified") else None)})
         return names
-    uri = f"{db.resolve_s3_uri(resource_id)}/{VIEW_PREFIX}/"
-    out = cloud_cli.run(["aws", "s3", "ls", uri, "--profile", resource_id,
+    from urllib.parse import urlsplit
+    uri = urlsplit(db.resolve_s3_uri(resource_id))
+    if uri.scheme != "s3" or not uri.netloc:
+        raise ValueError("Invalid S3 resource URI")
+    prefix = "/".join(part for part in (uri.path.strip("/"), VIEW_PREFIX) if part) + "/"
+    out = cloud_cli.run(["aws", "s3api", "list-objects-v2",
+                          "--bucket", uri.netloc, "--prefix", prefix, "--delimiter", "/",
+                          "--profile", resource_id, "--output", "json",
                           "--cli-connect-timeout", "5", "--cli-read-timeout", "10"],
                          capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         raise RuntimeError("S3 saved views could not be listed. Check access and retry.")
     names = []
-    for line in out.stdout.splitlines():
-        parts = line.split(None, 3)
-        if len(parts) == 4 and parts[3].endswith(".json"):
-            names.append({"name": parts[3][:-len(".json")],
-                          "created_by": None, "created_at": None})
+    for item in json.loads(out.stdout).get("Contents", []):
+        key = item.get("Key", "")
+        filename = key.removeprefix(prefix)
+        if key.startswith(prefix) and filename.endswith(".json") and "/" not in filename:
+            names.append({"name": filename[:-5], "created_by": None,
+                          "created_at": item.get("LastModified")})
     return names
+
 
 def _s3_get(resource_id: str, name: str) -> dict | None:
     registered = _registered_s3_view_location(resource_id, name)

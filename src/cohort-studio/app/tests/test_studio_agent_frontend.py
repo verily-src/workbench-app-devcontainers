@@ -35,10 +35,20 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
         **ready_plan, "id": "plan-blocked", "workflow": "blocked-analysis",
         "status": "blocked", "errors": ["Required column is missing."],
     }
+    uncertain_plan = {
+        **ready_plan, "id": "plan-uncertain", "workflow": "uncertain-submission",
+        "status": "submission_unknown", "errors": ["Check the workflow service before retrying."],
+    }
+    unverifiable_plan = {
+        **ready_plan, "id": "plan-unverifiable", "workflow": "unverifiable-results",
+        "status": "completed", "run": {"run_id": "run-2", "status": "COMPLETED"},
+    }
     messages = list(history)
+    stored_plans = [ready_plan, blocked_plan, uncertain_plan, unverifiable_plan]
     chat_requests = []
     approval_requests = []
     status_requests = []
+    results_requests = []
 
     def fulfill(route, body):
         route.fulfill(status=200, content_type="application/json", json=body)
@@ -63,6 +73,10 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
 
     page.route("**/api/agent/chat/history?*", history_route)
 
+    page.route("**/api/agent/workflows", lambda route: fulfill(route, {
+        "plans": stored_plans,
+    }))
+
     def chat(route):
         body = route.request.post_data_json
         chat_requests.append(body)
@@ -78,18 +92,42 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
 
     def approve(route):
         approval_requests.append(route.request.post_data_json)
-        fulfill(route, {"status": "submitted", "run": {
-            "run_id": "run-1", "status": "SUBMITTED"}})
+        submitted = {**ready_plan, "status": "submitted", "run": {
+            "run_id": "run-1", "status": "SUBMITTED"}}
+        stored_plans[0] = submitted
+        fulfill(route, submitted)
 
     page.route("**/api/agent/workflows/*/approve", approve)
 
     def status(route):
         status_requests.append(route.request.url)
-        fulfill(route, {"status": "completed", "run": {
-            "run_id": "run-1", "status": "COMPLETED"}})
+        if "plan-uncertain" in route.request.url:
+            checked = {**uncertain_plan, "status": "completed", "errors": [],
+                       "run": {"run_id": "run-2", "status": "COMPLETED"}}
+            stored_plans[2] = checked
+            fulfill(route, checked)
+            return
+        completed = {**ready_plan, "status": "completed", "run": {
+            "run_id": "run-1", "status": "COMPLETED"}}
+        stored_plans[0] = completed
+        fulfill(route, completed)
 
     page.route("**/api/agent/workflows/*/status", status)
-    page.route("**/api/datasets/agent-result/query", lambda route: fulfill(route, {
+    def open_results(route):
+        results_requests.append(route.request.url)
+        if "plan-unverifiable" in route.request.url:
+            route.fulfill(status=409, content_type="application/json",
+                          json={"detail": "Workflow results could not be verified."})
+            return
+        result_action = {**action, "dataset": {**action["dataset"],
+                                                  "dataset_id": "verified-result"}}
+        fulfill(route, {"action": result_action, "verification": {
+            "verified": True, "run_id": "run-1", "rows": 2,
+            "integrity": "Counts and schema checked", "summary_sha256": "abc123",
+        }})
+
+    page.route("**/api/agent/workflows/*/results/open", open_results)
+    page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "charts": [{"kind": "bar", "x": "tissue", "data": [{"category": "liver",
                    "all": 2, "selected": 2}]}],
@@ -111,17 +149,50 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     expect(plan_card.get_by_role("button", name="Run workflow", exact=True)).to_be_enabled()
     blocked = page.locator(".workflow-plan", has_text="blocked-analysis")
     expect(blocked.get_by_role("button", name="Blocked", exact=True)).to_be_disabled()
-    plan_card.get_by_role("button", name="Run workflow", exact=True).click()
-    expect(plan_card.get_by_text("Status: SUBMITTED")).to_be_visible()
-    expect(plan_card.get_by_role("button", name="Workflow submitted")).to_be_disabled()
-    assert len(approval_requests) == 1
-    expect(plan_card.get_by_text("Status: COMPLETED")).to_be_visible(timeout=5000)
-    assert status_requests
-
     page.get_by_role("button", name="Open dashboard", exact=True).click()
     expect(page.locator(".tab.active")).to_contain_text("Liver cohort dashboard")
     expect(page.locator(".chip", has_text="tissue: liver")).to_be_visible()
     page.locator(".topnav-link", has_text="Agent").click()
+    plan_card = page.locator(".workflow-plan", has_text="cohort-summary")
+    expect(plan_card).to_be_visible()
+    plan_card.get_by_role("button", name="Run workflow", exact=True).click()
+    expect(plan_card.get_by_text("Status: SUBMITTED")).to_be_visible()
+    assert len(approval_requests) == 1
+    expect(plan_card.get_by_text("Status: COMPLETED")).to_be_visible(timeout=5000)
+    assert status_requests
+
+    plan_card.get_by_role("button", name="Open results", exact=True).click()
+    expect(page.get_by_text("Verified workflow results", exact=True)).to_be_visible()
+    expect(page.get_by_text("Run run-1", exact=True)).to_be_visible()
+    expect(page.get_by_text("2 people", exact=True)).to_be_visible()
+    expect(page.get_by_text("2 strata", exact=True)).to_be_visible()
+    expect(page.get_by_text("Integrity: Counts and schema checked", exact=True)).to_be_visible()
+    assert page.get_by_text("abc123", exact=True).count() == 0
+    assert len(results_requests) == 1
+    page.locator(".tab:not(.active)").click()
+    expect(page.get_by_text("Verified workflow results", exact=True)).to_have_count(0)
+    page.locator(".tab:not(.active)").click()
+    expect(page.get_by_text("Verified workflow results", exact=True)).to_be_visible()
+    expect(page.locator(".tab.active")).to_contain_text("Liver cohort dashboard")
+    page.get_by_role("button", name="Dismiss verification details").click()
+
+    page.locator(".topnav-link", has_text="Agent").click()
+    expect(page.locator(".workflow-plan", has_text="cohort-summary")).to_be_visible()
+    assert page.locator(".workflow-plan").count() == 4
+    uncertain = page.locator(".workflow-plan", has_text="uncertain-submission")
+    expect(uncertain.get_by_text("Status: Submission needs checking")).to_be_visible()
+    expect(uncertain.get_by_text("Check the workflow service before retrying.")).to_be_visible()
+    expect(uncertain.get_by_role("button", name="Run workflow", exact=True)).to_have_count(0)
+    assert not any("plan-uncertain" in url for url in status_requests)
+    uncertain.get_by_role("button", name="Check run", exact=True).click()
+    expect(uncertain.get_by_text("Status: COMPLETED")).to_be_visible()
+    expect(uncertain.get_by_role("button", name="Open results", exact=True)).to_be_enabled()
+    assert sum("plan-uncertain" in url for url in status_requests) == 1
+    unverifiable = page.locator(".workflow-plan", has_text="unverifiable-results")
+    unverifiable.get_by_role("button", name="Open results", exact=True).click()
+    expect(unverifiable.get_by_role("alert")).to_contain_text("No dashboard was opened")
+    expect(page.get_by_text("Verified workflow results", exact=True)).to_have_count(0)
+    assert len(results_requests) == 2
     expect(page.get_by_text("Earlier answer", exact=True)).to_be_visible()
     expect(page.get_by_text(reply, exact=True)).to_be_visible()
     assert chat_requests == [{"message": "Analyze the liver cohort and prepare a summary workflow",

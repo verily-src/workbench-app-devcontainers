@@ -61,6 +61,10 @@ def test_cli_writes_stratified_summary_and_trace_manifest(tmp_path):
     assert manifest["outputs"]["carrier_summary_csv"] == "s3://results/run-1/carrier_summary.csv"
     assert manifest["outputs"]["variant_dictionary_csv"] == \
         "s3://results/run-1/variant_dictionary.csv"
+    assert manifest["outputs_sha256"]["carrier_summary_csv"] == hashlib.sha256(
+        (output / "carrier_summary.csv").read_bytes()).hexdigest()
+    assert manifest["outputs_sha256"]["variant_dictionary_csv"] == hashlib.sha256(
+        (output / "variant_dictionary.csv").read_bytes()).hexdigest()
     assert dictionary == _csv(DICTIONARY)
     assert manifest["execution"]["workflow_id"] == "workflow-7"
     assert manifest["execution"]["run_id"] == "run-9"

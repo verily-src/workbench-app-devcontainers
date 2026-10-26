@@ -719,12 +719,38 @@ in-process registry; app restart expires these handles, but conversation text
 remains in Aurora. Inspection and concept grounding must occur in the current
 turn before a new dashboard is built.
 
-Workflow proposals are owner-bound, immutable in-process plans with a 30-minute
-expiry. Explicit UI approval rechecks the source fingerprint, full filtered row
+Workflow proposals are owner-bound records in `_studio_agent.workflow_plans`
+in the existing Aurora database. Pending plans expire after 30 minutes; submitted
+and active plans survive restart. Terminal plans follow the agent retention policy.
+Explicit UI approval rechecks the source fingerprint, full filtered row
 count and canonical-to-source column map. Unique alias suffixes can map joined
 fields; ambiguous fields block preparation. Export projects the six workflow
-columns and stays below the synchronous export limit. A lock claims approval
+columns and stays below the synchronous export limit. A database update atomically claims approval
 before export/submission; repeats cannot submit twice. Failed submission is not
 automatically retried because the remote outcome may be unknown. Run status
-matches the exact Workbench run ID. Output location metadata is not verification
-of output files; automated output validation/reopening remains a follow-up.
+matches the exact Workbench run ID. Submission failures with an uncertain remote
+outcome cannot be retried automatically. Ready plans reopen their stored SourceRef when a dashboard handle has expired;
+approval still checks the fingerprint, count and column mapping before export.
+Uncertain submissions can reconcile only one exact job name, resource and output
+path match; ambiguous results never cause a retry.
+
+Completed results are verified before opening: the output resource, exact run
+folder, engine ID, approved input URI and count, schemas, strata totals and
+synthetic-data notice must match. Manifest paths never select read targets.
+Bounded reads fetch only the derived manifest, summary and dictionary paths.
+New workflow manifests carry summary/dictionary SHA-256 hashes. Older manifests
+get explicit legacy counts/schema evidence plus the copied dictionary checksum.
+The dashboard uses the verified bytes, avoiding a second S3 read. It shows strata
+rows separately from people totals; the agent can query the verified dataset.
+Plans restore independently from conversation text. Verification does not grant
+clinical meaning to the synthetic genotype data.
+
+### Aurora numeric query performance (2026-10-25)
+
+Live range and histogram operations inspect PostgreSQL result type OIDs through a
+zero-row projection in the same read-only transaction. Native numeric types avoid
+text regex conversion; text keeps its validated numeric conversion. Non-finite
+values remain excluded. Without effective filters, full counts and chart buckets
+serve both full and selected results. Full-source semantics and stable paging are
+unchanged. Dataset-level query errors stop initial loading and provide retry;
+failed refreshes retain the previous successful result.

@@ -16,13 +16,20 @@ HIST_BINS = 24
 SCATTER_SAMPLE = 2000
 HEATMAP_LIMIT = 400
 _NUMERIC = r"^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$"
+_INTEGER_TYPE_OIDS = {20, 21, 23}
+_FLOAT_TYPE_OIDS = {700, 701, 1700}
 
 
 def _q(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
-def _numeric(col: str) -> str:
+def _numeric(col: str, type_oid: int | None = None) -> str:
+    if type_oid in _INTEGER_TYPE_OIDS:
+        return f"({col})::double precision"
+    if type_oid in _FLOAT_TYPE_OIDS:
+        return (f"CASE WHEN ({col})::text IN ('NaN', 'Infinity', '-Infinity') "
+                f"THEN NULL ELSE ({col})::double precision END")
     value = f"TRIM(({col})::text)"
     return (f"CASE WHEN {value} ~ '{_NUMERIC}' "
             f"THEN ({value})::double precision END")
@@ -36,7 +43,9 @@ def _json_value(value):
     return value
 
 
-def _where(filters: list[dict], columns: dict[str, str]):
+def _where(filters: list[dict], columns: dict[str, str],
+           numeric_types: dict[str, int] | None = None):
+    numeric_types = numeric_types or {}
     clauses, params = [], {}
     for i, item in enumerate(filters):
         name = item.get("column")
@@ -56,7 +65,7 @@ def _where(filters: list[dict], columns: dict[str, str]):
             lo, hi = float(item["min"]), float(item["max"])
             if not math.isfinite(lo) or not math.isfinite(hi):
                 raise ValueError("Range filter values must be finite.")
-            clauses.append(f"{_numeric(col)} BETWEEN :f{i}_lo AND :f{i}_hi")
+            clauses.append(f"{_numeric(col, numeric_types.get(name))} BETWEEN :f{i}_lo AND :f{i}_hi")
             params[f"f{i}_lo"] = lo
             params[f"f{i}_hi"] = hi
     return " AND ".join(clauses) if clauses else "TRUE", params
@@ -64,6 +73,24 @@ def _where(filters: list[dict], columns: dict[str, str]):
 
 def _query(conn, live_source: dict, sql: str, params: dict):
     return conn.execute(text(sql), {**live_source.get("params", {}), **params})
+
+
+def _numeric_columns(conn, live_source: dict, names) -> dict[str, int]:
+    selected = list(dict.fromkeys(name for name in names if name in live_source["columns"]))
+    if not selected:
+        return {}
+    columns = live_source["columns"]
+    projection = ", ".join(
+        f"live.{_q(columns[name])} AS {_q(name)}" for name in selected)
+    result = _query(conn, live_source,
+                    f"SELECT {projection} FROM ({live_source['sql']}) AS live LIMIT 0", {})
+    try:
+        description = result.cursor.description
+        return {name: column.type_code for name, column in zip(selected, description)
+                if getattr(column, "type_code", None) in
+                _INTEGER_TYPE_OIDS | _FLOAT_TYPE_OIDS}
+    finally:
+        result.close()
 
 
 def _requested_order(live_source: dict) -> str | None:
@@ -109,12 +136,15 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
+        numeric_columns = _numeric_columns(
+            conn, live_source,
+            [p["name"] for p in profiles if p.get("filter_kind") == "range"])
         for profile in profiles:
             entry = dict(profile)
             name = entry["name"]
             col = f"live.{_q(columns[name])}"
             if entry.get("filter_kind") == "range":
-                numeric = _numeric(col)
+                numeric = _numeric(col, numeric_columns.get(name))
                 low, high = _query(conn, live_source,
                                    f"SELECT MIN({numeric}), MAX({numeric}) FROM {table}",
                                    {}).one()
@@ -132,7 +162,8 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
 
 
 def _chart(conn, live_source: dict, chart: dict, where: str,
-           params: dict, columns: dict) -> dict:
+           params: dict, columns: dict, numeric_types: dict[str, int],
+           has_filters: bool) -> dict:
     kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
     if x not in columns or (y and y not in columns):
         raise ValueError("Unknown chart column.")
@@ -147,7 +178,7 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
                           f"ORDER BY COUNT(*) DESC, 1 LIMIT {BAR_TOP_N}", {})
         top = [(str(v), int(n)) for v, n in all_rows]
         selected = {}
-        if top:
+        if top and has_filters:
             cat_params = dict(params)
             keys = []
             for i, (value, _) in enumerate(top):
@@ -161,9 +192,12 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
             selected = {str(v): int(n) for v, n in rows}
         total = int(_query(conn, live_source,
                            f"SELECT COUNT(*) FROM {table} WHERE {qx} IS NOT NULL", {}).scalar_one())
-        selected_total = int(_query(conn, live_source,
-                                    f"SELECT COUNT(*) FROM {table} "
-                                    f"WHERE ({where}) AND {qx} IS NOT NULL", params).scalar_one())
+        selected_total = (int(_query(conn, live_source,
+                                     f"SELECT COUNT(*) FROM {table} "
+                                     f"WHERE ({where}) AND {qx} IS NOT NULL", params).scalar_one())
+                          if has_filters else total)
+        if not has_filters:
+            selected = dict(top)
         try:
             top.sort(key=lambda v: float(v[0]))
         except ValueError:
@@ -177,7 +211,7 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
                          "selected": other_selected})
         return {"kind": kind, "x": x, "data": data}
     if kind == "histogram":
-        num = _numeric(qx)
+        num = _numeric(qx, numeric_types.get(x))
         mn, mx = _query(conn, live_source,
                         f"SELECT MIN({num}), MAX({num}) FROM {table}", {}).one()
         if mn is None or mx is None:
@@ -193,9 +227,9 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
         full = {int(i): int(n) for i, n in _query(
             conn, live_source, f"SELECT {bucket}, COUNT(*) FROM {table} "
             f"WHERE {num} IS NOT NULL GROUP BY 1", {}).all()}
-        selected = {int(i): int(n) for i, n in _query(
+        selected = (full if not has_filters else {int(i): int(n) for i, n in _query(
             conn, live_source, f"SELECT {bucket}, COUNT(*) FROM {table} "
-            f"WHERE ({where}) AND {num} IS NOT NULL GROUP BY 1", params).all()}
+            f"WHERE ({where}) AND {num} IS NOT NULL GROUP BY 1", params).all()})
         return {"kind": kind, "x": x, "data": [
             {"lo": low + i * width, "hi": low + (i + 1) * width,
              "all": full.get(i, 0), "selected": selected.get(i, 0)}
@@ -227,7 +261,6 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
     columns = live_source["columns"]
     if entity_column is not None and entity_column not in columns:
         raise ValueError(f"Unknown entity column: {entity_column!r}.")
-    where, params = _where(filters, columns)
     if page < 0 or page_size < 1:
         raise ValueError("Page must be non-negative and page size must be positive.")
     page_size = min(int(page_size), PAGE_SIZE_MAX)
@@ -241,11 +274,18 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
+        needed_numeric = [f["column"] for f in filters if f.get("kind") == "range"]
+        needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") == "histogram")
+        numeric_types = _numeric_columns(conn, live_source, needed_numeric)
+        where, params = _where(filters, columns, numeric_types)
         total = int(_query(conn, live_source,
                            f"SELECT COUNT(*) FROM {table}", {}).scalar_one())
-        filtered = int(_query(conn, live_source,
-                              f"SELECT COUNT(*) FROM {table} WHERE {where}", params).scalar_one())
-        charts = [_chart(conn, live_source, chart, where, params, columns)
+        has_filters = where != "TRUE"
+        filtered = (int(_query(conn, live_source,
+                               f"SELECT COUNT(*) FROM {table} WHERE {where}", params).scalar_one())
+                    if has_filters else total)
+        charts = [_chart(conn, live_source, chart, where, params, columns,
+                         numeric_types, has_filters)
                   for chart in chart_specs]
         rows = _query(conn, live_source,
                       f"SELECT {select} FROM {table} WHERE {where} "
@@ -305,7 +345,6 @@ def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
 def fetch_frame(live_source: dict, filters: list[dict] | None = None,
                 max_rows: int = 100_000) -> pd.DataFrame:
     filters = filters or []
-    where, params = _where(filters, live_source["columns"])
     if max_rows < 0:
         raise ValueError("Row limit must be non-negative.")
     columns = live_source["columns"]
@@ -317,6 +356,10 @@ def fetch_frame(live_source: dict, filters: list[dict] | None = None,
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
+        numeric_types = _numeric_columns(
+            conn, live_source,
+            [f["column"] for f in filters if f.get("kind") == "range"])
+        where, params = _where(filters, live_source["columns"], numeric_types)
         rows = _query(conn, live_source,
                       f"SELECT {select} FROM {table} WHERE {where} LIMIT :limit",
                       {**params, "limit": max_rows + 1}).all()

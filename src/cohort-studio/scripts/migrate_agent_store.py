@@ -67,6 +67,20 @@ CREATE TABLE IF NOT EXISTS _studio_agent.events (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS events_run_idx ON _studio_agent.events (run_id, event_id);
+CREATE TABLE IF NOT EXISTS _studio_agent.workflow_plans (
+    plan_id uuid PRIMARY KEY,
+    owner_hash char(64) NOT NULL,
+    status varchar(24) NOT NULL CHECK (status IN
+        ('blocked', 'ready', 'submitting', 'submission_unknown', 'submitted', 'running', 'completed', 'failed')),
+    payload jsonb NOT NULL,
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    expires_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS workflow_plans_owner_updated_idx
+    ON _studio_agent.workflow_plans (owner_hash, updated_at DESC);
+CREATE INDEX IF NOT EXISTS workflow_plans_expiry_idx
+    ON _studio_agent.workflow_plans (expires_at) WHERE expires_at IS NOT NULL;
 REVOKE ALL ON ALL TABLES IN SCHEMA _studio_agent FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA _studio_agent FROM PUBLIC;
 """

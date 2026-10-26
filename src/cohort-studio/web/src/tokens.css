@@ -432,6 +432,8 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .column-setting-row > strong { padding-bottom: 7px; overflow-wrap: anywhere; }
 .column-setting-row label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-muted); }
 .query-cache-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: -6px 0 8px; }
+.query-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; margin: 8px 0; border: 1px solid var(--danger, #b42318); border-radius: 8px; color: var(--danger, #b42318); background: var(--card); font-size: 13px; }
+.query-state { margin: 12px 0; color: var(--ink-muted); font-size: 13px; }
 .large-data-warning { display: grid; gap: 4px; margin: 8px 0; padding: 8px 10px; border: 1px solid var(--accent-tint-border); border-radius: var(--radius-sm); background: var(--accent-tint); color: var(--ink-soft); font-size: 12px; }
 .export-job { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--ink-soft); font-size: 12px; }
 .export-job progress { width: 90px; height: 8px; accent-color: var(--accent); }

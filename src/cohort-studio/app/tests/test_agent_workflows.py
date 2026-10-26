@@ -3,6 +3,14 @@ import uuid
 import pytest
 
 import agent_workflows as plans
+from agent_plan_store import AgentPlanStore
+from tests.test_agent_store import agent_store as agent_store_fixture
+
+
+@pytest.fixture(autouse=True)
+def durable_workflow_store(agent_store_fixture, monkeypatch):
+    monkeypatch.setattr(plans.agent_plan_store, "AgentPlanStore",
+                        lambda: AgentPlanStore(engine=agent_store_fixture.engine))
 
 
 def callbacks(*, rows=42, columns=None, capped=False, workflow_type="NEXTFLOW",
@@ -124,7 +132,7 @@ def test_approval_stops_before_submit_when_export_does_not_match_plan():
     assert again == result
 
 
-def test_owner_isolation_expiration_and_no_retry_after_submit_failure(monkeypatch):
+def test_owner_isolation_pending_expiration_and_terminal_retention(agent_store_fixture):
     plan = prepare()
     with pytest.raises(plans.PlanOwnerMismatch):
         plans.approve(plan["id"], "bob", inspect_dataset=callbacks()["inspect_dataset"],
@@ -143,16 +151,151 @@ def test_owner_isolation_expiration_and_no_retry_after_submit_failure(monkeypatc
     failed = plans.approve(plan["id"], "alice",
                            inspect_dataset=callbacks()["inspect_dataset"], export_cohort=export,
                            submit_workflow=submit)
-    assert failed["status"] == "failed"
+    assert failed["status"] == "submission_unknown"
     assert plans.approve(plan["id"], "alice",
                          inspect_dataset=callbacks()["inspect_dataset"], export_cohort=export,
                          submit_workflow=submit) == failed
     assert calls == {"export": 1, "submit": 1}
 
-    now = time_value = plans.time.monotonic()
-    monkeypatch.setattr(plans.time, "monotonic", lambda: time_value + plans.PLAN_TTL)
+    assert plans.approve(plan["id"], "alice",
+                         inspect_dataset=callbacks()["inspect_dataset"], export_cohort=export,
+                         submit_workflow=submit) == failed
+    assert calls == {"export": 1, "submit": 1}
+    assert plans.status(plan["id"], "alice", list_jobs=lambda **_: {"jobs": []})["status"] == "submission_unknown"
+
+    pending = prepare()
+    with agent_store_fixture.engine.begin() as conn:
+        from sqlalchemy import text
+        conn.execute(text("UPDATE _studio_agent.workflow_plans SET expires_at = now() - interval '1 second' WHERE plan_id = :id"),
+                     {"id": pending["id"]})
     with pytest.raises(plans.PlanNotFound):
-        plans.status(plan["id"], "alice", list_jobs=lambda **_: {"jobs": []})
+        plans.status(pending["id"], "alice", list_jobs=lambda **_: {"jobs": []})
+
+
+def test_plan_survives_new_store_and_terminal_status_is_listed(agent_store_fixture):
+    options = callbacks()
+    options["inspect_dataset"] = lambda *_: {
+        "rows": 42, "columns": list(plans.REQUIRED_INPUT_COLUMNS), "capped": False,
+        "source_ref": {"kind": "aurora", "resource_id": "omop", "schema": "cdm", "table": "person"}}
+    first_store = AgentPlanStore(engine=agent_store_fixture.engine)
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **options,
+                         store=first_store)
+    reopened_store = AgentPlanStore(engine=agent_store_fixture.engine)
+    reopened = plans.get_plan(plan["id"], "alice", store=reopened_store)
+    assert reopened["id"] == plan["id"]
+    assert reopened["source_ref"] == {
+        "kind": "aurora", "resource_id": "omop", "schema": "cdm", "table": "person"}
+    with pytest.raises(plans.PlanOwnerMismatch):
+        plans.get_plan(plan["id"], "bob", store=reopened_store)
+
+    submitted = plans.approve(
+        plan["id"], "alice", inspect_dataset=options["inspect_dataset"],
+        export_cohort=lambda *_: {"s3_uri": plan["input_uri"], "rows": plan["rows"]},
+        submit_workflow=lambda *_: {"run_id": "run-durable", "status": "PENDING"},
+        store=reopened_store)
+    assert submitted["status"] == "submitted"
+    listed = plans.list_plans("alice", store=AgentPlanStore(engine=agent_store_fixture.engine))
+    assert listed[0]["run"]["run_id"] == "run-durable"
+    assert listed[0]["status"] == "submitted"
+
+
+def test_two_workers_can_claim_ready_plan_once(agent_store_fixture):
+    from concurrent.futures import ThreadPoolExecutor
+
+    options = callbacks()
+    writer = AgentPlanStore(engine=agent_store_fixture.engine)
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **options,
+                         store=writer)
+    workers = [AgentPlanStore(engine=agent_store_fixture.engine) for _ in range(2)]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claims = list(pool.map(lambda worker: worker.claim(plan["id"], "alice"), workers))
+    assert sum(claim is not None for claim in claims) == 1
+    assert all(claim is None or claim["status"] == "submitting" for claim in claims)
+
+
+def test_uncertain_submission_reconciles_after_restart_without_resubmit(agent_store_fixture):
+    options = callbacks()
+    first_store = AgentPlanStore(engine=agent_store_fixture.engine)
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **options,
+                         store=first_store)
+    submits = []
+
+    def submit(*_args):
+        submits.append(True)
+        raise TimeoutError("response lost after remote acceptance")
+
+    unknown = plans.approve(
+        plan["id"], "alice", inspect_dataset=options["inspect_dataset"],
+        export_cohort=lambda *_: {"s3_uri": plan["input_uri"], "rows": plan["rows"]},
+        submit_workflow=submit, store=first_store)
+    assert unknown["status"] == "submission_unknown"
+    assert "response lost" not in str(unknown)
+
+    reopened_store = AgentPlanStore(engine=agent_store_fixture.engine)
+    job_id = f"cohort-genetics-{plan['id'][:12]}"
+    expected_path = f"{plan['output_path']}/{job_id}"
+    decoys = [
+        {"run_id": "wrong-resource", "name": job_id, "status": "RUNNING",
+         "output_bucket_resource": "other", "output_bucket_path": expected_path},
+        {"run_id": "wrong-name", "name": "similar-job", "status": "RUNNING",
+         "output_bucket_resource": "output", "output_bucket_path": expected_path},
+        {"run_id": "wrong-path", "name": job_id, "status": "RUNNING",
+         "output_bucket_resource": "output", "output_bucket_path": plan["output_path"] + "/other"},
+    ]
+    unchanged = plans.status(plan["id"], "alice", list_jobs=lambda **_: {
+        "available": True, "jobs": decoys}, store=reopened_store)
+    assert unchanged["status"] == "submission_unknown"
+    assert unchanged.get("run") is None
+
+    exact = {"run_id": "workbench-123", "name": job_id, "status": "COMPLETED",
+             "output_bucket_resource": "output", "output_bucket_path": expected_path}
+    ambiguous = plans.status(plan["id"], "alice", list_jobs=lambda **_: {
+        "available": True, "jobs": [exact, {**exact, "run_id": "duplicate"}]},
+        store=reopened_store)
+    assert ambiguous["status"] == "submission_unknown"
+    assert "Multiple workflow jobs" in ambiguous["errors"][0]
+
+    recovered = plans.status(plan["id"], "alice", list_jobs=lambda **_: {
+        "available": True, "jobs": [exact]}, store=AgentPlanStore(engine=agent_store_fixture.engine))
+    assert recovered["status"] == "completed"
+    assert recovered["run"]["run_id"] == "workbench-123"
+    assert submits == [True]
+    again = plans.approve(
+        plan["id"], "alice", inspect_dataset=lambda *_: pytest.fail("must not revalidate"),
+        export_cohort=lambda *_: pytest.fail("must not re-export"),
+        submit_workflow=lambda *_: pytest.fail("must not resubmit"), store=reopened_store)
+    assert again["status"] == "completed"
+
+
+def test_cleanup_keeps_active_and_uncertain_remote_plans(agent_store_fixture):
+    options = callbacks()
+    store = AgentPlanStore(engine=agent_store_fixture.engine)
+    pending = plans.prepare("pending", "input", "output", [], "alice", **options, store=store)
+    active = plans.prepare("active", "input", "output", [], "alice", **options, store=store)
+    assert store.claim(active["id"], "alice")
+    old = plans.prepare("submitted", "input", "output", [], "alice", **options, store=store)
+    store.update(old["id"], "alice", {**store.get(old["id"], "alice"),
+                                     "status": "submitted", "run": {"run_id": "remote"}})
+    unknown = plans.prepare("unknown", "input", "output", [], "alice", **options, store=store)
+    store.update(unknown["id"], "alice", {**store.get(unknown["id"], "alice"),
+                                          "status": "submission_unknown"})
+    with agent_store_fixture.engine.begin() as conn:
+        from sqlalchemy import text
+        conn.execute(text("""
+            UPDATE _studio_agent.workflow_plans
+            SET expires_at = CASE WHEN plan_id = :pending
+                                  THEN now() - interval '1 second' ELSE NULL END,
+                updated_at = now() - interval '31 days'
+            WHERE plan_id IN (:pending, :active, :old, :unknown)
+        """), {"pending": pending["id"], "active": active["id"], "old": old["id"],
+               "unknown": unknown["id"]})
+    assert store.cleanup() == 2
+    with pytest.raises(plans.PlanNotFound):
+        plans.get_plan(pending["id"], "alice", store=store)
+    assert store.get(active["id"], "alice")["status"] == "submitting"
+    assert store.get(old["id"], "alice")["status"] == "submitted"
+    with pytest.raises(plans.PlanNotFound):
+        plans.get_plan(unknown["id"], "alice", store=store)
 
 
 def test_approval_revalidates_dataset_source_and_row_count_before_export():

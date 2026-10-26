@@ -48,3 +48,26 @@ def test_registry_accepts_cli_type_field(monkeypatch):
 
     assert result["available"] is True
     assert result["workflows"][0]["type"] == "NEXTFLOW"
+
+
+def test_list_jobs_refreshes_resource_map_for_unmatched_output_uuid(monkeypatch):
+    import workflows
+
+    raw = [{"runId": "run-1", "status": "COMPLETED",
+            "outputBucketUuid": "resource-uuid", "outputBucketPath": "demo/run-1"}]
+    calls = []
+
+    monkeypatch.setattr(workflows, "_cache", None)
+    monkeypatch.setattr(workflows, "_run", lambda limit: raw)
+
+    def bucket_map(refresh=False):
+        calls.append(refresh)
+        return ({"resource-uuid": {"id": "nextflow_outputs",
+                                    "bucket_name": "bucket", "prefix": "prefix"}}
+                if refresh else {})
+
+    monkeypatch.setattr(workflows, "_bucket_map", bucket_map)
+    result = workflows.list_jobs(force=True)
+
+    assert calls == [False, True]
+    assert result["jobs"][0]["output_bucket_resource"] == "nextflow_outputs"

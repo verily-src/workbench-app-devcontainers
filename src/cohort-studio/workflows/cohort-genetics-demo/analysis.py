@@ -291,6 +291,10 @@ def analyze(
             "variant_dictionary_csv": dictionary_output_uri,
             "manifest_json": manifest_uri,
         },
+        "outputs_sha256": {
+            "carrier_summary_csv": _sha256(summary_path),
+            "variant_dictionary_csv": _sha256(dictionary_output),
+        },
         "execution": {
             "workflow_id": workflow_id,
             "run_id": run_id,

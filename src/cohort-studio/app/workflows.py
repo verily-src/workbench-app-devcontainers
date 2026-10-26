@@ -75,11 +75,14 @@ def _run(limit: int) -> list[dict]:
         capture_output=True, text=True, check=True, timeout=30)
     return json.loads(result.stdout or "[]")
 
-def _bucket_map() -> dict:
+def _bucket_map(refresh: bool = False) -> dict:
 
     try:
         import db
-        return db.bucket_by_uuid()
+        try:
+            return db.bucket_by_uuid(refresh=refresh)
+        except TypeError:
+            return db.bucket_by_uuid()
     except Exception as e:
         logger.warning("bucket resolution unavailable: %s", e)
         return {}
@@ -130,6 +133,9 @@ def list_jobs(limit: int = 50, force: bool = False) -> dict:
     try:
         raw = _run(limit)
         buckets = _bucket_map()
+        if any(j.get("outputBucketUuid") and j["outputBucketUuid"] not in buckets
+               for j in raw):
+            buckets = _bucket_map(refresh=True)
         jobs = [_normalize(j, buckets) for j in raw]
         running = sum(1 for j in jobs if j["status"] not in TERMINAL)
         out = {"available": True, "jobs": jobs, "running_count": running}
@@ -223,7 +229,11 @@ def submit_job(workflow: str, output_bucket_id: str, job_id: str = "",
             (out.stderr or out.stdout or "").strip().split("\n")[-1][:300])
     job = json.loads(out.stdout or "{}")
     _cache_bust()
-    return _normalize(job, _bucket_map())
+    buckets = _bucket_map()
+    output_uuid = job.get("outputBucketUuid")
+    if output_uuid and output_uuid not in buckets:
+        buckets = _bucket_map(refresh=True)
+    return _normalize(job, buckets)
 
 def _cache_bust():
 

@@ -111,7 +111,8 @@ class Operations:
     def list_sources(self):
         with _lock:
             dashboards = [{"dataset_id": key, "title": value["title"],
-                           "source_ref": value["source_ref"], "filters": value["filters"]}
+                           "source_ref": value["source_ref"], "filters": value["filters"],
+                           "verification": value.get("verification")}
                           for key, value in _dashboards.items() if value["owner"] == self.owner]
         return {"sources": [{"kind": kind, "id": rid} for kind, rid in sorted(self.available)],
                 "dashboards": dashboards[-20:]}
@@ -227,7 +228,9 @@ class Operations:
         return datasets.query(dataset_id, entry["filters"] + filters, charts, 0, 5)
 
     def list_workflows(self):
-        return {"registry": workflows.list_workflows(), "jobs": workflows.list_jobs()}
+        import agent_workflows
+        return {"registry": workflows.list_workflows(), "jobs": workflows.list_jobs(),
+                "plans": agent_workflows.list_plans(self.owner)}
 
     def prepare_workflow(self, dataset_id, input_resource_id, output_resource_id, filters_json="[]"):
         import agent_workflows
@@ -242,9 +245,23 @@ class Operations:
         self.workflow_plans.append(plan)
         return plan
 
+    def workflow_status(self, plan_id):
+        import agent_workflows
+        return agent_workflows.status(plan_id, self.owner, list_jobs=workflows.list_jobs)
+
+    def open_workflow_results(self, plan_id):
+        if len(self.actions) >= 4:
+            raise ValueError("At most four dashboards can be opened in one turn.")
+        result = _open_workflow_result(self.owner, plan_id)
+        self.actions.append(result["action"])
+        did = result["action"]["dataset"]["dataset_id"]
+        return {"dataset_id": did, "verification": result["verification"],
+                "preview": datasets.query(did, [], [], 0, 20)}
+
     def callbacks(self):
         names = ("list_sources", "list_tables", "inspect_table", "search_concepts", "count_cohort",
-                 "recommend_join", "build_dashboard", "query_dashboard", "list_workflows", "prepare_workflow")
+                 "recommend_join", "build_dashboard", "query_dashboard", "list_workflows", "prepare_workflow",
+                 "workflow_status", "open_workflow_results")
         return {name: getattr(self, name) for name in names}
 
 
@@ -268,13 +285,49 @@ def history(request: Request, response: Response, session_id: uuid.UUID | None =
     return agent_sessions.history(agent_sessions.owner(request, response), _SCOPE, session_id, before)
 
 
+
+def _restore_workflow_source(owner, plan):
+    ref = source_dict(plan.get("source_ref") or {})
+    available = {(s["kind"], s["id"]) for s in _main().datasources()["sources"]}
+    def check(source):
+        kind = source["kind"]
+        if kind == "join":
+            if source.get("allow_loaded"):
+                raise ValueError("Rebuild this preview join before approving the workflow.")
+            check(source["base"])
+            for step in source["steps"]:
+                check(step["source"])
+        elif kind in {"aurora", "s3", "omop_cohort"}:
+            resource_kind = "aurora" if kind == "omop_cohort" else kind
+            if (resource_kind, source["resource_id"]) not in available:
+                raise ValueError("The saved workflow source is no longer available.")
+        else:
+            raise ValueError("Rebuild the dataset before approving this workflow.")
+    check(ref)
+    opened = _main()._open_source(ref, temporary=True)
+    did = opened["dataset_id"]
+    with _lock:
+        _dashboards[did] = {"owner": owner, "title": "Workflow input", "source_ref": ref,
+                            "filters": plan.get("filters", []), "created": time.monotonic()}
+    return did
+
+
 @router.post("/workflows/{plan_id}/approve")
 def approve(plan_id: str, req: ApprovalRequest, request: Request, response: Response):
     import agent_workflows
     main = _main()
     owner = agent_sessions.owner(request, response)
+    restored = {}
+    def inspect_dataset(dataset_id, filters):
+        if dataset_id not in restored:
+            try:
+                _owned(owner, dataset_id)
+            except (ValueError, datasets.DatasetNotFound):
+                plan = agent_workflows.get_plan(plan_id, owner)
+                restored[dataset_id] = _restore_workflow_source(owner, plan)
+        return _inspect_dataset(owner, restored.get(dataset_id, dataset_id), filters)
     def export_cohort(dataset_id, resource_id, path, filters, column_mapping):
-        return main.export_cohort(dataset_id, main.ExportCohortRequest(
+        return main.export_cohort(restored.get(dataset_id, dataset_id), main.ExportCohortRequest(
             resource_id=resource_id, path=path, filters=filters, workflow="cohort-genetics-demo",
             column_mapping=column_mapping))
     def submit_workflow(workflow, input_resource_id, input_path, output_resource_id,
@@ -286,12 +339,17 @@ def approve(plan_id: str, req: ApprovalRequest, request: Request, response: Resp
             params_file_path=params_path, job_id=job_id))
     try:
         return agent_workflows.approve(plan_id, owner,
-            inspect_dataset=lambda did, f: _inspect_dataset(owner, did, f),
+            inspect_dataset=inspect_dataset,
             export_cohort=export_cohort, submit_workflow=submit_workflow)
     except (agent_workflows.PlanNotFound, agent_workflows.PlanOwnerMismatch) as exc:
         raise HTTPException(404, "Workflow plan expired or unknown.") from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    finally:
+        for did in restored.values():
+            with _lock:
+                _dashboards.pop(did, None)
+            datasets.close_dataset(did)
 
 
 @router.get("/workflows/{plan_id}/status")
@@ -302,3 +360,64 @@ def status(plan_id: str, request: Request, response: Response):
                                       list_jobs=workflows.list_jobs)
     except (agent_workflows.PlanNotFound, agent_workflows.PlanOwnerMismatch, ValueError) as exc:
         raise HTTPException(404, "Workflow plan expired or unknown.") from exc
+
+
+def _open_workflow_result(owner, plan_id):
+    import io
+    import pandas as pd
+    import agent_results
+    import agent_workflows
+    import lineage
+    plan = agent_workflows.status(plan_id, owner, list_jobs=workflows.list_jobs)
+    if plan["status"] != "completed":
+        raise ValueError("Workflow results are available after the run completes.")
+    available = {(s["kind"], s["id"]) for s in _main().datasources()["sources"]}
+    if ("s3", plan["output_resource_id"]) not in available:
+        raise ValueError("The workflow output resource is not available in this workspace.")
+    checked = agent_results.verify(plan["run"], plan["output_resource_id"], plan["rows"],
+                                   expected_input_uri=plan["input_uri"])
+    verification = {key: value for key, value in checked.items()
+                    if key not in {"summary_csv", "source_ref"}}
+    frame = pd.read_csv(io.BytesIO(checked["summary_csv"]))
+    ref = source_dict(checked["source_ref"])
+    title = "Carrier summary"
+    opened = datasets.open_dataset(frame, f"{plan['output_resource_id']} / {title}", capped=False)
+    did = opened["dataset_id"]
+    datasets.get(did)["source_ref"] = ref
+    datasets.get(did)["workflow_verification"] = verification
+    opened["source_ref"] = ref
+    charts = [{"kind": "scatter", "x": "people", "y": "share_within_status"}]
+    try:
+        datasets.query(did, [], charts, 0, 5)
+    except Exception:
+        datasets.close_dataset(did)
+        raise
+    with _lock:
+        if len(_dashboards) >= 256:
+            _dashboards.pop(next(iter(_dashboards)))
+        _dashboards[did] = {"owner": owner, "title": title, "source_ref": ref,
+                            "filters": [], "created": time.monotonic(),
+                            "verification": verification}
+    run_id = plan["run"]["run_id"]
+    lineage.record(_main()._lineage_engine(), "workflow_results_verified", "dataset", did,
+                   payload={"dataset_id": did, "run_id": run_id,
+                            "source_ref": ref, "verification": verification})
+    return {"action": {"dataset": opened, "title": title, "charts": charts, "filters": []},
+            "verification": verification}
+
+
+@router.get("/workflows")
+def workflow_plans(request: Request, response: Response):
+    import agent_workflows
+    return {"plans": agent_workflows.list_plans(agent_sessions.owner(request, response))}
+
+
+@router.post("/workflows/{plan_id}/results/open")
+def open_workflow_result(plan_id: str, req: ApprovalRequest, request: Request, response: Response):
+    import agent_workflows
+    try:
+        return _open_workflow_result(agent_sessions.owner(request, response), plan_id)
+    except (agent_workflows.PlanNotFound, agent_workflows.PlanOwnerMismatch) as exc:
+        raise HTTPException(404, "Workflow plan expired or unknown.") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc

@@ -67,7 +67,7 @@ def test_managed_migration_creates_working_store(engine, monkeypatch):
     with engine.connect() as connection:
         assert connection.execute(text(
             "SELECT count(*) FROM information_schema.tables "
-            "WHERE table_schema='_studio_agent'" )).scalar() == 5
+            "WHERE table_schema='_studio_agent'" )).scalar() == 6
     store = agent_store.AgentStore()
     turn = store.begin(session_id=None, owner="managed-test-owner", scope="managed-test",
                        system_prompt="Test", user_message="Hello", provider="test", model="test")

@@ -136,3 +136,98 @@ def test_agent_builds_real_aurora_join_dashboard(workspace, monkeypatch):
     rows = ops.query_dashboard(result["dataset_id"])["rows"]
     assert len(rows["data"]) == 5
     assert "drugs → drug_concept_id" in rows["columns"]
+
+def test_completed_workflow_results_verify_open_and_restore(workspace, monkeypatch, engine):
+    import agent_results
+    import agent_workflows
+    import agent_sessions
+    from fastapi import Request, Response
+    from tests.test_agent_results import fixture_data, run_info, RESOURCE, BASE_URI, PUBDIR
+    workspace.get("/api/agent/chat/history")
+    request = Request({"type": "http", "headers": [(b"cookie", "; ".join(
+        f"{k}={v}" for k, v in workspace.cookies.items()).encode())]})
+    owner = agent_sessions.owner(request, Response())
+    info = {"rows": 3, "columns": list(agent_workflows.REQUIRED_INPUT_COLUMNS), "capped": False}
+    registry = lambda: {"available": True, "workflows": [{"id": "cohort-genetics-demo", "type": "NEXTFLOW"}]}
+    plan = agent_workflows.prepare("fixture-dataset", "input", RESOURCE, [], owner,
+        inspect_dataset=lambda *args: info, list_workflows=registry,
+        resolve_s3_resource=lambda rid: BASE_URI if rid == RESOURCE else "s3://inputs")
+    agent_workflows.approve(plan["id"], owner, inspect_dataset=lambda *args: info,
+        export_cohort=lambda *args: {"rows": 3, "s3_uri": plan["input_uri"]},
+        submit_workflow=lambda *args: run_info())
+    monkeypatch.setattr(main, "datasources", lambda: {"sources": [{"kind": "s3", "id": RESOURCE}]})
+    monkeypatch.setattr(main.workflows, "list_jobs", lambda **kw: {"jobs": [run_info()]})
+    monkeypatch.setattr(main, "_lineage_engine", lambda: engine)
+    manifest, keys, objects, calls, listing, reading = fixture_data()
+    manifest["input"]["uri"] = plan["input_uri"]
+    keys[PUBDIR + "run_manifest.json"] = json.dumps(manifest).encode()
+    objects[0]["size"] = len(keys[PUBDIR + "run_manifest.json"])
+    monkeypatch.setattr(agent_results, "_default_resolve", lambda rid: BASE_URI)
+    monkeypatch.setattr(agent_results, "_default_list", listing)
+    monkeypatch.setattr(agent_results, "_default_read", reading)
+    monkeypatch.setattr(main, "_open_source", lambda *a, **kw: pytest.fail("must load the verified bytes"))
+    url = f"/api/agent/workflows/{plan['id']}/results/open"
+    response = workspace.post(url, json={})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["verification"]["verified"] and body["verification"]["rows"] == 3
+    assert body["action"]["dataset"]["rows"] == 2
+    assert "summary_csv" not in response.text
+    did = body["action"]["dataset"]["dataset_id"]
+    query = workspace.post(f"/api/datasets/{did}/query", json={}).json()
+    column = query["rows"]["columns"].index("people")
+    assert sum(row[column] for row in query["rows"]["data"]) == 3
+    restored = workspace.get("/api/agent/workflows").json()["plans"]
+    assert restored[0]["id"] == plan["id"] and restored[0]["status"] == "completed"
+    outsider = TestClient(main.app)
+    assert outsider.get("/api/agent/workflows").json()["plans"] == []
+    assert outsider.post(url, json={}).status_code == 404
+    manifest["outputs_sha256"]["carrier_summary_csv"] = "0" * 64
+    keys[PUBDIR + "run_manifest.json"] = json.dumps(manifest).encode()
+    objects[0]["size"] = len(keys[PUBDIR + "run_manifest.json"])
+    before = len(agent_mode_api._dashboards)
+    rejected = workspace.post(url, json={})
+    assert rejected.status_code == 400 and "checksum" in rejected.text
+    assert len(agent_mode_api._dashboards) == before
+
+def test_pending_workflow_reopens_aurora_source_after_restart(workspace, monkeypatch, engine):
+    import agent_sessions
+    import agent_workflows
+    from fastapi import Request, Response
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("""CREATE TABLE cdm.workflow_input AS
+            SELECT person_id, 's' || person_id AS sample_id,
+            'SYN_VAR_0021'::text AS variant_id, 1::integer AS dosage,
+            gender_concept_id, year_of_birth FROM cdm.person"""))
+    workspace.get("/api/agent/chat/history")
+    request = Request({"type": "http", "headers": [(b"cookie", "; ".join(
+        f"{k}={v}" for k,v in workspace.cookies.items()).encode())]})
+    owner = agent_sessions.owner(request, Response())
+    monkeypatch.setattr(main, "tables", lambda *args: [
+        {"name": "cdm.workflow_input", "schema": "cdm", "table": "workflow_input"}])
+    ops = agent_mode_api.Operations(owner)
+    ref = {"kind": "aurora", "resource_id": "omopdb", "schema": "cdm", "table": "workflow_input"}
+    ops.inspect_table(json.dumps(ref))
+    built = ops.build_dashboard(json.dumps(ref), "Workflow inputs")
+    did = built["dataset_id"]
+    plan = agent_workflows.prepare(did, "input", "output", [], owner,
+        inspect_dataset=lambda d,f: agent_mode_api._inspect_dataset(owner,d,f),
+        list_workflows=lambda: {"available": True, "workflows": [{"id":"cohort-genetics-demo", "type":"NEXTFLOW"}]},
+        resolve_s3_resource=lambda rid: "s3://bucket/" + rid)
+    assert plan["status"] == "ready", plan
+    main.datasets.close_dataset(did)
+    agent_mode_api._dashboards.clear()
+    calls = []
+    def export(frame, rid, path):
+        calls.append("export")
+        assert len(frame) == 100 and list(frame.columns) == list(agent_workflows.REQUIRED_INPUT_COLUMNS)
+        return {"rows":100, "s3_uri": plan["input_uri"]}
+    monkeypatch.setattr(main.workflows, "export_cohort_csv", export)
+    monkeypatch.setattr(main, "submit_workflow", lambda req: calls.append("submit") or {"run_id":"restored-run"})
+    monkeypatch.setattr(main, "_lineage_engine", lambda: engine)
+    response = workspace.post(f"/api/agent/workflows/{plan['id']}/approve", json={})
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "submitted", response.json()
+    assert calls == ["export", "submit"]
+    assert not agent_mode_api._dashboards

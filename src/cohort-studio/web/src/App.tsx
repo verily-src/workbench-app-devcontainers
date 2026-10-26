@@ -615,6 +615,8 @@ export default function App() {
           </div>
         )}
 
+        {datasets.length === 0 && sources.length > 0 && <button className="quiet"
+          data-tutorial-target="join-button" onClick={() => setShowJoin(true)}>Join tables</button>}
         <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
           loading={!ready || Boolean(activity)} busy={Boolean(activity)}
           onSourceKeyChange={setSourceKey} onTableChange={setTable} onLoadTable={loadTable} />
@@ -781,9 +783,13 @@ export default function App() {
               </svg>
               <div className="title">No data loaded</div>
               {sources.length > 0 && (
-                  <button className="primary" data-tutorial-target="join-button"
-                    onClick={() => setShowJoin(true)}>
-                  ⋈ Join tables
+                  <button className="primary" data-tutorial-target="load-data"
+                    onClick={() => {
+                      const picker = document.querySelector<HTMLSelectElement>("[aria-label='Source type']");
+                      picker?.scrollIntoView({ block: "nearest" });
+                      picker?.focus();
+                    }}>
+                  Load data
                 </button>
               )}
             </div>

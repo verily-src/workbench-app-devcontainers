@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./Tutorial.css";
 
-const STORAGE_KEY = "cohort-studio.tutorial.v2";
+const STORAGE_KEY = "cohort-studio.tutorial.v3";
 
 export interface TutorialProgress {
   sourceChosen: boolean;
@@ -31,14 +31,14 @@ const steps = [
   },
   {
     title: "Open a table",
-    text: "Choose a table or file and select Load. The opened data appears in a tab.",
-    target: () => ["[aria-label='Table']"],
+    text: "For Aurora, choose Schema → Table → Load table. For S3, choose File folder → File → Load file. You can rename the opened tab.",
+    target: () => ["[aria-label='Table']", "[aria-label='File']", "[aria-label='Schema']"],
     done: (p: TutorialProgress) => p.dataLoaded,
     unavailable: (p: TutorialProgress) => !p.sourceChosen,
   },
   {
     title: "Build an OMOP cohort",
-    text: "Open OMOP Builder. Search for a concept, add criteria, count the cohort, then open it to inspect the result.",
+    text: "Select OMOP beside Tables. Choose concepts and demographic filters to update the cohort summary. Use Charts or Table to inspect it, then View people to open the cohort.",
     target: (p: TutorialProgress) => p.omopActive
       ? ["[aria-label='OMOP cohort builder']"] : ["[data-tutorial-target='omop-toggle']"],
     done: (p: TutorialProgress) => p.omopOpenedCount > 0,
@@ -46,14 +46,14 @@ const steps = [
   },
   {
     title: "Open related tables",
-    text: "In OMOP Builder, choose a clinical table and open it. Each result gets its own tab so you can inspect related data.",
+    text: "In OMOP, use Explore clinical tables. Keep Restrict to current cohort selected to open events for your cohort. For genetics, return to Tables and choose the genetics schema.",
     target: () => ["[aria-label='OMOP cohort builder']"],
     done: (p: TutorialProgress) => p.omopOpenedCount > 1,
     unavailable: (p: TutorialProgress) => !p.omopAvailable || p.omopOpenedCount === 0,
   },
   {
     title: "Join on matching keys",
-    text: "Open Join, choose the base and other table, then select keys that identify the same entity. Review the preview before creating the joined tab.",
+    text: "Open Join and add an Aurora table or S3 file. Match person_id to samples.person_id, then sample_id to genotypes.sample_id. Preview the result and Generated SQL. Cross-source joins use DuckDB and require your consent.",
     target: (p: TutorialProgress) => p.joinPanelOpen
       ? ["[aria-label='Join type']"] : ["[data-tutorial-target='join-button']"],
     done: (p: TutorialProgress) => p.joinCreated,
@@ -67,27 +67,34 @@ const steps = [
     unavailable: () => false,
   },
   {
-    title: "Ask a question and return to history",
-    text: "Return to Explore, open Chat on a loaded dataset, and ask a question. Reopening that tab restores its chat history.",
-    target: (p: TutorialProgress) => p.view === "explore"
-      ? [".chat-launcher", ".chat-input input"] : ["[data-tutorial-target='nav-explore']"],
-    done: (p: TutorialProgress) => p.chatHistoryAvailable,
-    unavailable: (p: TutorialProgress) => !p.hasDataset,
+    title: "Open an Agent conversation",
+    text: "Open Agent and select New chat. Ask it to build your cohort and inspect its tool results. Conversations are listed on the left; closing one keeps its history. Workflow plans require Run workflow approval.",
+    target: (p: TutorialProgress) => p.view === "agent"
+      ? ["[aria-label='Message the Studio Agent']"] : ["[data-tutorial-target='nav-agent']"],
+    done: (p: TutorialProgress) => p.view === "agent",
+    unavailable: () => false,
+  },
+  {
+    title: "Review workflow runs",
+    text: "Open Workflows to inspect actual run status. For the demo, ask Agent to prepare cohort-genetics-demo with nextflow_params input and nextflow_outputs output. Review the mapping before Run workflow. After completion, ask Agent to verify the output files and open the summary dashboard.",
+    target: () => ["[data-tutorial-target='nav-workflows']"],
+    done: (p: TutorialProgress) => p.view === "workflows",
+    unavailable: () => false,
   },
 ];
 
-type SavedProgress = { version: 2; step: number; dismissed: boolean };
+type SavedProgress = { version: 3; step: number; dismissed: boolean };
 type Rect = { top: number; left: number; width: number; height: number };
 
 function readProgress(): SavedProgress {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (saved?.version === 2 && Number.isInteger(saved.step)) {
-      return { version: 2, step: Math.max(0, Math.min(steps.length - 1, saved.step)),
+    if (saved?.version === 3 && Number.isInteger(saved.step)) {
+      return { version: 3, step: Math.max(0, Math.min(steps.length - 1, saved.step)),
         dismissed: saved.dismissed === true };
     }
   } catch {}
-  return { version: 2, step: 0, dismissed: false };
+  return { version: 3, step: 0, dismissed: false };
 }
 
 function saveProgress(progress: SavedProgress) {
@@ -118,7 +125,7 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
 
   const close = () => setOpen(false);
   const dismiss = () => {
-    saveProgress({ version: 2, step: 0, dismissed: true });
+    saveProgress({ version: 3, step: 0, dismissed: true });
     setStep(0);
     close();
   };
@@ -197,7 +204,7 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
   const changeStep = (next: number) => {
     const bounded = Math.max(0, Math.min(steps.length - 1, next));
     setStep(bounded);
-    saveProgress({ version: 2, step: bounded, dismissed: false });
+    saveProgress({ version: 3, step: bounded, dismissed: false });
   };
   changeStepRef.current = changeStep;
 
@@ -236,9 +243,11 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
           <div>
             {step > 0 && <button className="quiet" type="button"
               onClick={() => changeStep(step - 1)}>Back</button>}
+            {!done && step < steps.length - 1 && <button className="quiet" type="button"
+              onClick={() => changeStep(step + 1)}>Skip step</button>}
             {step < steps.length - 1 ? <button className="quiet" type="button"
-              disabled={!done && !unavailable} onClick={() => changeStep(step + 1)}>
-              {unavailable ? "Skip step" : "Next"}
+              disabled={!done} onClick={() => changeStep(step + 1)}>
+              Next
             </button> : <button type="button" onClick={dismiss} disabled={!done}>Finish</button>}
           </div>
         </div>

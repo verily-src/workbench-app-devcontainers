@@ -98,7 +98,7 @@ body {
   width: 280px; min-width: 280px;
   border-right: 1px solid var(--border);
   background: var(--surface);
-  padding: 14px 16px;
+  padding: 60px 16px 14px;
   overflow-y: auto;
 }
 .section-label {

@@ -6,7 +6,7 @@ from sql_utils import statement as text
 from sqlalchemy.exc import DataError
 
 import datasets
-import db
+import database as db
 import live_query
 from source_models import ColumnSetting
 

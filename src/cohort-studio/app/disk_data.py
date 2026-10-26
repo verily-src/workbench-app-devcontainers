@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+from decimal import Decimal
+from functools import wraps
 import os
 import json
 import re
@@ -20,7 +22,7 @@ import sqlglot
 from sqlglot import exp
 
 import duck
-import db
+import database as db
 from sql_utils import statement as text
 
 MAX_OPERATION_BYTES = 1_000_000_000_000
@@ -30,6 +32,8 @@ _BATCH_ROWS = 2048
 _ROOT = Path(tempfile.gettempdir()) / "cohort-studio-disk"
 _ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
 _LOCK = threading.RLock()
+_MATERIALIZATIONS = threading.BoundedSemaphore(2)
+_MIN_FREE_BYTES = 1_000_000_000
 
 
 class OperationTooLarge(ValueError):
@@ -69,12 +73,23 @@ def _contains_omop_cohort(ref: dict) -> bool:
     return False
 
 
-def _compiled_omop_query(source_ref: dict, live_source: dict) -> CompiledSourceQuery:
+def _requires_compiler_trust(ref: dict) -> bool:
+    if ref["kind"] == "materialized":
+        return True
+    if ref["kind"] == "join":
+        return (_requires_compiler_trust(ref["base"])
+                or any(_requires_compiler_trust(step["source"]) for step in ref["steps"]))
+    if ref["kind"] == "derived":
+        return _requires_compiler_trust(ref["base"])
+    return _contains_omop_cohort(ref)
+
+
+def _compiled_source_query(source_ref: dict, live_source: dict) -> CompiledSourceQuery:
     from source_models import source_dict
 
     ref = source_dict(source_ref)
-    if not _contains_omop_cohort(ref):
-        raise ValueError("Only OMOP cohort compiler output can use this query type.")
+    if not _requires_compiler_trust(ref):
+        raise ValueError("Only private source compiler output can use this query type.")
     resources = set()
 
     def collect(node):
@@ -96,6 +111,12 @@ def _compiled_omop_query(source_ref: dict, live_source: dict) -> CompiledSourceQ
     return CompiledSourceQuery(live_source, ref, _COMPILED_SOURCE_TOKEN)
 
 
+def _compiled_omop_query(source_ref: dict, live_source: dict) -> CompiledSourceQuery:
+    if not _contains_omop_cohort(source_ref):
+        raise ValueError("Only OMOP cohort compiler output can use this query type.")
+    return _compiled_source_query(source_ref, live_source)
+
+
 def _q(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
@@ -104,7 +125,28 @@ def _lit(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _check_disk_space():
+    if shutil.disk_usage(_ROOT).free < _MIN_FREE_BYTES:
+        raise OperationTooLarge(
+            "Local storage has less than 1 GB free. Remove unused datasets and retry.")
+
+
+def _bounded_materialization(operation):
+    @wraps(operation)
+    def run(*args, **kwargs):
+        if not _MATERIALIZATIONS.acquire(blocking=False):
+            raise OperationTooLarge(
+                "Two data operations are already writing local storage. Wait and retry.")
+        try:
+            _check_disk_space()
+            return operation(*args, **kwargs)
+        finally:
+            _MATERIALIZATIONS.release()
+    return run
+
+
 def _new_path() -> str:
+    _check_disk_space()
     fd, path = tempfile.mkstemp(prefix="dataset-", suffix=".duckdb", dir=_ROOT)
     os.close(fd)
     os.remove(path)
@@ -157,6 +199,7 @@ def _budget(estimated_bytes: int, materialized_bytes: int = 0):
 
 
 def _actual_budget(total: int):
+    _check_disk_space()
     if total > MAX_OPERATION_BYTES:
         raise OperationTooLarge(
             "This operation reached the 1 TB scan or materialization limit and was stopped.")
@@ -181,20 +224,30 @@ def _has_hive_path(uri: str) -> bool:
 
 def _s3_client(resource_id: str, filename: str):
     import boto3
+    import source_registry
 
-    filename = _validate_relative_key(filename)
+    location = source_registry.s3_location(resource_id)
+    if location is not None:
+        base, region, _ = location
+        source = source_registry.get("s3", resource_id.removeprefix("s3:"))
+        if source is None:
+            raise ValueError("Registered S3 datasource was not found.")
+        bucket = source["bucket"]
+        key = "/".join(part for part in (source.get("prefix", ""), filename) if part)
+        session = boto3.Session(region_name=region)
+        return session.client("s3", region_name=region), bucket, key, base.rstrip("/") + "/" + filename, region, True
     uri = db.resolve_s3_uri(resource_id).rstrip("/") + "/" + filename
     parsed = urlsplit(uri)
     if parsed.scheme != "s3" or not parsed.netloc:
         raise ValueError("S3 resource did not resolve to an S3 object.")
-    region = duck.DEFAULT_REGION
-    session = boto3.Session(profile_name=resource_id, region_name=region)
-    return session.client("s3", region_name=region), parsed.netloc, parsed.path.lstrip("/"), uri, region
+    key = parsed.path.lstrip("/")
+    session = boto3.Session(profile_name=resource_id, region_name=duck.DEFAULT_REGION)
+    return session.client("s3"), parsed.netloc, key, uri, duck.DEFAULT_REGION, False
 
 
 def _object_size(resource_id: str, filename: str) -> tuple[int, str, str, bool]:
-    filename = _validate_relative_key(filename)
-    client, bucket, key, uri, region = _s3_client(resource_id, filename)
+    filename = duck._validate_relative_key(filename)
+    client, bucket, key, uri, region, app_credentials = _s3_client(resource_id, filename)
     try:
         size = int(client.head_object(Bucket=bucket, Key=key)["ContentLength"])
     except Exception as exc:
@@ -203,7 +256,7 @@ def _object_size(resource_id: str, filename: str) -> tuple[int, str, str, bool]:
     if size < 0:
         raise SourceSizeUnknown("The S3 object size is not available.")
     _budget(size, size)
-    return size, uri, region
+    return size, uri, region, app_credentials
 
 
 def _url_size(uri: str, profile: str | None) -> int:
@@ -316,7 +369,7 @@ def _stream_result(reader, path: str, estimated_bytes: int,
 def _preview(path: str, table: str = "data", limit: int = 100_000) -> pd.DataFrame:
     con = _connect(path, read_only=True)
     try:
-        return con.execute(f"SELECT * FROM {_q(table)} LIMIT {int(limit)}").df()
+        return con.execute(f"SELECT * FROM {_q(table)} LIMIT {int(limit)}").to_arrow_table().to_pandas(types_mapper=pd.ArrowDtype)
     finally:
         con.close()
 
@@ -537,6 +590,7 @@ def _stream_duck_query(reader_con, writer_con, sql: str, table: str,
     return row_count, bytes_written
 
 
+@_bounded_materialization
 def run_join(plan: dict) -> dict:
     datasets = [plan["base"]] + [step["ds"] for step in plan["steps"]]
     source_estimates = []
@@ -651,6 +705,7 @@ def run_join(plan: dict) -> dict:
             pass
 
 
+@_bounded_materialization
 def derive(source: dict, spec: dict) -> tuple[pd.DataFrame, dict]:
     from source_models import DerivedSpec
 
@@ -760,13 +815,16 @@ def _join_step_sql(step: dict, left: str, right: str) -> str:
             f"{right} AS r ON {condition}")
 
 
+@_bounded_materialization
 def open_s3(ref: dict) -> tuple[pd.DataFrame, dict]:
     resource_id, filename = ref["resource_id"], ref["table"]
-    size, uri, region = _object_size(resource_id, filename)
+    size, uri, region, app_credentials = _object_size(resource_id, filename)
     path = _new_path()
-    source_con = _configure(duck._connect(resource_id, region=region))
+    source_con = _configure(duck._connect(
+        None if app_credentials else resource_id,
+        region=region, app_credentials=app_credentials))
     try:
-        sql = duck._reader_sql(uri, hive=_has_hive_path(uri))
+        sql = duck._reader_sql(uri, hive=duck._has_hive_path(uri))
         reader = source_con.execute(f"SELECT * FROM {sql}").to_arrow_reader(_BATCH_ROWS)
         columns, rows, materialized = _stream_result(reader, path, size)
     except Exception:
@@ -781,6 +839,7 @@ def open_s3(ref: dict) -> tuple[pd.DataFrame, dict]:
                             "materialized_bytes": materialized}
 
 
+@_bounded_materialization
 def open_catalog(ref: dict) -> tuple[pd.DataFrame, dict]:
     import catalog
 
@@ -933,11 +992,12 @@ def query(source: dict, filters: list[dict], charts: list[dict], page: int,
         charts_out = _aggregate(con, relation, where, params, charts, columns)
         frame = con.execute(
             f"SELECT * FROM {relation} AS src WHERE {where} LIMIT ? OFFSET ?",
-            [*params, page_size, page * page_size]).df()
+            [*params, page_size, page * page_size]).to_arrow_table().to_pandas(types_mapper=pd.ArrowDtype)
         result = {"total": total, "filtered": filtered, "charts": charts_out,
                   "rows": {"page": page, "page_size": page_size,
                            "columns": columns,
-                           "data": frame.astype(object).where(frame.notna(), None).values.tolist()},
+                           "data": [[str(value) if isinstance(value, Decimal) else value for value in row]
+                                    for row in frame.astype(object).where(frame.notna(), None).values.tolist()]},
                   "scope": "loaded", "sampled": False}
         if entity_column is not None:
             qentity = _q(entity_column)
@@ -1144,6 +1204,7 @@ def compare(source: dict, profiles: list[dict], filters_a: list[dict],
         con.close()
 
 
+@_bounded_materialization
 def count_by_group(source: dict, group_by: str, filters: list[dict],
                    engine, output_table: str) -> dict:
     if group_by not in source["columns"]:
@@ -1216,6 +1277,7 @@ def export_frame(source: dict, filters: list[dict], max_rows: int) -> pd.DataFra
         con.close()
 
 
+@_bounded_materialization
 def export_tsv(source: dict, filters: list[dict], max_rows: int) -> str:
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])))
     where, params = _where(filters, source["columns"])

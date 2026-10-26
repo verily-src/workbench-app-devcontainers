@@ -1,9 +1,12 @@
+export type TableSourceKind = "aurora" | "postgres" | "s3" | "bq" | "catalog" | "athena";
+
 export interface Source {
-  kind: "aurora" | "s3" | "bq" | "catalog";
+  kind: TableSourceKind;
   id: string;
   label: string;
   omop?: { cdm_schema: string; vocab_schema: string | null; version: string | null; persons: number };
   uuid?: string;
+  read_only?: boolean;
 }
 
 export interface TableInfo {
@@ -85,10 +88,12 @@ export interface DerivedSpec {
 }
 
 export type SourceRef =
+  | { kind: "materialized"; resource_id: string; materialized_id: string;
+      settings?: ColumnSetting[] }
   | { kind: "omop_cohort"; resource_id: string; spec: OmopSpec;
       membership_mode: "live"; name?: string; settings?: ColumnSetting[] }
   | { kind: "sql"; resource_id: string; sql: string; name?: string }
-  | { kind: "aurora" | "s3" | "bq" | "catalog"; resource_id: string;
+  | { kind: TableSourceKind; resource_id: string;
       table: string; schema?: string; uuid?: string; settings?: ColumnSetting[] }
   | { kind: "derived"; base: SourceRef; spec: DerivedSpec;
       settings?: ColumnSetting[] }
@@ -97,11 +102,17 @@ export type SourceRef =
       columns: string[] | null; alias: string;
     }[] };
 
-export interface SavedViewEntry {
+export interface SavedViewInfo {
+  name: string;
+  materialized_sources: number;
+  refreshed_at: string | null;
+  refresh_mode?: string | null;
+}
+
+export interface SavedViewEntry extends SavedViewInfo {
   kind: "aurora" | "s3";
   resource_id: string;
   store_label: string;
-  name: string;
 }
 
 export interface SavedViewStoreError {
@@ -116,6 +127,15 @@ export interface SavedViewList {
   unavailable: SavedViewStoreError[];
 }
 
+export interface SavedViewJob {
+  materialized_sources?: number;
+  job_id: string;
+  status: "queued" | "running" | "complete" | "failed";
+  name: string;
+  completed_sources: number;
+  total_sources: number;
+  error?: string | null;
+}
 
 export interface SqlPreview {
   source_ref: Extract<SourceRef, { kind: "sql" }>;

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from sql_utils import statement as text
 
-import db
+import database as db
 import live_query
 
 MAX_JOBS = 8

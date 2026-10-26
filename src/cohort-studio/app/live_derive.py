@@ -3,7 +3,7 @@ import math
 import uuid
 
 import pandas as pd
-import db
+import database as db
 import disk_data
 import queries
 from sql_utils import statement as text

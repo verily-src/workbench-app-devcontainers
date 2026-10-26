@@ -9,7 +9,7 @@ from contextlib import contextmanager
 import pandas as pd
 from sqlalchemy import Engine, text
 
-import db
+import database as db
 import queries
 from cache import ttl_cache
 

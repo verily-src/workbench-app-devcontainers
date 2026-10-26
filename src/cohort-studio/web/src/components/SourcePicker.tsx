@@ -103,7 +103,7 @@ export function SourcePicker({ sources, tables, sourceKey, table, loading = fals
         <option value="">Choose a datasource…</option>
         {typeSources.map((source) => (
           <option key={`${source.kind}:${source.id}`}
-                  value={`${source.kind}:${source.id}`}>{source.id}</option>
+                  value={`${source.kind}:${source.id}`}>{source.label || source.id}</option>
         ))}
       </select>
 

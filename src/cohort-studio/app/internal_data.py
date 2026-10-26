@@ -3,6 +3,7 @@ INTERNAL_TABLES = {"_agent_turn", "_lineage_event", "_lineage_edge", "_studio_vi
 
 def is_internal(schema: str | None, table: str = "") -> bool:
     return (str(schema or "").casefold().startswith("_studio_")
+            or table.casefold().startswith("_studio_mv_")
             or table.casefold() in INTERNAL_TABLES)
 
 

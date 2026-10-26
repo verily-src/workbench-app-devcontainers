@@ -3,7 +3,7 @@ import type {
   ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
-  SavedViewList,
+  SavedViewJob, SavedViewList,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -161,6 +161,15 @@ export interface AgentWorkflowApproval {
 
 export type AgentWorkflowStatus = AgentWorkflowPlan;
 
+export type CreateSourceRequest =
+  | { kind: "postgres"; id: string; label: string;
+      secret_id: string; region: string }
+  | { kind: "s3"; id: string; label: string; bucket: string;
+      prefix: string; region: string }
+  | { kind: "athena"; id: string; label: string; region: string;
+      workgroup: string; output_location: string; databases: string[];
+      catalog: "AwsDataCatalog" };
+
 export interface AgentTurn {
   ts: string;
   trace_id: string;
@@ -249,6 +258,9 @@ export interface ExportJob {
 }
 
 export const api = {
+  createSource: (body: CreateSourceRequest) =>
+    request<{ kind: string; id: string; label: string }>("/api/sources", post(body)),
+
   chatHistory: (kind: "dataset" | "omop", id: string, sessionId?: string, before?: number) => {
     const path = kind === "dataset" ? `/api/datasets/${encodeURIComponent(id)}/chat/history`
       : `/api/omop/${encodeURIComponent(id)}/cohort/agent/history`;
@@ -454,6 +466,14 @@ export const api = {
 
   listAllViews: () => request<SavedViewList>("/api/views/all"),
 
+  savedViewJob: (jobId: string) =>
+    request<SavedViewJob>(`/api/views/jobs/${encodeURIComponent(jobId)}`),
+
+  refreshView: (kind: string, resourceId: string, name: string) =>
+    request<SavedViewJob>("/api/views/refresh", post({
+      kind, resource_id: resourceId, name,
+    })),
+
   getView: (kind: string, resourceId: string, name: string) =>
     request<{
       version?: number; active?: number;
@@ -469,7 +489,7 @@ export const api = {
 
   saveView: (kind: string, resourceId: string, name: string,
              datasets: Dataset[], active: number) =>
-    request<{ name: string }>("/api/views", post({
+    request<{ name: string; job_id?: string; status?: SavedViewJob["status"]; completed_sources?: number; total_sources?: number; error?: string | null }>("/api/views", post({
       kind, resource_id: resourceId, name, active,
       datasets: datasets.map((d) => ({
         source: d.sourceRef,

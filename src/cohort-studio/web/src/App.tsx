@@ -556,7 +556,7 @@ export default function App() {
   ];
 
   return (
-    <div className="app">
+    <div className={`app${view === "agent" ? " app-agent" : ""}`}>
       <aside className="sidebar">
         {!ready ? (
           <div className="activity"><span className="pulse" />
@@ -707,7 +707,7 @@ export default function App() {
             }} />
           </div>
           {view === "explore" && exploreMode === "omop" ? null : view === "agent" ? (
-            <StudioAgent onOpenDashboard={(action: AgentDashboardAction, verification?: AgentWorkflowVerification) => {
+            <StudioAgent onOpenSettings={() => setView("settings")} onOpenDashboard={(action: AgentDashboardAction, verification?: AgentWorkflowVerification) => {
               setWorkflowVerification(verification?.verified
                 ? { result: verification, datasetId: action.dataset.dataset_id,
                     strata: action.dataset.rows } : null);

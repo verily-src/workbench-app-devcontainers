@@ -257,15 +257,16 @@ export const api = {
     if (before !== undefined) query.set("before", String(before));
     return request<ChatHistory>(`${path}?${query}`);
   },
+  agentChatSessions: () => request<{ sessions: { session_id: string; title: string; updated_at: string }[] }>("/api/agent/chat/sessions"),
   agentChatHistory: (sessionId?: string, before?: number) => {
     const query = new URLSearchParams();
     if (sessionId) query.set("session_id", sessionId);
     if (before !== undefined) query.set("before", String(before));
     return request<ChatHistory>(`/api/agent/chat/history?${query}`);
   },
-  agentChat: (message: string, sessionId?: string) =>
+  agentChat: (message: string, sessionId?: string, newSession = false) =>
     request<StudioAgentResponse>("/api/agent/chat",
-      post({ message, session_id: sessionId })),
+      post({ message, session_id: sessionId, new_session: newSession })),
   approveAgentWorkflow: (planId: string) =>
     request<AgentWorkflowPlan>(
       `/api/agent/workflows/${encodeURIComponent(planId)}/approve`, post({})),

@@ -124,6 +124,9 @@ def _tool_result(name: str, callback, args: dict) -> str:
     encoded = json.dumps(result, ensure_ascii=False, default=_json_default)
     if len(encoded.encode("utf-8")) > _MAX_TOOL_OUTPUT_BYTES:
         raise ValueError("Tool result is too large. Narrow the request.")
+    if name == "prepare_workflow" and isinstance(result, dict) and result.get("status") == "ready":
+        return agent_runtime.AgentToolResult(encoded, completion_reply=
+            "The workflow proposal is ready for approval. Review the input mapping and output location, then select Run workflow. No workflow has been submitted.")
     return encoded
 
 
@@ -286,6 +289,8 @@ def chat(message: str, operations: dict, on_step=None) -> dict:
             "tool_calls": out.get("tool_calls", []),
             "tool_results": out.get("tool_results", []),
             "limit_reached": out.get("limit_reached", False),
+            **({"completion_reason": out["completion_reason"]}
+               if out.get("completion_reason") else {}),
             **({"limit_reason": out["limit_reason"]}
                if out.get("limit_reason") else {}),
             **({"stop_reason": out["stop_reason"]}

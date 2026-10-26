@@ -304,6 +304,42 @@ class AgentStore:
         except SQLAlchemyError as exc:
             raise AgentStoreError("Could not load agent session.") from exc
 
+    def list_sessions(self, *, owner: str, scope: str, limit: int = 50) -> list[dict]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            raise AgentStoreError("Session list limit must be between 1 and 50.")
+        owner_hash = hashlib.sha256(owner.encode()).hexdigest()
+        page_size = limit
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
+        try:
+            with self.engine.connect() as conn:
+                _set_timeouts(conn)
+                rows = conn.execute(text(f"""
+                    WITH recent AS (
+                        SELECT session_id, updated_at
+                        FROM {SCHEMA}.sessions
+                        WHERE owner_hash = :owner_hash AND scope = :scope
+                          AND updated_at >= :cutoff
+                        ORDER BY updated_at DESC, session_id DESC
+                        LIMIT :limit
+                    )
+                    SELECT recent.session_id,
+                           COALESCE(first_message.title, 'New conversation') AS title,
+                           recent.updated_at
+                    FROM recent
+                    LEFT JOIN LATERAL (
+                        SELECT LEFT(BTRIM(REGEXP_REPLACE(m.content, '\\s+', ' ', 'g')), 80) AS title
+                        FROM {SCHEMA}.messages AS m
+                        WHERE m.session_id = recent.session_id AND m.role = 'user'
+                        ORDER BY m.message_id ASC LIMIT 1
+                    ) AS first_message ON TRUE
+                    ORDER BY recent.updated_at DESC, recent.session_id DESC
+                """), {"owner_hash": owner_hash, "scope": scope,
+                       "cutoff": cutoff, "limit": page_size}).mappings().all()
+            return [{"session_id": row["session_id"], "title": row["title"],
+                     "updated_at": row["updated_at"]} for row in rows]
+        except SQLAlchemyError as exc:
+            raise AgentStoreError("Could not list agent sessions.") from exc
+
     def history(self, *, session_id: str | uuid.UUID, owner: str, scope: str,
                 before_message_id: int | None = None, limit: int = 100) -> HistoryPage:
         try:

@@ -733,3 +733,5 @@ button.link:hover { text-decoration: underline; }
 
 .tab-rename { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .tab-rename input { min-width: 140px; max-width: 280px; }
+
+.app-agent > .sidebar { display: none; }

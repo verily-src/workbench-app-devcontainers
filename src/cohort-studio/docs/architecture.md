@@ -661,6 +661,10 @@ not database privacy. API keys remain outside these tables in encrypted storage.
 Without this option migration still requests private permissions, which require
 an administrator on this managed resource.
 
+Studio Agent starts fresh conversations through an explicit `new_session` request, mutually exclusive with an existing session ID. A fresh conversation does not inherit the latest session context. The session list returns up to 50 recent conversations within the configured retention window from Aurora under the same owner and workspace scope; titles use the first sanitized user question without a model call. Older history remains accessible by explicit session ID. Closing a chat hides its pointer in that browser; it does not delete its stored history. Reopening loads history through the owner-checked API. Session changes and history paging are serialized in the UI.
+
+The Agent integrations panel reads public configuration only and distinguishes built-in Studio tools from external MCP setup. PubMed, bioRxiv and arXiv setup entries do not imply callable agent tools or verified connectivity. External literature tool invocation is not implemented in Studio Agent; its runtime tool set remains explicit and local.
+
 The application remains in the monorepo and existing container topology.
 LangGraph runs in the Studio backend and calls model APIs. The experimental
 agent sidecar and gateway were removed at the user's request. No separate model
@@ -721,7 +725,11 @@ turn before a new dashboard is built.
 
 Studio Agent permits up to 16 model turns; ordinary dataset chat stays at eight.
 Both retain the 600-second and 64-tool-call limits. A ready workflow proposal
-is an approval boundary: the agent returns the proposal and stops.
+is an approval boundary enforced by the runtime. A trusted local tool result
+ends the batch immediately and returns a fixed approval reply without another
+model call. Serialized model or datasource content cannot signal completion.
+Preparation records success even at the turn limit; workflow execution still
+requires the separate approval endpoint.
 The runtime returns per-tool outcomes. Safe input errors include corrective field
 information; database and provider exceptions remain redacted. Consecutive failed
 calls are bounded, and an intervening successful tool permits a corrected retry.

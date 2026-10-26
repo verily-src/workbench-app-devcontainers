@@ -4,9 +4,30 @@ import type {
   AgentDashboardAction, AgentWorkflowPlan, AgentWorkflowVerification, ChatHistory,
 } from "../api";
 import type { ChatMsg } from "../types";
+import { AgentIntegrations } from "./AgentIntegrations";
 import "./StudioAgent.css";
 
+const CLOSED_SESSION_IDS_KEY = "cohort-studio-agent-closed-session-ids";
+
+interface AgentChatSession {
+  session_id: string;
+  title: string;
+  updated_at: string;
+}
+
+function storedClosedSessionIds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(CLOSED_SESSION_IDS_KEY);
+    const values: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(values) ? [...new Set(values.filter((value): value is string =>
+      typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)))].slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
 interface Props {
+  onOpenSettings: () => void;
   onOpenDashboard: (action: AgentDashboardAction,
                      verification?: AgentWorkflowVerification) => void;
 }
@@ -60,9 +81,13 @@ function mergePlans(current: AgentWorkflowPlan[], incoming: AgentWorkflowPlan[])
   return [...map.values()];
 }
 
-export function StudioAgent({ onOpenDashboard }: Props) {
+export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | undefined>();
+  const [sessions, setSessions] = useState<AgentChatSession[]>([]);
+  const [closedSessionIds, setClosedSessionIds] = useState<string[]>(storedClosedSessionIds);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [newSessionPending, setNewSessionPending] = useState(false);
   const [input, setInput] = useState("");
   const [restoring, setRestoring] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -74,12 +99,38 @@ export function StudioAgent({ onOpenDashboard }: Props) {
   const [planUi, setPlanUi] = useState<Record<string, PlanUiState>>({});
   const inFlight = useRef(new Set<string>());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const conversationRequest = useRef(0);
+  const sessionsRequest = useRef(0);
+
+  const refreshSessions = async () => {
+    const requestId = ++sessionsRequest.current;
+    try {
+      const { sessions: available } = await api.agentChatSessions();
+      if (requestId === sessionsRequest.current) setSessions(available);
+      return available;
+    } finally {
+      if (requestId === sessionsRequest.current) setSessionsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    try { window.localStorage.setItem(CLOSED_SESSION_IDS_KEY, JSON.stringify(closedSessionIds.slice(0, 50))); }
+    catch {}
+  }, [closedSessionIds]);
 
   useEffect(() => {
     let cancelled = false;
     api.agentChatHistory().then((history: ChatHistory) => {
       if (cancelled) return;
-      setSessionId(history.session_id ?? undefined);
+      const restoredId = history.session_id ?? undefined;
+      if (restoredId && closedSessionIds.includes(restoredId)) {
+        setSessionId(undefined);
+        setNewSessionPending(true);
+        setMessages([]);
+        setBefore(null);
+        return;
+      }
+      setSessionId(restoredId);
       setMessages(history.messages.map((message) => ({
         role: message.role, content: message.content,
       })));
@@ -90,6 +141,14 @@ export function StudioAgent({ onOpenDashboard }: Props) {
       if (!cancelled) setRestoring(false);
     });
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void refreshSessions().catch((caught) => {
+      if (!cancelled) setError(safeError(caught));
+    });
+    return () => { cancelled = true; sessionsRequest.current += 1; };
   }, []);
 
   useEffect(() => {
@@ -135,8 +194,11 @@ export function StudioAgent({ onOpenDashboard }: Props) {
     setError("");
     setMessages((current) => [...current, { role: "user", content: message }]);
     try {
-      const result = await api.agentChat(message, sessionId);
+      const result = await api.agentChat(message, sessionId, newSessionPending);
       setSessionId(result.session_id);
+      setNewSessionPending(false);
+      void refreshSessions()
+        .catch((caught) => setError(safeError(caught)));
       setPlans((current) => mergePlans(current, result.workflow_plans));
       setMessages((current) => [...current, {
         role: "assistant", content: result.reply,
@@ -154,19 +216,80 @@ export function StudioAgent({ onOpenDashboard }: Props) {
     }
   };
 
+  const clearToNewConversation = () => {
+    conversationRequest.current += 1;
+    setSessionId(undefined);
+    setNewSessionPending(true);
+    setMessages([]);
+    setBefore(null);
+    setInput("");
+    setError("");
+  };
+
+  const startNewConversation = () => {
+    if (busy || restoring || loadingOlder) return;
+    clearToNewConversation();
+  };
+
+  const selectConversation = async (id: string) => {
+    if (!id) {
+      startNewConversation();
+      return;
+    }
+    if (id === sessionId || busy || restoring || loadingOlder) return;
+    const requestId = ++conversationRequest.current;
+    setRestoring(true);
+    setError("");
+    try {
+      const history = await api.agentChatHistory(id);
+      if (requestId !== conversationRequest.current) return;
+      const restoredId = history.session_id ?? id;
+      setSessionId(restoredId);
+      setNewSessionPending(false);
+      setMessages(history.messages.map((message) => ({
+        role: message.role, content: message.content,
+      })));
+      setBefore(history.has_more ? history.next_before_message_id : null);
+      setInput("");
+    } catch (caught) {
+      if (requestId === conversationRequest.current) setError(safeError(caught));
+    } finally {
+      if (requestId === conversationRequest.current) setRestoring(false);
+    }
+  };
+
+  const closeConversation = (id: string) => {
+    if (busy || restoring || loadingOlder) return;
+    const next = sessions.find((session) => session.session_id !== id
+      && !closedSessionIds.includes(session.session_id));
+    setClosedSessionIds((current) => current.includes(id) ? current : [...current, id].slice(-50));
+    if (sessionId === id) {
+      clearToNewConversation();
+      if (next) void selectConversation(next.session_id);
+    }
+  };
+
+  const reopenConversation = (id: string) => {
+    if (busy || restoring || loadingOlder) return;
+    setClosedSessionIds((current) => current.filter((closedId) => closedId !== id));
+    void selectConversation(id);
+  };
+
   const loadEarlier = async () => {
-    if (before === null || loadingOlder) return;
+    if (before === null || loadingOlder || restoring || busy) return;
+    const requestId = conversationRequest.current;
     setLoadingOlder(true);
     try {
       const history = await api.agentChatHistory(sessionId, before);
+      if (requestId !== conversationRequest.current) return;
       setMessages((current) => [...history.messages.map((message) => ({
         role: message.role, content: message.content,
       })), ...current]);
       setBefore(history.has_more ? history.next_before_message_id : null);
     } catch (caught) {
-      setError(safeError(caught));
+      if (requestId === conversationRequest.current) setError(safeError(caught));
     } finally {
-      setLoadingOlder(false);
+      if (requestId === conversationRequest.current) setLoadingOlder(false);
     }
   };
 
@@ -224,21 +347,70 @@ export function StudioAgent({ onOpenDashboard }: Props) {
     }
   };
 
+  const openSessions = sessions.filter((session) => !closedSessionIds.includes(session.session_id));
+  const closedSessions = sessions.filter((session) => closedSessionIds.includes(session.session_id));
+  const currentTitle = sessions.find((session) => session.session_id === sessionId)?.title;
+
   return (
     <section className="studio-agent" aria-label="Studio Agent">
-      <header className="studio-agent-head">
-        <div>
-          <h1>Studio Agent</h1>
-          <p>Ask for cohort analysis, dashboards, or a workflow plan.</p>
+      <aside className="studio-agent-sidebar" aria-label="Conversations">
+        <button type="button" className="primary studio-agent-new-chat"
+          disabled={busy || restoring || loadingOlder} onClick={startNewConversation}>
+          New chat
+        </button>
+        <div className="studio-agent-session-heading">
+          <h2>Chats</h2>
+          {sessionsLoading && <span role="status">Loading…</span>}
         </div>
-        {(restoring || plansLoading) && <span role="status">
-          {restoring ? "Loading conversation…" : "Loading workflow plans…"}
-        </span>}
-      </header>
+        <nav className="studio-agent-session-list" aria-label="Open chats">
+          {openSessions.map((session) => (
+            <div className="studio-agent-session-row" key={session.session_id}>
+              <button type="button" className="studio-agent-session-link"
+                aria-current={session.session_id === sessionId ? "page" : undefined}
+                disabled={busy || restoring || loadingOlder}
+                onClick={() => void selectConversation(session.session_id)}>
+                <span>{session.title || "Untitled conversation"}</span>
+              </button>
+              <button type="button" className="studio-agent-session-close"
+                aria-label={`Close ${session.title || "conversation"}`}
+                title="Close chat" disabled={busy || restoring || loadingOlder}
+                onClick={() => closeConversation(session.session_id)}>×</button>
+            </div>
+          ))}
+          {!sessionsLoading && openSessions.length === 0 && (
+            <p className="studio-agent-empty-list">No open chats</p>
+          )}
+        </nav>
+        {closedSessions.length > 0 && <details className="studio-agent-closed-list">
+          <summary>Closed chats ({closedSessions.length})</summary>
+          <nav aria-label="Closed chats">
+            {closedSessions.map((session) => (
+              <div className="studio-agent-session-row" key={session.session_id}>
+                <span className="studio-agent-session-name">{session.title || "Untitled conversation"}</span>
+                <button type="button" className="studio-agent-session-reopen"
+                  disabled={busy || restoring || loadingOlder}
+                  onClick={() => reopenConversation(session.session_id)}>Open</button>
+              </div>
+            ))}
+          </nav>
+        </details>}
+        <AgentIntegrations onOpenSettings={onOpenSettings} />
+      </aside>
+
+      <div className="studio-agent-workspace">
+        <header className="studio-agent-head">
+          <div>
+            <h1>Studio Agent</h1>
+            <p>{currentTitle || (newSessionPending ? "New chat" : "Start a conversation")}</p>
+          </div>
+          {(restoring || plansLoading) && <span role="status">
+            {restoring ? "Loading conversation…" : "Loading workflow plans…"}
+          </span>}
+        </header>
 
       <div className="studio-agent-messages" ref={scrollRef} aria-live="polite">
         {before !== null && <button type="button" className="quiet"
-          disabled={loadingOlder} onClick={() => void loadEarlier()}>
+          disabled={loadingOlder || restoring || busy} onClick={() => void loadEarlier()}>
           {loadingOlder ? "Loading…" : "Earlier messages"}
         </button>}
         {messages.length === 0 && !restoring && (
@@ -248,20 +420,20 @@ export function StudioAgent({ onOpenDashboard }: Props) {
           <article key={`${index}-${message.role}`} className={`studio-agent-message ${message.role}`}>
             <div className="studio-agent-bubble">{message.content}</div>
             {message.toolResults && message.toolResults.length > 0 ? (
-              <div className="studio-agent-tools" aria-label="Tool results">
-                <strong>Tool results</strong>
+              <details className="studio-agent-tools" aria-label="Tool results">
+                <summary>Tool results ({message.toolResults.length})</summary>
                 <ul>{message.toolResults.map((tool, i) => <li key={`${tool.name}-${i}`}>
                   {tool.name} · {tool.status === "completed" ? "Completed" : "Failed"}
                 </li>)}</ul>
-              </div>
+              </details>
             ) : message.toolCalls && message.toolCalls.length > 0 ? (
-              <div className="studio-agent-tools" aria-label="Tool calls">
-                <strong>Tool calls · outcome not reported</strong>
+              <details className="studio-agent-tools" aria-label="Tool calls">
+                <summary>Tool calls · outcome not reported ({message.toolCalls.length})</summary>
                 <ul>{message.toolCalls.map((tool, i) => <li key={`${tool}-${i}`}>{tool}</li>)}</ul>
-              </div>
+              </details>
             ) : null}
             {message.limitReached && <p className="studio-agent-limit" role="status">
-              The agent stopped at its time or step limit. Some requested steps may not have run.
+              The agent stopped before completing the request. Review the failed steps before retrying.
             </p>}
             {message.actions?.map((action, i) => (
               <div className="studio-agent-card" key={`${action.title}-${i}`}>
@@ -344,6 +516,7 @@ export function StudioAgent({ onOpenDashboard }: Props) {
           {busy ? "Working…" : "Send"}
         </button>
       </form>
+      </div>
     </section>
   );
 }

@@ -1,9 +1,11 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 import getpass
 import json
 import logging
 import re
 import subprocess
+import threading
+import time
 
 from sqlalchemy import (Column, DateTime, Engine, Integer, MetaData, Table,
                         Text, delete, func, insert, select)
@@ -66,6 +68,8 @@ def list_views(kind: str, resource_id: str) -> list[dict]:
     raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
 
 _LIST_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="saved-view-list")
+_LIST_SLOTS = threading.BoundedSemaphore(4)
+LIST_DEADLINE_SECONDS = 15.0
 
 
 def _list_store(store):
@@ -83,12 +87,33 @@ def _list_store(store):
 
 def list_all_views(stores: list[dict]) -> dict:
     result = {"views": [], "unavailable": []}
+    deadline = time.monotonic() + LIST_DEADLINE_SECONDS
     for offset in range(0, len(stores), 4):
-        pending = [_LIST_POOL.submit(_list_store, store) for store in stores[offset:offset + 4]]
-        for future in pending:
-            value = future.result()
-            result["views"].extend(value["views"])
-            result["unavailable"].extend(value["unavailable"])
+        pending = {}
+        for store in stores[offset:offset + 4]:
+            if time.monotonic() >= deadline:
+                result["unavailable"].append({**store, "error": "Listing deadline reached. Retry to check this store."})
+            elif not _LIST_SLOTS.acquire(blocking=False):
+                result["unavailable"].append({**store, "error": "Saved-view listing is busy. Retry shortly."})
+            else:
+                try:
+                    future = _LIST_POOL.submit(_list_store, store)
+                except Exception:
+                    _LIST_SLOTS.release()
+                    raise
+                future.add_done_callback(lambda _future: _LIST_SLOTS.release())
+                pending[future] = store
+        if not pending:
+            continue
+        done, unfinished = wait(pending, timeout=max(0, deadline - time.monotonic()))
+        for future, store in pending.items():
+            if future in unfinished:
+                future.cancel()
+                result["unavailable"].append({**store, "error": "Listing timed out. Retry to check this store."})
+            else:
+                value = future.result()
+                result["views"].extend(value["views"])
+                result["unavailable"].extend(value["unavailable"])
     result["views"].sort(key=lambda item: (item["name"].casefold(),
                                              item["store_label"].casefold()))
     return result
@@ -201,7 +226,9 @@ def _s3_list(resource_id: str) -> list[dict]:
     if registered is not None:
         import boto3
         bucket, _, prefix, region = registered
-        client = boto3.Session(region_name=region).client("s3", region_name=region)
+        from botocore.config import Config
+        client = boto3.Session(region_name=region).client("s3", region_name=region,
+            config=Config(connect_timeout=5, read_timeout=10, retries={"total_max_attempts": 1}))
         paginator = client.get_paginator("list_objects_v2")
         names = []
         for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -214,10 +241,11 @@ def _s3_list(resource_id: str) -> list[dict]:
                                                  if item.get("LastModified") else None)})
         return names
     uri = f"{db.resolve_s3_uri(resource_id)}/{VIEW_PREFIX}/"
-    out = subprocess.run(["aws", "s3", "ls", uri, "--profile", resource_id],
-                         capture_output=True, text=True, timeout=120)
+    out = subprocess.run(["aws", "s3", "ls", uri, "--profile", resource_id,
+                          "--cli-connect-timeout", "5", "--cli-read-timeout", "10"],
+                         capture_output=True, text=True, timeout=15)
     if out.returncode != 0:
-        return []
+        raise RuntimeError("S3 saved views could not be listed. Check access and retry.")
     names = []
     for line in out.stdout.splitlines():
         parts = line.split(None, 3)

@@ -120,3 +120,30 @@ def test_dashboard_counts_share_one_scan_and_match_direct_sql(engine, monkeypatc
     assert (result['total'], result['filtered'], result['entity']['total'], result['entity']['filtered']) == tuple(expected)
     assert len(result['rows']['data']) == 5
     assert len(statements) == 1 and 'FILTER (WHERE' in statements[0]
+
+
+def test_slow_store_does_not_hide_completed_views_or_queue_unbounded_work(client, monkeypatch):
+    release = threading.Event()
+    finished = threading.Event()
+    monkeypatch.setattr(views, 'LIST_DEADLINE_SECONDS', .1)
+    monkeypatch.setattr(main.db, 'list_aurora_resources', lambda: [])
+    monkeypatch.setattr(main.db, 'list_s3_folders', lambda: [{'id': 'slow'}, {'id': 'ready'}])
+    def list_store(kind, resource_id):
+        if resource_id == 'slow':
+            try:
+                release.wait(5)
+            finally:
+                finished.set()
+        return [{'name': resource_id}]
+    monkeypatch.setattr(views, 'list_views', list_store)
+    start = time.monotonic()
+    try:
+        response = client.get('/api/views/all')
+        assert response.status_code == 200
+        assert time.monotonic() - start < 1
+        assert [v['name'] for v in response.json()['views']] == ['ready']
+        assert response.json()['unavailable'][0]['resource_id'] == 'slow'
+        assert 'timed out' in response.json()['unavailable'][0]['error']
+    finally:
+        release.set()
+        assert finished.wait(2)

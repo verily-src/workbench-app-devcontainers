@@ -425,6 +425,8 @@ def submit_workflow(req: SubmitJobRequest):
             input_path = workflows._safe_object_path(req.demo_input_csv_path)
             output_path = workflows._safe_object_path(req.demo_output_path)
             job_segment = workflows._safe_path_segment(req.job_id)
+            workflows.validate_healthomics_output(
+                db.resolve_s3_uri(req.output_bucket_id), output_path, job_segment)
             input_uri = f"{db.resolve_s3_uri(req.demo_input_resource_id)}/{input_path}"
             output_bucket, output_key = workflows.s3_bucket_key(
                 db.resolve_s3_uri(req.output_bucket_id), output_path, job_segment)

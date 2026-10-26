@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import queries
+import workflows
 import agent_plan_store
 import agent_store
 
@@ -162,7 +163,13 @@ def prepare(dataset_id: str, input_resource_id: str,
     expires_at = now + timedelta(seconds=PLAN_TTL)
     input_path = f"cohort-studio/agent-plans/{plan_id}/cohort.csv"
     params_path = f"cohort-studio/agent-plans/{plan_id}/params.json"
-    output_path = f"cohort-studio/agent-plans/{plan_id}/results"
+    output_path = f"cohort-studio/r/{uuid.UUID(plan_id).hex}"
+    job_id = f"cg-{uuid.UUID(plan_id).hex[:12]}"
+    if "output" in resources:
+        try:
+            workflows.validate_healthomics_output(resources["output"], output_path, job_id)
+        except ValueError as error:
+            errors.append(str(error))
     plan = {
         "id": plan_id,
         "created_at": now.isoformat(),
@@ -182,7 +189,7 @@ def prepare(dataset_id: str, input_resource_id: str,
         "input_path": input_path,
         "params_path": params_path,
         "output_path": output_path,
-        "job_id": f"cohort-genetics-{plan_id[:12]}",
+        "job_id": job_id,
         "status": "blocked" if errors else "ready",
         "errors": errors,
     }
@@ -330,6 +337,11 @@ def status(plan_id: str, owner: str, *, list_jobs, store=None) -> dict:
                     "completed" if status_value == "COMPLETED" else
                     "failed" if status_value in {"FAILED", "CANCELLED", "CANCELED", "DELETED"}
                     else "running")
+            snapshot["errors"] = (
+                [agent_store._sanitize_text(str(job.get("status_message") or
+                    "Workflow failed. Check its Workbench run logs."), 1000)]
+                if snapshot["status"] == "failed" else []
+            )
             if any(safe_run.get(key) is not None for key in (
                     "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")):
                 snapshot["results_location"] = {

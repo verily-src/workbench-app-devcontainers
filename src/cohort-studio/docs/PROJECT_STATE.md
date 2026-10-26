@@ -4,7 +4,9 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
-- Sidebar now has a Data sources heading and compact available count. Build and two tutorial/source-selection browser checks passed; screenshot inspected. Deployment pending.
+- Top alignment: Data sources header now shares the 46px navigation height/background/border; removed sidebar top offset. Build and two browser checks passed; screenshot inspected. Deployment pending.
+
+- DEPLOYED ecec9861a2111f31e8118c9446e1e9eb64a2de54: sidebar Data sources heading and compact available count. Build and two browser checks passed; screenshot inspected. Update3144d1cb-e430-47e2-a79e-97f6fe6bd6f1; active SHA/health verified b88fdadc-e967-498a-ac11-d80d909f2573.
 
 - **DEPLOYED 5b7bcb2c89f5e209a499b3cc99b93125282c49ed:** direct PubMed/bioRxiv adapters. Update SSM `46915992-8823-40a8-9f1a-18d62647c1c1`; SHA/health/frontend/backend activation verified `46ff060a-ef63-444d-8fd3-bee7548ce5de`. Live MCP HTTP calls from app container passed: PubMed asthma returned PMID26335832; bioRxiv cancer window2024-01-01→2024-01-02 returned DOI10.1101/2023.12.31.573735 with9records scanned/220window and truncated=true (SSM `2371124f-c867-4619-a06a-e5e7445ecfba`). Local combined83 tests plus1 actual MCP HTTP test passed. Live LLM-generated interpretation and user-key authenticated search not tested; tool calls used existing server settings without exposing key material. No workflow submitted.
 

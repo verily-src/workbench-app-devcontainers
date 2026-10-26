@@ -98,8 +98,14 @@ body {
   width: 280px; min-width: 280px;
   border-right: 1px solid var(--border);
   background: var(--surface);
-  padding: 60px 16px 14px;
+  padding: 0 16px 14px;
   overflow-y: auto;
+}
+.sidebar-heading {
+  height: 46px; display: flex; align-items: center;
+  margin: 0 -16px 14px; padding: 0 16px;
+  font-size: 16px; font-weight: 600;
+  background: var(--card); border-bottom: 1px solid var(--border);
 }
 .section-label {
   font-size: 11px; font-weight: 600; letter-spacing: 0.08em;

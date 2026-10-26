@@ -609,7 +609,7 @@ export default function App() {
   return (
     <div className={`app${view === "agent" ? " app-agent" : ""}`}>
       <aside className="sidebar">
-        <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 8px" }}>Data sources</h2>
+        <h2 className="sidebar-heading">Data sources</h2>
         {!ready ? (
           <div className="activity"><span className="pulse" />
             Connecting to workspace…</div>

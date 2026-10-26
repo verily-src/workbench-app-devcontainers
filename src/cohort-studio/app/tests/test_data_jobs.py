@@ -102,3 +102,18 @@ def test_cloud_cli_serializes_credential_process_calls(monkeypatch):
     with ThreadPoolExecutor(max_workers=4) as pool:
         assert list(pool.map(lambda _: cloud_cli.run(['aws','s3','ls'], timeout=2), range(8))) == ['ok'] * 8
     assert peak == 1
+
+
+def test_resource_polling_does_not_restart_warmup_or_erase_good_cache(monkeypatch):
+    import db
+    records = [{'id':'existing','resourceType':'AWS_AURORA_DATABASE'}]
+    monkeypatch.setattr(db, '_resource_cache', records)
+    monkeypatch.setattr(db, '_last_refresh', time.monotonic()-30)
+    calls = []
+    monkeypatch.setattr(db, '_fetch_resources', lambda: calls.append('fetch') or [])
+    monkeypatch.setattr(db, 'configure_aws_profiles', lambda: calls.append('configure'))
+    assert db._ensure_cache() == records
+    assert calls == []
+    db._refresh_resource_cache()
+    assert db._resource_cache == records
+    assert calls == ['fetch']

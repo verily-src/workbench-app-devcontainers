@@ -255,6 +255,12 @@ def get_integration_key(integration: str) -> str | None:
     return _load().get("jev", {}).get("api_key")
 
 
+def get_jev_model() -> str:
+    return next((value.strip() for value in (
+        os.environ.get("STUDIO_JEV_MODEL"), os.environ.get("TYPESAFE_MODEL"),
+        _load().get("jev", {}).get("model")) if value and value.strip()), "jev-latest")
+
+
 def update_jev_config(api_key: str | None = None,
                       model: str | None = None) -> dict:
     request = JevConfigUpdate.model_validate({"api_key": api_key, "model": model})
@@ -346,7 +352,7 @@ def public_config() -> dict:
             "api_key_source": ("environment" if jev_env_key
                                else secret_store.key_source("jev") if jev_secure_key
                                else "legacy_settings" if legacy_jev_key else None),
-            "model": cfg.get("jev", {}).get("model") or "",
+            "model": get_jev_model(),
             "secure_key_store_configured": secret_store.is_configured(),
             "secure_key_store_available": secure_store_available,
             "legacy_key_present": bool(legacy_jev_key),

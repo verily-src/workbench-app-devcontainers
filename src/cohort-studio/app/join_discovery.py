@@ -476,9 +476,7 @@ def _jev(left_ref: AuroraTableRef, right_ref: AuroraTableRef,
 
 def recommend(req: RecommendRequest) -> JoinRecommendation:
     left, right = _metadata(req.left, req.refresh), _metadata(req.right, req.refresh)
-    model = (os.environ.get("STUDIO_JEV_MODEL")
-             or os.environ.get("TYPESAFE_MODEL")
-             or config._load().get("jev", {}).get("model") or "").strip()
+    model = config.get_jev_model()
     api_key = (config.get_integration_key("jev") or "").strip()
     signature = hashlib.sha256(json.dumps([
         req.left.resource_id, req.right.resource_id,

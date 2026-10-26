@@ -514,6 +514,19 @@ def guard_live_join(live_sources: list[dict], output_source: dict) -> dict:
             "complete_source": True}
 
 
+def _stage_storage_type(description) -> str:
+    oid = getattr(description, "type_code", None)
+    if oid == 1700:
+        precision = getattr(description, "precision", None)
+        scale = getattr(description, "scale", None)
+        if isinstance(precision, int) and isinstance(scale, int) and 0 <= scale <= precision <= 38:
+            return f"DECIMAL({precision},{scale})"
+        return "VARCHAR"
+    return {16: "BOOLEAN", 17: "BLOB", 20: "BIGINT", 21: "SMALLINT", 23: "INTEGER",
+            700: "FLOAT", 701: "DOUBLE", 1082: "DATE", 1083: "TIME",
+            1114: "TIMESTAMP", 1184: "TIMESTAMPTZ", 2950: "UUID"}.get(oid, "VARCHAR")
+
+
 def stage_live(con, live_source: dict, dataset: dict, table: str,
                budget_used: int) -> tuple[int, int]:
     normalized = _validated_live_sql(live_source)
@@ -535,15 +548,22 @@ def stage_live(con, live_source: dict, dataset: dict, table: str,
                                           yield_per=_BATCH_ROWS)
             result = conn.execute(sql, live_source.get("params", {}))
             physical_columns = list(result.keys())
-            frame = dataset["df"].iloc[:0].copy()
-            con.register("_studio_schema", frame)
-            con.execute(f"CREATE TABLE {_q(table)} AS SELECT * FROM _studio_schema")
-            con.unregister("_studio_schema")
+            descriptions = result.cursor.description
+            storage = {physical_to_logical.get(name, name): _stage_storage_type(description)
+                       for name, description in zip(physical_columns, descriptions)}
+            if set(logical_columns) != set(storage):
+                raise ValueError("Source columns changed before staging; reload the source.")
+            definitions = ", ".join(f"{_q(name)} {storage[name]}" for name in logical_columns)
+            con.execute(f"CREATE TABLE {_q(table)} ({definitions})")
             total_bytes, rows = 0, 0
             while records := result.fetchmany(_BATCH_ROWS):
-                batch = pd.DataFrame.from_records(records, columns=physical_columns)
+                batch = pd.DataFrame(records, columns=physical_columns, dtype=object)
                 batch = batch.rename(columns=physical_to_logical)
                 batch = batch.reindex(columns=logical_columns)
+                for name, kind in storage.items():
+                    if kind == "VARCHAR":
+                        batch[name] = batch[name].map(lambda value: json.dumps(value, default=str)
+                            if isinstance(value, (dict, list)) else str(value) if value is not None else None)
                 batch_bytes = int(batch.memory_usage(index=False, deep=True).sum())
                 total_bytes += batch_bytes
                 _actual_budget(budget_used + estimate + total_bytes)

@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import getpass
 import json
 import logging
@@ -64,29 +65,30 @@ def list_views(kind: str, resource_id: str) -> list[dict]:
         return _s3_list(resource_id)
     raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
 
+_LIST_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="saved-view-list")
+
+
+def _list_store(store):
+    try:
+        items = list_views(store["kind"], store["resource_id"])
+        return {"views": [{**item, "kind": store["kind"],
+                           "resource_id": store["resource_id"], "store_label": store["label"],
+                           "materialized_sources": item.get("materialized_sources", 0),
+                           "refreshed_at": item.get("refreshed_at")} for item in items],
+                "unavailable": []}
+    except Exception as exc:
+        return {"views": [], "unavailable": [{**store,
+                "error": str(exc).split("\n")[0][:300] or "Saved views could not be listed."}]}
+
+
 def list_all_views(stores: list[dict]) -> dict:
     result = {"views": [], "unavailable": []}
-    for store in stores:
-        kind = store["kind"]
-        resource_id = store["resource_id"]
-        label = store["label"]
-        try:
-            items = list_views(kind, resource_id)
-            for item in items:
-                result["views"].append({
-                    **item,
-                    "kind": kind,
-                    "resource_id": resource_id,
-                    "store_label": label,
-                    "materialized_sources": item.get("materialized_sources", 0),
-                    "refreshed_at": item.get("refreshed_at"),
-                })
-        except Exception as exc:
-            result["unavailable"].append({
-                **store,
-                "error": (str(exc).split("\n")[0][:300]
-                          or "Saved views could not be listed."),
-            })
+    for offset in range(0, len(stores), 4):
+        pending = [_LIST_POOL.submit(_list_store, store) for store in stores[offset:offset + 4]]
+        for future in pending:
+            value = future.result()
+            result["views"].extend(value["views"])
+            result["unavailable"].extend(value["unavailable"])
     result["views"].sort(key=lambda item: (item["name"].casefold(),
                                              item["store_label"].casefold()))
     return result

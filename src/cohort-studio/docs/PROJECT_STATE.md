@@ -4,7 +4,9 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
-- Top alignment: Data sources header now shares the 46px navigation height/background/border; removed sidebar top offset. Build and two browser checks passed; screenshot inspected. Deployment pending.
+- Async/batch pass locally validated, deployment pending: CSV processing moved off event loop and reads upload spool; saved-view listings use shared four-worker bounded batches; mixed-domain concept counts use one UNION ALL statement; row/filtered/entity dashboard counts share one aggregate scan in the existing snapshot. 66 PostgreSQL/API regression checks passed, including upload/health concurrency and partial listing failures. Long source-open/join jobs remain worker-thread requests.
+
+- DEPLOYED 1a544af70903492874b617e12c88cb6d06b63b98: Data sources header shares 46px navigation height/background/border; removed sidebar offset. Build and two browser checks passed; screenshot inspected. Update9647f2ad-ec75-4fac-9d0e-f75e35bce209; active SHA/health verified f526ada8-825a-4965-b6f6-3b8af4a0c503.
 
 - DEPLOYED ecec9861a2111f31e8118c9446e1e9eb64a2de54: sidebar Data sources heading and compact available count. Build and two browser checks passed; screenshot inspected. Update3144d1cb-e430-47e2-a79e-97f6fe6bd6f1; active SHA/health verified b88fdadc-e967-498a-ac11-d80d909f2573.
 

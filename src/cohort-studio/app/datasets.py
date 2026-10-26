@@ -1,3 +1,5 @@
+import execution
+import count_contract
 import threading
 import time
 import uuid
@@ -202,7 +204,15 @@ def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
         return _heatmap_aggregate(filt, x, y)
     return {"kind": kind, "x": x, "data": []}
 
+@execution.workload("interactive")
 def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
+          page: int = 0, page_size: int = 50,
+          entity_column: str | None = None, refresh: bool = False) -> dict:
+    result = _query(dataset_id, filters, chart_specs, page, page_size, entity_column, refresh)
+    result["count_contract"] = count_contract.describe(entity_column, result)
+    return result
+
+def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
           page: int = 0, page_size: int = 50,
           entity_column: str | None = None, refresh: bool = False) -> dict:
     ds = get(dataset_id)

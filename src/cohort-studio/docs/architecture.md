@@ -900,3 +900,13 @@ Join recommendations include typed Jev classifications (side, column, entity
 role, probability). They are probabilistic metadata evidence, not observed key
 coverage. Low-probability alternative pairs are excluded; foreign keys and
 deterministic checks retain priority. No raw cell values enter Jev requests.
+
+### Query contracts and admission (2026-10-26, locally validated)
+
+`datasets.query` is the shared UI/API/agent counting boundary. Its typed `count_contract` states that total/filtered count rows, entity counts use distinct non-null values, and chart measures follow the chart specification. Table grain remains unspecified; field names or Jev confidence do not establish uniqueness. Existing query results and defaults stay unchanged.
+
+`execution` provides process-local admission: four interactive dashboard operations and two bulk operations across data-open/join workers, synchronous joins, exports and saved-view jobs. Nested work inherits its lane to avoid double admission. Interactive admission waits at most 250 ms and HTTP queries return 429 with Retry-After when busy. Existing job queues remain bounded; open/join jobs additionally allow two active jobs per owner. This bounds concurrency, not database CPU/I/O or global fairness. Queued bulk work waits for its slot; existing cancellation checks apply after admission.
+
+HTTP middleware generates request IDs and returns X-Request-ID. Context propagates into these worker pools. Structured logs record operation queue/execution time, SQL execution status/time, job submission IDs and HTTP status/route templates. SQL text, bind values, prompts, source rows and credentials are excluded from these events. SQL timings cover driver execution, not complete result fetching; operation timings include fetching. Logs are local process output, not durable distributed tracing or a percentile metrics store.
+
+Admission queues use FIFO order within each lane. Count contracts expose observed key status and evidence scope from the existing counts without an additional source scan. This is point-in-time evidence, not a table grain declaration or database constraint.

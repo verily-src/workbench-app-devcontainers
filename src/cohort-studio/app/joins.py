@@ -1,3 +1,4 @@
+import execution
 import hashlib
 import re
 
@@ -467,6 +468,7 @@ def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False) -
         raise ValueError(error)
     return p
 
+@execution.workload("bulk")
 def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
         allow_loaded: bool = False) -> dict:
 

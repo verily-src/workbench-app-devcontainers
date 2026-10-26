@@ -16,12 +16,12 @@ interface Props {
 }
 
 const SOURCE_TYPES: { kind: SourceKind; label: string }[] = [
-  { kind: "aurora", label: "Aurora" },
-  { kind: "postgres", label: "PostgreSQL" },
-  { kind: "s3", label: "S3" },
-  { kind: "bq", label: "BigQuery" },
-  { kind: "athena", label: "Athena" },
-  { kind: "catalog", label: "Catalog" },
+  { kind: "aurora", label: "▤ Aurora" },
+  { kind: "postgres", label: "▤ PostgreSQL" },
+  { kind: "s3", label: "🪣 S3" },
+  { kind: "bq", label: "☁ Google BigQuery" },
+  { kind: "athena", label: "▤ Athena" },
+  { kind: "catalog", label: "▦ Catalog" },
 ];
 
 const SCHEMA_KINDS = new Set<string>(["aurora", "postgres", "athena"]);

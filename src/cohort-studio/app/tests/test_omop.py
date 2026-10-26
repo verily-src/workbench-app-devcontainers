@@ -1,4 +1,5 @@
 from pathlib import Path
+import uuid
 
 import pandas as pd
 import psycopg
@@ -422,6 +423,152 @@ def test_open_endpoints_and_join_on_person_id(client, engine, ref):
     assert body["rows"] == cond["rows"]
     assert "cdm.condition_occurrence (cohort) → condition_concept_name" in \
         [c["name"] for c in body["columns"]]
+
+
+def test_generated_omop_join_sql_previews_as_custom_sql(client, engine):
+    table = f"genetics_sql_handoff_{uuid.uuid4().hex[:8]}"
+    dataset_ids = []
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            f'CREATE TABLE public."{table}" '
+            "(person_id bigint, sample_id text, variant_id text, dosage integer)")
+        conn.exec_driver_sql(
+            f'''INSERT INTO public."{table}"
+                SELECT n, 'sample-' || n, 'variant-1', mod(n, 3)
+                FROM generate_series(1, 100) AS n''')
+    try:
+        spec = {"criteria": [{"domain": "condition", "concept_ids": [GI_BLEED],
+                              "descendants": True}],
+                "demographics": {"gender_concept_ids": [FEMALE],
+                                 "year_of_birth_min": 1930}}
+        cohort = client.post(f"/api/omop/{RID}/cohort/open",
+                             json={"spec": spec, "name": "Generated SQL cohort"})
+        assert cohort.status_code == 200, cohort.text
+        cohort_id = cohort.json()["dataset_id"]
+        dataset_ids.append(cohort_id)
+        genetics = client.post("/api/datasets/open", json={
+            "source_ref": {"kind": "aurora", "resource_id": RID,
+                           "schema": "public", "table": table},
+        })
+        assert genetics.status_code == 200, genetics.text
+        genetics_id = genetics.json()["dataset_id"]
+        dataset_ids.append(genetics_id)
+        validation = client.post("/api/datasets/join/validate", json={
+            "base_id": cohort_id,
+            "steps": [{"right_id": genetics_id, "how": "inner",
+                       "alias": "genetics", "columns": ["sample_id", "variant_id", "dosage"],
+                       "conditions": [{"left": "person_id", "op": "=",
+                                       "right": "person_id"}]}],
+        })
+        assert validation.status_code == 200, validation.text
+        generated = validation.json()["generated_sql"]
+        assert generated["engine"] == "aurora"
+        assert generated["parameters"]
+        assert generated["copyable_sql"]
+        assert ":p" not in generated["copyable_sql"]
+        preview = client.post("/api/sql/preview", json={
+            "resource_id": RID, "sql": generated["copyable_sql"],
+        })
+        assert preview.status_code == 200, preview.text
+        assert "genetics → sample_id" in preview.json()["columns"]
+    finally:
+        for dataset_id in dataset_ids:
+            datasets.close_dataset(dataset_id)
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f'DROP TABLE IF EXISTS public."{table}"')
+
+
+def test_nested_omop_genetics_sql_source_preview_stays_within_limits(client, engine):
+    suffix = uuid.uuid4().hex[:8]
+    tables = [f"handoff_{name}_{suffix}" for name in ("samples", "genotypes", "variants")]
+    dataset_ids = []
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            f'CREATE TABLE public."{tables[0]}" (person_id bigint, sample_id text)')
+        conn.exec_driver_sql(
+            f'CREATE TABLE public."{tables[1]}" '
+            "(sample_id text, variant_id text, dosage integer)")
+        conn.exec_driver_sql(
+            f'CREATE TABLE public."{tables[2]}" '
+            "(variant_id text, gene_symbol text, consequence text)")
+        conn.exec_driver_sql(
+            f'''INSERT INTO public."{tables[0]}"
+                SELECT n, 'sample-' || n FROM generate_series(1, 100) AS n''')
+        conn.exec_driver_sql(
+            f'''INSERT INTO public."{tables[1]}"
+                SELECT 'sample-' || n, 'variant-1', mod(n, 3)
+                FROM generate_series(1, 100) AS n''')
+        conn.exec_driver_sql(
+            f'''INSERT INTO public."{tables[2]}"
+                VALUES ('variant-1', 'GENE1', 'missense_variant')''')
+    try:
+        cohort = client.post(f"/api/omop/{RID}/cohort/open", json={
+            "spec": {"criteria": [{"domain": "condition", "concept_ids": [GI_BLEED],
+                                    "descendants": True}],
+                     "demographics": {"gender_concept_ids": [FEMALE],
+                                      "year_of_birth_min": 1930}},
+            "name": "Nested generated SQL cohort",
+        })
+        assert cohort.status_code == 200, cohort.text
+        base_id = cohort.json()["dataset_id"]
+        dataset_ids.append(base_id)
+
+        opened = []
+        for table in tables:
+            result = client.post("/api/datasets/open", json={
+                "source_ref": {"kind": "aurora", "resource_id": RID,
+                               "schema": "public", "table": table},
+            })
+            assert result.status_code == 200, result.text
+            opened.append(result.json()["dataset_id"])
+            dataset_ids.append(result.json()["dataset_id"])
+
+        first = client.post("/api/datasets/join", json={
+            "base_id": base_id,
+            "steps": [{"right_id": opened[0], "how": "inner", "alias": "samples",
+                       "columns": ["sample_id"],
+                       "conditions": [{"left": "person_id", "op": "=",
+                                       "right": "person_id"}]}],
+        })
+        assert first.status_code == 200, first.text
+        first_id = first.json()["dataset_id"]
+        dataset_ids.append(first_id)
+        second = client.post("/api/datasets/join", json={
+            "base_id": first_id,
+            "steps": [{"right_id": opened[1], "how": "inner", "alias": "genotypes",
+                       "columns": ["variant_id", "dosage"],
+                       "conditions": [{"left": "samples → sample_id", "op": "=",
+                                       "right": "sample_id"}]}],
+        })
+        assert second.status_code == 200, second.text
+        second_id = second.json()["dataset_id"]
+        dataset_ids.append(second_id)
+        validation = client.post("/api/datasets/join/validate", json={
+            "base_id": second_id,
+            "steps": [{"right_id": opened[2], "how": "inner", "alias": "variants",
+                       "columns": ["gene_symbol", "consequence"],
+                       "conditions": [{"left": "genotypes → variant_id", "op": "=",
+                                       "right": "variant_id"}]}],
+        })
+        assert validation.status_code == 200, validation.text
+        generated = validation.json()["generated_sql"]
+        assert generated["engine"] == "aurora"
+        assert generated["copyable_sql"]
+        from sqlglot import Dialect
+        sql = generated["copyable_sql"]
+        sql_chars = len(sql)
+        sql_tokens = len(Dialect.get_or_raise("postgres").tokenizer().tokenize(sql))
+        assert sql_chars < 20_000
+        assert sql_tokens < 2_000
+        preview = client.post("/api/sql/preview", json={"resource_id": RID, "sql": sql})
+        assert preview.status_code == 200, preview.text
+        assert "variants → gene_symbol" in preview.json()["columns"]
+    finally:
+        for dataset_id in dataset_ids:
+            datasets.close_dataset(dataset_id)
+        with engine.begin() as conn:
+            for table in tables:
+                conn.exec_driver_sql(f'DROP TABLE IF EXISTS public."{table}"')
 
 
 def test_untouched_domain_tables_join_in_aurora(client, ref):

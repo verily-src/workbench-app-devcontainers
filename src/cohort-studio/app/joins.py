@@ -232,8 +232,19 @@ def _duckdb_sql(p: dict) -> dict:
 
 def _generated_sql(p: dict) -> dict:
     if p["engine"] == "aurora":
-        return {"engine": "aurora", "sql": aurora_sql(p)["unlimited"](),
-                "parameters": _bound_params(p)}
+        sql = aurora_sql(p)["unlimited"]()
+        parameters = _bound_params(p)
+        generated = {"engine": "aurora", "sql": sql,
+                     "parameters": parameters}
+        try:
+            import sql_source
+            generated["copyable_sql"] = sql_source.inline_parameters(sql, parameters)
+        except ValueError:
+            generated["copyable_sql"] = None
+            generated["copyable_sql_error"] = (
+                "Some generated values cannot be inlined safely. Use the join preview "
+                "or remove unsupported source parameters.")
+        return generated
     return _duckdb_sql(p)
 
 def _capped_inputs(p: dict) -> list[str]:

@@ -32,6 +32,9 @@ const VALIDATE_DELAY_MS = 300;
 const ENGINE_LABEL: Record<JoinEngine, string> = {
   aurora: "runs in Aurora", duckdb: "runs in memory",
 };
+const SOURCE_GROUP_LABEL: Record<Source["kind"], string> = {
+  aurora: "Aurora", s3: "S3 files", bq: "BigQuery", catalog: "Catalogs",
+};
 
 interface StepState extends JoinStep { touched: boolean; pickCols: boolean }
 type KeyRecommendation = JoinRecommendation & { sourceTitle: string };
@@ -103,6 +106,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const [sourceTable, setSourceTable] = useState("");
   const [sourceBusy, setSourceBusy] = useState(false);
   const [sourceError, setSourceError] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
   const [sourceMode, setSourceMode] = useState<"table" | "sql">("table");
   const [sqlName, setSqlName] = useState("");
   const [sqlText, setSqlText] = useState("");
@@ -376,6 +380,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const [validation, setValidation] = useState<JoinValidation | null>(null);
   useEffect(() => {
     setValidation(null);
+    setCopyStatus("");
     if (!base || steps.some((s) => !s.right_id)) { setValidation(null); return; }
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
@@ -388,9 +393,13 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
 
   const options = datasets.map((d) => ({ id: d.id, label: d.title, hint: d.source }));
   const schemas = [...new Set(sourceTables.map((item) => item.schema ?? ""))];
+  const sourceGroups = [...new Set(sources.map((item) => item.kind))]
+    .map((kind) => ({ kind, items: sources.filter((item) => item.kind === kind) }));
   const visibleSourceTables = sourceTables.filter((item) =>
     !sourceSchema || (item.schema ?? "") === sourceSchema);
   const engine = preview?.engine ?? validation?.engine;
+  const isS3Source = selectedSource?.kind === "s3";
+  const supportsSchema = selectedSource?.kind === "aurora";
 
   const update = (i: number, patch: Partial<StepState>) =>
     setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
@@ -400,6 +409,17 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
       ...s, touched: true,
       conditions: s.conditions.map((c, m) => (m === k ? { ...c, ...patch } : c)),
     }));
+
+  const copySqlSource = async () => {
+    const statement = validation?.generated_sql?.copyable_sql;
+    if (!statement) return;
+    try {
+      await navigator.clipboard.writeText(statement);
+      setCopyStatus("SQL source copied.");
+    } catch {
+      setCopyStatus("Clipboard access is unavailable.");
+    }
+  };
 
   const changeBase = (id: string) => {
     setBaseId(id);
@@ -478,14 +498,18 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                       disabled={sourceBusy}
                       onChange={(e) => { invalidateSqlPreview(); setResourceKey(e.target.value);
                         if (!e.target.value.startsWith("aurora:")) setSourceMode("table"); }}>
-                {sources.map((item) => (
-                  <option key={`${item.kind}:${item.id}`} value={`${item.kind}:${item.id}`}>
-                    {item.label}
-                  </option>
+                {sourceGroups.map(({ kind, items }) => (
+                  <optgroup key={kind} label={SOURCE_GROUP_LABEL[kind]}>
+                    {items.map((item) => (
+                      <option key={`${item.kind}:${item.id}`} value={`${item.kind}:${item.id}`}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
-            {sourceMode === "table" && <><label>Schema
+            {sourceMode === "table" && <>{supportsSchema && <label>Schema
               <select aria-label="Join schema" value={sourceSchema}
                       onChange={(e) => { setSourceSchema(e.target.value); setSourceTable(""); }}>
                 <option value="">All schemas</option>
@@ -493,15 +517,15 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                   <option key={schema} value={schema}>{schema || "Default schema"}</option>
                 ))}
               </select>
-            </label>
-            <Combobox label="Source table to add" value={sourceTable}
+            </label>}
+            <Combobox label={isS3Source ? "S3 file to add" : "Source table to add"} value={sourceTable}
                       options={visibleSourceTables.map((item) => ({
                         id: item.name, label: item.name, hint: item.detail,
                       }))}
-                      onChange={setSourceTable} placeholder="Search tables…" />
+                      onChange={setSourceTable} placeholder={isS3Source ? "Search files…" : "Search tables…"} />
             <button className="primary" disabled={!sourceTable || sourceBusy || busy || !canAddSource}
                     onClick={addSourceTable}>
-              {sourceBusy ? "Adding…" : "Add table"}
+              {sourceBusy ? "Adding…" : isS3Source ? "Add file" : "Add table"}
             </button></>}
           </div>
           {sourceMode === "table" && sourceError && <div className="join-error" role="alert">{sourceError}</div>}
@@ -749,8 +773,18 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           Staged inputs: {validation.generated_sql.staged_inputs.join(", ")}
         </div> : null}
         <pre aria-label="Generated SQL" style={{ overflowX: "auto", whiteSpace: "pre-wrap", maxHeight: 260 }}>
-          {validation.generated_sql.sql}
+          {validation.generated_sql.copyable_sql ?? validation.generated_sql.sql}
         </pre>
+        {validation.generated_sql.copyable_sql && <div className="join-row">
+          <button type="button" className="quiet" onClick={() => void copySqlSource()}>
+            Copy SQL source
+          </button>
+          {copyStatus && <span role="status">{copyStatus}</span>}
+        </div>}
+        {!validation.generated_sql.copyable_sql && validation.generated_sql.copyable_sql_error
+          && <div className="settings-hint" role="status">
+            {validation.generated_sql.copyable_sql_error}
+          </div>}
         <div className="settings-hint">Parameters</div>
         <pre aria-label="SQL parameters" style={{ overflowX: "auto", whiteSpace: "pre-wrap", maxHeight: 180 }}>
           {JSON.stringify(validation.generated_sql.parameters, null, 2)}

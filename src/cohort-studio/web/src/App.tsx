@@ -110,6 +110,7 @@ export default function App() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const consumedRefreshNonce = useRef<Record<string, number>>({});
+  const recoveredDatasetIds = useRef(new Set<string>());
   const alerts = useWorkflowAlerts();
 
   useEffect(() => {
@@ -508,6 +509,7 @@ export default function App() {
       activeDs.entityColumn, forceRefresh)
       .then((result) => {
         if (cancelled) return;
+        recoveredDatasetIds.current.delete(activeDs.id);
         setDatasets((prev) => prev.map((d) =>
           d.id === activeDs.id ? { ...d, result,
             ...(forceRefresh && result.columns
@@ -516,6 +518,50 @@ export default function App() {
       })
       .catch((e) => {
         if (cancelled) return;
+        if (e instanceof ApiError && e.status === 404 && e.code === "DATASET_EXPIRED") {
+          const expiredId = activeDs.id;
+          if (recoveredDatasetIds.current.has(expiredId)) {
+            setDatasets((prev) => prev.map((d) => d.id === expiredId
+              ? { ...d, result: undefined, refreshing: false, queryLoading: false,
+                  queryError: "This dataset expired again after reopening. Reopen the source or upload the data again." }
+              : d));
+            return;
+          }
+          if (!activeDs.sourceRef) {
+            setDatasets((prev) => prev.map((d) => d.id === expiredId
+              ? { ...d, result: undefined, refreshing: false, queryLoading: false,
+                  queryError: "This dataset expired and has no saved source recipe. Reopen the datasource or upload the file again." }
+              : d));
+            return;
+          }
+          setDatasets((prev) => prev.map((d) => d.id === expiredId
+            ? { ...d, result: undefined, refreshing: false, queryLoading: true,
+                queryError: undefined }
+            : d));
+          api.openSourceRef(activeDs.sourceRef).then((opened) => {
+            if (cancelled) {
+              api.closeDataset(opened.dataset_id).catch(() => undefined);
+              return;
+            }
+            recoveredDatasetIds.current.add(opened.dataset_id);
+            setDatasets((prev) => prev.map((d) => d.id === expiredId
+              ? { ...d, id: opened.dataset_id, source: opened.source,
+                  sourceRef: opened.source_ref ?? activeDs.sourceRef,
+                  queryScope: opened.query_scope, columns: opened.columns,
+                  result: undefined, refreshing: false, queryLoading: true,
+                  queryError: undefined }
+              : d));
+          }).catch((reopenError) => {
+            if (cancelled) return;
+            const reason = reopenError instanceof Error
+              ? reopenError.message : "source unavailable";
+            setDatasets((prev) => prev.map((d) => d.id === expiredId
+              ? { ...d, result: undefined, refreshing: false, queryLoading: false,
+                  queryError: `Could not reopen the saved source: ${reason}. Check datasource access, then reopen it or upload the file again.` }
+              : d));
+          });
+          return;
+        }
         const detail = e instanceof ApiError
           ? `${e.status}: ${e.message}`
           : e instanceof Error ? e.message : "Check the connection and try again.";
@@ -751,7 +797,7 @@ export default function App() {
                     {renamingDatasetId === d.id ? <form className="tab-rename"
                       onClick={(event) => event.stopPropagation()}
                       onSubmit={(event) => { event.preventDefault(); saveDatasetName(d); }}>
-                      <input type="text" autoFocus aria-label="Name for SQL result" maxLength={128}
+                      <input type="text" autoFocus aria-label={`Name for ${d.title}`} maxLength={128}
                         value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === "Escape") {
@@ -759,17 +805,17 @@ export default function App() {
                           }
                         }} />
                       <button type="submit" className="quiet" disabled={!renameDraft.trim()}
-                        aria-label="Save SQL result name">Save</button>
+                        aria-label="Save tab name">Save</button>
                       <button type="button" className="quiet" aria-label="Cancel rename"
                         onClick={() => { setRenamingDatasetId(null); setRenameDraft(""); }}>Cancel</button>
                     </form> : <>
                       <span>{d.title}</span>
-                      {d.sourceRef?.kind === "sql" && <button type="button" className="quiet"
-                        aria-label={`Rename SQL result ${d.title}`}
+                      <button type="button" className="quiet"
+                        aria-label={`Rename ${d.title}`}
                         onClick={(event) => {
                           event.stopPropagation(); setActive(i); setRenamingDatasetId(d.id);
                           setRenameDraft(d.title);
-                        }}>Rename</button>}
+                        }}>Rename</button>
                     </>}
                     <button className="quiet" onClick={(e) => {
                       e.stopPropagation(); closeDataset(i);

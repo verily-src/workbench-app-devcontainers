@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 import sqlite3
+import execution
 import threading
 import time
 import uuid
@@ -71,6 +72,9 @@ class DataJobs:
                 raise Busy('Data jobs are busy. Try again shortly.')
             job_id = uuid.uuid4().hex
             with self.connect() as db:
+                owned = db.execute("SELECT count(*) FROM jobs WHERE owner=? AND status IN ('queued','running','cancelling')", (owner,)).fetchone()[0]
+                if owned >= 2:
+                    raise Busy('Two data jobs are already active for this session. Try again shortly.')
                 expired = [r[0] for r in db.execute("SELECT id FROM jobs WHERE updated<? AND status NOT IN ('queued','running','cancelling')", (time.time()-3600,))]
                 for old in expired:
                     self.results.pop(old, None)
@@ -81,6 +85,7 @@ class DataJobs:
                 db.execute('INSERT INTO jobs VALUES (?,?,?,?,?)', (job_id, owner, kind, 'queued', time.time()))
             self.active += 1
 
+            @execution.workload("bulk")
             def run():
                 try:
                     with self.lock:
@@ -104,7 +109,8 @@ class DataJobs:
                 finally:
                     with self.lock:
                         self.active -= 1
-            self.pool.submit(run)
+            execution.emit("job.submitted", job_id=job_id, kind=kind)
+            execution.submit(self.pool, run)
             return self.get(job_id, owner)
 
     def shutdown(self):

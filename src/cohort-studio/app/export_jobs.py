@@ -3,6 +3,7 @@ import csv
 import os
 import shutil
 import tempfile
+import execution
 import threading
 import time
 import uuid
@@ -88,7 +89,8 @@ def start(live_source, filters):
                "cancel": threading.Event(), "connection": None, "active": True,
                "finished": 0}
         _JOBS[job_id] = job
-        _POOL.submit(_run, job, copy.deepcopy(live_source), copy.deepcopy(filters))
+        execution.emit("job.submitted", job_id=job_id, kind="export")
+        execution.submit(_POOL, _run, job, copy.deepcopy(live_source), copy.deepcopy(filters))
         return _public(job)
 
 
@@ -135,6 +137,7 @@ def _check(job, started):
         raise ValueError("Export exceeded the 30-minute limit. Narrow the filters and retry.")
 
 
+@execution.workload("bulk")
 def _run(job, source, filters):
     started = time.monotonic()
     part = _ROOT / (job["id"] + ".part")

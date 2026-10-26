@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import execution
 import threading
 import time
 import uuid
@@ -68,6 +69,7 @@ def submit(name: str, total_sources: int, work, key: str | None = None, owner: s
                 job["status"] = "running"
                 job["updated"] = time.monotonic()
 
+    @execution.workload("bulk")
     def run() -> None:
         with _lock:
             job = _jobs.get(job_id)
@@ -96,7 +98,8 @@ def submit(name: str, total_sources: int, work, key: str | None = None, owner: s
                         if key in result:
                             job[key] = result[key]
 
-    _executor.submit(run)
+    execution.emit("job.submitted", job_id=job_id, kind="saved_view")
+    execution.submit(_executor, run)
     with _lock:
         return _copy(_jobs[job_id])
 

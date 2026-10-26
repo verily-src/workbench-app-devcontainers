@@ -1,3 +1,4 @@
+import execution
 import logging
 import time
 import uuid
@@ -75,6 +76,7 @@ async def lifespan(_app: FastAPI):
         datasets.clear()
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
+app.middleware("http")(execution.trace_request)
 app.include_router(knowledge.router)
 app.middleware("http")(agent_sessions.preserve_owner_cookie)
 
@@ -971,6 +973,8 @@ def query_dataset(dataset_id: str, req: QueryRequest):
         if req.refresh and datasets.get(dataset_id).get("live_source"):
             result["columns"] = column_settings.profiles(datasets.get(dataset_id))
         return result
+    except execution.Busy as e:
+        raise HTTPException(429, str(e), headers={"Retry-After": "1"})
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
 

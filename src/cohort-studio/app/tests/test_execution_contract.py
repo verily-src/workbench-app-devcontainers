@@ -68,7 +68,7 @@ def test_bulk_capacity_does_not_block_dashboard_and_context_crosses_worker(caplo
 
 
 def test_dashboard_admission_returns_retry_and_recovers(monkeypatch):
-    gate = threading.BoundedSemaphore(1)
+    gate = execution.AdmissionGate(1)
     monkeypatch.setitem(execution._gates, 'interactive', gate)
     did = datasets.open_dataset(pd.DataFrame({'x': [1]}), 'test')['dataset_id']
     client = TestClient(main.app)

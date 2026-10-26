@@ -7,7 +7,7 @@ import execution
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from execution import FairExecutor as ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -79,12 +79,15 @@ def start(live_source, filters):
             _JANITOR = threading.Thread(target=_reap, daemon=True, name="export-cleanup")
             _JANITOR.start()
         _cleanup()
+        owner = execution.owner_id.get()
+        if owner and sum(j.get("owner") == owner and j["active"] for j in _JOBS.values()) >= 2:
+            raise ExportBusy("Two exports are already active for this session.")
         if len(_JOBS) >= MAX_JOBS:
             raise ExportBusy("Eight exports are retained. Remove an old export or wait for expiry.")
         if shutil.disk_usage(_ROOT).free < MIN_FREE_BYTES:
             raise ExportBusy("Not enough temporary disk space for an export.")
         job_id = uuid.uuid4().hex
-        job = {"id": job_id, "status": "queued", "rows": 0, "bytes": 0,
+        job = {"id": job_id, "owner": owner, "status": "queued", "rows": 0, "bytes": 0,
                "created_at": datetime.now(timezone.utc).isoformat(), "error": None,
                "cancel": threading.Event(), "connection": None, "active": True,
                "finished": 0}

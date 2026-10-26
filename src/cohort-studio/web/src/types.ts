@@ -87,7 +87,26 @@ export interface DerivedSpec {
   default?: string;
 }
 
-export type SourceRef =
+export interface GrainDefinition {
+  entity: "person" | "sample" | "variant" | "event" | "summary" | "other";
+  keys: string[];
+}
+export interface GrainInfo {
+  definition: GrainDefinition | null;
+  persistent: boolean;
+  missing_columns: string[];
+  source_ref?: SourceRef;
+}
+export interface GrainCheck extends GrainInfo {
+  status: "empty" | "unique_non_null" | "violated";
+  rows: number; distinct_keys: number; null_key_rows: number; duplicate_key_rows: number;
+  scope: "database" | "loaded" | "sample"; checked_at: string;
+}
+export interface PerformanceSummary {
+  scope: string; retention_days: number; max_events: number; dropped_events_since_restart: number;
+  groups: {event: string; name: string; count: number; failed: number; p95_ms: number | null}[];
+}
+export type SourceRef = ({ grain?: GrainDefinition } & (
   | { kind: "materialized"; resource_id: string; materialized_id: string;
       settings?: ColumnSetting[] }
   | { kind: "omop_cohort"; resource_id: string; spec: OmopSpec;
@@ -100,7 +119,7 @@ export type SourceRef =
   | { kind: "join"; base: SourceRef; allow_loaded?: boolean; steps: {
       source: SourceRef; how: JoinHow; conditions: JoinCondition[];
       columns: string[] | null; alias: string;
-    }[] };
+    }[] }));
 
 export interface SavedViewInfo {
   name: string;

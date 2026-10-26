@@ -4,7 +4,7 @@ import execution
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from execution import FairExecutor as ThreadPoolExecutor
 
 MAX_JOBS = 64
 MAX_ACTIVE_JOBS = 8
@@ -48,6 +48,8 @@ def submit(name: str, total_sources: int, work, key: str | None = None, owner: s
                 job.get("key") == key and job["status"] in {"queued", "running"}
                 for job in _jobs.values()):
             raise ValueError("A save or refresh job is already running for this view.")
+        if owner and sum(job.get("owner") == owner and job["status"] in {"queued", "running"} for job in _jobs.values()) >= 2:
+            raise ValueError("Two saved-view jobs are already active for this session.")
         active = sum(job["status"] in {"queued", "running"} for job in _jobs.values())
         if active >= MAX_ACTIVE_JOBS:
             raise ValueError("Too many saved-view jobs are running. Try again shortly.")
@@ -115,4 +117,9 @@ def get(job_id: str, owner: str | None = None) -> dict | None:
 
 
 def shutdown(wait: bool = False) -> None:
+    if not wait:
+        with _lock:
+            for job in _jobs.values():
+                if job["status"] == "queued":
+                    job.update(status="failed", error="App stopped before this job started.", updated=time.monotonic())
     _executor.shutdown(wait=wait, cancel_futures=not wait)

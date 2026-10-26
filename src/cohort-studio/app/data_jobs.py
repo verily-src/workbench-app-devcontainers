@@ -7,7 +7,7 @@ import execution
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from execution import FairExecutor as ThreadPoolExecutor
 from pathlib import Path
 
 import config

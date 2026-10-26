@@ -86,6 +86,10 @@ def test_saved_snapshot_save_open_cache_refresh_failure_and_delete(
     opened_people = _open(client, resource_id, people)
     opened_events = _open(client, resource_id, events)
     joined = _join(client, opened_people, opened_events)
+    declared = {"entity": "person", "keys": ["person_id"]}
+    configured = client.put(f"/api/datasets/{joined['dataset_id']}/grain", json=declared)
+    assert configured.status_code == 200, configured.text
+    joined["source_ref"] = configured.json()["source_ref"]
     saved = client.post("/api/views", json={
         "kind": "aurora", "resource_id": resource_id, "name": name,
         "datasets": [{"source": joined["source_ref"], "title": "Joined data"}],
@@ -109,6 +113,7 @@ def test_saved_snapshot_save_open_cache_refresh_failure_and_delete(
     assert saved_state.status_code == 200, saved_state.text
     materialized_ref = saved_state.json()["datasets"][0]["source"]
     assert materialized_ref["kind"] == "materialized"
+    assert materialized_ref["grain"] == declared
     opened_snapshot = client.post("/api/datasets/open", json={
         "source_ref": materialized_ref,
     })
@@ -137,6 +142,7 @@ def test_saved_snapshot_save_open_cache_refresh_failure_and_delete(
         "kind": "s3", "resource_id": "s3:fixture", "name": name}).json()
     assert portable_state["datasets"][0]["source"]["kind"] == "join"
     assert "materialized_id" not in str(portable_state)
+    assert portable_state["datasets"][0]["source"]["grain"] == declared
     first_query = _query_entities(client, snapshot_id)
     assert first_query["entity"]["total"] == 2
     assert first_query["cache"]["hit"] is False

@@ -136,15 +136,26 @@ def resolve_s3_uri(resource_id: str) -> str:
 
 
 def _refresh_resource_cache():
-    global _resource_cache
-    with _resource_cache_lock:
-        _resource_cache = _fetch_resources()
+    global _resource_cache, _last_refresh
+    if not _resource_cache_lock.acquire(blocking=False):
+        return
+    initial = not _resource_cache
+    try:
+        fetched = _fetch_resources()
+        if fetched or not _resource_cache:
+            _resource_cache = fetched
+        else:
+            logger.warning("Resource discovery returned no results; retaining the last successful snapshot")
+        _last_refresh = time.monotonic()
         _resource_cache_ready.set()
         logger.info("Resource cache refreshed: %d resources", len(_resource_cache))
-    configure_aws_profiles()
-    for r in list_aurora_resources():
-        warm_connection_string(r["id"])
-    threading.Thread(target=_warm_catalogs, daemon=True).start()
+    finally:
+        _resource_cache_lock.release()
+    if initial and _resource_cache:
+        configure_aws_profiles()
+        for r in list_aurora_resources():
+            warm_connection_string(r["id"])
+        threading.Thread(target=_warm_catalogs, daemon=True).start()
 
 
 def _warm_catalogs():
@@ -213,7 +224,7 @@ def _ensure_cache(wait: bool = False) -> list[dict]:
     if wait and not _resource_cache_ready.is_set():
         _resource_cache_ready.wait(timeout=120)
     elif (not wait and _resource_cache is not None
-          and time.monotonic() - _last_refresh > _REFRESH_COOLDOWN):
+          and time.monotonic() - _last_refresh > (300 if _resource_cache else _REFRESH_COOLDOWN)):
         _last_refresh = time.monotonic()
         threading.Thread(target=_refresh_resource_cache, daemon=True).start()
     return _resource_cache or []

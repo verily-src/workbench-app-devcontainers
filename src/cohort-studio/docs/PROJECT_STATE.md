@@ -4,6 +4,9 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- DEPLOYED a2e0d23f97cc2bd46035b94f029da36b82f8b309: background data jobs and local SQLite BGE embeddings. Active SHA/healthy API verified by SSM d858e4f0-4441-478b-af9f-e72666ca651d. Live SSM baf999d4-6d99-4ec6-a4f8-941ddc35746e passed asynchronous Aurora open/query (200 variants), local 384-dimensional semantic retrieval, and temporary dataset/document cleanup. Initial views response took 0.26 seconds; a later empty discovery response did not establish store recovery. Separate live listing showed continuing S3 failures/pending work, so resource-warmup churn and cache follow-up is in progress. Local suite 44 passed; final placement browser rerun 3 passed and screenshot inspected.
+- Vertex live metadata check c827da2c-8e39-41c0-a685-c82d173ba340: integration present, but project/location/model unset and ADC missing (DefaultCredentialsError). No paid Vertex inference attempted.
+
 - Candidate background-job/knowledge release: final 44 focused API, real PostgreSQL, browser, and local BGE embedding checks passed. Frontend build passed. Shared cloud CLI gate validated to serialize credential-dependent calls. Saved-view late-result cache/polling replaces discarded timeouts. Deployment/live verification pending.
 
 

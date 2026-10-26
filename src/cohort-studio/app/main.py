@@ -1243,6 +1243,7 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
     db.list_aurora_tables.invalidate()
     db.fetch_aurora_table.invalidate()
     query_cache.invalidate_resource(req.resource_id)
+    views.invalidate_listing("aurora", req.resource_id)
     join_discovery.invalidate_resource(req.resource_id)
     lineage.record(engine, "materialized", "table", req.table,
                    payload={"resource_id": req.resource_id, "rows": rows,
@@ -1416,6 +1417,7 @@ def refresh_saved_view(req: RefreshViewRequest, request: Request, response: Resp
         def work(progress):
             result = saved_snapshots.refresh(req.resource_id, req.name, progress)
             query_cache.invalidate_resource(req.resource_id)
+            views.invalidate_listing("aurora", req.resource_id)
             return result
         return view_jobs.submit(req.name, total, work, key=f"{req.resource_id}:{req.name}", owner=owner)
     except ValueError as exc:
@@ -1458,6 +1460,7 @@ def save_view(req: SaveViewRequest, request: Request, response: Response):
                 result = saved_snapshots.save(req.resource_id, req.name, state,
                                               _compile_snapshot, progress)
                 query_cache.invalidate_resource(req.resource_id)
+                views.invalidate_listing("aurora", req.resource_id)
                 lineage.record(_lineage_engine(), "view_saved", "view", req.name,
                                payload={"store": f"{req.kind}:{req.resource_id}",
                                         "datasets": len(req.datasets), **result})

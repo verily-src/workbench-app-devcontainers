@@ -9,6 +9,14 @@ import config
 import secret_store
 
 
+@pytest.fixture(autouse=True)
+def isolated_jev_settings(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(secret_store, "read_keys", lambda: {})
+    for name in ("TYPESAFE_API_KEY", "STUDIO_JEV_MODEL", "TYPESAFE_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def _ref(table, resource="omopdb"):
     return {"kind": "aurora", "resource_id": resource,
             "schema": "public", "table": table}
@@ -104,7 +112,7 @@ def test_generic_id_does_not_create_a_key_recommendation(
     assert response.json()["jev"]["status"] == "not_configured"
 
 
-@pytest.mark.parametrize("key_source", ["environment", "saved"])
+@pytest.mark.parametrize("key_source", ["environment", "saved", "saved_default"])
 def test_jev_receives_metadata_only_and_returns_validated_classification(
         client, engine, monkeypatch, tmp_path, key_source):
     suffix = uuid.uuid4().hex[:8]
@@ -120,6 +128,7 @@ def test_jev_receives_metadata_only_and_returns_validated_classification(
                           "'F')"))
     join_discovery.invalidate_resource("omopdb")
     token = "test-secret"
+    expected_model = "jev-latest" if key_source == "saved_default" else "jev-test-pinned"
     if key_source == "environment":
         monkeypatch.setenv("TYPESAFE_API_KEY", token)
         monkeypatch.setenv("STUDIO_JEV_MODEL", "jev-test-pinned")
@@ -137,9 +146,9 @@ def test_jev_receives_metadata_only_and_returns_validated_classification(
                             lambda name: "local_encrypted" if name in stored else None)
         monkeypatch.setattr(secret_store, "is_available", lambda: True)
         monkeypatch.setattr(secret_store, "is_configured", lambda: True)
-        config.update_jev_config(api_key=token, model="jev-test-pinned")
+        config.update_jev_config(api_key=token, model="" if key_source == "saved_default" else expected_model)
         assert config.get_integration_key("jev") == token
-        assert config._load()["jev"]["model"] == "jev-test-pinned"
+        assert config.get_jev_model() == expected_model
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     requests = []
     roles = ("person", "sample", "variant", "clinical_event",
@@ -184,7 +193,7 @@ def test_jev_receives_metadata_only_and_returns_validated_classification(
     assert result.status_code == 200, result.text
     body = result.json()
     assert body["jev"] == {
-        "status": "used", "configured": True, "model": "jev-test-pinned",
+        "status": "used", "configured": True, "model": expected_model,
     }
     assert body["candidates"][0]["keys"] == [
         {"left": "person_id", "right": "subject_id"},

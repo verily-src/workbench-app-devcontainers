@@ -56,7 +56,7 @@ def test_live_aurora_join_queries_full_source_and_aggregates(engine, monkeypatch
     try:
         first = joins.run(left_id, [_step(right_id, "right", ["tag"])])
         assert first["stats"]["engine"] == "aurora"
-        assert first["stats"]["truncated"] is True
+        assert first["stats"]["truncated"] is False
         assert first["stats"]["total_rows"] == 120003
         assert first["live_source"]["resource_id"] == "live-join-test"
 
@@ -65,7 +65,7 @@ def test_live_aurora_join_queries_full_source_and_aggregates(engine, monkeypatch
                                        live_source=first["live_source"])
         assert opened["query_scope"] == "database"
         assert opened["database"] is True
-        assert opened["sampled"] is True
+        assert opened["sampled"] is False
         entity_profile = next(c for c in opened["columns"] if c["name"] == "entity_id")
         assert (entity_profile["min"], entity_profile["max"]) == (1, 120001)
         out = datasets.query(

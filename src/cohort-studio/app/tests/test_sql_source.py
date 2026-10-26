@@ -177,6 +177,15 @@ def test_cte_name_is_only_allowed_in_lexical_scope():
         sql_source.normalize(sql)
 
 
+def test_exists_subquery_is_allowed_but_nested_unsafe_functions_are_not():
+    normalized = sql_source.normalize(
+        "SELECT EXISTS (SELECT 1 FROM cdm.person)")
+    assert "EXISTS" in normalized.upper()
+    with pytest.raises(ValueError, match="pg_read_file.*not allowed"):
+        sql_source.normalize(
+            "SELECT EXISTS (SELECT pg_read_file('/etc/passwd') FROM cdm.person)")
+
+
 def test_custom_sql_obeys_database_statement_timeout(client, monkeypatch):
     monkeypatch.setattr(sql_source, "SQL_TIMEOUT_MS", 20)
     sql = ("WITH RECURSIVE n(x) AS (VALUES (1) UNION ALL "

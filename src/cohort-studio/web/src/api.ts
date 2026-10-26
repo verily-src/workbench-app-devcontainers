@@ -375,6 +375,7 @@ export const api = {
         title?: string; filters: Filter[]; charts: ChartSpec[];
         cohorts?: Cohort[];
         entity_column?: string | null;
+        filter_ask_history?: Dataset["filterAskHistory"];
       }>;
     }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),
@@ -390,6 +391,7 @@ export const api = {
         charts: d.charts.map((c: ChartSpec) => ({ kind: c.kind, x: c.x, y: c.y })),
         cohorts: d.cohorts ?? [],
         entity_column: d.entityColumn ?? null,
+        filter_ask_history: d.filterAskHistory ?? [],
       })),
     })),
 

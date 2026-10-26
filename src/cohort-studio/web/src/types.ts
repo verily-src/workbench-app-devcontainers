@@ -85,6 +85,8 @@ export interface DerivedSpec {
 }
 
 export type SourceRef =
+  | { kind: "omop_cohort"; resource_id: string; spec: OmopSpec;
+      membership_mode: "live"; name?: string; settings?: ColumnSetting[] }
   | { kind: "sql"; resource_id: string; sql: string; name?: string }
   | { kind: "aurora" | "s3" | "bq" | "catalog"; resource_id: string;
       table: string; schema?: string; uuid?: string; settings?: ColumnSetting[] }
@@ -203,6 +205,12 @@ export interface Cohort {
   filters: Filter[];
 }
 
+export interface FilterAskHistoryEntry {
+  question: string;
+  answer?: string;
+  error?: string;
+}
+
 export interface Dataset {
   id: string;
   title: string;
@@ -220,6 +228,7 @@ export interface Dataset {
   result?: QueryResult;
   chat?: ChatMsg[];
   chatSessionId?: string;
+  filterAskHistory?: FilterAskHistoryEntry[];
 }
 
 export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"

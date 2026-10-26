@@ -384,15 +384,36 @@ def export_cohort(dataset_id: str, req: ExportCohortRequest):
             export_path if req.workflow == "cohort-genetics-demo" else req.path)
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
-    lineage.record(_lineage_engine(), "cohort_exported", "dataset",
-                   ds["source"], payload={"to": out["s3_uri"],
-                                          "rows": out["rows"]})
+    lineage_engine = _lineage_engine()
+    cohort_event_id = lineage.latest_cohort_event_id(lineage_engine, dataset_id)
+    artifact_parents = [("dataset", dataset_id)]
+    if cohort_event_id is not None:
+        cohort_parent = lineage.event_parent(cohort_event_id)
+        if cohort_parent:
+            artifact_parents.append(cohort_parent)
+    artifact_event_id = lineage.record(
+        lineage_engine, "artifact_exported", "artifact", out["s3_uri"],
+        payload={"dataset_id": dataset_id,
+                 "resource_id": out.get("resource_id", req.resource_id),
+                 "path": out.get("path", req.path),
+                 "rows": out["rows"],
+                 "source_ref": lineage.safe_source_ref(
+                     ds.get("source_ref") or ds.get("origin"))},
+        parents=artifact_parents)
+    artifact_parent = lineage.event_parent(artifact_event_id)
+    lineage.record(
+        lineage_engine, "cohort_exported", "dataset", ds["source"],
+        payload={"to": out["s3_uri"], "rows": out["rows"],
+                 "dataset_id": dataset_id},
+        parents=[artifact_parent] if artifact_parent else [])
     return out
 
 @app.post("/api/workflows/submit")
 def submit_workflow(req: SubmitJobRequest):
     try:
         params_uri = None
+        input_uri = None
+        params_event_type = "workflow_params_used"
         if req.workflow == "cohort-genetics-demo":
             input_path = workflows._safe_object_path(req.demo_input_csv_path)
             output_path = workflows._safe_object_path(req.demo_output_path)
@@ -411,6 +432,7 @@ def submit_workflow(req: SubmitJobRequest):
             written = workflows.write_params_json(
                 req.params_file_bucket_id, req.params_file_path, params)
             params_uri = written["s3_uri"]
+            params_event_type = "workflow_params_written"
             job = workflows.submit_job(
                 workflow=req.workflow, output_bucket_id=req.output_bucket_id,
                 job_id=req.job_id, profile="healthomics",
@@ -418,6 +440,12 @@ def submit_workflow(req: SubmitJobRequest):
                 params_file_bucket_id=req.params_file_bucket_id,
                 params_file_path=req.params_file_path)
         else:
+            if req.batch_input_bucket_id and req.batch_input_csv_path:
+                input_uri = (f"{db.resolve_s3_uri(req.batch_input_bucket_id)}/"
+                             f"{req.batch_input_csv_path.lstrip('/')}" )
+            if req.params_file_bucket_id and req.params_file_path:
+                params_uri = (f"{db.resolve_s3_uri(req.params_file_bucket_id)}/"
+                              f"{req.params_file_path.lstrip('/')}" )
             job = workflows.submit_job(**req.model_dump(exclude={
                 "demo_input_resource_id", "demo_input_csv_path",
                 "demo_output_path",
@@ -426,11 +454,42 @@ def submit_workflow(req: SubmitJobRequest):
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
-    lineage.record(_lineage_engine(), "workflow_submitted", "workflow",
-                   job.get("name") or req.workflow,
-                   payload={"run_id": job.get("run_id"),
-                            "workflow": req.workflow,
-                            "params_uri": params_uri})
+    lineage_engine = _lineage_engine()
+    input_event_id = None
+    if input_uri:
+        input_event_id = lineage.latest_event_id(
+            lineage_engine, "artifact_exported", "artifact", input_uri)
+        if input_event_id is None:
+            input_event_id = lineage.record(
+                lineage_engine, "workflow_input_used", "artifact", input_uri,
+                payload={"workflow": req.workflow,
+                         "resource_id": (req.demo_input_resource_id
+                                         or req.batch_input_bucket_id
+                                         or req.params_file_bucket_id),
+                         "path": (req.demo_input_csv_path
+                                  or req.batch_input_csv_path)},
+            )
+
+    params_event_id = None
+    if params_uri:
+        params_event_id = lineage.record(
+            lineage_engine, params_event_type, "artifact", params_uri,
+            payload={"workflow": req.workflow,
+                     "resource_id": (req.params_file_bucket_id
+                                     or req.batch_input_bucket_id),
+                     "path": req.params_file_path or req.batch_input_csv_path},
+            parents=[parent for parent in [lineage.event_parent(input_event_id)]
+                     if parent])
+
+    run_payload = workflows.lineage_submission_metadata(
+        req.workflow, job, input_uri=input_uri, params_uri=params_uri)
+    lineage.record(
+        lineage_engine, "workflow_submitted", "workflow",
+        job.get("name") or req.workflow,
+        payload=run_payload,
+        parents=[parent for parent in [lineage.event_parent(input_event_id),
+                                       lineage.event_parent(params_event_id)]
+                 if parent])
     return job
 
 @app.get("/api/tables")
@@ -567,6 +626,12 @@ def _open_source(ref, temporary=False):
             df, label = out["df"], " + ".join(labels)
             live, capped = out.get("live_source"), out["stats"]["truncated"]
             disk = out.get("disk_source")
+        elif ref["kind"] == "omop_cohort":
+            engine, info = _omop_cdm(ref["resource_id"])
+            df, live = omop.open_cohort_source(
+                engine, info, ref["resource_id"], ref["spec"])
+            capped = False
+            label = f"{ref['resource_id']} / {ref.get('name') or 'OMOP cohort'}"
         elif ref["kind"] == "sql":
             df, normalized, capped = sql_source.fetch(
                 ref["resource_id"], ref["sql"], queries.ROW_CAP)
@@ -965,6 +1030,19 @@ class Cohort(BaseModel):
     name: str
     filters: list[Filter] = Field(default_factory=list)
 
+class FilterAskEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    question: str = Field(min_length=1, max_length=2000)
+    answer: str | None = Field(default=None, max_length=4000)
+    error: str | None = Field(default=None, max_length=512)
+
+    @model_validator(mode="after")
+    def has_result(self):
+        if bool(self.answer) == bool(self.error):
+            raise ValueError("A filter question needs exactly one answer or error.")
+        return self
+
 class ViewDataset(BaseModel):
     source: SourceRef
     entity_column: str | None = None
@@ -979,6 +1057,7 @@ class ViewDataset(BaseModel):
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
     cohorts: list[Cohort] = Field(default_factory=list)
+    filter_ask_history: list[FilterAskEntry] = Field(default_factory=list, max_length=25)
 
 class SaveViewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -1210,6 +1289,8 @@ def save_view(req: SaveViewRequest):
                 "filters": [{k: v for k, v in f.model_dump().items()
                              if v is not None} for f in ch.filters],
             } for ch in d.cohorts],
+            "filter_ask_history": [entry.model_dump()
+                                   for entry in d.filter_ask_history],
         } for d in req.datasets],
     }
     try:
@@ -1376,19 +1457,36 @@ def omop_cohort_summary(resource_id: str, req: OmopSummaryRequest):
 
 @app.post("/api/omop/{resource_id}/cohort/open")
 def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest):
-    engine, info = _omop_cdm(resource_id)
     try:
-        df = omop.open_cohort(engine, info, req.spec)
+        _, info = _omop_cdm(resource_id)
         parents = omop.tables_used(info, req.spec)
+        name = req.name.strip() or "OMOP cohort"
+        ref = source_dict({"kind": "omop_cohort", "resource_id": resource_id,
+                           "spec": req.spec, "membership_mode": "live",
+                           "name": name})
+        result = _open_source(ref)
+    except HTTPException:
+        raise
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except omop.OmopTimeout as e:
+        raise HTTPException(504, str(e))
     except Exception as e:
         raise _omop_error(e)
-    name = req.name.strip() or "OMOP cohort"
-    source = f"{resource_id} / {name}"
-    result = datasets.open_dataset(df, source)
+    source = result["source"]
     lineage.record(_lineage_engine(), "omop_cohort_opened", "cohort", source,
-                   payload={"resource_id": resource_id, "spec": req.spec,
-                            "rows": len(df)},
-                   parents=[("table", t) for t in parents])
+                   payload={"resource_id": resource_id,
+                            "spec": result["source_ref"]["spec"],
+                            "membership_mode": "live",
+                            "rows": result["rows"],
+                            "dataset_id": result["dataset_id"],
+                            "source_ref": result["source_ref"]},
+                   parents=[("dataset", result["dataset_id"]),
+                            *(("table", t) for t in parents)])
     return result
 
 @app.post("/api/omop/{resource_id}/domain/open")

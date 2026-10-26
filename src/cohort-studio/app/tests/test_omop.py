@@ -402,7 +402,8 @@ def test_open_endpoints_and_join_on_person_id(client, engine, ref):
     assert cohort.status_code == 200
     cohort = cohort.json()
     assert {"dataset_id", "source", "rows", "columns"} <= set(cohort)
-    assert cohort["query_scope"] == "loaded"
+    assert cohort["query_scope"] == "database"
+    assert cohort["sampled"] is False
     assert cohort["source"] == f"{RID} / GI bleed" and cohort["rows"] == 40
     assert datasets.get(cohort["dataset_id"])["origin"] is None
     cond = client.post(f"/api/omop/{RID}/domain/open",
@@ -410,7 +411,8 @@ def test_open_endpoints_and_join_on_person_id(client, engine, ref):
     assert cond["source"] == f"{RID} / cdm.condition_occurrence (cohort)"
     joined = client.post("/api/datasets/join", json={
         "left_id": cohort["dataset_id"], "right_id": cond["dataset_id"],
-        "left_on": "person_id", "right_on": "person_id", "how": "inner"})
+        "left_on": "person_id", "right_on": "person_id", "how": "inner",
+        "allow_loaded": True})
     assert joined.status_code == 200
     body = joined.json()
     assert body["join"]["engine"] == "duckdb"
@@ -425,9 +427,11 @@ def test_untouched_domain_tables_join_in_aurora(client, ref):
     visits = client.post(f"/api/omop/{RID}/domain/open",
                          json={"table": "visit_occurrence", "concept_names": False}).json()
     assert datasets.get(person["dataset_id"])["origin"]["schema"] == "cdm"
-    body = client.post("/api/datasets/join", json={
+    response = client.post("/api/datasets/join", json={
         "left_id": person["dataset_id"], "right_id": visits["dataset_id"],
-        "left_on": "person_id", "right_on": "person_id", "how": "semi"}).json()
+        "left_on": "person_id", "right_on": "person_id", "how": "semi"})
+    assert response.status_code == 200, response.text
+    body = response.json()
     assert body["join"]["engine"] == "aurora"
     assert body["rows"] == ref["visit_occurrence"].person_id.nunique()
 

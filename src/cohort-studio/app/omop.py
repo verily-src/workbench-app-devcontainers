@@ -744,38 +744,71 @@ def _read(conn, sql: str, params: dict) -> pd.DataFrame:
     return pd.DataFrame.from_records([tuple(r) for r in res.fetchall()],
                                      columns=list(res.keys()), coerce_float=True)
 
-def open_cohort(engine: Engine, info: dict, spec: dict | None,
-                cap: int = queries.ROW_CAP) -> pd.DataFrame:
-
-    with _session(engine, OPEN_TIMEOUT_MS) as conn:
-        c = _prepare(conn, info, spec)
-        if info.get("vocab_schema"):
-            names = [f"{a}.concept_name AS {n}" for a, n in
-                     (("g", "gender"), ("r", "race"), ("en", "ethnicity"))]
-            joins = " ".join(
-                f"LEFT JOIN {_voc(info, 'concept')} AS {a} ON {a}.concept_id = f.{col}"
-                for a, col in (("g", "gender_concept_id"), ("r", "race_concept_id"),
-                               ("en", "ethnicity_concept_id")))
-        else:
-            names = [f"CAST(f.{col}_concept_id AS TEXT) AS {col}"
-                     for col in ("gender", "race", "ethnicity")]
-            joins = ""
-        cols = (["f.person_id"] + names + [
-            "f.year_of_birth",
-            "CAST(EXTRACT(YEAR FROM f.index_date) AS INTEGER) - f.year_of_birth AS age",
-            "f.index_date", "f.observation_start", "f.observation_end"]
-            + [f"f.e{i}_n AS e{i}_n, f.e{i}_first AS e{i}_first" for i, _ in c["inclusion"]])
-        df = _read(conn, f"WITH {', '.join(c['ctes'])} SELECT {', '.join(cols)} "
-                         f"FROM flags AS f {joins} WHERE {_members(c['steps'])} "
-                         f"ORDER BY f.person_id LIMIT {int(cap)}", c["params"])
+def _cohort_select(info: dict, c: dict) -> tuple[str, dict]:
+    if info.get("vocab_schema"):
+        names = [f"{a}.concept_name AS {n}" for a, n in
+                 (("g", "gender"), ("r", "race"), ("en", "ethnicity"))]
+        joins = " ".join(
+            f"LEFT JOIN {_voc(info, 'concept')} AS {a} ON {a}.concept_id = f.{col}"
+            for a, col in (("g", "gender_concept_id"), ("r", "race_concept_id"),
+                           ("en", "ethnicity_concept_id")))
+    else:
+        names = [f"CAST(f.{col}_concept_id AS TEXT) AS {col}"
+                 for col in ("gender", "race", "ethnicity")]
+        joins = ""
+    cols = (["f.person_id"] + names + [
+        "f.year_of_birth",
+        "CAST(EXTRACT(YEAR FROM f.index_date) AS INTEGER) - f.year_of_birth AS age",
+        "f.index_date", "f.observation_start", "f.observation_end"]
+        + [f"f.e{i}_n AS e{i}_n, f.e{i}_first AS e{i}_first"
+           for i, _ in c["inclusion"]])
+    sql = (f"WITH {', '.join(c['ctes'])} SELECT {', '.join(cols)} "
+           f"FROM flags AS f {joins} WHERE {_members(c['steps'])} "
+           "ORDER BY f.person_id")
     rename = {}
     for i, label in c["inclusion"]:
         rename |= {f"e{i}_n": f"{label} events", f"e{i}_first": f"{label} first"}
+    return sql, rename
+
+
+def _cohort_frame(df: pd.DataFrame, rename: dict) -> pd.DataFrame:
     df = df.rename(columns=rename)
     for col in ["index_date", "observation_start", "observation_end"] + \
-               [f"{label} first" for _, label in c["inclusion"]]:
+               [name for name in rename.values() if name.endswith(" first")]:
         df[col] = pd.to_datetime(df[col])
     return df
+
+
+def _cohort_data(engine: Engine, info: dict, spec: dict | None,
+                 cap: int) -> tuple[pd.DataFrame, str, dict, dict]:
+    if cap < 0:
+        raise ValueError("Row limit must be non-negative.")
+    with _session(engine, OPEN_TIMEOUT_MS) as conn:
+        c = _prepare(conn, info, spec)
+        sql, rename = _cohort_select(info, c)
+        df = _read(conn, f"{sql} LIMIT {int(cap)}", c["params"])
+    df = _cohort_frame(df, rename)
+    return df, sql, c["params"], rename
+
+
+def open_cohort(engine: Engine, info: dict, spec: dict | None,
+                cap: int = queries.ROW_CAP) -> pd.DataFrame:
+    return _cohort_data(engine, info, spec, cap)[0]
+
+
+def open_cohort_source(engine: Engine, info: dict, resource_id: str,
+                       spec: dict | None,
+                       cap: int = queries.ROW_CAP) -> tuple[pd.DataFrame, dict]:
+    df, sql, params, rename = _cohort_data(engine, info, spec, cap)
+    physical_names = {logical: physical for physical, logical in rename.items()}
+    live_source = {"resource_id": resource_id, "sql": sql, "params": params,
+                   "columns": {column: physical_names.get(column, column)
+                               for column in df.columns}}
+    import disk_data
+    source_ref = {"kind": "omop_cohort", "resource_id": resource_id,
+                  "spec": parse_spec(spec), "membership_mode": "live"}
+    live_source = disk_data._compiled_omop_query(source_ref, live_source)
+    return df, live_source
 
 def open_domain(engine: Engine, info: dict, table: str, spec: dict | None = None,
                 cap: int = queries.ROW_CAP, concept_names: bool = True,

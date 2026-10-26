@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { ExportJob } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
@@ -47,6 +47,26 @@ function formatBytes(bytes: number): string {
     unit += 1;
   }
   return `${value.toFixed(1)} ${units[unit]}`;
+}
+
+function safeFilterAskError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/insufficient.*credit|credit balance|billing/i.test(message)) {
+    return "The AI provider needs more credits. Check provider billing in Settings.";
+  }
+  if (/unauthori[sz]ed|invalid api.?key|authentication|\b401\b/i.test(message)) {
+    return "The AI provider rejected its key. Check the saved key in Settings.";
+  }
+  if (/rate.?limit|\b429\b/i.test(message)) {
+    return "The AI provider rate limit was reached. Wait a moment and try again.";
+  }
+  if (/timeout|timed out/i.test(message)) {
+    return "The request timed out. Try again with a shorter question.";
+  }
+  if (/invalid.*filter|validation|\b400\b|unknown column/i.test(message)) {
+    return "The filter request was not valid. Check the column and value, then try again.";
+  }
+  return "The request could not be completed. Check the connection and try again.";
 }
 
 export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
@@ -492,8 +512,11 @@ function AskAI({ dataset, onUpdate, databaseScoped, onOpenChatDraft }:
     { dataset: Dataset; onUpdate: (c: Partial<Dataset>) => void;
       databaseScoped: boolean; onOpenChatDraft: (text: string) => void }) {
   const [question, setQuestion] = useState("");
-  const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(
+    () => (dataset.filterAskHistory?.length ?? 0) > 0);
+  const historyId = useId();
+  const history = dataset.filterAskHistory ?? [];
 
   const ask = async () => {
     if (!question.trim()) return;
@@ -503,27 +526,40 @@ function AskAI({ dataset, onUpdate, databaseScoped, onOpenChatDraft }:
       return;
     }
     setBusy(true);
-    setNote("");
+    const asked = question.trim();
     try {
-      const out = await api.ask(dataset.id, question, dataset.filters);
-      onUpdate({ filters: out.filters });
-      setNote(out.explanation);
+      const out = await api.ask(dataset.id, asked, dataset.filters);
+      onUpdate({
+        filters: out.filters,
+        filterAskHistory: [...history, {
+          question: asked,
+          answer: (out.explanation || "Filters updated.").slice(0, 4000),
+        }].slice(-25),
+      });
+      setHistoryOpen(true);
       setQuestion("");
     } catch (e) {
-      setNote(`Ask AI failed: ${(e as Error).message}`);
+      onUpdate({
+        filterAskHistory: [...history, {
+          question: asked,
+          error: safeFilterAskError(e),
+        }].slice(-25),
+      });
+      setHistoryOpen(true);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="ask-ai">
+    <div className="ask-ai" style={databaseScoped ? { flexWrap: "wrap" } : undefined}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" strokeWidth="2">
         <path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4L12 3z" />
       </svg>
       <input
         type="text"
+        maxLength={2000}
         placeholder={databaseScoped
           ? 'Ask AI to filter — e.g. "liver samples with RIN above 7"'
           : "Ask the assistant…"}
@@ -536,7 +572,30 @@ function AskAI({ dataset, onUpdate, databaseScoped, onOpenChatDraft }:
               disabled={busy || !question.trim()}>
         {databaseScoped ? (busy ? "Thinking…" : "Ask") : "Open chat"}
       </button>
-      {note && <span className="ask-note">{note}</span>}
+      {databaseScoped && history.length > 0 && (
+        <div className="filter-ask-history"
+             style={{ flexBasis: "100%", color: "var(--ink)" }}>
+          <button type="button" className="quiet"
+                  aria-expanded={historyOpen} aria-controls={historyId}
+                  onClick={() => setHistoryOpen((open) => !open)}>
+            Question history ({history.length})
+            <span>{historyOpen ? "Hide" : "Show"}</span>
+          </button>
+          {historyOpen && (
+            <div id={historyId} role="log" aria-label="Question history">
+              {history.map((entry, index) => (
+                <article className="filter-ask-entry"
+                         style={{ borderTop: "1px solid var(--border)", padding: "8px 0" }}
+                         key={`${index}-${entry.question}`}>
+                  <p><strong>Question</strong><br />{entry.question}</p>
+                  {entry.answer && <p><strong>Answer</strong><br />{entry.answer}</p>}
+                  {entry.error && <p role="alert"><strong>Could not apply filters</strong><br />{entry.error}</p>}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

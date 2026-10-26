@@ -241,6 +241,7 @@ export default function App() {
       const opened = await api.openSourceRef(sourceRef);
       const title = sourceRef.kind === "join" ? "Joined input"
         : sourceRef.kind === "derived" ? sourceRef.spec.name
+          : sourceRef.kind === "omop_cohort" ? sourceRef.name || "OMOP cohort"
           : sourceRef.kind === "sql" ? sourceRef.name || "SQL result"
             : sourceRef.table.split("/").pop() ?? sourceRef.table;
       const input: Dataset = {
@@ -319,6 +320,7 @@ export default function App() {
         id: o.dataset_id,
         title: d.title || (d.source.kind === "join" ? "Joined dataset"
           : d.source.kind === "derived" ? d.source.spec.name
+            : d.source.kind === "omop_cohort" ? d.source.name || "OMOP cohort"
             : d.source.kind === "sql" ? d.source.name || "SQL result"
               : d.source.table.split("/").pop()) || "view",
         source: o.source,
@@ -329,6 +331,7 @@ export default function App() {
         filters: d.filters,
         charts: d.charts,
         cohorts: d.cohorts ?? [],
+        filterAskHistory: d.filter_ask_history ?? [],
         page: 0,
       }));
       setDatasets(restored);

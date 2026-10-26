@@ -873,3 +873,12 @@ Saved-view discovery keeps one in-flight read per store and caches completed res
 Knowledge passages and normalized float32 vectors share the existing private SQLite knowledge file. BGE-small-en-v1.5 runs through FastEmbed on CPU (384 dimensions, two threads). A single worker embeds batches of 16 outside database write transactions, and resumes missing passages on startup. A bounded exact cosine scan combines with FTS5 through reciprocal-rank fusion; document IDs/passages remain stable citation keys. No remote embedding API receives documents. Selected evidence may still go to the configured chat provider. Delete removes both passage and vector rows. Model failure leaves keyword retrieval available and exposes indexing status. Settings supports indexing/retry; Studio Agent exposes search_knowledge plus automatic context retrieval. The store retains its existing 100-document/200KB-per-document limits; this is a small app-local index, not a distributed search service. Model cache and job journals are ignored by Git. STUDIO_KB_EMBEDDINGS=off disables background indexing.
 
 Resource discovery refreshes a healthy snapshot at most every five minutes, with a single refresh in flight. File/table warmup runs only on initial successful discovery. Empty discovery failures retain the last successful resource snapshot; all later source operations still enforce current access.
+
+### Agent trust-boundary hardening
+
+The local draft separates retrieved passages and dataset metadata from trusted
+system instructions. Reference messages and tool messages carry untrusted
+evidence. Studio Agent external literature searches enforce current user intent
+and query-term provenance before calling the adapter. This check is independent
+of model output. Direct MCP consumers retain their own authorization policy.
+Local runtime/provider regression checks pass; deployment status is in PROJECT_STATE.

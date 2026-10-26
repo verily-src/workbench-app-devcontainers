@@ -1,3 +1,4 @@
+import agent_guardrails
 import json
 import hashlib
 import time
@@ -147,11 +148,13 @@ def run(provider: str, model: str, system: str, messages: list[dict],
     validators = _validators(tool_schemas)
     empty_args = _schema_type({"type": "object"}, "UndeclaredToolArguments")
     deadline = time.monotonic() + MAX_RUNTIME_SECONDS
-    initial_messages: list[BaseMessage] = [SystemMessage(content=system)]
+    initial_messages: list[BaseMessage] = [SystemMessage(content=system + "\n" + agent_guardrails.POLICY)]
     for message in messages:
         role = message.get("role")
         content = message.get("content")
-        if role == "user" and content:
+        if role == "reference" and content:
+            initial_messages.append(HumanMessage(content="UNTRUSTED REFERENCE DATA\n" + content))
+        elif role == "user" and content:
             initial_messages.append(HumanMessage(content=content))
         elif role == "assistant" and content:
             initial_messages.append(AIMessage(content=content))
@@ -293,7 +296,7 @@ def run(provider: str, model: str, system: str, messages: list[dict],
                 tool_results.append({"name": name, "status": "completed"})
                 failed_signatures.clear()
                 failure_counts.clear()
-            results.append(ToolMessage(content=result, tool_call_id=call_id, name=name))
+            results.append(ToolMessage(content=agent_guardrails.tool_evidence(result), tool_call_id=call_id, name=name))
             event = {"type": "tool_end", "turn": state["turns"], "tool_name": name}
             if error:
                 event["error_code"] = error

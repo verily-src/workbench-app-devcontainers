@@ -81,7 +81,7 @@ def stream(req: AgentRequest, request: Request, response: Response):
         try:
             if stopped.is_set():
                 raise agent_sessions.AgentCancelled()
-            operations = Operations(owner)
+            operations = Operations(owner, user_message=req.message)
             with agent_sessions.bind(owner, _SCOPE,
                                      str(req.session_id) if req.session_id else None,
                                      new_session=req.new_session) as session:

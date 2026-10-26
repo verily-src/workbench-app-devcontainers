@@ -390,7 +390,7 @@ def test_agent_literature_tools_return_citations_and_preserve_history(workspace,
         assert "bounded" in preprints["coverage"]
         return {"reply": "Found [Example study](https://pubmed.ncbi.nlm.nih.gov/123/).", "usage": {}, "tool_calls": ["search_pubmed", "search_biorxiv"]}
     monkeypatch.setattr(providers, "run", provider)
-    response = workspace.post("/api/agent/chat", json={"message": "Find genetics literature"})
+    response = workspace.post("/api/agent/chat", json={"message": "Find genetics literature on genetic association"})
     assert response.status_code == 200, response.text
     assert calls == [("genetic association", 3, "private-ncbi-key")]
     assert response.json()["actions"] == []

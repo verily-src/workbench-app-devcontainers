@@ -166,17 +166,6 @@ def build_tools(df: pd.DataFrame, columns: list[dict], ui: dict,
 
 def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
                    ui: dict, row_count: int | None = None) -> str:
-    lines = []
-    for col in columns:
-        if col["filter_kind"] == "categorical":
-            lines.append(f"- {col['name']} (categorical: "
-                         f"{', '.join(col.get('values') or [])})")
-        elif col["filter_kind"] == "range":
-            lines.append(f"- {col['name']} (numeric {col.get('min')}–"
-                         f"{col.get('max')})")
-        else:
-            lines.append(f"- {col['name']} (free text, not filterable)")
-    row_count = len(df) if row_count is None else row_count
     return (
         agent_instructions.system_guidance(
             "bioinformatics, data science, and data engineering",
@@ -185,10 +174,6 @@ def _system_prompt(source: str, df: pd.DataFrame, columns: list[dict],
         "You are the data assistant inside Cohort Studio, a cohort "
         "exploration app. The user is looking at one dataset and your "
         "tools act directly on their screen.\n\n"
-        f"Dataset: {source} ({row_count:,} rows)\n"
-        f"Columns:\n{chr(10).join(lines)}\n\n"
-        f"Current UI filters: {json.dumps(ui['filters'])}\n"
-        f"Current charts: {json.dumps(ui['charts'])}\n\n"
         "Ground every number in a tool result — never estimate from the "
         "column list. When the user asks to see, show, plot, or compare "
         "something, build it with add_chart (and set_filters when they "
@@ -214,7 +199,7 @@ def chat(dataset_id: str, message: str, history: list[dict],
     actions: list[str] = []
     row_count = (ds["disk_source"].get("rows") if ds.get("disk_source")
                  else len(df))
-    system = _system_prompt(ds["source"], df, columns, ui, row_count=row_count) + knowledge.context(message)
+    system = _system_prompt(ds["source"], df, columns, ui, row_count=row_count)
     if ds.get("disk_source"):
         system += (
             "\nTool data scope: the complete source is stored on disk and tools "
@@ -249,6 +234,8 @@ def chat(dataset_id: str, message: str, history: list[dict],
         if m.get("role") in ("user", "assistant") and m.get("content")
     ]
     messages.append({"role": "user", "content": message})
+    knowledge.add_reference(messages, message)
+    messages.insert(len(messages) - 1, {"role": "reference", "content": json.dumps({"source": ds["source"], "rows": row_count, "columns": columns, "ui": ui}, default=str)})
 
     step = None
     if stored_history is not None or on_step is not None:

@@ -74,7 +74,7 @@ def test_fake_provider_runs_real_dataset_tool_and_returns_grounded_answer():
     def fake_provider(messages, _schemas):
         for message in messages:
             if isinstance(message, ToolMessage):
-                seen_tool_result.append(json.loads(message.content))
+                seen_tool_result.append(json.loads(json.loads(message.content)["content"]))
         return next(replies)
 
     result = agent_runtime.run(

@@ -122,8 +122,8 @@ check_airlocked_config() {
             .services.app.image == "workbench-virtual-browser:jupyterlab" and
             .services.app.build.additional_contexts["jupyter-extension-builder"] == "service:jupyter-common-extension-builder"
          else
-            (.services.app.image | startswith("ghcr.io/rocker-org/devcontainer/tidyverse@sha256:")) and
-            .services.app.pull_policy == "missing"
+            .services.app.image == "workbench-virtual-browser:rstudio" and
+            .services.app.build.context == "."
          end)
     ' "$CORE/build.json"
 }

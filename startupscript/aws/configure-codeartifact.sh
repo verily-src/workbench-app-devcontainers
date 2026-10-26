@@ -24,10 +24,17 @@ identity_document="$(
   { set +o xtrace; } 2>/dev/null
   imds_token="$(wget --tries=5 --waitretry=5 --retry-connrefused --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)" || exit 1
   wget --tries=5 --waitretry=5 --retry-connrefused --header "X-aws-ec2-metadata-token: ${imds_token}" -q -O - http://169.254.169.254/latest/dynamic/instance-identity/document
-)"
-CODEARTIFACT_OWNER="$(jq -er '.accountId' <<< "${identity_document}")"
+)" || {
+  # This file is sourced under errexit; never fail app creation over CodeArtifact.
+  emit "WARNING: could not read the instance identity document, skipping CodeArtifact configuration"
+  return 0
+}
+if ! CODEARTIFACT_OWNER="$(jq -er '.accountId' <<< "${identity_document}")" \
+  || ! CODEARTIFACT_REGION="$(jq -er '.region' <<< "${identity_document}")"; then
+  emit "WARNING: could not parse the instance identity document, skipping CodeArtifact configuration"
+  return 0
+fi
 readonly CODEARTIFACT_OWNER
-CODEARTIFACT_REGION="$(jq -er '.region' <<< "${identity_document}")"
 readonly CODEARTIFACT_REGION
 
 emit "Configuring pip and npm to use CodeArtifact domain ${CODEARTIFACT_DOMAIN} in ${CODEARTIFACT_REGION}"

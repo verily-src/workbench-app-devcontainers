@@ -79,3 +79,67 @@ def test_numeric_range_profile_filter_and_frame_use_native_driver_types(typed_so
     frame = live_query.fetch_frame(typed_source, filters, max_rows=10)
     assert sorted(frame["measure"].tolist()) == [1.0, 2.0]
 
+
+
+def test_primary_key_pages_keep_full_counts_and_use_index_order(engine, monkeypatch):
+    name = f"live_paging_{uuid.uuid4().hex[:10]}"
+    monkeypatch.setattr(live_query.db, "get_engine_for_resource", lambda _rid: engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f'CREATE TABLE public."{name}" (id bigint PRIMARY KEY, label text)')
+        conn.exec_driver_sql(f'INSERT INTO public."{name}" SELECT i, repeat(\'x\', 100) FROM generate_series(1, 12000) i')
+        conn.exec_driver_sql(f'ANALYZE public."{name}"')
+    source = {"resource_id": name, "sql": f'SELECT id AS key, label FROM public."{name}"',
+              "columns": {"key": "key", "label": "label"}}
+    statements = []
+    def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        first = live_query.query(source, [], [], 0, 10, refresh=True)
+        second = live_query.query(source, [], [], 1, 10, refresh=True)
+        assert first["total"] == second["total"] == 12000
+        assert [row[0] for row in first["rows"]["data"]] == list(range(1, 11))
+        assert [row[0] for row in second["rows"]["data"]] == list(range(11, 21))
+        pages = [s for s in statements if s.startswith('SELECT live.') and 'OFFSET' in s]
+        assert len(pages) == 2 and all('to_jsonb' not in s for s in pages)
+        with engine.begin() as conn:
+            plan = conn.exec_driver_sql(f'EXPLAIN SELECT id AS key, label FROM public."{name}" ORDER BY id LIMIT 10').all()
+            assert any('Index Scan' in row[0] for row in plan)
+            assert live_query._primary_key_order(conn, {**source, "sql": f'SELECT label FROM public."{name}"'}) is None
+            assert live_query._primary_key_order(conn, {**source, "sql": f'SELECT a.id AS key, a.label FROM public."{name}" a JOIN public."{name}" b ON a.id=b.id'}) is None
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f'DROP TABLE public."{name}"')
+
+
+def test_api_table_open_pages_by_primary_key(client, engine):
+    import datasets
+    name = f"live_open_{uuid.uuid4().hex[:10]}"
+    identifier = None
+    statements = []
+    def capture(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f'CREATE TABLE public."{name}" (id bigint PRIMARY KEY, label text)')
+        conn.exec_driver_sql(f"INSERT INTO public.\"{name}\" SELECT i, 'row-' || i FROM generate_series(1, 1005) i")
+    try:
+        opened = client.post("/api/datasets/open", json={"source_ref": {
+            "kind": "aurora", "resource_id": "omopdb", "schema": "public", "table": name}})
+        assert opened.status_code == 200, opened.text
+        identifier = opened.json()["dataset_id"]
+        assert "SELECT *" in datasets.get(identifier)["live_source"]["sql"]
+        event.listen(engine, "before_cursor_execute", capture)
+        result = client.post(f"/api/datasets/{identifier}/query", json={"page": 1, "page_size": 5})
+        assert result.status_code == 200, result.text
+        assert result.json()["total"] == result.json()["filtered"] == 1005
+        assert [row[0] for row in result.json()["rows"]["data"]] == [6, 7, 8, 9, 10]
+        pages = [sql for sql in statements if sql.startswith("SELECT live.") and "OFFSET" in sql]
+        assert pages and all('ORDER BY live."id"' in sql and 'to_jsonb' not in sql for sql in pages)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+        if identifier:
+            datasets.close_dataset(identifier)
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f'DROP TABLE public."{name}"')
+

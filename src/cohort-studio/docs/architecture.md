@@ -788,3 +788,32 @@ Generated Aurora joins retain parameterized SQL for execution. The copyable SQL 
 An open browser tab with a saved source recipe can reopen after a dataset-expired response through the existing source API. Its filters, charts and title are preserved, stale results are cleared, and a repeated expiry stops automatic recovery. This does not persist unsaved browser tabs across a browser reload. Uploaded sources without a recipe must be uploaded again.
 
 The join picker groups available sources by type and labels S3 entries as files. Aurora-to-S3 execution continues through the existing DuckDB path with explicit cross-source consent and visible data scope; the S3 loader is unchanged.
+
+## Agent progress, snapshots, and additional sources (2026-10-26)
+
+Studio Agent uses an NDJSON response stream with bounded progress events and an
+owner-scoped cancellation endpoint. Cancellation is cooperative: it prevents the
+next model/tool step after the current operation returns. Disconnect also requests
+cancellation. It does not cancel submitted Workbench jobs. The existing run schema
+stores cancellation as failed with error_class AgentCancelled and a user-readable
+history message. No additional service or container is required.
+
+Saved same-resource Aurora joins, including compiled OMOP cohorts, can become
+materialized views. Source recipes remain attached for refresh. Creation,
+replacement, refresh and cleanup use transactions and resource locks; failed
+refresh retains the prior snapshot. Shared/open dependencies are retained. Refresh
+is blocking, not concurrent. Cross-source views retain their recipes. Background
+job progress is process-local and owner-scoped; persisted snapshots survive restart.
+
+PostgreSQL/RDS connections use Secrets Manager references or administrator-configured
+environment references, TLS verification, and read-only defaults. Registered S3
+sources retain the existing loader. Athena/Glue sources can expose Iceberg tables;
+Athena requires engine v3 and an enforced workgroup scan cutoff. All query result
+pages are staged to local DuckDB for paging, filters and joins; no preview is
+presented as the full dataset. Live cloud query acceptance requires a suitable
+workgroup and non-billing test source.
+
+Local staging has a two-operation concurrency bound and a 1 GB free-storage floor,
+in addition to the existing 10 GB warning and 1 TB guard. PostgreSQL paging uses
+projected primary keys when safe; explicit order remains authoritative and joins
+retain their fallback. These limits are per process. Counts remain full-source.

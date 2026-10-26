@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import { streamAgent, cancelAgent } from "../agentStreaming";
 import type {
   AgentDashboardAction, AgentWorkflowPlan, AgentWorkflowVerification, ChatHistory,
 } from "../api";
@@ -91,6 +92,11 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [input, setInput] = useState("");
   const [restoring, setRestoring] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [progressText, setProgressText] = useState("");
+  const [runId, setRunId] = useState<string>();
+  const [cancelling, setCancelling] = useState(false);
+  const streamController = useRef<AbortController | null>(null);
+  useEffect(() => () => streamController.current?.abort(), []);
   const [error, setError] = useState("");
   const [before, setBefore] = useState<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -194,7 +200,24 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     setError("");
     setMessages((current) => [...current, { role: "user", content: message }]);
     try {
-      const result = await api.agentChat(message, sessionId, newSessionPending);
+      const controller = new AbortController();
+      streamController.current = controller;
+      setProgressText("Starting…");
+      setCancelling(false);
+      const result = await streamAgent(message, sessionId, newSessionPending, (event) => {
+        if (event.type === "started") setRunId(event.run_id);
+        if (event.type === "progress") {
+          if (event.stage === "model_start") setProgressText("Planning next step…");
+          if (event.stage === "tool_start") setProgressText(`Running ${(event.tool_name ?? "tool").replaceAll("_", " ")}…`);
+          if (event.stage === "tool_end") setProgressText("Step finished.");
+        }
+        if (event.type === "cancelled") {
+          if (event.session_id) { setSessionId(event.session_id); setNewSessionPending(false); }
+          setMessages((current) => [...current, { role: "assistant", content: event.reply ?? "Stopped." }]);
+          void refreshSessions().catch((caught) => setError(safeError(caught)));
+        }
+      }, controller.signal);
+      if (!result) return;
       setSessionId(result.session_id);
       setNewSessionPending(false);
       void refreshSessions()
@@ -213,6 +236,10 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
       }]);
     } finally {
       setBusy(false);
+      setRunId(undefined);
+      setProgressText("");
+      setCancelling(false);
+      streamController.current = null;
     }
   };
 
@@ -504,6 +531,9 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
       )}
 
       {error && <p className="studio-agent-error" role="alert">{error}</p>}
+      {busy && <div role="status" aria-live="polite" className="studio-agent-progress">
+        {cancelling ? "Stopping after the current operation…" : progressText}
+      </div>}
       <form className="studio-agent-input" onSubmit={(event) => {
         event.preventDefault(); void send();
       }}>
@@ -511,10 +541,13 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
           placeholder="What would you like to analyze?" value={input}
           maxLength={8000} disabled={busy || restoring}
           onChange={(event) => setInput(event.target.value)} />
-        <button type="submit" className="primary"
-          disabled={busy || restoring || !input.trim()}>
-          {busy ? "Working…" : "Send"}
-        </button>
+        {busy ? <button type="button" disabled={!runId || cancelling} onClick={async () => {
+          if (!runId) return;
+          setCancelling(true);
+          try { await cancelAgent(runId); }
+          catch { setCancelling(false); setError("Could not stop this run. Wait for its current operation to finish."); }
+        }}>{cancelling ? "Stopping…" : "Cancel"}</button> : <button type="submit" className="primary"
+          disabled={restoring || !input.trim()}>Send</button>}
       </form>
       </div>
     </section>

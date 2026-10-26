@@ -140,8 +140,8 @@ def derive(dataset_id: str, spec: dict) -> dict:
             source_ref = source_dict({"kind": "derived", "base": ds["source_ref"],
                                       "spec": normalized,
                                       "settings": remaining_settings})
-            if disk_data._contains_omop_cohort(source_ref):
-                live = disk_data._compiled_omop_query(source_ref, live)
+            if disk_data._requires_compiler_trust(source_ref):
+                live = disk_data._compiled_source_query(source_ref, live)
         ds["df"] = preview
         ds["live_source"] = live
         ds["origin"] = None

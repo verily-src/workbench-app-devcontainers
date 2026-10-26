@@ -14,7 +14,7 @@ from sqlglot.tokens import TokenType
 from sqlglot.errors import ParseError, TokenError
 from sqlglot.optimizer.scope import Scope, traverse_scope
 
-import db
+import database as db
 from sql_utils import statement as text
 
 SQL_TIMEOUT_MS = 15_000

@@ -51,16 +51,16 @@ class ColumnSetting(BaseModel):
 
 class TableSource(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    kind: Literal["aurora", "s3", "bq", "catalog"]
+    kind: Literal["aurora", "postgres", "athena", "s3", "bq", "catalog"]
     resource_id: str = Field(min_length=1, max_length=256)
     table: str = Field(min_length=1, max_length=2048)
-    schema_name: str | None = Field(default=None, alias="schema", max_length=128)
+    schema_name: str | None = Field(default=None, alias="schema", min_length=1, max_length=128)
     uuid: str | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
     @model_validator(mode="after")
     def public_source(self):
-        if self.kind == "aurora":
+        if self.kind in {"aurora", "postgres"}:
             internal_data.require_public_source(self.schema_name, self.table)
         return self
 
@@ -85,6 +85,14 @@ class SQLSource(BaseModel):
         if self.name is not None and not self.name.strip():
             raise ValueError("SQL source name cannot be blank.")
         return self
+
+
+class MaterializedSource(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["materialized"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    materialized_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
 class OmopCohortSource(BaseModel):
@@ -145,8 +153,8 @@ class DerivedSource(BaseModel):
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
-SourceRef = Annotated[Union[TableSource, SQLSource, OmopCohortSource,
-                            JoinSource, DerivedSource],
+SourceRef = Annotated[Union[TableSource, SQLSource, MaterializedSource,
+                            OmopCohortSource, JoinSource, DerivedSource],
                       Field(discriminator="kind")]
 SourceStep.model_rebuild()
 JoinSource.model_rebuild()

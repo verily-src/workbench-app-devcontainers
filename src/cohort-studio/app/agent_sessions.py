@@ -59,6 +59,10 @@ def dataset_scope(dataset_id: str) -> str:
     return "dataset:" + hashlib.sha256(identity.encode()).hexdigest()
 
 
+class AgentCancelled(Exception):
+    pass
+
+
 @dataclass
 class Session:
     store: object
@@ -82,7 +86,9 @@ def bind(owner_id: str, scope: str, session_id: str | None, *, new_session: bool
         yield session
     except Exception as exc:
         if session.turn is not None:
-            session.store.fail(session.turn, error_class=type(exc).__name__)
+            session.store.fail(session.turn, error_class=type(exc).__name__,
+                               **({"assistant_message": "Stopped by request. Already-submitted cloud workflows are unchanged."}
+                                  if isinstance(exc, AgentCancelled) else {}))
         raise
     finally:
         _current.reset(token)

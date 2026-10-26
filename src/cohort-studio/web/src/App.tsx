@@ -8,6 +8,7 @@ import { SettingsView } from "./components/SettingsView";
 import { SavedViews } from "./components/SavedViews";
 import { JoinPanel } from "./components/JoinPanel";
 import { SourcePicker } from "./components/SourcePicker";
+import { AddSourceDialog } from "./components/AddSourceDialog";
 import { PublishCatalog } from "./components/PublishCatalog";
 import { WorkflowsView } from "./components/WorkflowsView";
 import { StudioAgent } from "./components/StudioAgent";
@@ -108,6 +109,7 @@ export default function App() {
   const [editingJoin, setEditingJoin] = useState<JoinEdit | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [addSourceOpen, setAddSourceOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const consumedRefreshNonce = useRef<Record<string, number>>({});
   const recoveredDatasetIds = useRef(new Set<string>());
@@ -157,17 +159,18 @@ export default function App() {
     void apiClient.config().then((config) => setTutorialAssistantConfigured(
       Boolean(config.llm?.providers?.[config.llm.provider]?.configured))).catch(() => undefined);
   };
-  const exploreMode = source?.kind === "aurora"
+  const supportsOmop = source?.kind === "aurora" || source?.kind === "postgres";
+  const exploreMode = supportsOmop
     ? exploreModes[sourceKey] ?? "tables" : "tables";
   const setExploreMode = (mode: "tables" | "omop") => {
-    if (source?.kind === "aurora") {
+    if (supportsOmop) {
       setExploreModes((previous) => ({ ...previous, [sourceKey]: mode }));
       setShowJoin(false);
       setView("explore");
     }
   };
   const showExploreTables = () => {
-    if (source?.kind === "aurora") {
+    if (supportsOmop) {
       setExploreModes((previous) => ({ ...previous, [sourceKey]: "tables" }));
     }
     setView("explore");
@@ -249,6 +252,7 @@ export default function App() {
         : sourceRef.kind === "derived" ? sourceRef.spec.name
           : sourceRef.kind === "omop_cohort" ? sourceRef.name || "OMOP cohort"
           : sourceRef.kind === "sql" ? sourceRef.name || "SQL result"
+          : sourceRef.kind === "materialized" ? "Saved join"
             : sourceRef.table.split("/").pop() ?? sourceRef.table;
       const input: Dataset = {
         id: opened.dataset_id, title, source: opened.source,
@@ -281,8 +285,8 @@ export default function App() {
     setError("");
     try {
       const info = tables.find((t) => t.name === tbl);
-      const opened = src.kind === "aurora" && info?.schema && info?.table
-        ? await api.openSourceRef({ kind: "aurora", resource_id: src.id,
+      const opened = (src.kind === "aurora" || src.kind === "postgres" || src.kind === "athena") && info?.schema && info?.table
+        ? await api.openSourceRef({ kind: src.kind, resource_id: src.id,
             table: info.table, schema: info.schema })
         : await api.openDataset(src.kind, src.id, tbl);
       openResult(opened, tbl.split("/").pop() ?? tbl,
@@ -328,6 +332,7 @@ export default function App() {
           : d.source.kind === "derived" ? d.source.spec.name
             : d.source.kind === "omop_cohort" ? d.source.name || "OMOP cohort"
             : d.source.kind === "sql" ? d.source.name || "SQL result"
+            : d.source.kind === "materialized" ? "Saved join"
               : d.source.table.split("/").pop()) || "view",
         source: o.source,
         sourceRef: o.source_ref ?? d.source,
@@ -620,7 +625,8 @@ export default function App() {
         <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
           loading={!ready || Boolean(activity)} busy={Boolean(activity)}
           onSourceKeyChange={setSourceKey} onTableChange={setTable} onLoadTable={loadTable} />
-        {source?.kind === "aurora" && <div className="field-label">
+        <button className="quiet" onClick={() => setAddSourceOpen(true)}>+ Add data source</button>
+        {supportsOmop && <div className="field-label">
           Explore view
           <div className="explore-toggle" role="group" aria-label="Explore view">
             <button type="button" aria-pressed={exploreMode === "tables"}
@@ -710,7 +716,7 @@ export default function App() {
           </button>
           <Tutorial progress={{
             sourceChosen: Boolean(sourceKey), dataLoaded: datasets.length > 0,
-            hasSources: sources.length > 0, omopAvailable: source?.kind === "aurora",
+            hasSources: sources.length > 0, omopAvailable: supportsOmop,
             omopActive: view === "explore" && exploreMode === "omop",
             omopOpenedCount: tutorialOmopOpenedCount, joinPanelOpen: showJoin,
             joinCreated: datasets.some((dataset) => dataset.sourceRef?.kind === "join"),
@@ -872,6 +878,18 @@ export default function App() {
         </div>
       </div>
       <Toasts toasts={alerts.toasts} onDismiss={alerts.dismissToast} />
+      {addSourceOpen && <AddSourceDialog onClose={() => setAddSourceOpen(false)}
+        onAdded={({ kind, id }) => {
+          setAddSourceOpen(false);
+          api.datasources().then((out) => {
+            setSources(out.sources);
+            const created = out.sources.find((item) => item.kind === kind && item.id === id);
+            if (created) {
+              setSourceKey(`${created.kind}:${created.id}`);
+              setView("explore");
+            }
+          }).catch((e) => setError(`Source was added, but the list could not refresh: ${e.message}`));
+        }} />}
       <CommandPalette open={cmdOpen} commands={commands}
                       onClose={() => setCmdOpen(false)} />
     </div>

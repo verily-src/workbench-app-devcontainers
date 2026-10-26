@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
@@ -126,10 +128,14 @@ def test_agent_session_sidebar_close_open_restore_and_resists_stale_responses(pa
             {"session_id": new_id, "title": "New cohort question", "updated_at": "2026-10-26T12:01:00Z"},
             *[session for session in sessions if session["session_id"] != new_id],
         ]
-        fulfill(route, {"reply": "New answer", "session_id": new_id, "trace_id": "trace-new",
-                        "tool_calls": [], "actions": [], "workflow_plans": []})
+        result = {"reply": "New answer", "session_id": new_id, "trace_id": "trace-new",
+                  "tool_calls": [], "actions": [], "workflow_plans": []}
+        route.fulfill(status=200, content_type="application/x-ndjson", body="".join(
+            json.dumps(event) + "\n" for event in [
+                {"type": "started", "run_id": "00000000-0000-4000-8000-000000000456"},
+                {"type": "result", "result": result}, {"type": "end"}]))
 
-    page.route("**/api/agent/chat", chat)
+    page.route("**/api/agent/chat/stream", chat)
     page.goto(app_url)
     page.locator(".topnav-link", has_text="Agent").click()
     expect(page.get_by_text("Old answer", exact=True)).to_be_visible()

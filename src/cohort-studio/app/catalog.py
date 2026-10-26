@@ -10,7 +10,7 @@ import time
 import duckdb
 import pandas as pd
 
-import db
+import database as db
 import duck
 from cache import ttl_cache
 

@@ -6,7 +6,7 @@ import pandas as pd
 from sql_utils import statement as text
 
 import datasets
-import db
+import database as db
 import queries
 
 HOWS = {"inner": "INNER JOIN", "left": "LEFT JOIN", "right": "RIGHT JOIN",
@@ -402,8 +402,8 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
         "columns": {name: name for name in p["columns"]},
     }
     source_ref = _source_ref(p)
-    if source_ref and disk_data._contains_omop_cohort(source_ref):
-        output_source = disk_data._compiled_omop_query(source_ref, output_source)
+    if source_ref and disk_data._requires_compiler_trust(source_ref):
+        output_source = disk_data._compiled_source_query(source_ref, output_source)
     source_estimate = disk_data.guard_live_join(live_sources, output_source)
     try:
         with engine.begin() as conn:
@@ -447,8 +447,8 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
         "params": params,
         "columns": columns,
     }
-    if source_ref and disk_data._contains_omop_cohort(source_ref):
-        live_source = disk_data._compiled_omop_query(source_ref, live_source)
+    if source_ref and disk_data._requires_compiler_trust(source_ref):
+        live_source = disk_data._compiled_source_query(source_ref, live_source)
     return {"df": df, "stats": _finish(stats, min(before, cap)),
             "live_source": live_source}
 

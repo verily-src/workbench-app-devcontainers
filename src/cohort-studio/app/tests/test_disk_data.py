@@ -38,9 +38,9 @@ def test_s3_sources_join_and_page_past_preview(tmp_path, monkeypatch, client):
                         lambda rid, name: (disk_data.LARGE_OPERATION_BYTES
                                            if name == "left.parquet"
                                            else files[name].stat().st_size,
-                                           str(files[name]), "us-east-1"))
+                                           str(files[name]), "us-east-1", False))
     monkeypatch.setattr(disk_data.duck, "_connect",
-                        lambda profile, region=None: duckdb.connect())
+                        lambda profile, region=None, app_credentials=False: duckdb.connect())
 
     opened, disk_paths = [], []
     try:
@@ -187,7 +187,7 @@ def test_s3_open_rejects_over_budget_from_head_before_read(monkeypatch, client):
     monkeypatch.setattr(
         disk_data, "_s3_client",
         lambda resource_id, filename:
-            (S3(), "fixture", filename, f"s3://fixture/{filename}", "us-east-1"))
+            (S3(), "fixture", filename, f"s3://fixture/{filename}", "us-east-1", False))
     response = client.post("/api/datasets/open", json={
         "kind": "s3", "resource_id": "fixture", "table": "huge.parquet"})
     assert response.status_code == 413, response.text
@@ -211,3 +211,35 @@ def test_failed_disk_source_registration_removes_database_and_spill(monkeypatch)
                               disk_source=source)
     assert not Path(path).exists()
     assert not Path(path + ".tmp").exists()
+
+
+def test_materialization_limits_reject_busy_and_low_disk_then_recover(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+
+    path = tmp_path / "source.parquet"
+    con = duckdb.connect()
+    con.execute(f"COPY (SELECT 7 AS id) TO '{path}' (FORMAT PARQUET)")
+    con.close()
+    monkeypatch.setattr(disk_data, "_object_size",
+                        lambda *_: (path.stat().st_size, str(path), "us-east-1", False))
+    monkeypatch.setattr(disk_data.duck, "_connect", lambda *_args, **_kwargs: duckdb.connect())
+    slots = threading.BoundedSemaphore(2)
+    monkeypatch.setattr(disk_data, "_MATERIALIZATIONS", slots)
+    slots.acquire()
+    slots.acquire()
+    with pytest.raises(disk_data.OperationTooLarge, match="already writing"):
+        disk_data.open_s3({"resource_id": "test", "table": "source.parquet"})
+    slots.release()
+    slots.release()
+    real_usage = disk_data.shutil.disk_usage
+    monkeypatch.setattr(disk_data.shutil, "disk_usage", lambda _: SimpleNamespace(free=0))
+    with pytest.raises(disk_data.OperationTooLarge, match="less than 1 GB"):
+        disk_data.open_s3({"resource_id": "test", "table": "source.parquet"})
+    monkeypatch.setattr(disk_data.shutil, "disk_usage", real_usage)
+    frame, source = disk_data.open_s3({"resource_id": "test", "table": "source.parquet"})
+    try:
+        assert source["rows"] == 1
+        assert frame["id"].tolist() == [7]
+    finally:
+        disk_data.remove(source)

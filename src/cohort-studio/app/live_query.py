@@ -6,7 +6,7 @@ import sqlglot
 from sqlglot import exp
 from sql_utils import statement as text
 
-import db
+import database as db
 
 TIMEOUT_MS = 15_000
 PAGE_SIZE_MAX = 1000
@@ -126,6 +126,51 @@ def _requested_order(live_source: dict) -> str | None:
             column.set("db", None)
             column.set("catalog", None)
     return ", ".join(term.sql(dialect="postgres") for term in order.expressions)
+
+
+def _primary_key_order(conn, live_source: dict) -> str | None:
+    try:
+        query = sqlglot.parse_one(live_source["sql"], read="postgres")
+    except Exception:
+        return None
+    if not isinstance(query, exp.Select) or any(query.args.get(key) for key in
+            ("joins", "group", "distinct", "with_")):
+        return None
+    tables = list(query.find_all(exp.Table))
+    if len(tables) != 1 or not isinstance(query.args.get("from_"), exp.From):
+        return None
+    table = tables[0]
+    if query.args["from_"].this is not table or not table.db or table.catalog:
+        return None
+    projected = {}
+    sole = query.expressions[0] if len(query.expressions) == 1 else None
+    star = sole if isinstance(sole, exp.Star) else sole.this if isinstance(sole, exp.Column) and sole.is_star else None
+    if isinstance(star, exp.Star):
+        if any(star.args.values()) or isinstance(sole, exp.Column) and sole.table != table.alias_or_name:
+            return None
+        projected = {name: name for name in live_source["columns"].values()}
+    else:
+        for item in query.expressions:
+            value = item.this if isinstance(item, exp.Alias) else item
+            if not isinstance(value, exp.Column) or value.is_star:
+                return None
+            if value.table and value.table != table.alias_or_name:
+                return None
+            projected[value.name] = item.alias_or_name
+    keys = conn.execute(text("""
+        SELECT a.attname FROM pg_catalog.pg_index i
+        JOIN pg_catalog.pg_class c ON c.oid = i.indrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, position)
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum
+        WHERE n.nspname = :schema AND c.relname = :table AND i.indisprimary
+          AND i.indisvalid AND k.position <= i.indnkeyatts
+        ORDER BY k.position
+        """), {"schema": table.db, "table": table.name}).scalars().all()
+    outputs = set(live_source["columns"].values())
+    if not keys or any(key not in projected or projected[key] not in outputs for key in keys):
+        return None
+    return ", ".join(f"live.{_q(projected[key])}" for key in keys)
 
 
 def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
@@ -269,11 +314,12 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         f"live.{_q(pg_name)} AS {_q(logical)}"
         for logical, pg_name in columns.items())
     table = f"({live_source['sql']}) AS live"
-    order = _requested_order(live_source) or "to_jsonb(live)::text"
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
+        order = (_requested_order(live_source) or _primary_key_order(conn, live_source)
+                 or "to_jsonb(live)::text")
         needed_numeric = [f["column"] for f in filters if f.get("kind") == "range"]
         needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") == "histogram")
         numeric_types = _numeric_columns(conn, live_source, needed_numeric)

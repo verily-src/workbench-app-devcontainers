@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import inspect
 from sqlalchemy.sql.sqltypes import Boolean, Date, DateTime, Float, Integer, LargeBinary, Numeric, String, Time
 
-import db
+import database as db
 from source_models import ColumnSetting
 
 METADATA_TIMEOUT_MS = 3000

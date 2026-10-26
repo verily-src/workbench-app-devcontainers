@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from playwright.sync_api import expect
 
@@ -81,6 +83,15 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
                       "updated_at": "2026-10-26T12:00:00Z"}],
     }))
 
+    def stream_result(route, result):
+        payload = [
+            {"type": "started", "run_id": "00000000-0000-4000-8000-000000000456"},
+            {"type": "progress", "stage": "tool_start", "tool_name": "count_cohort", "turn": 1},
+            {"type": "result", "result": result}, {"type": "end"},
+        ]
+        route.fulfill(status=200, content_type="application/x-ndjson",
+                      body="".join(json.dumps(event) + "\n" for event in payload))
+
     def chat(route):
         body = route.request.post_data_json
         chat_requests.append(body)
@@ -90,7 +101,7 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
                 {"role": "user", "content": body["message"], "message_id": 5},
                 {"role": "assistant", "content": reply_limited, "message_id": 6},
             ])
-            fulfill(route, {"reply": reply_limited, "session_id": session_id,
+            stream_result(route, {"reply": reply_limited, "session_id": session_id,
                 "trace_id": "trace-2", "tool_calls": ["inspect_table"],
                 "tool_results": [{"name": "inspect_table", "status": "failed"}],
                 "limit_reached": True, "actions": [], "workflow_plans": []})
@@ -99,13 +110,13 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
             {"role": "user", "content": body["message"], "message_id": 3},
             {"role": "assistant", "content": reply, "message_id": 4},
         ])
-        fulfill(route, {"reply": reply, "session_id": session_id, "trace_id": "trace-1",
+        stream_result(route, {"reply": reply, "session_id": session_id, "trace_id": "trace-1",
                         "tool_calls": ["count_cohort", "prepare_dashboard"],
                         "tool_results": [{"name": "count_cohort", "status": "completed"},
                                          {"name": "prepare_dashboard", "status": "completed"}],
                         "actions": [action], "workflow_plans": [ready_plan, blocked_plan]})
 
-    page.route("**/api/agent/chat", chat)
+    page.route("**/api/agent/chat/stream", chat)
 
     def approve(route):
         approval_requests.append(route.request.post_data_json)
@@ -226,3 +237,70 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     expect(page.get_by_text("The agent stopped before completing the request. Review the failed steps before retrying.", exact=True)).to_be_visible()
     assert chat_requests[-1] == {"message": "Run into the agent limit",
                                  "session_id": session_id, "new_session": False}
+
+
+def test_agent_stream_progress_cancel_and_refresh_without_dashboard(page, app_url):
+    page.add_init_script("""(() => {
+      const original = window.fetch.bind(window);
+      const encoder = new TextEncoder();
+      window.agentStreamTest = { cancellations: 0, sessionReads: 0, aborted: false };
+      let controller;
+      window.fetch = async (input, options) => {
+        const url = String(input);
+        if (url.includes('/api/agent/chat/sessions')) window.agentStreamTest.sessionReads++;
+        if (url === '/api/agent/chat/stream') {
+          options.signal.addEventListener('abort', () => {
+            window.agentStreamTest.aborted = true;
+            controller.error(new DOMException('Aborted', 'AbortError'));
+          });
+          return new Response(new ReadableStream({start(value) {
+            controller = value;
+            const send = event => controller.enqueue(encoder.encode(JSON.stringify(event) + '\\n'));
+            send({type:'started',run_id:'00000000-0000-4000-8000-000000000456'});
+            send({type:'progress',stage:'tool_start',tool_name:'count_cohort',turn:1});
+          }}), {headers:{'Content-Type':'application/x-ndjson'}});
+        }
+        if (url.includes('/api/agent/chat/runs/') && url.endsWith('/cancel')) {
+          window.agentStreamTest.cancellations++;
+          setTimeout(() => {
+            controller.enqueue(encoder.encode(JSON.stringify({type:'cancelled',reply:'Stopped by request.',
+              session_id:'00000000-0000-4000-8000-000000000123'}) + '\\n' + JSON.stringify({type:'end'}) + '\\n'));
+            controller.close();
+          }, 500);
+          return new Response(JSON.stringify({status:'cancelling'}), {headers:{'Content-Type':'application/json'}});
+        }
+        return original(input, options);
+      };
+    })();""")
+    def fulfill(route, body):
+        route.fulfill(status=200, content_type="application/json", json=body)
+    page.route("**/api/config", lambda route: fulfill(route, {"chart_palette": "verily", "llm": {"provider": "anthropic", "providers": {}}}))
+    page.route("**/api/datasources", lambda route: fulfill(route, {"ready": True, "sources": [], "catalogs_pending": False}))
+    page.route("**/api/views/all", lambda route: fulfill(route, {"views": [], "unavailable": []}))
+    page.route("**/api/workflows**", lambda route: fulfill(route, {"available": True, "jobs": [], "running_count": 0}))
+    page.route("**/api/agent/workflows", lambda route: fulfill(route, {"plans": []}))
+    page.route("**/api/agent/chat/history?*", lambda route: fulfill(route, {
+        "session_id": None, "messages": [], "has_more": False, "next_before_message_id": None}))
+    page.route("**/api/agent/chat/sessions", lambda route: fulfill(route, {"sessions": []}))
+    page.goto(app_url)
+    page.locator(".topnav-link", has_text="Agent").click()
+    box = page.get_by_role("textbox", name="Message the Studio Agent")
+    box.fill("Count cohort")
+    page.get_by_role("button", name="Send", exact=True).click()
+    expect(page.locator(".studio-agent-progress")).to_contain_text("Running count cohort")
+    reads_before = page.evaluate("window.agentStreamTest.sessionReads")
+    page.screenshot(path="/private/tmp/studio-agent-progress.png")
+    page.get_by_role("button", name="Cancel", exact=True).click()
+    expect(page.get_by_role("button", name="Stopping…", exact=True)).to_be_disabled()
+    expect(page.locator(".studio-agent-progress")).to_contain_text("Stopping after the current operation")
+    expect(page.get_by_text("Stopped by request.", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Send", exact=True)).to_be_visible()
+    assert page.evaluate("window.agentStreamTest.cancellations") == 1
+    assert page.evaluate("window.agentStreamTest.sessionReads") > reads_before
+    expect(page.get_by_role("button", name="Open dashboard", exact=True)).to_have_count(0)
+    expect(page.locator(".workflow-plan")).to_have_count(0)
+    box.fill("Count again")
+    page.get_by_role("button", name="Send", exact=True).click()
+    expect(page.get_by_role("button", name="Cancel", exact=True)).to_be_visible()
+    page.locator(".topnav-link", has_text="Explore").click()
+    assert page.evaluate("window.agentStreamTest.aborted") is True

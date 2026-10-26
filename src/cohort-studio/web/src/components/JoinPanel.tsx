@@ -33,7 +33,7 @@ const ENGINE_LABEL: Record<JoinEngine, string> = {
   aurora: "runs in Aurora", duckdb: "runs in memory",
 };
 const SOURCE_GROUP_LABEL: Record<Source["kind"], string> = {
-  aurora: "Aurora", s3: "S3 files", bq: "BigQuery", catalog: "Catalogs",
+  aurora: "Aurora", postgres: "PostgreSQL / RDS", athena: "Athena / Iceberg", s3: "S3 files", bq: "BigQuery", catalog: "Catalogs",
 };
 
 interface StepState extends JoinStep { touched: boolean; pickCols: boolean }
@@ -84,7 +84,8 @@ function defaultCondition(leftCols: string[], right?: Dataset): JoinCondition {
   return { left: "", op: "=", right: "" };
 }
 
-const directAurora = (ref?: SourceRef) => ref?.kind === "aurora" && "table" in ref;
+const directAurora = (ref?: SourceRef) =>
+  (ref?.kind === "aurora" || ref?.kind === "postgres") && "table" in ref;
 
 function sourceResources(ref?: SourceRef): string[] {
   if (!ref) return [];
@@ -209,7 +210,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   };
 
   const previewSql = async () => {
-    if (selectedSource?.kind !== "aurora") return;
+    if (selectedSource?.kind !== "aurora" && selectedSource?.kind !== "postgres") return;
     const requestId = ++sqlRequest.current;
     const resourceId = selectedSource.id;
     const query = sqlText.trim();
@@ -399,7 +400,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     !sourceSchema || (item.schema ?? "") === sourceSchema);
   const engine = preview?.engine ?? validation?.engine;
   const isS3Source = selectedSource?.kind === "s3";
-  const supportsSchema = selectedSource?.kind === "aurora";
+  const supportsSchema = ["aurora", "postgres", "athena"].includes(selectedSource?.kind ?? "");
 
   const update = (i: number, patch: Partial<StepState>) =>
     setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
@@ -489,7 +490,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
             <button type="button" aria-pressed={sourceMode === "table"}
                     onClick={() => setSourceMode("table")}>Table</button>
             <button type="button" aria-pressed={sourceMode === "sql"}
-                    disabled={selectedSource?.kind !== "aurora"}
+                    disabled={selectedSource?.kind !== "aurora" && selectedSource?.kind !== "postgres"}
                     onClick={() => setSourceMode("sql")}>SQL</button>
           </div>
           <div className="join-row">
@@ -497,7 +498,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
               <select aria-label="Join datasource" value={resourceKey}
                       disabled={sourceBusy}
                       onChange={(e) => { invalidateSqlPreview(); setResourceKey(e.target.value);
-                        if (!e.target.value.startsWith("aurora:")) setSourceMode("table"); }}>
+                        if (!e.target.value.startsWith("aurora:") && !e.target.value.startsWith("postgres:")) setSourceMode("table"); }}>
                 {sourceGroups.map(({ kind, items }) => (
                   <optgroup key={kind} label={SOURCE_GROUP_LABEL[kind]}>
                     {items.map((item) => (
@@ -542,7 +543,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                         onChange={(event) => { invalidateSqlPreview(); setSqlText(event.target.value); }} />
             </label>
             <div className="join-row">
-              <button className="primary" disabled={!selectedSource || selectedSource.kind !== "aurora"
+              <button className="primary" disabled={!selectedSource || !["aurora", "postgres"].includes(selectedSource.kind)
                 || !sqlText.trim() || sqlBusy || sourceBusy || busy || !canAddSource}
                       onClick={previewSql}>
                 {sqlBusy ? "Previewing…" : "Preview SQL"}

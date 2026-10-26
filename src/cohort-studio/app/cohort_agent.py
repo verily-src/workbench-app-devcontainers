@@ -7,7 +7,7 @@ from datetime import date, datetime
 import agent
 import agent_instructions
 import config
-import db
+import database as db
 import llm
 import omop
 import providers

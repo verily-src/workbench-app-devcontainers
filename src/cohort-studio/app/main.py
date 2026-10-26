@@ -3,7 +3,7 @@ import logging
 import time
 import uuid
 from typing import Literal
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 
 import pandas as pd
@@ -28,7 +28,10 @@ import bq
 import catalog
 import config
 import datasets
-import db
+import database as db
+import postgres_sources
+import external_sources
+import source_registry
 import duck
 import disk_data
 import joins
@@ -40,6 +43,9 @@ import mcp_server
 import omop
 import queries
 import views
+import materialized_sources
+import saved_snapshots
+import view_jobs
 import workflows
 import column_settings
 import live_query
@@ -63,6 +69,7 @@ async def lifespan(_app: FastAPI):
             yield
     finally:
         export_jobs.shutdown()
+        view_jobs.shutdown()
         datasets.clear()
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
@@ -86,11 +93,11 @@ async def secret_store_error(_request: Request, exc: secret_store.SecretStoreErr
 @app.exception_handler(RequestValidationError)
 async def request_validation_handler(request: Request,
                                      exc: RequestValidationError):
-    if request.url.path.startswith("/api/omop/"):
+    if request.url.path.startswith("/api/omop/") or request.url.path == "/api/sources":
 
         details = [{"loc": error["loc"], "msg": error["msg"],
                     "type": error["type"]} for error in exc.errors()]
-        return JSONResponse(status_code=400, content={"detail": details})
+        return JSONResponse(status_code=422 if request.url.path == "/api/sources" else 400, content={"detail": details})
     return await default_request_validation_handler(request, exc)
 
 if mcp_server.AVAILABLE:
@@ -320,11 +327,14 @@ def self_update():
 @app.get("/api/datasources")
 def datasources():
     ready = db.resources_ready()
-    sources = []
+    sources = (postgres_sources.resources() + external_sources.athena_resources()
+               + [item for item in source_registry.public_sources() if item["kind"] == "s3"])
     folders = []
     if ready:
         db.retry_if_empty()
         for r in db.list_aurora_resources():
+            if r.get("kind") == "postgres":
+                continue
             source = {"kind": "aurora", "id": r["id"],
                       "label": f"{r['id']} · Aurora"}
             hint = omop.hint(r["id"])
@@ -340,7 +350,17 @@ def datasources():
                             "label": f"{r['id']} · BigQuery"})
     catalogs, pending = catalog.discover([r["id"] for r in folders])
     sources.extend(catalogs)
-    return {"ready": ready, "sources": sources, "catalogs_pending": pending}
+    return {"ready": ready or bool(sources), "sources": sources, "catalogs_pending": pending}
+
+@app.post("/api/sources")
+def add_source(req: source_registry.Registration):
+    try:
+        payload = req.model_dump()
+        source_registry.validate_connection(payload)
+        return source_registry.add(payload)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
 
 @app.get("/api/workflows")
 def workflow_jobs(refresh: bool = False):
@@ -504,10 +524,12 @@ def submit_workflow(req: SubmitJobRequest):
 @app.get("/api/tables")
 def tables(kind: str, resource_id: str):
     try:
-        if kind == "aurora":
+        if kind in {"aurora", "postgres"}:
             return [{"name": t["name"], "table": t["table"],
                      "schema": t["schema"], "detail": t["kind"]}
                     for t in db.list_aurora_tables(resource_id)]
+        if kind == "athena":
+            return external_sources.list_athena_tables(resource_id)
         if kind == "s3":
             return [{"name": f, "detail": "file"}
                     for f in duck.list_s3_files(resource_id)]
@@ -556,7 +578,7 @@ def open_dataset(req: OpenRequest):
         result = _open_source(ref)
     except HTTPException:
         raise
-    except sql_source.SQLTimeout as e:
+    except (sql_source.SQLTimeout, external_sources.AthenaTimeout) as e:
         raise HTTPException(504, str(e))
     except disk_data.OperationTooLarge as e:
         raise HTTPException(413, str(e))
@@ -577,7 +599,7 @@ def open_dataset(req: OpenRequest):
 def preview_sql_source(req: SQLPreviewRequest):
     try:
         return sql_source.preview(req.resource_id, req.sql, req.name)
-    except sql_source.SQLTimeout as e:
+    except (sql_source.SQLTimeout, external_sources.AthenaTimeout) as e:
         raise HTTPException(504, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -605,6 +627,13 @@ def _join_ref(base_id, steps):
                                   for step, ref in zip(steps, refs)]})
 
 def _open_source(ref, temporary=False):
+    ref = source_dict(ref)
+    guard = materialized_sources.operation_lock if any(saved_snapshots._walk_refs(ref)) else nullcontext()
+    with guard:
+        return _open_source_impl(ref, temporary)
+
+
+def _open_source_impl(ref, temporary=False):
     ref = source_dict(ref)
     children = []
     out = None
@@ -641,6 +670,16 @@ def _open_source(ref, temporary=False):
                 engine, info, ref["resource_id"], ref["spec"])
             capped = False
             label = f"{ref['resource_id']} / {ref.get('name') or 'OMOP cohort'}"
+        elif ref["kind"] == "materialized":
+            with db.get_engine_for_resource(ref["resource_id"]).begin() as conn:
+                conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+                conn.exec_driver_sql("SET LOCAL statement_timeout = 15000")
+                snapshot = materialized_sources.resolve(conn, ref["resource_id"], ref["materialized_id"])
+                live = snapshot["live_source"]
+                df = pd.read_sql_query(live["sql"] + f" LIMIT {queries.ROW_CAP}", conn)
+                df = df.rename(columns={value: key for key, value in live["columns"].items()})
+                capped = snapshot["rows"] > queries.ROW_CAP
+                label = f"{ref['resource_id']} / Saved join"
         elif ref["kind"] == "sql":
             df, normalized, capped = sql_source.fetch(
                 ref["resource_id"], ref["sql"], queries.ROW_CAP)
@@ -652,7 +691,9 @@ def _open_source(ref, temporary=False):
         else:
             kind, rid, table = ref["kind"], ref["resource_id"], ref["table"]
             schema = ref.get("schema", "public")
-            if kind == "aurora":
+            if kind == "athena":
+                df, disk = external_sources.open_athena(ref)
+            elif kind in {"aurora", "postgres"}:
                 sql = (f"SELECT * FROM {column_settings._q(schema)}."
                        f"{column_settings._q(table)}")
                 df, normalized, capped = sql_source.fetch(
@@ -671,10 +712,10 @@ def _open_source(ref, temporary=False):
                 capped = len(df) >= queries.ROW_CAP
             else:
                 df = _load_frame(kind, rid, table)
-            label_table = (table if kind != "aurora" or schema == "public"
+            label_table = (table if kind not in {"aurora", "postgres", "athena"} or schema == "public"
                            else f"{schema}.{table}")
             label = f"{rid} / {label_table}"
-            if kind == "aurora":
+            if kind in {"aurora", "postgres"}:
                 origin = {"kind": "aurora", "resource_id": rid, "table": table, "schema": schema}
         if live is not None:
             live = disk_data.estimate_live_source(live)
@@ -1277,8 +1318,65 @@ def get_view(kind: str, resource_id: str, name: str):
         raise HTTPException(404, f"View {name!r} not found.")
     return state
 
+class RefreshViewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["aurora"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    name: str = Field(pattern=r"^[A-Za-z0-9 ._-]{1,80}$")
+
+
+def _managed_snapshot_store(resource_id: str):
+    if resource_id.startswith(("postgres:", "s3:", "athena:")):
+        raise HTTPException(400, "Saved snapshots require a managed Aurora store.")
+
+
+def _compile_snapshot(resource_id, source):
+    import copy
+    normalized = source_dict(source)
+    for ds in list(datasets._store.values()):
+        live = ds.get("live_source")
+        if ds.get("source_ref") == normalized and live and live["resource_id"] == resource_id:
+            return copy.deepcopy(live)
+    opened = _open_source(source, temporary=True)
+    try:
+        live = datasets.get(opened["dataset_id"]).get("live_source")
+        if live and live["resource_id"] == resource_id:
+            return copy.deepcopy(live)
+        return None
+    finally:
+        datasets.close_dataset(opened["dataset_id"])
+
+
+@app.get("/api/views/jobs/{job_id}")
+def saved_view_job(job_id: str, request: Request, response: Response):
+    job = view_jobs.get(job_id, owner=agent_sessions.owner(request, response))
+    if job is None:
+        raise HTTPException(404, "Saved-view job expired or unknown.")
+    return job
+
+
+@app.post("/api/views/refresh")
+def refresh_saved_view(req: RefreshViewRequest, request: Request, response: Response):
+    owner = agent_sessions.owner(request, response)
+    _managed_snapshot_store(req.resource_id)
+    try:
+        total = saved_snapshots.materialized_count(req.resource_id, req.name)
+        if not total:
+            raise ValueError("This view has no snapshots to refresh.")
+        def work(progress):
+            result = saved_snapshots.refresh(req.resource_id, req.name, progress)
+            query_cache.invalidate_resource(req.resource_id)
+            return result
+        return view_jobs.submit(req.name, total, work, key=f"{req.resource_id}:{req.name}", owner=owner)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, str(exc).split("\n")[0][:300])
+
+
 @app.post("/api/views")
-def save_view(req: SaveViewRequest):
+def save_view(req: SaveViewRequest, request: Request, response: Response):
+    owner = agent_sessions.owner(request, response)
     if not req.datasets:
         raise HTTPException(400, "Nothing to save — open a datasource-backed "
                             "table first.")
@@ -1303,6 +1401,19 @@ def save_view(req: SaveViewRequest):
         } for d in req.datasets],
     }
     try:
+        if req.kind == "aurora" and (saved_snapshots.has_join_source(state, req.resource_id)
+                                     or saved_snapshots.has_materialized_source(state, req.resource_id)):
+            _managed_snapshot_store(req.resource_id)
+            def work(progress):
+                result = saved_snapshots.save(req.resource_id, req.name, state,
+                                              _compile_snapshot, progress)
+                query_cache.invalidate_resource(req.resource_id)
+                lineage.record(_lineage_engine(), "view_saved", "view", req.name,
+                               payload={"store": f"{req.kind}:{req.resource_id}",
+                                        "datasets": len(req.datasets), **result})
+                return result
+            return view_jobs.submit(req.name, len(state["datasets"]), work,
+                                    key=f"{req.resource_id}:{req.name}", owner=owner)
         result = views.save_view(req.kind, req.resource_id, req.name, state)
     except ValueError as e:
         raise HTTPException(400, str(e))

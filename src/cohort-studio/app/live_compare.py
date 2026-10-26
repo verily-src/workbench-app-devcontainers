@@ -3,7 +3,7 @@ import math
 import numpy as np
 from scipy import stats
 
-import db
+import database as db
 import live_query
 from sql_utils import statement as text
 

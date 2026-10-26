@@ -471,3 +471,7 @@ def open_workflow_result(plan_id: str, req: ApprovalRequest, request: Request, r
         raise HTTPException(404, "Workflow plan expired or unknown.") from exc
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+import agent_stream
+router.include_router(agent_stream.router)

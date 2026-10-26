@@ -265,14 +265,19 @@ def test_join_source_is_durable_and_restores_saved_view(
             "filters": [], "charts": [], "cohorts": [],
         }],
     })
-    assert save.status_code == 200, save.text
+    job = _complete_saved_view_job(client, save)
+    assert job["total_sources"] == 1
+    assert job["completed_sources"] == 1
     saved = client.get("/api/views/one", params={
         "kind": "aurora", "resource_id": rid,
         "name": view_name,
     })
     assert saved.status_code == 200, saved.text
     saved_source = saved.json()["datasets"][0]["source"]
-    assert saved_source == source_ref
+    assert saved_source["kind"] == "materialized"
+    assert saved_source["resource_id"] == rid
+    assert len(saved_source["materialized_id"]) == 32
+    assert saved_source["settings"] == source_ref["settings"]
     assert saved.json()["datasets"][0]["entity_column"] == "person_id"
 
     datasets._store.clear()
@@ -281,6 +286,10 @@ def test_join_source_is_durable_and_restores_saved_view(
     })
     assert reopened.status_code == 200, reopened.text
     assert reopened.json()["query_scope"] == "database"
+    assert reopened.json()["source_ref"]["kind"] == "materialized"
+    assert reopened.json()["rows"] == 4
+    restored_status = next(column for column in reopened.json()["columns"] if column["name"] == "status")
+    assert restored_status["label"] == "Review status"
     queried = client.post(
         f"/api/datasets/{reopened.json()['dataset_id']}/query",
         json={"entity_column": "person_id", "filters": [{

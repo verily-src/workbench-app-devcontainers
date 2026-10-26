@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 import datasets
-import db
+import database as db
 import main
 import omop
 import omop_load

@@ -155,6 +155,18 @@ def test_agent_store_cleanup_removes_telemetry_but_keeps_conversation(agent_stor
         assert conn.execute(text("SELECT count(*) FROM _studio_agent.prompts")).scalar_one() == 0
 
 
+def test_agent_store_failed_run_can_preserve_an_actionable_reply(agent_store):
+    context = agent_store.begin(
+        session_id=None, owner="owner-binding-value-limit", scope="agent-mode",
+        system_prompt="Use the available tools.", user_message="Count this cohort.",
+        provider="test", model="fixture")
+    reply = "The cohort count stopped at the turn limit. Correct the spec and retry."
+    agent_store.fail(context, error_class="AgentLimitReached", assistant_message=reply)
+    page = agent_store.history(session_id=context.session_id,
+                               owner="owner-binding-value-limit", scope="agent-mode")
+    assert page.messages[-1].content == reply
+
+
 def test_long_assistant_message_is_preserved_without_silent_truncation(agent_store):
     context = agent_store.begin(session_id=None, owner="owner-binding-value-005",
                                 scope="dataset:alpha", system_prompt="system",

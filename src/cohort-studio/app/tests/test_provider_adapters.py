@@ -5,6 +5,22 @@ import providers
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 
+def test_provider_wrappers_forward_optional_turn_budget(monkeypatch):
+    forwarded = []
+    monkeypatch.setattr(providers, "_client", lambda *_args: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(providers.agent_runtime, "run",
+                        lambda *args, **kwargs: forwarded.append(kwargs) or {})
+    providers.run("openai", "model", "key", None, "system", [], {},
+                  max_turns=13)
+    assert forwarded[-1]["max_turns"] == 13
+
+    monkeypatch.setattr(bedrock.agent_runtime, "run",
+                        lambda *args, **kwargs: forwarded.append(kwargs) or {})
+    bedrock.run("model", "us-east-1", "system", [], [], {}, client=object(),
+                max_turns=14)
+    assert forwarded[-1]["max_turns"] == 14
+
+
 def test_openai_compatible_response_maps_calls_and_usage():
     response = SimpleNamespace(
         choices=[SimpleNamespace(

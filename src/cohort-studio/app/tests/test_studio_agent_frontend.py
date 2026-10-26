@@ -80,12 +80,25 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     def chat(route):
         body = route.request.post_data_json
         chat_requests.append(body)
+        if body["message"] == "Run into the agent limit":
+            reply_limited = "I wasn't able to finish that in a reasonable number of steps — try narrowing the request."
+            messages.extend([
+                {"role": "user", "content": body["message"], "message_id": 5},
+                {"role": "assistant", "content": reply_limited, "message_id": 6},
+            ])
+            fulfill(route, {"reply": reply_limited, "session_id": session_id,
+                "trace_id": "trace-2", "tool_calls": ["inspect_table"],
+                "tool_results": [{"name": "inspect_table", "status": "failed"}],
+                "limit_reached": True, "actions": [], "workflow_plans": []})
+            return
         messages.extend([
             {"role": "user", "content": body["message"], "message_id": 3},
             {"role": "assistant", "content": reply, "message_id": 4},
         ])
         fulfill(route, {"reply": reply, "session_id": session_id, "trace_id": "trace-1",
                         "tool_calls": ["count_cohort", "prepare_dashboard"],
+                        "tool_results": [{"name": "count_cohort", "status": "completed"},
+                                         {"name": "prepare_dashboard", "status": "completed"}],
                         "actions": [action], "workflow_plans": [ready_plan, blocked_plan]})
 
     page.route("**/api/agent/chat", chat)
@@ -142,7 +155,9 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     box.fill("Analyze the liver cohort and prepare a summary workflow")
     page.get_by_role("button", name="Send", exact=True).click()
     expect(page.get_by_text(reply, exact=True)).to_be_visible()
-    expect(page.get_by_text("Completed steps")).to_be_visible()
+    expect(page.get_by_text("Tool results", exact=True)).to_be_visible()
+    expect(page.get_by_text("count_cohort · Completed", exact=True)).to_be_visible()
+    expect(page.get_by_text("prepare_dashboard · Completed", exact=True)).to_be_visible()
     plan_card = page.locator(".workflow-plan", has_text="cohort-summary")
     expect(plan_card.get_by_text("person_id → joined.person_id")).to_be_visible()
     expect(plan_card.get_by_text("tissue → samples.tissue")).to_be_visible()
@@ -197,3 +212,9 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
     expect(page.get_by_text(reply, exact=True)).to_be_visible()
     assert chat_requests == [{"message": "Analyze the liver cohort and prepare a summary workflow",
                               "session_id": session_id}]
+    box.fill("Run into the agent limit")
+    page.get_by_role("button", name="Send", exact=True).click()
+    expect(page.get_by_text("inspect_table · Failed", exact=True)).to_be_visible()
+    expect(page.get_by_text("The agent stopped at its time or step limit. Some requested steps may not have run.", exact=True)).to_be_visible()
+    assert chat_requests[-1] == {"message": "Run into the agent limit",
+                                 "session_id": session_id}

@@ -57,7 +57,8 @@ def _messages(messages: list[BaseMessage]) -> list[dict]:
 
 def run(model: str, region: str, system: str, messages: list[dict],
         tool_schemas: list[dict], tool_impls: dict,
-        client=None, on_step=None) -> dict:
+        client=None, on_step=None,
+        max_turns: int = agent_runtime.MAX_TURNS) -> dict:
 
     if not region:
         raise ValueError("AWS region is required; set AWS_REGION or AWS_DEFAULT_REGION.")
@@ -89,7 +90,8 @@ def run(model: str, region: str, system: str, messages: list[dict],
 
     try:
         return agent_runtime.run("bedrock", model, system, messages, tool_impls,
-                                 tool_schemas, invoke, on_step=on_step)
+                                 tool_schemas, invoke, on_step=on_step,
+                                 max_turns=max_turns)
     finally:
         close = getattr(client, "close", None)
         if owns_client and callable(close):

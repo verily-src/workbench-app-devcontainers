@@ -761,7 +761,8 @@ def _cohort_select(info: dict, c: dict) -> tuple[str, dict]:
         "CAST(EXTRACT(YEAR FROM f.index_date) AS INTEGER) - f.year_of_birth AS age",
         "f.index_date", "f.observation_start", "f.observation_end"]
         + [f"f.e{i}_n AS e{i}_n, f.e{i}_first AS e{i}_first"
-           for i, _ in c["inclusion"]])
+           for i, _ in c["inclusion"]]
+        + ["f.gender_concept_id", "f.race_concept_id", "f.ethnicity_concept_id"])
     sql = (f"WITH {', '.join(c['ctes'])} SELECT {', '.join(cols)} "
            f"FROM flags AS f {joins} WHERE {_members(c['steps'])} "
            "ORDER BY f.person_id")

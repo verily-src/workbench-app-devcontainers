@@ -13,6 +13,13 @@ import datasets
 
 _current = ContextVar("agent_session", default=None)
 _COOKIE = "studio_chat_owner"
+_TOOL_ERROR_CODES = {
+    "invalid_cohort_spec", "invalid_tool_input", "query_timeout",
+    "cohort_service_unavailable", "tool_error", "unknown_tool",
+    "tool_result_too_large", "invalid_arguments", "runtime_limit",
+    "no_progress",
+}
+_LIMIT_REASONS = {"wall_clock", "tool_calls", "turn_budget"}
 
 
 def owner(request: Request, response: Response) -> str:
@@ -101,20 +108,39 @@ def event(value: dict):
         session.timings[key] = time.monotonic()
     elif key in session.timings:
         latency = (time.monotonic() - session.timings.pop(key)) * 1000
+    metadata = {"turn": value.get("turn"), "usage": value.get("usage")}
+    error_code = value.get("error_code")
+    if kind == "tool_end" and error_code in _TOOL_ERROR_CODES:
+        metadata["error_code"] = error_code
+    limit_reason = value.get("reason")
+    if kind == "runtime_limit" and limit_reason in _LIMIT_REASONS:
+        metadata["limit_reason"] = limit_reason
+    is_error = ((kind == "tool_end" and error_code in _TOOL_ERROR_CODES)
+                or kind == "runtime_limit")
     session.store.record_event(
         session.turn.run_id, kind=kind, name=name,
-        status="error" if value.get("error") else "ok",
-        metadata={"turn": value.get("turn"), "usage": value.get("usage")},
-        latency_ms=int(latency) if latency is not None else None, error_class="ToolError" if value.get("error") else None)
+        status="error" if is_error else "ok", metadata=metadata,
+        latency_ms=int(latency) if latency is not None else None,
+        error_class=("AgentLimitReached" if kind == "runtime_limit" else
+                     "ToolError" if is_error else None))
 
 
 def finish(result: dict) -> dict:
     session = _current.get()
     if session is not None and session.turn is not None:
         usage = result.get("usage") or {}
-        session.store.finish(session.turn, result["reply"], usage={
+        stored_usage = {
             "input_tokens": usage.get("prompt_tokens", usage.get("input_tokens")),
-            "output_tokens": usage.get("completion_tokens", usage.get("output_tokens"))})
+            "output_tokens": usage.get("completion_tokens", usage.get("output_tokens"))}
+        if result.get("limit_reached") or result.get("stop_reason"):
+            error_class = ("AgentLimitReached" if result.get("limit_reached") else
+                           "ToolFailureLoopStopped")
+            session.store.fail(session.turn, error_class=error_class,
+                               assistant_message=result["reply"], usage=stored_usage)
+            result["run_status"] = "failed"
+        else:
+            session.store.finish(session.turn, result["reply"], usage=stored_usage)
+            result["run_status"] = "completed"
         result["session_id"] = str(session.turn.session_id)
         result["trace_id"] = str(session.turn.run_id)
     return result

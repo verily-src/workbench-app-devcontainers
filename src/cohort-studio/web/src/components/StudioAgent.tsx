@@ -13,6 +13,8 @@ interface Props {
 
 interface AgentMessage extends Omit<ChatMsg, "actions"> {
   toolCalls?: string[];
+  toolResults?: { name: string; status: "completed" | "failed" }[];
+  limitReached?: boolean;
   actions?: AgentDashboardAction[];
 }
 
@@ -138,7 +140,8 @@ export function StudioAgent({ onOpenDashboard }: Props) {
       setPlans((current) => mergePlans(current, result.workflow_plans));
       setMessages((current) => [...current, {
         role: "assistant", content: result.reply,
-        toolCalls: result.tool_calls, actions: result.actions,
+        toolCalls: result.tool_calls, toolResults: result.tool_results,
+        limitReached: result.limit_reached, actions: result.actions,
       }]);
     } catch (caught) {
       const detail = safeError(caught);
@@ -244,12 +247,22 @@ export function StudioAgent({ onOpenDashboard }: Props) {
         {messages.map((message, index) => (
           <article key={`${index}-${message.role}`} className={`studio-agent-message ${message.role}`}>
             <div className="studio-agent-bubble">{message.content}</div>
-            {message.toolCalls && message.toolCalls.length > 0 && (
-              <div className="studio-agent-tools" aria-label="Completed steps">
-                <strong>Completed steps</strong>
+            {message.toolResults && message.toolResults.length > 0 ? (
+              <div className="studio-agent-tools" aria-label="Tool results">
+                <strong>Tool results</strong>
+                <ul>{message.toolResults.map((tool, i) => <li key={`${tool.name}-${i}`}>
+                  {tool.name} · {tool.status === "completed" ? "Completed" : "Failed"}
+                </li>)}</ul>
+              </div>
+            ) : message.toolCalls && message.toolCalls.length > 0 ? (
+              <div className="studio-agent-tools" aria-label="Tool calls">
+                <strong>Tool calls · outcome not reported</strong>
                 <ul>{message.toolCalls.map((tool, i) => <li key={`${tool}-${i}`}>{tool}</li>)}</ul>
               </div>
-            )}
+            ) : null}
+            {message.limitReached && <p className="studio-agent-limit" role="status">
+              The agent stopped at its time or step limit. Some requested steps may not have run.
+            </p>}
             {message.actions?.map((action, i) => (
               <div className="studio-agent-card" key={`${action.title}-${i}`}>
                 <strong>{action.title}</strong>

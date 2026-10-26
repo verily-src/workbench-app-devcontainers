@@ -12,6 +12,7 @@ import config
 import datasets
 import llm
 import providers
+import agent_runtime
 import vertexai_auth
 
 logger = logging.getLogger(__name__)
@@ -274,10 +275,12 @@ def chat(dataset_id: str, message: str, history: list[dict],
             "usage": out["usage"], "tool_calls": out.get("tool_calls", tool_calls)}
 
 def run_bedrock(cfg: dict, system: str, messages: list[dict],
-                tool_impls: dict, tool_schemas: list[dict], on_step=None) -> dict:
+                tool_impls: dict, tool_schemas: list[dict], on_step=None,
+                max_turns: int = agent_runtime.MAX_TURNS) -> dict:
 
     return bedrock.run(cfg["model"], cfg.get("region"), system, messages,
-                       tool_schemas, tool_impls, on_step=on_step)
+                       tool_schemas, tool_impls, on_step=on_step,
+                       max_turns=max_turns)
 
 def _run_anthropic(cfg: dict, system: str, messages: list[dict],
                    wrapped: list, on_step=None) -> tuple[str, dict]:

@@ -80,7 +80,7 @@ def _requires_compiler_trust(ref: dict) -> bool:
         return (_requires_compiler_trust(ref["base"])
                 or any(_requires_compiler_trust(step["source"]) for step in ref["steps"]))
     if ref["kind"] == "derived":
-        return _requires_compiler_trust(ref["base"])
+        return True
     return _contains_omop_cohort(ref)
 
 
@@ -108,6 +108,8 @@ def _compiled_source_query(source_ref: dict, live_source: dict) -> CompiledSourc
     if not isinstance(live_source.get("sql"), str) or not isinstance(
             live_source.get("columns"), dict):
         raise ValueError("Compiled source query is incomplete.")
+    if len(live_source["sql"]) > 100_000:
+        raise ValueError("Calculated source query is too complex.")
     return CompiledSourceQuery(live_source, ref, _COMPILED_SOURCE_TOKEN)
 
 
@@ -732,11 +734,11 @@ def derive(source: dict, spec: dict) -> tuple[pd.DataFrame, dict]:
     spec = DerivedSpec.model_validate(spec).model_dump(exclude_none=True)
     name = spec["name"].strip()
     columns = list(source["columns"])
-    if spec["op"] in {"group_count", "group_sum", "group_mean"}:
-        col = spec["column"]
-        if col not in columns:
-            raise ValueError(f"Unknown column: {col}")
-        group = _q(col)
+    if spec["op"] in {"group_count", "group_sum", "group_mean", "group_min", "group_max"}:
+        groups = spec.get("group_by") or [spec["column"]]
+        for col in groups:
+            if col not in columns: raise ValueError(f"Unknown column: {col}")
+        groups = [_q(col) for col in groups]
         if spec["op"] == "group_count":
             aggregate = "COUNT(*)"
         else:
@@ -745,8 +747,17 @@ def derive(source: dict, spec: dict) -> tuple[pd.DataFrame, dict]:
                 raise ValueError(f"Unknown column: {measure}")
             number = f"TRY_CAST({_q(measure)} AS DOUBLE)"
             safe_number = f"CASE WHEN ISFINITE({number}) THEN {number} ELSE NULL END"
-            aggregate = f"{'SUM' if spec['op'] == 'group_sum' else 'AVG'}({safe_number})"
-        expression = f"CASE WHEN {group} IS NULL THEN NULL ELSE {aggregate} OVER (PARTITION BY {group}) END"
+            function = {"group_sum": "SUM", "group_mean": "AVG", "group_min": "MIN", "group_max": "MAX"}[spec["op"]]
+            aggregate = f"{function}({safe_number})"
+        missing = " OR ".join(f"{group} IS NULL" for group in groups)
+        expression = f"CASE WHEN {missing} THEN NULL ELSE {aggregate} OVER (PARTITION BY {', '.join(groups)}) END"
+    elif spec["op"] == "expression":
+        import calculations
+        tree = calculations.parse(spec["expression"], columns)
+        def numeric_column(column):
+            value = f"TRY_CAST({_q(column)} AS DOUBLE)"
+            return f"CASE WHEN ISFINITE({value}) THEN {value} ELSE NULL END"
+        expression = calculations.sql(tree, numeric_column, lambda value: repr(value))
     elif spec["op"] == "bin":
         col = spec["column"]
         if col not in columns:

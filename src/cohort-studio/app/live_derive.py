@@ -43,11 +43,21 @@ def _expression(frame: pd.DataFrame, live: dict, spec: dict,
             raise ValueError(f"Unknown column: {name}")
         return f"src.{_q(columns[name])}"
 
-    if op in {"group_count", "group_sum", "group_mean"}:
-        group = column(spec.get("column"))
-        aggregate = "COUNT(*)" if op == "group_count" else (
-            f"{'SUM' if op == 'group_sum' else 'AVG'}({_number(column(spec.get('measure')))})")
-        return f"CASE WHEN {group} IS NULL THEN NULL ELSE {aggregate} OVER (PARTITION BY {group}) END", local
+    if op in {"group_count", "group_sum", "group_mean", "group_min", "group_max"}:
+        groups = [column(name) for name in (spec.get("group_by") or [spec.get("column")])]
+        aggregate = "COUNT(*)"
+        if op != "group_count":
+            function = {"group_sum": "SUM", "group_mean": "AVG", "group_min": "MIN", "group_max": "MAX"}[op]
+            aggregate = f"{function}({_number(column(spec.get('measure')))})"
+        missing = " OR ".join(f"{group} IS NULL" for group in groups)
+        return f"CASE WHEN {missing} THEN NULL ELSE {aggregate} OVER (PARTITION BY {', '.join(groups)}) END", local
+
+    if op == "expression":
+        import calculations
+        tree = calculations.parse(spec["expression"], columns)
+        def numeric(value):
+            return _bind(local, prefix, f"n{len(local)}", value)
+        return calculations.sql(tree, lambda name: _number(column(name)), numeric), local
 
     if op == "bin":
         name = spec.get("column")

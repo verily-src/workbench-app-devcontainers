@@ -22,7 +22,8 @@ function describeFilter(f: Filter): string {
   if (f.kind === "categorical") {
     return (f.values ?? []).map((v) => `${f.column}: ${v}`).join("|");
   }
-  return f.max === Number.MAX_VALUE ? `${f.column}: ≥ ${f.min}` : `${f.column}: ${f.min}–${f.max}`;
+  return f.max === Number.MAX_VALUE ? `${f.column}: ≥ ${f.min}` : f.min === -Number.MAX_VALUE
+    ? `${f.column}: ≤ ${f.max}` : `${f.column}: ${f.min}–${f.max}`;
 }
 
 function cacheAge(asOf: string): string {

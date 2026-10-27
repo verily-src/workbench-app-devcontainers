@@ -23,7 +23,7 @@ SUITES = {
     "jev": ["test_join_discovery.py"],
     "engineering": ["test_grain_performance.py", "test_execution_contract.py", "test_data_jobs.py",
                     "test_export_jobs.py", "test_saved_snapshots.py", "test_group_count_filter.py",
-                    "test_chart_axis_validation.py"],
+                    "test_chart_axis_validation.py", "test_richer_calculations.py"],
     "demo": ["test_demo_roundtrip.py", "test_stage_storage.py", "test_join_s3_api.py"],
 }
 

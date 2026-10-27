@@ -8,7 +8,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Op = "bin" | "formula" | "map";
+type Op = "bin" | "formula" | "expression" | "map";
 
 export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
   const numeric = dataset.columns
@@ -28,6 +28,7 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
   const [left, setLeft] = useState(numeric[0] ?? "");
   const [operator, setOperator] = useState("/");
   const [right, setRight] = useState(numeric[1] ?? numeric[0] ?? "");
+  const [expression, setExpression] = useState("");
 
   const [mapCol, setMapCol] = useState(categorical[0] ?? "");
   const [mapText, setMapText] = useState("");
@@ -44,6 +45,8 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
       spec = { ...spec, column: binCol, breaks: b, labels: l };
     } else if (op === "formula") {
       spec = { ...spec, left, operator, right };
+    } else if (op === "expression") {
+      spec = { ...spec, expression: expression.trim() };
     } else {
       const mapping: Record<string, string> = {};
       for (const line of mapText.split("\n")) {
@@ -75,6 +78,7 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
           <select value={op} onChange={(e) => setOp(e.target.value as Op)}>
             <option value="bin">Bin a number into ranges</option>
             <option value="formula">Formula (column arithmetic)</option>
+            <option value="expression">Expression</option>
             <option value="map">Map categorical values</option>
           </select>
         </label>
@@ -124,6 +128,15 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
           </label>
         </div>
       )}
+
+      {op === "expression" && <div className="derive-row">
+        <label>Expression
+          <textarea aria-label="Calculation expression" rows={3} value={expression}
+            placeholder={'(col("weight") / col("height")) * 100'}
+            onChange={(event) => setExpression(event.target.value)} />
+        </label>
+        <p>Use column names or col("column name"), arithmetic, abs, sqrt, ln, and coalesce.</p>
+      </div>}
 
       {op === "map" && (
         <div className="derive-row">

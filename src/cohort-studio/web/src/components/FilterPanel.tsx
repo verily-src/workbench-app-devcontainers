@@ -85,8 +85,10 @@ export function FilterPanel({ columns, filters, onChange }: Props) {
               <div className="range-inputs">
                 <input
                   type="number" step="any"
-                  value={active?.min ?? col.min ?? 0}
-                  onChange={(e) => setRange(col, Number(e.target.value),
+                  aria-label={`Minimum ${col.label || col.name}`}
+                  placeholder="No minimum"
+                  value={active?.min === -Number.MAX_VALUE ? "" : active?.min ?? col.min ?? 0}
+                  onChange={(e) => setRange(col, e.target.value === "" ? -Number.MAX_VALUE : Number(e.target.value),
                     active?.max ?? col.max ?? 0)}
                 />
                 <input

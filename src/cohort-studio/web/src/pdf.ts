@@ -7,7 +7,8 @@ function describeFilters(filters: Filter[]): string {
   if (filters.length === 0) return "none (full cohort)";
   return filters.map((f) => f.kind === "categorical"
     ? `${f.column}: ${(f.values ?? []).join(", ")}`
-    : f.max === Number.MAX_VALUE ? `${f.column}: at least ${f.min}` : `${f.column}: ${f.min} to ${f.max}`).join("; ");
+    : f.max === Number.MAX_VALUE ? `${f.column}: at least ${f.min}` : f.min === -Number.MAX_VALUE
+      ? `${f.column}: at most ${f.max}` : `${f.column}: ${f.min} to ${f.max}`).join("; ");
 }
 
 const safeName = (s: string) =>

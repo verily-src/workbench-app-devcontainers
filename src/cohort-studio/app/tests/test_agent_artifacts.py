@@ -1,6 +1,9 @@
 import json
 
 import pytest
+import duckdb
+import pandas as pd
+from sqlalchemy import text
 
 import agent_artifacts
 import agent_mode_api
@@ -70,3 +73,60 @@ def test_workflow_dashboard_rechecks_results(workspace, monkeypatch):
         ops.open_dashboard('abcdef123456')
     assert calls == [(ops.owner, 'saved-plan')]
     assert ops.actions == []
+
+
+def test_restore_uses_postgres_types_not_preview_dtypes(workspace, engine):
+    ops = agent_mode_api.Operations('owner-storage-types')
+    ref = {'kind': 'aurora', 'resource_id': 'omopdb', 'schema': 'cdm', 'table': 'person'}
+    with engine.begin() as conn:
+        conn.execute(text('UPDATE cdm.person SET location_id = 42'))
+    ops.inspect_table(json.dumps(ref))
+    built = ops.build_dashboard(json.dumps(ref), 'People', charts_json='[{"kind":"bar","x":"gender_concept_id"}]')
+    saved = agent_artifacts.get(ops.owner, built['dataset_id'])
+    assert saved['signature_kind'] == 'postgres-oid-v1'
+    with engine.begin() as conn:
+        conn.execute(text('UPDATE cdm.person SET location_id = NULL WHERE person_id = '
+                          '(SELECT MIN(person_id) FROM cdm.person)'))
+    try:
+        reopened = ops.open_dashboard(built['dataset_id'])
+        assert reopened['total'] == built['total']
+        opened = ops.actions[-1]['dataset']
+        preview_type = next(c['dtype'] for c in opened['columns'] if c['name'] == 'location_id')
+        assert preview_type.startswith('float')
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE cdm.person ALTER COLUMN location_id TYPE bigint'))
+        with pytest.raises(ValueError, match='schema changed'):
+            ops.open_dashboard(built['dataset_id'])
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text('ALTER TABLE cdm.person ALTER COLUMN location_id TYPE integer'))
+            conn.execute(text('UPDATE cdm.person SET location_id = NULL'))
+
+
+def test_legacy_recipe_recovers_with_changed_preview_type(workspace, monkeypatch):
+    ops = agent_mode_api.Operations('owner-legacy')
+    ref = {'kind': 'aurora', 'resource_id': 'omopdb', 'schema': 'cdm', 'table': 'person'}
+    ops.inspect_table(json.dumps(ref))
+    built = ops.build_dashboard(json.dumps(ref), 'People')
+    saved = agent_artifacts.get(ops.owner, built['dataset_id'])
+    saved['signature_kind'] = None
+    saved['columns'] = [{'name': col['name'], 'dtype': 'legacy-preview'} for col in saved['columns']]
+    agent_artifacts.save(ops.owner, saved)
+    assert ops.open_dashboard(built['dataset_id'])['total'] == built['total']
+
+
+def test_disk_source_signature_uses_duckdb_storage_types(tmp_path):
+    path = str(tmp_path / 'source.duckdb')
+    con = duckdb.connect(path)
+    con.execute('CREATE TABLE data (person_id BIGINT, score DECIMAL(8,2))')
+    con.execute('INSERT INTO data VALUES (1, 2.50)')
+    con.close()
+    opened = datasets.open_dataset(pd.DataFrame({'person_id': [1], 'score': [2.5]}),
+        'local file', disk_source={'path': path, 'table': 'data'})
+    try:
+        kind, columns = agent_mode_api._storage_signature(opened['dataset_id'])
+        assert kind == 'duckdb-type-v1'
+        assert columns == [{'name': 'person_id', 'storage_type': 'BIGINT'},
+                           {'name': 'score', 'storage_type': 'DECIMAL(8,2)'}]
+    finally:
+        datasets.close_dataset(opened['dataset_id'])

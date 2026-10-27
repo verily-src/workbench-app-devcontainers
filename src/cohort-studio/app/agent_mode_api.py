@@ -86,6 +86,42 @@ def _owned(owner, dataset_id):
         return entry
 
 
+def _storage_signature(dataset_id):
+    ds = datasets.get(dataset_id)
+    live = ds.get("live_source")
+    if live is not None:
+        import live_query
+        mapping = live["columns"]
+        names = list(mapping)
+        projection = ", ".join(f"src.{live_query._q(mapping[name])} AS {live_query._q(name)}"
+                               for name in names)
+        with db.get_engine_for_resource(live["resource_id"]).begin() as conn:
+            conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+            conn.exec_driver_sql(f"SET LOCAL statement_timeout = {live_query.TIMEOUT_MS}")
+            result = live_query._query(conn, live,
+                f"SELECT {projection} FROM ({live['sql']}) AS src LIMIT 0", {})
+            try:
+                columns = [{"name": name, "storage_type": str(column.type_code),
+                            **({"precision": column.precision, "scale": column.scale}
+                               if column.type_code == 1700 else {})}
+                           for name, column in zip(names, result.cursor.description)]
+            finally:
+                result.close()
+        return "postgres-oid-v1", columns
+    disk = ds.get("disk_source")
+    if disk is not None:
+        import disk_data
+        con = disk_data._connect(disk["path"], read_only=True)
+        try:
+            result = con.execute(f"DESCRIBE SELECT * FROM {disk_data._q(disk.get('table', 'data'))}")
+            columns = [{"name": row[0], "storage_type": row[1]} for row in result.fetchall()]
+        finally:
+            con.close()
+        return "duckdb-type-v1", columns
+    return "names-v1", [{"name": name} for name in ds["df"].columns]
+
+
 def _inspect_dataset(owner, dataset_id, filters):
     _owned(owner, dataset_id)
     ds = datasets.get(dataset_id)
@@ -248,9 +284,10 @@ class Operations:
                 charts = [{"kind": "histogram" if c["filter_kind"] == "range" else "bar", "x": c["name"]}
                           for c in opened["columns"] if c["filter_kind"] in {"range", "categorical"}][:4]
             result = datasets.query(dataset_id, filters, charts, 0, 5)
+            signature_kind, columns = _storage_signature(dataset_id)
             agent_artifacts.save(self.owner, {"dataset_id": dataset_id, "title": title[:128],
                 "source_ref": ref, "filters": filters, "charts": charts,
-                "columns": [{"name": c["name"], "dtype": c.get("dtype")} for c in opened["columns"]]})
+                "signature_kind": signature_kind, "columns": columns})
         except Exception:
             datasets.close_dataset(dataset_id)
             raise
@@ -292,8 +329,12 @@ class Operations:
         opened = _main()._open_source(ref)
         did = opened["dataset_id"]
         try:
-            columns = [{"name": c["name"], "dtype": c.get("dtype")} for c in opened["columns"]]
-            if columns != saved["columns"]:
+            signature_kind, columns = _storage_signature(did)
+            if saved["signature_kind"] is None:
+                matches = [c["name"] for c in columns] == [c["name"] for c in saved["columns"]]
+            else:
+                matches = signature_kind == saved["signature_kind"] and columns == saved["columns"]
+            if not matches:
                 raise ValueError("The source schema changed. Inspect it and rebuild the dashboard.")
             charts, filters = self._view_options(did, json.dumps(saved["charts"]), json.dumps(saved["filters"]))
             result = datasets.query(did, filters, charts, 0, 5)

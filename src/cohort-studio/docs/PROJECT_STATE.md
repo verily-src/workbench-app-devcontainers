@@ -4,6 +4,10 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **LOCAL VALIDATED, deployment pending (2026-10-27):** Agent header offers Play rescue to show Gandalf immediately; manual preview also works with reduced motion. Three local browser checks passed, including the automatic idle timeline and activity reset. AWS SSO expired; live release and verification pending.
+
+- **ACTIVATION REPORTED c5ee2fa (2026-10-27), live verification pending:** classic Godzilla chase, missed shots, offscreen scene changes and Gandalf rescue. Local browser tests passed for the full two-minute timeline, ten-second rescue, resumed chase, activity reset and reduced motion; chase and rescue screenshots inspected. Update cf942406-f11f-490a-a824-a7477c7e0712; update log b7fa960e-1da7-4c3b-8bb6-ece4ee19edd9 reports activation. AWS SSO expired before health/version/assets check, so live confirmation remains pending.
+
 - **LOCAL VALIDATED, deployment pending (2026-10-27):** Agent idle chase uses classic Godzilla, repeated missed bazooka shots and comic explosions, offscreen transitions at different heights, and a Gandalf rescue after two minutes followed by a ten-second break and renewed chase with both riders. Local browser tests passed for timeline, loaded sprites, activity reset and reduced motion; chase and rescue screenshots inspected. Hosted browser acceptance pending.
 
 - **DEPLOYED cf06f5c3992596f543ceabc4aaf39f2f6d768a28 (2026-10-27):** idle Cybertruck escape with Halloween Godzilla. Two local browser tests passed for timing, asset load, activity reset and reduced motion; screenshot inspected. Update 90a97b0a-e03c-4bcc-afd7-7f4f5bd39fd4, SHA/health 1cad3c5f-1bab-4c84-90df-141d234963aa, both image assets HTTP 200 in 8f32e74d-30bc-43b6-94fb-909e1eca9f86. Hosted browser acceptance pending.

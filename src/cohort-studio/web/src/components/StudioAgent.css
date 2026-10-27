@@ -111,4 +111,9 @@
   98% { opacity: 1; transform: translate(-350px, 55vh) scaleX(-1); }
   99%, 100% { opacity: 0; transform: translate(-350px, 55vh) scaleX(-1); }
 }
-@media (prefers-reduced-motion: reduce) { .mascot-drive, .mascot-rescue { display: none; } }
+ .rescue-preview-button { margin-left: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .mascot-drive, .mascot-rescue { display: none; }
+  .mascot-rescue.manual-rescue { display: block; animation: none; }
+  .mascot-rescue.manual-rescue .mascot-magic { animation: none; }
+}

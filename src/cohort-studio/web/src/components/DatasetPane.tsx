@@ -9,6 +9,7 @@ import { ColumnSettings } from "./ColumnSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
 import { AggregateFilter } from "./AggregateFilter";
+import { GroupSummary } from "./GroupSummary";
 import { LaunchWorkflow } from "./LaunchWorkflow";
 
 interface Props {
@@ -81,6 +82,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
   const [showCompare, setShowCompare] = useState(false);
   const [showDerive, setShowDerive] = useState(false);
   const [showAggregate, setShowAggregate] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
   const [showLaunch, setShowLaunch] = useState(false);
   const [cohortName, setCohortName] = useState("");
   const [chatDraft, setChatDraft] = useState<{ id: string; text: string; datasetId: string } | null>(null);
@@ -364,6 +366,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         <button onClick={() => setShowAggregate((v) => !v)}>
           {showAggregate ? "Hide aggregation" : "+ Aggregation filter"}
         </button>
+        <button onClick={() => setShowSummary((v) => !v)}>{showSummary ? "Hide summary" : "+ Group summary"}</button>
         <button onClick={() => setShowLaunch((v) => !v)}>
           {showLaunch ? "Hide workflow" : "Run workflow ▸"}
         </button>
@@ -381,6 +384,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         <DeriveColumn dataset={dataset} onUpdate={onUpdate}
                       onClose={() => setShowDerive(false)} />
       )}
+
+      {showSummary && <GroupSummary dataset={dataset} onClose={() => setShowSummary(false)} />}
 
       {showAggregate && <AggregateFilter dataset={dataset} onUpdate={onUpdate}
         onClose={() => setShowAggregate(false)} />}

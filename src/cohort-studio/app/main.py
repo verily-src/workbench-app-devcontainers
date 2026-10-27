@@ -155,6 +155,7 @@ class ChartSpec(BaseModel):
     kind: str
     x: str
     y: str | None = None
+    title: str | None = Field(default=None, max_length=120)
 
 class QueryRequest(BaseModel):
     filters: list[Filter] = Field(default_factory=list)

@@ -75,7 +75,7 @@ def test_studio_agent_history_actions_and_explicit_workflow_approval(page, app_u
 
     page.route("**/api/agent/chat/history?*", history_route)
 
-    page.route("**/api/agent/workflows", lambda route: fulfill(route, {
+    page.route("**/api/agent/workflows?**", lambda route: fulfill(route, {
         "plans": stored_plans,
     }))
     page.route("**/api/agent/chat/sessions", lambda route: fulfill(route, {

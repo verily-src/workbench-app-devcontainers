@@ -32,7 +32,9 @@ def test_join_panel_exposes_s3_files_for_aurora_join_with_full_source_consent(pa
             result = [{"name": "demo/samples.parquet", "detail": "Parquet file"}]
         else:
             result = [{"name": "cdm.person", "schema": "cdm", "table": "person",
-                       "detail": "Aurora table"}]
+                       "detail": "Aurora table"},
+                      {"name": "cdm.condition_occurrence_with_a_long_table_name", "schema": "cdm",
+                       "table": "condition_occurrence_with_a_long_table_name", "detail": "Aurora table"}]
         fulfill(route, result)
 
     page.route("**/api/tables?**", tables)
@@ -41,12 +43,12 @@ def test_join_panel_exposes_s3_files_for_aurora_join_with_full_source_consent(pa
         ref = route.request.post_data_json["source_ref"]
         opened.append(ref)
         dataset_id = f"source-{len(opened)}"
-        fulfill(route, {"dataset_id": dataset_id, "source": ref["table"], "rows": 2,
+        fulfill(route, {"job_id": "open-" + dataset_id, "status": "complete", "result": {"dataset_id": dataset_id, "source": ref["table"], "rows": 2,
             "columns": [{"name": "person_id", "dtype": "int64", "filter_kind": "none"},
                         {"name": "variant", "dtype": "text", "filter_kind": "none"}],
-            "source_ref": ref, "query_scope": "database" if ref["kind"] == "aurora" else "loaded"})
+            "source_ref": ref, "query_scope": "database" if ref["kind"] == "aurora" else "loaded"}})
 
-    page.route("**/api/datasets/open", open_source)
+    page.route("**/api/data-jobs/open", open_source)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "charts": [], "rows": {"page": 0, "page_size": 50,
@@ -66,12 +68,12 @@ def test_join_panel_exposes_s3_files_for_aurora_join_with_full_source_consent(pa
 
     def join(route):
         join_requests.append(route.request.post_data_json)
-        fulfill(route, {"dataset_id": "aurora-s3-result", "source": "Aurora + S3",
+        fulfill(route, {"job_id": "join-result", "status": "complete", "result": {"dataset_id": "aurora-s3-result", "source": "Aurora + S3",
             "rows": 2, "columns": [{"name": "person_id", "dtype": "int64",
                                       "filter_kind": "none"}],
-            "query_scope": "loaded", "join": {"engine": "duckdb", "rows": 2}})
+            "query_scope": "loaded", "join": {"engine": "duckdb", "rows": 2}}})
 
-    page.route("**/api/datasets/join", join)
+    page.route("**/api/data-jobs/join", join)
     page.goto(app_url)
     page.get_by_role("button", name="Join tables").click()
     panel = page.locator(".join-panel")
@@ -80,6 +82,10 @@ def test_join_panel_exposes_s3_files_for_aurora_join_with_full_source_consent(pa
     datasource.select_option("aurora:clinical")
     panel.get_by_label("Join schema").select_option("cdm")
     table = panel.get_by_role("combobox", name="Source table to add")
+    table.click()
+    long_name = panel.get_by_role("option", name="cdm.condition_occurrence_with_a_long_table_name Aurora table")
+    expect(long_name).to_be_visible()
+    assert long_name.locator('.combo-label').evaluate('(el) => el.scrollWidth <= el.clientWidth')
     table.fill("person")
     table.press("Enter")
     panel.get_by_role("button", name="Add table").click()

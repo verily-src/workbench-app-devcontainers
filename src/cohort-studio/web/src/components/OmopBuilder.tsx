@@ -46,6 +46,7 @@ function Editor({ rid, active, palette, onOpen }: {
   onOpen: (r: OpenResult, title: string) => void;
 }) {
   const [info, setInfo] = useState<OmopInfo | null>(null);
+  const [chartTitles, setChartTitles] = useState<Record<string, string>>({});
   const [rules, setRules] = useState<Rule[]>([]);
   const [domain, setDomain] = useState<OmopDomain>("condition");
   const [q, setQ] = useState("");
@@ -352,16 +353,17 @@ function Editor({ rid, active, palette, onOpen }: {
               <p>{summary.persons.toLocaleString()} of {summary.total_persons.toLocaleString()} persons</p>
               {summaryView === "charts" ? <div className="omop-summary-charts">
                 {summaryCharts.map((chart) => (
-                  <ChartCard key={chart.title} spec={{ kind: "bar", x: chart.title }}
+                  <ChartCard key={chart.title} spec={{ kind: "bar", x: chart.title, title: chartTitles[chart.title] }}
                     result={{ kind: "bar", x: chart.title, data: chart.data }}
                     palette={palette} kinds={["bar"]} readOnly
                     compactCategoryLabels
                     onTapCategory={() => undefined} onChangeKind={() => undefined}
+                    onRename={(title) => setChartTitles((current) => ({ ...current, [chart.title]: title }))}
                     onToggleWide={() => undefined} onClose={() => undefined} />
                 ))}
               </div> : <div className="omop-summary-tables">{summaryCharts.map((chart) => (
-                <table key={chart.title} aria-label={chart.title} className="omop-attrition">
-                  <caption>{chart.title}</caption><thead><tr><th>Category</th><th>Persons</th></tr></thead>
+                <table key={chart.title} aria-label={chartTitles[chart.title] || chart.title} className="omop-attrition">
+                  <caption>{chartTitles[chart.title] || chart.title}</caption><thead><tr><th>Category</th><th>Persons</th></tr></thead>
                   <tbody>{chart.data.map((row, i) => <tr key={i}><td>{row.category}</td><td>{row.value.toLocaleString()}</td></tr>)}</tbody>
                 </table>
               ))}</div>}

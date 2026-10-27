@@ -119,17 +119,20 @@ interface Props {
   onChangeKind: (kind: ChartSpec["kind"]) => void;
   onToggleWide: () => void;
   onClose: () => void;
+  onRename?: (title: string) => void;
   readOnly?: boolean;
   compactCategoryLabels?: boolean;
 }
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onToggleWide,
-                            onClose, readOnly = false, compactCategoryLabels = false }: Props) {
+                            onClose, onRename, readOnly = false, compactCategoryLabels = false }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts>();
   const [themeVersion, setThemeVersion] = useState(0);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
 
   useEffect(() => {
     const root = document.documentElement;
@@ -203,10 +206,16 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
   return (
     <div className={`chart-card${spec.wide ? " wide" : ""}`}>
       <div className="head">
+        {editingTitle ? <input aria-label="Chart title" maxLength={120} value={titleDraft}
+          autoFocus onChange={(event) => setTitleDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") { onRename?.(titleDraft.trim()); setEditingTitle(false); }
+            if (event.key === "Escape") setEditingTitle(false);
+          }} onBlur={() => { onRename?.(titleDraft.trim()); setEditingTitle(false); }} /> :
         <span className="title">
-          {columnLabels[spec.x] ?? spec.x}{spec.y
-            ? ` × ${columnLabels[spec.y] ?? spec.y}` : ""}
-        </span>
+          {spec.title || `${columnLabels[spec.x] ?? spec.x}${spec.y
+            ? ` × ${columnLabels[spec.y] ?? spec.y}` : ""}`}
+        </span>}
         {result?.sampled && <span className="badge" title="This chart uses sampled data">
           Sampled
         </span>}
@@ -217,6 +226,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
             {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         )}
+        {onRename && <button className="quiet" title="Rename chart" aria-label="Rename chart"
+          onClick={() => { setTitleDraft(spec.title || columnLabels[spec.x] || spec.x); setEditingTitle(true); }}>✎</button>}
         {!readOnly && <>
           <button className="quiet" title="Toggle width"
                   onClick={onToggleWide}>⤢</button>
@@ -224,7 +235,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                   onClick={onClose}>✕</button>
         </>}
       </div>
-      <div ref={ref} style={{ width: "100%", height }} />
+      <div ref={ref} className="chart-plot" style={{ width: "100%", height }} />
     </div>
   );
 }

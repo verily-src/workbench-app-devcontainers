@@ -729,6 +729,10 @@ button.link:hover { text-decoration: underline; }
 .join-source-picker { grid-template-columns: minmax(0, 1fr); }
 .join-row { flex-wrap: wrap; }
 .join-row > label { min-width: 0; }
+.join-source-picker .join-row > .combo { flex: 1 1 320px; min-width: min(100%, 260px); }
+.join-source-picker .combo-input { width: 100%; box-sizing: border-box; }
+.join-source-picker .combo-list { left: auto; right: 0; width: min(440px, calc(100vw - 40px)); box-sizing: border-box; }
+.join-source-picker .combo-label { min-width: 0; overflow-wrap: anywhere; }
 .join-sql-editor { display: block; max-width: 100%; resize: vertical; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
 .join-sql-preview { width: 100%; overflow: auto; }
 .join-sql-preview table { width: max-content; min-width: 100%; border-collapse: collapse; }

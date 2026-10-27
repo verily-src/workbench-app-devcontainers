@@ -60,6 +60,7 @@ def _public(plan: dict) -> dict:
         "id": plan["id"],
         "workflow": WORKFLOW_ID,
         "dataset_id": plan["dataset_id"],
+        **({"session_id": plan["session_id"]} if plan.get("session_id") else {}),
         "filters": json.loads(plan["filters_json"]),
         **({"source_ref": copy.deepcopy(plan["source_ref"])} if plan.get("source_ref") else {}),
         "rows": plan["rows"],
@@ -93,7 +94,7 @@ def _translate_store_error(error):
 
 def prepare(dataset_id: str, input_resource_id: str,
             output_resource_id: str, filters: list[dict], owner: str, *,
-            inspect_dataset, list_workflows, resolve_s3_resource, store=None) -> dict:
+            inspect_dataset, list_workflows, resolve_s3_resource, store=None, session_id=None) -> dict:
     owner = owner.strip() if isinstance(owner, str) else ""
     if not owner:
         raise PlanError("An authenticated owner is required.")
@@ -172,6 +173,7 @@ def prepare(dataset_id: str, input_resource_id: str,
             errors.append(str(error))
     plan = {
         "id": plan_id,
+        "session_id": str(uuid.UUID(str(session_id))) if session_id else None,
         "created_at": now.isoformat(),
         "expires_at": expires_at.isoformat(),
         "dataset_id": dataset_id,
@@ -207,9 +209,9 @@ def get_plan(plan_id: str, owner: str, *, store=None) -> dict:
         _translate_store_error(error)
 
 
-def list_plans(owner: str, *, limit: int = 30, store=None) -> list[dict]:
+def list_plans(owner: str, *, limit: int = 30, store=None, session_id=None) -> list[dict]:
     try:
-        return [_public(plan) for plan in _repo(store).list(owner, limit=limit)]
+        return [_public(plan) for plan in _repo(store).list(owner, limit=limit, session_id=session_id)]
     except agent_store.AgentStoreError as error:
         _translate_store_error(error)
 

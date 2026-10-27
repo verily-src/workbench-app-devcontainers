@@ -38,6 +38,11 @@ sphere('Right cheek',(.29,-.449,1.12),(.055,.016,.032), blush)
 sphere('Smile',(0,-.474,1.065),(.10,.02,.025),light)
 sphere('Belly badge',(0,-.415,.73),(.135,.035,.135),accent)
 sphere('Badge light',(0,-.448,.73),(.06,.018,.06),light)
+for x, angle in [(-.025, -.55), (.025, .55)]:
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x,-.468,.73))
+    mark = bpy.context.object; mark.name = 'Verily-inspired V'
+    mark.scale = (.018,.012,.08); mark.rotation_euler.y = angle
+    mark.data.materials.append(shell); mark.parent = bot
 sphere('Left foot',(-.31,-.06,.43),(.26,.34,.16),shell)
 sphere('Right foot',(.31,-.06,.43),(.26,.34,.16),shell)
 sphere('Left ear',(-.59,0,1.37),(.12,.20,.19),accent)

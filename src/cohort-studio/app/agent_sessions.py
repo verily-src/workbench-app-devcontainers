@@ -22,6 +22,11 @@ _TOOL_ERROR_CODES = {
 _LIMIT_REASONS = {"wall_clock", "tool_calls", "turn_budget"}
 
 
+def current_session_id():
+    session = _current.get()
+    return str(session.turn.session_id) if session is not None and session.turn else None
+
+
 def owner(request: Request, response: Response) -> str:
     value = getattr(request.state, "chat_owner", None) or request.cookies.get(_COOKIE, "")
     if not re.fullmatch(r"[a-f0-9]{64}", value):

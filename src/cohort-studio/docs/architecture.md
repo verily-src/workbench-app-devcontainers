@@ -928,3 +928,8 @@ Structured execution events also enter a bounded asynchronous SQLite writer (2,0
 ### Saved-view recovery and CLI scheduling
 
 The shared cloud CLI gate remains serialized. Waiting Aurora password resolution is prioritized, followed by saved-view S3 listing; running commands are not preempted. Failed saved-view listings expire after 20 seconds, and the browser retries unavailable stores. Successful listings retain the five-minute cache. This mitigates queue contention and transient failures; it does not grant S3 access or fix a stalled upstream command.
+
+
+### Conversation-scoped plans and queued turns
+
+New Agent workflow plans store their conversation ID in the existing owner-scoped payload. The Agent loads plans for the selected conversation; unassigned historical plans remain under Earlier workflow plans. The browser queues up to ten follow-ups and sends them in order after the running turn. The queue pauses after failure, cancellation or a workflow approval proposal and remains in browser memory only. No queued message approves or submits a workflow.

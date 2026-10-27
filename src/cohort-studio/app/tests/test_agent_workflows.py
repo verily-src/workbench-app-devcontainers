@@ -377,3 +377,14 @@ def test_prepare_blocks_overlong_healthomics_resource_prefix():
     result = prepare(output_uri="s3://bucket/" + "x" * 240)
     assert result["status"] == "blocked"
     assert "maximum 256" in result["errors"][0]
+
+
+def test_plans_are_scoped_to_conversation_and_legacy_remains_accessible():
+    first_id, second_id = str(uuid.uuid4()), str(uuid.uuid4())
+    first = plans.prepare('first', 'input', 'output', [], 'alice', session_id=first_id, **callbacks())
+    second = plans.prepare('second', 'input', 'output', [], 'alice', session_id=second_id, **callbacks())
+    legacy = plans.prepare('old', 'input', 'output', [], 'alice', **callbacks())
+    assert [plan['id'] for plan in plans.list_plans('alice', session_id=first_id)] == [first['id']]
+    assert [plan['id'] for plan in plans.list_plans('alice', session_id=second_id)] == [second['id']]
+    assert plans.list_plans('bob', session_id=first_id) == []
+    assert {plan['id'] for plan in plans.list_plans('alice')} == {first['id'], second['id'], legacy['id']}

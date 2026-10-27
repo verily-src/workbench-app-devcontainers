@@ -107,7 +107,7 @@ class AgentPlanStore:
         except SQLAlchemyError as exc:
             raise AgentPlanStoreError("Could not read workflow plan from Aurora.") from exc
 
-    def list(self, owner: str, *, limit: int = 30) -> list[dict]:
+    def list(self, owner: str, *, limit: int = 30, session_id: str | None = None) -> list[dict]:
         if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_LIST_LIMIT:
             raise AgentPlanStoreError(f"Plan list limit must be from 1 to {MAX_LIST_LIMIT}.")
         owner_hash = _owner_hash(owner)
@@ -120,9 +120,10 @@ class AgentPlanStore:
                     SELECT payload FROM {SCHEMA}.workflow_plans
                     WHERE owner_hash = :owner_hash
                       AND (expires_at IS NULL OR expires_at > :now)
+                      AND (CAST(:session_id AS text) IS NULL OR payload->>'session_id' = :session_id)
                     ORDER BY updated_at DESC, plan_id DESC LIMIT :limit
                 """), {"owner_hash": owner_hash, "now": now,
-                       "limit": limit}).mappings().all()
+                       "limit": limit, "session_id": session_id}).mappings().all()
             return [dict(row["payload"]) for row in rows]
         except SQLAlchemyError as exc:
             raise AgentPlanStoreError("Could not list workflow plans from Aurora.") from exc

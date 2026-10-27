@@ -217,8 +217,8 @@ def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
 @execution.workload("interactive")
 def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
           page: int = 0, page_size: int = 50,
-          entity_column: str | None = None, refresh: bool = False) -> dict:
-    result = _query(dataset_id, filters, chart_specs, page, page_size, entity_column, refresh)
+          entity_column: str | None = None, refresh: bool = False, sort: dict | None = None) -> dict:
+    result = _query(dataset_id, filters, chart_specs, page, page_size, entity_column, refresh, sort)
     result["count_contract"] = count_contract.describe(entity_column, result)
     import grain
     try:
@@ -229,9 +229,12 @@ def query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
 
 def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
           page: int = 0, page_size: int = 50,
-          entity_column: str | None = None, refresh: bool = False) -> dict:
+          entity_column: str | None = None, refresh: bool = False, sort: dict | None = None) -> dict:
     ds = get(dataset_id)
     full = ds["df"]
+    if sort is not None:
+        if not isinstance(sort, dict) or set(sort) != {"column", "direction"} or sort["column"] not in full.columns or sort["direction"] not in {"asc", "desc"}:
+            raise ValueError("Invalid sort column or direction.")
 
     if entity_column is not None and entity_column not in full.columns:
         raise ValueError(f"Unknown entity column: {entity_column!r}.")
@@ -243,16 +246,16 @@ def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
         import disk_data
         disk_data.guard_live_query(ds["live_source"], chart_specs, entity_column)
         return live_query.query(ds["live_source"], filters, chart_specs,
-                                page, page_size, entity_column, refresh=refresh)
+                                page, page_size, entity_column, refresh=refresh, sort=sort)
     if ds.get("disk_source") is not None:
         if refresh:
             raise ValueError("Refresh is not available for a disk-backed source.")
         import disk_data
         return disk_data.query(ds["disk_source"], filters, chart_specs,
-                               page, page_size, entity_column)
+                               page, page_size, entity_column, sort=sort)
 
     import agg_duck
-    if agg_duck.should_use(full):
+    if not sort and agg_duck.should_use(full):
         try:
             out = agg_duck.query(full, filters, chart_specs, page, page_size)
             out.update(scope="loaded", sampled=bool(ds.get("capped")))
@@ -268,7 +271,8 @@ def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
                 "DuckDB agg path failed, falling back to pandas: %s", e)
     filt = apply_filters(full, filters)
     start = page * page_size
-    rows_page = filt.iloc[start:start + page_size]
+    ordered = filt.sort_values(sort["column"], ascending=sort["direction"] == "asc", na_position="last", kind="stable") if sort else filt
+    rows_page = ordered.iloc[start:start + page_size]
     out = {
         "total": len(full),
         "filtered": len(filt),

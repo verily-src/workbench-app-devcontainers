@@ -1024,7 +1024,7 @@ def _aggregate(con, relation: str, where: str, params: list,
 
 
 def query(source: dict, filters: list[dict], charts: list[dict], page: int,
-          page_size: int, entity_column: str | None = None) -> dict:
+          page_size: int, entity_column: str | None = None, sort: dict | None = None) -> dict:
     if not isinstance(page, int) or page < 0:
         raise ValueError("Page must be a non-negative integer.")
     if not isinstance(page_size, int) or not 1 <= page_size <= PAGE_SIZE_MAX:
@@ -1032,6 +1032,8 @@ def query(source: dict, filters: list[dict], charts: list[dict], page: int,
     columns = source["columns"]
     if entity_column is not None and entity_column not in columns:
         raise ValueError(f"Unknown entity column: {entity_column!r}.")
+    if sort and (sort.get("column") not in columns or sort.get("direction") not in ("asc", "desc")):
+        raise ValueError("Invalid sort column or direction.")
     scans = 3 + (2 if entity_column else 0)
     for chart in charts:
         scans += {"bar": 4, "histogram": 5, "scatter": 1, "map": 1,
@@ -1045,8 +1047,9 @@ def query(source: dict, filters: list[dict], charts: list[dict], page: int,
         filtered = int(con.execute(
             f"SELECT COUNT(*) FROM {relation} AS src WHERE {where}", params).fetchone()[0])
         charts_out = _aggregate(con, relation, where, params, charts, columns)
+        ordering = f" ORDER BY src.{_q(sort['column'])} {sort['direction'].upper()} NULLS LAST" if sort else ""
         frame = con.execute(
-            f"SELECT * FROM {relation} AS src WHERE {where} LIMIT ? OFFSET ?",
+            f"SELECT * FROM {relation} AS src WHERE {where}{ordering} LIMIT ? OFFSET ?",
             [*params, page_size, page * page_size]).to_arrow_table().to_pandas(types_mapper=pd.ArrowDtype)
         result = {"total": total, "filtered": filtered, "charts": charts_out,
                   "rows": {"page": page, "page_size": page_size,

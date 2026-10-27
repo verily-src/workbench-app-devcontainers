@@ -368,6 +368,7 @@ export default function App() {
         cohorts: d.cohorts ?? [],
         filterAskHistory: d.filter_ask_history ?? [],
         groupSummary: d.group_summary ?? undefined,
+        sort: d.sort ?? undefined,
         page: 0,
       }));
       setDatasets(restored);
@@ -537,7 +538,7 @@ export default function App() {
     setDatasets((prev) => prev.map((dataset) => dataset.id === activeDs.id
       ? { ...dataset, queryLoading: true, queryError: undefined } : dataset));
     api.query(activeDs.id, activeDs.filters, activeDs.charts, activeDs.page,
-      activeDs.entityColumn, forceRefresh)
+      activeDs.entityColumn, forceRefresh, activeDs.sort)
       .then((result) => {
         if (cancelled) return;
         recoveredDatasetIds.current.delete(activeDs.id);
@@ -602,7 +603,7 @@ export default function App() {
       });
     return () => { cancelled = true; };
   }, [activeDs?.id, activeDs?.filters, chartQuerySignature, activeDs?.page,
-      activeDs?.entityColumn, activeDs?.refreshNonce]);
+      activeDs?.entityColumn, activeDs?.refreshNonce, activeDs?.sort]);
   // eslint-disable-line react-hooks/exhaustive-deps
 
   const commands: Command[] = [
@@ -633,7 +634,7 @@ export default function App() {
   ];
 
   return (
-    <div className={`app${view === "agent" ? " app-agent" : ""}`}>
+    <div className={`app${view !== "explore" ? " app-no-sidebar" : ""}`}>
       <aside className="sidebar">
         <h2 className="sidebar-heading">Data sources</h2>
         {!ready ? (

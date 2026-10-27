@@ -40,7 +40,14 @@ def test_join_generated_sql_shows_and_copies_runnable_source(page, app_url):
                                     "filter_kind": "none"}],
             "source_ref": ref, "query_scope": "database"})
 
-    page.route("**/api/datasets/open", open_source)
+    def open_source_job(route):
+        class JobRoute:
+            request = route.request
+            def fulfill(self, **kw):
+                route.fulfill(status=kw.get('status', 200), content_type='application/json',
+                              json={'job_id':'open', 'status':'complete', 'result':kw['json']})
+        open_source(JobRoute())
+    page.route("**/api/data-jobs/open", open_source_job)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "charts": [], "rows": {"page": 0, "page_size": 50,
@@ -57,6 +64,7 @@ def test_join_generated_sql_shows_and_copies_runnable_source(page, app_url):
             "engine": "aurora",
             "sql": "SELECT person_id FROM public.person WHERE person_id = :person_id",
             "copyable_sql": "SELECT person_id FROM public.person WHERE person_id = 1",
+            "display_sql": "SELECT\n  person_id\nFROM public.person\nWHERE person_id = 1",
             "parameters": {"person_id": 1},
         },
         "capped_inputs": [], "problems": [], "steps": [{
@@ -81,9 +89,10 @@ def test_join_generated_sql_shows_and_copies_runnable_source(page, app_url):
 
     sql_details = panel.locator("details.join-evidence", has_text="Generated SQL")
     expect(sql_details).to_be_visible(timeout=10000)
-    sql_details.locator("summary").click()
+    sql_details.locator(":scope > summary").click()
     sql_text = panel.get_by_label("Generated SQL", exact=True)
     expect(sql_text).to_contain_text("WHERE person_id = 1")
+    assert "\n" in sql_text.inner_text()
     expect(sql_text).not_to_contain_text(":person_id")
     panel.get_by_role("button", name="Copy SQL source").click()
     expect(page.get_by_role("status")).to_contain_text("SQL source copied.")

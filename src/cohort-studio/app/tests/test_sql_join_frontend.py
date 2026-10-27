@@ -46,7 +46,14 @@ def test_sql_mode_opens_result_without_visual_join_controls(page: Page, app_url:
                         "source_ref": body["source_ref"], "query_scope": "database"})
 
     page.route("**/api/sql/preview", preview)
-    page.route("**/api/datasets/open", open_source)
+    def open_source_job(route):
+        class JobRoute:
+            request = route.request
+            def fulfill(self, **kw):
+                route.fulfill(status=kw.get('status', 200), content_type='application/json',
+                              json={'job_id':'open', 'status':'complete', 'result':kw['json']})
+        open_source(JobRoute())
+    page.route("**/api/data-jobs/open", open_source_job)
     page.route("**/api/datasets/sql-person/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "charts": [], "rows": {"page": 0, "page_size": 50,
@@ -83,12 +90,12 @@ def test_sql_mode_opens_result_without_visual_join_controls(page: Page, app_url:
 
     editor.fill("SELECT person_id FROM cdm.person")
     expect(panel.get_by_label("SQL preview")).to_have_count(0)
-    expect(panel.get_by_role("button", name="Open SQL result")).to_have_count(0)
+    expect(panel.get_by_role("button", name="Create dataset")).to_be_enabled()
 
     editor.fill(wide_sql)
     panel.get_by_role("button", name="Preview SQL").click()
     expect(panel.get_by_label("SQL preview")).to_be_visible(timeout=10000)
-    panel.get_by_role("button", name="Open SQL result").click()
+    panel.get_by_role("button", name="Create dataset").click()
     expect(page.locator(".tab", has_text="person slice")).to_be_visible(timeout=10000)
     expect(panel).to_have_count(0)
     expect(page.get_by_text("Female", exact=True)).to_be_visible()

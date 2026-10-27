@@ -248,6 +248,8 @@ those tests does not establish live Aurora connectivity or permissions.
 
 Grouped summaries are read-only, paginated queries over the current dashboard filters. The selected source engine computes counts and optional numeric statistics; null grouping keys remain visible. The response identifies whether it covers the database, loaded data, or a capped sample. Saved views preserve summary recipes and filters; reopening recomputes results from the source. Summaries are not saved datasets.
 
+Row sorting is applied to the filtered source before paging in PostgreSQL, DuckDB, or the loaded frame. Sort requests validate the column and direction and participate in database query cache keys; saved views retain sort settings. Workbench monitor links use the active CLI workspace context and an allowlisted HTTPS host; `STUDIO_WORKBENCH_URL` can select another Workbench environment.
+
 ## 4. One state round-trip (filter / chart change)
 
 The frontend is thin: it sends the current filter set and the charts it

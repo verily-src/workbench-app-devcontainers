@@ -263,6 +263,14 @@ def validate(base_id: str, steps: list[dict]) -> dict:
     if error is None:
         try:
             generated = _generated_sql(p)
+            try:
+                import sqlglot
+                source = generated.get("copyable_sql") or generated["sql"]
+                if len(source) <= 200_000:
+                    dialect = "postgres" if generated["engine"] == "aurora" else "duckdb"
+                    generated["display_sql"] = sqlglot.parse_one(source, read=dialect).sql(dialect=dialect, pretty=True)
+            except (ValueError, RecursionError, sqlglot.errors.SqlglotError):
+                pass
         except ValueError as exc:
             p["problems"].append(str(exc))
             error = str(exc)

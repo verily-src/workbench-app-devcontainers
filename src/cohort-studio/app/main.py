@@ -184,6 +184,12 @@ class ChartSpec(BaseModel):
             raise ValueError("Map requires distinct longitude and latitude columns.")
         return self
 
+class RowSort(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    column: str = Field(min_length=1, max_length=512)
+    direction: Literal["asc", "desc"]
+
+
 class QueryRequest(BaseModel):
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
@@ -191,6 +197,7 @@ class QueryRequest(BaseModel):
     page_size: int = Field(default=50, ge=1, le=1000)
     entity_column: str | None = None
     refresh: bool = Field(default=False, strict=True)
+    sort: RowSort | None = None
 
 class ColumnsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -1019,7 +1026,7 @@ def query_dataset(dataset_id: str, req: QueryRequest):
             [f.model_dump() for f in req.filters],
             [c.model_dump() for c in req.charts],
             page=req.page, page_size=req.page_size, entity_column=req.entity_column,
-            refresh=req.refresh)
+            refresh=req.refresh, sort=req.sort.model_dump() if req.sort else None)
         if req.refresh and datasets.get(dataset_id).get("live_source"):
             result["columns"] = column_settings.profiles(datasets.get(dataset_id))
         return result
@@ -1218,6 +1225,7 @@ class ViewDataset(BaseModel):
         return value
 
     group_summary: SavedGroupSummary | None = None
+    sort: RowSort | None = None
     title: str = ""
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
@@ -1506,6 +1514,7 @@ def save_view(req: SaveViewRequest, request: Request, response: Response):
             "source": source_dict(d.source),
             "entity_column": d.entity_column,
             "group_summary": d.group_summary.model_dump() if d.group_summary else None,
+            "sort": d.sort.model_dump() if d.sort else None,
             "title": d.title,
             "filters": [{k: v for k, v in f.model_dump().items()
                          if v is not None} for f in d.filters],

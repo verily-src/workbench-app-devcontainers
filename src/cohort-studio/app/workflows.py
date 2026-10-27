@@ -1,5 +1,8 @@
 import json
 import logging
+import os
+from pathlib import Path
+from urllib.parse import quote
 import re
 import subprocess
 import cloud_cli
@@ -137,6 +140,22 @@ def lineage_submission_metadata(workflow: str, job: dict,
     }
     return {key: value for key, value in metadata.items() if value is not None}
 
+def monitor_base() -> str | None:
+    try:
+        context = json.loads((Path.home() / ".workbench" / "context.json").read_text())
+        workspace = (context.get("workspace") or {}).get("userFacingId")
+        server = (context.get("server") or {}).get("name")
+        base = os.environ.get("STUDIO_WORKBENCH_URL") or ({"dev-stable": "https://workbench-dev.verily.com"}.get(server))
+        if not isinstance(workspace, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", workspace) is None or not base:
+            return None
+        url = urlsplit(base)
+        if url.scheme != "https" or url.username or url.password or url.port or url.path not in ("", "/") or url.query or url.fragment or re.fullmatch(r"workbench(?:-[a-z0-9-]+)?[.]verily[.]com", url.hostname or "") is None:
+            return None
+        return f"https://{url.hostname}/workspaces/{quote(workspace, safe='')}/workflows/monitor/"
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
 def list_jobs(limit: int = 50, force: bool = False) -> dict:
 
     global _cache, _cache_at
@@ -151,7 +170,8 @@ def list_jobs(limit: int = 50, force: bool = False) -> dict:
             buckets = _bucket_map(refresh=True)
         jobs = [_normalize(j, buckets) for j in raw]
         running = sum(1 for j in jobs if j["status"] not in TERMINAL)
-        out = {"available": True, "jobs": jobs, "running_count": running}
+        out = {"available": True, "jobs": jobs, "running_count": running,
+               "monitor_base": monitor_base()}
     except FileNotFoundError:
         out = {"available": False, "jobs": [], "running_count": 0}
     except subprocess.TimeoutExpired:

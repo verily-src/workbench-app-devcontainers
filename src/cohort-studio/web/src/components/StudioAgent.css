@@ -75,3 +75,18 @@
   .studio-agent-workspace { padding: 10px; }
   .studio-agent-bubble, .studio-agent-tools, .studio-agent-card { max-width: 95%; width: 95%; }
 }
+
+.mascot-flight { position: fixed; z-index: 12; left: 0; top: 0; width: 86px; height: 92px;
+  pointer-events: none; animation: mascot-flight-path 18s ease-in-out infinite alternate; }
+.mascot-flight > img:not(.mascot-chaser) { position: absolute; width: 78px; height: 78px; object-fit: contain; left: 8px; top: 0; }
+.mascot-flight .mascot-chaser { position: absolute; width: 105px; height: 75px; object-fit: contain; left: -95px; top: 32px; animation: mascot-chase-bob .45s ease-in-out infinite alternate; }
+@keyframes mascot-chase-bob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-8px) rotate(4deg); } }
+.mascot-jetpack { position: absolute; left: -5px; top: 26px; width: 48px; height: 72px; transform: rotate(18deg); }
+@keyframes mascot-flight-path {
+  0% { transform: translate(120px, 75vh) rotate(-8deg); }
+  25% { transform: translate(38vw, 15vh) rotate(7deg); }
+  50% { transform: translate(calc(100vw - 120px), 42vh) rotate(-6deg); }
+  75% { transform: translate(58vw, 78vh) rotate(8deg); }
+  100% { transform: translate(120px, 22vh) rotate(-4deg); }
+}
+@media (prefers-reduced-motion: reduce) { .mascot-flight { display: none; } }

@@ -80,13 +80,13 @@ def test_unified_saved_views_restore_recipe_and_delete_from_its_store(
     def open_source(route):
         body = route.request.post_data_json
         opened_refs.append(body["source_ref"])
-        fulfill(route, {
+        fulfill(route, {"job_id": "test-open", "status": "complete", "result": {
             "dataset_id": "joined-from-view", "source": "person + variants",
             "rows": 2, "columns": [], "source_ref": body["source_ref"],
             "query_scope": "loaded",
-        })
+        }})
 
-    page.route("**/api/datasets/open", open_source)
+    page.route("**/api/data-jobs/open", open_source)
     page.route("**/api/datasets/joined-from-view/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "loaded", "charts": [],
         "rows": {"page": 0, "page_size": 50, "columns": [], "data": []},
@@ -141,3 +141,30 @@ def test_unified_saved_views_restore_recipe_and_delete_from_its_store(
     assert deleted == [{
         "kind": ["s3"], "resource_id": ["s3:lake"], "name": ["shared cohort"],
     }]
+
+
+def test_saved_views_retry_after_store_recovers(page: Page, app_url: str):
+    page.clock.install()
+    calls = []
+    recovered = []
+    def fulfill(route, body):
+        route.fulfill(status=200, content_type='application/json', json=body)
+    page.route('**/api/datasources', lambda route: fulfill(route, {
+        'ready': True, 'sources': [{'kind': 'aurora', 'id': 'db-main', 'label': 'Clinical database'}],
+        'catalogs_pending': False}))
+    def listing(route):
+        calls.append(1)
+        if not recovered:
+            return fulfill(route, {'views': [], 'pending': [], 'unavailable': [
+                {'kind': 'aurora', 'resource_id': 'db-main', 'label': 'Clinical database',
+                 'error': 'Temporarily unavailable'}]})
+        return fulfill(route, {'views': [{'name': 'Recovered view', 'kind': 'aurora',
+            'resource_id': 'db-main', 'store_label': 'Clinical database',
+            'materialized_sources': 0}], 'pending': [], 'unavailable': []})
+    page.route('**/api/views/all', listing)
+    page.goto(app_url)
+    expect(page.get_by_text('1 saved-view stores unavailable')).to_be_visible(timeout=15000)
+    recovered.append(True)
+    page.clock.fast_forward(21000)
+    expect(page.get_by_role('button', name='Recovered view', exact=True)).to_be_visible(timeout=15000)
+    assert len(calls) >= 2

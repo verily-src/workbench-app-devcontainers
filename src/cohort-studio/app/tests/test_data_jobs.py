@@ -117,3 +117,54 @@ def test_resource_polling_does_not_restart_warmup_or_erase_good_cache(monkeypatc
     db._refresh_resource_cache()
     assert db._resource_cache == records
     assert calls == ['fetch']
+
+
+def test_cloud_cli_prioritizes_waiting_database_resolution(monkeypatch):
+    import cloud_cli
+    from concurrent.futures import ThreadPoolExecutor
+    entered, release = threading.Event(), threading.Event()
+    completed = []
+    def execute(args, **kwargs):
+        if args[0] == 'background':
+            entered.set()
+            assert release.wait(3)
+        completed.append(args[0])
+        return 'ok'
+    monkeypatch.setattr(cloud_cli.subprocess, 'run', execute)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        first = pool.submit(cloud_cli.run, ['background'], timeout=3)
+        assert entered.wait(2)
+        queued = pool.submit(cloud_cli.run, ['catalog'], timeout=3)
+        deadline = time.monotonic() + 2
+        while len(cloud_cli._waiting) < 1 and time.monotonic() < deadline:
+            time.sleep(.01)
+        database = pool.submit(cloud_cli.run, ['wb', 'resource', 'resolve', '--include-password'], timeout=3)
+        deadline = time.monotonic() + 2
+        while len(cloud_cli._waiting) < 2 and time.monotonic() < deadline:
+            time.sleep(.01)
+        release.set()
+        assert [first.result(), queued.result(), database.result()] == ['ok'] * 3
+    assert completed == ['background', 'wb', 'catalog']
+
+
+def test_saved_views_retry_after_transient_failure(monkeypatch):
+    import views
+    store = {'kind': 'aurora', 'resource_id': 'retry-test', 'label': 'Test database'}
+    calls = []
+    def listing(kind, resource_id):
+        calls.append(resource_id)
+        if len(calls) == 1:
+            raise TimeoutError('temporarily unavailable')
+        return [{'name': 'Recovered'}]
+    monkeypatch.setattr(views, 'list_views', listing)
+    monkeypatch.setattr(views, 'LIST_FAILURE_CACHE_SECONDS', 0)
+    deadline = time.monotonic() + 3
+    result = {}
+    while time.monotonic() < deadline:
+        result = views.list_all_views([store])
+        if result['views']:
+            break
+        time.sleep(.01)
+    assert [item['name'] for item in result['views']] == ['Recovered']
+    assert not result['unavailable']
+    assert len(calls) == 2

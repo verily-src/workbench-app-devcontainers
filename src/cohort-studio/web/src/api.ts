@@ -319,6 +319,9 @@ function workflows(refresh = false): Promise<WorkflowList> {
 }
 
 export const api = {
+  groupSummary: (datasetId: string, body: { group_by: string[]; measure: string | null; filters: Filter[]; page: number; page_size: number }) =>
+    request<{ columns: string[]; rows: unknown[][]; total_groups: number; input_rows: number; page: number; page_size: number; scope: "database" | "loaded"; sampled: boolean }>(`/api/datasets/${encodeURIComponent(datasetId)}/summary`, post(body)),
+
   grain: (id: string) => request<GrainInfo>(`/api/datasets/${id}/grain`),
   saveGrain: (id: string, definition: GrainDefinition) => request<GrainInfo>(`/api/datasets/${id}/grain`, {...post(definition), method: "PUT"}),
   checkGrain: (id: string) => request<GrainCheck>(`/api/datasets/${id}/grain/check`, post({})),

@@ -1,4 +1,5 @@
 import execution
+import group_summary
 import grain
 import operational_store
 import logging
@@ -990,6 +991,25 @@ def derive_column(dataset_id: str, req: DeriveRequest):
                    datasets.get(dataset_id)["source"],
                    payload={"op": req.op, "name": result["name"]})
     return result
+
+@app.post("/api/datasets/{dataset_id}/summary")
+def summarize_dataset(dataset_id: str, req: group_summary.SummaryRequest):
+    try:
+        return group_summary.summarize(dataset_id, req)
+    except execution.Busy as e:
+        raise HTTPException(429, str(e), headers={"Retry-After": "1"})
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(504 if "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
+
 
 @app.post("/api/datasets/{dataset_id}/query")
 def query_dataset(dataset_id: str, req: QueryRequest):

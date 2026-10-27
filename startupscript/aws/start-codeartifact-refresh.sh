@@ -23,6 +23,9 @@ if [[ ! -x "${CODEARTIFACT_REFRESH_SCRIPT}" ]]; then
   exit 0
 fi
 
-if ! sudo -u "${USER_NAME}" bash -l -c "'${CODEARTIFACT_REFRESH_SCRIPT}' --start"; then
+# The worker outlives this hook, so send its output to the container log (PID
+# 1's stdout), which fluent-bit ships. Only root can open it; the app user inherits it.
+# shellcheck disable=SC2024 # Root opening the redirect is the point.
+if ! sudo -u "${USER_NAME}" bash -l -c "'${CODEARTIFACT_REFRESH_SCRIPT}' --start" > /proc/1/fd/1 2>&1; then
   echo "WARNING: could not refresh CodeArtifact tokens; the worker will retry"
 fi

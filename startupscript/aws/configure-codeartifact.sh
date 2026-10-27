@@ -46,7 +46,9 @@ printf 'CODEARTIFACT_DOMAIN=%q\nCODEARTIFACT_OWNER=%q\nCODEARTIFACT_REGION=%q\nC
 chmod 644 "${CODEARTIFACT_CONFIG}"
 install -m 755 "${CLOUD_SCRIPT_DIR}/refresh-codeartifact-login.sh" "${CODEARTIFACT_REFRESH_SCRIPT}"
 
-# Don't fail app creation; the worker retries every five minutes.
-if ! ${RUN_AS_LOGIN_USER} "'${CODEARTIFACT_REFRESH_SCRIPT}' --start"; then
+# Don't fail app creation; the worker retries every five minutes. The worker
+# outlives this hook, so send its output to the container log (PID 1's stdout),
+# which fluent-bit ships. Only root can open it; the app user inherits it.
+if ! ${RUN_AS_LOGIN_USER} "'${CODEARTIFACT_REFRESH_SCRIPT}' --start" > /proc/1/fd/1 2>&1; then
   emit "WARNING: could not configure CodeArtifact tokens; the worker will retry"
 fi

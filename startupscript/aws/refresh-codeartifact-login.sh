@@ -3,6 +3,8 @@
 # Installed by configure-codeartifact.sh and run as the app user. Uses the
 # instance role to renew pip/npm credentials in the user's config files.
 # No arguments: refresh once. --start: refresh and launch one background worker.
+# All runs log to ~/.workbench/codeartifact-refresh.log and stdout; the startup
+# hooks point stdout at the container log so fluent-bit ships it.
 # Internal --loop mode renews every six hours and retries failures after five minutes.
 set -o errexit
 set -o nounset
@@ -14,7 +16,7 @@ source /etc/workbench-codeartifact.conf
 readonly STATE_DIR="${CODEARTIFACT_USER_HOME}/.workbench"
 readonly REFRESH_INTERVAL=21600 # Six hours, halfway through the token lifetime.
 readonly RETRY_INTERVAL=300
-readonly LOG_FILE="${CODEARTIFACT_USER_HOME}/.workbench/codeartifact-refresh.log"
+readonly LOG_FILE="${STATE_DIR}/codeartifact-refresh.log"
 mkdir -p "${STATE_DIR}"
 
 # Authenticate with the instance role, not the user's workspace credentials.
@@ -105,8 +107,8 @@ refresh() (
   return "${status}"
 )
 
-# One-shot runs also append to the log (the loop worker's output is already
-# redirected there), so the last "token refreshed" line shows the last success.
+# Manual and startup runs log to the file as well as stdout. The --start worker
+# inherits this tee, so its output reaches both too.
 case "${1:-}" in
   "" | --start)
     exec > >(tee -a "${LOG_FILE}") 2>&1
@@ -127,7 +129,7 @@ case "${1:-}" in
     fi
     # Outlives the lifecycle hook. Its lock dies with the container, so
     # postStart can start a new one.
-    nohup "$0" --loop "${delay}" < /dev/null >> "${LOG_FILE}" 2>&1 &
+    nohup "$0" --loop "${delay}" < /dev/null 2>&1 &
     exit "${status}"
     ;;
   --loop)

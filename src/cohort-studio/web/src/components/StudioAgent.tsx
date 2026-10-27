@@ -427,9 +427,15 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
 
       <div className="studio-agent-workspace">
         <header className="studio-agent-head">
-          <div>
-            <h1>Studio Agent</h1>
-            <p>{currentTitle || (newSessionPending ? "New chat" : "Start a conversation")}</p>
+          <div className="studio-agent-identity">
+            <picture aria-hidden="true" className="studio-agent-avatar">
+              <source media="(prefers-reduced-motion: reduce)" srcSet="/mascot/still.webp" />
+              <img src={busy ? "/mascot/thinking.webp" : "/mascot/idle.webp"} alt="" />
+            </picture>
+            <div>
+              <h1>Studio Agent</h1>
+              <p>{currentTitle || (newSessionPending ? "New chat" : "Start a conversation")}</p>
+            </div>
           </div>
           {(restoring || plansLoading) && <span role="status">
             {restoring ? "Loading conversation…" : "Loading workflow plans…"}

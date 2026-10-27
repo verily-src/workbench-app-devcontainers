@@ -106,16 +106,25 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [dancing, setDancing] = useState(false);
   const [driving, setDriving] = useState(false);
   const [chaseScene, setChaseScene] = useState<"chase" | "rescue" | "flee">("chase");
+  const [manualRescue, setManualRescue] = useState(false);
+  const previewFleeTimer = useRef<number | undefined>(undefined);
+  const playRescue = () => {
+    window.clearTimeout(previewFleeTimer.current);
+    setDancing(false); setDriving(true); setManualRescue(true); setChaseScene("rescue");
+    previewFleeTimer.current = window.setTimeout(() => setChaseScene("flee"), 10000);
+  };
   useEffect(() => () => streamController.current?.abort(), []);
   useEffect(() => () => window.clearTimeout(celebrationTimer.current), []);
   useEffect(() => {
     setDancing(false);
     setDriving(false);
-    setChaseScene("chase");
+    setChaseScene("chase"); setManualRescue(false);
+    window.clearTimeout(previewFleeTimer.current);
     if (busy || celebrating) return;
     let timer: number, driveTimer: number, rescueTimer: number, fleeTimer: number;
     const reset = () => {
-      setDancing(false); setDriving(false); setChaseScene("chase");
+      setDancing(false); setDriving(false); setChaseScene("chase"); setManualRescue(false);
+      window.clearTimeout(previewFleeTimer.current);
       window.clearTimeout(timer); window.clearTimeout(driveTimer);
       window.clearTimeout(rescueTimer); window.clearTimeout(fleeTimer);
       timer = window.setTimeout(() => setDancing(true), 10000);
@@ -126,7 +135,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
     events.forEach(name => window.addEventListener(name, reset, { passive: true }));
     reset();
-    return () => { window.clearTimeout(timer); window.clearTimeout(driveTimer); window.clearTimeout(rescueTimer); window.clearTimeout(fleeTimer); events.forEach(name => window.removeEventListener(name, reset)); };
+    return () => { window.clearTimeout(timer); window.clearTimeout(driveTimer); window.clearTimeout(rescueTimer); window.clearTimeout(fleeTimer); window.clearTimeout(previewFleeTimer.current); events.forEach(name => window.removeEventListener(name, reset)); };
   }, [busy, celebrating]);
   const [error, setError] = useState("");
   const [before, setBefore] = useState<number | null>(null);
@@ -505,6 +514,8 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
               <p>{currentTitle || (newSessionPending ? "New chat" : "Start a conversation")}</p>
             </div>
           </div>
+          <button type="button" className="quiet rescue-preview-button" disabled={busy || restoring}
+                  onClick={playRescue}>Play rescue</button>
           {(restoring || plansLoading) && <span role="status">
             {restoring ? "Loading conversation…" : "Loading workflow plans…"}
           </span>}
@@ -675,7 +686,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         <span className="mascot-shot" />
         <span className="mascot-bang">BANG!</span></>}
       </div>}
-      {driving && chaseScene === "rescue" && <div className="mascot-rescue" aria-hidden="true">
+      {driving && chaseScene === "rescue" && <div className={`mascot-rescue${manualRescue ? " manual-rescue" : ""}`} aria-hidden="true">
         <img src="/mascot/gandalf.png" alt="" />
         <span className="mascot-magic" />
       </div>}

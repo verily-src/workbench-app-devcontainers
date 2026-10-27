@@ -62,3 +62,25 @@ def test_agent_mascot_renders_and_respects_reduced_motion(page, app_url):
     assert avatar.evaluate('(img) => img.naturalWidth') > 0
     page.clock.fast_forward(30001)
     expect(page.locator('.mascot-drive')).to_be_hidden()
+
+
+def test_rescue_preview_without_waiting_and_reduced_motion(page, app_url):
+    page.clock.install()
+    page.route('**/api/datasources', lambda route: route.fulfill(json={'ready': True, 'sources': [], 'catalogs_pending': False}))
+    page.route('**/api/views/all', lambda route: route.fulfill(json={'views': [], 'pending': [], 'unavailable': []}))
+    page.route('**/api/agent/chat/sessions', lambda route: route.fulfill(json={'sessions': []}))
+    page.route('**/api/agent/workflows', lambda route: route.fulfill(json={'plans': []}))
+    page.route('**/api/agent/chat/history?*', lambda route: route.fulfill(json={'session_id': None, 'messages': []}))
+    page.goto(app_url)
+    page.get_by_text('Agent', exact=True).first.click()
+    page.get_by_role('button', name='Play rescue').click()
+    expect(page.locator('.mascot-rescue')).to_be_visible()
+    expect(page.locator('.mascot-chaser')).to_have_count(0)
+    page.clock.fast_forward(10001)
+    expect(page.locator('.mascot-wizard-rider')).to_have_count(1)
+    page.keyboard.press('Shift')
+    expect(page.locator('.mascot-drive')).to_have_count(0)
+    page.emulate_media(reduced_motion='reduce')
+    page.get_by_role('button', name='Play rescue').click()
+    expect(page.locator('.mascot-rescue')).to_be_visible()
+    assert page.locator('.mascot-rescue').evaluate("el => getComputedStyle(el).animationName") == 'none'

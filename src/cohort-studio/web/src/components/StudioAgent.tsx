@@ -103,8 +103,23 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const streamController = useRef<AbortController | null>(null);
   const celebrationTimer = useRef<number | undefined>(undefined);
   const [celebrating, setCelebrating] = useState(false);
+  const [dancing, setDancing] = useState(false);
   useEffect(() => () => streamController.current?.abort(), []);
   useEffect(() => () => window.clearTimeout(celebrationTimer.current), []);
+  useEffect(() => {
+    setDancing(false);
+    if (busy || celebrating) return;
+    let timer: number;
+    const reset = () => {
+      setDancing(false);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setDancing(true), 10000);
+    };
+    const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
+    events.forEach(name => window.addEventListener(name, reset, { passive: true }));
+    reset();
+    return () => { window.clearTimeout(timer); events.forEach(name => window.removeEventListener(name, reset)); };
+  }, [busy, celebrating]);
   const [error, setError] = useState("");
   const [before, setBefore] = useState<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -475,7 +490,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
           <div className="studio-agent-identity">
             <picture aria-hidden="true" className="studio-agent-avatar">
               <source media="(prefers-reduced-motion: reduce)" srcSet="/mascot/still.webp" />
-              <img src={busy ? "/mascot/thinking.webp" : celebrating ? "/mascot/greeting.webp" : "/mascot/idle.webp"} alt="" />
+              <img src={busy ? "/mascot/thinking.webp" : celebrating ? "/mascot/greeting.webp" : dancing ? "/mascot/dance.webp" : "/mascot/idle.webp"} alt="" />
             </picture>
             <div>
               <h1>Studio Agent</h1>

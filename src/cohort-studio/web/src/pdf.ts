@@ -13,7 +13,7 @@ function describeFilters(filters: Filter[]): string {
 const safeName = (s: string) =>
   s.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60) || "cohort";
 
-export interface ChartImage { title: string; dataUrl: string }
+export interface ChartImage { title: string; dataUrl: string; note?: string }
 
 export function captureCharts(): ChartImage[] {
   const cards = document.querySelectorAll<HTMLElement>(".chart-grid .chart-card");
@@ -26,13 +26,17 @@ export function captureCharts(): ChartImage[] {
     const printAxes = (axes: unknown) => (Array.isArray(axes) ? axes : []).map((axis) => {
       const item = axis as Record<string, unknown>;
       return { ...item, axisLabel: { ...(item.axisLabel as object), color: "#36434a" },
+        nameTextStyle: { ...(item.nameTextStyle as object), color: "#36434a" },
         axisLine: { ...(item.axisLine as object), lineStyle: { color: "#b6c3c5" } },
         splitLine: { ...(item.splitLine as object), lineStyle: { color: "#e1e8e8" } } };
     });
     try {
-      chart.setOption({ xAxis: printAxes(original.xAxis), yAxis: printAxes(original.yAxis) },
-        { silent: true });
+      chart.setOption({ ...original, animation: false,
+        xAxis: printAxes(original.xAxis), yAxis: printAxes(original.yAxis) },
+        { notMerge: true, silent: true });
+      chart.getZr().flush();
       out.push({ title: card.querySelector(".title")?.textContent?.trim() ?? "Chart",
+        note: card.querySelector(".axis-scale-note")?.textContent?.trim(),
         dataUrl: chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" }) });
     } finally {
       chart.setOption(original, { notMerge: true, silent: true });
@@ -61,16 +65,17 @@ export function exportDatasetPdf(dataset: Dataset, charts: ChartImage[]) {
   y += 8;
 
   for (const img of charts) {
+    doc.addPage(); y = margin;
     const props = doc.getImageProperties(img.dataUrl);
-    const imgW = Math.min(contentW, 245 * props.width / props.height);
-    const imgH = imgW * props.height / props.width;
     const titleLines = doc.splitTextToSize(img.title || "Chart", contentW) as string[];
     const titleHeight = titleLines.length * 14;
-    if (y + titleHeight + imgH + 14 > pageH - margin - 20) { doc.addPage(); y = margin; }
     doc.setFontSize(11); doc.setTextColor(35); doc.text(titleLines, margin, y);
-    y += titleHeight;
-    doc.addImage(img.dataUrl, "PNG", margin, y, imgW, imgH);
-    y += imgH + 22;
+    y += titleHeight + 4;
+    if (img.note) { doc.setFontSize(9); doc.setTextColor(90); doc.text(img.note, margin, y); y += 16; }
+    const availableH = Math.max(1, pageH - margin - 24 - y);
+    const ratio = Math.min(contentW / props.width, availableH / props.height);
+    const imgW = props.width * ratio, imgH = props.height * ratio;
+    doc.addImage(img.dataUrl, "PNG", margin + (contentW - imgW) / 2, y, imgW, imgH);
   }
 
   if (r && r.rows.data.length) {

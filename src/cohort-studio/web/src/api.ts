@@ -306,6 +306,18 @@ export interface ExportJob {
   error?: string | null;
 }
 
+let pendingWorkflows: Promise<WorkflowList> | undefined;
+function workflows(refresh = false): Promise<WorkflowList> {
+  if (!refresh && pendingWorkflows) return pendingWorkflows;
+  const task = request<WorkflowList>(`/api/workflows${refresh ? "?refresh=true" : ""}`);
+  if (!refresh) {
+    pendingWorkflows = task;
+    void task.then(() => { if (pendingWorkflows === task) pendingWorkflows = undefined; },
+      () => { if (pendingWorkflows === task) pendingWorkflows = undefined; });
+  }
+  return task;
+}
+
 export const api = {
   grain: (id: string) => request<GrainInfo>(`/api/datasets/${id}/grain`),
   saveGrain: (id: string, definition: GrainDefinition) => request<GrainInfo>(`/api/datasets/${id}/grain`, {...post(definition), method: "PUT"}),
@@ -473,8 +485,7 @@ export const api = {
   agentTurns: () =>
     request<{ turns: AgentTurn[] }>("/api/agent/turns"),
 
-  workflows: (refresh = false) =>
-    request<WorkflowList>(`/api/workflows${refresh ? "?refresh=true" : ""}`),
+  workflows,
 
   workflowRegistry: () =>
     request<{ available: boolean;
@@ -548,7 +559,7 @@ export const api = {
         source: d.sourceRef,
         title: d.title,
         filters: d.filters,
-        charts: d.charts.map((c: ChartSpec) => ({ kind: c.kind, x: c.x, y: c.y })),
+        charts: d.charts,
         cohorts: d.cohorts ?? [],
         entity_column: d.entityColumn ?? null,
         filter_ask_history: d.filterAskHistory ?? [],

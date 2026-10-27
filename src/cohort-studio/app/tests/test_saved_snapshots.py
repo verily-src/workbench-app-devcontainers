@@ -92,7 +92,11 @@ def test_saved_snapshot_save_open_cache_refresh_failure_and_delete(
     joined["source_ref"] = configured.json()["source_ref"]
     saved = client.post("/api/views", json={
         "kind": "aurora", "resource_id": resource_id, "name": name,
-        "datasets": [{"source": joined["source_ref"], "title": "Joined data"}],
+        "datasets": [{"source": joined["source_ref"], "title": "Joined data", "charts": [{
+            "kind": "bar", "x": "person_id", "title": "People",
+            "x_axis": {"label": "Count", "scale": "log", "min": 1, "max": 100},
+            "y_axis": {"label": "Person"},
+        }]}],
     })
     completed = _wait_job(client, saved)
     assert completed["status"] == "complete", completed
@@ -111,6 +115,10 @@ def test_saved_snapshot_save_open_cache_refresh_failure_and_delete(
         "kind": "aurora", "resource_id": resource_id, "name": name,
     })
     assert saved_state.status_code == 200, saved_state.text
+    saved_chart = saved_state.json()["datasets"][0]["charts"][0]
+    assert saved_chart["title"] == "People"
+    assert saved_chart["x_axis"] == {"label": "Count", "scale": "log", "min": 1.0, "max": 100.0}
+    assert saved_chart["y_axis"]["label"] == "Person"
     materialized_ref = saved_state.json()["datasets"][0]["source"]
     assert materialized_ref["kind"] == "materialized"
     assert materialized_ref["grain"] == declared

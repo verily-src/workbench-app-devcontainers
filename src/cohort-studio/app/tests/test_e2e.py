@@ -223,7 +223,7 @@ def test_save_cohort_and_compare(loaded_page: Page):
 
 def test_derive_column(loaded_page: Page):
 
-    loaded_page.get_by_role("button", name="+ Derived column").click()
+    loaded_page.get_by_role("button", name="+ Calculated field").click()
     panel = loaded_page.locator(".derive-panel")
     expect(panel).to_be_visible()
     panel.get_by_placeholder("e.g. age_group").fill("age_group")

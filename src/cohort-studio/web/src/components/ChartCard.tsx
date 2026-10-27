@@ -2,11 +2,20 @@ import "./ChartCard.css";
 import * as echarts from "echarts";
 import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";
-import type { BarDatum, PersonBarDatum, ChartResult, ChartSpec, HistDatum } from "../types";
+import type { AxisSettings, BarDatum, PersonBarDatum, ChartResult, ChartSpec, HistDatum } from "../types";
+import { AxisEditor } from "./AxisEditor";
 
 const INK_SOFT = "#5f6368";
 const GRID_LINE = "#e8eaed";
 const FONT = "Inter, sans-serif";
+let worldMap: Promise<void> | undefined;
+function loadWorldMap(): Promise<void> {
+  if (!worldMap) worldMap = fetch("/maps/world.geojson").then(response => {
+    if (!response.ok) throw new Error("Map unavailable");
+    return response.json();
+  }).then(data => { echarts.registerMap("cohort-world", data); }).catch(error => { worldMap = undefined; throw error; });
+  return worldMap;
+}
 
 function lighten(color: string, amount: number): string {
   const value = color.match(/^#([0-9a-f]{6})$/i)?.[1];
@@ -121,19 +130,31 @@ interface Props {
   onToggleWide: () => void;
   onClose: () => void;
   onRename?: (title: string) => void;
+  onAxesChange?: (x: AxisSettings, y: AxisSettings) => void;
   readOnly?: boolean;
   compactCategoryLabels?: boolean;
 }
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onToggleWide,
-                            onClose, onRename, readOnly = false, compactCategoryLabels = false }: Props) {
+                            onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts>();
   const [themeVersion, setThemeVersion] = useState(0);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [editingAxes, setEditingAxes] = useState(false);
+  const [mapStatus, setMapStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    if (result?.kind !== "map") return;
+    let cancelled = false;
+    setMapStatus("loading");
+    loadWorldMap().then(() => { if (!cancelled) setMapStatus("ready"); })
+      .catch(() => { if (!cancelled) setMapStatus("error"); });
+    return () => { cancelled = true; };
+  }, [result?.kind]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -186,9 +207,35 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       case "heatmap":
         option = heatmapOption(result.data as [string, string, number][], chartPalette, ink, grid);
         break;
+      case "map":
+        if (mapStatus !== "ready") return;
+        option = {
+          geo: { map: "cohort-world", roam: true, itemStyle: { areaColor: grid, borderColor: ink, borderWidth: 0.5 },
+            emphasis: { disabled: true } },
+          tooltip: { trigger: "item" },
+          series: [{ type: "scatter", coordinateSystem: "geo", data: result.data as number[][],
+            symbolSize: 7, itemStyle: { color: chartPalette.accent, opacity: 0.75 } }],
+        };
+        break;
       default:
         return;
     }
+    const configure = (axis: unknown, settings: AxisSettings | undefined, numeric: boolean, vertical: boolean) => ({
+      ...(axis as object),
+      ...(settings?.label ? { name: settings.label, nameLocation: "middle", nameGap: vertical ? 64 : 32,
+        nameTextStyle: { color: ink, fontFamily: FONT } } : {}),
+      ...(numeric && settings?.scale === "log" ? { type: "log", logBase: 10 } : {}),
+      ...(numeric && settings?.min !== undefined ? { min: settings.min } : {}),
+      ...(numeric && settings?.max !== undefined ? { max: settings.max } : {}),
+    });
+    if (result.kind !== "map") {
+      option.xAxis = configure(option.xAxis, spec.x_axis, result.kind === "bar" || result.kind === "scatter", false) as echarts.EChartsOption["xAxis"];
+      option.yAxis = configure(option.yAxis, spec.y_axis, result.kind === "histogram" || result.kind === "scatter", true) as echarts.EChartsOption["yAxis"];
+    }
+    if (result.kind !== "map" && (spec.x_axis?.label || spec.y_axis?.label)) option.grid = {
+      left: spec.y_axis?.label ? 72 : 8, right: 16, top: 12,
+      bottom: spec.x_axis?.label ? 48 : 8, containLabel: true,
+    };
     chart.current.setOption(option, true);
     chart.current.off("click");
     if (result.kind === "bar" && !readOnly) {
@@ -198,11 +245,11 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         if (cat && cat !== "Other") onTapCategory(spec.x, cat);
       });
     }
-  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion]);
+  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus]);
 
   const height = result?.kind === "bar"
     ? Math.min(Math.max(170, (result.data.length as number) * 26 + 60), 430)
-    : 240;
+    : result?.kind === "map" ? 340 : 240;
 
   return (
     <div className={`chart-card${spec.wide ? " wide" : ""}`}>
@@ -229,6 +276,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         )}
         {onRename && <button className="quiet" title="Rename chart" aria-label="Rename chart"
           onClick={() => { setTitleDraft(spec.title || columnLabels[spec.x] || spec.x); setEditingTitle(true); }}>✎</button>}
+        {onAxesChange && spec.kind !== "map" && <button type="button" className="quiet" title="Edit axes" aria-label="Edit axes"
+          aria-expanded={editingAxes} onClick={() => setEditingAxes(value => !value)}>⚙</button>}
         {!readOnly && <>
           <button className="quiet" title="Toggle width"
                   onClick={onToggleWide}>⤢</button>
@@ -236,6 +285,13 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                   onClick={onClose}>✕</button>
         </>}
       </div>
+      {result?.kind === "map" && <div className="axis-scale-note">Longitude and latitude; up to 2,000 valid points.</div>}
+      {result?.kind === "map" && mapStatus === "error" && <div role="alert">Could not load the map.</div>}
+      {editingAxes && onAxesChange && <AxisEditor spec={spec}
+        onCancel={() => setEditingAxes(false)} onApply={(x, y) => { onAxesChange(x, y); setEditingAxes(false); }} />}
+      {((spec.kind === "bar" || spec.kind === "scatter") && spec.x_axis?.scale === "log" ||
+        (spec.kind === "histogram" || spec.kind === "scatter") && spec.y_axis?.scale === "log") &&
+        <div className="axis-scale-note">Log scale shows positive values only.</div>}
       <div ref={ref} className="chart-plot" style={{ width: "100%", height }} />
     </div>
   );

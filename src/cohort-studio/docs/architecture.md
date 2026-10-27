@@ -947,3 +947,12 @@ The browser loads dashboard, chart, PDF, agent and settings modules on demand. T
 For simple PostgreSQL tables without a projected primary key, paging can use the leading column of a valid, non-partial ascending B-tree index followed by the full-row JSON tie-break. Statistics rank candidate indexes; tables without a suitable index retain full-row ordering. This preserves deterministic ordering for unchanged rows while allowing incremental sort when the planner chooses the index. It does not eliminate deep OFFSET costs or guarantee a fast plan for all distributions.
 
 The Agent composer sends Enter and uses Shift+Enter for a newline, with IME composition preserved. Assistant messages render a safe Markdown subset as React elements; raw HTML is displayed as text and only HTTPS citations become links. The mascot uses idle, thinking and short completion animations, with a still image for reduced-motion preferences.
+
+
+### Chart axes, geographic points and startup prefetch
+
+Dashboard chart specifications persist optional axis labels, numeric linear/log scales and bounds in saved views; axis-only changes do not issue new source queries. OMOP summary chart axes are kept in browser memory for the current session. Log axes show positive values only. PDF exports use a separate full page for every captured chart and retain axis settings.
+
+The map chart requires distinct numeric longitude and latitude columns. Loaded, DuckDB and PostgreSQL sources reject invalid geographic coordinates and plot at most 2,000 points; database and disk results are marked sampled. The bundled public-domain Natural Earth 1:110m country geometry uses de facto boundaries and is loaded only when a map is rendered. No geocoding or external tile service is used.
+
+The app requests workflow data at startup and shares in-flight workflow requests with the workflow screen. It prefetches secondary screen, chart and PDF modules during browser idle time after the initial render, without preloading every table or dataset. Browser idle dance begins after ten seconds of inactivity and uses reduced-motion still artwork when requested.

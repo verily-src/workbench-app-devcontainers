@@ -201,6 +201,15 @@ def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
         return _histogram_aggregate(full, filt, x)
     if kind == "scatter" and y:
         return _scatter_aggregate(filt, x, y)
+    if kind == "map" and y:
+        longitude = pd.to_numeric(filt[x], errors="coerce")
+        latitude = pd.to_numeric(filt[y], errors="coerce")
+        valid = longitude.between(-180, 180) & latitude.between(-90, 90)
+        points = pd.DataFrame({"longitude": longitude[valid], "latitude": latitude[valid]})
+        sampled = len(points) > SCATTER_SAMPLE
+        if sampled:
+            points = points.sample(SCATTER_SAMPLE, random_state=7)
+        return {"kind": "map", "x": x, "y": y, "data": points.values.tolist(), "sampled": sampled}
     if kind == "heatmap" and y:
         return _heatmap_aggregate(filt, x, y)
     return {"kind": kind, "x": x, "data": []}

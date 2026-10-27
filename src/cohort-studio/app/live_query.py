@@ -308,6 +308,14 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
         return {"kind": kind, "x": x, "y": y,
                 "data": [[float(a), float(b)] for a, b in rows],
                 "sampled": True}
+    if kind == "map" and y:
+        nx, ny = _numeric(qx), _numeric(qy)
+        rows = _query(conn, live_source,
+                      f"SELECT {nx}, {ny} FROM {table} WHERE ({where}) "
+                      f"AND {nx} BETWEEN -180 AND 180 AND {ny} BETWEEN -90 AND 90 "
+                      f"ORDER BY random() LIMIT {SCATTER_SAMPLE}", params).all()
+        return {"kind": kind, "x": x, "y": y,
+                "data": [[float(a), float(b)] for a, b in rows], "sampled": True}
     if kind == "heatmap" and y:
         rows = _query(conn, live_source,
                       f"SELECT CAST({qx} AS text), CAST({qy} AS text), COUNT(*) "

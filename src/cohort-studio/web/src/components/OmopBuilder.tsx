@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, OpenResult, CohortAgentResult } from "../api";
-import type { OmopConcept, OmopCount, OmopCriterion, OmopDomain, OmopInfo, OmopSpec, OmopSummary, Source } from "../types";
+import type { AxisSettings, OmopConcept, OmopCount, OmopCriterion, OmopDomain, OmopInfo, OmopSpec, OmopSummary, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 
 const domains: OmopDomain[] = ["condition", "drug", "procedure", "measurement", "observation", "visit", "device", "death"];
@@ -47,6 +47,7 @@ function Editor({ rid, active, palette, onOpen }: {
 }) {
   const [info, setInfo] = useState<OmopInfo | null>(null);
   const [chartTitles, setChartTitles] = useState<Record<string, string>>({});
+  const [chartAxes, setChartAxes] = useState<Record<string, { x_axis: AxisSettings; y_axis: AxisSettings }>>({});
   const [rules, setRules] = useState<Rule[]>([]);
   const [domain, setDomain] = useState<OmopDomain>("condition");
   const [q, setQ] = useState("");
@@ -353,12 +354,13 @@ function Editor({ rid, active, palette, onOpen }: {
               <p>{summary.persons.toLocaleString()} of {summary.total_persons.toLocaleString()} persons</p>
               {summaryView === "charts" ? <div className="omop-summary-charts">
                 {summaryCharts.map((chart) => (
-                  <ChartCard key={chart.title} spec={{ kind: "bar", x: chart.title, title: chartTitles[chart.title] }}
+                  <ChartCard key={chart.title} spec={{ kind: "bar", x: chart.title, title: chartTitles[chart.title], ...chartAxes[chart.title] }}
                     result={{ kind: "bar", x: chart.title, data: chart.data }}
                     palette={palette} kinds={["bar"]} readOnly
                     compactCategoryLabels
                     onTapCategory={() => undefined} onChangeKind={() => undefined}
                     onRename={(title) => setChartTitles((current) => ({ ...current, [chart.title]: title }))}
+                    onAxesChange={(x_axis, y_axis) => setChartAxes(current => ({ ...current, [chart.title]: { x_axis, y_axis } }))}
                     onToggleWide={() => undefined} onClose={() => undefined} />
                 ))}
               </div> : <div className="omop-summary-tables">{summaryCharts.map((chart) => (

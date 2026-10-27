@@ -138,6 +138,24 @@ export default function App() {
 
     api.workflows().then(setWorkflows).catch(() => undefined);
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    let idle: number | undefined;
+    const timer = window.setTimeout(() => {
+      const prefetch = () => {
+        if (cancelled) return;
+        void Promise.allSettled([
+          import("./components/WorkflowsView"), import("./components/LineageView"),
+          import("./components/StudioAgent"), import("./components/SettingsView"),
+          import("./components/JoinPanel"), import("./components/OmopBuilder"),
+          import("./components/DatasetPane"), import("./pdf"),
+        ]);
+      };
+      if ("requestIdleCallback" in window) idle = window.requestIdleCallback(prefetch, { timeout: 1500 });
+      else prefetch();
+    }, 2500);
+    return () => { cancelled = true; window.clearTimeout(timer); if (idle !== undefined) window.cancelIdleCallback(idle); };
+  }, []);
   const pollRef = useRef<number>();
 
   useEffect(() => {
@@ -489,6 +507,7 @@ export default function App() {
   };
 
   const activeDs = datasets[active];
+  const chartQuerySignature = JSON.stringify(activeDs?.charts.map(({ kind, x, y }) => ({ kind, x, y })) ?? []);
   const joinBuilderDatasets = editingJoin ? [...datasets, ...editingJoin.inputs] : datasets;
 
   const TERMINAL = new Set(
@@ -581,7 +600,7 @@ export default function App() {
               queryError: `Query failed: ${detail}` } : d));
       });
     return () => { cancelled = true; };
-  }, [activeDs?.id, activeDs?.filters, activeDs?.charts, activeDs?.page,
+  }, [activeDs?.id, activeDs?.filters, chartQuerySignature, activeDs?.page,
       activeDs?.entityColumn, activeDs?.refreshNonce]);
   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -783,7 +802,7 @@ export default function App() {
           ) : view === "settings" ? (
             <SettingsView onPaletteChange={setPalette} />
           ) : view === "workflows" ? (
-            <WorkflowsView isSubscribed={alerts.isSubscribed}
+            <WorkflowsView data={workflows} onData={setWorkflows} isSubscribed={alerts.isSubscribed}
                            onToggleSubscribe={alerts.toggle} />
           ) : view === "lineage" ? (
             <LineageView />

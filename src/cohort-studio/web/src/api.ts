@@ -249,6 +249,7 @@ export interface WorkflowJob {
 }
 
 export interface WorkflowList {
+  monitor_base?: string | null;
   available: boolean;
   jobs: WorkflowJob[];
   running_count: number;
@@ -406,11 +407,11 @@ export const api = {
   },
 
   query: (datasetId: string, filters: Filter[], charts: ChartSpec[],
-          page: number, entityColumn?: string, refresh = false) =>
+          page: number, entityColumn?: string, refresh = false, sort?: Dataset["sort"]) =>
     request<QueryResult>(`/api/datasets/${datasetId}/query`,
       post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
              page, page_size: 50, entity_column: entityColumn ?? null,
-             refresh })),
+             refresh, sort: sort ?? null })),
 
   updateColumns: (datasetId: string, columns: ColumnSetting[]) =>
     request<OpenResult>(`/api/datasets/${datasetId}/columns`, {
@@ -551,6 +552,7 @@ export const api = {
         entity_column?: string | null;
         filter_ask_history?: Dataset["filterAskHistory"];
         group_summary?: Dataset["groupSummary"] | null;
+        sort?: Dataset["sort"] | null;
       }>;
     }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),
@@ -568,6 +570,7 @@ export const api = {
         entity_column: d.entityColumn ?? null,
         filter_ask_history: d.filterAskHistory ?? [],
         group_summary: d.groupSummary ?? null,
+        sort: d.sort ?? null,
       })),
     })),
 

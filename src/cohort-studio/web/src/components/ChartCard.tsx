@@ -38,7 +38,8 @@ function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCat
   const singleSeries = data.length > 0 && "value" in data[0];
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
-    xAxis: { type: "value", ...axis },
+    xAxis: { type: "value", ...axis, axisLabel: { ...axis.axisLabel, hideOverlap: true,
+      formatter: (value: number) => compactNumber(value) } },
     yAxis: { type: "category", data: cats, ...axis,
              ...(compactCategoryLabels ? { axisLabel: { ...axis.axisLabel, width: 140, overflow: "truncate" as const } } : {}),
              splitLine: { show: false } },
@@ -62,15 +63,19 @@ function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCat
   };
 }
 
+const compactNumber = (value: number) => new Intl.NumberFormat("en", { notation: "compact", maximumSignificantDigits: 4 }).format(value);
+
 function histogramOption(data: HistDatum[], pal: Palette, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
   const axis = AXIS(ink, grid);
   const labels = data.map((d) => `${trim(d.lo)}–${trim(d.hi)}`);
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
     xAxis: { type: "category", data: labels, ...axis,
-             axisLabel: { ...axis.axisLabel, interval: 5 },
+             axisLabel: { ...axis.axisLabel, interval: "auto", hideOverlap: true,
+               formatter: (_value: string, index: number) => compactNumber(data[index]?.lo ?? 0) },
              splitLine: { show: false } },
-    yAxis: { type: "value", ...axis },
+    yAxis: { type: "value", ...axis, axisLabel: { ...axis.axisLabel, hideOverlap: true,
+      formatter: (value: number) => compactNumber(value) } },
     tooltip: { trigger: "axis", axisPointer: { type: "none" } },
     series: [
       { type: "bar", name: "all", data: data.map((d) => d.all),

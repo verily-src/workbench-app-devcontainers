@@ -223,7 +223,7 @@ export interface JoinValidation {
   ok: boolean;
   engine: JoinEngine;
   engine_reason: string;
-  generated_sql?: { engine: JoinEngine; sql: string; copyable_sql?: string;
+  generated_sql?: { engine: JoinEngine; sql: string; display_sql?: string; copyable_sql?: string;
     copyable_sql_error?: string | null;
     parameters: Record<string, unknown>; staged_inputs?: string[] } | null;
   capped_inputs: string[];
@@ -278,6 +278,7 @@ export interface Dataset {
   charts: ChartSpec[];
   cohorts?: Cohort[];
   page: number;
+  sort?: { column: string; direction: "asc" | "desc" };
   result?: QueryResult;
   chat?: ChatMsg[];
   chatSessionId?: string;

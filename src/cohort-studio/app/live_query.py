@@ -330,7 +330,7 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
 
 def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dict],
                    page: int, page_size: int,
-                   entity_column: str | None = None) -> dict:
+                   entity_column: str | None = None, sort: dict | None = None) -> dict:
     columns = live_source["columns"]
     if entity_column is not None and entity_column not in columns:
         raise ValueError(f"Unknown entity column: {entity_column!r}.")
@@ -348,6 +348,10 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         order = (_requested_order(live_source) or _primary_key_order(conn, live_source)
                  or "to_jsonb(live)::text")
+        if sort:
+            if sort.get("column") not in columns or sort.get("direction") not in ("asc", "desc"):
+                raise ValueError("Invalid sort column or direction.")
+            order = f"live.{_q(columns[sort['column']])} {sort['direction'].upper()} NULLS LAST, {order}"
         needed_numeric = [f["column"] for f in filters if f.get("kind") == "range"]
         needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") == "histogram")
         numeric_types = _numeric_columns(conn, live_source, needed_numeric)
@@ -390,7 +394,7 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
 
 def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
           page: int, page_size: int, entity_column: str | None = None,
-          refresh: bool = False) -> dict:
+          refresh: bool = False, sort: dict | None = None) -> dict:
     import query_cache
 
     ttl = query_cache._ttl()
@@ -400,7 +404,7 @@ def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
     generation = query_cache.cache.generation(resource_id)
     key = query_cache.make_key(resource_id, live_source["sql"],
                                live_source["columns"], filters, chart_specs,
-                               page, page_size, entity_column, generation, live_source.get("params", {}))
+                               page, page_size, entity_column, generation, live_source.get("params", {}), sort=sort)
     if not refresh and ttl > 0:
         cached = query_cache.cache.get(key, ttl)
         if cached is not None:
@@ -409,7 +413,7 @@ def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
                               "ttl_seconds": ttl}
             return value
     value = _execute_query(live_source, filters, chart_specs,
-                           page, page_size, entity_column)
+                           page, page_size, entity_column, sort=sort)
     as_of = query_cache.cache.put(key, resource_id, value, ttl, generation)
     if as_of is None:
         from datetime import datetime, timezone

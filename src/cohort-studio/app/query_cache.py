@@ -94,8 +94,8 @@ def invalidate_resource(resource_id):
 
 
 def make_key(resource_id, sql, columns, filters, charts, page, page_size,
-             entity_column, generation=0, params=None):
+             entity_column, generation=0, params=None, sort=None):
     payload = [resource_id, generation, sql, list(columns.items()), filters, charts,
-               page, page_size, entity_column, params or {}]
+               page, page_size, entity_column, params or {}, sort]
     raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
     return hashlib.sha256(raw.encode()).hexdigest()

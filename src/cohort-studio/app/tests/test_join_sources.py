@@ -134,6 +134,7 @@ def test_aurora_sql_compilation_keeps_parameters_out_of_sql():
     assert response.status_code == 200, response.text
     generated = response.json()["generated_sql"]
     assert generated["engine"] == "aurora"
+    assert "\n" in generated["display_sql"]
     assert generated["parameters"] == {"base_min": 1, "right_min": 2}
     assert "'colon:literal'" in generated["sql"]
     assert set(text(generated["sql"])._bindparams) == {"base_min", "right_min"}

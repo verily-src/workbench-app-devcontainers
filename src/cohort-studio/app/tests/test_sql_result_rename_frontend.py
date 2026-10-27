@@ -46,7 +46,14 @@ def test_sql_result_rename_persists_in_saved_view_and_reopens(page: Page, app_ur
             "source_ref": source_ref, "query_scope": "database",
         })
 
-    page.route("**/api/datasets/open", open_source)
+    def open_source_job(route):
+        class JobRoute:
+            request = route.request
+            def fulfill(self, **kw):
+                route.fulfill(status=kw.get('status', 200), content_type='application/json',
+                              json={'job_id':'open', 'status':'complete', 'result':kw['json']})
+        open_source(JobRoute())
+    page.route("**/api/data-jobs/open", open_source_job)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 1, "filtered": 1, "scope": "database", "charts": [],
         "rows": {"page": 0, "page_size": 50, "columns": ["person_id"], "data": [[1]]},
@@ -72,7 +79,7 @@ def test_sql_result_rename_persists_in_saved_view_and_reopens(page: Page, app_ur
     page.get_by_role("button", name="SQL", exact=True).click()
     page.get_by_label("SQL query").fill("SELECT 1 AS person_id")
     page.get_by_role("button", name="Preview SQL").click()
-    page.get_by_role("button", name="Open SQL result").click()
+    page.get_by_role("button", name="Create dataset").click()
     tab = page.locator(".tab.active")
     expect(tab).to_contain_text("SQL result", timeout=10000)
 

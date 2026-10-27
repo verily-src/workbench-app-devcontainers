@@ -112,8 +112,6 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const [sqlName, setSqlName] = useState("");
   const [sqlText, setSqlText] = useState("");
   const [sqlPreview, setSqlPreview] = useState<Awaited<ReturnType<typeof api.previewSql>> | null>(null);
-  const [sqlPreviewInput, setSqlPreviewInput] = useState("");
-  const [sqlPreviewResourceId, setSqlPreviewResourceId] = useState("");
   const [sqlBusy, setSqlBusy] = useState(false);
   const [sqlError, setSqlError] = useState("");
   const sqlRequest = useRef(0);
@@ -124,8 +122,6 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     sqlRequest.current += 1;
     setSqlBusy(false);
     setSqlPreview(null);
-    setSqlPreviewInput("");
-    setSqlPreviewResourceId("");
     setSqlError("");
   };
 
@@ -221,8 +217,6 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
       const result = await api.previewSql(resourceId, query);
       if (requestId === sqlRequest.current) {
         setSqlPreview(result);
-        setSqlPreviewInput(query);
-        setSqlPreviewResourceId(resourceId);
       }
     } catch (error) {
       if (requestId === sqlRequest.current) setSqlError((error as Error).message);
@@ -232,18 +226,17 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   };
 
   const addSqlSource = async () => {
-    const preview = sqlPreview;
-    if (!preview || sqlPreviewResourceId !== selectedSource?.id
-        || sqlPreviewInput !== sqlText.trim()) return;
+    if (!selectedSource || (selectedSource.kind !== "aurora" && selectedSource.kind !== "postgres")
+        || !sqlText.trim() || sqlBusy || sourceBusy || busy) return;
     setSourceBusy(true);
     setSqlError("");
     try {
       const requestedName = sqlName.trim() || "SQL result";
       const duplicateCount = datasets.filter((dataset) => dataset.title === requestedName).length;
       const title = duplicateCount ? `${requestedName} (${duplicateCount + 1})` : requestedName;
-      const sourceRef: SourceRef = { ...preview.source_ref, name: title };
+      const sourceRef: SourceRef = { kind: "sql", resource_id: selectedSource.id, sql: sqlText.trim(), name: title };
       const opened = await api.openSourceRef(sourceRef);
-      onSourceOpened(opened, title, sourceRef);
+      onSourceOpened(opened, title, opened.source_ref ?? sourceRef);
       setSqlPreview(null);
       onClose();
     } catch (error) {
@@ -548,8 +541,10 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                       onClick={previewSql}>
                 {sqlBusy ? "Previewing…" : "Preview SQL"}
               </button>
-              {sqlPreview && <button disabled={sourceBusy || busy}
-                onClick={addSqlSource}>{sourceBusy ? "Opening…" : "Open SQL result"}</button>}
+              <button className="primary" disabled={!selectedSource
+                || (selectedSource.kind !== "aurora" && selectedSource.kind !== "postgres")
+                || !sqlText.trim() || sqlBusy || sourceBusy || busy}
+                onClick={addSqlSource}>{sourceBusy ? "Creating…" : "Create dataset"}</button>
             </div>
             {sqlError && <div className="join-error" role="alert">{sqlError}</div>}
             {sqlPreview && <div className="join-sql-preview" aria-label="SQL preview">
@@ -773,9 +768,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
         {validation.generated_sql.staged_inputs?.length ? <div className="settings-hint">
           Staged inputs: {validation.generated_sql.staged_inputs.join(", ")}
         </div> : null}
-        <pre aria-label="Generated SQL" style={{ overflowX: "auto", whiteSpace: "pre-wrap", maxHeight: 260 }}>
-          {validation.generated_sql.copyable_sql ?? validation.generated_sql.sql}
-        </pre>
+        <pre aria-label="Generated SQL" className="generated-sql-code">{validation.generated_sql.display_sql ?? validation.generated_sql.copyable_sql ?? validation.generated_sql.sql}</pre>
         {validation.generated_sql.copyable_sql && <div className="join-row">
           <button type="button" className="quiet" onClick={() => void copySqlSource()}>
             Copy SQL source
@@ -786,10 +779,10 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           && <div className="settings-hint" role="status">
             {validation.generated_sql.copyable_sql_error}
           </div>}
-        <div className="settings-hint">Parameters</div>
-        <pre aria-label="SQL parameters" style={{ overflowX: "auto", whiteSpace: "pre-wrap", maxHeight: 180 }}>
-          {JSON.stringify(validation.generated_sql.parameters, null, 2)}
-        </pre>
+        {Object.keys(validation.generated_sql.parameters).length > 0 && <details>
+          <summary>Parameters</summary>
+          <pre aria-label="SQL parameters" className="generated-sql-code">{JSON.stringify(validation.generated_sql.parameters, null, 2)}</pre>
+        </details>}
       </details>}
       {!preview && (validation?.capped_inputs.length ?? 0) > 0 && (
         <div className="settings-hint join-warn join-capped">

@@ -450,7 +450,12 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
             <thead>
               <tr>
                 {result.rows.columns.map((c) => (
-                  <th key={c}>{dataset.columns.find((col) => col.name === c)?.label || c}</th>
+                  <th key={c} aria-sort={dataset.sort?.column === c ? dataset.sort.direction === "asc" ? "ascending" : "descending" : "none"}>
+                    <button className="table-sort" onClick={() => onUpdate({ page: 0, sort: {
+                      column: c, direction: dataset.sort?.column === c && dataset.sort.direction === "asc" ? "desc" : "asc" } })}>
+                      {dataset.columns.find((col) => col.name === c)?.label || c}{dataset.sort?.column === c ? dataset.sort.direction === "asc" ? " ↑" : " ↓" : ""}
+                    </button>
+                  </th>
                 ))}
               </tr>
             </thead>

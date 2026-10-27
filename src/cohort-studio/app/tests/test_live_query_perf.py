@@ -113,6 +113,27 @@ def test_primary_key_pages_keep_full_counts_and_use_index_order(engine, monkeypa
             conn.exec_driver_sql(f'DROP TABLE public."{name}"')
 
 
+def test_nonunique_index_keeps_pages_deterministic(engine, monkeypatch):
+    name = f"live_index_paging_{uuid.uuid4().hex[:10]}"
+    monkeypatch.setattr(live_query.db, "get_engine_for_resource", lambda _rid: engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f'CREATE TABLE public."{name}" (group_id integer, label text)')
+        conn.exec_driver_sql(f"INSERT INTO public.\"{name}\" SELECT i / 5, 'row-' || i FROM generate_series(1, 1000) i")
+        conn.exec_driver_sql(f'CREATE INDEX ON public."{name}" (group_id)')
+        conn.exec_driver_sql(f'ANALYZE public."{name}"')
+    source = {"resource_id": name, "sql": f'SELECT * FROM public."{name}"',
+              "columns": {"group_id": "group_id", "label": "label"}}
+    try:
+        with engine.begin() as conn:
+            assert live_query._primary_key_order(conn, source) == 'live."group_id", to_jsonb(live)::text'
+        pages = [live_query.query(source, [], [], n, 10, refresh=True)['rows']['data'] for n in range(2)]
+        assert len({tuple(row) for page in pages for row in page}) == 20
+        assert pages == [live_query.query(source, [], [], n, 10, refresh=True)['rows']['data'] for n in range(2)]
+    finally:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f'DROP TABLE public."{name}"')
+
+
 def test_api_table_open_pages_by_primary_key(client, engine):
     import datasets
     name = f"live_open_{uuid.uuid4().hex[:10]}"

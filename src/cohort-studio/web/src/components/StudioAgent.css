@@ -24,7 +24,7 @@
 .studio-agent-workspace { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 14px; }
 .studio-agent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .studio-agent-identity { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.studio-agent-avatar { display: block; flex: 0 0 84px; width: 84px; height: 84px; }
+.studio-agent-avatar { display: block; flex: 0 0 112px; width: 112px; height: 112px; }
 .studio-agent-avatar img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .studio-agent-head h1 { margin: 0; font-size: 20px; }
 .studio-agent-head p { margin: 4px 0 0; color: var(--ink-muted); font-size: 13px; }
@@ -33,6 +33,15 @@
 .studio-agent-message { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .studio-agent-message.user { align-items: flex-end; }
 .studio-agent-bubble { max-width: min(82%, 720px); white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 13px; border-radius: 12px; background: var(--surface); color: var(--ink); }
+.agent-text { line-height: 1.55; }
+.agent-text p { margin: 0 0 .7em; }
+.agent-text p:last-child, .agent-text ul:last-child, .agent-text ol:last-child, .agent-text pre:last-child { margin-bottom: 0; }
+.agent-text ul, .agent-text ol { margin: 0 0 .7em; padding-left: 1.4em; }
+.agent-text li + li { margin-top: .25em; }
+.agent-text code { font-size: .9em; background: var(--card); border-radius: 4px; padding: .1em .3em; }
+.agent-text pre { overflow-x: auto; white-space: pre; padding: 10px; border-radius: 6px; background: var(--card); }
+.agent-text pre code { padding: 0; }
+.agent-text a { color: var(--accent); text-decoration: underline; }
 .studio-agent-message.user .studio-agent-bubble { background: var(--accent-tint); color: var(--ink); border: 1px solid var(--accent-tint-border); }
 .studio-agent-queued { display: flex; flex-direction: column; gap: 4px; color: var(--ink-muted); font-size: 13px; }
 .studio-agent-queued > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

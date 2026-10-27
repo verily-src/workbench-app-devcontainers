@@ -175,7 +175,9 @@ exercise_lifecycle() {
         assert_no_call '^prefetch$'
         jq -e '.AIRLOCK_ENABLED == true' "$CORE/published.json"
     else
-        [ "$(cat "$CORE/calls")" = prefetch ]
+        # The host-log mount is reapplied on every run (the compose file is reset
+        # from its template each time), so ignore that expected yq call here.
+        [ "$(grep -v 'mikefarah/yq' "$CORE/calls")" = prefetch ]
     fi
     check_settings 0 67108864 7516192768
 

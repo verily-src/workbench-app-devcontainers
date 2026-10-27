@@ -86,4 +86,6 @@ docker network create -d bridge app-network
 ################################################
 echo "Building Dev Container"
 readonly ID_LABEL="test-container=${TEMPLATE_ID}"
+# Compose grants bake fs.read only for build contexts, not the CLI's generated Dockerfile.
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
 devcontainer up --id-label "${ID_LABEL}" --workspace-folder "${SRC_DIR}"

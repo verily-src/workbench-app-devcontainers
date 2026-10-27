@@ -305,6 +305,15 @@ readonly NO_PROMPT_SUDOERS_FILE="/etc/sudoers.d/no-sudo-password-prompt-${LOGIN_
 usermod -aG sudo "${LOGIN_USER}"
 echo "${LOGIN_USER} ALL=(ALL:ALL) NOPASSWD: ALL" > "${NO_PROMPT_SUDOERS_FILE}"
 
+# Dedicated log file, separate from noisy general auth logs.
+emit "Configuring sudo command audit logging..."
+mkdir -p /var/log/workbench
+grep -q '^Defaults logfile=' /etc/sudoers || \
+  echo 'Defaults logfile="/var/log/workbench/sudo-audit.log"' >> /etc/sudoers
+# Disable word-wrap so invocations aren't split across Cloud Logging entries.
+grep -q '^Defaults loglinelen=' /etc/sudoers || \
+  echo 'Defaults loglinelen=0' >> /etc/sudoers
+
 # Remove default user bashrc to ensure that the user's bashrc is sourced in non interactive shells
 ${RUN_AS_LOGIN_USER} "rm -f '${USER_BASHRC}'"
 ${RUN_AS_LOGIN_USER} "touch '${USER_BASHRC}'"

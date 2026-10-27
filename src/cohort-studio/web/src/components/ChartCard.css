@@ -54,3 +54,11 @@
   min-width: 0;
   color: var(--ink-muted);
 }
+
+.axis-editor { margin: 8px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.axis-editor-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.axis-editor fieldset { min-width: 0; margin: 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.axis-editor label { display: grid; gap: 3px; margin-bottom: 6px; color: var(--ink-muted); font-size: 12px; }
+.axis-editor input, .axis-editor select { width: 100%; box-sizing: border-box; }
+.axis-editor p, .axis-scale-note { color: var(--ink-muted); font-size: 12px; margin: 5px 0; }
+.axis-editor [role="alert"] { color: var(--danger, #b42318); }

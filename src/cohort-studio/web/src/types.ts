@@ -43,12 +43,21 @@ export interface Filter {
   max?: number;
 }
 
+export interface AxisSettings {
+  label?: string;
+  scale?: "linear" | "log";
+  min?: number;
+  max?: number;
+}
+
 export interface ChartSpec {
-  kind: "bar" | "histogram" | "scatter" | "heatmap";
+  kind: "bar" | "histogram" | "scatter" | "heatmap" | "map";
   x: string;
   y?: string;
   wide?: boolean;
   title?: string;
+  x_axis?: AxisSettings;
+  y_axis?: AxisSettings;
 }
 
 export interface BarDatum { category: string; all: number; selected: number }

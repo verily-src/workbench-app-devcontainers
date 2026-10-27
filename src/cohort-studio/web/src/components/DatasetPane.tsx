@@ -139,7 +139,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
     let base: ChartSpec["kind"][];
     if (spec.y) {
       base = isNumeric(spec.x) && isNumeric(spec.y)
-        ? ["scatter", "heatmap"] : ["heatmap"];
+        ? ["scatter", "heatmap", "map"] : ["heatmap"];
     } else {
       base = isNumeric(spec.x) ? ["bar", "histogram"] : ["bar"];
     }
@@ -358,7 +358,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
           {showCompare ? "Hide compare" : "Compare groups"}
         </button>
         <button onClick={() => setShowDerive((v) => !v)}>
-          {showDerive ? "Hide add column" : "+ Derived column"}
+          {showDerive ? "Hide calculated field" : "+ Calculated field"}
         </button>
         <button onClick={() => setShowAggregate((v) => !v)}>
           {showAggregate ? "Hide aggregation" : "+ Aggregation filter"}
@@ -425,6 +425,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
             onTapCategory={toggleCategory}
             onChangeKind={(kind) => updateChart(i, { kind })}
             onRename={(title) => updateChart(i, { title: title || undefined })}
+            onAxesChange={(x_axis, y_axis) => updateChart(i, { x_axis, y_axis })}
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
             onClose={() => updateChart(i, null)}
           />
@@ -626,6 +627,8 @@ function AddChart({ dataset, onUpdate }:
   const numeric = dataset.columns
     .filter((c) => c.filter_kind === "range").map((c) => c.name);
   const all = dataset.columns.map((c) => c.name);
+  const [error, setError] = useState("");
+  const [chartKind, setChartKind] = useState("auto");
 
   const submit = (form: HTMLFormElement) => {
     const data = new FormData(form);
@@ -636,10 +639,16 @@ function AddChart({ dataset, onUpdate }:
     const col = dataset.columns.find((c) => c.name === x);
     const resolved: ChartSpec["kind"] = kind === "auto"
       ? (col?.filter_kind === "range" ? "histogram" : "bar") : kind;
+    if (resolved === "map" && (!y || x === y || !numeric.includes(x) || !numeric.includes(y))) {
+      setError("Map requires numeric longitude and latitude columns.");
+      return;
+    }
+    setError("");
     const spec: ChartSpec = { kind: resolved, x, y,
-      wide: resolved === "scatter" || resolved === "heatmap" };
+      wide: resolved === "scatter" || resolved === "heatmap" || resolved === "map" };
     onUpdate({ charts: [...dataset.charts, spec] });
     form.reset();
+    setChartKind("auto");
   };
 
   return (
@@ -648,7 +657,7 @@ function AddChart({ dataset, onUpdate }:
       onSubmit={(e) => { e.preventDefault(); submit(e.currentTarget); }}
     >
       <div style={{ width: 220 }}>
-        <div className="field-label">Add chart</div>
+        <div className="field-label">{chartKind === "map" ? "Longitude" : "Add chart"}</div>
         <select name="x" defaultValue="">
           <option value="" disabled>Choose a column…</option>
           {all.map((c) => <option key={c}>{c}</option>)}
@@ -656,20 +665,21 @@ function AddChart({ dataset, onUpdate }:
       </div>
       <div style={{ width: 120 }}>
         <div className="field-label">Type</div>
-        <select name="kind" defaultValue="auto">
-          {["auto", "bar", "histogram", "scatter", "heatmap"].map((k) => (
+        <select name="kind" value={chartKind} onChange={e => setChartKind(e.target.value)}>
+          {["auto", "bar", "histogram", "scatter", "heatmap", "map"].map((k) => (
             <option key={k}>{k}</option>
           ))}
         </select>
       </div>
       <div style={{ width: 160 }}>
-        <div className="field-label">Second field</div>
+        <div className="field-label">{chartKind === "map" ? "Latitude" : "Second field"}</div>
         <select name="y" defaultValue="">
           <option value="">—</option>
           {numeric.map((c) => <option key={c}>{c}</option>)}
         </select>
       </div>
       <button className="primary" type="submit">Add</button>
+      {error && <span role="alert">{error}</span>}
     </form>
   );
 }

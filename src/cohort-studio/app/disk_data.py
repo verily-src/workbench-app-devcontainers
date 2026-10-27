@@ -499,7 +499,7 @@ def guard_live_query(live_source: dict, charts: list[dict],
                    _estimate_live_bytes(live_source))
     scans = 3 + (2 if entity_column else 0)
     for chart in charts:
-        scans += {"bar": 4, "histogram": 5, "scatter": 1,
+        scans += {"bar": 4, "histogram": 5, "scatter": 1, "map": 1,
                   "heatmap": 1}.get(chart.get("kind"), 1)
     return _budget(estimate * scans)
 
@@ -982,6 +982,15 @@ def _aggregate(con, relation: str, where: str, params: list,
                 {"lo": low + i * width, "hi": low + (i + 1) * width,
                  "all": int(full.get(i, 0)), "selected": int(filt.get(i, 0))}
                 for i in range(24)]})
+        elif kind == "map" and y:
+            qy = f"src.{_q(y)}"
+            nx, ny = f"TRY_CAST({qx} AS DOUBLE)", f"TRY_CAST({qy} AS DOUBLE)"
+            rows = con.execute(
+                f"SELECT {nx}, {ny} FROM {relation} AS src WHERE ({where}) "
+                f"AND {nx} BETWEEN -180 AND 180 AND {ny} BETWEEN -90 AND 90 "
+                "ORDER BY random() LIMIT 2000", params).fetchall()
+            out.append({"kind": kind, "x": x, "y": y,
+                        "data": [[float(a), float(b)] for a, b in rows], "sampled": True})
         elif kind == "scatter" and y:
             qy = f"src.{_q(y)}"
             rows = con.execute(
@@ -1014,7 +1023,7 @@ def query(source: dict, filters: list[dict], charts: list[dict], page: int,
         raise ValueError(f"Unknown entity column: {entity_column!r}.")
     scans = 3 + (2 if entity_column else 0)
     for chart in charts:
-        scans += {"bar": 4, "histogram": 5, "scatter": 1,
+        scans += {"bar": 4, "histogram": 5, "scatter": 1, "map": 1,
                   "heatmap": 1}.get(chart.get("kind"), 1)
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])) * scans)
     where, params = _where(filters, columns)

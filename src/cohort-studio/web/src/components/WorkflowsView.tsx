@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api, WorkflowJob, WorkflowList } from "../api";
 
 interface Props {
+  data: WorkflowList | null;
+  onData: (data: WorkflowList) => void;
   isSubscribed: (runId: string) => boolean;
   onToggleSubscribe: (job: WorkflowJob) => void;
 }
@@ -21,16 +23,15 @@ function statusClass(status: string): string {
 const when = (iso: string | null) =>
   iso ? String(iso).replace("T", " ").slice(0, 16) : "—";
 
-export function WorkflowsView({ isSubscribed, onToggleSubscribe }: Props) {
-  const [data, setData] = useState<WorkflowList | null>(null);
+export function WorkflowsView({ data, onData, isSubscribed, onToggleSubscribe }: Props) {
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback((force = false) => {
     setLoading(true);
-    api.workflows(force).then(setData).catch(() => setData(
+    api.workflows(force).then(onData).catch(() => onData(
       { available: false, jobs: [], running_count: 0 }))
       .finally(() => setLoading(false));
-  }, []);
+  }, [onData]);
 
   useEffect(() => refresh(false), [refresh]);
 
@@ -51,7 +52,7 @@ export function WorkflowsView({ isSubscribed, onToggleSubscribe }: Props) {
         job's output, the Explore tab flags that the data may be incomplete.
       </p>
 
-      {data && !data.available ? (
+      {!data ? <div className="empty" role="status"><div className="title">Loading workflow jobs…</div></div> : !data.available ? (
         <div className="empty">
           <div className="title">Workflow jobs unavailable</div>
           <div className="caption">

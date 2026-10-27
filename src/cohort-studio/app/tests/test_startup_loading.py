@@ -18,6 +18,35 @@ def test_initial_page_defers_charts_pdf_and_agent(page, app_url):
     assert not any('/pdf-' in url for url in requested)
 
 
+def test_preloads_secondary_screens_after_initial_render(page, app_url):
+    requested = []
+    page.on('request', lambda req: requested.append(req.url))
+    page.route('**/api/datasources', lambda r: r.fulfill(json={'ready': True, 'sources': [], 'catalogs_pending': False}))
+    page.route('**/api/views/all', lambda r: r.fulfill(json={'views': [], 'pending': [], 'unavailable': []}))
+    page.goto(app_url)
+    expect(page.get_by_text('No data loaded')).to_be_visible()
+    assert not any('/StudioAgent-' in url for url in requested)
+    page.wait_for_function("performance.getEntriesByType('resource').some(e => /StudioAgent-.*\\.js/.test(e.name))", timeout=15000)
+    assert any('/WorkflowsView-' in url for url in requested)
+
+
+def test_workflow_navigation_reuses_startup_request(page, app_url):
+    held, requests = [], []
+    page.route('**/api/datasources', lambda r: r.fulfill(json={'ready': True, 'sources': [], 'catalogs_pending': False}))
+    page.route('**/api/views/all', lambda r: r.fulfill(json={'views': [], 'pending': [], 'unavailable': []}))
+    def workflows(route):
+        requests.append(route.request.url)
+        held.append(route)
+    page.route('**/api/workflows', workflows)
+    page.goto(app_url)
+    expect(page.get_by_text('No data loaded')).to_be_visible()
+    page.get_by_text('Workflows', exact=True).first.click()
+    expect(page.get_by_text('Loading workflow jobs…')).to_be_visible()
+    assert len(requests) == 1
+    held[0].fulfill(json={'available': True, 'jobs': [{'run_id': '1', 'name': 'Test run', 'status': 'COMPLETED', 'engine_type': None, 'created_by': None, 'created_date': None, 'output_bucket_name': None, 'output_bucket_resource': None, 'output_bucket_path': None}], 'running_count': 0})
+    expect(page.get_by_text('Test run')).to_be_visible()
+
+
 def test_custom_categorical_filter_accepts_values_not_in_picker(loaded_page):
     group = loaded_page.locator('.filter-group', has_text='tissue')
     group.locator('summary').click()

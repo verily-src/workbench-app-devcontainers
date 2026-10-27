@@ -63,13 +63,16 @@ sphere('Antenna stem',(0,0,1.83),(.035,.035,.13),teal)
 sphere('Antenna light',(0,0,1.96),(.09,.09,.09),light)
 
 # Three short, separately labeled animation ranges, each with matching end frames.
-for start, end, name in [(1,25,'Idle'),(26,50,'Thinking'),(51,75,'Greeting')]:
+for start, end, name in [(1,25,'Idle'),(26,50,'Thinking'),(51,75,'Greeting'),(76,100,'Dance')]:
     for frame in range(start,end+1):
         t=2*math.pi*(frame-start)/(end-start)
         bot.location.z=.018*math.sin(t); bot.rotation_euler=(0, .025*math.sin(t), .018*math.sin(t))
         arm.rotation_euler=(0, 0, 0)
         if name=='Thinking': bot.rotation_euler.y=.07*math.sin(t); bot.rotation_euler.z=.06*math.sin(t)
         if name=='Greeting': arm.rotation_euler.y=-.45-.35*math.sin(t)
+        if name=='Dance':
+            bot.location.z=.04 * (1 - math.cos(2 * t)); bot.rotation_euler.z=.20 * math.sin(2 * t)
+            bot.rotation_euler.y=.11 * math.sin(t); arm.rotation_euler.y=-.30-.22 * math.sin(2 * t)
         for obj, paths in [(bot,('location','rotation_euler')),(arm,('rotation_euler',))]:
             for path in paths: obj.keyframe_insert(data_path=path, frame=frame)
     bpy.context.scene.timeline_markers.new(name, frame=start)
@@ -86,6 +89,6 @@ cam.data.type='ORTHO'; cam.data.ortho_scale=2.7; bpy.context.scene.camera=cam
 scene=bpy.context.scene; scene.render.engine='CYCLES'; scene.cycles.samples=16
 scene.cycles.use_denoising=True; scene.render.resolution_x=256; scene.render.resolution_y=256
 scene.render.resolution_percentage=100; scene.render.film_transparent=True
-scene.render.image_settings.file_format='PNG'; scene.frame_start=1; scene.frame_end=75
+scene.render.image_settings.file_format='PNG'; scene.frame_start=1; scene.frame_end=100
 scene.frame_set(1); bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'cohort_bot.blend'))
 scene.render.filepath=str(OUT/'preview.png'); bpy.ops.render.render(write_still=True)

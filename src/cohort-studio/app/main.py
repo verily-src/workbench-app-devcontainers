@@ -151,11 +151,37 @@ class Filter(BaseModel):
     min: float | None = None
     max: float | None = None
 
+class AxisSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    label: str | None = Field(default=None, max_length=120)
+    scale: Literal["linear", "log"] = "linear"
+    min: float | None = None
+    max: float | None = None
+
+    @model_validator(mode="after")
+    def valid_bounds(self):
+        if self.min is not None and self.max is not None and self.min >= self.max:
+            raise ValueError("Axis minimum must be less than maximum.")
+        if self.scale == "log" and ((self.min is not None and self.min <= 0) or
+                                    (self.max is not None and self.max <= 0)):
+            raise ValueError("Logarithmic axis bounds must be positive.")
+        return self
+
+
 class ChartSpec(BaseModel):
     kind: str
     x: str
     y: str | None = None
     title: str | None = Field(default=None, max_length=120)
+    wide: bool | None = None
+    x_axis: AxisSettings | None = None
+    y_axis: AxisSettings | None = None
+
+    @model_validator(mode="after")
+    def valid_map(self):
+        if self.kind == "map" and (not self.y or self.y == self.x):
+            raise ValueError("Map requires distinct longitude and latitude columns.")
+        return self
 
 class QueryRequest(BaseModel):
     filters: list[Filter] = Field(default_factory=list)

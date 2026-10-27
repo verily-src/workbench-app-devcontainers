@@ -139,7 +139,7 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
         "large queries may take longer")
     expect(page.locator(".query-cache-row")).to_contain_text("Fetched result")
     expect(page.get_by_role("button", name="Compare groups")).to_be_enabled()
-    expect(page.get_by_role("button", name=re.compile("Derived column"))).to_be_enabled()
+    expect(page.get_by_role("button", name=re.compile("Calculated field"))).to_be_enabled()
     expect(page.get_by_text(re.compile("Chat uses loaded rows"))
            ).to_be_visible()
     expect(page.locator(".chat-launcher")).to_have_count(0)
@@ -150,7 +150,7 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
                                                             timeout=10000)
     page.locator(".compare-panel").get_by_role("button", name="✕").click()
 
-    page.get_by_role("button", name=re.compile("Derived column")).click()
+    page.get_by_role("button", name=re.compile("Calculated field")).click()
     page.get_by_label("New column name").fill("age_group")
     page.locator(".derive-panel").get_by_role("button", name="Add column").click()
     expect(page.locator(".derive-panel")).to_contain_text('Added "age_group".',

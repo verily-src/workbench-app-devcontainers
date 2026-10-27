@@ -17,6 +17,7 @@ class Artifact(BaseModel):
     filters: list[dict] = Field(default_factory=list, max_length=30)
     charts: list[dict] = Field(default_factory=list, max_length=8)
     columns: list[dict] = Field(default_factory=list, max_length=2000)
+    signature_kind: str | None = None
     plan_id: str | None = None
 
     @field_validator("source_ref")

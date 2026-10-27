@@ -165,7 +165,7 @@ apply_host_log_mount() {
     # a duplicate "volumes:" key and fail Compose parsing wherever an app already has one.
     # --user root: the yq image's default user can't write the root-owned compose file.
     docker run --rm --user root -v "${DOCKER_COMPOSE_PATH}:/compose.yaml" \
-        mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 \
+        mikefarah/yq@sha256:4b3d9475d65571d28cbb19544d3820ec2945e4c8b2f18279394282b8dc3a592e \
         -i ".services.${SERVICE}.volumes += [\"/var/log/workbench:/var/log/workbench\"]" \
         /compose.yaml
 }
@@ -293,7 +293,7 @@ SECRETS_YML="${DEVCONTAINER_PATH}/secrets.yml"
 if [[ -f "${SECRETS_YML}" ]]; then
   echo "Converting ${SECRETS_YML} to /home/core/secrets.json"
   docker run --rm -v "${SECRETS_YML}:/secrets.yml:ro" \
-    mikefarah/yq@sha256:0cb4a78491b6e62ee8a9bf4fbeacbd15b5013d19bc420591b05383a696315e60 -o=json '.secrets' /secrets.yml > /home/core/secrets.json
+    mikefarah/yq@sha256:4b3d9475d65571d28cbb19544d3820ec2945e4c8b2f18279394282b8dc3a592e -o=json '.secrets' /secrets.yml > /home/core/secrets.json
 fi
 
 # Read before handle_container_state_changed rewrites the state file.

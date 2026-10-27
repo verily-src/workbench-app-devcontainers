@@ -732,7 +732,22 @@ def derive(source: dict, spec: dict) -> tuple[pd.DataFrame, dict]:
     spec = DerivedSpec.model_validate(spec).model_dump(exclude_none=True)
     name = spec["name"].strip()
     columns = list(source["columns"])
-    if spec["op"] == "bin":
+    if spec["op"] in {"group_count", "group_sum", "group_mean"}:
+        col = spec["column"]
+        if col not in columns:
+            raise ValueError(f"Unknown column: {col}")
+        group = _q(col)
+        if spec["op"] == "group_count":
+            aggregate = "COUNT(*)"
+        else:
+            measure = spec["measure"]
+            if measure not in columns:
+                raise ValueError(f"Unknown column: {measure}")
+            number = f"TRY_CAST({_q(measure)} AS DOUBLE)"
+            safe_number = f"CASE WHEN ISFINITE({number}) THEN {number} ELSE NULL END"
+            aggregate = f"{'SUM' if spec['op'] == 'group_sum' else 'AVG'}({safe_number})"
+        expression = f"CASE WHEN {group} IS NULL THEN NULL ELSE {aggregate} OVER (PARTITION BY {group}) END"
+    elif spec["op"] == "bin":
         col = spec["column"]
         if col not in columns:
             raise ValueError(f"Unknown column: {col}")

@@ -8,8 +8,8 @@ import { GrainSettings } from "./GrainSettings";
 import { ColumnSettings } from "./ColumnSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
+import { AggregateFilter } from "./AggregateFilter";
 import { LaunchWorkflow } from "./LaunchWorkflow";
-import { captureCharts, exportDatasetPdf } from "../pdf";
 
 interface Props {
   dataset: Dataset;
@@ -22,7 +22,7 @@ function describeFilter(f: Filter): string {
   if (f.kind === "categorical") {
     return (f.values ?? []).map((v) => `${f.column}: ${v}`).join("|");
   }
-  return `${f.column}: ${f.min}–${f.max}`;
+  return f.max === Number.MAX_VALUE ? `${f.column}: ≥ ${f.min}` : `${f.column}: ${f.min}–${f.max}`;
 }
 
 function cacheAge(asOf: string): string {
@@ -79,6 +79,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
   const cohorts = dataset.cohorts ?? [];
   const [showCompare, setShowCompare] = useState(false);
   const [showDerive, setShowDerive] = useState(false);
+  const [showAggregate, setShowAggregate] = useState(false);
   const [showLaunch, setShowLaunch] = useState(false);
   const [cohortName, setCohortName] = useState("");
   const [chatDraft, setChatDraft] = useState<{ id: string; text: string; datasetId: string } | null>(null);
@@ -267,7 +268,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
           {creatingExport ? "Starting export…" : "Export TSV"}
         </button>
-        <button onClick={() => exportDatasetPdf(dataset, captureCharts())}
+        <button onClick={() => { void import("../pdf").then(({ captureCharts, exportDatasetPdf }) =>
+          exportDatasetPdf(dataset, captureCharts())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
                 disabled={!result}>
           Export PDF
         </button>
@@ -358,6 +360,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         <button onClick={() => setShowDerive((v) => !v)}>
           {showDerive ? "Hide add column" : "+ Derived column"}
         </button>
+        <button onClick={() => setShowAggregate((v) => !v)}>
+          {showAggregate ? "Hide aggregation" : "+ Aggregation filter"}
+        </button>
         <button onClick={() => setShowLaunch((v) => !v)}>
           {showLaunch ? "Hide workflow" : "Run workflow ▸"}
         </button>
@@ -375,6 +380,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         <DeriveColumn dataset={dataset} onUpdate={onUpdate}
                       onClose={() => setShowDerive(false)} />
       )}
+
+      {showAggregate && <AggregateFilter dataset={dataset} onUpdate={onUpdate}
+        onClose={() => setShowAggregate(false)} />}
 
       {showLaunch && (
         <LaunchWorkflow dataset={dataset} onClose={() => setShowLaunch(false)}

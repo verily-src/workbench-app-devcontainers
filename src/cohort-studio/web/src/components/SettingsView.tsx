@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { KnowledgeBase } from "./KnowledgeBase";
 import { api, AppConfig, MCPConnection, Provider } from "../api";
 import { PALETTE_NAMES, getPalette } from "../palette";
+import { notificationsEnabled, setNotifications } from "../notifications";
 
 type ThemePreference = "light" | "dark" | "system";
 const THEME_KEY = "cohort-studio-theme";
@@ -61,6 +62,8 @@ export function SettingsView(
   const [connections, setConnections] = useState<MCPConnection[]>([]);
   const [palette, setPalette] = useState("verily");
   const [theme, setTheme] = useState<ThemePreference>(savedTheme);
+  const [notifications, setNotificationState] = useState(notificationsEnabled);
+  const [notificationStatus, setNotificationStatus] = useState("");
   const [status, setStatus] = useState("");
   const [paletteStatus, setPaletteStatus] = useState("");
   const [connectionsStatus, setConnectionsStatus] = useState("");
@@ -423,6 +426,17 @@ export function SettingsView(
         </select>
       </div>
 
+      <div className="section-label">Notifications</div>
+      <div className="settings-card">
+        <label><input type="checkbox" checked={notifications} onChange={async e => {
+          const requested = e.target.checked;
+          const enabled = await setNotifications(requested);
+          setNotificationState(enabled);
+          setNotificationStatus(requested && !enabled ? "Browser notifications are unavailable or blocked." : "");
+        }} /> Notify when data is ready</label>
+        <p>Notifications appear when this tab is in the background. Keep the app open.</p>
+        {notificationStatus && <p role="status">{notificationStatus}</p>}
+      </div>
       <div className="section-label">Chart palette</div>
       <div className="settings-card">
         <p className="settings-caption">

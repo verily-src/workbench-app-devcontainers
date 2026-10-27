@@ -1,3 +1,4 @@
+import "./SourcePicker.css";
 import { useEffect, useMemo, useState } from "react";
 import { Source, TableInfo } from "../types";
 

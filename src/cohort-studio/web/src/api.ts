@@ -44,6 +44,8 @@ const post = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+import { notifyDataReady } from "./notifications";
+
 export interface DataJob {
   job_id: string; kind: string; status: string; result?: OpenResult;
   error?: string | { code?: string; message?: string }; status_code?: number;
@@ -75,7 +77,7 @@ async function dataJob<T>(kind: string, body: unknown): Promise<T> {
       job = await request<DataJob>(`/api/data-jobs/${job.job_id}`);
     }
     forgetDataJob(job.job_id);
-    if (job.status === "complete") return job.result as T;
+    if (job.status === "complete") { notifyDataReady(job.kind, job.job_id); return job.result as T; }
     if (job.status === "cancelled") throw new Error("Operation cancelled.");
     if (job.status === "interrupted") throw new Error("The app restarted. Retry the operation.");
     const detail = job.error;

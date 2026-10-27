@@ -1,17 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, OpenResult, WorkflowList } from "./api";
-import { OmopBuilder } from "./components/OmopBuilder";
-import { DatasetPane } from "./components/DatasetPane";
 import { FilterPanel } from "./components/FilterPanel";
-import { LineageView } from "./components/LineageView";
-import { SettingsView } from "./components/SettingsView";
 import { SavedViews } from "./components/SavedViews";
-import { JoinPanel } from "./components/JoinPanel";
 import { SourcePicker } from "./components/SourcePicker";
-import { AddSourceDialog } from "./components/AddSourceDialog";
 import { PublishCatalog } from "./components/PublishCatalog";
-import { WorkflowsView } from "./components/WorkflowsView";
-import { StudioAgent } from "./components/StudioAgent";
 import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
@@ -21,6 +13,15 @@ import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
+
+const OmopBuilder = lazy(() => import("./components/OmopBuilder").then((m) => ({ default: m.OmopBuilder })));
+const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
+const JoinPanel = lazy(() => import("./components/JoinPanel").then((m) => ({ default: m.JoinPanel })));
+const StudioAgent = lazy(() => import("./components/StudioAgent").then((m) => ({ default: m.StudioAgent })));
+const SettingsView = lazy(() => import("./components/SettingsView").then((m) => ({ default: m.SettingsView })));
+const WorkflowsView = lazy(() => import("./components/WorkflowsView").then((m) => ({ default: m.WorkflowsView })));
+const LineageView = lazy(() => import("./components/LineageView").then((m) => ({ default: m.LineageView })));
+const AddSourceDialog = lazy(() => import("./components/AddSourceDialog").then((m) => ({ default: m.AddSourceDialog })));
 
 const AUTO_CHART_LIMIT = 8;
 
@@ -103,6 +104,7 @@ export default function App() {
   const [view, setView] = useState<
     "explore" | "agent" | "workflows" | "lineage" | "settings">("explore");
   const [exploreModes, setExploreModes] = useState<Record<string, "tables" | "omop">>({});
+  const [omopInitialized, setOmopInitialized] = useState(false);
   const [tutorialOmopOpenedCount, setTutorialOmopOpenedCount] = useState(0);
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
@@ -163,6 +165,9 @@ export default function App() {
   const supportsOmop = source?.kind === "aurora" || source?.kind === "postgres";
   const exploreMode = supportsOmop
     ? exploreModes[sourceKey] ?? "tables" : "tables";
+  useEffect(() => {
+    if (view === "explore" && exploreMode === "omop") setOmopInitialized(true);
+  }, [view, exploreMode]);
   const setExploreMode = (mode: "tables" | "omop") => {
     if (supportsOmop) {
       setExploreModes((previous) => ({ ...previous, [sourceKey]: mode }));
@@ -752,7 +757,8 @@ export default function App() {
                 onClick={() => setWorkflowVerification(null)}>Dismiss</button>
             </aside>
           )}
-          <div hidden={view !== "explore" || exploreMode !== "omop"}>
+          <Suspense fallback={<div role="status">Loading…</div>}>
+          {(omopInitialized || (view === "explore" && exploreMode === "omop")) && <div hidden={view !== "explore" || exploreMode !== "omop"}>
             <OmopBuilder active={view === "explore" && exploreMode === "omop"}
                           palette={palette}
                           source={source ?? null} onOpen={(opened, title) => {
@@ -762,7 +768,7 @@ export default function App() {
               setExploreMode("tables");
               setView("explore");
             }} />
-          </div>
+          </div>}
           {view === "explore" && exploreMode === "omop" ? null : view === "agent" ? (
             <StudioAgent onOpenSettings={() => setView("settings")} onOpenDashboard={(action: AgentDashboardAction, verification?: AgentWorkflowVerification) => {
               setWorkflowVerification(verification?.verified
@@ -878,10 +884,11 @@ export default function App() {
               )}
             </>
           )}
+          </Suspense>
         </div>
       </div>
       <Toasts toasts={alerts.toasts} onDismiss={alerts.dismissToast} />
-      {addSourceOpen && <AddSourceDialog onClose={() => setAddSourceOpen(false)}
+      {addSourceOpen && <Suspense fallback={<div role="status">Loading…</div>}><AddSourceDialog onClose={() => setAddSourceOpen(false)}
         onAdded={({ kind, id }) => {
           setAddSourceOpen(false);
           api.datasources().then((out) => {
@@ -892,7 +899,7 @@ export default function App() {
               setView("explore");
             }
           }).catch((e) => setError(`Source was added, but the list could not refresh: ${e.message}`));
-        }} />}
+        }} /></Suspense>}
       <CommandPalette open={cmdOpen} commands={commands}
                       onClose={() => setCmdOpen(false)} />
     </div>

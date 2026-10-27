@@ -43,6 +43,12 @@ def _expression(frame: pd.DataFrame, live: dict, spec: dict,
             raise ValueError(f"Unknown column: {name}")
         return f"src.{_q(columns[name])}"
 
+    if op in {"group_count", "group_sum", "group_mean"}:
+        group = column(spec.get("column"))
+        aggregate = "COUNT(*)" if op == "group_count" else (
+            f"{'SUM' if op == 'group_sum' else 'AVG'}({_number(column(spec.get('measure')))})")
+        return f"CASE WHEN {group} IS NULL THEN NULL ELSE {aggregate} OVER (PARTITION BY {group}) END", local
+
     if op == "bin":
         name = spec.get("column")
         value = _number(column(name))

@@ -76,17 +76,39 @@
   .studio-agent-bubble, .studio-agent-tools, .studio-agent-card { max-width: 95%; width: 95%; }
 }
 
- .mascot-drive { position: fixed; z-index: 12; left: 0; bottom: 16px; width: 315px; height: 140px;
-  pointer-events: none; animation: mascot-road 20s linear infinite; }
+ .mascot-drive { position: fixed; z-index: 12; left: 0; top: 0; width: 315px; height: 140px;
+  pointer-events: none; animation: mascot-road 48s linear infinite; }
 .mascot-drive .mascot-truck { position: absolute; width: 168px; height: 112px; object-fit: contain; left: 140px; top: 28px; }
 .mascot-drive .mascot-driver { position: absolute; width: 52px; height: 52px; object-fit: contain; left: 215px; top: 14px; }
 .mascot-drive .mascot-chaser { position: absolute; z-index: 2; width: 150px; height: 120px; object-fit: contain; left: 0; bottom: 7px; animation: mascot-chase-bob .45s ease-in-out infinite alternate; }
 @keyframes mascot-chase-bob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-8px) rotate(4deg); } }
+.mascot-wizard-rider { position: absolute; z-index: 2; width: 55px; height: 78px; object-fit: contain; left: 170px; top: 0; }
+.mascot-rescue { position: fixed; z-index: 13; right: 9vw; bottom: 12vh; width: 135px; height: 190px; pointer-events: none; animation: mascot-rescue-arrival 2s ease-out both; }
+.mascot-rescue img { width: 100%; height: 100%; object-fit: contain; }
+.mascot-magic { position: absolute; left: -18px; top: 0; width: 125px; height: 125px; border-radius: 50%; background: radial-gradient(circle, #fff9 0%, #8de0c488 35%, transparent 70%); animation: mascot-magic 1.5s ease-in-out infinite alternate; }
+@keyframes mascot-rescue-arrival { from { opacity: 0; transform: translateX(180px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes mascot-magic { from { opacity: .25; transform: scale(.7); } to { opacity: .9; transform: scale(1.15); } }
+.mascot-launcher { position: absolute; z-index: 3; left: 190px; top: 37px; width: 54px; height: 18px; transform: rotate(14deg); }
+.mascot-shot { position: absolute; z-index: 3; left: 192px; top: 39px; width: 16px; height: 7px; border-radius: 40%; background: #f9ad40; box-shadow: 5px 0 5px #ffc972; opacity: 0; animation: mascot-shot 4s linear infinite; }
+.mascot-bang { position: absolute; z-index: 4; left: 15px; top: -65px; display: grid; place-items: center; width: 76px; height: 76px; background: #ffc548; color: #782a1c; font: 900 13px/1 sans-serif; clip-path: polygon(50% 0,61% 29%,87% 10%,76% 38%,100% 48%,75% 60%,89% 89%,61% 75%,50% 100%,38% 74%,10% 89%,23% 61%,0 49%,25% 38%,11% 10%,39% 29%); opacity: 0; animation: mascot-bang 4s linear infinite; }
+@keyframes mascot-shot { 0%, 14%, 36%, 100% { opacity: 0; } 15% { opacity: 1; transform: translate(0, 0); } 34% { opacity: 1; transform: translate(-155px, -60px); } }
+@keyframes mascot-bang { 0%, 32%, 54%, 100% { opacity: 0; transform: scale(.3) rotate(-12deg); } 35% { opacity: 1; transform: scale(1.1) rotate(4deg); } 50% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes mascot-road {
-  0% { transform: translateX(0) scaleX(1); }
-  48% { transform: translateX(max(0px, calc(100vw - 315px))) scaleX(1); }
-  50% { transform: translateX(max(0px, calc(100vw - 315px))) scaleX(-1); }
-  98% { transform: translateX(0) scaleX(-1); }
-  100% { transform: translateX(0) scaleX(1); }
+  0% { opacity: 0; transform: translate(-350px, 72vh) scaleX(1); }
+  2% { opacity: 1; }
+  23% { opacity: 1; transform: translate(100vw, 72vh) scaleX(1); }
+  24% { opacity: 0; transform: translate(calc(100vw + 350px), 72vh) scaleX(1); }
+  25% { opacity: 0; transform: translate(calc(100vw + 350px), 38vh) scaleX(-1); }
+  27% { opacity: 1; }
+  48% { opacity: 1; transform: translate(-350px, 38vh) scaleX(-1); }
+  49% { opacity: 0; transform: translate(-350px, 38vh) scaleX(-1); }
+  50% { opacity: 0; transform: translate(-350px, 12vh) scaleX(1); }
+  52% { opacity: 1; }
+  73% { opacity: 1; transform: translate(100vw, 12vh) scaleX(1); }
+  74% { opacity: 0; transform: translate(calc(100vw + 350px), 12vh) scaleX(1); }
+  75% { opacity: 0; transform: translate(calc(100vw + 350px), 55vh) scaleX(-1); }
+  77% { opacity: 1; }
+  98% { opacity: 1; transform: translate(-350px, 55vh) scaleX(-1); }
+  99%, 100% { opacity: 0; transform: translate(-350px, 55vh) scaleX(-1); }
 }
-@media (prefers-reduced-motion: reduce) { .mascot-drive { display: none; } }
+@media (prefers-reduced-motion: reduce) { .mascot-drive, .mascot-rescue { display: none; } }

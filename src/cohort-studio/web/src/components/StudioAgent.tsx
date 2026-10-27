@@ -105,23 +105,28 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [celebrating, setCelebrating] = useState(false);
   const [dancing, setDancing] = useState(false);
   const [driving, setDriving] = useState(false);
+  const [chaseScene, setChaseScene] = useState<"chase" | "rescue" | "flee">("chase");
   useEffect(() => () => streamController.current?.abort(), []);
   useEffect(() => () => window.clearTimeout(celebrationTimer.current), []);
   useEffect(() => {
     setDancing(false);
     setDriving(false);
+    setChaseScene("chase");
     if (busy || celebrating) return;
-    let timer: number, driveTimer: number;
+    let timer: number, driveTimer: number, rescueTimer: number, fleeTimer: number;
     const reset = () => {
-      setDancing(false); setDriving(false);
+      setDancing(false); setDriving(false); setChaseScene("chase");
       window.clearTimeout(timer); window.clearTimeout(driveTimer);
+      window.clearTimeout(rescueTimer); window.clearTimeout(fleeTimer);
       timer = window.setTimeout(() => setDancing(true), 10000);
       driveTimer = window.setTimeout(() => { setDancing(false); setDriving(true); }, 30000);
+      rescueTimer = window.setTimeout(() => setChaseScene("rescue"), 120000);
+      fleeTimer = window.setTimeout(() => setChaseScene("flee"), 130000);
     };
     const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
     events.forEach(name => window.addEventListener(name, reset, { passive: true }));
     reset();
-    return () => { window.clearTimeout(timer); window.clearTimeout(driveTimer); events.forEach(name => window.removeEventListener(name, reset)); };
+    return () => { window.clearTimeout(timer); window.clearTimeout(driveTimer); window.clearTimeout(rescueTimer); window.clearTimeout(fleeTimer); events.forEach(name => window.removeEventListener(name, reset)); };
   }, [busy, celebrating]);
   const [error, setError] = useState("");
   const [before, setBefore] = useState<number | null>(null);
@@ -662,9 +667,17 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
       </form>
       </div>
       {driving && <div className="mascot-drive" aria-hidden="true">
-        <img className="mascot-chaser" src="/mascot/godzilla-halloween.png" alt="" />
+        {chaseScene !== "rescue" && <img className="mascot-chaser" src="/mascot/godzilla-classic.png" alt="" />}
         <img className="mascot-truck" src="/mascot/cybertruck.png" alt="" />
         <img className="mascot-driver" src="/mascot/idle.webp" alt="" />
+        {chaseScene === "flee" && <img className="mascot-wizard-rider" src="/mascot/gandalf.png" alt="" />}
+        {chaseScene !== "rescue" && <><svg className="mascot-launcher" viewBox="0 0 60 20" focusable="false"><path d="M7 5h37v10H7z" fill="#63736b" stroke="#263e38" strokeWidth="2" /><path d="M44 3h8v14h-8z" fill="#31463d" /><path d="M8 4 2 2v16l6-2z" fill="#31463d" /><path d="M30 15h6v5h-6z" fill="#263e38" /></svg>
+        <span className="mascot-shot" />
+        <span className="mascot-bang">BANG!</span></>}
+      </div>}
+      {driving && chaseScene === "rescue" && <div className="mascot-rescue" aria-hidden="true">
+        <img src="/mascot/gandalf.png" alt="" />
+        <span className="mascot-magic" />
       </div>}
     </section>
   );

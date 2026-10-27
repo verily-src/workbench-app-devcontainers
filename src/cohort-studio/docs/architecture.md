@@ -246,7 +246,7 @@ PostgreSQL process to check the Aurora PostgreSQL SQL/driver contract; this is
 a test fixture, not an application dependency or deployment service. Passing
 those tests does not establish live Aurora connectivity or permissions.
 
-Grouped summaries are read-only, paginated queries over the current dashboard filters. The selected source engine computes counts and optional numeric statistics; null grouping keys remain visible. The response identifies whether it covers the database, loaded data, or a capped sample. Summaries are session-local and are not saved datasets.
+Grouped summaries are read-only, paginated queries over the current dashboard filters. The selected source engine computes counts and optional numeric statistics; null grouping keys remain visible. The response identifies whether it covers the database, loaded data, or a capped sample. Saved views preserve summary recipes and filters; reopening recomputes results from the source. Summaries are not saved datasets.
 
 ## 4. One state round-trip (filter / chart change)
 

@@ -367,6 +367,7 @@ export default function App() {
         charts: d.charts,
         cohorts: d.cohorts ?? [],
         filterAskHistory: d.filter_ask_history ?? [],
+        groupSummary: d.group_summary ?? undefined,
         page: 0,
       }));
       setDatasets(restored);

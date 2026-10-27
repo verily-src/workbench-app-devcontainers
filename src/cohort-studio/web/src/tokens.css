@@ -754,3 +754,29 @@ button.link:hover { text-decoration: underline; }
 @media (max-width: 700px) {
   .column-settings-panel { position: fixed; top: 80px; left: 12px; right: 12px; width: auto; max-height: calc(100vh - 100px); }
 }
+
+/* Calm surfaces and clear hierarchy across the workspace. */
+:root { --radius: 12px; --radius-sm: 8px; }
+.sidebar { padding-left: 18px; padding-right: 18px; }
+.sidebar-heading { margin-left: -18px; margin-right: -18px; padding-left: 18px; padding-right: 18px; }
+.content { padding: 18px 22px; }
+.topbar { padding-left: 22px; padding-right: 22px; }
+.topbar .brand { font-weight: 700; letter-spacing: -0.02em; }
+input[type="text"], input[type="number"], input[type="password"], select { padding: 8px 10px; }
+button { padding: 8px 14px; font-weight: 600; }
+button.primary { box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
+.empty { max-width: 600px; margin-top: 52px; padding: 62px 36px;
+  border-style: solid; box-shadow: 0 2px 8px rgb(0 0 0 / 4%); }
+.empty .title { font-size: 17px; font-weight: 700; margin-top: 16px; }
+.empty button.primary { margin-top: 14px; min-width: 138px; }
+.cohort-bar, .derive-panel, .compare-panel, .launch-panel {
+  padding: 14px; border-color: var(--border-strong); box-shadow: 0 1px 3px rgb(0 0 0 / 3%);
+}
+.cohort-bar { gap: 10px; }
+.derive-row { gap: 14px; margin-bottom: 14px; }
+.chart-grid { gap: 16px; margin: 16px 0; }
+.data-table th, .data-table td { padding: 10px 12px; }
+.data-table td { border-color: var(--border); }
+.data-table tr:hover td { background: var(--hover); }
+@media (max-width: 700px) { .content { padding: 14px; } .empty { margin-top: 24px; padding: 38px 20px; } }

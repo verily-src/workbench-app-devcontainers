@@ -1,3 +1,4 @@
+import "./ChartCard.css";
 import * as echarts from "echarts";
 import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";

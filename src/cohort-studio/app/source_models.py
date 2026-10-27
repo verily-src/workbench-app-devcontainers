@@ -13,9 +13,10 @@ import omop
 
 class DerivedSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
-    op: Literal["bin", "formula", "map"]
+    op: Literal["bin", "formula", "map", "group_count", "group_sum", "group_mean"]
     name: str = Field(pattern=r"^[A-Za-z0-9 _.\-]{1,60}$")
     column: str | None = None
+    measure: str | None = None
     breaks: list[float] | None = Field(default=None, max_length=1001)
     labels: list[str] | None = Field(default=None, max_length=1000)
     left: str | None = None
@@ -39,6 +40,10 @@ class DerivedSpec(BaseModel):
             raise ValueError("A formula needs left, operator and right.")
         if self.op == "map" and not (self.column and self.mapping):
             raise ValueError("Mapping needs a column and at least one value mapping.")
+        if self.op in {"group_count", "group_sum", "group_mean"} and not self.column:
+            raise ValueError("Aggregation needs a grouping column.")
+        if self.op in {"group_sum", "group_mean"} and not self.measure:
+            raise ValueError("This aggregation needs a measure column.")
         return self
 
 

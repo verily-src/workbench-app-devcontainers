@@ -933,3 +933,10 @@ The shared cloud CLI gate remains serialized. Waiting Aurora password resolution
 ### Conversation-scoped plans and queued turns
 
 New Agent workflow plans store their conversation ID in the existing owner-scoped payload. The Agent loads plans for the selected conversation; unassigned historical plans remain under Earlier workflow plans. The browser queues up to ten follow-ups and sends them in order after the running turn. The queue pauses after failure, cancellation or a workflow approval proposal and remains in browser memory only. No queued message approves or submits a workflow.
+
+
+### Source-level aggregation filters and browser loading
+
+Aggregation filters derive a windowed count, sum or mean for each non-null group. They retain the original rows and apply the threshold through the existing range-filter pipeline. Aggregates cover the source before ordinary dashboard filters; loaded previews use their available rows. Null group keys are excluded; invalid and non-finite numeric measures are ignored. Source recipes retain the derived column. PostgreSQL, DuckDB and loaded data use equivalent behavior.
+
+The browser loads dashboard, chart, PDF, agent and settings modules on demand. The OMOP builder remains mounted after first use to retain its state. Optional browser notifications report completed data loads and joins only while an open app tab is hidden; permission and preference stay in the browser. This is not a service-worker push subscription.

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ColumnProfile, Filter } from "../types";
 
 interface Props {
@@ -10,6 +11,18 @@ function upsert(filters: Filter[], next: Filter | null, column: string):
     Filter[] {
   const rest = filters.filter((f) => f.column !== column);
   return next ? [...rest, next] : rest;
+}
+
+function CustomValue({ onAdd }: { onAdd: (value: string) => void }) {
+  const [value, setValue] = useState("");
+  return <form className="filter-custom-value" onSubmit={(event) => {
+    event.preventDefault();
+    if (value.trim()) { onAdd(value); setValue(""); }
+  }}>
+    <input aria-label="Custom filter value" value={value} placeholder="Add a value"
+      onChange={(event) => setValue(event.target.value)} />
+    <button type="submit" disabled={!value.trim()}>Add</button>
+  </form>;
 }
 
 export function FilterPanel({ columns, filters, onChange }: Props) {
@@ -52,7 +65,7 @@ export function FilterPanel({ columns, filters, onChange }: Props) {
             </summary>
             {col.filter_kind === "categorical" ? (
               <div className="filter-values">
-                {col.values?.map((v) => (
+                {[...new Set([...(col.values ?? []), ...(active?.values ?? [])])].map((v) => (
                   <label key={v}>
                     <input
                       type="checkbox"
@@ -62,6 +75,11 @@ export function FilterPanel({ columns, filters, onChange }: Props) {
                     {v}
                   </label>
                 ))}
+                <CustomValue onAdd={(value) => {
+                  const values = byColumn.get(col.name)?.values ?? [];
+                  if (!values.includes(value)) onChange(upsert(filters,
+                    { column: col.name, kind: "categorical", values: [...values, value] }, col.name));
+                }} />
               </div>
             ) : (
               <div className="range-inputs">
@@ -73,9 +91,11 @@ export function FilterPanel({ columns, filters, onChange }: Props) {
                 />
                 <input
                   type="number" step="any"
-                  value={active?.max ?? col.max ?? 0}
+                  aria-label={`Maximum ${col.label || col.name}`}
+                  placeholder="No maximum"
+                  value={active?.max === Number.MAX_VALUE ? "" : active?.max ?? col.max ?? 0}
                   onChange={(e) => setRange(col,
-                    active?.min ?? col.min ?? 0, Number(e.target.value))}
+                    active?.min ?? col.min ?? 0, e.target.value === "" ? Number.MAX_VALUE : Number(e.target.value))}
                 />
               </div>
             )}

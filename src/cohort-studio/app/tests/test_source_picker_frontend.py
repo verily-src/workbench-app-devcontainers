@@ -50,11 +50,13 @@ def test_source_picker_cascades_without_autoload_and_keeps_datasource(
     page.route("**/api/tables?**", list_tables)
 
     def open_dataset(route):
-        opened.append(route.request.post_data_json)
-        fulfill(route, {"dataset_id": "opened", "source": "opened", "rows": 1,
-                        "columns": [], "sampled": False, "query_scope": "loaded"})
+        body = route.request.post_data_json
+        opened.append(body.get("source_ref", body))
+        fulfill(route, {"job_id": "source-picker-open", "status": "complete", "result": {
+            "dataset_id": "opened", "source": "opened", "rows": 1,
+            "columns": [], "sampled": False, "query_scope": "loaded"}})
 
-    page.route("**/api/datasets/open", open_dataset)
+    page.route("**/api/data-jobs/open", open_dataset)
     page.route("**/api/datasets/opened/query", lambda route: fulfill(route, {
         "total": 1, "filtered": 1, "charts": [],
         "rows": {"page": 0, "page_size": 50, "columns": [], "data": [[]]},

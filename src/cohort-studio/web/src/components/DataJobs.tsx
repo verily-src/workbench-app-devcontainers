@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { pendingDataJobs, forgetDataJob } from "../api";
+import { notifyDataReady } from "../notifications";
 import type { DataJob, OpenResult } from "../api";
 
 export function DataJobs({ onOpen }: { onOpen: (result: OpenResult) => void }) {
   const [recovered, setRecovered] = useState<Record<string, DataJob>>({});
   const [jobs, setJobs] = useState<Record<string, DataJob>>({});
   const [error, setError] = useState("");
+  const notified = useRef(new Set<string>());
   useEffect(() => {
     const ids = pendingDataJobs();
     let stopped = false;
@@ -15,6 +17,10 @@ export function DataJobs({ onOpen }: { onOpen: (result: OpenResult) => void }) {
           const response = await fetch(`/api/data-jobs/${id}`);
           if (!response.ok) { if (response.status === 404) forgetDataJob(id); continue; }
           const job = await response.json() as DataJob;
+          if (!stopped && job.status === "complete" && !notified.current.has(id)) {
+            notified.current.add(id);
+            notifyDataReady(job.kind, id);
+          }
           if (!stopped && pendingDataJobs().includes(id)) setRecovered(old => ({ ...old, [id]: job }));
         } catch { }
       }

@@ -1,0 +1,228 @@
+# Aevom (NVIDIA agent-for-lifesciences) on Verily Workbench.
+#
+# `app` is code-server: the Workbench front door with the wb CLI, bucket
+# mounts and a terminal. The Aevom stack (API + tool microservices + Postgres,
+# Redis, Phoenix) runs alongside it, built on the VM from the pinned upstream
+# commit. Every Aevom service joins the app container's network namespace
+# (network_mode: service:app), so they all talk over localhost and the Aevom
+# UI is reached through code-server's port proxy at <app URL>/proxy/8000/.
+#
+# Upstream runs each tool service on port 8000 behind compose DNS; sharing one
+# namespace means each needs its own port, set via `command` and the
+# *_SERVICE_URL variables below.
+services:
+  app:
+    container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/config:cached
+      # Drop LLM API keys here (aevom key nv); read-only in aevom-api below.
+      - aevom-keys:/config/.aevom
+    ports:
+      - "8443:8443"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+  # ---- Aevom. Service definitions mirror upstream docker-compose.yml at the
+  # commit pinned in aevom-api.Dockerfile / AEVOM_GIT below.
+  aevom-api:
+    build:
+      context: .
+      dockerfile: aevom-api.Dockerfile
+    restart: always
+    network_mode: "service:app"
+    volumes:
+      - aevom-keys:/run/aevom-keys:ro
+    environment:
+      # Workbench only substitutes a fixed set of template options on the VM
+      # (see startupscript/butane/050-parse-devcontainer.sh), so the model is
+      # set here rather than as a template option. See "Model Selection" in
+      # the upstream README for the list.
+      AEVOM_MODEL: "nemotron-3-5-super-vl"
+      LOG_LEVEL: "INFO"
+      NVIDIA_API_KEY_FILE: /run/secrets/nvidia_api_key
+      DATABASE_URL: postgresql+asyncpg://aevom:aevom_local_only@localhost:5432/aevom
+      REDIS_URL: redis://localhost:6379/0
+      RDKIT_SERVICE_URL: http://localhost:8001
+      PYEXEC_SERVICE_URL: http://localhost:8002
+      VINA_SERVICE_URL: http://localhost:8003
+      ADMET_SERVICE_URL: http://localhost:8004
+      PLIP_SERVICE_URL: http://localhost:8005
+      PHOENIX_COLLECTOR_ENDPOINT: http://localhost:4317
+      PHOENIX_PROJECT_NAME: aevom
+      # Shared pyexec service with RestrictedPython. The OpenShell sandbox mode
+      # needs the host Docker socket and is not used here.
+      PYEXEC_MODE: direct
+      SANDBOX_BACKEND_URL: http://localhost:8000
+      AEVOM_FEAT_STORAGE_ACCESS_API: "true"
+      AEVOM_FEAT_HTTP_REQUEST_TOOL: "false"
+      # The browser reaches the app over HTTPS, so the owner cookie keeps Secure.
+      AEVOM_COOKIE_SECURE: "true"
+      FEAT_ROSALIND: "false"
+      AEVOM_FEAT_FEEDBACK_EMAIL: "false"
+    depends_on:
+      aevom-postgres:
+        condition: service_healthy
+      aevom-redis:
+        condition: service_healthy
+      aevom-rdkit:
+        condition: service_healthy
+      aevom-pyexec:
+        condition: service_healthy
+      aevom-vina:
+        condition: service_healthy
+      aevom-plip:
+        condition: service_healthy
+      aevom-admet:
+        condition: service_started
+      aevom-phoenix:
+        condition: service_started
+
+  aevom-postgres:
+    image: postgres:16-alpine
+    restart: always
+    network_mode: "service:app"
+    environment:
+      POSTGRES_DB: aevom
+      POSTGRES_USER: aevom
+      POSTGRES_PASSWORD: aevom_local_only
+    volumes:
+      - aevom-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aevom -d aevom"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  aevom-redis:
+    image: redis:7-alpine
+    restart: always
+    network_mode: "service:app"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  aevom-rdkit:
+    # Compiles RDKit from source: the long pole of the first build (20-40 min).
+    build:
+      context: "https://github.com/NVIDIA-BioNeMo/agent-for-lifesciences.git#2549b683e16cb4688ef7dc16851467f69e6c5e15:services/rdkit"
+    restart: always
+    network_mode: "service:app"
+    command: ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8001"]
+    environment:
+      LOG_LEVEL: "INFO"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  aevom-pyexec:
+    build:
+      context: "https://github.com/NVIDIA-BioNeMo/agent-for-lifesciences.git#2549b683e16cb4688ef7dc16851467f69e6c5e15:services/pyexec"
+      # Layered on the RDKit image built above (upstream: aevom-rdkit:latest).
+      additional_contexts:
+        aevom-rdkit: service:aevom-rdkit
+      args:
+        RDKIT_IMAGE: aevom-rdkit
+    restart: always
+    network_mode: "service:app"
+    command: ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8002"]
+    environment:
+      LOG_LEVEL: "INFO"
+      BACKEND_URL: http://localhost:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  aevom-vina:
+    # CPU AutoDock Vina. Workbench attaches GPUs to the app service only, so the
+    # Uni-Dock GPU target is not used.
+    build:
+      context: "https://github.com/NVIDIA-BioNeMo/agent-for-lifesciences.git#2549b683e16cb4688ef7dc16851467f69e6c5e15:services/vina"
+      target: cpu-final
+    restart: always
+    network_mode: "service:app"
+    command: ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8003"]
+    environment:
+      LOG_LEVEL: "INFO"
+      VINA_GPU: "false"
+      CONFORMER_COUNT: "50"
+      ROT_BOND_THRESHOLD: "15"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  aevom-admet:
+    build:
+      context: "https://github.com/NVIDIA-BioNeMo/agent-for-lifesciences.git#2549b683e16cb4688ef7dc16851467f69e6c5e15:services/admet"
+    restart: always
+    network_mode: "service:app"
+    command: ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8004"]
+    environment:
+      LOG_LEVEL: "INFO"
+    healthcheck:
+      # /ready, not /health: ready only once the Chemprop ensembles are loaded.
+      test: ["CMD", "curl", "-f", "http://localhost:8004/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  aevom-plip:
+    build:
+      context: "https://github.com/NVIDIA-BioNeMo/agent-for-lifesciences.git#2549b683e16cb4688ef7dc16851467f69e6c5e15:services/plip"
+    restart: always
+    network_mode: "service:app"
+    command: ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8005"]
+    environment:
+      LOG_LEVEL: "INFO"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  aevom-phoenix:
+    # Arize Phoenix trace store (OTLP on 4317, UI on 6006).
+    image: arizephoenix/phoenix:version-13.0.3
+    restart: always
+    network_mode: "service:app"
+    environment:
+      PHOENIX_WORKING_DIR: /phoenix_data
+    volumes:
+      - aevom-phoenix:/phoenix_data
+
+networks:
+  app-network:
+    external: true
+volumes:
+  work:
+  aevom-keys:
+  aevom-postgres:
+  aevom-phoenix:

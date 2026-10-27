@@ -1,0 +1,105 @@
+diff --git a/frontend/index.html b/frontend/index.html
+index e4b5a16..c16e5cb 100644
+--- a/frontend/index.html
++++ b/frontend/index.html
+@@ -19,7 +19,8 @@
+ <html lang="en">
+   <head>
+     <meta charset="UTF-8" />
+-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
++    <script id="workbench-trailing-slash">if (/\/proxy\/\d+$/.test(location.pathname)) location.replace(location.pathname + "/" + location.search + location.hash);</script>
++    <link rel="icon" type="image/svg+xml" href="./vite.svg" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <title>aevom - AI Molecular Scientist</title>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+diff --git a/frontend/src/main.tsx b/frontend/src/main.tsx
+index e9740ac..48c1a02 100644
+--- a/frontend/src/main.tsx
++++ b/frontend/src/main.tsx
+@@ -15,6 +15,7 @@
+  * limitations under the License.
+  */
+ 
++import './workbenchProxyShim'
+ import React from 'react'
+ import ReactDOM from 'react-dom/client'
+ import App from './App.tsx'
+diff --git a/frontend/src/workbenchProxyShim.ts b/frontend/src/workbenchProxyShim.ts
+new file mode 100644
+index 0000000..0dc5a79
+--- /dev/null
++++ b/frontend/src/workbenchProxyShim.ts
+@@ -0,0 +1,59 @@
++/**
++ * Verily Workbench reverse-proxy shim.
++ *
++ * Workbench serves apps at https://workbench.verily.com/app/<id>/proxy/8000/
++ * and strips that prefix before forwarding requests to the container. Aevom's
++ * frontend addresses its backend with root-relative URLs ("/api/..."), which
++ * the browser would resolve against workbench.verily.com and so lose the
++ * prefix. This module rewrites same-origin root-relative URLs passed to
++ * fetch() and EventSource so they resolve relative to the directory the page
++ * was loaded from. Behind the proxy that is ".../proxy/8000/"; on a plain
++ * http://localhost:8000 deployment it is "/", so behaviour there is unchanged.
++ *
++ * Imported first in main.tsx so it is installed before any component runs.
++ * Together with Vite's `base: "./"` (set by patch-upstream.sh) this is the
++ * whole of the Workbench-specific change to the frontend.
++ */
++
++// Directory of the current page, e.g. https://host/app/<id>/proxy/8000/.
++// Aevom's only client-side route is a single segment ("/training"), so the
++// directory of the page is always the app root.
++const pageBase = new URL(".", window.location.href);
++
++function rebase(url: string): string {
++  // Root-relative only: "//host/..." and absolute URLs are left alone.
++  if (!url.startsWith("/") || url.startsWith("//")) return url;
++  return new URL(url.slice(1), pageBase).toString();
++}
++
++function rebaseInput(input: RequestInfo | URL): RequestInfo | URL {
++  if (typeof input === "string") return rebase(input);
++  if (input instanceof Request) {
++    // Request.url is already absolute (resolved against the document URL), so
++    // detect a same-origin /api path that escaped the app's prefix.
++    const u = new URL(input.url);
++    if (
++      u.origin === window.location.origin &&
++      u.pathname.startsWith("/api/") &&
++      !u.pathname.startsWith(pageBase.pathname)
++    ) {
++      const rebased = new URL(u.pathname.slice(1) + u.search + u.hash, pageBase);
++      return new Request(rebased.toString(), input);
++    }
++  }
++  return input;
++}
++
++const nativeFetch = window.fetch.bind(window);
++window.fetch = (input: RequestInfo | URL, init?: RequestInit) =>
++  nativeFetch(rebaseInput(input), init);
++
++const NativeEventSource = window.EventSource;
++class RebasedEventSource extends NativeEventSource {
++  constructor(url: string | URL, init?: EventSourceInit) {
++    super(typeof url === "string" ? rebase(url) : url, init);
++  }
++}
++window.EventSource = RebasedEventSource;
++
++export {};
+diff --git a/frontend/vite.config.ts b/frontend/vite.config.ts
+index 39549a3..56f983d 100644
+--- a/frontend/vite.config.ts
++++ b/frontend/vite.config.ts
+@@ -29,6 +29,9 @@ const version = process.env.VERSION || "0.0.0-dev";
+ 
+ export default defineConfig({
+   plugins: [react()],
++  // Verily Workbench serves the app under /app/<id>/proxy/8000/ and strips
++  // the prefix, so built asset URLs must be relative to index.html.
++  base: "./",
+   define: {
+     // Inject VERSION_NUMBER as a global constant
+     "import.meta.env.VERSION_NUMBER": JSON.stringify(version),

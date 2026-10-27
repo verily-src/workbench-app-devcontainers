@@ -1,0 +1,40 @@
+{
+    "id": "aevom",
+    "version": "0.0.1",
+    "name": "Aevom (NVIDIA agent for life sciences)",
+    "description": "Code-server IDE with NVIDIA Aevom, an agentic molecular-science harness (chat UI with Molstar viewer, RDKit, AutoDock Vina, ADMET-AI and PLIP tool services) built from the upstream repository. Needs a build.nvidia.com API key.",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/aevom",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        },
+        "shmSize": {
+            "type": "string",
+            "description": "Shared memory size for the application-server container",
+            "default": "64m"
+        },
+        "memoryLimit": {
+            "type": "string",
+            "description": "Memory limit for the application-server container",
+            "default": "8192m"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

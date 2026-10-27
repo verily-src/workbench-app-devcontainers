@@ -1,0 +1,43 @@
+{
+    "name": "Aevom (NVIDIA agent for life sciences)",
+    "dockerComposeFile": "docker-compose.yaml",
+    "service": "app",
+    "shutdownAction": "none",
+    "workspaceFolder": "/workspace",
+    "postCreateCommand":
+        "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\" && ./sudo-passwordless.sh abc && ./setup-aevom.sh abc /config",
+    "postStartCommand":
+        "./startupscript/remount-on-restart.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\" && ./setup-aevom.sh abc /config",
+    "features": {
+        "ghcr.io/devcontainers/features/aws-cli@sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef": {},
+        "ghcr.io/dhoeric/features/google-cloud-cli@sha256:fa5d894718825c5ad8009ac8f2c9f0cea3d1661eb108a9d465cba9f3fc48965f": {},
+        "./.devcontainer/features/workbench-tools": {
+            "cloud": "${templateOption:cloud}",
+            "username": "abc",
+            "userHomeDir": "/config"
+        }
+    },
+    "remoteUser": "root",
+    "customizations": {
+        "workbench": {
+            "opens": {
+                "extensions": [
+                    ".py",
+                    ".ipynb",
+                    ".sh",
+                    ".md",
+                    ".html",
+                    ".csv",
+                    ".json",
+                    ".jsonc",
+                    ".yaml",
+                    ".yml",
+                    ".pdb",
+                    ".sdf",
+                    ".smi"
+                ],
+                "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+            }
+        }
+    }
+}

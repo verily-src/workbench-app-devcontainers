@@ -128,9 +128,9 @@ fi
 # Dedicated log file, separate from the app's own stdout. No-ops without sudo access.
 if command -v sudo &> /dev/null; then
   emit "Configuring sudo command audit logging..."
-  mkdir -p /var/log/sudo-audit
+  mkdir -p /var/log/workbench
   grep -q '^Defaults logfile=' /etc/sudoers || \
-    echo 'Defaults logfile="/var/log/sudo-audit/sudo.log"' >> /etc/sudoers
+    echo 'Defaults logfile="/var/log/workbench/sudo-audit.log"' >> /etc/sudoers
   # Disable word-wrap so invocations aren't split across Cloud Logging entries.
   grep -q '^Defaults loglinelen=' /etc/sudoers || \
     echo 'Defaults loglinelen=0' >> /etc/sudoers

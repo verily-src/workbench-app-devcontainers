@@ -4,6 +4,47 @@ from playwright.sync_api import expect
 from tests.test_e2e import app_url
 
 
+def test_enter_sends_shift_enter_adds_line_and_success_animates(page, app_url):
+    session = '00000000-0000-4000-8000-000000000011'
+    held, requests = [], []
+    page.route('**/api/datasources', lambda r: r.fulfill(json={'ready': True, 'sources': [], 'catalogs_pending': False}))
+    page.route('**/api/views/all', lambda r: r.fulfill(json={'views': [], 'pending': [], 'unavailable': []}))
+    page.route('**/api/agent/chat/history?*', lambda r: r.fulfill(json={'session_id': session, 'messages': [], 'has_more': False}))
+    page.route('**/api/agent/chat/sessions', lambda r: r.fulfill(json={'sessions': []}))
+    page.route('**/api/agent/workflows?*', lambda r: r.fulfill(json={'plans': []}))
+    def stream(route):
+        requests.append(route.request.post_data_json)
+        held.append(route)
+    page.route('**/api/agent/chat/stream', stream)
+    page.goto(app_url)
+    page.get_by_text('Agent', exact=True).first.click()
+    box = page.get_by_role('textbox', name='Message the Studio Agent')
+    box.fill('First line')
+    box.press('Shift+Enter')
+    box.press_sequentially('Second line')
+    assert box.input_value() == 'First line\nSecond line'
+    assert not requests
+    box.press('Enter')
+    expect(page.get_by_text('Working…')).to_be_visible()
+    assert requests[0]['message'] == 'First line\nSecond line'
+    avatar = page.locator('.studio-agent-avatar img')
+    assert avatar.evaluate('(element) => element.getBoundingClientRect().width') >= 112
+    expect(avatar).to_have_attribute('src', '/mascot/thinking.webp')
+    reply = '**Sources**\n\n- **Aurora:** `cohort`\n- [PubMed](https://pubmed.ncbi.nlm.nih.gov/)\n\n<script>bad()</script> [bad](javascript:alert(1))'
+    body = [{'type': 'result', 'result': {'reply': reply, 'session_id': session,
+            'tool_calls': [], 'actions': [], 'workflow_plans': []}}, {'type': 'end'}]
+    held[0].fulfill(status=200, content_type='application/x-ndjson', body=''.join(json.dumps(x)+'\n' for x in body))
+    expect(avatar).to_have_attribute('src', '/mascot/greeting.webp')
+    response = page.locator('.studio-agent-message.assistant .agent-text').last
+    expect(response.locator('strong', has_text='Sources')).to_be_visible()
+    expect(response.locator('ul li')).to_have_count(2)
+    expect(response.locator('code', has_text='cohort')).to_be_visible()
+    expect(response.get_by_role('link', name='PubMed')).to_have_attribute('href', 'https://pubmed.ncbi.nlm.nih.gov/')
+    assert response.locator('script').count() == 0
+    assert response.get_by_role('link', name='bad').count() == 0
+    expect(avatar).to_have_attribute('src', '/mascot/idle.webp', timeout=5000)
+
+
 def test_followup_is_queued_and_sent_after_current_turn(page, app_url):
     session = '00000000-0000-4000-8000-000000000011'
     requests, held = [], []

@@ -940,3 +940,10 @@ New Agent workflow plans store their conversation ID in the existing owner-scope
 Aggregation filters derive a windowed count, sum or mean for each non-null group. They retain the original rows and apply the threshold through the existing range-filter pipeline. Aggregates cover the source before ordinary dashboard filters; loaded previews use their available rows. Null group keys are excluded; invalid and non-finite numeric measures are ignored. Source recipes retain the derived column. PostgreSQL, DuckDB and loaded data use equivalent behavior.
 
 The browser loads dashboard, chart, PDF, agent and settings modules on demand. The OMOP builder remains mounted after first use to retain its state. Optional browser notifications report completed data loads and joins only while an open app tab is hidden; permission and preference stay in the browser. This is not a service-worker push subscription.
+
+
+### Indexed paging and Agent presentation
+
+For simple PostgreSQL tables without a projected primary key, paging can use the leading column of a valid, non-partial ascending B-tree index followed by the full-row JSON tie-break. Statistics rank candidate indexes; tables without a suitable index retain full-row ordering. This preserves deterministic ordering for unchanged rows while allowing incremental sort when the planner chooses the index. It does not eliminate deep OFFSET costs or guarantee a fast plan for all distributions.
+
+The Agent composer sends Enter and uses Shift+Enter for a newline, with IME composition preserved. Assistant messages render a safe Markdown subset as React elements; raw HTML is displayed as text and only HTTPS citations become links. The mascot uses idle, thinking and short completion animations, with a still image for reduced-motion preferences.

@@ -168,7 +168,27 @@ def _primary_key_order(conn, live_source: dict) -> str | None:
         ORDER BY k.position
         """), {"schema": table.db, "table": table.name}).scalars().all()
     outputs = set(live_source["columns"].values())
-    if not keys or any(key not in projected or projected[key] not in outputs for key in keys):
+    if not keys:
+        candidates = conn.execute(text("""
+            SELECT a.attname FROM pg_catalog.pg_index i
+            JOIN pg_catalog.pg_class c ON c.oid = i.indrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid
+            JOIN pg_catalog.pg_am am ON am.oid = idx.relam
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = i.indkey[0]
+            LEFT JOIN pg_catalog.pg_stats s ON s.schemaname = n.nspname
+              AND s.tablename = c.relname AND s.attname = a.attname
+            WHERE n.nspname = :schema AND c.relname = :table
+              AND i.indisvalid AND i.indisready AND i.indpred IS NULL
+              AND am.amname = 'btree' AND i.indkey[0] > 0 AND i.indoption[0] = 0
+            ORDER BY CASE WHEN s.n_distinct < 0 THEN -s.n_distinct * c.reltuples
+                          ELSE COALESCE(s.n_distinct, 0) END DESC, idx.relname
+            """), {"schema": table.db, "table": table.name}).scalars().all()
+        for key in candidates:
+            if key in projected and projected[key] in outputs:
+                return f'live.{_q(projected[key])}, to_jsonb(live)::text'
+        return None
+    if any(key not in projected or projected[key] not in outputs for key in keys):
         return None
     return ", ".join(f"live.{_q(projected[key])}" for key in keys)
 

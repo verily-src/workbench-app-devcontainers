@@ -14,4 +14,4 @@ blender --background cohort_bot.blend --python render_animations.py
 python export_webp.py
 ```
 
-The Agent header uses idle and thinking animations. It shows a still frame when the browser requests reduced motion. The greeting loop is available for future UI use.
+The Agent header uses idle and thinking animations and briefly waves after a successful reply. It shows a still frame when the browser requests reduced motion.

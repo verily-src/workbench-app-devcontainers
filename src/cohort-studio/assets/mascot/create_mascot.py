@@ -16,7 +16,7 @@ def material(name, color, metallic=0.0, roughness=0.4, emission=0):
         p.inputs['Emission Color'].default_value = (*color, 1); p.inputs['Emission Strength'].default_value = emission
     return m
 
-shell = material('warm porcelain', (0.91, 0.91, 0.81), .08, .3)
+shell = material('soft pearl', (0.94, 0.94, 0.88), .02, .5)
 teal = material('deep teal', (0.018, 0.18, 0.16), .12, .24)
 light = material('mint light', (0.30, 0.96, 0.76), .05, .24, .3)
 accent = material('sea glass', (0.08, 0.61, 0.49), .2, .24)
@@ -29,13 +29,19 @@ def sphere(name, loc, scale, mat, parent=bot):
     bpy.ops.object.shade_smooth(); obj.parent=parent
     return obj
 
-sphere('Body', (0,0,1.05), (.60,.43,.67), shell)
-sphere('Face housing', (0,-.345,1.20), (.48,.13,.43), teal)
-sphere('Left eye',(-.175,-.468,1.29),(.066,.035,.075), light)
-sphere('Right eye',(.175,-.468,1.29),(.066,.035,.075), light)
-sphere('Left cheek',(-.29,-.449,1.12),(.055,.016,.032), blush)
-sphere('Right cheek',(.29,-.449,1.12),(.055,.016,.032), blush)
-sphere('Smile',(0,-.474,1.065),(.10,.02,.025),light)
+sphere('Body', (0,0,1.05), (.67,.48,.69), shell)
+sphere('Face housing', (0,-.39,1.22), (.50,.14,.40), teal)
+sphere('Left eye',(-.18,-.525,1.30),(.085,.035,.10), light)
+sphere('Right eye',(.18,-.525,1.30),(.085,.035,.10), light)
+sphere('Left eye glint',(-.20,-.558,1.33),(.021,.012,.025), shell)
+sphere('Right eye glint',(.16,-.558,1.33),(.021,.012,.025), shell)
+sphere('Left cheek',(-.31,-.508,1.14),(.060,.016,.033), blush)
+sphere('Right cheek',(.31,-.508,1.14),(.060,.016,.033), blush)
+curve = bpy.data.curves.new('smile', 'CURVE'); curve.dimensions = '3D'; curve.bevel_depth = .013; curve.bevel_resolution = 3
+line = curve.splines.new('BEZIER'); line.bezier_points.add(2)
+for point, co in zip(line.bezier_points, [(-.09,-.529,1.12),(0,-.543,1.08),(.09,-.529,1.12)]):
+    point.co = co; point.handle_left_type = point.handle_right_type = 'AUTO'
+smile = bpy.data.objects.new('Smile', curve); bpy.context.collection.objects.link(smile); smile.parent = bot; smile.data.materials.append(light)
 sphere('Belly badge',(0,-.415,.73),(.135,.035,.135),accent)
 sphere('Badge light',(0,-.448,.73),(.06,.018,.06),light)
 for x, angle in [(-.025, -.55), (.025, .55)]:

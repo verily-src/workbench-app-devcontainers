@@ -101,7 +101,10 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [runId, setRunId] = useState<string>();
   const [cancelling, setCancelling] = useState(false);
   const streamController = useRef<AbortController | null>(null);
+  const celebrationTimer = useRef<number | undefined>(undefined);
+  const [celebrating, setCelebrating] = useState(false);
   useEffect(() => () => streamController.current?.abort(), []);
+  useEffect(() => () => window.clearTimeout(celebrationTimer.current), []);
   const [error, setError] = useState("");
   const [before, setBefore] = useState<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -205,6 +208,8 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const runMessage = async (message: string) => {
     if (busyRef.current) return;
     busyRef.current = true;
+    window.clearTimeout(celebrationTimer.current);
+    setCelebrating(false);
     setBusy(true);
     setError("");
     setMessages((current) => [...current, { role: "user", content: message }]);
@@ -228,6 +233,8 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         }
       }, controller.signal);
       if (!result) { setQueuePaused(true); return; }
+      setCelebrating(true);
+      celebrationTimer.current = window.setTimeout(() => setCelebrating(false), 1800);
       if (result.workflow_plans?.some((plan) => plan.status === "ready")) setQueuePaused(true);
       setSessionId(result.session_id);
       setNewSessionPending(false);
@@ -468,7 +475,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
           <div className="studio-agent-identity">
             <picture aria-hidden="true" className="studio-agent-avatar">
               <source media="(prefers-reduced-motion: reduce)" srcSet="/mascot/still.webp" />
-              <img src={busy ? "/mascot/thinking.webp" : "/mascot/idle.webp"} alt="" />
+              <img src={busy ? "/mascot/thinking.webp" : celebrating ? "/mascot/greeting.webp" : "/mascot/idle.webp"} alt="" />
             </picture>
             <div>
               <h1>Studio Agent</h1>
@@ -619,6 +626,12 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         <textarea aria-label="Message the Studio Agent"
           placeholder="What would you like to analyze?" value={input}
           maxLength={8000} disabled={restoring}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              if (!event.repeat) send();
+            }
+          }}
           onChange={(event) => setInput(event.target.value)} />
         {busy && <button type="button" disabled={!runId || cancelling} onClick={async () => {
           if (!runId) return;

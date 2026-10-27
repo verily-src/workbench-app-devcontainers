@@ -20,6 +20,17 @@ case "$*" in
     'ps -aq --no-trunc --filter name=^/application-server$') cat /home/core/container-id ;;
     'rm -f primary-id') : > /home/core/container-id ;;
     'update --memory '*' primary-id') : ;;
+    *'mikefarah/yq@sha256:'*)
+        # Run the real yq (installed in this image) against the bind-mounted compose
+        # file, mirroring what the production docker invocation does.
+        host_path=""
+        prev=""
+        for arg in "$@"; do
+            [[ "$prev" == "-v" ]] && host_path="${arg%%:*}"
+            prev="$arg"
+        done
+        yq -i "${@: -2:1}" "$host_path"
+        ;;
     *) echo "Unexpected Docker command: $*" >&2; exit 1 ;;
 esac
 SH

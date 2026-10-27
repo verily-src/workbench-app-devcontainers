@@ -51,6 +51,8 @@ for x, angle in [(-.025, -.55), (.025, .55)]:
     mark.data.materials.append(shell); mark.parent = bot
 sphere('Left foot',(-.31,-.06,.43),(.26,.34,.16),shell)
 sphere('Right foot',(.31,-.06,.43),(.26,.34,.16),shell)
+sphere('Left rear cheek',(-.22,.41,.75),(.27,.22,.23),shell)
+sphere('Right rear cheek',(.22,.41,.75),(.27,.22,.23),shell)
 sphere('Left ear',(-.59,0,1.37),(.12,.20,.19),accent)
 sphere('Right ear',(.59,0,1.37),(.12,.20,.19),accent)
 sphere('Left hand',(-.62,-.02,.91),(.18,.20,.25),shell)
@@ -71,8 +73,11 @@ for start, end, name in [(1,25,'Idle'),(26,50,'Thinking'),(51,75,'Greeting'),(76
         if name=='Thinking': bot.rotation_euler.y=.07*math.sin(t); bot.rotation_euler.z=.06*math.sin(t)
         if name=='Greeting': arm.rotation_euler.y=-.45-.35*math.sin(t)
         if name=='Dance':
-            bot.location.z=.04 * (1 - math.cos(2 * t)); bot.rotation_euler.z=.20 * math.sin(2 * t)
-            bot.rotation_euler.y=.11 * math.sin(t); arm.rotation_euler.y=-.30-.22 * math.sin(2 * t)
+            turn = math.sin(t / 2) ** 2
+            bot.location.z=.04 * (1 - math.cos(4 * t)) * turn
+            bot.rotation_euler.z=math.pi * turn + .22 * math.sin(4 * t) * turn
+            bot.rotation_euler.x=.17 * turn; bot.rotation_euler.y=.08 * math.sin(4 * t) * turn
+            arm.rotation_euler.y=-.30 * turn - .22 * math.sin(4 * t) * turn
         for obj, paths in [(bot,('location','rotation_euler')),(arm,('rotation_euler',))]:
             for path in paths: obj.keyframe_insert(data_path=path, frame=frame)
     bpy.context.scene.timeline_markers.new(name, frame=start)

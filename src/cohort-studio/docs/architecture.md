@@ -956,3 +956,10 @@ Dashboard chart specifications persist optional axis labels, numeric linear/log 
 The map chart requires distinct numeric longitude and latitude columns. Loaded, DuckDB and PostgreSQL sources reject invalid geographic coordinates and plot at most 2,000 points; database and disk results are marked sampled. The bundled public-domain Natural Earth 1:110m country geometry uses de facto boundaries and is loaded only when a map is rendered. No geocoding or external tile service is used.
 
 The app requests workflow data at startup and shares in-flight workflow requests with the workflow screen. It prefetches secondary screen, chart and PDF modules during browser idle time after the initial render, without preloading every table or dataset. Browser idle dance begins after ten seconds of inactivity and uses reduced-motion still artwork when requested.
+
+
+### Calculated expressions and grouped filters
+
+Calculated expressions parse a bounded Python-style arithmetic syntax into a validated AST; they never evaluate user code. Supported operations are +, -, *, /, abs, sqrt, ln, coalesce and col with exact column names. Numeric constants are finite; missing values, invalid roots/logs and division by zero return null. PostgreSQL uses quoted identifiers and bound constants; DuckDB and pandas use the same validated tree and numeric semantics. Grouped filters support one to five keys, count, sum, mean, minimum and maximum, and at-least, at-most or bounded ranges. They compute over the source before dashboard filters and retain matching source rows; null group keys do not match.
+
+Saved source recipes remain limited to 16 total steps and four join levels; calculated steps no longer consume join depth. SQL generated from validated derived recipes uses the private compiler provenance marker, with a 100,000-character compiled SQL limit and a 30,000-character expression limit. User-provided SQL remains separately validated. The feature does not create a grouped summary table.

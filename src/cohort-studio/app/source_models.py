@@ -13,10 +13,12 @@ import omop
 
 class DerivedSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
-    op: Literal["bin", "formula", "map", "group_count", "group_sum", "group_mean"]
+    op: Literal["bin", "formula", "expression", "map", "group_count", "group_sum", "group_mean", "group_min", "group_max"]
     name: str = Field(pattern=r"^[A-Za-z0-9 _.\-]{1,60}$")
     column: str | None = None
     measure: str | None = None
+    group_by: list[str] | None = Field(default=None, min_length=1, max_length=5)
+    expression: str | None = Field(default=None, min_length=1, max_length=1000)
     breaks: list[float] | None = Field(default=None, max_length=1001)
     labels: list[str] | None = Field(default=None, max_length=1000)
     left: str | None = None
@@ -38,11 +40,15 @@ class DerivedSpec(BaseModel):
                 raise ValueError("Provide one label per bin.")
         if self.op == "formula" and not (self.left and self.operator and self.right):
             raise ValueError("A formula needs left, operator and right.")
+        if self.op == "expression" and not (self.expression and self.expression.strip()):
+            raise ValueError("A calculation expression is required.")
         if self.op == "map" and not (self.column and self.mapping):
             raise ValueError("Mapping needs a column and at least one value mapping.")
-        if self.op in {"group_count", "group_sum", "group_mean"} and not self.column:
+        if self.group_by and (any(not item.strip() for item in self.group_by) or len(set(self.group_by)) != len(self.group_by)):
+            raise ValueError("Grouping columns must be distinct and nonempty.")
+        if self.op in {"group_count", "group_sum", "group_mean", "group_min", "group_max"} and not (self.column or self.group_by):
             raise ValueError("Aggregation needs a grouping column.")
-        if self.op in {"group_sum", "group_mean"} and not self.measure:
+        if self.op in {"group_sum", "group_mean", "group_min", "group_max"} and not self.measure:
             raise ValueError("This aggregation needs a measure column.")
         return self
 
@@ -184,9 +190,9 @@ def source_dict(source) -> dict:
         nonlocal count
         count += 1
         if count > 16 or depth > 4:
-            raise ValueError("Saved sources support at most 16 sources and four levels.")
+            raise ValueError("Saved sources support at most 16 source steps and four join levels.")
         if isinstance(node, DerivedSource):
-            check(node.base, depth + 1)
+            check(node.base, depth)
         if isinstance(node, JoinSource):
             check(node.base, depth + 1)
             for step in node.steps:

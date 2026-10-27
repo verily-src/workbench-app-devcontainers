@@ -173,6 +173,24 @@ def test_omop_cohort_browser_flow(ref, page: Page, omop_app_url: str):
     expect(page.locator(".data-table thead")).not_to_contain_text("Diclofenac events")
 
 
+def test_aggregation_filter_on_real_postgres(ref, page: Page, omop_app_url: str):
+    page.goto(omop_app_url)
+    page.get_by_label('Source type', exact=True).select_option('aurora')
+    page.get_by_label('Datasource', exact=True).select_option('aurora:omopdb')
+    page.get_by_label('Schema', exact=True).select_option('cdm')
+    page.get_by_label('Table', exact=True).select_option('cdm.person')
+    page.get_by_role('button', name='Load table').click()
+    expect(page.locator('.hero .count')).to_have_text('100', timeout=30000)
+    page.get_by_role('button', name='+ Aggregation filter').click()
+    panel = page.get_by_role('region', name='Aggregation filter')
+    panel.get_by_label('Group by').select_option('gender_concept_id')
+    panel.get_by_label('At least', exact=True).fill('2')
+    panel.get_by_role('button', name='Apply filter').click()
+    expect(panel).to_have_count(0, timeout=30000)
+    expect(page.locator('.chip', has_text='Rows per group')).to_be_visible(timeout=30000)
+    expect(page.locator('.hero .count')).to_have_text('100', timeout=30000)
+
+
 def test_omop_mcp_streamable_http(omop_app_url: str):
     from mcp import ClientSession
     from mcp.client.streamable_http import streamable_http_client

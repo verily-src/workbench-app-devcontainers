@@ -67,23 +67,30 @@ def _map(df: pd.DataFrame, spec: dict) -> pd.Series:
 
 
 def _group_count(df: pd.DataFrame, spec: dict) -> pd.Series:
-    column = spec.get("column")
-    if column not in df.columns:
-        raise ValueError(f"Unknown column: {column}")
-    return df.groupby(column, dropna=True)[column].transform("size").astype("float64")
+    columns = spec.get("group_by") or [spec.get("column")]
+    for column in columns:
+        if column not in df.columns: raise ValueError(f"Unknown column: {column}")
+    return df.groupby(columns, dropna=True)[columns[0]].transform("size").astype("float64")
 
 
 def _group_measure(df: pd.DataFrame, spec: dict) -> pd.Series:
-    column, measure = spec.get("column"), spec.get("measure")
-    if column not in df.columns or measure not in df.columns:
+    columns, measure = spec.get("group_by") or [spec.get("column")], spec.get("measure")
+    if any(column not in df.columns for column in columns) or measure not in df.columns:
         raise ValueError("Unknown grouping or measure column.")
     values = pd.to_numeric(df[measure], errors="coerce").replace([np.inf, -np.inf], np.nan)
-    grouped = values.groupby(df[column], dropna=True)
-    return grouped.transform("sum", min_count=1) if spec["op"] == "group_sum" else grouped.transform("mean")
+    grouped = values.groupby([df[column] for column in columns], dropna=True)
+    if spec["op"] == "group_sum": return grouped.transform("sum", min_count=1)
+    return grouped.transform({"group_mean": "mean", "group_min": "min", "group_max": "max"}[spec["op"]])
 
-_GROUP_OPS = {"group_count", "group_sum", "group_mean"}
+
+def _expression(df: pd.DataFrame, spec: dict) -> pd.Series:
+    import calculations
+    return calculations.evaluate(calculations.parse(spec["expression"], df.columns), df)
+
+_GROUP_OPS = {"group_count", "group_sum", "group_mean", "group_min", "group_max"}
 _OPS = {"bin": _bin, "formula": _formula, "map": _map, "group_count": _group_count,
-        "group_sum": _group_measure, "group_mean": _group_measure}
+        "group_sum": _group_measure, "group_mean": _group_measure, "group_min": _group_measure,
+        "group_max": _group_measure, "expression": _expression}
 
 
 def _q(name: str) -> str:
@@ -98,8 +105,8 @@ def derive(dataset_id: str, spec: dict) -> dict:
         raise ValueError(f"Unknown op: {op}")
     ds = datasets.get(dataset_id)
     df = ds["df"]
-    if op in _GROUP_OPS and name in df.columns:
-        raise ValueError("Choose a new name for the aggregation column.")
+    if op in _GROUP_OPS | {"expression"} and name in df.columns:
+        raise ValueError("Choose a new name for the calculated column.")
     if ds.get("disk_source"):
         import column_settings
         import disk_data
@@ -107,7 +114,7 @@ def derive(dataset_id: str, spec: dict) -> dict:
         preview, disk = disk_data.derive(ds["disk_source"], normalized)
         remaining_settings = [s for s in ds.get("column_settings", [])
                               if s.get("name") != name]
-        if op in _GROUP_OPS:
+        if op in _GROUP_OPS | {"expression"}:
             remaining_settings.append({"name": name, "logical_type": "number", "filter_kind": "range"})
         source_ref = None
         if ds.get("source_ref"):
@@ -154,7 +161,7 @@ def derive(dataset_id: str, spec: dict) -> dict:
             raise ValueError("The derived column could not be created in the database.")
         remaining_settings = [s for s in ds.get("column_settings", [])
                               if s.get("name") != name]
-        if op in _GROUP_OPS:
+        if op in _GROUP_OPS | {"expression"}:
             remaining_settings.append({"name": name, "logical_type": "number", "filter_kind": "range"})
         baseline = {**ds, "df": preview, "live_source": live,
                     "column_settings": remaining_settings}
@@ -179,7 +186,7 @@ def derive(dataset_id: str, spec: dict) -> dict:
                 "rows": len(preview), "columns": columns, "source_ref": source_ref,
                 "query_scope": "database", "sampled": False}
     result = datasets.set_column(dataset_id, name, series)
-    if op in _GROUP_OPS:
+    if op in _GROUP_OPS | {"expression"}:
         import column_settings
         ds["column_settings"] = [*ds.get("column_settings", []),
                                  {"name": name, "logical_type": "number", "filter_kind": "range"}]

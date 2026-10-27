@@ -282,6 +282,7 @@ export interface Dataset {
   chat?: ChatMsg[];
   chatSessionId?: string;
   filterAskHistory?: FilterAskHistoryEntry[];
+  groupSummary?: { group_by: string[]; measure: string | null };
 }
 
 export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"

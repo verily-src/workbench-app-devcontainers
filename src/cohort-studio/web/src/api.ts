@@ -550,6 +550,7 @@ export const api = {
         cohorts?: Cohort[];
         entity_column?: string | null;
         filter_ask_history?: Dataset["filterAskHistory"];
+        group_summary?: Dataset["groupSummary"] | null;
       }>;
     }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),
@@ -566,6 +567,7 @@ export const api = {
         cohorts: d.cohorts ?? [],
         entity_column: d.entityColumn ?? null,
         filter_ask_history: d.filterAskHistory ?? [],
+        group_summary: d.groupSummary ?? null,
       })),
     })),
 

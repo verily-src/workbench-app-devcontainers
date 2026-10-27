@@ -1195,6 +1195,18 @@ class FilterAskEntry(BaseModel):
             raise ValueError("A filter question needs exactly one answer or error.")
         return self
 
+class SavedGroupSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    group_by: list[str] = Field(min_length=1, max_length=5)
+    measure: str | None = Field(default=None, max_length=512)
+
+    @model_validator(mode="after")
+    def distinct_groups(self):
+        if any(not name or len(name) > 512 for name in self.group_by) or len(set(self.group_by)) != len(self.group_by):
+            raise ValueError("Choose distinct grouping columns.")
+        return self
+
+
 class ViewDataset(BaseModel):
     source: SourceRef
     entity_column: str | None = None
@@ -1205,6 +1217,7 @@ class ViewDataset(BaseModel):
         source_dict(value)
         return value
 
+    group_summary: SavedGroupSummary | None = None
     title: str = ""
     filters: list[Filter] = Field(default_factory=list)
     charts: list[ChartSpec] = Field(default_factory=list)
@@ -1492,6 +1505,7 @@ def save_view(req: SaveViewRequest, request: Request, response: Response):
         "datasets": [{
             "source": source_dict(d.source),
             "entity_column": d.entity_column,
+            "group_summary": d.group_summary.model_dump() if d.group_summary else None,
             "title": d.title,
             "filters": [{k: v for k, v in f.model_dump().items()
                          if v is not None} for f in d.filters],

@@ -82,7 +82,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
   const [showCompare, setShowCompare] = useState(false);
   const [showDerive, setShowDerive] = useState(false);
   const [showAggregate, setShowAggregate] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
+  const [showSummary, setShowSummary] = useState(Boolean(dataset.groupSummary));
+  useEffect(() => { setShowSummary(Boolean(dataset.groupSummary)); }, [dataset.id]);
   const [showLaunch, setShowLaunch] = useState(false);
   const [cohortName, setCohortName] = useState("");
   const [chatDraft, setChatDraft] = useState<{ id: string; text: string; datasetId: string } | null>(null);
@@ -385,7 +386,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
                       onClose={() => setShowDerive(false)} />
       )}
 
-      {showSummary && <GroupSummary dataset={dataset} onClose={() => setShowSummary(false)} />}
+      {showSummary && <GroupSummary dataset={dataset} onUpdate={onUpdate} onClose={() => setShowSummary(false)} />}
 
       {showAggregate && <AggregateFilter dataset={dataset} onUpdate={onUpdate}
         onClose={() => setShowAggregate(false)} />}

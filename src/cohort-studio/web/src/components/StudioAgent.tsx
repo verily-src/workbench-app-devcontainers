@@ -104,24 +104,24 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const celebrationTimer = useRef<number | undefined>(undefined);
   const [celebrating, setCelebrating] = useState(false);
   const [dancing, setDancing] = useState(false);
-  const [flying, setFlying] = useState(false);
+  const [driving, setDriving] = useState(false);
   useEffect(() => () => streamController.current?.abort(), []);
   useEffect(() => () => window.clearTimeout(celebrationTimer.current), []);
   useEffect(() => {
     setDancing(false);
-    setFlying(false);
+    setDriving(false);
     if (busy || celebrating) return;
-    let timer: number, flightTimer: number;
+    let timer: number, driveTimer: number;
     const reset = () => {
-      setDancing(false); setFlying(false);
-      window.clearTimeout(timer); window.clearTimeout(flightTimer);
+      setDancing(false); setDriving(false);
+      window.clearTimeout(timer); window.clearTimeout(driveTimer);
       timer = window.setTimeout(() => setDancing(true), 10000);
-      flightTimer = window.setTimeout(() => { setDancing(false); setFlying(true); }, 30000);
+      driveTimer = window.setTimeout(() => { setDancing(false); setDriving(true); }, 30000);
     };
     const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
     events.forEach(name => window.addEventListener(name, reset, { passive: true }));
     reset();
-    return () => { window.clearTimeout(timer); window.clearTimeout(flightTimer); events.forEach(name => window.removeEventListener(name, reset)); };
+    return () => { window.clearTimeout(timer); window.clearTimeout(driveTimer); events.forEach(name => window.removeEventListener(name, reset)); };
   }, [busy, celebrating]);
   const [error, setError] = useState("");
   const [before, setBefore] = useState<number | null>(null);
@@ -661,10 +661,10 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
           disabled={restoring || !input.trim() || queuedMessages.length >= 10}>{busy ? "Queue" : "Send"}</button>
       </form>
       </div>
-      {flying && <div className="mascot-flight" aria-hidden="true">
-        <img className="mascot-chaser" src="/mascot/godzilla.png" alt="" />
-        <svg className="mascot-jetpack" viewBox="0 0 52 78" focusable="false"><rect x="12" y="7" width="28" height="45" rx="11" fill="#748d89" stroke="#345f59" strokeWidth="3" /><path d="M16 49h20l-10 25z" fill="#ffa44b" /><path d="M21 49h10l-5 17z" fill="#ffdf86" /><circle cx="26" cy="24" r="6" fill="#c9f4e8" /></svg>
-        <img src="/mascot/idle.webp" alt="" />
+      {driving && <div className="mascot-drive" aria-hidden="true">
+        <img className="mascot-chaser" src="/mascot/godzilla-halloween.png" alt="" />
+        <img className="mascot-truck" src="/mascot/cybertruck.png" alt="" />
+        <img className="mascot-driver" src="/mascot/idle.webp" alt="" />
       </div>}
     </section>
   );

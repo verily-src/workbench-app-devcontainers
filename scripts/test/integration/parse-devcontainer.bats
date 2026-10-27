@@ -20,6 +20,17 @@ case "$*" in
     'ps -aq --no-trunc --filter name=^/application-server$') cat /home/core/container-id ;;
     'rm -f primary-id') : > /home/core/container-id ;;
     'update --memory '*' primary-id') : ;;
+    *'mikefarah/yq@sha256:'*)
+        # Run the real yq (installed in this image) against the bind-mounted compose
+        # file, mirroring what the production docker invocation does.
+        host_path=""
+        prev=""
+        for arg in "$@"; do
+            [[ "$prev" == "-v" ]] && host_path="${arg%%:*}"
+            prev="$arg"
+        done
+        yq -i "${@: -2:1}" "$host_path"
+        ;;
     *) echo "Unexpected Docker command: $*" >&2; exit 1 ;;
 esac
 SH
@@ -164,7 +175,9 @@ exercise_lifecycle() {
         assert_no_call '^prefetch$'
         jq -e '.AIRLOCK_ENABLED == true' "$CORE/published.json"
     else
-        [ "$(cat "$CORE/calls")" = prefetch ]
+        # The host-log mount is reapplied on every run (the compose file is reset
+        # from its template each time), so ignore that expected yq call here.
+        [ "$(grep -v 'mikefarah/yq' "$CORE/calls")" = prefetch ]
     fi
     check_settings 0 67108864 7516192768
 

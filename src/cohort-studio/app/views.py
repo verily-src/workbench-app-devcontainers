@@ -76,6 +76,7 @@ _LIST_PENDING = {}
 _LIST_EPOCH = {}
 LIST_DEADLINE_SECONDS = 0.25
 LIST_CACHE_SECONDS = 300
+LIST_FAILURE_CACHE_SECONDS = 20
 
 
 def _list_store(store):
@@ -108,7 +109,8 @@ def list_all_views(stores: list[dict]) -> dict:
         for store in stores:
             key = (store["kind"], store["resource_id"])
             cached = _LIST_CACHE.get(key)
-            if key in _LIST_PENDING or (cached and time.monotonic() - cached[0] < LIST_CACHE_SECONDS):
+            ttl = LIST_FAILURE_CACHE_SECONDS if cached and cached[1]["unavailable"] else LIST_CACHE_SECONDS
+            if key in _LIST_PENDING or (cached and time.monotonic() - cached[0] < ttl):
                 continue
             if len(_LIST_PENDING) >= 64:
                 continue

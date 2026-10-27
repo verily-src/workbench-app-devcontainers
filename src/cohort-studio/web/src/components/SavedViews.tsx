@@ -51,10 +51,10 @@ export function SavedViews({ sources, datasets, active, onLoadView }: Props) {
 
   useEffect(() => { void refresh(); }, [storeKey]);
   useEffect(() => {
-    if (!pending) return;
-    const timer = setTimeout(() => void refresh(), 2000);
+    if (!pending && !unavailable.length && !listError) return;
+    const timer = setTimeout(() => void refresh(), pending ? 2000 : 20000);
     return () => clearTimeout(timer);
-  }, [pending, views, unavailable]);
+  }, [pending, views, unavailable, listError]);
 
   useEffect(() => {
     if (!task || !taskRunning) return;

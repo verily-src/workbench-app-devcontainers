@@ -150,6 +150,7 @@ export interface AgentDashboardAction {
 
 export interface AgentWorkflowPlan {
   id: string;
+  session_id?: string;
   workflow: string;
   dataset_id: string;
   rows: number;
@@ -335,8 +336,8 @@ export const api = {
   agentWorkflowStatus: (planId: string) =>
     request<AgentWorkflowPlan>(
       `/api/agent/workflows/${encodeURIComponent(planId)}/status`),
-  agentWorkflowPlans: () =>
-    request<{ plans: AgentWorkflowPlan[] }>("/api/agent/workflows"),
+  agentWorkflowPlans: (sessionId?: string) =>
+    request<{ plans: AgentWorkflowPlan[] }>(`/api/agent/workflows${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""}`),
   openAgentWorkflowResults: (planId: string) =>
     request<{ action: AgentDashboardAction; verification: AgentWorkflowVerification }>(
       `/api/agent/workflows/${encodeURIComponent(planId)}/results/open`, post({})),

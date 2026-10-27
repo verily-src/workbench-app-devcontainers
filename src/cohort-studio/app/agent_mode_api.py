@@ -362,7 +362,7 @@ class Operations:
     def list_workflows(self):
         import agent_workflows
         return {"registry": workflows.list_workflows(), "jobs": workflows.list_jobs(),
-                "plans": agent_workflows.list_plans(self.owner)}
+                "plans": agent_workflows.list_plans(self.owner, session_id=agent_sessions.current_session_id())}
 
     def prepare_workflow(self, dataset_id, input_resource_id, output_resource_id, filters_json="[]"):
         import agent_workflows
@@ -372,6 +372,7 @@ class Operations:
         self._resource("s3", output_resource_id)
         plan = agent_workflows.prepare(dataset_id, input_resource_id, output_resource_id,
             entry["filters"] + filters, self.owner,
+            session_id=agent_sessions.current_session_id(),
             inspect_dataset=lambda did, f: _inspect_dataset(self.owner, did, f),
             list_workflows=workflows.list_workflows, resolve_s3_resource=db.resolve_s3_uri)
         self.workflow_plans.append(plan)
@@ -567,9 +568,10 @@ def _open_workflow_result(owner, plan_id):
 
 
 @router.get("/workflows")
-def workflow_plans(request: Request, response: Response):
+def workflow_plans(request: Request, response: Response, session_id: uuid.UUID | None = None):
     import agent_workflows
-    return {"plans": agent_workflows.list_plans(agent_sessions.owner(request, response))}
+    return {"plans": agent_workflows.list_plans(agent_sessions.owner(request, response),
+                                                session_id=str(session_id) if session_id else None)}
 
 
 @router.post("/workflows/{plan_id}/results/open")

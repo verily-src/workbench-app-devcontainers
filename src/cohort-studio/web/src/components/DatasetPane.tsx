@@ -416,6 +416,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
             kinds={allowedKinds(spec)}
             onTapCategory={toggleCategory}
             onChangeKind={(kind) => updateChart(i, { kind })}
+            onRename={(title) => updateChart(i, { title: title || undefined })}
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
             onClose={() => updateChart(i, null)}
           />

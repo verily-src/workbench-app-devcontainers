@@ -48,6 +48,7 @@ export interface ChartSpec {
   x: string;
   y?: string;
   wide?: boolean;
+  title?: string;
 }
 
 export interface BarDatum { category: string; all: number; selected: number }

@@ -93,6 +93,10 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [input, setInput] = useState("");
   const [restoring, setRestoring] = useState(true);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const [queuedMessages, setQueuedMessages] = useState<{ id: number; text: string }[]>([]);
+  const [queuePaused, setQueuePaused] = useState(false);
+  const nextQueuedId = useRef(0);
   const [progressText, setProgressText] = useState("");
   const [runId, setRunId] = useState<string>();
   const [cancelling, setCancelling] = useState(false);
@@ -102,6 +106,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [before, setBefore] = useState<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [plans, setPlans] = useState<AgentWorkflowPlan[]>([]);
+  const [legacyPlans, setLegacyPlans] = useState<AgentWorkflowPlan[] | null>(null);
   const [plansLoading, setPlansLoading] = useState(true);
   const [planUi, setPlanUi] = useState<Record<string, PlanUiState>>({});
   const inFlight = useRef(new Set<string>());
@@ -160,7 +165,11 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    api.agentWorkflowPlans().then((result) => {
+    setPlans([]);
+    setPlanUi({});
+    if (!sessionId || newSessionPending) { setPlansLoading(false); return; }
+    setPlansLoading(true);
+    api.agentWorkflowPlans(sessionId).then((result) => {
       if (!cancelled) setPlans(result.plans);
     }).catch((caught) => {
       if (!cancelled) setError(safeError(caught));
@@ -168,7 +177,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
       if (!cancelled) setPlansLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [sessionId, newSessionPending]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -193,10 +202,9 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [plans]);
 
-  const send = async () => {
-    const message = input.trim();
-    if (!message || busy || restoring) return;
-    setInput("");
+  const runMessage = async (message: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError("");
     setMessages((current) => [...current, { role: "user", content: message }]);
@@ -213,12 +221,14 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
           if (event.stage === "tool_end") setProgressText("Step finished.");
         }
         if (event.type === "cancelled") {
+          setQueuePaused(true);
           if (event.session_id) { setSessionId(event.session_id); setNewSessionPending(false); }
           setMessages((current) => [...current, { role: "assistant", content: event.reply ?? "Stopped." }]);
           void refreshSessions().catch((caught) => setError(safeError(caught)));
         }
       }, controller.signal);
-      if (!result) return;
+      if (!result) { setQueuePaused(true); return; }
+      if (result.workflow_plans?.some((plan) => plan.status === "ready")) setQueuePaused(true);
       setSessionId(result.session_id);
       setNewSessionPending(false);
       void refreshSessions()
@@ -230,12 +240,14 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         limitReached: result.limit_reached, actions: result.actions,
       }]);
     } catch (caught) {
+      setQueuePaused(true);
       const detail = safeError(caught);
       setError(detail);
       setMessages((current) => [...current, {
         role: "assistant", content: detail,
       }]);
     } finally {
+      busyRef.current = false;
       setBusy(false);
       setRunId(undefined);
       setProgressText("");
@@ -244,18 +256,39 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     }
   };
 
+  const send = () => {
+    const message = input.trim();
+    if (!message || restoring || queuedMessages.length >= 10) return;
+    setInput("");
+    if (busyRef.current || queuedMessages.length) {
+      setQueuedMessages((current) => [...current, { id: ++nextQueuedId.current, text: message }]);
+    } else {
+      setQueuePaused(false);
+      void runMessage(message);
+    }
+  };
+
+  useEffect(() => {
+    if (busy || busyRef.current || queuePaused || restoring || !queuedMessages.length) return;
+    const next = queuedMessages[0];
+    setQueuedMessages((current) => current.slice(1));
+    void runMessage(next.text);
+  }, [busy, queuePaused, restoring, queuedMessages, sessionId, newSessionPending]);
+
   const clearToNewConversation = () => {
     conversationRequest.current += 1;
     setSessionId(undefined);
     setNewSessionPending(true);
     setMessages([]);
+    setPlans([]);
+    setPlanUi({});
     setBefore(null);
     setInput("");
     setError("");
   };
 
   const startNewConversation = () => {
-    if (busy || restoring || loadingOlder) return;
+    if (busy || restoring || loadingOlder || queuedMessages.length) return;
     clearToNewConversation();
   };
 
@@ -264,10 +297,12 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
       startNewConversation();
       return;
     }
-    if (id === sessionId || busy || restoring || loadingOlder) return;
+    if (id === sessionId || busy || restoring || loadingOlder || queuedMessages.length) return;
     const requestId = ++conversationRequest.current;
     setRestoring(true);
     setError("");
+    setPlans([]);
+    setPlanUi({});
     try {
       const history = await api.agentChatHistory(id);
       if (requestId !== conversationRequest.current) return;
@@ -287,7 +322,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   };
 
   const closeConversation = (id: string) => {
-    if (busy || restoring || loadingOlder) return;
+    if (busy || restoring || loadingOlder || queuedMessages.length) return;
     const next = sessions.find((session) => session.session_id !== id
       && !closedSessionIds.includes(session.session_id));
     setClosedSessionIds((current) => current.includes(id) ? current : [...current, id].slice(-50));
@@ -298,7 +333,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   };
 
   const reopenConversation = (id: string) => {
-    if (busy || restoring || loadingOlder) return;
+    if (busy || restoring || loadingOlder || queuedMessages.length) return;
     setClosedSessionIds((current) => current.filter((closedId) => closedId !== id));
     void selectConversation(id);
   };
@@ -325,10 +360,12 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     if (plan.status !== "ready" || inFlight.current.has(plan.id)) return;
     inFlight.current.add(plan.id);
     setPlanUi((current) => ({ ...current, [plan.id]: { working: true } }));
-    setPlans((current) => mergePlans(current, [{ ...plan, status: "submitting" }]));
+    setPlans((current) => current.some((item) => item.id === plan.id) ? mergePlans(current, [{ ...plan, status: "submitting" }]) : current);
+    setLegacyPlans((current) => current?.some((item) => item.id === plan.id) ? mergePlans(current, [{ ...plan, status: "submitting" }]) : current);
     try {
       const result = await api.approveAgentWorkflow(plan.id);
-      setPlans((current) => mergePlans(current, [result]));
+      setPlans((current) => current.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
+      setLegacyPlans((current) => current?.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
       setPlanUi((current) => ({ ...current, [plan.id]: { working: false } }));
     } catch (caught) {
       setPlanUi((current) => ({ ...current, [plan.id]: {
@@ -345,7 +382,8 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     setPlanUi((current) => ({ ...current, [plan.id]: { working: true } }));
     try {
       const result = await api.agentWorkflowStatus(plan.id);
-      setPlans((current) => mergePlans(current, [result]));
+      setPlans((current) => current.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
+      setLegacyPlans((current) => current?.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
       setPlanUi((current) => ({ ...current, [plan.id]: { working: false } }));
     } catch (caught) {
       setPlanUi((current) => ({ ...current, [plan.id]: {
@@ -383,7 +421,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     <section className="studio-agent" aria-label="Studio Agent">
       <aside className="studio-agent-sidebar" aria-label="Conversations">
         <button type="button" className="primary studio-agent-new-chat"
-          disabled={busy || restoring || loadingOlder} onClick={startNewConversation}>
+          disabled={busy || restoring || loadingOlder || queuedMessages.length > 0} onClick={startNewConversation}>
           New chat
         </button>
         <div className="studio-agent-session-heading">
@@ -395,13 +433,13 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
             <div className="studio-agent-session-row" key={session.session_id}>
               <button type="button" className="studio-agent-session-link"
                 aria-current={session.session_id === sessionId ? "page" : undefined}
-                disabled={busy || restoring || loadingOlder}
+                disabled={busy || restoring || loadingOlder || queuedMessages.length > 0}
                 onClick={() => void selectConversation(session.session_id)}>
                 <span>{session.title || "Untitled conversation"}</span>
               </button>
               <button type="button" className="studio-agent-session-close"
                 aria-label={`Close ${session.title || "conversation"}`}
-                title="Close chat" disabled={busy || restoring || loadingOlder}
+                title="Close chat" disabled={busy || restoring || loadingOlder || queuedMessages.length > 0}
                 onClick={() => closeConversation(session.session_id)}>×</button>
             </div>
           ))}
@@ -416,7 +454,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
               <div className="studio-agent-session-row" key={session.session_id}>
                 <span className="studio-agent-session-name">{session.title || "Untitled conversation"}</span>
                 <button type="button" className="studio-agent-session-reopen"
-                  disabled={busy || restoring || loadingOlder}
+                  disabled={busy || restoring || loadingOlder || queuedMessages.length > 0}
                   onClick={() => reopenConversation(session.session_id)}>Open</button>
               </div>
             ))}
@@ -537,24 +575,59 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         </section>
       )}
 
+      <details className="studio-agent-legacy-plans" onToggle={(event) => {
+        if (event.currentTarget.open && legacyPlans === null) {
+          api.agentWorkflowPlans().then((result) => setLegacyPlans(result.plans.filter((plan) => !plan.session_id)))
+            .catch((caught) => setError(safeError(caught)));
+        }
+      }}>
+        <summary>Earlier workflow plans</summary>
+        {legacyPlans === null ? <span>Loading…</span> : legacyPlans.length === 0 ? <span>None</span> :
+          legacyPlans.map((plan) => <article className="studio-agent-card workflow-plan" key={plan.id}>
+            <strong>Review workflow: {plan.workflow}</strong>
+            <span>Status: {workflowStatus(plan)}</span>
+            <span>{plan.rows.toLocaleString()} input rows</span>
+            {plan.column_mapping && <div className="studio-agent-column-mapping"><strong>Column mapping</strong>
+              {Object.entries(plan.column_mapping).map(([key, value]) => <code key={key}>{key} → {value}</code>)}</div>}
+            {plan.output_path && <span>Planned output: {plan.output_resource_id}/{plan.output_path}</span>}
+            {plan.errors.length > 0 && <ul>{plan.errors.map((item, i) => <li key={i}>{item}</li>)}</ul>}
+            {planUi[plan.id]?.error && <p role="alert">{planUi[plan.id].error}</p>}
+            {plan.status === "ready" && <button type="button" disabled={busy || planUi[plan.id]?.working}
+              onClick={() => void runWorkflow(plan)}>Run workflow</button>}
+            {plan.status === "submission_unknown" && <button type="button" disabled={busy || planUi[plan.id]?.working}
+              onClick={() => void checkWorkflowRun(plan)}>Check run</button>}
+            {isCompleted(plan) && <button type="button" disabled={busy || planUi[plan.id]?.working}
+              onClick={() => void openResults(plan)}>Open results</button>}
+          </article>)}
+      </details>
+
       {error && <p className="studio-agent-error" role="alert">{error}</p>}
       {busy && <div role="status" aria-live="polite" className="studio-agent-progress">
         {cancelling ? "Stopping after the current operation…" : progressText}
       </div>}
+      {queuedMessages.length > 0 && <div className="studio-agent-queued" aria-label="Queued messages">
+        {queuedMessages.map((queued) => <div key={queued.id}>
+          <span>Queued: {queued.text}</span>
+          <button type="button" className="quiet" aria-label="Remove queued message"
+            onClick={() => setQueuedMessages((current) => current.filter((item) => item.id !== queued.id))}>✕</button>
+        </div>)}
+        {queuePaused && <button type="button" onClick={() => setQueuePaused(false)}>Send queued messages</button>}
+      </div>}
       <form className="studio-agent-input" onSubmit={(event) => {
-        event.preventDefault(); void send();
+        event.preventDefault(); send();
       }}>
         <textarea aria-label="Message the Studio Agent"
           placeholder="What would you like to analyze?" value={input}
-          maxLength={8000} disabled={busy || restoring}
+          maxLength={8000} disabled={restoring}
           onChange={(event) => setInput(event.target.value)} />
-        {busy ? <button type="button" disabled={!runId || cancelling} onClick={async () => {
+        {busy && <button type="button" disabled={!runId || cancelling} onClick={async () => {
           if (!runId) return;
           setCancelling(true);
           try { await cancelAgent(runId); }
           catch { setCancelling(false); setError("Could not stop this run. Wait for its current operation to finish."); }
-        }}>{cancelling ? "Stopping…" : "Cancel"}</button> : <button type="submit" className="primary"
-          disabled={restoring || !input.trim()}>Send</button>}
+        }}>{cancelling ? "Stopping…" : "Cancel"}</button>}
+        <button type="submit" className="primary"
+          disabled={restoring || !input.trim() || queuedMessages.length >= 10}>{busy ? "Queue" : "Send"}</button>
       </form>
       </div>
     </section>

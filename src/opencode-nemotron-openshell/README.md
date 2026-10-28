@@ -280,10 +280,20 @@ framework's, not a collection's.
 | `network.egress` | `none`, `any` (default), or a host list | `none` removes every network rule but the model and the data. A host list keeps only `policy.yaml` rules whose hosts every collection's list allows; `*.example.com` allows the domain and its subdomains. `none` wins |
 | `data.access` | `read` (default), `none` | `read` adds the collection's imported datasets and buckets to the data rules, so nothing needs listing in `data-access.yaml`. `none` adds nothing and removes them from `data-access.yaml` too |
 
-Strictest wins, always: a collection can tighten the policy, never widen it, and your
-`policy.yaml` stays as you wrote it. `render-policy.py` writes what it decided as comments at the
-top of `policy.effective.yaml`; `agent-sandbox policy explain` prints the same. A collection
-without the file sets no constraint. These cases render the strictest policy (no egress beyond
+Strictest wins, always: a collection can only take things away. With several collections the
+agent gets what every one of them allows, never what just one allows. For egress, a host is kept
+only if it is on every list (`*.d` on a list means `d` and anything under it); `none` on any
+list beats everything; two lists with no host in common leave nothing. For data, each collection
+decides about its own data only: A `read` and B `none` means A's datasets are readable and B's
+are not. Three things are never pruned by egress: the local model, the data rules, and nothing
+in `data-access.yaml`; egress only removes the extra network rules a workspace Owner added to
+`policy.yaml`, which stays as you wrote it. `render-policy.py` writes what it decided as
+comments at the top of `policy.effective.yaml`; `agent-sandbox policy explain` prints the same.
+A collection without the file sets no constraint.
+
+Only egress is a policy matter because inbound access to a sandbox is closed by design: a
+sandbox has no reachable listener, and the only ways in (`openshell service expose`,
+`openshell forward`) are gateway actions this framework does not offer. These cases render the strictest policy (no egress beyond
 the model and the data, no access to that collection's data) by design: Workbench could not be
 read; the file exists but could not be read or parsed, or repeats a key; it uses a key or a
 `version` this app does not know (a newer rule must not be ignored by an older app). If the

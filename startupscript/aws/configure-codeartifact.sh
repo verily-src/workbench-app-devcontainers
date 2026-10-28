@@ -48,7 +48,14 @@ install -m 755 "${CLOUD_SCRIPT_DIR}/refresh-codeartifact-login.sh" "${CODEARTIFA
 
 # Don't fail app creation; the worker retries every five minutes. The worker
 # outlives this hook, so send its output to the container log (PID 1's stdout),
-# which fluent-bit ships. Only root can open it; the app user inherits it.
-if ! ${RUN_AS_LOGIN_USER} "'${CODEARTIFACT_REFRESH_SCRIPT}' --start" > /proc/1/fd/1 2>&1; then
+# which fluent-bit ships. Only root can open it; the app user inherits it. Fall
+# back to this hook's own stdout rather than skip the refresh if the runtime
+# hides PID 1's.
+CODEARTIFACT_CONTAINER_LOG=/proc/1/fd/1
+if ! (exec >> "${CODEARTIFACT_CONTAINER_LOG}") 2>/dev/null; then
+  CODEARTIFACT_CONTAINER_LOG=/dev/stdout
+fi
+readonly CODEARTIFACT_CONTAINER_LOG
+if ! ${RUN_AS_LOGIN_USER} "'${CODEARTIFACT_REFRESH_SCRIPT}' --start" >> "${CODEARTIFACT_CONTAINER_LOG}" 2>&1; then
   emit "WARNING: could not configure CodeArtifact tokens; the worker will retry"
 fi

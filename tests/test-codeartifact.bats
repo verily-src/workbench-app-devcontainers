@@ -157,8 +157,8 @@ wait_for_count() {
   wait_for_count "${BATS_TEST_TMPDIR}/sleeps" '^21600$' 2
   [ "$(grep -c -- '--tool pip' "${BATS_TEST_TMPDIR}/calls")" -eq 3 ]
   # The worker's refreshes reach stdout and the log file, like the startup refresh.
-  [ "$(grep -c 'CodeArtifact pip token refreshed' "${BATS_TEST_TMPDIR}/refresh.log")" -eq 3 ]
-  [ "$(grep -c 'CodeArtifact pip token refreshed' "${TEST_APP_HOME}/.workbench/codeartifact-refresh.log")" -eq 3 ]
+  wait_for_count "${BATS_TEST_TMPDIR}/refresh.log" 'CodeArtifact pip token refreshed' 3
+  wait_for_count "${TEST_APP_HOME}/.workbench/codeartifact-refresh.log" 'CodeArtifact pip token refreshed' 3
 }
 
 @test "periodic failure retries after five minutes and recovers to six hours" {

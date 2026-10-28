@@ -3,8 +3,10 @@
 # Installed by configure-codeartifact.sh and run as the app user. Uses the
 # instance role to renew pip/npm credentials in the user's config files.
 # No arguments: refresh once. --start: refresh and launch one background worker.
-# All runs log to ~/.workbench/codeartifact-refresh.log and stdout; the startup
-# hooks point stdout at the container log so fluent-bit ships it.
+# Results log to ~/.workbench/codeartifact-refresh.log and stdout; the startup
+# hooks point stdout at the container log so fluent-bit ships it. The worker
+# keeps --start's stdout open, so callers must redirect it to a file or fd,
+# never capture it with a command substitution or pipe.
 # Internal --loop mode renews every six hours and retries failures after five minutes.
 set -o errexit
 set -o nounset
@@ -61,7 +63,11 @@ if ! command -v node > /dev/null || ! command -v npm > /dev/null; then
 fi
 
 log() {
-  echo "$(date -u): $*"
+  local line
+  line="$(date -u): $*"
+  echo "${line}"
+  # An unwritable log file must not kill a refresh; stdout still gets the line.
+  echo "${line}" >> "${LOG_FILE}" 2>/dev/null || true
 }
 
 retry() {
@@ -87,12 +93,10 @@ refresh() (
 
   local status=0
   # Attempt both logins even if one package manager fails.
-  local tool repository
-  for tool in npm pip; do
-    repository="${tool}-mirror"
-    if [[ "${tool}" == pip ]]; then
-      repository="pypi-mirror"
-    fi
+  local spec tool repository
+  for spec in npm:npm-mirror pip:pypi-mirror; do
+    tool="${spec%%:*}"
+    repository="${spec#*:}"
     if retry aws codeartifact login --tool "${tool}" \
       --domain "${CODEARTIFACT_DOMAIN}" --domain-owner "${CODEARTIFACT_OWNER}" \
       --repository "${repository}" --region "${CODEARTIFACT_REGION}" --duration-seconds 43200; then
@@ -107,14 +111,6 @@ refresh() (
   return "${status}"
 )
 
-# Manual and startup runs log to the file as well as stdout. The --start worker
-# inherits this tee, so its output reaches both too.
-case "${1:-}" in
-  "" | --start)
-    exec > >(tee -a "${LOG_FILE}") 2>&1
-    ;;
-esac
-
 case "${1:-}" in
   "")
     refresh
@@ -128,7 +124,8 @@ case "${1:-}" in
       delay="${RETRY_INTERVAL}"
     fi
     # Outlives the lifecycle hook. Its lock dies with the container, so
-    # postStart can start a new one.
+    # postStart can start a new one. It inherits --start's stdout so its
+    # results reach the container log.
     nohup "$0" --loop "${delay}" < /dev/null 2>&1 &
     exit "${status}"
     ;;

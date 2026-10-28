@@ -33,6 +33,21 @@ POLICY_RESOURCE = "ai-policy"
 PAGE = 100
 
 
+class StrictLoader(yaml.SafeLoader):
+    """SafeLoader that refuses a mapping with a repeated key. PyYAML keeps the last value, so
+    a file with `egress: none` and later `egress: any` would read as any; OpenShell's own policy
+    parser rejects duplicate keys, and so does this one."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            if key in seen:
+                raise yaml.YAMLError(f"duplicate key {key!r} at line {key_node.start_mark.line + 1}")
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
 class Unavailable(Exception):
     """Workbench could not be read; the caller writes a fail-closed result."""
 
@@ -161,7 +176,7 @@ def read_policy(wb, collection_uuid, collection_resources):
     source = f"gs://{attrs['bucketName']}/{attrs['fileName']}"
     try:
         text = wb.storage_object(attrs["bucketName"], attrs["fileName"]).decode("utf-8")
-        policy = yaml.safe_load(text)
+        policy = yaml.load(text, Loader=StrictLoader)
     except Unavailable as exc:
         return None, source, str(exc)
     except (UnicodeDecodeError, yaml.YAMLError) as exc:

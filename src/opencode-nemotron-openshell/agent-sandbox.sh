@@ -68,7 +68,7 @@ Usage: agent-sandbox <command> [arguments]     (also installed as opencode-sandb
   policy explain           Show what the data collections' policies decided
   logs [count]             Show the sandbox's recent network decisions (default 100)
   rules                    List rules OpenShell drafted from blocked connections
-  approve <chunk-id>       Approve a drafted rule for this sandbox (unless a data collection forbids it)
+  approve <chunk-id>       Approve a drafted rule for this sandbox, if its hosts are within the data collections' egress
   reject <chunk-id>        Reject a drafted rule
   audit save               Save the sandbox's recent decisions and the gateway's audit log to ${AUDIT_DIR}
   audit export <gs://dest> Save, then copy the saved files to a bucket
@@ -161,18 +161,21 @@ policy_explain() {
   [[ -s "${POLICY_SUMMARY}" ]] || { echo "No policy rendered yet; run \`agent-sandbox policy\`."; return 0; }
   jq -r '
     "Data collections: " + (if (.collections | length) == 0 then "none imported" else
-      (.collections | map("\(.id) (policy \(.policy); agent access \(.agent_access); \(.resources | length) resources)") | join("; ")) end),
-    "Internet beyond the model and the data: " + (if .internet == null then "as policy.yaml allows"
-      elif (.internet | length) == 0 then "none" else ("only " + (.internet | join(", "))) end),
-    "Rule approvals: " + (if .rule_approvals then "allowed" else "forbidden by a data collection" end),
+      (.collections | map("\(.id) (policy \(.policy); data access \(.data_access); \(.resources | length) resources)") | join("; ")) end),
+    "Network egress beyond the model and the data: " + (if (.egress.constrained | not) then "as policy.yaml allows"
+      elif .egress.none then "none"
+      else ("only hosts every collection allows: " + (.egress.constraints | map("\(.source): \(.hosts | join(", "))") | join("; "))) end),
     (if (.notes | length) > 0 then "Decisions:\n" + (.notes | map("  - " + .) | join("\n")) else empty end)
   ' "${POLICY_SUMMARY}"
 }
 
-# True unless a data collection set openshell-rule-approvals=false (or Workbench
-# could not be read, which counts as the strictest setting).
-approvals_allowed() {
-  [[ -s "${POLICY_SUMMARY}" ]] && [[ "$(jq -r .rule_approvals "${POLICY_SUMMARY}")" == "true" ]]
+# The hosts a drafted rule would open: the chunk's block in `openshell rule get` (which has no
+# JSON output), then every "host:port [" in its Endpoints lines. Nothing means the chunk was
+# not found or the format changed; the caller fails closed.
+chunk_hosts() {
+  openshell rule get "${SANDBOX_NAME}" --status pending 2> /dev/null |
+    awk -v id="$1" '/^[[:space:]]*Chunk: /{inside = ($2 == id)} inside' |
+    grep -oE '[A-Za-z0-9.*-]+:[0-9]+ \[' | sed -E 's/:[0-9]+ \[$//' | sort -u
 }
 
 data_access_enabled() {
@@ -406,10 +409,14 @@ cmd_decide() {
   (( $# == 1 )) || die "usage: agent-sandbox ${decision} <chunk-id> (see agent-sandbox rules)"
   wait_for_gateway
   if [[ "${decision}" == approve ]]; then
-    # An approved rule widens the sandbox's policy outside the render; a data collection
-    # can forbid that. Re-render first so the decision is current.
+    # An approved rule widens the sandbox's policy outside the render, so its hosts must be
+    # within the egress every data collection allows. Re-render first so the check is current.
     ensure_policy
-    approvals_allowed || die "a data collection in this workspace forbids approving drafted rules (agent-sandbox policy explain). Add the destination to ${POLICY} instead, if the collections allow it."
+    local hosts=()
+    mapfile -t hosts < <(chunk_hosts "$1")
+    (( ${#hosts[@]} > 0 )) || die "could not read the hosts of chunk $1 from \`openshell rule get\`; not approving (see agent-sandbox rules)"
+    python3 "${SCRIPT_DIR}/openshell/egress-check.py" "${POLICY_SUMMARY}" "${hosts[@]}" ||
+      die "the data collections' policies do not allow this rule (agent-sandbox policy explain). Add the destination to ${POLICY} instead, if they allow it."
   fi
   openshell rule "${decision}" "${SANDBOX_NAME}" --chunk-id "$1"
 }

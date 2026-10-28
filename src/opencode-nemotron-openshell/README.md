@@ -202,8 +202,8 @@ edit. It is never overwritten; delete it to get the current default again.
 - When the agent is blocked, OpenShell drafts a narrow rule (one program, one
   host). `agent-sandbox rules` lists them; approve only what you understand.
   Planted instructions in files or data can make an agent ask for exactly the
-  wrong destination. A data collection in the workspace can forbid approvals
-  altogether ([Data collection policies](#data-collection-policies)).
+  wrong destination. A rule is approved only if its hosts are within what every
+  data collection in the workspace allows ([Data collection policies](#data-collection-policies)).
 
 ### Data access
 
@@ -264,34 +264,49 @@ access that reads the data. Only the collection's Owners and Writers can change 
 
 ```yaml
 version: 1
-network: none            # none | any | [pypi.org, files.pythonhosted.org]
-agent_access: read       # read | none
-rule_approvals: false    # true | false
-models: local-only       # local-only | any
+network:
+  egress: none          # none | any | [pypi.org, "*.pythonhosted.org"]
+data:
+  access: read          # read | none
 ```
+
+The two sections are the two things OpenShell lets a running sandbox's policy change: which
+destinations the agent may reach, and whether the provider credential may be used for this
+collection's data. Filesystem and process settings are fixed when a sandbox starts and are the
+framework's, not a collection's.
 
 | Key | Values | Effect |
 |---|---|---|
-| `network` | `none`, `any` (default), or a host list | `none` removes every network rule but the model and the data. A host list keeps only `policy.yaml` rules whose hosts are all listed. Several collections intersect; `none` wins |
-| `agent_access` | `read` (default), `none` | `read` adds the collection's imported datasets and buckets to the data rules, so nothing needs listing in `data-access.yaml`. `none` adds nothing and removes them from `data-access.yaml` too |
-| `rule_approvals` | `true` (default), `false` | `false` makes `agent-sandbox approve` refuse: a drafted rule would widen the policy outside the render |
-| `models` | `local-only`, `any` (default) | Which models may process the data. Recorded in the decisions; this app only offers local models, so it always complies |
+| `network.egress` | `none`, `any` (default), or a host list | `none` removes every network rule but the model and the data. A host list keeps only `policy.yaml` rules whose hosts every collection's list allows; `*.example.com` allows the domain and its subdomains. `none` wins |
+| `data.access` | `read` (default), `none` | `read` adds the collection's imported datasets and buckets to the data rules, so nothing needs listing in `data-access.yaml`. `none` adds nothing and removes them from `data-access.yaml` too |
 
 Strictest wins, always: a collection can tighten the policy, never widen it, and your
 `policy.yaml` stays as you wrote it. `render-policy.py` writes what it decided as comments at the
 top of `policy.effective.yaml`; `agent-sandbox policy explain` prints the same. A collection
-without the file sets no constraint. These cases render the strictest policy (no internet beyond
-the model and the data, no approvals, no access to that collection's data) by design: Workbench
-could not be read; the file exists but could not be read or parsed; it uses a key or a `version`
-this app does not know (a newer rule must not be ignored by an older app). And if the
+without the file sets no constraint. These cases render the strictest policy (no egress beyond
+the model and the data, no access to that collection's data) by design: Workbench could not be
+read; the file exists but could not be read or parsed, or repeats a key; it uses a key or a
+`version` this app does not know (a newer rule must not be ignored by an older app). If the
 collections grant data access but `data-access.yaml` has `enabled: false`, their data is simply
 not reachable.
 
-Two limits. A dataset referenced directly (`wb resource add-ref`) rather than imported from the
-collection has no lineage, so it would carry no constraint; once any collection is present, such
-a dataset in a collection's project is dropped from the data rules. And this is enforced by the
-app's own commands: a user with a shell in the app can run `openshell` against the gateway
-themselves. Locking that down needs the gateway off the app's network, which is a later step.
+Two consequences for the rest of the policy. Every endpoint in the effective policy gets
+`enforcement: enforce`, whatever `policy.yaml` says: OpenShell's default is `audit`, which logs
+a violating request and lets it through, so a rule without the field would not be a rule. And
+`agent-sandbox approve` checks the hosts of a drafted rule against the collections' egress
+before approving: with `egress: none` nothing can be approved, with a list only hosts in every
+list can. Approvals are the one way a policy changes outside the render, and the collections'
+limits hold there too.
+
+Limits. `read` is enforced at the API level: dataset lookups are `GET`, but a query job carries
+SQL that OpenShell rules cannot see, so `CREATE TABLE ... AS SELECT` into the workspace project
+passes (see [Data access](#data-access), "Known gap"); Workbench IAM and perimeter policies
+govern that. Inspecting job bodies would take an OpenShell `network_middlewares` service, a
+possible follow-up. A dataset referenced directly (`wb resource add-ref`) rather than imported
+from the collection has no lineage, so it would carry no policy; once any collection is present,
+such a dataset in a collection's project is dropped from the data rules. And all of this is
+enforced by the app's own commands: a user with a shell in the app can run `openshell` against
+the gateway themselves. Locking that down needs the gateway off the app's network, a later step.
 
 ### Agents outside the framework
 

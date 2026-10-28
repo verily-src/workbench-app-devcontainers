@@ -6,9 +6,10 @@
 # process rules apply only to a new sandbox: run `opencode-sandbox reset`.
 #
 # The data collections in the workspace can tighten this file (README, "Data
-# collection policies"): a collection with openshell-internet=none removes every
-# network rule here but local_models and the data rules. This file is never
-# changed by that; policy.effective.yaml shows the result.
+# collection policies"): a collection whose ai-policy.yaml has network.egress:
+# none removes every network rule here but local_models and the data rules, and
+# every endpoint gets enforcement: enforce (OpenShell's default, audit, only
+# logs). This file is never changed by that; policy.effective.yaml shows the result.
 #
 # Reference: https://docs.nvidia.com/openshell/latest/how-it-works/policies/schema
 version: 1

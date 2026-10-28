@@ -384,6 +384,7 @@ cmd_policy() {
   policy_explain >&2
   # A provider attaches only when a sandbox is created; its project variable
   # shows whether this sandbox has it.
+  # shellcheck disable=SC2016 # Expanded inside the sandbox, not here.
   if data_access_enabled && openshell sandbox get "${SANDBOX_NAME}" > /dev/null 2>&1 &&
     ! openshell sandbox exec "${SANDBOX_NAME}" --no-tty -- sh -c 'test -n "${GCP_PROJECT_ID:-}"' > /dev/null 2>&1; then
     echo "Note: this sandbox was created before data access was on, so it has no Google credential provider." >&2
@@ -650,15 +651,15 @@ cmd_selftest() {
 
 main() {
   command -v openshell > /dev/null 2>&1 || die "the openshell CLI is not installed"
-  local command="${1:-run}"
+  local subcommand="${1:-run}"
   if (( $# > 0 )); then
     shift
   fi
-  case "${command}" in
+  case "${subcommand}" in
     -h|--help|help) usage; return 0 ;;
   esac
   load_harness
-  case "${command}" in
+  case "${subcommand}" in
     harness) cmd_harness "$@" ;;
     run) cmd_run "$@" ;;
     shell) cmd_shell ;;
@@ -668,7 +669,7 @@ main() {
     policy) cmd_policy "$@" ;;
     logs) cmd_logs "$@" ;;
     rules) cmd_rules ;;
-    approve|reject) cmd_decide "${command}" "$@" ;;
+    approve|reject) cmd_decide "${subcommand}" "$@" ;;
     audit) cmd_audit "$@" ;;
     reset) cmd_reset "$@" ;;
     selftest) cmd_selftest ;;

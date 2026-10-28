@@ -1,7 +1,7 @@
 {
   "ghcr.io/devcontainers/features/aws-cli": {
     "tag": "1",
-    "installed": "sha256:1f93c8315b7a6d76982ebb2269f8b0d50413fc0f965c032edf4aee0caceb73ef",
+    "installed": "sha256:d6dee5e399eaee4090b5847afb7516ae7b52a066a863cc29120f66bea9f2d580",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/java": {
@@ -11,7 +11,7 @@
   },
   "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli": {
     "tag": "1",
-    "installed": "sha256:115b3b4a6c7948c660414a6f9aa601674aa1712e9616f7e436760daeeb4b95f2",
+    "installed": "sha256:e3af02f936916198f58ef4088d3be608372246d208f6f627c902ce62a8ae12ec",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/rocker-org/devcontainer-features/r-packages": {
@@ -21,7 +21,7 @@
   },
   "ghcr.io/devcontainers/features/common-utils": {
     "tag": "2",
-    "installed": "sha256:3f63bbee7418dc940d9e5e7ab93ef3049acfe4dba3085b17ee45fe307fdba4e5",
+    "installed": "sha256:e76a6a8a35d1ad824daad1540725e0ec9f8ed2dc00d2850e990a9830013c7d08",
     "filter": "src\\/.*\\/\\.devcontainer\\.json"
   },
   "ghcr.io/devcontainers/features/node": {
@@ -36,22 +36,22 @@
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper": {
     "tag": "latest",
-    "installed": "sha256:9d4d41d25d22161080fdcf37c0c3b907e94cb32904304ac23eb68b546a2c741e",
+    "installed": "sha256:896eb0c4e1233a14284d326c4742aa0544a49b74c545c503a8e6a44ee3b9745e",
     "filter": "src\\/.*\\/docker-compose.yaml"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-jupyter-extension-builder": {
     "tag": "latest",
-    "installed": "sha256:d13b620ad9e67c5b8379f462747593642b6ec29e81331b7a881cddeb726b8584",
+    "installed": "sha256:d4054e1c3e5531a5b9613b1576d3cb4f5b87ff10968724ea21e400f281ee0893",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-aou-jupyter": {
     "tag": "latest",
-    "installed": "sha256:728e1ba00940acd549eace6d96ec627023cec818d4aa7a80ca0f159d05b029bf",
+    "installed": "sha256:198a8b9e7d6fe0fe6765baec0a46333207524e131ee30eac04987ebff5ba2e4d",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-workbench-jupyter": {
     "tag": "latest",
-    "installed": "sha256:54166768c1b4f57c3d001dfe0dffd1e9183c9a957eaf9f95ea0e9c6ccfc1a3b0",
+    "installed": "sha256:39046a8ab406677521ba5b51608d3e1d3144615ec3f221cce050cbb0efb6736e",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "ghcr.io/rocker-org/devcontainer/tidyverse": {
@@ -61,12 +61,12 @@
   },
   "lscr.io/linuxserver/code-server": {
     "tag": "latest",
-    "installed": "sha256:54bcdbe29ee46428409b9334cc5328c591ba42ae81bfe146f6658084f2cf1809",
+    "installed": "sha256:4524d0b00478e41264f42e0e660c1819e3b7d0c460f78ce73e44fa39b2b55134",
     "filter": "src\\/.*\\/(docker-compose\\.yaml|Dockerfile)"
   },
   "golang": {
     "tag": "1.26-alpine",
-    "installed": "sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c",
+    "installed": "sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "node": {
@@ -96,17 +96,17 @@
   },
   "mikefarah/yq": {
     "tag": "4",
-    "installed": "sha256:cfc4eee658595834ef304eadb0c3ea721f3b7cb6404ad8b7cb909cc5b5145b23",
+    "installed": "sha256:4b3d9475d65571d28cbb19544d3820ec2945e4c8b2f18279394282b8dc3a592e",
     "filter": "startupscript\\/butane\\/050-parse-devcontainer\\.sh"
   },
   "gcr.io/go-containerregistry/crane": {
     "tag": "latest",
-    "installed": "sha256:1f968817b95790bed063f71175aa6b8ff879fa17064020415f3e18bb6e6a36e1",
+    "installed": "sha256:61bc716946c2779e1dc0fb8068d116edf8de10e5402262c17e8e4904ddcc14ac",
     "filter": "startupscript\\/butane\\/prefetch-oci-features\\.sh"
   },
   "lscr.io/linuxserver/chromium": {
     "tag": "latest",
-    "installed": "sha256:cf6200ccdcb224feaf5d3bde4ce45b3783c926a7496c98059cae1e0db78e5b2f",
+    "installed": "sha256:f2d4b8b284918d8d65e10921e2fc84c57fd7edbc15345ddb3c024f0949f0031c",
     "filter": "src\\/browser-common\\/Dockerfile"
   }
 }

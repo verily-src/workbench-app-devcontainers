@@ -1,37 +1,35 @@
 #!/usr/bin/env python3
-"""Reads the OpenShell policy attributes of the data collections this workspace imported.
+"""Reads the AI policy of every data collection this workspace imported from.
 
 usage: collection-policy.py [output.json]      (JSON to the file, or to stdout)
 
 A data collection is a Workbench workspace whose properties include terra-type=data-collection.
-Its owners say how an agent may behave while the collection's data is in a workspace by setting
-openshell-* properties on the collection workspace and, for one version, on the version folder
-(README, "Data collection policies"):
-
-  openshell-internet         none | host[,host...]   hosts the agent may reach besides the model and the data
-  openshell-agent-access     read | none             whether the agent may read the collection's data at all
-  openshell-rule-approvals   true | false            whether a user may approve rules OpenShell drafts
+Its owners say how an AI agent may behave while the collection's data is in a workspace in one
+file, ai-policy.yaml, kept in the collection as a Cloud Storage object resource named ai-policy
+(README, "Data collection policies"). The file is what the Workbench UI shows when the collection
+is browsed, and what this script reads, so there is one source.
 
 Every resource imported from a collection carries the collection in its lineage, so collections
-are found from the workspace's resources, not declared. render-policy.py composes them with
+are found from the workspace's resources, not declared. This script fetches each collection's
+file and parses it as YAML; render-policy.py owns the schema and composes the policies with
 policy.yaml and data-access.yaml, strictest wins.
 
-The output is written even when Workbench cannot be read: "unavailable" is then true and
-render-policy.py assumes the strictest constraints. An openshell-* key this version does not know
-is reported in "unknown_keys" and has the same effect, so a collection's newer rule is never
-silently ignored by an older app.
+The output is written even when Workbench cannot be read: "unavailable" is then true. A
+collection whose file exists but cannot be read or parsed gets "policy_error". In both cases
+render-policy.py assumes the strictest constraints, so a collection's rule is never silently
+dropped. A collection with no ai-policy resource has "policy": null and sets no constraint.
 """
 import json
 import os
-import re
 import subprocess
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 
-KNOWN_KEYS = {"openshell-internet", "openshell-agent-access", "openshell-rule-approvals"}
-ALPHA_FIELDS = "terra-data-ecosystem-alpha-fields"
+import yaml
+
+POLICY_RESOURCE = "ai-policy"
 PAGE = 100
 
 
@@ -50,8 +48,8 @@ def wb_json(*args):
         raise Unavailable(f"wb {' '.join(args)} did not return JSON: {exc}")
 
 
-class Wsm:
-    """The Workspace Manager API, as the user the CLI is logged in as."""
+class Workbench:
+    """The Workspace Manager API and Cloud Storage, as the user the CLI is logged in as."""
 
     def __init__(self):
         # The CLI's context file names the workspace and the server; reading it saves two JVM
@@ -77,23 +75,40 @@ class Wsm:
             if not base:
                 raise Unavailable(f"no Workspace Manager URL for server {workspace['serverName']!r}")
         self.base = base.rstrip("/")
+        # Workspace Manager takes the Workbench token; Cloud Storage takes the user's Google
+        # credentials, which the app's Application Default Credentials hold (wb logs in with them).
+        self.token = self._token(["wb", "auth", "print-access-token"], "Workbench")
+        self._google_token = None
+
+    @staticmethod
+    def _token(command, what):
         try:
-            self.token = subprocess.run(["wb", "auth", "print-access-token"], check=True,
-                                        capture_output=True, text=True).stdout.strip()
+            return subprocess.run(command, check=True, capture_output=True, text=True).stdout.strip()
         except (OSError, subprocess.CalledProcessError) as exc:
-            raise Unavailable(f"no Workbench access token: {getattr(exc, 'stderr', exc)}".strip()[:300])
+            raise Unavailable(f"no {what} access token: {getattr(exc, 'stderr', exc)}".strip()[:300])
+
+    def google_token(self):
+        if self._google_token is None:
+            self._google_token = self._token(["gcloud", "auth", "print-access-token"], "Google")
+        return self._google_token
+
+    def _fetch(self, url, what, token=None):
+        request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token or self.token}"})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            raise Unavailable(f"{what}: HTTP {exc.code}")
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise Unavailable(f"{what}: {exc}")
 
     def get(self, path, **query):
         url = f"{self.base}/api/workspaces/v1/{path}"
         if query:
             url += "?" + urllib.parse.urlencode(query)
-        request = urllib.request.Request(url, headers={"Authorization": f"Bearer {self.token}"})
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return json.load(response)
-        except urllib.error.HTTPError as exc:
-            raise Unavailable(f"GET {path}: HTTP {exc.code}")
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            return json.loads(self._fetch(url, f"GET {path}"))
+        except json.JSONDecodeError as exc:
             raise Unavailable(f"GET {path}: {exc}")
 
     def resources(self, workspace_uuid):
@@ -105,34 +120,16 @@ class Wsm:
                 return
             offset += PAGE
 
+    def storage_object(self, bucket, name):
+        """The bytes of one Cloud Storage object, with the user's own access."""
+        url = (f"https://storage.googleapis.com/storage/v1/b/{urllib.parse.quote(bucket, safe='')}"
+               f"/o/{urllib.parse.quote(name, safe='')}?alt=media")
+        return self._fetch(url, f"gs://{bucket}/{name}", token=self.google_token())
+
 
 def properties(record):
     """A record's properties as a dict; WSM returns a list of {key, value}."""
     return {p["key"]: p["value"] for p in record.get("properties") or []}
-
-
-def openshell_properties(props):
-    """The constraint sets a record carries, each as openshell-* keys: its openshell-*
-    properties, and the "openshell" object inside terra-data-ecosystem-alpha-fields, the JSON
-    property the Workbench UI shows and edits as a form
-    ({"openshell": {"internet": "none", "agentAccess": "read", "ruleApprovals": false}}).
-    A collection that sets both gets two sets, and render-policy.py takes the strictest, as it
-    does with any two constraints."""
-    sets = []
-    flat = {k: v for k, v in props.items() if k.startswith("openshell-")}
-    if flat:
-        sets.append(flat)
-    try:
-        fields = json.loads(props.get(ALPHA_FIELDS) or "{}")
-        form = fields.get("openshell") if isinstance(fields, dict) else None
-    except json.JSONDecodeError:
-        form = None
-    if isinstance(form, dict) and form:
-        # camelCase in the form, dashed in properties: agentAccess -> openshell-agent-access.
-        sets.append({"openshell-" + re.sub(r"(?<!^)(?=[A-Z])", "-", str(key)).lower():
-                     {True: "true", False: "false"}.get(value, str(value))
-                     for key, value in form.items()})
-    return sets
 
 
 def data_resource(resource):
@@ -149,18 +146,43 @@ def data_resource(resource):
     return None
 
 
-def collect(wsm):
-    """The collections this workspace imported from, with their constraints and data."""
+def read_policy(wb, collection_uuid, collection_resources):
+    """The collection's ai-policy.yaml, parsed: (policy, source, error). policy is None when the
+    collection has no ai-policy resource; error is set when the file exists but cannot be read
+    or parsed, and the caller treats that as the strictest policy."""
+    candidates = [r for r in collection_resources if r["metadata"]["name"] == POLICY_RESOURCE]
+    if not candidates:
+        return None, None, None
+    if len(candidates) > 1:
+        return None, None, f"{len(candidates)} resources named {POLICY_RESOURCE}; expected one"
+    attrs = (candidates[0].get("resourceAttributes") or {}).get("gcpGcsObject")
+    if not attrs:
+        return None, None, f"resource {POLICY_RESOURCE} is not a Cloud Storage object"
+    source = f"gs://{attrs['bucketName']}/{attrs['fileName']}"
+    try:
+        text = wb.storage_object(attrs["bucketName"], attrs["fileName"]).decode("utf-8")
+        policy = yaml.safe_load(text)
+    except Unavailable as exc:
+        return None, source, str(exc)
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        return None, source, f"{source} is not valid YAML: {str(exc)[:200]}"
+    if not isinstance(policy, dict):
+        return None, source, f"{source} must be a YAML mapping"
+    return policy, source, None
+
+
+def collect(wb):
+    """The collections this workspace imported from, with their policy and their data here."""
     collections = {}
     workspaces = {}  # source workspace uuid -> record, or None when it is not a collection
 
-    for resource in wsm.resources(wsm.workspace_uuid):
+    for resource in wb.resources(wb.workspace_uuid):
         metadata = resource["metadata"]
         for link in metadata.get("resourceLineage") or []:
             source_uuid = link["sourceWorkspaceId"]
             if source_uuid not in workspaces:
                 try:
-                    record = wsm.get(source_uuid)
+                    record = wb.get(source_uuid)
                 except Unavailable as exc:
                     # Lineage to a workspace this user cannot read: not a collection they
                     # imported from, or one they lost access to. Either way no data comes from it.
@@ -171,58 +193,33 @@ def collect(wsm):
             record = workspaces[source_uuid]
             if record is None:
                 continue
-
             if source_uuid not in collections:
-                # One listing of the collection's resources and folders serves every resource
-                # imported from it; a lookup per resource took most of the run.
+                policy, source, error = read_policy(wb, source_uuid, list(wb.resources(source_uuid)))
                 collections[source_uuid] = {
                     "uuid": source_uuid,
                     "id": record.get("userFacingId"),
                     "name": record.get("displayName"),
-                    "properties": openshell_properties(properties(record)),
-                    "versions": {},
+                    "policy": policy,
+                    "policy_source": source,
+                    "policy_error": error,
                     "resources": [],
-                    "_folder_of": {r["metadata"]["resourceId"]: r["metadata"].get("folderId")
-                                   for r in wsm.resources(source_uuid)},
-                    "_folders": {f["id"]: f for f in wsm.get(f"{source_uuid}/folders").get("folders", [])},
                 }
-            collection = collections[source_uuid]
-            # The collection version is the folder the source resource sits in.
-            folder_id = collection["_folder_of"].get(link["sourceResourceId"])
-            if folder_id and folder_id not in collection["versions"]:
-                folder = collection["_folders"].get(folder_id, {})
-                collection["versions"][folder_id] = {
-                    "name": folder.get("displayName"),
-                    "properties": openshell_properties(properties(folder)),
-                }
+                if error:
+                    print(f"collection-policy: {record.get('userFacingId')}: {error}; "
+                          "the strictest constraints apply", file=sys.stderr)
             data = data_resource(resource)
             if data:
-                data["version"] = folder_id
-                collection["resources"].append(data)
+                collections[source_uuid]["resources"].append(data)
             break  # one collection per resource: the first readable collection in its lineage
-
-    result = []
-    for collection in collections.values():
-        # Constraints: the collection's sets, then each imported version's sets on top of each.
-        # Two versions, or a property and the form, with different values all apply;
-        # render-policy.py takes the strictest.
-        collection_sets = collection["properties"] or [{}]
-        constraints = list(collection_sets)
-        for version in collection["versions"].values():
-            for version_set in version["properties"]:
-                constraints.extend({**base, **version_set} for base in collection_sets)
-        unknown = sorted({k for c in constraints for k in c} - KNOWN_KEYS)
-        public = {k: v for k, v in collection.items() if not k.startswith("_")}
-        result.append({**public, "constraints": constraints, "unknown_keys": unknown})
-    return result
+    return list(collections.values())
 
 
 def main():
     output = {"workspace": None, "collections": [], "unavailable": False, "errors": []}
     try:
-        wsm = Wsm()
-        output["workspace"] = wsm.workspace_id
-        output["collections"] = collect(wsm)
+        wb = Workbench()
+        output["workspace"] = wb.workspace_id
+        output["collections"] = collect(wb)
     except Unavailable as exc:
         output["unavailable"] = True
         output["errors"].append(str(exc))

@@ -251,33 +251,41 @@ write tables from a bucket the agent may read, the latter is blocked, so use
 
 ### Data collection policies
 
-A data collection's owners can say how an agent may behave while the collection's data is in a
-workspace, the way Workbench's own region, group and app policies travel with a collection. They
-set `openshell-*` properties on the collection's workspace (`wb workspace set-property
---workspace <collection> --properties=openshell-internet=none`) and, to differ for one version,
-on that version's folder (`wb folder set-property`). The same settings can be written as an
-`openshell` object in the collection's data-ecosystem form, the JSON property the Workbench UI
-shows (`terra-data-ecosystem-alpha-fields`: `{"openshell": {"internet": "none", "agentAccess":
-"read", "ruleApprovals": false}}`); a collection that sets both gets the stricter of the two.
-Nothing is declared in this app: every
-resource imported from a collection carries the collection in its lineage, so
-`collection-policy.py` finds the collections from the workspace's resources and reads their
-properties through the Workbench API, as the user. Only the collection's Owners and Writers can
-change them; workspace users can only read them.
+A data collection's owners can say how an AI agent may behave while the collection's data is in
+a workspace, the way Workbench's own region, group and app policies travel with a collection.
+They keep one file in the collection, **`ai-policy.yaml`**, as a Cloud Storage object resource
+named `ai-policy` at the collection's root (`wb resource add-ref gcs-object --name ai-policy
+--bucket-name <bucket> --object-name ai-policy.yaml`). The file is what the Workbench UI shows
+when the collection is browsed and what this app reads, so there is one source and nothing to
+drift. Nothing is declared in this app: every resource imported from a collection carries the
+collection in its lineage, so `collection-policy.py` finds the collections from the workspace's
+resources through the Workbench API and reads each file with the user's own access, the same
+access that reads the data. Only the collection's Owners and Writers can change the file.
 
-| Property | Values | Effect |
+```yaml
+version: 1
+network: none            # none | any | [pypi.org, files.pythonhosted.org]
+agent_access: read       # read | none
+rule_approvals: false    # true | false
+models: local-only       # local-only | any
+```
+
+| Key | Values | Effect |
 |---|---|---|
-| `openshell-internet` | `none`, or `host1,host2,...` | `none` removes every network rule but the model and the data. A host list keeps only `policy.yaml` rules whose hosts are all listed. Several collections intersect; `none` wins |
-| `openshell-agent-access` | `read` (default), `none` | `read` adds the collection's imported datasets and buckets to the data rules, so nothing needs listing in `data-access.yaml`. `none` adds nothing and removes them from `data-access.yaml` too |
-| `openshell-rule-approvals` | `true` (default), `false` | `false` makes `agent-sandbox approve` refuse: a drafted rule would widen the policy outside the render |
+| `network` | `none`, `any` (default), or a host list | `none` removes every network rule but the model and the data. A host list keeps only `policy.yaml` rules whose hosts are all listed. Several collections intersect; `none` wins |
+| `agent_access` | `read` (default), `none` | `read` adds the collection's imported datasets and buckets to the data rules, so nothing needs listing in `data-access.yaml`. `none` adds nothing and removes them from `data-access.yaml` too |
+| `rule_approvals` | `true` (default), `false` | `false` makes `agent-sandbox approve` refuse: a drafted rule would widen the policy outside the render |
+| `models` | `local-only`, `any` (default) | Which models may process the data. Recorded in the decisions; this app only offers local models, so it always complies |
 
 Strictest wins, always: a collection can tighten the policy, never widen it, and your
 `policy.yaml` stays as you wrote it. `render-policy.py` writes what it decided as comments at the
-top of `policy.effective.yaml`; `agent-sandbox policy explain` prints the same. Three cases
-render the strictest policy (no internet, no approvals) by design: Workbench could not be read,
-a collection uses an `openshell-*` property this app does not know (a newer rule must not be
-ignored by an older app), and a collection's data access is on in principle but
-`data-access.yaml` has `enabled: false`, in which case its data is simply not reachable.
+top of `policy.effective.yaml`; `agent-sandbox policy explain` prints the same. A collection
+without the file sets no constraint. These cases render the strictest policy (no internet beyond
+the model and the data, no approvals, no access to that collection's data) by design: Workbench
+could not be read; the file exists but could not be read or parsed; it uses a key or a `version`
+this app does not know (a newer rule must not be ignored by an older app). And if the
+collections grant data access but `data-access.yaml` has `enabled: false`, their data is simply
+not reachable.
 
 Two limits. A dataset referenced directly (`wb resource add-ref`) rather than imported from the
 collection has no lineage, so it would carry no constraint; once any collection is present, such

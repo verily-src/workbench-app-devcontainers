@@ -161,7 +161,7 @@ policy_explain() {
   [[ -s "${POLICY_SUMMARY}" ]] || { echo "No policy rendered yet; run \`agent-sandbox policy\`."; return 0; }
   jq -r '
     "Data collections: " + (if (.collections | length) == 0 then "none imported" else
-      (.collections | map("\(.id) \(.versions | join("/")) (agent access \(.agent_access); \(.resources | length) resources)") | join("; ")) end),
+      (.collections | map("\(.id) (policy \(.policy); agent access \(.agent_access); \(.resources | length) resources)") | join("; ")) end),
     "Internet beyond the model and the data: " + (if .internet == null then "as policy.yaml allows"
       elif (.internet | length) == 0 then "none" else ("only " + (.internet | join(", "))) end),
     "Rule approvals: " + (if .rule_approvals then "allowed" else "forbidden by a data collection" end),

@@ -15,18 +15,22 @@ the proxy supplies the token:
                   DELETE, PATCH or PUT, no insertAll, no uploads: anything not listed is denied.
   data_storage    GET only, on the listed buckets.
 
-collections.json, written by collection-policy.py, holds the openshell-* properties of every
-data collection this workspace imported from, and the datasets and buckets imported from each.
-They compose with the files above, strictest wins (README, "Data collection policies"):
+collections.json, written by collection-policy.py, holds the ai-policy.yaml of every data
+collection this workspace imported from, and the datasets and buckets imported from each. The
+policies compose with the files above, strictest wins (README, "Data collection policies"):
 
-  openshell-internet        none removes every network rule but the model and the data; a host
-                            list keeps only rules whose hosts are all listed. Lists intersect.
-  openshell-agent-access    read (the default) adds the collection's datasets and buckets to the
-                            data rules; none adds nothing and removes them from data-access.yaml.
-  openshell-rule-approvals  false stops agent-sandbox approving rules OpenShell drafts.
+  version          1; a file from a newer schema is not followed, see below.
+  network          none removes every network rule but the model and the data; a host list
+                   keeps only rules whose hosts are all listed; any (the default) keeps them all.
+                   Lists intersect across collections, and none wins.
+  agent_access     read (the default) adds the collection's datasets and buckets to the data
+                   rules; none adds nothing and removes them from data-access.yaml as well.
+  rule_approvals   false stops agent-sandbox approving rules OpenShell drafts.
+  models           local-only or any; recorded, and already true of this app.
 
-If collections.json says Workbench could not be read, or a collection uses an openshell-* key
-this version does not know, the strictest posture applies: no internet, no approvals.
+If Workbench could not be read, a collection's file could not be read or parsed, or it uses a
+key or version this app does not know, the strictest posture applies: no internet beyond the
+model and the data, no approvals, and no access to that collection's data.
 """
 import json
 import re
@@ -42,6 +46,9 @@ BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$")
 PROVIDER = re.compile(r"^[A-Za-z0-9._-]{1,63}$")
 HOST = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
 GENERATED_RULES = ("data_bigquery", "data_storage")
+# ai-policy.yaml, the one file a data collection describes its AI policy in.
+POLICY_VERSION = 1
+POLICY_KEYS = {"version", "network", "agent_access", "rule_approvals", "models"}
 
 
 def fail(message):
@@ -135,24 +142,36 @@ class Decisions:
         }
 
 
-def parse_internet(value, source):
-    value = value.strip()
-    if value == "none":
-        return None
-    hosts = [h.strip() for h in value.split(",") if h.strip()]
-    for host in hosts:
-        if not HOST.match(host):
-            fail(f"{source}: openshell-internet has an invalid host {host!r}")
-    return hosts
+class InvalidPolicy(Exception):
+    """An ai-policy.yaml this app cannot follow as written; the strictest policy applies."""
 
 
-def parse_flag(value, key, source, true, false):
-    value = value.strip()
-    if value == true:
-        return True
-    if value == false:
-        return False
-    fail(f"{source}: {key} must be {true} or {false}, got {value!r}")
+def read_policy(policy, source):
+    """Validates one collection's ai-policy.yaml and returns (network, agent_access,
+    rule_approvals): network is None for "none", a host list, or "any" when unset."""
+    unknown = sorted(set(policy) - POLICY_KEYS)
+    if unknown:
+        raise InvalidPolicy(f"uses {', '.join(unknown)}, which this app does not know")
+    if policy.get("version") != POLICY_VERSION:
+        raise InvalidPolicy(f"is version {policy.get('version')!r}; this app knows version {POLICY_VERSION}")
+    network = policy.get("network", "any")
+    if network == "none":
+        network = None
+    elif network != "any":
+        if isinstance(network, str):
+            network = [h.strip() for h in network.split(",") if h.strip()]
+        if not isinstance(network, list) or not all(isinstance(h, str) and HOST.match(h) for h in network):
+            raise InvalidPolicy(f"network must be none, any or a list of hosts, got {policy.get('network')!r}")
+    access = policy.get("agent_access", "read")
+    if access not in ("read", "none"):
+        raise InvalidPolicy(f"agent_access must be read or none, got {access!r}")
+    approvals = policy.get("rule_approvals", True)
+    if not isinstance(approvals, bool):
+        raise InvalidPolicy(f"rule_approvals must be true or false, got {approvals!r}")
+    models = policy.get("models", "any")
+    if models not in ("local-only", "any"):
+        raise InvalidPolicy(f"models must be local-only or any, got {models!r}")
+    return network, access == "read", approvals
 
 
 def apply_collections(sources, decisions):
@@ -168,28 +187,31 @@ def apply_collections(sources, decisions):
 
     for collection in sources.get("collections") or []:
         name = collection.get("id") or collection.get("uuid")
-        versions = sorted(v.get("name") or "?" for v in (collection.get("versions") or {}).values())
-        source = f"collection {name} {'/'.join(versions)}".strip()
+        source = f"collection {name}"
+        policy, error = collection.get("policy"), collection.get("policy_error")
         access = True
-        if collection.get("unknown_keys"):
-            decisions.note(f"{source} uses {', '.join(collection['unknown_keys'])}, which this app "
-                           "does not know; the strictest constraints apply")
+        if policy is not None and error is None:
+            try:
+                network, access, approvals = read_policy(policy, source)
+            except InvalidPolicy as exc:
+                error = f"{collection.get('policy_source') or 'ai-policy.yaml'} {exc}"
+        if error:
+            # The collection asked for something; not understanding it must not loosen anything.
+            decisions.note(f"{source}: {error}; the strictest constraints apply")
             decisions.restrict_internet(None, source)
             decisions.forbid_approvals(source)
             access = False
-        for constraint in collection.get("constraints") or [{}]:
-            if "openshell-internet" in constraint:
-                decisions.restrict_internet(parse_internet(constraint["openshell-internet"], source), source)
-            if "openshell-rule-approvals" in constraint and not parse_flag(
-                    constraint["openshell-rule-approvals"], "openshell-rule-approvals", source, "true", "false"):
+        elif policy is not None:
+            if network != "any":
+                decisions.restrict_internet(network, source)
+            if not approvals:
                 decisions.forbid_approvals(source)
-            if "openshell-agent-access" in constraint and not parse_flag(
-                    constraint["openshell-agent-access"], "openshell-agent-access", source, "read", "none"):
-                access = False
         resources = collection.get("resources") or []
         (grants if access else denials).extend({**r, "source": source} for r in resources)
         decisions.collections.append({
-            "id": name, "versions": versions, "agent_access": "read" if access else "none",
+            "id": name,
+            "policy": collection.get("policy_source") or ("none" if policy is None else "invalid"),
+            "agent_access": "read" if access else "none",
             "resources": [r.get("dataset") or r.get("bucket") for r in resources],
         })
         if not access and resources:

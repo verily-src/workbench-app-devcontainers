@@ -48,10 +48,8 @@ if ! validate_airlock_snapshot; then
         set_metadata "startup_script/status" "ERROR"
         set_metadata "startup_script/message" "App setup is incomplete. Please retry startup."
     fi
-    # The snapshot and setup marker are only written by a devcontainer start, so
-    # rerunning the probe cannot fix this. Exit 78 (EX_CONFIG) matches the unit's
-    # RestartPreventExitStatus so systemd does not restart the probe; the next
-    # devcontainer start queues it again.
+    # Only a devcontainer start can fix this; 78 matches the unit's
+    # RestartPreventExitStatus so the probe is not restarted.
     exit 78
 fi
 

@@ -72,8 +72,8 @@ lifecycle() {
 }
 
 validate_snapshot() {
-    PATH="${TEST_BIN}:${PATH}" bash -euo pipefail -c 'source "$1"; validate_airlock_snapshot "$2"' \
-        bash "${REPO_ROOT}/startupscript/butane/container-utils.sh" "$1"
+    PATH="${TEST_BIN}:${PATH}" bash -euo pipefail -c 'source "$1"; app_validate_setup "$2"' \
+        bash "${REPO_ROOT}/startupscript/butane/app-hooks.sh" "$1"
 }
 
 hardware_changed() {

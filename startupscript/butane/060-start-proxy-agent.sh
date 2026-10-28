@@ -18,9 +18,11 @@ readonly PROXY_IMAGE="$1"
 readonly COMPUTE_PLATFORM="$2"
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/app-hooks.sh"
 # This is a required systemd step even when devcontainer up failures are ignored.
-# Fail before starting the proxy so incomplete airlock provisioning is retried.
-validate_airlock_snapshot
+# Fail before starting the proxy so incomplete app setup is retried.
+app_validate_setup
 PROXY_CONTAINER=$(find_proxy_container)
 # Start an existing frontend without recreating it, before reading its published port.
 if [[ "${PROXY_CONTAINER}" != application-server ]]; then

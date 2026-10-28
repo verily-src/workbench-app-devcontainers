@@ -3,6 +3,7 @@
 setup() {
     REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
     source "${REPO_ROOT}/startupscript/butane/container-utils.sh"
+    source "${REPO_ROOT}/startupscript/butane/app-hooks.sh"
     APP_IDS=backend-id
     TARGET_IDS=frontend-id
     LOOKUP_EXIT=0
@@ -30,19 +31,19 @@ setup() {
 
 @test "snapshot validation rejects Docker errors and malformed metadata" {
     INSPECT='[]'
-    INSPECT_EXIT=1 run validate_airlock_snapshot backend-id
+    INSPECT_EXIT=1 run app_validate_setup backend-id
     [ "${status}" -ne 0 ]
     INSPECT='[{"Config":{"Labels":{"devcontainer.metadata":"invalid-json"}}}]'
-    run validate_airlock_snapshot backend-id
+    run app_validate_setup backend-id
     [ "${status}" -ne 0 ]
 }
 
 @test "ordinary apps do not require airlock state, including an overridden image default" {
     SNAPSHOT_INSPECT_EXIT=1
     INSPECT='[{"Config":{"Labels":{}}}]'
-    validate_airlock_snapshot backend-id
+    app_validate_setup backend-id
     INSPECT='[{"Config":{"Labels":{"devcontainer.metadata":"[{\"customizations\":{\"workbench\":{\"AIRLOCK_ENABLED\":true}}},{\"customizations\":{\"workbench\":{\"AIRLOCK_ENABLED\":false}}}]"}}}]'
-    validate_airlock_snapshot backend-id
+    app_validate_setup backend-id
 }
 
 @test "proxy lookup prefers a project-scoped label and defaults to the app when absent" {

@@ -9,6 +9,8 @@ set -o pipefail
 set -o xtrace
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/app-hooks.sh"
 
 function usage {
   echo "Usage: $0 <path/to/devcontainer> <gcp/aws> <login>"
@@ -278,10 +280,10 @@ DEVCONTAINER_CUSTOMIZATIONS="$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFI
 readonly DEVCONTAINER_CUSTOMIZATIONS
 set_metadata 'devcontainer/customizations' "${DEVCONTAINER_CUSTOMIZATIONS}"
 
-# Restoring an airlocked snapshot uses its installed features without registry access.
-if [[ $(jq -r '.AIRLOCK_ENABLED // false' <<< "$DEVCONTAINER_CUSTOMIZATIONS") == true ]] &&
-    docker image inspect workbench-local-snapshot:devcontainer >/dev/null 2>&1; then
-    echo "Using initial snapshot; skipping OCI feature prefetch"
+# An app restoring from a local image uses its installed features without registry access.
+export WB_APP_CUSTOMIZATIONS="${DEVCONTAINER_CUSTOMIZATIONS}"
+if app_build_cached; then
+    echo "App starts from a local image; skipping OCI feature prefetch"
 else
     /home/core/prefetch-oci-features.sh "${DEVCONTAINER_CONFIG_PATH}" || \
         echo "WARNING: prefetch-oci-features.sh failed, continuing with remote features" >&2

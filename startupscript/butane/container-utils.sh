@@ -22,28 +22,6 @@ find_proxy_container() {
     printf '%s\n' "${id:-${app}}"
 }
 
-validate_airlock_snapshot() {
-    local app="${1:-application-server}" container airlock_enabled
-    local state_dir="${CONTAINER_STATE_FILE:-/home/core/container-state}.d"
-    container=$(docker inspect "${app}") || return
-    # The CLI preserves Workbench customizations in this label, including on restore.
-    airlock_enabled=$(jq -r '
-        (.[0].Config.Labels["devcontainer.metadata"] // "[]") | fromjson |
-        if type == "array" then . else [.] end |
-        map(.customizations.workbench // {}) | add | .AIRLOCK_ENABLED == true
-    ' <<< "${container}") || return
-    [[ "${airlock_enabled}" == true ]] || return 0
-
-    if [[ ! -f "${state_dir}/setup/post-create.done" ]]; then
-        echo 'Error: airlocked app setup has not completed' >&2
-        return 1
-    fi
-    if ! docker image inspect workbench-local-snapshot:devcontainer >/dev/null 2>&1; then
-        echo 'Error: airlocked app initial snapshot is unavailable' >&2
-        return 1
-    fi
-}
-
 containers_ready() {
     local containers
     containers=$(docker inspect "$@") || return

@@ -2,6 +2,16 @@
 
 These scripts set up Dev Container apps on Workbench VMs.
 
+## App lifecycle hooks
+
+`app-hooks.sh` declares optional lifecycle hooks (`app_prepare`,
+`app_build_cached`, `app_post_up`, `app_validate_setup`) as no-ops and sources
+every override in `overrides.d/`. Feature-specific behavior lives in an override
+file that redefines the hooks and gates itself on the app's
+`customizations.workbench` config; generic scripts call hooks by lifecycle name
+only. Airlock (`overrides.d/airlock.sh`) is the only override today. See
+`docs/app-hooks-separation-plan.md` for the design.
+
 `050-parse-devcontainer.sh` renders the templates and tracks GPU, shared-memory,
 and memory-limit changes for every app using the existing `container-state` file.
 Apps without AIRLOCK_ENABLED use their existing delete-and-recreate flow for any

@@ -29,8 +29,10 @@ echo "failed: $(date)" >> "${RETRY_FILE}"
 # Check if number of retries have exceeded maximum
 num_retries="$(wc -l < "${RETRY_FILE}")"
 if [[ "${num_retries}" -ge "${RETRY_COUNT}" ]]; then
-        # Stop the service
+        # Stop the service, and the readiness probe that is retrying its
+        # devcontainer precheck. Build-only VMs have no proxy-readiness unit.
         systemctl stop devcontainer.service
+        systemctl stop proxy-readiness.service || true
 
         # Log failure
         source /home/core/metadata-utils.sh

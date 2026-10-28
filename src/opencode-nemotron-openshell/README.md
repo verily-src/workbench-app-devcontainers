@@ -202,7 +202,8 @@ edit. It is never overwritten; delete it to get the current default again.
 - When the agent is blocked, OpenShell drafts a narrow rule (one program, one
   host). `agent-sandbox rules` lists them; approve only what you understand.
   Planted instructions in files or data can make an agent ask for exactly the
-  wrong destination.
+  wrong destination. A data collection in the workspace can forbid approvals
+  altogether ([Data collection policies](#data-collection-policies)).
 
 ### Data access
 
@@ -247,6 +248,38 @@ agent's identity narrow. Load jobs and the Storage Read API (gRPC,
 `bigquerystorage.googleapis.com`) are not covered by a rule: the former can
 write tables from a bucket the agent may read, the latter is blocked, so use
 `create_bqstorage_client=False` when reading dataframes.
+
+### Data collection policies
+
+A data collection's owners can say how an agent may behave while the collection's data is in a
+workspace, the way Workbench's own region, group and app policies travel with a collection. They
+set `openshell-*` properties on the collection's workspace (`wb workspace set-property
+--workspace <collection> --properties=openshell-internet=none`) and, to differ for one version,
+on that version's folder (`wb folder set-property`). Nothing is declared in this app: every
+resource imported from a collection carries the collection in its lineage, so
+`collection-policy.py` finds the collections from the workspace's resources and reads their
+properties through the Workbench API, as the user. Only the collection's Owners and Writers can
+change them; workspace users can only read them.
+
+| Property | Values | Effect |
+|---|---|---|
+| `openshell-internet` | `none`, or `host1,host2,...` | `none` removes every network rule but the model and the data. A host list keeps only `policy.yaml` rules whose hosts are all listed. Several collections intersect; `none` wins |
+| `openshell-agent-access` | `read` (default), `none` | `read` adds the collection's imported datasets and buckets to the data rules, so nothing needs listing in `data-access.yaml`. `none` adds nothing and removes them from `data-access.yaml` too |
+| `openshell-rule-approvals` | `true` (default), `false` | `false` makes `agent-sandbox approve` refuse: a drafted rule would widen the policy outside the render |
+
+Strictest wins, always: a collection can tighten the policy, never widen it, and your
+`policy.yaml` stays as you wrote it. `render-policy.py` writes what it decided as comments at the
+top of `policy.effective.yaml`; `agent-sandbox policy explain` prints the same. Three cases
+render the strictest policy (no internet, no approvals) by design: Workbench could not be read,
+a collection uses an `openshell-*` property this app does not know (a newer rule must not be
+ignored by an older app), and a collection's data access is on in principle but
+`data-access.yaml` has `enabled: false`, in which case its data is simply not reachable.
+
+Two limits. A dataset referenced directly (`wb resource add-ref`) rather than imported from the
+collection has no lineage, so it would carry no constraint; once any collection is present, such
+a dataset in a collection's project is dropped from the data rules. And this is enforced by the
+app's own commands: a user with a shell in the app can run `openshell` against the gateway
+themselves. Locking that down needs the gateway off the app's network, which is a later step.
 
 ### Agents outside the framework
 

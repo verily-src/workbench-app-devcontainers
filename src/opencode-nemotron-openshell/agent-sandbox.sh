@@ -32,6 +32,11 @@ readonly DEFAULT_HARNESS="opencode"
 readonly HARNESS="${AGENT_HARNESS:-${USER_HOME_DIR}/openshell/harness.yaml}"
 readonly DATA_ACCESS="${USER_HOME_DIR}/openshell/data-access.yaml"
 readonly EFFECTIVE_POLICY="${USER_HOME_DIR}/openshell/policy.effective.yaml"
+# Data collection policies (README, "Data collection policies"): the openshell-*
+# properties of the collections this workspace imported from, read from Workbench
+# by collection-policy.py, and what render-policy.py decided from them.
+readonly COLLECTIONS="${USER_HOME_DIR}/openshell/collections.json"
+readonly POLICY_SUMMARY="${USER_HOME_DIR}/openshell/policy.summary.json"
 readonly GOOGLE_PROFILE="${SCRIPT_DIR}/openshell/google-cloud-profile.yaml"
 readonly DOWNLOAD_DIR="${USER_HOME_DIR}/sandbox-downloads"
 # The sandbox reaches the app's Ollama through the VM's loopback.
@@ -59,10 +64,11 @@ Usage: agent-sandbox <command> [arguments]     (also installed as opencode-sandb
   upload <path> [dest]     Copy files into the sandbox (default: ${SANDBOX_WORKDIR})
   download <path> [dest]   Copy files out of the sandbox (default: ${DOWNLOAD_DIR})
   status                   Show the gateway, the sandbox and the policy file
-  policy                   Apply ${POLICY}, ${DATA_ACCESS} and the harness to the running sandbox
+  policy                   Apply ${POLICY}, ${DATA_ACCESS}, the harness and the data collections' policies to the running sandbox
+  policy explain           Show what the data collections' policies decided
   logs [count]             Show the sandbox's recent network decisions (default 100)
   rules                    List rules OpenShell drafted from blocked connections
-  approve <chunk-id>       Approve a drafted rule for this sandbox
+  approve <chunk-id>       Approve a drafted rule for this sandbox (unless a data collection forbids it)
   reject <chunk-id>        Reject a drafted rule
   audit save               Save the sandbox's recent decisions and the gateway's audit log to ${AUDIT_DIR}
   audit export <gs://dest> Save, then copy the saved files to a bucket
@@ -135,13 +141,38 @@ ensure_policy() {
     cp "${DEFAULT_DATA_ACCESS}" "${DATA_ACCESS}"
     echo "Wrote the default data-access settings to ${DATA_ACCESS}" >&2
   fi
+  # The collections' policies are read from Workbench on every render, so a change a
+  # collection's owners make applies the next time the sandbox starts or `policy` runs.
+  # If Workbench can't be read, the file says so and the render fails closed.
+  python3 "${SCRIPT_DIR}/openshell/collection-policy.py" "${COLLECTIONS}" ||
+    die "could not read the data collections' policies (${SCRIPT_DIR}/openshell/collection-policy.py)"
   local rendered
   rendered="$(mktemp)"
   # data-access.yaml leaves project_id blank to mean this workspace's project.
   GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-$(gcloud config get-value project 2> /dev/null || true)}" \
-    python3 "${SCRIPT_DIR}/openshell/render-policy.py" "${POLICY}" "${DATA_ACCESS}" "${HARNESS}" \
-    > "${rendered}" || { rm -f "${rendered}"; die "could not build the sandbox policy from ${POLICY}, ${DATA_ACCESS} and ${HARNESS}"; }
+    python3 "${SCRIPT_DIR}/openshell/render-policy.py" "${POLICY}" "${DATA_ACCESS}" "${HARNESS}" "${COLLECTIONS}" \
+    --summary "${POLICY_SUMMARY}" > "${rendered}" ||
+    { rm -f "${rendered}"; die "could not build the sandbox policy from ${POLICY}, ${DATA_ACCESS}, ${HARNESS} and ${COLLECTIONS}"; }
   mv "${rendered}" "${EFFECTIVE_POLICY}"
+}
+
+# What the data collections' policies decided, from the last render.
+policy_explain() {
+  [[ -s "${POLICY_SUMMARY}" ]] || { echo "No policy rendered yet; run \`agent-sandbox policy\`."; return 0; }
+  jq -r '
+    "Data collections: " + (if (.collections | length) == 0 then "none imported" else
+      (.collections | map("\(.id) \(.versions | join("/")) (agent access \(.agent_access); \(.resources | length) resources)") | join("; ")) end),
+    "Internet beyond the model and the data: " + (if .internet == null then "as policy.yaml allows"
+      elif (.internet | length) == 0 then "none" else ("only " + (.internet | join(", "))) end),
+    "Rule approvals: " + (if .rule_approvals then "allowed" else "forbidden by a data collection" end),
+    (if (.notes | length) > 0 then "Decisions:\n" + (.notes | map("  - " + .) | join("\n")) else empty end)
+  ' "${POLICY_SUMMARY}"
+}
+
+# True unless a data collection set openshell-rule-approvals=false (or Workbench
+# could not be read, which counts as the strictest setting).
+approvals_allowed() {
+  [[ -s "${POLICY_SUMMARY}" ]] && [[ "$(jq -r .rule_approvals "${POLICY_SUMMARY}")" == "true" ]]
 }
 
 data_access_enabled() {
@@ -292,6 +323,7 @@ cmd_status() {
   openshell sandbox get "${SANDBOX_NAME}" 2>&1 || echo "  not created yet; \`opencode\` creates it"
   echo
   echo "Policy file: ${POLICY}"
+  policy_explain
   echo
   echo "port-guard (${PORT_GUARD_STATUS}):"
   cat "${PORT_GUARD_STATUS}" 2> /dev/null || echo "  no status: the port-guard container has not written one"
@@ -339,8 +371,14 @@ check_gateway_audit() {
 }
 
 cmd_policy() {
+  if [[ "${1:-}" == "explain" ]]; then
+    policy_explain
+    return 0
+  fi
+  (( $# == 0 )) || die "usage: agent-sandbox policy [explain]"
   wait_for_gateway
   ensure_policy
+  policy_explain >&2
   # A provider attaches only when a sandbox is created; its project variable
   # shows whether this sandbox has it.
   if data_access_enabled && openshell sandbox get "${SANDBOX_NAME}" > /dev/null 2>&1 &&
@@ -367,6 +405,12 @@ cmd_decide() {
   shift
   (( $# == 1 )) || die "usage: agent-sandbox ${decision} <chunk-id> (see agent-sandbox rules)"
   wait_for_gateway
+  if [[ "${decision}" == approve ]]; then
+    # An approved rule widens the sandbox's policy outside the render; a data collection
+    # can forbid that. Re-render first so the decision is current.
+    ensure_policy
+    approvals_allowed || die "a data collection in this workspace forbids approving drafted rules (agent-sandbox policy explain). Add the destination to ${POLICY} instead, if the collections allow it."
+  fi
   openshell rule "${decision}" "${SANDBOX_NAME}" --chunk-id "$1"
 }
 
@@ -573,6 +617,18 @@ cmd_selftest() {
     selftest_data_access
   fi
 
+  # The collections' policies were read, not assumed: an unreadable Workbench renders the
+  # strictest policy, which keeps the sandbox safe but is not what the collections asked for.
+  if [[ -s "${COLLECTIONS}" ]] && [[ "$(jq -r .unavailable "${COLLECTIONS}")" == "false" ]]; then
+    PASSED=$((PASSED + 1))
+    printf 'PASS  data collection policies read from Workbench (%s collections)\n' \
+      "$(jq -r '.collections | length' "${COLLECTIONS}")"
+  else
+    FAILED=$((FAILED + 1))
+    printf 'FAIL  data collection policies read from Workbench\n      %s\n' \
+      "$(jq -r '.errors | join("; ")' "${COLLECTIONS}" 2> /dev/null || echo "no ${COLLECTIONS}")"
+  fi
+
   check_gateway_audit
   check_port_guard
 
@@ -602,7 +658,7 @@ main() {
     upload) cmd_upload "$@" ;;
     download) cmd_download "$@" ;;
     status) cmd_status ;;
-    policy) cmd_policy ;;
+    policy) cmd_policy "$@" ;;
     logs) cmd_logs "$@" ;;
     rules) cmd_rules ;;
     approve|reject) cmd_decide "${command}" "$@" ;;

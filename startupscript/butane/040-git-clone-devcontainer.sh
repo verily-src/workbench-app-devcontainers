@@ -70,10 +70,13 @@ if [[ "${private_status}" == 404 ]]; then
   # disable logs to not expose access token
   set +o xtrace
 
+  WB_TOKEN="$(/home/core/wb.sh auth print-access-token)"
+  # shellcheck disable=SC2034  # WB_TOKEN is only used indirectly via curl_with_auth
+  readonly WB_TOKEN
+
   # Retrieve GitHub access token
-  response=$(curl "${ECM_SERVICE_URL}/api/oauth/v1/github/access-token" \
-  -w "\n%{http_code}" \
-  -H "Authorization: Bearer $(/home/core/wb.sh auth print-access-token)")
+  response=$(curl_with_auth WB_TOKEN -s "${ECM_SERVICE_URL}/api/oauth/v1/github/access-token" \
+  -w "\n%{http_code}")
   http_code=$(echo "${response}" | tail -n1)
   body=$(echo "${response}" | head -n -1)
   if [[ ${http_code} -eq 404 ]]; then
@@ -87,7 +90,7 @@ if [[ "${private_status}" == 404 ]]; then
   fi
 
   TOKEN=$(echo "${response}" | head -n1)
-  USERNAME=$(curl -H "Authorization: Bearer ${TOKEN}" https://api.github.com/user | jq --raw-output ".login")
+  USERNAME=$(curl_with_auth TOKEN -s https://api.github.com/user | jq --raw-output ".login")
   echo "https://${USERNAME}:${TOKEN}@github.com" > "${GIT_CREDENTIALS_FILE}"
   git config --system credential.helper "store --file=${GIT_CREDENTIALS_FILE}"
 

@@ -74,8 +74,10 @@ if [[ ! -f "${FIRST_BOOT_FILE}" ]]; then
     SERVER="$(get_metadata_value "terra-cli-server" "prod")"
     WSM_SERVICE_URL="$(get_service_url "wsm" "${SERVER}")"
     set +o xtrace
-    RESPONSE=$(curl -s -X GET "${WSM_SERVICE_URL}/api/workspaces/v1/workspaceByUserFacingId/${WORKSPACE_USER_FACING_ID}" \
-                -H "Authorization: Bearer $(/home/core/wb.sh auth print-access-token)")
+    TOKEN="$(/home/core/wb.sh auth print-access-token)"
+    # shellcheck disable=SC2034  # TOKEN is only used indirectly via curl_with_auth
+    readonly TOKEN
+    RESPONSE=$(curl_with_auth TOKEN -s -X GET "${WSM_SERVICE_URL}/api/workspaces/v1/workspaceByUserFacingId/${WORKSPACE_USER_FACING_ID}")
     set -o xtrace
     WORKSPACE_ID=$(echo "${RESPONSE}" | jq -r '.id');
     RESOURCE_ID="$(get_metadata_value "wb-resource-id" "")"

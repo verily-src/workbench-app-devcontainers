@@ -42,17 +42,6 @@ if [[ ${retry_count} -ge ${MAX_RETRIES} ]]; then
     exit 1
 fi
 
-if ! validate_airlock_snapshot; then
-    status="$(get_guest_attribute "startup_script/status" "")"
-    if [[ "${status}" != "ERROR" ]]; then
-        set_metadata "startup_script/status" "ERROR"
-        set_metadata "startup_script/message" "App setup is incomplete. Please retry startup."
-    fi
-    # Only a devcontainer start can fix this; 78 matches the unit's
-    # RestartPreventExitStatus so the probe is not restarted.
-    exit 78
-fi
-
 # If we reach here, the retry loop succeeded
 status="$(get_guest_attribute "startup_script/status" "")"
 isSuccess="false"

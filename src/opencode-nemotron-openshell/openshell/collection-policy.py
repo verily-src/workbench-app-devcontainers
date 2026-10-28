@@ -23,6 +23,7 @@ silently ignored by an older app.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -30,6 +31,7 @@ import urllib.parse
 import urllib.request
 
 KNOWN_KEYS = {"openshell-internet", "openshell-agent-access", "openshell-rule-approvals"}
+ALPHA_FIELDS = "terra-data-ecosystem-alpha-fields"
 PAGE = 100
 
 
@@ -110,7 +112,27 @@ def properties(record):
 
 
 def openshell_properties(props):
-    return {k: v for k, v in props.items() if k.startswith("openshell-")}
+    """The constraint sets a record carries, each as openshell-* keys: its openshell-*
+    properties, and the "openshell" object inside terra-data-ecosystem-alpha-fields, the JSON
+    property the Workbench UI shows and edits as a form
+    ({"openshell": {"internet": "none", "agentAccess": "read", "ruleApprovals": false}}).
+    A collection that sets both gets two sets, and render-policy.py takes the strictest, as it
+    does with any two constraints."""
+    sets = []
+    flat = {k: v for k, v in props.items() if k.startswith("openshell-")}
+    if flat:
+        sets.append(flat)
+    try:
+        fields = json.loads(props.get(ALPHA_FIELDS) or "{}")
+        form = fields.get("openshell") if isinstance(fields, dict) else None
+    except json.JSONDecodeError:
+        form = None
+    if isinstance(form, dict) and form:
+        # camelCase in the form, dashed in properties: agentAccess -> openshell-agent-access.
+        sets.append({"openshell-" + re.sub(r"(?<!^)(?=[A-Z])", "-", str(key)).lower():
+                     {True: "true", False: "false"}.get(value, str(value))
+                     for key, value in form.items()})
+    return sets
 
 
 def data_resource(resource):
@@ -181,12 +203,14 @@ def collect(wsm):
 
     result = []
     for collection in collections.values():
-        # Constraints: the collection's, then each imported version's on top. Two versions with
-        # different values both apply; render-policy.py takes the strictest.
-        constraints = [dict(collection["properties"])]
+        # Constraints: the collection's sets, then each imported version's sets on top of each.
+        # Two versions, or a property and the form, with different values all apply;
+        # render-policy.py takes the strictest.
+        collection_sets = collection["properties"] or [{}]
+        constraints = list(collection_sets)
         for version in collection["versions"].values():
-            if version["properties"]:
-                constraints.append({**collection["properties"], **version["properties"]})
+            for version_set in version["properties"]:
+                constraints.extend({**base, **version_set} for base in collection_sets)
         unknown = sorted({k for c in constraints for k in c} - KNOWN_KEYS)
         public = {k: v for k, v in collection.items() if not k.startswith("_")}
         result.append({**public, "constraints": constraints, "unknown_keys": unknown})

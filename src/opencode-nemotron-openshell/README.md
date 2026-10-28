@@ -255,7 +255,11 @@ A data collection's owners can say how an agent may behave while the collection'
 workspace, the way Workbench's own region, group and app policies travel with a collection. They
 set `openshell-*` properties on the collection's workspace (`wb workspace set-property
 --workspace <collection> --properties=openshell-internet=none`) and, to differ for one version,
-on that version's folder (`wb folder set-property`). Nothing is declared in this app: every
+on that version's folder (`wb folder set-property`). The same settings can be written as an
+`openshell` object in the collection's data-ecosystem form, the JSON property the Workbench UI
+shows (`terra-data-ecosystem-alpha-fields`: `{"openshell": {"internet": "none", "agentAccess":
+"read", "ruleApprovals": false}}`); a collection that sets both gets the stricter of the two.
+Nothing is declared in this app: every
 resource imported from a collection carries the collection in its lineage, so
 `collection-policy.py` finds the collections from the workspace's resources and reads their
 properties through the Workbench API, as the user. Only the collection's Owners and Writers can

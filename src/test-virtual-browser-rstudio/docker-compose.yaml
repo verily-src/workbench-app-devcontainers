@@ -1,0 +1,55 @@
+# DO NOT EDIT: generated from ../virtual-browser-rstudio/docker-compose.yaml by
+# ../test-virtual-browser-common/generate.py. Regenerate with:
+#   python3 src/test-virtual-browser-common/generate.py
+services:
+  # Keep the browser container across backend recreation.
+  browser:
+    container_name: "browser"
+    labels:
+      com.verily.workbench.proxy-target: "true"
+    image: workbench-virtual-browser:app
+    pull_policy: never
+    # Chromium needs real shared memory to render; the 64MB Docker default causes renderer crashes.
+    shm_size: "2gb"
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+      - backend-network
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
+      CHROME_CLI: "--kiosk http://application-server:8787"
+
+  app:
+    container_name: "application-server"
+    image: workbench-local-snapshot:devcontainer
+    pull_policy: never
+    # Hardware template options belong only to the backend.
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - ${WORKBENCH_SETUP_STATE_DIR:-/home/core/container-state.d/setup}:/var/lib/workbench/setup:ro
+      - work:/home/rstudio:cached
+    tmpfs:
+      - /home/rstudio/workspace:uid=1000,gid=1000
+    environment:
+      DISABLE_AUTH: "true"
+    networks:
+      - backend-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+  backend-network:
+volumes:
+  work:

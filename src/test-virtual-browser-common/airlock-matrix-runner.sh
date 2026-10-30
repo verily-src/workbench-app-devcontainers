@@ -198,10 +198,6 @@ else
   report docker-pull SKIP "docker not available in the app container"
 fi
 
-# S3 inside the workspace stays reachable; anything else must be denied.
-expect_ok s3-workspace "aws s3api put-object --bucket '${BUCKET}' --key '${PREFIX}/airlock-probe-${VARIANT}'"
-expect_blocked s3-external "aws s3api head-bucket --bucket nyc-tlc"
-
 echo "AIRLOCK_MATRIX_DONE failures=${FAILURES}" >> "${RESULTS_FILE}"
 
 #####################

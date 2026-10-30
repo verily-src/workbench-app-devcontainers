@@ -77,6 +77,12 @@ teardown() {
   done < "${BATS_TEST_TMPDIR}/pids"
 }
 
+# The worker keeps --start's stdout open, so send it to a file; otherwise run
+# would wait for the worker to exit.
+start_refresh() {
+  "${TEST_REFRESH_SCRIPT}" --start >> "${BATS_TEST_TMPDIR}/refresh.log" 2>&1
+}
+
 wait_for_count() {
   local file="$1" pattern="$2" expected="$3" attempt
   for ((attempt = 0; attempt < 200; attempt++)); do
@@ -117,6 +123,13 @@ wait_for_count() {
   [[ "$output" != *fake-token* ]]
 }
 
+@test "manual refresh is logged to the file" {
+  run "${TEST_REFRESH_SCRIPT}"
+  [ "$status" -eq 0 ]
+  grep -q 'CodeArtifact npm token refreshed' "${TEST_APP_HOME}/.workbench/codeartifact-refresh.log"
+  grep -q 'CodeArtifact pip token refreshed' "${TEST_APP_HOME}/.workbench/codeartifact-refresh.log"
+}
+
 @test "npm failure still refreshes pip and returns failure" {
   touch "${BATS_TEST_TMPDIR}/fail-npm"
   run "${TEST_REFRESH_SCRIPT}"
@@ -127,10 +140,10 @@ wait_for_count() {
 }
 
 @test "repeated starts refresh immediately but keep a single periodic worker" {
-  run "${TEST_REFRESH_SCRIPT}" --start
+  run start_refresh
   [ "$status" -eq 0 ]
   wait_for_count "${BATS_TEST_TMPDIR}/sleeps" '^21600$' 1
-  run "${TEST_REFRESH_SCRIPT}" --start
+  run start_refresh
   [ "$status" -eq 0 ]
   wait_for_count "${BATS_TEST_TMPDIR}/worker-pids" '^[0-9]' 2
   duplicate_pid="$(tail -n 1 "${BATS_TEST_TMPDIR}/worker-pids")"
@@ -143,10 +156,13 @@ wait_for_count() {
   touch "${BATS_TEST_TMPDIR}/advance-clock"
   wait_for_count "${BATS_TEST_TMPDIR}/sleeps" '^21600$' 2
   [ "$(grep -c -- '--tool pip' "${BATS_TEST_TMPDIR}/calls")" -eq 3 ]
+  # The worker's refreshes reach stdout and the log file, like the startup refresh.
+  wait_for_count "${BATS_TEST_TMPDIR}/refresh.log" 'CodeArtifact pip token refreshed' 3
+  wait_for_count "${TEST_APP_HOME}/.workbench/codeartifact-refresh.log" 'CodeArtifact pip token refreshed' 3
 }
 
 @test "periodic failure retries after five minutes and recovers to six hours" {
-  run "${TEST_REFRESH_SCRIPT}" --start
+  run start_refresh
   [ "$status" -eq 0 ]
   wait_for_count "${BATS_TEST_TMPDIR}/sleeps" '^21600$' 1
   touch "${BATS_TEST_TMPDIR}/fail-npm" "${BATS_TEST_TMPDIR}/advance-clock"
@@ -159,7 +175,7 @@ wait_for_count() {
 
 @test "a failed startup still starts the worker for recovery" {
   touch "${BATS_TEST_TMPDIR}/fail-pip"
-  run "${TEST_REFRESH_SCRIPT}" --start
+  run start_refresh
   [ "$status" -eq 1 ]
   wait_for_count "${BATS_TEST_TMPDIR}/sleeps" '^300$' 1
   rm "${BATS_TEST_TMPDIR}/fail-pip"
@@ -168,11 +184,11 @@ wait_for_count() {
 }
 
 @test "a stopped worker can restart even while its old sleep is alive" {
-  run "${TEST_REFRESH_SCRIPT}" --start
+  run start_refresh
   [ "$status" -eq 0 ]
   wait_for_count "${BATS_TEST_TMPDIR}/sleeps" '^21600$' 1
   kill "$(head -n 1 "${BATS_TEST_TMPDIR}/worker-pids")"
-  run "${TEST_REFRESH_SCRIPT}" --start
+  run start_refresh
   [ "$status" -eq 0 ]
   wait_for_count "${BATS_TEST_TMPDIR}/sleeps" '^21600$' 2
 }

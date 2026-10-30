@@ -21,7 +21,9 @@ six hours. After a failed refresh, the worker retries after five minutes.
 Authentication uses the EC2 instance role independently of the user's workspace
 AWS profiles.
 
-Worker output is written to `~/.workbench/codeartifact-refresh.log`. To refresh
+Every refresh, including manual ones, is logged to
+`~/.workbench/codeartifact-refresh.log`. Startup and worker refreshes also go to
+the app container's log (`docker logs`), which fluent-bit ships. To refresh
 immediately, run `/usr/local/bin/refresh-codeartifact-login.sh` as the app user.
 
 ## How to test your change?

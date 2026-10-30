@@ -1,0 +1,33 @@
+{
+    "id": "jupyter-gatk-template",
+    "description": "A template used to serve the Workbench JupyterLab container image with GATK installed",
+    "version": "0.0.1",
+    "name": "Workbench JupyterLab GATK template",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/jupyter-gatk-aws",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+      "cloud": {
+        "type": "string",
+        "description": "VM cloud environment",
+        "proposals": ["gcp", "aws"],
+        "default": "gcp"
+      },
+      "login": {
+        "type": "string",
+        "description": "Whether to log in to workbench CLI",
+        "proposals": ["true", "false"],
+        "default": "false"
+      },
+      "containerImage": {
+        "type": "string",
+        "description": "The container image to use",
+        "default": "public.ecr.aws/j1r0q0g6/notebooks/notebook-servers/jupyter-scipy:v1.5.0"
+      },
+      "containerPort": {
+        "type": "number",
+        "description": "The port to expose the container on",
+        "default": 8888
+      }
+    },
+    "platforms": ["Any"]
+  }

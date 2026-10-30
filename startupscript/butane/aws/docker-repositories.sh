@@ -166,6 +166,7 @@ function _get_ecr_login_password() {
     
     # Run AWS CLI to get ECR login password
     docker run --rm \
+        --log-driver none \
         -e AWS_ACCESS_KEY_ID="${access_key_id}" \
         -e AWS_SECRET_ACCESS_KEY="${secret_access_key}" \
         -e AWS_SESSION_TOKEN="${session_token}" \

@@ -21,6 +21,13 @@ set -o pipefail
 # Source configuration variables
 source '/home/core/wb/values.sh'
 
+# Fluent Bit ships Docker's container log files, so keep no log for subcommands that print secrets
+DOCKER_ARGS=()
+if [[ "${1:-} ${2:-}" == "auth print-access-token" || "${1:-} ${2:-}" == "resource credentials" ]]; then
+    DOCKER_ARGS+=(--log-driver none)
+fi
+readonly DOCKER_ARGS
+
 # Run the workbench container with:
 # - Host networking (--network host)
 # - Volume mount for persistence (-v)
@@ -28,5 +35,6 @@ source '/home/core/wb/values.sh'
 docker run \
     --rm \
     --network host \
+    "${DOCKER_ARGS[@]}" \
     -v "${WB_CONTEXT_DIR}:/workbench_context:rw" \
     "${WB_IMAGE_NAME}" "${@}"

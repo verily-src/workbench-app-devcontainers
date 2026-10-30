@@ -11,7 +11,10 @@ function get_tag() (
     echo "usage: get_tag <prefix> <tag> <default-value>"
     exit 1
   fi
-  local tag_key="$1":"$2"
+  local tag_key="$2"
+  if [[ -n "$1" ]]; then
+    tag_key="$1":"$2"
+  fi
 
   local token
   token=$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)
@@ -44,6 +47,14 @@ function get_guest_attribute() {
   get_tag "vwbapp" "${1}" "${2}"
 }
 readonly -f get_guest_attribute
+
+# Reads WSM-internal tags with no prefix, e.g. "network-policy". Unlike vwbusr/vwbapp tags, these
+# are not namespaced - the create-instance API's customTags path validates against those prefixes
+# specifically, so a caller can never set or overwrite a tag read through this function.
+function get_system_tag() {
+  get_tag "" "${1}" "${2}"
+}
+readonly -f get_system_tag
 
 
 # Sets tags on the EC2 instance with the given key and value. Tags set from the instance is prfixed with vwbapp:

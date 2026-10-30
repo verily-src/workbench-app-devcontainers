@@ -1,0 +1,16 @@
+# DO NOT EDIT: generated from ../virtual-browser-jupyter/docker-compose.build.yaml by
+# ../test-virtual-browser-common/generate.py. Regenerate with:
+#   python3 src/test-virtual-browser-common/generate.py
+# Used only for initial provisioning.
+services:
+  browser:
+    build:
+      context: ../browser-common
+      args:
+        APP_ORIGIN: "application-server:8888"
+  app:
+    image: workbench-virtual-browser:jupyterlab
+    build:
+      context: ../virtual-browser-jupyter
+      additional_contexts:
+        jupyter-extension-builder: service:jupyter-common-extension-builder

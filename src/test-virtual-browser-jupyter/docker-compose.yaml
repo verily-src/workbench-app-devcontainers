@@ -1,0 +1,52 @@
+# DO NOT EDIT: generated from ../virtual-browser-jupyter/docker-compose.yaml by
+# ../test-virtual-browser-common/generate.py. Regenerate with:
+#   python3 src/test-virtual-browser-common/generate.py
+services:
+  # Keep the browser container across backend recreation.
+  browser:
+    container_name: "browser"
+    labels:
+      com.verily.workbench.proxy-target: "true"
+    image: workbench-virtual-browser:app
+    pull_policy: never
+    restart: always
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+      - backend-network
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # The hostname "app" is HSTS-preloaded in Chromium and forces HTTPS.
+      CHROME_CLI: "--kiosk http://application-server:8888"
+
+  app:
+    container_name: "application-server"
+    image: workbench-local-snapshot:devcontainer
+    pull_policy: never
+    user: "jupyter"
+    # Hardware template options belong only to the backend.
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - jupyter-home:/home/jupyter
+      - ${WORKBENCH_SETUP_STATE_DIR:-/home/core/container-state.d/setup}:/var/lib/workbench/setup:ro
+    tmpfs:
+      - /home/jupyter/workspace:uid=1001,gid=1001
+    networks:
+      - backend-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+  backend-network:
+volumes:
+  jupyter-home:

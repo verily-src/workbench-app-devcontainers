@@ -1,0 +1,7 @@
+# Test-only additions to the generated copy of the virtual-browser-rstudio
+# app: mounts the airlock matrix runner, which the generated
+# .devcontainer.json postStartCommand launches in the background.
+services:
+  app:
+    volumes:
+      - ../test-virtual-browser-common/airlock-matrix-runner.sh:/opt/airlock-test/airlock-matrix-runner.sh:ro

@@ -5,6 +5,9 @@ on:
       - 'scripts/**'
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
+      - 'src/test-virtual-browser-*/**'
+      - 'src/jupyter-common/**'
+      - 'src/browser-common/**'
       - 'tests/test-codeartifact.bats'
       - 'startupscript/butane/050-parse-devcontainer.sh'
       - 'startupscript/butane/update-flatcar.sh'
@@ -17,6 +20,9 @@ on:
       - 'scripts/**'
       - 'startupscript/**'
       - 'src/virtual-browser-*/**'
+      - 'src/test-virtual-browser-*/**'
+      - 'src/jupyter-common/**'
+      - 'src/browser-common/**'
       - 'tests/test-codeartifact.bats'
       - 'startupscript/butane/050-parse-devcontainer.sh'
       - 'startupscript/butane/update-flatcar.sh'
@@ -55,6 +61,14 @@ jobs:
 
       - name: Run update-flatcar tests
         run: bats tests/update-flatcar.bats
+
+  test-virtual-browser-sync:
+    name: "Test virtual-browser test-app copies are in sync"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify generated test apps match the production apps
+        run: python3 src/test-virtual-browser-common/generate.py --check
 
   test-codeartifact:
     name: "Test CodeArtifact authentication and refresh"

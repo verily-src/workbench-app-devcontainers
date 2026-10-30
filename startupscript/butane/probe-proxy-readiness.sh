@@ -55,6 +55,23 @@ fi
 status="$(get_guest_attribute "startup_script/status" "")"
 isSuccess="false"
 if [[ "${status}" != "ERROR" ]]; then
+    # Switch the boot-time DNS filter from open to restricted mode, and block any attempt to
+    # bypass it and query the real resolver directly. Gated on the flag file dns-filter-setup.service
+    # writes at boot for airlocked instances - not validate_airlock_snapshot above, which is a
+    # separate, pre-existing, unrelated mechanism (app-image-level local-snapshot readiness, not
+    # this workspace's network policy). Runs before the COMPLETE status write below, on purpose:
+    # if the switch fails, errexit stops the script here rather than marking the VM ready while
+    # it's still open. dns-filter.service is required by devcontainer.service in the Butane
+    # template, so by the time this script runs (after devcontainer.service succeeds), the
+    # dns-filter container is guaranteed to already be up.
+    # `insert`, not `add`: Docker reconciles DOCKER-USER and can place its own rules (e.g. a
+    # trailing RETURN) at any point, including after rules already appended there - insert always
+    # lands at the top of the chain regardless, so these rules stay reachable either way.
+    if [[ -f /home/core/airlock-enabled ]]; then
+        docker kill -s SIGUSR1 dns-filter
+        nft insert rule ip filter DOCKER-USER iifname "br-*" ip daddr != 172.17.0.1 udp dport 53 drop
+        nft insert rule ip filter DOCKER-USER iifname "br-*" ip daddr != 172.17.0.1 tcp dport 53 drop
+    fi
     set_metadata "startup_script/status" "COMPLETE"
     isSuccess="true"
 fi

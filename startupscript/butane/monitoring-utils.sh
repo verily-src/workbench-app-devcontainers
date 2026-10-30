@@ -21,9 +21,11 @@ function log_event() {
     fi
 
     # Log VM event
+    local token
+    # shellcheck disable=SC2034  # token is only used indirectly via curl_with_auth
+    token="$(/home/core/wb.sh auth print-access-token)"
     local response
-    response=$(curl -s -X POST "${log_url}" \
-        -H "Authorization: Bearer $(/home/core/wb.sh auth print-access-token)" \
+    response=$(curl_with_auth token -s -X POST "${log_url}" \
         -H "Content-Type: application/json" \
         -d "$payload" \
         -w "\n%{http_code}")

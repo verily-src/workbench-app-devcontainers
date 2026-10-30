@@ -5,12 +5,15 @@ services:
     build:
       context: ./app
     restart: always
-    environment:
-      DOCS_BASE_URL: "${templateOption:docsBaseUrl}"
-      GEMINI_MODEL: "${templateOption:geminiModel}"
-      VERTEX_LOCATION: "${templateOption:vertexLocation}"
-      ASSISTANT_TITLE: "${templateOption:assistantTitle}"
-      SUPPORT_CONTACTS: "${templateOption:supportContacts}"
+    # Configuration is optional. Defaults are built into the app; set per-instance
+    # overrides as VM metadata (wb app create gcp -M support-contacts=...), or
+    # uncomment and edit the environment block on a fork.
+    # environment:
+    #   DOCS_BASE_URL: "https://support.workbench.verily.com"
+    #   GEMINI_MODEL: "gemini-3.5-flash"
+    #   VERTEX_LOCATION: "global"
+    #   ASSISTANT_TITLE: "Workbench Docs Assistant"
+    #   SUPPORT_CONTACTS: "Email workbench-support@verily.com"
     volumes:
       # Cached documentation index, so restarts don't re-crawl the site.
       - index-cache:/data

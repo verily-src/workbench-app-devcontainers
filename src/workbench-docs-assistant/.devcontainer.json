@@ -1,0 +1,8 @@
+{
+  "name": "Workbench Docs Assistant",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root"
+}

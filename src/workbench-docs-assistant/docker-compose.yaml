@@ -1,0 +1,29 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    build:
+      context: ./app
+    restart: always
+    environment:
+      DOCS_BASE_URL: "${templateOption:docsBaseUrl}"
+      GEMINI_MODEL: "${templateOption:geminiModel}"
+      VERTEX_LOCATION: "${templateOption:vertexLocation}"
+      ASSISTANT_TITLE: "${templateOption:assistantTitle}"
+      SUPPORT_CONTACTS: "${templateOption:supportContacts}"
+    volumes:
+      # Cached documentation index, so restarts don't re-crawl the site.
+      - index-cache:/data
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+
+volumes:
+  index-cache:
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

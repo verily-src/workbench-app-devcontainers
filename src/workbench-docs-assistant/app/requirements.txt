@@ -1,0 +1,7 @@
+flask>=3.0,<4
+gunicorn>=22,<24
+requests>=2.31,<3
+google-auth>=2.29,<3
+numpy>=1.26,<3
+beautifulsoup4>=4.12,<5
+markdown>=3.5,<4

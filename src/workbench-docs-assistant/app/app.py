@@ -21,18 +21,36 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 log = logging.getLogger("app")
 
 # ----- configuration (all optional) -----
-DOCS_BASE_URL = os.environ.get("DOCS_BASE_URL", "https://support.workbench.verily.com")
-DOCS_PATH_PREFIX = os.environ.get("DOCS_PATH_PREFIX", "/docs/")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
-VERTEX_LOCATION = os.environ.get("VERTEX_LOCATION", "global")
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-005")
-EMBEDDING_LOCATION = os.environ.get("EMBEDDING_LOCATION", "us-central1")
-ASSISTANT_TITLE = os.environ.get("ASSISTANT_TITLE", "Workbench Docs Assistant")
-SUPPORT_CONTACTS = os.environ.get("SUPPORT_CONTACTS", "Email workbench-support@verily.com")
-INDEX_CACHE_DIR = os.environ.get("INDEX_CACHE_DIR", "/data/index")
-INDEX_REFRESH_HOURS = float(os.environ.get("INDEX_REFRESH_HOURS", "24"))
-TOP_K = int(os.environ.get("TOP_K", "8"))
-MAX_HISTORY = int(os.environ.get("MAX_HISTORY", "8"))
+# Precedence: per-instance VM metadata (wb app create gcp -M key=value) > environment variable
+# (template option in docker-compose.yaml) > built-in default. Metadata lets one app config serve
+# several deployments, each with its own title, model, or support contacts.
+METADATA_URL = "http://metadata.google.internal/computeMetadata/v1/instance/attributes/"
+
+
+def setting(env_name, default):
+    metadata_key = env_name.lower().replace("_", "-")
+    try:
+        import requests
+        resp = requests.get(METADATA_URL + metadata_key, headers={"Metadata-Flavor": "Google"}, timeout=1)
+        if resp.status_code == 200 and resp.text.strip():
+            return resp.text.strip()
+    except Exception:
+        pass
+    return os.environ.get(env_name) or default
+
+
+DOCS_BASE_URL = setting("DOCS_BASE_URL", "https://support.workbench.verily.com")
+DOCS_PATH_PREFIX = setting("DOCS_PATH_PREFIX", "/docs/")
+GEMINI_MODEL = setting("GEMINI_MODEL", "gemini-3.5-flash")
+VERTEX_LOCATION = setting("VERTEX_LOCATION", "global")
+EMBEDDING_MODEL = setting("EMBEDDING_MODEL", "text-embedding-005")
+EMBEDDING_LOCATION = setting("EMBEDDING_LOCATION", "us-central1")
+ASSISTANT_TITLE = setting("ASSISTANT_TITLE", "Workbench Docs Assistant")
+SUPPORT_CONTACTS = setting("SUPPORT_CONTACTS", "Email workbench-support@verily.com")
+INDEX_CACHE_DIR = setting("INDEX_CACHE_DIR", "/data/index")
+INDEX_REFRESH_HOURS = float(setting("INDEX_REFRESH_HOURS", "24"))
+TOP_K = int(setting("TOP_K", "8"))
+MAX_HISTORY = int(setting("MAX_HISTORY", "8"))
 MAX_QUESTION_CHARS = 2000
 
 # ----- Google Cloud credentials: the app's default identity in the workspace project -----

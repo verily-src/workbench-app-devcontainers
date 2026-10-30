@@ -52,6 +52,31 @@ Environment variables with the same meaning (`DOCS_BASE_URL`, `GEMINI_MODEL`, `V
 `ASSISTANT_TITLE`, `SUPPORT_CONTACTS`) plus `EMBEDDING_MODEL`, `EMBEDDING_LOCATION`, `INDEX_REFRESH_HOURS`,
 `TOP_K`, and `GOOGLE_CLOUD_PROJECT` can be set directly in `docker-compose.yaml`.
 
+### Per-instance overrides (no fork needed)
+
+Any of those settings can also be set as **VM metadata** on the app instance, using the lower-case,
+hyphenated form of the variable name. Metadata wins over template options, so one app config can serve
+several deployments with different contacts or models:
+
+```bash
+wb app config create --name=docs-assistant \
+  --git-repo-url=https://github.com/verily-src/workbench-app-devcontainers.git \
+  --dev-container-path=src/workbench-docs-assistant
+
+wb app create gcp --config=docs-assistant --id=docs-assistant \
+  -M assistant-title="Acme Research Docs Assistant" \
+  -M support-contacts="Questions about this workspace: admin@acme.org. Platform issues: workbench-support@verily.com"
+```
+
+### Startup and re-indexing
+
+- **First start** of a new app instance: the index is built from scratch, about 60–90 seconds. The
+  status bar shows progress and chat says "still building" until it is done.
+- **Later starts** (after a stop/start or container restart): the cached index on the `index-cache`
+  volume loads in a few seconds. If it is older than 24 hours it is used immediately and refreshed in
+  the background, so users never wait on a rebuild.
+- `POST /api/reindex` forces a rebuild at any time.
+
 ### Cost
 
 Indexing embeds a few million characters once a day (fractions of a cent). Each question sends roughly

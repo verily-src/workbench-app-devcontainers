@@ -16,7 +16,7 @@ disable_updates() {
 }
 
 exec 9>/run/lock/update-flatcar.lock
-flock --nonblock 9 || exit 0
+flock --nonblock 9 || { echo "Another update check holds the lock; skipping"; exit 0; }
 
 STATUS_OUTPUT="$(update_engine_client -status)"
 CURRENT_OP="$(echo "$STATUS_OUTPUT" | sed -n 's/^CURRENT_OP=//p')"
@@ -24,6 +24,7 @@ NEW_VERSION="$(echo "$STATUS_OUTPUT" | sed -n 's/^NEW_VERSION=//p')"
 case "$CURRENT_OP" in
   UPDATE_STATUS_IDLE|UPDATE_STATUS_UPDATED_NEED_REBOOT) ;;
   UPDATE_STATUS_CHECKING_FOR_UPDATE|UPDATE_STATUS_UPDATE_AVAILABLE|UPDATE_STATUS_DOWNLOADING|UPDATE_STATUS_VERIFYING|UPDATE_STATUS_FINALIZING|UPDATE_STATUS_REPORTING_ERROR_EVENT)
+    echo "update-engine is busy ($CURRENT_OP); skipping"
     exit 0
     ;;
   *) echo "Unexpected update engine status: $STATUS_OUTPUT" >&2; exit 1 ;;
@@ -47,6 +48,7 @@ if [[ ! "$VERSION_ID" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid running Flatcar version: $VERSION_ID" >&2
   exit 1
 fi
+echo "Installed Flatcar version: $VERSION_ID"
 
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
@@ -58,7 +60,12 @@ fi
 
 TARGET_VERSION="$(curl --fail --silent --show-error --proto '=https' --proto-redir '=https' \
   --connect-timeout 10 --max-time 30 --retry 3 "$VERSION_URL" | \
-  jq -er '.flatcar_stable_version | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))')"
+  jq -er '.flatcar_stable_version | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))')" || {
+  rc=$?
+  echo "Could not read the approved Flatcar version from $VERSION_URL" >&2
+  exit "$rc"
+}
+echo "Approved Flatcar version: $TARGET_VERSION"
 
 # -reset_status only idles update-engine; postinst already gave the staged
 # partition boot priority, so hand it back to the running /usr partition.
@@ -72,20 +79,27 @@ cancel_staged_update() {
 # A release rollback must not downgrade a running VM.
 if [[ "$(printf '%s\n' "$VERSION_ID" "$TARGET_VERSION" | sort -V | head -n 1)" == "$TARGET_VERSION" ]]; then
   if [[ "$CURRENT_OP" == UPDATE_STATUS_UPDATED_NEED_REBOOT ]]; then
+    echo "Canceling staged $NEW_VERSION; approved version is not newer than installed"
     cancel_staged_update
     set_metadata "os_update/reboot_required" ""
     set_metadata "os_update/timestamp" ""
+  else
+    echo "Installed version is not older than approved; skipping"
   fi
   exit 0
 fi
 
 if [[ "$CURRENT_OP" == UPDATE_STATUS_UPDATED_NEED_REBOOT ]]; then
   if [[ "$NEW_VERSION" == "$TARGET_VERSION" ]]; then
+    echo "Approved version is already staged; skipping until reboot"
     exit 0
   fi
+  echo "Canceling staged $NEW_VERSION; approved version is $TARGET_VERSION"
   cancel_staged_update
 fi
 
 trap disable_updates EXIT
 
+echo "Updating Flatcar from $VERSION_ID to $TARGET_VERSION"
 flatcar-update --to-version "$TARGET_VERSION" --disable-afterwards
+echo "Staged Flatcar $TARGET_VERSION; it applies on the next reboot"

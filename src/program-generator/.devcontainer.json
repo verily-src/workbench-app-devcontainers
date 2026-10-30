@@ -1,0 +1,14 @@
+{
+  "name": "Program Generator",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "./startupscript/post-startup.sh"
+  ],
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh"
+  ],
+  "remoteUser": "root"
+}

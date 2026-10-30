@@ -42,15 +42,6 @@ if [[ ${retry_count} -ge ${MAX_RETRIES} ]]; then
     exit 1
 fi
 
-if ! validate_airlock_snapshot; then
-    status="$(get_guest_attribute "startup_script/status" "")"
-    if [[ "${status}" != "ERROR" ]]; then
-        set_metadata "startup_script/status" "ERROR"
-        set_metadata "startup_script/message" "App setup is incomplete. Please retry startup."
-    fi
-    exit 1
-fi
-
 # If we reach here, the retry loop succeeded
 status="$(get_guest_attribute "startup_script/status" "")"
 isSuccess="false"

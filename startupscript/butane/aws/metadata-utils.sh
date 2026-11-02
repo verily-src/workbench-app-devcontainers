@@ -21,7 +21,15 @@ function get_tag() (
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
   local tag_value
-  tag_value="$(docker run --rm --network host \
+  # --dns=169.254.169.253 (the real AWS resolver), not whatever the daemon-wide default is. On a
+  # reboot of an already-airlocked instance, /etc/docker/daemon.json already points containers at
+  # the DNS filter (from dns-filter-setup.service's earlier run), and that default still applies
+  # here even with --network host: Docker injects this container's own /etc/resolv.conf via its
+  # mount namespace, which --network host does not share, so it's rewritten from the daemon
+  # default regardless of what the host's own resolv.conf says (confirmed live). Since the filter
+  # itself hasn't started yet at this point in boot, this call fails outright without the override
+  # (confirmed live: "Could not connect to the endpoint URL").
+  tag_value="$(docker run --rm --network host --dns=169.254.169.253 \
     public.ecr.aws/aws-cli/aws-cli \
     ec2 describe-tags \
     --filters "Name=resource-id,Values=${id}" "Name=key,Values=${tag_key}" \
@@ -83,7 +91,8 @@ function set_metadata() (
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
 
-  docker run --rm --network host \
+  # --dns override: see the comment on the equivalent call in get_tag above.
+  docker run --rm --network host --dns=169.254.169.253 \
     public.ecr.aws/aws-cli/aws-cli \
     ec2 create-tags \
       --resources "${id}" \

@@ -3,6 +3,10 @@
 # Installed by configure-codeartifact.sh and run as the app user. Uses the
 # instance role to renew pip/npm credentials in the user's config files.
 # No arguments: refresh once. --start: refresh and launch one background worker.
+# Results log to ~/.workbench/codeartifact-refresh.log and stdout; the startup
+# hooks point stdout at the container log so fluent-bit ships it. The worker
+# keeps --start's stdout open, so callers must redirect it to a file or fd,
+# never capture it with a command substitution or pipe.
 # Internal --loop mode renews every six hours and retries failures after five minutes.
 set -o errexit
 set -o nounset
@@ -14,6 +18,7 @@ source /etc/workbench-codeartifact.conf
 readonly STATE_DIR="${CODEARTIFACT_USER_HOME}/.workbench"
 readonly REFRESH_INTERVAL=21600 # Six hours, halfway through the token lifetime.
 readonly RETRY_INTERVAL=300
+readonly LOG_FILE="${STATE_DIR}/codeartifact-refresh.log"
 mkdir -p "${STATE_DIR}"
 
 # Authenticate with the instance role, not the user's workspace credentials.
@@ -57,6 +62,14 @@ if ! command -v node > /dev/null || ! command -v npm > /dev/null; then
   fi
 fi
 
+log() {
+  local line
+  line="$(date -u): $*"
+  echo "${line}"
+  # An unwritable log file must not kill a refresh; stdout still gets the line.
+  echo "${line}" >> "${LOG_FILE}" 2>/dev/null || true
+}
+
 retry() {
   local attempt
   for ((attempt = 1; attempt <= 5; attempt++)); do
@@ -80,12 +93,19 @@ refresh() (
 
   local status=0
   # Attempt both logins even if one package manager fails.
-  retry aws codeartifact login --tool npm \
-    --domain "${CODEARTIFACT_DOMAIN}" --domain-owner "${CODEARTIFACT_OWNER}" \
-    --repository npm-mirror --region "${CODEARTIFACT_REGION}" --duration-seconds 43200 || status=1
-  retry aws codeartifact login --tool pip \
-    --domain "${CODEARTIFACT_DOMAIN}" --domain-owner "${CODEARTIFACT_OWNER}" \
-    --repository pypi-mirror --region "${CODEARTIFACT_REGION}" --duration-seconds 43200 || status=1
+  local spec tool repository
+  for spec in npm:npm-mirror pip:pypi-mirror; do
+    tool="${spec%%:*}"
+    repository="${spec#*:}"
+    if retry aws codeartifact login --tool "${tool}" \
+      --domain "${CODEARTIFACT_DOMAIN}" --domain-owner "${CODEARTIFACT_OWNER}" \
+      --repository "${repository}" --region "${CODEARTIFACT_REGION}" --duration-seconds 43200; then
+      log "CodeArtifact ${tool} token refreshed"
+    else
+      log "WARNING: CodeArtifact ${tool} token refresh failed"
+      status=1
+    fi
+  done
   # The login may recreate the files with default permissions.
   chmod 600 "${NPM_CONFIG_USERCONFIG}" "${PIP_CONFIG}" || status=1
   return "${status}"
@@ -104,8 +124,9 @@ case "${1:-}" in
       delay="${RETRY_INTERVAL}"
     fi
     # Outlives the lifecycle hook. Its lock dies with the container, so
-    # postStart can start a new one.
-    nohup "$0" --loop "${delay}" < /dev/null >> "${STATE_DIR}/codeartifact-refresh.log" 2>&1 &
+    # postStart can start a new one. It inherits --start's stdout so its
+    # results reach the container log.
+    nohup "$0" --loop "${delay}" < /dev/null 2>&1 &
     exit "${status}"
     ;;
   --loop)
@@ -121,7 +142,7 @@ case "${1:-}" in
         exec 9>&-
         refresh
       ); then
-        echo "$(date -u): WARNING: CodeArtifact refresh failed; retrying in ${RETRY_INTERVAL} seconds" >&2
+        log "Retrying CodeArtifact refresh in ${RETRY_INTERVAL} seconds"
         delay="${RETRY_INTERVAL}"
       fi
     done

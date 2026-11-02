@@ -1,0 +1,77 @@
+{
+  "_generated": "DO NOT EDIT: generated from ../virtual-browser-rstudio/.devcontainer.json by ../test-virtual-browser-common/generate.py; regenerate with python3 src/test-virtual-browser-common/generate.py",
+  "name": "TEST RStudio in a Virtual Browser devcontainer template (airlock canary)",
+  "dockerComposeFile": [
+    "docker-compose.yaml",
+    "docker-compose.build.yaml",
+    "docker-compose.test.yaml"
+  ],
+  "service": "app",
+  "runServices": [
+    "browser",
+    "app"
+  ],
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": [
+    "sh",
+    "-ec",
+    "if [ ! -f /var/lib/workbench/setup/post-create.done ]; then WORKBENCH_CONFIGURE_CODEARTIFACT=true ./startupscript/post-startup.sh \"$@\"; fi",
+    "--",
+    "rstudio",
+    "/home/rstudio",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "postStartCommand": {
+    "remount": [
+      "./startupscript/remount-on-restart.sh",
+      "rstudio",
+      "/home/rstudio",
+      "${templateOption:cloud}",
+      "${templateOption:login}"
+    ],
+    "codeartifact": [
+      "./startupscript/aws/start-codeartifact-refresh.sh",
+      "rstudio"
+    ],
+    "airlock-matrix": [
+      "bash",
+      "-c",
+      "nohup bash /opt/airlock-test/airlock-matrix-runner.sh rstudio rstudio >/tmp/airlock-matrix-runner.log 2>&1 &"
+    ]
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/java@sha256:61a839211feda1e2a1f10646648a948e733e4d98d770f3a4b6698a3c5fc92abe": {
+      "version": "17",
+      "jdkDistro": "tem"
+    },
+    "ghcr.io/rocker-org/devcontainer-features/r-packages@sha256:1a4ec64c4d2060e78e9c812bd3b3622c7e008465d566a2781c0e2b17a82592e5": {
+      "packages": "shiny,shinydashboard",
+      "installSystemRequirements": true
+    },
+    "ghcr.io/devcontainers/features/aws-cli@sha256:d6dee5e399eaee4090b5847afb7516ae7b52a066a863cc29120f66bea9f2d580": {},
+    "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli@sha256:e3af02f936916198f58ef4088d3be608372246d208f6f627c902ce62a8ae12ec": {},
+    "ghcr.io/devcontainers/features/node@sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6": {
+      "version": "24.20.0"
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code@sha256:cfc2e7d3e9fd3b9b01f8d5cb158508a884c8c0ede2e23ed10f32dea5d4ffe69a": {},
+    "./.devcontainer/features/gemini-cli": {
+      "username": "rstudio"
+    },
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "rstudio",
+      "userHomeDir": "/home/rstudio"
+    },
+    "./.devcontainer/features/postgres-client": {
+      "version": "16"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "AIRLOCK_ENABLED": true
+    }
+  }
+}

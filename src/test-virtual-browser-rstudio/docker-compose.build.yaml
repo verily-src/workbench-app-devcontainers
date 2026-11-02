@@ -1,0 +1,14 @@
+# DO NOT EDIT: generated from ../virtual-browser-rstudio/docker-compose.build.yaml by
+# ../test-virtual-browser-common/generate.py. Regenerate with:
+#   python3 src/test-virtual-browser-common/generate.py
+# Used only for initial provisioning.
+services:
+  browser:
+    build:
+      context: ../browser-common
+      args:
+        APP_ORIGIN: "application-server:8787"
+  app:
+    image: workbench-virtual-browser:rstudio
+    build:
+      context: ../virtual-browser-rstudio

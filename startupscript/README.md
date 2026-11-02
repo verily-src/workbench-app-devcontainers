@@ -10,10 +10,8 @@ Currently there are three flavors of startup.script:
 
 ## AWS CodeArtifact mirrors
 
-The `virtual-browser-jupyter` and `virtual-browser-rstudio` templates opt in to
-CodeArtifact configuration with `WORKBENCH_CONFIGURE_CODEARTIFACT=true`. Setup
-runs only on AWS and skips instances without the `vwbusr:codeartifact-domain-name`
-tag. It configures pip and npm to use the account's `pypi-mirror` and `npm-mirror`.
+CodeArtifact setup runs only on AWS, for instances with the
+`vwbusr:codeartifact-domain-name` tag. It configures pip and npm to use the account's `pypi-mirror` and `npm-mirror`.
 
 Both package managers use 12-hour tokens. App creation and every container start
 refresh them immediately and start a single background worker that refreshes every

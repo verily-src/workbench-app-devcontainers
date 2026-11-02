@@ -8,7 +8,7 @@ COPY . .
  
 RUN go build -o /playground .
 
-FROM node@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
+FROM node@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 
 # Install Docker CLI, docker-compose, buildx, ttyd, bash, and devcontainer CLI
 RUN apk add --no-cache docker-cli docker-cli-compose docker-cli-buildx ttyd bash && \

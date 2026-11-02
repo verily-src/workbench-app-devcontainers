@@ -9,7 +9,7 @@
   "postCreateCommand": [
     "sh",
     "-ec",
-    "if [ ! -f /var/lib/workbench/setup/post-create.done ]; then WORKBENCH_CONFIGURE_CODEARTIFACT=true ./startupscript/post-startup.sh \"$@\"; fi",
+    "if [ ! -f /var/lib/workbench/setup/post-create.done ]; then ./startupscript/post-startup.sh \"$@\"; fi",
     "--",
     "rstudio",
     "/home/rstudio",

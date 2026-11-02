@@ -241,7 +241,6 @@ SH
     cat > "${FIXTURE}/startupscript/post-startup.sh" <<'SH'
 #!/bin/sh
 set -eu
-test "${WORKBENCH_CONFIGURE_CODEARTIFACT}" = true
 echo attempt >> /workspace/attempts
 test ! -f /workspace/fail-setup
 printf '%s\n' "$@" > /workspace/arguments

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# One-time setup, sourced as root by the AWS post-startup hook for virtual-browser
-# apps. Reads the mirror metadata, writes /etc/workbench-codeartifact.conf, installs
+# One-time setup, sourced as root by the AWS post-startup hook. Skips instances
+# without the codeartifact-domain-name tag. Reads the mirror metadata, writes /etc/workbench-codeartifact.conf, installs
 # the refresh helper, and starts it as the app user. Later container starts use
 # start-codeartifact-refresh.sh. Requires emit,
 # get_metadata_value, RUN_AS_LOGIN_USER, CLOUD_SCRIPT_DIR and WORK_DIRECTORY.

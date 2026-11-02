@@ -20,14 +20,12 @@
 # - WORK_DIRECTORY: home directory for the user that the script is running on behalf of
 # - WORKBENCH_INSTALL_PATH: path to CLI executable
 
-##############################################################
-# Point virtual-browser apps at the account's CodeArtifact mirrors
-##############################################################
-# Opted in by the virtual-browser templates' postCreateCommand. Runs regardless
-# of LOG_IN because it authenticates with the instance role.
-if [[ "${WORKBENCH_CONFIGURE_CODEARTIFACT:-false}" == "true" ]]; then
-    source "${CLOUD_SCRIPT_DIR}/configure-codeartifact.sh"
-fi
+###################################################
+# Point the app at the account's CodeArtifact mirrors
+###################################################
+# Skipped unless the instance has the codeartifact-domain-name tag. Runs
+# regardless of LOG_IN because it authenticates with the instance role.
+source "${CLOUD_SCRIPT_DIR}/configure-codeartifact.sh"
 
 if [[ "${LOG_IN}" == "true" ]]; then
     emit "Already logged in, skipping additional AWS configuration."

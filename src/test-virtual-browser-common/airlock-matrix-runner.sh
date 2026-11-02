@@ -153,7 +153,9 @@ expect_ok() { # name command
 # Direct egress must be blocked on every port.
 expect_blocked curl-internet "curl -sS -m 20 https://example.com"
 for port in 443 80 22 8443; do
-  expect_blocked "tcp-${port}" "echo > /dev/tcp/1.1.1.1/${port}"
+  # The airlock drops packets, so without a short timeout each connect waits
+  # out the kernel's ~2 minute SYN retries.
+  expect_blocked "tcp-${port}" "timeout 10 bash -c 'echo > /dev/tcp/1.1.1.1/${port}'"
 done
 
 # Installs must work through the mirrors. An unconfigured manager is a mirror

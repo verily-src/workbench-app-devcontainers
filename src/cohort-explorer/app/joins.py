@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-MAX_JOIN_TABLES = 3  # UI cap (BENCH-10344 decided answer to Q2)
+MAX_JOIN_TABLES = 100  # UI cap, raised from the epic's decided 3 (BENCH-10344 Q2) for the UKBB field-join case
 ROWID_COLUMN = "_rowid"  # synthetic per-row identity, see build_select
 IDENTIFIER_MAX_BYTES = 63  # Postgres identifier limit (J26)
 PREVIEW_STATEMENT_TIMEOUT_MS = 10_000  # basic guard, see J28

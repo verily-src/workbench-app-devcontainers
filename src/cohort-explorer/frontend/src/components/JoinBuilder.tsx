@@ -11,10 +11,17 @@ import type { AuroraColumn, AuroraTable, JoinPreviewStep, JoinStep as ApiJoinSte
 import { fetchTableColumns, previewJoinGrowth, validateJoin } from "../api";
 import TableSelect from "./TableSelect";
 
-// BENCH-10344's decided answer to Q2: 3 tables is enough for the UI's
-// exploratory join builder. Saved/activated joins (joins.py) aren't capped —
-// this limit is a UI decision, not a backend one.
-const MAX_TABLES = 3;
+// BENCH-10344's decided answer to Q2 was 3 tables for the UI's exploratory
+// join builder; raised to 100 here for the UKBB one-table-per-field case,
+// where a cohort definition routinely spans dozens of field tables. Must
+// match joins.MAX_JOIN_TABLES on the backend.
+const MAX_TABLES = 100;
+// Past this many added steps, the step list and preview scroll instead of
+// growing the page — otherwise a 100-table join pushes the Check/Connect
+// buttons off screen.
+const SCROLL_AFTER_STEPS = 4;
+const STEP_LIST_MAX_HEIGHT = 420;
+const PREVIEW_MAX_HEIGHT = 200;
 
 const JOIN_TYPE_LABELS: Record<ApiJoinStep["join_type"] & string, string> = {
   inner: "Inner", left: "Left", full: "Full outer",
@@ -175,6 +182,13 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
           </Select>
         </FormControl>
       )}
+      <Box
+        sx={steps.length > SCROLL_AFTER_STEPS ? {
+          maxHeight: STEP_LIST_MAX_HEIGHT,
+          overflowY: "auto",
+          pr: 1,
+        } : undefined}
+      >
       <Stack spacing={1.5}>
         {steps.map((step, i) => {
           const isBase = i === 0;
@@ -258,9 +272,10 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
           );
         })}
       </Stack>
+      </Box>
 
       <Stack direction="row" spacing={1} sx={{ mt: 1.5, alignItems: "center" }}>
-        <Tooltip title={steps.length >= MAX_TABLES ? `UI limit of ${MAX_TABLES} tables (BENCH-10344)` : ""}>
+        <Tooltip title={steps.length >= MAX_TABLES ? `UI limit of ${MAX_TABLES} tables` : ""}>
           <span>
             <Button size="small" startIcon={<AddIcon />} onClick={addStep} disabled={!canAddStep}>
               Add table
@@ -281,7 +296,15 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
       {error && <Alert severity="error" sx={{ mt: 1.5 }}>{error}</Alert>}
 
       {preview && (
-        <Stack spacing={0.5} sx={{ mt: 1.5 }}>
+        <Box
+          sx={preview.length > SCROLL_AFTER_STEPS ? {
+            maxHeight: PREVIEW_MAX_HEIGHT,
+            overflowY: "auto",
+            mt: 1.5,
+            pr: 1,
+          } : { mt: 1.5 }}
+        >
+        <Stack spacing={0.5}>
           {preview.map((p, i) => {
             const prevCount = i > 0 ? preview[i - 1].row_count : null;
             const grew = prevCount != null && p.row_count != null && p.row_count > prevCount * 1.5;
@@ -303,6 +326,7 @@ export default function JoinBuilder({ resourceId, tables, onChange }: Props) {
             );
           })}
         </Stack>
+        </Box>
       )}
     </Box>
   );

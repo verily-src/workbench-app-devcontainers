@@ -2,6 +2,7 @@
 import pytest
 
 from joins import (
+    MAX_JOIN_TABLES,
     JoinError,
     JoinStep,
     _safe_output_name,
@@ -35,10 +36,21 @@ def test_rejects_empty_steps():
 
 def test_rejects_more_than_max_tables():
     steps = [JoinStep(table="a")] + [
-        JoinStep(table=f"t{i}", join_to="a", left_key="id", right_key="id") for i in range(5)
+        JoinStep(table=f"t{i}", join_to="a", left_key="id", right_key="id")
+        for i in range(MAX_JOIN_TABLES)
     ]
+    assert len(steps) == MAX_JOIN_TABLES + 1
     with pytest.raises(JoinError, match="At most"):
         _validate_steps(steps)
+
+
+def test_accepts_exactly_max_tables():
+    steps = [JoinStep(table="a")] + [
+        JoinStep(table=f"t{i}", join_to="a", left_key="id", right_key="id")
+        for i in range(MAX_JOIN_TABLES - 1)
+    ]
+    assert len(steps) == MAX_JOIN_TABLES
+    _validate_steps(steps)  # must not raise
 
 
 def test_rejects_self_join():

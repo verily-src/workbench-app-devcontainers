@@ -10,16 +10,18 @@ Originally built for GTEx V8 sample data, now datasource- and workflow-agnostic.
 
 On launch, the app shows a datasource selector with two kinds of source:
 
-- **Aurora database** — pick a resource, then either a single **table or view**, or **Join tables** to combine up to 3 tables on a shared key column (see below). The table/view picker is searchable — type to filter, useful when a resource has hundreds or thousands of tables. Table lists are pre-warmed at startup so the dropdown is populated when the selector appears.
+- **Aurora database** — pick a resource, then either a single **table or view**, or **Join tables** to combine up to 100 tables on a shared key column (see below). The table/view picker is searchable — type to filter, useful when a resource has hundreds or thousands of tables. Table lists are pre-warmed at startup so the dropdown is populated when the selector appears.
 - **Load from file (S3)** — pick an S3 folder, then a `.csv` / `.tsv` / `.txt` file. The file is downloaded and loaded into a local table.
 
 After you pick a source, the app **infers a schema** (column types + which columns are filterable) and shows a **Schema Review** step where you can adjust column types, filter kinds, and display labels before confirming. Your selection and filters are remembered across page refreshes.
 
 ### Joining tables (draft — BENCH-10344)
 
-Under **Aurora database → Join tables**, pick a base table, then add up to 2 more. For each added table: which already-added table it joins to, the key column on each side, and the join type (inner / left / full outer). **Check join** validates the key types and shows the row count after each join step, flagging a join that fans rows out. Once checked, **Connect** runs schema inference over the joined result, same as a single table — including an optional **"Count distinct by"** picker in Schema Review (e.g. a person/patient id), shown in the summary as "N unique \<entity\>".
+Under **Aurora database → Join tables**, pick a base table, then add up to 99 more (the step list and row-growth preview scroll once a few are added, rather than growing the page). For each added table: which already-added table it joins to, the key column on each side, and the join type (inner / left / full outer). **Check join** validates the key types and shows the row count after each join step, flagging a join that fans rows out. Once checked, **Connect** runs schema inference over the joined result, same as a single table — including an optional **"Count distinct by"** picker in Schema Review (e.g. a person/patient id), shown in the summary as "N unique \<entity\>".
 
 This is a draft implementation of the no-code join path from [BENCH-10344](https://verily.atlassian.net/browse/BENCH-10344) (currently a gated phase-2 epic). What's covered: the join builder UI, key-type validation, row-growth preview, collision-safe column naming (with Postgres's 63-byte identifier limit handled), correct results on 1:N fan-out joins, and the same text-backed-numeric handling as single-table Aurora sources (a joined column that's Aurora `text` but reclassified as integer/float is loaded as text and only `CAST` for numeric operations — see the "Aurora numeric-text failure" lessons in `CLAUDE.md`). What's **not** yet covered, per the epic's own task list: saved join configs, NULL-key reporting, non-`public` schemas, views-on-views, and general join performance hardening (J16–J28) — see the epic for details.
+
+**Table cap raised to 100.** The epic's own decided answer to Q2 is 3 tables in the UI; this draft raises `MAX_JOIN_TABLES` (`app/joins.py` and `frontend/.../JoinBuilder.tsx`, must stay in sync) to 100 for the UKBB one-table-per-field case, where a real cohort definition can span dozens of field tables. This is a deliberate deviation from the epic, not its decision — validation and the row-growth preview still make one or more Aurora round trips per step, so checking a 100-table join is meaningfully slower than checking 3 (J27/J28 performance hardening is explicitly out of scope for this draft, see above).
 
 ### Schema inference
 
@@ -92,7 +94,7 @@ src/cohort-explorer/
     │   └── components/
     │       ├── ResourceSelector.tsx   # Datasource picker (Aurora table/join or S3 file)
     │       ├── TableSelect.tsx        # Searchable table/view dropdown (Autocomplete)
-    │       ├── JoinBuilder.tsx        # No-code join builder (up to 3 tables)
+    │       ├── JoinBuilder.tsx        # No-code join builder (up to 100 tables, scrolls)
     │       ├── SchemaReview.tsx       # Editable inferred-schema table + entity column picker
     │       ├── FilterPanel.tsx        # Dynamic filter sidebar
     │       ├── DataGrid.tsx           # AG Grid table

@@ -452,6 +452,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
             df = pd.DataFrame.from_records([tuple(r) for r in res.fetchall()],
                                            columns=p["columns"], coerce_float=True)
     except Exception as e:
+        query_cancellation.check()
         raise _aurora_error(e, timeout_ms) from e
     notes = [f"step {s['no']}: {n}" for s in p["steps"] for n in s["notes"]]
     stats = {"engine": "aurora", "base_rows": base_rows, "steps": steps,
@@ -497,6 +498,7 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
         try:
             return _run_aurora(p, cap, query_cancellation.join_timeout_ms(RUN_TIMEOUT_MS))
         except (JoinTimeout, JoinEngineError) as e:
+            query_cancellation.check()
             if any(ds.get("live_source") for ds in
                    [p["base"]] + [s["ds"] for s in p["steps"]]):
                 raise
@@ -515,6 +517,7 @@ def preview(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict
         except JoinTimeout as e:
             raise
         except JoinEngineError as e:
+            query_cancellation.check()
             if any(ds.get("live_source") for ds in
                    [p["base"]] + [s["ds"] for s in p["steps"]]):
                 raise

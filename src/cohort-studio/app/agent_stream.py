@@ -90,7 +90,8 @@ def stream(req: AgentRequest, request: Request, response: Response):
                     raise agent_sessions.AgentCancelled()
                 agent_sessions.finish(result)
             emit({"type": "result", "result": {**result, "actions": operations.actions,
-                                                "workflow_plans": operations.workflow_plans}})
+                                                "workflow_plans": operations.workflow_plans,
+                                                "downloads": operations.downloads}})
         except agent_sessions.AgentCancelled:
             emit({"type": "cancelled", "reply": _CANCELLED,
                   "session_id": str(session.turn.session_id) if session and session.turn else None})

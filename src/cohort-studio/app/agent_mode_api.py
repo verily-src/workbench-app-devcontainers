@@ -4,7 +4,7 @@ import threading
 import time
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Literal, get_args
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -58,6 +58,11 @@ class AgentFilter(BaseModel):
 
 class ApprovalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class AgentDownloadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    format: str = Field(min_length=1, max_length=16)
 
 
 class AgentSessionSummary(BaseModel):
@@ -148,6 +153,7 @@ class Operations:
         self.user_message = user_message
         self.owner = owner
         self.actions = []
+        self.downloads = []
         self.workflow_plans = []
         self.inspected = set()
         self.concepts = {}
@@ -184,6 +190,10 @@ class Operations:
                            "verification": value.get("verification")}
                           for key, value in _dashboards.items() if value["owner"] == self.owner]
         return {"sources": [{"kind": kind, "id": rid} for kind, rid in sorted(self.available)],
+                "download_formats": {
+                    "aurora": list(get_args(_main().StartExportRequest.model_fields["format"].annotation)),
+                    "loaded": list(get_args(_main().ExportRequest.model_fields["format"].annotation)),
+                },
                 "dashboards": dashboards[-20:],
                 "saved_dashboards": [{k: a[k] for k in ("dataset_id", "title", "source_ref")}
                                      for a in agent_artifacts.list_saved(self.owner)]}
@@ -193,7 +203,12 @@ class Operations:
         entries = [item for item in _main().tables(kind, resource_id)
                    if not item.get("table", item["name"]).split(".")[-1].startswith("_")
                    and query.casefold() in item["name"].casefold()]
-        return {"tables": entries[:100], "total": len(entries), "truncated": len(entries) > 100}
+        result = {"tables": entries[:100], "total": len(entries), "truncated": len(entries) > 100}
+        if kind == "s3":
+            import duck
+            result["supported_suffixes"] = list(duck.DATA_SUFFIXES)
+            result["listing_limit"] = duck.MAX_LISTING
+        return result
 
     def inspect_table(self, source_json):
         ref = self._table(json.loads(source_json))
@@ -359,6 +374,23 @@ class Operations:
         import grain
         return grain.check(dataset_id)
 
+    def prepare_download(self, dataset_id, format):
+        entry = _owned(self.owner, dataset_id)
+        source = datasets.get(dataset_id)
+        model = _main().StartExportRequest if source.get("live_source") else _main().ExportRequest
+        try:
+            model.model_validate({"format": format})
+        except ValueError as exc:
+            choices = get_args(model.model_fields["format"].annotation)
+            raise ValueError("This format is not available for the dashboard. Available formats: "
+                             + ", ".join(choices)) from exc
+        if len(self.downloads) >= 4:
+            raise ValueError("At most four downloads can be prepared in one turn.")
+        action = {"dataset_id": dataset_id, "title": entry["title"], "format": format}
+        self.downloads.append(action)
+        return {**action, "status": "ready_to_download",
+                "message": "Use the download button. No export has started."}
+
     def list_workflows(self):
         import agent_workflows
         return {"registry": workflows.list_workflows(), "jobs": workflows.list_jobs(),
@@ -409,7 +441,7 @@ class Operations:
     def callbacks(self):
         names = ("search_knowledge", "search_pubmed", "search_biorxiv", "list_sources", "list_tables", "inspect_table", "search_concepts", "count_cohort",
                  "recommend_join", "build_dashboard", "open_dashboard", "query_dashboard", "check_grain", "list_workflows", "prepare_workflow",
-                 "workflow_status", "open_workflow_results")
+                 "workflow_status", "open_workflow_results", "prepare_download")
         return {name: getattr(self, name) for name in names}
 
 
@@ -424,9 +456,33 @@ def chat(req: AgentRequest, request: Request, response: Response):
                                  new_session=req.new_session):
             result = studio_agent.chat(req.message, operations.callbacks())
             agent_sessions.finish(result)
-        return {**result, "actions": operations.actions, "workflow_plans": operations.workflow_plans}
+        return {**result, "actions": operations.actions, "workflow_plans": operations.workflow_plans,
+                "downloads": operations.downloads}
     except llm.LLMNotConfigured as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/dashboards/{dataset_id}/download")
+def download_dashboard(dataset_id: str, req: AgentDownloadRequest,
+                       request: Request, response: Response):
+    owner = agent_sessions.owner(request, response)
+    try:
+        entry = _owned(owner, dataset_id)
+    except (ValueError, datasets.DatasetNotFound) as exc:
+        raise HTTPException(404, "Dashboard expired or unknown.") from exc
+    try:
+        export_req = _main().ExportRequest.model_validate({"format": req.format,
+                                                            "filters": entry["filters"]})
+        is_live = bool(datasets.get(dataset_id).get("live_source"))
+        job_req = _main().StartExportRequest.model_validate({"format": req.format,
+            "filters": entry["filters"]}) if is_live else None
+    except datasets.DatasetNotFound as exc:
+        raise HTTPException(404, "Dashboard expired or unknown.") from exc
+    except ValueError as exc:
+        raise HTTPException(400, "Dashboard filters or export format are invalid.") from exc
+    if job_req is not None:
+        return {"job": _main().start_export(dataset_id, job_req)}
+    return _main().export_dataset(dataset_id, export_req)
 
 
 @router.get("/chat/history")

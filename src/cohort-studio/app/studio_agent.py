@@ -45,13 +45,13 @@ _TOOLS = [
     ("open_dashboard", "Reopen an owned saved dashboard, restoring filters and charts and querying current data. Returns a new dataset_id. Workflow results are verified again.", {
         "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
     }, ["dataset_id"]),
-    ("list_tables", "List table metadata for a selected datasource, optionally filtering names.", {
+    ("list_tables", "List Aurora tables or S3 data files in a selected datasource, optionally filtering names. S3 results include supported file suffixes and may be truncated.", {
         "resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
         "kind": {"type": "string", "enum": ["aurora", "s3"],
                  "default": "aurora"},
         "query": {"type": "string", "maxLength": 256, "default": ""},
     }, ["resource_id"]),
-    ("inspect_table", "Inspect an Aurora table or S3 file only. For OMOP cohort or join recipes, build_dashboard returns the output column metadata.", {
+    ("inspect_table", 'Inspect an Aurora table or S3 file only. For S3 use source_json {"kind":"s3","resource_id":"<listed id>","table":"<listed relative file path>"}. For OMOP cohort or join recipes, build_dashboard returns the output column metadata.', {
         "source_json": {"type": "string", "minLength": 2, "maxLength": 16000},
     }, ["source_json"]),
     ("search_concepts", "Search the selected OMOP CDM for concept names and IDs.", {
@@ -84,6 +84,10 @@ _TOOLS = [
     ("check_grain", "Check the saved row-grain key on an owned dashboard. Returns distinct composite keys, nulls, duplicates and scope. This does not change data or establish a permanent database constraint.", {
         "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
     }, ["dataset_id"]),
+    ("prepare_download", "Prepare a download button for an owned dashboard and its saved filters. Only use a format supported by its source. No file is created until the user clicks the button.", {
+        "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
+        "format": {"type": "string", "enum": ["tsv", "tsv.gz", "parquet", "json"]},
+    }, ["dataset_id", "format"]),
     ("workflow_status", "Refresh an owned workflow plan's run status. Completion does not verify its outputs.", {
         "plan_id": {"type": "string", "minLength": 1, "maxLength": 64},
     }, ["plan_id"]),
@@ -239,6 +243,9 @@ def _system_prompt() -> str:
         "Never submit a workflow or make an external change. Do not write or "
         "execute raw SQL. Do not invent table metadata, concepts, counts, "
         "join evidence or workflow capabilities.\n"
+        "S3 files are discovered with list_tables using kind s3. Inspect an exact listed relative path before building a dashboard with {\"kind\":\"s3\",\"resource_id\":\"...\",\"table\":\"folder/file.parquet\"}. "
+        "Supported S3 suffixes are returned by list_tables; never claim unsupported file types can be opened. "
+        "When a user requests a download, use prepare_download with an owned dashboard ID and their requested format. Explain that the download button starts the export. Do not claim a file was created or downloaded. If the format is unsupported for that source, report the error and offer supported choices. "
         "Source recipes are JSON objects. Aurora tables use "
         "{\"kind\":\"aurora\",\"resource_id\":\"...\","
         "\"schema\":\"cdm\",\"table\":\"person\"}. OMOP cohorts use "

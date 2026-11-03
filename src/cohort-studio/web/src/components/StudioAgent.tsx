@@ -1,4 +1,6 @@
 import { AgentText } from "./AgentText";
+import { AgentExportCard } from "./AgentExportCard";
+import type { AgentDownload } from "./AgentExportCard";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { streamAgent, cancelAgent } from "../agentStreaming";
@@ -39,6 +41,7 @@ interface AgentMessage extends Omit<ChatMsg, "actions"> {
   toolResults?: { name: string; status: "completed" | "failed" }[];
   limitReached?: boolean;
   actions?: AgentDashboardAction[];
+  downloads?: AgentDownload[];
 }
 
 interface PlanUiState {
@@ -277,6 +280,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         role: "assistant", content: result.reply,
         toolCalls: result.tool_calls, toolResults: result.tool_results,
         limitReached: result.limit_reached, actions: result.actions,
+        downloads: (result as typeof result & { downloads?: AgentDownload[] }).downloads,
       }]);
     } catch (caught) {
       setQueuePaused(true);
@@ -548,6 +552,9 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
             {message.limitReached && <p className="studio-agent-limit" role="status">
               The agent stopped before completing the request. Review the failed steps before retrying.
             </p>}
+            {message.downloads?.map((download, i) => (
+              <AgentExportCard key={`${download.dataset_id}-${download.format}-${i}`} download={download} />
+            ))}
             {message.actions?.map((action, i) => (
               <div className="studio-agent-card" key={`${action.title}-${i}`}>
                 <strong>{action.title}</strong>

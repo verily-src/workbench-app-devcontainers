@@ -15,7 +15,7 @@ from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 
-DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".txt", ".json", ".ndjson")
+DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".tsv.gz", ".txt", ".json", ".ndjson")
 CATALOG_SUFFIX = ".duckdb"
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9._\-/ ()+=]+$")
 

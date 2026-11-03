@@ -4,6 +4,12 @@ Current architecture and key flows for Cohort Studio. Update this document
 when an architectural decision changes. Render diagrams with any Mermaid
 viewer (GitHub renders them inline).
 
+### Join cancellation and export formats (2026-11-03)
+
+Aurora join preview runs as an owner-scoped data job and fetches a 20-row sample without full input counts. Join preview and execution use no PostgreSQL statement timeout by default; `STUDIO_JOIN_TIMEOUT_MS` sets one in milliseconds, with `0` disabling it. Cancel interrupts the active PostgreSQL connection. Cross-source DuckDB cancellation waits for the current operation to finish. Other dashboard queries keep their own timeouts.
+
+Aurora background exports support TSV and TSV.gz. Disk-backed and loaded data also support JSON arrays and Parquet. A disk export exceeding 100,000 filtered rows is rejected rather than silently truncated. The Agent prepares an owner-checked download card using saved filters. VCF parsing remains an unintegrated, restricted prototype; PLINK and DuckDB exports remain unimplemented.
+
 ### Local changes awaiting release (2026-10-25)
 
 The following decisions are implemented and locally tested, but are not in live

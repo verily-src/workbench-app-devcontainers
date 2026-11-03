@@ -231,7 +231,11 @@ export interface JoinValidation {
   steps: { problems: string[]; notes: string[]; conditions: JoinConditionCheck[] }[];
 }
 
-export interface JoinPreview extends JoinStats {
+export interface JoinPreview extends Omit<JoinStats, "base_rows" | "rows" | "total_rows"> {
+  base_rows: number | null;
+  rows: number | null;
+  total_rows: number | null;
+  sample_only?: boolean;
   columns: string[];
   sample: unknown[][];
   sample_truncated?: boolean;

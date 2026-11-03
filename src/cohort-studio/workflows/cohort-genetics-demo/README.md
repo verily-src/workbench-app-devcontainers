@@ -28,6 +28,8 @@ count exceeds `cohort_size`.
 It defines a simulated carrier as dosage greater than zero. Missing or zero
 gender/year values are grouped as `unknown`; year bands use decades. The output
 has no person or sample identifiers. It makes no clinical or causal claim.
+Missing or non-finite dosage is rejected; it is not counted as a noncarrier.
+This synthetic CSV is not a VCF or PLINK genotype file.
 
 ## Local run
 

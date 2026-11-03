@@ -4,6 +4,10 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **LOCAL VALIDATED (2026-11-03):** Aurora join previews avoid full counts, use no statement timeout by default, and can be cancelled through an owner-scoped job; execution cancellation interrupts PostgreSQL. Six local PostgreSQL checks passed including a preview over ten seconds. Chromium checked preview and cancel UI with a mocked job. Cross-source cancellation waits for the current operation; other dashboard query timeouts and live cloud checks remain open.
+
+- **LOCAL VALIDATED (BENCH-10576, 2026-11-03):** TSV.gz, JSON and Parquet exports; Aurora supports TSV and TSV.gz while disk/in-memory support all four. Large disk exports reject over 100,000 matching rows. Agent prepares owner-checked download cards with saved filters; S3 Parquet and TSV.gz discovery/inspection tested with local object substitutes. VCF reader is a narrow unintegrated prototype. Docker PostgreSQL checks, API tests, frontend build and browser card download passed. Live S3, Aurora JSON/Parquet, PLINK, DuckDB export and VCF integration remain open.
+
 - **LOCAL VALIDATED, deployment pending (2026-10-27):** Agent header offers Play rescue to show Gandalf immediately; manual preview also works with reduced motion. Three local browser checks passed, including the automatic idle timeline and activity reset. AWS SSO expired; live release and verification pending.
 
 - **ACTIVATION REPORTED c5ee2fa (2026-10-27), live verification pending:** classic Godzilla chase, missed shots, offscreen scene changes and Gandalf rescue. Local browser tests passed for the full two-minute timeline, ten-second rescue, resumed chase, activity reset and reduced motion; chase and rescue screenshots inspected. Update cf942406-f11f-490a-a824-a7477c7e0712; update log b7fa960e-1da7-4c3b-8bb6-ece4ee19edd9 reports activation. AWS SSO expired before health/version/assets check, so live confirmation remains pending.

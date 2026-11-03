@@ -111,3 +111,57 @@ def test_export_cancellation_interrupts_aurora_query(client, engine, export_sour
     assert not export_jobs._JOBS[job_id]["active"]
     assert not (export_jobs._ROOT / (job_id + ".part")).exists()
     assert client.get(f"/api/exports/{job_id}/download").status_code == 409
+
+
+def test_gzip_export_filtered_rows_and_download(client, export_source):
+    import gzip
+
+    dataset_id, _ = export_source
+    filters = [{"column": "person_id", "kind": "range", "min": 120004, "max": 120005}]
+    started = client.post(f"/api/datasets/{dataset_id}/exports", json={"filters": filters, "format": "tsv.gz"})
+    assert started.status_code == 202, started.text
+    job_id = started.json()["id"]
+    outcome = wait_terminal(client, job_id)
+    assert outcome["status"] == "complete", outcome
+    assert outcome["rows"] == 2
+    download = client.get(f"/api/exports/{job_id}/download")
+    assert download.status_code == 200
+    assert 'cohort.tsv.gz' in download.headers['content-disposition']
+    rows = list(csv.reader(io.StringIO(gzip.decompress(download.content).decode()), delimiter="\t"))
+    assert rows == [["person_id", "label"], ["120004", "old"], ["120005", "old"]]
+    assert client.delete(f"/api/exports/{job_id}").status_code == 200
+
+
+def test_gzip_limit_uses_compressed_file_size(client, export_source, monkeypatch):
+    import gzip
+
+    dataset_id, _ = export_source
+    datasets.get(dataset_id)['live_source']['sql'] = (
+        "SELECT 1 AS person_id, repeat('a', 300) AS label FROM generate_series(1, 2000)")
+    monkeypatch.setattr(export_jobs, 'MAX_JOB_BYTES', 10000)
+    job_id = client.post(f'/api/datasets/{dataset_id}/exports', json={'format': 'tsv.gz'}).json()['id']
+    outcome = wait_terminal(client, job_id)
+    assert outcome['status'] == 'complete', outcome
+    assert outcome['rows'] == 2000
+    content = client.get(f'/api/exports/{job_id}/download').content
+    assert len(content) < 10000
+    assert len(gzip.decompress(content)) > 10000
+
+
+def test_export_encodes_complex_types_and_direct_live_endpoint_rejects(client, export_source):
+    import json
+
+    dataset_id, _ = export_source
+    source = datasets.get(dataset_id)['live_source']
+    source['sql'] = "SELECT true AS flag, '{\"a\":1}'::jsonb AS details, ARRAY['x','y'] AS tags, decode('abcd','hex') AS binary_data"
+    source['columns'] = {name: name for name in ('flag', 'details', 'tags', 'binary_data')}
+    direct = client.post(f'/api/datasets/{dataset_id}/export', json={'format': 'tsv'})
+    assert direct.status_code == 400
+    job = client.post(f'/api/datasets/{dataset_id}/exports', json={}).json()
+    assert wait_terminal(client, job['id'])['status'] == 'complete'
+    data = client.get(f'/api/exports/{job["id"]}/download')
+    rows = list(csv.reader(io.StringIO(data.text), delimiter='\t'))
+    assert rows[1][0] == 'true'
+    assert json.loads(rows[1][1]) == {'a': 1}
+    assert json.loads(rows[1][2]) == ['x', 'y']
+    assert rows[1][3] == r'\xabcd'

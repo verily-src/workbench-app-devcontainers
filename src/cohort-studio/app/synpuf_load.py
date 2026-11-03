@@ -15,6 +15,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, model_validator
 
 TARGET_RESOURCE = "cohort-dash-db-20261005"
+# Prod replica (workspace aws-byoa-testing); dev stays the default.
+ALLOWED_RESOURCES = (TARGET_RESOURCE, "omop-data-source")
 TARGET_SCHEMA = "cms_synpuf_100k"
 SOURCE = "bigquery-public-data.cms_synthetic_patient_data_omop"
 JOB_PROJECT = "vwb-dev-affable-olive-9580"
@@ -337,7 +339,7 @@ def load(conn, source_dir: Path, schema: str = TARGET_SCHEMA, log=print,
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--resource-id", default=TARGET_RESOURCE, choices=[TARGET_RESOURCE])
+    parser.add_argument("--resource-id", default=TARGET_RESOURCE, choices=ALLOWED_RESOURCES)
     parser.add_argument("--source-dir", required=True,
                         help="directory containing manifest.json and table CSV.GZ files")
     args = parser.parse_args(argv)

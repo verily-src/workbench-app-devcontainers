@@ -145,7 +145,7 @@ def monitor_base() -> str | None:
         context = json.loads((Path.home() / ".workbench" / "context.json").read_text())
         workspace = (context.get("workspace") or {}).get("userFacingId")
         server = (context.get("server") or {}).get("name")
-        base = os.environ.get("STUDIO_WORKBENCH_URL") or ({"dev-stable": "https://workbench-dev.verily.com"}.get(server))
+        base = os.environ.get("STUDIO_WORKBENCH_URL") or ({"dev-stable": "https://workbench-dev.verily.com", "prod": "https://workbench.verily.com"}.get(server))
         if not isinstance(workspace, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", workspace) is None or not base:
             return None
         url = urlsplit(base)

@@ -7,7 +7,7 @@ RUN npm run build
 
 FROM mcr.microsoft.com/vscode/devcontainers/python:3.12-bookworm
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs util-linux \
+    && apt-get install -y --no-install-recommends nodejs util-linux openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY app/requirements.txt .

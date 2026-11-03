@@ -86,7 +86,7 @@ _TOOLS = [
     }, ["dataset_id"]),
     ("prepare_download", "Prepare a download button for an owned dashboard and its saved filters. Only use a format supported by its source. No file is created until the user clicks the button.", {
         "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
-        "format": {"type": "string", "enum": ["tsv", "tsv.gz", "parquet", "json"]},
+        "format": {"type": "string", "enum": ["tsv", "tsv.gz", "parquet", "json", "duckdb"]},
     }, ["dataset_id", "format"]),
     ("workflow_status", "Refresh an owned workflow plan's run status. Completion does not verify its outputs.", {
         "plan_id": {"type": "string", "minLength": 1, "maxLength": 64},
@@ -245,7 +245,7 @@ def _system_prompt() -> str:
         "join evidence or workflow capabilities.\n"
         "S3 files are discovered with list_tables using kind s3. Inspect an exact listed relative path before building a dashboard with {\"kind\":\"s3\",\"resource_id\":\"...\",\"table\":\"folder/file.parquet\"}. "
         "Supported S3 suffixes are returned by list_tables; never claim unsupported file types can be opened. "
-        "When a user requests a download, use prepare_download with an owned dashboard ID and their requested format. Explain that the download button starts the export. Do not claim a file was created or downloaded. If the format is unsupported for that source, report the error and offer supported choices. "
+        "When a user requests a download, use prepare_download with an owned dashboard ID and their requested format. Explain that the download button starts the export. Do not claim a file was created or downloaded. If the format is unsupported for that source, report the error and offer supported choices. PLINK 2 requires the user to open the dashboard and explicitly map fields in Export PLINK 2; prepare_download cannot create PLINK archives. "
         "Source recipes are JSON objects. Aurora tables use "
         "{\"kind\":\"aurora\",\"resource_id\":\"...\","
         "\"schema\":\"cdm\",\"table\":\"person\"}. OMOP cohorts use "

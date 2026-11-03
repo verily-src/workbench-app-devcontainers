@@ -233,6 +233,7 @@ export default function App() {
       title,
       source: opened.source,
       sourceRef: opened.source_ref ?? sourceRef,
+      sourceInfo: opened.source_info,
       queryScope: opened.query_scope,
       entityColumn: initial?.entityColumn,
       columns: opened.columns,
@@ -360,6 +361,7 @@ export default function App() {
               : d.source.table.split("/").pop()) || "view",
         source: o.source,
         sourceRef: o.source_ref ?? d.source,
+        sourceInfo: o.source_info,
         queryScope: o.query_scope,
         entityColumn: d.entity_column ?? undefined,
         columns: o.columns,
@@ -444,6 +446,7 @@ export default function App() {
             id: fresh.dataset_id,
             source: fresh.source,
             sourceRef: fresh.source_ref ?? dataset.sourceRef,
+            sourceInfo: fresh.source_info,
             queryScope: fresh.query_scope,
             columns: fresh.columns,
             result: undefined,
@@ -579,6 +582,7 @@ export default function App() {
             setDatasets((prev) => prev.map((d) => d.id === expiredId
               ? { ...d, id: opened.dataset_id, source: opened.source,
                   sourceRef: opened.source_ref ?? activeDs.sourceRef,
+                  sourceInfo: opened.source_info,
                   queryScope: opened.query_scope, columns: opened.columns,
                   result: undefined, refreshing: false, queryLoading: true,
                   queryError: undefined }

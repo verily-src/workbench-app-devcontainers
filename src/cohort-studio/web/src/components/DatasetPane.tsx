@@ -11,6 +11,7 @@ import { DeriveColumn } from "./DeriveColumn";
 import { AggregateFilter } from "./AggregateFilter";
 import { GroupSummary } from "./GroupSummary";
 import { LaunchWorkflow } from "./LaunchWorkflow";
+import { PlinkExport } from "./PlinkExport";
 
 interface Props {
   dataset: Dataset;
@@ -76,7 +77,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
-  const [exportFormat, setExportFormat] = useState<"tsv" | "tsv.gz" | "parquet" | "json">("tsv");
+  const [exportFormat, setExportFormat] = useState<"tsv" | "tsv.gz" | "parquet" | "json" | "duckdb">("tsv");
   useEffect(() => { setExportFormat("tsv"); }, [dataset.id]);
   const [cancelingExport, setCancelingExport] = useState(false);
   const [creatingExport, setCreatingExport] = useState(false);
@@ -201,7 +202,10 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
     setCreatingExport(true);
     setExportError("");
     try {
-      if (databaseScoped) setExportJob(await api.createExport(dataset.id, filters, exportFormat === "tsv.gz" ? "tsv.gz" : "tsv"));
+      if (databaseScoped) {
+        if (exportFormat === "duckdb") throw new Error("DuckDB export is not available for Aurora yet.");
+        setExportJob(await api.createExport(dataset.id, filters, exportFormat));
+      }
       else await api.export(dataset.id, filters, exportFormat);
     } catch (e) {
       setExportError((e as Error).message);
@@ -271,10 +275,11 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
         <GrainSettings key={dataset.id} dataset={dataset} onUpdate={onUpdate} />
-        <label>Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option>{!databaseScoped && <><option value="parquet">Parquet</option><option value="json">JSON</option></>}</select></label>
+        <label>Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
-          {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON"}[exportFormat]}`}
+          {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}`}
         </button>
+        <PlinkExport key={dataset.id} dataset={dataset} />
         <button onClick={() => { void import("../pdf").then(({ captureCharts, exportDatasetPdf }) =>
           exportDatasetPdf(dataset, captureCharts())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
                 disabled={!result}>
@@ -297,7 +302,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
           </button>
         </>}
         {exportStatus === "complete" && <a href={api.exportDownloadUrl(exportJob.id)}>
-          Download {exportFormat === "tsv" ? "TSV" : "TSV.gz"}{exportJob.bytes ? ` · ${formatBytes(exportJob.bytes)}` : ""}
+          Download {{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}{exportJob.bytes ? ` · ${formatBytes(exportJob.bytes)}` : ""}
         </a>}
         {!exportRunning && <button className="quiet" onClick={clearExport}
                                     disabled={cancelingExport}>
@@ -319,6 +324,10 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         </button>
       </div>}
 
+      {dataset.sourceInfo?.format === "vcf" && <div className="large-data-warning" role="status">
+        <div>{dataset.sourceInfo.note}</div>
+        <div>Reference header (not verified): {dataset.sourceInfo.reference || "not specified"} · {dataset.sourceInfo.sample_count.toLocaleString()} samples · {dataset.sourceInfo.calls.toLocaleString()} calls</div>
+      </div>}
       {largeDataset && <div className="large-data-warning" role="status">
         <div>{scope === "database"
           ? `This source has ${result!.total.toLocaleString()} rows. Counts cover the full database, but large queries may take longer. Add filters to narrow the result.`

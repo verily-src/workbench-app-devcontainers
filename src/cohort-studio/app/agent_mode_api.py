@@ -218,7 +218,8 @@ class Operations:
             opened = _main()._open_source(ref, temporary=True)
             try:
                 metadata = {"columns": opened["columns"], "rows": opened["rows"],
-                            "scope": opened.get("query_scope")}
+                            "scope": opened.get("query_scope"),
+                            "source_info": opened.get("source_info")}
             finally:
                 datasets.close_dataset(opened["dataset_id"])
         self.inspected.add(self._identity(ref))

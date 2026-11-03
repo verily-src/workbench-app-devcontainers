@@ -80,7 +80,8 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
             "database": live_source is not None,
             "sampled": bool(capped),
             "estimated_bytes": estimate_source.get("estimated_bytes"),
-            "large_warning": bool(estimate_source.get("large_warning"))}
+            "large_warning": bool(estimate_source.get("large_warning")),
+            "source_info": estimate_source.get("source_info")}
 
 def get(dataset_id: str) -> dict:
     try:

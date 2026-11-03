@@ -751,7 +751,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           {previewing ? "Previewing…" : "Preview"}
         </button>
         {previewing && <button type="button" onClick={() => { previewRequest.current += 1; previewAbort.current?.abort(); setPreviewing(false); setPreview(null); setPreviewErr("Preview cancelled."); }}>Cancel preview</button>}
-        {crossSource && previewing && <span>Cross-source cancellation waits for the current job to finish.</span>}
+        {crossSource && previewing && <span>Cancel interrupts active database and DuckDB work.</span>}
         <button className="primary" disabled={!valid || busy || sourceBusy
           || (crossSource && !allowLoaded)}
                 onClick={() => onJoin({ baseId, steps: payload(), allowLoaded: crossSource && allowLoaded })}>

@@ -15,7 +15,7 @@ from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 
-DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".tsv.gz", ".txt", ".json", ".ndjson")
+DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".tsv.gz", ".txt", ".json", ".ndjson", ".vcf", ".vcf.gz")
 CATALOG_SUFFIX = ".duckdb"
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9._\-/ ()+=]+$")
 
@@ -182,6 +182,8 @@ def _reader_sql(uri: str, hive: bool = False) -> str:
         raise ValueError(f"Unsupported characters in path: {uri!r}")
     opts = ", hive_partitioning = true" if hive else ""
     low = uri.lower()
+    if low.endswith((".vcf", ".vcf.gz")):
+        raise ValueError("VCF files must be opened as S3 datasets; DuckDB cannot parse VCF.")
     if low.endswith(".parquet"):
         return f"read_parquet('{uri}'{opts})"
     if low.endswith((".json", ".ndjson")):

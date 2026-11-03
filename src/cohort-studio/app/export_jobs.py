@@ -1,5 +1,8 @@
 import copy
 import csv
+import gzip
+import io
+import json
 import os
 import shutil
 import tempfile
@@ -47,7 +50,7 @@ def _public(job):
 
 
 def _remove_files(job):
-    for suffix in (".part", ".tsv"):
+    for suffix in (".part", ".tsv", ".tsv.gz"):
         (_ROOT / (job["id"] + suffix)).unlink(missing_ok=True)
 
 
@@ -66,7 +69,9 @@ def _reap():
             _cleanup()
 
 
-def start(live_source, filters):
+def start(live_source, filters, format="tsv", *, owner=None):
+    if format not in ("tsv", "tsv.gz"):
+        raise ValueError("Unsupported export format.")
     global _ROOT, _POOL, _CLOSED, _JANITOR
     live_query._where(filters, live_source["columns"])
     with _LOCK:
@@ -79,8 +84,10 @@ def start(live_source, filters):
             _JANITOR = threading.Thread(target=_reap, daemon=True, name="export-cleanup")
             _JANITOR.start()
         _cleanup()
-        owner = execution.owner_id.get()
-        if owner and sum(j.get("owner") == owner and j["active"] for j in _JOBS.values()) >= 2:
+        owner = owner or execution.owner_id.get()
+        if not owner:
+            raise ValueError("An authenticated session is required for export.")
+        if sum(j.get("owner") == owner and j["active"] for j in _JOBS.values()) >= 2:
             raise ExportBusy("Two exports are already active for this session.")
         if len(_JOBS) >= MAX_JOBS:
             raise ExportBusy("Eight exports are retained. Remove an old export or wait for expiry.")
@@ -90,22 +97,30 @@ def start(live_source, filters):
         job = {"id": job_id, "owner": owner, "status": "queued", "rows": 0, "bytes": 0,
                "created_at": datetime.now(timezone.utc).isoformat(), "error": None,
                "cancel": threading.Event(), "connection": None, "active": True,
-               "finished": 0}
+               "finished": 0, "format": format}
         _JOBS[job_id] = job
         execution.emit("job.submitted", job_id=job_id, kind="export")
         execution.submit(_POOL, _run, job, copy.deepcopy(live_source), copy.deepcopy(filters))
         return _public(job)
 
 
-def status(job_id):
+def _owned(job_id, owner=None):
+    job = _JOBS[job_id]
+    identity = owner or execution.owner_id.get()
+    if not identity or job["owner"] != identity:
+        raise KeyError(job_id)
+    return job
+
+
+def status(job_id, *, owner=None):
     with _LOCK:
         _cleanup()
-        return _public(_JOBS[job_id])
+        return _public(_owned(job_id, owner))
 
 
-def cancel(job_id):
+def cancel(job_id, *, owner=None):
     with _LOCK:
-        job = _JOBS[job_id]
+        job = _owned(job_id, owner)
         completed = job["status"] == "complete"
         job["cancel"].set()
         job["status"] = "cancelled"
@@ -124,13 +139,13 @@ def cancel(job_id):
     return {"id": job_id, "status": "cancelled"}
 
 
-def download(job_id):
+def download(job_id, *, owner=None):
     with _LOCK:
         _cleanup()
-        job = _JOBS[job_id]
+        job = _owned(job_id, owner)
         if job["status"] != "complete":
             raise ValueError("The export is not complete.")
-        return _ROOT / (job_id + ".tsv")
+        return _ROOT / (job_id + "." + job["format"])
 
 
 def _check(job, started):
@@ -138,6 +153,16 @@ def _check(job, started):
         raise ExportCancelled()
     if time.monotonic() - started > MAX_DURATION_SECONDS:
         raise ValueError("Export exceeded the 30-minute limit. Narrow the filters and retry.")
+
+
+def _tsv_value(value):
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return "\\x" + bytes(value).hex()
+    return value
 
 
 @execution.workload("bulk")
@@ -162,25 +187,31 @@ def _run(job, source, filters):
                 conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
                 _check(job, started)
                 result = conn.execution_options(yield_per=BATCH_ROWS).execute(text(sql), params)
-                with result, part.open("w", encoding="utf-8", newline="") as stream:
-                    writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
-                    writer.writerow(source["columns"])
-                    for rows in result.partitions(BATCH_ROWS):
-                        _check(job, started)
-                        if shutil.disk_usage(_ROOT).free < MIN_FREE_BYTES:
-                            raise ValueError("Temporary disk space is low. Export stopped without a downloadable file.")
-                        writer.writerows(rows)
+                with result, part.open("wb") as raw:
+                    compressed = gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6, mtime=0) if job["format"] == "tsv.gz" else raw
+                    with io.TextIOWrapper(compressed, encoding="utf-8", newline="") as stream:
+                        writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
+                        writer.writerow(source["columns"])
+                        for rows in result.partitions(BATCH_ROWS):
+                            _check(job, started)
+                            if shutil.disk_usage(_ROOT).free < MIN_FREE_BYTES:
+                                raise ValueError("Temporary disk space is low. Export stopped without a downloadable file.")
+                            writer.writerows([_tsv_value(value) for value in row] for row in rows)
+                            stream.flush()
+                            size = raw.tell()
+                            with _LOCK:
+                                total = sum(j["bytes"] for j in _JOBS.values() if j is not job)
+                                if size > MAX_JOB_BYTES or total + size > MAX_TOTAL_BYTES:
+                                    raise ValueError("Export exceeds the temporary storage limit. Narrow the filters and retry.")
+                                job["rows"] += len(rows)
+                                job["bytes"] = size
                         stream.flush()
-                        size = stream.tell()
-                        with _LOCK:
-                            total = sum(j["bytes"] for j in _JOBS.values() if j is not job)
-                            if size > MAX_JOB_BYTES or total + size > MAX_TOTAL_BYTES:
-                                raise ValueError("Export exceeds the temporary storage limit. Narrow the filters and retry.")
-                            job["rows"] += len(rows)
-                            job["bytes"] = size
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                    size = stream.tell()
+                        if job["format"] == "tsv":
+                            os.fsync(raw.fileno())
+                    if not raw.closed:
+                        raw.flush()
+                        os.fsync(raw.fileno())
+                    size = part.stat().st_size
             finally:
                 with _LOCK:
                     job["connection"] = None
@@ -189,7 +220,7 @@ def _run(job, source, filters):
             total = sum(j["bytes"] for j in _JOBS.values() if j is not job)
             if size > MAX_JOB_BYTES or total + size > MAX_TOTAL_BYTES:
                 raise ValueError("Export exceeds the temporary storage limit.")
-            os.replace(part, _ROOT / (job["id"] + ".tsv"))
+            os.replace(part, _ROOT / (job["id"] + "." + job["format"]))
             job["bytes"] = size
             job["status"] = "complete"
     except Exception as exc:
@@ -218,7 +249,7 @@ def shutdown():
         ids = list(_JOBS)
     for job_id in ids:
         try:
-            cancel(job_id)
+            cancel(job_id, owner=_JOBS[job_id]["owner"])
         except KeyError:
             pass
     _POOL.shutdown(wait=True, cancel_futures=False)

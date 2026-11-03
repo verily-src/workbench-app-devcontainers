@@ -76,6 +76,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
+  const [exportFormat, setExportFormat] = useState<"tsv" | "tsv.gz" | "parquet" | "json">("tsv");
+  useEffect(() => { setExportFormat("tsv"); }, [dataset.id]);
   const [cancelingExport, setCancelingExport] = useState(false);
   const [creatingExport, setCreatingExport] = useState(false);
   const cohorts = dataset.cohorts ?? [];
@@ -199,8 +201,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
     setCreatingExport(true);
     setExportError("");
     try {
-      if (databaseScoped) setExportJob(await api.createExport(dataset.id, filters));
-      else await api.export(dataset.id, filters);
+      if (databaseScoped) setExportJob(await api.createExport(dataset.id, filters, exportFormat === "tsv.gz" ? "tsv.gz" : "tsv"));
+      else await api.export(dataset.id, filters, exportFormat);
     } catch (e) {
       setExportError((e as Error).message);
     } finally {
@@ -269,8 +271,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
         <GrainSettings key={dataset.id} dataset={dataset} onUpdate={onUpdate} />
+        <label>Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option>{!databaseScoped && <><option value="parquet">Parquet</option><option value="json">JSON</option></>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
-          {creatingExport ? "Starting export…" : "Export TSV"}
+          {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON"}[exportFormat]}`}
         </button>
         <button onClick={() => { void import("../pdf").then(({ captureCharts, exportDatasetPdf }) =>
           exportDatasetPdf(dataset, captureCharts())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
@@ -294,7 +297,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
           </button>
         </>}
         {exportStatus === "complete" && <a href={api.exportDownloadUrl(exportJob.id)}>
-          Download TSV{exportJob.bytes ? ` · ${formatBytes(exportJob.bytes)}` : ""}
+          Download {exportFormat === "tsv" ? "TSV" : "TSV.gz"}{exportJob.bytes ? ` · ${formatBytes(exportJob.bytes)}` : ""}
         </a>}
         {!exportRunning && <button className="quiet" onClick={clearExport}
                                     disabled={cancelingExport}>

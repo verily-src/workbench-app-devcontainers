@@ -63,13 +63,15 @@ export function forgetDataJob(id: string) {
 
 let dataSubmissions: Promise<unknown> = Promise.resolve();
 
-async function dataJob<T>(kind: string, body: unknown): Promise<T> {
+async function dataJob<T>(kind: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const started = dataSubmissions.then(() => request<DataJob>(`/api/data-jobs/${kind}`, post(body)));
   dataSubmissions = started.catch(() => undefined);
   let job = await started;
-  try { sessionStorage.setItem("studio-data-jobs", JSON.stringify([...pendingDataJobs(), job.job_id])); } catch { }
-  const notify = (value: DataJob | null) => window.dispatchEvent(
-    new CustomEvent("studio-data-job", { detail: { id: job.job_id, job: value } }));
+  const cancel = () => { void request(`/api/data-jobs/${job.job_id}/cancel`, post({})).catch(() => {}); };
+  if (signal?.aborted) cancel(); else signal?.addEventListener("abort", cancel, { once: true });
+  if (kind !== "join_preview") { try { sessionStorage.setItem("studio-data-jobs", JSON.stringify([...pendingDataJobs(), job.job_id])); } catch { } }
+  const notify = (value: DataJob | null) => { if (kind !== "join_preview") window.dispatchEvent(
+    new CustomEvent("studio-data-job", { detail: { id: job.job_id, job: value } })); };
   try {
     while (["queued", "running", "cancelling"].includes(job.status)) {
       notify(job);
@@ -77,14 +79,14 @@ async function dataJob<T>(kind: string, body: unknown): Promise<T> {
       job = await request<DataJob>(`/api/data-jobs/${job.job_id}`);
     }
     forgetDataJob(job.job_id);
-    if (job.status === "complete") { notifyDataReady(job.kind, job.job_id); return job.result as T; }
+    if (job.status === "complete") { if (kind !== "join_preview") notifyDataReady(job.kind, job.job_id); return job.result as T; }
     if (job.status === "cancelled") throw new Error("Operation cancelled.");
     if (job.status === "interrupted") throw new Error("The app restarted. Retry the operation.");
     const detail = job.error;
     throw new ApiError(job.status_code ?? 500,
       typeof detail === "object" ? detail.code : undefined,
       typeof detail === "object" ? detail.message ?? "Data operation failed." : detail ?? "Data operation failed.");
-  } finally { notify(null); }
+  } finally { signal?.removeEventListener("abort", cancel); notify(null); }
 }
 
 export interface MCPConnection {
@@ -423,9 +425,8 @@ export const api = {
     dataJob<OpenResult & { join: JoinStats }>("join",
       { base_id: baseId, steps, allow_loaded: allowLoaded }),
 
-  previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false) =>
-    request<JoinPreview>("/api/datasets/join/preview",
-      post({ base_id: baseId, steps, allow_loaded: allowLoaded })),
+  previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false, signal?: AbortSignal) =>
+    dataJob<JoinPreview>("join_preview", { base_id: baseId, steps, allow_loaded: allowLoaded }, signal),
 
   validateJoin: (baseId: string, steps: JoinStep[], signal?: AbortSignal,
                  allowLoaded = false) =>
@@ -582,21 +583,24 @@ export const api = {
   lineage: () =>
     request<{ columns: string[]; data: unknown[][] }>("/api/lineage"),
 
-  export: async (datasetId: string, filters: Filter[]) => {
+  export: async (datasetId: string, filters: Filter[], format: "tsv" | "tsv.gz" | "parquet" | "json" = "tsv") => {
     const resp = await fetch(`/api/datasets/${datasetId}/export`,
-      post({ filters }));
-    if (!resp.ok) throw new Error(`${resp.status}`);
+      post({ filters, format }));
+    if (!resp.ok) {
+      const payload = await resp.json().catch(() => null);
+      throw new Error(typeof payload?.detail === "string" ? payload.detail : `Export failed (${resp.status})`);
+    }
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cohort.tsv";
+    a.download = `cohort.${format}`;
     a.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
   },
-  createExport: (datasetId: string, filters: Filter[]) =>
+  createExport: (datasetId: string, filters: Filter[], format: "tsv" | "tsv.gz" = "tsv") =>
     request<ExportJob>(`/api/datasets/${encodeURIComponent(datasetId)}/exports`,
-      post({ filters })),
+      post({ filters, format })),
   exportStatus: (jobId: string) =>
     request<ExportJob>(`/api/exports/${encodeURIComponent(jobId)}`),
   cancelExport: (jobId: string) =>

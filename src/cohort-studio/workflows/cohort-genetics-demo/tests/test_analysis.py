@@ -86,6 +86,9 @@ def test_cli_writes_stratified_summary_and_trace_manifest(tmp_path):
     (["1,S1,SYN_VAR_0021,0,8507,1970", "2,S2,SYN_VAR_9999,1,8507,1970"],
      "expected 'SYN_VAR_0021'"),
     (["1,S1,SYN_VAR_0021,2.1,8507,1970"], "dosage"),
+    (["1,S1,SYN_VAR_0021,,8507,1970"], "dosage"),
+    (["1,S1,SYN_VAR_0021,.,8507,1970"], "dosage"),
+    (["1,S1,SYN_VAR_0021,nan,8507,1970"], "dosage"),
 ])
 def test_rejects_invalid_or_duplicate_rows_without_outputs(tmp_path, bad_rows, message):
     source = tmp_path / "bad.csv"

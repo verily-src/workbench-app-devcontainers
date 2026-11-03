@@ -1,4 +1,5 @@
 import execution
+import query_cancellation
 import hashlib
 import re
 
@@ -23,9 +24,8 @@ SUGGEST_SAMPLE = 5000
 FANOUT_RATIO = 2.0
 PG_SCHEMA = "public"
 PG_IDENT_BYTES = 63
-PREVIEW_TIMEOUT_MS = 10_000
-
-RUN_TIMEOUT_MS = 40_000
+PREVIEW_TIMEOUT_MS = 0
+RUN_TIMEOUT_MS = 0
 _NO_PARAMS = {"no_parameters": True}
 
 class JoinTimeout(RuntimeError):
@@ -379,11 +379,11 @@ def _run_duckdb(p: dict, cap: int) -> dict:
 def _aurora_error(e: Exception, timeout_ms: int) -> Exception:
     orig = getattr(e, "orig", None) or e
     if getattr(orig, "sqlstate", None) == "57014":
-        return JoinTimeout(f"The join took longer than {timeout_ms // 1000} s in Aurora.")
+        return JoinTimeout(f"The join exceeded its {timeout_ms / 1000:g} s limit." if timeout_ms else "The database cancelled the join.")
     return JoinEngineError("Aurora: " + str(orig).split("\n")[0][:300])
 
 def _run_aurora(p: dict, cap: int, timeout_ms: int,
-                fetch: int | None = None) -> dict:
+                fetch: int | None = None, preview_only: bool = False) -> dict:
 
     sql = aurora_sql(p)
     resource_id = ((p["base"].get("live_source") or {}).get("resource_id")
@@ -415,13 +415,15 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
         output_source = disk_data._compiled_source_query(source_ref, output_source)
     source_estimate = disk_data.guard_live_join(live_sources, output_source)
     try:
-        with engine.begin() as conn:
+        with engine.begin() as conn, query_cancellation.postgres_connection(conn):
             if conn.dialect.name == "postgresql":
                 conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
                 conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+                query_cancellation.check()
                 conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(timeout_ms)}")
 
             def scalar(q: str) -> int:
+                query_cancellation.check()
                 return int(conn.execute(text(q), params).scalar())
 
             def table_rows(ds: dict) -> int:
@@ -431,16 +433,22 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                     return len(ds["df"])
                 return scalar(f"SELECT count(*) FROM {_table_ref(ds)}")
 
-            before = base_rows = table_rows(p["base"])
-            steps = []
-            for s in p["steps"]:
-                total = scalar(sql["count"](s["no"]))
-                step_stats = _step_stats(before, table_rows(s["ds"]), total, cap)
-                step_stats["truncated"] = False
-                step_stats["preview_rows"] = min(total, cap)
-                steps.append(step_stats)
-                before = total
-            res = conn.execute(text(sql["select"](min(cap, fetch or cap))), params)
+            query_cancellation.check()
+            if preview_only:
+                base_rows = None
+                steps = []
+                res = conn.execute(text(sql["select"](PREVIEW_ROWS + 1)), params)
+            else:
+                before = base_rows = table_rows(p["base"])
+                steps = []
+                for step in p["steps"]:
+                    total = scalar(sql["count"](step["no"]))
+                    step_stats = _step_stats(before, table_rows(step["ds"]), total, cap)
+                    step_stats["truncated"] = False
+                    step_stats["preview_rows"] = min(total, cap)
+                    steps.append(step_stats)
+                    before = total
+                res = conn.execute(text(sql["select"](min(cap, fetch or cap))), params)
             df = pd.DataFrame.from_records([tuple(r) for r in res.fetchall()],
                                            columns=p["columns"], coerce_float=True)
     except Exception as e:
@@ -458,6 +466,10 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     }
     if source_ref and disk_data._requires_compiler_trust(source_ref):
         live_source = disk_data._compiled_source_query(source_ref, live_source)
+    if preview_only:
+        stats.update(rows=None, total_rows=None, truncated=False, sample_only=True,
+                     sample_truncated=len(df) > PREVIEW_ROWS)
+        return {"df": df, "stats": stats, "live_source": live_source}
     return {"df": df, "stats": _finish(stats, min(before, cap)),
             "live_source": live_source}
 
@@ -483,7 +495,7 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
     p = _checked_plan(base_id, steps, allow_loaded)
     if p["engine"] == "aurora":
         try:
-            return _run_aurora(p, cap, RUN_TIMEOUT_MS)
+            return _run_aurora(p, cap, query_cancellation.join_timeout_ms(RUN_TIMEOUT_MS))
         except (JoinTimeout, JoinEngineError) as e:
             if any(ds.get("live_source") for ds in
                    [p["base"]] + [s["ds"] for s in p["steps"]]):
@@ -499,10 +511,9 @@ def preview(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict
     p = _checked_plan(base_id, steps, allow_loaded)
     if p["engine"] == "aurora":
         try:
-            out = _run_aurora(p, queries.ROW_CAP, PREVIEW_TIMEOUT_MS, fetch=PREVIEW_ROWS)
+            out = _run_aurora(p, queries.ROW_CAP, query_cancellation.join_timeout_ms(PREVIEW_TIMEOUT_MS), preview_only=True)
         except JoinTimeout as e:
-            raise JoinTimeout(f"{e} The preview stops at {PREVIEW_TIMEOUT_MS // 1000} s; "
-                              "joining into a new tab allows longer.") from e
+            raise
         except JoinEngineError as e:
             if any(ds.get("live_source") for ds in
                    [p["base"]] + [s["ds"] for s in p["steps"]]):
@@ -515,7 +526,7 @@ def preview(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict
     df = out["df"].head(PREVIEW_ROWS)
     result = {**out["stats"], "columns": list(df.columns),
               "sample": df.astype(object).where(df.notna(), None).values.tolist(),
-              "sample_truncated": int(out["stats"].get("total_rows", 0)) > len(df)}
+              "sample_truncated": out["stats"].get("sample_truncated", False) if out["stats"].get("sample_only") else int(out["stats"].get("total_rows", 0)) > len(df)}
     if out.get("disk_source"):
         import disk_data
         disk_data.remove(out["disk_source"])

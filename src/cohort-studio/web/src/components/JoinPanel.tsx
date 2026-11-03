@@ -268,6 +268,8 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const [previewErr, setPreviewErr] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const previewRequest = useRef(0);
+  const previewAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => previewAbort.current?.abort(), []);
   const [allowLoaded, setAllowLoaded] = useState(initialPlan?.allowLoaded ?? false);
 
   const stepKey = steps.map((s) => s.right_id).join("|");
@@ -366,6 +368,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
 
   useEffect(() => {
     previewRequest.current += 1;
+    previewAbort.current?.abort();
     setPreview(null);
     setPreviewErr("");
     setPreviewing(false);
@@ -443,15 +446,18 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     && s.conditions.every((c) => c.left && c.right));
 
   const runPreview = async () => {
+    const controller = new AbortController();
+    previewAbort.current = controller;
     const requestId = ++previewRequest.current;
     setPreviewing(true);
     setPreviewErr("");
     try {
-      const result = await api.previewJoin(baseId, payload(), crossSource && allowLoaded);
+      const result = await api.previewJoin(baseId, payload(), crossSource && allowLoaded, controller.signal);
       if (requestId === previewRequest.current) setPreview(result);
     } catch (e) {
       if (requestId === previewRequest.current) setPreviewErr((e as Error).message);
     } finally {
+      if (previewAbort.current === controller) previewAbort.current = null;
       if (requestId === previewRequest.current) setPreviewing(false);
     }
   };
@@ -459,6 +465,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const changeAllowLoaded = (value: boolean) => {
     setAllowLoaded(value);
     previewRequest.current += 1;
+    previewAbort.current?.abort();
     setPreview(null);
     setPreviewErr("");
     setPreviewing(false);
@@ -743,6 +750,8 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           || (crossSource && !allowLoaded)} onClick={runPreview}>
           {previewing ? "Previewing…" : "Preview"}
         </button>
+        {previewing && <button type="button" onClick={() => previewAbort.current?.abort()}>Cancel preview</button>}
+        {crossSource && previewing && <span>Cross-source cancellation waits for the current operation.</span>}
         <button className="primary" disabled={!valid || busy || sourceBusy
           || (crossSource && !allowLoaded)}
                 onClick={() => onJoin({ baseId, steps: payload(), allowLoaded: crossSource && allowLoaded })}>
@@ -794,7 +803,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
       {preview && (
         <div className="join-preview">
           <div className="join-funnel">
-            <span>{preview.base_rows.toLocaleString()} rows</span>
+            <span>{preview.sample_only ? "Sample preview · full counts not calculated" : `${preview.base_rows?.toLocaleString() ?? "Unknown"} rows`}</span>
             {preview.steps.map((st, i) => (
               <span key={i}>→ {HOWS.find((h) => h.id === steps[i]?.how)?.label.toLowerCase()}{" "}
                 {steps[i]?.alias || aliasOf(byId.get(steps[i]?.right_id ?? ""))}:{" "}
@@ -806,7 +815,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                   </span>
                 )}</span>
             ))}
-            {preview.truncated && <span className="join-warn">capped at {preview.rows.toLocaleString()} rows</span>}
+            {preview.truncated && preview.rows !== null && <span className="join-warn">capped at {preview.rows.toLocaleString()} rows</span>}
           </div>
           {preview.notes.map((n) => <div key={n} className="settings-hint">{n}</div>)}
           <div className="join-sample">

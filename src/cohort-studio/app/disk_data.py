@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import query_cancellation
 from decimal import Decimal
 from functools import wraps
 import os
@@ -449,12 +450,16 @@ def _estimate_live_bytes(live_source: dict) -> int:
     normalized = _validated_live_sql(live_source)
     engine = db.get_engine_for_resource(live_source["resource_id"])
     sql = f"EXPLAIN (FORMAT JSON) SELECT * FROM ({normalized}) AS studio_input"
-    with engine.connect() as conn:
+    with engine.connect() as conn, query_cancellation.postgres_connection(conn):
         transaction = conn.begin()
         try:
             if conn.dialect.name == "postgresql":
                 conn.exec_driver_sql("SET TRANSACTION READ ONLY")
-                conn.exec_driver_sql("SET LOCAL statement_timeout = 15000")
+                scope = query_cancellation.current.get()
+                timeout = scope.timeout_ms if scope is not None and scope.timeout_ms is not None else 15000
+                query_cancellation.check()
+                conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout}")
+            query_cancellation.check()
             raw = conn.execute(text(sql), live_source.get("params", {})).scalar()
             plan = json.loads(raw)[0]["Plan"] if isinstance(raw, str) else raw[0]["Plan"]
             estimated = 0
@@ -1335,24 +1340,59 @@ def export_frame(source: dict, filters: list[dict], max_rows: int) -> pd.DataFra
         con.close()
 
 
+_EXPORT_OPTIONS = {
+    "tsv": "FORMAT CSV, HEADER, DELIMITER '\t'",
+    "tsv.gz": "FORMAT CSV, HEADER, DELIMITER '\t', COMPRESSION 'gzip'",
+    "json": "FORMAT JSON, ARRAY true",
+    "parquet": "FORMAT PARQUET",
+}
+
+
 @_bounded_materialization
-def export_tsv(source: dict, filters: list[dict], max_rows: int) -> str:
+def export_tsv(source: dict, filters: list[dict], max_rows: int, format: str = "tsv") -> str:
+    if format not in _EXPORT_OPTIONS:
+        raise ValueError("Unsupported export format.")
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])))
     where, params = _where(filters, source["columns"])
     relation = _q(source.get("table", "data"))
-    fd, path = tempfile.mkstemp(prefix="export-", suffix=".tsv", dir=_ROOT)
+    fd, path = tempfile.mkstemp(prefix="export-", suffix="." + format, dir=_ROOT)
     os.close(fd)
     con = _connect(source["path"], read_only=True)
     try:
+        count = con.execute(
+            f"SELECT count(*) FROM (SELECT 1 FROM {relation} AS src WHERE {where} LIMIT {int(max_rows) + 1})", params).fetchone()[0]
+        if count > max_rows:
+            raise OperationTooLarge(
+                f"This export matches more than {max_rows:,} rows. Narrow the filters before downloading.")
         con.execute(
-            f"COPY (SELECT * FROM {relation} AS src WHERE {where} LIMIT {int(max_rows)}) "
-            f"TO {_lit(path)} (FORMAT CSV, HEADER, DELIMITER '\t')", params)
+            f"COPY (SELECT * FROM {relation} AS src WHERE {where}) "
+            f"TO {_lit(path)} ({_EXPORT_OPTIONS[format]})", params)
         return path
     except Exception:
         try:
             os.remove(path)
         except FileNotFoundError:
             pass
+        raise
+    finally:
+        con.close()
+
+
+@_bounded_materialization
+def export_dataframe(frame: pd.DataFrame, format: str) -> str:
+    if format not in _EXPORT_OPTIONS:
+        raise ValueError("Unsupported export format.")
+    if not frame.columns.is_unique:
+        raise ValueError("Export requires unique column names.")
+    fd, path = tempfile.mkstemp(prefix="export-", suffix="." + format, dir=_ROOT)
+    os.close(fd)
+    con = _configure(duckdb.connect())
+    try:
+        con.register("_studio_export", frame)
+        con.execute(f"COPY _studio_export TO {_lit(path)} ({_EXPORT_OPTIONS[format]})")
+        return path
+    except Exception:
+        remove_file(path)
         raise
     finally:
         con.close()

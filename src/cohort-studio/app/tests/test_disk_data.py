@@ -87,8 +87,8 @@ def test_s3_sources_join_and_page_past_preview(tmp_path, monkeypatch, client):
 
         export = client.post(f"/api/datasets/{body['dataset_id']}/export", json={
             "page": 0, "page_size": 50, "filters": [], "charts": []})
-        assert export.status_code == 200, export.text
-        assert len(export.text.splitlines()) == 100_001
+        assert export.status_code == 413, export.text
+        assert "100,000" in export.json()["detail"]
 
         derived = client.post(f"/api/datasets/{body['dataset_id']}/derive", json={
             "op": "formula", "name": "double_id", "left": "join_id",
@@ -243,3 +243,28 @@ def test_materialization_limits_reject_busy_and_low_disk_then_recover(tmp_path, 
         assert frame["id"].tolist() == [7]
     finally:
         disk_data.remove(source)
+
+
+def test_s3_gzip_tsv_export_roundtrip(tmp_path, monkeypatch, client):
+    import csv
+    import gzip
+    import io
+
+    path = tmp_path / 'fixture.tsv.gz'
+    with gzip.open(path, 'wt', encoding='utf-8', newline='') as file:
+        writer = csv.writer(file, delimiter='\t', lineterminator='\n')
+        writer.writerows([['id', 'label'], ['1', 'hello'], ['2', 'goodbye']])
+    monkeypatch.setattr(disk_data, '_object_size', lambda *_: (path.stat().st_size, str(path), 'us-east-1', False))
+    monkeypatch.setattr(disk_data.duck, '_connect', lambda *args, **kwargs: duckdb.connect())
+    response = client.post('/api/datasets/open', json={'kind': 's3', 'resource_id': 'fixture', 'table': 'fixture.tsv.gz'})
+    assert response.status_code == 200, response.text
+    dataset_id = response.json()['dataset_id']
+    try:
+        response = client.post(f'/api/datasets/{dataset_id}/export', json={
+            'format': 'tsv.gz', 'filters': [{'column': 'id', 'kind': 'range', 'min': 2, 'max': 2}]})
+        assert response.status_code == 200, response.text
+        assert 'cohort.tsv.gz' in response.headers['content-disposition']
+        rows = list(csv.reader(io.StringIO(gzip.decompress(response.content).decode()), delimiter='\t'))
+        assert rows == [['id', 'label'], ['2', 'goodbye']]
+    finally:
+        client.delete(f'/api/datasets/{dataset_id}')

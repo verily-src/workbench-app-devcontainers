@@ -4,6 +4,7 @@ import os
 from contextlib import contextmanager
 import sqlite3
 import execution
+import query_cancellation
 import threading
 import time
 import uuid
@@ -24,6 +25,7 @@ class DataJobs:
         self.lock = threading.RLock()
         self.pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="data-job")
         self.results = {}
+        self.scopes = {}
         self.active = 0
         self.closed = False
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -62,11 +64,17 @@ class DataJobs:
             job = self.get(job_id, owner)
             if job and job['status'] in {'queued', 'running'}:
                 self.state(job_id, 'cancelling')
-            return self.get(job_id, owner)
+                scope = self.scopes.get(job_id)
+            else:
+                scope = None
+        if scope is not None:
+            scope.cancel()
+        return self.get(job_id, owner)
 
     def submit(self, kind, owner, work, cleanup):
-        if kind not in {'open', 'join'} or not isinstance(owner, str) or not owner:
+        if kind not in {'open', 'join', 'join_preview'} or not isinstance(owner, str) or not owner:
             raise ValueError('Invalid data job')
+        timeout_ms = query_cancellation.join_timeout_ms() if kind in {'join', 'join_preview'} else None
         with self.lock:
             if self.closed or self.active >= self.capacity:
                 raise Busy('Data jobs are busy. Try again shortly.')
@@ -84,15 +92,19 @@ class DataJobs:
                     raise Busy('Data job history is full. Try again later.')
                 db.execute('INSERT INTO jobs VALUES (?,?,?,?,?)', (job_id, owner, kind, 'queued', time.time()))
             self.active += 1
+            scope = query_cancellation.Scope(timeout_ms=timeout_ms)
+            self.scopes[job_id] = scope
 
             @execution.workload("bulk")
             def run():
+                token = query_cancellation.current.set(scope)
                 try:
                     with self.lock:
                         if self.get(job_id, owner)['status'] == 'cancelling':
                             self.state(job_id, 'cancelled')
                             return
                         self.state(job_id, 'running')
+                    scope.check()
                     result = work()
                     with self.lock:
                         if self.get(job_id, owner)['status'] == 'cancelling':
@@ -107,7 +119,10 @@ class DataJobs:
                         self.results[job_id] = {'error': getattr(exc, 'detail', 'Data operation failed. Retry or check server logs.'), 'status_code': getattr(exc, 'status_code', 500)}
                         self.state(job_id, 'cancelled' if status == 'cancelling' else 'failed')
                 finally:
+                    scope.finish()
+                    query_cancellation.current.reset(token)
                     with self.lock:
+                        self.scopes.pop(job_id, None)
                         self.active -= 1
             execution.emit("job.submitted", job_id=job_id, kind=kind)
             execution.submit(self.pool, run)
@@ -118,6 +133,9 @@ class DataJobs:
             self.closed = True
             with self.connect() as db:
                 db.execute("UPDATE jobs SET status='cancelling' WHERE status IN ('queued','running')")
+            scopes = list(self.scopes.values())
+        for scope in scopes:
+            scope.cancel()
         self.pool.shutdown(wait=True)
 
 

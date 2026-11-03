@@ -876,7 +876,7 @@ def join_datasets(req: JoinRequest):
 class DataJobResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     job_id: str
-    kind: Literal["open", "join"]
+    kind: Literal["open", "join", "join_preview"]
     status: Literal["queued", "running", "cancelling", "cancelled", "complete", "failed", "interrupted"]
     result: dict | None = None
     error: str | dict | list | None = None
@@ -885,10 +885,10 @@ class DataJobResponse(BaseModel):
 
 def _submit_data_job(kind, req, request, response):
     owner = agent_sessions.owner(request, response)
-    work = lambda: open_dataset(req) if kind == "open" else join_datasets(req)
+    work = lambda: open_dataset(req) if kind == "open" else preview_join(req) if kind == "join_preview" else join_datasets(req)
     try:
         return data_jobs.manager().submit(kind, owner, work,
-            lambda result: datasets.close_dataset(result["dataset_id"]))
+            lambda result: datasets.close_dataset(result["dataset_id"]) if kind != "join_preview" else None)
     except data_jobs.Busy as exc:
         raise HTTPException(429, str(exc)) from exc
 
@@ -901,6 +901,11 @@ def start_open_job(req: OpenRequest, request: Request, response: Response):
 @app.post("/api/data-jobs/join", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
 def start_join_job(req: JoinRequest, request: Request, response: Response):
     return _submit_data_job("join", req, request, response)
+
+
+@app.post("/api/data-jobs/join_preview", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
+def start_join_preview_job(req: JoinRequest, request: Request, response: Response):
+    return _submit_data_job("join_preview", req, request, response)
 
 
 @app.get("/api/data-jobs/{job_id}", response_model=DataJobResponse, response_model_exclude_none=True)
@@ -1073,7 +1078,11 @@ def _export_frame(ds, filters=None):
                             str(e).split("\n")[0][:300])
 
 
+class ExportRequest(QueryRequest):
+    format: Literal["tsv", "tsv.gz", "json", "parquet"] = "tsv"
+
 class StartExportRequest(BaseModel):
+    format: Literal["tsv", "tsv.gz"] = "tsv"
     model_config = ConfigDict(extra="forbid")
     filters: list[Filter] = Field(default_factory=list, max_length=200)
 
@@ -1083,7 +1092,7 @@ def start_export(dataset_id: str, req: StartExportRequest):
         ds = datasets.get(dataset_id)
         if not ds.get("live_source"):
             raise HTTPException(400, "Background export requires a full Aurora source.")
-        return export_jobs.start(ds["live_source"], [f.model_dump() for f in req.filters])
+        return export_jobs.start(ds["live_source"], [f.model_dump() for f in req.filters], req.format)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
     except export_jobs.ExportBusy as e:
@@ -1113,35 +1122,55 @@ def download_export(job_id: str):
         raise HTTPException(404, "Export expired or unknown.")
     except ValueError as e:
         raise HTTPException(409, str(e))
-    return FileResponse(path, media_type="text/tab-separated-values", filename="cohort.tsv")
+    return FileResponse(path, media_type="application/gzip" if str(path).endswith(".gz") else "text/tab-separated-values",
+                        filename="cohort.tsv.gz" if str(path).endswith(".gz") else "cohort.tsv")
+
+def _export_media_type(format: str):
+    return {"tsv": "text/tab-separated-values", "tsv.gz": "application/gzip",
+            "json": "application/json", "parquet": "application/vnd.apache.parquet"}[format]
+
 
 @app.post("/api/datasets/{dataset_id}/export")
-def export_dataset(dataset_id: str, req: QueryRequest):
+def export_dataset(dataset_id: str, req: ExportRequest):
     try:
         ds = datasets.get(dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    if ds.get("live_source"):
+        raise HTTPException(400, "Use the background export for full Aurora data.")
+    if ds.get("capped") and not ds.get("disk_source"):
+        raise HTTPException(413, "This is a partial preview. Open the full source before exporting.")
     if ds.get("disk_source"):
         try:
             path = disk_data.export_tsv(ds["disk_source"],
-                [f.model_dump() for f in req.filters], queries.ROW_CAP)
+                [f.model_dump() for f in req.filters], queries.ROW_CAP, req.format)
         except disk_data.OperationTooLarge as e:
             raise HTTPException(413, str(e))
         except ValueError as e:
             raise HTTPException(400, str(e))
         lineage.record(_lineage_engine(), "export", "export", ds["source"],
                        payload={"row_limit": queries.ROW_CAP})
-        return FileResponse(path, media_type="text/tab-separated-values",
-                            filename="cohort.tsv",
+        return FileResponse(path, media_type=_export_media_type(req.format),
+                            filename="cohort." + req.format,
                             background=BackgroundTask(disk_data.remove_file, path))
     df = _export_frame(ds, [f.model_dump() for f in req.filters])
     lineage.record(_lineage_engine(), "export", "export", ds["source"],
                    payload={"rows": len(df)})
-    return Response(df.to_csv(sep="\t", index=False),
-                    media_type="text/tab-separated-values",
-                    headers={"Content-Disposition":
-                             "attachment; filename=cohort.tsv"})
-
+    if req.format in {"json", "parquet"}:
+        try:
+            path = disk_data.export_dataframe(df, req.format)
+        except disk_data.OperationTooLarge as e:
+            raise HTTPException(413, str(e))
+        except Exception as e:
+            raise HTTPException(400, f"Could not export this dataset as {req.format}: {str(e).split(chr(10))[0][:200]}")
+        return FileResponse(path, media_type=_export_media_type(req.format), filename="cohort." + req.format,
+                            background=BackgroundTask(disk_data.remove_file, path))
+    content = df.to_csv(sep="\t", index=False).encode("utf-8")
+    if req.format == "tsv.gz":
+        import gzip
+        content = gzip.compress(content, mtime=0)
+    return Response(content, media_type=_export_media_type(req.format),
+                    headers={"Content-Disposition": "attachment; filename=cohort." + req.format})
 
 @app.delete("/api/datasets/{dataset_id}")
 def delete_dataset(dataset_id: str):

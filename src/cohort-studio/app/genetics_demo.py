@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
 
 TARGET_RESOURCE = "cohort-dash-db-20261005"
+# Prod replica (workspace aws-byoa-testing); dev stays the default.
+ALLOWED_RESOURCES = (TARGET_RESOURCE, "omop-data-source")
 SOURCE_SCHEMA = "cms_synpuf_100k"
 TARGET_SCHEMA = "genetics_demo"
 SEED = 20261022
@@ -201,7 +203,7 @@ def export_csv(conn, output_dir, schema=TARGET_SCHEMA):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--resource-id", default=TARGET_RESOURCE, choices=[TARGET_RESOURCE])
+    parser.add_argument("--resource-id", default=TARGET_RESOURCE, choices=ALLOWED_RESOURCES)
     parser.add_argument("--source-schema", default=SOURCE_SCHEMA)
     parser.add_argument("--target-schema", default=TARGET_SCHEMA)
     parser.add_argument("--samples", type=int, default=SAMPLE_COUNT)

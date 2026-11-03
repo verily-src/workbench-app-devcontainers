@@ -20,5 +20,5 @@ def test_cancel_join_preview_sends_cancellation(loaded_page):
     page.route('**/api/data-jobs/preview-1', lambda r: r.fulfill(status=200, json={'job_id': 'preview-1', 'kind': 'join_preview', 'status': 'cancelled' if calls else 'running'}))
     panel.get_by_role('button', name='Preview').click()
     panel.get_by_role('button', name='Cancel preview').click()
-    expect(panel).to_contain_text('Operation cancelled', timeout=10000)
+    expect(panel).to_contain_text('Preview cancelled', timeout=10000)
     assert calls == ['cancel']

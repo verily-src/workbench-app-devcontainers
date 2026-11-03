@@ -185,11 +185,7 @@ def remove(source: dict | None):
 
 
 def remove_file(path: str):
-    if isinstance(path, str) and path.startswith(str(_ROOT) + os.sep):
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
+    remove({"path": path})
 
 
 def _budget(estimated_bytes: int, materialized_bytes: int = 0):
@@ -450,42 +446,43 @@ def _estimate_live_bytes(live_source: dict) -> int:
     normalized = _validated_live_sql(live_source)
     engine = db.get_engine_for_resource(live_source["resource_id"])
     sql = f"EXPLAIN (FORMAT JSON) SELECT * FROM ({normalized}) AS studio_input"
-    with engine.connect() as conn, query_cancellation.postgres_connection(conn):
+    with engine.connect() as conn:
         transaction = conn.begin()
         try:
-            if conn.dialect.name == "postgresql":
-                conn.exec_driver_sql("SET TRANSACTION READ ONLY")
-                scope = query_cancellation.current.get()
-                timeout = scope.timeout_ms if scope is not None and scope.timeout_ms is not None else 15000
+            with query_cancellation.postgres_connection(conn):
+                if conn.dialect.name == "postgresql":
+                    conn.exec_driver_sql("SET TRANSACTION READ ONLY")
+                    scope = query_cancellation.current.get()
+                    timeout = scope.timeout_ms if scope is not None and scope.timeout_ms is not None else 15000
+                    query_cancellation.check()
+                    conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout}")
                 query_cancellation.check()
-                conn.exec_driver_sql(f"SET LOCAL statement_timeout = {timeout}")
-            query_cancellation.check()
-            raw = conn.execute(text(sql), live_source.get("params", {})).scalar()
-            plan = json.loads(raw)[0]["Plan"] if isinstance(raw, str) else raw[0]["Plan"]
-            estimated = 0
-            relations = set()
-            for item in _walk_plan(plan):
-                rows = item.get("Plan Rows")
-                width = item.get("Plan Width")
-                if isinstance(rows, int) and isinstance(width, int):
-                    estimated = max(estimated, rows * width)
-                relation, schema = item.get("Relation Name"), item.get("Schema")
-                if relation and schema:
-                    relations.add(f'{schema}.{relation}')
-            storage = 0
-            if relations:
-                for name in sorted(relations):
-                    schema, relation = name.split(".", 1)
-                    regclass = f"{_q(schema)}.{_q(relation)}"
-                    storage += int(conn.execute(
-                        text("SELECT COALESCE(pg_total_relation_size(to_regclass(:name)), 0)"),
-                        {"name": regclass}).scalar() or 0)
-            estimate = max(estimated, storage)
-            if estimate <= 0:
-                raise SourceSizeUnknown(
-                    "PostgreSQL did not return a source-size estimate; Studio cannot safely stage it.")
-            _budget(estimate, estimate)
-            return estimate
+                raw = conn.execute(text(sql), live_source.get("params", {})).scalar()
+                plan = json.loads(raw)[0]["Plan"] if isinstance(raw, str) else raw[0]["Plan"]
+                estimated = 0
+                relations = set()
+                for item in _walk_plan(plan):
+                    rows = item.get("Plan Rows")
+                    width = item.get("Plan Width")
+                    if isinstance(rows, int) and isinstance(width, int):
+                        estimated = max(estimated, rows * width)
+                    relation, schema = item.get("Relation Name"), item.get("Schema")
+                    if relation and schema:
+                        relations.add(f'{schema}.{relation}')
+                storage = 0
+                if relations:
+                    for name in sorted(relations):
+                        schema, relation = name.split(".", 1)
+                        regclass = f"{_q(schema)}.{_q(relation)}"
+                        storage += int(conn.execute(
+                            text("SELECT COALESCE(pg_total_relation_size(to_regclass(:name)), 0)"),
+                            {"name": regclass}).scalar() or 0)
+                estimate = max(estimated, storage)
+                if estimate <= 0:
+                    raise SourceSizeUnknown(
+                        "PostgreSQL did not return a source-size estimate; Studio cannot safely stage it.")
+                _budget(estimate, estimate)
+                return estimate
         finally:
             transaction.rollback()
 
@@ -548,41 +545,53 @@ def stage_live(con, live_source: dict, dataset: dict, table: str,
     with engine.connect() as conn:
         transaction = conn.begin()
         try:
-            if conn.dialect.name == "postgresql":
-                conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                conn.exec_driver_sql("SET LOCAL statement_timeout = 120000")
-            conn = conn.execution_options(stream_results=True,
-                                          yield_per=_BATCH_ROWS)
-            result = conn.execute(sql, live_source.get("params", {}))
-            physical_columns = list(result.keys())
-            descriptions = result.cursor.description
-            storage = {physical_to_logical.get(name, name): _stage_storage_type(description)
-                       for name, description in zip(physical_columns, descriptions)}
-            if set(logical_columns) != set(storage):
-                raise ValueError("Source columns changed before staging; reload the source.")
-            definitions = ", ".join(f"{_q(name)} {storage[name]}" for name in logical_columns)
-            con.execute(f"CREATE TABLE {_q(table)} ({definitions})")
-            total_bytes, rows = 0, 0
-            while records := result.fetchmany(_BATCH_ROWS):
-                batch = pd.DataFrame(records, columns=physical_columns, dtype=object)
-                batch = batch.rename(columns=physical_to_logical)
-                batch = batch.reindex(columns=logical_columns)
-                for name, kind in storage.items():
-                    if kind == "VARCHAR":
-                        batch[name] = batch[name].map(lambda value: json.dumps(value, default=str)
-                            if isinstance(value, (dict, list)) else str(value) if value is not None else None)
-                batch_bytes = int(batch.memory_usage(index=False, deep=True).sum())
-                total_bytes += batch_bytes
-                _actual_budget(budget_used + estimate + total_bytes)
-                con.register("_studio_live_batch", batch)
-                con.execute(f"INSERT INTO {_q(table)} SELECT * FROM _studio_live_batch")
-                con.unregister("_studio_live_batch")
-                rows += len(batch)
+            with query_cancellation.postgres_connection(conn):
+                result = _stage_live_rows(con, conn, sql, live_source, logical_columns, physical_to_logical, table, budget_used, estimate)
             transaction.commit()
-            return rows, estimate + total_bytes
+            return result
         except Exception:
             transaction.rollback()
             raise
+
+
+def _stage_live_rows(con, conn, sql, live_source, logical_columns, physical_to_logical, table, budget_used, estimate):
+    if conn.dialect.name == "postgresql":
+        conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        scope = query_cancellation.current.get()
+        timeout = scope.timeout_ms if scope is not None and scope.timeout_ms is not None else 120000
+        query_cancellation.check()
+        conn.exec_driver_sql(f"SET LOCAL statement_timeout = {int(timeout)}")
+    conn = conn.execution_options(stream_results=True,
+                                  yield_per=_BATCH_ROWS)
+    query_cancellation.check()
+    result = conn.execute(sql, live_source.get("params", {}))
+    physical_columns = list(result.keys())
+    descriptions = result.cursor.description
+    storage = {physical_to_logical.get(name, name): _stage_storage_type(description)
+               for name, description in zip(physical_columns, descriptions)}
+    if set(logical_columns) != set(storage):
+        raise ValueError("Source columns changed before staging; reload the source.")
+    definitions = ", ".join(f"{_q(name)} {storage[name]}" for name in logical_columns)
+    con.execute(f"CREATE TABLE {_q(table)} ({definitions})")
+    total_bytes, rows = 0, 0
+    while records := result.fetchmany(_BATCH_ROWS):
+        query_cancellation.check()
+        batch = pd.DataFrame(records, columns=physical_columns, dtype=object)
+        batch = batch.rename(columns=physical_to_logical)
+        batch = batch.reindex(columns=logical_columns)
+        for name, kind in storage.items():
+            if kind == "VARCHAR":
+                batch[name] = batch[name].map(lambda value: json.dumps(value, default=str)
+                    if isinstance(value, (dict, list)) else str(value) if value is not None else None)
+        batch_bytes = int(batch.memory_usage(index=False, deep=True).sum())
+        total_bytes += batch_bytes
+        _actual_budget(budget_used + estimate + total_bytes)
+        con.register("_studio_live_batch", batch)
+        con.execute(f"INSERT INTO {_q(table)} SELECT * FROM _studio_live_batch")
+        con.unregister("_studio_live_batch")
+        rows += len(batch)
+    query_cancellation.check()
+    return rows, estimate + total_bytes
 
 
 def _frame_bytes(frame: pd.DataFrame) -> int:
@@ -600,6 +609,7 @@ def _duckdb_estimate(con, sql: str, avg_width: int) -> int | None:
 
 def _stream_duck_query(reader_con, writer_con, sql: str, table: str,
                        budget_used: int) -> tuple[int, int]:
+    query_cancellation.check()
     reader = reader_con.execute(sql).to_arrow_reader(_BATCH_ROWS)
     temp_name = "_studio_arrow_batch"
     schema = reader.schema
@@ -608,12 +618,14 @@ def _stream_duck_query(reader_con, writer_con, sql: str, table: str,
     writer_con.unregister(temp_name)
     row_count, bytes_written = 0, 0
     for batch in reader:
+        query_cancellation.check()
         bytes_written += int(batch.nbytes)
         _actual_budget(budget_used + bytes_written)
         writer_con.register(temp_name, batch)
         writer_con.execute(f"INSERT INTO {_q(table)} SELECT * FROM {temp_name}")
         writer_con.unregister(temp_name)
         row_count += batch.num_rows
+    query_cancellation.check()
     return row_count, bytes_written
 
 
@@ -622,6 +634,7 @@ def run_join(plan: dict) -> dict:
     datasets = [plan["base"]] + [step["ds"] for step in plan["steps"]]
     source_estimates = []
     for dataset in datasets:
+        query_cancellation.check()
         disk = dataset.get("disk_source")
         live = dataset.get("live_source")
         if disk:
@@ -639,77 +652,8 @@ def run_join(plan: dict) -> dict:
     writer = _connect(path)
     reader = _connect(path)
     try:
-        relations, row_counts = {}, {}
-        attached = {}
-        budget_used = sum(source_estimates)
-        for index, dataset in enumerate(datasets):
-            key = id(dataset)
-            if key in relations:
-                continue
-            disk = dataset.get("disk_source")
-            live = dataset.get("live_source")
-            if disk:
-                alias = f"input_{index}"
-                if disk["path"] not in attached:
-                    reader.execute(f"ATTACH {_lit(disk['path'])} AS {_q(alias)} (READ_ONLY)")
-                    attached[disk["path"]] = alias
-                else:
-                    alias = attached[disk["path"]]
-                table = disk.get("table", "data")
-                relation = f"{_q(alias)}.{_q(table)}"
-                rows = int(disk.get("rows", 0))
-                if not rows:
-                    rows = int(reader.execute(f"SELECT COUNT(*) FROM {relation}").fetchone()[0])
-            elif live:
-                table = f"source_{index}"
-                rows, consumed = stage_live(writer, live, dataset, table, budget_used)
-                budget_used += max(0, consumed - source_estimates[index])
-                relation = _q(table)
-            else:
-                table = f"source_{index}"
-                writer.register("_studio_frame", dataset["df"])
-                writer.execute(f"CREATE TABLE {_q(table)} AS SELECT * FROM _studio_frame")
-                writer.unregister("_studio_frame")
-                relation, rows = _q(table), len(dataset["df"])
-            relations[key], row_counts[key] = relation, rows
-
-        current = relations[id(plan["base"])]
-        before = row_counts[id(plan["base"])]
-        step_stats, notes = [], []
-        for step in plan["steps"]:
-            right = relations[id(step["ds"])]
-            sql = _join_step_sql(step, current, right)
-            width = max(1, int(sum(_frame_bytes(ds["df"]) / max(1, len(ds["df"]))
-                                   for ds in [plan["base"], step["ds"]])))
-            estimate = _duckdb_estimate(reader, sql, width)
-            if estimate is not None:
-                _budget(budget_used, estimate)
-            name = f"step_{step['no']}"
-            rows, materialized = _stream_duck_query(
-                reader, writer, sql, name, budget_used)
-            budget_used += materialized
-            growth = round(rows / before, 2) if before else None
-            step_stats.append({"right_rows": row_counts[id(step["ds"])],
-                               "rows": rows, "truncated": False,
-                               "rows_before": before, "growth": growth,
-                               "fanout": growth is not None and growth > 2.0})
-            notes.extend(f"step {step['no']}: {note}" for note in step["notes"])
-            current, before = _q(name), rows
-        preview = reader.execute(
-            f"SELECT * FROM {current} LIMIT 100000").df()
-        stats = {"engine": "duckdb", "base_rows": row_counts[id(plan["base"])],
-                 "steps": step_stats, "notes": notes, "capped_inputs": [],
-                 "rows": before, "total_rows": before, "truncated": False,
-                 "estimated_bytes": budget_used,
-                 "large_warning": budget_used >= LARGE_OPERATION_BYTES,
-                 "complete_source": True,
-                 "materialized_bytes": budget_used - sum(source_estimates)}
-        return {"df": preview, "stats": stats,
-                "disk_source": {"path": path, "table": current.strip('"'),
-                                "columns": list(preview.columns), "rows": before,
-                                "estimated_bytes": budget_used,
-                                "scan_bytes": os.path.getsize(path),
-                                "large_warning": budget_used >= LARGE_OPERATION_BYTES}}
+        with query_cancellation.duckdb_connection(writer), query_cancellation.duckdb_connection(reader):
+            return _run_join_materialization(plan, datasets, source_estimates, path, writer, reader)
     except Exception:
         try:
             reader.close()
@@ -731,6 +675,83 @@ def run_join(plan: dict) -> dict:
         except Exception:
             pass
 
+
+def _run_join_materialization(plan, datasets, source_estimates, path, writer, reader):
+    relations, row_counts = {}, {}
+    attached = {}
+    budget_used = sum(source_estimates)
+    for index, dataset in enumerate(datasets):
+        query_cancellation.check()
+        key = id(dataset)
+        if key in relations:
+            continue
+        disk = dataset.get("disk_source")
+        live = dataset.get("live_source")
+        if disk:
+            alias = f"input_{index}"
+            if disk["path"] not in attached:
+                reader.execute(f"ATTACH {_lit(disk['path'])} AS {_q(alias)} (READ_ONLY)")
+                attached[disk["path"]] = alias
+            else:
+                alias = attached[disk["path"]]
+            table = disk.get("table", "data")
+            relation = f"{_q(alias)}.{_q(table)}"
+            rows = int(disk.get("rows", 0))
+            if not rows:
+                rows = int(reader.execute(f"SELECT COUNT(*) FROM {relation}").fetchone()[0])
+        elif live:
+            table = f"source_{index}"
+            rows, consumed = stage_live(writer, live, dataset, table, budget_used)
+            budget_used += max(0, consumed - source_estimates[index])
+            relation = _q(table)
+        else:
+            table = f"source_{index}"
+            writer.register("_studio_frame", dataset["df"])
+            writer.execute(f"CREATE TABLE {_q(table)} AS SELECT * FROM _studio_frame")
+            writer.unregister("_studio_frame")
+            relation, rows = _q(table), len(dataset["df"])
+        relations[key], row_counts[key] = relation, rows
+
+    current = relations[id(plan["base"])]
+    before = row_counts[id(plan["base"])]
+    step_stats, notes = [], []
+    for step in plan["steps"]:
+        query_cancellation.check()
+        right = relations[id(step["ds"])]
+        sql = _join_step_sql(step, current, right)
+        width = max(1, int(sum(_frame_bytes(ds["df"]) / max(1, len(ds["df"]))
+                               for ds in [plan["base"], step["ds"]])))
+        estimate = _duckdb_estimate(reader, sql, width)
+        if estimate is not None:
+            _budget(budget_used, estimate)
+        name = f"step_{step['no']}"
+        rows, materialized = _stream_duck_query(
+            reader, writer, sql, name, budget_used)
+        budget_used += materialized
+        growth = round(rows / before, 2) if before else None
+        step_stats.append({"right_rows": row_counts[id(step["ds"])],
+                           "rows": rows, "truncated": False,
+                           "rows_before": before, "growth": growth,
+                           "fanout": growth is not None and growth > 2.0})
+        notes.extend(f"step {step['no']}: {note}" for note in step["notes"])
+        current, before = _q(name), rows
+    query_cancellation.check()
+    preview = reader.execute(
+        f"SELECT * FROM {current} LIMIT 100000").df()
+    query_cancellation.check()
+    stats = {"engine": "duckdb", "base_rows": row_counts[id(plan["base"])],
+             "steps": step_stats, "notes": notes, "capped_inputs": [],
+             "rows": before, "total_rows": before, "truncated": False,
+             "estimated_bytes": budget_used,
+             "large_warning": budget_used >= LARGE_OPERATION_BYTES,
+             "complete_source": True,
+             "materialized_bytes": budget_used - sum(source_estimates)}
+    return {"df": preview, "stats": stats,
+            "disk_source": {"path": path, "table": current.strip('"'),
+                            "columns": list(preview.columns), "rows": before,
+                            "estimated_bytes": budget_used,
+                            "scan_bytes": os.path.getsize(path),
+                            "large_warning": budget_used >= LARGE_OPERATION_BYTES}}
 
 @_bounded_materialization
 def derive(source: dict, spec: dict) -> tuple[pd.DataFrame, dict]:
@@ -869,6 +890,9 @@ def _join_step_sql(step: dict, left: str, right: str) -> str:
 @_bounded_materialization
 def open_s3(ref: dict) -> tuple[pd.DataFrame, dict]:
     resource_id, filename = ref["resource_id"], ref["table"]
+    if filename.lower().endswith((".vcf", ".vcf.gz")):
+        import vcf_sources
+        return vcf_sources.open_s3(resource_id, filename)
     size, uri, region, app_credentials = _object_size(resource_id, filename)
     path = _new_path()
     source_con = _configure(duck._connect(
@@ -1345,6 +1369,7 @@ _EXPORT_OPTIONS = {
     "tsv.gz": "FORMAT CSV, HEADER, DELIMITER '\t', COMPRESSION 'gzip'",
     "json": "FORMAT JSON, ARRAY true",
     "parquet": "FORMAT PARQUET",
+    "duckdb": "DUCKDB",
 }
 
 
@@ -1357,42 +1382,65 @@ def export_tsv(source: dict, filters: list[dict], max_rows: int, format: str = "
     relation = _q(source.get("table", "data"))
     fd, path = tempfile.mkstemp(prefix="export-", suffix="." + format, dir=_ROOT)
     os.close(fd)
-    con = _connect(source["path"], read_only=True)
+    con = None
     try:
+        if format == "duckdb":
+            os.unlink(path)
+            con = _configure(duckdb.connect(path), path + ".tmp")
+            con.execute(f"ATTACH {_lit(source['path'])} AS input_db (READ_ONLY)")
+            relation = f"input_db.main.{relation}"
+        else:
+            con = _connect(source["path"], read_only=True)
         count = con.execute(
             f"SELECT count(*) FROM (SELECT 1 FROM {relation} AS src WHERE {where} LIMIT {int(max_rows) + 1})", params).fetchone()[0]
         if count > max_rows:
             raise OperationTooLarge(
                 f"This export matches more than {max_rows:,} rows. Narrow the filters before downloading.")
-        con.execute(
-            f"COPY (SELECT * FROM {relation} AS src WHERE {where}) "
-            f"TO {_lit(path)} ({_EXPORT_OPTIONS[format]})", params)
-        return path
-    except Exception:
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-        raise
-    finally:
+        if format == "duckdb":
+            con.execute(f"CREATE TABLE data AS SELECT * FROM {relation} AS src WHERE {where}", params)
+        else:
+            con.execute(
+                f"COPY (SELECT * FROM {relation} AS src WHERE {where}) "
+                f"TO {_lit(path)} ({_EXPORT_OPTIONS[format]})", params)
         con.close()
+        con = None
+        return path
+    except BaseException:
+        try:
+            if con is not None:
+                con.close()
+        finally:
+            remove_file(path)
+        raise
 
 
 @_bounded_materialization
 def export_dataframe(frame: pd.DataFrame, format: str) -> str:
     if format not in _EXPORT_OPTIONS:
         raise ValueError("Unsupported export format.")
-    if not frame.columns.is_unique:
-        raise ValueError("Export requires unique column names.")
+    if len({str(name).casefold() for name in frame.columns}) != len(frame.columns):
+        raise ValueError("Export requires column names that are unique ignoring case.")
     fd, path = tempfile.mkstemp(prefix="export-", suffix="." + format, dir=_ROOT)
     os.close(fd)
-    con = _configure(duckdb.connect())
+    con = None
     try:
+        if format == "duckdb":
+            os.unlink(path)
+            con = _configure(duckdb.connect(path), path + ".tmp")
+        else:
+            con = _configure(duckdb.connect(), path + ".tmp")
         con.register("_studio_export", frame)
-        con.execute(f"COPY _studio_export TO {_lit(path)} ({_EXPORT_OPTIONS[format]})")
-        return path
-    except Exception:
-        remove_file(path)
-        raise
-    finally:
+        if format == "duckdb":
+            con.execute("CREATE TABLE data AS SELECT * FROM _studio_export")
+        else:
+            con.execute(f"COPY _studio_export TO {_lit(path)} ({_EXPORT_OPTIONS[format]})")
         con.close()
+        con = None
+        return path
+    except BaseException:
+        try:
+            if con is not None:
+                con.close()
+        finally:
+            remove_file(path)
+        raise

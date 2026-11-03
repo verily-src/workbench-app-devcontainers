@@ -53,6 +53,7 @@ import column_settings
 import live_query
 import query_cache
 import export_jobs
+import plink_api
 import join_discovery
 import sql_source
 from source_models import ColumnSetting, DerivedSpec, SourceRef, source_dict
@@ -80,6 +81,7 @@ async def lifespan(_app: FastAPI):
         operational_store.shutdown()
 
 app = FastAPI(title="Cohort Studio", lifespan=lifespan)
+app.include_router(plink_api.router)
 app.middleware("http")(execution.trace_request)
 app.include_router(knowledge.router)
 app.middleware("http")(agent_sessions.preserve_owner_cookie)
@@ -1079,10 +1081,10 @@ def _export_frame(ds, filters=None):
 
 
 class ExportRequest(QueryRequest):
-    format: Literal["tsv", "tsv.gz", "json", "parquet"] = "tsv"
+    format: Literal["tsv", "tsv.gz", "json", "parquet", "duckdb"] = "tsv"
 
 class StartExportRequest(BaseModel):
-    format: Literal["tsv", "tsv.gz"] = "tsv"
+    format: Literal["tsv", "tsv.gz", "json", "parquet"] = "tsv"
     model_config = ConfigDict(extra="forbid")
     filters: list[Filter] = Field(default_factory=list, max_length=200)
 
@@ -1122,12 +1124,14 @@ def download_export(job_id: str):
         raise HTTPException(404, "Export expired or unknown.")
     except ValueError as e:
         raise HTTPException(409, str(e))
-    return FileResponse(path, media_type="application/gzip" if str(path).endswith(".gz") else "text/tab-separated-values",
-                        filename="cohort.tsv.gz" if str(path).endswith(".gz") else "cohort.tsv")
+    name = path.name
+    format = "tsv.gz" if name.endswith(".tsv.gz") else name.rsplit(".", 1)[-1]
+    return FileResponse(path, media_type=_export_media_type(format), filename="cohort." + format)
 
 def _export_media_type(format: str):
     return {"tsv": "text/tab-separated-values", "tsv.gz": "application/gzip",
-            "json": "application/json", "parquet": "application/vnd.apache.parquet"}[format]
+            "json": "application/json", "parquet": "application/vnd.apache.parquet",
+            "duckdb": "application/octet-stream"}[format]
 
 
 @app.post("/api/datasets/{dataset_id}/export")
@@ -1156,7 +1160,7 @@ def export_dataset(dataset_id: str, req: ExportRequest):
     df = _export_frame(ds, [f.model_dump() for f in req.filters])
     lineage.record(_lineage_engine(), "export", "export", ds["source"],
                    payload={"rows": len(df)})
-    if req.format in {"json", "parquet"}:
+    if req.format in {"json", "parquet", "duckdb"}:
         try:
             path = disk_data.export_dataframe(df, req.format)
         except disk_data.OperationTooLarge as e:

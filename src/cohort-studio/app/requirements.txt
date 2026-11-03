@@ -22,3 +22,5 @@ langgraph>=1.0,<2
 langsmith>=0.3.45,<1
 
 fastembed>=0.7,<1
+
+pgenlib==0.95.1

@@ -231,14 +231,13 @@ Aurora source; derived columns remain database-backed and their saved views
 store a validated operation, not SQL. Dataset chat remains available only for
 loaded rows.
 
-**Export TSV** on a database-backed tab runs as a background job. It streams
-Aurora rows to a temporary file, reports progress, supports cancellation, and
-offers a download after completion. Limits are 2 concurrent workers, 8
-retained jobs, 2 GiB per file and 4 GiB total. Finished jobs expire after 1
-hour; each job has a 30-minute runtime limit and a 5-minute database statement
-timeout. Temporary files use local app-container disk. The older synchronous
-export, materialization and S3 workflow export still cap at 100,000 rows.
-Studio adds no database service or schema for exports.
+**Export** on a database-backed tab runs as a background job for TSV, TSV.gz, JSON and Parquet. It streams filtered Aurora rows, reports progress, supports cancellation and offers a download after completion. Parquet stores JSONB and UUID values as text and rejects unsupported PostgreSQL types or unbounded NUMERIC. Jobs allow 2 concurrent workers, 8 retained jobs, 2 GiB per file and 4 GiB total. Finished jobs expire after 1 hour; each job has a 30-minute runtime limit and a 5-minute statement timeout.
+
+Disk-backed and loaded datasets can also be downloaded as DuckDB files. Disk downloads reject more than 100,000 matching rows. The PLINK 2 export creates a PGEN/PVAR/PSAM ZIP from an explicitly mapped complete disk-backed matrix of at most 100,000 unphased diploid biallelic SNP calls on human autosomes. It requires a reference declaration and hard-call confirmation; REF remains provisional. VCF sources use canonical fields and require a FILTER policy. PLINK uses `pgenlib` (LGPL-3.0-only).
+
+S3 `.vcf` and `.vcf.gz` loading supports VCF 4.2–4.5 GT-only unphased diploid biallelic uppercase SNPs, preserving missing allele counts as null. The source reference header is not verified; QUAL and INFO are not retained. Other variants and genotype formats are rejected. The importer caps decoded input at 128 MiB and one million calls.
+
+The Agent can prepare download cards for supported TSV, TSV.gz, JSON, Parquet and DuckDB formats. PLINK requires the explicit dashboard mapping form. Cross-source join cancellation interrupts active PostgreSQL and DuckDB work; network reads and queued jobs may take longer to stop.
 
 Studio uses Aurora storage and internal DuckDB; it does not deploy a separate
 PostgreSQL service. A disposable PostgreSQL process is only a local test fixture

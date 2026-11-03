@@ -266,11 +266,24 @@ export interface FilterAskHistoryEntry {
   error?: string;
 }
 
+export interface SourceInfo {
+  format: "vcf";
+  reference: string | null;
+  sample_count: number;
+  calls: number;
+  source_resource_id: string;
+  source_path: string;
+  object_version: string | null;
+  object_etag: string | null;
+  note: string;
+}
+
 export interface Dataset {
   id: string;
   title: string;
   source: string;
   sourceRef?: SourceRef;
+  sourceInfo?: SourceInfo | null;
   entityColumn?: string;
   queryScope?: "database" | "loaded";
   refreshNonce?: number;

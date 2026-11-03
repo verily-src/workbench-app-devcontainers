@@ -3,7 +3,7 @@ import type {
   ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
-  SavedViewJob, SavedViewList,
+  SavedViewJob, SavedViewList, SourceInfo,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -288,6 +288,7 @@ export interface OpenResult {
   rows: number;
   columns: ColumnProfile[];
   source_ref?: SourceRef;
+  source_info?: SourceInfo | null;
   query_scope?: "database" | "loaded";
 }
 
@@ -583,7 +584,7 @@ export const api = {
   lineage: () =>
     request<{ columns: string[]; data: unknown[][] }>("/api/lineage"),
 
-  export: async (datasetId: string, filters: Filter[], format: "tsv" | "tsv.gz" | "parquet" | "json" = "tsv") => {
+  export: async (datasetId: string, filters: Filter[], format: "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb" = "tsv") => {
     const resp = await fetch(`/api/datasets/${datasetId}/export`,
       post({ filters, format }));
     if (!resp.ok) {
@@ -598,7 +599,7 @@ export const api = {
     a.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
   },
-  createExport: (datasetId: string, filters: Filter[], format: "tsv" | "tsv.gz" = "tsv") =>
+  createExport: (datasetId: string, filters: Filter[], format: "tsv" | "tsv.gz" | "json" | "parquet" = "tsv") =>
     request<ExportJob>(`/api/datasets/${encodeURIComponent(datasetId)}/exports`,
       post({ filters, format })),
   exportStatus: (jobId: string) =>

@@ -6,9 +6,13 @@ viewer (GitHub renders them inline).
 
 ### Join cancellation and export formats (2026-11-03)
 
-Aurora join preview runs as an owner-scoped data job and fetches a 20-row sample without full input counts. Join preview and execution use no PostgreSQL statement timeout by default; `STUDIO_JOIN_TIMEOUT_MS` sets one in milliseconds, with `0` disabling it. Cancel interrupts the active PostgreSQL connection. Cross-source DuckDB cancellation waits for the current operation to finish. Other dashboard queries keep their own timeouts.
+Aurora join preview runs as an owner-scoped data job and fetches a 20-row sample without full input counts. Join preview and execution use no PostgreSQL statement timeout by default; `STUDIO_JOIN_TIMEOUT_MS` sets one in milliseconds, with `0` disabling it. Cancel interrupts active PostgreSQL and DuckDB join operations. Cross-source staging checks cancellation between batches and deletes incomplete files. Queued admission and network reads can still delay cancellation. Other dashboard queries keep their own timeouts.
 
-Aurora background exports support TSV and TSV.gz. Disk-backed and loaded data also support JSON arrays and Parquet. A disk export exceeding 100,000 filtered rows is rejected rather than silently truncated. The Agent prepares an owner-checked download card using saved filters. VCF parsing remains an unintegrated, restricted prototype; PLINK and DuckDB exports remain unimplemented.
+Aurora background exports support TSV, TSV.gz, JSON arrays and Parquet. Parquet stores JSONB and UUID values as text; unsupported PostgreSQL types and unbounded NUMERIC fail explicitly. Disk-backed and loaded data also support DuckDB downloads. Disk exports exceeding 100,000 filtered rows are rejected rather than silently truncated. The Agent prepares owner-checked download cards with saved filters.
+
+S3 VCF 4.2–4.5 ingestion stages sample-by-variant rows for unphased diploid GT-only biallelic uppercase SNPs. Missing allele counts remain null; QUAL and INFO are not retained. Source reference headers are unverified. PLINK 2 export requires explicit mapping, reference declaration and hard-call confirmation, and produces a bounded PGEN/PVAR/PSAM archive with provisional REF. VCF sources use canonical fields and require a FILTER policy. The current implementation supports complete disk-backed matrices up to 100,000 calls on human autosomes. Live S3 validation, other VCF genotype forms and full-source Aurora DuckDB/PLINK exports remain open.
+
+The optional benchmark in `scripts/benchmarks` compares DuckDB and Polars on synthetic data; Polars is not a runtime dependency.
 
 ### Local changes awaiting release (2026-10-25)
 

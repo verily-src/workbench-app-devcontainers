@@ -28,6 +28,10 @@ export function AddSourceDialog({ onClose, onAdded }: Props) {
     } else if (kind === "s3") {
       body = { ...common, kind, bucket: value("bucket").trim(),
         prefix: value("prefix").trim(), region: value("region").trim() };
+    } else if (kind === "bq") {
+      body = { ...common, kind, project: value("project").trim(),
+        dataset: value("dataset").trim(), table: value("table").trim(),
+        billing_project: value("billing_project").trim() };
     } else {
       body = { ...common, kind, region: value("region").trim(),
         workgroup: value("workgroup").trim(),
@@ -53,7 +57,8 @@ export function AddSourceDialog({ onClose, onAdded }: Props) {
   const required = kind === "postgres"
     ? ["id", "label", "secret_id", "region"]
     : kind === "s3" ? ["id", "label", "bucket", "region"]
-      : ["id", "label", "region", "workgroup", "output_location", "databases"];
+      : kind === "bq" ? ["id", "label", "project", "dataset"]
+        : ["id", "label", "region", "workgroup", "output_location", "databases"];
   const ready = !busy && required.every((key) => value(key).trim());
 
   return (
@@ -73,6 +78,7 @@ export function AddSourceDialog({ onClose, onAdded }: Props) {
             <option value="postgres">PostgreSQL / RDS</option>
             <option value="s3">S3 / Parquet</option>
             <option value="athena">Athena / Iceberg</option>
+            <option value="bq">Google BigQuery</option>
           </select>
         </label>
         <div className="join-row">
@@ -91,6 +97,17 @@ export function AddSourceDialog({ onClose, onAdded }: Props) {
           </div>
           {input("region", "AWS region", "us-east-1")}
           <p className="settings-caption">Uses the app's AWS identity. No access keys are entered here.</p>
+        </>}
+        {kind === "bq" && <>
+          <div className="join-row">
+            {input("project", "Data project", "bigquery-public-data")}
+            {input("dataset", "Dataset", "human_variant_annotation")}
+          </div>
+          <div className="join-row">
+            {input("table", "Table (optional, else the whole dataset)", "ncbi_clinvar_hg38_20180701", false)}
+            {input("billing_project", "Billing project (optional)", "my-gcp-project", false)}
+          </div>
+          <p className="settings-caption">Uses the app's Google credentials. Queries run and are billed in the billing project; public datasets can't bill their own project. Loads are capped at 100,000 rows; nested columns load as text.</p>
         </>}
         {kind === "athena" && <>
           <div className="join-row">

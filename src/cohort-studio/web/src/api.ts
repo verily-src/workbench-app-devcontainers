@@ -232,7 +232,9 @@ export type CreateSourceRequest =
       prefix: string; region: string }
   | { kind: "athena"; id: string; label: string; region: string;
       workgroup: string; output_location: string; databases: string[];
-      catalog: "AwsDataCatalog" };
+      catalog: "AwsDataCatalog" }
+  | { kind: "bq"; id: string; label: string; project: string; dataset: string;
+      table: string; billing_project: string };
 
 export interface AgentTurn {
   ts: string;

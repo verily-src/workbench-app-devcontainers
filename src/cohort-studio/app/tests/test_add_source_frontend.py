@@ -76,3 +76,42 @@ def test_add_postgres_s3_and_athena_sources(page: Page, app_url: str):
          "workgroup": "primary", "output_location": "s3://results/path/",
          "databases": ["clinical", "genetics"], "catalog": "AwsDataCatalog"},
     ]
+
+
+def test_add_bigquery_source(page: Page, app_url: str):
+    sources, submitted = [], []
+
+    def fulfill(route, body, status=200):
+        route.fulfill(status=status, content_type="application/json", json=body)
+
+    page.route("**/api/datasources", lambda route: fulfill(route, {
+        "ready": True, "sources": sources, "catalogs_pending": False}))
+    page.route("**/api/workflows**", lambda route: fulfill(route, {
+        "available": False, "jobs": [], "running_count": 0}))
+    page.route("**/api/tables?**", lambda route: fulfill(route, []))
+
+    def add_source(route):
+        body = route.request.post_data_json
+        submitted.append(body)
+        source = {"kind": "bq", "id": f"bq:{body['id']}", "label": body["label"]}
+        sources.append(source)
+        fulfill(route, source)
+    page.route("**/api/sources", add_source)
+    page.goto(app_url)
+    page.get_by_role("button", name="Add data source").click()
+    dialog = page.get_by_role("dialog")
+    dialog.get_by_label("Source type").select_option("bq")
+    add = dialog.get_by_role("button", name="Test and add source")
+    dialog.get_by_label("Source ID").fill("clinvar")
+    dialog.get_by_label("Display name").fill("ClinVar")
+    dialog.get_by_label("Data project").fill("bigquery-public-data")
+    expect(add).to_be_disabled()                       # dataset still missing
+    dialog.get_by_label("Dataset", exact=True).fill("human_variant_annotation")
+    dialog.get_by_label("Table (optional, else the whole dataset)").fill("ncbi_clinvar_hg38_20180701")
+    dialog.get_by_label("Billing project (optional)").fill("my-billing-1")
+    expect(add).to_be_enabled()
+    add.click()
+    expect(dialog).to_have_count(0, timeout=5000)
+    assert submitted == [{"kind": "bq", "id": "clinvar", "label": "ClinVar",
+                          "project": "bigquery-public-data", "dataset": "human_variant_annotation",
+                          "table": "ncbi_clinvar_hg38_20180701", "billing_project": "my-billing-1"}]

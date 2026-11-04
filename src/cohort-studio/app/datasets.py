@@ -46,7 +46,10 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
                  capped: bool | None = None,
                  live_source: dict | None = None,
                  disk_source: dict | None = None,
-                 temporary: bool = False) -> dict:
+                 temporary: bool = False, profile_source: bool = True) -> dict:
+    """Register a dataset. `profile_source=False` skips the full-source
+    database/disk profiling (sample-based profiles only), for inputs whose
+    profiles are never shown, such as the tables behind a reopened join."""
 
     if live_source is not None or disk_source is not None:
         capped = False
@@ -54,7 +57,9 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
         capped = len(df) >= queries.ROW_CAP
     try:
         columns = profile_columns(df)
-        if live_source is not None:
+        if not profile_source:
+            pass
+        elif live_source is not None:
             import live_query
             columns = live_query.profile_columns(live_source, columns)
         elif disk_source is not None:

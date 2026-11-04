@@ -322,3 +322,28 @@ def test_step_without_equality_condition_is_flagged():
     finally:
         datasets.close_dataset(left["dataset_id"])
         datasets.close_dataset(right["dataset_id"])
+
+
+def test_reopening_a_join_does_not_profile_its_inputs(client, engine, star_tables):
+    from sqlalchemy import event
+    ref = {"kind": "join", "base": {"kind": "aurora", "resource_id": "omopdb", "schema": "public",
+                                    "table": star_tables["person"]},
+           "steps": [{"source": {"kind": "aurora", "resource_id": "omopdb", "schema": "public",
+                                 "table": star_tables["cond"]},
+                      "how": "inner", "alias": "cond", "columns": ["c"],
+                      "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}]}]}
+    statements = []
+
+    def hook(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+    event.listen(engine, "before_cursor_execute", hook)
+    try:
+        response = client.post("/api/datasets/open", json={"source_ref": ref})
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
+    assert response.status_code == 200, response.text
+    profiling = [s for s in statements if s.startswith("SELECT MIN(") or "LIMIT 50" in s]
+    # Only the joined result is profiled; neither input table is scanned for it.
+    assert profiling, "the result itself should still be profiled"
+    assert all("WITH s0 AS" in s or "s1" in s for s in profiling), profiling
+    datasets.close_dataset(response.json()["dataset_id"])

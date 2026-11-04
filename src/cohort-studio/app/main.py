@@ -677,14 +677,14 @@ def _join_ref(base_id, steps):
                                    ("how", "conditions", "columns", "alias") if k in step}}
                                   for step, ref in zip(steps, refs)]})
 
-def _open_source(ref, temporary=False):
+def _open_source(ref, temporary=False, profile=True):
     ref = source_dict(ref)
     guard = materialized_sources.operation_lock if any(saved_snapshots._walk_refs(ref)) else nullcontext()
     with guard:
-        return _open_source_impl(ref, temporary)
+        return _open_source_impl(ref, temporary, profile)
 
 
-def _open_source_impl(ref, temporary=False):
+def _open_source_impl(ref, temporary=False, profile=True):
     ref = source_dict(ref)
     children = []
     out = None
@@ -701,12 +701,14 @@ def _open_source_impl(ref, temporary=False):
             df, label = ds["df"], ds["source"]
             live, capped = ds.get("live_source"), ds.get("capped")
         elif ref["kind"] == "join":
-            base = _open_source(ref["base"], temporary=True)
+            # Join inputs only contribute column names and SQL; skip their
+            # full-source profiling (one scan per column) when reopening.
+            base = _open_source(ref["base"], temporary=True, profile=False)
             children.append(base["dataset_id"])
             steps = []
             labels = [base["source"]]
             for step in ref["steps"]:
-                right = _open_source(step["source"], temporary=True)
+                right = _open_source(step["source"], temporary=True, profile=False)
                 children.append(right["dataset_id"])
                 labels.append(right["source"])
                 steps.append({"right_id": right["dataset_id"], **{
@@ -782,7 +784,7 @@ def _open_source_impl(ref, temporary=False):
             datasets.close_dataset(child)
     data_jobs.report("Profiling columns", rows=int(len(df)), columns=int(len(df.columns)))
     result = datasets.open_dataset(
-        df, label, origin=origin, temporary=temporary,
+        df, label, origin=origin, temporary=temporary, profile_source=profile,
         capped=capped, live_source=live, disk_source=disk)
     dataset_id = result["dataset_id"]
     datasets.get(dataset_id)["source_ref"] = ref

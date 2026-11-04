@@ -168,19 +168,26 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
       target = findTarget();
       setTargetAvailable(Boolean(target));
       if (!target) { setTargetRect(null); return; }
-      const rect = target.getBoundingClientRect();
+      // The overlay lives inside the zoomed #root (Display size), so convert
+      // screen coordinates into the root's CSS pixels.
+      const zoom = parseFloat(getComputedStyle(document.getElementById("root") ?? document.body).zoom) || 1;
+      const screen = target.getBoundingClientRect();
+      const rect = { top: screen.top / zoom, left: screen.left / zoom,
+                     width: screen.width / zoom, height: screen.height / zoom };
+      const viewWidth = window.innerWidth / zoom, viewHeight = window.innerHeight / zoom;
       const nextRect = { top: rect.top, left: rect.left,
         width: Math.max(24, rect.width), height: Math.max(24, rect.height) };
       setTargetRect((previous) => previous && Object.keys(nextRect).every((key) =>
         Math.abs(nextRect[key as keyof Rect] - previous[key as keyof Rect]) < 1)
         ? previous : nextRect);
-      const panel = dialogRef.current?.getBoundingClientRect();
-      if (panel) {
-        const right = rect.left < window.innerWidth / 2
-          ? 16 : Math.max(16, window.innerWidth - panel.width - 16);
-        const top = rect.top < window.innerHeight / 2
-          ? Math.max(16, window.innerHeight - panel.height - 16) : 16;
-        const left = window.innerWidth - right - panel.width;
+      const panelScreen = dialogRef.current?.getBoundingClientRect();
+      if (panelScreen) {
+        const panel = { width: panelScreen.width / zoom, height: panelScreen.height / zoom };
+        const right = rect.left < viewWidth / 2
+          ? 16 : Math.max(16, viewWidth - panel.width - 16);
+        const top = rect.top < viewHeight / 2
+          ? Math.max(16, viewHeight - panel.height - 16) : 16;
+        const left = viewWidth - right - panel.width;
         setPanelPosition((previous) => previous.top === top && previous.right === left
           ? previous : { top, right: left });
       }

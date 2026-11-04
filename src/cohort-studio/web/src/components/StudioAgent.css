@@ -117,3 +117,14 @@
   .mascot-rescue.manual-rescue { display: block; animation: none; }
   .mascot-rescue.manual-rescue .mascot-magic { animation: none; }
 }
+
+.studio-agent-intro { max-width: 680px; margin: 24px auto; padding: 18px 20px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface); color: var(--ink-soft); font-size: 13px; }
+.studio-agent-intro h3 { margin: 0 0 6px; color: var(--ink); font-size: 15px; }
+.studio-agent-intro p { margin: 0 0 10px; }
+.studio-agent-intro ul { margin: 0 0 12px; padding-left: 18px; display: grid; gap: 4px; }
+.studio-agent-intro strong { color: var(--ink); }
+.studio-agent-examples { display: flex; flex-wrap: wrap; gap: 6px; }
+.studio-agent-examples button { border: 1px solid var(--border); border-radius: 999px; padding: 5px 10px;
+  background: var(--card); color: var(--ink-soft); text-align: left; }
+.studio-agent-examples button:hover { border-color: var(--accent-tint-border); color: var(--accent); }

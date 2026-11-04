@@ -48,3 +48,14 @@ def resource_id(explicit: str | None = None) -> str:
             f"Agent store resource_id in {source} must contain 1 to 128 letters, "
             "numbers, periods, underscores, or hyphens, and start with a letter "
             "or number.") from None
+
+
+def write_resource_id(resource_id: str) -> None:
+    """Persist the agent store resource beside STUDIO_CONFIG (mode 0600)."""
+    validated = AgentStoreConfig.model_validate({"resource_id": resource_id}).resource_id
+    path = config_path()
+    tmp = path.with_suffix(".json.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        json.dump({"resource_id": validated}, handle)
+    os.replace(tmp, path)

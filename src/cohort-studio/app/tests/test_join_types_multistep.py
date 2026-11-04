@@ -113,3 +113,39 @@ def test_in_memory_join_on_decimal_and_date_objects():
     finally:
         datasets.close_dataset(left["dataset_id"])
         datasets.close_dataset(right["dataset_id"])
+
+
+def test_large_aurora_join_counts_only_the_final_step_exactly(engine, monkeypatch):
+    from sqlalchemy import event
+    from tests.test_live_joins import _source_tables, _step
+    monkeypatch.setattr(joins.db, "get_engine_for_resource", lambda _rid: engine)
+    left_id, right_id, third_id, *tables = _source_tables(engine)
+    plan = [_step(right_id, "right", ["tag"]), _step(third_id, "third", ["group_label"])]
+    statements = []
+
+    def hook(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+    try:
+        exact = joins.run(left_id, plan)
+        assert exact["stats"]["total_rows"] == 120003
+        assert [s["rows"] for s in exact["stats"]["steps"]] == [120003, 120003]
+        assert not exact["stats"].get("estimated")
+
+        monkeypatch.setattr(joins, "EXACT_COUNT_MAX_ROWS", 0)   # treat every input as large
+        event.listen(engine, "before_cursor_execute", hook)
+        try:
+            out = joins.run(left_id, plan)
+        finally:
+            event.remove(engine, "before_cursor_execute", hook)
+        counts = [s for s in statements
+                  if "count(*)" in s.lower() and not s.lstrip().upper().startswith("EXPLAIN")]
+        assert len(counts) == 1                         # only the final chain
+        stats = out["stats"]
+        assert stats["total_rows"] == 120003            # final total stays exact
+        assert stats["estimated"] is True
+        assert stats["steps"][0].get("estimated") is True
+        assert stats["truncated"] is False               # live result covers the full source
+    finally:
+        with engine.begin() as conn:
+            for table in tables:
+                conn.exec_driver_sql(f'DROP TABLE public."{table}"')

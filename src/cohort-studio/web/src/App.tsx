@@ -388,9 +388,31 @@ export default function App() {
   type ViewSpec = Awaited<ReturnType<typeof api.getView>>["datasets"][number];
   const restoreSpecs = async (specs: ViewSpec[], activeIndex: number) => {
     {
-      const opened = await Promise.all(specs.map((d) =>
-        api.openSourceRef(d.source)
-          .then((o) => ({ o, d }))));
+      // The server runs at most two data jobs per session, so open two at a
+      // time; keep the tabs that open even if some fail.
+      const results: ({ o: OpenResult; d: ViewSpec } | { error: string; d: ViewSpec })[] = new Array(specs.length);
+      let next = 0;
+      const worker = async () => {
+        while (next < specs.length) {
+          const index = next++;
+          const d = specs[index];
+          try {
+            results[index] = { o: await api.openSourceRef(d.source), d };
+          } catch (e) {
+            results[index] = { error: (e as Error).message, d };
+          }
+        }
+      };
+      await Promise.all([worker(), worker()]);
+      const failed = results.filter((r): r is { error: string; d: ViewSpec } => "error" in r);
+      const opened = results.filter((r): r is { o: OpenResult; d: ViewSpec } => "o" in r);
+      if (!opened.length && failed.length) throw new Error(failed[0].error);
+      if (failed.length) {
+        setError(`${failed.length} of ${specs.length} tab(s) could not be reopened: `
+          + failed.map((f) => `${f.d.title || "untitled"} (${f.error})`).join("; "));
+      }
+      const activeSpec = specs[Math.min(activeIndex, specs.length - 1)];
+      activeIndex = Math.max(0, opened.findIndex((r) => r.d === activeSpec));
       const restored: Dataset[] = opened.map(({ o, d }) => ({
         id: o.dataset_id,
         title: d.title || (d.source.kind === "join" ? "Joined dataset"

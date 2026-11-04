@@ -36,9 +36,21 @@ _LIST_TABLES_SQL = """
 # so listing stays fast on 100M-row schemas.
 _LIST_TABLES_WITH_STATS_SQL = """
     SELECT t.table_schema, t.table_name, t.table_type,
-           c.reltuples::bigint AS reltuples,
-           s.n_live_tup AS live_rows,
-           CASE WHEN c.relkind IN ('r', 'm', 'p') THEN pg_total_relation_size(c.oid) END AS bytes,
+           CASE WHEN c.relkind = 'p' THEN
+                  (SELECT sum(greatest(lc.reltuples, 0))::bigint
+                     FROM pg_partition_tree(c.oid) pt JOIN pg_class lc ON lc.oid = pt.relid
+                    WHERE pt.isleaf)
+                ELSE c.reltuples::bigint END AS reltuples,
+           CASE WHEN c.relkind = 'p' THEN
+                  (SELECT sum(ls.n_live_tup)::bigint
+                     FROM pg_partition_tree(c.oid) pt JOIN pg_stat_user_tables ls ON ls.relid = pt.relid
+                    WHERE pt.isleaf)
+                ELSE s.n_live_tup END AS live_rows,
+           CASE WHEN c.relkind IN ('r', 'm') THEN pg_total_relation_size(c.oid)
+                WHEN c.relkind = 'p' THEN
+                  (SELECT sum(pg_total_relation_size(pt.relid))::bigint
+                     FROM pg_partition_tree(c.oid) pt WHERE pt.isleaf)
+           END AS bytes,
            (SELECT count(*) FROM pg_attribute a
              WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped) AS columns,
            GREATEST(s.last_analyze, s.last_autoanalyze) AS analyzed

@@ -118,6 +118,8 @@ export default function App() {
   // draft or a running join is still there when you come back.
   const [joinMounted, setJoinMounted] = useState(false);
   const [joinRunning, setJoinRunning] = useState(false);
+  // Bumped for each Edit join so a reopened editor remounts with fresh inputs.
+  const [joinSession, setJoinSession] = useState(0);
   useEffect(() => { if (showJoin) setJoinMounted(true); }, [showJoin]);
   const [editingJoin, setEditingJoin] = useState<JoinEdit | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
@@ -272,6 +274,16 @@ export default function App() {
     const original = datasets.find((dataset) => dataset.id === datasetId);
     const ref = original?.sourceRef;
     if (!original || ref?.kind !== "join") return;
+    if (joinRunning) {
+      setError("A join is still running. Wait for it to finish or cancel it before editing another join.");
+      return;
+    }
+    if (editingJoin) {
+      // Replace the previous (possibly hidden) edit session instead of leaking its inputs.
+      await closeEditInputs(editingJoin);
+      setEditingJoin(null);
+      setJoinMounted(false);
+    }
     setActivity("Restoring join inputs…");
     setError("");
     const inputIds = new Map<string, string>();
@@ -307,6 +319,7 @@ export default function App() {
         steps.push({ ...step, right_id: await openInput(step.source) });
       setEditingJoin({ originalDatasetId: original.id, originalTitle: original.title,
         baseId, steps, allowLoaded: ref.allow_loaded ?? false, inputs: openedInputs });
+      setJoinSession((n) => n + 1);
       setShowJoin(true);
     } catch (error) {
       await Promise.allSettled(openedInputs.map((dataset) => api.closeDataset(dataset.id)));
@@ -899,7 +912,7 @@ export default function App() {
                 )}
               </div>
               {(showJoin || joinMounted) && <div hidden={!showJoin}>
-                <JoinPanel key={editingJoin?.originalDatasetId ?? "new"}
+                <JoinPanel key={editingJoin ? `${editingJoin.originalDatasetId}:${joinSession}` : "new"}
                            datasets={joinBuilderDatasets} sources={sources} busy={Boolean(activity)}
                            initialPlan={editingJoin ? {
                              title: editingJoin.originalTitle, baseId: editingJoin.baseId,

@@ -139,3 +139,40 @@ def test_list_tables_falls_back_to_names_when_stats_query_fails():
         {'name': 'cdm.person', 'table': 'person', 'schema': 'cdm', 'kind': 'table'},
         {'name': 'v', 'table': 'v', 'schema': 'public', 'kind': 'view'},
     ]
+
+
+def test_direct_join_runs_inside_the_bulk_workload_lane(monkeypatch):
+    """Progress helpers must not displace run()'s admission-control decorator."""
+    import execution
+    import joins
+    monkeypatch.setattr(joins, '_checked_plan', lambda *a: {'engine': 'aurora', 'steps': []})
+    monkeypatch.setattr(joins, '_run_aurora', lambda *a, **k: {
+        'lane': execution._lane.get(), 'bulk_active': execution._gates['bulk'].active})
+    seen = joins.run('base', [])
+    assert seen['lane'] == 'bulk'
+    assert seen['bulk_active'] >= 1
+
+
+def test_partitioned_table_stats_sum_their_partitions(pg):
+    import psycopg
+    from sqlalchemy import create_engine
+    dsn = f"{pg['dsn']} dbname=omop"
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        conn.execute('DROP SCHEMA IF EXISTS part_stats CASCADE')
+        conn.execute('CREATE SCHEMA part_stats')
+        conn.execute('CREATE TABLE part_stats.events (id int, year int) PARTITION BY RANGE (year)')
+        conn.execute('CREATE TABLE part_stats.events_2025 PARTITION OF part_stats.events FOR VALUES FROM (2025) TO (2026)')
+        conn.execute('CREATE TABLE part_stats.events_2026 PARTITION OF part_stats.events FOR VALUES FROM (2026) TO (2027)')
+        conn.execute('INSERT INTO part_stats.events SELECT g, 2025 + (g % 2) FROM generate_series(1, 5000) g')
+        conn.execute('ANALYZE part_stats.events')
+    try:
+        engine = create_engine(pg['url']('omop'))
+        listed = {t['name']: t for t in queries.list_tables(engine)}
+        parent = listed['part_stats.events']
+        leaves = [listed['part_stats.events_2025'], listed['part_stats.events_2026']]
+        assert parent['rows'] == 5000
+        assert parent['bytes'] == sum(leaf['bytes'] for leaf in leaves) > 0
+        assert parent['columns'] == 2
+    finally:
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            conn.execute('DROP SCHEMA part_stats CASCADE')

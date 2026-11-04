@@ -9,14 +9,15 @@ const KEYWORDS = new Set(("select from where and or not in is null as group by o
 
 type Token = { text: string; kind: "kw" | "fn" | "str" | "ident" | "num" | "comment" | "op" | "plain" };
 
-const TOKEN = /(--[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:[^']|'')*'?)|("(?:[^"]|"")*"?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_$]*)|([<>=!]+|[-+*/%|(),.;:])|(\s+|.)/g;
+// PostgreSQL strings: dollar-quoted ($$…$$, $tag$…$tag$), escape (E'…\''…'), standard ('…''…').
+const TOKEN = /(--[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|(\$([A-Za-z_][A-Za-z0-9_]*)?\$[\s\S]*?(?:\$\3\$|$)|[Ee]'(?:\\[\s\S]|''|[^'\\])*'?|'(?:[^']|'')*'?)|("(?:[^"]|"")*"?)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_$]*)|([<>=!]+|[-+*/%|(),.;:])|(\s+|.)/g;
 
 export function tokenize(sql: string): Token[] {
   const tokens: Token[] = [];
   let match: RegExpExecArray | null;
   TOKEN.lastIndex = 0;
   while ((match = TOKEN.exec(sql)) !== null) {
-    const [text, comment, str, ident, num, word, op] = match;
+    const [text, comment, str, , ident, num, word, op] = match;
     if (comment) tokens.push({ text, kind: "comment" });
     else if (str) tokens.push({ text, kind: "str" });
     else if (ident) tokens.push({ text, kind: "ident" });
@@ -34,8 +35,14 @@ export function tokenize(sql: string): Token[] {
 export function quickLint(sql: string): string | null {
   let depth = 0;
   for (const token of tokenize(sql)) {
-    if (token.kind === "str" && (token.text.length < 2 || !token.text.endsWith("'")))
+    if (token.kind === "str" && !token.text.startsWith("$")
+        && (token.text.length < 2 || !token.text.endsWith("'")))
       return "Unclosed string literal (').";
+    if (token.kind === "str" && token.text.startsWith("$")) {
+      const tag = token.text.match(/^\$[A-Za-z0-9_]*\$/)?.[0] ?? "$$";
+      if (token.text.length < tag.length * 2 || !token.text.endsWith(tag))
+        return `Unclosed dollar-quoted string (${tag}).`;
+    }
     if (token.kind === "ident" && (token.text.length < 2 || !token.text.endsWith('"')))
       return 'Unclosed quoted identifier (").';
     if (token.kind === "op") {
@@ -59,13 +66,15 @@ export function SqlEditor({ value, onChange, disabled, placeholder, label = "SQL
   const local = useMemo(() => (value.trim() ? quickLint(value) : null), [value]);
   useEffect(() => {
     setLint(null);
-    if (!value.trim() || local) return;
+    if (!value.trim()) return;
+    // The server check is authoritative; the instant client check only shows
+    // until it answers (it can't parse every PostgreSQL form).
     let current = true;
     const timer = setTimeout(() => {
       api.lintSql(value).then((result) => { if (current) setLint(result); }).catch(() => undefined);
     }, 400);
     return () => { current = false; clearTimeout(timer); };
-  }, [value, local]);
+  }, [value]);
   const errorLine = lint && !lint.ok ? lint.line : undefined;
   const lines = useMemo(() => {
     const out: Token[][] = [[]];
@@ -84,11 +93,9 @@ export function SqlEditor({ value, onChange, disabled, placeholder, label = "SQL
       layer.current.scrollLeft = textarea.current.scrollLeft;
     }
   };
-  const status = !value.trim() ? null : local
-    ? { ok: false, text: local }
-    : lint ? { ok: lint.ok, text: lint.ok ? lint.message
+  const status = !value.trim() ? null : lint ? { ok: lint.ok, text: lint.ok ? lint.message
         : `${lint.line ? `Line ${lint.line}${lint.col ? `:${lint.col}` : ""} — ` : ""}${lint.message}${lint.detail ? ` (${lint.detail})` : ""}` }
-      : { ok: true, text: "Checking…", pending: true };
+      : local ? { ok: false, text: local } : { ok: true, text: "Checking…", pending: true };
   return (
     <div className="sql-editor">
       <div className="sql-editor-area">

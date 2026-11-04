@@ -884,7 +884,10 @@ def _join_step_sql(step: dict, left: str, right: str) -> str:
         if cond["cast"]:
             lref, rref = f"CAST({lref} AS VARCHAR)", f"CAST({rref} AS VARCHAR)"
         on.append(f"{lref} {cond['op']} {rref}")
-    select = [f"l.{_q(name)}" for name in step["left"]]
+    import joins
+    filled = joins._merged_keys(step)
+    select = [(f"COALESCE(l.{_q(name)}, r.{_q(filled[name])}) AS {_q(name)}"
+               if name in filled else f"l.{_q(name)}") for name in step["left"]]
     select.extend(f"r.{_q(source)} AS {_q(target)}" for source, target in step["cols"])
     condition = " AND ".join(on)
     if step["how"] in ("semi", "anti"):

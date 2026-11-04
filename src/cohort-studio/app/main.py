@@ -858,6 +858,7 @@ def join_datasets(req: JoinRequest):
         if ref and req.allow_loaded:
             ref["allow_loaded"] = True
         out = joins.run(base_id, steps, allow_loaded=req.allow_loaded)
+        joins._flag_growth(out["stats"])
         label = " + ".join(sources)
         data_jobs.report("Building the joined tab", rows=int(len(out["df"])),
                          columns=int(len(out["df"].columns)))

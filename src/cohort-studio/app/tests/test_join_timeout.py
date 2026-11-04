@@ -38,7 +38,9 @@ def test_preview_fetches_sample_without_expensive_full_counts(fixture):
     assert len(result['sample']) == 20
     assert result['sample_truncated'] is True
     assert result['sample_only'] is True
-    assert result['total_rows'] is None and result['base_rows'] is None
+    assert result['total_rows'] is None
+    # Preview runs no counts; base and step sizes are planner estimates only.
+    assert all(step.get('estimated') for step in result['steps'])
 
 
 def test_join_cancel_interrupts_actual_postgres_statement(fixture, tmp_path):

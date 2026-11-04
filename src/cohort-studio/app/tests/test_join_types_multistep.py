@@ -227,3 +227,98 @@ def test_equality_join_between_two_all_null_preview_columns_casts_to_text():
     finally:
         datasets.close_dataset(left["dataset_id"])
         datasets.close_dataset(right["dataset_id"])
+
+
+@pytest.fixture
+def star_tables(engine):
+    suffix = uuid.uuid4().hex[:8]
+    names = {k: f"js_{k}_{suffix}" for k in ("samples", "person", "cond", "drug")}
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f'CREATE TABLE public."{names["samples"]}" (person_id bigint, sample text)')
+        conn.exec_driver_sql(f'INSERT INTO public."{names["samples"]}" VALUES (1, \'s1\')')
+        conn.exec_driver_sql(f'CREATE TABLE public."{names["person"]}" (person_id bigint)')
+        conn.exec_driver_sql(f'INSERT INTO public."{names["person"]}" SELECT g FROM generate_series(1, 200) g')
+        conn.exec_driver_sql(f'CREATE TABLE public."{names["cond"]}" (person_id bigint, c int)')
+        conn.exec_driver_sql(f'INSERT INTO public."{names["cond"]}" SELECT 1 + g %% 200, g FROM generate_series(1, 6000) g')
+        conn.exec_driver_sql(f'CREATE TABLE public."{names["drug"]}" (person_id bigint, d int)')
+        conn.exec_driver_sql(f'INSERT INTO public."{names["drug"]}" SELECT 1 + g %% 200, g FROM generate_series(1, 6000) g')
+        for name in names.values():
+            conn.exec_driver_sql(f'ANALYZE public."{name}"')
+    yield names
+    with engine.begin() as conn:
+        for name in names.values():
+            conn.exec_driver_sql(f'DROP TABLE public."{name}"')
+
+
+def _key_step(right_id, alias, how, columns=None):
+    return {"right_id": right_id, "how": how, "alias": alias, "columns": columns,
+            "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}]}
+
+
+def test_full_join_keeps_the_key_for_later_steps_in_aurora(client, star_tables):
+    ids = {k: _open(client, v) for k, v in star_tables.items()}
+    try:
+        steps = [_key_step(ids["person"], "p", "full", []),
+                 _key_step(ids["cond"], "cond", "left", ["c"])]
+        response = client.post("/api/datasets/join", json={"base_id": ids["samples"], "steps": steps})
+        assert response.status_code == 200, response.text
+        frame = datasets.get(response.json()["dataset_id"])["df"]
+        # Every person (incl. the 199 without a sample) now has a person_id,
+        # so the condition step matches all 6,000 condition rows.
+        assert frame["person_id"].notna().all()
+        assert frame["cond → c"].notna().sum() == 6000
+        datasets.close_dataset(response.json()["dataset_id"])
+    finally:
+        for identifier in ids.values():
+            datasets.close_dataset(identifier)
+
+
+def test_full_join_keeps_the_key_in_memory():
+    base = datasets.open_dataset(pd.DataFrame({"person_id": [1], "sample": ["s1"]}), "samples")
+    person = datasets.open_dataset(pd.DataFrame({"person_id": [1, 2, 3]}), "person")
+    cond = datasets.open_dataset(pd.DataFrame({"person_id": [2, 3], "c": [20, 30]}), "cond")
+    try:
+        out = joins.run(base["dataset_id"], [
+            _key_step(person["dataset_id"], "p", "full", []),
+            _key_step(cond["dataset_id"], "cond", "left", ["c"])])
+        frame = out["df"].sort_values("person_id")
+        assert frame["person_id"].tolist() == [1, 2, 3]
+        assert frame["cond → c"].tolist()[1:] == [20, 30]
+        assert any("keeps person_id" in n for n in out["stats"]["notes"])
+    finally:
+        for d in (base, person, cond):
+            datasets.close_dataset(d["dataset_id"])
+
+
+def test_star_join_preview_estimates_growth_and_warns(client, star_tables):
+    ids = {k: _open(client, v) for k, v in star_tables.items()}
+    try:
+        steps = [_key_step(ids["cond"], "cond", "inner", ["c"]),
+                 _key_step(ids["drug"], "drug", "inner", ["d"])]
+        response = client.post("/api/datasets/join/preview",
+                               json={"base_id": ids["person"], "steps": steps})
+        assert response.status_code == 200, response.text
+        preview = response.json()
+        assert preview["engine"] == "aurora" and preview["sample_only"] is True
+        assert all(st["estimated"] for st in preview["steps"])
+        assert preview["base_rows"] > 0
+        # 200 people × 30 conditions × 30 drugs each ≈ 180,000 rows (900×).
+        assert preview["growth_total"] >= 100
+        assert preview["large_growth"] is True
+        assert "multiplies rows" in preview["notes"][0]
+    finally:
+        for identifier in ids.values():
+            datasets.close_dataset(identifier)
+
+
+def test_step_without_equality_condition_is_flagged():
+    left = datasets.open_dataset(pd.DataFrame({"a": [1, 2]}), "left")
+    right = datasets.open_dataset(pd.DataFrame({"b": [1, 2]}), "right")
+    try:
+        checked = joins.validate(left["dataset_id"], [{
+            "right_id": right["dataset_id"], "how": "inner", "alias": "r", "columns": None,
+            "conditions": [{"left": "a", "op": "<", "right": "b"}]}])
+        assert any("no equality condition" in n for n in checked["steps"][0]["notes"])
+    finally:
+        datasets.close_dataset(left["dataset_id"])
+        datasets.close_dataset(right["dataset_id"])

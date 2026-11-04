@@ -165,6 +165,13 @@ def _plan_step(step: dict, left: dict[str, str], right_ds: dict,
                 name = _output_name(alias, c, taken)
                 cols.append((c, name))
                 out[name] = rkinds[c]
+    if conds and not any(c["op"] == "=" for c in conds):
+        notes.append("no equality condition: every row can match many rows, "
+                     "close to a cross join; add an = key if possible")
+    merged = _merged_keys({"how": how, "conds": conds})
+    if merged:
+        notes.append(f"{how} join keeps {', '.join(sorted(merged))} from the joined table "
+                     "for rows without a match")
     return {"no": step_no, "how": how, "ds": right_ds, "left": list(left),
             "out": out, "conds": conds, "cols": cols, "notes": notes,
             "checks": checks, "problems": problems, "errors": errors,
@@ -324,7 +331,9 @@ def _step_sql(step: dict, l_from: str, r_from: str,
             t = "TEXT" if pg else "VARCHAR"
             lref, rref = f"CAST({lref} AS {t})", f"CAST({rref} AS {t})"
         on.append(f"{lref} {c['op']} {rref}")
-    select = [f"l.{_q(n(c))}" for c in step["left"]]
+    filled = _merged_keys(step)
+    select = [(f"COALESCE(l.{_q(n(c))}, r.{_q(rn(filled[c], filled[c]))}) AS {_q(n(c))}"
+               if c in filled else f"l.{_q(n(c))}") for c in step["left"]]
     select += [f"r.{_q(rn(src, src))} AS {_q(n(out))}" for src, out in step["cols"]]
     cols, cond = ", ".join(select), " AND ".join(on)
     if pg and step["how"] in ("semi", "anti"):
@@ -332,6 +341,21 @@ def _step_sql(step: dict, l_from: str, r_from: str,
         return (f"SELECT {cols} FROM {l_from} AS l WHERE {neg}EXISTS "
                 f"(SELECT 1 FROM {r_from} AS r WHERE {cond})")
     return f"SELECT {cols} FROM {l_from} AS l {HOWS[step['how']]} {r_from} AS r ON {cond}"
+
+def _merged_keys(step: dict) -> dict[str, str]:
+    """Left key -> right key to merge after a right/full join.
+
+    Rows that exist only on the joined side have NULL left columns, so the
+    shared equality key is filled from the joined side; later steps joining
+    on that key would otherwise match nothing for those rows.
+    """
+    if step["how"] not in ("right", "full"):
+        return {}
+    merged = {}
+    for c in step["conds"]:
+        if c["op"] == "=" and not c["cast"] and c["left"] not in merged:
+            merged[c["left"]] = c["right"]
+    return merged
 
 def _table_ref(ds: dict) -> str:
     live = ds.get("live_source")
@@ -393,6 +417,29 @@ def _step_stats(before: int, right_rows: int, total: int, cap: int) -> dict:
             "truncated": total > cap, "rows_before": int(before),
             "growth": growth,
             "fanout": growth is not None and growth > FANOUT_RATIO}
+
+GROWTH_WARNING = 10.0
+
+
+def _flag_growth(stats: dict) -> None:
+    """Add overall growth across all steps, and a warning when it explodes."""
+    steps = stats.get("steps") or []
+    base = stats.get("base_rows")
+    if not steps or not base:
+        return
+    final = steps[-1].get("rows")
+    if final is None:
+        return
+    growth = round(final / base, 2)
+    stats["growth_total"] = growth
+    if growth >= GROWTH_WARNING:
+        approx = "~" if any(s.get("estimated") for s in steps) else ""
+        stats["large_growth"] = True
+        stats.setdefault("notes", []).insert(0, (
+            f"This join produces {approx}{final:,} rows, {growth:g}× the {base:,}-row base. "
+            "Joining several one-to-many tables on the same key multiplies rows; "
+            "consider filtering, aggregating, or joining fewer tables at once."))
+
 
 def _finish(stats: dict, rows: int) -> dict:
     last = stats["steps"][-1]
@@ -502,6 +549,29 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
             if preview_only:
                 base_rows = None
                 steps = []
+                if conn.dialect.name == "postgresql":
+                    # Planner estimates cost no scans and let the preview show
+                    # each step's growth before anyone runs the full join.
+                    savepoint = conn.begin_nested()
+                    try:
+                        def guess(ds):
+                            ref = _table_ref(ds)
+                            q = (f"SELECT 1 FROM ({ref}) AS live_input" if ds.get("live_source")
+                                 else f"SELECT 1 FROM {ref}")
+                            return (_plan_rows(conn, q, params) if (ds.get("live_source") or ds.get("capped"))
+                                    else len(ds["df"]))
+                        before = base_rows = guess(p["base"])
+                        for step in p["steps"]:
+                            total = _plan_rows(conn, sql["rows"](step["no"]), params)
+                            stat = _step_stats(before or 0, guess(step["ds"]) or 0, total or 0, cap)
+                            stat.update(truncated=False, estimated=True)
+                            steps.append(stat)
+                            before = total
+                        savepoint.commit()
+                    except Exception:
+                        savepoint.rollback()
+                        query_cancellation.check()
+                        base_rows, steps = None, []
                 res = conn.execute(text(sql["select"](PREVIEW_ROWS + 1)), params)
             else:
                 before = base_rows = table_rows(p["base"])
@@ -618,6 +688,7 @@ def preview(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict
         import disk_data
         out = disk_data.run_join(p)
     df = out["df"].head(PREVIEW_ROWS)
+    _flag_growth(out["stats"])
     result = {**out["stats"], "columns": list(df.columns),
               "sample": df.astype(object).where(df.notna(), None).values.tolist(),
               "sample_truncated": out["stats"].get("sample_truncated", False) if out["stats"].get("sample_only") else int(out["stats"].get("total_rows", 0)) > len(df)}

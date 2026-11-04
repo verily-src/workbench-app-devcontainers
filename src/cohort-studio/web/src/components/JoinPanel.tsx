@@ -443,7 +443,12 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const update = (i: number, patch: Partial<StepState>) =>
     setSteps((prev) => {
       const old = prev[i];
-      const renamed = patch.alias !== undefined && old && patch.alias !== old.alias;
+      const others = prev.filter((_, j) => j !== i).map((st) => st.alias);
+      // Rewrite only when the old alias belonged to this step alone and the new
+      // one is not another step's: mid-typing collisions would otherwise
+      // redirect another step's conditions to the wrong table.
+      const renamed = patch.alias !== undefined && old && patch.alias !== old.alias
+        && !others.includes(old.alias) && !others.includes(patch.alias);
       return prev.map((s, j) => {
         if (j === i) return { ...s, ...patch };
         if (!renamed || j < i) return s;

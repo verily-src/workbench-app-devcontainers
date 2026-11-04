@@ -113,6 +113,15 @@ def test_three_table_builder_join_to_reorder_and_alias_rename(page, app_url):
     alias.fill("v")
     expect(step2_left).to_have_value("v → person_id")
 
+    # Typing through another step's alias must not capture its conditions.
+    step2 = panel.locator(".join-step").nth(1)
+    step2.locator("details.join-advanced > summary").click()
+    step2.get_by_label("Name joined columns as").fill("d")
+    alias.fill("d")          # step 1 briefly collides with step 2's alias
+    alias.fill("dr")
+    expect(step2_left).to_have_value("v → person_id")
+    alias.fill("v")
+
     # Reorder: step 2 (drug) moves above step 1 (visit).
     tables_before = [panel.get_by_label(f"Table to join in step {n}").input_value() for n in (1, 2)]
     panel.get_by_role("button", name="Move step 2 up").click()

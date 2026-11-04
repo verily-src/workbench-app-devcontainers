@@ -21,6 +21,9 @@ _NUMERIC = r"^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$"
 _INTEGER_TYPE_OIDS = {20, 21, 23}
 _INT64_MIN, _INT64_MAX = -(2 ** 63), 2 ** 63 - 1
 ORDER_CACHE_TTL = 300
+# Unfiltered histogram aggregates are cached at least this long (seconds);
+# Refresh invalidates them along with everything else for the resource.
+BASE_CACHE_TTL = 600
 _FLOAT_TYPE_OIDS = {700, 701, 1700}
 
 
@@ -332,7 +335,7 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
 
 def _chart(conn, live_source: dict, chart: dict, where: str,
            params: dict, columns: dict, numeric_types: dict[str, int],
-           has_filters: bool) -> dict:
+           has_filters: bool, base_cache=None) -> dict:
     kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
     if x not in columns or (y and y not in columns):
         raise ValueError("Unknown chart column.")
@@ -370,21 +373,33 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
         return {"kind": kind, "x": x, "data": data}
     if kind == "histogram":
         num = _numeric(qx, numeric_types.get(x))
-        mn, mx = _query(conn, live_source,
-                        f"SELECT MIN({num}), MAX({num}) FROM {table}", {}).one()
-        if mn is None or mx is None:
+        # The unfiltered part (bounds + full buckets) doesn't depend on
+        # filters, so it is cached per source and column across filter changes.
+        base = base_cache.get(("histogram", x)) if base_cache else None
+        if base is None:
+            mn, mx = _query(conn, live_source,
+                            f"SELECT MIN({num}), MAX({num}) FROM {table}", {}).one()
+            if mn is None or mx is None:
+                base = {"empty": True}
+            else:
+                mn, mx = float(mn), float(mx)
+                if mn == mx:
+                    delta = abs(mn) * 0.05 or 0.5
+                    low, high = mn - delta, mx + delta
+                else:
+                    low, high = mn, mx
+                width = (high - low) / HIST_BINS
+                bucket = f"LEAST({HIST_BINS - 1}, GREATEST(0, FLOOR(({num} - {low}) / {width})::int))"
+                base = {"low": low, "width": width, "full": [[int(i), int(n)] for i, n in _query(
+                    conn, live_source, f"SELECT {bucket}, COUNT(*) FROM {table} "
+                    f"WHERE {num} IS NOT NULL GROUP BY 1", {}).all()]}
+            if base_cache is not None:
+                base_cache.put(("histogram", x), base)
+        if base.get("empty"):
             return {"kind": kind, "x": x, "data": []}
-        mn, mx = float(mn), float(mx)
-        if mn == mx:
-            delta = abs(mn) * 0.05 or 0.5
-            low, high = mn - delta, mx + delta
-        else:
-            low, high = mn, mx
-        width = (high - low) / HIST_BINS
+        low, width = base["low"], base["width"]
         bucket = f"LEAST({HIST_BINS - 1}, GREATEST(0, FLOOR(({num} - {low}) / {width})::int))"
-        full = {int(i): int(n) for i, n in _query(
-            conn, live_source, f"SELECT {bucket}, COUNT(*) FROM {table} "
-            f"WHERE {num} IS NOT NULL GROUP BY 1", {}).all()}
+        full = {int(i): int(n) for i, n in base["full"]}
         selected = (full if not has_filters else {int(i): int(n) for i, n in _query(
             conn, live_source, f"SELECT {bucket}, COUNT(*) FROM {table} "
             f"WHERE ({where}) AND {num} IS NOT NULL GROUP BY 1", params).all()})
@@ -423,7 +438,8 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
 
 def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dict],
                    page: int, page_size: int,
-                   entity_column: str | None = None, sort: dict | None = None) -> dict:
+                   entity_column: str | None = None, sort: dict | None = None,
+                   summary: bool = True, rows: bool = True, base_cache=None) -> dict:
     columns = live_source["columns"]
     if entity_column is not None and entity_column not in columns:
         raise ValueError(f"Unknown entity column: {entity_column!r}.")
@@ -441,55 +457,83 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
-        order = (_requested_order(live_source) or _cached_primary_key_order(conn, live_source)
-                 or "to_jsonb(live)::text")
-        if sort:
+        order = ((_requested_order(live_source) or _cached_primary_key_order(conn, live_source)
+                  or "to_jsonb(live)::text") if rows else "")
+        if sort and rows:
             if sort.get("column") not in columns or sort.get("direction") not in ("asc", "desc"):
                 raise ValueError("Invalid sort column or direction.")
             order = f"live.{_q(columns[sort['column']])} {sort['direction'].upper()} NULLS LAST, {order}"
         needed_numeric = [f["column"] for f in filters if f.get("kind") in ("range", "categorical")]
-        needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") in ("histogram", "bar"))
+        if summary:
+            needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") in ("histogram", "bar"))
         numeric_types = _numeric_columns(conn, live_source, needed_numeric)
         where, params = _where(filters, columns, numeric_types)
         has_filters = where != "TRUE"
-        aggregates = ["COUNT(*)"]
-        if has_filters:
-            aggregates.append(f"COUNT(*) FILTER (WHERE {where})")
-        if entity_column is not None:
-            col = f"live.{_q(columns[entity_column])}"
-            aggregates.append(f"COUNT(DISTINCT {col})")
+        out = {"scope": "database", "sampled": False}
+        if summary:
+            aggregates = ["COUNT(*)"]
             if has_filters:
-                aggregates.append(f"COUNT(DISTINCT {col}) FILTER (WHERE {where})")
-        counts = _query(conn, live_source,
-                        f"SELECT {', '.join(aggregates)} FROM {table}", params).one()
-        total = int(counts[0])
-        filtered = int(counts[1]) if has_filters else total
-        entity = None
-        if entity_column is not None:
-            index = 2 if has_filters else 1
-            entity_total = int(counts[index])
-            entity_filtered = int(counts[index + 1]) if has_filters else entity_total
-            entity = {"column": entity_column, "total": entity_total,
-                      "filtered": entity_filtered}
-        charts = [_chart(conn, live_source, chart, where, params, columns,
-                         numeric_types, has_filters)
-                  for chart in chart_specs]
-        rows = _query(conn, live_source,
-                      f"SELECT {select} FROM {table} WHERE {where} "
-                      f"ORDER BY {order} LIMIT :limit OFFSET :offset",
-                      {**params, "limit": page_size, "offset": page * page_size}).all()
-        names = list(columns)
-        row_data = [[_json_value(value) for value in row] for row in rows]
-    return {"total": total, "filtered": filtered, "charts": charts,
-            "rows": {"page": page, "page_size": page_size,
-                     "columns": names, "data": row_data},
-            "scope": "database", "sampled": False,
-            **({"entity": entity} if entity is not None else {})}
+                aggregates.append(f"COUNT(*) FILTER (WHERE {where})")
+            if entity_column is not None:
+                col = f"live.{_q(columns[entity_column])}"
+                aggregates.append(f"COUNT(DISTINCT {col})")
+                if has_filters:
+                    aggregates.append(f"COUNT(DISTINCT {col}) FILTER (WHERE {where})")
+            counts = _query(conn, live_source,
+                            f"SELECT {', '.join(aggregates)} FROM {table}", params).one()
+            total = int(counts[0])
+            filtered = int(counts[1]) if has_filters else total
+            out.update(total=total, filtered=filtered)
+            if entity_column is not None:
+                index = 2 if has_filters else 1
+                entity_total = int(counts[index])
+                entity_filtered = int(counts[index + 1]) if has_filters else entity_total
+                out["entity"] = {"column": entity_column, "total": entity_total,
+                                 "filtered": entity_filtered}
+            out["charts"] = [_chart(conn, live_source, chart, where, params, columns,
+                                    numeric_types, has_filters, base_cache)
+                             for chart in chart_specs]
+        if rows:
+            fetched = _query(conn, live_source,
+                             f"SELECT {select} FROM {table} WHERE {where} "
+                             f"ORDER BY {order} LIMIT :limit OFFSET :offset",
+                             {**params, "limit": page_size, "offset": page * page_size}).all()
+            out["rows"] = {"page": page, "page_size": page_size, "columns": list(columns),
+                           "data": [[_json_value(value) for value in row] for row in fetched]}
+    return out
+
+
+class _BaseCache:
+    """Unfiltered aggregates (histogram bounds and buckets) per source."""
+
+    def __init__(self, query_cache, resource_id, live_source, generation, ttl):
+        self.qc, self.resource_id, self.generation = query_cache, resource_id, generation
+        self.source = live_source
+        self.ttl = 0 if ttl <= 0 else max(ttl, BASE_CACHE_TTL)
+
+    def _key(self, part):
+        return "base:" + self.qc.make_key(
+            self.resource_id, self.source["sql"], self.source["columns"], [], [list(part)],
+            None, None, None, self.generation, self.source.get("params", {}))
+
+    def get(self, part):
+        hit = self.qc.cache.get(self._key(part), self.ttl)
+        return hit[0] if hit else None
+
+    def put(self, part, value):
+        self.qc.cache.put(self._key(part), self.resource_id, value, self.ttl, self.generation)
 
 
 def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
           page: int, page_size: int, entity_column: str | None = None,
           refresh: bool = False, sort: dict | None = None) -> dict:
+    """Dashboard result for a live source, cached in two parts.
+
+    The summary (counts, entity counts, charts) doesn't depend on page or
+    sort, and the row page doesn't depend on charts or the entity column, so
+    paging or re-sorting reruns only the row query, and changing charts
+    reruns only the summary.
+    """
     import query_cache
 
     ttl = query_cache._ttl()
@@ -497,24 +541,44 @@ def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
     if refresh:
         query_cache.invalidate_resource(resource_id)
     generation = query_cache.cache.generation(resource_id)
-    key = query_cache.make_key(resource_id, live_source["sql"],
-                               live_source["columns"], filters, chart_specs,
-                               page, page_size, entity_column, generation, live_source.get("params", {}), sort=sort)
+    common = (resource_id, live_source["sql"], live_source["columns"])
+    params = live_source.get("params", {})
+    summary_key = "summary:" + query_cache.make_key(
+        *common, filters, chart_specs, None, None, entity_column, generation, params)
+    rows_key = "rows:" + query_cache.make_key(
+        *common, filters, [], page, page_size, None, generation, params, sort=sort)
+    summary = rows = None
+    as_of = []
     if not refresh and ttl > 0:
-        cached = query_cache.cache.get(key, ttl)
-        if cached is not None:
-            value, as_of = cached
-            value["cache"] = {"hit": True, "as_of": as_of,
-                              "ttl_seconds": ttl}
-            return value
-    value = _execute_query(live_source, filters, chart_specs,
-                           page, page_size, entity_column, sort=sort)
-    as_of = query_cache.cache.put(key, resource_id, value, ttl, generation)
-    if as_of is None:
+        for key, slot in ((summary_key, "summary"), (rows_key, "rows")):
+            cached = query_cache.cache.get(key, ttl)
+            if cached is not None:
+                if slot == "summary":
+                    summary = cached[0]
+                else:
+                    rows = cached[0]
+                as_of.append(cached[1])
+    hit = summary is not None and rows is not None
+    if not hit:
+        fresh = _execute_query(
+            live_source, filters, chart_specs, page, page_size, entity_column, sort=sort,
+            summary=summary is None, rows=rows is None,
+            base_cache=_BaseCache(query_cache, resource_id, live_source, generation, ttl))
+        if summary is None:
+            summary = {k: v for k, v in fresh.items() if k != "rows"}
+            stamp = query_cache.cache.put(summary_key, resource_id, summary, ttl, generation)
+            as_of.append(stamp)
+        if rows is None:
+            rows = {"rows": fresh["rows"]}
+            stamp = query_cache.cache.put(rows_key, resource_id, rows, ttl, generation)
+            as_of.append(stamp)
+    stamps = [stamp for stamp in as_of if stamp]
+    if not stamps:
         from datetime import datetime, timezone
-        as_of = datetime.now(timezone.utc).isoformat()
-    value["cache"] = {"hit": False, "as_of": as_of,
-                      "ttl_seconds": ttl}
+        stamps = [datetime.now(timezone.utc).isoformat()]
+    value = {**summary, **rows}
+    # Oldest part decides how fresh the combined result is.
+    value["cache"] = {"hit": hit, "as_of": min(stamps), "ttl_seconds": ttl}
     return value
 
 

@@ -272,6 +272,9 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const [previewing, setPreviewing] = useState(false);
   const [previewJob, setPreviewJob] = useState<{ job: DataJob; receivedAt: number } | null>(null);
   const [runJob, setRunJob] = useState<{ job: DataJob; receivedAt: number } | null>(null);
+  const [growthConfirmed, setGrowthConfirmed] = useState(false);
+  useEffect(() => { setGrowthConfirmed(false); }, [preview]);
+  const needsGrowthConfirm = Boolean(preview?.large_growth) && !growthConfirmed;
   const [cancelError, setCancelError] = useState("");
   useEffect(() => {
     // Full joins report through the same events as the Data operations card.
@@ -776,7 +779,16 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
             <JobProgress job={previewJob.job} receivedAt={previewJob.receivedAt} />
           </div>
         )}
-        <button className="primary" disabled={!valid || busy || sourceBusy
+        {preview?.large_growth && (
+          <label className="join-growth-confirm">
+            <input type="checkbox" checked={growthConfirmed}
+                   onChange={(e) => setGrowthConfirmed(e.target.checked)} />
+            Run anyway: {preview.steps.some((st) => st.estimated) ? "~" : ""}
+            {preview.steps[preview.steps.length - 1]?.rows.toLocaleString()} rows
+            ({preview.growth_total}× the base)
+          </label>
+        )}
+        <button className="primary" disabled={!valid || busy || sourceBusy || needsGrowthConfirm
           || (crossSource && !allowLoaded)}
                 onClick={() => onJoin({ baseId, steps: payload(), allowLoaded: crossSource && allowLoaded })}>
           {busy ? "Joining…" : initialPlan ? "Create edited join in new tab" : "Join into new tab"}
@@ -841,11 +853,15 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
       {preview && (
         <div className="join-preview">
           <div className="join-funnel">
-            <span>{preview.sample_only ? "Sample preview · full counts not calculated" : `${preview.base_rows?.toLocaleString() ?? "Unknown"} rows`}</span>
+            <span>{preview.sample_only
+              ? (preview.base_rows != null && preview.steps.some((st) => st.estimated)
+                ? `~${preview.base_rows.toLocaleString()} rows (estimated)`
+                : "Sample preview · full counts not calculated")
+              : `${preview.base_rows?.toLocaleString() ?? "Unknown"} rows`}</span>
             {preview.steps.map((st, i) => (
               <span key={i}>→ {HOWS.find((h) => h.id === steps[i]?.how)?.label.toLowerCase()}{" "}
                 {steps[i]?.alias || aliasOf(byId.get(steps[i]?.right_id ?? ""))}:{" "}
-                <strong>{st.rows.toLocaleString()}</strong>
+                <strong>{st.estimated ? "~" : ""}{st.rows.toLocaleString()}</strong>
                 {st.fanout && (
                   <span className="join-warn join-fanout"
                         title="Rows multiplied: the join key repeats on the joined side.">

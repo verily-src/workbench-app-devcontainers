@@ -92,3 +92,16 @@
 .tab-join .spinner { margin-right: 6px; vertical-align: -2px; }
 .tab-join.running { color: var(--accent); font-weight: 600; }
 .join-run-hint { margin: 6px 2px 0; color: var(--ink-muted); font-size: 12px; }
+
+.join-growth-confirm, .join-row label.join-growth-confirm {
+  display: flex;
+  flex-direction: row;
+  flex-basis: 100%;
+  order: 10;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  color: #9a3412;
+  font-size: 12.5px;
+  font-weight: 500;
+}

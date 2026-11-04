@@ -214,6 +214,8 @@ export interface JoinStepStats {
   rows_before: number;
   growth: number | null;
   fanout: boolean;
+  /** Rows are PostgreSQL planner estimates, not counts. */
+  estimated?: boolean;
 }
 
 export interface JoinStats {
@@ -225,6 +227,10 @@ export interface JoinStats {
   steps: JoinStepStats[];
   notes: string[];
   capped_inputs: string[];
+  /** Final rows ÷ base rows across all steps. */
+  growth_total?: number;
+  /** growth_total crossed the warning threshold (10×). */
+  large_growth?: boolean;
 }
 
 export interface JoinConditionCheck { problem: string | null; note: string | null }

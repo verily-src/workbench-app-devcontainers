@@ -356,6 +356,24 @@ def aurora_sql(p: dict) -> dict:
             "select": lambda limit: f"{with_(last)} SELECT * FROM s{last} LIMIT {int(limit)}",
             "unlimited": lambda: f"{with_(last)} SELECT * FROM s{last}"}
 
+# Above this many estimated rows, report PostgreSQL's estimate instead of
+# running an exact count(*) (each exact step count re-runs the join chain).
+EXACT_COUNT_MAX_ROWS = 1_000_000
+
+
+def _plan_rows(conn, count_sql: str, params: dict) -> int | None:
+    """Estimated input rows of a `SELECT count(*) FROM (...)` query, from EXPLAIN."""
+    import json as _json
+    raw = conn.execute(text(f"EXPLAIN (FORMAT JSON) {count_sql}"), params).scalar()
+    plan = (_json.loads(raw) if isinstance(raw, str) else raw)[0]["Plan"]
+    while plan.get("Node Type") == "Aggregate" and plan.get("Plans"):
+        child = plan["Plans"][0]
+        if child.get("Node Type") != "Aggregate":
+            return int(child.get("Plan Rows", 0))
+        plan = child
+    return None
+
+
 def _step_stats(before: int, right_rows: int, total: int, cap: int) -> dict:
     growth = round(total / before, 2) if before else None
     return {"right_rows": int(right_rows), "rows": int(total),
@@ -444,12 +462,25 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                 query_cancellation.check()
                 return int(conn.execute(text(q), params).scalar())
 
+            estimated = []
+
+            def counted(q: str) -> int:
+                """Exact count when small; PostgreSQL's estimate when large."""
+                query_cancellation.check()
+                guess = _plan_rows(conn, q, params) if conn.dialect.name == "postgresql" else None
+                if guess is not None and guess > EXACT_COUNT_MAX_ROWS:
+                    estimated.append(True)
+                    return guess
+                estimated.append(False)
+                return scalar(q)
+
             def table_rows(ds: dict) -> int:
                 if ds.get("live_source"):
-                    return scalar(f"SELECT count(*) FROM ({_table_ref(ds)}) AS live_input")
+                    return counted(f"SELECT count(*) FROM ({_table_ref(ds)}) AS live_input")
                 if not ds.get("capped"):
+                    estimated.append(False)
                     return len(ds["df"])
-                return scalar(f"SELECT count(*) FROM {_table_ref(ds)}")
+                return counted(f"SELECT count(*) FROM {_table_ref(ds)}")
 
             query_cancellation.check()
             if preview_only:
@@ -459,11 +490,19 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
             else:
                 before = base_rows = table_rows(p["base"])
                 steps = []
+                last_no = p["steps"][-1]["no"]
                 for step in p["steps"]:
-                    total = scalar(sql["count"](step["no"]))
+                    mark = len(estimated)
+                    # The final total stays exact (one run of the whole chain);
+                    # intermediate steps use estimates when large, because each
+                    # exact step count re-runs every join before it.
+                    total = (scalar(sql["count"](step["no"])) if step["no"] == last_no
+                             else counted(sql["count"](step["no"])))
                     step_stats = _step_stats(before, table_rows(step["ds"]), total, cap)
                     step_stats["truncated"] = False
                     step_stats["preview_rows"] = min(total, cap)
+                    if any(estimated[mark:]):
+                        step_stats["estimated"] = True
                     steps.append(step_stats)
                     before = total
                 res = conn.execute(text(sql["select"](min(cap, fetch or cap))), params)
@@ -489,8 +528,10 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
         stats.update(rows=None, total_rows=None, truncated=False, sample_only=True,
                      sample_truncated=len(df) > PREVIEW_ROWS)
         return {"df": df, "stats": stats, "live_source": live_source}
-    return {"df": df, "stats": _finish(stats, min(before, cap)),
-            "live_source": live_source}
+    stats = _finish(stats, min(before, cap))
+    if any(s.get("estimated") for s in steps) or (estimated and estimated[0]):
+        stats["estimated"] = True               # some step or input sizes are estimates
+    return {"df": df, "stats": stats, "live_source": live_source}
 
 def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict:
     if not steps:

@@ -25,6 +25,8 @@ class QueryCache:
         self._size = 0
         self._lock = threading.RLock()
         self._generation = {}
+        self.hits = 0
+        self.misses = 0
 
     def _remove(self, key):
         item = self._items.pop(key, None)
@@ -49,10 +51,13 @@ class QueryCache:
         with self._lock:
             item = self._items.get(key)
             if item is None:
+                self.misses += 1
                 return None
             if now - item["stored"] >= ttl:
                 self._remove(key)
+                self.misses += 1
                 return None
+            self.hits += 1
             self._items.move_to_end(key)
             return copy.deepcopy(item["value"]), item["as_of"]
 
@@ -78,6 +83,15 @@ class QueryCache:
                 oldest = next(iter(self._items))
                 self._remove(oldest)
         return as_of
+
+    def stats(self):
+        """App-wide counters since start (summary, row page and histogram parts)."""
+        with self._lock:
+            lookups = self.hits + self.misses
+            return {"hits": self.hits, "misses": self.misses,
+                    "hit_rate": round(self.hits / lookups, 3) if lookups else None,
+                    "entries": len(self._items), "bytes": self._size,
+                    "max_entries": MAX_ENTRIES, "max_bytes": MAX_BYTES}
 
     def clear(self):
         with self._lock:

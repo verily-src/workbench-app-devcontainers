@@ -1899,7 +1899,10 @@ app.include_router(agent_mode_router)
 
 @app.get("/api/performance")
 def performance(request: Request, response: Response):
-    return operational_store.store().summary(agent_sessions.owner(request, response))
+    import query_cache
+    summary = operational_store.store().summary(agent_sessions.owner(request, response))
+    summary["cache"] = query_cache.cache.stats()
+    return summary
 
 
 @app.get("/api/datasets/{dataset_id}/grain")

@@ -173,9 +173,9 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   }, [resourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const attachOpenedSource = (opened: Awaited<ReturnType<typeof api.openSourceRef>>,
-                              title: string, sourceRef: SourceRef) => {
+                              title: string, sourceRef: SourceRef, asBase = false) => {
     onSourceOpened(opened, title, sourceRef);
-    if (!baseId) {
+    if (!baseId || asBase) {
       setBaseId(opened.dataset_id);
       setSteps([{ uid: stepUid(), right_id: "", how: "left", alias: "joined", columns: null,
         touched: false, pickCols: false,
@@ -196,13 +196,13 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     }
   };
 
-  const addSourceTable = async () => {
+  const addSourceTable = async (tableName = sourceTable, asBase = false) => {
     if (!selectedSource) return;
-    if (baseId && steps.every((step) => step.right_id) && steps.length >= MAX_STEPS) {
+    if (!asBase && baseId && steps.every((step) => step.right_id) && steps.length >= MAX_STEPS) {
       setSourceError(`A join can include up to ${MAX_STEPS} additional tables.`);
       return;
     }
-    const info = sourceTables.find((item) => item.name === sourceTable);
+    const info = sourceTables.find((item) => item.name === tableName);
     if (!info) return;
     const sourceRef: SourceRef = {
       kind: selectedSource.kind, resource_id: selectedSource.id,
@@ -221,7 +221,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           && ref.schema === sourceRef.schema && ref.table === sourceRef.table;
       }).length;
       const title = duplicateCount ? `${info.name} (${duplicateCount + 1})` : info.name;
-      attachOpenedSource(opened, title, sourceRef);
+      attachOpenedSource(opened, title, sourceRef, asBase);
       setSourceTable("");
     } catch (error) {
       setSourceError((error as Error).message);
@@ -431,6 +431,19 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   }, [baseId, steps, crossSource, allowLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = datasets.map((d) => ({ id: d.id, label: d.title, hint: d.source }));
+  // "Start from" can also open a table straight from the selected datasource,
+  // so a join can begin with nothing open.
+  const SOURCE_PREFIX = "source-table:";
+  const startOptions = [...options, ...(selectedSource
+    ? sourceTables.filter((item) => !sourceSchema || (item.schema ?? "") === sourceSchema)
+        .map((item) => ({ id: SOURCE_PREFIX + item.name, label: item.name,
+          hint: [`open from ${selectedSource.label ?? selectedSource.id}`, tableStats(item)]
+            .filter(Boolean).join(" · ") }))
+    : [])];
+  const chooseStart = (id: string) => {
+    if (id.startsWith(SOURCE_PREFIX)) void addSourceTable(id.slice(SOURCE_PREFIX.length), true);
+    else changeBase(id);
+  };
   const schemas = [...new Set(sourceTables.map((item) => item.schema ?? ""))];
   const sourceGroups = [...new Set(sources.map((item) => item.kind))]
     .map((kind) => ({ kind, items: sources.filter((item) => item.kind === kind) }));
@@ -554,8 +567,9 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
       <div className="join-row">
         {initialPlan && <strong>Edit {initialPlan.title}</strong>}
         {!initialPlan && sourceMode === "table" && <label>Start from
-          <Combobox label="Start from" value={baseId} options={options}
-                    onChange={changeBase} placeholder="Choose a table…" />
+          <Combobox label="Start from" value={baseId} options={startOptions}
+                    onChange={chooseStart}
+                    placeholder={datasets.length ? "Choose a table…" : "Choose a table from the datasource below…"} />
         </label>}
         <div style={{ flex: 2 }} />
         <button className="quiet" onClick={onClose}>✕</button>
@@ -603,7 +617,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                       }))}
                       onChange={setSourceTable} placeholder={isS3Source ? "Search files…" : "Search tables…"} />
             <button className="primary" disabled={!sourceTable || sourceBusy || busy || !canAddSource}
-                    onClick={addSourceTable}>
+                    onClick={() => void addSourceTable()}>
               {sourceBusy ? "Adding…" : isS3Source ? "Add file" : "Add table"}
             </button></>}
           </div>

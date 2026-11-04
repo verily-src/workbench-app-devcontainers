@@ -360,6 +360,11 @@ export const api = {
   saveGrain: (id: string, definition: GrainDefinition) => request<GrainInfo>(`/api/datasets/${id}/grain`, {...post(definition), method: "PUT"}),
   checkGrain: (id: string) => request<GrainCheck>(`/api/datasets/${id}/grain/check`, post({})),
   performance: () => request<PerformanceSummary>("/api/performance"),
+  agentStoreStatus: () => request<{ resource_id: string | null; from_environment: boolean;
+    ready: boolean; aurora: string[] }>("/api/admin/agent-store"),
+  setupAgentStore: (resourceId: string) => request<{ resource_id: string; ready: boolean; mode: string }>(
+    "/api/admin/agent-store", post({ resource_id: resourceId, managed_access: true })),
+
   createSource: (body: CreateSourceRequest) =>
     request<{ kind: string; id: string; label: string }>("/api/sources", post(body)),
 

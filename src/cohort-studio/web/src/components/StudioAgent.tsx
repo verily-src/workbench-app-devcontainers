@@ -144,7 +144,6 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [before, setBefore] = useState<number | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [plans, setPlans] = useState<AgentWorkflowPlan[]>([]);
-  const [legacyPlans, setLegacyPlans] = useState<AgentWorkflowPlan[] | null>(null);
   const [plansLoading, setPlansLoading] = useState(true);
   const [planUi, setPlanUi] = useState<Record<string, PlanUiState>>({});
   const inFlight = useRef(new Set<string>());
@@ -404,11 +403,9 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     inFlight.current.add(plan.id);
     setPlanUi((current) => ({ ...current, [plan.id]: { working: true } }));
     setPlans((current) => current.some((item) => item.id === plan.id) ? mergePlans(current, [{ ...plan, status: "submitting" }]) : current);
-    setLegacyPlans((current) => current?.some((item) => item.id === plan.id) ? mergePlans(current, [{ ...plan, status: "submitting" }]) : current);
     try {
       const result = await api.approveAgentWorkflow(plan.id);
       setPlans((current) => current.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
-      setLegacyPlans((current) => current?.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
       setPlanUi((current) => ({ ...current, [plan.id]: { working: false } }));
     } catch (caught) {
       setPlanUi((current) => ({ ...current, [plan.id]: {
@@ -426,7 +423,6 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     try {
       const result = await api.agentWorkflowStatus(plan.id);
       setPlans((current) => current.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
-      setLegacyPlans((current) => current?.some((item) => item.id === plan.id) ? mergePlans(current, [result]) : current);
       setPlanUi((current) => ({ ...current, [plan.id]: { working: false } }));
     } catch (caught) {
       setPlanUi((current) => ({ ...current, [plan.id]: {
@@ -531,7 +527,30 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
           {loadingOlder ? "Loading…" : "Earlier messages"}
         </button>}
         {messages.length === 0 && !restoring && (
-          <p className="studio-agent-empty">Describe the question or analysis you need.</p>
+          <section className="studio-agent-intro" aria-label="What the agent can do">
+            <h3>Ask the Cohort Browser agent</h3>
+            <p>It works with your workspace data through the same tools as the app. Proposals
+              (dashboards, joins, workflow runs) are shown for your review; nothing runs or
+              changes without your approval.</p>
+            <ul>
+              <li><strong>Find data</strong> — list sources, tables and files; reopen saved dashboards.</li>
+              <li><strong>OMOP cohorts</strong> — search concepts and count people and attrition for criteria.</li>
+              <li><strong>Joins</strong> — recommend join keys with evidence (including Jev scores).</li>
+              <li><strong>Dashboards</strong> — propose charts and filters, query counts, check row grain, prepare downloads.</li>
+              <li><strong>Workflows</strong> — prepare Nextflow runs for review, track status, verify and open results.</li>
+              <li><strong>Literature</strong> — search PubMed, bioRxiv and attached project documents.</li>
+            </ul>
+            <div className="studio-agent-examples" aria-label="Example questions">
+              {[
+                "How many women born 1930–1950 have an observation period?",
+                "Suggest how to join genetics_demo.samples with cms_synpuf_100k.person",
+                "Build a dashboard of cms_synpuf_100k.person by gender and year of birth",
+                "Find recent bioRxiv preprints on polygenic risk scores",
+              ].map((example) => (
+                <button key={example} type="button" className="quiet" onClick={() => setInput(example)}>{example}</button>
+              ))}
+            </div>
+          </section>
         )}
         {messages.map((message, index) => (
           <article key={`${index}-${message.role}`} className={`studio-agent-message ${message.role}`}>
@@ -622,32 +641,6 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
           })}
         </section>
       )}
-
-      <details className="studio-agent-legacy-plans" onToggle={(event) => {
-        if (event.currentTarget.open && legacyPlans === null) {
-          api.agentWorkflowPlans().then((result) => setLegacyPlans(result.plans.filter((plan) => !plan.session_id)))
-            .catch((caught) => setError(safeError(caught)));
-        }
-      }}>
-        <summary>Earlier workflow plans</summary>
-        {legacyPlans === null ? <span>Loading…</span> : legacyPlans.length === 0 ? <span>None</span> :
-          legacyPlans.map((plan) => <article className="studio-agent-card workflow-plan" key={plan.id}>
-            <strong>Review workflow: {plan.workflow}</strong>
-            <span>Status: {workflowStatus(plan)}</span>
-            <span>{plan.rows.toLocaleString()} input rows</span>
-            {plan.column_mapping && <div className="studio-agent-column-mapping"><strong>Column mapping</strong>
-              {Object.entries(plan.column_mapping).map(([key, value]) => <code key={key}>{key} → {value}</code>)}</div>}
-            {plan.output_path && <span>Planned output: {plan.output_resource_id}/{plan.output_path}</span>}
-            {plan.errors.length > 0 && <ul>{plan.errors.map((item, i) => <li key={i}>{item}</li>)}</ul>}
-            {planUi[plan.id]?.error && <p role="alert">{planUi[plan.id].error}</p>}
-            {plan.status === "ready" && <button type="button" disabled={busy || planUi[plan.id]?.working}
-              onClick={() => void runWorkflow(plan)}>Run workflow</button>}
-            {plan.status === "submission_unknown" && <button type="button" disabled={busy || planUi[plan.id]?.working}
-              onClick={() => void checkWorkflowRun(plan)}>Check run</button>}
-            {isCompleted(plan) && <button type="button" disabled={busy || planUi[plan.id]?.working}
-              onClick={() => void openResults(plan)}>Open results</button>}
-          </article>)}
-      </details>
 
       {error && <p className="studio-agent-error" role="alert">{error}</p>}
       {busy && <div role="status" aria-live="polite" className="studio-agent-progress">

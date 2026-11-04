@@ -3,6 +3,7 @@ import group_summary
 import grain
 import operational_store
 import logging
+import os
 import time
 import uuid
 from typing import Literal
@@ -1895,6 +1896,47 @@ def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest):
 
 from agent_mode_api import router as agent_mode_router
 app.include_router(agent_mode_router)
+
+
+class AgentStoreSetup(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    resource_id: str = Field(min_length=1, max_length=128)
+    managed_access: bool = True
+
+
+@app.get("/api/admin/agent-store")
+def agent_store_status():
+    """Where agent conversations are stored, and whether storage is set up."""
+    import agent_store_config
+    import agent_store_migrate
+    aurora = [r["id"] for r in db.list_aurora_resources()]
+    from_env = bool(os.environ.get("STUDIO_AGENT_RESOURCE_ID", "").strip())
+    try:
+        resource_id = agent_store_config.resource_id()
+    except agent_store_config.AgentStoreConfigError:
+        return {"resource_id": None, "from_environment": from_env, "ready": False, "aurora": aurora}
+    try:
+        ready = agent_store_migrate.ready(resource_id)
+    except Exception:
+        ready = False
+    return {"resource_id": resource_id, "from_environment": from_env, "ready": ready, "aurora": aurora}
+
+
+@app.post("/api/admin/agent-store")
+def setup_agent_store(req: AgentStoreSetup):
+    """Choose the Aurora resource for agent memory and create its schema."""
+    import agent_store_config
+    import agent_store_migrate
+    if os.environ.get("STUDIO_AGENT_RESOURCE_ID", "").strip():
+        raise HTTPException(409, "Agent storage is set by STUDIO_AGENT_RESOURCE_ID in the deployment.")
+    if req.resource_id not in {r["id"] for r in db.list_aurora_resources()}:
+        raise HTTPException(400, "Choose an Aurora datasource listed in this workspace.")
+    try:
+        mode = agent_store_migrate.migrate(req.resource_id, req.managed_access)
+    except Exception as exc:
+        raise HTTPException(502, "Could not create agent storage: " + str(exc).splitlines()[0][:200])
+    agent_store_config.write_resource_id(req.resource_id)
+    return {"resource_id": req.resource_id, "ready": True, "mode": mode}
 
 
 @app.get("/api/performance")

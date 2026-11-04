@@ -1,4 +1,5 @@
 import { PerformancePanel } from "./PerformancePanel";
+import { AgentMemorySettings } from "./AgentMemorySettings";
 import { useEffect, useState } from "react";
 import { KnowledgeBase } from "./KnowledgeBase";
 import { api, AppConfig, MCPConnection, Provider } from "../api";
@@ -423,6 +424,9 @@ export function SettingsView(
         </div>
         {ncbiStatus && <div className="settings-status" role="status">{ncbiStatus}</div>}
       </div>
+
+      <div className="section-label">Agent</div>
+      <AgentMemorySettings />
 
       <div className="section-label">Appearance</div>
       <div className="settings-card">

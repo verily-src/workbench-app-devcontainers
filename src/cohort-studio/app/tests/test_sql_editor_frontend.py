@@ -70,9 +70,16 @@ def test_sql_editor_highlights_lints_and_formats(page: Page, app_url: str):
     check = panel.get_by_role("status", name="SQL check")
 
     editor.fill("SELECT person_id, 'x' FROM cdm.person WHERE (year_of_birth > 1950")
-    expect(check).to_contain_text("1 unclosed parenthesis")           # instant client check
+    expect(check).to_contain_text("not valid PostgreSQL SQL", timeout=5000)   # server verdict wins
     expect(panel.locator(".sql-kw", has_text="SELECT")).to_have_count(1)
     expect(panel.locator(".sql-str")).to_have_text("'x'")
+
+    # PostgreSQL string forms the quick client check can't judge: server decides.
+    editor.fill("SELECT $$($$ AS value FROM cdm.person")
+    expect(check).to_contain_text("Valid read-only SELECT", timeout=5000)
+    editor.fill("SELECT E'it\\'s' AS value FROM cdm.person")
+    expect(check).to_contain_text("Valid read-only SELECT", timeout=5000)
+    expect(panel.locator(".sql-str")).to_have_text("E'it\\'s'")
 
     editor.fill("SELECT person_id FROM person")
     expect(check).to_contain_text("Use schema-qualified table names", timeout=5000)

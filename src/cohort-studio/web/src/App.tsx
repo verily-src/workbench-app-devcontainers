@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, OpenResult, WorkflowList } from "./api";
+import { api, ApiError, OpenResult, WorkflowList, viewSpecs } from "./api";
 import { FilterPanel } from "./components/FilterPanel";
 import { SavedViews } from "./components/SavedViews";
 import { SourcePicker } from "./components/SourcePicker";
@@ -377,7 +377,17 @@ export default function App() {
     setError("");
     try {
       const v = await api.getView(store.kind, store.id, name);
-      const specs = v.datasets ?? [];
+      await restoreSpecs(v.datasets ?? [], v.active ?? 0);
+    } catch (e) {
+      setError(`Could not load view: ${(e as Error).message}`);
+    } finally {
+      setActivity("");
+    }
+  };
+
+  type ViewSpec = Awaited<ReturnType<typeof api.getView>>["datasets"][number];
+  const restoreSpecs = async (specs: ViewSpec[], activeIndex: number) => {
+    {
       const opened = await Promise.all(specs.map((d) =>
         api.openSourceRef(d.source)
           .then((o) => ({ o, d }))));
@@ -404,13 +414,52 @@ export default function App() {
         page: 0,
       }));
       setDatasets(restored);
-      setActive(Math.min(v.active ?? 0, Math.max(0, restored.length - 1)));
+      setActive(Math.min(activeIndex, Math.max(0, restored.length - 1)));
       showExploreTables();
+    }
+  };
+
+  // Session restore: autosave open tabs (as recipes) to this browser, and
+  // offer to reopen them after a reload or app restart.
+  const sessionKey = `studio-session-v1:${window.location.pathname}`;
+  const [savedSession, setSavedSession] = useState<{ savedAt: string; active: number;
+    datasets: ViewSpec[]; skipped: number } | null>(() => {
+    try { return JSON.parse(localStorage.getItem(sessionKey) || "null"); } catch { return null; }
+  });
+  const hadDatasets = useRef(false);
+  useEffect(() => {
+    const restorable = datasets.filter((d) => d.sourceRef);
+    if (datasets.length) hadDatasets.current = true;
+    const timer = setTimeout(() => {
+      try {
+        if (restorable.length) {
+          localStorage.setItem(sessionKey, JSON.stringify({
+            savedAt: new Date().toISOString(), active,
+            datasets: viewSpecs(restorable), skipped: datasets.length - restorable.length }));
+        } else if (hadDatasets.current && !datasets.length) {
+          localStorage.removeItem(sessionKey);     // the user closed every tab
+        }
+      } catch { /* storage may be full or disabled */ }
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [datasets, active]); // eslint-disable-line react-hooks/exhaustive-deps
+  const restoreSession = async () => {
+    if (!savedSession) return;
+    const session = savedSession;
+    setSavedSession(null);
+    setActivity(`Restoring ${session.datasets.length} tab(s)…`);
+    setError("");
+    try {
+      await restoreSpecs(session.datasets, session.active);
     } catch (e) {
-      setError(`Could not load view: ${(e as Error).message}`);
+      setError(`Could not restore the last session: ${(e as Error).message}`);
     } finally {
       setActivity("");
     }
+  };
+  const dismissSession = () => {
+    setSavedSession(null);
+    try { localStorage.removeItem(sessionKey); } catch { /* ignore */ }
   };
 
   const hashLoaded = useRef(false);
@@ -869,6 +918,16 @@ export default function App() {
                 <rect x="3" y="16" width="7" height="5" rx="1.5" />
               </svg>
               <div className="title">No data loaded</div>
+              {savedSession && savedSession.datasets.length > 0 && (
+                <div className="session-restore" role="status">
+                  <span>Your last session had {savedSession.datasets.length} tab
+                    {savedSession.datasets.length === 1 ? "" : "s"}
+                    {savedSession.skipped ? ` (${savedSession.skipped} uploaded file${savedSession.skipped === 1 ? "" : "s"} can't be reopened)` : ""}
+                    , saved {new Date(savedSession.savedAt).toLocaleString()}.</span>
+                  <button className="primary" onClick={() => void restoreSession()}>Restore last session</button>
+                  <button className="quiet" onClick={dismissSession}>Dismiss</button>
+                </div>
+              )}
               {sources.length > 0 && (
                   <button className="primary" data-tutorial-target="load-data"
                     onClick={() => {

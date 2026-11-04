@@ -800,3 +800,6 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .app-no-sidebar > .sidebar { display: none; }
 .table-sort { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
 .table-sort:hover { background: transparent; color: var(--accent); }
+.session-restore { display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 8px 12px; margin-top: 14px; padding: 10px 14px; border: 1px solid var(--accent-tint-border);
+  border-radius: var(--radius); background: var(--accent-tint); font-size: 12.5px; color: var(--ink-soft); }

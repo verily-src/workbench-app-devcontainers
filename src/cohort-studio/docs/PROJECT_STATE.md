@@ -4,6 +4,18 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **PUSHED, deployment unverified (2026-11-04): join safety** (6d2ca40, 20c5dc8). Both commits were reviewed by Codex `gpt-6-astra` (medium) with no findings.
+  - **Row-explosion warnings.** Aurora join previews show per-step planner estimates (`estimated`, `~` in the funnel; no scans). Previews and full results report `growth_total`, and at 10× or more `large_growth` adds an explanatory note. The Join button then requires "Run anyway", and the result toast mentions the growth.
+  - **No-equality warning.** A step with no `=` condition is flagged as a near cross join.
+  - **Keys after right/full joins.** The equality key is `COALESCE`d from the joined side in both Aurora and DuckDB, so later steps still match rows that exist only on the right. The step note says so.
+  - **Stable step keys.** Join builder steps have stable keys (`uid`) instead of index keys.
+  - **Evidence:** 12 tests in `test_join_types_multistep.py` (the new ones fail on the old code) and `test_join_growth_frontend.py` (screenshot inspected). Backend: 615 pass; the baseline 11 plus `test_join_timeout` failed until its assertion was updated to the new contract (preview `base_rows` is now an estimate, never a count).
+  - **Still open:**
+    - a "Join to" table picker and step reordering
+    - metadata-only child opens when reopening joins
+    - a server-side cancel for aborted dashboard requests
+  - **Access policies:** Snowflake-style column/row policies are being scoped separately; see the next entry when recorded.
+
 - **PUSHED, deployment unverified (2026-11-04): performance batch 2** (35a7205…f651f5d). Each change was reviewed by Codex `gpt-6-astra` (medium); every finding was fixed with a test, and the re-reviews are clean.
   - **Join column types.** Object columns fetched from PostgreSQL are classified by value: dates and timestamps as time, `Decimal`/int/float as number. All-null columns are "unknown"; equality on them uses a text cast. Previously dates were rejected against timestamps and numerics compared as text ('9.5' > '10').
   - **Aurora join counts.** Inputs and intermediate steps use EXPLAIN estimates above 1M rows; only the final chain is counted exactly. Estimates come from the uncounted query, so parallel plans are handled. Estimated stats are flagged. A two-step plan goes from 5 exact counts to 1.

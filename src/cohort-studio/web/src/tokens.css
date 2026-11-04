@@ -718,7 +718,7 @@ button.link:hover { text-decoration: underline; }
 .dataset-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .dataset-toolbar .hero { flex: 1 1 360px; min-width: 0; margin: 0; }
 .dataset-toolbar .detail { overflow-wrap: anywhere; }
-.entity-select { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.entity-select, .inline-field { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .entity-select select { width: 160px; max-width: 30vw; }
 .format-select select { width: 110px; }
 /* One control height across the toolbar so labels, selects and buttons line up. */

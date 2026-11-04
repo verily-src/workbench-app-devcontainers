@@ -74,8 +74,10 @@ def _where(filters: list[dict], columns: dict[str, str],
             if not math.isfinite(lo) or not math.isfinite(hi):
                 raise ValueError("Range filter values must be finite.")
             if integer:
-                lo_i = max(_INT64_MIN, min(_INT64_MAX, math.ceil(lo)))
-                hi_i = max(_INT64_MIN, min(_INT64_MAX, math.floor(hi)))
+                # Intersect with the bigint domain; an empty intersection
+                # matches nothing rather than snapping to a boundary value.
+                lo_i = max(_INT64_MIN, math.ceil(lo))
+                hi_i = min(_INT64_MAX, math.floor(hi))
                 if lo_i > hi_i:
                     clauses.append("FALSE")
                     continue
@@ -310,7 +312,7 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
             try:
                 values = _query(conn, live_source,
                                 f"SELECT CAST({col} AS text) AS value FROM {table} "
-                                f"WHERE {col} IS NOT NULL GROUP BY {col} "
+                                f"WHERE {col} IS NOT NULL GROUP BY 1 "
                                 f"ORDER BY COUNT(*) DESC, 1 LIMIT {CATEGORICAL_VALUES_LIMIT}",
                                 {}).scalars().all()
                 savepoint.commit()

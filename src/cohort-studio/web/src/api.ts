@@ -46,6 +46,21 @@ const post = (body: unknown): RequestInit => ({
 
 import { notifyDataReady } from "./notifications";
 
+/** Serializable recipe for each open tab (saved views and session restore). */
+export function viewSpecs(datasets: Dataset[]) {
+  return datasets.map((d) => ({
+    source: d.sourceRef,
+    title: d.title,
+    filters: d.filters,
+    charts: d.charts,
+    cohorts: d.cohorts ?? [],
+    entity_column: d.entityColumn ?? null,
+    filter_ask_history: d.filterAskHistory ?? [],
+    group_summary: d.groupSummary ?? null,
+    sort: d.sort ?? null,
+  }));
+}
+
 export interface DataJob {
   job_id: string; kind: string; status: string; result?: OpenResult;
   error?: string | { code?: string; message?: string }; status_code?: number;
@@ -593,17 +608,7 @@ export const api = {
              datasets: Dataset[], active: number) =>
     request<{ name: string; job_id?: string; status?: SavedViewJob["status"]; completed_sources?: number; total_sources?: number; error?: string | null }>("/api/views", post({
       kind, resource_id: resourceId, name, active,
-      datasets: datasets.map((d) => ({
-        source: d.sourceRef,
-        title: d.title,
-        filters: d.filters,
-        charts: d.charts,
-        cohorts: d.cohorts ?? [],
-        entity_column: d.entityColumn ?? null,
-        filter_ask_history: d.filterAskHistory ?? [],
-        group_summary: d.groupSummary ?? null,
-        sort: d.sort ?? null,
-      })),
+      datasets: viewSpecs(datasets),
     })),
 
   deleteView: (kind: string, resourceId: string, name: string) =>

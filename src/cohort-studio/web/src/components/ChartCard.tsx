@@ -1,5 +1,6 @@
 import "./ChartCard.css";
-import * as echarts from "echarts";
+import { echarts } from "../echarts";
+import type { EChartsOption, ECharts } from "../echarts";
 import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";
 import type { AxisSettings, BarDatum, PersonBarDatum, ChartResult, ChartSpec, HistDatum } from "../types";
@@ -32,7 +33,7 @@ const AXIS = (ink = INK_SOFT, grid = GRID_LINE) => ({
   splitLine: { lineStyle: { color: grid } },
 });
 
-function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCategoryLabels = false, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCategoryLabels = false, ink = INK_SOFT, grid = GRID_LINE): EChartsOption {
   const axis = AXIS(ink, grid);
   const cats = data.map((d) => d.category);
   const singleSeries = data.length > 0 && "value" in data[0];
@@ -65,7 +66,7 @@ function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCat
 
 const compactNumber = (value: number) => new Intl.NumberFormat("en", { notation: "compact", maximumSignificantDigits: 4 }).format(value);
 
-function histogramOption(data: HistDatum[], pal: Palette, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+function histogramOption(data: HistDatum[], pal: Palette, ink = INK_SOFT, grid = GRID_LINE): EChartsOption {
   const axis = AXIS(ink, grid);
   const labels = data.map((d) => `${trim(d.lo)}–${trim(d.hi)}`);
   return {
@@ -88,7 +89,7 @@ function histogramOption(data: HistDatum[], pal: Palette, ink = INK_SOFT, grid =
 }
 
 function scatterOption(data: number[][], x: string, y: string,
-                       pal: Palette, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+                       pal: Palette, ink = INK_SOFT, grid = GRID_LINE): EChartsOption {
   const axis = AXIS(ink, grid);
   return {
     grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
@@ -101,7 +102,7 @@ function scatterOption(data: number[][], x: string, y: string,
 }
 
 function heatmapOption(data: [string, string, number][],
-                       pal: Palette, ink = INK_SOFT, grid = GRID_LINE): echarts.EChartsOption {
+                       pal: Palette, ink = INK_SOFT, grid = GRID_LINE): EChartsOption {
   const axis = AXIS(ink, grid);
   const xs = [...new Set(data.map((d) => d[0]))];
   const ys = [...new Set(data.map((d) => d[1]))];
@@ -145,7 +146,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
-  const chart = useRef<echarts.ECharts>();
+  const chart = useRef<ECharts>();
   const [themeVersion, setThemeVersion] = useState(0);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -196,7 +197,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
           muted: styles.getPropertyValue("--chart-muted").trim() || pal.muted,
           ramp: ramp.length === 4 ? ramp : pal.ramp }
       : pal;
-    let option: echarts.EChartsOption;
+    let option: EChartsOption;
     switch (result.kind) {
       case "bar":
         option = barOption(result.data as (BarDatum | PersonBarDatum)[], chartPalette, compactCategoryLabels, ink, grid);
@@ -234,8 +235,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       ...(numeric && settings?.max !== undefined ? { max: settings.max } : {}),
     });
     if (result.kind !== "map") {
-      option.xAxis = configure(option.xAxis, spec.x_axis, result.kind === "bar" || result.kind === "scatter", false) as echarts.EChartsOption["xAxis"];
-      option.yAxis = configure(option.yAxis, spec.y_axis, result.kind === "histogram" || result.kind === "scatter", true) as echarts.EChartsOption["yAxis"];
+      option.xAxis = configure(option.xAxis, spec.x_axis, result.kind === "bar" || result.kind === "scatter", false) as EChartsOption["xAxis"];
+      option.yAxis = configure(option.yAxis, spec.y_axis, result.kind === "histogram" || result.kind === "scatter", true) as EChartsOption["yAxis"];
     }
     if (result.kind !== "map" && (spec.x_axis?.label || spec.y_axis?.label)) option.grid = {
       left: spec.y_axis?.label ? 72 : 8, right: 16, top: 12,

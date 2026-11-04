@@ -4,6 +4,12 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **PUSHED (2026-11-04): Display size setting** (c7b143a, 013edb0, 23b94e3). Settings → Appearance → Display size: Standard 100%, Comfortable 112.5% (default), Large 125%, stored in `localStorage` as `cohort-studio-ui-scale`.
+  - **How it scales.** CSS `zoom` on `#root`, sized to `100vw/100vh ÷ scale` so the app fits the window. Inside the app use `var(--vw)`/`var(--vh)`, which are viewport units in the root's CSS pixels; all existing vw/vh were converted. Screens 640 px wide or less are not zoomed.
+  - **Tutorial.** It converts screen rects by the root zoom.
+  - **Verified:** chart clicks map correctly under zoom (a real click on bar B applied `group = B`); the page fits the window at every scale; the tutorial fits at 500 px; the Dataset settings drawer and Add-source dialog fit at Large. `test_ui_scale_frontend.py` (4) and the tutorial tests pass. Codex `gpt-6-astra` found the viewport-unit overflow, now fixed.
+  - **Prod.** The app was recreated as `CohortBrowser_EC2` from the `cohort-browser` config, verified on 71b56f2 with saved-view errors gone. The old `Cohort_Dashboart_EC2` (deleted-branch config) is gone. The BigQuery reference was removed from aws-byoa-testing, and `wb resource list` works again.
+
 - **PUSHED, deployment unverified (2026-11-04): smaller improvements** (8f0c959…22a066c). Codex `gpt-6-astra` (medium) found three issues, all fixed with tests.
   - **Bundle size.** ECharts is tree-shaken (`web/src/echarts.ts`: bar/scatter/heatmap + grid/tooltip/visualMap/geo, canvas). The chart chunk went from 1,036 KB to 556 KB; the entry chunk stays at 212 KB. 13 chart/map/PDF/summary browser tests passed.
   - **Session restore.** Open tabs' recipes autosave to `localStorage` under `studio-session-v1:<app path>`, so apps on the shared Workbench origin don't collide. The empty state offers "Restore last session"; uploads are counted, not restored. The snapshot is cleared when no restorable tab remains, and the active tab is mapped into the saved list. Saved views and session restore share `viewSpecs()` and `restoreSpecs()`.

@@ -29,7 +29,8 @@ def test_entity_count_and_column_settings(loaded_page: Page):
     expect(loaded_page.locator(".hero .detail")).to_contain_text(
         "unique sample_id", timeout=10000)
 
-    loaded_page.get_by_role("button", name="Column settings").click()
+    loaded_page.get_by_role("button", name="Dataset settings").click()
+    expect(loaded_page.get_by_role("tab", name="Columns")).to_have_attribute("aria-selected", "true")
     row = loaded_page.locator(".column-setting-row").filter(has_text="tissue")
     row.locator("label", has_text="Label").locator("input").fill("Tissue")
     row.locator("label", has_text="Filter").locator("select").select_option("none")

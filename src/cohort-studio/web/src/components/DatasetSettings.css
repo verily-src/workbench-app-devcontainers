@@ -1,0 +1,74 @@
+.dataset-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #0003;
+}
+
+.dataset-settings-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(760px, 94vw);
+  padding: 16px 20px;
+  overflow: auto;
+  background: var(--card, #fff);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 28px #0002;
+}
+
+.dataset-settings-drawer > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataset-settings-kicker {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.dataset-settings-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dataset-settings-tabs button {
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--ink-soft);
+}
+
+.dataset-settings-tabs button:hover {
+  border-color: transparent;
+  border-bottom-color: var(--border-strong);
+  background: none;
+  color: var(--ink);
+}
+
+.dataset-settings-tabs button[aria-selected="true"],
+.dataset-settings-tabs button[aria-selected="true"]:hover {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dataset-settings-hint {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12.5px;
+}
+
+.settings-tab-body { position: static; }

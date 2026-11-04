@@ -803,3 +803,14 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .session-restore { display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
   gap: 8px 12px; margin-top: 14px; padding: 10px 14px; border: 1px solid var(--accent-tint-border);
   border-radius: var(--radius); background: var(--accent-tint); font-size: 12.5px; color: var(--ink-soft); }
+
+/* Display size: scale the whole app (text, controls, spacing) uniformly.
+   The root is shrunk by the same factor so the zoomed app still fits the window. */
+:root { --ui-scale: 1; }
+:root[data-ui-scale="comfortable"] { --ui-scale: 1.125; }
+:root[data-ui-scale="large"] { --ui-scale: 1.25; }
+:root:not([data-ui-scale="standard"]) #root {
+  zoom: var(--ui-scale);
+  width: calc(100vw / var(--ui-scale));
+  height: calc(100vh / var(--ui-scale));
+}

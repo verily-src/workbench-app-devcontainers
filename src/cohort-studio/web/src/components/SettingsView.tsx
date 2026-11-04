@@ -7,6 +7,8 @@ import { notificationsEnabled, setNotifications } from "../notifications";
 
 type ThemePreference = "light" | "dark" | "system";
 const THEME_KEY = "cohort-studio-theme";
+const SCALE_KEY = "cohort-studio-ui-scale";
+type UiScale = "standard" | "comfortable" | "large";
 
 function savedTheme(): ThemePreference {
   try {
@@ -62,6 +64,13 @@ export function SettingsView(
   const [connections, setConnections] = useState<MCPConnection[]>([]);
   const [palette, setPalette] = useState("verily");
   const [theme, setTheme] = useState<ThemePreference>(savedTheme);
+  const [uiScale, setUiScale] = useState<UiScale>(() =>
+    (document.documentElement.dataset.uiScale as UiScale) || "comfortable");
+  useEffect(() => {
+    document.documentElement.dataset.uiScale = uiScale;
+    try { window.localStorage.setItem(SCALE_KEY, uiScale); } catch {}
+    window.dispatchEvent(new Event("resize"));      // charts re-measure
+  }, [uiScale]);
   const [notifications, setNotificationState] = useState(notificationsEnabled);
   const [notificationStatus, setNotificationStatus] = useState("");
   const [status, setStatus] = useState("");
@@ -423,6 +432,13 @@ export function SettingsView(
           <option value="system">Use system setting</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>
+        </select>
+        <label className="field-label" htmlFor="ui-scale">Display size</label>
+        <select id="ui-scale" value={uiScale}
+                onChange={(event) => setUiScale(event.target.value as UiScale)}>
+          <option value="standard">Standard (100%)</option>
+          <option value="comfortable">Comfortable (112%)</option>
+          <option value="large">Large (125%)</option>
         </select>
       </div>
 

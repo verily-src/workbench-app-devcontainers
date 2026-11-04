@@ -213,3 +213,17 @@ def test_inequality_join_against_all_null_preview_column_validates():
     finally:
         datasets.close_dataset(left["dataset_id"])
         datasets.close_dataset(right["dataset_id"])
+
+
+
+def test_equality_join_between_two_all_null_preview_columns_casts_to_text():
+    left = datasets.open_dataset(pd.DataFrame({"k": [None]}, dtype=object), "left")
+    right = datasets.open_dataset(pd.DataFrame({"k": [None]}, dtype=object), "right")
+    try:
+        p = joins.plan(left["dataset_id"], [{
+            "right_id": right["dataset_id"], "how": "left", "alias": "r", "columns": None,
+            "conditions": [{"left": "k", "op": "=", "right": "k"}]}])
+        assert p["steps"][0]["conds"][0]["cast"] is True
+    finally:
+        datasets.close_dataset(left["dataset_id"])
+        datasets.close_dataset(right["dataset_id"])

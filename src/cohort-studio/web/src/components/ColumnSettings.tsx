@@ -5,6 +5,8 @@ import type { ColumnProfile, ColumnSetting, Dataset } from "../types";
 interface Props {
   dataset: Dataset;
   onUpdate: (changes: Partial<Dataset>) => void;
+  /** Rendered inside the Dataset settings drawer: always open, no toggle. */
+  embedded?: boolean;
 }
 
 function settingOf(column: ColumnProfile): ColumnSetting {
@@ -16,8 +18,9 @@ function settingOf(column: ColumnProfile): ColumnSetting {
   };
 }
 
-export function ColumnSettings({ dataset, onUpdate }: Props) {
-  const [open, setOpen] = useState(false);
+export function ColumnSettings({ dataset, onUpdate, embedded = false }: Props) {
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [columns, setColumns] = useState<ColumnSetting[]>([]);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,11 +52,11 @@ export function ColumnSettings({ dataset, onUpdate }: Props) {
   };
 
   return (
-    <div className="column-settings">
-      <button className="quiet" onClick={() => setOpen((value) => !value)}>
+    <div className={embedded ? "settings-tab-body" : "column-settings"}>
+      {!embedded && <button className="quiet" onClick={() => setOpen((value) => !value)}>
         {open ? "Hide columns" : "Column settings"}
-      </button>
-      {open && <div className="column-settings-panel">
+      </button>}
+      {open && <div className={embedded ? undefined : "column-settings-panel"}>
         <div className="section-label">Column settings</div>
         {columns.map((column, i) => (
           <div className="column-setting-row" key={column.name}>

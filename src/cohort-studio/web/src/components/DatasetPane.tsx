@@ -4,8 +4,7 @@ import type { ExportJob } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
-import { GrainSettings } from "./GrainSettings";
-import { ColumnSettings } from "./ColumnSettings";
+import { DatasetSettings } from "./DatasetSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
 import { AggregateFilter } from "./AggregateFilter";
@@ -273,8 +272,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
         <SaveToAurora dataset={dataset} />
         {dataset.sourceRef?.kind === "join" && <button className="quiet"
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
-        <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
-        <GrainSettings key={dataset.id} dataset={dataset} onUpdate={onUpdate} />
+        <DatasetSettings dataset={dataset} onUpdate={onUpdate} />
         <label className="inline-field format-select">Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
           {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}`}

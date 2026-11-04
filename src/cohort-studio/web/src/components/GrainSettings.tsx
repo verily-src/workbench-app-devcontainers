@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Dataset, GrainDefinition, GrainCheck } from "../types";
 
-export function GrainSettings({ dataset, onUpdate }: {dataset: Dataset; onUpdate: (changes: Partial<Dataset>) => void}) {
-  const [open, setOpen] = useState(false);
+export function GrainSettings({ dataset, onUpdate, embedded = false }: {dataset: Dataset; onUpdate: (changes: Partial<Dataset>) => void; embedded?: boolean}) {
+  const [openState, setOpen] = useState(false);
+  const open = embedded || openState;
   const [definition, setDefinition] = useState<GrainDefinition>({entity: "person", keys: []});
   const [check, setCheck] = useState<GrainCheck | null>(null);
   const [status, setStatus] = useState("");
@@ -29,9 +30,9 @@ export function GrainSettings({ dataset, onUpdate }: {dataset: Dataset; onUpdate
     } catch (e) {setStatus((e as Error).message);}
     finally {setBusy(false);}
   };
-  return <div className="column-settings">
-    <button className="quiet" onClick={() => setOpen(!open)} aria-expanded={open}>Row grain</button>
-    {open && <section className="column-settings-panel" aria-label="Row grain">
+  return <div className={embedded ? "settings-tab-body" : "column-settings"}>
+    {!embedded && <button className="quiet" onClick={() => setOpen(!open)} aria-expanded={open}>Row grain</button>}
+    {open && <section className={embedded ? undefined : "column-settings-panel"} aria-label="Row grain">
       <label>One row represents
         <select value={definition.entity} disabled={busy} onChange={e => update({...definition, entity: e.target.value as GrainDefinition["entity"]})}>
           {["person", "sample", "variant", "event", "summary", "other"].map(value => <option key={value}>{value}</option>)}

@@ -266,3 +266,21 @@ def test_reported_freshness_includes_reused_histogram_base(engine, events_table,
         assert again["cache"]["hit"] is True and again["cache"]["as_of"] <= base_time
     finally:
         query_cache.cache.clear()
+
+
+def test_cache_stats_count_hits_and_misses(engine, events_table, monkeypatch):
+    import query_cache
+    from fastapi.testclient import TestClient
+    import main
+    monkeypatch.setenv("STUDIO_QUERY_CACHE_TTL", "30")
+    query_cache.cache.clear()
+    query_cache.cache.hits = query_cache.cache.misses = 0
+    _name, source = events_table
+    live_query.query(source, [], [], 0, 10)       # 2 misses (summary + rows)
+    live_query.query(source, [], [], 0, 10)       # 2 hits
+    stats = query_cache.cache.stats()
+    assert (stats["hits"], stats["misses"]) == (2, 2) and stats["hit_rate"] == 0.5
+    assert stats["entries"] == 2 and stats["bytes"] > 0
+    body = TestClient(main.app).get("/api/performance").json()
+    assert body["cache"]["hits"] == 2
+    query_cache.cache.clear()

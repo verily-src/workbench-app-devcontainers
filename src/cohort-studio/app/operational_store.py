@@ -108,6 +108,8 @@ class Store:
         for group in grouped.values():
             values = sorted(group.pop('timings'))
             group['p95_ms'] = values[max(0, math.ceil(len(values)*.95)-1)] if values else None
+            group['p50_ms'] = values[max(0, math.ceil(len(values)*.5)-1)] if values else None
+            group['max_ms'] = values[-1] if values else None
             result.append(group)
         return {'scope': 'current_session', 'retention_days': 7, 'max_events': MAX_EVENTS,
                 'dropped_events_since_restart': self.dropped,

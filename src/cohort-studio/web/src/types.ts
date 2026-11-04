@@ -124,7 +124,11 @@ export interface GrainCheck extends GrainInfo {
 }
 export interface PerformanceSummary {
   scope: string; retention_days: number; max_events: number; dropped_events_since_restart: number;
-  groups: {event: string; name: string; count: number; failed: number; p95_ms: number | null}[];
+  groups: {event: string; name: string; count: number; failed: number;
+           p95_ms: number | null; p50_ms?: number | null; max_ms?: number | null}[];
+  /** App-wide dashboard query cache counters since the app started. */
+  cache?: {hits: number; misses: number; hit_rate: number | null; entries: number;
+           bytes: number; max_entries: number; max_bytes: number};
 }
 export type SourceRef = ({ grain?: GrainDefinition } & (
   | { kind: "materialized"; resource_id: string; materialized_id: string;

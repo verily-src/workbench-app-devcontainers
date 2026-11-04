@@ -41,7 +41,11 @@ const SOURCE_GROUP_LABEL: Record<Source["kind"], string> = {
 
 /** `uid` is a stable React key: index keys let a removed step's open
  * details and combobox state leak into the step that moves up. */
-interface StepState extends JoinStep { touched: boolean; pickCols: boolean; uid: string }
+interface StepState extends JoinStep {
+  touched: boolean; pickCols: boolean; uid: string;
+  /** UI-only: narrow left keys to the base ("base") or an earlier step's uid. */
+  joinTo?: string;
+}
 let stepSeq = 0;
 const stepUid = () => `step-${++stepSeq}`;
 type KeyRecommendation = JoinRecommendation & { sourceTitle: string };
@@ -83,6 +87,20 @@ function outputColumns(base: Dataset | undefined, steps: StepState[],
     picked.forEach((c) => cols.push(`${s.alias}${ARROW}${c}`));
   });
   return cols;
+}
+
+/** Left-side columns grouped by the table they come from. */
+function leftGroups(base: Dataset | undefined, steps: StepState[], upTo: number,
+                    byId: Map<string, Dataset>): { key: string; label: string; cols: string[] }[] {
+  const groups = [{ key: "base", label: base?.title ?? "base", cols: base ? base.columns.map((c) => c.name) : [] }];
+  steps.slice(0, upTo).forEach((st) => {
+    const right = byId.get(st.right_id);
+    if (!right || !addsColumns(st.how)) return;
+    const picked = st.columns ?? right.columns.map((c) => c.name);
+    groups.push({ key: st.uid, label: st.alias || aliasOf(right),
+                  cols: picked.map((c) => `${st.alias}${ARROW}${c}`) });
+  });
+  return groups;
 }
 
 function defaultCondition(leftCols: string[], right?: Dataset): JoinCondition {
@@ -423,7 +441,27 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const supportsSchema = ["aurora", "postgres", "athena"].includes(selectedSource?.kind ?? "");
 
   const update = (i: number, patch: Partial<StepState>) =>
-    setSteps((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+    setSteps((prev) => {
+      const old = prev[i];
+      const renamed = patch.alias !== undefined && old && patch.alias !== old.alias;
+      return prev.map((s, j) => {
+        if (j === i) return { ...s, ...patch };
+        if (!renamed || j < i) return s;
+        // Keep later conditions pointing at this step's columns after a rename.
+        const from = `${old.alias}${ARROW}`, to = `${patch.alias}${ARROW}`;
+        return { ...s, conditions: s.conditions.map((c) =>
+          c.left.startsWith(from) ? { ...c, left: to + c.left.slice(from.length) } : c) };
+      });
+    });
+
+  const move = (i: number, delta: -1 | 1) =>
+    setSteps((prev) => {
+      const j = i + delta;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
 
   const setCondition = (i: number, k: number, patch: Partial<JoinCondition>) =>
     setSteps((prev) => prev.map((s, j) => j !== i ? s : {
@@ -615,6 +653,10 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
       {steps.map((s, i) => {
         const right = byId.get(s.right_id);
         const leftCols = outputColumns(base, steps, i, byId);
+        const groups = leftGroups(base, steps, i, byId);
+        // After a reorder the chosen table may no longer be earlier: show all.
+        const joinTo = groups.some((g) => g.key === s.joinTo) ? s.joinTo : undefined;
+        const shown = joinTo ? groups.filter((g) => g.key === joinTo) : groups;
         const rightCols = right?.columns.map((c) => c.name) ?? [];
         const picked = s.columns ?? rightCols;
         return (
@@ -631,6 +673,12 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                   </button>
                 ))}
               </div>
+              {steps.length > 1 && (<>
+                <button className="quiet" aria-label={`Move step ${i + 1} up`} title="Move up"
+                        disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
+                <button className="quiet" aria-label={`Move step ${i + 1} down`} title="Move down"
+                        disabled={i === steps.length - 1} onClick={() => move(i, 1)}>↓</button>
+              </>)}
               {steps.length > 1 && (
                 <button className="quiet" title="Remove this step"
                         onClick={() => setSteps((prev) => prev.filter((_, j) => j !== i))}>✕</button>
@@ -644,6 +692,15 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                           onChange={(id) => changeRight(i, id)}
                           placeholder="Search open tables…" />
               </label>
+              {groups.length > 1 && (
+                <label>Join to
+                  <select aria-label={`Join step ${i + 1} to`} value={joinTo ?? ""}
+                          onChange={(e) => update(i, { joinTo: e.target.value || undefined })}>
+                    <option value="">Any earlier table</option>
+                    {groups.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
+                  </select>
+                </label>
+              )}
             </div>
 
             <details className="join-advanced">
@@ -691,7 +748,14 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                     <select disabled={sourceBusy || busy} aria-label={`Left key step ${i + 1} condition ${k + 1}`}
                             value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
                       <option value="" disabled>Choose column</option>
-                      {leftCols.map((col) => <option key={col}>{col}</option>)}
+                      {c.left && !shown.some((g) => g.cols.includes(c.left)) && <option>{c.left}</option>}
+                      {shown.length === 1
+                        ? shown[0].cols.map((col) => <option key={col}>{col}</option>)
+                        : shown.map((g) => (
+                          <optgroup key={g.key} label={g.label}>
+                            {g.cols.map((col) => <option key={col}>{col}</option>)}
+                          </optgroup>
+                        ))}
                     </select>
                     <select className="join-op" value={c.op}
                             onChange={(e) => setCondition(i, k, { op: e.target.value as JoinOp })}>

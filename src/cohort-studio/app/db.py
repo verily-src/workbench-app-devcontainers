@@ -298,16 +298,34 @@ def list_s3_folders(wait: bool = False) -> list[dict]:
     return folders
 
 
-def list_bq_datasets(wait: bool = False) -> list[dict]:
+def list_workbench_bq_datasets(wait: bool = False) -> list[dict]:
+    """Workbench BigQuery references only (registered sources are listed separately)."""
+    return list_bq_datasets(wait=wait, include_registered=False)
+
+
+def list_bq_datasets(wait: bool = False, include_registered: bool = True) -> list[dict]:
+    """BigQuery sources: Workbench dataset and table references, plus
+    sources registered in Studio (ids prefixed "bq:"). A table reference
+    exposes just that table."""
     datasets = []
     for r in _ensure_cache(wait=wait):
-        if r.get("resourceType") != "BQ_DATASET":
+        rtype = r.get("resourceType")
+        if rtype not in ("BQ_DATASET", "BQ_DATA_TABLE", "BQ_TABLE"):
             continue
+        table = (r.get("dataTableId") or r.get("tableId") or "") if rtype != "BQ_DATASET" else ""
         datasets.append({
             "id": r.get("id"),
             "project": r.get("projectId"),
             "dataset": r.get("datasetId"),
+            "table": table,
+            "billing_project": "",
         })
+    if include_registered:
+        import source_registry
+        for item in source_registry.entries("bq"):
+            datasets.append({"id": f"bq:{item['id']}", "project": item["project"],
+                             "dataset": item["dataset"], "table": item["table"],
+                             "billing_project": item["billing_project"]})
     return datasets
 
 

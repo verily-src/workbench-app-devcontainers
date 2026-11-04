@@ -208,3 +208,39 @@ def test_profiling_json_scalar_column_as_categorical(engine, events_table):
     _name, source = events_table
     profiles = live_query.profile_columns(source, [{"name": "attrs", "filter_kind": "categorical"}])
     assert len(profiles[0]["values"]) == live_query.CATEGORICAL_VALUES_LIMIT
+
+
+def test_paging_and_filter_changes_reuse_cached_aggregates(engine, events_table, monkeypatch):
+    import query_cache
+    monkeypatch.setenv("STUDIO_QUERY_CACHE_TTL", "30")
+    query_cache.cache.clear()
+    _name, source = events_table
+    charts = [{"kind": "histogram", "x": "quantity"}, {"kind": "bar", "x": "concept_id"}]
+    statements, stop = _capture(engine)
+    try:
+        first = live_query.query(source, [], charts, 0, 10)
+        assert first["cache"]["hit"] is False
+        statements.clear()
+
+        page2 = live_query.query(source, [], charts, 1, 10)
+        data_sql = [s for s in statements if s.startswith("SELECT") and "pg_catalog" not in s]
+        assert len(data_sql) == 1 and "OFFSET" in data_sql[0]      # only the row page
+        assert page2["cache"]["hit"] is False and page2["total"] == 1000
+        assert page2["charts"] == first["charts"]
+        statements.clear()
+
+        filtered = live_query.query(source, [
+            {"column": "concept_id", "kind": "categorical", "values": ["3"]}], charts, 0, 10)
+        assert not [s for s in statements if s.startswith("SELECT MIN(")]   # bounds reused
+        assert not [s for s in statements if "FLOOR(" in s and "FILTER" not in s and "WHERE (" not in s]
+        histogram = filtered["charts"][0]["data"]
+        assert sum(b["all"] for b in histogram) == 1000
+        assert sum(b["selected"] for b in histogram) == filtered["filtered"]
+        statements.clear()
+
+        live_query.query(source, [], charts, 0, 10, refresh=True)
+        assert [s for s in statements if s.startswith("SELECT MIN(")]       # refresh recomputes
+        assert live_query.query(source, [], charts, 0, 10)["cache"]["hit"] is True
+    finally:
+        stop()
+        query_cache.cache.clear()

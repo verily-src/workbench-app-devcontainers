@@ -7,7 +7,7 @@ import time
 from collections import OrderedDict
 from datetime import datetime, timezone
 
-MAX_ENTRIES = 64
+MAX_ENTRIES = 192  # summary, row page and histogram bases are separate entries
 MAX_BYTES = 32 * 1024 * 1024
 MAX_ENTRY_BYTES = 4 * 1024 * 1024
 

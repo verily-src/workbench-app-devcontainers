@@ -87,6 +87,8 @@ function VersionFooter() {
   );
 }
 
+const QUERY_DEBOUNCE_MS = 250;
+
 export default function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [ready, setReady] = useState(false);
@@ -573,8 +575,18 @@ export default function App() {
     if (forceRefresh) consumedRefreshNonce.current[activeDs.id] = refreshNonce;
     setDatasets((prev) => prev.map((dataset) => dataset.id === activeDs.id
       ? { ...dataset, queryLoading: true, queryError: undefined } : dataset));
-    api.query(activeDs.id, activeDs.filters, activeDs.charts, activeDs.page,
-      activeDs.entityColumn, forceRefresh, activeDs.sort)
+    // Debounce filter/sort/page bursts into one dashboard query, and abort the
+    // previous request when inputs change. First load and Refresh run at once.
+    const controller = new AbortController();
+    const delay = forceRefresh || !activeDs.result ? 0 : QUERY_DEBOUNCE_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const started = delay === 0
+      ? Promise.resolve()          // send now, in the same tick as before
+      : new Promise<void>((resolve) => { timer = setTimeout(resolve, delay); });
+    const send = () => api.query(activeDs.id, activeDs.filters, activeDs.charts, activeDs.page,
+      activeDs.entityColumn, forceRefresh, activeDs.sort, controller.signal);
+    const request = delay === 0 ? send() : started.then(send);
+    request
       .then((result) => {
         if (cancelled) return;
         recoveredDatasetIds.current.delete(activeDs.id);
@@ -638,7 +650,7 @@ export default function App() {
           ? { ...d, refreshing: false, queryLoading: false,
               queryError: `Query failed: ${detail}` } : d));
       });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (timer) clearTimeout(timer); controller.abort(); };
   }, [activeDs?.id, activeDs?.filters, chartQuerySignature, activeDs?.page,
       activeDs?.entityColumn, activeDs?.refreshNonce, activeDs?.sort]);
   // eslint-disable-line react-hooks/exhaustive-deps

@@ -422,12 +422,26 @@ export const api = {
       { method: "POST", body: form });
   },
 
-  query: (datasetId: string, filters: Filter[], charts: ChartSpec[],
-          page: number, entityColumn?: string, refresh = false, sort?: Dataset["sort"]) =>
-    request<QueryResult>(`/api/datasets/${datasetId}/query`,
-      post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
-             page, page_size: 50, entity_column: entityColumn ?? null,
-             refresh, sort: sort ?? null })),
+  query: async (datasetId: string, filters: Filter[], charts: ChartSpec[],
+          page: number, entityColumn?: string, refresh = false, sort?: Dataset["sort"],
+          signal?: AbortSignal) => {
+    const init = {
+      ...post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
+               page, page_size: 50, entity_column: entityColumn ?? null,
+               refresh, sort: sort ?? null }),
+      signal,
+    };
+    try {
+      return await request<QueryResult>(`/api/datasets/${datasetId}/query`, init);
+    } catch (e) {
+      // Dashboard queries are admission-limited; one short retry absorbs a
+      // burst instead of surfacing "429" to the user.
+      if (!(e instanceof ApiError) || e.status !== 429 || signal?.aborted) throw e;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      return request<QueryResult>(`/api/datasets/${datasetId}/query`, init);
+    }
+  },
 
   updateColumns: (datasetId: string, columns: ColumnSetting[]) =>
     request<OpenResult>(`/api/datasets/${datasetId}/columns`, {

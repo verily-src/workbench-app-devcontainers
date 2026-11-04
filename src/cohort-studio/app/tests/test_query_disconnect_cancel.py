@@ -1,5 +1,6 @@
 """Dashboard queries stop in PostgreSQL when the browser disconnects."""
 import asyncio
+import json
 import threading
 import time
 import uuid
@@ -27,36 +28,51 @@ def test_disconnect_cancels_running_dashboard_query(engine, monkeypatch):
         "columns": {"id": "id", "slow": "slow"}})
     gone = threading.Event()
 
-    class Request:
-        async def is_disconnected(self):
-            return gone.is_set()
-
     def sleeping():
         with engine.connect() as conn:
             return conn.exec_driver_sql(
                 "SELECT count(*) FROM pg_stat_activity WHERE state = 'active' "
                 f"AND query LIKE '%%CROSS JOIN public.\"{name}\"%%' AND pid <> pg_backend_pid()").scalar()
-    try:
-        req = main.QueryRequest(filters=[], charts=[], page=0, page_size=10, refresh=True)
-        started = time.monotonic()
-        result = {}
 
-        def run():
-            try:
-                asyncio.run(main.query_dataset(ds["dataset_id"], req, Request()))
-            except Exception as exc:
-                result["error"] = exc
-        thread = threading.Thread(target=run)
+    body = json.dumps({"filters": [], "charts": [], "page": 0, "page_size": 10,
+                       "refresh": True}).encode()
+    try:
+        started = time.monotonic()
+        sent = []
+
+        async def call_app():
+            # Full ASGI path through every installed middleware.
+            messages = [{"type": "http.request", "body": body, "more_body": False}]
+
+            async def receive():
+                if messages:
+                    return messages.pop(0)
+                while not gone.is_set():
+                    await asyncio.sleep(0.02)
+                return {"type": "http.disconnect"}
+
+            async def send(message):
+                sent.append(message)
+            scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+                     "method": "POST", "scheme": "http", "path": f"/api/datasets/{ds['dataset_id']}/query",
+                     "raw_path": b"", "query_string": b"", "root_path": "",
+                     "headers": [(b"content-type", b"application/json"),
+                                 (b"content-length", str(len(body)).encode())],
+                     "client": ("127.0.0.1", 1), "server": ("127.0.0.1", 80)}
+            await main.app(scope, receive, send)
+
+        thread = threading.Thread(target=lambda: asyncio.run(call_app()))
         thread.start()
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and not sleeping():
             time.sleep(0.05)
-        assert sleeping(), f"query never started: {result!r}"
+        assert sleeping(), f"query never started: {sent!r}"
         gone.set()
         thread.join(8)
         assert not thread.is_alive()
         assert time.monotonic() - started < 8          # far less than the full count
-        assert getattr(result.get("error"), "status_code", None) == 499
+        status = next(m["status"] for m in sent if m["type"] == "http.response.start")
+        assert status == 499, sent
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline and sleeping():
             time.sleep(0.05)

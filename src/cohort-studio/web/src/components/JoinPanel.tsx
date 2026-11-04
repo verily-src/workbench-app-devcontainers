@@ -271,6 +271,19 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const [previewErr, setPreviewErr] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const [previewJob, setPreviewJob] = useState<{ job: DataJob; receivedAt: number } | null>(null);
+  const [runJob, setRunJob] = useState<{ job: DataJob; receivedAt: number } | null>(null);
+  const [cancelError, setCancelError] = useState("");
+  useEffect(() => {
+    // Full joins report through the same events as the Data operations card.
+    const update = (event: Event) => {
+      const { job } = (event as CustomEvent<{ id: string; job: DataJob | null }>).detail;
+      if (job && job.kind !== "join") return;
+      setRunJob(job && ["queued", "running", "cancelling"].includes(job.status)
+        ? { job, receivedAt: Date.now() } : null);
+    };
+    window.addEventListener("studio-data-job", update);
+    return () => window.removeEventListener("studio-data-job", update);
+  }, []);
   const previewRequest = useRef(0);
   const previewAbort = useRef<AbortController | null>(null);
   useEffect(() => () => previewAbort.current?.abort(), []);
@@ -769,6 +782,20 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           {busy ? "Joining…" : initialPlan ? "Create edited join in new tab" : "Join into new tab"}
         </button>
       </div>
+      {busy && runJob && (
+        <div className="join-run-progress" role="status" aria-label="Join progress">
+          <JobProgress job={runJob.job} receivedAt={runJob.receivedAt}
+            onCancel={async () => {
+              setCancelError("");
+              try {
+                const response = await fetch(`/api/data-jobs/${runJob.job.job_id}/cancel`, { method: "POST" });
+                if (!response.ok) throw new Error("Could not cancel. Try again.");
+              } catch (e) { setCancelError((e as Error).message); }
+            }} />
+          <p className="join-run-hint">You can switch tabs; the join keeps running and the result opens in a new tab.</p>
+          {cancelError && <p role="alert">{cancelError}</p>}
+        </div>
+      )}
 
       {crossSource && <div className="settings-hint join-warn">
         <label><input type="checkbox" checked={allowLoaded} disabled={busy || previewing}

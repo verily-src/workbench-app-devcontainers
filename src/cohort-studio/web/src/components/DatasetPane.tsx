@@ -254,9 +254,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
             {dataset.entityColumn && entityCount
               ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
               : `of ${result?.total.toLocaleString() ?? "…"} rows`}
-            · {scope === "database" ? "counts cover the full database"
+            {" · "}{scope === "database" ? "counts cover the full database"
               : result?.sampled ? "capped loaded sample" : "loaded rows"}
-            · {dataset.source}
+            {" · "}{dataset.source}
           </span>
         </div>
         <label className="entity-select">Count unique
@@ -275,7 +275,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         <ColumnSettings dataset={dataset} onUpdate={onUpdate} />
         <GrainSettings key={dataset.id} dataset={dataset} onUpdate={onUpdate} />
-        <label>Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
+        <label className="entity-select format-select">Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
           {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}`}
         </button>

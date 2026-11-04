@@ -114,6 +114,11 @@ export default function App() {
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
+  // The join builder stays mounted (hidden) while you visit other tabs, so a
+  // draft or a running join is still there when you come back.
+  const [joinMounted, setJoinMounted] = useState(false);
+  const [joinRunning, setJoinRunning] = useState(false);
+  useEffect(() => { if (showJoin) setJoinMounted(true); }, [showJoin]);
   const [editingJoin, setEditingJoin] = useState<JoinEdit | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -260,6 +265,7 @@ export default function App() {
     if (editingJoin) void closeEditInputs(editingJoin);
     setEditingJoin(null);
     setShowJoin(false);
+    setJoinMounted(false);
   };
 
   const editJoin = async (datasetId: string) => {
@@ -405,6 +411,7 @@ export default function App() {
   const doJoin = async (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean }) => {
     setActivity("Joining…");
     setActivityInCard(true);
+    setJoinRunning(true);
     setError("");
     try {
       let opened: OpenResult & { join: JoinStats };
@@ -482,6 +489,7 @@ export default function App() {
         setEditingJoin(null);
       }
       setShowJoin(false);
+      setJoinMounted(false);
     } catch (e) {
       const message = (e as Error).message;
       setError(e instanceof JoinRecoveryError
@@ -489,6 +497,7 @@ export default function App() {
     } finally {
       setActivity("");
       setActivityInCard(false);
+      setJoinRunning(false);
     }
   };
 
@@ -851,7 +860,7 @@ export default function App() {
                 {datasets.map((d, i) => (
                   <span key={d.id}
                         className={`tab${i === active ? " active" : ""}`}
-                        onClick={() => { closeJoinPanel(); setActive(i); showExploreTables(); }}>
+                        onClick={() => { setShowJoin(false); setActive(i); showExploreTables(); }}>
                     {renamingDatasetId === d.id ? <form className="tab-rename"
                       onClick={(event) => event.stopPropagation()}
                       onSubmit={(event) => { event.preventDefault(); saveDatasetName(d); }}>
@@ -881,13 +890,15 @@ export default function App() {
                   </span>
                 ))}
                 {(datasets.length >= 2 || sources.length > 0) && (
-                  <button className="tab-join" data-tutorial-target="join-button"
-                          onClick={() => { if (showJoin) closeJoinPanel(); else setShowJoin(true); }}>
-                    ⋈ Join
+                  <button className={`tab-join${showJoin ? " active" : ""}${joinRunning ? " running" : ""}`}
+                          data-tutorial-target="join-button"
+                          aria-label={joinRunning ? "Join (running)" : undefined}
+                          onClick={() => setShowJoin(!showJoin)}>
+                    {joinRunning ? <><span className="spinner small" aria-hidden="true" />Joining…</> : "⋈ Join"}
                   </button>
                 )}
               </div>
-              {showJoin && (
+              {(showJoin || joinMounted) && <div hidden={!showJoin}>
                 <JoinPanel key={editingJoin?.originalDatasetId ?? "new"}
                            datasets={joinBuilderDatasets} sources={sources} busy={Boolean(activity)}
                            initialPlan={editingJoin ? {
@@ -898,7 +909,7 @@ export default function App() {
                              openResult(opened, title, sourceRef, undefined,
                                { forceNewTab: true })}
                            onJoin={doJoin} onClose={closeJoinPanel} />
-              )}
+              </div>}
               {dependentJob && !showJoin && (
                 <div className="wf-dep-banner">
                   <span className="wf-pulse" />

@@ -46,6 +46,7 @@ import queries
 import views
 import materialized_sources
 import saved_snapshots
+import query_cancellation
 import view_jobs
 import data_jobs
 import workflows
@@ -1075,8 +1076,42 @@ def summarize_dataset(dataset_id: str, req: group_summary.SummaryRequest):
                             str(e).split("\n")[0][:300])
 
 
+DISCONNECT_POLL_S = 0.25
+
+
 @app.post("/api/datasets/{dataset_id}/query")
-def query_dataset(dataset_id: str, req: QueryRequest):
+async def query_dataset(dataset_id: str, req: QueryRequest, request: Request):
+    """Run the dashboard query in a worker thread; if the browser goes away
+    (debounce abort, tab switch, closed page), cancel it in the database
+    instead of finishing every scan for nobody."""
+    import asyncio
+    from starlette.concurrency import run_in_threadpool
+
+    scope = query_cancellation.Scope()
+
+    def work():
+        token = query_cancellation.current.set(scope)
+        try:
+            return _query_dataset_sync(dataset_id, req)
+        finally:
+            query_cancellation.current.reset(token)
+            scope.finish()
+
+    task = asyncio.ensure_future(run_in_threadpool(work))
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=DISCONNECT_POLL_S)
+        if done:
+            return task.result()
+        if await request.is_disconnected():
+            scope.cancel()
+            try:
+                await task
+            except Exception:
+                pass
+            raise HTTPException(499, "Client closed the request.")
+
+
+def _query_dataset_sync(dataset_id: str, req: QueryRequest):
     try:
         result = datasets.query(
             dataset_id,

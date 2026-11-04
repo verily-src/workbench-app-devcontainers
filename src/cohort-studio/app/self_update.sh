@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 
 REPO="${UPDATE_REPO:-verily-src/workbench-app-devcontainers}"
-BRANCH="${UPDATE_BRANCH:-cohort-dashboard}"
+BRANCH="${UPDATE_BRANCH:-BENCH-10576-cohort-browser}"
 APP_PATH="${UPDATE_APP_PATH:-src/cohort-studio}"
 APP_ROOT="${UPDATE_APP_ROOT:-/app}"
 SHA_FILE="${APP_ROOT}/APP_SHA"

@@ -8,6 +8,11 @@ try { theme = window.localStorage.getItem("cohort-studio-theme"); } catch {}
 document.documentElement.dataset.theme =
   theme === "dark" || theme === "light" ? theme : "system";
 
+let uiScale: string | null = null;
+try { uiScale = window.localStorage.getItem("cohort-studio-ui-scale"); } catch {}
+document.documentElement.dataset.uiScale =
+  uiScale === "standard" || uiScale === "large" ? uiScale : "comfortable";
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />

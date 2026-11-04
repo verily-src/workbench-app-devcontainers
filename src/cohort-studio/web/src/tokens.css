@@ -720,6 +720,11 @@ button.link:hover { text-decoration: underline; }
 .dataset-toolbar .detail { overflow-wrap: anywhere; }
 .entity-select { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .entity-select select { width: 160px; max-width: 30vw; }
+.format-select select { width: 110px; }
+/* One control height across the toolbar so labels, selects and buttons line up. */
+.dataset-toolbar > button, .dataset-toolbar > label select,
+.dataset-toolbar > :not(.hero) > button { min-height: 34px; box-sizing: border-box; }
+.dataset-toolbar > label { margin: 0; font-size: 13px; color: var(--ink-soft); }
 
 .join-sql-editor { width: 100%; min-height: 160px; box-sizing: border-box; font-family: monospace; }
 .join-sql-preview { overflow: auto; max-height: 240px; }

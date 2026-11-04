@@ -66,7 +66,7 @@ export function JobProgress({ job, receivedAt, expected, onCancel }: {
   const facts = phaseFacts(job);
   return (
     <div className="data-job" data-status={job.status}>
-      <span className="pulse" aria-hidden="true" />
+      <span className="spinner" aria-hidden="true" />
       <div className="data-job-body">
         <div className="data-job-title">
           <strong>{verb(job)}</strong>{job.label ? <> <span className="data-job-label">{job.label}</span></> : null}

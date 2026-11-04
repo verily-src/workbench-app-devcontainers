@@ -22,7 +22,22 @@
   background: var(--surface);
 }
 
-.data-job > .pulse { flex: none; width: 10px; height: 10px; }
+.spinner {
+  display: inline-block;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--accent-tint-border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  box-sizing: border-box;
+}
+.spinner.small { width: 12px; height: 12px; border-width: 2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
+}
 
 .data-job-check {
   flex: none;
@@ -68,3 +83,12 @@
   flex-basis: 100%;
   margin-top: 6px;
 }
+
+.join-run-progress {
+  margin: 12px 0 4px;
+}
+.join-run-progress .data-job { padding: 14px 16px; }
+.join-run-progress .spinner { width: 24px; height: 24px; border-width: 3px; }
+.tab-join .spinner { margin-right: 6px; vertical-align: -2px; }
+.tab-join.running { color: var(--accent); font-weight: 600; }
+.join-run-hint { margin: 6px 2px 0; color: var(--ink-muted); font-size: 12px; }

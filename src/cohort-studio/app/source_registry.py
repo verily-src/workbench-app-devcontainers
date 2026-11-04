@@ -114,7 +114,8 @@ class BigQueryRegistration(RegistrationBase):
     kind: Literal["bq"]
     project: str = Field(pattern=_GCP_PROJECT, max_length=63)
     dataset: str = Field(pattern=r"^[A-Za-z0-9_]{1,1024}$")
-    table: str = Field(default="", pattern=r"^[A-Za-z0-9_$-]{0,1024}$")
+    # Same identifier rule as bq._validate (no partition decorators).
+    table: str = Field(default="", pattern=r"^[A-Za-z0-9_-]{0,1024}$")
     billing_project: str = Field(default="", pattern=r"^$|" + _GCP_PROJECT, max_length=63)
 
 

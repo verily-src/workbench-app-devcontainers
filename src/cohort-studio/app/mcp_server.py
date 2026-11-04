@@ -117,7 +117,8 @@ if AVAILABLE:
             for d in db.list_bq_datasets():
                 if d["id"] == resource_id:
                     df = bq.fetch_table(d["project"], d["dataset"], table,
-                                        queries.ROW_CAP)
+                                        queries.ROW_CAP,
+                                        billing=d.get("billing_project", ""))
                     break
             else:
                 raise ValueError(f"Unknown BigQuery dataset: {resource_id}")

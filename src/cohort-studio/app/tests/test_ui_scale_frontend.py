@@ -78,3 +78,33 @@ def test_large_scale_is_selectable_and_persists(page, app_url):
     assert page.evaluate("document.documentElement.dataset.uiScale") == "large"
     assert _fits(page) == [True, True]
     page.screenshot(path='/private/tmp/cohort-ui-large.png')
+
+
+def _inside(page, selector):
+    return page.evaluate("""s => { const r = document.querySelector(s).getBoundingClientRect();
+      return r.left >= -1 && r.top >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1; }""", selector)
+
+
+def test_narrow_screens_are_not_zoomed_and_tutorial_fits(page, app_url):
+    page.set_viewport_size({"width": 500, "height": 800})
+    bodies = []
+    _load(page, app_url, bodies)
+    assert page.evaluate("getComputedStyle(document.getElementById('root')).zoom") == "1"
+    assert _fits(page) == [True, True]
+    page.get_by_role("button", name="Tutorial", exact=True).click()
+    expect(page.locator(".tutorial-dialog")).to_be_visible()
+    assert _inside(page, ".tutorial-dialog")
+
+
+def test_large_scale_drawer_and_dialog_stay_on_screen(page, app_url):
+    page.add_init_script("localStorage.setItem('cohort-studio-ui-scale', 'large')")
+    page.set_viewport_size({"width": 1280, "height": 640})
+    bodies = []
+    _load(page, app_url, bodies)
+    page.get_by_role("button", name="Dataset settings").click()
+    expect(page.get_by_role("dialog", name="Dataset settings")).to_be_visible()
+    assert _inside(page, ".dataset-settings-drawer")
+    page.keyboard.press("Escape")
+    page.get_by_role("button", name="Add data source").click()
+    expect(page.get_by_role("dialog")).to_be_visible()
+    assert _inside(page, "[aria-labelledby='add-source-title']")

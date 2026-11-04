@@ -8,7 +8,7 @@
   box-shadow: 0 0 0 9999px rgba(18, 20, 24, .52);
 }
 .tutorial-dialog {
-  position: fixed; z-index: 1201; width: min(420px, calc(100vw - 32px));
+  position: fixed; z-index: 1201; width: min(420px, calc(calc(100 * var(--vw)) - 32px));
   padding: 18px; background: var(--card); color: var(--ink);
   border: 1px solid var(--border-strong); border-radius: var(--radius);
   box-shadow: 0 12px 36px rgba(0, 0, 0, .24); pointer-events: auto;
@@ -35,5 +35,5 @@
 .tutorial-actions button { min-height: 34px; }
 .tutorial-shortcuts { margin-top: 10px; text-align: right; }
 @media (max-width: 520px) {
-  .tutorial-dialog { top: auto !important; bottom: 12px; left: 12px !important; width: calc(100vw - 24px); }
+  .tutorial-dialog { top: auto !important; bottom: 12px; left: 12px !important; width: calc(calc(100 * var(--vw)) - 24px); }
 }

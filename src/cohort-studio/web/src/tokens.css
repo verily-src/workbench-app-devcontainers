@@ -433,7 +433,7 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .omop-summary-charts .chart-card { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
 .join-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
 .column-settings { position: relative; }
-.column-settings-panel { position: absolute; z-index: 5; right: 0; top: 100%; width: min(760px, 82vw); max-height: 65vh; overflow: auto; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px #0002; }
+.column-settings-panel { position: absolute; z-index: 5; right: 0; top: 100%; width: min(760px, calc(82 * var(--vw))); max-height: calc(65 * var(--vh)); overflow: auto; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px #0002; }
 .column-setting-row { display: grid; grid-template-columns: minmax(120px, 1.3fr) repeat(3, minmax(110px, 1fr)); gap: 8px; align-items: end; margin: 8px 0; }
 .column-setting-row > strong { padding-bottom: 7px; overflow-wrap: anywhere; }
 .column-setting-row label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--ink-muted); }
@@ -651,10 +651,10 @@ button.link:hover { text-decoration: underline; }
   position: fixed; inset: 0; z-index: 1100;
   background: rgba(23, 24, 26, 0.28);
   display: flex; align-items: flex-start; justify-content: center;
-  padding-top: 12vh;
+  padding-top: calc(12 * var(--vh));
 }
 .palette {
-  width: 560px; max-width: 92vw; background: var(--card);
+  width: 560px; max-width: calc(92 * var(--vw)); background: var(--card);
   border: 1px solid var(--border-strong); border-radius: 10px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22); overflow: hidden;
 }
@@ -663,7 +663,7 @@ button.link:hover { text-decoration: underline; }
   border-radius: 0; font-size: 14px; padding: 13px 14px;
 }
 .palette-input:focus { box-shadow: none; border-color: var(--border); }
-.palette-list { max-height: 50vh; overflow-y: auto; padding: 6px; }
+.palette-list { max-height: calc(50 * var(--vh)); overflow-y: auto; padding: 6px; }
 .palette-item {
   display: flex; align-items: baseline; gap: 10px;
   padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer;
@@ -719,7 +719,7 @@ button.link:hover { text-decoration: underline; }
 .dataset-toolbar .hero { flex: 1 1 360px; min-width: 0; margin: 0; }
 .dataset-toolbar .detail { overflow-wrap: anywhere; }
 .entity-select, .inline-field { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-.entity-select select { width: 160px; max-width: 30vw; }
+.entity-select select { width: 160px; max-width: calc(30 * var(--vw)); }
 .format-select select { width: 110px; }
 /* One control height across the toolbar so labels, selects and buttons line up. */
 .dataset-toolbar > button, .dataset-toolbar > label select,
@@ -736,7 +736,7 @@ button.link:hover { text-decoration: underline; }
 .join-row > label { min-width: 0; }
 .join-source-picker .join-row > .combo { flex: 1 1 320px; min-width: min(100%, 260px); }
 .join-source-picker .combo-input { width: 100%; box-sizing: border-box; }
-.join-source-picker .combo-list { left: auto; right: 0; width: min(440px, calc(100vw - 40px)); box-sizing: border-box; }
+.join-source-picker .combo-list { left: auto; right: 0; width: min(440px, calc(calc(100 * var(--vw)) - 40px)); box-sizing: border-box; }
 .join-source-picker .combo-label { min-width: 0; overflow-wrap: anywhere; }
 .filter-custom-value { display: flex; gap: 4px; margin-top: 6px; }
 .filter-custom-value input { min-width: 0; width: 100%; }
@@ -757,7 +757,7 @@ button.link:hover { text-decoration: underline; }
 .performance-table th, .performance-table td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
 .performance-table th:nth-child(n+3), .performance-table td:nth-child(n+3) { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 @media (max-width: 700px) {
-  .column-settings-panel { position: fixed; top: 80px; left: 12px; right: 12px; width: auto; max-height: calc(100vh - 100px); }
+  .column-settings-panel { position: fixed; top: 80px; left: 12px; right: 12px; width: auto; max-height: calc(calc(100 * var(--vh)) - 100px); }
 }
 
 /* Calm surfaces and clear hierarchy across the workspace. */
@@ -805,10 +805,17 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
   border-radius: var(--radius); background: var(--accent-tint); font-size: 12.5px; color: var(--ink-soft); }
 
 /* Display size: scale the whole app (text, controls, spacing) uniformly.
-   The root is shrunk by the same factor so the zoomed app still fits the window. */
-:root { --ui-scale: 1; }
+   The root is shrunk by the same factor so the zoomed app still fits the
+   window; --vw/--vh are viewport units in the zoomed root's CSS pixels, so
+   use them instead of vw/vh inside the app. Narrow screens are not zoomed. */
+:root { --ui-scale: 1; --vw: 1vw; --vh: 1vh; }
 :root[data-ui-scale="comfortable"] { --ui-scale: 1.125; }
 :root[data-ui-scale="large"] { --ui-scale: 1.25; }
+@media (max-width: 640px) { :root[data-ui-scale] { --ui-scale: 1; } }
+#root {
+  --vw: calc(1vw / var(--ui-scale));
+  --vh: calc(1vh / var(--ui-scale));
+}
 :root:not([data-ui-scale="standard"]) #root {
   zoom: var(--ui-scale);
   width: calc(100vw / var(--ui-scale));

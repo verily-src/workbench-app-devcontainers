@@ -53,7 +53,7 @@
 .studio-agent-column-mapping { display: grid; grid-template-columns: 1fr; gap: 4px; align-items: baseline; }
 .studio-agent-column-mapping strong { grid-column: 1 / -1; }
 .studio-agent-column-mapping code { overflow-wrap: anywhere; }
-.studio-agent-plans { max-height: 34vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px 4px 8px; }
+.studio-agent-plans { max-height: calc(34 * var(--vh)); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px 4px 8px; }
 .studio-agent-plans h2 { margin: 0; font-size: 15px; }
 .studio-agent-plans .workflow-plan { width: 100%; }
 .studio-agent-verified { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border: 1px solid var(--border); border-left: 4px solid var(--success, #24835b); border-radius: 8px; background: var(--card); color: var(--ink); padding: 10px 12px; margin-bottom: 10px; }
@@ -83,7 +83,7 @@
 .mascot-drive .mascot-chaser { position: absolute; z-index: 2; width: 150px; height: 120px; object-fit: contain; left: 0; bottom: 7px; animation: mascot-chase-bob .45s ease-in-out infinite alternate; }
 @keyframes mascot-chase-bob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-8px) rotate(4deg); } }
 .mascot-wizard-rider { position: absolute; z-index: 2; width: 55px; height: 78px; object-fit: contain; left: 170px; top: 0; }
-.mascot-rescue { position: fixed; z-index: 13; right: 9vw; bottom: 12vh; width: 135px; height: 190px; pointer-events: none; animation: mascot-rescue-arrival 2s ease-out both; }
+.mascot-rescue { position: fixed; z-index: 13; right: calc(9 * var(--vw)); bottom: calc(12 * var(--vh)); width: 135px; height: 190px; pointer-events: none; animation: mascot-rescue-arrival 2s ease-out both; }
 .mascot-rescue img { width: 100%; height: 100%; object-fit: contain; }
 .mascot-magic { position: absolute; left: -18px; top: 0; width: 125px; height: 125px; border-radius: 50%; background: radial-gradient(circle, #fff9 0%, #8de0c488 35%, transparent 70%); animation: mascot-magic 1.5s ease-in-out infinite alternate; }
 @keyframes mascot-rescue-arrival { from { opacity: 0; transform: translateX(180px); } to { opacity: 1; transform: translateX(0); } }
@@ -94,22 +94,22 @@
 @keyframes mascot-shot { 0%, 14%, 36%, 100% { opacity: 0; } 15% { opacity: 1; transform: translate(0, 0); } 34% { opacity: 1; transform: translate(-155px, -60px); } }
 @keyframes mascot-bang { 0%, 32%, 54%, 100% { opacity: 0; transform: scale(.3) rotate(-12deg); } 35% { opacity: 1; transform: scale(1.1) rotate(4deg); } 50% { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes mascot-road {
-  0% { opacity: 0; transform: translate(-350px, 72vh) scaleX(1); }
+  0% { opacity: 0; transform: translate(-350px, calc(72 * var(--vh))) scaleX(1); }
   2% { opacity: 1; }
-  23% { opacity: 1; transform: translate(100vw, 72vh) scaleX(1); }
-  24% { opacity: 0; transform: translate(calc(100vw + 350px), 72vh) scaleX(1); }
-  25% { opacity: 0; transform: translate(calc(100vw + 350px), 38vh) scaleX(-1); }
+  23% { opacity: 1; transform: translate(calc(100 * var(--vw)), calc(72 * var(--vh))) scaleX(1); }
+  24% { opacity: 0; transform: translate(calc(calc(100 * var(--vw)) + 350px), calc(72 * var(--vh))) scaleX(1); }
+  25% { opacity: 0; transform: translate(calc(calc(100 * var(--vw)) + 350px), calc(38 * var(--vh))) scaleX(-1); }
   27% { opacity: 1; }
-  48% { opacity: 1; transform: translate(-350px, 38vh) scaleX(-1); }
-  49% { opacity: 0; transform: translate(-350px, 38vh) scaleX(-1); }
-  50% { opacity: 0; transform: translate(-350px, 12vh) scaleX(1); }
+  48% { opacity: 1; transform: translate(-350px, calc(38 * var(--vh))) scaleX(-1); }
+  49% { opacity: 0; transform: translate(-350px, calc(38 * var(--vh))) scaleX(-1); }
+  50% { opacity: 0; transform: translate(-350px, calc(12 * var(--vh))) scaleX(1); }
   52% { opacity: 1; }
-  73% { opacity: 1; transform: translate(100vw, 12vh) scaleX(1); }
-  74% { opacity: 0; transform: translate(calc(100vw + 350px), 12vh) scaleX(1); }
-  75% { opacity: 0; transform: translate(calc(100vw + 350px), 55vh) scaleX(-1); }
+  73% { opacity: 1; transform: translate(calc(100 * var(--vw)), calc(12 * var(--vh))) scaleX(1); }
+  74% { opacity: 0; transform: translate(calc(calc(100 * var(--vw)) + 350px), calc(12 * var(--vh))) scaleX(1); }
+  75% { opacity: 0; transform: translate(calc(calc(100 * var(--vw)) + 350px), calc(55 * var(--vh))) scaleX(-1); }
   77% { opacity: 1; }
-  98% { opacity: 1; transform: translate(-350px, 55vh) scaleX(-1); }
-  99%, 100% { opacity: 0; transform: translate(-350px, 55vh) scaleX(-1); }
+  98% { opacity: 1; transform: translate(-350px, calc(55 * var(--vh))) scaleX(-1); }
+  99%, 100% { opacity: 0; transform: translate(-350px, calc(55 * var(--vh))) scaleX(-1); }
 }
  .rescue-preview-button { margin-left: auto; }
 @media (prefers-reduced-motion: reduce) {

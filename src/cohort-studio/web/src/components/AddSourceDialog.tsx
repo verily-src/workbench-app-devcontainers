@@ -69,8 +69,8 @@ export function AddSourceDialog({ onClose, onAdded }: Props) {
       if (event.target === event.currentTarget) onClose();
     }}>
       <section className="settings-card" role="dialog" aria-modal="true"
-               aria-labelledby="add-source-title" style={{ width: "min(560px, 92vw)",
-                 maxHeight: "90vh", overflowY: "auto" }}>
+               aria-labelledby="add-source-title" style={{ width: "min(560px, calc(92 * var(--vw)))",
+                 maxHeight: "calc(90 * var(--vh))", overflowY: "auto" }}>
         <h2 id="add-source-title">Add data source</h2>
         <label className="field-label" style={{ display: "grid", gap: 4 }}>Source type
           <select aria-label="Source type" value={kind}

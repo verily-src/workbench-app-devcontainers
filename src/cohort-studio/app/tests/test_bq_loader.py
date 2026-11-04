@@ -85,9 +85,30 @@ def test_registration_and_discovery(monkeypatch):
 
 
 @pytest.mark.parametrize("bad", [
-    {"project": "Bad_Project"}, {"dataset": "has space"}, {"table": "x;drop"}, {"billing_project": "UP"}])
+    {"project": "Bad_Project"}, {"dataset": "has space"}, {"table": "x;drop"}, {"billing_project": "UP"},
+    {"table": "events$20261104"}])
 def test_registration_rejects_unsafe_identifiers(bad):
     item = {"kind": "bq", "id": "clinvar", "label": "ClinVar", "project": "bigquery-public-data",
             "dataset": "human_variant_annotation", **bad}
     with pytest.raises(Exception):
         source_registry.BigQueryRegistration(**item)
+
+
+
+def test_mcp_open_uses_the_registered_billing_project(monkeypatch):
+    import asyncio
+    import mcp_server
+    if mcp_server.mcp is None:
+        pytest.skip("MCP SDK not installed")
+    seen = {}
+    monkeypatch.setattr(db, "list_bq_datasets", lambda *a, **k: [{
+        "id": "bq:clinvar", "project": "bigquery-public-data", "dataset": "human_variant_annotation",
+        "table": "t1", "billing_project": "my-billing-1"}])
+
+    def fetch(project, dataset, table, cap, billing=""):
+        seen["billing"] = billing
+        return pd.DataFrame({"a": [1]})
+    monkeypatch.setattr(bq, "fetch_table", fetch)
+    asyncio.run(mcp_server.mcp.call_tool("open_dataset", {
+        "kind": "bq", "resource_id": "bq:clinvar", "table": "t1"}))
+    assert seen["billing"] == "my-billing-1"

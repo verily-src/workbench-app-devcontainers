@@ -4,6 +4,14 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **PUSHED, deployment unverified (2026-11-04): smaller improvements** (8f0c959…22a066c). Codex `gpt-6-astra` (medium) found three issues, all fixed with tests.
+  - **Bundle size.** ECharts is tree-shaken (`web/src/echarts.ts`: bar/scatter/heatmap + grid/tooltip/visualMap/geo, canvas). The chart chunk went from 1,036 KB to 556 KB; the entry chunk stays at 212 KB. 13 chart/map/PDF/summary browser tests passed.
+  - **Session restore.** Open tabs' recipes autosave to `localStorage` under `studio-session-v1:<app path>`, so apps on the shared Workbench origin don't collide. The empty state offers "Restore last session"; uploads are counted, not restored. The snapshot is cleared when no restorable tab remains, and the active tab is mapped into the saved list. Saved views and session restore share `viewSpecs()` and `restoreSpecs()`.
+  - **Restore concurrency.** Restore now opens two tabs at a time (the server's per-session data-job limit) and keeps the tabs that open, naming the ones that failed. Previously a third tab got a 429 and the whole restore, saved views included, failed.
+  - **Performance panel.** `/api/performance` adds query-cache hits, misses, hit rate, entries and bytes; rows add p50 and max and sort slowest first.
+  - **Join builder moves.** Up/down is disabled when a swap would leave a condition referencing a later step, with a tooltip naming the dependency.
+  - **Evidence:** `test_session_restore_frontend.py` (3, including a mocked two-job server limit), the cache-stats test in `test_perf_batch1.py`, and the updated `test_join_builder_frontend.py`. Saved-view, grain and join browser tests pass.
+
 - **PUSHED, deployment unverified (2026-11-04): BigQuery loader and the Dataset settings drawer** (6b7780e, 81fa7f4, 669299e, plus the Add-source dialog). Codex `gpt-6-astra` (medium): two BigQuery findings, both fixed with tests.
   - **BigQuery discovery.** Studio now finds Workbench `BQ_DATA_TABLE` references (single table) as well as `BQ_DATASET`, plus BigQuery sources registered in Studio (`kind: "bq"`: project, dataset, optional table, billing project; id `bq:<id>`; also in Add data source).
   - **Billing.** Jobs bill the registration's billing project, then `STUDIO_BQ_BILLING_PROJECT`, then the data project. Public datasets can't bill their own project.

@@ -10,7 +10,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ludeeus/action-shellcheck@2.0.0
         with:
           check_together: 'yes'
@@ -166,7 +166,7 @@ jobs:
       matrix:
         app: ${{ fromJSON(needs.detect-changes.outputs.apps) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install bats
         run: sudo apt-get update && sudo apt-get install -y bats

@@ -286,7 +286,7 @@ location). Use the full suite for releases; `-m e2e` selects the browser/MCP flo
 wb app config create \
   --name="Cohort Studio" \
   --git-repo-url="https://github.com/verily-src/workbench-app-devcontainers.git" \
-  --git-branch="cohort-dashboard" \
+  --git-branch="BENCH-10576-cohort-browser" \
   --dev-container-path="src/cohort-studio" \
   --description="Cohort exploration studio (React + FastAPI)"
 ```

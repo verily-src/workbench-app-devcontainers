@@ -47,6 +47,7 @@ import views
 import materialized_sources
 import saved_snapshots
 import query_cancellation
+import disconnect_watch
 import view_jobs
 import data_jobs
 import workflows
@@ -86,6 +87,9 @@ app.include_router(plink_api.router)
 app.middleware("http")(execution.trace_request)
 app.include_router(knowledge.router)
 app.middleware("http")(agent_sessions.preserve_owner_cookie)
+# Added last, so it is outermost: it must see the raw connection to notice
+# disconnects that BaseHTTPMiddleware layers would hide.
+app.add_middleware(disconnect_watch.DisconnectWatch)
 
 @app.exception_handler(agent_store.AgentStoreError)
 async def agent_store_error(_request: Request, exc: agent_store.AgentStoreError):
@@ -1102,7 +1106,8 @@ async def query_dataset(dataset_id: str, req: QueryRequest, request: Request):
         done, _ = await asyncio.wait({task}, timeout=DISCONNECT_POLL_S)
         if done:
             return task.result()
-        if await request.is_disconnected():
+        gone = getattr(request.state, "disconnected", None)
+        if (gone.is_set() if gone is not None else await request.is_disconnected()):
             scope.cancel()
             try:
                 await task

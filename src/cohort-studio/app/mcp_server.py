@@ -84,7 +84,7 @@ if AVAILABLE:
         elif kind == "bq":
             for d in db.list_bq_datasets():
                 if d["id"] == resource_id:
-                    items = bq.list_tables(d["project"], d["dataset"])
+                    items = ([d["table"]] if d.get("table") else bq.list_tables(d["project"], d["dataset"], d.get("billing_project", "")))
                     break
             else:
                 raise ValueError(f"Unknown BigQuery dataset: {resource_id}")

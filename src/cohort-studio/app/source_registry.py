@@ -101,8 +101,25 @@ class AthenaRegistration(RegistrationBase):
         return value.rstrip("/") + "/"
 
 
+_GCP_PROJECT = r"^[a-z][a-z0-9-]{4,61}[a-z0-9]$"
+
+
+class BigQueryRegistration(RegistrationBase):
+    """A BigQuery dataset (or one table in it) queried with a billing project.
+
+    Public datasets such as bigquery-public-data can't bill queries to their
+    own project, so jobs run in `billing_project` (default: the
+    STUDIO_BQ_BILLING_PROJECT setting, then the data project).
+    """
+    kind: Literal["bq"]
+    project: str = Field(pattern=_GCP_PROJECT, max_length=63)
+    dataset: str = Field(pattern=r"^[A-Za-z0-9_]{1,1024}$")
+    table: str = Field(default="", pattern=r"^[A-Za-z0-9_$-]{0,1024}$")
+    billing_project: str = Field(default="", pattern=r"^$|" + _GCP_PROJECT, max_length=63)
+
+
 Registration = Annotated[
-    Union[PostgresRegistration, S3Registration, AthenaRegistration],
+    Union[PostgresRegistration, S3Registration, AthenaRegistration, BigQueryRegistration],
     Field(discriminator="kind"),
 ]
 
@@ -177,7 +194,8 @@ def add(payload: dict) -> dict:
         cfg["data_sources"] = values
         config._write(cfg)
     runtime_id = (f"postgres:{item.id}" if item.kind == "postgres" else
-                  f"s3:{item.id}" if item.kind == "s3" else item.id)
+                  f"s3:{item.id}" if item.kind == "s3" else
+                  f"bq:{item.id}" if item.kind == "bq" else item.id)
     return {"kind": item.kind, "id": runtime_id, "label": item.label}
 
 
@@ -190,6 +208,10 @@ def public_sources() -> list[dict]:
             runtime_id = f"postgres:{item['id']}"
             summary = {"kind": "postgres", "id": runtime_id,
                        "label": item["label"], "region": item["region"]}
+        elif item["kind"] == "bq":
+            summary = {"kind": "bq", "id": f"bq:{item['id']}", "label": item["label"],
+                       "project": item["project"], "dataset": item["dataset"],
+                       "table": item["table"]}
         elif item["kind"] == "s3":
             runtime_id = f"s3:{item['id']}"
             summary = {"kind": "s3", "id": runtime_id,
@@ -231,6 +253,13 @@ def validate_connection(payload: dict) -> None:
                     connection.execute(text("SELECT 1"))
             finally:
                 engine.dispose()
+        elif isinstance(item, BigQueryRegistration):
+            import bq
+            client = bq._client(bq.billing_project(item.billing_project, item.project))
+            if item.table:
+                client.get_table(f"{item.project}.{item.dataset}.{item.table}")
+            else:
+                client.get_dataset(f"{item.project}.{item.dataset}")
         elif isinstance(item, S3Registration):
             import boto3
             boto3.client("s3", region_name=item.region).list_objects_v2(

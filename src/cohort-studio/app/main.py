@@ -333,8 +333,8 @@ def _load_frame(kind: str, resource_id: str, table: str) -> pd.DataFrame:
     if kind == "bq":
         for d in db.list_bq_datasets():
             if d["id"] == resource_id:
-                return bq.fetch_table(d["project"], d["dataset"], table,
-                                      queries.ROW_CAP)
+                return bq.fetch_table(d["project"], d["dataset"], table, queries.ROW_CAP,
+                                      billing=d.get("billing_project", ""))
         raise HTTPException(404, f"Unknown BigQuery dataset: {resource_id}")
     if kind == "catalog":
         try:
@@ -375,7 +375,7 @@ def self_update():
 def datasources():
     ready = db.resources_ready()
     sources = (postgres_sources.resources() + external_sources.athena_resources()
-               + [item for item in source_registry.public_sources() if item["kind"] == "s3"])
+               + [item for item in source_registry.public_sources() if item["kind"] in ("s3", "bq")])
     folders = []
     if ready:
         db.retry_if_empty()
@@ -392,7 +392,7 @@ def datasources():
         for r in folders:
             sources.append({"kind": "s3", "id": r["id"], "uuid": r.get("uuid"),
                             "label": f"{r['id']} · S3"})
-        for r in db.list_bq_datasets():
+        for r in db.list_workbench_bq_datasets():
             sources.append({"kind": "bq", "id": r["id"],
                             "label": f"{r['id']} · BigQuery"})
     catalogs, pending = catalog.discover([r["id"] for r in folders])
@@ -587,8 +587,19 @@ def tables(kind: str, resource_id: str):
         if kind == "bq":
             for d in db.list_bq_datasets():
                 if d["id"] == resource_id:
-                    return [{"name": t, "detail": "table"}
-                            for t in bq.list_tables(d["project"], d["dataset"])]
+                    billing = d.get("billing_project", "")
+                    names = ([d["table"]] if d.get("table")
+                             else bq.list_tables(d["project"], d["dataset"], billing))
+                    out = []
+                    for t in names:
+                        item = {"name": t, "detail": "table"}
+                        if len(names) <= 50:   # metadata calls; cheap but not free
+                            try:
+                                item.update(bq.table_info(d["project"], d["dataset"], t, billing))
+                            except Exception:
+                                pass
+                        out.append(item)
+                    return out
             raise HTTPException(404, f"Unknown dataset: {resource_id}")
         if kind == "catalog":
             try:

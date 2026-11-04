@@ -113,12 +113,13 @@ def _check_condition(cond: dict, left: dict[str, str], right: dict[str, str],
     lk, rk = left[lcol], right[rcol]
     checked = {"left": lcol, "op": op, "right": rcol, "kinds": (lk, rk),
                "cast": lk != rk}
-    if lk == rk:
-        return None, None, checked
     if "unknown" in (lk, rk):
-        # Can't tell from the loaded rows: compare equality as text (as before)
-        # and let the engine compare other operators natively.
+        # Can't tell from the loaded rows (even when both sides are unknown):
+        # compare equality as text, as before, and let the engine compare
+        # other operators natively.
         checked["cast"] = op in ("=", "!=")
+        return None, None, checked
+    if lk == rk:
         return None, None, checked
     if op not in ("=", "!="):
         return (f"Step {step_no}: can't compare {lcol!r} ({lk}) "

@@ -4,6 +4,23 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **PUSHED, deployment unverified (2026-11-04): performance batch 2** (35a7205…f651f5d). Each change was reviewed by Codex `gpt-6-astra` (medium); every finding was fixed with a test, and the re-reviews are clean.
+  - **Join column types.** Object columns fetched from PostgreSQL are classified by value: dates and timestamps as time, `Decimal`/int/float as number. All-null columns are "unknown"; equality on them uses a text cast. Previously dates were rejected against timestamps and numerics compared as text ('9.5' > '10').
+  - **Aurora join counts.** Inputs and intermediate steps use EXPLAIN estimates above 1M rows; only the final chain is counted exactly. Estimates come from the uncounted query, so parallel plans are handled. Estimated stats are flagged. A two-step plan goes from 5 exact counts to 1.
+  - **Dashboard cache.** Summary (counts, entity counts, charts) and row page are separate entries, so paging or sorting runs only the row query. Unfiltered histogram bounds and buckets are cached at least 600 s, and their age counts toward the reported freshness. Up to 192 entries, within the 32 MB limit.
+  - **Frontend.** Dashboard queries are debounced (250 ms) and stale requests aborted; first loads and Refresh go out immediately in the same tick. A 429 is retried once. The Format control got its own `inline-field` class; reusing `entity-select` broke `test_entity_count_and_column_settings`.
+  - **Evidence:**
+    - New tests: `test_join_types_multistep.py` (three-step star join over real PostgreSQL inputs, parallel-plan estimate, production threshold), `test_perf_batch1.py` (cache tiers) and `test_query_debounce_frontend.py`.
+    - Backend: 611 pass; the same 11 fail as on the baseline.
+    - Browser: the same 19 failures and 1 error as on the baseline. One temporary regression from the 0 ms debounce timing was fixed.
+  - **Not measured on Aurora.**
+  - **Still open:**
+    - fan-out estimates and confirmation for exploding star joins
+    - `COALESCE` keys after right/full joins
+    - a "Join to" picker, reorder controls and stable step ids in the join builder
+    - metadata-only child opens when reopening joins
+    - a server-side cancel for aborted dashboard requests (the client aborts, but the server finishes the statement)
+
 - **PUSHED, deployment unverified (2026-11-04): performance batch 1 from the caching/query and multi-join audits** (57744cf, 630cc18, 03c5564):
   - **Row ordering:** the default order breaks ties with the projected columns natively, or as `::text` for types without a btree opclass, instead of `to_jsonb(live)::text`. On the fixture: 0.5 ms vs 22 ms for a top-50 sort on 2.5k rows. It's memoized per source for 300 s.
   - **Integer filters:** categorical and range filters compare natively, so btree indexes apply (`Index Cond` in EXPLAIN on the fixture).

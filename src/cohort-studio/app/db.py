@@ -119,18 +119,26 @@ def _fetch_resources() -> list[dict]:
 
 
 _aws_configured = False
+_aws_profile_ids: set[str] = set()
 _s3_uri_cache: dict[str, str] = {}
 
 
-def configure_aws_profiles():
-    """Generate per-resource AWS profiles so aws-cli and DuckDB can reach S3."""
+def configure_aws_profiles(resource_ids=None):
+    """Generate per-resource AWS profiles so aws-cli and DuckDB can reach S3.
+
+    Runs once at startup, and again when `resource_ids` names an S3 resource
+    that has no profile yet (e.g. a folder created after the app started);
+    otherwise `--profile <new-folder>` fails until the app restarts.
+    """
     global _aws_configured
-    if _aws_configured:
+    wanted = set(resource_ids or ())
+    if _aws_configured and wanted <= _aws_profile_ids:
         return
     try:
         cloud_cli.run(["wb", "workspace", "configure-aws"],
                        capture_output=True, text=True, check=True, timeout=120)
         logger.info("Configured AWS profiles via wb workspace configure-aws")
+        _aws_profile_ids.update(wanted)
     except Exception as e:
         logger.warning("Failed to configure AWS profiles: %s", e)
     import glob
@@ -168,8 +176,11 @@ def _refresh_resource_cache():
         logger.info("Resource cache refreshed: %d resources", len(_resource_cache))
     finally:
         _resource_cache_lock.release()
+    s3_ids = [r.get("id") for r in _resource_cache or []
+              if "S3" in r.get("resourceType", "") and r.get("id")]
+    if _resource_cache and (initial or set(s3_ids) - _aws_profile_ids):
+        configure_aws_profiles(s3_ids)
     if initial and _resource_cache:
-        configure_aws_profiles()
         for r in list_aurora_resources():
             warm_connection_string(r["id"])
         threading.Thread(target=_warm_catalogs, daemon=True).start()

@@ -244,3 +244,25 @@ def test_paging_and_filter_changes_reuse_cached_aggregates(engine, events_table,
     finally:
         stop()
         query_cache.cache.clear()
+
+
+def test_reported_freshness_includes_reused_histogram_base(engine, events_table, monkeypatch):
+    import query_cache
+    monkeypatch.setenv("STUDIO_QUERY_CACHE_TTL", "30")
+    query_cache.cache.clear()
+    _name, source = events_table
+    charts = [{"kind": "histogram", "x": "quantity"}]
+    try:
+        first = live_query.query(source, [], charts, 0, 10)
+        base_time = first["cache"]["as_of"]
+        time.sleep(0.05)
+        # A different filter builds a new summary but reuses the cached base.
+        later = live_query.query(source, [
+            {"column": "concept_id", "kind": "categorical", "values": ["1"]}], charts, 0, 10)
+        assert later["cache"]["as_of"] <= base_time
+        assert "_data_as_of" not in later
+        again = live_query.query(source, [
+            {"column": "concept_id", "kind": "categorical", "values": ["1"]}], charts, 0, 10)
+        assert again["cache"]["hit"] is True and again["cache"]["as_of"] <= base_time
+    finally:
+        query_cache.cache.clear()

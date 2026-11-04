@@ -76,8 +76,11 @@ def _where(filters: list[dict], columns: dict[str, str],
             if integer:
                 # Intersect with the bigint domain; an empty intersection
                 # matches nothing rather than snapping to a boundary value.
-                lo_i = max(_INT64_MIN, math.ceil(lo))
-                hi_i = min(_INT64_MAX, math.floor(hi))
+                raw_lo, raw_hi = item["min"], item["max"]
+                exact = lambda v: isinstance(v, int) and not isinstance(v, bool)
+                # JSON integers stay exact; float() would round 2**63-1 up to 2**63.
+                lo_i = max(_INT64_MIN, raw_lo if exact(raw_lo) else math.ceil(lo))
+                hi_i = min(_INT64_MAX, raw_hi if exact(raw_hi) else math.floor(hi))
                 if lo_i > hi_i:
                     clauses.append("FALSE")
                     continue

@@ -194,6 +194,7 @@ def test_cross_source_join_reports_capped_in_memory_inputs():
 @pytest.mark.parametrize("lo,hi,expected", [
     (1e20, 2e20, "FALSE"), (-2e20, -1e20, "FALSE"), (2.2, 2.8, "FALSE"),
     (-1e30, 1e30, "BETWEEN"), (1.5, 3.5, "BETWEEN"),
+    (2 ** 63 - 1, 2 ** 63 - 1, "BETWEEN"), (-(2 ** 63), -(2 ** 63), "BETWEEN"),
 ])
 def test_integer_range_intersects_the_bigint_domain(lo, hi, expected):
     where, params = live_query._where(

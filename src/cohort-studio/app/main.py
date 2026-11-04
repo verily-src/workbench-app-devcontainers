@@ -563,18 +563,22 @@ def submit_workflow(req: SubmitJobRequest):
                  if parent])
     return job
 
+_TABLE_STATS = ("rows", "rows_estimated", "bytes", "columns", "analyzed")
+
+
 @app.get("/api/tables")
 def tables(kind: str, resource_id: str):
     try:
         if kind in {"aurora", "postgres"}:
             return [{"name": t["name"], "table": t["table"],
-                     "schema": t["schema"], "detail": t["kind"]}
+                     "schema": t["schema"], "detail": t["kind"],
+                     **{k: t[k] for k in _TABLE_STATS if k in t}}
                     for t in db.list_aurora_tables(resource_id)]
         if kind == "athena":
             return external_sources.list_athena_tables(resource_id)
         if kind == "s3":
-            return [{"name": f, "detail": "file"}
-                    for f in duck.list_s3_files(resource_id)]
+            return [{"detail": "file", **f}
+                    for f in duck.describe_s3_files(resource_id)]
         if kind == "bq":
             for d in db.list_bq_datasets():
                 if d["id"] == resource_id:
@@ -723,6 +727,8 @@ def _open_source_impl(ref, temporary=False):
                 capped = snapshot["rows"] > queries.ROW_CAP
                 label = f"{ref['resource_id']} / Saved join"
         elif ref["kind"] == "sql":
+            data_jobs.report(f"Running SQL on {ref['resource_id']}",
+                             resource=ref["resource_id"], cap=queries.ROW_CAP)
             df, normalized, capped = sql_source.fetch(
                 ref["resource_id"], ref["sql"], queries.ROW_CAP)
             ref["sql"] = normalized
@@ -733,6 +739,10 @@ def _open_source_impl(ref, temporary=False):
         else:
             kind, rid, table = ref["kind"], ref["resource_id"], ref["table"]
             schema = ref.get("schema", "public")
+            shown = table if schema == "public" else f"{schema}.{table}"
+            data_jobs.report(
+                f"Reading {shown} from {rid}" if kind != "s3" else f"Reading file {table}",
+                resource=rid, table=shown, cap=queries.ROW_CAP)
             if kind == "athena":
                 df, disk = external_sources.open_athena(ref)
             elif kind in {"aurora", "postgres"}:
@@ -760,10 +770,12 @@ def _open_source_impl(ref, temporary=False):
             if kind in {"aurora", "postgres"}:
                 origin = {"kind": "aurora", "resource_id": rid, "table": table, "schema": schema}
         if live is not None:
+            data_jobs.report("Counting rows in the source", rows=int(len(df)))
             live = disk_data.estimate_live_source(live)
     finally:
         for child in children:
             datasets.close_dataset(child)
+    data_jobs.report("Profiling columns", rows=int(len(df)), columns=int(len(df.columns)))
     result = datasets.open_dataset(
         df, label, origin=origin, temporary=temporary,
         capped=capped, live_source=live, disk_source=disk)
@@ -847,6 +859,8 @@ def join_datasets(req: JoinRequest):
             ref["allow_loaded"] = True
         out = joins.run(base_id, steps, allow_loaded=req.allow_loaded)
         label = " + ".join(sources)
+        data_jobs.report("Building the joined tab", rows=int(len(out["df"])),
+                         columns=int(len(out["df"].columns)))
         result = datasets.open_dataset(out["df"], label,
                                        capped=out["stats"]["truncated"],
                                        live_source=out.get("live_source"),
@@ -883,6 +897,39 @@ class DataJobResponse(BaseModel):
     result: dict | None = None
     error: str | dict | list | None = None
     status_code: int | None = None
+    label: str | None = None
+    phase: str | None = None
+    detail: dict | None = None
+    started: float | None = None
+    elapsed: float | None = None
+
+
+def _data_job_label(kind, req) -> str:
+    """Short description shown while the job runs; never raises."""
+    try:
+        if kind == "open":
+            if req.source_ref is not None:
+                ref = source_dict(req.source_ref)
+                if ref.get("kind") == "sql":
+                    return f"SQL query {ref.get('name') or ''} on {ref.get('resource_id')}".replace("  ", " ")
+                if ref.get("table"):
+                    schema = ref.get("schema") or "public"
+                    table = ref["table"] if schema == "public" else f"{schema}.{ref['table']}"
+                    return f"{table} from {ref.get('resource_id')}"
+                return f"{ref.get('kind', 'saved')} source"
+            return f"{req.table} from {req.resource_id}"
+        base_id, steps, sources = _join_pipeline(req)
+        hows = sorted({s.get("how", "inner") for s in steps})
+        keys = []
+        for step in steps:
+            for cond in step.get("conditions") or []:
+                keys.append(cond["left"] if cond.get("left") == cond.get("right")
+                            else f"{cond.get('left')} = {cond.get('right')}")
+        on = f" on {', '.join(dict.fromkeys(keys))}" if keys else ""
+        # The UI supplies the verb ("Joining", "Previewing join", "Joined").
+        return f"{' + '.join(sources)} ({'/'.join(hows)}{on})"
+    except Exception:
+        return "selected tables" if kind != "open" else "data source"
 
 
 def _submit_data_job(kind, req, request, response):
@@ -890,7 +937,8 @@ def _submit_data_job(kind, req, request, response):
     work = lambda: open_dataset(req) if kind == "open" else preview_join(req) if kind == "join_preview" else join_datasets(req)
     try:
         return data_jobs.manager().submit(kind, owner, work,
-            lambda result: datasets.close_dataset(result["dataset_id"]) if kind != "join_preview" else None)
+            lambda result: datasets.close_dataset(result["dataset_id"]) if kind != "join_preview" else None,
+            label=_data_job_label(kind, req))
     except data_jobs.Busy as exc:
         raise HTTPException(429, str(exc)) from exc
 

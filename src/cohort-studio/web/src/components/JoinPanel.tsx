@@ -1,10 +1,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import type { DataJob } from "../api";
 import type {
   Dataset, JoinCondition, JoinEngine, JoinHow, JoinOp, JoinPreview, JoinStep,
   JoinRecommendation, JoinSuggestion, JoinValidation, Source, SourceRef, TableInfo,
 } from "../types";
 import { Combobox } from "./Combobox";
+import { tableStats } from "../format";
+import { JobProgress } from "./DataJobs";
 
 interface Props {
   datasets: Dataset[];
@@ -267,6 +270,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const [preview, setPreview] = useState<JoinPreview | null>(null);
   const [previewErr, setPreviewErr] = useState("");
   const [previewing, setPreviewing] = useState(false);
+  const [previewJob, setPreviewJob] = useState<{ job: DataJob; receivedAt: number } | null>(null);
   const previewRequest = useRef(0);
   const previewAbort = useRef<AbortController | null>(null);
   useEffect(() => () => previewAbort.current?.abort(), []);
@@ -451,14 +455,16 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     const requestId = ++previewRequest.current;
     setPreviewing(true);
     setPreviewErr("");
+    setPreviewJob(null);
     try {
-      const result = await api.previewJoin(baseId, payload(), crossSource && allowLoaded, controller.signal);
+      const result = await api.previewJoin(baseId, payload(), crossSource && allowLoaded, controller.signal,
+        (job) => { if (requestId === previewRequest.current) setPreviewJob({ job, receivedAt: Date.now() }); });
       if (requestId === previewRequest.current) setPreview(result);
     } catch (e) {
       if (requestId === previewRequest.current) setPreviewErr((e as Error).message);
     } finally {
       if (previewAbort.current === controller) previewAbort.current = null;
-      if (requestId === previewRequest.current) setPreviewing(false);
+      if (requestId === previewRequest.current) { setPreviewing(false); setPreviewJob(null); }
     }
   };
 
@@ -521,7 +527,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
             </label>}
             <Combobox label={isS3Source ? "S3 file to add" : "Source table to add"} value={sourceTable}
                       options={visibleSourceTables.map((item) => ({
-                        id: item.name, label: item.name, hint: item.detail,
+                        id: item.name, label: item.name, hint: [item.detail, tableStats(item)].filter(Boolean).join(" · "),
                       }))}
                       onChange={setSourceTable} placeholder={isS3Source ? "Search files…" : "Search tables…"} />
             <button className="primary" disabled={!sourceTable || sourceBusy || busy || !canAddSource}
@@ -752,6 +758,11 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
         </button>
         {previewing && <button type="button" onClick={() => { previewRequest.current += 1; previewAbort.current?.abort(); setPreviewing(false); setPreview(null); setPreviewErr("Preview cancelled."); }}>Cancel preview</button>}
         {crossSource && previewing && <span>Cancel interrupts active database and DuckDB work.</span>}
+        {previewing && previewJob && (
+          <div className="join-preview-progress" role="status" aria-label="Preview progress">
+            <JobProgress job={previewJob.job} receivedAt={previewJob.receivedAt} />
+          </div>
+        )}
         <button className="primary" disabled={!valid || busy || sourceBusy
           || (crossSource && !allowLoaded)}
                 onClick={() => onJoin({ baseId, steps: payload(), allowLoaded: crossSource && allowLoaded })}>

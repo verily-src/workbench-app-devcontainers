@@ -490,10 +490,24 @@ def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False) -
     return p
 
 @execution.workload("bulk")
+def _report(phase: str, **detail) -> None:
+    import data_jobs
+    data_jobs.report(phase, **detail)
+
+
+def _report_engine(p: dict) -> None:
+    n = len(p["steps"]) + 1
+    if p["engine"] == "aurora":
+        _report(f"Joining {n} tables inside the database (PostgreSQL)", engine="aurora", sources=n)
+    else:
+        _report(f"Joining {n} sources in DuckDB", engine="duckdb", sources=n)
+
+
 def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
         allow_loaded: bool = False) -> dict:
 
     p = _checked_plan(base_id, steps, allow_loaded)
+    _report_engine(p)
     if p["engine"] == "aurora":
         try:
             return _run_aurora(p, cap, query_cancellation.join_timeout_ms(RUN_TIMEOUT_MS))
@@ -502,6 +516,7 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
             if any(ds.get("live_source") for ds in
                    [p["base"]] + [s["ds"] for s in p["steps"]]):
                 raise
+            _report("Database join unavailable; joining in memory (DuckDB)", engine="duckdb")
             out = _run_duckdb(p, cap)
             out["stats"]["notes"].insert(0, f"{e} Ran in memory instead.")
             return out
@@ -511,6 +526,7 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
 def preview(base_id: str, steps: list[dict], allow_loaded: bool = False) -> dict:
 
     p = _checked_plan(base_id, steps, allow_loaded)
+    _report_engine(p)
     if p["engine"] == "aurora":
         try:
             out = _run_aurora(p, queries.ROW_CAP, query_cancellation.join_timeout_ms(PREVIEW_TIMEOUT_MS), preview_only=True)

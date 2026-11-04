@@ -1,6 +1,7 @@
 import "./SourcePicker.css";
 import { useEffect, useMemo, useState } from "react";
 import { Source, TableInfo } from "../types";
+import { formatBytes, formatTimestamp, rowsLabel, tableStats } from "../format";
 
 type SourceKind = Source["kind"] | "postgres" | "athena";
 
@@ -26,6 +27,26 @@ const SOURCE_TYPES: { kind: SourceKind; label: string }[] = [
 ];
 
 const SCHEMA_KINDS = new Set<string>(["aurora", "postgres", "athena"]);
+
+function TableDetails({ info }: { info: TableInfo }) {
+  const rows = rowsLabel(info);
+  const facts: [string, string, string?, boolean?][] = [];
+  facts.push(["Type", info.detail]);
+  if (rows) facts.push(["Rows", rows.replace(/ rows$/, ""),
+    info.rows_estimated ? "Estimated from database statistics; the exact count is computed after loading." : undefined]);
+  if (info.bytes != null) facts.push(["Size", formatBytes(info.bytes),
+    info.detail === "file" ? "Object size in S3" : "On disk, including indexes"]);
+  if (info.columns != null) facts.push(["Columns", String(info.columns)]);
+  if (info.analyzed) facts.push(["Stats as of", formatTimestamp(info.analyzed), undefined, true]);
+  if (info.modified) facts.push(["Modified", formatTimestamp(info.modified), undefined, true]);
+  return (
+    <dl className="table-details" aria-label="Table details">
+      {facts.map(([label, value, title, wide]) => (
+        <div key={label} title={title} className={wide ? "wide" : undefined}><dt>{label}</dt><dd>{value}</dd></div>
+      ))}
+    </dl>
+  );
+}
 
 export function SourcePicker({ sources, tables, sourceKey, table, loading = false,
   busy = false, onSourceKeyChange, onTableChange, onLoadTable }: Props) {
@@ -72,6 +93,7 @@ export function SourcePicker({ sources, tables, sourceKey, table, loading = fals
       ? tables.filter((item) => item.name.startsWith(`${fileFolder}/`))
       : tables;
   const needsSchema = showSchema && schemas.length > 1 && !schema;
+  const selectedTable = table ? tables.find((item) => item.name === table) : undefined;
 
   const changeType = (kind: SourceKind | "") => {
     setSourceKind(kind);
@@ -147,10 +169,11 @@ export function SourcePicker({ sources, tables, sourceKey, table, loading = fals
                 {selectedSource.kind === "s3" && fileFolder
                   ? item.name.slice(fileFolder.length + 1)
                   : showSchema && !schema && schemas.length > 1
-                    ? item.name : item.table ?? item.name} ({item.detail})
+                    ? item.name : item.table ?? item.name} ({[item.detail, tableStats(item)].filter(Boolean).join(" · ")})
               </option>
             ))}
           </select>
+          {selectedTable && <TableDetails info={selectedTable} />}
           <div style={{ marginTop: 10 }}>
             <button className="primary" onClick={onLoadTable}
                     disabled={!table || loading || busy || needsSchema}>

@@ -49,6 +49,15 @@ import { notifyDataReady } from "./notifications";
 export interface DataJob {
   job_id: string; kind: string; status: string; result?: OpenResult;
   error?: string | { code?: string; message?: string }; status_code?: number;
+  /** What is being loaded or joined, e.g. "cdm.person from omop". */
+  label?: string;
+  /** Current step reported by the server, e.g. "Reading cdm.person from omop". */
+  phase?: string;
+  detail?: { rows?: number; columns?: number; cap?: number; engine?: string;
+    resource?: string; table?: string; sources?: number };
+  started?: number;
+  /** Seconds since the job was queued (frozen once it finishes). */
+  elapsed?: number;
 }
 
 export function pendingDataJobs(): string[] {
@@ -63,7 +72,8 @@ export function forgetDataJob(id: string) {
 
 let dataSubmissions: Promise<unknown> = Promise.resolve();
 
-async function dataJob<T>(kind: string, body: unknown, signal?: AbortSignal): Promise<T> {
+async function dataJob<T>(kind: string, body: unknown, signal?: AbortSignal,
+                          onProgress?: (job: DataJob) => void): Promise<T> {
   const started = dataSubmissions.then(() => request<DataJob>(`/api/data-jobs/${kind}`, post(body)));
   dataSubmissions = started.catch(() => undefined);
   let job = await started;
@@ -75,10 +85,13 @@ async function dataJob<T>(kind: string, body: unknown, signal?: AbortSignal): Pr
   try {
     while (["queued", "running", "cancelling"].includes(job.status)) {
       notify(job);
+      onProgress?.(job);
       await new Promise(resolve => setTimeout(resolve, 750));
       job = await request<DataJob>(`/api/data-jobs/${job.job_id}`);
     }
     forgetDataJob(job.job_id);
+    notify(job);
+    onProgress?.(job);
     if (job.status === "complete") { if (kind !== "join_preview") notifyDataReady(job.kind, job.job_id); return job.result as T; }
     if (job.status === "cancelled") throw new Error("Operation cancelled.");
     if (job.status === "interrupted") throw new Error("The app restarted. Retry the operation.");
@@ -426,8 +439,9 @@ export const api = {
     dataJob<OpenResult & { join: JoinStats }>("join",
       { base_id: baseId, steps, allow_loaded: allowLoaded }),
 
-  previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false, signal?: AbortSignal) =>
-    dataJob<JoinPreview>("join_preview", { base_id: baseId, steps, allow_loaded: allowLoaded }, signal),
+  previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false, signal?: AbortSignal,
+                onProgress?: (job: DataJob) => void) =>
+    dataJob<JoinPreview>("join_preview", { base_id: baseId, steps, allow_loaded: allowLoaded }, signal, onProgress),
 
   validateJoin: (baseId: string, steps: JoinStep[], signal?: AbortSignal,
                  allowLoaded = false) =>

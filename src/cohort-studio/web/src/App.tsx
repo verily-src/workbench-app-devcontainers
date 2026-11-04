@@ -13,6 +13,7 @@ import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
+import { tableStats } from "./format";
 
 const OmopBuilder = lazy(() => import("./components/OmopBuilder").then((m) => ({ default: m.OmopBuilder })));
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
@@ -100,6 +101,10 @@ export default function App() {
   const [renameDraft, setRenameDraft] = useState("");
   const [active, setActive] = useState(0);
   const [activity, setActivity] = useState("");
+  const [openingTable, setOpeningTable] = useState<TableInfo | null>(null);
+  // Opens and joins show progress in the Data operations card; keep `activity`
+  // as the busy flag but don't repeat the text in the top bar.
+  const [activityInCard, setActivityInCard] = useState(false);
   const [error, setError] = useState("");
   const [view, setView] = useState<
     "explore" | "agent" | "workflows" | "lineage" | "settings">("explore");
@@ -307,9 +312,11 @@ export default function App() {
 
   const openTableDirect = async (src: Source, tbl: string) => {
     setActivity(`Loading ${tbl}…`);
+    setActivityInCard(true);
     setError("");
+    const info = tables.find((t) => t.name === tbl);
+    setOpeningTable(info ?? null);
     try {
-      const info = tables.find((t) => t.name === tbl);
       const opened = (src.kind === "aurora" || src.kind === "postgres" || src.kind === "athena") && info?.schema && info?.table
         ? await api.openSourceRef({ kind: src.kind, resource_id: src.id,
             table: info.table, schema: info.schema })
@@ -321,6 +328,8 @@ export default function App() {
       setError(`Load failed: ${(e as Error).message}`);
     } finally {
       setActivity("");
+      setActivityInCard(false);
+      setOpeningTable(null);
     }
   };
 
@@ -395,6 +404,7 @@ export default function App() {
 
   const doJoin = async (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean }) => {
     setActivity("Joining…");
+    setActivityInCard(true);
     setError("");
     try {
       let opened: OpenResult & { join: JoinStats };
@@ -478,6 +488,7 @@ export default function App() {
         ? message : `Join failed: ${message}`);
     } finally {
       setActivity("");
+      setActivityInCard(false);
     }
   };
 
@@ -630,7 +641,7 @@ export default function App() {
     })),
     ...(source ? tables.map((t) => ({
       id: `tbl:${t.name}`, group: `Open from ${source.id}`,
-      label: t.name, hint: t.detail,
+      label: t.name, hint: [t.detail, tableStats(t)].filter(Boolean).join(" · "),
       run: () => openTableDirect(source, t.name),
     })) : []),
     { id: "act:upload", group: "Action", label: "Upload a CSV…",
@@ -756,7 +767,7 @@ export default function App() {
             chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),
             assistantConfigured: tutorialAssistantConfigured,
           }} />
-          {activity && (
+          {activity && !activityInCard && (
             <div className="activity"><span className="pulse" />{activity}</div>
           )}
           {error && (
@@ -766,7 +777,8 @@ export default function App() {
             </div>
           )}
         </div>
-        <DataJobs onOpen={result => openResult(result, result.source, result.source_ref)} />
+        <DataJobs expected={openingTable}
+                  onOpen={result => openResult(result, result.source, result.source_ref)} />
         <div className="content">
           {view === "explore" && workflowVerification?.result.verified
             && datasets[active]?.id === workflowVerification.datasetId && (

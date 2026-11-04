@@ -1,0 +1,70 @@
+.data-jobs {
+  display: grid;
+  gap: 8px;
+  padding: 10px 16px 0;
+}
+
+.data-job {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent-tint-border);
+  border-radius: var(--radius);
+  background: var(--accent-tint);
+  color: var(--ink);
+}
+
+.data-job[data-status="failed"],
+.data-job[data-status="interrupted"],
+.data-job[data-status="cancelled"] {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.data-job > .pulse { flex: none; width: 10px; height: 10px; }
+
+.data-job-check {
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.data-job-body {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.data-job-title {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-job-label { color: var(--ink-soft); }
+
+.data-job-phase {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
+.data-job-facts { color: var(--ink-muted); }
+
+.data-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-job > button { flex: none; }
+
+.join-preview-progress {
+  flex-basis: 100%;
+  margin-top: 6px;
+}

@@ -24,25 +24,79 @@ def _quote(identifier: str) -> str:
         raise ValueError(f"Invalid identifier: {identifier!r}")
     return f'"{identifier}"'
 
+_LIST_TABLES_SQL = """
+    SELECT table_schema, table_name, table_type
+    FROM information_schema.tables
+    WHERE table_schema <> 'information_schema'
+      AND left(table_schema, 3) <> 'pg_'
+    ORDER BY table_schema, table_name
+"""
+
+# Catalog metadata only: planner estimates and on-disk size, never COUNT(*),
+# so listing stays fast on 100M-row schemas.
+_LIST_TABLES_WITH_STATS_SQL = """
+    SELECT t.table_schema, t.table_name, t.table_type,
+           c.reltuples::bigint AS reltuples,
+           s.n_live_tup AS live_rows,
+           CASE WHEN c.relkind IN ('r', 'm', 'p') THEN pg_total_relation_size(c.oid) END AS bytes,
+           (SELECT count(*) FROM pg_attribute a
+             WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped) AS columns,
+           GREATEST(s.last_analyze, s.last_autoanalyze) AS analyzed
+    FROM information_schema.tables t
+    LEFT JOIN pg_namespace n ON n.nspname = t.table_schema
+    LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = t.table_name
+    LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+    WHERE t.table_schema <> 'information_schema'
+      AND left(t.table_schema, 3) <> 'pg_'
+    ORDER BY t.table_schema, t.table_name
+"""
+
+
+def _row_estimate(kind: str, reltuples, live_rows) -> int | None:
+    if kind == "view":
+        return None
+    # reltuples is -1 until the first ANALYZE (PG14+); n_live_tup covers
+    # freshly bulk-loaded tables that autovacuum has not analyzed yet.
+    if reltuples is not None and reltuples >= 0 and not (reltuples == 0 and live_rows):
+        return int(reltuples)
+    if live_rows is not None:
+        return int(live_rows)
+    return None
+
+
 def list_tables(engine: Engine) -> list[dict]:
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema <> 'information_schema'
-              AND left(table_schema, 3) <> 'pg_'
-            ORDER BY table_schema, table_name
-        """)).fetchall()
-    return [
-        {
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(_LIST_TABLES_WITH_STATS_SQL)).fetchall()
+    except Exception as exc:
+        logger.info("Table statistics unavailable, listing names only: %s",
+                    str(exc).splitlines()[0][:200])
+        with engine.connect() as conn:
+            rows = [(*row, None, None, None, None, None)
+                    for row in conn.execute(text(_LIST_TABLES_SQL)).fetchall()]
+    tables = []
+    for schema, table, ttype, reltuples, live_rows, size, columns, analyzed in rows:
+        if internal_data.is_internal(schema, table):
+            continue
+        kind = TABLE_TYPE_LABELS.get(ttype, "table")
+        item = {
             "name": table if schema == "public" else f"{schema}.{table}",
             "table": table,
             "schema": schema,
-            "kind": TABLE_TYPE_LABELS.get(ttype, "table"),
+            "kind": kind,
         }
-        for schema, table, ttype in rows
-        if not internal_data.is_internal(schema, table)
-    ]
+        estimate = _row_estimate(kind, reltuples, live_rows)
+        if estimate is not None:
+            item["rows"] = estimate
+            item["rows_estimated"] = True
+        if size is not None:
+            item["bytes"] = int(size)
+        if columns:
+            item["columns"] = int(columns)
+        if analyzed is not None:
+            item["analyzed"] = analyzed.isoformat()
+        tables.append(item)
+    return tables
 
 def fetch_table(engine: Engine, table: str, cap: int = ROW_CAP) -> pd.DataFrame:
     query = f"SELECT * FROM {_quote(table)} LIMIT {int(cap)}"

@@ -4,6 +4,16 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **PUSHED, deployment unverified (2026-11-04): remaining join and dashboard items** (a294812…21c17a0). Each was reviewed by Codex `gpt-6-astra` (medium); its two findings were fixed with tests.
+  - **Dashboard queries are cancelled in PostgreSQL when the browser disconnects.** The endpoint is async and runs the query in a worker thread under a cancellation scope. It returns 499 on disconnect. A pure-ASGI `disconnect_watch.DisconnectWatch` middleware is installed outermost, because `BaseHTTPMiddleware` hides `http.disconnect`. The test drives `main.app` over ASGI with every middleware against a real slow PostgreSQL query, and it fails without the middleware.
+  - **Reopening a join no longer profiles its inputs.** Inputs open with `profile=False` (sample profiles only), and the joined result is still profiled. A statement-capture test fails on the old code.
+  - **Join builder for three or more tables:**
+    - left keys grouped by source table
+    - a per-step "Join to" picker (base or an earlier step); UI-only, not sent
+    - ↑/↓ reorder buttons
+    - alias renames rewrite later conditions, but only when neither the old nor the new alias collides with another step
+  - **Evidence:** `test_query_disconnect_cancel.py`, `test_join_builder_frontend.py` (screenshot inspected), and the reopen test in `test_join_types_multistep.py`. The join and API suites show only known baseline failures.
+
 - **SCOPED (2026-11-04): Snowflake-style access policies** — see [ACCESS_POLICY_SCOPE.md](ACCESS_POLICY_SCOPE.md) (feasibility study, Fable). Verified finding: each Studio instance is single-tenant for its app owner. The app has no end-user identity (`agent_sessions.owner` is a random cookie; no identity header is read; saved views and lineage are stamped with the VM's `wb` login), and every data path uses the owner's `WRITE_READ` Aurora credentials. App-side policies can therefore restrict the agent, MCP, exports and shared saved views, but not people. Policies that must bind people need platform support: per-audience resources/groups now; per-group DB roles or RLS later. Suggested first step: route reads through the `READ_ONLY` user, and add a static column hide/mask policy applied via sqlglot rewrite, with the policy digest in cache keys. The doc lists open questions for the Workbench team. Not started.
 
 - **PUSHED (2026-11-04, c8ff96e):** AWS profiles are regenerated when resource refresh finds S3 folders without one. Folders created after startup (prod `nextflow_*`) failed saved-view listing with 'S3 saved views could not be listed' until a restart.

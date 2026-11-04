@@ -230,3 +230,33 @@ def preview(resource_id: str, sql: str, name: str | None = None) -> dict:
     return {"source_ref": source_ref, "columns": list(frame.columns),
             "sample": frame.astype(object).where(frame.notna(), None).values.tolist(),
             "rows": len(frame), "truncated": truncated}
+
+
+
+def lint(sql: str) -> dict:
+    """Static check for the SQL editor: the same rules as normalize(), plus the
+    parser's line/column and a formatted version when the query is valid.
+    Never touches the database."""
+    try:
+        normalize(sql)
+    except ValueError as exc:
+        result = {"ok": False, "message": str(exc)}
+        cause = exc.__cause__
+        errors = getattr(cause, "errors", None)
+        if errors:
+            first = errors[0]
+            if first.get("line"):
+                result["line"] = int(first["line"])
+            if first.get("col"):
+                result["col"] = int(first["col"])
+            if first.get("description"):
+                result["detail"] = str(first["description"])[:200]
+        elif cause is not None and str(cause):
+            result["detail"] = str(cause).splitlines()[0][:200]
+        return result
+    import sqlglot
+    try:
+        formatted = sqlglot.transpile(sql, read="postgres", write="postgres", pretty=True)[0]
+    except Exception:
+        formatted = None
+    return {"ok": True, "message": "Valid read-only SELECT.", "formatted": formatted}

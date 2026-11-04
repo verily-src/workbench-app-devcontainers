@@ -1,0 +1,30 @@
+.sql-editor { display: grid; gap: 4px; }
+.sql-editor-area { position: relative; }
+.sql-editor-area .join-sql-editor {
+  margin: 0; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: 0;
+  white-space: pre-wrap; word-break: break-word; overflow: auto; box-sizing: border-box; width: 100%;
+  min-height: 160px; tab-size: 2;
+}
+.sql-editor-layer { position: absolute; inset: 0; pointer-events: none; background: var(--card);
+  color: var(--ink); border-color: transparent !important; }
+.sql-editor-input { position: relative; resize: vertical; background: transparent; color: transparent;
+  caret-color: var(--ink); }
+.sql-editor-input::placeholder { color: var(--ink-faint); }
+.sql-editor-input::selection { background: var(--accent-tint-border); color: transparent; }
+.sql-kw { color: #7c3aed; font-weight: 600; }
+.sql-fn { color: #0e7490; }
+.sql-str { color: #b45309; }
+.sql-ident { color: #0f766e; }
+.sql-num { color: #be185d; }
+.sql-comment { color: var(--ink-muted); font-style: italic; }
+.sql-op { color: var(--ink-soft); }
+:root[data-theme="dark"] .sql-kw { color: #c4b5fd; }
+:root[data-theme="dark"] .sql-fn { color: #67e8f9; }
+:root[data-theme="dark"] .sql-str { color: #fbbf24; }
+:root[data-theme="dark"] .sql-ident { color: #5eead4; }
+:root[data-theme="dark"] .sql-num { color: #f9a8d4; }
+.sql-line-error { background: #dc262622; box-shadow: inset 3px 0 0 #dc2626; }
+.sql-editor-status { display: flex; gap: 10px; align-items: center; font-size: 12px; }
+.sql-editor-status.ok { color: var(--accent); }
+.sql-editor-status.error { color: #c93a38; }

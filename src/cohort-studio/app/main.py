@@ -658,6 +658,16 @@ def open_dataset(req: OpenRequest):
     return result
 
 
+class SQLLintRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    sql: str = Field(max_length=200_000)
+
+
+@app.post("/api/sql/lint")
+def lint_sql(req: SQLLintRequest):
+    return sql_source.lint(req.sql)
+
+
 @app.post("/api/sql/preview")
 def preview_sql_source(req: SQLPreviewRequest):
     try:

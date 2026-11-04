@@ -4,6 +4,10 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **SCOPED (2026-11-04): Snowflake-style access policies** — see [ACCESS_POLICY_SCOPE.md](ACCESS_POLICY_SCOPE.md) (feasibility study, Fable). Verified finding: each Studio instance is single-tenant for its app owner. The app has no end-user identity (`agent_sessions.owner` is a random cookie; no identity header is read; saved views and lineage are stamped with the VM's `wb` login), and every data path uses the owner's `WRITE_READ` Aurora credentials. App-side policies can therefore restrict the agent, MCP, exports and shared saved views, but not people. Policies that must bind people need platform support: per-audience resources/groups now; per-group DB roles or RLS later. Suggested first step: route reads through the `READ_ONLY` user, and add a static column hide/mask policy applied via sqlglot rewrite, with the policy digest in cache keys. The doc lists open questions for the Workbench team. Not started.
+
+- **PUSHED (2026-11-04, c8ff96e):** AWS profiles are regenerated when resource refresh finds S3 folders without one. Folders created after startup (prod `nextflow_*`) failed saved-view listing with 'S3 saved views could not be listed' until a restart.
+
 - **PUSHED, deployment unverified (2026-11-04): join safety** (6d2ca40, 20c5dc8). Both commits were reviewed by Codex `gpt-6-astra` (medium) with no findings.
   - **Row-explosion warnings.** Aurora join previews show per-step planner estimates (`estimated`, `~` in the funnel; no scans). Previews and full results report `growth_total`, and at 10× or more `large_growth` adds an explanatory note. The Join button then requires "Run anyway", and the result toast mentions the growth.
   - **No-equality warning.** A step with no `=` condition is flagged as a near cross join.

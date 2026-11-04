@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { Combobox } from "./Combobox";
 import { tableStats } from "../format";
+import { SqlEditor } from "./SqlEditor";
 import { JobProgress } from "./DataJobs";
 
 interface Props {
@@ -629,11 +630,9 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                        onChange={(event) => setSqlName(event.target.value)} />
               </label>
             </div>
-            <label>SQL query
-              <textarea className="join-sql-editor" aria-label="SQL query" value={sqlText}
-                        disabled={sourceBusy} spellCheck={false} placeholder="SELECT … FROM schema.table"
-                        onChange={(event) => { invalidateSqlPreview(); setSqlText(event.target.value); }} />
-            </label>
+            <div className="field-label">SQL query</div>
+            <SqlEditor value={sqlText} disabled={sourceBusy} placeholder="SELECT … FROM schema.table"
+                       onChange={(next) => { invalidateSqlPreview(); setSqlText(next); }} />
             <div className="join-row">
               <button className="primary" disabled={!selectedSource || !["aurora", "postgres"].includes(selectedSource.kind)
                 || !sqlText.trim() || sqlBusy || sourceBusy || busy || !canAddSource}

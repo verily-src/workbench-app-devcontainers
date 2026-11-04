@@ -39,7 +39,11 @@ const SOURCE_GROUP_LABEL: Record<Source["kind"], string> = {
   aurora: "Aurora", postgres: "PostgreSQL / RDS", athena: "Athena / Iceberg", s3: "S3 files", bq: "BigQuery", catalog: "Catalogs",
 };
 
-interface StepState extends JoinStep { touched: boolean; pickCols: boolean }
+/** `uid` is a stable React key: index keys let a removed step's open
+ * details and combobox state leak into the step that moves up. */
+interface StepState extends JoinStep { touched: boolean; pickCols: boolean; uid: string }
+let stepSeq = 0;
+const stepUid = () => `step-${++stepSeq}`;
 type KeyRecommendation = JoinRecommendation & { sourceTitle: string };
 
 const aliasOf = (d?: Dataset) =>
@@ -155,13 +159,13 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     onSourceOpened(opened, title, sourceRef);
     if (!baseId) {
       setBaseId(opened.dataset_id);
-      setSteps([{ right_id: "", how: "left", alias: "joined", columns: null,
+      setSteps([{ uid: stepUid(), right_id: "", how: "left", alias: "joined", columns: null,
         touched: false, pickCols: false,
         conditions: [{ left: "", op: "=", right: "" }] }]);
     } else {
       setSteps((previous) => {
         const add = (): StepState => ({
-          right_id: opened.dataset_id, how: "left", alias: title,
+          right_id: opened.dataset_id, how: "left", alias: title, uid: stepUid(),
           columns: null, touched: false, pickCols: false,
           conditions: [{ left: "", op: "=", right: "" }],
         });
@@ -252,7 +256,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const newStep = (rightId: string, prior: StepState[]): StepState => {
     const right = byId.get(rightId);
     const leftCols = outputColumns(base, prior, prior.length, byId);
-    return { right_id: rightId, how: "left", alias: aliasOf(right),
+    return { right_id: rightId, how: "left", alias: aliasOf(right), uid: stepUid(),
              columns: null, touched: false, pickCols: false,
              conditions: [defaultCondition(leftCols, right)] };
   };
@@ -260,7 +264,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const firstOther = (exclude: string) =>
     datasets.find((d) => d.id !== exclude)?.id ?? "";
   const [steps, setSteps] = useState<StepState[]>(() => initialPlan
-    ? initialPlan.steps.map((step) => ({ ...step, touched: true, pickCols: false }))
+    ? initialPlan.steps.map((step) => ({ ...step, touched: true, pickCols: false, uid: stepUid() }))
     : [newStep(firstOther(baseId), [])]);
   const canAddSource = !baseId || steps.some((step) => !step.right_id)
     || steps.length < MAX_STEPS;
@@ -614,7 +618,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
         const rightCols = right?.columns.map((c) => c.name) ?? [];
         const picked = s.columns ?? rightCols;
         return (
-          <div className="join-step" key={i}>
+          <div className="join-step" key={s.uid}>
             <div className="join-step-head">
               <span className="join-step-no">{i + 1}</span>
               <div className="join-hows" role="radiogroup" aria-label="Join type">

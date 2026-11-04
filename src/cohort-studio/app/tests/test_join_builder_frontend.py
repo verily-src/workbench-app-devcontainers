@@ -122,6 +122,13 @@ def test_three_table_builder_join_to_reorder_and_alias_rename(page, app_url):
     expect(step2_left).to_have_value("v → person_id")
     alias.fill("v")
 
+    # Step 2 still uses step 1's columns, so it can't move above it.
+    up = panel.get_by_role("button", name="Move step 2 up")
+    expect(up).to_be_disabled()
+    expect(up).to_have_attribute("title", "Uses columns from step 1; change that condition first")
+    step2_left.select_option(label="person_id")          # base column: no dependency
+    expect(up).to_be_enabled()
+
     # Reorder: step 2 (drug) moves above step 1 (visit).
     tables_before = [panel.get_by_label(f"Table to join in step {n}").input_value() for n in (1, 2)]
     panel.get_by_role("button", name="Move step 2 up").click()

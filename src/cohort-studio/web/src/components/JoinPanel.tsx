@@ -459,6 +459,15 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
       });
     });
 
+  /** Swapping adjacent steps a (upper) and b (lower) is safe unless b's
+   * conditions use a's columns: b would then reference a later step. */
+  const swapBreaks = (upper: number, lower: number) => {
+    const a = steps[upper], b = steps[lower];
+    if (!a || !b) return true;
+    const prefix = `${a.alias}${ARROW}`;
+    return b.conditions.some((c) => c.left.startsWith(prefix));
+  };
+
   const move = (i: number, delta: -1 | 1) =>
     setSteps((prev) => {
       const j = i + delta;
@@ -679,10 +688,14 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                 ))}
               </div>
               {steps.length > 1 && (<>
-                <button className="quiet" aria-label={`Move step ${i + 1} up`} title="Move up"
-                        disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
-                <button className="quiet" aria-label={`Move step ${i + 1} down`} title="Move down"
-                        disabled={i === steps.length - 1} onClick={() => move(i, 1)}>↓</button>
+                <button className="quiet" aria-label={`Move step ${i + 1} up`}
+                        title={i > 0 && swapBreaks(i - 1, i)
+                          ? `Uses columns from step ${i}; change that condition first` : "Move up"}
+                        disabled={i === 0 || swapBreaks(i - 1, i)} onClick={() => move(i, -1)}>↑</button>
+                <button className="quiet" aria-label={`Move step ${i + 1} down`}
+                        title={i < steps.length - 1 && swapBreaks(i, i + 1)
+                          ? `Step ${i + 2} uses this step's columns; change that condition first` : "Move down"}
+                        disabled={i === steps.length - 1 || swapBreaks(i, i + 1)} onClick={() => move(i, 1)}>↓</button>
               </>)}
               {steps.length > 1 && (
                 <button className="quiet" title="Remove this step"

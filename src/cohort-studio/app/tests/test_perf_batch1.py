@@ -189,3 +189,21 @@ def test_cross_source_join_reports_capped_in_memory_inputs():
     finally:
         datasets.close_dataset(capped["dataset_id"])
         datasets.close_dataset(full["dataset_id"])
+
+
+@pytest.mark.parametrize("lo,hi,expected", [
+    (1e20, 2e20, "FALSE"), (-2e20, -1e20, "FALSE"), (2.2, 2.8, "FALSE"),
+    (-1e30, 1e30, "BETWEEN"), (1.5, 3.5, "BETWEEN"),
+])
+def test_integer_range_intersects_the_bigint_domain(lo, hi, expected):
+    where, params = live_query._where(
+        [{"column": "q", "kind": "range", "min": lo, "max": hi}], {"q": "q"}, {"q": 20})
+    assert expected in where
+    if expected == "BETWEEN":
+        assert live_query._INT64_MIN <= params["f0_lo"] <= params["f0_hi"] <= live_query._INT64_MAX
+
+
+def test_profiling_json_scalar_column_as_categorical(engine, events_table):
+    _name, source = events_table
+    profiles = live_query.profile_columns(source, [{"name": "attrs", "filter_kind": "categorical"}])
+    assert len(profiles[0]["values"]) == live_query.CATEGORICAL_VALUES_LIMIT

@@ -1,4 +1,4 @@
-import * as echarts from "echarts";
+import { echarts } from "./echarts";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { Dataset, Filter } from "./types";

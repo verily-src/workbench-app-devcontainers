@@ -489,7 +489,6 @@ def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False) -
         raise ValueError(error)
     return p
 
-@execution.workload("bulk")
 def _report(phase: str, **detail) -> None:
     import data_jobs
     data_jobs.report(phase, **detail)
@@ -503,6 +502,7 @@ def _report_engine(p: dict) -> None:
         _report(f"Joining {n} sources in DuckDB", engine="duckdb", sources=n)
 
 
+@execution.workload("bulk")
 def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
         allow_loaded: bool = False) -> dict:
 

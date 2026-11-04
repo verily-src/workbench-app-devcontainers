@@ -510,6 +510,11 @@ class _BaseCache:
         self.qc, self.resource_id, self.generation = query_cache, resource_id, generation
         self.source = live_source
         self.ttl = 0 if ttl <= 0 else max(ttl, BASE_CACHE_TTL)
+        self.oldest = None          # as_of of the oldest base used in this result
+
+    def _seen(self, as_of):
+        if as_of and (self.oldest is None or as_of < self.oldest):
+            self.oldest = as_of
 
     def _key(self, part):
         return "base:" + self.qc.make_key(
@@ -518,10 +523,14 @@ class _BaseCache:
 
     def get(self, part):
         hit = self.qc.cache.get(self._key(part), self.ttl)
-        return hit[0] if hit else None
+        if not hit:
+            return None
+        self._seen(hit[1])
+        return hit[0]
 
     def put(self, part, value):
-        self.qc.cache.put(self._key(part), self.resource_id, value, self.ttl, self.generation)
+        self._seen(self.qc.cache.put(self._key(part), self.resource_id, value,
+                                     self.ttl, self.generation))
 
 
 def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
@@ -560,12 +569,15 @@ def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
                 as_of.append(cached[1])
     hit = summary is not None and rows is not None
     if not hit:
+        base_cache = _BaseCache(query_cache, resource_id, live_source, generation, ttl)
         fresh = _execute_query(
             live_source, filters, chart_specs, page, page_size, entity_column, sort=sort,
-            summary=summary is None, rows=rows is None,
-            base_cache=_BaseCache(query_cache, resource_id, live_source, generation, ttl))
+            summary=summary is None, rows=rows is None, base_cache=base_cache)
         if summary is None:
             summary = {k: v for k, v in fresh.items() if k != "rows"}
+            if base_cache.oldest:
+                # Charts may reuse older cached bases; keep their age with the summary.
+                summary["_data_as_of"] = base_cache.oldest
             stamp = query_cache.cache.put(summary_key, resource_id, summary, ttl, generation)
             as_of.append(stamp)
         if rows is None:
@@ -573,10 +585,13 @@ def query(live_source: dict, filters: list[dict], chart_specs: list[dict],
             stamp = query_cache.cache.put(rows_key, resource_id, rows, ttl, generation)
             as_of.append(stamp)
     stamps = [stamp for stamp in as_of if stamp]
+    if summary.get("_data_as_of"):
+        stamps.append(summary["_data_as_of"])
     if not stamps:
         from datetime import datetime, timezone
         stamps = [datetime.now(timezone.utc).isoformat()]
-    value = {**summary, **rows}
+    value = {k: v for k, v in summary.items() if k != "_data_as_of"}
+    value.update(rows)
     # Oldest part decides how fresh the combined result is.
     value["cache"] = {"hit": hit, "as_of": min(stamps), "ttl_seconds": ttl}
     return value

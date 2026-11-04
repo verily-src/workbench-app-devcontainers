@@ -4,6 +4,14 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **LOCAL, pushing after the browser suite (2026-11-04): branding, Agent page, agent memory, Start from, SQL editor** (9e1ec03, 72d8df8, faf3f06, fb5e03b, 2cd5565). Codex `gpt-6-astra` (medium) reviewed each; its SQL-editor finding is fixed with tests.
+  - **Branding.** The tab title is "Cohort Browser", with an SVG Verily-logomark favicon (`web/public/favicon.svg`), a 180 px PNG and an apple-touch icon. The in-app header still says Cohort Studio.
+  - **Agent page.** The empty state is a capability card (find data, OMOP cohorts, joins, dashboards, workflows, literature; approval-gated) with example prompts. The unused "Earlier workflow plans" section was removed.
+  - **Agent memory.** Prod's red "request could not be completed" came from missing conversation storage: `/api/agent/chat/*` returned 503 because `omop-data-source` has no `_studio_agent` schema. Settings → Agent → Agent memory now picks an Aurora datasource and runs the migration (`app/agent_store_migrate.py`, shared with `scripts/migrate_agent_store.py`; managed permissions). It writes `agent_store_config.json` (0600) with no shell needed. `STUDIO_AGENT_RESOURCE_ID` still takes precedence (409).
+  - **Join Start from.** With nothing open, it lists tables from the selected datasource and opens the chosen one as the base.
+  - **SQL editor.** Highlighting (keywords, functions, strings including `$$` and `E''`, quoted identifiers, numbers, comments; light and dark). Debounced `/api/sql/lint` applies the same static rules as Preview, with no database access, and returns the parser's line and column, marking the error line. The server verdict overrides the instant bracket/quote hint. Valid SQL offers Format SQL (sqlglot pretty).
+  - **Dev keys.** Dev Anthropic and Jev keys were copied for the user into `/private/tmp/cohort-studio-dev-keys.json` (0600, never displayed). They came from `Cohort_Studio_EC2_MCP` via SSM: RSA-OAEP-wrapped AES-GCM ciphertext, so no plaintext entered SSM output. The transfer keypair was deleted.
+
 - **PUSHED (2026-11-04): Display size setting** (c7b143a, 013edb0, 23b94e3). Settings → Appearance → Display size: Standard 100%, Comfortable 112.5% (default), Large 125%, stored in `localStorage` as `cohort-studio-ui-scale`.
   - **How it scales.** CSS `zoom` on `#root`, sized to `100vw/100vh ÷ scale` so the app fits the window. Inside the app use `var(--vw)`/`var(--vh)`, which are viewport units in the root's CSS pixels; all existing vw/vh were converted. Screens 640 px wide or less are not zoomed.
   - **Tutorial.** It converts screen rects by the root zoom.

@@ -4,6 +4,18 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **PUSHED, deployment unverified (2026-11-04): BigQuery loader and the Dataset settings drawer** (6b7780e, 81fa7f4, 669299e, plus the Add-source dialog). Codex `gpt-6-astra` (medium): two BigQuery findings, both fixed with tests.
+  - **BigQuery discovery.** Studio now finds Workbench `BQ_DATA_TABLE` references (single table) as well as `BQ_DATASET`, plus BigQuery sources registered in Studio (`kind: "bq"`: project, dataset, optional table, billing project; id `bq:<id>`; also in Add data source).
+  - **Billing.** Jobs bill the registration's billing project, then `STUDIO_BQ_BILLING_PROJECT`, then the data project. Public datasets can't bill their own project.
+  - **Nested columns.** Array and record values are flattened to text.
+  - **Table stats.** Listings show row count, size and column count from table metadata.
+  - **Storage Read API.** `google-cloud-bigquery-storage` added: 100k ClinVar rows load in 5.6 s instead of 44.6 s over REST.
+  - **Verified locally** (`scratchpad/localbq/run_test.py`, real BigQuery billed to vwb-dev-affable-olive-9580 + local PostgreSQL + upload): registered `bigquery-public-data.human_variant_annotation.ncbi_clinvar_hg38_20180701`; table info 393,209 rows / 138 MB / 31 cols; load of 100,000 flattened rows; join PostgreSQL genotypes → uploaded mapping → ClinVar ran in DuckDB (2,000 rows), with `capped_inputs` naming ClinVar and `complete_source=False`.
+  - **Not supported on AWS-only workspaces.** Adding a BigQuery reference to `aws-byoa-testing` made `wb resource list` fail ("No GCP project available"), which empties Studio discovery on restart. The VM has no Google credentials either. Remove the reference there; use a workspace with a GCP project for BigQuery.
+  - **ClinVar on S3 instead.** ClinVar is also in prod S3 as `variant-data/clinvar/ncbi_clinvar_hg38_20180701.parquet`, plus `clinvar/demo_variant_map.parquet` (SYNTHETIC map of `SYN_VAR_0001..0200` to real pathogenic ClinVar rsIDs) for an Aurora + S3 test.
+  - **Dataset settings drawer.** Column settings and Row grain moved into one drawer with Columns and Row grain tabs. A keyed `GrainSettings` among unkeyed toolbar siblings had multiplied to about 20 "Row grain" buttons in prod.
+  - **Evidence:** `test_bq_loader.py` (10), `test_dataset_settings_frontend.py`, `test_add_source_frontend.py`. Full browser suite: 18 failures and 1 error, all on the baseline list; `test_grain_frontend` now passes.
+
 - **PUSHED, deployment unverified (2026-11-04): remaining join and dashboard items** (a294812…21c17a0). Each was reviewed by Codex `gpt-6-astra` (medium); its two findings were fixed with tests.
   - **Dashboard queries are cancelled in PostgreSQL when the browser disconnects.** The endpoint is async and runs the query in a worker thread under a cancellation scope. It returns 499 on disconnect. A pure-ASGI `disconnect_watch.DisconnectWatch` middleware is installed outermost, because `BaseHTTPMiddleware` hides `http.disconnect`. The test drives `main.app` over ASGI with every middleware against a real slow PostgreSQL query, and it fails without the middleware.
   - **Reopening a join no longer profiles its inputs.** Inputs open with `profile=False` (sample profiles only), and the joined result is still profiled. A statement-capture test fails on the old code.

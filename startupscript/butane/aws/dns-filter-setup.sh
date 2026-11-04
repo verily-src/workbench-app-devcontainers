@@ -44,23 +44,30 @@ else
     echo "START_MODE=open" > /home/core/dns-filter.env
 fi
 
-DAEMON_JSON="/etc/docker/daemon.json"
-# In the same directory as the target, not the default /tmp: /tmp can be a different filesystem,
-# which would make the mv below a non-atomic copy instead of a rename.
-DAEMON_JSON_TMP="$(mktemp "${DAEMON_JSON}.XXXXXX")"
+# Only touch daemon.json and restart Docker on the genuine first boot. On every boot after that,
+# daemon.json already has the dns key from this block's earlier run, so docker.service's own
+# normal startup already has the correct default from the moment it starts - no restart needed,
+# and nothing is ever restarted with the old config in place.
+if [[ ! -f /home/core/airlock-enabled ]]; then
+    DAEMON_JSON="/etc/docker/daemon.json"
+    # In the same directory as the target, not the default /tmp: /tmp can be a different
+    # filesystem, which would make the mv below a non-atomic copy instead of a rename.
+    DAEMON_JSON_TMP="$(mktemp "${DAEMON_JSON}.XXXXXX")"
 
-# daemon.json is already written by Ignition (log-driver/log-opts) before this script ever runs.
-# Add the dns key without disturbing the rest of the file.
-jq '. + {"dns": ["172.17.0.1"]}' "${DAEMON_JSON}" > "${DAEMON_JSON_TMP}"
-# mktemp creates the file 0600; preserve the original's mode rather than silently tightening it.
-chmod --reference="${DAEMON_JSON}" "${DAEMON_JSON_TMP}"
-mv "${DAEMON_JSON_TMP}" "${DAEMON_JSON}"
+    # daemon.json is already written by Ignition (log-driver/log-opts) before this script ever
+    # runs. Add the dns key without disturbing the rest of the file.
+    jq '. + {"dns": ["172.17.0.1"]}' "${DAEMON_JSON}" > "${DAEMON_JSON_TMP}"
+    # mktemp creates the file 0600; preserve the original's mode rather than silently tightening it.
+    chmod --reference="${DAEMON_JSON}" "${DAEMON_JSON_TMP}"
+    mv "${DAEMON_JSON_TMP}" "${DAEMON_JSON}"
 
-# Safe only because nothing has created a real container yet at this point in boot - the only
-# thing that has run so far is the aws-cli container used by get_system_tag above, which has
-# already exited. dns-filter.service (After=dns-filter-setup.service) starts once this restart
-# completes, so the filter and every container after it picks up the new default.
-systemctl restart docker.service
+    # Safe only because this only ever runs on the genuine first boot (gated above) - nothing has
+    # created a real container yet at this point, the only thing that has run so far is the
+    # aws-cli container used by get_system_tag above, which has already exited. dns-filter.service
+    # (After=dns-filter-setup.service) starts once this restart completes, so the filter and every
+    # container after it picks up the new default.
+    systemctl restart docker.service
+fi
 
 # Block direct queries to the real resolver, bypassing the filter - added here, immediately after
 # Docker restarts, not deferred to probe-proxy-readiness.sh: Docker can restart already-existing

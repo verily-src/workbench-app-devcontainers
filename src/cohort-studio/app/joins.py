@@ -1,4 +1,6 @@
+import datetime
 import execution
+from decimal import Decimal
 import query_cancellation
 import hashlib
 import re
@@ -37,6 +39,9 @@ class JoinEngineError(RuntimeError):
 def _q(ident: str) -> str:
     return '"' + str(ident).replace('"', '""') + '"'
 
+_KIND_SAMPLE = 200
+
+
 def _kind(series: pd.Series) -> str:
     if pd.api.types.is_bool_dtype(series):
         return "bool"
@@ -44,6 +49,19 @@ def _kind(series: pd.Series) -> str:
         return "number"
     if pd.api.types.is_datetime64_any_dtype(series):
         return "time"
+    if series.dtype == object:
+        # Rows fetched from PostgreSQL keep date/datetime and Decimal objects
+        # in object columns; classify them by value, not as text, so joins
+        # compare dates and numerics natively instead of as strings.
+        sample = series.dropna().head(_KIND_SAMPLE)
+        if len(sample):
+            values = list(sample)
+            if all(isinstance(v, (bool,)) for v in values):
+                return "bool"
+            if all(isinstance(v, (datetime.date, datetime.datetime, pd.Timestamp)) for v in values):
+                return "time"
+            if all(isinstance(v, (int, float, Decimal)) and not isinstance(v, bool) for v in values):
+                return "number"
     return "text"
 
 def aurora_origin(resource_id: str, table: str) -> dict:

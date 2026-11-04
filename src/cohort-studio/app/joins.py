@@ -54,6 +54,10 @@ def _kind(series: pd.Series) -> str:
         # in object columns; classify them by value, not as text, so joins
         # compare dates and numerics natively instead of as strings.
         sample = series.dropna().head(_KIND_SAMPLE)
+        if not len(sample):
+            # No values loaded (e.g. an all-NULL preview of a numeric or date
+            # column): the type is unknown, not text.
+            return "unknown"
         if len(sample):
             values = list(sample)
             if all(isinstance(v, (bool,)) for v in values):
@@ -110,6 +114,11 @@ def _check_condition(cond: dict, left: dict[str, str], right: dict[str, str],
     checked = {"left": lcol, "op": op, "right": rcol, "kinds": (lk, rk),
                "cast": lk != rk}
     if lk == rk:
+        return None, None, checked
+    if "unknown" in (lk, rk):
+        # Can't tell from the loaded rows: compare equality as text (as before)
+        # and let the engine compare other operators natively.
+        checked["cast"] = op in ("=", "!=")
         return None, None, checked
     if op not in ("=", "!="):
         return (f"Step {step_no}: can't compare {lcol!r} ({lk}) "
@@ -353,6 +362,7 @@ def aurora_sql(p: dict) -> dict:
 
     return {"ctes": ctes, "names": names,
             "count": lambda i: f"{with_(i)} SELECT count(*) FROM s{i}",
+            "rows": lambda i: f"{with_(i)} SELECT 1 FROM s{i}",
             "select": lambda limit: f"{with_(last)} SELECT * FROM s{last} LIMIT {int(limit)}",
             "unlimited": lambda: f"{with_(last)} SELECT * FROM s{last}"}
 
@@ -361,17 +371,19 @@ def aurora_sql(p: dict) -> dict:
 EXACT_COUNT_MAX_ROWS = 1_000_000
 
 
-def _plan_rows(conn, count_sql: str, params: dict) -> int | None:
-    """Estimated input rows of a `SELECT count(*) FROM (...)` query, from EXPLAIN."""
+def _plan_rows(conn, rows_sql: str, params: dict) -> int | None:
+    """PostgreSQL's row estimate for `rows_sql` (an uncounted SELECT).
+
+    Estimating the plain query rather than its count(*) matters: under a
+    parallel count the node below the aggregate reports partial results per
+    worker, while the top node of the plain query (a Gather when parallel)
+    reports the total.
+    """
     import json as _json
-    raw = conn.execute(text(f"EXPLAIN (FORMAT JSON) {count_sql}"), params).scalar()
+    raw = conn.execute(text(f"EXPLAIN (FORMAT JSON) {rows_sql}"), params).scalar()
     plan = (_json.loads(raw) if isinstance(raw, str) else raw)[0]["Plan"]
-    while plan.get("Node Type") == "Aggregate" and plan.get("Plans"):
-        child = plan["Plans"][0]
-        if child.get("Node Type") != "Aggregate":
-            return int(child.get("Plan Rows", 0))
-        plan = child
-    return None
+    rows = plan.get("Plan Rows")
+    return int(rows) if rows is not None else None
 
 
 def _step_stats(before: int, right_rows: int, total: int, cap: int) -> dict:
@@ -464,10 +476,10 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
 
             estimated = []
 
-            def counted(q: str) -> int:
+            def counted(q: str, rows_q: str) -> int:
                 """Exact count when small; PostgreSQL's estimate when large."""
                 query_cancellation.check()
-                guess = _plan_rows(conn, q, params) if conn.dialect.name == "postgresql" else None
+                guess = _plan_rows(conn, rows_q, params) if conn.dialect.name == "postgresql" else None
                 if guess is not None and guess > EXACT_COUNT_MAX_ROWS:
                     estimated.append(True)
                     return guess
@@ -476,11 +488,14 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
 
             def table_rows(ds: dict) -> int:
                 if ds.get("live_source"):
-                    return counted(f"SELECT count(*) FROM ({_table_ref(ds)}) AS live_input")
+                    ref = _table_ref(ds)
+                    return counted(f"SELECT count(*) FROM ({ref}) AS live_input",
+                                   f"SELECT 1 FROM ({ref}) AS live_input")
                 if not ds.get("capped"):
                     estimated.append(False)
                     return len(ds["df"])
-                return counted(f"SELECT count(*) FROM {_table_ref(ds)}")
+                ref = _table_ref(ds)
+                return counted(f"SELECT count(*) FROM {ref}", f"SELECT 1 FROM {ref}")
 
             query_cancellation.check()
             if preview_only:
@@ -497,7 +512,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                     # intermediate steps use estimates when large, because each
                     # exact step count re-runs every join before it.
                     total = (scalar(sql["count"](step["no"])) if step["no"] == last_no
-                             else counted(sql["count"](step["no"])))
+                             else counted(sql["count"](step["no"]), sql["rows"](step["no"])))
                     step_stats = _step_stats(before, table_rows(step["ds"]), total, cap)
                     step_stats["truncated"] = False
                     step_stats["preview_rows"] = min(total, cap)

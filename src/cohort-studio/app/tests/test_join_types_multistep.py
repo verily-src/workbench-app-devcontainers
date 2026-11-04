@@ -149,3 +149,67 @@ def test_large_aurora_join_counts_only_the_final_step_exactly(engine, monkeypatc
         with engine.begin() as conn:
             for table in tables:
                 conn.exec_driver_sql(f'DROP TABLE public."{table}"')
+
+
+def test_row_estimate_handles_parallel_plans(engine):
+    name = f"jt_parallel_{uuid.uuid4().hex[:8]}"
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f'CREATE TABLE public."{name}" AS SELECT g AS id FROM generate_series(1, 200000) g')
+        conn.exec_driver_sql(f'ANALYZE public."{name}"')
+    try:
+        with engine.begin() as conn:
+            for setting in ("parallel_setup_cost = 0", "parallel_tuple_cost = 0",
+                            "min_parallel_table_scan_size = 0", "max_parallel_workers_per_gather = 2"):
+                conn.exec_driver_sql(f"SET LOCAL {setting}")
+            plan = conn.exec_driver_sql(
+                f'EXPLAIN SELECT count(*) FROM public."{name}"').scalars().all()
+            assert any("Gather" in line for line in plan), plan   # really parallel
+            estimate = joins._plan_rows(conn, f'SELECT 1 FROM public."{name}"', {})
+        assert 180000 <= estimate <= 220000, estimate
+    finally:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(f'DROP TABLE public."{name}"')
+
+
+def test_production_threshold_estimates_large_inputs_but_not_the_final_total(engine, monkeypatch):
+    from sqlalchemy import event
+    from tests.test_live_joins import _source_tables, _step
+    monkeypatch.setattr(joins.db, "get_engine_for_resource", lambda _rid: engine)
+    left_id, right_id, third_id, *tables = _source_tables(engine)
+    with engine.begin() as conn:
+        for table in tables:
+            conn.exec_driver_sql(f'ANALYZE public."{table}"')
+    monkeypatch.setattr(joins, "EXACT_COUNT_MAX_ROWS", 110_000)   # left input has 120,002 rows
+    statements = []
+
+    def hook(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+    event.listen(engine, "before_cursor_execute", hook)
+    try:
+        out = joins.run(left_id, [_step(right_id, "right", ["tag"]), _step(third_id, "third", ["group_label"])])
+    finally:
+        event.remove(engine, "before_cursor_execute", hook)
+        with engine.begin() as conn:
+            for table in tables:
+                conn.exec_driver_sql(f'DROP TABLE public."{table}"')
+    counts = [s for s in statements if "count(*)" in s.lower() and not s.lstrip().upper().startswith("EXPLAIN")]
+    # Left input (~120k) and step 1 (~120k) are estimated; the two small right
+    # inputs are counted exactly; the final chain is exact.
+    assert len(counts) == 3, counts
+    assert out["stats"]["total_rows"] == 120003
+    assert out["stats"]["estimated"] is True
+
+
+def test_inequality_join_against_all_null_preview_column_validates():
+    left = datasets.open_dataset(pd.DataFrame({"id": [1], "limit": [Decimal("10")]}), "left")
+    right = datasets.open_dataset(pd.DataFrame({"id": [1], "value": [None]}, dtype=object), "right")
+    try:
+        assert joins._kind(datasets.get(right["dataset_id"])["df"]["value"]) == "unknown"
+        checked = joins.validate(left["dataset_id"], [{
+            "right_id": right["dataset_id"], "how": "left", "alias": "r", "columns": None,
+            "conditions": [{"left": "id", "op": "=", "right": "id"},
+                           {"left": "limit", "op": ">", "right": "value"}]}])
+        assert checked["ok"], checked
+    finally:
+        datasets.close_dataset(left["dataset_id"])
+        datasets.close_dataset(right["dataset_id"])

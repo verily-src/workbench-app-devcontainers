@@ -26,3 +26,34 @@
 .source-picker > div:last-child > button {
   min-height: 34px;
 }
+
+.table-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px 10px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 12px;
+}
+
+.table-details > div { min-width: 0; }
+
+.table-details dt {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.table-details dd {
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table-details > div.wide { grid-column: 1 / -1; }

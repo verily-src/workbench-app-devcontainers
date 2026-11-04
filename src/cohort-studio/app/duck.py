@@ -23,18 +23,26 @@ DEFAULT_REGION = os.environ.get("STUDIO_S3_REGION", "us-east-1")
 
 MAX_LISTING = 500
 
-def parse_s3_ls(output: str, prefix: str = "",
-                suffixes: tuple[str, ...] = DATA_SUFFIXES) -> list[str]:
-
-    files = []
+def parse_s3_ls_entries(output: str, prefix: str = "",
+                        suffixes: tuple[str, ...] = DATA_SUFFIXES) -> list[dict]:
+    """`aws s3 ls --recursive` lines as {name, bytes, modified} entries."""
+    entries = []
     for line in output.splitlines():
         parts = line.split(None, 3)
         if len(parts) == 4 and parts[0] != "PRE" and not line.rstrip().endswith("/"):
             key = parts[3]
             if prefix and key.startswith(prefix):
                 key = key[len(prefix):].lstrip("/")
-            files.append(key)
-    return [f for f in files if f.lower().endswith(suffixes)][:MAX_LISTING]
+            entry = {"name": key, "modified": f"{parts[0]} {parts[1]}"}
+            if parts[2].isdigit():
+                entry["bytes"] = int(parts[2])
+            entries.append(entry)
+    return [e for e in entries if e["name"].lower().endswith(suffixes)][:MAX_LISTING]
+
+def parse_s3_ls(output: str, prefix: str = "",
+                suffixes: tuple[str, ...] = DATA_SUFFIXES) -> list[str]:
+
+    return [e["name"] for e in parse_s3_ls_entries(output, prefix, suffixes)]
 
 @ttl_cache(ttl=300)
 def _s3_ls(resource_id: str) -> tuple[str, str]:
@@ -54,7 +62,8 @@ def _s3_ls(resource_id: str) -> tuple[str, str]:
 
 
 def _registered_s3_files(resource_id: str,
-                          suffixes: tuple[str, ...] = DATA_SUFFIXES) -> list[str] | None:
+                          suffixes: tuple[str, ...] = DATA_SUFFIXES,
+                          entries: bool = False) -> list | None:
     import boto3
     import source_registry
 
@@ -82,15 +91,25 @@ def _registered_s3_files(resource_id: str,
             key = item.get("Key", "")
             relative = key[len(base_prefix) + 1:] if base_prefix else key
             if relative and not relative.endswith("/") and relative.lower().endswith(suffixes):
-                files.append(relative)
+                if entries:
+                    entry = {"name": relative}
+                    if isinstance(item.get("Size"), int):
+                        entry["bytes"] = item["Size"]
+                    if item.get("LastModified") is not None:
+                        entry["modified"] = item["LastModified"].strftime("%Y-%m-%d %H:%M:%S")
+                    files.append(entry)
+                else:
+                    files.append(relative)
                 if len(files) >= MAX_LISTING:
-                    return sorted(files)
+                    break
             if scanned >= MAX_LISTING * 20:
-                return sorted(files)
-        token = response.get("NextContinuationToken")
-        if not token:
-            break
-    return sorted(files)
+                break
+        else:
+            token = response.get("NextContinuationToken")
+            if token:
+                continue
+        break
+    return sorted(files, key=lambda f: f["name"]) if entries else sorted(files)
 
 @ttl_cache(ttl=300)
 def list_s3_files(resource_id: str) -> list[str]:
@@ -103,6 +122,14 @@ def list_s3_files(resource_id: str) -> list[str]:
     files = parse_s3_ls(output, prefix=prefix)
     logger.info("Found %d data files in %s", len(files), resource_id)
     return files
+
+def describe_s3_files(resource_id: str) -> list[dict]:
+    """Data files with size and modified time, from the same listing as list_s3_files."""
+    registered = _registered_s3_files(resource_id, entries=True)
+    if registered is not None:
+        return registered
+    output, prefix = _s3_ls(resource_id)
+    return parse_s3_ls_entries(output, prefix=prefix)
 
 def list_s3_catalogs(resource_id: str) -> list[str]:
 

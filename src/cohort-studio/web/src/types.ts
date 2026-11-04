@@ -15,6 +15,16 @@ export interface TableInfo {
   schema?: string;
   detail: string;
   sql?: string | null;
+  /** Planner estimate for database tables (never a full COUNT). */
+  rows?: number;
+  rows_estimated?: boolean;
+  /** On-disk size: table + indexes + TOAST for databases, object size for files. */
+  bytes?: number;
+  columns?: number;
+  /** Last ANALYZE time (databases). */
+  analyzed?: string;
+  /** Last modified time (files). */
+  modified?: string;
 }
 
 export interface ColumnProfile {

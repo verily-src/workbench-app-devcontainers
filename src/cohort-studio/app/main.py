@@ -862,7 +862,8 @@ def join_datasets(req: JoinRequest):
         data_jobs.report("Building the joined tab", rows=int(len(out["df"])),
                          columns=int(len(out["df"].columns)))
         result = datasets.open_dataset(out["df"], label,
-                                       capped=out["stats"]["truncated"],
+                                       capped=bool(out["stats"]["truncated"]
+                                                   or out["stats"].get("capped_inputs")),
                                        live_source=out.get("live_source"),
                                        disk_source=out.get("disk_source"))
         datasets.get(result["dataset_id"])["source_ref"] = ref

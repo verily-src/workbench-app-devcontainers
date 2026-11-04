@@ -1,4 +1,6 @@
 import math
+import threading
+import time
 from decimal import Decimal
 
 import pandas as pd
@@ -17,6 +19,8 @@ SCATTER_SAMPLE = 2000
 HEATMAP_LIMIT = 400
 _NUMERIC = r"^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$"
 _INTEGER_TYPE_OIDS = {20, 21, 23}
+_INT64_MIN, _INT64_MAX = -(2 ** 63), 2 ** 63 - 1
+ORDER_CACHE_TTL = 300
 _FLOAT_TYPE_OIDS = {700, 701, 1700}
 
 
@@ -53,22 +57,49 @@ def _where(filters: list[dict], columns: dict[str, str],
             raise ValueError(f"Unknown filter column: {name!r}.")
         col = _q(columns[name])
         kind = item.get("kind")
+        integer = numeric_types.get(name) in _INTEGER_TYPE_OIDS
         if kind == "categorical" and item.get("values"):
             values = [str(v) for v in item["values"]]
+            ints = _as_ints(values) if integer else None
             keys = []
             for j, value in enumerate(values):
                 key = f"f{i}_{j}"
                 keys.append(f":{key}")
-                params[key] = value
-            clauses.append(f"CAST({col} AS text) IN ({', '.join(keys)})")
+                params[key] = ints[j] if ints is not None else value
+            # Native comparison on integer columns keeps btree indexes usable.
+            target = col if ints is not None else f"CAST({col} AS text)"
+            clauses.append(f"{target} IN ({', '.join(keys)})")
         elif kind == "range" and item.get("min") is not None and item.get("max") is not None:
             lo, hi = float(item["min"]), float(item["max"])
             if not math.isfinite(lo) or not math.isfinite(hi):
                 raise ValueError("Range filter values must be finite.")
+            if integer:
+                lo_i = max(_INT64_MIN, min(_INT64_MAX, math.ceil(lo)))
+                hi_i = max(_INT64_MIN, min(_INT64_MAX, math.floor(hi)))
+                if lo_i > hi_i:
+                    clauses.append("FALSE")
+                    continue
+                clauses.append(f"{col} BETWEEN :f{i}_lo AND :f{i}_hi")
+                params[f"f{i}_lo"], params[f"f{i}_hi"] = lo_i, hi_i
+                continue
             clauses.append(f"{_numeric(col, numeric_types.get(name))} BETWEEN :f{i}_lo AND :f{i}_hi")
             params[f"f{i}_lo"] = lo
             params[f"f{i}_hi"] = hi
     return " AND ".join(clauses) if clauses else "TRUE", params
+
+
+def _as_ints(values: list[str]) -> list[int] | None:
+    """Integer values for a native IN list, or None if any value isn't an int64."""
+    out = []
+    for value in values:
+        text_value = value.strip()
+        if not text_value or not (text_value.lstrip("+-").isdigit()):
+            return None
+        number = int(text_value)
+        if not _INT64_MIN <= number <= _INT64_MAX:
+            return None
+        out.append(number)
+    return out
 
 
 def _query(conn, live_source: dict, sql: str, params: dict):
@@ -186,43 +217,111 @@ def _primary_key_order(conn, live_source: dict) -> str | None:
             """), {"schema": table.db, "table": table.name}).scalars().all()
         for key in candidates:
             if key in projected and projected[key] in outputs:
-                return f'live.{_q(projected[key])}, to_jsonb(live)::text'
+                return ", ".join([f'live.{_q(projected[key])}', *_tie_breakers(
+                    conn, table, projected, outputs, skip=projected[key])])
         return None
     if any(key not in projected or projected[key] not in outputs for key in keys):
         return None
     return ", ".join(f"live.{_q(projected[key])}" for key in keys)
 
 
+def _tie_breakers(conn, table, projected: dict, outputs: set, skip: str) -> list[str]:
+    """Every projected column, natively where btree-orderable, else as text.
+
+    Replaces to_jsonb(live)::text, which serialized whole rows for every
+    sorted row (about 40x slower on the fixture) while giving the same total
+    order over the projected values.
+    """
+    rows = conn.execute(text("""
+        SELECT a.attname,
+               EXISTS (SELECT 1 FROM pg_catalog.pg_opclass oc
+                       JOIN pg_catalog.pg_am am ON am.oid = oc.opcmethod
+                       WHERE am.amname = 'btree' AND oc.opcdefault
+                         AND oc.opcintype = a.atttypid) AS orderable
+        FROM pg_catalog.pg_attribute a
+        JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = :schema AND c.relname = :table
+          AND a.attnum > 0 AND NOT a.attisdropped
+        ORDER BY a.attnum
+        """), {"schema": table.db, "table": table.name}).all()
+    terms = []
+    for name, orderable in rows:
+        out = projected.get(name)
+        if out is None or out not in outputs or out == skip:
+            continue
+        terms.append(f"live.{_q(out)}" if orderable else f"(live.{_q(out)})::text")
+    return terms
+
+
+_order_cache: dict[tuple, tuple[float, str | None]] = {}
+_order_lock = threading.Lock()
+
+
+def _cached_primary_key_order(conn, live_source: dict) -> str | None:
+    """Memoize the default order per source; it costs 3 catalog queries."""
+    key = (live_source.get("resource_id"), live_source.get("sql"),
+           tuple(sorted(live_source.get("columns", {}).items())))
+    now = time.monotonic()
+    with _order_lock:
+        hit = _order_cache.get(key)
+        if hit and hit[0] > now:
+            return hit[1]
+    order = _primary_key_order(conn, live_source)
+    with _order_lock:
+        if len(_order_cache) > 256:
+            _order_cache.clear()
+        _order_cache[key] = (now + ORDER_CACHE_TTL, order)
+    return order
+
+
 def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
+    import query_cancellation
     table = f"({live_source['sql']}) AS live"
     columns = live_source["columns"]
-    result = []
-    with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
+    result = [dict(profile) for profile in profiles]
+    engine = db.get_engine_for_resource(live_source["resource_id"])
+    with engine.begin() as conn, query_cancellation.postgres_connection(conn):
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
-        numeric_columns = _numeric_columns(
-            conn, live_source,
-            [p["name"] for p in profiles if p.get("filter_kind") == "range"])
-        for profile in profiles:
-            entry = dict(profile)
-            name = entry["name"]
-            col = f"live.{_q(columns[name])}"
-            if entry.get("filter_kind") == "range":
-                numeric = _numeric(col, numeric_columns.get(name))
-                low, high = _query(conn, live_source,
-                                   f"SELECT MIN({numeric}), MAX({numeric}) FROM {table}",
-                                   {}).one()
+        ranges = [entry for entry in result if entry.get("filter_kind") == "range"]
+        numeric_columns = _numeric_columns(conn, live_source, [e["name"] for e in ranges])
+        if ranges:
+            # One scan for every range column instead of one scan each.
+            parts = []
+            for entry in ranges:
+                numeric = _numeric(f"live.{_q(columns[entry['name']])}",
+                                   numeric_columns.get(entry["name"]))
+                parts += [f"MIN({numeric})", f"MAX({numeric})"]
+            query_cancellation.check()
+            values = _query(conn, live_source,
+                            f"SELECT {', '.join(parts)} FROM {table}", {}).one()
+            for i, entry in enumerate(ranges):
+                low, high = values[2 * i], values[2 * i + 1]
                 if low is not None and high is not None:
                     entry["min"], entry["max"] = float(low), float(high)
-            elif entry.get("filter_kind") == "categorical":
+        for entry in result:
+            if entry.get("filter_kind") != "categorical":
+                continue
+            col = f"live.{_q(columns[entry['name']])}"
+            query_cancellation.check()
+            savepoint = conn.begin_nested()
+            try:
                 values = _query(conn, live_source,
                                 f"SELECT CAST({col} AS text) AS value FROM {table} "
-                                f"WHERE {col} IS NOT NULL GROUP BY 1 "
+                                f"WHERE {col} IS NOT NULL GROUP BY {col} "
                                 f"ORDER BY COUNT(*) DESC, 1 LIMIT {CATEGORICAL_VALUES_LIMIT}",
                                 {}).scalars().all()
-                entry["values"] = [str(value) for value in values]
-            result.append(entry)
+                savepoint.commit()
+            except Exception as exc:
+                savepoint.rollback()
+                query_cancellation.check()
+                if "statement timeout" not in str(exc) and "canceling statement" not in str(exc):
+                    raise
+                # A slow column keeps its loaded-sample values instead of failing the open.
+                continue
+            entry["values"] = [str(value) for value in values]
     return result
 
 
@@ -237,32 +336,21 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
     qy = f"live.{_q(columns[y])}" if y else None
     source = live_source["sql"]
     if kind == "bar":
-        all_rows = _query(conn, live_source,
-                          f"SELECT CAST({qx} AS text), COUNT(*) FROM {table} "
-                          f"WHERE {qx} IS NOT NULL GROUP BY 1 "
-                          f"ORDER BY COUNT(*) DESC, 1 LIMIT {BAR_TOP_N}", {})
-        top = [(str(v), int(n)) for v, n in all_rows]
-        selected = {}
-        if top and has_filters:
-            cat_params = dict(params)
-            keys = []
-            for i, (value, _) in enumerate(top):
-                key = f"c{i}"
-                keys.append(f":{key}")
-                cat_params[key] = value
-            rows = _query(conn, live_source,
-                          f"SELECT CAST({qx} AS text), COUNT(*) FROM {table} "
-                          f"WHERE ({where}) AND CAST({qx} AS text) IN ({', '.join(keys)}) "
-                          "GROUP BY 1", cat_params)
-            selected = {str(v): int(n) for v, n in rows}
-        total = int(_query(conn, live_source,
-                           f"SELECT COUNT(*) FROM {table} WHERE {qx} IS NOT NULL", {}).scalar_one())
-        selected_total = (int(_query(conn, live_source,
-                                     f"SELECT COUNT(*) FROM {table} "
-                                     f"WHERE ({where}) AND {qx} IS NOT NULL", params).scalar_one())
-                          if has_filters else total)
-        if not has_filters:
-            selected = dict(top)
+        integer = numeric_types.get(x) in _INTEGER_TYPE_OIDS
+        # One statement: top-N groups with their filtered counts plus both totals
+        # (window sums run before LIMIT, so they cover every group).
+        selected_expr = (f"COUNT(*) FILTER (WHERE {where})" if has_filters else "COUNT(*)")
+        group = qx if integer else f"CAST({qx} AS text)"
+        rows = _query(conn, live_source,
+                      f"SELECT CAST({qx} AS text), COUNT(*), {selected_expr}, "
+                      f"SUM(COUNT(*)) OVER (), SUM({selected_expr}) OVER () "
+                      f"FROM {table} WHERE {qx} IS NOT NULL GROUP BY {group} "
+                      f"ORDER BY COUNT(*) DESC, {group} LIMIT {BAR_TOP_N}",
+                      params if has_filters else {}).all()
+        top = [(str(v), int(n)) for v, n, *_ in rows]
+        selected = {str(v): int(sel) for v, _n, sel, *_ in rows}
+        total = int(rows[0][3]) if rows else 0
+        selected_total = int(rows[0][4]) if rows else 0
         try:
             top.sort(key=lambda v: float(v[0]))
         except ValueError:
@@ -342,18 +430,20 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         f"live.{_q(pg_name)} AS {_q(logical)}"
         for logical, pg_name in columns.items())
     table = f"({live_source['sql']}) AS live"
-    with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
+    import query_cancellation
+    engine = db.get_engine_for_resource(live_source["resource_id"])
+    with engine.begin() as conn, query_cancellation.postgres_connection(conn):
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
-        order = (_requested_order(live_source) or _primary_key_order(conn, live_source)
+        order = (_requested_order(live_source) or _cached_primary_key_order(conn, live_source)
                  or "to_jsonb(live)::text")
         if sort:
             if sort.get("column") not in columns or sort.get("direction") not in ("asc", "desc"):
                 raise ValueError("Invalid sort column or direction.")
             order = f"live.{_q(columns[sort['column']])} {sort['direction'].upper()} NULLS LAST, {order}"
-        needed_numeric = [f["column"] for f in filters if f.get("kind") == "range"]
-        needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") == "histogram")
+        needed_numeric = [f["column"] for f in filters if f.get("kind") in ("range", "categorical")]
+        needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") in ("histogram", "bar"))
         numeric_types = _numeric_columns(conn, live_source, needed_numeric)
         where, params = _where(filters, columns, numeric_types)
         has_filters = where != "TRUE"

@@ -125,7 +125,7 @@ def test_nonunique_index_keeps_pages_deterministic(engine, monkeypatch):
               "columns": {"group_id": "group_id", "label": "label"}}
     try:
         with engine.begin() as conn:
-            assert live_query._primary_key_order(conn, source) == 'live."group_id", to_jsonb(live)::text'
+            assert live_query._primary_key_order(conn, source) == 'live."group_id", live."label"'
         pages = [live_query.query(source, [], [], n, 10, refresh=True)['rows']['data'] for n in range(2)]
         assert len({tuple(row) for page in pages for row in page}) == 20
         assert pages == [live_query.query(source, [], [], n, 10, refresh=True)['rows']['data'] for n in range(2)]

@@ -739,12 +739,21 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
     preview = reader.execute(
         f"SELECT * FROM {current} LIMIT 100000").df()
     query_cancellation.check()
+    # In-memory inputs (e.g. BigQuery, legacy loaded frames) are staged from
+    # their capped rows, so the result is not complete even though every
+    # live and disk input was read in full.
+    capped_inputs = list(dict.fromkeys(
+        ds["source"] for ds in datasets
+        if ds.get("capped") and not ds.get("live_source") and not ds.get("disk_source")))
+    if capped_inputs:
+        notes.append(f"Used only the loaded (capped) rows of {', '.join(capped_inputs)} "
+                     "— results may be incomplete.")
     stats = {"engine": "duckdb", "base_rows": row_counts[id(plan["base"])],
-             "steps": step_stats, "notes": notes, "capped_inputs": [],
+             "steps": step_stats, "notes": notes, "capped_inputs": capped_inputs,
              "rows": before, "total_rows": before, "truncated": False,
              "estimated_bytes": budget_used,
              "large_warning": budget_used >= LARGE_OPERATION_BYTES,
-             "complete_source": True,
+             "complete_source": not capped_inputs,
              "materialized_bytes": budget_used - sum(source_estimates)}
     return {"df": preview, "stats": stats,
             "disk_source": {"path": path, "table": current.strip('"'),

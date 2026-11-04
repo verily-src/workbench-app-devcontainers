@@ -31,12 +31,29 @@ _REFRESH_COOLDOWN = 60.0
 
 _conn_string_cache: dict[str, str] = {}
 _conn_string_events: dict[str, threading.Event] = {}
+_conn_string_locks: dict[str, threading.Lock] = {}
+_conn_string_locks_guard = threading.Lock()
+
+
+def _resolve_lock(resource_id: str) -> threading.Lock:
+    with _conn_string_locks_guard:
+        return _conn_string_locks.setdefault(resource_id, threading.Lock())
 
 
 def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ",
                               retries: int = 3) -> str:
     if resource_id in _conn_string_cache:
         return _conn_string_cache[resource_id]
+    # One `wb resource resolve` per resource at a time: a query that arrives
+    # while warm-up is resolving waits for that result instead of spawning a
+    # second CLI call (each can take up to 120 s).
+    with _resolve_lock(resource_id):
+        if resource_id in _conn_string_cache:
+            return _conn_string_cache[resource_id]
+        return _resolve_connection_string(resource_id, access_mode, retries)
+
+
+def _resolve_connection_string(resource_id: str, access_mode: str, retries: int) -> str:
     last_err = None
     for attempt in range(retries):
         try:

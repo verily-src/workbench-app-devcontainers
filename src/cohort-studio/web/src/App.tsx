@@ -433,11 +433,14 @@ export default function App() {
     const timer = setTimeout(() => {
       try {
         if (restorable.length) {
+          // Index of the active tab within the restorable list (uploads are dropped).
+          const activeInSaved = Math.max(0, restorable.indexOf(datasets[active]));
           localStorage.setItem(sessionKey, JSON.stringify({
-            savedAt: new Date().toISOString(), active,
+            savedAt: new Date().toISOString(), active: activeInSaved,
             datasets: viewSpecs(restorable), skipped: datasets.length - restorable.length }));
-        } else if (hadDatasets.current && !datasets.length) {
-          localStorage.removeItem(sessionKey);     // the user closed every tab
+        } else if (hadDatasets.current) {
+          // Every restorable tab was closed (only uploads, or nothing, remain).
+          localStorage.removeItem(sessionKey);
         }
       } catch { /* storage may be full or disabled */ }
     }, 800);

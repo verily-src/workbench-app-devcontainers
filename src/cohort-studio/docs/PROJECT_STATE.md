@@ -4,6 +4,26 @@ Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **PUSHED, deployment unverified (2026-11-04): performance batch 1 from the caching/query and multi-join audits** (57744cf, 630cc18, 03c5564):
+  - **Row ordering:** the default order breaks ties with the projected columns natively, or as `::text` for types without a btree opclass, instead of `to_jsonb(live)::text`. On the fixture: 0.5 ms vs 22 ms for a top-50 sort on 2.5k rows. It's memoized per source for 300 s.
+  - **Integer filters:** categorical and range filters compare natively, so btree indexes apply (`Index Cond` in EXPLAIN on the fixture).
+  - **Bar charts:** 1 statement per chart instead of 4.
+  - **Profiling:** one MIN/MAX scan for all range columns. A categorical column that times out keeps its sample values instead of 504ing the open. Dashboard queries and profiling are bound to `query_cancellation`.
+  - **Credentials:** one `wb resource resolve` per resource at a time.
+  - **Cross-source joins:** capped in-memory inputs (BigQuery, legacy frames) are reported in `capped_inputs`, and the result is marked capped.
+  - **Codex `gpt-6-astra` (medium):** found json categorical grouping, out-of-domain integer ranges and max-bigint rounding; all fixed with tests.
+  - **Evidence:** 21 targeted tests pass. In the full non-browser suite, 594 pass and 11 fail, and the same 11 fail on the unmodified baseline (586 pass); the extra 8 are the new tests.
+  - **No Aurora measurement:** every big-table impact is extrapolated from the 2.5k-row fixture. Measure a dashboard refresh on prod `cms_synpuf_100k.cost` before and after the deploy.
+  - **Proposed batch 2, not started:**
+    - cache tiering, with unfiltered aggregates cached separately with a longer TTL, plus `GROUPING SETS` and `FILTER` folding
+    - Aurora join stats: replace per-input `COUNT(*)` and per-step chain counts with estimates or one statement
+    - join key types from PostgreSQL type codes instead of pandas dtypes (dates and numerics currently compare as text)
+    - client debounce and abort plus a server-side cancel for dashboard queries
+    - fan-out estimates and confirmation for exploding star joins
+    - `COALESCE` keys after right/full joins
+    - a "Join to" picker, reorder controls and stable step ids in the join builder
+    - metadata-only child opens when reopening joins
+
 - **PUSHED, deployment unverified (2026-11-04): joins keep running across tab switches; toolbar alignment.** Switching dataset tabs hides the join builder instead of unmounting it (`joinMounted`), so a draft or a running join is still there when you return. The ⋈ Join tab shows a spinner and "Joining…" while a join runs. The builder shows the join's phase, elapsed time and Cancel (via the shared `studio-data-job` events), and progress cards use a larger spinner. The dataset toolbar's Format control sits inline like Count unique, toolbar controls share a 34px height, and the row-count separators keep their spaces. A Codex `gpt-6-astra` (medium) review of cc84188 and 9b2f169 found three issues, now fixed with tests: the `@execution.workload("bulk")` decorator had ended up on `joins._report` instead of `joins.run` (direct joins skipped admission control), partitioned tables reported 0 B and no rows (now summed over leaf partitions), and reopening Edit join on the same dataset kept a stale mounted builder and leaked its inputs (the session key now changes; the previous inputs are closed; editing is blocked while a join runs). Evidence: 21 backend tests (the new lane test fails on the old code; the partition test runs on real PostgreSQL) and 7 join/job/picker browser tests passed, with screenshots inspected. The 3 `test_connector_frontend.py` failures also fail on the unmodified branch. No browser test covers the Edit-join reopen fix yet.
 
 - **BRANCH MOVED (2026-11-04): `cohort-dashboard` → `BENCH-10576-cohort-browser`** ([BENCH-10576](https://verily.atlassian.net/browse/BENCH-10576), "cohort browser"). `cohort-dashboard` was deleted from origin at the user's request, after confirming it was identical to the new branch (`bf33371`); it can be re-created from that commit if needed. `self_update.sh` defaults to the new branch. New app configs `cohort-browser`: prod `030e5724-f17f-48e4-961c-b586a2dc5837` (aws-byoa-testing) and dev-stable `3a984f8d-f07f-4b8b-96fe-1eae256ed9b6` (bugbash-nextflowonaws). Old configs (prod `cohort-dashboard`; dev "Cohort Studio" and "Cohort Dashboard") still name the deleted branch, so their VMs can't rebuild; recreate them from `cohort-browser`. This affects psu@verily.health's `Cohort_Studio_EC2_20261022` and `Cohort_Studio_EC2_20261102`.

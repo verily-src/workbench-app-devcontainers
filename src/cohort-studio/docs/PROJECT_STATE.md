@@ -1,8 +1,14 @@
 # Cohort Studio project state
 
-Updated 2026-10-26. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
+Updated 2026-11-05. This is the shared project memory for Codex, Claude, Cursor, and OpenCode. Update this file after material changes. Record evidence, not assumptions.
 
 ## Latest local change
+
+- **LOCAL (2026-11-05): Parquet folders and gzip imports** (6ba4887, 0fa90b6).
+  - **S3 Parquet folders.** A folder with two or more `.parquet` parts, plain or `key=value` partitioned, lists as one `folder/` entry, shown as "Parquet folder · N parts" with total size. It opens every part through `read_parquet(... /**/*.parquet, union_by_name)`; partition columns come from DuckDB's Hive detection. `disk_data._folder_size` lists the parts to apply the load budget and caps a folder at 20,000 parts.
+  - **Gzip and upload.** `.csv.gz` is a supported S3 suffix. Local upload accepts `.parquet`, `.csv.gz` and `.tsv.gz`, in addition to CSV, TSV and TXT.
+  - **Codex `gpt-6-astra` (medium).** It found that the case-sensitive glob skipped `.PARQUET` parts the listing counted, and that registered-source folders were grouped after the 500-file cap. Both are fixed with tests; the re-review was clean.
+  - **Tests.** `test_parquet_import.py` (26) and `test_parquet_import_frontend.py` (2) pass. They use local files in place of S3; live S3 folder reads are not yet verified.
 
 - **LOCAL, pushing after the browser suite (2026-11-04): branding, Agent page, agent memory, Start from, SQL editor** (9e1ec03, 72d8df8, faf3f06, fb5e03b, 2cd5565). Codex `gpt-6-astra` (medium) reviewed each; its SQL-editor finding is fixed with tests.
   - **Branding.** The tab title is "Cohort Browser", with an SVG Verily-logomark favicon (`web/public/favicon.svg`), a 180 px PNG and an apple-touch icon. The in-app header still says Cohort Studio.

@@ -15,6 +15,7 @@ import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinFilter, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
 
+const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
 const JoinPanel = lazy(() => import("./components/JoinPanel").then((m) => ({ default: m.JoinPanel })));
 const StudioAgent = lazy(() => import("./components/StudioAgent").then((m) => ({ default: m.StudioAgent })));
@@ -198,6 +199,14 @@ export default function App() {
 
   // Bumped by "Refresh tables" to list again, bypassing the server's listing cache.
   const [tablesRefresh, setTablesRefresh] = useState(0);
+  // Folding the Data sources panel gives dashboards the full width; remembered per browser.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) === "1"; } catch { return false; }
+  });
+  const toggleSidebar = (collapsed: boolean) => {
+    setSidebarCollapsed(collapsed);
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch { /* private mode */ }
+  };
   useEffect(() => {
     if (!source) return;
     setTables([]);
@@ -750,9 +759,22 @@ export default function App() {
   ];
 
   return (
-    <div className={`app${view !== "explore" ? " app-no-sidebar" : ""}`}>
-      <aside className="sidebar">
-        <h2 className="sidebar-heading">Data sources</h2>
+    <div className={`app${view !== "explore" ? " app-no-sidebar" : ""}${sidebarCollapsed ? " sidebar-is-collapsed" : ""}`}>
+      {sidebarCollapsed && (
+        <aside className="sidebar-rail" aria-label="Data sources (collapsed)">
+          <button type="button" className="quiet sidebar-toggle" aria-label="Expand data sources"
+                  title="Show data sources" aria-expanded={false}
+                  onClick={() => toggleSidebar(false)}>»</button>
+          <span className="sidebar-rail-label" aria-hidden="true">Data sources</span>
+        </aside>
+      )}
+      <aside className="sidebar" hidden={sidebarCollapsed} id="data-sources-panel">
+        <h2 className="sidebar-heading">
+          <span>Data sources</span>
+          <button type="button" className="quiet sidebar-toggle" aria-label="Collapse data sources"
+                  title="Hide data sources" aria-expanded={true} aria-controls="data-sources-panel"
+                  onClick={() => toggleSidebar(true)}>«</button>
+        </h2>
         {!ready ? (
           <div className="activity"><span className="pulse" />
             Connecting to workspace…</div>
@@ -936,9 +958,12 @@ export default function App() {
               {sources.length > 0 && (
                   <button className="primary" data-tutorial-target="load-data"
                     onClick={() => {
-                      const picker = document.querySelector<HTMLSelectElement>("[aria-label='Source type']");
-                      picker?.scrollIntoView({ block: "nearest" });
-                      picker?.focus();
+                      toggleSidebar(false);
+                      window.setTimeout(() => {
+                        const picker = document.querySelector<HTMLSelectElement>("[aria-label='Source type']");
+                        picker?.scrollIntoView({ block: "nearest" });
+                        picker?.focus();
+                      });
                     }}>
                   Load data
                 </button>

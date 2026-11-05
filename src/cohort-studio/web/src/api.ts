@@ -1,6 +1,6 @@
 import type {
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
-  ColumnSetting, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
+  ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
   SavedViewJob, SavedViewList, SourceInfo,
@@ -352,9 +352,25 @@ function workflows(refresh = false): Promise<WorkflowList> {
   return task;
 }
 
+/** Join request body; filters are sent only when set, so older servers and
+ * recorded requests see the same shape as before. */
+function joinBody(baseId: string, steps: JoinStep[], allowLoaded: boolean,
+                  baseFilters?: JoinFilter[]) {
+  return {
+    base_id: baseId,
+    steps: steps.map(({ filters, ...step }) => filters?.length ? { ...step, filters } : step),
+    allow_loaded: allowLoaded,
+    ...(baseFilters?.length ? { base_filters: baseFilters } : {}),
+  };
+}
+
 export const api = {
   groupSummary: (datasetId: string, body: { group_by: string[]; measure: string | null; filters: Filter[]; page: number; page_size: number }) =>
     request<{ columns: string[]; rows: unknown[][]; total_groups: number; input_rows: number; page: number; page_size: number; scope: "database" | "loaded"; sampled: boolean }>(`/api/datasets/${encodeURIComponent(datasetId)}/summary`, post(body)),
+  /** Every group of a summary (after filters) opened as a new dataset tab. */
+  openGroupSummary: (datasetId: string, body: { group_by: string[]; measure: string | null; filters: Filter[] }) =>
+    request<OpenResult & { summary: { total_groups: number; input_rows: number; scope: "database" | "loaded"; sampled: boolean; staged: boolean } }>(
+      `/api/datasets/${encodeURIComponent(datasetId)}/summary/materialize`, post(body)),
 
   grain: (id: string) => request<GrainInfo>(`/api/datasets/${id}/grain`),
   saveGrain: (id: string, definition: GrainDefinition) => request<GrainInfo>(`/api/datasets/${id}/grain`, {...post(definition), method: "PUT"}),
@@ -474,18 +490,19 @@ export const api = {
       body: JSON.stringify({ columns }),
     }),
 
-  join: (baseId: string, steps: JoinStep[], allowLoaded = false) =>
+  join: (baseId: string, steps: JoinStep[], allowLoaded = false, baseFilters?: JoinFilter[]) =>
     dataJob<OpenResult & { join: JoinStats }>("join",
-      { base_id: baseId, steps, allow_loaded: allowLoaded }),
+      joinBody(baseId, steps, allowLoaded, baseFilters)),
 
   previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false, signal?: AbortSignal,
-                onProgress?: (job: DataJob) => void) =>
-    dataJob<JoinPreview>("join_preview", { base_id: baseId, steps, allow_loaded: allowLoaded }, signal, onProgress),
+                onProgress?: (job: DataJob) => void, baseFilters?: JoinFilter[]) =>
+    dataJob<JoinPreview>("join_preview", joinBody(baseId, steps, allowLoaded, baseFilters),
+      signal, onProgress),
 
   validateJoin: (baseId: string, steps: JoinStep[], signal?: AbortSignal,
-                 allowLoaded = false) =>
+                 allowLoaded = false, baseFilters?: JoinFilter[]) =>
     request<JoinValidation>("/api/datasets/join/validate",
-      { ...post({ base_id: baseId, steps, allow_loaded: allowLoaded }), signal }),
+      { ...post(joinBody(baseId, steps, allowLoaded, baseFilters)), signal }),
 
   suggestJoin: (leftId: string, rightId: string) =>
     request<JoinSuggestion[]>(

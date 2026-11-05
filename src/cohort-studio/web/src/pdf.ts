@@ -46,7 +46,20 @@ export function captureCharts(): ChartImage[] {
   return out;
 }
 
-export function exportDatasetPdf(dataset: Dataset, charts: ChartImage[]) {
+export interface SummaryTable { status: string; columns: string[]; rows: string[][] }
+
+/** The group summary page currently shown in the dashboard, if any. */
+export function captureGroupSummary(): SummaryTable | null {
+  const panel = document.querySelector<HTMLElement>('section[aria-label="Group summary"]');
+  const table = panel?.querySelector("table");
+  if (!panel || !table) return null;
+  const text = (cell: Element) => cell.textContent?.trim() ?? "";
+  return { status: panel.querySelector('[role="status"]')?.textContent?.trim() ?? "",
+    columns: Array.from(table.querySelectorAll("thead th"), text),
+    rows: Array.from(table.querySelectorAll("tbody tr"), (row) => Array.from(row.querySelectorAll("td"), text)) };
+}
+
+export function exportDatasetPdf(dataset: Dataset, charts: ChartImage[], summary: SummaryTable | null = null) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -63,6 +76,8 @@ export function exportDatasetPdf(dataset: Dataset, charts: ChartImage[]) {
   const r = dataset.result;
   if (r) writeWrapped(`${r.filtered.toLocaleString()} of ${r.total.toLocaleString()} rows - ${dataset.source}`, 10, 75);
   writeWrapped(`Filters: ${describeFilters(dataset.filters)}`, 9, 75);
+  const recipe = dataset.groupSummary;
+  if (recipe) writeWrapped(`Group summary: by ${recipe.group_by.join(", ")}${recipe.measure ? `; value column ${recipe.measure}` : ""}`, 9, 75);
   y += 8;
 
   for (const img of charts) {
@@ -77,6 +92,22 @@ export function exportDatasetPdf(dataset: Dataset, charts: ChartImage[]) {
     const ratio = Math.min(contentW / props.width, availableH / props.height);
     const imgW = props.width * ratio, imgH = props.height * ratio;
     doc.addImage(img.dataUrl, "PNG", margin + (contentW - imgW) / 2, y, imgW, imgH);
+  }
+
+  if (recipe && summary && summary.columns.length) {
+    doc.addPage(); y = margin;
+    doc.setFontSize(12); doc.setTextColor(35);
+    doc.text("Group summary", margin, y);
+    y += 16;
+    if (summary.status) {
+      doc.setFontSize(9); doc.setTextColor(90);
+      const lines = doc.splitTextToSize(`${summary.status} Showing the displayed page of groups.`, contentW) as string[];
+      doc.text(lines, margin, y); y += lines.length * 12;
+    }
+    autoTable(doc, { startY: y + 6, margin: { left: margin, right: margin, bottom: margin },
+      head: [summary.columns], body: summary.rows,
+      styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
+      headStyles: { fillColor: [9, 114, 98], textColor: 255 }, rowPageBreak: "avoid" });
   }
 
   if (r && r.rows.data.length) {

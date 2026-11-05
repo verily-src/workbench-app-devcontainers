@@ -75,7 +75,8 @@ def test_source_picker_cascades_without_autoload_and_keeps_datasource(
     expect(page.get_by_label("Table").locator("option")).to_have_count(2)
     expect(page.get_by_label("Table").locator("option").nth(1)).to_have_text("person (table)")
     expect(page.get_by_label("Datasource")).to_have_value("aurora:clinical-a")
-    expect(page.get_by_role("button", name="OMOP", exact=True)).to_be_visible()
+    expect(page.get_by_role("group", name="Explore view")).to_have_count(0)
+    expect(page.get_by_role("button", name="OMOP", exact=True)).to_have_count(0)
     expect(page.get_by_text("Saved views", exact=True)).to_be_visible()
     assert opened == []
 

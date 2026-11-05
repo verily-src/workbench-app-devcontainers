@@ -52,7 +52,7 @@ def _leaf_sources(source: dict):
         yield from _leaf_sources(source.get("base") or {})
         for step in source.get("steps", []):
             yield from _leaf_sources(step.get("source") or {})
-    elif kind == "derived":
+    elif kind in {"derived", "group_summary"}:
         yield from _leaf_sources(source.get("base") or {})
     else:
         yield source
@@ -246,7 +246,7 @@ def portable_recipe_state(state: dict) -> dict:
             source["base"] = expand(source["base"], visiting)
             for step in source["steps"]:
                 step["source"] = expand(step["source"], visiting)
-        elif kind == "derived":
+        elif kind in {"derived", "group_summary"}:
             source["base"] = expand(source["base"], visiting)
         return source_dict(source)
 

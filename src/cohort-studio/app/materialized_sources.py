@@ -120,7 +120,7 @@ def _collect_relations(recipe: dict, resource_id: str,
             if node["resource_id"] != resource_id:
                 raise ValueError("Materialized joins must use one Aurora resource.")
             import omop
-            info = omop.detect(conn.engine)
+            info = omop.detect(conn.engine, node.get("cdm_schema"), resource_id)
             if info is None:
                 raise ValueError("OMOP source was not found.")
             compiled = omop._prepare(conn, info, node["spec"])

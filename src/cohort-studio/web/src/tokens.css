@@ -429,8 +429,6 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
 .explore-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 5px; padding: 3px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
 .explore-toggle button { padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--ink-muted); font: inherit; cursor: pointer; }
 .explore-toggle button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px #0002; font-weight: 600; }
-.omop-summary-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 10px; min-width: 0; }
-.omop-summary-charts .chart-card { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
 .join-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 8px; }
 .column-settings { position: relative; }
 .column-settings-panel { position: absolute; z-index: 5; right: 0; top: 100%; width: min(760px, calc(82 * var(--vw))); max-height: calc(65 * var(--vh)); overflow: auto; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px #0002; }
@@ -491,6 +489,37 @@ button.link:hover { text-decoration: underline; }
 .join-warn, .join-error { color: #b4541a; }
 .join-cond.invalid select { border-color: #e2b08f; }
 .join-check { font-size: 11.5px; margin: -2px 0 6px 34px; }
+/* Sections inside a join step: "Match rows where" and per-table filters. */
+.join-section { margin: 8px 0; }
+.join-section-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  margin: 0 0 6px 34px; font-size: 12px; font-weight: 600; color: var(--ink-soft); }
+.join-section-title .settings-hint { font-weight: 400; }
+.join-how-hint { margin: -4px 0 10px 30px; font-size: 12px; }
+.join-cond-head { display: flex; gap: 6px; margin-bottom: 2px; font-size: 11px; color: var(--ink-muted); }
+.join-cond-head > span:not(.join-cond-label):not(.join-op-space):not(.join-remove-space) {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.join-op-space { flex: none; width: 56px; }
+.join-remove-space { flex: none; width: 24px; }
+.join-cond, .join-filter { align-items: flex-start; }
+.join-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.join-cond .join-pick select, .join-filter .join-pick select { width: 100%; }
+.join-col-type { font-size: 10.5px; color: var(--ink-muted); padding-left: 2px; }
+.join-cond-label, .join-cond select.join-op, .join-cond > button { margin-top: 2px; }
+.join-filter { display: flex; gap: 6px; margin-bottom: 6px; }
+.join-filter > .join-cond-label, .join-filter > button { margin-top: 2px; }
+.join-filter > .join-cond-label { width: 36px; flex: none; }
+.join-filter + .join-check, .join-filters .join-tools, .join-filters .join-section-title { margin-left: 42px; }
+.join-cond-label, .join-cond > select, .join-filter > select, .join-filter > input { align-self: flex-start; }
+.join-cond > .join-cond-label, .join-filter > .join-cond-label { line-height: 34px; margin-top: 0; }
+.join-base-filters { padding: 0 12px; }
+.join-filter-op { flex: none; width: 118px; }
+.join-filter-value { flex: 1; min-width: 0; box-sizing: border-box; }
+.join-filter.invalid select, .join-filter.invalid input { border-color: #e2b08f; }
+.join-advanced .join-row { margin: 6px 0 0; }
+.join-alias { max-width: 320px; }
+.join-disabled-reason { font-size: 12px; color: var(--ink-muted); max-width: 340px; }
+.join-disabled-reason:empty { display: none; }
+.join-result-rows { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
 .join-capped { margin-top: 8px; }
 .join-fanout { font-weight: 600; }
 .join-engine {
@@ -677,44 +706,6 @@ button.link:hover { text-decoration: underline; }
 .palette-hint { font-size: 11.5px; color: var(--ink-muted); }
 .palette-empty { padding: 14px; color: var(--ink-muted); font-size: 13px;
   text-align: center; }
-.omop-builder { max-width: 1300px; margin: 0 auto; }
-.omop-builder h2 { color: var(--ink); margin: 8px 0; }
-.omop-builder h3 { margin: 0 0 16px; color: var(--ink); }
-.omop-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
-.omop-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 18px; }
-.omop-grid > div, .omop-card { min-width: 0; }
-.omop-card { border: 1px solid var(--border); background: var(--card); border-radius: var(--radius); padding: 18px; margin: 14px 0; }
-.omop-card label { display: block; font-size: 12px; }
-.omop-card label input:not([type=checkbox]), .omop-card select { margin: 5px 0 10px; }
-.omop-card input[type=date] { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px; font: inherit; }
-.omop-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.omop-row > label { flex: 1; min-width: 110px; }
-.omop-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
-.omop-toolbar button { margin-left: auto; }
-.omop-card label.omop-check { display: flex; align-items: center; gap: 6px; margin: 12px 0; }
-.omop-search { max-height: 260px; overflow: auto; margin-top: 12px; border-top: 1px solid var(--border); }
-.omop-card label.omop-result { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.omop-result small { display: block; color: var(--ink-muted); margin-top: 4px; }
-.omop-rule { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 14px; }
-.omop-rule .omop-toolbar { margin: 0 0 12px; }
-.omop-count { font-size: 28px; color: var(--accent); }
-.omop-count span { font-size: 13px; color: var(--ink-muted); }
-.omop-attrition { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-.omop-attrition th, .omop-attrition td { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--border); }
-.omop-attrition th:last-child, .omop-attrition td:last-child { text-align: right; }
-.omop-error { color: #b42318; }
-@media (max-width: 1050px) { .omop-grid { grid-template-columns: minmax(0, 1fr); } }
-
-.omop-card textarea { width: 100%; resize: vertical; margin: 8px 0; padding: 8px; font: inherit; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
-.omop-chat { max-height: 240px; overflow-y: auto; white-space: pre-wrap; }
-.omop-proposal { margin-top: 12px; padding: 12px; background: var(--accent-tint); border-radius: var(--radius-sm); }
-.omop-proposal pre { overflow-x: auto; max-height: 240px; font-size: 11px; }
-
-.omop-results-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
-.omop-results-heading h3 { margin: 0; margin-right: auto; }
-.omop-results-heading .explore-toggle { margin: 0; }
-.omop-summary-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; }
-.omop-summary-tables caption { text-align: left; font-weight: 600; padding: 8px 0; }
 .dataset-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
 .dataset-toolbar .hero { flex: 1 1 360px; min-width: 0; margin: 0; }
 .dataset-toolbar .detail { overflow-wrap: anywhere; }

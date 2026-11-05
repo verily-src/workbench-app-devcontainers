@@ -147,55 +147,71 @@ if AVAILABLE:
                            ("total", "filtered", "rows", "scope", "sampled", "entity", "cache")
                            if k in result}, default=str)
 
-    def _omop_cdm(resource_id: str):
+    def _omop_cdm(resource_id: str, cdm_schema: str = ""):
         import db
         import omop
         known = {r["id"] for r in db.list_aurora_resources()}
         if resource_id not in known:
             raise ValueError("Unknown Aurora resource or workspace resources are not ready.")
-        info = omop.detect_resource(resource_id)
+        info = (omop.detect_resource(resource_id, cdm_schema) if cdm_schema
+                else omop.detect_resource(resource_id))
         if info is None:
             raise ValueError(f"No OMOP CDM found in {resource_id}.")
         return db.get_engine_for_resource(resource_id), info
 
     @mcp.tool()
+    def omop_cdm_schemas(resource_id: str) -> str:
+        """List the OMOP CDM schemas of an Aurora database with person
+        counts and the default schema. Pass cdm_schema to the other omop_*
+        tools to use a non-default one."""
+        import omop
+        _, info = _omop_cdm(resource_id)
+        return json.dumps({"default_cdm_schema": info.get("default_cdm_schema", info["cdm_schema"]),
+                           "cdm_schemas": omop.schema_summary(info)}, default=str)
+
+    @mcp.tool()
     def omop_search_concepts(resource_id: str, q: str, domain: str = "",
                              vocabulary: str = "",
-                             standard_only: bool = True) -> str:
+                             standard_only: bool = True,
+                             cdm_schema: str = "") -> str:
         """Search OMOP concepts in an Aurora CDM by name words, concept_id
         or concept_code. domain is condition, drug, procedure,
         measurement, observation, visit, device (or an OMOP domain_id).
+        cdm_schema picks one CDM schema (see omop_cdm_schemas); empty uses
+        the default. Each CDM schema has its own vocabulary.
         Returns concept_id, concept_name, domain_id, vocabulary_id,
         concept_class_id, concept_code, standard_concept, persons."""
         import omop
-        engine, info = _omop_cdm(resource_id)
+        engine, info = _omop_cdm(resource_id, cdm_schema)
         return json.dumps(omop.search_concepts(
             engine, info, q, domain or None, vocabulary or None,
             standard_only=standard_only), default=str)
 
     @mcp.tool()
-    def omop_count_cohort(resource_id: str, spec_json: str) -> str:
+    def omop_count_cohort(resource_id: str, spec_json: str, cdm_schema: str = "") -> str:
         """Count persons in an OMOP cohort. spec_json is
         {criteria: [{domain, concept_ids: [int], descendants?: bool,
         exclude?: bool, min_count?: int, value_min?, value_max?,
         start?: 'YYYY-MM-DD', end?, index_relation?: 'before'|'after'}],
         demographics?: {gender_concept_ids?, age_min?, age_max?,
         year_of_birth_min?, year_of_birth_max?},
-        require_observation?: bool}. Criteria are AND-ed. Returns
-        persons, total_persons and cumulative attrition."""
+        require_observation?: bool}. Criteria are AND-ed. cdm_schema picks
+        one CDM schema (empty = default); use concept IDs from that schema.
+        Returns persons, total_persons and cumulative attrition."""
         import omop
-        engine, info = _omop_cdm(resource_id)
+        engine, info = _omop_cdm(resource_id, cdm_schema)
         return json.dumps(omop.count(engine, info, json.loads(spec_json)))
 
     @mcp.tool()
     def omop_open_cohort(resource_id: str, spec_json: str,
-                         name: str = "") -> str:
-        """Open an OMOP cohort (same spec as omop_count_cohort) as a
-        person-level dataset for query_dataset. Returns a dataset_id and
-        a column profile."""
+                         name: str = "", cdm_schema: str = "") -> str:
+        """Open an OMOP cohort (same spec and cdm_schema as
+        omop_count_cohort) as a person-level dataset for query_dataset.
+        Returns a dataset_id and a column profile."""
         import datasets
         import omop
-        engine, info = _omop_cdm(resource_id)
+        engine, info = _omop_cdm(resource_id, cdm_schema)
         df = omop.open_cohort(engine, info, json.loads(spec_json))
+        schema = f"{cdm_schema} / " if cdm_schema else ""
         return json.dumps(datasets.open_dataset(
-            df, f"{resource_id} / {name.strip() or 'OMOP cohort'}"), default=str)
+            df, f"{resource_id} / {schema}{name.strip() or 'OMOP cohort'}"), default=str)

@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./Tutorial.css";
 
-const STORAGE_KEY = "cohort-studio.tutorial.v3";
+const STORAGE_KEY = "cohort-studio.tutorial.v4";
 
 export interface TutorialProgress {
   sourceChosen: boolean;
   dataLoaded: boolean;
   hasSources: boolean;
-  omopAvailable: boolean;
-  omopActive: boolean;
-  omopOpenedCount: number;
   joinPanelOpen: boolean;
   joinCreated: boolean;
   view: string;
@@ -35,21 +32,6 @@ const steps = [
     target: () => ["[aria-label='Table']", "[aria-label='File']", "[aria-label='Schema']"],
     done: (p: TutorialProgress) => p.dataLoaded,
     unavailable: (p: TutorialProgress) => !p.sourceChosen,
-  },
-  {
-    title: "Build an OMOP cohort",
-    text: "Select OMOP beside Tables. Choose concepts and demographic filters to update the cohort summary. Use Charts or Table to inspect it, then View people to open the cohort.",
-    target: (p: TutorialProgress) => p.omopActive
-      ? ["[aria-label='OMOP cohort builder']"] : ["[data-tutorial-target='omop-toggle']"],
-    done: (p: TutorialProgress) => p.omopOpenedCount > 0,
-    unavailable: (p: TutorialProgress) => !p.omopAvailable,
-  },
-  {
-    title: "Open related tables",
-    text: "In OMOP, use Explore clinical tables. Keep Restrict to current cohort selected to open events for your cohort. For genetics, return to Tables and choose the genetics schema.",
-    target: () => ["[aria-label='OMOP cohort builder']"],
-    done: (p: TutorialProgress) => p.omopOpenedCount > 1,
-    unavailable: (p: TutorialProgress) => !p.omopAvailable || p.omopOpenedCount === 0,
   },
   {
     title: "Join on matching keys",
@@ -115,7 +97,6 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
   const unavailable = current.unavailable(progress) || !targetAvailable;
   const selectors = useMemo(() => current.target(progress), [step,
     progress.sourceChosen, progress.dataLoaded, progress.hasSources,
-    progress.omopAvailable, progress.omopActive, progress.omopOpenedCount,
     progress.joinPanelOpen, progress.joinCreated, progress.view,
     progress.hasDataset, progress.chatHistoryAvailable, progress.assistantConfigured,
     targetRefresh]);

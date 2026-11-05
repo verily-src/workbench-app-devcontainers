@@ -4,7 +4,9 @@ export interface Source {
   kind: TableSourceKind;
   id: string;
   label: string;
-  omop?: { cdm_schema: string; vocab_schema: string | null; version: string | null; persons: number };
+  omop?: { cdm_schema: string; vocab_schema: string | null; version: string | null; persons: number;
+          /** Every CDM schema in the database; cdm_schema above is the default. */
+          cdm_schemas?: { cdm_schema: string; persons: number | null }[] };
   uuid?: string;
   read_only?: boolean;
 }
@@ -134,15 +136,21 @@ export type SourceRef = ({ grain?: GrainDefinition } & (
   | { kind: "materialized"; resource_id: string; materialized_id: string;
       settings?: ColumnSetting[] }
   | { kind: "omop_cohort"; resource_id: string; spec: OmopSpec;
-      membership_mode: "live"; name?: string; settings?: ColumnSetting[] }
+      membership_mode: "live"; name?: string; settings?: ColumnSetting[];
+      /** CDM schema when the database has several; omitted = default schema. */
+      cdm_schema?: string }
   | { kind: "sql"; resource_id: string; sql: string; name?: string }
   | { kind: TableSourceKind; resource_id: string;
       table: string; schema?: string; uuid?: string; settings?: ColumnSetting[] }
   | { kind: "derived"; base: SourceRef; spec: DerivedSpec;
       settings?: ColumnSetting[] }
-  | { kind: "join"; base: SourceRef; allow_loaded?: boolean; steps: {
+  | { kind: "group_summary"; base: SourceRef; filters?: Filter[];
+      spec: { group_by: string[]; measure?: string | null };
+      settings?: ColumnSetting[] }
+  | { kind: "join"; base: SourceRef; allow_loaded?: boolean;
+      base_filters?: JoinFilter[]; steps: {
       source: SourceRef; how: JoinHow; conditions: JoinCondition[];
-      columns: string[] | null; alias: string;
+      columns: string[] | null; alias: string; filters?: JoinFilter[];
     }[] }));
 
 export interface SavedViewInfo {
@@ -201,12 +209,25 @@ export type JoinOp = "=" | "!=" | "<" | "<=" | ">" | ">=";
 
 export interface JoinCondition { left: string; op: JoinOp; right: string }
 
+export type JoinFilterOp = "=" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "not in"
+  | "is null" | "is not null" | "contains";
+export type JoinFilterValue = string | number | boolean;
+
+/** A constant-value filter on one join input, applied before joining. */
+export interface JoinFilter {
+  column: string;
+  op: JoinFilterOp;
+  value?: JoinFilterValue | JoinFilterValue[] | null;
+}
+
 export interface JoinStep {
   right_id: string;
   how: JoinHow;
   conditions: JoinCondition[];
   columns: string[] | null;
   alias: string;
+  /** Filters on this step's table, applied before it is joined. */
+  filters?: JoinFilter[];
 }
 
 export type JoinEngine = "aurora" | "duckdb";
@@ -248,7 +269,9 @@ export interface JoinValidation {
     parameters: Record<string, unknown>; staged_inputs?: string[] } | null;
   capped_inputs: string[];
   problems: string[];
-  steps: { problems: string[]; notes: string[]; conditions: JoinConditionCheck[] }[];
+  base_filters?: { problem: string | null }[];
+  steps: { problems: string[]; notes: string[]; conditions: JoinConditionCheck[];
+    filters?: { problem: string | null }[] }[];
 }
 
 export interface JoinPreview extends Omit<JoinStats, "base_rows" | "rows" | "total_rows"> {
@@ -328,6 +351,9 @@ export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"
 export interface OmopInfo {
   cdm: boolean;
   cdm_schema?: string;
+  default_cdm_schema?: string;
+  cdm_schemas?: { cdm_schema: string; vocab_schema: string | null; persons: number | null;
+                  default: boolean }[];
   vocab_schema?: string | null;
   version?: string | null;
   tables?: { name: string; schema: string; domain: string; rows: number; approx: boolean }[];

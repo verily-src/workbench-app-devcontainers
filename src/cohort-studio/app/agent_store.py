@@ -89,6 +89,8 @@ class StateDataset(StoreInput):
 
 class StateConcept(StoreInput):
     resource_id: str = Field(min_length=1, max_length=256)
+    # CDM schema the concept was found in; None means the default schema.
+    cdm_schema: str | None = Field(default=None, min_length=1, max_length=63)
     concept_id: int
     name: str = Field(default="", max_length=255)
     domain: str = Field(default="", max_length=64)
@@ -102,6 +104,7 @@ class StateTable(StoreInput):
 
 class StateCohort(StoreInput):
     resource_id: str = Field(min_length=1, max_length=256)
+    cdm_schema: str | None = Field(default=None, min_length=1, max_length=63)
     spec: dict[str, Any]
     persons: int | None = None
 

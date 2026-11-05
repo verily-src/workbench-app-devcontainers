@@ -1,5 +1,3 @@
-import time
-
 import pytest
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
@@ -18,14 +16,9 @@ def test_table_listing_status_sits_by_the_picker_and_latest_source_wins(page, ap
     page.route('**/api/views/all', lambda r: reply(r, {'views': [], 'unavailable': [], 'pending': []}))
     page.route('**/api/omop/**', lambda r: reply(r, {'cdm': False, 'tables': []}))
 
-    def tables(route):
-        if 'slowdb' in route.request.url:
-            time.sleep(2.5)
-            reply(route, [{'name': 'public.slow_table', 'schema': 'public', 'table': 'slow_table', 'detail': 'table'}])
-        else:
-            time.sleep(1.0)
-            reply(route, [{'name': 'public.fast_table', 'schema': 'public', 'table': 'fast_table', 'detail': 'table'}])
-    page.route('**/api/tables?**', tables)
+    held = {}
+    page.route('**/api/tables?**', lambda route: held.setdefault(
+        'slowdb' if 'slowdb' in route.request.url else 'fastdb', route))
     page.goto(app_url)
     page.get_by_label('Source type', exact=True).select_option('aurora')
     page.get_by_label('Datasource', exact=True).select_option('aurora:slowdb')
@@ -37,7 +30,14 @@ def test_table_listing_status_sits_by_the_picker_and_latest_source_wins(page, ap
 
     page.get_by_label('Datasource', exact=True).select_option('aurora:fastdb')
     expect(status).to_contain_text('Listing tables in fastdb')
-    expect(status).to_have_count(0, timeout=6000)
-    page.wait_for_timeout(2500)          # the slow response arrives after the fast one
+    # Answer the newer request first, then the stale one.
+    for _ in range(50):
+        if 'fastdb' in held and 'slowdb' in held:
+            break
+        page.wait_for_timeout(100)
+    reply(held['fastdb'], [{'name': 'public.fast_table', 'schema': 'public', 'table': 'fast_table', 'detail': 'table'}])
+    expect(status).to_have_count(0, timeout=5000)
+    reply(held['slowdb'], [{'name': 'public.slow_table', 'schema': 'public', 'table': 'slow_table', 'detail': 'table'}])
+    page.wait_for_timeout(500)
     options = page.get_by_label('Table', exact=True).locator('option').all_inner_texts()
     assert any('fast_table' in o for o in options) and not any('slow_table' in o for o in options), options

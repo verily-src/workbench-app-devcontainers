@@ -11,7 +11,7 @@ import omop
 import views
 
 
-def test_upload_parsing_does_not_block_health_or_duplicate_file_buffer(monkeypatch):
+def test_upload_parsing_does_not_block_health_or_duplicate_file_buffer(monkeypatch, run_async):
     entered = threading.Event()
     release = threading.Event()
     original = main.pd.read_csv
@@ -43,7 +43,7 @@ def test_upload_parsing_does_not_block_health_or_duplicate_file_buffer(monkeypat
                 assert [column['name'] for column in result['columns']] == ['person_id', 'value']
             finally:
                 datasets.close_dataset(result['dataset_id'])
-    asyncio.run(check())
+    run_async(check())
 
 
 def test_saved_view_listing_is_parallel_bounded_and_keeps_partial_failures(client, monkeypatch):

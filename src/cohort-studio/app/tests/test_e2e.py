@@ -27,10 +27,14 @@ def app_url(tmp_path_factory):
         port = s.getsockname()[1]
     env = dict(os.environ)
     env["LINEAGE_DB"] = str(tmp_path_factory.mktemp("lineage") / "l.db")
+    # Log to a file, not a pipe: nothing drains a pipe while tests run, and a
+    # full pipe blocks the server on its next log write.
+    log_path = tmp_path_factory.mktemp("uvicorn") / "server.log"
+    log = open(log_path, "wb")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main:app", "--port", str(port)],
         cwd=APP_DIR, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout=log, stderr=subprocess.STDOUT)
     url = f"http://127.0.0.1:{port}"
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
@@ -39,7 +43,8 @@ def app_url(tmp_path_factory):
             break
         except Exception:
             if proc.poll() is not None:
-                raise RuntimeError(proc.stdout.read().decode(errors="replace"))
+                log.close()
+                raise RuntimeError(log_path.read_text(errors="replace"))
             time.sleep(0.3)
     else:
         proc.kill()
@@ -51,6 +56,7 @@ def app_url(tmp_path_factory):
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait(timeout=10)
+    log.close()
 
 
 @pytest.fixture
@@ -102,7 +108,8 @@ def test_add_and_remove_chart(loaded_page: Page):
 
 
 def test_close_tab_returns_to_empty_state(loaded_page: Page):
-    loaded_page.locator(".tab .quiet").click()
+    loaded_page.locator(".tab").get_by_role(
+        "button", name="✕", exact=True).click()
     expect(loaded_page.get_by_text("No data loaded")).to_be_visible(
         timeout=10000)
 
@@ -349,5 +356,7 @@ def test_saved_views_section_present(loaded_page: Page):
 
 
     expect(loaded_page.get_by_text("Saved views").first).to_be_visible()
+    # Only an uploaded file is open, so nothing is saveable yet.
     expect(loaded_page.get_by_text(
-        "No Aurora or S3 resource").first).to_be_visible()
+        "Uploaded files can't be saved").first).to_be_visible()
+    expect(loaded_page.get_by_text("No saved views.")).to_be_visible()

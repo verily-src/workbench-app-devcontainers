@@ -380,7 +380,7 @@ def test_aurora_preview_timeout_is_504(monkeypatch, fake_aurora):
             "base_id": slow.json()["dataset_id"], "steps": [
                 {"right_id": visits, "conditions": [{"left": "k", "op": "=", "right": "k"}]}]})
         assert resp.status_code == 504, resp.text
-        assert "longer than" in resp.json()["detail"]
+        assert "exceeded its" in resp.json()["detail"]
     finally:
         with fake_aurora.begin() as connection:
             connection.exec_driver_sql('DROP VIEW public.slow_samples')
@@ -514,10 +514,10 @@ def test_workflows_lists_jobs_and_counts_running(monkeypatch):
          "workflowType": "NEXTFLOW", "engineType": "HEALTHOMICS",
          "createdBy": "a@b.co", "createdDate": "2026-10-07T00:00:00Z",
          "endTime": "2026-10-07T01:00:00Z", "outputBucketUuid": "uuid-2",
-         "outputBucketPath": "rnaseq", "statusMessage": "x" * 500},
+         "outputBucketPath": "rnaseq", "statusMessage": "x" * 1500},
     ]
     monkeypatch.setattr(workflows, "_run", lambda limit: sample)
-    monkeypatch.setattr(workflows, "_bucket_map", lambda: {
+    monkeypatch.setattr(workflows, "_bucket_map", lambda refresh=False: {
         "uuid-1": {"id": "outputs", "bucket_name": "vwb-outputs",
                    "prefix": "p"}})
     body = client.get("/api/workflows?refresh=true").json()
@@ -531,7 +531,8 @@ def test_workflows_lists_jobs_and_counts_running(monkeypatch):
 
     assert body["jobs"][1]["output_bucket_name"] is None
 
-    assert len(body["jobs"][1]["status_message"]) == 200
+    # Failure reasons are retained up to 1000 characters.
+    assert len(body["jobs"][1]["status_message"]) == 1000
 
 
 def test_workflow_registry_lists(monkeypatch):
@@ -558,13 +559,15 @@ def test_submit_workflow_builds_args_and_returns_job(monkeypatch):
         return {"run_id": "r-new", "name": kwargs["job_id"],
                 "status": "PENDING"}
     monkeypatch.setattr(workflows, "submit_job", fake_submit)
+    # Input lineage resolves the bucket URI; keep it off the Workbench CLI.
+    monkeypatch.setattr(main.db, "resolve_s3_uri", lambda rid: f"s3://{rid}-bucket")
     resp = client.post("/api/workflows/submit", json={
         "workflow": "hello_world", "output_bucket_id": "nextflow_outputs",
         "job_id": "cohort-run-1",
         "batch_input_bucket_id": "nextflow_params",
         "batch_input_csv_path": "cohorts/c.csv",
         "column_mapping": "input=sample_id"})
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "PENDING"
     assert captured["workflow"] == "hello_world"
     assert captured["batch_input_csv_path"] == "cohorts/c.csv"

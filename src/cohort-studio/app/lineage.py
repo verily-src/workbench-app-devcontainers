@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import subprocess
+import weakref
 from pathlib import Path
 
 import pandas as pd
@@ -53,7 +54,9 @@ agent_turn_table = Table(
 )
 
 _actor_cache: str | None = None
-_prepared_engines: set[int] = set()
+# Weak references, not id(): a disposed engine's id can be reused by a new
+# engine, which would then skip table creation.
+_prepared_engines: weakref.WeakSet[Engine] = weakref.WeakSet()
 
 def _actor() -> str:
 
@@ -76,9 +79,9 @@ def sqlite_fallback_engine() -> Engine:
                          connect_args={"check_same_thread": False})
 
 def _ensure_tables(engine: Engine):
-    if id(engine) not in _prepared_engines:
+    if engine not in _prepared_engines:
         metadata.create_all(engine)
-        _prepared_engines.add(id(engine))
+        _prepared_engines.add(engine)
 
 def record(engine: Engine, event_type: str, entity_type: str, entity_id: str,
            payload: dict | None = None,

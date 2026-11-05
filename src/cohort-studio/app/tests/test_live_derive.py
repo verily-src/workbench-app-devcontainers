@@ -1,4 +1,5 @@
 import copy
+import time
 import uuid
 
 import pandas as pd
@@ -10,6 +11,24 @@ import db
 import main
 import query_cache
 import views
+
+
+def _complete_saved_view_job(client, response):
+    """Saving a live join/derived source materializes it in a background job."""
+    assert response.status_code == 200, response.text
+    job_id = response.json().get("job_id")
+    assert job_id, response.text
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        status = client.get(f"/api/views/jobs/{job_id}")
+        assert status.status_code == 200, status.text
+        job = status.json()
+        if job["status"] == "complete":
+            return job
+        if job["status"] == "failed":
+            pytest.fail(f"Saved-view materialization failed: {job.get('error')}")
+        time.sleep(0.02)
+    pytest.fail("Saved-view materialization did not complete.")
 
 
 @pytest.fixture
@@ -190,7 +209,7 @@ def test_derived_live_source_covers_full_database_and_reopens_recipe(
                       "title": "derived full source",
                       "entity_column": "person_id"}],
     })
-    assert saved.status_code == 200, saved.text
+    _complete_saved_view_job(client, saved)
     state = client.get("/api/views/one", params={
         "kind": "aurora", "resource_id": rid,
         "name": live_derive_tables["view_name"],
@@ -267,6 +286,13 @@ def test_derived_live_source_covers_full_database_and_reopens_recipe(
     old_frame = prior["df"].copy(deep=True)
     old_live = copy.deepcopy(prior["live_source"])
     old_ref = copy.deepcopy(prior["source_ref"])
+    # The saved view's materialized snapshot depends on the source table;
+    # delete the view (and its snapshot) before simulating the lost table.
+    deleted = client.delete("/api/views", params={
+        "kind": "aurora", "resource_id": rid,
+        "name": live_derive_tables["view_name"],
+    })
+    assert deleted.status_code == 200, deleted.text
     with engine.begin() as conn:
         conn.execute(text(f'DROP TABLE public."{live_derive_tables["people"]}"'))
     failed = client.post(f"/api/datasets/{reopened_id}/derive", json={

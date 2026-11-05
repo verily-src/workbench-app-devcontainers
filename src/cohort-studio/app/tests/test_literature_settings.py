@@ -2,7 +2,7 @@ import pytest
 
 import config
 import secret_store
-from app.tests.test_settings import client, isolated_config
+from tests.test_settings import client, isolated_config
 
 
 def test_ncbi_key_is_encrypted_redacted_and_removable(isolated_config):

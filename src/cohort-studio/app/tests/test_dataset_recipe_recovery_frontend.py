@@ -11,7 +11,7 @@ def test_expired_join_recipe_reopens_with_saved_filters_charts_and_rename(
     source_ref = {
         "kind": "join",
         "base": {"kind": "omop_cohort", "resource_id": "clinical",
-                 "membership_mode": "live", "spec": {"filters": []}},
+                 "membership_mode": "live", "spec": {"criteria": []}},
         "steps": [{"source": {"kind": "aurora", "resource_id": "genetics",
                                "schema": "public", "table": "variants"},
                     "how": "inner", "alias": "genetics",
@@ -50,9 +50,12 @@ def test_expired_join_recipe_reopens_with_saved_filters_charts_and_rename(
         ref = route.request.post_data_json["source_ref"]
         opened_refs.append(ref)
         dataset_id = "expired-join" if len(opened_refs) == 1 else "recovered-join"
-        fulfill(route, {"dataset_id": dataset_id, "source": "OMOP + genetics",
-                        "rows": 1475, "columns": columns,
-                        "source_ref": ref, "query_scope": "database"})
+        # Opens run as data jobs; reply with an already-complete job.
+        fulfill(route, {"job_id": f"open-{len(opened_refs)}", "kind": "open",
+                        "status": "complete", "result": {
+                            "dataset_id": dataset_id, "source": "OMOP + genetics",
+                            "rows": 1475, "columns": columns,
+                            "source_ref": ref, "query_scope": "database"}})
 
     def query(route):
         dataset_id = route.request.url.split("/api/datasets/", 1)[1].split("/", 1)[0]
@@ -66,7 +69,7 @@ def test_expired_join_recipe_reopens_with_saved_filters_charts_and_rename(
                         "rows": {"page": 0, "page_size": 50,
                                  "columns": ["person_id"], "data": [[1]]}})
 
-    page.route("**/api/datasets/open", open_source)
+    page.route("**/api/data-jobs/open", open_source)
     page.route("**/api/datasets/*/query", query)
     page.goto(f"{app_url}/#view=aurora:clinical:genetics")
 

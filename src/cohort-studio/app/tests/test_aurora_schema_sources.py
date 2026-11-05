@@ -1,3 +1,4 @@
+import time
 import uuid
 
 import pytest
@@ -5,6 +6,7 @@ from sqlalchemy import text
 
 import datasets
 import db
+import saved_snapshots
 
 
 @pytest.fixture
@@ -37,6 +39,24 @@ def schema_tables(client, engine):
         conn.execute(text(f'DROP TABLE IF EXISTS public."{table}"'))
     db.list_aurora_tables.invalidate()
     db.fetch_aurora_table.invalidate()
+
+
+def _complete_saved_view_job(client, response):
+    """Saving a live join/derived source materializes it in a background job."""
+    assert response.status_code == 200, response.text
+    job_id = response.json().get("job_id")
+    assert job_id, response.text
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        status = client.get(f"/api/views/jobs/{job_id}")
+        assert status.status_code == 200, status.text
+        job = status.json()
+        if job["status"] == "complete":
+            return job
+        if job["status"] == "failed":
+            pytest.fail(f"Saved-view materialization failed: {job.get('error')}")
+        time.sleep(0.02)
+    pytest.fail("Saved-view materialization did not complete.")
 
 
 def _query_rows(client, dataset_id):
@@ -94,25 +114,33 @@ def test_nonpublic_schema_survives_listing_join_and_saved_reopen(
         "name": schema_tables["view_name"],
         "datasets": [{"source": ref, "title": "Private schema join"}],
     })
-    assert saved.status_code == 200, saved.text
+    _complete_saved_view_job(client, saved)
     view = client.get("/api/views/one", params={
         "kind": "aurora", "resource_id": rid,
         "name": schema_tables["view_name"],
     })
     assert view.status_code == 200, view.text
+    # Same-database joins are saved as a materialized snapshot whose stored
+    # recipe keeps the non-public schema on every side of the join.
     saved_ref = view.json()["datasets"][0]["source"]
-    assert saved_ref == ref
+    assert saved_ref["kind"] == "materialized"
+    assert saved_ref["resource_id"] == rid
+    recipe_ref = saved_snapshots.portable_recipe_state(
+        view.json())["datasets"][0]["source"]
+    assert recipe_ref == ref
 
-    datasets._store.clear()
-    reopened = client.post("/api/datasets/open", json={"source_ref": saved_ref})
-    assert reopened.status_code == 200, reopened.text
-    assert reopened.json()["query_scope"] == "database"
+    for reopen_ref, kind in ((saved_ref, "materialized"), (recipe_ref, "join")):
+        datasets._store.clear()
+        reopened = client.post("/api/datasets/open", json={"source_ref": reopen_ref})
+        assert reopened.status_code == 200, reopened.text
+        assert reopened.json()["query_scope"] == "database"
+        assert reopened.json()["source_ref"]["kind"] == kind
+        assert reopened.json()["rows"] == 2
+        assert _query_rows(client, reopened.json()["dataset_id"]) == [
+            "private-one", "private-two",
+        ]
     assert reopened.json()["source_ref"]["base"]["schema"] == schema
     assert reopened.json()["source_ref"]["steps"][0]["source"]["schema"] == schema
-    assert reopened.json()["rows"] == 2
-    assert _query_rows(client, reopened.json()["dataset_id"]) == [
-        "private-one", "private-two",
-    ]
     client.delete("/api/views", params={
         "kind": "aurora", "resource_id": rid,
         "name": schema_tables["view_name"],

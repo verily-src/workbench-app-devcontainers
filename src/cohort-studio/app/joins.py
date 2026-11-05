@@ -74,8 +74,8 @@ def aurora_origin(resource_id: str, table: str) -> dict:
             "schema": PG_SCHEMA, "table": table}
 
 def default_alias(source: str) -> str:
-    stem = str(source).split("/")[-1].strip()
-    stem = re.sub(r"\.(parquet|csv|tsv|txt|json|ndjson)$", "", stem, flags=re.I)
+    stem = str(source).rstrip("/").split("/")[-1].strip()
+    stem = re.sub(r"\.(parquet|csv|tsv|txt|json|ndjson)(\.gz)?$", "", stem, flags=re.I)
     return stem or "joined"
 
 def _output_name(alias: str, col: str, taken: set[str]) -> str:

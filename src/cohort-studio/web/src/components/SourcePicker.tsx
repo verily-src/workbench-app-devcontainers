@@ -37,7 +37,9 @@ function TableDetails({ info }: { info: TableInfo }) {
   if (rows) facts.push(["Rows", rows.replace(/ rows$/, ""),
     info.rows_estimated ? "Estimated from database statistics; the exact count is computed after loading." : undefined]);
   if (info.bytes != null) facts.push(["Size", formatBytes(info.bytes),
-    info.detail === "file" ? "Object size in S3" : "On disk, including indexes"]);
+    info.detail === "file" ? "Object size in S3"
+      : info.detail.startsWith("Parquet folder") ? "Total size of the Parquet parts in S3"
+      : "On disk, including indexes"]);
   if (info.columns != null) facts.push(["Columns", String(info.columns)]);
   if (info.analyzed) facts.push(["Stats as of", formatTimestamp(info.analyzed), undefined, true]);
   if (info.modified) facts.push(["Modified", formatTimestamp(info.modified), undefined, true]);
@@ -172,7 +174,7 @@ export function SourcePicker({ sources, tables, sourceKey, table, loading = fals
             {visibleTables.map((item) => (
               <option key={item.name} value={item.name} title={item.sql ?? undefined}>
                 {selectedSource.kind === "s3" && fileFolder
-                  ? item.name.slice(fileFolder.length + 1)
+                  ? item.name.slice(fileFolder.length + 1) || `All parts in ${item.name}`
                   : showSchema && !schema && schemas.length > 1
                     ? item.name : item.table ?? item.name} ({[item.detail, tableStats(item)].filter(Boolean).join(" · ")})
               </option>

@@ -758,7 +758,7 @@ export default function App() {
       label: t.name, hint: [t.detail, tableStats(t)].filter(Boolean).join(" · "),
       run: () => openTableDirect(source, t.name),
     })) : []),
-    { id: "act:upload", group: "Action", label: "Upload a CSV…",
+    { id: "act:upload", group: "Action", label: "Upload a CSV, TSV or Parquet file…",
       run: () => fileRef.current?.click() },
   ];
 
@@ -773,7 +773,7 @@ export default function App() {
           <div style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
             {sources.length
               ? `${sources.length} available`
-              : "Waiting for workspace datasources… CSV upload works now."}
+              : "Waiting for workspace datasources… File upload works now."}
           </div>
         )}
 
@@ -806,7 +806,7 @@ export default function App() {
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,.tsv,.txt"
+            accept=".csv,.tsv,.txt,.gz,.parquet"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) uploadCsv(f);
@@ -818,7 +818,7 @@ export default function App() {
             <path d="M12 16V4m0 0l-4 4m4-4l4 4" />
             <path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2" />
           </svg>
-          Upload CSV/TSV
+          Upload CSV, TSV or Parquet
         </label>
 
         {!showJoin && exploreMode === "tables" && <>

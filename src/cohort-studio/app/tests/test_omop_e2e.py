@@ -5,6 +5,7 @@ from pathlib import Path
 import asyncio
 import json
 
+import httpx
 import pandas as pd
 import pytest
 import uvicorn
@@ -17,6 +18,7 @@ import datasets
 import db
 import main
 from tests.test_agent_store import agent_store
+from tests.conftest import remount_mcp_if_started
 
 pytestmark = pytest.mark.e2e
 
@@ -45,6 +47,10 @@ def omop_app_url(engine, tmp_path_factory):
     patches.setattr(main, "_lineage_engine", lambda: lineage_engine)
     datasets._store.clear()
 
+    # pytest may set this module fixture up more than once per session when
+    # it regroups parametrized tests; each server lifespan needs a manager
+    # that has not run yet.
+    remount_mcp_if_started()
     sock = socket.socket()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", 0))
@@ -97,80 +103,63 @@ def _expected_before_index(ref):
     return set(index.index) & set(before.person_id)
 
 
-def test_omop_cohort_browser_flow(ref, page: Page, omop_app_url: str):
+def _observed_gi_people(ref):
+    ancestors = ref["concept_ancestor"]
+    gi_ids = set(ancestors.loc[ancestors.ancestor_concept_id == GI_BLEED,
+                               "descendant_concept_id"]) | {GI_BLEED}
+    events = ref["condition_occurrence"]
+    events = events[events.condition_concept_id.isin(gi_ids)].merge(
+        ref["observation_period"], on="person_id")
+    events = events[(events.condition_start_date >= events.observation_period_start_date)
+                    & (events.condition_start_date <= events.observation_period_end_date)]
+    return set(events.person_id)
+
+
+def test_omop_cohort_api_on_real_postgres(ref, omop_app_url: str):
+    """The cohort API the Agent uses returns correct real-Postgres results."""
     expected = _expected_before_index(ref)
     assert expected
-    page.goto(omop_app_url)
-    expect(page.locator(".topnav-link", has_text="OMOP cohorts")).to_have_count(0)
-    expect(page.get_by_label("OMOP datasource")).to_have_count(0)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:omopdb")
-    page.get_by_role("group", name="Explore view").get_by_role("button", name="OMOP").click()
+    api = f"{omop_app_url}/api/omop/omopdb"
+    with httpx.Client(timeout=60) as client:
+        assert client.get(api).json()["cdm"] is True
+        gi = client.get(f"{api}/concepts", params={
+            "q": "Gastrointestinal hemorrhage", "domain": "condition"}).json()
+        assert any(c["concept_id"] == GI_BLEED for c in gi["concepts"])
+        drug = client.get(f"{api}/concepts", params={
+            "q": "diclofenac", "domain": "drug"}).json()
+        assert any(c["concept_id"] == DICLOFENAC for c in drug["concepts"])
 
-    search = page.get_by_label("Concept name, ID or code")
-    domain = page.get_by_label("Domain")
-    search.fill("Gastrointestinal hemorrhage")
-    page.get_by_role("button", name="Search concepts").click()
-    gi_result = page.locator(".omop-result", has_text="Gastrointestinal hemorrhage")
-    expect(gi_result).to_be_visible(timeout=15000)
-    gi_result.locator("input").check()
-    page.get_by_role("button", name="Add criterion (1 concepts)").click()
+        gi_only = {"criteria": [{"domain": "condition", "concept_ids": [GI_BLEED]}]}
+        spec = {"criteria": [*gi_only["criteria"], {
+            "domain": "drug", "concept_ids": [DICLOFENAC],
+            "index_relation": "before"}]}
+        count = client.post(f"{api}/cohort/count", json=spec)
+        assert count.status_code == 200, count.text
+        assert count.json()["persons"] == len(expected)
+        assert count.json()["total_persons"] == 100
+        summary = client.post(f"{api}/cohort/summary", json={"spec": spec}).json()
+        assert summary["persons"] == len(expected)
+        assert sum(item["persons"] for item in summary["charts"]["gender"]) == len(expected)
 
-    domain.select_option("drug")
-    search.fill("diclofenac")
-    page.get_by_role("button", name="Search concepts").click()
-    drug_result = page.locator(".omop-result", has_text="Diclofenac").first
-    expect(drug_result).to_be_visible(timeout=15000)
-    drug_result.locator("input").check()
-    page.get_by_role("button", name="Add criterion (1 concepts)").click()
-    expect(page.locator(".omop-rule")).to_have_count(2, timeout=5000)
-    page.locator(".omop-rule").nth(1).locator("select").nth(1).select_option("before")
+        opened = client.post(f"{api}/cohort/open",
+                             json={"spec": spec, "name": "OMOP E2E cohort"})
+        assert opened.status_code == 200, opened.text
+        opened = opened.json()
+        assert opened["rows"] == len(expected)
+        assert opened["source_ref"]["kind"] == "omop_cohort"
+        assert "Gastrointestinal hemorrhage events" in [c["name"] for c in opened["columns"]]
 
-    page.get_by_role("button", name="Count cohort").click()
-    count = page.locator(".omop-count")
-    expect(count).to_contain_text(f"{len(expected)} of 100 persons", timeout=15000)
-    chart = page.locator('.omop-summary-charts .chart-card').first
-    expect(chart).to_be_visible(timeout=15000)
-    chart.get_by_role('button', name='Edit axes').click()
-    chart.get_by_label('X axis label').fill('People')
-    chart.get_by_role('button', name='Apply').click()
-    chart.get_by_role('button', name='Edit axes').click()
-    expect(chart.get_by_label('X axis label')).to_have_value('People')
-    chart.get_by_role('button', name='Cancel').click()
-    page.screenshot(path="/tmp/cohort-studio-omop.png", full_page=True)
-    page.get_by_label("Cohort name").fill("OMOP E2E cohort")
-    page.get_by_role("button", name="Open cohort").click()
-    expect(page.locator(".tab.active", has_text="OMOP E2E cohort")).to_be_visible(timeout=15000)
-    expect(page.locator(".data-table thead")).to_contain_text("Gastrointestinal hemorrhage events")
-    expect(page.get_by_role("group", name="Explore view").get_by_role("button", name="Tables")).to_have_attribute("aria-pressed", "true")
-    page.get_by_role("group", name="Explore view").get_by_role("button", name="OMOP").click()
-    expect(page.locator(".omop-rule")).to_have_count(2)
-    page.get_by_label("Clinical table").select_option("condition_occurrence")
-    page.get_by_role("button", name="Open clinical table").click()
-    expect(page.locator(".tab.active", has_text="condition_occurrence")).to_be_visible(timeout=15000)
-    expect(page.locator(".data-table thead")).to_contain_text("condition_concept_name")
-    page.get_by_role("group", name="Explore view").get_by_role("button", name="OMOP").click()
-    page.locator(".omop-rule").nth(1).get_by_role("button", name="Remove criterion 2").click()
-    expect(page.locator(".omop-count")).to_have_count(0)
-    expect(page.get_by_role("button", name="Open cohort")).to_be_disabled()
-    page.get_by_role("button", name="Count cohort").click()
-    gi_ids = set(ref["concept_ancestor"].loc[
-        ref["concept_ancestor"].ancestor_concept_id == GI_BLEED,
-        "descendant_concept_id"]) | {GI_BLEED}
-    observed_gi = ref["condition_occurrence"]
-    observed_gi = observed_gi[observed_gi.condition_concept_id.isin(gi_ids)]
-    observed_gi = observed_gi.merge(ref["observation_period"], on="person_id")
-    observed_gi = observed_gi[(observed_gi.condition_start_date >=
-                               observed_gi.observation_period_start_date)
-                              & (observed_gi.condition_start_date <=
-                                 observed_gi.observation_period_end_date)]
-    gi_people = set(observed_gi.person_id)
-    expect(page.locator(".omop-count")).to_contain_text(
-        f"{len(gi_people)} of 100 persons", timeout=15000)
-    page.get_by_role("button", name="Open cohort").click()
-    expect(page.locator(".tab.active", has_text="OMOP E2E cohort")).to_be_visible(timeout=15000)
-    expect(page.locator(".tabs .tab")).to_have_count(2)
-    expect(page.locator(".data-table thead")).not_to_contain_text("Diclofenac events")
+        events = client.post(f"{api}/domain/open", json={
+            "table": "condition_occurrence", "spec": spec}).json()
+        assert "condition_concept_name" in [c["name"] for c in events["columns"]]
+
+        gi_people = _observed_gi_people(ref)
+        assert client.post(f"{api}/cohort/count", json=gi_only).json()["persons"] \
+            == len(gi_people)
+        gi_open = client.post(f"{api}/cohort/open",
+                              json={"spec": gi_only, "name": "GI only"}).json()
+        assert gi_open["rows"] == len(gi_people)
+        assert "Diclofenac events" not in [c["name"] for c in gi_open["columns"]]
 
 
 def test_aggregation_filter_on_real_postgres(ref, page: Page, omop_app_url: str):
@@ -228,7 +217,7 @@ def test_omop_mcp_streamable_http(omop_app_url: str):
 
 
 def test_omop_assistant_proposes_and_opens_real_cohort(
-        monkeypatch, agent_store, page: Page, omop_app_url: str):
+        monkeypatch, agent_store, omop_app_url: str):
     import config
 
     monkeypatch.setenv("STUDIO_AGENT_RESOURCE_ID", "omopdb")
@@ -254,26 +243,19 @@ def test_omop_assistant_proposes_and_opens_real_cohort(
                 "usage": {"total_tokens": 12}}
 
     monkeypatch.setattr(cohort_agent.providers, "run", fake_provider)
-    page.goto(omop_app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:omopdb")
-    page.get_by_role("group", name="Explore view").get_by_role("button", name="OMOP").click()
-    page.get_by_label("Ask the cohort assistant").fill(
-        "Find people with concept 192671 and prepare a cohort.")
-    page.get_by_role("button", name="Ask assistant").click()
-    proposal = page.locator(".omop-proposal")
-    expect(proposal).to_be_visible(timeout=15000)
-    expect(page.locator(".omop-chat")).to_contain_text(
-        "I found 40 people and prepared the cohort.")
-    proposal.get_by_text("Review proposed criteria").click()
-    expect(proposal.locator("pre")).to_contain_text("192671")
-    proposal.get_by_role("button", name="Apply proposed cohort").click()
-    expect(page.locator(".omop-rule")).to_have_count(1)
-    expect(page.locator(".omop-count")).to_have_count(0)
-    page.get_by_role("button", name="Count cohort").click()
-    expect(page.locator(".omop-count")).to_contain_text("40 of 100 persons", timeout=15000)
-    page.get_by_label("Cohort name").fill("Assistant GI bleed")
-    page.get_by_role("button", name="Open cohort").click()
-    expect(page.locator(".tab.active", has_text="Assistant GI bleed")).to_be_visible(timeout=15000)
-    expect(page.locator(".data-table thead")).to_contain_text(
-        "Gastrointestinal hemorrhage events")
+    api = f"{omop_app_url}/api/omop/omopdb"
+    with httpx.Client(timeout=60) as client:
+        response = client.post(f"{api}/cohort/agent", json={
+            "message": "Find people with concept 192671 and prepare a cohort."})
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["reply"] == "I found 40 people and prepared the cohort."
+        assert [cid for criterion in body["spec"]["criteria"]
+                for cid in criterion["concept_ids"]] == [GI_BLEED]
+        assert body["count"]["persons"] == 40
+        opened = client.post(f"{api}/cohort/open", json={
+            "spec": body["spec"], "name": "Assistant GI bleed"})
+        assert opened.status_code == 200, opened.text
+        assert opened.json()["rows"] == 40
+        assert "Gastrointestinal hemorrhage events" in [
+            c["name"] for c in opened.json()["columns"]]

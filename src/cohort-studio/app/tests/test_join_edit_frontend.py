@@ -18,10 +18,12 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     }
     original_ref = {
         "kind": "join", "allow_loaded": False, "base": base_ref,
+        "base_filters": [{"column": "birth_year", "op": ">=", "value": "1950"}],
         "steps": [{
             "source": right_ref, "how": "left",
             "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}],
             "columns": None, "alias": "variants",
+            "filters": [{"column": "variant_code", "op": "in", "value": ["v1", "v2"]}],
         }],
     }
     opened = []
@@ -191,6 +193,13 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     advanced = page.locator(".join-step").first.locator(".join-advanced")
     advanced.locator("summary").click()
     expect(advanced.get_by_label("Name joined columns as")).to_have_value("variants")
+    # Saved value filters come back into the builder.
+    expect(page.get_by_label("Start table filter 1 column")).to_have_value("birth_year")
+    expect(page.get_by_label("Start table filter 1 operator")).to_have_value(">=")
+    expect(page.get_by_label("Start table filter 1 value")).to_have_value("1950")
+    expect(page.get_by_label("Step 1 filter 1 column")).to_have_value("variant_code")
+    expect(page.get_by_label("Step 1 filter 1 operator")).to_have_value("in")
+    expect(page.get_by_label("Step 1 filter 1 value")).to_have_value("v1, v2")
 
     page.get_by_role("radio", name="Inner").click()
     page.get_by_label("Right key step 1 condition 1").select_option("study_id")
@@ -235,4 +244,6 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     assert joins[1]["steps"][0]["how"] == "inner"
     assert joins[1]["steps"][0]["conditions"][0]["right"] == "study_id"
     assert joins[1]["allow_loaded"] is True
+    assert joins[1]["base_filters"] == original_ref["base_filters"]
+    assert joins[1]["steps"][0]["filters"] == original_ref["steps"][0]["filters"]
     assert not any("existing-join" in url for url in closed)

@@ -15,23 +15,7 @@ from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 
-DOMAINS = {
-    "condition": {"table": "condition_occurrence", "concept": "condition_concept_id",
-                  "date": "condition_start_date"},
-    "drug": {"table": "drug_exposure", "concept": "drug_concept_id",
-             "date": "drug_exposure_start_date"},
-    "procedure": {"table": "procedure_occurrence", "concept": "procedure_concept_id",
-                  "date": "procedure_date"},
-    "measurement": {"table": "measurement", "concept": "measurement_concept_id",
-                    "date": "measurement_date", "value": "value_as_number"},
-    "observation": {"table": "observation", "concept": "observation_concept_id",
-                    "date": "observation_date"},
-    "visit": {"table": "visit_occurrence", "concept": "visit_concept_id",
-              "date": "visit_start_date"},
-    "device": {"table": "device_exposure", "concept": "device_concept_id",
-               "date": "device_exposure_start_date"},
-    "death": {"table": "death", "concept": "cause_concept_id", "date": "death_date"},
-}
+from omop_domains import DOMAINS  # noqa: E402  (re-exported as omop.DOMAINS)
 
 DOMAIN_IDS = {"condition": "Condition", "drug": "Drug", "procedure": "Procedure",
               "measurement": "Measurement", "observation": "Observation",
@@ -155,9 +139,44 @@ def _row_counts(conn, schema: str, tables: list[str]) -> dict[str, tuple]:
             out[t] = (None, True)
     return out
 
-def detect(engine: Engine) -> dict | None:
+DEFAULT_SCHEMA_ENV = "STUDIO_OMOP_DEFAULT_SCHEMA"
 
+
+def _env_default(resource_id: str | None) -> str | None:
+    """Preferred default CDM schema from STUDIO_OMOP_DEFAULT_SCHEMA.
+
+    The value is a bare schema name (every resource) or comma-separated
+    ``resource_id=schema`` entries; a resource-specific entry wins.
+    """
+    import os
+    raw = os.environ.get(DEFAULT_SCHEMA_ENV, "").strip()
+    found = None
+    for entry in filter(None, (part.strip() for part in raw.split(","))):
+        rid, sep, schema = entry.partition("=")
+        if not sep:
+            found = found or rid.strip()
+        elif resource_id is not None and rid.strip() == resource_id:
+            return schema.strip() or None
+    return found
+
+
+def unknown_schema(schema: str, available: list[str]) -> ValueError:
+    return ValueError(f"Unknown OMOP CDM schema {schema!r}. Available CDM schemas: "
+                      f"{', '.join(available) or 'none'}.")
+
+
+def detect(engine: Engine, schema: str | None = None,
+           resource_id: str | None = None) -> dict | None:
+    """Detect the OMOP CDM schemas of a database and describe one of them.
+
+    Every schema with person, observation_period and a clinical domain table
+    is a CDM schema. ``schema`` picks one; without it the default is the CDM
+    schema with the most persons (STUDIO_OMOP_DEFAULT_SCHEMA can override).
+    Unknown ``schema`` raises ValueError listing the valid ones.
+    """
     if engine.dialect.name != "postgresql":
+        if schema is not None:
+            raise unknown_schema(schema, [])
         return None
     with _session(engine, DETECT_TIMEOUT_MS) as conn:
         rows = conn.execute(text(
@@ -168,32 +187,51 @@ def detect(engine: Engine) -> dict | None:
             "ORDER BY table_schema, table_name, ordinal_position"),
             {"names": list(KNOWN_TABLES)}).fetchall()
         schemas: dict[str, dict[str, list[str]]] = {}
-        for schema, table, column in rows:
-            schemas.setdefault(schema, {}).setdefault(table, []).append(column)
+        for name, table, column in rows:
+            schemas.setdefault(name, {}).setdefault(table, []).append(column)
         domain_tables = {d["table"] for d in DOMAINS.values()}
-        cdm = [s for s, t in schemas.items()
-               if {"person", "observation_period"} <= set(t)
-               and "person_id" in t["person"] and domain_tables & set(t)]
+        cdm = sorted(s for s, t in schemas.items()
+                     if {"person", "observation_period"} <= set(t)
+                     and "person_id" in t["person"] and domain_tables & set(t))
         if not cdm:
+            if schema is not None:
+                raise unknown_schema(schema, [])
             return None
-        cdm_schema = sorted(cdm, key=lambda s: (-len(schemas[s]), s))[0]
+        if schema is not None and schema not in cdm:
+            raise unknown_schema(schema, cdm)
         vocab = [s for s, t in schemas.items() if {"concept", "concept_ancestor"} <= set(t)]
-        vocab_schema = (cdm_schema if cdm_schema in vocab
-                        else (sorted(vocab)[0] if vocab else None))
+        # A CDM schema without its own vocabulary borrows a vocabulary-only
+        # schema first, so it never silently uses another CDM's vocabulary.
+        fallback = sorted(vocab, key=lambda s: (s in cdm, s))[0] if vocab else None
+        persons = {s: _row_counts(conn, s, ["person"])["person"] for s in cdm}
+        default = sorted(cdm, key=lambda s: (-(persons[s][0] or 0), -len(schemas[s]), s))[0]
+        preferred = _env_default(resource_id)
+        if preferred in cdm:
+            default = preferred
+        elif preferred:
+            logger.info("%s=%s is not a CDM schema here; using %s",
+                        DEFAULT_SCHEMA_ENV, preferred, default)
+        vocab_for = {s: s if s in vocab else fallback for s in cdm}
+        cdm_schemas = [{"cdm_schema": s, "vocab_schema": vocab_for[s],
+                        "persons": persons[s][0], "approx": persons[s][1],
+                        "default": s == default} for s in cdm]
+        cdm_schema = schema or default
+        vocab_schema = vocab_for[cdm_schema]
         columns = {t: c for t, c in schemas[cdm_schema].items() if t not in VOCAB_TABLES}
         if vocab_schema:
             columns |= {t: c for t, c in schemas[vocab_schema].items() if t in VOCAB_TABLES}
         info = {"cdm": True, "cdm_schema": cdm_schema, "vocab_schema": vocab_schema,
-                "columns": columns}
+                "columns": columns, "default_cdm_schema": default,
+                "cdm_schemas": cdm_schemas}
         info["version"] = _version(conn, info)
         by_schema: dict[str, list[str]] = {}
         for t in columns:
             by_schema.setdefault(vocab_schema if t in VOCAB_TABLES else cdm_schema,
                                  []).append(t)
         tables = []
-        for schema, names in by_schema.items():
-            counts = _row_counts(conn, schema, names)
-            tables += [{"name": t, "schema": schema, "domain": KNOWN_TABLES[t],
+        for name, names in by_schema.items():
+            counts = _row_counts(conn, name, names)
+            tables += [{"name": t, "schema": name, "domain": KNOWN_TABLES[t],
                         "rows": counts[t][0], "approx": counts[t][1]} for t in names]
     order = list(KNOWN_TABLES)
     info["tables"] = sorted(tables, key=lambda t: order.index(t["name"]))
@@ -203,12 +241,26 @@ def public(info: dict | None) -> dict:
 
     if info is None:
         return {"cdm": False}
-    return {k: info[k] for k in ("cdm", "cdm_schema", "vocab_schema", "version", "tables")}
+    out = {k: info[k] for k in ("cdm", "cdm_schema", "vocab_schema", "version", "tables")}
+    out["default_cdm_schema"] = info.get("default_cdm_schema", info["cdm_schema"])
+    out["cdm_schemas"] = schema_summary(info)
+    return out
+
+def schema_summary(info: dict | None) -> list[dict]:
+    """All CDM schemas of the detected database with person counts."""
+    if not info:
+        return []
+    return [{k: s[k] for k in ("cdm_schema", "vocab_schema", "persons", "default")}
+            for s in info.get("cdm_schemas") or
+            [{"cdm_schema": info["cdm_schema"], "vocab_schema": info["vocab_schema"],
+              "persons": next((t["rows"] for t in info.get("tables", [])
+                               if t["name"] == "person"), None), "default": True}]]
 
 @ttl_cache(ttl=DETECT_TTL, maxsize=64)
-def detect_resource(resource_id: str) -> dict | None:
-    info = detect(db.get_engine_for_resource(resource_id))
-    _remember(resource_id, info)
+def detect_resource(resource_id: str, schema: str | None = None) -> dict | None:
+    info = detect(db.get_engine_for_resource(resource_id), schema, resource_id)
+    if schema is None:
+        _remember(resource_id, info)
     return info
 
 _hints: dict[str, tuple[float, dict | None]] = {}
@@ -220,7 +272,9 @@ def _remember(resource_id: str, info: dict | None):
     if info:
         person = next((t for t in info["tables"] if t["name"] == "person"), {})
         summary = {"cdm_schema": info["cdm_schema"], "vocab_schema": info["vocab_schema"],
-                   "version": info["version"], "persons": person.get("rows")}
+                   "version": info["version"], "persons": person.get("rows"),
+                   "cdm_schemas": [{"cdm_schema": s["cdm_schema"], "persons": s["persons"]}
+                                   for s in schema_summary(info)]}
     with _hint_lock:
         _hints[resource_id] = (time.monotonic() + DETECT_TTL, summary)
 
@@ -235,7 +289,7 @@ def _detect_in_background(resource_id: str):
             _inflight.discard(resource_id)
 
 def hint(resource_id: str) -> dict | None:
-
+    """Cached summary of a resource's default CDM schema, plus ``cdm_schemas``."""
     with _hint_lock:
         hit = _hints.get(resource_id)
         if (hit is None or hit[0] <= time.monotonic()) and resource_id not in _inflight:
@@ -805,7 +859,8 @@ def open_cohort(engine: Engine, info: dict, spec: dict | None,
 
 def open_cohort_source(engine: Engine, info: dict, resource_id: str,
                        spec: dict | None,
-                       cap: int = queries.ROW_CAP) -> tuple[pd.DataFrame, dict]:
+                       cap: int = queries.ROW_CAP,
+                       cdm_schema: str | None = None) -> tuple[pd.DataFrame, dict]:
     df, sql, params, rename = _cohort_data(engine, info, spec, cap)
     physical_names = {logical: physical for physical, logical in rename.items()}
     live_source = {"resource_id": resource_id, "sql": sql, "params": params,
@@ -814,6 +869,8 @@ def open_cohort_source(engine: Engine, info: dict, resource_id: str,
     import disk_data
     source_ref = {"kind": "omop_cohort", "resource_id": resource_id,
                   "spec": parse_spec(spec), "membership_mode": "live"}
+    if cdm_schema:
+        source_ref["cdm_schema"] = cdm_schema
     live_source = disk_data._compiled_omop_query(source_ref, live_source)
     return df, live_source
 

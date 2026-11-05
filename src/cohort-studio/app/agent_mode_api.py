@@ -155,9 +155,15 @@ def _dataset_summary(dataset_id, entry):
             "query_scope": "database" if ds.get("live_source") is not None else "loaded"}
 
 
+def _concept_label(key):
+    if isinstance(key, tuple):
+        return f"{key[0]} (cdm_schema {key[1]})"
+    return key
+
+
 def _render_memory(ops):
-    concepts = {rid: [[cid, name, domain] for cid, (name, domain) in values.items()]
-                for rid, values in ops.concept_names.items() if values}
+    concepts = {_concept_label(key): [[cid, name, domain] for cid, (name, domain) in values.items()]
+                for key, values in ops.concept_names.items() if values}
     tables = [{"source": _source_label(json.loads(identity)), "columns": columns}
               for identity, columns in ops.table_columns.items()]
     items = [{"id": item["dataset_id"], "title": item["title"], "status": item["status"],
@@ -235,7 +241,8 @@ def _source_label(ref):
         name = f"{ref['schema']}.{table}" if ref.get("schema") else table
         return f"{kind}:{ref.get('resource_id')}:{name}"
     if kind == "omop_cohort":
-        return f"omop_cohort:{ref.get('resource_id')}"
+        schema = f":{ref['cdm_schema']}" if ref.get("cdm_schema") else ""
+        return f"omop_cohort:{ref.get('resource_id')}{schema}"
     if kind == "join":
         parts = [_source_label(ref.get("base"))] + [
             _source_label(step.get("source")) for step in ref.get("steps", [])]
@@ -251,6 +258,9 @@ class Operations:
         self.downloads = []
         self.workflow_plans = []
         self.inspected = set()
+        # Concept-ID guard, keyed by resource_id for the default CDM schema and
+        # by (resource_id, cdm_schema) for any other one: IDs found in one
+        # vocabulary do not validate a cohort in another.
         self.concepts = {}
         # Working state carried between turns (see snapshot/restore).
         self.concept_names = {}
@@ -279,6 +289,23 @@ class Operations:
         return ref
 
     @staticmethod
+    def _concept_key(resource_id, cdm_schema=None):
+        return (resource_id, cdm_schema) if cdm_schema else resource_id
+
+    def _omop(self, resource_id, cdm_schema=None):
+        """Engine, detection info and concept-guard key for one CDM schema."""
+        self._resource("aurora", resource_id)
+        engine, info = _main()._omop_cdm_for(resource_id, cdm_schema or None)
+        schema = info["cdm_schema"]
+        default = info.get("default_cdm_schema", schema)
+        return engine, info, self._concept_key(resource_id, None if schema == default else schema)
+
+    def _guard_key(self, resource_id, cdm_schema=None):
+        if not cdm_schema:
+            return resource_id
+        return self._omop(resource_id, cdm_schema)[2]
+
+    @staticmethod
     def _identity(ref):
         return json.dumps({k: ref[k] for k in ("kind", "resource_id", "schema", "table")
                            if k in ref}, sort_keys=True)
@@ -289,7 +316,16 @@ class Operations:
                            "source_ref": value["source_ref"], "filters": value["filters"],
                            "verification": value.get("verification")}
                           for key, value in _dashboards.items() if value["owner"] == self.owner]
-        return {"sources": [{"kind": kind, "id": rid} for kind, rid in sorted(self.available)],
+        sources = []
+        for kind, rid in sorted(self.available):
+            entry = {"kind": kind, "id": rid}
+            hint = omop.hint(rid) if kind == "aurora" else None
+            # Only a database with several CDM schemas needs a choice.
+            if hint and len(hint.get("cdm_schemas") or []) > 1:
+                entry["omop"] = {"default_cdm_schema": hint["cdm_schema"],
+                                 "cdm_schemas": hint["cdm_schemas"]}
+            sources.append(entry)
+        return {"sources": sources,
                 "download_formats": {
                     "aurora": list(get_args(_main().StartExportRequest.model_fields["format"].annotation)),
                     "loaded": list(get_args(_main().ExportRequest.model_fields["format"].annotation)),
@@ -346,35 +382,45 @@ class Operations:
                                    if isinstance(c, dict)])
         return {"source_ref": ref, "metadata": metadata}
 
-    def search_concepts(self, resource_id, q, domain=""):
-        self._resource("aurora", resource_id)
-        engine, info = _main()._omop_cdm(resource_id)
+    def search_concepts(self, resource_id, q, domain="", cdm_schema=""):
+        engine, info, key = self._omop(resource_id, cdm_schema)
         concepts = omop.search_concepts(engine, info, q=q, domain=domain or None, limit=20)
-        self.concepts.setdefault(resource_id, set()).update(c["concept_id"] for c in concepts)
-        names = self.concept_names.setdefault(resource_id, {})
+        self.concepts.setdefault(key, set()).update(c["concept_id"] for c in concepts)
+        names = self.concept_names.setdefault(key, {})
         for c in concepts:
             names.pop(c["concept_id"], None)
             names[c["concept_id"]] = (str(c.get("concept_name") or "")[:255],
                                       str(c.get("domain_id") or "")[:64])
         while len(names) > _MEMORY_CONCEPTS_PER_RESOURCE:
             names.pop(next(iter(names)))
-        return {"concepts": concepts, "cdm_schema": info["cdm_schema"]}
+        result = {"concepts": concepts, "cdm_schema": info["cdm_schema"]}
+        if len(info.get("cdm_schemas") or []) > 1:
+            result["cdm_schemas"] = omop.schema_summary(info)
+        return result
 
-    def _spec(self, resource_id, spec):
+    def _spec(self, key, spec):
+        """Reject concept IDs not found by search_concepts for this resource and CDM schema."""
         parsed = omop.parse_spec(spec)
         for criterion in parsed["criteria"]:
-            if not set(criterion.get("concept_ids", [])) <= self.concepts.get(resource_id, set()):
-                raise ValueError("Search concepts before using their IDs; only IDs found in this conversation are accepted.")
+            if not set(criterion.get("concept_ids", [])) <= self.concepts.get(key, set()):
+                raise ValueError("Search concepts before using their IDs; only IDs found in this "
+                                 "conversation for the same resource and CDM schema are accepted.")
         return spec
 
-    def count_cohort(self, resource_id, spec_json):
-        self._resource("aurora", resource_id)
-        engine, info = _main()._omop_cdm(resource_id)
-        spec = self._spec(resource_id, json.loads(spec_json))
+    def _cohort_state(self, key, spec, persons):
+        resource_id, schema = key if isinstance(key, tuple) else (key, None)
+        return {"resource_id": resource_id, **({"cdm_schema": schema} if schema else {}),
+                "spec": spec, "persons": persons}
+
+    def count_cohort(self, resource_id, spec_json, cdm_schema=""):
+        engine, info, key = self._omop(resource_id, cdm_schema)
+        spec = self._spec(key, json.loads(spec_json))
         result = omop.count(engine, info, spec)
         persons = result.get("persons") if isinstance(result, dict) else None
-        self.cohort = {"resource_id": resource_id, "spec": spec,
-                       "persons": persons if isinstance(persons, int) else None}
+        self.cohort = self._cohort_state(key, spec,
+                                         persons if isinstance(persons, int) else None)
+        if isinstance(result, dict) and len(info.get("cdm_schemas") or []) > 1:
+            result = {**result, "cdm_schema": info["cdm_schema"]}
         return result
 
     def recommend_join(self, left_json, right_json):
@@ -392,7 +438,7 @@ class Operations:
         kind = ref["kind"]
         if kind == "omop_cohort":
             self._resource("aurora", ref["resource_id"])
-            self._spec(ref["resource_id"], ref["spec"])
+            self._spec(self._guard_key(ref["resource_id"], ref.get("cdm_schema")), ref["spec"])
         elif kind == "join":
             if ref.get("allow_loaded"):
                 raise ValueError("Cross-source preview consent must be given in the visual join builder.")
@@ -456,7 +502,8 @@ class Operations:
                                        "opened": opened, "created": time.monotonic()}
             self._remember_dataset(dataset_id, _dashboards[dataset_id])
         if ref["kind"] == "omop_cohort":
-            self.cohort = {"resource_id": ref["resource_id"], "spec": ref["spec"], "persons": None}
+            self.cohort = self._cohort_state(
+                self._guard_key(ref["resource_id"], ref.get("cdm_schema")), ref["spec"], None)
         return {"dataset_id": dataset_id, "title": title[:128], "source_ref": ref,
                 "total": result["total"], "filtered": result["filtered"],
                 "scope": result.get("scope"), "columns": opened["columns"], "charts": result["charts"]}
@@ -672,8 +719,10 @@ class Operations:
                 "filters": (_bounded_json(item["filters"], 3000) or [])[:30],
                 "charts": (item["charts"] or [])[:8],
                 **({"saved_id": item["saved_id"]} if item.get("saved_id") else {})})
-        concepts = [{"resource_id": rid, "concept_id": cid, "name": name, "domain": domain}
-                    for rid, values in self.concept_names.items()
+        concepts = [{"resource_id": key[0] if isinstance(key, tuple) else key,
+                     "cdm_schema": key[1] if isinstance(key, tuple) else None,
+                     "concept_id": cid, "name": name, "domain": domain}
+                    for key, values in self.concept_names.items()
                     for cid, (name, domain) in values.items()][-120:]
         tables = []
         for identity, columns in list(self.table_columns.items())[-_MEMORY_TABLES:]:
@@ -702,8 +751,9 @@ class Operations:
             rid = item["resource_id"]
             if ("aurora", rid) not in self.available:
                 continue
-            self.concepts.setdefault(rid, set()).add(item["concept_id"])
-            self.concept_names.setdefault(rid, {})[item["concept_id"]] = (
+            key = self._concept_key(rid, item.get("cdm_schema"))
+            self.concepts.setdefault(key, set()).add(item["concept_id"])
+            self.concept_names.setdefault(key, {})[item["concept_id"]] = (
                 item.get("name", ""), item.get("domain", ""))
         for item in state.get("tables", []):
             ref = item["source_ref"]
@@ -722,7 +772,8 @@ class Operations:
                 self._remember_dataset(did, entry)
         cohort = state.get("cohort")
         if cohort and ("aurora", cohort["resource_id"]) in self.available:
-            self.cohort = cohort
+            self.cohort = {k: v for k, v in cohort.items()
+                           if k != "cdm_schema" or v is not None}
         return _render_memory(self)
 
 

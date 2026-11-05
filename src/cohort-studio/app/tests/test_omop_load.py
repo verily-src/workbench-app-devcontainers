@@ -46,15 +46,21 @@ def test_local_omop_fixture_loads_from_nested_csv_directory(engine, tmp_path):
 
     conn = engine.raw_connection()
     try:
-        counts = omop_load.load(conn, tmp_path / "nested-export", "omop_load_test")
+        try:
+            counts = omop_load.load(conn, tmp_path / "nested-export", "omop_load_test")
+        finally:
+            conn.close()
+        assert counts["person"] == 100
+        assert counts["observation_period"] == 100
+        with engine.connect() as conn:
+            assert conn.execute(text(
+                'SELECT count(*) FROM "omop_load_test"."person"'
+            )).scalar_one() == 100
     finally:
-        conn.close()
-    assert counts["person"] == 100
-    assert counts["observation_period"] == 100
-    with engine.connect() as conn:
-        assert conn.execute(text(
-            'SELECT count(*) FROM "omop_load_test"."person"'
-        )).scalar_one() == 100
+        # A second CDM schema left in the shared database would appear in
+        # every later test's multi-schema detection.
+        with engine.begin() as conn:
+            conn.exec_driver_sql('DROP SCHEMA IF EXISTS "omop_load_test" CASCADE')
 
 
 def test_replace_failure_rolls_back_and_preserves_previous_schema(engine, tmp_path):

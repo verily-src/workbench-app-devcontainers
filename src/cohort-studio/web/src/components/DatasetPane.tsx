@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
-import type { ExportJob } from "../api";
+import type { ExportJob, OpenResult } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
@@ -17,6 +17,8 @@ interface Props {
   palette: string;
   onUpdate: (changes: Partial<Dataset>) => void;
   onEditJoin: (datasetId: string) => void;
+  /** Opens a result (e.g. a full group summary) as a new dataset tab. */
+  onOpenTable?: (opened: OpenResult, title: string) => void;
 }
 
 function describeFilter(f: Filter): string {
@@ -72,7 +74,7 @@ function safeFilterAskError(error: unknown): string {
   return "The request could not be completed. Check the connection and try again.";
 }
 
-export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
+export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onOpenTable }: Props) {
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
@@ -278,8 +280,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
           {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}`}
         </button>
         <PlinkExport key={dataset.id} dataset={dataset} />
-        <button onClick={() => { void import("../pdf").then(({ captureCharts, exportDatasetPdf }) =>
-          exportDatasetPdf(dataset, captureCharts())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
+        <button onClick={() => { void import("../pdf").then(({ captureCharts, captureGroupSummary, exportDatasetPdf }) =>
+          exportDatasetPdf(dataset, captureCharts(), captureGroupSummary())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
                 disabled={!result}>
           Export PDF
         </button>
@@ -396,7 +398,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin }: Props) {
                       onClose={() => setShowDerive(false)} />
       )}
 
-      {showSummary && <GroupSummary dataset={dataset} onUpdate={onUpdate} onClose={() => setShowSummary(false)} />}
+      {showSummary && <GroupSummary dataset={dataset} onUpdate={onUpdate} onOpenTable={onOpenTable}
+        onClose={() => { setShowSummary(false); onUpdate({ groupSummary: undefined }); }} />}
 
       {showAggregate && <AggregateFilter dataset={dataset} onUpdate={onUpdate}
         onClose={() => setShowAggregate(false)} />}

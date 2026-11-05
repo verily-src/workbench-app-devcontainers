@@ -116,6 +116,8 @@ class OmopCohortSource(BaseModel):
     resource_id: str = Field(min_length=1, max_length=256)
     spec: dict
     membership_mode: Literal["live"] = "live"
+    # CDM schema of a database with several; omitted means the default schema.
+    cdm_schema: str | None = Field(default=None, min_length=1, max_length=63)
     name: str | None = Field(default=None, min_length=1, max_length=128)
     grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
@@ -143,6 +145,29 @@ class SourceCondition(BaseModel):
     right: str = Field(min_length=1)
 
 
+FilterScalar = Union[bool, int, float, str]
+JOIN_FILTER_OPS = ("=", "!=", "<", "<=", ">", ">=", "in", "not in",
+                   "is null", "is not null", "contains")
+
+
+class SourceFilter(BaseModel):
+    """A constant-value filter on one join input, applied before joining."""
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    column: str = Field(min_length=1)
+    op: Literal["=", "!=", "<", "<=", ">", ">=", "in", "not in",
+                "is null", "is not null", "contains"] = "="
+    value: FilterScalar | list[FilterScalar] | None = None
+
+    @field_validator("value")
+    @classmethod
+    def bounded_value(cls, value):
+        if isinstance(value, list) and len(value) > 100:
+            raise ValueError("A filter can list at most 100 values.")
+        if isinstance(value, str) and len(value) > 1000:
+            raise ValueError("Filter values are limited to 1,000 characters.")
+        return value
+
+
 class SourceStep(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     source: SourceRef
@@ -150,6 +175,7 @@ class SourceStep(BaseModel):
     conditions: list[SourceCondition] = Field(min_length=1, max_length=12)
     columns: list[str] | None = None
     alias: str = Field(min_length=1, max_length=256)
+    filters: list[SourceFilter] | None = Field(default=None, max_length=12)
 
 
 class JoinSource(BaseModel):
@@ -157,6 +183,7 @@ class JoinSource(BaseModel):
     kind: Literal["join"]
     allow_loaded: bool = False
     base: SourceRef
+    base_filters: list[SourceFilter] | None = Field(default=None, max_length=12)
     steps: list[SourceStep] = Field(min_length=1, max_length=6)
     grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
@@ -171,12 +198,47 @@ class DerivedSource(BaseModel):
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
+class SummaryFilter(BaseModel):
+    """A dashboard filter applied before a group summary (same shape as the summary endpoint)."""
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    column: str = Field(min_length=1, max_length=512)
+    kind: Literal["categorical", "range"]
+    values: list[str] | None = Field(default=None, max_length=1000)
+    min: float | None = None
+    max: float | None = None
+
+
+class SummarySpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    group_by: list[str] = Field(min_length=1, max_length=5)
+    measure: str | None = Field(default=None, max_length=512)
+
+    @model_validator(mode="after")
+    def distinct_groups(self):
+        if any(not item or len(item) > 512 for item in self.group_by) or len(set(self.group_by)) != len(self.group_by):
+            raise ValueError("Choose distinct grouping columns.")
+        return self
+
+
+class GroupSummarySource(BaseModel):
+    """Every group of a summary over ``base`` (after ``filters``), opened as its own table."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["group_summary"]
+    base: SourceRef
+    filters: list[SummaryFilter] = Field(default_factory=list, max_length=200)
+    spec: SummarySpec
+    grain: Definition | None = None
+    settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
+
+
 SourceRef = Annotated[Union[TableSource, SQLSource, MaterializedSource,
-                            OmopCohortSource, JoinSource, DerivedSource],
+                            OmopCohortSource, JoinSource, DerivedSource,
+                            GroupSummarySource],
                       Field(discriminator="kind")]
 SourceStep.model_rebuild()
 JoinSource.model_rebuild()
 DerivedSource.model_rebuild()
+GroupSummarySource.model_rebuild()
 SQLSource.model_rebuild()
 OmopCohortSource.model_rebuild()
 SOURCE_ADAPTER = TypeAdapter(SourceRef)
@@ -191,7 +253,7 @@ def source_dict(source) -> dict:
         count += 1
         if count > 16 or depth > 4:
             raise ValueError("Saved sources support at most 16 source steps and four join levels.")
-        if isinstance(node, DerivedSource):
+        if isinstance(node, (DerivedSource, GroupSummarySource)):
             check(node.base, depth)
         if isinstance(node, JoinSource):
             check(node.base, depth + 1)
@@ -204,13 +266,17 @@ def source_dict(source) -> dict:
     def compact(node):
         if not node.get("settings"):
             node.pop("settings", None)
-        if node["kind"] == "derived":
+        if node["kind"] in {"derived", "group_summary"}:
             compact(node["base"])
         if node["kind"] == "join":
             if not node.get("allow_loaded"):
                 node.pop("allow_loaded", None)
+            if not node.get("base_filters"):
+                node.pop("base_filters", None)
             compact(node["base"])
             for step in node["steps"]:
+                if not step.get("filters"):
+                    step.pop("filters", None)
                 compact(step["source"])
 
     compact(result)

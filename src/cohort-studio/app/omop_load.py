@@ -134,7 +134,7 @@ def open_sources(source: Path) -> dict:
 
 def _validate_sources(sources: dict, ddl: dict[str, dict]):
 
-    import omop
+    import omop_domains as omop
 
     missing = {"person", "observation_period", "concept", "concept_ancestor"} - set(sources)
     event_tables = {domain["table"] for domain in omop.DOMAINS.values()}
@@ -237,7 +237,7 @@ def _primary_key(cur, t: str, cols: str, log) -> bool:
         return False
 
 def _keys_and_indexes(cur, schema: str, tables: dict[str, list[str]], log=print):
-    import omop
+    import omop_domains as omop
     concept_cols = {d["table"]: d["concept"] for d in omop.DOMAINS.values()}
     s = _q(schema)
     for table, cols in tables.items():

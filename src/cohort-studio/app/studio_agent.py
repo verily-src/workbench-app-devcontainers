@@ -44,7 +44,7 @@ _TOOLS = [
         "end_date": {"type": "string", "description": "YYYY-MM-DD; default today (UTC)"},
         "limit": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
     }, ["query"]),
-    ("list_sources", "List sources, open dashboards and saved dashboards. Use open_dashboard to restore a saved dashboard after restart; use its returned dataset_id for queries.", {}),
+    ("list_sources", "List sources, open dashboards and saved dashboards. Aurora sources holding several OMOP CDM schemas list omop.cdm_schemas (schema names with person counts) and omop.default_cdm_schema; pass cdm_schema to OMOP tools and recipes to pick one. Use open_dashboard to restore a saved dashboard after restart; use its returned dataset_id for queries.", {}),
     ("open_dashboard", "Reopen an owned saved dashboard, restoring filters and charts and querying current data. Returns a new dataset_id. Workflow results are verified again.", {
         "dataset_id": {"type": "string", "minLength": 1, "maxLength": 64},
     }, ["dataset_id"]),
@@ -57,13 +57,17 @@ _TOOLS = [
     ("inspect_table", 'Inspect an Aurora table or S3 file only. For S3 use source_json {"kind":"s3","resource_id":"<listed id>","table":"<listed relative file path>"}. For OMOP cohort or join recipes, build_dashboard returns the output column metadata.', {
         "source_json": {"type": "string", "minLength": 2, "maxLength": 16000},
     }, ["source_json"]),
-    ("search_concepts", "Search the selected OMOP CDM for concept names and IDs.", {
+    ("search_concepts", "Search the selected OMOP CDM for concept names and IDs. A database may hold several CDM schemas (see list_sources); each has its own data and vocabulary, so search with the same cdm_schema you will count or build with. Empty cdm_schema uses the default schema.", {
         "resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
         "q": {"type": "string", "minLength": 1, "maxLength": 1000},
         "domain": {"type": "string", "maxLength": 64, "default": ""},
+        "cdm_schema": {"type": "string", "maxLength": 63, "default": "",
+                       "description": "OMOP CDM schema from list_sources cdm_schemas; empty uses the default schema."},
     }, ["resource_id", "q"]),
-    ("count_cohort", "Count people and attrition for an OMOP spec. spec_json is an object with only criteria, demographics, and require_observation. Criterion keys: domain, concept_ids, descendants, exclude, min_count, start/end ISO dates, index_relation ('before' or 'after' relative to the first included criterion), and measurement-only value_min/value_max. Demographic keys: gender_concept_ids, age_min/age_max, year_of_birth_min/year_of_birth_max. Search concepts first; use only returned IDs. Only death can omit concept_ids.", {
+    ("count_cohort", "Count people and attrition for an OMOP spec. spec_json is an object with only criteria, demographics, and require_observation. Criterion keys: domain, concept_ids, descendants, exclude, min_count, start/end ISO dates, index_relation ('before' or 'after' relative to the first included criterion), and measurement-only value_min/value_max. Demographic keys: gender_concept_ids, age_min/age_max, year_of_birth_min/year_of_birth_max. Search concepts first; use only returned IDs. Only death can omit concept_ids. cdm_schema selects the CDM schema (empty = default); concept IDs must come from search_concepts with the same resource and cdm_schema.", {
         "resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "cdm_schema": {"type": "string", "maxLength": 63, "default": "",
+                       "description": "OMOP CDM schema from list_sources cdm_schemas; empty uses the default schema."},
         "spec_json": {"type": "string", "minLength": 2, "maxLength": 20000,
                        "description": "JSON object with only criteria, demographics, and require_observation. Each criterion uses domain, concept_ids, descendants, exclude, min_count, value_min/value_max (measurement only), start/end (ISO dates), and index_relation (before/after relative to the first included criterion). Use concept IDs returned by search_concepts. Demographics uses gender_concept_ids, age_min/age_max, and year_of_birth_min/year_of_birth_max."},
     }, ["resource_id", "spec_json"]),
@@ -286,7 +290,8 @@ def _system_prompt() -> str:
         "{\"kind\":\"aurora\",\"resource_id\":\"...\","
         "\"schema\":\"cdm\",\"table\":\"person\"}. OMOP cohorts use "
         "{\"kind\":\"omop_cohort\",\"resource_id\":\"...\","
-        "\"membership_mode\":\"live\",\"spec\":{\"criteria\":[]}}. "
+        "\"membership_mode\":\"live\",\"spec\":{\"criteria\":[]}}; add "
+        "\"cdm_schema\":\"...\" to use a CDM schema other than the default one. "
         "A join recipe has the form {\"kind\":\"join\",\"base\":<source>,"
         "\"steps\":[{\"source\":<source>,\"how\":\"inner\","
         "\"conditions\":[{\"left\":\"person_id\",\"op\":\"=\","

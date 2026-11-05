@@ -103,7 +103,8 @@ def test_detect_resource_caches_and_feeds_the_hint(engine, monkeypatch):
     omop.detect_resource(RID)
     assert calls == [RID]
     assert omop.hint(RID) == {"cdm_schema": "cdm", "vocab_schema": "cdm",
-                              "version": "5.4", "persons": 100}
+                              "version": "5.4", "persons": 100,
+                              "cdm_schemas": [{"cdm_schema": "cdm", "persons": 100}]}
     omop.invalidate()
 
 
@@ -618,7 +619,8 @@ def test_datasources_carry_the_omop_hint(client, monkeypatch):
     omop.detect_resource(RID)
     aurora = client.get("/api/datasources").json()["sources"][0]
     assert aurora["omop"] == {"cdm_schema": "cdm", "vocab_schema": "cdm",
-                              "version": "5.4", "persons": 100}
+                              "version": "5.4", "persons": 100,
+                              "cdm_schemas": [{"cdm_schema": "cdm", "persons": 100}]}
 
 
 

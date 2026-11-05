@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 
 import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import Body, FastAPI, HTTPException, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
@@ -59,7 +59,7 @@ import export_jobs
 import plink_api
 import join_discovery
 import sql_source
-from source_models import ColumnSetting, DerivedSpec, SourceRef, source_dict
+from source_models import ColumnSetting, DerivedSpec, SourceFilter, SourceRef, source_dict
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
@@ -222,12 +222,15 @@ class JoinStep(BaseModel):
     conditions: list[JoinCondition] = Field(default_factory=list)
     columns: list[str] | None = None
     alias: str = ""
+    # Constant-value filters on this step's table, applied before joining.
+    filters: list[SourceFilter] = Field(default_factory=list, max_length=12)
 
 class JoinRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     allow_loaded: bool = Field(default=False, strict=True)
     base_id: str = ""
+    base_filters: list[SourceFilter] = Field(default_factory=list, max_length=12)
     steps: list[JoinStep] = Field(default_factory=list)
     left_id: str = ""
     right_id: str = ""
@@ -689,14 +692,16 @@ def _stored_ref(dataset_id):
                 "table": origin["table"], "schema": origin.get("schema") or "public"}
     return None
 
-def _join_ref(base_id, steps):
+def _join_ref(base_id, steps, base_filters=None):
     base = _stored_ref(base_id)
     refs = [_stored_ref(step["right_id"]) for step in steps]
     if base is None or any(ref is None for ref in refs):
         return None
     return source_dict({"kind": "join", "base": base,
+                        **({"base_filters": base_filters} if base_filters else {}),
                         "steps": [{"source": ref, **{k: step[k] for k in
-                                   ("how", "conditions", "columns", "alias") if k in step}}
+                                   ("how", "conditions", "columns", "alias", "filters")
+                                   if k in step and (k != "filters" or step[k])}}
                                   for step, ref in zip(steps, refs)]})
 
 def _open_source(ref, temporary=False, profile=True):
@@ -722,6 +727,14 @@ def _open_source_impl(ref, temporary=False, profile=True):
             ds = datasets.get(base["dataset_id"])
             df, label = ds["df"], ds["source"]
             live, capped = ds.get("live_source"), ds.get("capped")
+        elif ref["kind"] == "group_summary":
+            # Reopen the base recipe, then rerun the same full summary.
+            base = _open_source(ref["base"], temporary=True, profile=False)
+            children.append(base["dataset_id"])
+            summary = group_summary.materialize(
+                base["dataset_id"], {**ref["spec"], "filters": ref.get("filters", [])})
+            df, disk, capped = summary["df"], summary["disk_source"], summary["capped"]
+            label = summary["label"]
         elif ref["kind"] == "join":
             # Join inputs only contribute column names and SQL; skip their
             # full-source profiling (one scan per column) when reopening.
@@ -734,17 +747,21 @@ def _open_source_impl(ref, temporary=False, profile=True):
                 children.append(right["dataset_id"])
                 labels.append(right["source"])
                 steps.append({"right_id": right["dataset_id"], **{
-                    k: step[k] for k in ("how", "conditions", "columns", "alias") if k in step}})
-            out = joins.run(base["dataset_id"], steps, allow_loaded=ref.get("allow_loaded", False))
+                    k: step[k] for k in ("how", "conditions", "columns", "alias", "filters")
+                    if k in step}})
+            out = joins.run(base["dataset_id"], steps, allow_loaded=ref.get("allow_loaded", False),
+                            base_filters=ref.get("base_filters"))
             df, label = out["df"], " + ".join(labels)
             live, capped = out.get("live_source"), out["stats"]["truncated"]
             disk = out.get("disk_source")
         elif ref["kind"] == "omop_cohort":
-            engine, info = _omop_cdm(ref["resource_id"])
+            engine, info = _omop_cdm_for(ref["resource_id"], ref.get("cdm_schema"))
             df, live = omop.open_cohort_source(
-                engine, info, ref["resource_id"], ref["spec"])
+                engine, info, ref["resource_id"], ref["spec"],
+                cdm_schema=ref.get("cdm_schema"))
             capped = False
-            label = f"{ref['resource_id']} / {ref.get('name') or 'OMOP cohort'}"
+            schema_part = f"{ref['cdm_schema']} / " if ref.get("cdm_schema") else ""
+            label = f"{ref['resource_id']} / {schema_part}{ref.get('name') or 'OMOP cohort'}"
         elif ref["kind"] == "materialized":
             with db.get_engine_for_resource(ref["resource_id"]).begin() as conn:
                 conn.exec_driver_sql("SET TRANSACTION READ ONLY")
@@ -893,10 +910,11 @@ def _join_pipeline(req: JoinRequest) -> tuple[str, list[dict], list[str]]:
 def join_datasets(req: JoinRequest):
     base_id, steps, sources = _join_pipeline(req)
     try:
-        ref = _join_ref(base_id, steps)
+        base_filters = [f.model_dump() for f in req.base_filters]
+        ref = _join_ref(base_id, steps, base_filters)
         if ref and req.allow_loaded:
             ref["allow_loaded"] = True
-        out = joins.run(base_id, steps, allow_loaded=req.allow_loaded)
+        out = joins.run(base_id, steps, allow_loaded=req.allow_loaded, base_filters=base_filters)
         joins._flag_growth(out["stats"])
         label = " + ".join(sources)
         data_jobs.report("Building the joined tab", rows=int(len(out["df"])),
@@ -953,6 +971,8 @@ def _data_job_label(kind, req) -> str:
                 ref = source_dict(req.source_ref)
                 if ref.get("kind") == "sql":
                     return f"SQL query {ref.get('name') or ''} on {ref.get('resource_id')}".replace("  ", " ")
+                if ref.get("kind") == "group_summary":
+                    return f"Group summary ({', '.join(ref['spec']['group_by'])})"
                 if ref.get("table"):
                     schema = ref.get("schema") or "public"
                     table = ref["table"] if schema == "public" else f"{schema}.{ref['table']}"
@@ -1019,7 +1039,8 @@ def cancel_data_job(job_id: str, request: Request, response: Response):
 def preview_join(req: JoinRequest):
     base_id, steps, _ = _join_pipeline(req)
     try:
-        return joins.preview(base_id, steps, allow_loaded=req.allow_loaded)
+        return joins.preview(base_id, steps, allow_loaded=req.allow_loaded,
+                             base_filters=[f.model_dump() for f in req.base_filters])
     except disk_data.OperationTooLarge as e:
         raise HTTPException(413, str(e))
     except disk_data.SourceSizeUnknown as e:
@@ -1036,7 +1057,7 @@ def preview_join(req: JoinRequest):
 def validate_join(req: JoinRequest):
 
     base_id, steps, _ = _join_pipeline(req)
-    return joins.validate(base_id, steps)
+    return joins.validate(base_id, steps, [f.model_dump() for f in req.base_filters])
 
 @app.post("/api/joins/recommend")
 def recommend_join(req: join_discovery.RecommendRequest):
@@ -1112,6 +1133,39 @@ def summarize_dataset(dataset_id: str, req: group_summary.SummaryRequest):
     except Exception as e:
         raise HTTPException(504 if "statement timeout" in str(e) else 502,
                             str(e).split("\n")[0][:300])
+
+
+@app.post("/api/datasets/{dataset_id}/summary/materialize")
+def materialize_summary(dataset_id: str, req: group_summary.MaterializeRequest):
+    """Open every group of a summary (after the request's filters) as a new dataset tab."""
+    try:
+        base_ref = _stored_ref(dataset_id)
+        ref = source_dict({"kind": "group_summary", "base": base_ref,
+                           "filters": [item.model_dump() for item in req.filters],
+                           "spec": {"group_by": req.group_by, "measure": req.measure}}) if base_ref else None
+        summary = group_summary.materialize(dataset_id, req)
+        result = datasets.open_dataset(summary["df"], summary["label"], capped=summary["capped"],
+                                       disk_source=summary["disk_source"])
+    except execution.Busy as e:
+        raise HTTPException(429, str(e), headers={"Retry-After": "1"})
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    except disk_data.OperationTooLarge as e:
+        raise HTTPException(413, str(e))
+    except disk_data.SourceSizeUnknown as e:
+        raise HTTPException(422, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(504 if "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
+    datasets.get(result["dataset_id"])["source_ref"] = ref
+    result["source_ref"] = ref
+    result["summary"] = summary["summary"]
+    lineage.record(_lineage_engine(), "group_summary_opened", "dataset", summary["label"],
+                   payload={**summary["spec"], "rows": result["rows"], **summary["summary"]},
+                   parents=[("dataset", datasets.get(dataset_id)["source"])])
+    return result
 
 
 DISCONNECT_POLL_S = 0.25
@@ -1745,7 +1799,8 @@ def _omop_error(e: Exception) -> HTTPException:
         return HTTPException(504, str(e))
     return HTTPException(502, str(e).split("\n")[0][:300])
 
-def _omop_info(resource_id: str, refresh: bool = False) -> dict | None:
+def _omop_info(resource_id: str, refresh: bool = False,
+               cdm_schema: str | None = None) -> dict | None:
     known = {r["id"] for r in db.list_aurora_resources()}
     if resource_id not in known:
         if not known and not db.resources_ready():
@@ -1754,25 +1809,39 @@ def _omop_info(resource_id: str, refresh: bool = False) -> dict | None:
     if refresh:
         omop.invalidate(resource_id)
     try:
-        return omop.detect_resource(resource_id)
+        if cdm_schema is None:
+            return omop.detect_resource(resource_id)
+        return omop.detect_resource(resource_id, cdm_schema)
     except Exception as e:
         raise _omop_error(e)
 
-def _omop_cdm(resource_id: str):
-    info = _omop_info(resource_id)
+def _omop_cdm(resource_id: str, cdm_schema: str | None = None):
+    """Engine and detection info for one CDM schema (default when None).
+
+    An unknown ``cdm_schema`` is a 400 listing the valid schemas."""
+    info = _omop_info(resource_id, cdm_schema=cdm_schema or None)
     if info is None:
         raise HTTPException(404, f"No OMOP CDM found in {resource_id}.")
     return db.get_engine_for_resource(resource_id), info
 
+def _omop_cdm_for(resource_id: str, cdm_schema: str | None):
+    # One-argument call keeps the default path identical to before.
+    return (_omop_cdm(resource_id) if not cdm_schema
+            else _omop_cdm(resource_id, cdm_schema))
+
+_CDM_SCHEMA_QUERY = Query(default=None, min_length=1, max_length=63,
+                          description="CDM schema; omitted uses the default schema.")
+
 @app.get("/api/omop/{resource_id}")
-def omop_detect(resource_id: str, refresh: bool = False):
-    return omop.public(_omop_info(resource_id, refresh))
+def omop_detect(resource_id: str, refresh: bool = False,
+                cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+    return omop.public(_omop_info(resource_id, refresh, cdm_schema))
 
 @app.get("/api/omop/{resource_id}/concepts")
 def omop_concepts(resource_id: str, q: str = "", domain: str = "",
                   vocabulary: str = "", standard_only: bool = True,
-                  limit: int = 50):
-    engine, info = _omop_cdm(resource_id)
+                  limit: int = 50, cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+    engine, info = _omop_cdm_for(resource_id, cdm_schema)
     try:
         return {"concepts": omop.search_concepts(
             engine, info, q, domain or None, vocabulary or None,
@@ -1819,8 +1888,9 @@ class OmopSummaryRequest(BaseModel):
         return self
 
 @app.post("/api/omop/{resource_id}/cohort/agent")
-def omop_agent(resource_id: str, req: CohortAgentRequest, request: Request, response: Response):
-    _, info = _omop_cdm(resource_id)
+def omop_agent(resource_id: str, req: CohortAgentRequest, request: Request, response: Response,
+               cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+    _, info = _omop_cdm_for(resource_id, cdm_schema)
     trace_id = uuid.uuid4().hex
     started = time.monotonic()
     source = f"{resource_id} / OMOP cohort assistant"
@@ -1847,30 +1917,34 @@ def omop_agent(resource_id: str, req: CohortAgentRequest, request: Request, resp
 
 @app.post("/api/omop/{resource_id}/cohort/count")
 def omop_count(resource_id: str,
-               req: OmopSpecRequest = Body(default_factory=lambda: OmopSpecRequest({}))):
-    engine, info = _omop_cdm(resource_id)
+               req: OmopSpecRequest = Body(default_factory=lambda: OmopSpecRequest({})),
+               cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+    engine, info = _omop_cdm_for(resource_id, cdm_schema)
     try:
         return omop.count(engine, info, req.root)
     except Exception as e:
         raise _omop_error(e)
 
 @app.post("/api/omop/{resource_id}/cohort/summary")
-def omop_cohort_summary(resource_id: str, req: OmopSummaryRequest):
-    engine, info = _omop_cdm(resource_id)
+def omop_cohort_summary(resource_id: str, req: OmopSummaryRequest,
+                        cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+    engine, info = _omop_cdm_for(resource_id, cdm_schema)
     try:
         return omop.cohort_summary(engine, info, req.spec)
     except Exception as e:
         raise _omop_error(e)
 
 @app.post("/api/omop/{resource_id}/cohort/open")
-def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest):
+def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest,
+                     cdm_schema: str | None = _CDM_SCHEMA_QUERY):
     try:
-        _, info = _omop_cdm(resource_id)
+        _, info = _omop_cdm_for(resource_id, cdm_schema)
         parents = omop.tables_used(info, req.spec)
         name = req.name.strip() or "OMOP cohort"
         ref = source_dict({"kind": "omop_cohort", "resource_id": resource_id,
                            "spec": req.spec, "membership_mode": "live",
-                           "name": name})
+                           "name": name,
+                           **({"cdm_schema": cdm_schema} if cdm_schema else {})})
         result = _open_source(ref)
     except HTTPException:
         raise
@@ -1887,6 +1961,7 @@ def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest):
     source = result["source"]
     lineage.record(_lineage_engine(), "omop_cohort_opened", "cohort", source,
                    payload={"resource_id": resource_id,
+                            "cdm_schema": info["cdm_schema"],
                             "spec": result["source_ref"]["spec"],
                             "membership_mode": "live",
                             "rows": result["rows"],
@@ -1897,8 +1972,9 @@ def omop_open_cohort(resource_id: str, req: OmopCohortOpenRequest):
     return result
 
 @app.post("/api/omop/{resource_id}/domain/open")
-def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest):
-    engine, info = _omop_cdm(resource_id)
+def omop_open_domain(resource_id: str, req: OmopDomainOpenRequest,
+                     cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+    engine, info = _omop_cdm_for(resource_id, cdm_schema)
     try:
         df, origin = omop.open_domain(engine, info, req.table, req.spec,
                                       concept_names=req.concept_names,

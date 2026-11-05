@@ -12,10 +12,9 @@ import { Tutorial } from "./components/Tutorial";
 import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
-import type { ChartSpec, Dataset, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
+import type { ChartSpec, Dataset, JoinFilter, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
 
-const OmopBuilder = lazy(() => import("./components/OmopBuilder").then((m) => ({ default: m.OmopBuilder })));
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
 const JoinPanel = lazy(() => import("./components/JoinPanel").then((m) => ({ default: m.JoinPanel })));
 const StudioAgent = lazy(() => import("./components/StudioAgent").then((m) => ({ default: m.StudioAgent })));
@@ -34,6 +33,7 @@ interface JoinEdit {
   baseId: string;
   steps: JoinStep[];
   allowLoaded: boolean;
+  baseFilters?: JoinFilter[];
   inputs: Dataset[];
 }
 
@@ -111,9 +111,6 @@ export default function App() {
   const [error, setError] = useState("");
   const [view, setView] = useState<
     "explore" | "agent" | "workflows" | "lineage" | "settings">("explore");
-  const [exploreModes, setExploreModes] = useState<Record<string, "tables" | "omop">>({});
-  const [omopInitialized, setOmopInitialized] = useState(false);
-  const [tutorialOmopOpenedCount, setTutorialOmopOpenedCount] = useState(0);
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
@@ -162,7 +159,7 @@ export default function App() {
         void Promise.allSettled([
           import("./components/WorkflowsView"), import("./components/LineageView"),
           import("./components/StudioAgent"), import("./components/SettingsView"),
-          import("./components/JoinPanel"), import("./components/OmopBuilder"),
+          import("./components/JoinPanel"),
           import("./components/DatasetPane"), import("./pdf"),
         ]);
       };
@@ -195,23 +192,7 @@ export default function App() {
     void apiClient.config().then((config) => setTutorialAssistantConfigured(
       Boolean(config.llm?.providers?.[config.llm.provider]?.configured))).catch(() => undefined);
   };
-  const supportsOmop = source?.kind === "aurora" || source?.kind === "postgres";
-  const exploreMode = supportsOmop
-    ? exploreModes[sourceKey] ?? "tables" : "tables";
-  useEffect(() => {
-    if (view === "explore" && exploreMode === "omop") setOmopInitialized(true);
-  }, [view, exploreMode]);
-  const setExploreMode = (mode: "tables" | "omop") => {
-    if (supportsOmop) {
-      setExploreModes((previous) => ({ ...previous, [sourceKey]: mode }));
-      setShowJoin(false);
-      setView("explore");
-    }
-  };
   const showExploreTables = () => {
-    if (supportsOmop) {
-      setExploreModes((previous) => ({ ...previous, [sourceKey]: "tables" }));
-    }
     setView("explore");
   };
 
@@ -305,6 +286,7 @@ export default function App() {
       const opened = await api.openSourceRef(sourceRef);
       const title = sourceRef.kind === "join" ? "Joined input"
         : sourceRef.kind === "derived" ? sourceRef.spec.name
+          : sourceRef.kind === "group_summary" ? `Group summary (${sourceRef.spec.group_by.join(", ")})`
           : sourceRef.kind === "omop_cohort" ? sourceRef.name || "OMOP cohort"
           : sourceRef.kind === "sql" ? sourceRef.name || "SQL result"
           : sourceRef.kind === "materialized" ? "Saved join"
@@ -325,7 +307,8 @@ export default function App() {
       for (const step of ref.steps)
         steps.push({ ...step, right_id: await openInput(step.source) });
       setEditingJoin({ originalDatasetId: original.id, originalTitle: original.title,
-        baseId, steps, allowLoaded: ref.allow_loaded ?? false, inputs: openedInputs });
+        baseId, steps, allowLoaded: ref.allow_loaded ?? false,
+        baseFilters: ref.base_filters, inputs: openedInputs });
       setJoinSession((n) => n + 1);
       setShowJoin(true);
     } catch (error) {
@@ -422,6 +405,7 @@ export default function App() {
         id: o.dataset_id,
         title: d.title || (d.source.kind === "join" ? "Joined dataset"
           : d.source.kind === "derived" ? d.source.spec.name
+            : d.source.kind === "group_summary" ? `Group summary (${d.source.spec.group_by.join(", ")})`
             : d.source.kind === "omop_cohort" ? d.source.name || "OMOP cohort"
             : d.source.kind === "sql" ? d.source.name || "SQL result"
             : d.source.kind === "materialized" ? "Saved join"
@@ -502,7 +486,8 @@ export default function App() {
     }
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const doJoin = async (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean }) => {
+  const doJoin = async (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean;
+                              baseFilters?: JoinFilter[] }) => {
     setActivity("Joining…");
     setActivityInCard(true);
     setJoinRunning(true);
@@ -510,7 +495,7 @@ export default function App() {
     try {
       let opened: OpenResult & { join: JoinStats };
       try {
-        opened = await api.join(p.baseId, p.steps, p.allowLoaded);
+        opened = await api.join(p.baseId, p.steps, p.allowLoaded, p.baseFilters);
       } catch (e) {
         if (!(e instanceof ApiError) || e.status !== 404
             || e.code !== "DATASET_EXPIRED") throw e;
@@ -540,7 +525,7 @@ export default function App() {
             ...step,
             right_id: reopened.get(step.right_id)!.dataset_id,
           }));
-          opened = await api.join(base.dataset_id, retrySteps, p.allowLoaded);
+          opened = await api.join(base.dataset_id, retrySteps, p.allowLoaded, p.baseFilters);
         } catch (retryError) {
           await Promise.allSettled(createdIds.map((id) => api.closeDataset(id)));
           const reason = retryError instanceof Error ? retryError.message : "unknown error";
@@ -784,16 +769,6 @@ export default function App() {
           listing={listingTables}
           onSourceKeyChange={setSourceKey} onTableChange={setTable} onLoadTable={loadTable} />
         <button className="quiet" onClick={() => setAddSourceOpen(true)}>+ Add data source</button>
-        {supportsOmop && <div className="field-label">
-          Explore view
-          <div className="explore-toggle" role="group" aria-label="Explore view">
-            <button type="button" aria-pressed={exploreMode === "tables"}
-                    onClick={() => setExploreMode("tables")}>Tables</button>
-            <button type="button" aria-pressed={exploreMode === "omop"}
-                    data-tutorial-target="omop-toggle"
-                    onClick={() => setExploreMode("omop")}>OMOP</button>
-          </div>
-        </div>}
         {source?.kind === "s3" && (
           <PublishCatalog source={source} onToast={alerts.pushToast}
                           onPublished={() => api.datasources()
@@ -821,7 +796,7 @@ export default function App() {
           Upload CSV, TSV or Parquet
         </label>
 
-        {!showJoin && exploreMode === "tables" && <>
+        {!showJoin && <>
         <div className="section-label">Filters</div>
 
         {activeDs ? (
@@ -874,9 +849,7 @@ export default function App() {
           </button>
           <Tutorial progress={{
             sourceChosen: Boolean(sourceKey), dataLoaded: datasets.length > 0,
-            hasSources: sources.length > 0, omopAvailable: supportsOmop,
-            omopActive: view === "explore" && exploreMode === "omop",
-            omopOpenedCount: tutorialOmopOpenedCount, joinPanelOpen: showJoin,
+            hasSources: sources.length > 0, joinPanelOpen: showJoin,
             joinCreated: datasets.some((dataset) => dataset.sourceRef?.kind === "join"),
             view, hasDataset: Boolean(activeDs),
             chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),
@@ -910,18 +883,7 @@ export default function App() {
             </aside>
           )}
           <Suspense fallback={<div role="status">Loading…</div>}>
-          {(omopInitialized || (view === "explore" && exploreMode === "omop")) && <div hidden={view !== "explore" || exploreMode !== "omop"}>
-            <OmopBuilder active={view === "explore" && exploreMode === "omop"}
-                          palette={palette}
-                          source={source ?? null} onOpen={(opened, title) => {
-              setTutorialOmopOpenedCount((count) => count + 1);
-              openResult(opened, title, undefined,
-                { filters: [], charts: autoCharts(opened.columns) });
-              setExploreMode("tables");
-              setView("explore");
-            }} />
-          </div>}
-          {view === "explore" && exploreMode === "omop" ? null : view === "agent" ? (
+          {view === "agent" ? (
             <StudioAgent onOpenSettings={() => setView("settings")} onOpenDashboard={(action: AgentDashboardAction & { update?: boolean }, verification?: AgentWorkflowVerification) => {
               const existing = action.update
                 ? datasets.findIndex((d) => d.id === action.dataset.dataset_id) : -1;
@@ -930,7 +892,6 @@ export default function App() {
                 setDatasets((prev) => prev.map((d, i) => i === existing
                   ? { ...d, filters: action.filters, charts: action.charts, page: 0 } : d));
                 setActive(existing);
-                setExploreMode("tables");
                 setView("explore");
                 return;
               }
@@ -940,7 +901,6 @@ export default function App() {
               openResult(action.dataset, action.title, action.dataset.source_ref,
                 { filters: action.filters, charts: action.charts },
                 { forceNewTab: true });
-              setExploreMode("tables");
               setView("explore");
             }} />
           ) : view === "settings" ? (
@@ -1031,6 +991,7 @@ export default function App() {
                            initialPlan={editingJoin ? {
                              title: editingJoin.originalTitle, baseId: editingJoin.baseId,
                              steps: editingJoin.steps, allowLoaded: editingJoin.allowLoaded,
+                             baseFilters: editingJoin.baseFilters,
                            } : undefined}
                            onSourceOpened={(opened, title, sourceRef) =>
                              openResult(opened, title, sourceRef, undefined,
@@ -1055,6 +1016,7 @@ export default function App() {
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
                   onEditJoin={editJoin}
+                  onOpenTable={(opened, title) => openResult(opened, title, undefined, undefined, { forceNewTab: true })}
                 />
               )}
             </>

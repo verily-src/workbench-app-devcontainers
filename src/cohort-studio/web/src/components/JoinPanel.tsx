@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { DataJob } from "../api";
 import type {
-  Dataset, JoinCondition, JoinEngine, JoinHow, JoinOp, JoinPreview, JoinStep,
+  ColumnProfile, Dataset, JoinCondition, JoinEngine, JoinFilter, JoinFilterOp, JoinFilterValue,
+  JoinHow, JoinOp, JoinPreview, JoinStep,
   JoinRecommendation, JoinSuggestion, JoinValidation, Source, SourceRef, TableInfo,
 } from "../types";
 import { Combobox } from "./Combobox";
@@ -14,8 +15,10 @@ interface Props {
   datasets: Dataset[];
   sources: Source[];
   busy: boolean;
-  onJoin: (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean }) => void;
-  initialPlan?: { title: string; baseId: string; steps: JoinStep[]; allowLoaded: boolean };
+  onJoin: (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean;
+                baseFilters?: JoinFilter[] }) => void;
+  initialPlan?: { title: string; baseId: string; steps: JoinStep[]; allowLoaded: boolean;
+                  baseFilters?: JoinFilter[] };
   onSourceOpened: (opened: Awaited<ReturnType<typeof api.openSourceRef>>,
                    title: string, sourceRef: SourceRef) => void;
   onClose: () => void;
@@ -40,12 +43,187 @@ const SOURCE_GROUP_LABEL: Record<Source["kind"], string> = {
   aurora: "Aurora", postgres: "PostgreSQL / RDS", athena: "Athena / Iceberg", s3: "S3 files", bq: "BigQuery", catalog: "Catalogs",
 };
 
+/** A condition row in the editor; `touched` once focus has left the row. */
+interface CondRow extends JoinCondition { touched?: boolean }
+
+/** A value-filter row in the editor; `text` is what the user typed. */
+interface FilterRow { column: string; op: JoinFilterOp; text: string; touched?: boolean }
+
 /** `uid` is a stable React key: index keys let a removed step's open
  * details and combobox state leak into the step that moves up. */
-interface StepState extends JoinStep {
+interface StepState extends Omit<JoinStep, "conditions" | "filters"> {
+  conditions: CondRow[];
+  filterRows: FilterRow[];
   touched: boolean; pickCols: boolean; uid: string;
   /** UI-only: narrow left keys to the base ("base") or an earlier step's uid. */
   joinTo?: string;
+}
+
+type ColKind = "number" | "bool" | "time" | "text";
+const KIND_LABEL: Record<ColKind, string> = {
+  number: "number", bool: "true/false", time: "date", text: "text",
+};
+
+/** Best guess of how the server will type a column (it checks again). */
+function colKind(column?: ColumnProfile): ColKind {
+  const dtype = (column?.dtype ?? "").toLowerCase();
+  if (dtype.includes("bool")) return "bool";
+  if (/int|float|double|decimal|numeric|real/.test(dtype)) return "number";
+  if (/date|time/.test(dtype)) return "time";
+  return "text";
+}
+
+const NULL_OPS: JoinFilterOp[] = ["is null", "is not null"];
+const LIST_OPS: JoinFilterOp[] = ["in", "not in"];
+const FILTER_OPS: Record<ColKind, JoinFilterOp[]> = {
+  text: ["=", "!=", "contains", "in", "not in", "<", "<=", ">", ">=", "is null", "is not null"],
+  number: ["=", "!=", "<", "<=", ">", ">=", "in", "not in", "is null", "is not null"],
+  time: ["=", "!=", "<", "<=", ">", ">=", "in", "not in", "is null", "is not null"],
+  bool: ["=", "!=", "is null", "is not null"],
+};
+const OP_LABEL: Partial<Record<JoinFilterOp, string>> = {
+  "in": "is one of", "not in": "is not one of", "contains": "contains",
+};
+const NUMBER_TEXT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+const isBlankCond = (c: JoinCondition) => !c.left && !c.right;
+const isCompleteCond = (c: JoinCondition) => Boolean(c.left && c.right);
+
+function typedValue(text: string, kind: ColKind): JoinFilterValue {
+  const raw = text.trim();
+  // Integers beyond 2^53 stay text: the server parses them exactly.
+  if (kind === "number" && NUMBER_TEXT.test(raw)
+      && (!/^[+-]?\d+$/.test(raw) || Number.isSafeInteger(Number(raw)))) return Number(raw);
+  if (kind === "bool" && (raw === "true" || raw === "false")) return raw === "true";
+  return kind === "text" ? text : raw;
+}
+
+/** Filter rows the server should see: blank rows (no column) and rows still
+ * missing a value are left out. */
+function sentFilters(rows: FilterRow[], columns: ColumnProfile[]): { filter: JoinFilter; row: number }[] {
+  const out: { filter: JoinFilter; row: number }[] = [];
+  rows.forEach((row, index) => {
+    if (!row.column || filterProblem(row)) return;
+    const kind = colKind(columns.find((c) => c.name === row.column));
+    if (NULL_OPS.includes(row.op)) out.push({ filter: { column: row.column, op: row.op }, row: index });
+    else if (LIST_OPS.includes(row.op)) out.push({ row: index, filter: { column: row.column, op: row.op,
+      value: row.text.split(",").map((v) => v.trim()).filter(Boolean).map((v) => typedValue(v, kind)) } });
+    else out.push({ row: index, filter: { column: row.column, op: row.op,
+      value: row.op === "contains" ? row.text : typedValue(row.text, kind) } });
+  });
+  return out;
+}
+
+function filterProblem(row: FilterRow): string | null {
+  if (!row.column || NULL_OPS.includes(row.op)) return null;
+  if (LIST_OPS.includes(row.op))
+    return row.text.split(",").some((v) => v.trim()) ? null : `Enter one or more values for ${row.column}, separated by commas.`;
+  return row.text.trim() ? null : `Enter a value for ${row.column}.`;
+}
+
+const fromFilter = (f: JoinFilter): FilterRow => ({
+  column: f.column, op: f.op, touched: true,
+  text: Array.isArray(f.value) ? f.value.join(", ") : f.value == null ? "" : String(f.value),
+});
+
+/** Leaving a row (focus moves outside it) marks it touched. */
+const leftRow = (event: React.FocusEvent<HTMLElement>) =>
+  !event.currentTarget.contains(event.relatedTarget as Node | null);
+
+function FilterEditor({ rows, columns, table, label, checks, disabled, onChange }: {
+  rows: FilterRow[]; columns: ColumnProfile[]; table: string; label: string;
+  checks?: { problem: string | null }[]; disabled: boolean;
+  onChange: (rows: FilterRow[]) => void;
+}) {
+  const sent = sentFilters(rows, columns);
+  const set = (k: number, patch: Partial<FilterRow>) =>
+    onChange(rows.map((row, m) => (m === k ? { ...row, ...patch } : row)));
+  const hasBlank = rows.some((row) => !row.column);
+  return (
+    <div className={`join-section join-filters${label === "Start table" ? " join-base-filters" : ""}`} role="group" aria-label={`${label} filters`}>
+      {rows.length > 0 && <div className="join-section-title">
+        Filter {table} <span className="settings-hint">Filters this table before joining</span>
+      </div>}
+      {rows.map((row, k) => {
+        const column = columns.find((c) => c.name === row.column);
+        const kind = colKind(column);
+        const ops = FILTER_OPS[kind].includes(row.op) ? FILTER_OPS[kind] : [row.op, ...FILTER_OPS[kind]];
+        const sentIndex = sent.findIndex((item) => item.row === k);
+        const serverProblem = sentIndex >= 0 ? checks?.[sentIndex]?.problem : null;
+        const localProblem = row.touched ? filterProblem(row) : null;
+        const problem = localProblem ?? serverProblem;
+        const name = `${label} filter ${k + 1}`;
+        return (
+          <Fragment key={k}>
+            <div className={`join-filter${problem ? " invalid" : ""}`}
+                 onBlur={(e) => { if (leftRow(e) && row.column && !row.touched) set(k, { touched: true }); }}>
+              <span className="join-cond-label">{k === 0 ? "where" : "and"}</span>
+              <span className="join-pick">
+                <select aria-label={`${name} column`} value={row.column} disabled={disabled}
+                        onChange={(e) => {
+                          const nextKind = colKind(columns.find((c) => c.name === e.target.value));
+                          set(k, { column: e.target.value,
+                            op: FILTER_OPS[nextKind].includes(row.op) ? row.op : "=",
+                            text: nextKind === colKind(column) ? row.text : "" });
+                        }}>
+                  <option value="" disabled>Choose column</option>
+                  <optgroup label={table}>
+                    {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </optgroup>
+                </select>
+                {row.column && <small className="join-col-type">{KIND_LABEL[kind]}</small>}
+              </span>
+              <select className="join-filter-op" aria-label={`${name} operator`} value={row.op}
+                      disabled={disabled}
+                      onChange={(e) => set(k, { op: e.target.value as JoinFilterOp })}>
+                {ops.map((op) => <option key={op} value={op}>{OP_LABEL[op] ?? op}</option>)}
+              </select>
+              {NULL_OPS.includes(row.op) ? <span className="join-filter-value" />
+                : kind === "bool" && !LIST_OPS.includes(row.op) ? (
+                  <select className="join-filter-value" aria-label={`${name} value`} value={row.text}
+                          disabled={disabled} onChange={(e) => set(k, { text: e.target.value })}>
+                    <option value="" disabled>Choose…</option>
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                  </select>
+                ) : (
+                  <input type="text" className="join-filter-value" aria-label={`${name} value`} value={row.text}
+                         disabled={disabled}
+                         inputMode={kind === "number" && !LIST_OPS.includes(row.op) ? "decimal" : undefined}
+                         placeholder={LIST_OPS.includes(row.op) ? "value, value, …"
+                           : kind === "number" ? "number" : kind === "time" ? "2024-01-31" : "text"}
+                         onChange={(e) => set(k, { text: e.target.value })} />
+                )}
+              <button className="quiet" aria-label={`Remove ${name}`} title="Remove filter"
+                      onClick={() => onChange(rows.filter((_, m) => m !== k))}>✕</button>
+            </div>
+            {problem && <div className="join-check join-error" role="alert">{problem}</div>}
+          </Fragment>
+        );
+      })}
+      <div className="join-tools">
+        <button className="link" disabled={disabled || hasBlank || rows.length >= 12}
+                aria-label={`Add filter to ${label}`}
+                title={`Keep only ${table} rows that match a value, before joining`}
+                onClick={() => onChange([...rows, { column: "", op: "=", text: "" }])}>
+          + filter
+        </button>
+        {rows.length === 0 && <span className="settings-hint">Keep only some {table} rows before joining</span>}
+      </div>
+    </div>
+  );
+}
+
+/** One line in plain language for the selected join type. */
+function howHint(how: JoinHow, left: string, right: string): string {
+  switch (how) {
+    case "left": return `Keep all ${left} rows; add ${right} columns where they match.`;
+    case "inner": return `Keep only rows where ${left} and ${right} match.`;
+    case "right": return `Keep all ${right} rows; add ${left} columns where they match.`;
+    case "full": return `Keep all rows from ${left} and ${right}, side by side where they match.`;
+    case "semi": return `Keep ${left} rows that have a match in ${right}; adds no columns.`;
+    case "anti": return `Keep ${left} rows with no match in ${right}; adds no columns.`;
+  }
 }
 let stepSeq = 0;
 const stepUid = () => `step-${++stepSeq}`;
@@ -118,7 +296,7 @@ function sourceResources(ref?: SourceRef): string[] {
   if (ref.kind === "join") return [
     ...sourceResources(ref.base), ...ref.steps.flatMap((step) => sourceResources(step.source)),
   ];
-  if (ref.kind === "derived") return sourceResources(ref.base);
+  if (ref.kind === "derived" || ref.kind === "group_summary") return sourceResources(ref.base);
   return [ref.resource_id];
 }
 
@@ -178,14 +356,15 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     onSourceOpened(opened, title, sourceRef);
     if (!baseId || asBase) {
       setBaseId(opened.dataset_id);
+      setBaseFilterRows([]);
       setSteps([{ uid: stepUid(), right_id: "", how: "left", alias: "joined", columns: null,
-        touched: false, pickCols: false,
+        touched: false, pickCols: false, filterRows: [],
         conditions: [{ left: "", op: "=", right: "" }] }]);
     } else {
       setSteps((previous) => {
         const add = (): StepState => ({
           right_id: opened.dataset_id, how: "left", alias: title, uid: stepUid(),
-          columns: null, touched: false, pickCols: false,
+          columns: null, touched: false, pickCols: false, filterRows: [],
           conditions: [{ left: "", op: "=", right: "" }],
         });
         const emptyIndex = previous.findIndex((step) => !step.right_id);
@@ -276,15 +455,18 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     const right = byId.get(rightId);
     const leftCols = outputColumns(base, prior, prior.length, byId);
     return { right_id: rightId, how: "left", alias: aliasOf(right), uid: stepUid(),
-             columns: null, touched: false, pickCols: false,
+             columns: null, touched: false, pickCols: false, filterRows: [],
              conditions: [defaultCondition(leftCols, right)] };
   };
 
   const firstOther = (exclude: string) =>
     datasets.find((d) => d.id !== exclude)?.id ?? "";
   const [steps, setSteps] = useState<StepState[]>(() => initialPlan
-    ? initialPlan.steps.map((step) => ({ ...step, touched: true, pickCols: false, uid: stepUid() }))
+    ? initialPlan.steps.map(({ filters, ...step }) => ({ ...step, touched: true, pickCols: false,
+        uid: stepUid(), filterRows: (filters ?? []).map(fromFilter) }))
     : [newStep(firstOther(baseId), [])]);
+  const [baseFilterRows, setBaseFilterRows] = useState<FilterRow[]>(
+    () => (initialPlan?.baseFilters ?? []).map(fromFilter));
   const canAddSource = !baseId || steps.some((step) => !step.right_id)
     || steps.length < MAX_STEPS;
   const [suggestions, setSuggestions] = useState<Record<number, JoinSuggestion[]>>({});
@@ -415,7 +597,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     setPreview(null);
     setPreviewErr("");
     setPreviewing(false);
-  }, [baseId, steps]);
+  }, [baseId, steps, baseFilterRows]);
 
   const [validation, setValidation] = useState<JoinValidation | null>(null);
   useEffect(() => {
@@ -424,12 +606,12 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     if (!base || steps.some((s) => !s.right_id)) { setValidation(null); return; }
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
-      api.validateJoin(baseId, payload(), ctrl.signal, crossSource && allowLoaded)
+      api.validateJoin(baseId, payload(), ctrl.signal, crossSource && allowLoaded, baseFilters())
         .then(setValidation)
         .catch(() => { if (!ctrl.signal.aborted) setValidation(null); });
     }, VALIDATE_DELAY_MS);
     return () => { clearTimeout(timer); ctrl.abort(); };
-  }, [baseId, steps, crossSource, allowLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [baseId, steps, baseFilterRows, crossSource, allowLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const options = datasets.map((d) => ({ id: d.id, label: d.title, hint: d.source }));
   // "Start from" can also open a table straight from the selected datasource,
@@ -510,6 +692,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
 
   const changeBase = (id: string) => {
     setBaseId(id);
+    setBaseFilterRows([]);
     setSteps([newStep(firstOther(id), [])]);
     setSuggestions({});
   };
@@ -527,13 +710,37 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const changeRight = (i: number, id: string) =>
     setSteps((prev) => prev.map((s, j) => (j === i ? newStep(id, prev.slice(0, i)) : s)));
 
+  // Only complete condition rows and filter rows are sent; blank rows are
+  // ignored and incomplete ones block the join (see disabledReason).
   const payload = (): JoinStep[] => steps.map(
-    ({ right_id, how, conditions, columns, alias }) =>
-      ({ right_id, how, conditions, columns, alias: alias.trim() }));
+    ({ right_id, how, conditions, columns, alias, filterRows }) => {
+      const filters = sentFilters(filterRows, byId.get(right_id)?.columns ?? [])
+        .map((item) => item.filter);
+      return { right_id, how, columns, alias: alias.trim(),
+        conditions: conditions.filter(isCompleteCond).map(({ left, op, right }) => ({ left, op, right })),
+        ...(filters.length ? { filters } : {}) };
+    });
+  const baseFilters = (): JoinFilter[] =>
+    sentFilters(baseFilterRows, base?.columns ?? []).map((item) => item.filter);
 
-  const valid = Boolean(base) && validation?.ok !== false && steps.every((s) =>
-    s.right_id && s.conditions.length > 0
-    && s.conditions.every((c) => c.left && c.right));
+  const stepName = (i: number) => steps.length > 1 ? `Step ${i + 1}: ` : "";
+  const disabledReason = ((): string | null => {
+    if (!base) return "Choose a table to start from.";
+    const pending = baseFilterRows.find((row) => filterProblem(row));
+    if (pending) return `Start table: ${filterProblem(pending)}`;
+    for (const [i, st] of steps.entries()) {
+      const right = byId.get(st.right_id);
+      if (!right) return `${stepName(i)}Choose a table to join.`;
+      if (st.conditions.some((c) => !isBlankCond(c) && !isCompleteCond(c)))
+        return `${stepName(i)}Finish or remove the incomplete condition.`;
+      if (!st.conditions.some(isCompleteCond)) return `${stepName(i)}Choose at least one matching column pair.`;
+      const filter = st.filterRows.find((row) => filterProblem(row));
+      if (filter) return `${stepName(i)}${filterProblem(filter)}`;
+    }
+    if (validation?.ok === false) return "Fix the problems shown above.";
+    return null;
+  })();
+  const valid = disabledReason === null;
 
   const runPreview = async () => {
     const controller = new AbortController();
@@ -544,7 +751,8 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     setPreviewJob(null);
     try {
       const result = await api.previewJoin(baseId, payload(), crossSource && allowLoaded, controller.signal,
-        (job) => { if (requestId === previewRequest.current) setPreviewJob({ job, receivedAt: Date.now() }); });
+        (job) => { if (requestId === previewRequest.current) setPreviewJob({ job, receivedAt: Date.now() }); },
+        baseFilters());
       if (requestId === previewRequest.current) setPreview(result);
     } catch (e) {
       if (requestId === previewRequest.current) setPreviewErr((e as Error).message);
@@ -562,6 +770,16 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
     setPreviewErr("");
     setPreviewing(false);
   };
+
+  const reasonId = `join-reason-${baseId || "new"}`;
+  const footerReason = disabledReason
+    ?? (crossSource && !allowLoaded ? "Allow the full-source cross-source join below to continue." : null)
+    ?? (needsGrowthConfirm ? "Confirm the large result to join." : null)
+    ?? (busy || sourceBusy ? "Waiting for the current operation to finish." : null);
+  const lastStat = preview?.large_growth ? undefined : preview?.steps[preview.steps.length - 1];
+  const resultRows = lastStat ? `Result: ${lastStat.estimated ? "~" : ""}${lastStat.rows.toLocaleString()} rows`
+    + (preview?.growth_total != null && preview.growth_total !== 1 ? ` (${preview.growth_total}× the base)` : "")
+    : null;
 
   return (
     <div className="join-panel">
@@ -677,6 +895,12 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
         </div>
       )}
 
+      {base && (
+        <FilterEditor rows={baseFilterRows} columns={base.columns} table={base.title}
+                      label="Start table" checks={validation?.base_filters}
+                      disabled={sourceBusy || busy} onChange={setBaseFilterRows} />
+      )}
+
       {steps.map((s, i) => {
         const right = byId.get(s.right_id);
         const leftCols = outputColumns(base, steps, i, byId);
@@ -686,6 +910,25 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
         const shown = joinTo ? groups.filter((g) => g.key === joinTo) : groups;
         const rightCols = right?.columns.map((c) => c.name) ?? [];
         const picked = s.columns ?? rightCols;
+        const leftLabel = shown.length === 1 ? shown[0].label : "earlier tables";
+        const rightLabel = right ? (s.alias.trim() || aliasOf(right)) : "the joined table";
+        const howLeft = i === 0 ? (base?.title ?? "start table") : "the joined";
+        const leftKind = (col: string) => {
+          if (base?.columns.some((c) => c.name === col))
+            return colKind(base.columns.find((c) => c.name === col));
+          for (const prior of steps.slice(0, i)) {
+            const prefix = `${prior.alias}${ARROW}`;
+            if (col.startsWith(prefix))
+              return colKind(byId.get(prior.right_id)?.columns.find((c) => c.name === col.slice(prefix.length)));
+          }
+          return undefined;
+        };
+        const rightKind = (col: string) => colKind(right?.columns.find((c) => c.name === col));
+        const sentConds = s.conditions.map((c, k) => (isCompleteCond(c) ? k : -1)).filter((k) => k >= 0);
+        const hasBlankCond = s.conditions.some(isBlankCond);
+        const keyIdeas = (recommendations[i]?.length ?? 0) + (suggestions[i]?.length ?? 0);
+        const stepProblems = (validation?.steps[i]?.problems ?? []).filter((p) =>
+          !/add at least one join condition/i.test(p));
         return (
           <div className="join-step" key={s.uid}>
             <div className="join-step-head">
@@ -711,9 +954,12 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                         disabled={i === steps.length - 1 || swapBreaks(i, i + 1)} onClick={() => move(i, 1)}>↓</button>
               </>)}
               {steps.length > 1 && (
-                <button className="quiet" title="Remove this step"
+                <button className="quiet" title="Remove this step" aria-label={`Remove step ${i + 1}`}
                         onClick={() => setSteps((prev) => prev.filter((_, j) => j !== i))}>✕</button>
               )}
+            </div>
+            <div className="join-how-hint settings-hint" aria-live="polite">
+              {howHint(s.how, howLeft === "the joined" ? "the rows so far" : howLeft, rightLabel)}
             </div>
 
             <div className="join-row">
@@ -734,114 +980,157 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
               )}
             </div>
 
-            <details className="join-advanced">
-              <summary>Advanced</summary>
-              <div className="join-row">
-                {addsColumns(s.how) && (
-                  <label>Name joined columns as
-                    <input value={s.alias} onChange={(e) => update(i, { alias: e.target.value })}
-                           placeholder={aliasOf(right)} />
-                  </label>
-                )}
-                <button className="link" onClick={() => update(i, { touched: true,
-                  conditions: [...s.conditions, defaultCondition(leftCols, right)] })}>
+            <div className="join-section" role="group" aria-label={`Step ${i + 1} matching columns`}>
+              <div className="join-section-title">Match rows where</div>
+              <div className="join-cond-head" aria-hidden>
+                <span className="join-cond-label" />
+                <span>{leftLabel} column</span>
+                <span className="join-op-space" />
+                <span>{rightLabel} column</span>
+                <span className="join-remove-space" />
+              </div>
+              {s.conditions.map((c, k) => {
+                const sentIndex = sentConds.indexOf(k);
+                const check = sentIndex >= 0 ? validation?.steps[i]?.conditions[sentIndex] : undefined;
+                const local = c.touched && !isBlankCond(c) && !isCompleteCond(c)
+                  ? (!c.left ? `Pick a column from ${leftLabel}.` : `Pick a column from ${rightLabel}.`)
+                  : null;
+                const problem = local ?? check?.problem;
+                const lk = c.left ? leftKind(c.left) : undefined;
+                return (
+                  <Fragment key={k}>
+                    <div className={`join-cond${problem ? " invalid" : ""}`}
+                         onBlur={(e) => {
+                           if (leftRow(e) && !c.touched && !isBlankCond(c))
+                             setSteps((prev) => prev.map((st, j) => j !== i ? st : {
+                               ...st, conditions: st.conditions.map((x, m) => m === k ? { ...x, touched: true } : x),
+                             }));
+                         }}>
+                      <span className="join-cond-label">{k === 0 ? "on" : "and"}</span>
+                      <span className="join-pick">
+                        <select disabled={sourceBusy || busy} aria-label={`Left key step ${i + 1} condition ${k + 1}`}
+                                title={`${leftLabel} column`}
+                                value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
+                          <option value="" disabled>Choose column</option>
+                          {c.left && !shown.some((g) => g.cols.includes(c.left)) && <option>{c.left}</option>}
+                          {shown.map((g) => (
+                            <optgroup key={g.key} label={g.label}>
+                              {g.cols.map((col) => <option key={col}>{col}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                        {lk && <small className="join-col-type">{KIND_LABEL[lk]}</small>}
+                      </span>
+                      <select className="join-op" aria-label={`Operator step ${i + 1} condition ${k + 1}`}
+                              value={c.op}
+                              onChange={(e) => setCondition(i, k, { op: e.target.value as JoinOp })}>
+                        {OPS.map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                      <span className="join-pick">
+                        <select disabled={sourceBusy || busy} aria-label={`Right key step ${i + 1} condition ${k + 1}`}
+                                title={`${rightLabel} column`}
+                                value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
+                          <option value="" disabled>Choose column</option>
+                          <optgroup label={rightLabel}>
+                            {rightCols.map((col) => <option key={col}>{col}</option>)}
+                          </optgroup>
+                        </select>
+                        {c.right && <small className="join-col-type">{KIND_LABEL[rightKind(c.right)]}</small>}
+                      </span>
+                      {s.conditions.length > 1 ? (
+                        <button className="quiet" title="Remove condition"
+                                aria-label={`Remove step ${i + 1} condition ${k + 1}`}
+                                onClick={() => update(i, { touched: true,
+                                  conditions: s.conditions.filter((_, m) => m !== k) })}>✕</button>
+                      ) : <span className="join-remove-space" />}
+                    </div>
+                    {problem && <div className="join-check join-error" role="alert">{problem}</div>}
+                    {!local && check?.note && <div className="join-check settings-hint">{check.note}</div>}
+                  </Fragment>
+                );
+              })}
+              {stepProblems.map((p) =>
+                <div key={p} className="join-check join-error" role="alert">{p}</div>)}
+              <div className="join-tools">
+                <button className="link" disabled={hasBlankCond || s.conditions.length >= 12}
+                        title={hasBlankCond ? "Fill in the empty condition first" : "Match on another column pair"}
+                        onClick={() => update(i, { touched: true,
+                          conditions: [...s.conditions, defaultCondition(leftCols, right)] })}>
                   + condition
                 </button>
-                {addsColumns(s.how) && (
-                  <button className="link" onClick={() => update(i, { pickCols: !s.pickCols })}>
-                    columns: {picked.length === rightCols.length ? "all" : `${picked.length}/${rightCols.length}`} ▾
-                  </button>
-                )}
-              </div>
-              {addsColumns(s.how) && s.pickCols && (
-                <div className="join-cols">
-                  <button className="link" onClick={() => update(i, { columns: null })}>all</button>
-                  <button className="link" onClick={() => update(i, { columns: [] })}>none</button>
-                  {rightCols.map((col) => (
-                    <label key={col} className="join-col">
-                      <input type="checkbox" checked={picked.includes(col)}
-                             onChange={(e) => update(i, { columns: e.target.checked
-                               ? rightCols.filter((x) => x === col || picked.includes(x))
-                               : picked.filter((x) => x !== col) })} />
-                      {col}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </details>
-
-            {s.conditions.map((c, k) => {
-              const check = validation?.steps[i]?.conditions[k];
-              return (
-                <Fragment key={k}>
-                  <div className={`join-cond${check?.problem ? " invalid" : ""}`}>
-                    <span className="join-cond-label">{k === 0 ? "on" : "and"}</span>
-                    <select disabled={sourceBusy || busy} aria-label={`Left key step ${i + 1} condition ${k + 1}`}
-                            value={c.left} onChange={(e) => setCondition(i, k, { left: e.target.value })}>
-                      <option value="" disabled>Choose column</option>
-                      {c.left && !shown.some((g) => g.cols.includes(c.left)) && <option>{c.left}</option>}
-                      {shown.length === 1
-                        ? shown[0].cols.map((col) => <option key={col}>{col}</option>)
-                        : shown.map((g) => (
-                          <optgroup key={g.key} label={g.label}>
-                            {g.cols.map((col) => <option key={col}>{col}</option>)}
-                          </optgroup>
-                        ))}
-                    </select>
-                    <select className="join-op" value={c.op}
-                            onChange={(e) => setCondition(i, k, { op: e.target.value as JoinOp })}>
-                      {OPS.map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                    <select disabled={sourceBusy || busy} aria-label={`Right key step ${i + 1} condition ${k + 1}`}
-                            value={c.right} onChange={(e) => setCondition(i, k, { right: e.target.value })}>
-                      <option value="" disabled>Choose column</option>
-                      {rightCols.map((col) => <option key={col}>{col}</option>)}
-                    </select>
-                    {s.conditions.length > 1 && (
-                      <button className="quiet" title="Remove condition"
-                              onClick={() => update(i, { touched: true,
-                                conditions: s.conditions.filter((_, m) => m !== k) })}>✕</button>
+                {keyIdeas > 0 && <span className="settings-hint">Suggested keys:</span>}
+                {(recommendations[i] ?? []).map((candidate, candidateIndex) => (
+                  <Fragment key={`${candidate.method}-${candidateIndex}`}>
+                    <button className="chip"
+                            onClick={() => update(i, { touched: true,
+                              conditions: candidate.keys.map((key) => ({
+                                left: key.left, op: "=" as const, right: key.right,
+                              })) })}>
+                      Apply {candidate.sourceTitle}: {candidate.keys.map((key) =>
+                        `${key.left} = ${key.right}`).join(" AND ")}
+                      {` · ${candidate.method === "foreign_key" ? "foreign key"
+                        : candidate.method === "exact_name" ? "matching names" : "Jev suggestion"}`}
+                      {candidate.method === "jev" && candidate.confidence != null
+                        ? ` · ${Math.round(candidate.confidence * 100)}% confidence` : ""}
+                    </button>
+                    {candidate.evidence.length > 0 && (
+                      <details className="join-evidence">
+                        <summary>Evidence</summary>
+                        {candidate.evidence.join("; ")}
+                      </details>
                     )}
-                  </div>
-                  {check?.problem && <div className="join-check join-error" role="alert">{check.problem}</div>}
-                  {check?.note && <div className="join-check settings-hint">{check.note}</div>}
-                </Fragment>
-              );
-            })}
-            {(validation?.steps[i]?.problems ?? []).map((p) =>
-              <div key={p} className="join-check join-error" role="alert">{p}</div>)}
-            <div className="join-tools">
-              {(recommendations[i] ?? []).map((candidate, candidateIndex) => (
-                <Fragment key={`${candidate.method}-${candidateIndex}`}>
-                  <button className="chip"
+                  </Fragment>
+                ))}
+                {(suggestions[i] ?? []).map((sg) => (
+                  <button key={`${sg.left}|${sg.right}`} className="chip"
+                          title={`${Math.round(sg.overlap * 100)}% of left values found`}
                           onClick={() => update(i, { touched: true,
-                            conditions: candidate.keys.map((key) => ({
-                              left: key.left, op: "=" as const, right: key.right,
-                            })) })}>
-                    Apply {candidate.sourceTitle}: {candidate.keys.map((key) =>
-                      `${key.left} = ${key.right}`).join(" AND ")}
-                    {` · ${candidate.method === "foreign_key" ? "foreign key"
-                      : candidate.method === "exact_name" ? "matching names" : "Jev suggestion"}`}
-                    {candidate.method === "jev" && candidate.confidence != null
-                      ? ` · ${Math.round(candidate.confidence * 100)}% confidence` : ""}
+                            conditions: [{ left: sg.left, op: "=", right: sg.right }] })}>
+                    {sg.left} = {sg.right} · {Math.round(sg.overlap * 100)}%
                   </button>
-                  {candidate.evidence.length > 0 && (
-                    <details className="join-evidence">
-                      <summary>Evidence</summary>
-                      {candidate.evidence.join("; ")}
-                    </details>
-                  )}
-                </Fragment>
-              ))}
-              {(suggestions[i] ?? []).map((sg) => (
-                <button key={`${sg.left}|${sg.right}`} className="chip"
-                        title={`${Math.round(sg.overlap * 100)}% of left values found`}
-                        onClick={() => update(i, { touched: true,
-                          conditions: [{ left: sg.left, op: "=", right: sg.right }] })}>
-                  {sg.left} = {sg.right} · {Math.round(sg.overlap * 100)}%
-                </button>
-              ))}
+                ))}
+              </div>
             </div>
+
+            {right && (
+              <FilterEditor rows={s.filterRows} columns={right.columns} table={rightLabel}
+                            label={`Step ${i + 1}`} checks={validation?.steps[i]?.filters}
+                            disabled={sourceBusy || busy}
+                            onChange={(rows) => update(i, { filterRows: rows })} />
+            )}
+
+            <details className="join-advanced">
+              <summary>Advanced</summary>
+              {addsColumns(s.how) ? (<>
+                <div className="join-row">
+                  <label className="join-alias">Name joined columns as
+                    <input type="text" value={s.alias} onChange={(e) => update(i, { alias: e.target.value })}
+                           placeholder={aliasOf(right)} />
+                  </label>
+                </div>
+                <div className="join-row">
+                  <button className="link" aria-expanded={s.pickCols}
+                          onClick={() => update(i, { pickCols: !s.pickCols })}>
+                    Columns to add: {picked.length === rightCols.length ? "all" : `${picked.length}/${rightCols.length}`} ▾
+                  </button>
+                </div>
+                {s.pickCols && (
+                  <div className="join-cols">
+                    <button className="link" onClick={() => update(i, { columns: null })}>all</button>
+                    <button className="link" onClick={() => update(i, { columns: [] })}>none</button>
+                    {rightCols.map((col) => (
+                      <label key={col} className="join-col">
+                        <input type="checkbox" checked={picked.includes(col)}
+                               onChange={(e) => update(i, { columns: e.target.checked
+                                 ? rightCols.filter((x) => x === col || picked.includes(x))
+                                 : picked.filter((x) => x !== col) })} />
+                        {col}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </>) : <div className="settings-hint">This join type adds no columns.</div>}
+            </details>
           </div>
         );
       })}
@@ -867,8 +1156,12 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           <span className={`join-engine ${engine}`}
                 title={validation?.engine_reason ?? ""}>{ENGINE_LABEL[engine]}</span>
         )}
+        <span className="join-disabled-reason" id={reasonId} aria-live="polite">{footerReason ?? ""}</span>
+        {resultRows && <span className={`join-result-rows${preview?.large_growth ? " join-warn" : ""}`}>
+          {resultRows}</span>}
         <button className="quiet" disabled={!valid || previewing || sourceBusy || busy
-          || (crossSource && !allowLoaded)} onClick={runPreview}>
+          || (crossSource && !allowLoaded)} onClick={runPreview}
+                aria-describedby={footerReason ? reasonId : undefined}>
           {previewing ? "Previewing…" : "Preview"}
         </button>
         {previewing && <button type="button" onClick={() => { previewRequest.current += 1; previewAbort.current?.abort(); setPreviewing(false); setPreview(null); setPreviewErr("Preview cancelled."); }}>Cancel preview</button>}
@@ -888,8 +1181,9 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
           </label>
         )}
         <button className="primary" disabled={!valid || busy || sourceBusy || needsGrowthConfirm
-          || (crossSource && !allowLoaded)}
-                onClick={() => onJoin({ baseId, steps: payload(), allowLoaded: crossSource && allowLoaded })}>
+          || (crossSource && !allowLoaded)} aria-describedby={footerReason ? reasonId : undefined}
+                onClick={() => onJoin({ baseId, steps: payload(), allowLoaded: crossSource && allowLoaded,
+                                        baseFilters: baseFilters() })}>
           {busy ? "Joining…" : initialPlan ? "Create edited join in new tab" : "Join into new tab"}
         </button>
       </div>

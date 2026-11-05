@@ -69,7 +69,7 @@ def _contains_omop_cohort(ref: dict) -> bool:
         return (_contains_omop_cohort(ref["base"])
                 or any(_contains_omop_cohort(step["source"])
                        for step in ref["steps"]))
-    if ref["kind"] == "derived":
+    if ref["kind"] in {"derived", "group_summary"}:
         return _contains_omop_cohort(ref["base"])
     return False
 
@@ -100,7 +100,7 @@ def _compiled_source_query(source_ref: dict, live_source: dict) -> CompiledSourc
             collect(node["base"])
             for step in node["steps"]:
                 collect(step["source"])
-        elif node["kind"] == "derived":
+        elif node["kind"] in {"derived", "group_summary"}:
             collect(node["base"])
 
     collect(ref)
@@ -635,8 +635,8 @@ def _frame_bytes(frame: pd.DataFrame) -> int:
     return max(1, int(frame.memory_usage(index=False, deep=True).sum()))
 
 
-def _duckdb_estimate(con, sql: str, avg_width: int) -> int | None:
-    plan = "\n".join(str(row[1]) for row in con.execute(f"EXPLAIN {sql}").fetchall())
+def _duckdb_estimate(con, sql: str, avg_width: int, params: dict | None = None) -> int | None:
+    plan = "\n".join(str(row[1]) for row in con.execute(f"EXPLAIN {sql}", params or None).fetchall())
     matches = re.findall(r"~([0-9,]+) rows", plan)
     if not matches:
         return None
@@ -645,9 +645,9 @@ def _duckdb_estimate(con, sql: str, avg_width: int) -> int | None:
 
 
 def _stream_duck_query(reader_con, writer_con, sql: str, table: str,
-                       budget_used: int) -> tuple[int, int]:
+                       budget_used: int, params: list | dict | None = None) -> tuple[int, int]:
     query_cancellation.check()
-    reader = reader_con.execute(sql).to_arrow_reader(_BATCH_ROWS)
+    reader = reader_con.execute(sql, params or []).to_arrow_reader(_BATCH_ROWS)
     temp_name = "_studio_arrow_batch"
     schema = reader.schema
     writer_con.register(temp_name, schema.empty_table())
@@ -668,12 +668,17 @@ def _stream_duck_query(reader_con, writer_con, sql: str, table: str,
 
 @_bounded_materialization
 def run_join(plan: dict) -> dict:
+    import joins
+
     datasets = [plan["base"]] + [step["ds"] for step in plan["steps"]]
+    pushdown = _pushdown_filters(plan)
     source_estimates = []
-    for dataset in datasets:
+    for index, dataset in enumerate(datasets):
         query_cancellation.check()
         disk = dataset.get("disk_source")
         live = dataset.get("live_source")
+        if live and index in pushdown:
+            live = joins.filtered_live(live, pushdown[index], joins._filter_prefix(index))
         if disk:
             estimate = max(1, int(disk.get("estimated_bytes") or 0),
                            int(disk.get("scan_bytes") or 0),
@@ -690,7 +695,8 @@ def run_join(plan: dict) -> dict:
     reader = _connect(path)
     try:
         with query_cancellation.duckdb_connection(writer), query_cancellation.duckdb_connection(reader):
-            return _run_join_materialization(plan, datasets, source_estimates, path, writer, reader)
+            return _run_join_materialization(plan, datasets, source_estimates, path, writer, reader,
+                                             pushdown)
     except Exception:
         try:
             reader.close()
@@ -713,7 +719,28 @@ def run_join(plan: dict) -> dict:
             pass
 
 
-def _run_join_materialization(plan, datasets, source_estimates, path, writer, reader):
+def _pushdown_filters(plan: dict) -> dict[int, list[dict]]:
+    """Input index -> filters to apply while staging a live source.
+
+    Filtering in the source database reduces the rows read and staged. Only
+    for inputs used once: a dataset joined twice may carry different filters.
+    """
+    datasets = [plan["base"]] + [step["ds"] for step in plan["steps"]]
+    filters = [plan.get("base_filters") or []] + [step.get("filters") or []
+                                                  for step in plan["steps"]]
+    uses = {}
+    for dataset in datasets:
+        uses[id(dataset)] = uses.get(id(dataset), 0) + 1
+    return {index: filters[index] for index, dataset in enumerate(datasets)
+            if filters[index] and dataset.get("live_source")
+            and not dataset.get("disk_source") and uses[id(dataset)] == 1}
+
+
+def _run_join_materialization(plan, datasets, source_estimates, path, writer, reader,
+                              pushdown=None):
+    import joins
+
+    pushdown = pushdown or {}
     relations, row_counts = {}, {}
     attached = {}
     budget_used = sum(source_estimates)
@@ -738,6 +765,8 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
                 rows = int(reader.execute(f"SELECT COUNT(*) FROM {relation}").fetchone()[0])
         elif live:
             table = f"source_{index}"
+            if index in pushdown:
+                live = joins.filtered_live(live, pushdown[index], joins._filter_prefix(index))
             rows, consumed = stage_live(writer, live, dataset, table, budget_used)
             budget_used += max(0, consumed - source_estimates[index])
             relation = _q(table)
@@ -749,24 +778,36 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
             relation, rows = _q(table), len(dataset["df"])
         relations[key], row_counts[key] = relation, rows
 
-    current = relations[id(plan["base"])]
-    before = row_counts[id(plan["base"])]
+    def filtered(index, relation, filters):
+        # Pushed-down filters were applied while staging; others run here.
+        if index in pushdown or not filters:
+            return relation, {}, None
+        rel, params = joins._filtered_rel(relation, filters, joins._filter_prefix(index), pg=False)
+        query_cancellation.check()
+        count = int(reader.execute(f"SELECT COUNT(*) FROM {rel} AS counted", params).fetchone()[0])
+        return rel, params, count
+
+    current, params, count = filtered(0, relations[id(plan["base"])], plan.get("base_filters") or [])
+    base_rows = before = row_counts[id(plan["base"])] if count is None else count
     step_stats, notes = [], []
     for step in plan["steps"]:
         query_cancellation.check()
-        right = relations[id(step["ds"])]
+        right, right_params, right_count = filtered(
+            step["no"], relations[id(step["ds"])], step.get("filters") or [])
+        params = {**params, **right_params}
         sql = _join_step_sql(step, current, right)
         width = max(1, int(sum(_frame_bytes(ds["df"]) / max(1, len(ds["df"]))
                                for ds in [plan["base"], step["ds"]])))
-        estimate = _duckdb_estimate(reader, sql, width)
+        estimate = _duckdb_estimate(reader, sql, width, params)
         if estimate is not None:
             _budget(budget_used, estimate)
         name = f"step_{step['no']}"
         rows, materialized = _stream_duck_query(
-            reader, writer, sql, name, budget_used)
+            reader, writer, sql, name, budget_used, params)
+        params = {}
         budget_used += materialized
         growth = round(rows / before, 2) if before else None
-        step_stats.append({"right_rows": row_counts[id(step["ds"])],
+        step_stats.append({"right_rows": row_counts[id(step["ds"])] if right_count is None else right_count,
                            "rows": rows, "truncated": False,
                            "rows_before": before, "growth": growth,
                            "fanout": growth is not None and growth > 2.0})
@@ -785,7 +826,7 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
     if capped_inputs:
         notes.append(f"Used only the loaded (capped) rows of {', '.join(capped_inputs)} "
                      "— results may be incomplete.")
-    stats = {"engine": "duckdb", "base_rows": row_counts[id(plan["base"])],
+    stats = {"engine": "duckdb", "base_rows": base_rows,
              "steps": step_stats, "notes": notes, "capped_inputs": capped_inputs,
              "rows": before, "total_rows": before, "truncated": False,
              "estimated_bytes": budget_used,

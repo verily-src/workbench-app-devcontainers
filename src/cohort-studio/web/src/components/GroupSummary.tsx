@@ -1,19 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, OpenResult } from "../api";
 import type { Dataset } from "../types";
 
 type Summary = { columns: string[]; rows: unknown[][]; total_groups: number; input_rows: number;
   page: number; page_size: number; scope: "database" | "loaded"; sampled: boolean };
 
-export function GroupSummary({ dataset, onUpdate, onClose }: { dataset: Dataset; onUpdate: (changes: Partial<Dataset>) => void; onClose: () => void }) {
+export function GroupSummary({ dataset, onUpdate, onClose, onOpenTable }: { dataset: Dataset; onUpdate: (changes: Partial<Dataset>) => void; onClose: () => void;
+  onOpenTable?: (opened: OpenResult, title: string) => void }) {
   const [groups, setGroups] = useState(dataset.groupSummary?.group_by ?? [dataset.columns[0]?.name ?? ""]);
   const [measure, setMeasure] = useState(dataset.groupSummary?.measure ?? "");
   const [result, setResult] = useState<Summary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState("");
   const sequence = useRef(0);
   const filterKey = JSON.stringify(dataset.filters);
-  useEffect(() => { sequence.current++; setResult(null); setError(""); setBusy(false); }, [dataset.id, filterKey]);
+  useEffect(() => { sequence.current++; setResult(null); setError(""); setBusy(false); setOpenError(""); }, [dataset.id, filterKey]);
+  // Opens the full summary (every group, current filters) as its own dataset tab.
+  const openTable = async () => {
+    if (!result || !onOpenTable) return;
+    // A result is only shown while the selections match the run that produced it.
+    const recipe = { group_by: groups, measure: measure || null };
+    setOpening(true); setOpenError("");
+    try {
+      const opened = await api.openGroupSummary(dataset.id, { group_by: recipe.group_by, measure: recipe.measure, filters: dataset.filters });
+      onOpenTable(opened, `${dataset.title} · Group summary (${recipe.group_by.join(", ")})`);
+    } catch (e) {
+      setOpenError((e as Error).message);
+    } finally { setOpening(false); }
+  };
   const run = async (page = 0, selectedGroups = groups, selectedMeasure = measure) => {
     if (selectedGroups.some(group => !group) || new Set(selectedGroups).size !== selectedGroups.length) {
       setError("Choose distinct grouping columns."); return;
@@ -39,7 +55,7 @@ export function GroupSummary({ dataset, onUpdate, onClose }: { dataset: Dataset;
     setGroups(nextGroups); setMeasure(nextMeasure);
     if (recipe) void run(0, nextGroups, nextMeasure);
   }, [dataset.id]);
-  const change = (action: () => void) => { sequence.current++; setResult(null); setError(""); setBusy(false); action(); };
+  const change = (action: () => void) => { sequence.current++; setResult(null); setError(""); setOpenError(""); setBusy(false); action(); };
   return <section className="derive-panel" aria-label="Group summary">
     <div className="derive-row">
       {groups.map((group, index) => <label key={index}>{index ? `Group ${index + 1}` : "Group by"}
@@ -56,8 +72,11 @@ export function GroupSummary({ dataset, onUpdate, onClose }: { dataset: Dataset;
       </select></label>
     </div>
     <button className="primary" disabled={busy || !groups[0]} onClick={() => void run()}>{busy ? "Summarizing…" : "Summarize"}</button>
+    {onOpenTable && <button disabled={busy || opening || !result} onClick={() => void openTable()}
+      title="Open every group of this summary, with the current filters, as a new dataset tab">{opening ? "Opening table…" : "Open as table"}</button>}
     <button className="quiet" onClick={onClose}>Close</button>
     {error && <p role="alert">Could not summarize: {error}</p>}
+    {openError && <p role="alert">Could not open the summary as a table: {openError}</p>}
     {result && <div>
       <p role="status">{result.input_rows.toLocaleString()} filtered rows · {result.total_groups.toLocaleString()} {result.total_groups === 1 ? "group" : "groups"} · {result.sampled ? "Loaded sample" : result.scope === "database" ? "Full database" : "Loaded data"}. Empty group values are included.{measure ? " Non-numeric values are excluded from value statistics." : ""}</p>
       <div style={{ overflowX: "auto" }}><table className="data-table"><thead><tr>{result.columns.map(c => <th key={c}>{c}</th>)}</tr></thead>

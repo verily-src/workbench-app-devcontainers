@@ -4,6 +4,12 @@ Current architecture and key flows for Cohort Studio. Update this document
 when an architectural decision changes. Render diagrams with any Mermaid
 viewer (GitHub renders them inline).
 
+### Join value filters and builder layout (2026-11-05)
+
+Each join input (the "Start from" table via `base_filters`, and each step via `filters`) can carry up to 12 `{column, op, value}` filters, AND-ed. Ops: `= != < <= > >= in, not in, is null, is not null, contains` (case-insensitive substring; `%`, `_` and the escape character `!` are escaped). `joins.py` types each value against the column kind (number, true/false, date, text; unknown columns compare as text) and rejects mismatches as `Step N filter K: …` / `Start table filter K: …`. A filter applies to its table before joining, as a derived table (`(SELECT * FROM t AS filter_input WHERE …) AS r`), not in the outer `WHERE`: a left join keeps unmatched left rows, and semi/anti joins test against the filtered rows. Values are always bound parameters (`:jf_s1_0_0` for PostgreSQL, `$jf_s1_0_0` for DuckDB). The copyable Aurora SQL inlines them through `sql_source.inline_parameters`; the DuckDB display SQL inlines them for display only. Aurora pushes the predicate into the input scan. For cross-source joins, a live input used once is filtered in PostgreSQL while it is staged. Other inputs are filtered in DuckDB. Per-step input row counts, planner estimates and live-source admission estimates are calculated after filtering. Recipes store filters on the join `source_ref`, omitting empty lists, so older refs keep the same bytes. Saved views, session restore, Edit join and Agent-built join refs reopen with the same filters.
+
+The builder sends only complete condition and filter rows. Blank rows are ignored. A half-filled row shows "Pick a column from <table>" only after focus leaves it. The footer gives the reason when Preview and Join are disabled and shows the previewed result rows. Each step has a "Match rows where" section with table-labelled column pickers and column types, a "Filter <table>" section ("Filters this table before joining"), a one-line description of the join type, and Advanced (alias and output columns).
+
 ### Join cancellation and export formats (2026-11-03)
 
 Aurora join preview runs as an owner-scoped data job and fetches a 20-row sample without full input counts. Join preview and execution use no PostgreSQL statement timeout by default; `STUDIO_JOIN_TIMEOUT_MS` sets one in milliseconds, with `0` disabling it. Cancel interrupts active PostgreSQL and DuckDB join operations. Cross-source staging checks cancellation between batches and deletes incomplete files. Queued admission and network reads can still delay cancellation. Other dashboard queries keep their own timeouts.
@@ -207,6 +213,20 @@ detection can find it; selecting a collection does not create clinical tables.
 searches concepts, and compiles validated cohort specifications into
 parameterized SQL. Cohorts retain a validated `omop_cohort` source recipe with
 `membership_mode: live`; reopening reruns the criteria against current Aurora data.
+
+One database may hold several CDM schemas (for example `cms_synpuf_100k` and
+`eunomia_gibleed`). Detection lists every CDM schema with an approximate person
+count (`cdm_schemas` in `/api/omop/{id}` and the datasource hint). The default
+is the schema with the most persons. `STUDIO_OMOP_DEFAULT_SCHEMA` (a schema
+name, or `resource_id=schema` entries) can override it. Each CDM schema uses
+its own vocabulary tables when present; otherwise it uses a vocabulary-only
+schema. Every `/api/omop/*` endpoint, the Agent `search_concepts`/`count_cohort`
+tools and the MCP `omop_*` tools take an optional `cdm_schema`. An unknown one
+returns 400 with the valid names. `omop_cohort` recipes carry an optional
+`cdm_schema`; recipes without it (all recipes saved earlier) resolve to the
+default schema. The Agent's concept-ID guard and working-state concepts are
+keyed by resource and CDM schema, so IDs found in one vocabulary do not validate
+a cohort in another.
 This is not a frozen membership snapshot. Cohort counts, paging, joins and derived
 columns query Aurora; only a bounded preview stays in memory. Internal compiler
 queries carry a typed wrapper so OMOP CTE/EXISTS SQL can use resource guards
@@ -258,7 +278,9 @@ PostgreSQL process to check the Aurora PostgreSQL SQL/driver contract; this is
 a test fixture, not an application dependency or deployment service. Passing
 those tests does not establish live Aurora connectivity or permissions.
 
-Grouped summaries are read-only, paginated queries over the current dashboard filters. The selected source engine computes counts and optional numeric statistics; null grouping keys remain visible. The response identifies whether it covers the database, loaded data, or a capped sample. Saved views preserve summary recipes and filters; reopening recomputes results from the source. Summaries are not saved datasets.
+Grouped summaries are read-only, paginated queries over the current dashboard filters. The selected source engine computes counts and optional numeric statistics; null grouping keys remain visible. The response identifies whether it covers the database, loaded data, or a capped sample. Saved views preserve summary recipes and filters; reopening recomputes results from the source. The panel recipe (`group_by`, value column) is part of dashboard state: saved views, session restore and reopen rerun it; Close removes it. PDF export lists the recipe and the displayed summary page.
+
+"Open as table" (`POST /api/datasets/{id}/summary/materialize`) runs the same summary without the display page and opens every group as a new dataset tab. Up to `ROW_CAP` groups are held in memory; larger results are staged to a new local DuckDB file under the existing disk budgets (`_bounded_materialization`, 1 TB operation budget, free-space check; 413/422 on guard failures). The response reports `total_groups`, `input_rows`, `scope` (database or loaded) and `sampled`. The tab's recipe is `{"kind": "group_summary", "base": <base recipe>, "filters": [...], "spec": {"group_by": [...], "measure": ...}}`; reopening opens the base temporarily and reruns the summary. Walkers treat it like `derived` (recurse into `base`). Uploaded bases have no recipe, so their summary tabs are not restorable either.
 
 Row sorting is applied to the filtered source before paging in PostgreSQL, DuckDB, or the loaded frame. Sort requests validate the column and direction and participate in database query cache keys; saved views retain sort settings. Workbench monitor links use the active CLI workspace context and an allowlisted HTTPS host; `STUDIO_WORKBENCH_URL` can select another Workbench environment.
 

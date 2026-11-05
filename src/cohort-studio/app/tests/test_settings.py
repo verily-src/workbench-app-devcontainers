@@ -72,7 +72,7 @@ def isolated_config(tmp_path, monkeypatch):
 
 def test_config_defaults():
     body = client.get("/api/config").json()
-    assert body["llm"]["model"] == "claude-opus-5"
+    assert body["llm"]["model"] == "claude-opus-5-5"
     assert body["llm"]["api_key_set"] is False
     assert body["mcp"]["available"] is True
     assert body["mcp"]["path"] == "/mcp"
@@ -80,9 +80,9 @@ def test_config_defaults():
 
 def test_config_update_never_echoes_key():
     resp = client.put("/api/config", json={
-        "model": "claude-sonnet-5", "api_key": "sk-ant-secret-key-1234"})
+        "model": "claude-sonnet-5-5", "api_key": "sk-ant-secret-key-1234"})
     body = resp.json()
-    assert body["llm"]["model"] == "claude-sonnet-5"
+    assert body["llm"]["model"] == "claude-sonnet-5-5"
     assert body["llm"]["api_key_set"] is True
     assert "sk-ant" not in resp.text
     assert body["llm"]["api_key_source"] == "secret_manager"
@@ -169,7 +169,7 @@ def test_config_defaults_expose_providers():
     assert set(body["llm"]["providers"]) == {
         "anthropic", "openai", "gemini", "openrouter", "bedrock",
         "vertexai", "openweight"}
-    assert body["llm"]["providers"]["anthropic"]["model"] == "claude-opus-5"
+    assert body["llm"]["providers"]["anthropic"]["model"] == "claude-opus-5-5"
 
     assert body["llm"]["providers"]["openai"]["model"] == ""
     assert body["llm"]["providers"]["openrouter"]["model"] == ""

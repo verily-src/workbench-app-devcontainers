@@ -24,7 +24,7 @@ const PROVIDERS: { id: Provider; label: string; keyLabel: string;
                    placeholder: string; models: string[] }[] = [
   { id: "anthropic", label: "Anthropic (Claude)", keyLabel: "Anthropic API key",
     placeholder: "sk-ant-…",
-    models: ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] },
+    models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"] },
   { id: "openai", label: "OpenAI", keyLabel: "OpenAI API key",
     placeholder: "sk-…", models: [] },
   { id: "gemini", label: "Google Gemini", keyLabel: "Gemini API key",
@@ -274,7 +274,7 @@ export function SettingsView(
         <input
           type="text"
           list="model-suggestions"
-          placeholder={provider === "anthropic" ? "claude-opus-5"
+          placeholder={provider === "anthropic" ? "claude-opus-5-5"
             : usesOpenweight ? "Set in app environment"
               : "enter the provider's model id"}
           value={model}

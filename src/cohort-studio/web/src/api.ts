@@ -446,9 +446,10 @@ export const api = {
               skipped: { name: string; error: string }[]; bytes: number }>(
       "/api/catalogs/build", post({ resource_id: resourceId, name })),
 
-  tables: (kind: string, resourceId: string) =>
+  tables: (kind: string, resourceId: string, refresh = false) =>
     request<TableInfo[]>(
-      `/api/tables?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`),
+      `/api/tables?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
+      + (refresh ? "&refresh=true" : "")),
 
   openDataset: (kind: string, resourceId: string, table: string) =>
     dataJob<OpenResult>("open", { kind, resource_id: resourceId, table }),

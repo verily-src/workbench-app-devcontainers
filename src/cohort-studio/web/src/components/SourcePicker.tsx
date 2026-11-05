@@ -17,6 +17,8 @@ interface Props {
   onSourceKeyChange: (value: string) => void;
   onTableChange: (value: string) => void;
   onLoadTable: () => void;
+  /** List the datasource again, bypassing the server cache. */
+  onRefreshTables?: () => void;
 }
 
 const SOURCE_TYPES: { kind: SourceKind; label: string }[] = [
@@ -53,7 +55,8 @@ function TableDetails({ info }: { info: TableInfo }) {
 }
 
 export function SourcePicker({ sources, tables, sourceKey, table, loading = false,
-  busy = false, listing = "", onSourceKeyChange, onTableChange, onLoadTable }: Props) {
+  busy = false, listing = "", onSourceKeyChange, onTableChange, onLoadTable,
+  onRefreshTables }: Props) {
   const selectedSource = sources.find((source) =>
     `${source.kind}:${source.id}` === sourceKey);
   const [sourceKind, setSourceKind] = useState<SourceKind | "">(
@@ -166,7 +169,15 @@ export function SourcePicker({ sources, tables, sourceKey, table, loading = fals
               </select>
             </>
           )}
-          <div className="field-label">{selectedSource.kind === "s3" ? "File" : "Table"}</div>
+          <div className="field-label picker-label-row">
+            <span>{selectedSource.kind === "s3" ? "File" : "Table"}</span>
+            {onRefreshTables && (
+              <button type="button" className="quiet picker-refresh" disabled={Boolean(listing)}
+                      aria-label="Refresh list"
+                      title="List again, including schemas, tables or files added outside the app"
+                      onClick={onRefreshTables}>↻ Refresh</button>
+            )}
+          </div>
           <select aria-label="Table" value={table}
                   disabled={loading || needsSchema}
                   onChange={(event) => onTableChange(event.target.value)}>

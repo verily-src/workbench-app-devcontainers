@@ -576,7 +576,15 @@ _TABLE_STATS = ("rows", "rows_estimated", "bytes", "columns", "analyzed")
 
 
 @app.get("/api/tables")
-def tables(kind: str, resource_id: str):
+def tables(kind: str, resource_id: str, refresh: bool = False):
+    if refresh:
+        # Picks up schemas, tables or files created outside the app (e.g. a new OMOP load).
+        if kind in {"aurora", "postgres"}:
+            db.list_aurora_tables.invalidate()
+            omop.invalidate(resource_id)
+        elif kind == "s3":
+            duck.list_s3_files.invalidate()
+            duck._s3_ls.invalidate()
     try:
         if kind in {"aurora", "postgres"}:
             return [{"name": t["name"], "table": t["table"],

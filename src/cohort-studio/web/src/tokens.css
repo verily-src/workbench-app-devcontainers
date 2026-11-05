@@ -812,3 +812,18 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
   width: calc(100vw / var(--ui-scale));
   height: calc(100vh / var(--ui-scale));
 }
+
+/* Collapsible Data sources panel */
+.sidebar-heading { justify-content: space-between; gap: 8px; }
+.sidebar-toggle { padding: 2px 8px; font-size: 15px; line-height: 1; color: var(--ink-muted); }
+.sidebar-toggle:hover { color: var(--ink); }
+.sidebar[hidden] { display: none; }
+.sidebar-rail {
+  width: 40px; min-width: 40px; display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding-top: 8px; border-right: 1px solid var(--border); background: var(--surface);
+}
+.sidebar-rail-label {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: 12px; font-weight: 600; color: var(--ink-muted); letter-spacing: .02em;
+}
+.app-no-sidebar .sidebar-rail { display: none; }

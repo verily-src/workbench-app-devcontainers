@@ -12,6 +12,7 @@ import json
 import logging
 import subprocess
 import cloud_cli
+import resource_discovery as discovery
 import threading
 import time
 
@@ -28,6 +29,10 @@ _resource_cache_lock = threading.Lock()
 _resource_cache_ready = threading.Event()
 _last_refresh = 0.0
 _REFRESH_COOLDOWN = 60.0
+# Set when the list came from the on-disk snapshot: the first refresh
+# attempt then runs the start-up warm-up even though the cache is not empty.
+_needs_warm = False
+_state = discovery.State()
 
 _conn_string_cache: dict[str, str] = {}
 _conn_string_events: dict[str, threading.Event] = {}
@@ -97,25 +102,60 @@ def warm_connection_string(resource_id: str):
     threading.Thread(target=_resolve, daemon=True).start()
 
 
-def _fetch_resources() -> list[dict]:
+def _list_resources(extra: list[str], timeout: float = 120) -> list[dict]:
+    """One `wb resource list` call; raises discovery.DiscoveryError."""
+    args = ["wb", "resource", "list", "--format", "json", *extra]
     try:
-        result = cloud_cli.run(
-            ["wb", "resource", "list", "--format", "json"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=120,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("wb resource list timed out")
-        return []
-    except FileNotFoundError:
-        logger.warning("wb CLI not installed, no resources")
-        return []
-    except subprocess.CalledProcessError as e:
-        logger.warning("wb resource list failed (rc=%d): %s", e.returncode, e.stderr or e.stdout)
-        return []
-    return json.loads(result.stdout)
+        result = cloud_cli.run(args, capture_output=True, text=True, check=True,
+                               timeout=timeout)
+        return discovery.sanitize(json.loads(result.stdout or "[]"))
+    except Exception as e:
+        err = discovery.classify(e)
+        if isinstance(e, subprocess.CalledProcessError):
+            # Logged for operators only; never surfaced to the browser.
+            logger.warning("%s failed (rc=%d): %s", " ".join(args[:3] + extra), e.returncode,
+                           (e.stderr or e.stdout or "")[:500])
+        else:
+            logger.warning("%s failed: %s", " ".join(args[:3] + extra), err.code)
+        raise err from None
+
+
+def _fetch_resources() -> list[dict]:
+    """All Studio-relevant workspace resources, allowlisted.
+
+    Raises discovery.DiscoveryError when nothing could be listed and
+    discovery.PartialDiscovery when some kinds listed and others failed: a
+    single broken resource (e.g. a BigQuery reference in an AWS-only
+    workspace) fails the full `wb resource list`, so the listing falls back
+    to one call per resource type.
+    """
+    try:
+        return _list_resources([])
+    except discovery.DiscoveryError as e:
+        err = e
+    if err.code == "no_workspace" and discovery.workspace_id():
+        try:
+            return _list_resources([f"--workspace={discovery.workspace_id()}"])
+        except discovery.DiscoveryError as e:
+            err = e
+    if err.code in discovery.GLOBAL_CODES:
+        raise err
+    workspace = [f"--workspace={discovery.workspace_id()}"] if discovery.workspace_id() else []
+    found: list[dict] = []
+    failed: dict[str, discovery.DiscoveryError] = {}
+    for kind, types in discovery.KIND_TYPES.items():
+        for rtype in types:
+            try:
+                found.extend(_list_resources([f"--type={rtype}", *workspace], timeout=90))
+            except discovery.DiscoveryError as e:
+                if e.code in discovery.GLOBAL_CODES:
+                    raise e
+                failed.setdefault(kind, e)
+    if len(failed) == len(discovery.KIND_TYPES):
+        raise err
+    if failed:
+        raise discovery.PartialDiscovery(found, failed)
+    return found
 
 
 _aws_configured = False
@@ -160,30 +200,153 @@ def resolve_s3_uri(resource_id: str) -> str:
     return _s3_uri_cache[resource_id]
 
 
+def _have_data() -> bool:
+    return bool(_resource_cache)
+
+
+def discovery_status() -> dict:
+    """Freshness of the resource list, for /api/datasources."""
+    return _state.snapshot(_have_data())
+
+
+def _clock() -> float:
+    """Monotonic seconds (a hook so tests can step time)."""
+    return time.monotonic()
+
+
+def _start_timer(delay: float, fn) -> None:
+    """Hook for tests: run `fn` after `delay` seconds on a daemon thread."""
+    timer = threading.Timer(delay, fn)
+    timer.daemon = True
+    timer.start()
+
+
+def _spawn(fn) -> None:
+    """Hook for tests: run `fn` on a daemon thread."""
+    threading.Thread(target=fn, daemon=True).start()
+
+
+def request_refresh(manual: bool = False) -> bool:
+    """Start one background refresh if the gate allows; True when started.
+
+    Every trigger (periodic access, empty-cache retry, the backoff timer and
+    the Retry button) comes through here, so at most one `wb resource list`
+    cycle is in flight and failures back off instead of queueing CLI calls.
+    A manual retry skips the backoff wait but not an in-flight refresh.
+    """
+    now = _clock()
+    with _state.lock:
+        if _state.in_flight or _resource_cache_lock.locked():
+            return False
+        if manual:
+            if now - _state.last_manual < discovery.MANUAL_DEBOUNCE_S:
+                return False
+            _state.last_manual = now
+        elif now < _state.next_allowed:
+            return False
+        _state.in_flight = True
+    _spawn(_refresh_resource_cache)
+    return True
+
+
+def _retry_from_timer():
+    with _state.lock:
+        _state.timer_pending = False
+        if _state.failures == 0:
+            return          # a manual retry already succeeded
+        _state.next_allowed = 0.0
+    request_refresh()
+
+
 def _refresh_resource_cache():
-    global _resource_cache, _last_refresh
+    global _resource_cache, _last_refresh, _needs_warm
     if not _resource_cache_lock.acquire(blocking=False):
         return
     initial = not _resource_cache
+    with _state.lock:
+        _state.in_flight = True
+    failure = None
+    failed_kinds: dict[str, discovery.DiscoveryError] = {}
     try:
-        fetched = _fetch_resources()
-        if fetched or not _resource_cache:
+        try:
+            fetched = _fetch_resources()
+        except discovery.PartialDiscovery as p:
+            failed_kinds = p.failed
+            # Keep the last known entries of the kinds that failed.
+            fetched = p.resources + [r for r in (_resource_cache or [])
+                                     if discovery.kind_of(r) in failed_kinds]
+        except Exception as e:
+            failure = discovery.classify(e)
+            fetched = None
+        if fetched is None:
+            logger.warning("Resource discovery failed (%s); keeping %d cached resources",
+                           failure.code, len(_resource_cache or []))
+            if _resource_cache is None:
+                _resource_cache = []
+        elif fetched or not _resource_cache:
             _resource_cache = fetched
+            if fetched and not failed_kinds:
+                discovery.save(fetched, _s3_uri_cache)
         else:
             logger.warning("Resource discovery returned no results; retaining the last successful snapshot")
+            failure = discovery.DiscoveryError(
+                "empty", "The Workbench CLI listed no resources; showing the previous list.")
         _last_refresh = time.monotonic()
         _resource_cache_ready.set()
-        logger.info("Resource cache refreshed: %d resources", len(_resource_cache))
+        _record_outcome(failure, failed_kinds)
+        logger.info("Resource cache refreshed: %d resources", len(_resource_cache or []))
     finally:
+        with _state.lock:
+            _state.in_flight = False
         _resource_cache_lock.release()
+    # Warm after the first attempt that leaves something to warm (a list
+    # loaded from the snapshot counts, even if this refresh failed).
+    first = bool(_resource_cache) and (initial or _needs_warm)
+    if first:
+        _needs_warm = False
     s3_ids = [r.get("id") for r in _resource_cache or []
               if "S3" in r.get("resourceType", "") and r.get("id")]
-    if _resource_cache and (initial or set(s3_ids) - _aws_profile_ids):
+    if _resource_cache and (first or set(s3_ids) - _aws_profile_ids):
         configure_aws_profiles(s3_ids)
-    if initial and _resource_cache:
+    if first and _resource_cache:
         for r in list_aurora_resources():
             warm_connection_string(r["id"])
         threading.Thread(target=_warm_catalogs, daemon=True).start()
+
+
+def _record_outcome(failure, failed_kinds) -> None:
+    now = _clock()
+    schedule = None
+    with _state.lock:
+        _state.in_flight = False
+        _state.attempted = True
+        if failure is None and not failed_kinds:
+            _state.ok = True
+            _state.error = None
+            _state.failed_kinds = {}
+            _state.failures = 0
+            _state.retry_at = None
+            _state.from_cache = False
+            _state.updated_at = time.time()
+            _state.next_allowed = now + (discovery.EMPTY_REFRESH_S if not _resource_cache
+                                         else discovery.REFRESH_INTERVAL_S)
+            return
+        _state.ok = failure is None
+        _state.error = failure
+        _state.failed_kinds = {k: discovery.kind_failure_message(k, e)
+                               for k, e in failed_kinds.items()}
+        if failure is None:
+            # The kinds that did list are current; the failed ones are cached.
+            _state.updated_at = time.time() if not _state.updated_at else _state.updated_at
+        _state.failures += 1
+        delay = discovery.retry_delay(_state.failures)
+        _state.next_allowed = now + delay
+        _state.retry_at = time.time() + delay
+        if not _state.timer_pending:
+            _state.timer_pending = True
+            schedule = delay
+    if schedule is not None:
+        _start_timer(schedule, _retry_from_timer)
 
 
 def _warm_catalogs():
@@ -214,17 +377,31 @@ def fetch_aurora_table(resource_id: str, table: str, cap: int):
     return queries.fetch_table(get_engine_for_resource(resource_id), table, cap)
 
 
+def load_cached_resources() -> bool:
+    """Serve the last good discovery snapshot until a refresh lands."""
+    global _resource_cache, _needs_warm
+    snap = discovery.load()
+    if not snap or _resource_cache:
+        return False
+    _resource_cache = snap["resources"]
+    _needs_warm = True
+    for rid, uri in snap["s3_uris"].items():
+        _s3_uri_cache.setdefault(rid, uri)
+    with _state.lock:
+        _state.from_cache = True
+        _state.updated_at = snap["updated_at"]
+    _resource_cache_ready.set()
+    logger.info("Loaded %d resources from the discovery snapshot", len(_resource_cache))
+    return True
+
+
 def warm_resource_cache():
-    threading.Thread(target=_refresh_resource_cache, daemon=True).start()
+    load_cached_resources()
+    request_refresh()
 
 
 def resources_ready() -> bool:
     return _resource_cache_ready.is_set()
-
-
-_retry_lock = threading.Lock()
-_last_retry = 0.0
-_RETRY_COOLDOWN = 20.0
 
 
 def retry_if_empty():
@@ -233,36 +410,43 @@ def retry_if_empty():
     On a Workbench VM the app container starts before post-startup.sh has
     logged in the wb CLI, so the first `wb resource list` can fail and the
     cache ends up ready-with-nothing. Callers hit this on every
-    /api/datasources poll; the cooldown keeps it to one wb call per 20s
-    until resources appear.
+    /api/datasources poll; the refresh gate's backoff keeps it to one wb
+    call per retry window until resources appear.
     """
-    global _last_retry
     if _resource_cache:
         return
-    with _retry_lock:
-        now = time.monotonic()
-        if now - _last_retry < _RETRY_COOLDOWN:
-            return
-        _last_retry = now
-    threading.Thread(target=_refresh_resource_cache, daemon=True).start()
+    request_refresh()
 
 
 def _ensure_cache(wait: bool = False) -> list[dict]:
-    global _last_refresh
     if wait and not _resource_cache_ready.is_set():
         _resource_cache_ready.wait(timeout=120)
     elif (not wait and _resource_cache is not None
           and time.monotonic() - _last_refresh > (300 if _resource_cache else _REFRESH_COOLDOWN)):
-        _last_refresh = time.monotonic()
-        threading.Thread(target=_refresh_resource_cache, daemon=True).start()
+        request_refresh()
     return _resource_cache or []
+
+
+def _reset_for_tests() -> None:
+    global _resource_cache, _last_refresh, _needs_warm, _resource_cache_ready
+    _resource_cache = None
+    _last_refresh = 0.0
+    _needs_warm = False
+    _resource_cache_ready = threading.Event()
+    _s3_uri_cache.clear()
+    _state.reset()
 
 
 def bucket_by_uuid(refresh: bool = False) -> dict[str, dict]:
     """Map resource UUID -> {id, bucket_name, prefix} for S3 resources,
     so callers can resolve a workflow job's outputBucketUuid to a name."""
     out = {}
-    resources = _fetch_resources() if refresh else _ensure_cache()
+    try:
+        resources = _fetch_resources() if refresh else _ensure_cache()
+    except discovery.PartialDiscovery as p:
+        resources = p.resources
+    except discovery.DiscoveryError:
+        resources = _ensure_cache()
     for r in resources:
         if "S3" not in r.get("resourceType", "") or not r.get("uuid"):
             continue

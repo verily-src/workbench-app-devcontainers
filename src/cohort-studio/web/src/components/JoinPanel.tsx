@@ -22,9 +22,11 @@ interface Props {
   onSourceOpened: (opened: Awaited<ReturnType<typeof api.openSourceRef>>,
                    title: string, sourceRef: SourceRef) => void;
   onClose: () => void;
+  /** Opens the visual join canvas (the recommended way to build a join). */
+  onOpenCanvas?: () => void;
 }
 
-const HOWS: { id: JoinHow; label: string; hint: string }[] = [
+export const HOWS: { id: JoinHow; label: string; hint: string }[] = [
   { id: "left", label: "Left", hint: "Keep every row on the left; add matches" },
   { id: "inner", label: "Inner", hint: "Only rows that match on both sides" },
   { id: "right", label: "Right", hint: "Keep every row of the joined table" },
@@ -33,7 +35,7 @@ const HOWS: { id: JoinHow; label: string; hint: string }[] = [
   { id: "anti", label: "No match", hint: "Left rows without a match; adds no columns" },
 ];
 const OPS: JoinOp[] = ["=", "!=", "<", "<=", ">", ">="];
-const ARROW = " → ";
+export const ARROW = " → ";
 const MAX_STEPS = 6;
 const VALIDATE_DELAY_MS = 300;
 const ENGINE_LABEL: Record<JoinEngine, string> = {
@@ -47,7 +49,7 @@ const SOURCE_GROUP_LABEL: Record<Source["kind"], string> = {
 interface CondRow extends JoinCondition { touched?: boolean }
 
 /** A value-filter row in the editor; `text` is what the user typed. */
-interface FilterRow {
+export interface FilterRow {
   column: string; op: JoinFilterOp; text: string; touched?: boolean;
   /** Saved list values, sent as-is until the user edits the text. */
   list?: JoinFilterValue[];
@@ -65,13 +67,13 @@ interface StepState extends Omit<JoinStep, "conditions" | "filters"> {
   joinTo?: string;
 }
 
-type ColKind = "number" | "bool" | "time" | "text";
-const KIND_LABEL: Record<ColKind, string> = {
+export type ColKind = "number" | "bool" | "time" | "text";
+export const KIND_LABEL: Record<ColKind, string> = {
   number: "number", bool: "true/false", time: "date", text: "text",
 };
 
 /** Best guess of how the server will type a column (it checks again). */
-function colKind(column?: ColumnProfile): ColKind {
+export function colKind(column?: ColumnProfile): ColKind {
   const dtype = (column?.dtype ?? "").toLowerCase();
   if (dtype.includes("bool")) return "bool";
   if (/int|float|double|decimal|numeric|real/.test(dtype)) return "number";
@@ -79,8 +81,8 @@ function colKind(column?: ColumnProfile): ColKind {
   return "text";
 }
 
-const NULL_OPS: JoinFilterOp[] = ["is null", "is not null"];
-const LIST_OPS: JoinFilterOp[] = ["in", "not in"];
+export const NULL_OPS: JoinFilterOp[] = ["is null", "is not null"];
+export const LIST_OPS: JoinFilterOp[] = ["in", "not in"];
 const FILTER_OPS: Record<ColKind, JoinFilterOp[]> = {
   text: ["=", "!=", "contains", "in", "not in", "<", "<=", ">", ">=", "is null", "is not null"],
   number: ["=", "!=", "<", "<=", ">", ">=", "in", "not in", "is null", "is not null"],
@@ -157,7 +159,7 @@ function parseList(text: string): string[] {
 
 /** Filter rows the server should see: blank rows (no column) and rows still
  * missing a value are left out. */
-function sentFilters(rows: FilterRow[], columns: ColumnProfile[]): { filter: JoinFilter; row: number }[] {
+export function sentFilters(rows: FilterRow[], columns: ColumnProfile[]): { filter: JoinFilter; row: number }[] {
   const out: { filter: JoinFilter; row: number }[] = [];
   rows.forEach((row, index) => {
     if (!row.column || filterProblem(row)) return;
@@ -171,7 +173,7 @@ function sentFilters(rows: FilterRow[], columns: ColumnProfile[]): { filter: Joi
   return out;
 }
 
-function filterProblem(row: FilterRow): string | null {
+export function filterProblem(row: FilterRow): string | null {
   if (!row.column || NULL_OPS.includes(row.op)) return null;
   if (LIST_OPS.includes(row.op))
     return (row.list?.length || parseList(row.text).length) ? null
@@ -179,7 +181,7 @@ function filterProblem(row: FilterRow): string | null {
   return row.text.trim() ? null : `Enter a value for ${row.column}.`;
 }
 
-const fromFilter = (f: JoinFilter): FilterRow => ({
+export const fromFilter = (f: JoinFilter): FilterRow => ({
   column: f.column, op: f.op, touched: true,
   text: Array.isArray(f.value) ? formatList(f.value) : f.value == null ? "" : String(f.value),
   textIsList: Array.isArray(f.value),
@@ -190,7 +192,7 @@ const fromFilter = (f: JoinFilter): FilterRow => ({
 const leftRow = (event: React.FocusEvent<HTMLElement>) =>
   !event.currentTarget.contains(event.relatedTarget as Node | null);
 
-function FilterEditor({ rows, columns, table, label, checks, disabled, onChange }: {
+export function FilterEditor({ rows, columns, table, label, checks, disabled, onChange }: {
   rows: FilterRow[]; columns: ColumnProfile[]; table: string; label: string;
   checks?: { problem: string | null }[]; disabled: boolean;
   onChange: (rows: FilterRow[]) => void;
@@ -284,7 +286,7 @@ function FilterEditor({ rows, columns, table, label, checks, disabled, onChange 
 }
 
 /** One line in plain language for the selected join type. */
-function howHint(how: JoinHow, left: string, right: string): string {
+export function howHint(how: JoinHow, left: string, right: string): string {
   switch (how) {
     case "left": return `Keep all ${left} rows; add ${right} columns where they match.`;
     case "inner": return `Keep only rows where ${left} and ${right} match.`;
@@ -298,12 +300,12 @@ let stepSeq = 0;
 const stepUid = () => `step-${++stepSeq}`;
 type KeyRecommendation = JoinRecommendation & { sourceTitle: string };
 
-const aliasOf = (d?: Dataset) =>
+export const aliasOf = (d?: Dataset) =>
   (d?.title ?? "joined").replace(/\.(parquet|csv|tsv|txt|json|ndjson)$/i, "");
 
-const addsColumns = (how: JoinHow) => how !== "semi" && how !== "anti";
+export const addsColumns = (how: JoinHow) => how !== "semi" && how !== "anti";
 
-function Venn({ how }: { how: JoinHow }) {
+export function Venn({ how }: { how: JoinHow }) {
   const a = { cx: 7, cy: 7, r: 5.5 }, b = { cx: 14, cy: 7, r: 5.5 };
   const id = `venn-${how}`;
   return (
@@ -357,10 +359,10 @@ function defaultCondition(leftCols: string[], right?: Dataset): JoinCondition {
   return { left: "", op: "=", right: "" };
 }
 
-const directAurora = (ref?: SourceRef) =>
+export const directAurora = (ref?: SourceRef) =>
   (ref?.kind === "aurora" || ref?.kind === "postgres") && "table" in ref;
 
-function sourceResources(ref?: SourceRef): string[] {
+export function sourceResources(ref?: SourceRef): string[] {
   if (!ref) return [];
   if (ref.kind === "join") return [
     ...sourceResources(ref.base), ...ref.steps.flatMap((step) => sourceResources(step.source)),
@@ -370,7 +372,7 @@ function sourceResources(ref?: SourceRef): string[] {
 }
 
 export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
-                            onSourceOpened, onClose }: Props) {
+                            onSourceOpened, onClose, onOpenCanvas }: Props) {
   const byId = useMemo(() => new Map(datasets.map((d) => [d.id, d])), [datasets]);
   const [baseId, setBaseId] = useState(initialPlan?.baseId ?? datasets[0]?.id ?? "");
   const base = byId.get(baseId);
@@ -860,6 +862,10 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
                     placeholder={datasets.length ? "Choose a table…" : "Choose a table from the datasource below…"} />
         </label>}
         <div style={{ flex: 2 }} />
+        {onOpenCanvas && !initialPlan && <button type="button" className="link join-open-canvas"
+          title="Build the join by dragging tables onto a canvas" onClick={onOpenCanvas}>
+          Open visual join canvas
+        </button>}
         <button className="quiet" onClick={onClose}>✕</button>
       </div>
 
@@ -919,6 +925,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
             </div>
             <div className="field-label">SQL query</div>
             <SqlEditor value={sqlText} disabled={sourceBusy} placeholder="SELECT … FROM schema.table"
+                       resourceId={selectedSource && ["aurora", "postgres"].includes(selectedSource.kind) ? selectedSource.id : undefined}
                        onChange={(next) => { invalidateSqlPreview(); setSqlText(next); }} />
             <div className="join-row">
               <button className="primary" disabled={!selectedSource || !["aurora", "postgres"].includes(selectedSource.kind)

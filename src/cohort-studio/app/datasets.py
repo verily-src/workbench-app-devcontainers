@@ -51,7 +51,11 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
     database/disk profiling (sample-based profiles only), for inputs whose
     profiles are never shown, such as the tables behind a reopened join."""
 
-    if live_source is not None or disk_source is not None:
+    if live_source is not None:
+        capped = False
+    elif disk_source is not None and capped is None:
+        # Disk sources hold every row, unless built from capped inputs
+        # (e.g. a cross-source join with a BigQuery view's loaded rows).
         capped = False
     if capped is None:
         capped = len(df) >= queries.ROW_CAP

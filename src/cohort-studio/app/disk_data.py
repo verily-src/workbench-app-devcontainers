@@ -667,16 +667,25 @@ def _stream_duck_query(reader_con, writer_con, sql: str, table: str,
 
 
 @_bounded_materialization
-def run_join(plan: dict) -> dict:
+def run_join(plan: dict, full_readers: bool = True) -> dict:
+    """Run a cross-source join in a DuckDB staging file.
+
+    Live (PostgreSQL) and disk inputs are read in full. Capped in-memory
+    inputs that have a full-source reader are read in full too: frames
+    loaded straight from an Aurora table (`origin`) through the live path,
+    and BigQuery tables through the Storage Read API (only when
+    `full_readers`; previews use the loaded BigQuery rows and say so).
+    """
     import joins
 
     datasets = [plan["base"]] + [step["ds"] for step in plan["steps"]]
-    pushdown = _pushdown_filters(plan)
+    readers, fallbacks = _full_readers(plan, datasets, full_readers)
+    pushdown = _pushdown_filters(plan, readers)
     source_estimates = []
     for index, dataset in enumerate(datasets):
         query_cancellation.check()
         disk = dataset.get("disk_source")
-        live = dataset.get("live_source")
+        live = dataset.get("live_source") or (readers.get(index) or {}).get("live")
         if live and index in pushdown:
             live = joins.filtered_live(live, pushdown[index], joins._filter_prefix(index, plan))
         if disk:
@@ -685,6 +694,8 @@ def run_join(plan: dict) -> dict:
                            os.path.getsize(disk["path"]))
         elif live:
             estimate = _estimate_live_bytes(live)
+        elif index in readers:
+            estimate = readers[index]["estimate"]
         else:
             estimate = _frame_bytes(dataset["df"])
         source_estimates.append(estimate)
@@ -696,7 +707,7 @@ def run_join(plan: dict) -> dict:
     try:
         with query_cancellation.duckdb_connection(writer), query_cancellation.duckdb_connection(reader):
             return _run_join_materialization(plan, datasets, source_estimates, path, writer, reader,
-                                             pushdown)
+                                             pushdown, readers, fallbacks)
     except Exception:
         try:
             reader.close()
@@ -719,12 +730,137 @@ def run_join(plan: dict) -> dict:
             pass
 
 
-def _pushdown_filters(plan: dict) -> dict[int, list[dict]]:
-    """Input index -> filters to apply while staging a live source.
+def _needed_columns(plan: dict, dataset: dict) -> list[str] | None:
+    """Columns of `dataset` the join reads, or None for all of them."""
+    needed = set()
+    if plan["base"] is dataset:
+        return None                     # every base column is in the output
+    for step in plan["steps"]:
+        if step["ds"] is not dataset:
+            continue
+        needed.update(cond["right"] for cond in step["conds"])
+        needed.update(source for source, _ in step.get("cols") or [])
+        needed.update(f["column"] for f in step.get("filters") or [])
+    columns = [name for name in dataset["df"].columns if name in needed]
+    return columns if len(columns) < len(dataset["df"].columns) else None
 
-    Filtering in the source database reduces the rows read and staged. Only
-    for inputs used once: a dataset joined twice may carry different filters.
+
+def _full_readers(plan: dict, datasets: list[dict], bigquery: bool = True
+                  ) -> tuple[dict[int, dict], dict[int, str]]:
+    """Input index -> full-source reader for capped in-memory inputs, and
+    input index -> why a capped input keeps its loaded rows."""
+    import joins
+
+    readers, fallbacks, seen = {}, {}, {}
+    for index, dataset in enumerate(datasets):
+        if id(dataset) in seen:
+            continue
+        seen[id(dataset)] = index
+        kind = joins.full_reader_kind(dataset)
+        if kind == "aurora":
+            origin = dataset["origin"]
+            columns = list(dataset["df"].columns)
+            readers[index] = {"kind": "aurora", "live": {
+                "resource_id": origin["resource_id"], "params": {},
+                "sql": (f"SELECT * FROM {_q(origin.get('schema') or 'public')}."
+                        f"{_q(origin['table'])}"),
+                "columns": {name: name for name in columns}}}
+        elif kind == "bq" and not bigquery:
+            fallbacks[index] = "preview"
+        elif kind == "bq":
+            import bq
+            spec = bq.full_source(dataset)
+            query_cancellation.check()
+            meta = bq.table_meta(spec)
+            if meta["table_type"] not in bq.STREAMABLE_TABLE_TYPES:
+                fallbacks[index] = (f"BigQuery {meta['table_type'].lower() or 'object'}s cannot be "
+                                    "read in full (only tables can)")
+                continue
+            if meta["num_bytes"] is None:
+                raise SourceSizeUnknown(
+                    "BigQuery did not report the table size, so Studio cannot safely read it in full.")
+            _budget(meta["num_bytes"], meta["num_bytes"])
+            readers[index] = {"kind": "bq", "spec": spec, "meta": meta,
+                              "estimate": max(1, meta["num_bytes"]),
+                              "columns": _needed_columns(plan, dataset)}
+    return readers, fallbacks
+
+
+def stage_bigquery(con, source: dict, dataset: dict, table: str, budget_used: int,
+                   filters: list[dict] | None = None) -> tuple[int, int, list[dict]]:
+    """Stream a BigQuery table into `table` in Arrow batches.
+
+    Pushes the filters BigQuery evaluates exactly into the read and returns
+    (rows, bytes consumed, residual filters to apply in DuckDB).
     """
+    import bq
+    import data_jobs
+    from contextlib import nullcontext
+
+    spec, meta, estimate = source["spec"], source["meta"], source["estimate"]
+    _budget(budget_used, estimate)
+    restriction, residual = bq.row_restriction(filters or [], meta["types"])
+    columns = source.get("columns")
+    if columns is not None:
+        columns = list(dict.fromkeys(columns + [f["column"] for f in residual]))
+    label = f"{spec['project']}.{spec['dataset']}.{spec['table']}"
+    total = meta.get("num_rows")
+    data_jobs.report(f"Reading BigQuery table {spec['table']} in full",
+                     resource=spec["resource_id"], table=label, rows=0)
+    stream = {}
+
+    def cancel():
+        if "stream" in stream:
+            stream["stream"].cancel()
+
+    scope = query_cancellation.current.get()
+    rows, total_bytes, created = 0, 0, False
+    temp_name = "_studio_bq_batch"
+    try:
+        with scope.bind(cancel) if scope is not None else nullcontext():
+            query_cancellation.check()
+            for batch in bq.read_batches(spec, columns, restriction,
+                                         on_stream=lambda s: stream.__setitem__("stream", s)):
+                query_cancellation.check()
+                total_bytes += int(batch.nbytes)
+                _actual_budget(budget_used + estimate + total_bytes)
+                con.register(temp_name, batch)
+                if not created:
+                    con.execute(f"CREATE TABLE {_q(table)} AS SELECT * FROM {temp_name}")
+                    created = True
+                else:
+                    con.execute(f"INSERT INTO {_q(table)} BY NAME SELECT * FROM {temp_name}")
+                con.unregister(temp_name)
+                rows += batch.num_rows
+                done = f"{rows:,} of {total:,}" if total else f"{rows:,}"
+                data_jobs.report(f"Reading BigQuery table {spec['table']} in full: {done} rows",
+                                 rows=rows)
+    except Exception:
+        query_cancellation.check()
+        raise
+    finally:
+        cancel()                        # release the read stream on any exit (no-op when done)
+    query_cancellation.check()
+    if not created:
+        # No rows matched: an empty table with the loaded columns.
+        empty = dataset["df"].head(0)
+        if columns is not None:
+            empty = empty[columns]
+        con.register(temp_name, empty)
+        con.execute(f"CREATE TABLE {_q(table)} AS SELECT * FROM {temp_name}")
+        con.unregister(temp_name)
+    return rows, estimate + total_bytes, residual
+
+
+def _pushdown_filters(plan: dict, readers: dict[int, dict] | None = None) -> dict[int, list[dict]]:
+    """Input index -> filters to apply while staging a live or full-read source.
+
+    Filtering in the source reduces the rows read and staged. Only for
+    inputs used once: a dataset joined twice may carry different filters.
+    BigQuery inputs push down what BigQuery evaluates exactly; the rest runs
+    in DuckDB after staging (see `stage_bigquery`).
+    """
+    readers = readers or {}
     datasets = [plan["base"]] + [step["ds"] for step in plan["steps"]]
     filters = [plan.get("base_filters") or []] + [step.get("filters") or []
                                                   for step in plan["steps"]]
@@ -732,15 +868,16 @@ def _pushdown_filters(plan: dict) -> dict[int, list[dict]]:
     for dataset in datasets:
         uses[id(dataset)] = uses.get(id(dataset), 0) + 1
     return {index: filters[index] for index, dataset in enumerate(datasets)
-            if filters[index] and dataset.get("live_source")
+            if filters[index] and (dataset.get("live_source") or index in readers)
             and not dataset.get("disk_source") and uses[id(dataset)] == 1}
 
 
 def _run_join_materialization(plan, datasets, source_estimates, path, writer, reader,
-                              pushdown=None):
+                              pushdown=None, readers=None, fallbacks=None):
     import joins
 
-    pushdown = pushdown or {}
+    pushdown, readers, fallbacks = pushdown or {}, readers or {}, fallbacks or {}
+    residual = {}                       # input index -> filters BigQuery could not apply
     relations, row_counts = {}, {}
     attached = {}
     budget_used = sum(source_estimates)
@@ -750,7 +887,8 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
         if key in relations:
             continue
         disk = dataset.get("disk_source")
-        live = dataset.get("live_source")
+        full = readers.get(index)
+        live = dataset.get("live_source") or (full or {}).get("live")
         if disk:
             alias = f"input_{index}"
             if disk["path"] not in attached:
@@ -770,6 +908,14 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
             rows, consumed = stage_live(writer, live, dataset, table, budget_used)
             budget_used += max(0, consumed - source_estimates[index])
             relation = _q(table)
+        elif full and full["kind"] == "bq":
+            table = f"source_{index}"
+            rows, consumed, left_over = stage_bigquery(
+                writer, full, dataset, table, budget_used, pushdown.get(index))
+            if left_over:
+                residual[index] = left_over
+            budget_used += max(0, consumed - source_estimates[index])
+            relation = _q(table)
         else:
             table = f"source_{index}"
             writer.register("_studio_frame", dataset["df"])
@@ -780,7 +926,9 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
 
     def filtered(index, relation, filters):
         # Pushed-down filters were applied while staging; others run here.
-        if index in pushdown or not filters:
+        if index in pushdown:
+            filters = residual.get(index) or []
+        if not filters:
             return relation, {}, None
         rel, params = joins._filtered_rel(relation, filters, joins._filter_prefix(index, plan), pg=False)
         query_cancellation.check()
@@ -817,15 +965,26 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
     preview = reader.execute(
         f"SELECT * FROM {current} LIMIT 100000").df()
     query_cancellation.check()
-    # In-memory inputs (e.g. BigQuery, legacy loaded frames) are staged from
-    # their capped rows, so the result is not complete even though every
-    # live and disk input was read in full.
-    capped_inputs = list(dict.fromkeys(
-        ds["source"] for ds in datasets
-        if ds.get("capped") and not ds.get("live_source") and not ds.get("disk_source")))
-    if capped_inputs:
-        notes.append(f"Used only the loaded (capped) rows of {', '.join(capped_inputs)} "
+    # Capped in-memory inputs without a full-source reader are staged from
+    # their loaded rows, so the result is not complete even though every
+    # other input was read in full.
+    full_ids = {id(datasets[index]) for index in readers}
+    capped_inputs = joins.capped_inputs(datasets, full_ids)
+    previewed = [datasets[i]["source"] for i, why in fallbacks.items() if why == "preview"]
+    if previewed:
+        notes.append(f"Preview used the loaded (capped) rows of {', '.join(previewed)}; "
+                     "running the join reads every row.")
+    for index, why in fallbacks.items():
+        if why != "preview":
+            notes.append(f"Used only the loaded (capped) rows of {datasets[index]['source']}: {why}.")
+    unexplained = [source for source in capped_inputs if source not in previewed and source not in
+                   {datasets[i]["source"] for i in fallbacks}]
+    if unexplained:
+        notes.append(f"Used only the loaded (capped) rows of {', '.join(unexplained)} "
                      "— results may be incomplete.")
+    full_sources = [datasets[i]["source"] for i, r in readers.items() if r["kind"] == "bq"]
+    if full_sources:
+        notes.append(f"Read every row of {', '.join(full_sources)} from BigQuery.")
     stats = {"engine": "duckdb", "base_rows": base_rows,
              "steps": step_stats, "notes": notes, "capped_inputs": capped_inputs,
              "rows": before, "total_rows": before, "truncated": False,

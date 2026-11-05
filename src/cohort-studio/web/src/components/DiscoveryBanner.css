@@ -1,0 +1,10 @@
+.discovery-banner {
+  display: grid; gap: 6px; padding: 8px 10px;
+  border: 1px solid var(--accent-tint-border); border-radius: var(--radius-sm);
+  background: var(--accent-tint); color: var(--ink-soft);
+  font-size: 12px; line-height: 1.4; overflow-wrap: anywhere;
+}
+.discovery-banner[data-status="failed"] { border-color: var(--danger, #b42318); }
+.discovery-banner .discovery-retry { justify-self: start; padding: 2px 8px; font-size: 12px; }
+.discovery-status { display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--ink-muted); }

@@ -12,6 +12,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+# Keep test runs (and the e2e uvicorn they spawn) off the app's real
+# discovery snapshot beside studio_config.json.
+os.environ.setdefault("STUDIO_DISCOVERY_CACHE_PATH", os.path.join(
+    tempfile.mkdtemp(prefix="studio-discovery-"), "discovery.json"))
 
 import db
 import main

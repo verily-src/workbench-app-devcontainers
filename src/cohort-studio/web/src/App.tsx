@@ -9,6 +9,8 @@ import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
 import { DataJobs } from "./components/DataJobs";
 import { Tutorial } from "./components/Tutorial";
+import { DiscoveryBanner, discoverySettled } from "./components/DiscoveryBanner";
+import type { DiscoveryStatus } from "./api";
 import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
@@ -18,6 +20,7 @@ import { tableStats } from "./format";
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
 const JoinPanel = lazy(() => import("./components/JoinPanel").then((m) => ({ default: m.JoinPanel })));
+const JoinCanvas = lazy(() => import("./components/JoinCanvas").then((m) => ({ default: m.JoinCanvas })));
 const StudioAgent = lazy(() => import("./components/StudioAgent").then((m) => ({ default: m.StudioAgent })));
 const SettingsView = lazy(() => import("./components/SettingsView").then((m) => ({ default: m.SettingsView })));
 const WorkflowsView = lazy(() => import("./components/WorkflowsView").then((m) => ({ default: m.WorkflowsView })));
@@ -93,6 +96,7 @@ const QUERY_DEBOUNCE_MS = 250;
 export default function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [ready, setReady] = useState(false);
+  const [discovery, setDiscovery] = useState<DiscoveryStatus | undefined>();
   const [sourceKey, setSourceKey] = useState("");
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [table, setTable] = useState("");
@@ -111,7 +115,12 @@ export default function App() {
   const [activityInCard, setActivityInCard] = useState(false);
   const [error, setError] = useState("");
   const [view, setView] = useState<
-    "explore" | "agent" | "workflows" | "lineage" | "settings">("explore");
+    "explore" | "join" | "agent" | "workflows" | "lineage" | "settings">("explore");
+  // The visual join canvas stays mounted (hidden) after its first visit so a draft survives tab switches.
+  const [canvasMounted, setCanvasMounted] = useState(false);
+  useEffect(() => { if (view === "join") setCanvasMounted(true); }, [view]);
+  const [canvasEdit, setCanvasEdit] = useState<{ nonce: number; title: string;
+    ref: Extract<SourceRef, { kind: "join" }> } | null>(null);
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
@@ -170,23 +179,41 @@ export default function App() {
     return () => { cancelled = true; window.clearTimeout(timer); if (idle !== undefined) window.cancelIdleCallback(idle); };
   }, []);
   const pollRef = useRef<number>();
+  const startPollingRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     const poll = async () => {
       try {
         const out = await api.datasources();
         setSources(out.sources);
+        setDiscovery(out.discovery);
         if (out.ready) setReady(true);
 
+        // A list served from the discovery snapshot keeps polling until the
+        // background refresh settles, so the fresh list (or a failure) shows;
+        // a lasting failure polls slowly (the server retries on its own).
         if (out.ready && out.sources.length > 0 && !out.catalogs_pending) {
           window.clearInterval(pollRef.current);
+          if (!discoverySettled(out.discovery)) {
+            const slow = out.discovery?.status === "stale" || out.discovery?.status === "failed";
+            pollRef.current = window.setInterval(poll, slow ? 15000 : 3000);
+          }
         }
       } catch {  }
     };
-    poll();
-    pollRef.current = window.setInterval(poll, 3000);
+    startPollingRef.current = () => {
+      window.clearInterval(pollRef.current);
+      void poll();
+      pollRef.current = window.setInterval(poll, 3000);
+    };
+    startPollingRef.current();
     return () => window.clearInterval(pollRef.current);
   }, []);
+  const retryDiscovery = () => api.refreshDatasources()
+    .then((out) => setDiscovery(out.discovery))
+    .catch((e) => alerts.pushToast({ title: "Datasource refresh did not start",
+                                     body: e instanceof Error ? e.message : String(e), tone: "fail" }))
+    .finally(() => startPollingRef.current());
 
   const source = sources.find((s) => `${s.kind}:${s.id}` === sourceKey);
   const refreshTutorialAssistantStatus = () => {
@@ -498,7 +525,9 @@ export default function App() {
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doJoin = async (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean;
-                              baseFilters?: JoinFilter[] }) => {
+                              baseFilters?: JoinFilter[];
+                              // From the visual join canvas: its private inputs and the tab title.
+                              fromCanvas?: boolean; extraInputs?: Dataset[]; title?: string }) => {
     setActivity("Joining…");
     setActivityInCard(true);
     setJoinRunning(true);
@@ -514,7 +543,7 @@ export default function App() {
         const inputIds = [...new Set([
           p.baseId, ...p.steps.map((s) => s.right_id),
         ])];
-        const inputs = new Map([...datasets, ...(editingJoin?.inputs ?? [])]
+        const inputs = new Map([...datasets, ...(p.fromCanvas ? p.extraInputs ?? [] : editingJoin?.inputs ?? [])]
           .map((d) => [d.id, d]));
         if (inputIds.some((id) => !inputs.get(id)?.sourceRef)) {
           throw new JoinRecoveryError(
@@ -561,7 +590,7 @@ export default function App() {
         }));
       }
 
-      openResult(opened, opened.source.split(" + ").map(
+      openResult(opened, p.title || opened.source.split(" + ").map(
         (x) => x.split("/").pop()?.trim()).join(" + "), undefined, undefined,
       { forceNewTab: true });
       const { join } = opened;
@@ -575,12 +604,14 @@ export default function App() {
           + (join.capped_inputs?.length ? " Some inputs were capped — results may be incomplete." : "")
           + (join.large_growth ? ` Rows grew ${join.growth_total}× over the base — check for fan-out.` : ""),
       });
-      if (editingJoin) {
-        await closeEditInputs(editingJoin);
-        setEditingJoin(null);
+      if (!p.fromCanvas) {
+        if (editingJoin) {
+          await closeEditInputs(editingJoin);
+          setEditingJoin(null);
+        }
+        setShowJoin(false);
+        setJoinMounted(false);
       }
-      setShowJoin(false);
-      setJoinMounted(false);
     } catch (e) {
       const message = (e as Error).message;
       setError(e instanceof JoinRecoveryError
@@ -785,6 +816,7 @@ export default function App() {
               : "Waiting for workspace datasources… File upload works now."}
           </div>
         )}
+        <DiscoveryBanner discovery={discovery} onRetry={retryDiscovery} />
 
         {datasets.length === 0 && sources.length > 0 && <button className="quiet"
           data-tutorial-target="join-button" onClick={() => setShowJoin(true)}>Join tables</button>}
@@ -851,7 +883,7 @@ export default function App() {
             <span className="brand-verily">verily</span> Cohort Studio
           </span>
           <nav className="topnav">
-            {(["explore", "agent", "workflows", "lineage", "settings"] as const)
+            {(["explore", "join", "agent", "workflows", "lineage", "settings"] as const)
               .map((v) => (
               <span key={v} data-tutorial-target={`nav-${v}`}
                     className={`topnav-link${view === v ? " active" : ""}`}
@@ -908,7 +940,17 @@ export default function App() {
             </aside>
           )}
           <Suspense fallback={<div role="status">Loading…</div>}>
-          {view === "agent" ? (
+          {canvasMounted && (
+            <div className="join-canvas-host" hidden={view !== "join"}>
+              <JoinCanvas datasets={datasets} sources={sources} busy={Boolean(activity)} edit={canvasEdit}
+                          onJoin={doJoin}
+                          onOpenResult={(opened, title, sourceRef) =>
+                            openResult(opened, title, sourceRef, undefined, { forceNewTab: true })}
+                          onAddSource={() => setAddSourceOpen(true)}
+                          onClose={() => setView("explore")} />
+            </div>
+          )}
+          {view === "join" ? null : view === "agent" ? (
             <StudioAgent onOpenSettings={() => setView("settings")} onOpenDashboard={(action: AgentDashboardAction & { update?: boolean }, verification?: AgentWorkflowVerification) => {
               const existing = action.update
                 ? datasets.findIndex((d) => d.id === action.dataset.dataset_id) : -1;
@@ -1024,7 +1066,8 @@ export default function App() {
                            onSourceOpened={(opened, title, sourceRef) =>
                              openResult(opened, title, sourceRef, undefined,
                                { forceNewTab: true })}
-                           onJoin={doJoin} onClose={closeJoinPanel} />
+                           onJoin={doJoin} onClose={closeJoinPanel}
+                           onOpenCanvas={() => { closeJoinPanel(); setView("join"); }} />
               </div>}
               {dependentJob && !showJoin && (
                 <div className="wf-dep-banner">
@@ -1044,6 +1087,13 @@ export default function App() {
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
                   onEditJoin={editJoin}
+                  onEditJoinCanvas={(datasetId) => {
+                    const original = datasets.find((dataset) => dataset.id === datasetId);
+                    if (original?.sourceRef?.kind !== "join") return;
+                    setCanvasEdit((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, title: original.title,
+                                                ref: original.sourceRef as Extract<SourceRef, { kind: "join" }> }));
+                    setView("join");
+                  }}
                   onOpenTable={(opened, title) => openResult(opened, title, undefined, undefined, { forceNewTab: true })}
                 />
               )}

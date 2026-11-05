@@ -537,16 +537,40 @@ def _generated_sql(p: dict) -> dict:
         return generated
     return _duckdb_sql(p)
 
-def _capped_inputs(p: dict) -> list[str]:
-    inputs = [p["base"]] + [s["ds"] for s in p["steps"]]
+def full_reader_kind(ds: dict) -> str | None:
+    """How a cross-source (DuckDB) join reads every row of a capped,
+    in-memory input: "aurora" (its origin table) or "bq" (BigQuery Storage
+    Read API), or None when only the loaded rows exist."""
+    if not ds.get("capped") or ds.get("live_source") or ds.get("disk_source"):
+        return None
+    if (ds.get("origin") or {}).get("kind") == "aurora" and ds["origin"].get("table"):
+        return "aurora"
+    try:
+        import bq
+        return "bq" if bq.full_source(ds) else None
+    except Exception:
+        return None
+
+
+def capped_inputs(inputs: list[dict], full: set[int] = frozenset()) -> list[str]:
+    """Sources of capped in-memory inputs, except those (by id) read in full."""
     return list(dict.fromkeys(ds["source"] for ds in inputs
                               if ds.get("capped") and not ds.get("live_source")
-                              and not ds.get("disk_source")))
+                              and not ds.get("disk_source") and id(ds) not in full))
+
+
+def _capped_inputs(p: dict, readers: bool = False) -> list[str]:
+    """Capped inputs of a join; with `readers`, those a DuckDB-staged join
+    still cannot read in full (the in-memory fallback reads none in full)."""
+    inputs = [p["base"]] + [s["ds"] for s in p["steps"]]
+    full = {id(ds) for ds in inputs if full_reader_kind(ds)} if readers else set()
+    return capped_inputs(inputs, full)
 
 def validate(base_id: str, steps: list[dict], base_filters: list | None = None) -> dict:
 
     p = plan(base_id, steps, base_filters)
-    capped = _capped_inputs(p) if p["engine"] == "duckdb" else []
+    # Static: a BigQuery view found at run time still falls back to loaded rows.
+    capped = _capped_inputs(p, readers=True) if p["engine"] == "duckdb" else []
     error = _first_error(p)
     generated = None
     if error is None:
@@ -979,7 +1003,9 @@ def preview(base_id: str, steps: list[dict], allow_loaded: bool = False,
             out["stats"]["notes"].insert(0, f"{e} Previewed in memory instead.")
     else:
         import disk_data
-        out = disk_data.run_join(p)
+        # BigQuery inputs preview on their loaded rows (the notes say so);
+        # running the join reads them in full.
+        out = disk_data.run_join(p, full_readers=False)
     df = out["df"].head(PREVIEW_ROWS)
     _flag_growth(out["stats"])
     result = {**out["stats"], "columns": list(df.columns),

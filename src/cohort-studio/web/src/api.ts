@@ -3,7 +3,7 @@ import type {
   ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
   TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
-  SavedViewJob, SavedViewList, SourceInfo,
+  SavedViewJob, SavedViewList, SourceInfo, SqlCompletions,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -36,6 +36,17 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** Freshness of the workspace resource list behind /api/datasources. */
+export interface DiscoveryStatus {
+  status: "fresh" | "refreshing" | "stale" | "failed" | "unavailable";
+  updated_at: string | null;
+  from_cache: boolean;
+  error?: string;
+  error_code?: string;
+  failed_kinds?: string[];
+  retry_at?: string;
 }
 
 const post = (body: unknown): RequestInit => ({
@@ -378,6 +389,8 @@ export const api = {
   performance: () => request<PerformanceSummary>("/api/performance"),
   lintSql: (sql: string) => request<{ ok: boolean; message: string; line?: number; col?: number;
     detail?: string; formatted?: string | null }>("/api/sql/lint", post({ sql })),
+  sqlCompletions: (resourceId: string) => request<SqlCompletions>(
+    `/api/sql/completions?resource_id=${encodeURIComponent(resourceId)}`),
 
   agentStoreStatus: () => request<{ resource_id: string | null; from_environment: boolean;
     ready: boolean; aurora: string[] }>("/api/admin/agent-store"),
@@ -439,7 +452,10 @@ export const api = {
 
   datasources: () =>
     request<{ ready: boolean; sources: Source[];
-              catalogs_pending?: boolean }>("/api/datasources"),
+              catalogs_pending?: boolean; discovery?: DiscoveryStatus }>("/api/datasources"),
+  refreshDatasources: () =>
+    request<{ started: boolean; discovery: DiscoveryStatus }>(
+      "/api/datasources/refresh", { method: "POST" }),
 
   publishCatalog: (resourceId: string, name: string) =>
     request<{ catalog_id: string; uri: string; views: string[];

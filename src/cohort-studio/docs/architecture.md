@@ -4,6 +4,14 @@ Current architecture and key flows for Cohort Studio. Update this document
 when an architectural decision changes. Render diagrams with any Mermaid
 viewer (GitHub renders them inline).
 
+### Visual join canvas (2026-11-05)
+
+The top-nav **Join** tab (`web/src/components/JoinCanvas.tsx`, model in `web/src/joinModel.ts`) is the recommended way to build a join; the step builder (`JoinPanel`, "⋈ Join" in Explore) stays and links to it. Layout: a Connections pane (datasources, a searchable table list grouped by schema, and open Explore tabs), a dotted canvas of table cards joined by orthogonal connectors with a join-type badge on each link, a status bar (engine, row estimate, cross-source consent, disabled reason, per-link problems), and a bottom area that shows the Join configuration (clauses, Inner/Left/Right/Outer plus Has match/No match, filters for the joined table, applied with Apply), the selected table's details (alias, Join to, columns, filters), or a data grid (Fields metadata and preview rows). Drag uses native HTML5 drag and drop and pointer events with SVG; no diagram library. Every drag has a button alternative: "+" (Add to canvas) on list items and a "Join to" select in table details.
+
+The canvas is a tree that maps 1:1 to `JoinRequest`. The root card is `base_id`/`base_filters`. Each other card is one step whose conditions name a column of an earlier card by node id (normally the parent). The left reference is the bare column for the root and `alias → column` for any other card, so renaming an alias updates dependent conditions. Steps are emitted parents first, otherwise in the order cards were added, so a reopened join keeps its step order. A saved join `source_ref` is reconstructed by matching each condition's left reference to the longest earlier step alias prefix (else the base); the parent is the table of the first condition. Mixed references (a step using columns of several earlier tables) survive the round trip. Dropping onto a card joins to that card; dropping on empty canvas joins to the root; removing a card removes the cards joined to it. Canvas inputs are opened privately (not as Explore tabs) and passed to `doJoin` for expired-input recovery. Suggested keys from `/api/joins/recommend` and `/api/datasets/join/suggest` pre-fill only the unapplied configuration draft; the user still applies them.
+
+Connection modes: **Live** runs the normal join (the server still picks Aurora or DuckDB). **Extract** runs the join, saves the rows with the existing `/api/datasets/{id}/materialize` path into a chosen writable Aurora/PostgreSQL table, and opens that table; it is disabled when there is no writable database. **Save** keeps the canvas as a join recipe in this browser's `localStorage` (reopened from the empty canvas); uploads can't be saved. Root columns can't be excluded and fields can't be renamed, because the request has no field for either. Calculated fields need an existing dataset, so they are added in Explore after the join runs.
+
 ### Join value filters and builder layout (2026-11-05)
 
 Each join input (the "Start from" table via `base_filters`, and each step via `filters`) can carry up to 12 `{column, op, value}` filters, AND-ed. Ops: `= != < <= > >= in, not in, is null, is not null, contains` (case-insensitive substring; `%`, `_` and the escape character `!` are escaped). `joins.py` types each value against the column kind (number, true/false, date, text; unknown columns compare as text) and rejects mismatches as `Step N filter K: …` / `Start table filter K: …`. A filter applies to its table before joining, as a derived table (`(SELECT * FROM t AS filter_input WHERE …) AS r`), not in the outer `WHERE`: a left join keeps unmatched left rows, and semi/anti joins test against the filtered rows. Values are always bound parameters (`:jf_s1_0_0` for PostgreSQL, `$jf_s1_0_0` for DuckDB). The copyable Aurora SQL inlines them through `sql_source.inline_parameters`; the DuckDB display SQL inlines them for display only. Aurora pushes the predicate into the input scan. For cross-source joins, a live input used once is filtered in PostgreSQL while it is staged. Other inputs are filtered in DuckDB. Per-step input row counts, planner estimates and live-source admission estimates are calculated after filtering. Recipes store filters on the join `source_ref`, omitting empty lists, so older refs keep the same bytes. Saved views, session restore, Edit join and Agent-built join refs reopen with the same filters.
@@ -34,7 +42,8 @@ release `194f397b5`:
   before insertion. Failed registration deletes its owned data and spill files.
   These limits do not guarantee that the host has 1 TB free disk space.
 - Aurora queries remain database-backed. Explicit SQL column ordering survives
-  dashboard paging. BigQuery retains its sampled compatibility path; Athena
+  dashboard paging. BigQuery dashboards retain their sampled compatibility path
+  (cross-source joins read BigQuery tables in full); Athena
   full-source dashboard loading is not implemented.
 - Join recipes are durable source references. Editing resolves those inputs and
   produces a new result tab; cancellation or failure preserves the original.
@@ -277,12 +286,6 @@ provision or run a separate PostgreSQL database. Local tests use a disposable
 PostgreSQL process to check the Aurora PostgreSQL SQL/driver contract; this is
 a test fixture, not an application dependency or deployment service. Passing
 those tests does not establish live Aurora connectivity or permissions.
-
-Grouped summaries are read-only, paginated queries over the current dashboard filters. The selected source engine computes counts and optional numeric statistics; null grouping keys remain visible. The response identifies whether it covers the database, loaded data, or a capped sample. Saved views preserve summary recipes and filters; reopening recomputes results from the source. The panel recipe (`group_by`, value column) is part of dashboard state: saved views, session restore and reopen rerun it; Close removes it. PDF export lists the recipe and the displayed summary page.
-
-"Open as table" (`POST /api/datasets/{id}/summary/materialize`) runs the same summary without the display page and opens every group as a new dataset tab. Up to `ROW_CAP` groups are held in memory; larger results are staged to a new local DuckDB file under the existing disk budgets (`_bounded_materialization`, 1 TB operation budget, free-space check; 413/422 on guard failures). The response reports `total_groups`, `input_rows`, `scope` (database or loaded) and `sampled`. The tab's recipe is `{"kind": "group_summary", "base": <base recipe>, "filters": [...], "spec": {"group_by": [...], "measure": ...}}`; reopening opens the base temporarily and reruns the summary. Walkers treat it like `derived` (recurse into `base`). Uploaded bases have no recipe, so their summary tabs are not restorable either.
-
-Row sorting is applied to the filtered source before paging in PostgreSQL, DuckDB, or the loaded frame. Sort requests validate the column and direction and participate in database query cache keys; saved views retain sort settings. Workbench monitor links use the active CLI workspace context and an allowlisted HTTPS host; `STUDIO_WORKBENCH_URL` can select another Workbench environment.
 
 ## 4. One state round-trip (filter / chart change)
 
@@ -609,6 +612,22 @@ as normal Aurora sources. A preview is not an authorization token. Editing
 a query invalidates its preview. This is an Aurora SQL editor, not an Athena
 connector. Existing resource permissions remain authoritative.
 
+SQL editor autocomplete (2026-11-05): the editor stays a textarea with a
+highlight overlay (no editor library). `GET /api/sql/completions?resource_id=`
+(`app/sql_completions.py`) returns schema, table (schema, kind) and column
+(name, type) names from `information_schema` in a read-only transaction with a
+5 s statement timeout, bounded to 1,000 tables / 2,000 columns with
+`truncated`, cached 5 minutes per resource (`refresh=true` clears). It never
+reads table data; system and internal (`_studio_*`) objects are excluded, and
+detected OMOP CDM/vocabulary schemas are marked and listed first so the bound
+keeps them. The client (`web/src/components/sqlComplete.ts`) is a token-based
+heuristic: schemas and qualified tables after FROM/JOIN, `schema.` → tables,
+`alias.` → columns, other column clauses → columns of the query's FROM/JOIN
+tables, plus keywords and the server's allowed functions. Identifiers that need
+it are quoted. The popup is positioned from a hidden mirror of the text using
+offset coordinates, which live in the same zoomed CSS pixels as the popup, so
+Display-size zoom needs no conversion.
+
 ### Scoped knowledge layer (2026-10-23; not implemented)
 
 Veibot knowledge ingestion will reuse registered sources, with bounded ingestion
@@ -926,6 +945,8 @@ Knowledge passages and normalized float32 vectors share the existing private SQL
 
 Resource discovery refreshes a healthy snapshot at most every five minutes, with a single refresh in flight. File/table warmup runs only on initial successful discovery. Empty discovery failures retain the last successful resource snapshot; all later source operations still enforce current access.
 
+Durable discovery (2026-11-05). `resource_discovery.py` keeps the last complete `wb resource list` result in `.studio-discovery-cache.json` beside `STUDIO_CONFIG` (override `STUDIO_DISCOVERY_CACHE_PATH`; mode 0600, atomic replace). Entries pass an allowlist (id, uuid, type, database name, region, bucket, prefix, BigQuery project/dataset/table, recursively for `referencedResource`) plus resolved S3 URIs; connection strings, passwords and other CLI fields are never written. At startup the snapshot is loaded synchronously, so `/api/datasources` is `ready` with sources before the CLI answers; a snapshot written for a different `STUDIO_WORKSPACE_ID`/`WORKBENCH_WORKSPACE_ID` is ignored. Every refresh trigger (startup, periodic access, the empty-cache poll, the backoff timer and `POST /api/datasources/refresh`) goes through `db.request_refresh`: one refresh in flight, failures back off 10 s doubling to a 5-minute cap with a single pending timer, and a manual Retry skips the wait but is debounced (5 s). A failed refresh keeps the cached list. CLI failures map to short messages that never echo CLI output: no workspace set (retried once with `--workspace=<id>` when the id is configured, otherwise "run `wb workspace set --id=…`"), expired login, timeout, unreadable output, CLI missing. If the full listing fails for another reason (one broken resource fails it for all), discovery lists per resource type (`--type=`, `KIND_TYPES`) and reports the kinds that failed, keeping their cached entries; a partial result does not overwrite the snapshot. `/api/datasources` adds `discovery: {status: fresh|refreshing|stale|failed|unavailable, updated_at, from_cache, error?, error_code?, failed_kinds?, retry_at?}`; `unavailable` (no `wb` binary, local dev) shows no banner. The sidebar shows a banner with Retry for stale/failed, a quiet status line while a cached list refreshes, and keeps polling until discovery settles.
+
 ### Agent trust-boundary hardening
 
 The local draft separates retrieved passages and dataset metadata from trusted
@@ -966,6 +987,31 @@ metadata, never from an empty preview. Dates, time zones, nullable large integer
 and bounded decimals retain their storage types. Unconstrained or over-wide
 decimals use exact text instead of a lossy double; JSON/other unsupported scalar
 storage uses text. Display/filter classification is separate from storage.
+
+Cross-source (DuckDB) joins read every input in full where a full reader exists
+(`disk_data.run_join`, `_full_readers`). Live and disk inputs already were; a
+capped frame loaded straight from an Aurora table (`origin`, e.g. MCP or OMOP
+domain opens) is staged from that table through the live path; a capped BigQuery
+table (`source_ref.kind == "bq"`, no type-changing column settings) streams through
+the Storage Read API (`bq.read_batches`, one stream, Arrow batches) into the join
+file, billed to the registered billing project. Before reading, table metadata
+must report `table_type == "TABLE"` and `num_bytes`, and `num_bytes` (an upper
+bound, before column projection) goes through the 1 TB budget; each batch is
+checked against the actual budget, the free-space floor and cancellation (which
+also cancels the read stream), and progress goes to `data_jobs.report`. Only the
+columns the join uses are read (keys, picked columns, filter columns; all columns
+for the start table). Filters on an input used once are pushed into the
+`row_restriction` when BigQuery evaluates them exactly like DuckDB (STRING/text,
+numeric/number, BOOL, DATE with a date value, null tests); `contains`, TIMESTAMP and
+DATETIME filters stay in DuckDB. Nested values are flattened to text exactly as in
+the loaded rows. Views, external tables and materialized views keep their loaded
+rows and are listed in `capped_inputs` with the reason; `validate` checks
+eligibility without network calls, so run-time `capped_inputs` can differ.
+Previews use loaded BigQuery rows and say so in `notes` (`complete_source=False`).
+Still capped: derived columns and group summaries computed over a capped BigQuery
+frame, and MCP `open_table` S3/catalog/BigQuery frames (no source reference).
+`complete_source` is false and the joined tab is `sampled` whenever
+`capped_inputs` is non-empty.
 
 Join recommendations include typed Jev classifications (side, column, entity
 role, probability). They are probabilistic metadata evidence, not observed key

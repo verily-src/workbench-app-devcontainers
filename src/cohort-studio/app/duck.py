@@ -15,16 +15,56 @@ from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
 
-DATA_SUFFIXES = (".parquet", ".csv", ".tsv", ".tsv.gz", ".txt", ".json", ".ndjson", ".vcf", ".vcf.gz")
+DATA_SUFFIXES = (".parquet", ".csv", ".csv.gz", ".tsv", ".tsv.gz", ".txt", ".json", ".ndjson", ".vcf", ".vcf.gz")
 CATALOG_SUFFIX = ".duckdb"
 _SAFE_KEY = re.compile(r"^[A-Za-z0-9._\-/ ()+=]+$")
 
 DEFAULT_REGION = os.environ.get("STUDIO_S3_REGION", "us-east-1")
 
 MAX_LISTING = 500
+PARQUET_FOLDER_MIN_PARTS = 2
+
+
+def is_parquet_folder(name: str) -> bool:
+    """A source name ending in "/" is a folder read as one Parquet dataset."""
+    return isinstance(name, str) and name.endswith("/")
+
+
+def _dataset_root(name: str) -> str | None:
+    """Folder that holds a Parquet part: the parent of the first key=value segment, else its directory."""
+    parts = name.split("/")[:-1]
+    for index, part in enumerate(parts):
+        if "=" in part:
+            parts = parts[:index]
+            break
+    return "/".join(parts) + "/" if parts else None
+
+
+def parquet_folders(entries: list[dict]) -> list[dict]:
+    """Group Parquet parts into folder entries for folders with several parts."""
+    folders: dict[str, dict] = {}
+    for entry in entries:
+        name = entry["name"]
+        if not name.lower().endswith(".parquet"):
+            continue
+        root = _dataset_root(name)
+        if root is None or not _SAFE_KEY.match(root):
+            continue
+        folder = folders.setdefault(root, {"name": root, "bytes": 0, "parts": 0})
+        folder["parts"] += 1
+        folder["bytes"] += entry.get("bytes") or 0
+        if entry.get("modified") and entry["modified"] > folder.get("modified", ""):
+            folder["modified"] = entry["modified"]
+    out = []
+    for folder in sorted(folders.values(), key=lambda f: f["name"]):
+        if folder["parts"] >= PARQUET_FOLDER_MIN_PARTS:
+            folder["detail"] = f"Parquet folder · {folder['parts']} parts"
+            out.append(folder)
+    return out
 
 def parse_s3_ls_entries(output: str, prefix: str = "",
-                        suffixes: tuple[str, ...] = DATA_SUFFIXES) -> list[dict]:
+                        suffixes: tuple[str, ...] = DATA_SUFFIXES,
+                        limit: int | None = MAX_LISTING) -> list[dict]:
     """`aws s3 ls --recursive` lines as {name, bytes, modified} entries."""
     entries = []
     for line in output.splitlines():
@@ -37,7 +77,7 @@ def parse_s3_ls_entries(output: str, prefix: str = "",
             if parts[2].isdigit():
                 entry["bytes"] = int(parts[2])
             entries.append(entry)
-    return [e for e in entries if e["name"].lower().endswith(suffixes)][:MAX_LISTING]
+    return [e for e in entries if e["name"].lower().endswith(suffixes)][:limit]
 
 def parse_s3_ls(output: str, prefix: str = "",
                 suffixes: tuple[str, ...] = DATA_SUFFIXES) -> list[str]:
@@ -127,9 +167,10 @@ def describe_s3_files(resource_id: str) -> list[dict]:
     """Data files with size and modified time, from the same listing as list_s3_files."""
     registered = _registered_s3_files(resource_id, entries=True)
     if registered is not None:
-        return registered
+        return parquet_folders(registered) + registered
     output, prefix = _s3_ls(resource_id)
-    return parse_s3_ls_entries(output, prefix=prefix)
+    folders = parquet_folders(parse_s3_ls_entries(output, prefix=prefix, limit=None))
+    return folders + parse_s3_ls_entries(output, prefix=prefix)
 
 def list_s3_catalogs(resource_id: str) -> list[str]:
 
@@ -207,6 +248,9 @@ def _reader_sql(uri: str, hive: bool = False) -> str:
         key = key.replace("*", "")
     if not _SAFE_KEY.match(key):
         raise ValueError(f"Unsupported characters in path: {uri!r}")
+    if is_parquet_folder(uri):
+        # Every part below the folder; DuckDB detects key=value partitions itself.
+        return f"read_parquet('{uri}**/*.parquet', union_by_name = true)"
     opts = ", hive_partitioning = true" if hive else ""
     low = uri.lower()
     if low.endswith((".vcf", ".vcf.gz")):
@@ -227,10 +271,13 @@ def _validate_relative_key(filename: str) -> str:
     if (not isinstance(filename, str) or not filename or filename.startswith("/")
             or "\\" in filename or ":" in filename):
         raise ValueError("S3 file path must be relative to its configured folder.")
-    parts = filename.split("/")
+    folder = is_parquet_folder(filename)
+    parts = filename[:-1].split("/") if folder else filename.split("/")
     if any(part in {"", ".", ".."} for part in parts):
         raise ValueError("S3 file path cannot contain empty or parent path segments.")
-    if not filename.lower().endswith(DATA_SUFFIXES) or not _SAFE_KEY.match(filename):
+    if not _SAFE_KEY.match(filename):
+        raise ValueError("S3 path must name a supported data file.")
+    if not folder and not filename.lower().endswith(DATA_SUFFIXES):
         raise ValueError("S3 path must name a supported data file.")
     return filename
 

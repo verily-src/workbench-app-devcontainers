@@ -258,6 +258,43 @@ def _object_size(resource_id: str, filename: str) -> tuple[int, str, str, bool]:
     return size, uri, region, app_credentials
 
 
+MAX_FOLDER_PARTS = 20_000
+
+
+def _folder_size(resource_id: str, folder: str) -> tuple[int, str, str, bool]:
+    """Total bytes of the Parquet parts below an S3 folder, checked against the load budget."""
+    folder = duck._validate_relative_key(folder)
+    client, bucket, key, uri, region, app_credentials = _s3_client(resource_id, folder)
+    total = parts = 0
+    token = None
+    try:
+        while True:
+            request = {"Bucket": bucket, "Prefix": key, "MaxKeys": 1000}
+            if token:
+                request["ContinuationToken"] = token
+            response = client.list_objects_v2(**request)
+            for item in response.get("Contents", []):
+                if item.get("Key", "").lower().endswith(".parquet"):
+                    parts += 1
+                    total += int(item.get("Size") or 0)
+            if parts > MAX_FOLDER_PARTS:
+                raise OperationTooLarge(
+                    f"This folder has more than {MAX_FOLDER_PARTS:,} Parquet parts; "
+                    "open a narrower subfolder.")
+            token = response.get("NextContinuationToken")
+            if not token:
+                break
+    except OperationTooLarge:
+        raise
+    except Exception as exc:
+        raise SourceSizeUnknown(
+            "The S3 folder could not be listed, so Studio cannot safely load it.") from exc
+    if parts == 0:
+        raise ValueError(f"No Parquet files were found in {folder}.")
+    _budget(total, total)
+    return total, uri, region, app_credentials
+
+
 def _url_size(uri: str, profile: str | None) -> int:
     parsed = urlsplit(uri)
     if parsed.scheme == "s3":
@@ -905,7 +942,8 @@ def open_s3(ref: dict) -> tuple[pd.DataFrame, dict]:
     if filename.lower().endswith((".vcf", ".vcf.gz")):
         import vcf_sources
         return vcf_sources.open_s3(resource_id, filename)
-    size, uri, region, app_credentials = _object_size(resource_id, filename)
+    sizer = _folder_size if duck.is_parquet_folder(filename) else _object_size
+    size, uri, region, app_credentials = sizer(resource_id, filename)
     path = _new_path()
     source_con = _configure(duck._connect(
         None if app_credentials else resource_id,

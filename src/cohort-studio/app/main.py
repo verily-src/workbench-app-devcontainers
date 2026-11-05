@@ -834,24 +834,34 @@ def configure_columns(dataset_id: str, req: ColumnsRequest):
         raise HTTPException(504 if isinstance(e, joins.JoinTimeout) or "statement timeout" in str(e) else 502,
                             str(e).split("\n")[0][:300])
 
-UPLOAD_SUFFIXES = (".csv", ".tsv", ".txt")
+UPLOAD_SUFFIXES = (".csv", ".csv.gz", ".tsv", ".tsv.gz", ".txt", ".parquet")
 
 @app.post("/api/datasets/upload")
 def upload_dataset(file: UploadFile):
     name = file.filename or "upload.csv"
-    if not name.lower().endswith(UPLOAD_SUFFIXES):
+    low = name.lower()
+    if not low.endswith(UPLOAD_SUFFIXES):
         raise HTTPException(
             400, f"Unsupported file type: {name}. Cohort Studio reads "
-            "tabular data — upload CSV, TSV, or TXT. Formats like BAM, "
-            "VCF, FASTQ, or BED are not row/column tables and can't be "
-            "loaded here.")
-    sep = "\t" if name.lower().endswith((".tsv", ".txt")) else ","
-    try:
-        df = pd.read_csv(file.file, sep=sep)
-    except Exception as e:
-        raise HTTPException(
-            400, f"Could not parse {name} as a {sep!r}-delimited table: "
-            f"{str(e).splitlines()[0][:200]}")
+            "tabular data — upload CSV, TSV, TXT (optionally gzipped) or "
+            "Parquet. Formats like BAM, VCF, FASTQ, or BED are not "
+            "row/column tables and can't be loaded here.")
+    if low.endswith(".parquet"):
+        try:
+            df = pd.read_parquet(file.file)
+        except Exception as e:
+            raise HTTPException(
+                400, f"Could not read {name} as Parquet: "
+                f"{str(e).splitlines()[0][:200] if str(e) else type(e).__name__}")
+    else:
+        sep = "\t" if low.removesuffix(".gz").endswith((".tsv", ".txt")) else ","
+        try:
+            df = pd.read_csv(file.file, sep=sep,
+                             compression="gzip" if low.endswith(".gz") else None)
+        except Exception as e:
+            raise HTTPException(
+                400, f"Could not parse {name} as a {sep!r}-delimited table: "
+                f"{str(e).splitlines()[0][:200] if str(e) else type(e).__name__}")
     result = datasets.open_dataset(df, name, capped=False)
     lineage.record(_lineage_engine(), "csv_uploaded", "file", name,
                    payload={"rows": len(df), "columns": list(df.columns)})

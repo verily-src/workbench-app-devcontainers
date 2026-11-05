@@ -103,6 +103,7 @@ export default function App() {
   const [renameDraft, setRenameDraft] = useState("");
   const [active, setActive] = useState(0);
   const [activity, setActivity] = useState("");
+  const [listingTables, setListingTables] = useState("");   // datasource being listed
   const [openingTable, setOpeningTable] = useState<TableInfo | null>(null);
   // Opens and joins show progress in the Data operations card; keep `activity`
   // as the busy flag but don't repeat the text in the top bar.
@@ -218,14 +219,18 @@ export default function App() {
     if (!source) return;
     setTables([]);
     setTable("");
-    setActivity(`Listing tables in ${source.id}…`);
+    // Shown next to the Table picker; a newer datasource choice wins.
+    let current = true;
+    setListingTables(source.id);
     api.tables(source.kind, source.id)
       .then((t) => {
+        if (!current) return;
         setTables(t);
         if (!t.length) setError(`No tables or data files in ${source.id}.`);
       })
-      .catch((e) => setError(`Could not list tables: ${e.message}`))
-      .finally(() => setActivity(""));
+      .catch((e) => { if (current) setError(`Could not list tables: ${e.message}`); })
+      .finally(() => { if (current) setListingTables(""); });
+    return () => { current = false; };
   }, [sourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openResult = (
@@ -775,7 +780,8 @@ export default function App() {
         {datasets.length === 0 && sources.length > 0 && <button className="quiet"
           data-tutorial-target="join-button" onClick={() => setShowJoin(true)}>Join tables</button>}
         <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
-          loading={!ready || Boolean(activity)} busy={Boolean(activity)}
+          loading={!ready || Boolean(activity) || Boolean(listingTables)} busy={Boolean(activity)}
+          listing={listingTables}
           onSourceKeyChange={setSourceKey} onTableChange={setTable} onLoadTable={loadTable} />
         <button className="quiet" onClick={() => setAddSourceOpen(true)}>+ Add data source</button>
         {supportsOmop && <div className="field-label">

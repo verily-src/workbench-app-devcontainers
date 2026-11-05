@@ -71,7 +71,7 @@ def test_provider_settings_save_before_test_without_echoing_key(
     ai_card.get_by_role("button", name="Test connection").click()
 
     expect(ai_card.get_by_role("status")).to_have_text(
-        "Connected: Claude (claude-sonnet-5).", timeout=10000)
+        "Connected: Claude (claude-sonnet-5-5).", timeout=10000)
     assert [kind for kind, _ in requests] == ["save", "test"]
     assert requests[0][1]["api_key"] == key
     assert requests[0][1]["model"] == "claude-sonnet-5-5"

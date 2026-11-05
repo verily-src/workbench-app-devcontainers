@@ -112,6 +112,18 @@ function formatList(values: JoinFilterValue[]): string {
   }).join(", ");
 }
 
+/** Re-express a row's value when its operator switches between list and single-value forms,
+ * so list quoting never leaks into a scalar value (or the reverse). */
+function convertValue(row: FilterRow, op: JoinFilterOp): Partial<FilterRow> {
+  const wasList = LIST_OPS.includes(row.op), isList = LIST_OPS.includes(op);
+  if (wasList === isList) return {};
+  if (wasList) {
+    const items = row.list ? row.list.map(String) : parseList(row.text);
+    return { list: undefined, text: items.length === 1 ? items[0] : items.join(", ") };
+  }
+  return { list: undefined, text: row.text.trim() ? formatList([row.text]) : "" };
+}
+
 function parseList(text: string): string[] {
   const items: string[] = [];
   let i = 0;
@@ -182,6 +194,7 @@ function FilterEditor({ rows, columns, table, label, checks, disabled, onChange 
       ...row, ...patch,
       // Editing the value or column drops the saved list; the text is parsed instead.
       ...("text" in patch || "column" in patch ? { list: undefined } : {}),
+      ...(patch.op ? convertValue(row, patch.op) : {}),
     })));
   const hasBlank = rows.some((row) => !row.column);
   return (

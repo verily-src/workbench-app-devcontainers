@@ -57,3 +57,12 @@
 }
 
 .table-details > div.wide { grid-column: 1 / -1; }
+
+.picker-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  color: var(--ink-muted);
+  font-size: 12.5px;
+}

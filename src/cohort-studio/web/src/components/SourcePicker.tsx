@@ -12,6 +12,8 @@ interface Props {
   table: string;
   loading?: boolean;
   busy?: boolean;
+  /** Label of the datasource whose tables are being listed. */
+  listing?: string;
   onSourceKeyChange: (value: string) => void;
   onTableChange: (value: string) => void;
   onLoadTable: () => void;
@@ -49,7 +51,7 @@ function TableDetails({ info }: { info: TableInfo }) {
 }
 
 export function SourcePicker({ sources, tables, sourceKey, table, loading = false,
-  busy = false, onSourceKeyChange, onTableChange, onLoadTable }: Props) {
+  busy = false, listing = "", onSourceKeyChange, onTableChange, onLoadTable }: Props) {
   const selectedSource = sources.find((source) =>
     `${source.kind}:${source.id}` === sourceKey);
   const [sourceKind, setSourceKind] = useState<SourceKind | "">(
@@ -129,6 +131,9 @@ export function SourcePicker({ sources, tables, sourceKey, table, loading = fals
                   value={`${source.kind}:${source.id}`}>{source.label || source.id}</option>
         ))}
       </select>
+      {listing && <div className="picker-status" role="status">
+        <span className="spinner small" aria-hidden="true" />Listing tables in {listing}…
+      </div>}
 
       {showSchema && schemas.length > 0 && !loading && (
         <>
@@ -163,7 +168,7 @@ export function SourcePicker({ sources, tables, sourceKey, table, loading = fals
           <select aria-label="Table" value={table}
                   disabled={loading || needsSchema}
                   onChange={(event) => onTableChange(event.target.value)}>
-            <option value="">Choose…</option>
+            <option value="">{listing ? "Listing tables…" : "Choose…"}</option>
             {visibleTables.map((item) => (
               <option key={item.name} value={item.name} title={item.sql ?? undefined}>
                 {selectedSource.kind === "s3" && fileFolder

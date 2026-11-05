@@ -47,7 +47,11 @@ const SOURCE_GROUP_LABEL: Record<Source["kind"], string> = {
 interface CondRow extends JoinCondition { touched?: boolean }
 
 /** A value-filter row in the editor; `text` is what the user typed. */
-interface FilterRow { column: string; op: JoinFilterOp; text: string; touched?: boolean }
+interface FilterRow {
+  column: string; op: JoinFilterOp; text: string; touched?: boolean;
+  /** Saved list values, sent as-is until the user edits the text. */
+  list?: JoinFilterValue[];
+}
 
 /** `uid` is a stable React key: index keys let a removed step's open
  * details and combobox state leak into the step that moves up. */
@@ -98,6 +102,41 @@ function typedValue(text: string, kind: ColKind): JoinFilterValue {
   return kind === "text" ? text : raw;
 }
 
+/** List text: items separated by commas; an item containing a comma, a quote or
+ * edge spaces is written in double quotes with inner quotes doubled
+ * ("Smith, John", "say ""hi"""). */
+function formatList(values: JoinFilterValue[]): string {
+  return values.map((v) => {
+    const text = String(v);
+    return /[",]|^\s|\s$/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }).join(", ");
+}
+
+function parseList(text: string): string[] {
+  const items: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    while (text[i] === " " || text[i] === "\t") i++;
+    if (i >= text.length) break;
+    let item = "";
+    if (text[i] === '"') {
+      i++;
+      while (i < text.length) {
+        if (text[i] === '"' && text[i + 1] === '"') { item += '"'; i += 2; }
+        else if (text[i] === '"') { i++; break; }
+        else item += text[i++];
+      }
+      while (i < text.length && text[i] !== ",") i++;   // ignore text after the closing quote
+      items.push(item);
+    } else {
+      while (i < text.length && text[i] !== ",") item += text[i++];
+      if (item.trim()) items.push(item.trim());
+    }
+    i++;   // skip the comma
+  }
+  return items;
+}
+
 /** Filter rows the server should see: blank rows (no column) and rows still
  * missing a value are left out. */
 function sentFilters(rows: FilterRow[], columns: ColumnProfile[]): { filter: JoinFilter; row: number }[] {
@@ -107,7 +146,7 @@ function sentFilters(rows: FilterRow[], columns: ColumnProfile[]): { filter: Joi
     const kind = colKind(columns.find((c) => c.name === row.column));
     if (NULL_OPS.includes(row.op)) out.push({ filter: { column: row.column, op: row.op }, row: index });
     else if (LIST_OPS.includes(row.op)) out.push({ row: index, filter: { column: row.column, op: row.op,
-      value: row.text.split(",").map((v) => v.trim()).filter(Boolean).map((v) => typedValue(v, kind)) } });
+      value: row.list ?? parseList(row.text).map((v) => typedValue(v, kind)) } });
     else out.push({ row: index, filter: { column: row.column, op: row.op,
       value: row.op === "contains" ? row.text : typedValue(row.text, kind) } });
   });
@@ -117,13 +156,15 @@ function sentFilters(rows: FilterRow[], columns: ColumnProfile[]): { filter: Joi
 function filterProblem(row: FilterRow): string | null {
   if (!row.column || NULL_OPS.includes(row.op)) return null;
   if (LIST_OPS.includes(row.op))
-    return row.text.split(",").some((v) => v.trim()) ? null : `Enter one or more values for ${row.column}, separated by commas.`;
+    return (row.list?.length || parseList(row.text).length) ? null
+      : `Enter one or more values for ${row.column}, separated by commas.`;
   return row.text.trim() ? null : `Enter a value for ${row.column}.`;
 }
 
 const fromFilter = (f: JoinFilter): FilterRow => ({
   column: f.column, op: f.op, touched: true,
-  text: Array.isArray(f.value) ? f.value.join(", ") : f.value == null ? "" : String(f.value),
+  text: Array.isArray(f.value) ? formatList(f.value) : f.value == null ? "" : String(f.value),
+  ...(Array.isArray(f.value) ? { list: f.value } : {}),
 });
 
 /** Leaving a row (focus moves outside it) marks it touched. */
@@ -137,7 +178,11 @@ function FilterEditor({ rows, columns, table, label, checks, disabled, onChange 
 }) {
   const sent = sentFilters(rows, columns);
   const set = (k: number, patch: Partial<FilterRow>) =>
-    onChange(rows.map((row, m) => (m === k ? { ...row, ...patch } : row)));
+    onChange(rows.map((row, m) => (m !== k ? row : {
+      ...row, ...patch,
+      // Editing the value or column drops the saved list; the text is parsed instead.
+      ...("text" in patch || "column" in patch ? { list: undefined } : {}),
+    })));
   const hasBlank = rows.some((row) => !row.column);
   return (
     <div className={`join-section join-filters${label === "Start table" ? " join-base-filters" : ""}`} role="group" aria-label={`${label} filters`}>
@@ -190,6 +235,7 @@ function FilterEditor({ rows, columns, table, label, checks, disabled, onChange 
                   <input type="text" className="join-filter-value" aria-label={`${name} value`} value={row.text}
                          disabled={disabled}
                          inputMode={kind === "number" && !LIST_OPS.includes(row.op) ? "decimal" : undefined}
+                         title={LIST_OPS.includes(row.op) ? 'Separate values with commas; quote a value that contains a comma: "Smith, John"' : undefined}
                          placeholder={LIST_OPS.includes(row.op) ? "value, value, …"
                            : kind === "number" ? "number" : kind === "time" ? "2024-01-31" : "text"}
                          onChange={(e) => set(k, { text: e.target.value })} />

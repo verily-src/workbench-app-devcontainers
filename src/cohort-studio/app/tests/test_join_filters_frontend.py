@@ -239,3 +239,16 @@ def test_untouched_rows_stay_quiet_and_disabled_buttons_say_why(page, app_url):
     panel.get_by_label("Step 1 filter 1 value").fill("2")
     expect(join_button).to_be_enabled(timeout=10000)
     expect(panel.locator(".join-check.join-error")).to_have_count(0)
+
+    # List values: quoted items may contain commas and doubled quotes.
+    panel.get_by_role("button", name="Add filter to Step 1").click()
+    panel.get_by_label("Step 1 filter 2 column").select_option("gene")
+    panel.get_by_label("Step 1 filter 2 operator").select_option("in")
+    panel.get_by_label("Step 1 filter 2 value").fill('"Smith, John", Doe ,"say ""hi"""')
+    expected = {"column": "gene", "op": "in", "value": ["Smith, John", "Doe", 'say "hi"']}
+    for _ in range(50):
+        if validations[-1]["steps"][0].get("filters", [None, None])[-1] == expected:
+            break
+        page.wait_for_timeout(100)
+    assert validations[-1]["steps"][0]["filters"] == [
+        {"column": "dosage", "op": "=", "value": 2}, expected]

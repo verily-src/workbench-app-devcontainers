@@ -23,7 +23,8 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
             "source": right_ref, "how": "left",
             "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}],
             "columns": None, "alias": "variants",
-            "filters": [{"column": "variant_code", "op": "in", "value": ["v1", "v2"]}],
+            "filters": [{"column": "variant_code", "op": "in",
+                         "value": ["v1", "Smith, John", 'say "hi"']}],
         }],
     }
     opened = []
@@ -199,7 +200,8 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     expect(page.get_by_label("Start table filter 1 value")).to_have_value("1950")
     expect(page.get_by_label("Step 1 filter 1 column")).to_have_value("variant_code")
     expect(page.get_by_label("Step 1 filter 1 operator")).to_have_value("in")
-    expect(page.get_by_label("Step 1 filter 1 value")).to_have_value("v1, v2")
+    expect(page.get_by_label("Step 1 filter 1 value")).to_have_value(
+        'v1, "Smith, John", "say ""hi"""')
 
     page.get_by_role("radio", name="Inner").click()
     page.get_by_label("Right key step 1 condition 1").select_option("study_id")

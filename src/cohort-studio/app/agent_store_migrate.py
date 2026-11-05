@@ -86,6 +86,13 @@ CREATE INDEX IF NOT EXISTS workflow_plans_owner_updated_idx
     ON _studio_agent.workflow_plans (owner_hash, updated_at DESC);
 CREATE INDEX IF NOT EXISTS workflow_plans_expiry_idx
     ON _studio_agent.workflow_plans (expires_at) WHERE expires_at IS NOT NULL;
+CREATE TABLE IF NOT EXISTS _studio_agent.session_state (
+    session_id uuid PRIMARY KEY REFERENCES _studio_agent.sessions(session_id) ON DELETE CASCADE,
+    payload jsonb NOT NULL,
+    updated_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS session_state_updated_idx
+    ON _studio_agent.session_state (updated_at);
 REVOKE ALL ON ALL TABLES IN SCHEMA _studio_agent FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA _studio_agent FROM PUBLIC;
 """

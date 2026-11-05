@@ -8,7 +8,8 @@ import urllib.request
 import threading
 import time
 import xml.etree.ElementTree as ET
-from datetime import date
+import math
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
@@ -46,12 +47,47 @@ class PubMedRequest(BaseModel):
         return value
 
 
+BIORXIV_DEFAULT_WINDOW_DAYS = 90
+
+
+def _utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
 class BioRxivRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     query: str = Field(min_length=1, max_length=500)
     start_date: date
     end_date: date
     limit: StrictInt = Field(default=5, ge=1, le=10)
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_window(cls, data: Any) -> Any:
+        # Omitted dates default to the most recent BIORXIV_DEFAULT_WINDOW_DAYS.
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        start, end = data.get("start_date"), data.get("end_date")
+        if end in (None, ""):
+            end_day = _utc_today()
+            if start not in (None, "") and isinstance(start, str) \
+                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", start):
+                try:
+                    end_day = min(end_day, date.fromisoformat(start)
+                                  + timedelta(days=BIORXIV_DEFAULT_WINDOW_DAYS))
+                except ValueError:
+                    pass
+            data["end_date"] = end_day.isoformat()
+        if start in (None, ""):
+            end_value = data["end_date"]
+            if isinstance(end_value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", end_value):
+                try:
+                    data["start_date"] = (date.fromisoformat(end_value)
+                                          - timedelta(days=BIORXIV_DEFAULT_WINDOW_DAYS)).isoformat()
+                except ValueError:
+                    pass
+        return data
 
     @field_validator("query")
     @classmethod
@@ -91,7 +127,13 @@ class LiteratureRecord(BaseModel):
 
 
 _TIMEOUT = 8
-_BIORXIV_MAX_PAGES = 3
+_BIORXIV_PAGE_SIZE = 30
+_BIORXIV_MAX_PAGES = 12
+_BIORXIV_TIME_BUDGET_SECONDS = 25.0
+_QUERY_STOPWORDS = frozenset({
+    "a", "an", "and", "or", "not", "the", "of", "in", "on", "for", "to", "with",
+    "by", "from", "at", "as", "is", "are", "be", "via", "into", "about", "using",
+    "study", "studies", "paper", "papers", "preprint", "preprints", "recent"})
 _NCBI_LOCK = threading.Lock()
 _NCBI_LAST_CALL = 0.0
 
@@ -180,16 +222,46 @@ def search_pubmed(query: str, limit: int = 5, api_key: str = "") -> dict[str, An
     return {"articles": records[:request.limit], "coverage": {"query": request.query, "total_matches": total_matches, "ids_fetched": len(ids), "returned": min(len(records), request.limit)}}
 
 
-def search_biorxiv(query: str, start_date: str, end_date: str, limit: int = 5) -> dict[str, Any]:
+def _query_terms(query: str) -> list[str]:
+    terms = [term for term in re.findall(r"[\w-]+", query.casefold())
+             if term not in _QUERY_STOPWORDS and len(term) > 1]
+    return list(dict.fromkeys(terms))
+
+
+def _required_matches(terms: list[str]) -> int:
+    # Two or fewer terms must all match; longer queries tolerate a miss.
+    return len(terms) if len(terms) <= 2 else math.ceil(0.75 * len(terms))
+
+
+def _term_hits(terms: list[str], text: str) -> int:
+    return sum(1 for term in terms
+               if re.search(r"(?<![\w])" + re.escape(term), text))
+
+
+def search_biorxiv(query: str, start_date: str | None = None, end_date: str | None = None,
+                   limit: int = 5) -> dict[str, Any]:
     request = BioRxivRequest(query=query, start_date=start_date, end_date=end_date, limit=limit)
-    term = request.query.casefold()
-    matches: list[dict[str, Any]] = []
+    terms = _query_terms(request.query) or [request.query.casefold()]
+    needed = _required_matches(terms)
+    candidates: list[tuple[int, int, dict[str, Any]]] = []
+    full_matches = 0
     scanned = 0
     total = 0
+    started = time.monotonic()
     base = "https://api.biorxiv.org/details/biorxiv"
+    window = f"bioRxiv details API; date window {request.start_date.isoformat()} to {request.end_date.isoformat()}"
+
+    def result() -> dict[str, Any]:
+        ranked = [record for _, _, record in sorted(candidates, key=lambda item: (-item[0], item[1]))]
+        return {"articles": ranked[:request.limit], "coverage": {
+            "start_date": request.start_date.isoformat(), "end_date": request.end_date.isoformat(),
+            "records_scanned": scanned, "total_in_window": total, "truncated": scanned < total}}
+
     try:
         for page in range(_BIORXIV_MAX_PAGES):
-            offset = page * 30
+            if page and time.monotonic() - started > _BIORXIV_TIME_BUDGET_SECONDS:
+                break
+            offset = page * _BIORXIV_PAGE_SIZE
             data = json.loads(_get(f"{base}/{request.start_date.isoformat()}/{request.end_date.isoformat()}/{offset}", {}))
             collection = data.get("collection", [])
             if not isinstance(collection, list):
@@ -199,21 +271,24 @@ def search_biorxiv(query: str, start_date: str, end_date: str, limit: int = 5) -
                 scanned += 1
                 if not isinstance(item, dict):
                     continue
-                haystack = " ".join(str(item.get(field, "")) for field in ("title", "abstract", "authors")).casefold()
-                if term not in haystack:
+                haystack = " ".join(str(item.get(field, "")) for field in ("title", "abstract")).casefold()
+                hits = _term_hits(terms, haystack)
+                if hits < needed:
                     continue
                 doi = str(item.get("doi", ""))
                 if not doi or not re.fullmatch(r"10\.1101/[A-Za-z0-9._/-]+", doi):
                     continue
                 abstract = str(item.get("abstract", ""))
-                matches.append(LiteratureRecord(source="bioRxiv", title=str(item.get("title", ""))[:400], authors=[x.strip()[:100] for x in str(item.get("authors", "")).split(";")[:10] if x.strip()], date=str(item.get("date", ""))[:100], doi=doi, url=f"https://doi.org/{doi}", abstract=abstract[:3000], abstract_truncated=len(abstract) > 3000, provenance=f"bioRxiv details API; date window {request.start_date.isoformat()} to {request.end_date.isoformat()}", status="Preprint; not peer reviewed at posting").model_dump())
-                if len(matches) >= request.limit:
-                    return {"articles": matches, "coverage": {"start_date": request.start_date.isoformat(), "end_date": request.end_date.isoformat(), "records_scanned": scanned, "total_in_window": total, "truncated": scanned < total}}
-            total = int(data.get("messages", [{}])[0].get("total", 0))
-            if not collection or offset + 30 >= total:
+                record = LiteratureRecord(source="bioRxiv", title=str(item.get("title", ""))[:400], authors=[x.strip()[:100] for x in str(item.get("authors", "")).split(";")[:10] if x.strip()], date=str(item.get("date", ""))[:100], doi=doi, url=f"https://doi.org/{doi}", abstract=abstract[:3000], abstract_truncated=len(abstract) > 3000, provenance=window, status="Preprint; not peer reviewed at posting").model_dump()
+                candidates.append((hits, len(candidates), record))
+                if hits == len(terms):
+                    full_matches += 1
+                    if full_matches >= request.limit:
+                        return result()
+            if not collection or offset + _BIORXIV_PAGE_SIZE >= total:
                 break
     except LiteratureError:
         raise
     except Exception as exc:
         raise LiteratureError("bioRxiv returned an invalid response") from None
-    return {"articles": matches, "coverage": {"start_date": request.start_date.isoformat(), "end_date": request.end_date.isoformat(), "records_scanned": scanned, "total_in_window": total, "truncated": scanned < total}}
+    return result()

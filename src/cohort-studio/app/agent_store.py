@@ -6,9 +6,10 @@ import hashlib
 import json
 import os
 import re
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import Engine, text
@@ -39,6 +40,9 @@ SECRET_KEYS = re.compile(r"(?i)(secret|password|passwd|token|credential|api[_-]?
 OMIT_KEYS = re.compile(r"(?i)^(output|result|rows?|preview|content|arguments?|args|tool_output)$")
 SAFE_USAGE_KEYS = {"input_tokens", "output_tokens", "prompt_tokens",
                    "completion_tokens", "total_tokens"}
+MAX_STATE_BYTES = 24_000
+_STATE_TABLE = f"{SCHEMA}.session_state"
+logger = logging.getLogger(__name__)
 
 
 class StoreInput(BaseModel):
@@ -73,12 +77,49 @@ class Usage(StoreInput):
     output_tokens: int | None = Field(default=None, ge=0, le=2_000_000)
 
 
+class StateDataset(StoreInput):
+    dataset_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    title: str = Field(default="", max_length=128)
+    source_ref: dict[str, Any] | None = None
+    filters: list[dict[str, Any]] = Field(default_factory=list, max_length=30)
+    charts: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
+
+
+class StateConcept(StoreInput):
+    resource_id: str = Field(min_length=1, max_length=256)
+    concept_id: int
+    name: str = Field(default="", max_length=255)
+    domain: str = Field(default="", max_length=64)
+
+
+class StateTable(StoreInput):
+    source_ref: dict[str, Annotated[str, Field(max_length=512)]]
+    columns: list[Annotated[str, Field(max_length=512)]] = Field(default_factory=list,
+                                                                  max_length=60)
+
+
+class StateCohort(StoreInput):
+    resource_id: str = Field(min_length=1, max_length=256)
+    spec: dict[str, Any]
+    persons: int | None = None
+
+
+class WorkingState(StoreInput):
+    """Compact per-session Agent working state recorded from tool results."""
+    version: Literal[1] = 1
+    datasets: list[StateDataset] = Field(default_factory=list, max_length=8)
+    concepts: list[StateConcept] = Field(default_factory=list, max_length=120)
+    tables: list[StateTable] = Field(default_factory=list, max_length=12)
+    cohort: StateCohort | None = None
+
+
 class TurnContext(BaseModel):
     session_id: uuid.UUID
     run_id: uuid.UUID
     history: list[dict[str, str]]
     prompt_version: int
     prompt_digest: str
+    working_state: dict[str, Any] | None = None
 
 
 class HistoryMessage(BaseModel):
@@ -189,6 +230,7 @@ class AgentStore:
                         VALUES (CAST(:sid AS uuid), :run_id, 'assistant', :content, :now)
                     """), {"sid": str(sid), "run_id": session["active_run_id"],
                            "content": FAILED_TURN_MESSAGE, "now": now})
+                working_state = _load_state(conn, sid)
                 history = conn.execute(text(f"""
                     SELECT role, content FROM (
                         SELECT role, content, message_id FROM {SCHEMA}.messages
@@ -214,7 +256,8 @@ class AgentStore:
                        "lease_until": now + timedelta(seconds=self.lease_seconds), "now": now})
             prior = [{"role": row["role"], "content": row["content"]} for row in history]
             return TurnContext(session_id=sid, run_id=run_id, history=prior,
-                               prompt_version=prompt_row.version, prompt_digest=digest)
+                               prompt_version=prompt_row.version, prompt_digest=digest,
+                               working_state=working_state)
         except (AgentStoreError, AgentStoreBusy, AgentStoreOwnershipError):
             raise
         except SQLAlchemyError as exc:
@@ -280,15 +323,40 @@ class AgentStore:
             raise AgentStoreError("Could not persist agent event.") from exc
 
     def finish(self, context: TurnContext, assistant_message: str, *,
-               usage: dict[str, int | None] | None = None) -> None:
+               usage: dict[str, int | None] | None = None,
+               working_state: dict[str, Any] | None = None) -> None:
         self._close(context, status="completed", assistant_message=assistant_message,
-                    usage=usage, error_class=None)
+                    usage=usage, error_class=None, working_state=working_state)
 
     def fail(self, context: TurnContext, *, error_class: str,
              usage: dict[str, int | None] | None = None,
-             assistant_message: str = FAILED_TURN_MESSAGE) -> None:
+             assistant_message: str = FAILED_TURN_MESSAGE,
+             working_state: dict[str, Any] | None = None) -> None:
         self._close(context, status="failed", assistant_message=assistant_message,
-                    usage=usage, error_class=error_class)
+                    usage=usage, error_class=error_class, working_state=working_state)
+
+    def working_state(self, *, session_id: str | uuid.UUID, owner: str,
+                      scope: str) -> dict[str, Any] | None:
+        """Return the saved working state for an owned session, if any."""
+        try:
+            sid = uuid.UUID(str(session_id))
+        except (ValueError, TypeError) as exc:
+            raise AgentStoreError("Invalid agent session request.") from exc
+        owner_hash = hashlib.sha256(owner.encode()).hexdigest()
+        try:
+            with self.engine.connect() as conn:
+                _set_timeouts(conn)
+                allowed = conn.execute(text(f"""
+                    SELECT 1 FROM {SCHEMA}.sessions
+                    WHERE session_id = :sid AND owner_hash = :owner_hash AND scope = :scope
+                """), {"sid": sid, "owner_hash": owner_hash, "scope": scope}).first()
+                if allowed is None:
+                    raise AgentStoreNotFound("Agent session was not found.")
+                return _load_state(conn, sid)
+        except AgentStoreNotFound:
+            raise
+        except SQLAlchemyError as exc:
+            raise AgentStoreError("Could not load agent working state.") from exc
 
     def latest(self, *, owner: str, scope: str) -> uuid.UUID | None:
         owner_hash = hashlib.sha256(owner.encode()).hexdigest()
@@ -380,7 +448,9 @@ class AgentStore:
 
     def _close(self, context: TurnContext, *, status: str,
                assistant_message: str | None, usage: dict[str, int | None] | None,
-               error_class: str | None) -> None:
+               error_class: str | None, working_state: dict[str, Any] | None = None) -> None:
+        # Invalid working state is dropped; it must never keep the session leased.
+        state_payload = _state_payload(working_state)
         try:
             parsed_usage = Usage(**(usage or {}))
             answer = (_sanitize_text(AssistantMessage(content=assistant_message).content,
@@ -426,6 +496,13 @@ class AgentStore:
                         VALUES (CAST(:sid AS uuid), :run_id, 'assistant', :content, :now)
                     """), {"sid": str(context.session_id), "run_id": context.run_id,
                            "content": answer, "now": now})
+                if state_payload is not None and _state_table_exists(conn):
+                    conn.execute(text(f"""
+                        INSERT INTO {_STATE_TABLE} (session_id, payload, updated_at)
+                        VALUES (CAST(:sid AS uuid), CAST(:payload AS jsonb), :now)
+                        ON CONFLICT (session_id) DO UPDATE
+                        SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
+                    """), {"sid": str(context.session_id), "payload": state_payload, "now": now})
                 conn.execute(text(f"""
                     UPDATE {SCHEMA}.sessions SET active_run_id = NULL, lease_until = NULL, updated_at = :now
                     WHERE session_id = CAST(:sid AS uuid) AND active_run_id = :run_id
@@ -445,6 +522,10 @@ class AgentStore:
                     WHERE status <> 'running' AND completed_at < :cutoff
                     RETURNING run_id
                 """), {"cutoff": cutoff}).fetchall()
+                if _state_table_exists(conn):
+                    conn.execute(text(f"""
+                        DELETE FROM {_STATE_TABLE} WHERE updated_at < :cutoff
+                    """), {"cutoff": cutoff})
                 conn.execute(text(f"""
                     DELETE FROM {SCHEMA}.prompts p
                     WHERE NOT EXISTS (
@@ -461,6 +542,55 @@ def _require_schema(conn) -> None:
     if not exists:
         raise AgentStoreError(
             "Agent store schema is missing; run scripts/migrate_agent_store.py.")
+
+
+def _state_table_exists(conn) -> bool:
+    # Deployments that have not re-run the migration keep working without memory.
+    return bool(conn.execute(text(
+        f"SELECT to_regclass('{_STATE_TABLE}') IS NOT NULL")).scalar())
+
+
+def _redact(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _redact(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    if isinstance(value, str):
+        return _sanitize_text(value)
+    return value
+
+
+def validate_state(value: Any) -> dict[str, Any] | None:
+    """Validate, redact and bound a working-state payload; None when unusable."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        state = _redact(WorkingState.model_validate(value).model_dump(mode="json"))
+        encoded = json.dumps(state, separators=(",", ":"), ensure_ascii=False)
+    except (ValidationError, TypeError, ValueError):
+        return None
+    if len(encoded.encode()) > MAX_STATE_BYTES:
+        return None
+    return state
+
+
+def _state_payload(value: Any) -> str | None:
+    if value is None:
+        return None
+    state = validate_state(value)
+    if state is None:
+        logger.warning("Agent working state was invalid or too large; it was not saved.")
+        return None
+    return json.dumps(state, separators=(",", ":"), ensure_ascii=False)
+
+
+def _load_state(conn, sid: uuid.UUID) -> dict[str, Any] | None:
+    if not _state_table_exists(conn):
+        return None
+    row = conn.execute(text(f"""
+        SELECT payload FROM {_STATE_TABLE} WHERE session_id = CAST(:sid AS uuid)
+    """), {"sid": str(sid)}).scalar()
+    return validate_state(row) if row is not None else None
 
 
 def _set_timeouts(conn) -> None:

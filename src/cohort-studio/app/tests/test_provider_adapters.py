@@ -59,8 +59,11 @@ def test_anthropic_response_maps_tool_use_and_usage():
                                    "id": "use-1", "type": "tool_call"}]
     assert message.usage_metadata == {"input_tokens": 8, "output_tokens": 4,
                                       "total_tokens": 12}
-    assert captured["system"] == "system"
+    assert captured["system"] == [{"type": "text", "text": "system",
+                                   "cache_control": {"type": "ephemeral"}}]
     assert captured["tools"][0]["name"] == "run_query"
+    assert captured["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert "tool_choice" not in captured
 
 
 def test_bedrock_uses_graph_and_reconstructs_tool_messages():

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import re
 import secrets
 import time
@@ -20,6 +21,7 @@ _TOOL_ERROR_CODES = {
     "no_progress",
 }
 _LIMIT_REASONS = {"wall_clock", "tool_calls", "turn_budget"}
+logger = logging.getLogger(__name__)
 
 
 def current_session_id():
@@ -77,6 +79,7 @@ class Session:
     turn: object = None
     timings: dict = field(default_factory=dict)
     new_session: bool = False
+    state_provider: object = None
 
 
 @contextmanager
@@ -92,6 +95,7 @@ def bind(owner_id: str, scope: str, session_id: str | None, *, new_session: bool
     except Exception as exc:
         if session.turn is not None:
             session.store.fail(session.turn, error_class=type(exc).__name__,
+                               working_state=_snapshot(session),
                                **({"assistant_message": "Stopped by request. Already-submitted cloud workflows are unchanged."}
                                   if isinstance(exc, AgentCancelled) else {}))
         raise
@@ -111,6 +115,31 @@ def start(system: str, cfg: dict, message: str) -> list[dict] | None:
         system_prompt=system, user_message=message,
         provider=cfg["provider"], model=cfg["model"])
     return session.turn.history
+
+
+def working_state() -> dict | None:
+    """Working state saved by the previous turn of the bound, owner-checked session."""
+    session = _current.get()
+    if session is None or session.turn is None:
+        return None
+    return getattr(session.turn, "working_state", None)
+
+
+def track_state(provider) -> None:
+    """Register a callable whose snapshot is saved when the bound turn closes."""
+    session = _current.get()
+    if session is not None:
+        session.state_provider = provider
+
+
+def _snapshot(session) -> dict | None:
+    if session.state_provider is None:
+        return None
+    try:
+        return session.state_provider()
+    except Exception:
+        logger.warning("Agent working state snapshot failed; it was not saved.", exc_info=True)
+        return None
 
 
 def event(value: dict):
@@ -153,10 +182,12 @@ def finish(result: dict) -> dict:
             error_class = ("AgentLimitReached" if result.get("limit_reached") else
                            "ToolFailureLoopStopped")
             session.store.fail(session.turn, error_class=error_class,
-                               assistant_message=result["reply"], usage=stored_usage)
+                               assistant_message=result["reply"], usage=stored_usage,
+                               working_state=_snapshot(session))
             result["run_status"] = "failed"
         else:
-            session.store.finish(session.turn, result["reply"], usage=stored_usage)
+            session.store.finish(session.turn, result["reply"], usage=stored_usage,
+                                 working_state=_snapshot(session))
             result["run_status"] = "completed"
         result["session_id"] = str(session.turn.session_id)
         result["trace_id"] = str(session.turn.run_id)

@@ -70,7 +70,7 @@ def test_managed_migration_creates_working_store(engine, monkeypatch):
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_schema='_studio_agent'" )).scalars()) == {
             "dashboard_artifacts", "prompts", "sessions", "runs", "messages",
-            "events", "workflow_plans"}
+            "events", "workflow_plans", "session_state"}
     store = agent_store.AgentStore()
     turn = store.begin(session_id=None, owner="managed-test-owner", scope="managed-test",
                        system_prompt="Test", user_message="Hello", provider="test", model="test")

@@ -202,6 +202,11 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     expect(page.get_by_label("Step 1 filter 1 operator")).to_have_value("in")
     expect(page.get_by_label("Step 1 filter 1 value")).to_have_value(
         'v1, "Smith, John", "say ""hi"""')
+    # A null check in between keeps the restored list intact.
+    page.get_by_label("Step 1 filter 1 operator").select_option("is null")
+    page.get_by_label("Step 1 filter 1 operator").select_option("in")
+    expect(page.get_by_label("Step 1 filter 1 value")).to_have_value(
+        'v1, "Smith, John", "say ""hi"""')
 
     page.get_by_role("radio", name="Inner").click()
     page.get_by_label("Right key step 1 condition 1").select_option("study_id")

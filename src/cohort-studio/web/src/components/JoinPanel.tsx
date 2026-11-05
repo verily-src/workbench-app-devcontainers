@@ -118,7 +118,8 @@ function formatList(values: JoinFilterValue[]): string {
  * so list quoting never leaks into a scalar value (or the reverse). */
 function convertValue(row: FilterRow, op: JoinFilterOp): Partial<FilterRow> {
   // Null checks carry no value: keep the text (and its form) so switching back restores it.
-  if (NULL_OPS.includes(op)) return {};
+  if (NULL_OPS.includes(op))
+    return { textIsList: row.textIsList ?? (NULL_OPS.includes(row.op) ? false : LIST_OPS.includes(row.op)) };
   const wasList = row.textIsList ?? LIST_OPS.includes(row.op), isList = LIST_OPS.includes(op);
   if (wasList === isList) return { textIsList: isList };
   if (wasList) {
@@ -181,6 +182,7 @@ function filterProblem(row: FilterRow): string | null {
 const fromFilter = (f: JoinFilter): FilterRow => ({
   column: f.column, op: f.op, touched: true,
   text: Array.isArray(f.value) ? formatList(f.value) : f.value == null ? "" : String(f.value),
+  textIsList: Array.isArray(f.value),
   ...(Array.isArray(f.value) ? { list: f.value } : {}),
 });
 

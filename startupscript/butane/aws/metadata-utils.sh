@@ -79,3 +79,9 @@ function set_metadata() (
       --tags Key="\"vwbapp:${key}\",Value=\"${escaped}\""
 )
 readonly -f set_metadata
+
+# Only GCE VMs can be share-enabled. Kept for a consistent interface with GCP.
+function is_share_enabled_vm() {
+  return 1
+}
+readonly -f is_share_enabled_vm

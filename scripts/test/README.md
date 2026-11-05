@@ -5,7 +5,8 @@ also require Docker with Compose.
 
 ```bash
 npm ci --prefix startupscript/butane
-bats scripts/test/parse-devcontainer.bats scripts/test/devcontainer.bats scripts/test/container-utils.bats
+bats scripts/test/parse-devcontainer.bats scripts/test/devcontainer.bats scripts/test/container-utils.bats \
+  scripts/test/share-enabled.bats
 
 docker pull python:3.12-alpine
 docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
@@ -20,6 +21,10 @@ bats scripts/test/integration
   supported config location.
 - `container-utils.bats`: default routing, project-scoped proxy overrides, invalid
   lookups, readiness requiring both the app and frontend, and metadata errors/overrides.
+- `share-enabled.bats`: detecting share-enabled VMs from their network tags,
+  including unreadable tags; the proxy agent's `--host` on both kinds of VM;
+  refusing loopback, link-local or missing app-network addresses; and the
+  bounded 403 retry in key registration, which other statuses and VMs don't get.
 - `integration/devcontainer.bats`: repeated offline restoration of the same initial
   snapshot, preserving setup-time files, the running browser, home data, and
   startup hooks while discarding later writable-layer changes; named home volume

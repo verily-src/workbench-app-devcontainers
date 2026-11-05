@@ -30,6 +30,7 @@ def test_parquet_parts_group_into_folder_entries():
         {"name": "flat/readme.csv", "bytes": 99},
         {"name": "single/only.parquet", "bytes": 5},
         {"name": "top.parquet", "bytes": 5},
+        {"name": "flat/upper.PARQUET", "bytes": 50},
     ]
     folders = duck.parquet_folders(entries)
     assert [f["name"] for f in folders] == ["events/", "flat/"]
@@ -124,11 +125,13 @@ def test_folder_size_sums_parquet_parts_across_pages(monkeypatch):
         {"Contents": [{"Key": "pre/ev/a.parquet", "Size": 10},
                       {"Key": "pre/ev/_SUCCESS", "Size": 0}],
          "NextContinuationToken": "t1"},
-        {"Contents": [{"Key": "pre/ev/year=1/b.PARQUET", "Size": 5}]},
+        {"Contents": [{"Key": "pre/ev/year=1/b.parquet", "Size": 5},
+                      {"Key": "pre/ev/year=1/c.PARQUET", "Size": 7}]},
     ])
     monkeypatch.setattr(disk_data, "_s3_client", lambda rid, name: (
         fake, "bucket", "pre/ev/", "s3://bucket/pre/ev/", "us-east-1", True))
     assert disk_data._folder_size("rid", "ev/") == (15, "s3://bucket/pre/ev/", "us-east-1", True)
+    # c.PARQUET is not matched by the case-sensitive folder glob, so it is not counted.
     assert fake.requests[0]["Prefix"] == "pre/ev/"
     assert fake.requests[1]["ContinuationToken"] == "t1"
 
@@ -198,3 +201,63 @@ def test_upload_rejects_corrupt_parquet_and_unknown_types():
 def test_join_alias_for_folders_and_gzip():
     assert joins.default_alias("bucket / events/") == "events"
     assert joins.default_alias("bucket / claims.csv.gz") == "claims"
+
+
+def test_uppercase_parts_are_neither_counted_nor_read(tmp_path):
+    """The folder glob is case-sensitive, so counts must match what it reads."""
+    _write_parquet(tmp_path / "mixed/a.parquet", "SELECT 1 AS id")
+    _write_parquet(tmp_path / "mixed/b.parquet", "SELECT 2 AS id")
+    _write_parquet(tmp_path / "mixed/c.PARQUET", "SELECT 3 AS id")
+    names = [{"name": f"mixed/{p.name}", "bytes": 1} for p in (tmp_path / "mixed").iterdir()]
+    assert duck.parquet_folders(names)[0]["parts"] == 2
+    sql = duck._reader_sql(f"{tmp_path}/mixed/")
+    assert duckdb.connect().execute(f"SELECT count(*) FROM {sql}").fetchone()[0] == 2
+
+
+def _registered(monkeypatch, keys, sizes=1):
+    import boto3
+    import source_registry
+
+    monkeypatch.setattr(source_registry, "s3_location",
+                        lambda rid: ("s3://lake/pre", "us-east-1", "pre"))
+    monkeypatch.setattr(source_registry, "get",
+                        lambda kind, rid: {"bucket": "lake", "prefix": "pre"})
+
+    class Client:
+        def list_objects_v2(self, **request):
+            start = int(request.get("ContinuationToken") or 0)
+            page = keys[start:start + request["MaxKeys"]]
+            out = {"Contents": [{"Key": f"pre/{k}", "Size": sizes} for k in page]}
+            if start + len(page) < len(keys):
+                out["NextContinuationToken"] = str(start + len(page))
+            return out
+
+    class Session:
+        def __init__(self, **kwargs):
+            pass
+
+        def client(self, *args, **kwargs):
+            return Client()
+
+    monkeypatch.setattr(boto3, "Session", Session)
+
+
+def test_registered_folders_count_parts_past_the_file_cap(monkeypatch):
+    keys = [f"big/part-{i:04}.parquet" for i in range(duck.MAX_LISTING + 100)]
+    keys += ["zzz/a.parquet", "zzz/b.parquet"]
+    _registered(monkeypatch, keys, sizes=2)
+    listed = duck.describe_s3_files("s3:lake")
+    folders = {e["name"]: e for e in listed if e["name"].endswith("/")}
+    assert folders["big/"]["parts"] == duck.MAX_LISTING + 100
+    assert folders["big/"]["bytes"] == 2 * (duck.MAX_LISTING + 100)
+    assert folders["zzz/"]["parts"] == 2
+    assert len([e for e in listed if not e["name"].endswith("/")]) == duck.MAX_LISTING
+
+
+def test_registered_folders_are_lower_bounds_when_the_scan_stops(monkeypatch):
+    monkeypatch.setattr(duck, "MAX_FOLDER_SCAN", 3)
+    _registered(monkeypatch, [f"ev/{i}.parquet" for i in range(5)])
+    folder = duck.describe_s3_files("s3:lake")[0]
+    assert folder["name"] == "ev/" and folder["partial"] is True
+    assert folder["detail"] == "Parquet folder · at least 3 parts"
+    assert "bytes" not in folder

@@ -40,12 +40,19 @@ def _dataset_root(name: str) -> str | None:
     return "/".join(parts) + "/" if parts else None
 
 
-def parquet_folders(entries: list[dict]) -> list[dict]:
-    """Group Parquet parts into folder entries for folders with several parts."""
+def is_parquet_part(name: str) -> bool:
+    """Parts read by a folder glob; S3 keys and DuckDB globs are case-sensitive."""
+    return name.endswith(".parquet")
+
+
+def parquet_folders(entries: list[dict], partial: bool = False) -> list[dict]:
+    """Group Parquet parts into folder entries for folders with several parts.
+
+    `partial` marks counts from a listing that stopped early, so they are lower bounds."""
     folders: dict[str, dict] = {}
     for entry in entries:
         name = entry["name"]
-        if not name.lower().endswith(".parquet"):
+        if not is_parquet_part(name):
             continue
         root = _dataset_root(name)
         if root is None or not _SAFE_KEY.match(root):
@@ -58,7 +65,12 @@ def parquet_folders(entries: list[dict]) -> list[dict]:
     out = []
     for folder in sorted(folders.values(), key=lambda f: f["name"]):
         if folder["parts"] >= PARQUET_FOLDER_MIN_PARTS:
-            folder["detail"] = f"Parquet folder · {folder['parts']} parts"
+            if partial:
+                folder["partial"] = True
+                folder["detail"] = f"Parquet folder · at least {folder['parts']} parts"
+                folder.pop("bytes")
+            else:
+                folder["detail"] = f"Parquet folder · {folder['parts']} parts"
             out.append(folder)
     return out
 
@@ -101,9 +113,13 @@ def _s3_ls(resource_id: str) -> tuple[str, str]:
     return result.stdout, prefix
 
 
-def _registered_s3_files(resource_id: str,
-                          suffixes: tuple[str, ...] = DATA_SUFFIXES,
-                          entries: bool = False) -> list | None:
+MAX_REGISTERED_SCAN = MAX_LISTING * 20
+MAX_FOLDER_SCAN = 100_000
+
+
+def _registered_s3_entries(resource_id: str, suffixes: tuple[str, ...],
+                           limit: int | None, max_scan: int) -> tuple[list[dict], bool] | None:
+    """Matching objects of a registered S3 source, and whether the scan stopped early."""
     import boto3
     import source_registry
 
@@ -118,6 +134,7 @@ def _registered_s3_files(resource_id: str,
     files = []
     token = None
     scanned = 0
+    truncated = False
     base_prefix = prefix.rstrip("/")
     while True:
         request = {"Bucket": source["bucket"],
@@ -131,25 +148,33 @@ def _registered_s3_files(resource_id: str,
             key = item.get("Key", "")
             relative = key[len(base_prefix) + 1:] if base_prefix else key
             if relative and not relative.endswith("/") and relative.lower().endswith(suffixes):
-                if entries:
-                    entry = {"name": relative}
-                    if isinstance(item.get("Size"), int):
-                        entry["bytes"] = item["Size"]
-                    if item.get("LastModified") is not None:
-                        entry["modified"] = item["LastModified"].strftime("%Y-%m-%d %H:%M:%S")
-                    files.append(entry)
-                else:
-                    files.append(relative)
-                if len(files) >= MAX_LISTING:
+                entry = {"name": relative}
+                if isinstance(item.get("Size"), int):
+                    entry["bytes"] = item["Size"]
+                if item.get("LastModified") is not None:
+                    entry["modified"] = item["LastModified"].strftime("%Y-%m-%d %H:%M:%S")
+                files.append(entry)
+                if limit is not None and len(files) >= limit:
                     break
-            if scanned >= MAX_LISTING * 20:
+            if scanned >= max_scan:
+                truncated = True
                 break
         else:
             token = response.get("NextContinuationToken")
             if token:
                 continue
         break
-    return sorted(files, key=lambda f: f["name"]) if entries else sorted(files)
+    return files, truncated
+
+
+def _registered_s3_files(resource_id: str,
+                          suffixes: tuple[str, ...] = DATA_SUFFIXES,
+                          entries: bool = False) -> list | None:
+    found = _registered_s3_entries(resource_id, suffixes, MAX_LISTING, MAX_REGISTERED_SCAN)
+    if found is None:
+        return None
+    files = sorted(found[0], key=lambda f: f["name"])
+    return files if entries else [f["name"] for f in files]
 
 @ttl_cache(ttl=300)
 def list_s3_files(resource_id: str) -> list[str]:
@@ -167,7 +192,10 @@ def describe_s3_files(resource_id: str) -> list[dict]:
     """Data files with size and modified time, from the same listing as list_s3_files."""
     registered = _registered_s3_files(resource_id, entries=True)
     if registered is not None:
-        return parquet_folders(registered) + registered
+        # Folders are counted over the whole listing, not the capped file list.
+        everything, truncated = _registered_s3_entries(
+            resource_id, (".parquet",), None, MAX_FOLDER_SCAN)
+        return parquet_folders(everything, partial=truncated) + registered
     output, prefix = _s3_ls(resource_id)
     folders = parquet_folders(parse_s3_ls_entries(output, prefix=prefix, limit=None))
     return folders + parse_s3_ls_entries(output, prefix=prefix)

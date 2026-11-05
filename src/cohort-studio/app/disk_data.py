@@ -274,7 +274,7 @@ def _folder_size(resource_id: str, folder: str) -> tuple[int, str, str, bool]:
                 request["ContinuationToken"] = token
             response = client.list_objects_v2(**request)
             for item in response.get("Contents", []):
-                if item.get("Key", "").lower().endswith(".parquet"):
+                if duck.is_parquet_part(item.get("Key", "")):
                     parts += 1
                     total += int(item.get("Size") or 0)
             if parts > MAX_FOLDER_PARTS:

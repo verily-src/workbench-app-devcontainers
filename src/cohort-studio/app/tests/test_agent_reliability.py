@@ -623,3 +623,20 @@ def test_retry_events_are_recorded_by_the_session_store(agent_store, monkeypatch
     assert result["run_status"] == "completed"
     history = client.get("/api/agent/chat/history").json()
     assert history["messages"][-1]["content"] == "Recovered after retry."
+
+
+def test_bedrock_receives_the_runtime_system_message_with_todays_date():
+    requests = []
+
+    class Client:
+        def converse(self, **kwargs):
+            requests.append(kwargs)
+            return {"output": {"message": {"content": [{"text": "hi"}]}}, "usage": {}}
+
+    for model in ("meta.llama3-70b-instruct-v1:0", "us.anthropic.claude-sonnet-4-20250514-v1:0"):
+        requests.clear()
+        bedrock.run(model, "us-east-1", "static system",
+                    [{"role": "user", "content": "hello"}], schema(), {}, client=Client())
+        text = requests[0]["system"][0]["text"]
+        assert text.startswith("static system")
+        assert "Today's date (UTC) is" in text

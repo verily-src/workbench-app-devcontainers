@@ -217,3 +217,25 @@ def test_live_dashboard_analysis_matches_database(workspace, ref):
         '[{"column":"year_of_birth","kind":"range","min":1900,"max":1950}]', [])
     assert updated["filtered"] == int(people.year_of_birth.between(1900, 1950).sum())
     assert ops.actions[-1]["update"] and ops.actions[-1]["dataset"]["query_scope"] == "database"
+
+
+def test_update_after_reopen_saves_to_the_original_artifact(frame, ops, agent_store, monkeypatch):
+    """A reopened dashboard gets a new dataset id; updates persist to the saved artifact."""
+    monkeypatch.setattr(store_module, "AgentStore", lambda: agent_store)
+    opened = _memory(frame)
+    did = opened["dataset_id"]
+    saved_id = "abcdef123456"
+    original = [{"column": "grp", "kind": "categorical", "values": ["A", "B"]}]
+    agent_artifacts.save(OWNER, {"dataset_id": saved_id, "title": "Values",
+        "source_ref": VALUES_REF, "filters": original, "charts": []})
+    _register(did, filters=original)
+    agent_mode_api._dashboards[did]["artifact_id"] = saved_id
+    try:
+        ops.update_dashboard(did, "[]", '[{"column":"value","kind":"range","min":4,"max":10}]', [])
+        stored = agent_artifacts.get(OWNER, saved_id)
+        assert {f["column"] for f in stored["filters"]} == {"grp", "value"}
+        assert ops.session_datasets[did]["saved_id"] == saved_id
+        rendered = agent_mode_api._render_memory(ops)
+        assert saved_id in rendered and "saved_id" in rendered
+    finally:
+        datasets.close_dataset(did)

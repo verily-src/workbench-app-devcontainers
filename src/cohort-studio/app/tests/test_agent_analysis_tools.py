@@ -237,5 +237,15 @@ def test_update_after_reopen_saves_to_the_original_artifact(frame, ops, agent_st
         assert ops.session_datasets[did]["saved_id"] == saved_id
         rendered = agent_mode_api._render_memory(ops)
         assert saved_id in rendered and "saved_id" in rendered
+        # The saved id survives a snapshot/restore round trip after the live dashboard is gone.
+        state = store_module.WorkingState.model_validate(ops.snapshot()).model_dump(exclude_none=True)
+        assert state["datasets"][-1]["saved_id"] == saved_id
+        agent_mode_api._dashboards.pop(did)
+        fresh = agent_mode_api.Operations(OWNER)
+        fresh.available = ops.available
+        text = fresh.restore(state)
+        assert fresh.session_datasets[did]["status"] == "expired"
+        assert fresh.session_datasets[did]["saved_id"] == saved_id
+        assert saved_id in text
     finally:
         datasets.close_dataset(did)

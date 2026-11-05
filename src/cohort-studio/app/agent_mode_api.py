@@ -670,7 +670,8 @@ class Operations:
                 "dataset_id": item["dataset_id"], "title": item["title"],
                 "source_ref": _bounded_json(item["source_ref"], 4000),
                 "filters": (_bounded_json(item["filters"], 3000) or [])[:30],
-                "charts": (item["charts"] or [])[:8]})
+                "charts": (item["charts"] or [])[:8],
+                **({"saved_id": item["saved_id"]} if item.get("saved_id") else {})})
         concepts = [{"resource_id": rid, "concept_id": cid, "name": name, "domain": domain}
                     for rid, values in self.concept_names.items()
                     for cid, (name, domain) in values.items()][-120:]

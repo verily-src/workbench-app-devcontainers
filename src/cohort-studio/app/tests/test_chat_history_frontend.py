@@ -33,7 +33,8 @@ def test_late_chat_reply_cannot_update_another_dataset(loaded_page):
     page = loaded_page
     page.locator('input[type="file"]').set_input_files(PHENO_CSV)
     expect(page.locator(".tabs > span")).to_have_count(2)
-    page.locator(".tabs > span").first.click()
+    # Click the tab title, not the tab centre, which can land on its Rename button.
+    page.locator(".tabs > span").first.locator("> span").click()
     page.route("**/chat/history?*", lambda route: route.fulfill(json={
         "session_id": None, "messages": [], "has_more": False,
         "next_before_message_id": None}))
@@ -43,7 +44,7 @@ def test_late_chat_reply_cannot_update_another_dataset(loaded_page):
     page.get_by_placeholder("Ask about the data…").fill("Plot tissue")
     page.get_by_role("button", name="Send", exact=True).click()
     expect(page.get_by_text("Working…", exact=True)).to_be_visible()
-    page.locator(".tabs > span").first.get_by_role("button").click()
+    page.locator(".tabs > span").first.get_by_role("button", name="✕", exact=True).click()
     expect(page.locator(".tabs > span")).to_have_count(1)
     pending[0].fulfill(json={"reply": "Late reply", "session_id": "00000000-0000-4000-8000-000000000001",
                              "filters": [], "charts": [{"kind": "bar", "x": "tissue"}], "actions": []})

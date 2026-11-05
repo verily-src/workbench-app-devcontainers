@@ -95,8 +95,7 @@ def test_registration_rejects_unsafe_identifiers(bad):
 
 
 
-def test_mcp_open_uses_the_registered_billing_project(monkeypatch):
-    import asyncio
+def test_mcp_open_uses_the_registered_billing_project(monkeypatch, run_async):
     import mcp_server
     if mcp_server.mcp is None:
         pytest.skip("MCP SDK not installed")
@@ -109,6 +108,6 @@ def test_mcp_open_uses_the_registered_billing_project(monkeypatch):
         seen["billing"] = billing
         return pd.DataFrame({"a": [1]})
     monkeypatch.setattr(bq, "fetch_table", fetch)
-    asyncio.run(mcp_server.mcp.call_tool("open_dataset", {
+    run_async(mcp_server.mcp.call_tool("open_dataset", {
         "kind": "bq", "resource_id": "bq:clinvar", "table": "t1"}))
     assert seen["billing"] == "my-billing-1"

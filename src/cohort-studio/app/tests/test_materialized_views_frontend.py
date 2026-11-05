@@ -44,23 +44,28 @@ def test_saved_view_materialization_status_refresh_and_failure(page: Page, app_u
 
     page.route("**/api/views/all", list_views)
 
+    def fulfill_open(route, result):
+        # Opens run as data jobs; reply with an already-complete job.
+        fulfill(route, {"job_id": f"open-{result['dataset_id']}", "kind": "open",
+                        "status": "complete", "result": result})
+
     def open_dataset(route):
         body = route.request.post_data_json
         if body.get("source_ref", {}).get("kind") == "materialized":
             loaded_refs.append(body["source_ref"])
-            fulfill(route, {"dataset_id": f"snapshot-{len(loaded_refs)}",
+            fulfill_open(route, {"dataset_id": f"snapshot-{len(loaded_refs)}",
                             "source": "Fixture / people snapshot", "rows": 1,
                             "columns": [{"name": "person_id", "dtype": "int64",
                                          "filter_kind": "none"}],
                             "source_ref": body["source_ref"],
                             "query_scope": "database"})
         else:
-            fulfill(route, {"dataset_id": "live-person", "source": "Fixture / person",
+            fulfill_open(route, {"dataset_id": "live-person", "source": "Fixture / person",
                             "rows": 1, "columns": [{"name": "person_id", "dtype": "int64",
                                                      "filter_kind": "none"}],
                             "source_ref": sources_ref, "query_scope": "database"})
 
-    page.route("**/api/datasets/open", open_dataset)
+    page.route("**/api/data-jobs/open", open_dataset)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 1, "filtered": 1, "scope": "database", "sampled": False,
         "charts": [], "rows": {"page": 0, "page_size": 50,

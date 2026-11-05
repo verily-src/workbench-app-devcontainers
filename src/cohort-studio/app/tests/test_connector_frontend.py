@@ -17,6 +17,12 @@ def _fulfill(route, body, status=200):
     route.fulfill(status=status, content_type="application/json", json=body)
 
 
+def _fulfill_job(route, kind, result):
+    """Reply to a /api/data-jobs/<kind> submission with an already-complete job."""
+    _fulfill(route, {"job_id": f"{kind}-job", "kind": kind, "status": "complete",
+                     "result": result})
+
+
 def _open_result(dataset_id, ref, column):
     return {"dataset_id": dataset_id, "source": f"Connector / {ref['kind']} / {column}",
             "rows": 2, "columns": [{"name": column, "dtype": "int64",
@@ -51,13 +57,13 @@ def test_postgres_athena_and_s3_use_shared_datasource_open_flow(page: Page, app_
         opened.append(body)
         if body.get("source_ref"):
             ref = body["source_ref"]
-            _fulfill(route, _open_result(f"{ref['kind']}-tab", ref, "person_id"))
+            _fulfill_job(route, "open", _open_result(f"{ref['kind']}-tab", ref, "person_id"))
         else:
             ref = {"kind": body["kind"], "resource_id": body["resource_id"],
                    "table": body["table"], "uuid": "s3-uuid"}
-            _fulfill(route, _open_result("s3-tab", ref, "person_id"))
+            _fulfill_job(route, "open", _open_result("s3-tab", ref, "person_id"))
 
-    page.route("**/api/datasets/open", open_table)
+    page.route("**/api/data-jobs/open", open_table)
     page.route("**/api/datasets/*/query", lambda route: _fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "charts": [], "rows": {"page": 0, "page_size": 50,
@@ -125,9 +131,9 @@ def test_join_builder_adds_postgres_and_athena_with_schema_refs(page: Page, app_
     def open_table(route):
         ref = route.request.post_data_json["source_ref"]
         opened.append(ref)
-        _fulfill(route, _open_result(f"{ref['kind']}-{len(opened)}", ref, "person_id"))
+        _fulfill_job(route, "open", _open_result(f"{ref['kind']}-{len(opened)}", ref, "person_id"))
 
-    page.route("**/api/datasets/open", open_table)
+    page.route("**/api/data-jobs/open", open_table)
     page.route("**/api/datasets/*/query", lambda route: _fulfill(route, {
         "total": 2, "filtered": 2, "scope": "loaded", "sampled": False,
         "charts": [], "rows": {"page": 0, "page_size": 50,
@@ -148,7 +154,7 @@ def test_join_builder_adds_postgres_and_athena_with_schema_refs(page: Page, app_
     def join(route):
         body = route.request.post_data_json
         join_bodies.append(body)
-        _fulfill(route, {"dataset_id": "mixed-join", "source": "Clinical join",
+        _fulfill_job(route, "join", {"dataset_id": "mixed-join", "source": "Clinical join",
                          "rows": 2, "columns": [{"name": "person_id", "dtype": "int64",
                                                     "filter_kind": "none"}],
                          "source_ref": {"kind": "join", "base": opened[0], "steps": [
@@ -160,7 +166,7 @@ def test_join_builder_adds_postgres_and_athena_with_schema_refs(page: Page, app_
                          "truncated": False, "steps": [], "notes": [],
                          "capped_inputs": []}})
 
-    page.route("**/api/datasets/join", join)
+    page.route("**/api/data-jobs/join", join)
     page.goto(app_url)
     page.get_by_role("button", name="Join tables").click()
     panel = page.locator(".join-panel")
@@ -229,9 +235,9 @@ def test_s3_source_can_join_loaded_rows_with_explicit_consent(page: Page, app_ur
     def open_source(route):
         ref = route.request.post_data_json["source_ref"]
         opened.append(ref)
-        _fulfill(route, _open_result(f"opened-{len(opened)}", ref, "person_id"))
+        _fulfill_job(route, "open", _open_result(f"opened-{len(opened)}", ref, "person_id"))
 
-    page.route("**/api/datasets/open", open_source)
+    page.route("**/api/data-jobs/open", open_source)
     page.route("**/api/datasets/*/query", lambda route: _fulfill(route, {
         "total": 2, "filtered": 2, "scope": "loaded", "sampled": True,
         "charts": [], "rows": {"page": 0, "page_size": 50,
@@ -250,7 +256,7 @@ def test_s3_source_can_join_loaded_rows_with_explicit_consent(page: Page, app_ur
     def join(route):
         join_bodies.append(route.request.post_data_json)
         body = route.request.post_data_json
-        _fulfill(route, {"dataset_id": "joined-s3", "source": "S3 join",
+        _fulfill_job(route, "join", {"dataset_id": "joined-s3", "source": "S3 join",
                          "rows": 2, "columns": [{"name": "person_id", "dtype": "int64",
                                                     "filter_kind": "none"}],
                          "source_ref": {"kind": "join", "base": opened[0], "allow_loaded": True,
@@ -261,7 +267,7 @@ def test_s3_source_can_join_loaded_rows_with_explicit_consent(page: Page, app_ur
                          "base_rows": 2, "rows": 2, "total_rows": 2,
                          "truncated": False, "steps": [], "notes": [], "capped_inputs": []}})
 
-    page.route("**/api/datasets/join", join)
+    page.route("**/api/data-jobs/join", join)
     page.goto(app_url)
     page.get_by_role("button", name="Join tables").click()
     panel = page.locator(".join-panel")

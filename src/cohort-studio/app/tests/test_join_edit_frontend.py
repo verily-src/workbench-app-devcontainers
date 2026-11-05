@@ -33,6 +33,15 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     def fulfill(route, body, status=200):
         route.fulfill(status=status, content_type="application/json", json=body)
 
+    def fulfill_job(route, kind, body, status=200):
+        # Opens, joins and previews run as data jobs; reply with a finished job.
+        job = {"job_id": f"{kind}-job", "kind": kind}
+        if status >= 400:
+            job.update(status="failed", error=body["detail"], status_code=status)
+        else:
+            job.update(status="complete", result=body)
+        fulfill(route, job)
+
     page.route("**/api/datasources", lambda route: fulfill(route, {
         "ready": True, "catalogs_pending": False,
         "sources": [
@@ -70,19 +79,19 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
         else:
             if expire_right_once:
                 expire_right_once = False
-                fulfill(route, {"detail": "Saved S3 source expired"}, status=404)
+                fulfill_job(route, "open", {"detail": "Saved S3 source expired"}, status=404)
                 return
             dataset_id, source, columns = (
                 "edit-right", "s3:lake / variants",
                 ["person_id", "study_id", "variant_code"])
-        fulfill(route, {
+        fulfill_job(route, "open", {
             "dataset_id": dataset_id, "source": source, "rows": 4,
             "columns": [{"name": column, "filter_kind": "none"}
                         for column in columns],
             "source_ref": source_ref, "query_scope": "loaded",
         })
 
-    page.route("**/api/datasets/open", open_source)
+    page.route("**/api/data-jobs/open", open_source)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 4, "filtered": 4, "scope": "loaded", "charts": [],
         "rows": {"page": 0, "page_size": 50,
@@ -114,7 +123,7 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     def preview_join(route):
         body = route.request.post_data_json
         previews.append(body)
-        fulfill(route, {
+        fulfill_job(route, "join_preview", {
             "engine": "duckdb", "base_rows": 4, "rows": 4, "total_rows": 4,
             "truncated": False, "steps": [{
                 "right_rows": 3, "rows": 4, "truncated": False,
@@ -124,19 +133,19 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
             "sample": [[1, "s1"]], "sample_truncated": False,
         })
 
-    page.route("**/api/datasets/join/preview", preview_join)
+    page.route("**/api/data-jobs/join_preview", preview_join)
 
     def run_join(route):
         body = route.request.post_data_json
         joins.append(body)
         if len(joins) == 1:
-            fulfill(route, {"detail": "Join plan rejected"}, status=502)
+            fulfill_job(route, "join", {"detail": "Join plan rejected"}, status=502)
             return
         edited_ref = {
             "kind": "join", "allow_loaded": True, "base": base_ref,
             "steps": [{**body["steps"][0], "source": right_ref}],
         }
-        fulfill(route, {
+        fulfill_job(route, "join", {
             "dataset_id": "edited-join", "source": "db-main / person + s3:lake / variants",
             "rows": 4, "columns": [{"name": "person_id", "filter_kind": "none"}],
             "source_ref": edited_ref, "query_scope": "loaded",
@@ -145,7 +154,7 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
                      "notes": [], "capped_inputs": []},
         })
 
-    page.route("**/api/datasets/join", run_join)
+    page.route("**/api/data-jobs/join", run_join)
     page.route("**/api/datasets/edit-*/**", lambda route: fulfill(route, {
         "total": 4, "filtered": 4, "scope": "loaded", "charts": [],
         "rows": {"page": 0, "page_size": 50, "columns": ["person_id"],
@@ -186,12 +195,15 @@ def test_edit_join_seeds_plan_shows_compiled_sql_and_preserves_original(
     page.get_by_role("radio", name="Inner").click()
     page.get_by_label("Right key step 1 condition 1").select_option("study_id")
     sql_details = page.locator(".join-evidence").filter(has_text="Generated SQL")
-    sql_details.locator("summary").click()
+    sql_details.locator("> summary").click()
     expect(page.get_by_text("WITH source_0 AS", exact=False)).to_be_visible()
     expect(page.get_by_label("Generated SQL")).to_contain_text(
         "INNER JOIN")
     expect(page.get_by_label("Generated SQL")).to_contain_text(
         "source_0.person_id = source_1.study_id")
+    # Parameters fold into their own nested disclosure.
+    sql_details.locator("details > summary", has_text="Parameters").click()
+    expect(page.get_by_label("SQL parameters")).to_be_visible()
     expect(page.get_by_label("SQL parameters")).to_contain_text("preview_limit")
     expect(page.get_by_text("Staged inputs: source_0, source_1")).to_be_visible()
     page.get_by_label("Right key step 1 condition 1").select_option("variant_code")

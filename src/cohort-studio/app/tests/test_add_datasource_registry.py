@@ -213,6 +213,9 @@ def test_registered_s3_saved_views_use_app_bucket_without_workbench_cli(
             assert kwargs == {"region_name": "us-west-2"}
 
         def client(self, service, **kwargs):
+            # Listing passes a bounded-latency botocore Config; the region must still be pinned.
+            config = kwargs.pop("config", None)
+            assert config is None or config.connect_timeout == 5
             assert service == "s3" and kwargs == {"region_name": "us-west-2"}
             return Client()
 

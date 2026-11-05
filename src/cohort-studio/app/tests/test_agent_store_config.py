@@ -58,6 +58,7 @@ def test_admin_config_selects_same_resource_for_runtime_and_migration(
 
 
 def test_managed_migration_creates_working_store(engine, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "scripts"))
     import migrate_agent_store
     from sqlalchemy import text
 
@@ -65,9 +66,11 @@ def test_managed_migration_creates_working_store(engine, monkeypatch):
     monkeypatch.setattr(db, "get_engine_for_resource", lambda _: engine)
     migrate_agent_store.main(["--managed-access"])
     with engine.connect() as connection:
-        assert connection.execute(text(
-            "SELECT count(*) FROM information_schema.tables "
-            "WHERE table_schema='_studio_agent'" )).scalar() == 6
+        assert set(connection.execute(text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema='_studio_agent'" )).scalars()) == {
+            "dashboard_artifacts", "prompts", "sessions", "runs", "messages",
+            "events", "workflow_plans"}
     store = agent_store.AgentStore()
     turn = store.begin(session_id=None, owner="managed-test-owner", scope="managed-test",
                        system_prompt="Test", user_message="Hello", provider="test", model="test")

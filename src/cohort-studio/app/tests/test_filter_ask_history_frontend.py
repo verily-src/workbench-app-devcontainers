@@ -51,12 +51,14 @@ def test_database_filter_ask_history_folds_and_survives_tab_switch(page, app_url
                                                    route.request.post_data_json)
         opened.append(source)
         dataset_id = "db-person" if source["table"] == "person" else "db-visit"
-        fulfill(route, {"dataset_id": dataset_id, "source": source["table"],
-                        "source_ref": source, "rows": 2, "query_scope": "database",
-                        "columns": [{"name": "person_id", "dtype": "int64",
-                                     "filter_kind": "none"}]})
+        # Opens run as data jobs; reply with an already-complete job.
+        fulfill(route, {"job_id": f"open-{len(opened)}", "kind": "open", "status": "complete",
+                        "result": {"dataset_id": dataset_id, "source": source["table"],
+                                   "source_ref": source, "rows": 2, "query_scope": "database",
+                                   "columns": [{"name": "person_id", "dtype": "int64",
+                                                "filter_kind": "none"}]}})
 
-    page.route("**/api/datasets/open", open_dataset)
+    page.route("**/api/data-jobs/open", open_dataset)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "charts": [], "rows": {"page": 0, "page_size": 50,
@@ -74,8 +76,8 @@ def test_database_filter_ask_history_folds_and_survives_tab_switch(page, app_url
     page.get_by_label("Source type").select_option("aurora")
     page.get_by_label("Datasource").select_option("aurora:clinical")
     page.get_by_label("Schema").select_option("public")
-    expect(page.get_by_label("Table").locator("option")).to_have_count(3)
-    page.get_by_label("Table").select_option("public.person")
+    expect(page.get_by_label("Table", exact=True).locator("option")).to_have_count(3)
+    page.get_by_label("Table", exact=True).select_option("public.person")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab.active")).to_contain_text("person")
 
@@ -94,10 +96,11 @@ def test_database_filter_ask_history_folds_and_survives_tab_switch(page, app_url
     expect(page.get_by_text("Applied filter for question 2")).to_be_visible()
     expect(page.get_by_text("Only people with condition A")).to_be_visible()
 
-    page.get_by_label("Table").select_option("public.visit")
+    page.get_by_label("Table", exact=True).select_option("public.visit")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tabs > span")).to_have_count(2)
-    page.locator(".tabs > span").first.click()
+    # Click the tab title, not the tab centre, which can land on its Rename button.
+    page.locator(".tabs > span").first.locator("> span").click()
     expect(page.get_by_text("Applied filter for question 1")).to_be_visible()
     expect(page.get_by_text("Applied filter for question 2")).to_be_visible()
     expect(page.locator(".filter-ask-history button")).to_contain_text(

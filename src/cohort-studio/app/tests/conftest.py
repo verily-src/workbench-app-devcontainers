@@ -140,3 +140,41 @@ def fake_aurora(engine, monkeypatch):
     with engine.begin() as conn:
         conn.exec_driver_sql('DROP TABLE IF EXISTS public."samples"')
         conn.exec_driver_sql('DROP TABLE IF EXISTS public."visits"')
+
+
+@pytest.fixture
+def run_async():
+    """Run a coroutine to completion on a private event loop.
+
+    Playwright's sync API (its browser fixture is session-scoped) leaves an
+    event loop running on the main thread once a frontend test has run, so a
+    bare ``asyncio.run()`` in a later test fails. A worker thread has no
+    running loop.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    def run(coro):
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    return run
+
+
+@pytest.fixture(autouse=True)
+def _fresh_mcp_session_manager():
+    """Give each test an MCP session manager that has not run yet.
+
+    The streamable-HTTP session manager can only be run once per instance,
+    but every ``with TestClient(main.app)`` enters the app lifespan, which
+    runs it. Rebuild the mounted MCP app (and with it the manager) whenever a
+    previous test has started it, keeping the mount at its original position.
+    """
+    import mcp_server
+    if mcp_server.AVAILABLE and getattr(
+            mcp_server.mcp.session_manager, "_has_started", True):
+        routes = main.app.router.routes
+        index = next(i for i, route in enumerate(routes)
+                     if getattr(route, "path", None) == "/mcp")
+        main.app.mount("/mcp", mcp_server.http_app())
+        routes[index] = routes.pop()
+    yield

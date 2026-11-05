@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import subprocess
+import weakref
 import cloud_cli
 import threading
 import time
@@ -27,7 +28,8 @@ view_table = Table(
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
     Column("state", Text, nullable=False),
 )
-_prepared: set[int] = set()
+# Weak references, not id(): a disposed engine's id can be reused.
+_prepared: weakref.WeakSet[Engine] = weakref.WeakSet()
 _actor_cache: str | None = None
 
 def _validate(name: str):
@@ -156,9 +158,9 @@ def delete_view(kind: str, resource_id: str, name: str):
 
 def _engine(resource_id: str) -> Engine:
     engine = db.get_engine_for_resource(resource_id)
-    if id(engine) not in _prepared:
+    if engine not in _prepared:
         metadata.create_all(engine)
-        _prepared.add(id(engine))
+        _prepared.add(engine)
     return engine
 
 def _aurora_save(resource_id: str, name: str, state: dict):

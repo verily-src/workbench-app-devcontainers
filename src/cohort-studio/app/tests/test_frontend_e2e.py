@@ -12,6 +12,48 @@ def set_explore_view(page: Page, mode: str):
                      exact=True).click()
 
 
+class _DataJobRoute:
+    """Present a /api/data-jobs/<kind> submission as the old synchronous route.
+
+    Open and join now run as data jobs. Handlers keep fulfilling with the
+    endpoint's result (or an error status and ``{"detail": ...}``); this wraps
+    the reply in the job envelope the frontend polls, already finished.
+    """
+
+    _ids = 0
+
+    def __init__(self, route, kind: str):
+        self._route = route
+        self._kind = kind
+        self.request = route.request
+
+    def fulfill(self, status=200, json=None, **_):
+        _DataJobRoute._ids += 1
+        job = {"job_id": f"{self._kind}-job-{_DataJobRoute._ids}",
+               "kind": self._kind}
+        if status < 400:
+            job.update(status="complete", result=json)
+        else:
+            job.update(status="failed", status_code=status,
+                       error=(json or {}).get("detail"))
+        self._route.fulfill(status=200, content_type="application/json", json=job)
+
+
+def route_data_job(page: Page, kind: str, handler):
+    page.route(f"**/api/data-jobs/{kind}",
+               lambda route: handler(_DataJobRoute(route, kind)))
+
+
+def choose_source(page: Page, key: str):
+    """Pick a datasource through the sidebar's type then datasource selects."""
+    kind = key.split(":", 1)[0]
+    source_type = page.get_by_label("Source type", exact=True)
+    expect(source_type.locator(f'option[value="{kind}"]')).to_have_count(1)
+    if source_type.input_value() != kind:
+        source_type.select_option(kind)
+    page.get_by_label("Datasource", exact=True).select_option(key)
+
+
 def expect_explore_view(page: Page, mode: str):
     expect(page.get_by_role("button", name="OMOP" if mode == "omop" else "Tables",
                             exact=True)).to_have_attribute("aria-pressed", "true")
@@ -69,7 +111,7 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
     page.route("**/api/tables?**", lambda route: fulfill(route, [
         {"name": "person", "detail": "2 rows"},
     ]))
-    page.route("**/api/datasets/open", lambda route: fulfill(route, {
+    route_data_job(page, "open", lambda route: fulfill(route, {
         "dataset_id": "database-person", "source": "fixture / person",
         "rows": 2, "columns": columns, "source_ref": source_ref,
         "query_scope": "database",
@@ -124,13 +166,15 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
         if route.request.method == "POST":
             saved_view.update(route.request.post_data_json)
             fulfill(route, {"name": saved_view["name"]})
+        elif "/api/views/all" in route.request.url:
+            fulfill(route, {"views": [], "unavailable": []})
         else:
             fulfill(route, [])
 
     page.route("**/api/views**", views)
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
+    choose_source(page, "aurora:fixture")
     page.get_by_label("Table", exact=True).select_option("person")
     page.get_by_role("button", name="Load table").click()
 
@@ -159,7 +203,7 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
     expect(page.locator(".hero .detail")).to_contain_text("counts cover the full database")
     page.locator(".view-save input").fill("derived-view")
     page.get_by_role("button", name="Save", exact=True).click()
-    expect(page.get_by_text("Saved 1 tab(s).", exact=False)).to_be_visible(timeout=10000)
+    expect(page.get_by_text("Saved 1 tab(s) to Fixture.")).to_be_visible(timeout=10000)
     assert saved_view["datasets"][0]["source"]["kind"] == "derived"
     assert saved_view["datasets"][0]["source"]["spec"]["name"] == "age_group"
 
@@ -244,7 +288,7 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
                                     "filter_kind": "none"}],
         "query_scope": "database",
     }))
-    page.route("**/api/datasets/open", lambda route: fulfill(route, {
+    route_data_job(page, "open", lambda route: fulfill(route, {
         "dataset_id": "opened-person", "source": "Aurora A / person",
         "rows": 1, "columns": [{"name": "person_id", "dtype": "int64",
                                     "filter_kind": "none"}],
@@ -271,8 +315,7 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    source_select = page.locator(".sidebar select").nth(0)
-    source_select.select_option("aurora:aurora-a")
+    choose_source(page, "aurora:aurora-a")
     expect_explore_view(page, "tables")
     set_explore_view(page, "omop")
     editor = page.locator(".omop-builder:visible > div:not([hidden])")
@@ -329,7 +372,7 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     expect(page.locator(".omop-rule:visible")).to_have_count(1)
     expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
 
-    source_select.select_option("aurora:aurora-b")
+    choose_source(page, "aurora:aurora-b")
     expect_explore_view(page, "tables")
     set_explore_view(page, "omop")
     expect(page.locator(".omop-rule:visible")).to_have_count(0)
@@ -342,20 +385,20 @@ def test_omop_mode_is_per_aurora_source_and_survives_open_result(
     editor.get_by_role("button", name="Add criterion (1 concepts)").click()
     expect(page.locator(".omop-rule:visible")).to_contain_text("Condition B")
 
-    source_select.select_option("aurora:aurora-a")
+    choose_source(page, "aurora:aurora-a")
     expect_explore_view(page, "omop")
     expect(page.locator(".omop-rule:visible")).to_have_count(1)
     expect(page.locator(".omop-rule:visible")).to_contain_text("Condition A")
     expect(page.locator(".omop-rule:visible")).not_to_contain_text("Condition B")
 
-    source_select.select_option("aurora:no-cdm")
+    choose_source(page, "aurora:no-cdm")
     set_explore_view(page, "omop")
     expect(page.get_by_role("status")).to_contain_text(
         "No OMOP CDM schema is visible in the selected Aurora datasource.")
     expect(page.locator(".topnav-link", has_text="OMOP cohorts")).to_have_count(0)
     expect(page.get_by_label("OMOP datasource")).to_have_count(0)
 
-    source_select.select_option("aurora:aurora-a")
+    choose_source(page, "aurora:aurora-a")
     set_explore_view(page, "omop")
     csv = tmp_path / "uploaded.csv"
     csv.write_text("person_id\n1\n", encoding="utf-8")
@@ -452,7 +495,7 @@ def test_database_export_job_progress_cancel_and_download(page: Page, app_url: s
     page.route("**/api/tables?**", lambda route: fulfill(route, [
         {"name": "person", "detail": "2 rows"},
     ]))
-    page.route("**/api/datasets/open", lambda route: fulfill(route, {
+    route_data_job(page, "open", lambda route: fulfill(route, {
         "dataset_id": "database-export", "source": "fixture / person",
         "rows": 2, "columns": columns,
         "source_ref": {"kind": "aurora", "resource_id": "fixture",
@@ -499,7 +542,7 @@ def test_database_export_job_progress_cancel_and_download(page: Page, app_url: s
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
+    choose_source(page, "aurora:fixture")
     page.get_by_label("Table", exact=True).select_option("person")
     page.get_by_role("button", name="Load table").click()
 
@@ -521,7 +564,7 @@ def test_database_export_job_progress_cancel_and_download(page: Page, app_url: s
     expect(page.locator(".export-job")).to_contain_text("Export cancelled")
     assert deletes == ["job-1", "job-2"]
     assert len(export_posts) == 2
-    assert export_posts[0] == {"filters": []}
+    assert export_posts[0] == {"filters": [], "format": "tsv"}
 
 
 def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
@@ -564,7 +607,7 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
                         "rows": 2, "columns": columns,
                         "source_ref": ref, "query_scope": "database"})
 
-    page.route("**/api/datasets/open", open_source)
+    route_data_job(page, "open", open_source)
     page.route("**/api/datasets/**/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "entity": None, "charts": [],
@@ -595,8 +638,14 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
                      "notes": [], "capped_inputs": []},
         })
 
-    page.route("**/api/datasets/join", join)
-    page.route("**/api/views?**", lambda route: fulfill(route, [{"name": "joined-view"}]))
+    route_data_job(page, "join", join)
+    page.route("**/api/views/all", lambda route: fulfill(route, {
+        "views": [{"name": "joined-view", "kind": "aurora",
+                   "resource_id": "fixture", "store_label": "Fixture",
+                   "materialized_sources": 0, "refreshed_at": None}]
+        if saved_state else [],
+        "unavailable": [],
+    }))
 
     def views(route):
         nonlocal saved_state
@@ -612,7 +661,7 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
+    choose_source(page, "aurora:fixture")
     page.get_by_label("Table", exact=True).select_option("events")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab", has_text="events")).to_be_visible(timeout=10000)
@@ -632,15 +681,15 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
 
     page.locator(".view-save input").fill("joined-view")
     page.get_by_role("button", name="Save", exact=True).click()
-    expect(page.get_by_text("Saved 3 tab(s).", exact=False)).to_be_visible(
+    expect(page.get_by_text("Saved 3 tab(s) to Fixture.")).to_be_visible(
         timeout=10000)
     assert saved_state["datasets"][-1]["source"]["kind"] == "join"
 
     with page.expect_response(lambda response:
-            response.url.endswith("/api/datasets/open")
+            response.url.endswith("/api/data-jobs/open")
             and response.request.method == "POST"
             and response.request.post_data_json.get("source_ref", {}).get("kind") == "join") as opened_join:
-        page.get_by_role("button", name="joined-view").click()
+        page.get_by_role("button", name="joined-view", exact=True).click()
     expect(page.locator(".tab", has_text="events + people")).to_be_visible(
         timeout=10000)
     reopened = opened_join.value.request.post_data_json["source_ref"]
@@ -687,7 +736,7 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
             "source_ref": source_ref, "query_scope": "database",
         })
 
-    page.route("**/api/datasets/open", open_table)
+    route_data_job(page, "open", open_table)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "entity": None,
@@ -727,15 +776,20 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
                      "notes": [], "capped_inputs": []},
         })
 
-    page.route("**/api/datasets/join", join)
+    route_data_job(page, "join", join)
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
+    choose_source(page, "aurora:fixture")
     table_select = page.get_by_label("Table", exact=True)
     expect(table_select.locator("option", has_text="cdm.person")).to_have_count(1)
+    # Same table name in two schemas: the table list waits for a schema.
+    expect(table_select).to_be_disabled()
+    schema_select = page.get_by_label("Schema", exact=True)
+    schema_select.select_option("public")
     table_select.select_option("person")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
+    schema_select.select_option("cdm")
     table_select.select_option("cdm.person")
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab", has_text="cdm.person")).to_be_visible(timeout=10000)
@@ -800,7 +854,7 @@ def test_join_can_select_source_schema_and_apply_key_recommendation(
             "source_ref": ref, "query_scope": "database",
         })
 
-    page.route("**/api/datasets/open", open_source)
+    route_data_job(page, "open", open_source)
     page.route("**/api/datasets/*/query", lambda route: fulfill(route, {
         "total": 2, "filtered": 2, "scope": "database", "sampled": False,
         "entity": None, "charts": [],
@@ -840,7 +894,7 @@ def test_join_can_select_source_schema_and_apply_key_recommendation(
                      "notes": [], "capped_inputs": []},
         })
 
-    page.route("**/api/datasets/join", join)
+    route_data_job(page, "join", join)
     page.goto(app_url)
     page.get_by_role("button", name="Join tables").click()
     panel = page.locator(".join-panel")
@@ -918,7 +972,7 @@ def _durable_join_page(page: Page, app_url: str):
             "source_ref": refs[name], "query_scope": "database",
         })
 
-    page.route("**/api/datasets/open", open_source)
+    route_data_job(page, "open", open_source)
     def query(route):
         query_dataset_ids.append(route.request.url.split("/api/datasets/", 1)[1]
                                  .split("/", 1)[0])
@@ -939,7 +993,7 @@ def _durable_join_page(page: Page, app_url: str):
     page.route("**/api/datasets/join/suggest?**", lambda route: fulfill(route, []))
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".sidebar select").nth(0).select_option("aurora:fixture")
+    choose_source(page, "aurora:fixture")
     for name in ("people", "events"):
         page.get_by_label("Table", exact=True).select_option(name)
         page.get_by_role("button", name="Load table").click()
@@ -981,7 +1035,7 @@ def test_join_expiry_reopens_durable_inputs_and_retries_once(page: Page, app_url
                      "notes": [], "capped_inputs": []},
         })
 
-    page.route("**/api/datasets/join", join)
+    route_data_job(page, "join", join)
     panel = page.locator(".join-panel")
     panel.get_by_role("button", name="Join into new tab").click()
     expect(page.locator(".tab", has_text="people + events")).to_be_visible(
@@ -1002,7 +1056,7 @@ def test_join_non_expiry_error_does_not_reopen_inputs(page: Page, app_url: str):
             "detail": {"code": "INVALID_JOIN", "message": "join rejected"},
         })
 
-    page.route("**/api/datasets/join", reject_join)
+    route_data_job(page, "join", reject_join)
     page.locator(".join-panel").get_by_role(
         "button", name="Join into new tab").click()
     expect(page.get_by_text("Join failed: join rejected", exact=False)).to_be_visible(
@@ -1034,7 +1088,7 @@ def test_failed_join_recovery_closes_reopened_inputs_and_stops_after_one_retry(
         closed.append(route.request.url.rsplit("/", 1)[-1])
         route.fulfill(status=200, content_type="application/json", json={"ok": True})
 
-    page.route("**/api/datasets/join", join)
+    route_data_job(page, "join", join)
     page.route("**/api/datasets/*", close)
     page.locator(".join-panel").get_by_role(
         "button", name="Join into new tab").click()
@@ -1081,7 +1135,7 @@ def test_recovered_repeat_join_opens_new_result_and_queries_new_id(
             assert calls[-1]["steps"][0]["right_id"] == "events-2"
             fulfill(route, result("joined-recovered"))
 
-    page.route("**/api/datasets/join", join)
+    route_data_job(page, "join", join)
     page.locator(".join-panel").get_by_role(
         "button", name="Join into new tab").click()
     expect(page.locator(".tab", has_text="people + events")).to_have_count(
@@ -1125,8 +1179,8 @@ def test_expired_upload_join_shows_reopen_guidance(loaded_page: Page, tmp_path):
             "detail": {"code": "DATASET_EXPIRED", "message": "dataset expired"},
         })
 
-    loaded_page.route("**/api/datasets/open", reject_open)
-    loaded_page.route("**/api/datasets/join", expire_join)
+    route_data_job(loaded_page, "open", reject_open)
+    route_data_job(loaded_page, "join", expire_join)
     loaded_page.locator(".tab-join").click()
     panel = loaded_page.locator(".join-panel")
     panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")

@@ -469,22 +469,33 @@ def test_live_join_export_filters_full_source_and_enforces_row_limit(
     # Make the in-memory sample smaller than the live filtered result. Export
     # must query the source reference, not export only this sample.
     datasets.get(dataset_id)["df"] = datasets.get(dataset_id)["df"].head(1)
-    monkeypatch.setattr(queries, "ROW_CAP", 3)
-    filtered = client.post(f"/api/datasets/{dataset_id}/export", json={
-        "filters": [{"column": "status", "kind": "categorical",
-                    "values": ["active"]}],
-    })
-    assert filtered.status_code == 200, filtered.text
-    assert len(filtered.text.splitlines()) == 4  # header + all three active rows
-    assert "inactive" not in filtered.text
+    active = [{"column": "status", "kind": "categorical", "values": ["active"]}]
 
+    # The synchronous, row-capped export only serves in-memory data; a live
+    # source must go through the background export instead.
     monkeypatch.setattr(queries, "ROW_CAP", 2)
-    oversized = client.post(f"/api/datasets/{dataset_id}/export", json={
-        "filters": [{"column": "status", "kind": "categorical",
-                    "values": ["active"]}],
-    })
-    assert oversized.status_code == 400, oversized.text
-    assert "more than 2 rows" in oversized.json()["detail"].lower()
+    sync = client.post(f"/api/datasets/{dataset_id}/export", json={"filters": active})
+    assert sync.status_code == 400, sync.text
+    assert "background export" in sync.json()["detail"].lower()
+
+    started = client.post(f"/api/datasets/{dataset_id}/exports", json={"filters": active})
+    assert started.status_code == 202, started.text
+    job_id = started.json()["id"]
+    deadline = time.monotonic() + 15
+    while True:
+        job = client.get(f"/api/exports/{job_id}").json()
+        if job["status"] in ("complete", "failed", "cancelled"):
+            break
+        assert time.monotonic() < deadline, "Export did not finish."
+        time.sleep(0.03)
+    assert job["status"] == "complete", job
+    # The full live source is exported, not the ROW_CAP or in-memory sample.
+    assert job["rows"] == 3
+    download = client.get(f"/api/exports/{job_id}/download")
+    assert download.status_code == 200, download.text
+    assert len(download.text.splitlines()) == 4  # header + all three active rows
+    assert "inactive" not in download.text
+    client.delete(f"/api/exports/{job_id}")
 
 
 def test_database_scoped_chat_is_guarded(client, source_tables):

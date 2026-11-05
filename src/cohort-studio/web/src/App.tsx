@@ -196,6 +196,8 @@ export default function App() {
     setView("explore");
   };
 
+  // Bumped by "Refresh tables" to list again, bypassing the server's listing cache.
+  const [tablesRefresh, setTablesRefresh] = useState(0);
   useEffect(() => {
     if (!source) return;
     setTables([]);
@@ -203,7 +205,7 @@ export default function App() {
     // Shown next to the Table picker; a newer datasource choice wins.
     let current = true;
     setListingTables(source.id);
-    api.tables(source.kind, source.id)
+    api.tables(source.kind, source.id, tablesRefresh > 0)
       .then((t) => {
         if (!current) return;
         setTables(t);
@@ -212,7 +214,7 @@ export default function App() {
       .catch((e) => { if (current) setError(`Could not list tables: ${e.message}`); })
       .finally(() => { if (current) setListingTables(""); });
     return () => { current = false; };
-  }, [sourceKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sourceKey, tablesRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openResult = (
     opened: OpenResult, title: string,
@@ -767,6 +769,7 @@ export default function App() {
         <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
           loading={!ready || Boolean(activity) || Boolean(listingTables)} busy={Boolean(activity)}
           listing={listingTables}
+          onRefreshTables={() => setTablesRefresh((n) => n + 1)}
           onSourceKeyChange={setSourceKey} onTableChange={setTable} onLoadTable={loadTable} />
         <button className="quiet" onClick={() => setAddSourceOpen(true)}>+ Add data source</button>
         {source?.kind === "s3" && (

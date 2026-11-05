@@ -66,3 +66,6 @@
   color: var(--ink-muted);
   font-size: 12.5px;
 }
+
+.picker-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.picker-refresh { padding: 0 2px; font-size: 12px; }

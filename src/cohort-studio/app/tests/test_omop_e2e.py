@@ -25,7 +25,7 @@ GI_BLEED = 192671
 DICLOFENAC = 1124300
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def omop_app_url(engine, tmp_path_factory):
 
     if not (APP_DIR / "static" / "index.html").exists():

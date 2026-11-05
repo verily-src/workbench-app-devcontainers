@@ -160,16 +160,24 @@ def run_async():
     return run
 
 
+_LIVE_SERVER_FIXTURES = {"app_url", "omop_app_url"}
+
+
 @pytest.fixture(autouse=True)
-def _fresh_mcp_session_manager():
+def _fresh_mcp_session_manager(request):
     """Give each test an MCP session manager that has not run yet.
 
     The streamable-HTTP session manager can only be run once per instance,
     but every ``with TestClient(main.app)`` enters the app lifespan, which
     runs it. Rebuild the mounted MCP app (and with it the manager) whenever a
     previous test has started it, keeping the mount at its original position.
+    Tests served by a live uvicorn server keep the manager that server's
+    lifespan started; swapping it would leave /mcp with a manager not running.
     """
     import mcp_server
+    if _LIVE_SERVER_FIXTURES & set(request.fixturenames):
+        yield
+        return
     if mcp_server.AVAILABLE and getattr(
             mcp_server.mcp.session_manager, "_has_started", True):
         routes = main.app.router.routes

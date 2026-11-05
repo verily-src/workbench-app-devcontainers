@@ -808,7 +808,21 @@ The join picker groups available sources by type and labels S3 entries as files.
 ## Agent progress, snapshots, and additional sources (2026-10-26)
 
 Studio Agent uses an NDJSON response stream with bounded progress events and an
-owner-scoped cancellation endpoint. Cancellation is cooperative: it prevents the
+owner-scoped cancellation endpoint. Live text (2026-11-05): Anthropic
+(`messages.stream`), OpenAI-compatible/Vertex (`stream=True`) and Bedrock
+(`converse_stream`) adapters stream model text as coalesced `text_delta` events
+(`turn`, `text`). Deltas use a display-only side channel
+(`agent_runtime.text_stream`), not `on_step`, because step events are persisted
+one row each. A model call that already streamed text is never retried; retries
+happen only before the first delta. Adapters fall back to blocking calls when a
+server rejects streaming (or `stream_options`) or a Bedrock role lacks
+`InvokeModelWithResponseStream`. Progress events also carry `tool_start`/`tool_end`
+`args` and `summary` (size-bounded, secret-redacted, key-allowlisted: counts,
+identifiers, concept ids, safe error text), `usage`/`step_usage`/`tool_calls` on
+`model_end`, `reason` on `runtime_limit`, and `attempt`/`wait_seconds`/`reason` on
+`model_retry_start`; none of these extra fields are persisted. The Agent page shows
+live text in the in-progress reply and keeps a collapsible step timeline on each
+streamed reply. Cancellation is cooperative: it prevents the
 next model/tool step after the current operation returns. Disconnect also requests
 cancellation. It does not cancel submitted Workbench jobs. The existing run schema
 stores cancellation as failed with error_class AgentCancelled and a user-readable
@@ -906,6 +920,25 @@ against fresh loopback PostgreSQL databases. The demo runs real local Nextflow,
 with file-backed S3/HealthOmics adapters. Reports separate this evidence from
 live model quality and cloud/browser acceptance. See EVALUATIONS.md.
 
+`scripts/evaluate_agent_live.py` is the separate **live** score for the
+platform agent. It calls a running app over HTTP the way the browser does:
+`POST /api/agent/chat/stream` (NDJSON), the owner cookie, and `session_id` for
+follow-up turns. It imports nothing from `app/`. Golden tasks are in
+`scripts/agent_eval_tasks.json`. They cover documented `cms_synpuf_100k` and
+`genetics_demo` counts, concept lookup, join keys, stopping at a ready
+workflow plan, user-message prompt injection, and a follow-up turn. The app's
+configured provider and model, read from `GET /api/config`, are what get
+evaluated. `--provider`/`--model` only label the run. Each run records
+pass/fail with reasons, model steps, tool calls, wall time, token usage and
+errors in `.eval-results/agent-live-*/results.json`. An allowlisted client
+cannot call `/approve` or write settings. After every task, the harness
+re-reads the session's plans and fails the task if any plan left
+ready/blocked. The stream exposes only bounded, redacted tool-argument and
+result summaries (never result bodies), so each check records whether its evidence was `structured` (dashboard or plan
+fields) or `prose` (reply text only). `--self-test` scores canned streams in
+`scripts/agent_eval_fixtures.json` offline. `app/tests/test_agent_eval_harness.py`
+runs that self-test.
+
 Cross-source PostgreSQL staging creates DuckDB columns from driver result
 metadata, never from an empty preview. Dates, time zones, nullable large integers
 and bounded decimals retain their storage types. Unconstrained or over-wide
@@ -957,6 +990,16 @@ Aggregation filters derive a windowed count, sum or mean for each non-null group
 
 The browser loads dashboard, chart, PDF, agent and settings modules on demand. The OMOP builder remains mounted after first use to retain its state. Optional browser notifications report completed data loads and joins only while an open app tab is hidden; permission and preference stay in the browser. This is not a service-worker push subscription.
 
+
+### Agent reliability, working state and analysis tools (2026-11-05)
+
+Model calls retry 408/409/425/429/5xx/529, throttling and connection errors up to three times with jittered exponential backoff (2 s base, 20 s per wait, 45 s total), honoring `retry-after`. Stop interrupts the wait. Per-call timeouts are 180 s, and SDK-level retries stay off. When a run fails, a `partial` event carries the dashboards, plans and downloads already produced, before the `error` event. At the turn budget, one final tools-disabled call summarizes what was found and what is left; the generic limit reply is only the fallback. The Anthropic adapter caches the system block, the last tool and the conversation prefix with `cache_control`. Bedrock adds `cachePoint`s for Claude models and drops them if the model rejects them. Tool results kept in context are capped at 256 KiB per run, pruning the oldest large results first. The system prompt ends with today's UTC date. Consecutive same-role turns are merged for the Bedrock and OpenAI-compatible adapters. bioRxiv search matches query tokens over title and abstract, scans up to 360 records within 25 s, and defaults to the last 90 days. The literature guard accepts search terms from the current message, the last six conversation messages, or earlier literature results, never from other tool output.
+
+Working state is stored per session in `_studio_agent.session_state` (additive migration; one JSONB row per session, deleted with the session, at most 24 KB, secrets redacted). It holds datasets, the last cohort spec, found concept IDs, inspected tables and columns, and built dashboards. It is loaded in `begin()` after the owner/scope check and saved by `finish`/`fail` in the same transaction. On the next turn, `studio_agent.chat` inserts it as an untrusted reference message of at most 4 KB, never into the system prompt or the stored history. Restored concept IDs and tables count as known only while their datasource is still exposed. Expired datasets are marked so the model reopens or rebuilds them. Without the migration, state silently does nothing.
+
+`update_dashboard` changes filters and charts of a dashboard the Agent built or opened (at most 8 charts). It returns an action with `update: true`, which patches the open tab instead of opening a new one. `aggregate` returns at most 50 groups of count/mean/median/min/max/distinct, and `compare_cohorts` compares two filter sets over 1–12 columns with the existing comparison tests (`agent_analysis.py`). Both run on live Aurora, disk DuckDB or loaded rows, apply the dashboard's saved filters and report their scope.
+
+`scripts/evaluate_agent_live.py` runs golden tasks (`agent_eval_tasks.json`) against a running app through `/api/agent/chat/stream` and never approves plans. `--self-test` checks the evaluator against canned streams.
 
 ### Indexed paging and Agent presentation
 

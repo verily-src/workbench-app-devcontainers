@@ -3,7 +3,9 @@ import { AgentExportCard } from "./AgentExportCard";
 import type { AgentDownload } from "./AgentExportCard";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { streamAgent, cancelAgent } from "../agentStreaming";
+import { streamAgent, cancelAgent, AgentRunError, applyAgentEvent, emptyTrace, finishTrace, timelineComplete, toolLabel } from "../agentStreaming";
+import type { AgentRunTrace, AgentTimelineEntry } from "../agentStreaming";
+import { AgentTimeline } from "./AgentTimeline";
 import type {
   AgentDashboardAction, AgentWorkflowPlan, AgentWorkflowVerification, ChatHistory,
 } from "../api";
@@ -39,8 +41,10 @@ interface Props {
 interface AgentMessage extends Omit<ChatMsg, "actions"> {
   toolCalls?: string[];
   toolResults?: { name: string; status: "completed" | "failed" }[];
+  /** Step timeline recorded while this reply streamed (not restored from history). */
+  timeline?: AgentTimelineEntry[];
   limitReached?: boolean;
-  actions?: AgentDashboardAction[];
+  actions?: (AgentDashboardAction & { update?: boolean })[];
   downloads?: AgentDownload[];
 }
 
@@ -80,6 +84,13 @@ function workflowStatus(plan: AgentWorkflowPlan): string {
   return plan.run?.status ?? plan.status;
 }
 
+interface PartialAgentOutput {
+  type: "partial";
+  actions?: AgentDashboardAction[];
+  workflow_plans?: AgentWorkflowPlan[];
+  downloads?: AgentDownload[];
+}
+
 function mergePlans(current: AgentWorkflowPlan[], incoming: AgentWorkflowPlan[]): AgentWorkflowPlan[] {
   const map = new Map(current.map((plan) => [plan.id, plan]));
   incoming.forEach((plan) => map.set(plan.id, { ...map.get(plan.id), ...plan }));
@@ -101,6 +112,7 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
   const [queuePaused, setQueuePaused] = useState(false);
   const nextQueuedId = useRef(0);
   const [progressText, setProgressText] = useState("");
+  const [liveTrace, setLiveTrace] = useState<AgentRunTrace>(emptyTrace);
   const [runId, setRunId] = useState<string>();
   const [cancelling, setCancelling] = useState(false);
   const streamController = useRef<AbortController | null>(null);
@@ -220,6 +232,13 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages.length, busy]);
 
+  // Follow live text and new steps only while the reader is near the bottom.
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!box || !busy) return;
+    if (box.scrollHeight - box.scrollTop - box.clientHeight < 160) box.scrollTo({ top: box.scrollHeight });
+  }, [busy, liveTrace.liveText.length, liveTrace.entries.length]);
+
   useEffect(() => {
     const pending = plans.filter((plan) => isPolling(plan.status));
     if (!pending.length) return;
@@ -241,6 +260,12 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
 
   const runMessage = async (message: string) => {
     if (busyRef.current) return;
+    // Tool output completed before a failure arrives as a "partial" event
+    // just before the error, so it is still shown with the error message.
+    let partial: PartialAgentOutput | undefined;
+    // Live text and the step timeline; attached to the reply on every outcome.
+    let trace = emptyTrace();
+    setLiveTrace(trace);
     busyRef.current = true;
     window.clearTimeout(celebrationTimer.current);
     setCelebrating(false);
@@ -253,16 +278,21 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
       setProgressText("Starting…");
       setCancelling(false);
       const result = await streamAgent(message, sessionId, newSessionPending, (event) => {
+        if (event.type === "partial") partial = event as PartialAgentOutput;
         if (event.type === "started") setRunId(event.run_id);
+        const next = applyAgentEvent(trace, event);
+        if (next !== trace) { trace = next; setLiveTrace(next); }
         if (event.type === "progress") {
-          if (event.stage === "model_start") setProgressText("Planning next step…");
-          if (event.stage === "tool_start") setProgressText(`Running ${(event.tool_name ?? "tool").replaceAll("_", " ")}…`);
+          if (event.stage === "model_start") setProgressText(event.final_summary ? "Summarising completed steps…" : "Planning next step…");
+          if (event.stage === "model_retry_start") setProgressText(trace.entries[trace.entries.length - 1]?.label ?? "Retrying…");
+          if (event.stage === "tool_start") setProgressText(`Running ${toolLabel(event.tool_name)}…`);
           if (event.stage === "tool_end") setProgressText("Step finished.");
         }
         if (event.type === "cancelled") {
           setQueuePaused(true);
           if (event.session_id) { setSessionId(event.session_id); setNewSessionPending(false); }
-          setMessages((current) => [...current, { role: "assistant", content: event.reply ?? "Stopped." }]);
+          const timeline = finishTrace(trace, "cancelled");
+          setMessages((current) => [...current, { role: "assistant", content: event.reply ?? "Stopped.", timeline }]);
           void refreshSessions().catch((caught) => setError(safeError(caught)));
         }
       }, controller.signal);
@@ -280,19 +310,27 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         toolCalls: result.tool_calls, toolResults: result.tool_results,
         limitReached: result.limit_reached, actions: result.actions,
         downloads: (result as typeof result & { downloads?: AgentDownload[] }).downloads,
+        timeline: finishTrace(trace, "completed"),
       }]);
     } catch (caught) {
       setQueuePaused(true);
-      const detail = safeError(caught);
+      // Server "error" events carry an already-safe, actionable message.
+      const detail = caught instanceof AgentRunError ? caught.message : safeError(caught);
       setError(detail);
+      const timeline = finishTrace(trace, "error", detail);
+      const salvaged = partial;
+      if (salvaged?.workflow_plans?.length) setPlans((current) => mergePlans(current, salvaged.workflow_plans ?? []));
       setMessages((current) => [...current, {
-        role: "assistant", content: detail,
+        role: "assistant", content: detail, timeline,
+        ...(salvaged?.actions?.length ? { actions: salvaged.actions } : {}),
+        ...(salvaged?.downloads?.length ? { downloads: salvaged.downloads } : {}),
       }]);
     } finally {
       busyRef.current = false;
       setBusy(false);
       setRunId(undefined);
       setProgressText("");
+      setLiveTrace(emptyTrace());
       setCancelling(false);
       streamController.current = null;
     }
@@ -555,7 +593,9 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
         {messages.map((message, index) => (
           <article key={`${index}-${message.role}`} className={`studio-agent-message ${message.role}`}>
             <div className="studio-agent-bubble">{message.role === "assistant" ? <AgentText text={message.content} /> : message.content}</div>
-            {message.toolResults && message.toolResults.length > 0 ? (
+            {message.timeline && message.timeline.length > 0 && <AgentTimeline entries={message.timeline} />}
+            {message.timeline?.length && timelineComplete(message.timeline) ? null
+            : message.toolResults && message.toolResults.length > 0 ? (
               <details className="studio-agent-tools" aria-label="Tool results">
                 <summary>Tool results ({message.toolResults.length})</summary>
                 <ul>{message.toolResults.map((tool, i) => <li key={`${tool.name}-${i}`}>
@@ -576,17 +616,21 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
             ))}
             {message.actions?.map((action, i) => (
               <div className="studio-agent-card" key={`${action.title}-${i}`}>
-                <strong>{action.title}</strong>
+                <strong>{action.update ? `Updated: ${action.title}` : action.title}</strong>
                 <span>{action.dataset.rows.toLocaleString()} rows</span>
                 <button type="button" className="primary"
-                  onClick={() => onOpenDashboard(action)}>Open dashboard</button>
+                  onClick={() => onOpenDashboard(action)}>{action.update ? "Apply to dashboard" : "Open dashboard"}</button>
               </div>
             ))}
           </article>
         ))}
-        {busy && <div className="studio-agent-message assistant" role="status">
-          <div className="studio-agent-bubble">Working…</div>
-        </div>}
+        {busy && <article className="studio-agent-message assistant studio-agent-live" aria-busy="true">
+          {/* Live text is not announced token by token; the final reply is. */}
+          <div className="studio-agent-bubble" aria-live="off">
+            {liveTrace.liveText ? <AgentText text={liveTrace.liveText} /> : <span role="status">Working…</span>}
+          </div>
+          <AgentTimeline entries={liveTrace.entries} live />
+        </article>}
       </div>
 
       {plans.length > 0 && (

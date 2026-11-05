@@ -922,7 +922,18 @@ export default function App() {
             }} />
           </div>}
           {view === "explore" && exploreMode === "omop" ? null : view === "agent" ? (
-            <StudioAgent onOpenSettings={() => setView("settings")} onOpenDashboard={(action: AgentDashboardAction, verification?: AgentWorkflowVerification) => {
+            <StudioAgent onOpenSettings={() => setView("settings")} onOpenDashboard={(action: AgentDashboardAction & { update?: boolean }, verification?: AgentWorkflowVerification) => {
+              const existing = action.update
+                ? datasets.findIndex((d) => d.id === action.dataset.dataset_id) : -1;
+              if (existing >= 0) {
+                // update_dashboard: apply the Agent's filter/chart set to the open tab.
+                setDatasets((prev) => prev.map((d, i) => i === existing
+                  ? { ...d, filters: action.filters, charts: action.charts, page: 0 } : d));
+                setActive(existing);
+                setExploreMode("tables");
+                setView("explore");
+                return;
+              }
               setWorkflowVerification(verification?.verified
                 ? { result: verification, datasetId: action.dataset.dataset_id,
                     strata: action.dataset.rows } : null);

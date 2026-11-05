@@ -53,7 +53,9 @@ def test_graph_runs_validated_tool_then_returns_final_and_reports_steps():
         "model_start", "model_end", "tool_start", "tool_end",
         "model_start", "model_end"]
     assert events[5]["usage"] == result["usage"]
-    assert "args" not in events[2]
+    # Tool events carry bounded, redacted summaries for the step timeline.
+    assert events[2]["args"] == {"limit": 3}
+    assert events[3]["args"] == {"limit": 3} and events[3]["summary"] == {"count": 3}
 
 
 def test_fake_provider_runs_real_dataset_tool_and_returns_grounded_answer():
@@ -74,7 +76,7 @@ def test_fake_provider_runs_real_dataset_tool_and_returns_grounded_answer():
     def fake_provider(messages, _schemas):
         for message in messages:
             if isinstance(message, ToolMessage):
-                seen_tool_result.append(json.loads(json.loads(message.content)["content"]))
+                seen_tool_result.append(json.loads(message.content)["content"])
         return next(replies)
 
     result = agent_runtime.run(
@@ -129,7 +131,9 @@ def test_graph_stops_after_bounded_tool_calls():
     result = agent_runtime.run("anthropic", "test", "system", [],
                                {"count_rows": lambda limit: "{}"}, schema(),
                                repeat, events.append)
-    assert len(calls) == agent_runtime.MAX_TURNS
+    # MAX_TURNS tool turns plus one tool-free summary call; the summary is
+    # empty here, so the reply falls back to the limit message.
+    assert len(calls) == agent_runtime.MAX_TURNS + 1
     assert result["turns"] == agent_runtime.MAX_TURNS
     assert result["reply"] == agent_runtime._LIMIT_REPLY
     assert result["tool_calls"] == ["count_rows"] * agent_runtime.MAX_TURNS
@@ -149,7 +153,7 @@ def test_graph_accepts_larger_bounded_turn_budget_and_rejects_invalid_values():
         "openai", "test", "system", [],
         {"count_rows": lambda limit: "{}"}, schema(), repeat,
         max_turns=10)
-    assert len(calls) == result["turns"] == 10
+    assert len(calls) - 1 == result["turns"] == 10
     assert result["limit_reached"] is True
     assert result["limit_reason"] == "turn_budget"
     assert agent_runtime.MAX_TURNS == 8

@@ -195,3 +195,26 @@ def test_only_ready_workflow_preparation_stops_runtime(name, status):
     assert len(calls) == 2
     assert "completion_reason" not in result
     assert result["reply"] == "Tool result reviewed."
+
+
+def test_biorxiv_dates_are_optional_and_pass_through(monkeypatch):
+    import agent_guardrails
+    import agent_mode_api
+    import literature
+    schema = next(item["function"] for item in studio_agent.TOOL_SCHEMAS
+                  if item["function"]["name"] == "search_biorxiv")
+    assert schema["parameters"]["required"] == ["query"]
+    assert "90 days" in schema["description"]
+    args = agent_runtime._validators(studio_agent.TOOL_SCHEMAS)["search_biorxiv"].model_validate(
+        {"query": "genetics"}).model_dump()
+    assert args["start_date"] is None and args["end_date"] is None
+    calls = []
+    monkeypatch.setattr(agent_guardrails, "validate_literature_query", lambda *_args: None)
+    monkeypatch.setattr(literature, "search_biorxiv",
+                        lambda query, start_date, end_date, limit=5: calls.append(
+                            (query, start_date, end_date, limit)) or {"articles": []})
+    ops = agent_mode_api.Operations.__new__(agent_mode_api.Operations)
+    ops.user_message = "genetics preprints"
+    ops.search_biorxiv("genetics")
+    ops.search_biorxiv("genetics", "2026-01-01", "2026-02-01", limit=3)
+    assert calls == [("genetics", None, None, 5), ("genetics", "2026-01-01", "2026-02-01", 3)]

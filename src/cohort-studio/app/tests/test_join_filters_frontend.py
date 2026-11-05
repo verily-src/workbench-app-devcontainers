@@ -252,3 +252,17 @@ def test_untouched_rows_stay_quiet_and_disabled_buttons_say_why(page, app_url):
         page.wait_for_timeout(100)
     assert validations[-1]["steps"][0]["filters"] == [
         {"column": "dosage", "op": "=", "value": 2}, expected]
+    # Switching to a single-value operator turns the one quoted list item back into plain text.
+    value = panel.get_by_label("Step 1 filter 2 value")
+    value.fill('"Smith, John"')
+    panel.get_by_label("Step 1 filter 2 operator").select_option("=")
+    expect(value).to_have_value("Smith, John")
+    scalar = {"column": "gene", "op": "=", "value": "Smith, John"}
+    for _ in range(50):
+        if validations[-1]["steps"][0].get("filters", [None, None])[-1] == scalar:
+            break
+        page.wait_for_timeout(100)
+    assert validations[-1]["steps"][0]["filters"][-1] == scalar
+    # And back to a list operator: the value is quoted so it stays one item.
+    panel.get_by_label("Step 1 filter 2 operator").select_option("in")
+    expect(value).to_have_value('"Smith, John"')

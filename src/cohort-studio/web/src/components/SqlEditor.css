@@ -28,3 +28,22 @@
 .sql-editor-status { display: flex; gap: 10px; align-items: center; font-size: 12px; }
 .sql-editor-status.ok { color: var(--accent); }
 .sql-editor-status.error { color: #c93a38; }
+/* Hidden copy of the text laid out like the textarea, for caret coordinates. */
+.sql-editor-area .sql-editor-mirror { position: absolute; top: 0; left: 0; height: 0; min-height: 0;
+  overflow: hidden; visibility: hidden; pointer-events: none; border-color: transparent; }
+.sql-complete { position: absolute; z-index: 30; margin: 2px 0 0; padding: 4px; list-style: none;
+  min-width: 240px; max-width: min(460px, 100%); max-height: 224px; overflow: auto; box-sizing: border-box;
+  background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px #0003; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.sql-complete-item { display: flex; align-items: baseline; gap: 8px; padding: 3px 6px; border-radius: 4px;
+  cursor: pointer; color: var(--ink); white-space: nowrap; }
+.sql-complete-item[aria-selected="true"] { background: var(--accent-tint); }
+.sql-complete-icon { flex: none; width: 14px; text-align: center; font-size: 10px; font-weight: 700;
+  color: var(--ink-muted); }
+.sql-complete-keyword .sql-complete-icon { color: #7c3aed; }
+.sql-complete-function .sql-complete-icon { color: #0e7490; }
+.sql-complete-schema .sql-complete-icon, .sql-complete-table .sql-complete-icon { color: #0f766e; }
+.sql-complete-column .sql-complete-icon { color: #b45309; }
+.sql-complete-label { overflow: hidden; text-overflow: ellipsis; }
+.sql-complete-detail { margin-left: auto; padding-left: 12px; color: var(--ink-muted); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; }

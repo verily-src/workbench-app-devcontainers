@@ -189,6 +189,17 @@ export interface SavedViewJob {
   error?: string | null;
 }
 
+/** Schema metadata for SQL editor autocomplete (GET /api/sql/completions). */
+export interface SqlCompletions {
+  resource_id: string;
+  schemas: { name: string; omop?: { role: "cdm" | "vocabulary"; vocab_schema?: string | null; default?: boolean } }[];
+  tables: { schema: string; name: string; kind: string; omop?: boolean;
+    columns: { name: string; type: string }[] }[];
+  column_count: number;
+  truncated: boolean;
+  limits: { tables: number; columns: number };
+}
+
 export interface SqlPreview {
   source_ref: Extract<SourceRef, { kind: "sql" }>;
   columns: string[];

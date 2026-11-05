@@ -59,6 +59,7 @@ import export_jobs
 import plink_api
 import join_discovery
 import sql_source
+import sql_completions
 from source_models import ColumnSetting, DerivedSpec, SourceFilter, SourceRef, source_dict
 
 logging.basicConfig(level=logging.INFO, force=True)
@@ -401,7 +402,19 @@ def datasources():
                             "label": f"{r['id']} · BigQuery"})
     catalogs, pending = catalog.discover([r["id"] for r in folders])
     sources.extend(catalogs)
-    return {"ready": ready or bool(sources), "sources": sources, "catalogs_pending": pending}
+    return {"ready": ready or bool(sources), "sources": sources, "catalogs_pending": pending,
+            "discovery": db.discovery_status()}
+
+@app.post("/api/datasources/refresh")
+def refresh_datasources():
+    """Start a background `wb resource list`; returns at once.
+
+    Workspace resources are shared by every user of the app, so there is no
+    per-owner state here; the refresh gate debounces clicks and never runs
+    two listings at once.
+    """
+    started = db.request_refresh(manual=True)
+    return {"started": started, "discovery": db.discovery_status()}
 
 @app.post("/api/sources")
 def add_source(req: source_registry.Registration):
@@ -679,6 +692,26 @@ def lint_sql(req: SQLLintRequest):
     return sql_source.lint(req.sql)
 
 
+@app.get("/api/sql/completions")
+def sql_completions_route(resource_id: str = Query(min_length=1, max_length=256),
+                          refresh: bool = False):
+    """Schema, table and column names (no data) for SQL editor autocomplete."""
+    if refresh:
+        sql_completions.invalidate()
+    try:
+        return sql_completions.completions(resource_id)
+    except sql_completions.UnknownResource as e:
+        if not db.list_aurora_resources() and not db.resources_ready():
+            raise HTTPException(503, "Workspace resources are not ready; retry shortly.")
+        raise HTTPException(404, str(e))
+    except sql_completions.CompletionsTimeout as e:
+        raise HTTPException(504, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+
+
 @app.post("/api/sql/preview")
 def preview_sql_source(req: SQLPreviewRequest):
     try:
@@ -760,7 +793,8 @@ def _open_source_impl(ref, temporary=False, profile=True):
             out = joins.run(base["dataset_id"], steps, allow_loaded=ref.get("allow_loaded", False),
                             base_filters=ref.get("base_filters"))
             df, label = out["df"], " + ".join(labels)
-            live, capped = out.get("live_source"), out["stats"]["truncated"]
+            live = out.get("live_source")
+            capped = bool(out["stats"]["truncated"] or out["stats"].get("capped_inputs"))
             disk = out.get("disk_source")
         elif ref["kind"] == "omop_cohort":
             engine, info = _omop_cdm_for(ref["resource_id"], ref.get("cdm_schema"))

@@ -17,6 +17,8 @@ interface Props {
   palette: string;
   onUpdate: (changes: Partial<Dataset>) => void;
   onEditJoin: (datasetId: string) => void;
+  /** Reopens a joined tab's recipe on the visual join canvas. */
+  onEditJoinCanvas?: (datasetId: string) => void;
   /** Opens a result (e.g. a full group summary) as a new dataset tab. */
   onOpenTable?: (opened: OpenResult, title: string) => void;
 }
@@ -74,7 +76,7 @@ function safeFilterAskError(error: unknown): string {
   return "The request could not be completed. Check the connection and try again.";
 }
 
-export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onOpenTable }: Props) {
+export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable }: Props) {
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
@@ -274,6 +276,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onOpenTabl
         <SaveToAurora dataset={dataset} />
         {dataset.sourceRef?.kind === "join" && <button className="quiet"
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
+        {dataset.sourceRef?.kind === "join" && onEditJoinCanvas && <button className="quiet"
+          title="Reopen this join on the visual join canvas"
+          onClick={() => onEditJoinCanvas(dataset.id)}>Edit in join canvas</button>}
         <DatasetSettings dataset={dataset} onUpdate={onUpdate} />
         <label className="inline-field format-select">Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>

@@ -12,10 +12,10 @@ def test_provider_settings_save_before_test_without_echoing_key(
                     "vertexai", "openweight")
     config = {
         "llm": {
-            "provider": "anthropic", "model": "claude-opus-5",
+            "provider": "anthropic", "model": "claude-opus-5-5",
             "api_key_set": False, "api_key_source": None,
             "providers": {name: {
-                "model": "claude-opus-5" if name == "anthropic" else "",
+                "model": "claude-opus-5-5" if name == "anthropic" else "",
                 "api_key_set": False, "api_key_source": None,
                 "auth_method": "api_key", "region": None,
                 "configured": False,
@@ -59,14 +59,14 @@ def test_provider_settings_save_before_test_without_echoing_key(
     def test_route(route):
         requests.append(("test", None))
         fulfill(route, {"ok": True, "provider": "anthropic",
-                        "model": "claude-sonnet-5", "display_name": "Claude"})
+                        "model": "claude-sonnet-5-5", "display_name": "Claude"})
 
     page.route("**/api/config/llm/test", test_route)
     page.goto(app_url)
     page.locator(".topnav-link", has_text="Settings").click()
 
     ai_card = page.locator(".settings-card").first
-    ai_card.locator('input[type="text"]').first.fill("claude-sonnet-5")
+    ai_card.locator('input[type="text"]').first.fill("claude-sonnet-5-5")
     ai_card.get_by_label("Anthropic API key").fill(key)
     ai_card.get_by_role("button", name="Test connection").click()
 
@@ -74,15 +74,15 @@ def test_provider_settings_save_before_test_without_echoing_key(
         "Connected: Claude (claude-sonnet-5).", timeout=10000)
     assert [kind for kind, _ in requests] == ["save", "test"]
     assert requests[0][1]["api_key"] == key
-    assert requests[0][1]["model"] == "claude-sonnet-5"
+    assert requests[0][1]["model"] == "claude-sonnet-5-5"
     assert key not in ai_card.inner_text()
 
 
 def test_provider_save_failure_is_visible(page: Page, app_url: str):
     config = {
-        "llm": {"provider": "anthropic", "model": "claude-opus-5",
+        "llm": {"provider": "anthropic", "model": "claude-opus-5-5",
                 "api_key_set": False, "api_key_source": None,
-                "providers": {name: {"model": "claude-opus-5",
+                "providers": {name: {"model": "claude-opus-5-5",
                     "api_key_set": False, "api_key_source": None,
                     "auth_method": "api_key", "region": None}
                     for name in ("anthropic", "openai", "gemini", "openrouter",
@@ -115,9 +115,9 @@ def test_provider_test_failure_redacts_key(page: Page, app_url: str):
     provider_ids = ("anthropic", "openai", "gemini", "openrouter", "bedrock",
                     "vertexai", "openweight")
     config = {
-        "llm": {"provider": "anthropic", "model": "claude-opus-5",
+        "llm": {"provider": "anthropic", "model": "claude-opus-5-5",
                 "api_key_set": False, "api_key_source": None,
-                "providers": {name: {"model": "claude-opus-5",
+                "providers": {name: {"model": "claude-opus-5-5",
                     "api_key_set": False, "api_key_source": None,
                     "auth_method": "api_key", "region": None}
                     for name in provider_ids}},
@@ -165,10 +165,10 @@ def test_jev_token_is_masked_saved_and_removed_without_connection_claim(
                     "vertexai", "openweight")
     config = {
         "llm": {
-            "provider": "anthropic", "model": "claude-opus-5",
+            "provider": "anthropic", "model": "claude-opus-5-5",
             "api_key_set": False, "api_key_source": None,
             "providers": {name: {
-                "model": "claude-opus-5" if name == "anthropic" else "",
+                "model": "claude-opus-5-5" if name == "anthropic" else "",
                 "api_key_set": False, "api_key_source": None,
                 "auth_method": "api_key", "region": None,
                 "configured": False,

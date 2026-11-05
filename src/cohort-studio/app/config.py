@@ -14,7 +14,7 @@ import secret_store
 CONFIG_PATH = Path(os.environ.get(
     "STUDIO_CONFIG", str(Path(__file__).parent / "studio_config.json")))
 
-DEFAULT_MODEL = "claude-opus-5"
+DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_PALETTE = "verily"
 PALETTES = ("verily", "indigo", "amber", "crimson", "slate")
 

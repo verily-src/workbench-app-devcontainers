@@ -79,6 +79,8 @@ class Usage(StoreInput):
 
 class StateDataset(StoreInput):
     dataset_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    # Saved dashboard artifact this dataset was reopened from, when it differs.
+    saved_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
     title: str = Field(default="", max_length=128)
     source_ref: dict[str, Any] | None = None
     filters: list[dict[str, Any]] = Field(default_factory=list, max_length=30)

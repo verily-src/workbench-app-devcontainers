@@ -184,12 +184,16 @@ def run(model: str, region: str, system: str, messages: list[dict],
 
     def request(model_messages):
         convo = _messages(model_messages)
+        # agent_runtime prepares the system message (it appends today's date).
+        prepared = [m.content for m in model_messages
+                    if isinstance(m, SystemMessage) and isinstance(m.content, str) and m.content]
+        system_text = "\n\n".join(prepared) if prepared else system
         if not cache["enabled"]:
-            return {"system": [{"text": system}], "messages": convo,
+            return {"system": [{"text": system_text}], "messages": convo,
                     "toolConfig": {"tools": tools, "toolChoice": {"auto": {}}}}
         if convo:
             convo[-1] = {**convo[-1], "content": convo[-1]["content"] + [_CACHE_POINT]}
-        return {"system": [{"text": system}, _CACHE_POINT], "messages": convo,
+        return {"system": [{"text": system_text}, _CACHE_POINT], "messages": convo,
                 "toolConfig": {"tools": tools + ([_CACHE_POINT] if tools else []),
                                "toolChoice": {"auto": {}}}}
 

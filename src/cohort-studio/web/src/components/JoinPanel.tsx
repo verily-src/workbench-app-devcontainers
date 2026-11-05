@@ -51,6 +51,8 @@ interface FilterRow {
   column: string; op: JoinFilterOp; text: string; touched?: boolean;
   /** Saved list values, sent as-is until the user edits the text. */
   list?: JoinFilterValue[];
+  /** Whether `text` is in list form (comma-separated, quoted); defaults to the operator's form. */
+  textIsList?: boolean;
 }
 
 /** `uid` is a stable React key: index keys let a removed step's open
@@ -115,13 +117,16 @@ function formatList(values: JoinFilterValue[]): string {
 /** Re-express a row's value when its operator switches between list and single-value forms,
  * so list quoting never leaks into a scalar value (or the reverse). */
 function convertValue(row: FilterRow, op: JoinFilterOp): Partial<FilterRow> {
-  const wasList = LIST_OPS.includes(row.op), isList = LIST_OPS.includes(op);
-  if (wasList === isList) return {};
+  // Null checks carry no value: keep the text (and its form) so switching back restores it.
+  if (NULL_OPS.includes(op)) return {};
+  const wasList = row.textIsList ?? LIST_OPS.includes(row.op), isList = LIST_OPS.includes(op);
+  if (wasList === isList) return { textIsList: isList };
   if (wasList) {
     const items = row.list ? row.list.map(String) : parseList(row.text);
-    return { list: undefined, text: items.length === 1 ? items[0] : items.join(", ") };
+    return { list: undefined, textIsList: false,
+             text: items.length === 1 ? items[0] : items.join(", ") };
   }
-  return { list: undefined, text: row.text.trim() ? formatList([row.text]) : "" };
+  return { list: undefined, textIsList: true, text: row.text.trim() ? formatList([row.text]) : "" };
 }
 
 function parseList(text: string): string[] {
@@ -194,7 +199,10 @@ function FilterEditor({ rows, columns, table, label, checks, disabled, onChange 
       ...row, ...patch,
       // Editing the value or column drops the saved list; the text is parsed instead.
       ...("text" in patch || "column" in patch ? { list: undefined } : {}),
-      ...(patch.op ? convertValue(row, patch.op) : {}),
+      // Typed text takes the form of the operator it is typed under.
+      ...("text" in patch ? { textIsList: LIST_OPS.includes(patch.op ?? row.op) } : {}),
+      // A patch that sets the value itself (e.g. a column change resetting it) wins.
+      ...(patch.op && !("text" in patch) ? convertValue(row, patch.op) : {}),
     })));
   const hasBlank = rows.some((row) => !row.column);
   return (

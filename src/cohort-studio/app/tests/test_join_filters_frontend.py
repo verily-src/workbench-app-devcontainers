@@ -266,3 +266,12 @@ def test_untouched_rows_stay_quiet_and_disabled_buttons_say_why(page, app_url):
     # And back to a list operator: the value is quoted so it stays one item.
     panel.get_by_label("Step 1 filter 2 operator").select_option("in")
     expect(value).to_have_value('"Smith, John"')
+    # A null check in between keeps the list as a list, and a later scalar operator unquotes it.
+    value.fill("BRCA1, BRCA2")
+    panel.get_by_label("Step 1 filter 2 operator").select_option("is null")
+    panel.get_by_label("Step 1 filter 2 operator").select_option("in")
+    expect(value).to_have_value("BRCA1, BRCA2")
+    value.fill('"Smith, John"')
+    panel.get_by_label("Step 1 filter 2 operator").select_option("is null")
+    panel.get_by_label("Step 1 filter 2 operator").select_option("=")
+    expect(value).to_have_value("Smith, John")

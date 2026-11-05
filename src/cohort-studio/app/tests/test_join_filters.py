@@ -3,6 +3,7 @@
 Filters run against each input before it is joined, so a left join keeps
 unmatched left rows even when the joined table is filtered.
 """
+import re
 import uuid
 
 import pandas as pd
@@ -14,6 +15,14 @@ import main
 import source_models
 
 RID = "omopdb"
+_NS = re.compile(r"\bjf[0-9a-f]{8}_")
+
+
+def _short(value):
+    """Drop the per-join parameter namespace (jf<digest>_ -> jf_) for asserts."""
+    if isinstance(value, dict):
+        return {_NS.sub("jf_", k): v for k, v in value.items()}
+    return _NS.sub("jf_", value)
 
 
 @pytest.fixture
@@ -82,8 +91,8 @@ def test_left_join_keeps_unmatched_rows_when_right_side_is_filtered(client, engi
     checked, rows = _rows(client, engine, body)
     generated = checked["generated_sql"]
     assert checked["engine"] == "aurora"
-    assert generated["parameters"] == {"jf_s1_0_0": 1, "jf_s1_1_0": 30}
-    assert ":jf_s1_0_0" in generated["sql"] and ":jf_s1_1_0" in generated["sql"]
+    assert _short(generated["parameters"]) == {"jf_s1_0_0": 1, "jf_s1_1_0": 30}
+    assert ":jf_s1_0_0" in _short(generated["sql"]) and ":jf_s1_1_0" in _short(generated["sql"])
     assert "WHERE" in generated["sql"].split("LEFT JOIN", 1)[1]
     assert "> 30" in generated["copyable_sql"]
     # Every person stays: 3 and 4 have no qualifying genotype, so NULLs.
@@ -113,7 +122,7 @@ def test_filters_with_inner_semi_and_base_filters(client, engine, tables):
                          base_filters=[{"column": "status", "op": "=", "value": "control"}])
     semi_body["steps"][0]["columns"] = None
     checked, semi = _rows(client, engine, semi_body)
-    assert checked["generated_sql"]["parameters"]["jf_base_0_0"] == "control"
+    assert _short(checked["generated_sql"]["parameters"])["jf_base_0_0"] == "control"
     assert semi == [(3, "control")]
     joined = client.post("/api/datasets/join", json=semi_body).json()
     assert joined["join"]["base_rows"] == 2 and joined["rows"] == 1
@@ -155,7 +164,7 @@ def test_values_are_bound_never_interpolated(client, engine, tables):
     checked, rows = _rows(client, engine, body)
     generated = checked["generated_sql"]
     assert attack not in generated["sql"]
-    assert generated["parameters"]["jf_s1_0_0"] == attack
+    assert _short(generated["parameters"])["jf_s1_0_0"] == attack
     assert "x'' OR ''1''=''1''" in generated["copyable_sql"]   # quoted in the copy
     assert rows == []
     assert client.post("/api/datasets/join", json=body).json()["rows"] == 0
@@ -261,8 +270,8 @@ def test_cross_source_join_filters_in_duckdb_and_pushes_down_live_inputs(
     checked = client.post("/api/datasets/join/validate", json=body).json()
     assert checked["ok"] and checked["engine"] == "duckdb"
     generated = checked["generated_sql"]
-    assert "$jf_s1_0_0" in generated["sql"] and "$jf_base_0_0" in generated["sql"]
-    assert generated["parameters"] == {"jf_base_0_0": "case", "jf_s1_0_0": 1,
+    assert "$jf_s1_0_0" in _short(generated["sql"]) and "$jf_base_0_0" in _short(generated["sql"])
+    assert _short(generated["parameters"]) == {"jf_base_0_0": "case", "jf_s1_0_0": 1,
                                        "jf_s1_1_0": "BRCA2"}
     assert "'BRCA2'" in generated["display_sql"]
 
@@ -275,7 +284,7 @@ def test_cross_source_join_filters_in_duckdb_and_pushes_down_live_inputs(
     assert result["join"]["base_rows"] == 2
     assert result["join"]["steps"][0]["right_rows"] == 2
     # The live Aurora base was filtered in PostgreSQL while staging.
-    assert any(":jf_base_0_0" in sql and params.get("jf_base_0_0") == "case"
+    assert any(":jf_base_0_0" in _short(sql) and _short(params).get("jf_base_0_0") == "case"
                for sql, params in staged)
     frame = datasets.get(result["dataset_id"])["df"]
     assert sorted(frame["person_id"].tolist()) == [1, 2]
@@ -346,3 +355,57 @@ def test_omop_cohort_inputs_take_filters_on_both_engines(engine, info, monkeypat
             datasets.close_dataset(dataset_id)
         with engine.begin() as conn:
             conn.execute(text(f'DROP TABLE IF EXISTS cdm."{table}"'))
+
+
+def test_filtered_join_can_feed_another_filtered_join(client, engine, tables):
+    """Nested filtered joins keep separate parameter names (no false conflicts)."""
+    people, genotypes = _open(client, tables["people"]), _open(client, tables["genotypes"])
+    inner = _request(people, genotypes, [{"column": "dosage", "op": ">=", "value": 1}],
+                     how="inner", base_filters=[{"column": "status", "op": "=", "value": "case"}])
+    joined = client.post("/api/datasets/join", json=inner)
+    assert joined.status_code == 200, joined.text
+    first = joined.json()["dataset_id"]
+    assert joined.json()["rows"] == 2              # persons 1 and 2
+    genotypes_again = _open(client, tables["genotypes"])
+
+    def outer(base_id, right_id, filters, base_filters, right_key="person_id"):
+        return {"base_id": base_id, "base_filters": base_filters, "steps": [{
+            "right_id": right_id, "how": "left", "alias": "q", "columns": ["gene"],
+            "conditions": [{"left": "person_id", "op": "=", "right": right_key}],
+            "filters": filters}]}
+
+    # The filtered join as the base, with the same filter values as the inner join.
+    body = outer(first, genotypes_again, [{"column": "dosage", "op": ">=", "value": 1}],
+                 [{"column": "status", "op": "=", "value": "case"}])
+    checked, rows = _rows(client, engine, body)
+    assert checked["engine"] == "aurora"
+    assert [r[0] for r in rows] == [1, 2]
+    with engine.connect() as conn:   # the copyable SQL still runs
+        assert len(conn.execute(text(checked["generated_sql"]["copyable_sql"])).fetchall()) == 2
+    preview = client.post("/api/datasets/join/preview", json=body)
+    assert preview.status_code == 200, preview.text
+    assert len(preview.json()["sample"]) == 2
+    out = client.post("/api/datasets/join", json=body)
+    assert out.status_code == 200, out.text
+    assert out.json()["rows"] == 2
+
+    # The filtered join as a step's table, next to another filtered join.
+    second = client.post("/api/datasets/join", json=_request(
+        people, genotypes, [{"column": "dosage", "op": "=", "value": 2}], how="inner"))
+    assert second.status_code == 200, second.text
+    body = outer(second.json()["dataset_id"], first,
+                 [{"column": "status", "op": "=", "value": "case"}],
+                 [{"column": "status", "op": "!=", "value": "control"}])
+    body["steps"][0]["columns"] = ["g → gene"]
+    checked, rows = _rows(client, engine, body)
+    assert checked["engine"] == "aurora"
+    assert rows == [(1, "case", 2, "BRCA1", "BRCA1")]
+    out = client.post("/api/datasets/join", json=body)
+    assert out.status_code == 200, out.text
+    assert out.json()["rows"] == 1
+    # And it reopens from its saved recipe.
+    ref = out.json()["source_ref"]
+    datasets._store.clear()
+    reopened = client.post("/api/datasets/open", json={"source_ref": ref})
+    assert reopened.status_code == 200, reopened.text
+    assert reopened.json()["rows"] == 1

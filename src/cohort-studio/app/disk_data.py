@@ -678,7 +678,7 @@ def run_join(plan: dict) -> dict:
         disk = dataset.get("disk_source")
         live = dataset.get("live_source")
         if live and index in pushdown:
-            live = joins.filtered_live(live, pushdown[index], joins._filter_prefix(index))
+            live = joins.filtered_live(live, pushdown[index], joins._filter_prefix(index, plan))
         if disk:
             estimate = max(1, int(disk.get("estimated_bytes") or 0),
                            int(disk.get("scan_bytes") or 0),
@@ -766,7 +766,7 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
         elif live:
             table = f"source_{index}"
             if index in pushdown:
-                live = joins.filtered_live(live, pushdown[index], joins._filter_prefix(index))
+                live = joins.filtered_live(live, pushdown[index], joins._filter_prefix(index, plan))
             rows, consumed = stage_live(writer, live, dataset, table, budget_used)
             budget_used += max(0, consumed - source_estimates[index])
             relation = _q(table)
@@ -782,7 +782,7 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
         # Pushed-down filters were applied while staging; others run here.
         if index in pushdown or not filters:
             return relation, {}, None
-        rel, params = joins._filtered_rel(relation, filters, joins._filter_prefix(index), pg=False)
+        rel, params = joins._filtered_rel(relation, filters, joins._filter_prefix(index, plan), pg=False)
         query_cancellation.check()
         count = int(reader.execute(f"SELECT COUNT(*) FROM {rel} AS counted", params).fetchone()[0])
         return rel, params, count

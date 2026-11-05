@@ -277,8 +277,25 @@ def _filter_where(filters: list[dict], col_ref, prefix: str,
     return " AND ".join(clauses), params
 
 
-def _filter_prefix(step_no: int) -> str:
-    return "jf_base" if step_no == 0 else f"jf_s{step_no}"
+def _filter_prefix(step_no: int, p: dict | None = None) -> str:
+    ns = (p or {}).get("filter_ns", "jf")
+    return f"{ns}_base" if step_no == 0 else f"{ns}_s{step_no}"
+
+
+def _filter_namespace(inputs: list[dict], filters: list[list[dict]]) -> str:
+    """Parameter prefix for this join's filters, distinct per join.
+
+    An input can itself be a filtered join whose live SQL binds its own filter
+    parameters, and two such inputs may sit side by side. A digest of the
+    inputs and filter values keeps every join's names apart; identical joins
+    get identical names (and values), which merge without conflict.
+    """
+    import json as _json
+    content = [[ds.get("source"), (ds.get("live_source") or {}).get("sql"),
+                ds.get("origin")] for ds in inputs]
+    content.append([[f["ref"] for f in group] for group in filters])
+    digest = hashlib.sha1(_json.dumps(content, default=str, sort_keys=True).encode()).hexdigest()
+    return f"jf{digest[:8]}"
 
 
 def _filtered_rel(rel: str, filters: list[dict], prefix: str, pg: bool,
@@ -297,7 +314,7 @@ def _filter_params(p: dict, pg: bool = True) -> dict:
     inputs = [(0, p.get("base_filters") or [])] + [(s["no"], s.get("filters") or [])
                                                    for s in p["steps"]]
     for no, filters in inputs:
-        params.update(_filter_where(filters, lambda c: c, _filter_prefix(no), pg)[1])
+        params.update(_filter_where(filters, lambda c: c, _filter_prefix(no, p), pg)[1])
     return params
 
 
@@ -309,7 +326,7 @@ def filtered_live(live: dict, filters: list[dict], prefix: str) -> dict:
     names = live.get("columns") or {}
     where, params = _filter_where(
         filters, lambda c: f"filter_input.{_q(names.get(c, c))}", prefix, True)
-    clash = set(params) & set(live.get("params") or {})
+    clash = {k for k in params if k in (live.get("params") or {}) and live["params"][k] != params[k]}
     if clash:
         raise ValueError("Filter parameters clash with the source's parameters.")
     patch = {"sql": f"SELECT * FROM ({live['sql']}) AS filter_input WHERE {where}",
@@ -395,6 +412,8 @@ def plan(base_id: str, steps: list[dict], base_filters: list | None = None) -> d
     out = {"base": base, "steps": planned, "problems": problems,
            "base_filters": filters, "base_filter_checks": filter_checks,
            "base_errors": filter_errors, "columns": list(left)}
+    out["filter_ns"] = _filter_namespace([base] + [s["ds"] for s in planned],
+                                         [filters] + [s["filters"] for s in planned])
     out["engine"], out["engine_reason"] = _engine(out)
     return out
 
@@ -425,7 +444,7 @@ def _bound_params(p: dict) -> dict:
                 raise ValueError("Conflicting bound parameters in joined sources.")
             params[key] = value
     for key, value in _filter_params(p).items():
-        if key in params:
+        if key in params and params[key] != value:
             raise ValueError("Conflicting bound parameters in joined sources.")
         params[key] = value
     return params
@@ -460,7 +479,7 @@ def _duckdb_sql(p: dict) -> dict:
     staged_inputs = ["source_0"]
     ctes, parameters = [], {}
     base_rel, params = _filtered_rel(relations[id(p["base"])], p.get("base_filters") or [],
-                                     _filter_prefix(0), pg=False)
+                                     _filter_prefix(0, p), pg=False)
     parameters.update(params)
     for step in p["steps"]:
         dataset = step["ds"]
@@ -471,7 +490,7 @@ def _duckdb_sql(p: dict) -> dict:
         name = f"step_{step['no']}"
         left = base_rel if step["no"] == 1 else _q(f"step_{step['no'] - 1}")
         right, params = _filtered_rel(relations[id(dataset)], step.get("filters") or [],
-                                      _filter_prefix(step["no"]), pg=False)
+                                      _filter_prefix(step["no"], p), pg=False)
         parameters.update(params)
         sql = _step_sql(step, left, right)
         ctes.append(f"{_q(name)} AS ({sql})")
@@ -609,13 +628,13 @@ def _inputs(p: dict) -> list[tuple[int, dict, list[dict]]]:
         (s["no"], s["ds"], s.get("filters") or []) for s in p["steps"]]
 
 
-def _input_rel(ds: dict, no: int, filters: list[dict]) -> str:
+def _input_rel(ds: dict, no: int, filters: list[dict], p: dict | None = None) -> str:
     """PostgreSQL relation for one join input with its filters applied."""
     names = (ds.get("live_source") or {}).get("columns", {})
     ref = _table_ref(ds)
     if not filters:
         return ref if ds.get("live_source") else f"(SELECT * FROM {ref} AS filter_input)"
-    return _filtered_rel(ref, filters, _filter_prefix(no), True, names)[0]
+    return _filtered_rel(ref, filters, _filter_prefix(no, p), True, names)[0]
 
 
 def aurora_sql(p: dict) -> dict:
@@ -630,7 +649,7 @@ def aurora_sql(p: dict) -> dict:
     if p.get("base_filters"):
         where, _ = _filter_where(p["base_filters"],
                                  lambda c: f"base_input.{_q(base_names.get(c, c))}",
-                                 _filter_prefix(0))
+                                 _filter_prefix(0, p))
         base_where = f" WHERE {where}"
     ctes = [f"s0 AS (SELECT {base_cols} FROM {_table_ref(p['base'])} AS base_input{base_where})"]
     for s in p["steps"]:
@@ -638,7 +657,7 @@ def aurora_sql(p: dict) -> dict:
             names[out] = _pg_name(out, used)
         right_names = (s["ds"].get("live_source") or {}).get("columns", {})
         right_rel, _ = _filtered_rel(_table_ref(s["ds"]), s.get("filters") or [],
-                                     _filter_prefix(s["no"]), True, right_names)
+                                     _filter_prefix(s["no"], p), True, right_names)
         body = _step_sql(s, f"s{s['no'] - 1}", right_rel,
                          names, right_names)
         ctes.append(f"s{s['no']} AS ({body})")
@@ -715,7 +734,7 @@ def _run_duckdb(p: dict, cap: int) -> dict:
     try:
         if p.get("base_filters"):
             con.register("b", frame)
-            rel, params = _filtered_rel("b", p["base_filters"], _filter_prefix(0), pg=False)
+            rel, params = _filtered_rel("b", p["base_filters"], _filter_prefix(0, p), pg=False)
             frame = con.execute(f"SELECT * FROM {rel}", params).df()
             con.unregister("b")
         stats = {"engine": "duckdb", "base_rows": len(frame), "steps": [], "notes": []}
@@ -724,7 +743,7 @@ def _run_duckdb(p: dict, cap: int) -> dict:
             con.register("l", frame)
             con.register("r", right)
             r_rel, params = _filtered_rel("r", s.get("filters") or [],
-                                          _filter_prefix(s["no"]), pg=False)
+                                          _filter_prefix(s["no"], p), pg=False)
             right_rows = (con.execute(f"SELECT count(*) FROM {r_rel}", params).fetchone()[0]
                           if params or s.get("filters") else len(right))
             sql = _step_sql(s, "l", r_rel)
@@ -762,7 +781,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     for no, ds, filters in _inputs(p):
         live = ds.get("live_source")
         if live:
-            live_sources.append(filtered_live(live, filters, _filter_prefix(no)))
+            live_sources.append(filtered_live(live, filters, _filter_prefix(no, p)))
         elif ds.get("origin"):
             origin = ds["origin"]
             columns = list(ds["df"].columns)
@@ -771,7 +790,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                 "sql": (f"SELECT * FROM {_q(origin.get('schema') or PG_SCHEMA)}."
                         f"{_q(origin['table'])}"),
                 "columns": {name: name for name in columns},
-            }, filters, _filter_prefix(no)))
+            }, filters, _filter_prefix(no, p)))
     output_source = {
         "resource_id": resource_id, "params": params,
         "sql": sql["unlimited"](),
@@ -810,7 +829,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                 if not filters and not ds.get("live_source") and not ds.get("capped"):
                     estimated.append(False)
                     return len(ds["df"])
-                ref = _input_rel(ds, no, filters)
+                ref = _input_rel(ds, no, filters, p)
                 return counted(f"SELECT count(*) FROM {ref} AS live_input",
                                f"SELECT 1 FROM {ref} AS live_input")
 
@@ -826,7 +845,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
                         def guess(ds, no, filters):
                             if not filters and not ds.get("live_source") and not ds.get("capped"):
                                 return len(ds["df"])
-                            q = f"SELECT 1 FROM {_input_rel(ds, no, filters)} AS live_input"
+                            q = f"SELECT 1 FROM {_input_rel(ds, no, filters, p)} AS live_input"
                             return _plan_rows(conn, q, params)
                         before = base_rows = guess(p["base"], 0, p.get("base_filters") or [])
                         for step in p["steps"]:

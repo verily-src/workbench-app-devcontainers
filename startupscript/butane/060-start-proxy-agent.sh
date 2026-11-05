@@ -22,18 +22,35 @@ source "$(dirname "${BASH_SOURCE[0]}")/container-utils.sh"
 # Fail before starting the proxy so incomplete airlock provisioning is retried.
 validate_airlock_snapshot
 PROXY_CONTAINER=$(find_proxy_container)
-# Start an existing frontend without recreating it, before reading its published port.
-if [[ "${PROXY_CONTAINER}" != application-server ]]; then
-    docker start "${PROXY_CONTAINER}"
-fi
 
 #shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
 SHARE_ENABLED=false
-if is_share_enabled_vm; then
-    SHARE_ENABLED=true
-fi
+share_status=0
+is_share_enabled_vm || share_status=$?
+case "${share_status}" in
+    0) SHARE_ENABLED=true ;;
+    1) ;;
+    *)
+        # Without the tags, the agent can't tell which address is safe to dial.
+        # systemd reruns the unit until they can be read.
+        echo "Error: not starting the proxy agent: could not tell whether this VM is share-enabled."
+        exit 1
+        ;;
+esac
 readonly SHARE_ENABLED
+
+# A frontend such as the virtual browser isn't the app, so shared ports on it
+# wouldn't reach the app.
+if [[ "${SHARE_ENABLED}" == true && "${PROXY_CONTAINER}" != application-server ]]; then
+    echo "Error: not starting the proxy agent on this share-enabled VM: only apps served by application-server can be shared, not a separate frontend."
+    exit 1
+fi
+
+# Start an existing frontend without recreating it, before reading its published port.
+if [[ "${PROXY_CONTAINER}" != application-server ]]; then
+    docker start "${PROXY_CONTAINER}"
+fi
 
 if [[ "${SHARE_ENABLED}" == true ]]; then
     # Dial the app container directly on app-network, never the VM's own

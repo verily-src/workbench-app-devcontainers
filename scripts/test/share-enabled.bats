@@ -67,8 +67,10 @@ esac'
     stub docker '
 case "$*" in
     "inspect --format "*) echo fixture ;;
-    "ps -aq --no-trunc --filter label=com.docker.compose.project=fixture --filter label=com.verily.workbench.proxy-target=true") ;;
-    "inspect application-server") cat "${TEST_ROOT}/inspect.json" ;;
+    "ps -aq --no-trunc --filter label=com.docker.compose.project=fixture --filter label=com.verily.workbench.proxy-target=true")
+        cat "${TEST_ROOT}/proxy-target" 2>/dev/null || true ;;
+    "inspect application-server"|"inspect frontend-id") cat "${TEST_ROOT}/inspect.json" ;;
+    "start frontend-id") echo "start frontend-id" >> "${TEST_ROOT}/docker-start" ;;
     "pull proxy-image"|"rm -f proxy-agent") ;;
     "run "*) printf "%s\n" "$@" > "${TEST_ROOT}/docker-run" ;;
     *) echo "Unexpected Docker command: $*" >&2; exit 1 ;;
@@ -114,7 +116,7 @@ register_calls() {
     grep -c '^POST .*/secrets/registerKey$' "${TEST_ROOT}/curl-calls"
 }
 
-@test "detection reads the share-enabled-app network tag and treats unreadable tags as not share-enabled" {
+@test "detection reads the share-enabled-app network tag and reports unreadable tags as unknown" {
     source "${TEST_ROOT}/metadata-utils.sh"
     share_enabled
     is_share_enabled_vm
@@ -130,13 +132,13 @@ register_calls() {
     for tags in '<html>error</html>' '{"tags":["share-enabled-app"]}' ''; do
         printf '%s' "${tags}" > "${TEST_ROOT}/tags"
         run is_share_enabled_vm
-        [ "${status}" -eq 1 ]
-        [[ "${output}" == *"could not read the VM's network tags; treating it as not share-enabled"* ]]
+        [ "${status}" -eq 2 ]
+        [[ "${output}" == *"could not read the VM's network tags"* ]]
     done
 
     rm "${TEST_ROOT}/tags"
     run is_share_enabled_vm
-    [ "${status}" -eq 1 ]
+    [ "${status}" -eq 2 ]
     [[ "${output}" == *"could not read the VM's network tags"* ]]
 }
 
@@ -164,12 +166,37 @@ register_calls() {
     [ "${status}" -eq 0 ]
     grep -qx -- '--host=localhost:8080' "${TEST_ROOT}/docker-run"
 
-    # Unreadable tags behave the same.
-    rm "${TEST_ROOT}/tags" "${TEST_ROOT}/docker-run"
+    # A frontend is started and proxied as before.
+    rm "${TEST_ROOT}/docker-run"
+    echo frontend-id > "${TEST_ROOT}/proxy-target"
     start_proxy_agent
     [ "${status}" -eq 0 ]
-    [[ "${output}" == *"treating it as not share-enabled"* ]]
+    grep -qx 'start frontend-id' "${TEST_ROOT}/docker-start"
     grep -qx -- '--host=localhost:8080' "${TEST_ROOT}/docker-run"
+}
+
+@test "the agent isn't started while the VM's tags can't be read" {
+    for tags in missing '<html>error</html>' ''; do
+        if [[ "${tags}" == missing ]]; then
+            rm -f "${TEST_ROOT}/tags"
+        else
+            printf '%s' "${tags}" > "${TEST_ROOT}/tags"
+        fi
+        start_proxy_agent
+        [ "${status}" -ne 0 ]
+        [[ "${output}" == *"could not tell whether this VM is share-enabled"* ]]
+        [ ! -f "${TEST_ROOT}/docker-run" ]
+    done
+}
+
+@test "share-enabled VMs refuse a separate frontend such as the virtual browser" {
+    share_enabled
+    echo frontend-id > "${TEST_ROOT}/proxy-target"
+    start_proxy_agent
+    [ "${status}" -ne 0 ]
+    [[ "${output}" == *"only apps served by application-server can be shared"* ]]
+    [ ! -f "${TEST_ROOT}/docker-start" ]
+    [ ! -f "${TEST_ROOT}/docker-run" ]
 }
 
 @test "share-enabled VMs dial the app's app-network address and container port" {
@@ -230,11 +257,13 @@ register_calls() {
         [ "$(register_calls)" -eq 1 ]
     done
 
-    echo '["http-server"]' > "${TEST_ROOT}/tags"
-    : > "${TEST_ROOT}/curl-calls"
-    register_key 403 204
-    [ "${status}" -eq 1 ]
-    [ "$(register_calls)" -eq 1 ]
+    for tags in '["http-server"]' '<html>error</html>'; do
+        printf '%s' "${tags}" > "${TEST_ROOT}/tags"
+        : > "${TEST_ROOT}/curl-calls"
+        register_key 403 204
+        [ "${status}" -eq 1 ]
+        [ "$(register_calls)" -eq 1 ]
+    done
 
     : > "${TEST_ROOT}/curl-calls"
     register_key 204

@@ -42,8 +42,8 @@ readonly -f set_metadata
 
 
 # Returns 0 if the VM carries the share-enabled-app network tag, which WSM sets
-# on VMs whose apps can be shared. If the tags can't be read, logs a warning and
-# treats the VM as not share-enabled.
+# on VMs whose apps can be shared, and 1 if it doesn't. If the tags can't be
+# read, logs a warning and returns 2.
 function is_share_enabled_vm() {
   local tags shared
   # Compare jq's output, not its exit status: jq 1.6 exits 0 on empty input.
@@ -53,8 +53,8 @@ function is_share_enabled_vm() {
       || ! shared="$(jq -r 'if type == "array" then any(.[]; . == "share-enabled-app") else error end' \
         <<< "${tags}" 2>/dev/null)" \
       || [[ "${shared}" != true && "${shared}" != false ]]; then
-    echo "WARNING: could not read the VM's network tags; treating it as not share-enabled." >&2
-    return 1
+    echo "WARNING: could not read the VM's network tags." >&2
+    return 2
   fi
   [[ "${shared}" == true ]]
 }

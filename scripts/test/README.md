@@ -21,10 +21,11 @@ bats scripts/test/integration
   supported config location.
 - `container-utils.bats`: default routing, project-scoped proxy overrides, invalid
   lookups, readiness requiring both the app and frontend, and metadata errors/overrides.
-- `share-enabled.bats`: detecting share-enabled VMs from their network tags,
-  including unreadable tags; the proxy agent's `--host` on both kinds of VM;
-  refusing loopback, link-local or missing app-network addresses; and the
-  bounded 403 retry in key registration, which other statuses and VMs don't get.
+- `share-enabled.bats`: detecting share-enabled VMs from their network tags;
+  the proxy agent's `--host` on both kinds of VM; not starting it while the tags
+  can't be read, for a separate frontend on share-enabled VMs, or without a valid
+  app-network address; and the bounded 403 retry in key registration, which other
+  statuses and VMs don't get.
 - `integration/devcontainer.bats`: repeated offline restoration of the same initial
   snapshot, preserving setup-time files, the running browser, home data, and
   startup hooks while discarding later writable-layer changes; named home volume

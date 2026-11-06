@@ -654,6 +654,18 @@ button.link:hover { text-decoration: underline; }
   font-family: var(--font); font-size: 12.5px; padding: 6px 8px; resize: vertical;
 }
 .derive-actions { display: flex; align-items: center; gap: 8px; }
+/* Calculated-field expression help (DeriveColumn) */
+.derive-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; }
+.derive-note { font-size: 11.5px; color: var(--ink-muted); }
+.derive-note code { font-size: 11.5px; }
+.derive-help { font-size: 12px; color: var(--ink-soft); margin-bottom: 10px; }
+.derive-help summary { cursor: pointer; color: var(--ink); }
+.derive-help dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 8px 0; }
+.derive-help dl div { display: contents; }
+.derive-help dt, .derive-help dd { margin: 0; }
+.derive-help dd { color: var(--ink-muted); }
+.derive-error { color: var(--danger, #b42318); }
 .launch-panel {
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px; margin-bottom: 12px;

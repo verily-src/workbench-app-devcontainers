@@ -28,6 +28,9 @@ class DerivedSpec(BaseModel):
     right: str | None = None
     mapping: dict[str, str] | None = Field(default=None, max_length=1000)
     default: str | None = None
+    # Values of the tab parameters an expression references as @name, resolved
+    # when the field is created and kept so the recipe re-derives identically.
+    parameters: list[Parameter] | None = Field(default=None, max_length=20)
 
     @model_validator(mode="after")
     def validate_operation(self):
@@ -44,6 +47,9 @@ class DerivedSpec(BaseModel):
             raise ValueError("A formula needs left, operator and right.")
         if self.op == "expression" and not (self.expression and self.expression.strip()):
             raise ValueError("A calculation expression is required.")
+        if self.op == "expression":
+            import calculations
+            calculations.check_syntax(self.expression, self.parameters or [])
         if self.op == "map" and not (self.column and self.mapping):
             raise ValueError("Mapping needs a column and at least one value mapping.")
         if self.group_by and (any(not item.strip() for item in self.group_by) or len(set(self.group_by)) != len(self.group_by)):

@@ -231,10 +231,17 @@ EOF
 ##################################################
 source "${SCRIPT_DIR}/install-java.sh"
 
+##################################################
+# Clear credentials cached for a previous account
+##################################################
+source "${SCRIPT_DIR}/account-change.sh"
+check_service_account
+
 ###################################
 # Install workbench CLI
 ###################################
 retry 5 "${SCRIPT_DIR}/install-cli.sh"
+record_service_account
 
 ##################################################
 # Set up user bashrc with workbench customization

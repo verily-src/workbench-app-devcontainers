@@ -70,5 +70,9 @@ else
 fi
 
 if [[ "${LOG_IN}" == "true" ]]; then
-  ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' resource mount --allow-other || echo 'Resource mounting failed.'"
+  MOUNT_OPTIONS="--allow-other"
+  if [[ "${SHARED_APPS_READER:-false}" == "true" ]]; then
+    MOUNT_OPTIONS+=" --read-only"
+  fi
+  ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' resource mount ${MOUNT_OPTIONS} || echo 'Resource mounting failed.'"
 fi

@@ -57,6 +57,14 @@ else
     echo "Server already configured to ${SERVER}, skipping server configuration"
 fi
 
+# Turning sharing on switches the VM's service account. Log the old one out.
+readonly SERVICE_ACCOUNT_RECORD="/home/core/service-account"
+if service_account_changed "${SERVICE_ACCOUNT_RECORD}"; then
+    echo "The VM's service account changed; logging out of Workbench..."
+    /home/core/wb.sh auth revoke
+fi
+record_service_account "${SERVICE_ACCOUNT_RECORD}"
+
 # Check if authentication is already valid
 if ! /home/core/wb.sh auth status --format json 2>/dev/null | jq -e '.loggedIn == true' >/dev/null; then
     echo "Authenticating with Workbench server using mode ${WB_LOGIN_MODE}..."

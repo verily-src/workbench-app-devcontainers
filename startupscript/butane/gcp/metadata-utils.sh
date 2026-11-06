@@ -59,3 +59,54 @@ function is_share_enabled_vm() {
   [[ "${shared}" == true ]]
 }
 readonly -f is_share_enabled_vm
+
+# Returns 0 if the VM's service account differs from the one in <record-file>,
+# which record_service_account writes once the caller has acted on the change.
+# Turning sharing on for an existing VM switches its service account. Without a
+# record, only the shared-apps accounts count as a change, since the VM may
+# predate the record. Returns 1 if unchanged, or if the account can't be read.
+function service_account_changed() {
+  local record="$1" current previous
+  if ! current="$(get_service_account_email)" || [[ -z "${current}" ]]; then
+    echo "WARNING: could not read the VM's service account." >&2
+    return 1
+  fi
+  if [[ -f "${record}" ]]; then
+    previous="$(cat "${record}")"
+  elif [[ "${current}" == shared-apps-reader@* || "${current}" == shared-apps-writer@* ]]; then
+    previous=""
+  else
+    previous="${current}"
+  fi
+  [[ "${current}" != "${previous}" ]]
+}
+readonly -f service_account_changed
+
+function get_service_account_email() {
+  curl --retry 5 -s -f \
+    -H "Metadata-Flavor: Google" \
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+}
+readonly -f get_service_account_email
+
+function record_service_account() {
+  local email
+  if email="$(get_service_account_email)" && [[ -n "${email}" ]]; then
+    printf '%s\n' "${email}" > "$1"
+  fi
+}
+readonly -f record_service_account
+
+# Reports in the startup_script/account_change guest attribute whether this VM
+# handles a service-account change, which WSM checks before turning sharing on.
+# This host's scripts do; the app container does if its copies of the startup
+# scripts in <startupscript-dir> run the check. Otherwise clears the attribute.
+function report_account_change_support() {
+  local dir="$1" value=""
+  if grep -qs check_service_account "${dir}/post-startup.sh" \
+      && grep -qs check_service_account "${dir}/remount-on-restart.sh"; then
+    value="supported"
+  fi
+  set_metadata "startup_script/account_change" "${value}"
+}
+readonly -f report_account_change_support

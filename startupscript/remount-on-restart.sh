@@ -46,17 +46,23 @@ exec > >(tee -a "${POST_STARTUP_OUTPUT_FILE}") 2>&1
 # Import utility functions
 ##############################
 source "${SCRIPT_DIR}/emit.sh"
+source "${SCRIPT_DIR}/account-change.sh"
+check_service_account
 
 #############################
 # CLI login
 #############################
 readonly RUN_AS_LOGIN_USER="sudo -u ${USER_NAME} bash -l -c"
+if [[ "${ACCOUNT_CHANGED}" == "true" && "${LOG_IN}" == "true" ]]; then
+  ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth revoke"
+fi
 if [[ "${LOG_IN}" == "true" ]] && ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth status 2>&1" | grep -q "NO USER LOGGED IN"; then
   if ! ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth login --mode=APP_DEFAULT_CREDENTIALS"; then
     emit "Workbench CLI login failed; skipping resource mount."
     LOG_IN="false"
   fi
 fi
+record_service_account
 
 #############################
 # Mount buckets

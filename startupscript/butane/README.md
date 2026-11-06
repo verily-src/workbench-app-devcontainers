@@ -107,6 +107,37 @@ every boot and Docker restart, which picks up a changed address. Other VMs keep
 `localhost` and the published host port. On any VM, the script doesn't start the
 agent while the tags can't be read; systemd reruns the unit until they can.
 
+A VM can have several shared apps, one per port. Each needs nothing more from
+these scripts: app-proxy sets the shared app's port in `X-App-Port`, and the agent
+sends the request to that port on the container's address.
+
+### Turning sharing on for an existing VM
+
+WSM stops the VM, switches its service account to the reader or writer account,
+and starts it again. Each boot compares the service account, read from the
+metadata server, with the one recorded at the last boot. Without a record, only a
+shared-apps account counts as a change, since the VM may predate the record. An
+unreadable account counts as no change.
+
+- `030-configure-wb.sh` logs the host's Workbench CLI out before logging in, and
+  records the account in `/home/core/service-account`.
+- In the app container, `account-change.sh` runs from `post-startup.sh` and
+  `remount-on-restart.sh`, and records the account in `~/.workbench/service-account`.
+  On a change it deletes cached git credentials, SSH identities (including the
+  owner's key that `git-setup.sh` fetched), and gcloud logins and the active
+  account. The CLI then logs out and in again.
+- Buckets mount read-only when the VM runs as the reader account.
+
+- `050-parse-devcontainer.sh` sets the guest attribute
+  `startup_script/account_change` to `supported` once the app's copies of
+  `post-startup.sh` and `remount-on-restart.sh` run the check, and clears it
+  otherwise. WSM turns sharing on only for VMs that report it, since VMs keep
+  the scripts they downloaded and cloned at first boot.
+
+A failed logout leaves the old account recorded, so the next boot or restart
+tries again. Files the owner kept elsewhere in the home directory, such as cloned
+repos, stay.
+
 `035-register-key.sh` retries a 403 from `registerKey` for about two minutes on
 share-enabled VMs, since WSM stores the VM's instance ID just after creating it.
 Other statuses, other VMs, and VMs whose tags can't be read fail on the first

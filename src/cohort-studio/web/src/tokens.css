@@ -867,3 +867,4 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .popover-menu > button { justify-content: flex-start; text-align: left; border-color: transparent; background: transparent; }
 .popover-menu > button:hover { background: var(--hover); }
 .export-menu .popover-panel > button, .export-menu .popover-panel > div > button { width: 100%; }
+.popover-panel[hidden] { display: none; }

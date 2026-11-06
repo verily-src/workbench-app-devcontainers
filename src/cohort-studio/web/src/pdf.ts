@@ -72,7 +72,7 @@ export function exportDatasetPdf(dataset: Dataset, charts: ChartImage[], summary
     doc.text(lines, margin, y); y += lines.length * (size + 3) + 5;
   };
   writeWrapped(dataset.title, 17, 25);
-  writeWrapped("Cohort Studio", 9, 100);
+  writeWrapped("Cohort Browser", 9, 100);
   const r = dataset.result;
   if (r) writeWrapped(`${r.filtered.toLocaleString()} of ${r.total.toLocaleString()} rows - ${dataset.source}`, 10, 75);
   writeWrapped(`Filters: ${describeFilters(dataset.filters)}`, 9, 75);

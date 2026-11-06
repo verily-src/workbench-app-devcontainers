@@ -72,7 +72,7 @@ def loaded_page(page: Page, app_url: str) -> Page:
 
 def test_serves_empty_state(page: Page, app_url: str):
     page.goto(app_url)
-    expect(page.get_by_text("Cohort Studio")).to_be_visible(timeout=15000)
+    expect(page.get_by_text("Cohort Browser")).to_be_visible(timeout=15000)
     expect(page.get_by_text("No data loaded")).to_be_visible()
 
 

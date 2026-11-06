@@ -717,7 +717,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   }, [gridNode?.id, gridNode?.dataset?.id, rowLimit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Output fields of the grid table: name, table node, remote field, profile. */
-  const fieldRows = (): { field: string; node: CanvasNode; remote: string; column?: ColumnProfile; included: boolean }[] => {
+  const fieldRows = (shown: CanvasNode | null | undefined = gridNode): { field: string; node: CanvasNode; remote: string; column?: ColumnProfile; included: boolean }[] => {
+    const gridNode = shown;
     const list = gridNode ? [gridNode] : root ? [root, ...steps] : [];
     return list.flatMap((n) => {
       if (n.parentId && !addsColumns(n.how) && !gridNode) return [];
@@ -737,7 +738,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     if (!root) return undefined;
     const rootNames = new Set(root.dataset?.columns.map((c) => c.name) ?? []);
     const exclude = rootExcluded.filter((c) => rootNames.has(c));
-    const live = new Set(fieldRows().filter((f) => f.included).map((f) => f.field));
+    // Always from the joined result, whichever table the grid is showing.
+    const live = new Set(fieldRows(null).filter((f) => f.included).map((f) => f.field));
     const rename = Object.fromEntries(Object.entries(renames)
       .filter(([from, to]) => live.has(from) && to.trim() && to.trim() !== from)
       .map(([from, to]) => [from, to.trim()]));

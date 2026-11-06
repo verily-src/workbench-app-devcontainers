@@ -245,6 +245,19 @@ def test_drag_and_keyboard_build_two_table_join(page, app_url):
     canvas.get_by_role("button", name="Preview", exact=True).first.click()
     _wait_for(calls, "preview", lambda body: body.get("output") == {
         "exclude": ["state"], "rename": {"genotypes → gene": "gene_symbol"}}, page)
+    # Showing an input table and changing the join keeps the renames.
+    canvas.get_by_label("Preview table").select_option(label="genotypes")
+    canvas.get_by_role("button", name=re.compile("^Join person to genotypes")).click()
+    config = canvas.get_by_role("region", name="Join configuration")
+    config.get_by_role("radio", name="Left", exact=True).click()
+    config.get_by_role("button", name="Apply").click()
+    canvas.get_by_label("Preview table").select_option(label="Joined result")
+    canvas.get_by_role("button", name="Preview", exact=True).first.click()
+    _wait_for(calls, "preview", lambda body: body.get("output", {}).get("rename") == {
+        "genotypes → gene": "gene_symbol"} and body["steps"][0]["how"] == "left", page)
+    canvas.get_by_role("button", name=re.compile("^Join person to genotypes")).click()
+    config.get_by_role("radio", name="Inner", exact=True).click()
+    config.get_by_role("button", name="Apply").click()
     # Restoring the defaults sends no output at all.
     fields.get_by_label("Include state").check()
     fields.get_by_label("Name for genotypes → gene").fill("genotypes → gene")

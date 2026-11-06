@@ -516,8 +516,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
   useEffect(() => {
     if (!seed || lastSeed.current === seed.nonce) return;
     lastSeed.current = seed.nonce;
+    setBuildMode("visual");   // "⋈ Join" always shows the visual join
     if (nodesRef.current.some((n) => n.dataset?.id === seed.datasetId)) return;
-    setBuildMode("visual");
     void addItem({ type: "tab", datasetId: seed.datasetId });
   }, [seed?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   const lastEdit = useRef<number | null>(null);

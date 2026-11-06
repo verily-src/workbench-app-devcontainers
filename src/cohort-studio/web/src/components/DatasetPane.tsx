@@ -1,12 +1,13 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { ExportJob, OpenResult } from "../api";
-import type { ChartSpec, ChartStyle, Dataset, Filter, Source } from "../types";
+import type { ChartSpec, ChartStyle, Dataset, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 import { Popover } from "./Popover";
 import { useAiFeatures, usePlink } from "../features";
 import { extractTarget } from "../extract";
+import { describeFilter } from "../filterText";
 import { DatasetSettings } from "./DatasetSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
@@ -67,13 +68,7 @@ function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
   );
 }
 
-function describeFilter(f: Filter): string {
-  if (f.kind === "categorical") {
-    return (f.values ?? []).map((v) => `${f.column}: ${v}`).join("|");
-  }
-  return f.max === Number.MAX_VALUE ? `${f.column}: ≥ ${f.min}` : f.min === -Number.MAX_VALUE
-    ? `${f.column}: ≤ ${f.max}` : `${f.column}: ${f.min}–${f.max}`;
-}
+
 
 function cacheAge(asOf: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(asOf)) / 1000));
@@ -515,16 +510,19 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
             onClose={() => updateChart(i, null)}
             onMove={(delta) => {
-              const next = [...charts];
               const j = i + delta;
-              if (j < 0 || j >= next.length) return;
-              [next[i], next[j]] = [next[j], next[i]];
-              onUpdate({ charts: next });
+              if (j < 0 || j >= charts.length) return;
+              // Move the loaded results with their charts so no card shows another chart's data.
+              const swap = <T,>(list: T[]) => { const next = [...list]; [next[i], next[j]] = [next[j], next[i]]; return next; };
+              onUpdate({ charts: swap(charts),
+                         ...(result ? { result: { ...result, charts: swap(result.charts) } } : {}) });
             }}
             canMoveUp={i > 0} canMoveDown={i < charts.length - 1}
             onDuplicate={() => {
               const copy = { ...spec, title: `${spec.title || (dataset.columns.find((c) => c.name === spec.x)?.label ?? spec.x)} (copy)` };
-              onUpdate({ charts: [...charts.slice(0, i + 1), copy, ...charts.slice(i + 1)] });
+              const insert = <T,>(list: T[], item: T) => [...list.slice(0, i + 1), item, ...list.slice(i + 1)];
+              onUpdate({ charts: insert(charts, copy),
+                         ...(result ? { result: { ...result, charts: insert(result.charts, result.charts[i]) } } : {}) });
             }}
           />
         ))}

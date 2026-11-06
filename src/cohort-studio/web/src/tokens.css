@@ -876,3 +876,12 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .cohort-chip .cohort-apply:hover { text-decoration: underline; }
 .cohort-chip.active { background: var(--accent-tint); border-color: var(--accent-tint-border); color: var(--accent); }
 .filter-search { width: 100%; margin: 2px 0 6px; }
+.date-filter { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; }
+.date-filter-modes { display: inline-flex; align-self: flex-start; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
+.date-filter-modes > button { height: 24px; padding: 0 10px; border: 0; border-radius: 0; background: transparent; font-size: 12px; }
+.date-filter-modes > button + button { border-left: 1px solid var(--border-strong); }
+.date-filter-modes > button[aria-checked="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.date-filter-range { display: flex; align-items: center; gap: 6px; }
+.date-filter-range input[type="date"] { flex: 1; min-width: 0; }
+.date-filter-range input[type="number"] { width: 72px; }
+.date-filter > .link { align-self: flex-start; }

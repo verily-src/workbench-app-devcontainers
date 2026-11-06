@@ -31,8 +31,11 @@ export interface TableInfo {
 
 export interface ColumnProfile {
   name: string;
-  filter_kind: "categorical" | "range" | "none";
+  filter_kind: "categorical" | "range" | "date" | "none";
   dtype: string;
+  /** Earliest/latest date (YYYY-MM-DD) for date columns. */
+  min_date?: string;
+  max_date?: string;
   logical_type?: "number" | "text" | null;
   label?: string;
   values?: string[];
@@ -44,15 +47,22 @@ export interface ColumnSetting {
   name: string;
   logical_type: "number" | "text" | null;
   label?: string;
-  filter_kind: "categorical" | "range" | "none" | null;
+  filter_kind: "categorical" | "range" | "date" | "none" | null;
 }
+
+export type DateUnit = "day" | "week" | "month" | "year";
 
 export interface Filter {
   column: string;
-  kind: "categorical" | "range";
+  kind: "categorical" | "range" | "date";
   values?: string[];
   min?: number;
   max?: number;
+  /** kind "date": YYYY-MM-DD bounds (end inclusive), or the last N units. */
+  start?: string;
+  end?: string;
+  last?: number;
+  unit?: DateUnit;
 }
 
 export interface AxisSettings {

@@ -20,6 +20,10 @@ def test_charts_move_and_duplicate(loaded_page):
     card.get_by_role("button", name="Duplicate").click()
     expect(page.locator(".chart-card")).to_have_count(4)
     assert _titles(page)[:3] == [first, f"{first} (copy)", second]
+    # The copy shows the same data right away (results move with their charts).
+    data = page.evaluate("""() => [...document.querySelectorAll('.chart-card .chart-plot')].slice(0, 2)
+        .map((el) => JSON.stringify(window.__studioEcharts.getInstanceByDom(el).getOption().series.map((s) => s.data)))""")
+    assert data[0] == data[1]
     # Moving the copy later swaps it with its neighbour; the first chart can't move earlier.
     copy = page.locator(".chart-card").nth(1)
     copy.get_by_role("button", name="Chart actions").click()

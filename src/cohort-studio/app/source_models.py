@@ -58,7 +58,7 @@ class ColumnSetting(BaseModel):
     name: str = Field(min_length=1, max_length=512)
     logical_type: Literal["number", "text"] | None = None
     label: str | None = Field(default=None, max_length=128)
-    filter_kind: Literal["categorical", "range", "none"] | None = None
+    filter_kind: Literal["categorical", "range", "date", "none"] | None = None
 
 
 class TableSource(BaseModel):

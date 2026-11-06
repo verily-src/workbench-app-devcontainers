@@ -268,7 +268,7 @@ export function measureLabel(measure: ChartMeasure | undefined, labels: Record<s
   return `${AGG_LABEL[measure.agg]} ${labels[measure.column] ?? measure.column}`;
 }
 
-function pieOption(counts: Counts, donut: boolean, dark: boolean, ink: string, surface: string): { option: EChartsOption; cats: string[] } {
+function pieOption(counts: Counts, donut: boolean, dark: boolean, ink: string, surface: string): { option: EChartsOption; cats: string[]; folded: boolean } {
   const rows = counts.cats.map((name, i) => ({ name, value: counts.selected[i] ?? 0 }))
     .filter((r) => r.value > 0);
   const named = rows.filter((r) => r.name !== "Other").sort((a, b) => b.value - a.value);
@@ -280,6 +280,7 @@ function pieOption(counts: Counts, donut: boolean, dark: boolean, ink: string, s
     ...(tail ? [{ name: "Other", value: tail, itemStyle: { color: dark ? "#5f6368" : "#bdc1c6" } }] : [])];
   return {
     cats: slices.map((s) => s.name),
+    folded: named.length > head.length,
     option: {
       tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
       legend: { type: "scroll", orient: "vertical", right: 4, top: "middle",
@@ -440,7 +441,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
           const pie = pieOption(barCounts(data), style === "donut", dark, ink, surface);
           option = pie.option;
           clickCats = pie.cats;
-          folded.add("Other");   // the pie folds its own tail into "Other"
+          if (pie.folded) folded.add("Other");   // the pie folded smaller slices into "Other"
         } else if (style === "column" || style === "line" || style === "area") {
           const base = { ...barCounts(data), name: valueName };
           const counts = style === "column" ? base : naturalOrder(base);

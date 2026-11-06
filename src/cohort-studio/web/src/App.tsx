@@ -656,7 +656,7 @@ export default function App() {
   };
 
   const activeDs = datasets[active];
-  const chartQuerySignature = JSON.stringify(activeDs?.charts.map(({ kind, x, y }) => ({ kind, x, y })) ?? []);
+  const chartQuerySignature = JSON.stringify(activeDs?.charts.map(({ kind, x, y, measure, series }) => ({ kind, x, y, measure, series })) ?? []);
 
   const TERMINAL = new Set(
     ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);

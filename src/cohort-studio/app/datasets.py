@@ -8,6 +8,7 @@ import uuid
 import numpy as np
 import pandas as pd
 
+import chart_measures
 import filter_rules
 import queries
 
@@ -239,6 +240,8 @@ def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
     kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
     if x not in full.columns or (y and y not in full.columns):
         return {"kind": kind, "x": x, "data": []}
+    if chart_measures.is_measured(chart):
+        return chart_measures.frame_bar(full, filt, chart)
     if kind == "bar":
         return _bar_aggregate(full, filt, x)
     if kind == "histogram":
@@ -285,6 +288,8 @@ def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
     for item in filter_rules.leaves(filters):
         if item.get("column") not in full.columns:
             raise ValueError(f"Unknown filter column: {item.get('column')!r}.")
+    for chart in chart_specs:
+        chart_measures.validate(chart, full.columns)
     if ds.get("live_source") is not None:
         import live_query
         import disk_data

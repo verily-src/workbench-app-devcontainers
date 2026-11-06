@@ -91,7 +91,11 @@ export type ChartStyle = "bar" | "column" | "line" | "area" | "pie" | "donut";
 export type MarkType = "automatic" | "bar" | "column" | "line" | "area" | "pie" | "donut"
   | "circle" | "density" | "map";
 /** Mark settings: series color, mark size, and value labels. */
-export interface ChartMarks { color?: string; size?: "s" | "l"; labels?: boolean }
+export interface ChartMarks { color?: string; size?: "s" | "l"; labels?: boolean; stack?: boolean }
+
+export type MeasureAgg = "count" | "count_distinct" | "sum" | "mean" | "median" | "min" | "max";
+/** What each bar or point measures; count (the default) keeps the all-vs-selected overlay. */
+export interface ChartMeasure { agg: MeasureAgg; column?: string | null }
 
 export interface ChartSpec {
   kind: "bar" | "histogram" | "scatter" | "heatmap" | "map";
@@ -105,10 +109,15 @@ export interface ChartSpec {
   title?: string;
   x_axis?: AxisSettings;
   y_axis?: AxisSettings;
+  /** Data-affecting (bar kind): the measure, and a field that splits it into series. */
+  measure?: ChartMeasure;
+  series?: string;
 }
 
 export interface BarDatum { category: string; all: number; selected: number }
-export interface PersonBarDatum { category: string; value: number }
+export interface PersonBarDatum { category: string; value: number | null }
+/** One value per series (ChartResult.series), in the same order. */
+export interface SeriesBarDatum { category: string; values: (number | null)[] }
 export interface HistDatum { lo: number; hi: number; all: number; selected: number }
 
 export interface ChartResult {
@@ -116,7 +125,10 @@ export interface ChartResult {
   x: string;
   y?: string;
   sampled?: boolean;
-  data: BarDatum[] | PersonBarDatum[] | HistDatum[] | number[][] | [string, string, number][];
+  measure?: ChartMeasure;
+  series_column?: string;
+  series?: string[];
+  data: BarDatum[] | PersonBarDatum[] | SeriesBarDatum[] | HistDatum[] | number[][] | [string, string, number][];
 }
 
 export interface QueryResult {

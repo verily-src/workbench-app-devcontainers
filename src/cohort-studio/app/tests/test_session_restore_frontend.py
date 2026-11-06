@@ -37,6 +37,10 @@ def test_open_tabs_can_be_restored_after_reload(page, app_url):
     page.reload()
     banner = page.locator('.session-restore')
     expect(banner).to_contain_text('Your last session had 1 tab', timeout=10000)
+    # Restore and Dismiss sit on one row, vertically centred together.
+    restore = banner.get_by_role('button', name='Restore last session').bounding_box()
+    dismiss = banner.get_by_role('button', name='Dismiss').bounding_box()
+    assert abs((restore['y'] + restore['height'] / 2) - (dismiss['y'] + dismiss['height'] / 2)) <= 1
     page.get_by_role('button', name='Restore last session').click()
     expect(page.locator('.tab.active')).to_contain_text('cost', timeout=10000)
     assert opens[-1]['source_ref']['table'] == 'cost'

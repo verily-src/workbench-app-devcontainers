@@ -13,15 +13,14 @@ def menu(page, name):
     return page
 
 
-def open_data_builder(page, from_tab=True):
-    """Open Data Builder; from an Explore tab's "⋈ Join" it starts with that tab."""
+def open_data_builder(page, start_tab=None):
+    """Open Data Builder; with start_tab, put that open Explore tab on the canvas first."""
     from playwright.sync_api import expect
-    if from_tab and page.locator(".tab-join").count():
-        page.locator(".tab-join").click()
-    else:
-        page.locator(".topnav-link").filter(has_text="Data Builder").click()
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
+    if start_tab:
+        add_to_canvas(canvas, start_tab, tab=True)
     return canvas
 
 
@@ -55,8 +54,7 @@ def canvas_join(page, tabs, keys, how=None, consent=False, title=None):
     tabs[0] is the start table (its "⋈ Join"); each later tab is joined to it
     with the matching (left, right) pair in `keys`."""
     from playwright.sync_api import expect
-    page.locator(".tab", has_text=tabs[0]).first.locator("> span").first.click()
-    canvas = open_data_builder(page)
+    canvas = open_data_builder(page, tabs[0])
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
     for count, (tab, (left, right)) in enumerate(zip(tabs[1:], keys), start=2):
         add_to_canvas(canvas, tab, tab=True)

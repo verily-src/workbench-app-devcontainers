@@ -208,7 +208,7 @@ def test_settings_shows_palette_swatches(page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.get_by_role("button", name="Settings", exact=True).click()
-    expect(page.get_by_text("Chart palette").first).to_be_visible(timeout=10000)
+    expect(page.get_by_text("Color theme").first).to_be_visible(timeout=10000)
     expect(page.locator(".palette-swatch")).to_have_count(6)   # verily, indigo, amber, crimson, slate, partner
 
 
@@ -376,7 +376,7 @@ def test_join_two_tabs_into_new_dataset(loaded_page: Page):
 def _two_tab_canvas(page):
     page.locator('input[type="file"]').set_input_files(PHENO_CSV)
     expect(page.locator(".tab", has_text="phenotypes.csv")).to_be_visible(timeout=15000)
-    canvas = open_data_builder(page)
+    canvas = open_data_builder(page, "phenotypes.csv")
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
     add_to_canvas(canvas, "samples.csv", tab=True)
     expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)

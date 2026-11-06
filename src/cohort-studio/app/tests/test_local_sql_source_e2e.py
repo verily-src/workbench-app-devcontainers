@@ -50,7 +50,8 @@ def test_local_sql_source_preview_join_and_reopen(page: Page, local_sql_url: str
     expect(page.locator(".tab.active")).to_contain_text("People with samples", timeout=15000)
 
     # Join the SQL tab with a table in Data Builder (visual mode).
-    page.locator(".tab-join").click()
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
+    canvas.get_by_role("group", name="Open tabs").get_by_role("button", name="Add People with samples to canvas").click()
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=15000)
     canvas.get_by_role("button", name=re.compile("^local-postgres")).click()
     canvas.get_by_role("button", name="Add genetics_demo.genotypes to canvas").click()

@@ -297,23 +297,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
   return (
     <div>
       <div className="dataset-toolbar">
-        <div className="hero">
-          <span className="count">
-            {result ? (dataset.entityColumn && entityCount
-              ? entityCount.filtered.toLocaleString()
-              : result.filtered.toLocaleString()) : "…"}
-          </span>
-          <span className="hero-text">
-            <span className="detail">
-              {dataset.entityColumn && entityCount
-                ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
-                // Unfiltered: "1,392,882 rows", not "1,392,882 of 1,392,882 rows".
-                : result && result.filtered === result.total ? "rows" : `of ${result?.total.toLocaleString() ?? "…"} rows`}
-              {" · "}{scope === "database" ? "full database"
-                : result?.sampled ? "capped loaded sample" : "in memory"}
-            </span>
+        <div className="hero-line">
             <span className="hero-meta">
-              <span aria-hidden>·</span>
               <span className="hero-source" title={dataset.source}>{dataset.source}</span>
               {databaseScoped && <>
                 <span className="settings-hint" title={result?.cache
@@ -329,7 +314,6 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
                 </button>
               </>}
             </span>
-          </span>
         </div>
         <label className="entity-select">Count unique
           <select value={dataset.entityColumn ?? ""}
@@ -413,6 +397,21 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
 
       <div className="cohort-bar">
         <span className="cohort-label">Cohorts</span>
+        <span className="hero cohort-size" aria-label="Cohort size">
+          <span className="count">
+            {result ? (dataset.entityColumn && entityCount
+              ? entityCount.filtered.toLocaleString()
+              : result.filtered.toLocaleString()) : "…"}
+          </span>
+            <span className="detail">
+              {dataset.entityColumn && entityCount
+                ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+                // Unfiltered: "1,392,882 rows", not "1,392,882 of 1,392,882 rows".
+                : result && result.filtered === result.total ? "rows" : `of ${result?.total.toLocaleString() ?? "…"} rows`}
+              {" · "}{scope === "database" ? "full database"
+                : result?.sampled ? "capped loaded sample" : "in memory"}
+            </span>
+        </span>
         {cohorts.map((c) => (
           <span key={c.name} className={`cohort-chip${JSON.stringify(c.filters) === JSON.stringify(filters) ? " active" : ""}`}>
             <button type="button" className="quiet cohort-apply"

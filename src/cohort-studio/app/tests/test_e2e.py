@@ -332,6 +332,29 @@ def test_mark_color_size_and_labels(loaded_page: Page):
     assert all(not x["label"] for x in series if x["name"] == "all")
 
 
+def test_axes_and_mark_settings_follow_the_drawn_chart(loaded_page: Page):
+    card = loaded_page.locator(".chart-card", has_text="tissue").first
+    # Bar: counts run along X.
+    card.get_by_role("button", name="Edit axes").click()
+    editor = card.get_by_role("form", name="Chart axes")
+    expect(editor.get_by_label("X axis scale")).to_have_count(1)
+    expect(editor.get_by_label("Y axis scale")).to_have_count(0)
+    card.get_by_role("button", name="Edit axes").click()
+    # Line: counts run up Y.
+    _mark(card, "Line")
+    card.get_by_role("button", name="Edit axes").click()
+    expect(editor.get_by_label("Y axis scale")).to_have_count(1)
+    expect(editor.get_by_label("X axis scale")).to_have_count(0)
+    card.get_by_role("button", name="Edit axes").click()
+    # Donut: no axes, and only labels apply.
+    _mark(card, "Donut")
+    expect(card.get_by_role("button", name="Edit axes")).to_have_count(0)
+    card.get_by_role("button", name="Marks").click()
+    expect(card.get_by_role("radio", name="L", exact=True)).to_be_disabled()
+    expect(card.get_by_role("button", name="Color #eb6834")).to_be_disabled()
+    expect(card.get_by_label("Show values")).to_be_enabled()
+
+
 def test_add_chart_with_line_style(loaded_page: Page):
     form = loaded_page.locator("form", has=loaded_page.get_by_text("Add chart"))
     form.locator('select[name="x"]').select_option("tissue")

@@ -84,3 +84,22 @@ def test_no_output_is_a_no_op():
     out = {"df": pd.DataFrame({"a": [1]})}
     assert joins.project_output(out, None) is out
     assert joins.project_output(out, {"exclude": [], "rename": {}}) is out
+
+
+def test_names_differing_only_by_case_are_rejected():
+    frame = pd.DataFrame({"a": [1], "b": [2]})
+    with pytest.raises(ValueError, match="must be unique"):
+        joins.project_output({"df": frame}, {"rename": {"b": "A"}})
+
+
+def test_failed_projection_removes_the_staged_duckdb_result(tmp_path, monkeypatch):
+    path = str(tmp_path / "staged.duckdb")
+    duckdb.connect(path).close()
+    frame = pd.DataFrame({"a": [1], "b": [2]})
+    monkeypatch.setattr(joins, "_run", lambda *a, **k: {
+        "df": frame, "stats": {}, "disk_source": {"path": path, "table": "t", "columns": ["a", "b"]}})
+    removed = []
+    monkeypatch.setattr(disk_data, "remove", lambda source: removed.append(source["path"]))
+    with pytest.raises(ValueError, match="Keep at least one field"):
+        joins.run("base", [{"right_id": "x"}], output={"exclude": ["a", "b"]})
+    assert removed == [path]

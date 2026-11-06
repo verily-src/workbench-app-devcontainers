@@ -986,7 +986,9 @@ def project_output(out: dict, output: dict | None) -> dict:
     if not keep:
         raise ValueError("Keep at least one field in the joined result.")
     final = [rename.get(c, c) for c in keep]
-    dupes = sorted({n for n in final if final.count(n) > 1})
+    # Case-insensitive: DuckDB (and exports) treat "a" and "A" as one name.
+    folded = [n.casefold() for n in final]
+    dupes = sorted({n for n, f in zip(final, folded) if folded.count(f) > 1})
     if dupes:
         raise ValueError(f"Field names must be unique: {', '.join(dupes[:5])}.")
     out = {**out, "df": out["df"][keep].rename(columns=rename)}
@@ -1015,7 +1017,15 @@ def project_output(out: dict, output: dict | None) -> dict:
 def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
         allow_loaded: bool = False, base_filters: list | None = None,
         output: dict | None = None) -> dict:
-    return project_output(_run(base_id, steps, cap, allow_loaded, base_filters), output)
+    out = _run(base_id, steps, cap, allow_loaded, base_filters)
+    try:
+        return project_output(out, output)
+    except Exception:
+        # Nothing owns the staged result yet, so remove it here.
+        if out.get("disk_source"):
+            import disk_data
+            disk_data.remove(out["disk_source"])
+        raise
 
 
 def _run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,

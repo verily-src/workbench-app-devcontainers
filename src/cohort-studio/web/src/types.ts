@@ -355,6 +355,20 @@ export interface Dataset {
   chatSessionId?: string;
   filterAskHistory?: FilterAskHistoryEntry[];
   groupSummary?: { group_by: string[]; measure: string | null };
+  /** Set when this tab is a saved extract table; null once checked and it isn't. */
+  extract?: ExtractInfo | null;
+  /** A Refresh extract job is running for this tab. */
+  extractRefreshing?: boolean;
+}
+
+export interface ExtractInfo {
+  table: string;
+  title: string;
+  rows: number;
+  created_at: string;
+  refreshed_at: string;
+  /** False when its inputs (for example an upload) can't be reopened. */
+  refreshable: boolean;
 }
 
 export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"

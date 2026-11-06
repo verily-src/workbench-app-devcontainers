@@ -1,4 +1,4 @@
-import type {
+import type { ExtractInfo,
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
@@ -333,6 +333,8 @@ export interface OpenResult {
   source_ref?: SourceRef;
   source_info?: SourceInfo | null;
   query_scope?: "database" | "loaded";
+  /** Present on the results of extract and refresh_extract jobs. */
+  extract?: ExtractInfo;
 }
 
 export interface CohortAgentResult {
@@ -606,6 +608,23 @@ export const api = {
       post({ message, session_id: sessionId,
              filters,
              charts: charts.map(({ kind, x, y }) => ({ kind, x, y })) })),
+
+  /** Save every row of a tab as a database table (no row cap), recording its
+   *  recipe so it can be refreshed; resolves with the extract table opened. */
+  extract: (datasetId: string, kind: string, resourceId: string, table: string, title: string,
+            onProgress?: (job: DataJob) => void) =>
+    dataJob<OpenResult>("extract", { dataset_id: datasetId, kind, resource_id: resourceId, table, title },
+      undefined, onProgress),
+
+  /** Rerun an extract's recipe, replace its rows, and reopen it. */
+  refreshExtract: (kind: string, resourceId: string, table: string,
+                   onProgress?: (job: DataJob) => void) =>
+    dataJob<OpenResult>("refresh_extract", { kind, resource_id: resourceId, table },
+      undefined, onProgress),
+
+  extractInfo: (resourceId: string, table: string) =>
+    request<{ extract: ExtractInfo | null }>(
+      `/api/extracts/info?${new URLSearchParams({ resource_id: resourceId, table })}`),
 
   materialize: (datasetId: string, resourceId: string, table: string) =>
     request<{ table: string; resource_id: string; rows: number }>(

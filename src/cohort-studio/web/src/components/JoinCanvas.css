@@ -41,7 +41,8 @@
 .jc-search input { border: 0; outline: none; flex: 1; padding: 6px 0; background: transparent; color: var(--ink); font: inherit; }
 .jc-search:focus-within { border-color: var(--accent); }
 .jc-table-list { flex: 1; overflow-y: auto; min-height: 0; }
-.jc-group-label { font-size: 11.5px; color: var(--ink-muted); font-weight: 600; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .03em; }
+.jc-group-label { font-size: 11.5px; color: var(--ink-muted); font-weight: 600; margin: 8px 0 2px; text-transform: uppercase; letter-spacing: .03em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jc-table-item { display: flex; align-items: center; gap: 6px; padding: 3px 4px 3px 6px; border-radius: var(--radius-sm);
   cursor: grab; font-size: 13px; }
 .jc-table-item:hover { background: var(--hover); }

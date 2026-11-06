@@ -100,7 +100,7 @@ class DataJobs:
         return self.get(job_id, owner)
 
     def submit(self, kind, owner, work, cleanup, label=None):
-        if kind not in {'open', 'join', 'join_preview'} or not isinstance(owner, str) or not owner:
+        if kind not in {'open', 'join', 'join_preview', 'extract', 'refresh_extract'} or not isinstance(owner, str) or not owner:
             raise ValueError('Invalid data job')
         timeout_ms = query_cancellation.join_timeout_ms() if kind in {'join', 'join_preview'} else None
         with self.lock:

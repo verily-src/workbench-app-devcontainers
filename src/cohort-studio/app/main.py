@@ -46,6 +46,7 @@ import omop
 import queries
 import views
 import materialized_sources
+import extracts
 import saved_snapshots
 import query_cancellation
 import disconnect_watch
@@ -993,7 +994,7 @@ def join_datasets(req: JoinRequest):
 class DataJobResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     job_id: str
-    kind: Literal["open", "join", "join_preview"]
+    kind: Literal["open", "join", "join_preview", "extract", "refresh_extract"]
     status: Literal["queued", "running", "cancelling", "cancelled", "complete", "failed", "interrupted"]
     result: dict | None = None
     error: str | dict | list | None = None
@@ -1008,6 +1009,8 @@ class DataJobResponse(BaseModel):
 def _data_job_label(kind, req) -> str:
     """Short description shown while the job runs; never raises."""
     try:
+        if kind in ("extract", "refresh_extract"):
+            return f"{req.table} in {req.resource_id}"
         if kind == "open":
             if req.source_ref is not None:
                 ref = source_dict(req.source_ref)
@@ -1035,9 +1038,105 @@ def _data_job_label(kind, req) -> str:
         return "selected tables" if kind != "open" else "data source"
 
 
+class ExtractRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dataset_id: str
+    kind: Literal["aurora", "postgres"] = "aurora"
+    resource_id: str
+    table: str
+    title: str | None = Field(default=None, max_length=128)
+    replace: bool = False
+
+
+class RefreshExtractRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["aurora", "postgres"] = "aurora"
+    resource_id: str
+    table: str
+
+
+def _after_table_write(resource_id: str) -> None:
+    db.list_aurora_tables.invalidate()
+    db.fetch_aurora_table.invalidate()
+    query_cache.invalidate_resource(resource_id)
+    views.invalidate_listing("aurora", resource_id)
+    join_discovery.invalidate_resource(resource_id)
+
+
+def _extract_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
+    if isinstance(exc, extracts.ExtractExists):
+        return HTTPException(409, str(exc))
+    if isinstance(exc, LookupError):
+        return HTTPException(404, str(exc))
+    if isinstance(exc, (extracts.NotRefreshable, ValueError)):
+        return HTTPException(400, str(exc).split("\n")[0][:300])
+    if isinstance(exc, (disk_data.OperationTooLarge,)):
+        return HTTPException(413, str(exc))
+    return HTTPException(504 if "statement timeout" in str(exc) else 502,
+                         str(exc).split("\n")[0][:300])
+
+
+def _open_extract_table(kind: str, resource_id: str, table: str, info: dict) -> dict:
+    opened = open_dataset(OpenRequest.model_validate(
+        {"source_ref": {"kind": kind, "resource_id": resource_id, "table": table}}))
+    opened["extract"] = info
+    return opened
+
+
+def _progress(rows: int) -> None:
+    data_jobs.report("Writing rows", rows=int(rows))
+
+
+def run_extract(req: ExtractRequest) -> dict:
+    try:
+        ds = datasets.get(req.dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    try:
+        data_jobs.report("Writing rows", rows=0)
+        info = extracts.write(ds, req.resource_id, req.table, req.title or ds["source"],
+                              ds.get("source_ref"), replace=req.replace, progress=_progress)
+    except Exception as exc:
+        raise _extract_error(exc) from exc
+    _after_table_write(req.resource_id)
+    lineage.record(db.get_engine_for_resource(req.resource_id), "extracted", "table", req.table,
+                   payload={"resource_id": req.resource_id, "rows": info["rows"],
+                            "from": ds["source"], "refreshable": info["refreshable"]})
+    data_jobs.report("Opening the extract")
+    return _open_extract_table(req.kind, req.resource_id, req.table, info)
+
+
+def run_refresh_extract(req: RefreshExtractRequest) -> dict:
+    def open_recipe(recipe):
+        data_jobs.report("Rerunning the extract's source")
+        return open_dataset(OpenRequest.model_validate({"source_ref": recipe}))
+    try:
+        info = extracts.refresh(req.resource_id, req.table, open_recipe, datasets.get,
+                                datasets.close_dataset, progress=_progress)
+    except Exception as exc:
+        raise _extract_error(exc) from exc
+    _after_table_write(req.resource_id)
+    lineage.record(db.get_engine_for_resource(req.resource_id), "extract_refreshed", "table",
+                   req.table, payload={"resource_id": req.resource_id, "rows": info["rows"]})
+    data_jobs.report("Opening the extract")
+    return _open_extract_table(req.kind, req.resource_id, req.table, info)
+
+
+@app.get("/api/extracts/info")
+def extract_info(resource_id: str, table: str):
+    try:
+        return {"extract": extracts.info(resource_id, table)}
+    except Exception as exc:
+        raise _extract_error(exc) from exc
+
+
 def _submit_data_job(kind, req, request, response):
     owner = agent_sessions.owner(request, response)
-    work = lambda: open_dataset(req) if kind == "open" else preview_join(req) if kind == "join_preview" else join_datasets(req)
+    work = {"open": lambda: open_dataset(req), "join_preview": lambda: preview_join(req),
+            "join": lambda: join_datasets(req), "extract": lambda: run_extract(req),
+            "refresh_extract": lambda: run_refresh_extract(req)}[kind]
     try:
         return data_jobs.manager().submit(kind, owner, work,
             lambda result: datasets.close_dataset(result["dataset_id"]) if kind != "join_preview" else None,
@@ -1054,6 +1153,16 @@ def start_open_job(req: OpenRequest, request: Request, response: Response):
 @app.post("/api/data-jobs/join", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
 def start_join_job(req: JoinRequest, request: Request, response: Response):
     return _submit_data_job("join", req, request, response)
+
+
+@app.post("/api/data-jobs/extract", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
+def start_extract_job(req: ExtractRequest, request: Request, response: Response):
+    return _submit_data_job("extract", req, request, response)
+
+
+@app.post("/api/data-jobs/refresh_extract", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
+def start_refresh_extract_job(req: RefreshExtractRequest, request: Request, response: Response):
+    return _submit_data_job("refresh_extract", req, request, response)
 
 
 @app.post("/api/data-jobs/join_preview", status_code=202, response_model=DataJobResponse, response_model_exclude_none=True)
@@ -1569,11 +1678,11 @@ def materialize_dataset(dataset_id: str, req: MaterializeRequest):
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(502, str(e).split("\n")[0][:300])
-    db.list_aurora_tables.invalidate()
-    db.fetch_aurora_table.invalidate()
-    query_cache.invalidate_resource(req.resource_id)
-    views.invalidate_listing("aurora", req.resource_id)
-    join_discovery.invalidate_resource(req.resource_id)
+    try:
+        extracts.forget(req.resource_id, req.table)
+    except Exception:
+        logger.warning("Could not clear the extract record for %s", req.table, exc_info=True)
+    _after_table_write(req.resource_id)
     lineage.record(engine, "materialized", "table", req.table,
                    payload={"resource_id": req.resource_id, "rows": rows,
                             "from": ds["source"]})

@@ -370,14 +370,30 @@ def test_join_panel_links_to_canvas(page, app_url):
     expect(page.locator(".join-panel")).to_have_count(0)
 
 
-def test_extract_mode_materializes_and_save_reopens(page, app_url):
+def _extract_result(dataset_id, rows, refreshed_at):
+    ref = {"kind": "aurora", "resource_id": "clinical", "table": "person_samples"}
+    return {"dataset_id": dataset_id, "source": "person_samples", "rows": rows,
+            "columns": COLUMNS["person"], "source_ref": ref, "query_scope": "database",
+            "extract": {"table": "person_samples", "title": "Person samples", "rows": rows,
+                        "created_at": "2026-11-06T10:00:00+00:00", "refreshed_at": refreshed_at,
+                        "refreshable": True}}
+
+
+def test_extract_mode_writes_every_row_refreshes_and_save_reopens(page, app_url):
     calls = {}
     _setup(page, app_url, calls)
 
-    def materialize(route):
-        calls.setdefault("materialize", []).append((route.request.url, route.request.post_data_json))
-        _fulfill(route, {"table": "person_samples", "resource_id": "clinical", "rows": 42})
-    page.route("**/api/datasets/joined/materialize", materialize)
+    def extract(route):
+        calls.setdefault("extract", []).append(route.request.post_data_json)
+        _fulfill(route, {"job_id": "x1", "kind": "extract", "status": "complete",
+                         "result": _extract_result("extract-1", 250_000, "2026-11-06T10:00:00+00:00")})
+    page.route("**/api/data-jobs/extract", extract)
+
+    def refresh(route):
+        calls.setdefault("refresh", []).append(route.request.post_data_json)
+        _fulfill(route, {"job_id": "x2", "kind": "refresh_extract", "status": "complete",
+                         "result": _extract_result("extract-2", 260_000, "2026-11-06T11:00:00+00:00")})
+    page.route("**/api/data-jobs/refresh_extract", refresh)
     page.goto(app_url)
     canvas = _open_canvas(page)
     canvas.get_by_role("button", name="Add person to canvas").click()
@@ -403,10 +419,25 @@ def test_extract_mode_materializes_and_save_reopens(page, app_url):
     expect(canvas.get_by_label("Extract table name")).to_have_value("person_samples")
     canvas.get_by_role("button", name="Save & open in Explore").click()
     expect(page.locator(".tab", has_text="Person samples")).to_be_visible(timeout=10000)
-    url, body = calls["materialize"][-1]
-    assert body == {"resource_id": "clinical", "table": "person_samples"}
-    assert calls["opened"][-1] == {"kind": "aurora", "resource_id": "clinical", "table": "person_samples"}
+    # One extract job writes every row and opens the new table.
+    assert calls["extract"][-1] == {"dataset_id": "joined", "kind": "aurora", "resource_id": "clinical",
+                                    "table": "person_samples", "title": "Person samples"}
     assert any(url.endswith("/api/datasets/joined") for url in calls["closed"])   # intermediate join closed
+
+    # The extract tab says it is an extract and can be refreshed in place.
+    bar = page.get_by_role("group", name="Extract")
+    expect(bar).to_contain_text("250,000 rows")
+    bar.get_by_role("button", name="Refresh extract").click()
+    expect(bar).to_contain_text("260,000 rows")
+    assert calls["refresh"][-1] == {"kind": "aurora", "resource_id": "clinical", "table": "person_samples"}
+    expect(page.locator(".tab")).to_have_count(1)
+    expect(page.locator(".tab.active")).to_contain_text("Person samples")
+    for _ in range(50):  # the replaced dataset is closed
+        if any(url.endswith("/api/datasets/extract-1") for url in calls["closed"]):
+            break
+        page.wait_for_timeout(100)
+    else:
+        raise AssertionError(calls["closed"])
     assert calls["join"][-1]["steps"][0]["conditions"] == [
         {"left": "person_id", "op": "=", "right": "person_id"}]
     # The recipe is stored under a key scoped to this app's path (apps share an origin).
@@ -522,6 +553,8 @@ def test_canvas_names_join_from_tables_and_long_names_fit(page, app_url):
           .map((r) => Math.round(r.right - box.right));
     })""")
     assert overflow == [], overflow
+    if SHOTS:
+        page.screenshot(path=os.path.join(SHOTS, "join-canvas-long-names.png"), full_page=False)
 
     # A typed name sticks while more tables are added.
     name_box.fill("Synpuf cohort")

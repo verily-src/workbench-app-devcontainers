@@ -23,9 +23,14 @@ function elapsedNow(tracked: Tracked, now: number): number | null {
   return Math.max(latest, sinceFirst);
 }
 
+const DONE_LABEL: Record<string, string> = { join: "Joined", extract: "Saved extract", refresh_extract: "Refreshed extract" };
+const JOB_LABEL: Record<string, string> = { join: "Join", extract: "Extract", refresh_extract: "Refresh extract" };
+
 function verb(job: DataJob): string {
   if (job.kind === "join") return "Joining";
   if (job.kind === "join_preview") return "Previewing join";
+  if (job.kind === "extract") return "Saving extract";
+  if (job.kind === "refresh_extract") return "Refreshing extract";
   return "Loading";
 }
 
@@ -98,7 +103,7 @@ function DoneSummary({ job, onHide }: { job: DataJob; onHide: () => void }) {
       <span className="data-job-check" aria-hidden="true">✓</span>
       <div className="data-job-body">
         <div className="data-job-title">
-          <strong>{job.kind === "join" ? "Joined" : "Loaded"}</strong>{job.label ? <> <span className="data-job-label">{job.label}</span></> : null}
+          <strong>{DONE_LABEL[job.kind] ?? "Loaded"}</strong>{job.label ? <> <span className="data-job-label">{job.label}</span></> : null}
         </div>
         <div className="data-job-meta">
           {shape && <span>{shape}</span>}
@@ -181,7 +186,7 @@ export function DataJobs({ onOpen, expected, showDone = true }: {
     {Object.values(recovered).map(job => <div key={job.job_id} role="status" className="data-job" data-status={job.status}>
       <div className="data-job-body">
         <div className="data-job-title">
-          <strong>{job.kind === "join" ? "Join" : "Load data"}</strong>{job.label ? <> <span className="data-job-label">{job.label}</span></> : null}
+          <strong>{JOB_LABEL[job.kind] ?? "Load data"}</strong>{job.label ? <> <span className="data-job-label">{job.label}</span></> : null}
         </div>
         <div className="data-job-meta"><span>{job.status}</span></div>
       </div>

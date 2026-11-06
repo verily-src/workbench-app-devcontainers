@@ -9,6 +9,8 @@ set -o errexit
 set -o nounset
 
 readonly TEMPLATE_ID="$1"
+readonly KEEP_CONTAINERS="${2:-}"
+[[ "${KEEP_CONTAINERS}" == '' || "${KEEP_CONTAINERS}" == --keep ]] || exit 2
 
 echo "Running Smoke Test for ${TEMPLATE_ID}"
 
@@ -20,6 +22,8 @@ fi
 
 chmod +x "${TEST_SCRIPT}"
 ./"${TEST_SCRIPT}"
+
+[[ "${KEEP_CONTAINERS}" != --keep ]] || exit 0
 
 # Clean up
 readonly ID_LABEL="test-container=${TEMPLATE_ID}"

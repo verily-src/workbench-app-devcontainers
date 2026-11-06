@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "fixture_version": 1,
+  "seed": 189771,
+  "idle_seconds": 60,
+  "apps": {
+    "jupyter-template": {
+      "kind": "notebook",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app"
+      ]
+    },
+    "jupyter-aou": {
+      "kind": "notebook",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app",
+        "wondershaper"
+      ]
+    },
+    "custom-workbench-jupyter-template": {
+      "kind": "notebook",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app"
+      ]
+    },
+    "example": {
+      "kind": "notebook",
+      "user": "jovyan",
+      "port": 8888,
+      "services": [
+        "app"
+      ]
+    },
+    "r-analysis": {
+      "kind": "r",
+      "user": "rstudio",
+      "port": 8787,
+      "services": [
+        "app"
+      ]
+    },
+    "r-analysis-aou": {
+      "kind": "r",
+      "user": "rstudio",
+      "port": 8787,
+      "services": [
+        "app",
+        "wondershaper"
+      ]
+    },
+    "virtual-browser-rstudio": {
+      "kind": "r",
+      "user": "rstudio",
+      "port": 8787,
+      "browser": true,
+      "services": [
+        "app",
+        "browser"
+      ]
+    },
+    "virtual-browser-jupyter": {
+      "kind": "notebook",
+      "user": "jupyter",
+      "port": 8888,
+      "browser": true,
+      "services": [
+        "app",
+        "browser"
+      ]
+    },
+    "vscode": {
+      "kind": "editor",
+      "user": "abc",
+      "port": 8443,
+      "services": [
+        "app"
+      ]
+    },
+    "vscode-docker": {
+      "kind": "editor",
+      "user": "abc",
+      "port": 8443,
+      "services": [
+        "app"
+      ]
+    },
+    "vscode-with-llm": {
+      "kind": "editor",
+      "user": "abc",
+      "port": 8443,
+      "services": [
+        "app"
+      ],
+      "home": "/config"
+    },
+    "ubuntu-example": {
+      "kind": "terminal",
+      "user": "vscode",
+      "port": 7681,
+      "services": [
+        "app"
+      ]
+    },
+    "workbench-jupyter-docker": {
+      "kind": "notebook",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app"
+      ]
+    },
+    "workbench-jupyter-with-llm": {
+      "kind": "notebook",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app"
+      ],
+      "home": "/home/jupyter"
+    },
+    "nemo_jupyter": {
+      "kind": "nemo",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app"
+      ]
+    },
+    "nemo_jupyter_aou": {
+      "kind": "nemo",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app",
+        "wondershaper"
+      ]
+    },
+    "workbench-jupyter-parabricks": {
+      "kind": "parabricks",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app"
+      ]
+    },
+    "workbench-jupyter-parabricks-aou": {
+      "kind": "parabricks",
+      "user": "jupyter",
+      "port": 8888,
+      "services": [
+        "app",
+        "wondershaper"
+      ]
+    },
+    "aou-sas": {
+      "kind": "sas",
+      "user": "sas",
+      "port": 80,
+      "services": [
+        "app",
+        "wondershaper"
+      ]
+    },
+    "pgweb": {
+      "kind": "postgres",
+      "user": "root",
+      "port": 8081,
+      "services": [
+        "app"
+      ]
+    },
+    "playground": {
+      "kind": "playground",
+      "user": "root",
+      "port": 8080,
+      "services": [
+        "app",
+        "playground",
+        "db"
+      ]
+    },
+    "test-app": {
+      "kind": "http",
+      "user": "root",
+      "port": 8001,
+      "services": [
+        "app"
+      ]
+    },
+    "test-app-secrets": {
+      "kind": "http",
+      "user": "root",
+      "port": 8080,
+      "services": [
+        "app"
+      ]
+    },
+    "dc-access-logging-app": {
+      "kind": "access-logging",
+      "user": "root",
+      "port": 8080,
+      "services": [
+        "app"
+      ]
+    }
+  }
+}

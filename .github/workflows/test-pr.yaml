@@ -106,6 +106,24 @@ jobs:
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
             ubuntu-example: {}
+            test-app: {}
+            pgweb: {}
+            playground: {}
+            dc-access-logging-app:
+              cloud_only: true
+            aou-sas:
+              cloud_only: true
+            vscode-with-llm:
+              filters:
+                - 'features/src/llm-context/**'
+                - 'features/src/wb-mcp-server/**'
+                - 'features/src/gemini-cli/**'
+                - 'features/src/workbench-tools/**'
+            workbench-jupyter-docker:
+              maximize_build_space: true
+              filters:
+                - 'features/src/workbench-tools/**'
+                - 'src/jupyter-common/**'
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:
@@ -147,7 +165,7 @@ jobs:
               --argjson config "$CONFIG" \
               '[$changed[] as $t
                 | $config[$t]
-                | select(. != null)
+                | select(. != null and (.cloud_only // false | not))
                 | {
                     template: (.template // $t),
                     maximize_build_space: (.maximize_build_space // false),
@@ -160,9 +178,10 @@ jobs:
     name: "Smoke test '${{ matrix.app.template }}'"
     needs: [detect-changes]
     runs-on: ubuntu-latest
-    continue-on-error: true
     if : ${{ needs.detect-changes.outputs.apps != '[]' }}
+    timeout-minutes: 90
     strategy:
+      fail-fast: false
       matrix:
         app: ${{ fromJSON(needs.detect-changes.outputs.apps) }}
     steps:
@@ -214,4 +233,32 @@ jobs:
         run: tests/common/build.sh "${{ matrix.app.template }}"
 
       - name: Test '${{ matrix.app.template }}'
+        env:
+          DEPENDENCY_WORKLOAD_MODE: hosted
+          DEPENDENCY_WORKLOAD_OUTPUT: ${{ runner.temp }}/dependency-workload
         run: tests/common/test.sh "${{ matrix.app.template }}"
+
+      - name: Retain hosted workload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-workload-${{ matrix.app.template }}
+          path: ${{ runner.temp }}/dependency-workload
+          retention-days: 7
+          if-no-files-found: warn
+
+  cloud-fixtures:
+    name: "Cloud-only app configuration and synthetic fixtures"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate SAS configuration without registry or license access
+        run: docker compose -f src/aou-sas/docker-compose.yaml config --no-interpolate --quiet
+      - name: Install access-logging fixture dependencies
+        run: python3 -m pip install -r src/dc-access-logging-app/app/requirements.txt
+      - name: Run access-logging with synthetic BigQuery responses
+        env:
+          DC_ACCESS_ENV: test
+        run: python3 tests/common/workloads/access-logging.py src/dc-access-logging-app/app/app.py
+      - name: Record coverage
+        run: echo 'SAS configuration and access-logging synthetic fixtures passed; cloud runtime was not run and remains required by the weekly gate.' >> "$GITHUB_STEP_SUMMARY"

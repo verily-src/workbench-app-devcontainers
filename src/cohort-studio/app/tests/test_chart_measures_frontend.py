@@ -15,7 +15,7 @@ def _rows() -> pd.DataFrame:
     for i in range(60):
         rows.append({"sample_id": f"S{i:03d}", "tissue": ["liver", "lung", "heart"][i % 3],
                      "sex": "F" if i % 4 else "M", "rin_score": round(5 + (i * 37 % 50) / 10, 1),
-                     "year": 2020 + i % 4})
+                     "year": 2020 + i % 4, "site": f"site{i % 9}"})
     return pd.DataFrame(rows)
 
 
@@ -127,3 +127,33 @@ def test_bad_add_chart_combination_explains(measured_page):
     page = measured_page
     _add_chart(page, "tissue", "Mean", of="rin_score", kind="pie")
     expect(page.get_by_role("alert")).to_contain_text("parts of a whole")
+
+
+SLICE_POINT = """el => {
+  const chart = window.__studioEcharts.getInstanceByDom(el);
+  const data = chart.getModel().getSeriesByIndex(0).getData();
+  const names = [...Array(data.count()).keys()].map(i => data.getName(i));
+  const i = names.indexOf(%r);
+  const l = data.getItemLayout(i);
+  const a = (l.startAngle + l.endAngle) / 2, r = (l.r0 + l.r) / 2 || l.r * 0.6;
+  return { names, x: l.cx + r * Math.cos(a), y: l.cy + r * Math.sin(a) };
+}"""
+
+
+def test_folded_pie_slice_never_filters(measured_page):
+    page = measured_page
+    _add_chart(page, "site", "Sum", of="rin_score", kind="pie")
+    card = page.locator(".chart-card", has_text="Sum of rin_score by site")
+    expect(card).to_be_visible()
+    plot = card.locator(".chart-plot")
+    page.wait_for_function(WAIT % "o.series[0].type === 'pie'", arg=plot.element_handle())
+    plot.scroll_into_view_if_needed()
+    box = plot.bounding_box()
+    point = plot.evaluate(SLICE_POINT % "Other")
+    assert point["names"][-1] == "Other" and len(point["names"]) == 6
+    page.mouse.click(box["x"] + point["x"], box["y"] + point["y"])
+    page.wait_for_timeout(400)
+    expect(page.locator(".chip", has_text="site:")).to_have_count(0)
+    point = plot.evaluate(SLICE_POINT % point["names"][0])
+    page.mouse.click(box["x"] + point["x"], box["y"] + point["y"])
+    expect(page.locator(".chip", has_text=f"site: {point['names'][0]}")).to_be_visible()

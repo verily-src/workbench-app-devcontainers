@@ -423,6 +423,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     let option: EChartsOption;
     const style = styleOf({ kind: result.kind as ChartSpec["kind"], style: spec.style });
     let clickCats: string[] | null = null;
+    // Folded groups ("Other") stand for many values, so a click never filters on them.
+    const folded = new Set<string>(result.measure ? (result.other_category ? [result.other_category] : []) : ["Other"]);
     switch (result.kind) {
       case "bar": {
         const data = result.data as (BarDatum | PersonBarDatum)[];
@@ -438,6 +440,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
           const pie = pieOption(barCounts(data), style === "donut", dark, ink, surface);
           option = pie.option;
           clickCats = pie.cats;
+          folded.add("Other");   // the pie folds its own tail into "Other"
         } else if (style === "column" || style === "line" || style === "area") {
           const base = { ...barCounts(data), name: valueName };
           const counts = style === "column" ? base : naturalOrder(base);
@@ -505,7 +508,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       const cats = clickCats;
       chart.current.on("click", (params) => {
         const cat = cats[params.dataIndex];
-        if (cat && cat !== (result.measure ? result.other_category : "Other")) onTapCategory(spec.x, cat);
+        if (cat && !folded.has(cat)) onTapCategory(spec.x, cat);
       });
     }
   }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus]);

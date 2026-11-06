@@ -56,16 +56,15 @@ status="$(get_guest_attribute "startup_script/status" "")"
 isSuccess="false"
 if [[ "${status}" != "ERROR" ]]; then
     # Switch the boot-time DNS filter to restricted mode. Gated on the flag file
-    # dns-filter-setup.service writes at boot for airlocked instances - not validate_airlock_snapshot
-    # above, which is a separate, pre-existing, unrelated mechanism (app-image-level local-snapshot
-    # readiness, not this workspace's network policy). Runs before the COMPLETE status write below,
-    # on purpose: if the switch fails, errexit stops the script here rather than marking the VM
-    # ready while it's still open. The bypass-block firewall rule is applied earlier, in
-    # dns-filter-setup.sh right after Docker restarts, not here - Docker can restart
-    # already-existing containers (e.g. application-server, proxy-agent) on its own, independently
-    # of this boot sequence, before this script ever runs.
+    # dns-filter-setup.service writes for airlocked instances, not validate_airlock_snapshot above
+    # (an unrelated, pre-existing mechanism). Runs before the COMPLETE status write below: if the
+    # switch fails, errexit stops the script here rather than marking the VM ready while still open.
     if [[ -f /home/core/airlock-enabled ]]; then
         docker kill -s SIGUSR1 dns-filter
+        # Also persist the mode for future boots: dns-filter-setup.sh always starts the filter open,
+        # since it can't tell "first boot" from "setup previously failed partway" on its own. Once
+        # setup has genuinely succeeded once, no boot after this needs the filter open again.
+        echo "START_MODE=restricted" > /home/core/dns-filter.env
     fi
     set_metadata "startup_script/status" "COMPLETE"
     isSuccess="true"

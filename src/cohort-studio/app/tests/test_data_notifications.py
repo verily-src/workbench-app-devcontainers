@@ -14,7 +14,7 @@ def test_opt_in_and_background_data_ready_notification(page, app_url):
       };
     ''')
     page.goto(app_url)
-    page.get_by_text('Settings', exact=True).first.click()
+    page.get_by_role('button', name='Settings', exact=True).click()
     toggle = page.get_by_label('Notify when data is ready')
     toggle.check()
     expect(toggle).to_be_checked()

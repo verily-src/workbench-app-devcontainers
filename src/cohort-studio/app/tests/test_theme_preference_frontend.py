@@ -9,7 +9,7 @@ pytestmark = pytest.mark.e2e
 def test_theme_preference_persists_and_updates_chart_contrast(
         page: Page, app_url: str):
     page.goto(app_url)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     theme = page.get_by_label("Theme")
     theme.select_option("dark")
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
@@ -20,7 +20,7 @@ def test_theme_preference_persists_and_updates_chart_contrast(
 
     page.reload()
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     expect(page.get_by_label("Theme")).to_have_value("dark")
 
     page.get_by_label("Theme").select_option("light")

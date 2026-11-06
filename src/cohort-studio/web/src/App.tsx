@@ -16,7 +16,7 @@ import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinFilter, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
-import { AiFeaturesContext, aiFeaturesFrom } from "./features";
+import { AiFeaturesContext, aiFeaturesFrom, lineageFrom } from "./features";
 import { extractTarget } from "./extract";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
@@ -96,7 +96,7 @@ function VersionFooter() {
 const QUERY_DEBOUNCE_MS = 250;
 
 const NAV_LABEL = {
-  explore: "Explore", join: "Data Explorer", agent: "Agent", workflows: "Workflows",
+  explore: "Explore Cohort", join: "Data Builder", agent: "Agent", workflows: "Workflows",
   lineage: "Lineage", settings: "Settings",
 } as const;
 
@@ -124,6 +124,7 @@ export default function App() {
   const [view, setView] = useState<
     "explore" | "join" | "agent" | "workflows" | "lineage" | "settings">("explore");
   const [aiFeatures, setAiFeatures] = useState(false);
+  const [lineageTab, setLineageTab] = useState(false);
   // The visual join canvas stays mounted (hidden) after its first visit so a draft survives tab switches.
   const [canvasMounted, setCanvasMounted] = useState(false);
   useEffect(() => { if (view === "join") setCanvasMounted(true); }, [view]);
@@ -163,6 +164,7 @@ export default function App() {
     apiClient.config().then((c) => {
       setPalette(c.chart_palette);
       setAiFeatures(aiFeaturesFrom(c));
+      setLineageTab(lineageFrom(c));
       setTutorialAssistantConfigured(Boolean(c.llm?.providers?.[c.llm.provider]?.configured));
     })
       .catch(() => undefined);
@@ -797,7 +799,8 @@ export default function App() {
   // eslint-disable-line react-hooks/exhaustive-deps
 
   const commands: Command[] = [
-    ...(["explore", "join", "workflows", "lineage", "settings"] as const).map((v) => ({
+    ...(["explore", "join", "workflows", "lineage", "settings"] as const)
+      .filter((v) => lineageTab || v !== "lineage").map((v) => ({
       id: `view:${v}`, group: "Go to",
       label: NAV_LABEL[v], run: () => {
         if (view === "settings" && v !== "settings") refreshTutorialAssistantStatus();
@@ -918,13 +921,13 @@ export default function App() {
             <span className="brand-verily">verily</span> Cohort Studio
           </span>
           <nav className="topnav">
-            {(["explore", "join", "agent", "workflows", "lineage", "settings"] as const)
-              .filter((v) => aiFeatures || v !== "agent")
+            {(["explore", "join", "agent", "workflows", "lineage"] as const)
+              .filter((v) => (aiFeatures || v !== "agent") && (lineageTab || v !== "lineage"))
               .map((v) => (
               <span key={v} data-tutorial-target={`nav-${v}`}
                     className={`topnav-link${view === v ? " active" : ""}`}
                     onClick={() => {
-                      if (view === "settings" && v !== "settings") refreshTutorialAssistantStatus();
+                      if (view === "settings") refreshTutorialAssistantStatus();
                       if (v !== "explore") closeJoinPanel();
                       setView(v);
                     }}>
@@ -958,6 +961,16 @@ export default function App() {
               {error} ✕
             </div>
           )}
+          <button type="button" className={`topbar-settings${view === "settings" ? " active" : ""}`}
+                  data-tutorial-target="nav-settings" aria-label="Settings" title="Settings"
+                  aria-pressed={view === "settings"}
+                  onClick={() => { closeJoinPanel(); setView("settings"); }}>
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none"
+                 stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
         </div>
         <DataJobs expected={openingTable} showDone={view === "explore"}
                   onOpen={result => openResult(result, result.source, result.source_ref)} />
@@ -1012,7 +1025,7 @@ export default function App() {
           ) : view === "workflows" ? (
             <WorkflowsView data={workflows} onData={setWorkflows} isSubscribed={alerts.isSubscribed}
                            onToggleSubscribe={alerts.toggle} />
-          ) : view === "lineage" ? (
+          ) : view === "lineage" && lineageTab ? (
             <LineageView />
           ) : datasets.length === 0 && !showJoin ? (
             <div className="empty">

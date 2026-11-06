@@ -1,5 +1,6 @@
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import menu
 
 
 def test_explicit_mapping_confirmation_and_download(page, app_url):
@@ -29,7 +30,7 @@ def test_explicit_mapping_confirmation_and_download(page, app_url):
     page.get_by_label('Datasource').select_option('s3:lake')
     page.get_by_label('Table').select_option('g.vcf.gz')
     page.get_by_role('button',name='Load file').click()
-    page.get_by_role('button',name='Export PLINK 2').click()
+    menu(page, 'Export options').get_by_role('button', name='Export PLINK 2').click()
     section=page.get_by_role('region',name='PLINK 2 export')
     button=section.get_by_role('button',name='Download PLINK 2 zip')
     expect(button).to_be_disabled()

@@ -24,7 +24,7 @@ def test_settings_offers_agent_memory_setup(page, app_url):
     page.route("**/api/admin/agent-store", lambda r: r.fulfill(json={
         "resource_id": None, "from_environment": False, "ready": False, "aurora": ["omop-data-source"]}))
     page.goto(app_url)
-    page.locator('.topnav').get_by_text('Settings', exact=True).click()
+    page.get_by_role('button', name='Settings', exact=True).click()
     card = page.get_by_label('Agent memory', exact=True)
     expect(card).to_contain_text("Not set up", timeout=10000)
     expect(card.get_by_label('Agent memory datasource')).to_have_value('omop-data-source')

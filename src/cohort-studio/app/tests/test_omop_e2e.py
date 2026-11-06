@@ -19,6 +19,7 @@ import db
 import main
 from tests.test_agent_store import agent_store
 from tests.conftest import remount_mcp_if_started
+from tests.ui_helpers import menu
 
 pytestmark = pytest.mark.e2e
 
@@ -170,7 +171,7 @@ def test_aggregation_filter_on_real_postgres(ref, page: Page, omop_app_url: str)
     page.get_by_label('Table', exact=True).select_option('cdm.person')
     page.get_by_role('button', name='Load table').click()
     expect(page.locator('.hero .count')).to_have_text('100', timeout=30000)
-    page.get_by_role('button', name='+ Aggregation filter').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Aggregation filter').click()
     panel = page.get_by_role('region', name='Aggregation filter')
     panel.get_by_label('Group by').select_option('gender_concept_id')
     panel.get_by_label('At least', exact=True).fill('2')

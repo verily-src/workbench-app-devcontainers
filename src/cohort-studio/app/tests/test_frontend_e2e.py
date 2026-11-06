@@ -3,6 +3,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.test_e2e import app_url, loaded_page
+from tests.ui_helpers import menu
 
 pytestmark = pytest.mark.e2e
 
@@ -53,7 +54,7 @@ def test_entity_count_and_column_settings(loaded_page: Page):
     loaded_page.set_viewport_size({"width": 2048, "height": 1100})
     entity = loaded_page.locator(".entity-select select")
     select_box = entity.bounding_box()
-    export_box = loaded_page.get_by_role("button", name="Export TSV", exact=True).bounding_box()
+    export_box = loaded_page.get_by_role("button", name="Export options", exact=True).bounding_box()
     assert select_box and export_box
     assert abs(select_box["y"] + select_box["height"] / 2 - export_box["y"] - export_box["height"] / 2) < 2
     entity.select_option("sample_id")
@@ -169,12 +170,14 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
     page.get_by_role("button", name="Load table").click()
 
     expect(page.locator(".hero .detail")).to_contain_text(
-        "counts cover the full database", timeout=10000)
-    expect(page.locator(".large-data-warning")).to_contain_text(
-        "large queries may take longer")
-    expect(page.locator(".query-cache-row")).to_contain_text("Fetched result")
+        "full database", timeout=10000)
+    # Full-database tabs need no large-data banner; freshness sits under the count.
+    expect(page.locator(".large-data-warning")).to_have_count(0)
+    expect(page.locator(".hero-meta")).to_contain_text("fetched")
     expect(page.get_by_role("button", name="Compare groups")).to_be_enabled()
+    page.get_by_role("button", name="Add to this view").click()
     expect(page.get_by_role("button", name=re.compile("Calculated field"))).to_be_enabled()
+    page.get_by_role("button", name="Add to this view").click()
     expect(page.get_by_text(re.compile("Chat uses loaded rows"))
            ).to_be_visible()
     expect(page.locator(".chat-launcher")).to_have_count(0)
@@ -185,12 +188,13 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
                                                             timeout=10000)
     page.locator(".compare-panel").get_by_role("button", name="✕").click()
 
+    page.get_by_role("button", name="Add to this view").click()
     page.get_by_role("button", name=re.compile("Calculated field")).click()
     page.get_by_label("New column name").fill("age_group")
     page.locator(".derive-panel").get_by_role("button", name="Add column").click()
     expect(page.locator(".derive-panel")).to_contain_text('Added "age_group".',
                                                            timeout=10000)
-    expect(page.locator(".hero .detail")).to_contain_text("counts cover the full database")
+    expect(page.locator(".hero .detail")).to_contain_text("full database")
     page.locator(".view-save input").fill("derived-view")
     page.get_by_role("button", name="Save", exact=True).click()
     expect(page.get_by_text("Saved 1 tab(s) to Fixture.")).to_be_visible(timeout=10000)
@@ -202,12 +206,11 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
         "unique person_id", timeout=10000)
 
     page.get_by_role("button", name="Refresh data").click()
-    expect(page.locator(".query-cache-row")).to_contain_text(
-        "Fetched result", timeout=10000)
-    expect(page.locator(".query-cache-row")).to_contain_text("2026-10-21 12:02 UTC")
+    expect(page.locator(".hero-meta")).to_contain_text("fetched", timeout=10000)
+    expect(page.locator(".hero-meta .settings-hint")).to_have_attribute(
+        "title", re.compile("2026-10-21 12:02 UTC"))
     page.locator(".entity-select select").select_option("")
-    expect(page.locator(".query-cache-row")).to_contain_text(
-        "Cached result", timeout=10000)
+    expect(page.locator(".hero-meta")).to_contain_text("cached", timeout=10000)
     assert query_refreshes.count(True) == 2
     hold_refresh = True
     page.get_by_role("button", name="Refresh data").click()
@@ -399,7 +402,7 @@ def test_database_export_job_progress_cancel_and_download(page: Page, app_url: s
     page.get_by_label("Table", exact=True).select_option("person")
     page.get_by_role("button", name="Load table").click()
 
-    page.get_by_role("button", name="Export TSV").click()
+    menu(page, "Export options").get_by_role("button", name="Export TSV").click()
     expect(page.locator(".export-job")).to_contain_text("Preparing export", timeout=10000)
     expect(page.locator(".export-job")).to_contain_text("250 rows", timeout=10000)
     expect(page.locator(".export-job")).to_contain_text("500 rows", timeout=10000)
@@ -411,7 +414,7 @@ def test_database_export_job_progress_cancel_and_download(page: Page, app_url: s
     expect(page.locator(".export-job")).to_have_count(0)
     assert deletes == ["job-1"]
 
-    page.get_by_role("button", name="Export TSV").click()
+    menu(page, "Export options").get_by_role("button", name="Export TSV").click()
     expect(page.locator(".export-job")).to_contain_text("125 rows", timeout=10000)
     page.get_by_role("button", name="Cancel export").click()
     expect(page.locator(".export-job")).to_contain_text("Export cancelled")
@@ -659,10 +662,10 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
     expect(panel).to_be_visible()
     panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
     panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
-    expect(page.get_by_role("button", name="Save to Aurora")).to_have_count(0)
+    expect(page.get_by_role("button", name="Export options")).to_have_count(0)
     expect(page.locator(".cohort-bar")).to_have_count(0)
     panel.get_by_role("button", name="✕").click()
-    expect(page.get_by_role("button", name="Save to Aurora")).to_be_visible()
+    expect(menu(page, "Export options").get_by_role("button", name="Save to Aurora")).to_be_visible()
     expect(page.locator(".cohort-bar")).to_be_visible()
     page.locator(".tab-join").click()
     panel = page.locator(".join-panel")

@@ -43,7 +43,7 @@ const ALL_STEPS: Step[] = [
   },
   {
     title: "Join on matching keys",
-    text: "Open Join and add an Aurora table or S3 file. Match person_id to samples.person_id, then sample_id to genotypes.sample_id. Preview the result and Generated SQL. Cross-source joins use DuckDB and require your consent.",
+    text: "In Explore Cohort, open Join tables and add an Aurora table or S3 file. Match person_id to samples.person_id, then sample_id to genotypes.sample_id. Preview the result and Generated SQL. Cross-source joins use DuckDB and require your consent.",
     target: (p: TutorialProgress) => p.joinPanelOpen
       ? ["[aria-label='Join type']"] : ["[data-tutorial-target='join-button']"],
     done: (p: TutorialProgress) => p.joinCreated,
@@ -52,7 +52,7 @@ const ALL_STEPS: Step[] = [
   {
     title: "Check assistant settings",
     ai: true,
-    text: "Open Settings to choose a provider and model. Add a key if your provider needs one. If your workspace is already set up, continue.",
+    text: "Open Settings (the gear, top right) to choose a provider and model. Add a key if your provider needs one. If your workspace is already set up, continue.",
     target: () => ["[data-tutorial-target='nav-settings']"],
     done: (p: TutorialProgress) => p.assistantConfigured,
     unavailable: () => false,

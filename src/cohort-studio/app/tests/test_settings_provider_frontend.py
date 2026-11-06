@@ -63,7 +63,7 @@ def test_provider_settings_save_before_test_without_echoing_key(
 
     page.route("**/api/config/llm/test", test_route)
     page.goto(app_url)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
 
     ai_card = page.locator(".settings-card").first
     ai_card.locator('input[type="text"]').first.fill("claude-sonnet-5-5")
@@ -105,7 +105,7 @@ def test_provider_save_failure_is_visible(page: Page, app_url: str):
         route, {"detail": "secret-safe failure"}, 500)
         if route.request.method == "PUT" else fulfill(route, config))
     page.goto(app_url)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     ai_card = page.locator(".settings-card").first
     ai_card.get_by_role("button", name="Save", exact=True).click()
     expect(ai_card.get_by_role("status")).to_contain_text("Save failed:")
@@ -149,7 +149,7 @@ def test_provider_test_failure_redacts_key(page: Page, app_url: str):
     page.route("**/api/config/llm/test", lambda route: fulfill(
         route, {"detail": f"Unauthorized; key was {key}"}, 502))
     page.goto(app_url)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     ai_card = page.locator(".settings-card").first
     ai_card.get_by_label("Anthropic API key").fill(key)
     ai_card.get_by_role("button", name="Test connection").click()
@@ -207,7 +207,7 @@ def test_jev_token_is_masked_saved_and_removed_without_connection_claim(
 
     page.route("**/api/config", config_route)
     page.goto(app_url)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     token_field = page.get_by_label("TypeSafe API token")
     card = page.locator(".settings-card").filter(has=token_field)
     token = "test-only-jevs-token-not-for-live-use"

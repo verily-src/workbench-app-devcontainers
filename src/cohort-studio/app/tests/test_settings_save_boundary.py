@@ -58,7 +58,7 @@ def test_settings_saves_against_real_api_with_default_mcp_read_fields(page, sett
     assert len(original["mcp_connections"]) >= 3
     assert all("token_set" in c for c in original["mcp_connections"])
     page.goto(url)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     provider = page.locator(".settings-card").first
     provider.get_by_label("Anthropic API key").fill("local-browser-regression-secret")
     with page.expect_response(lambda r: r.url.endswith("/api/config") and r.request.method == "PUT") as response:

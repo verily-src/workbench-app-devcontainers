@@ -1,10 +1,11 @@
 from playwright.sync_api import expect
 from tests.test_e2e import app_url, loaded_page
+from tests.ui_helpers import menu
 
 
 def test_expression_field_calculates_and_displays_rows(loaded_page):
     page = loaded_page
-    page.get_by_role('button', name='+ Calculated field').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Calculated field').click()
     panel = page.locator('.derive-panel')
     panel.get_by_label('Operation').select_option('expression')
     panel.get_by_label('New column name').fill('double RIN')
@@ -17,7 +18,7 @@ def test_expression_field_calculates_and_displays_rows(loaded_page):
 
 def test_multiple_groups_and_at_most_filter(loaded_page):
     page = loaded_page
-    page.get_by_role('button', name='+ Aggregation filter').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Aggregation filter').click()
     panel = page.get_by_role('region', name='Aggregation filter')
     panel.get_by_label('Group by').select_option('tissue')
     panel.get_by_role('button', name='Add group').click()

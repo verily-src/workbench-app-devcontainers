@@ -1605,7 +1605,8 @@ class SaveViewRequest(BaseModel):
 
 def _with_app_info(cfg: dict) -> dict:
     cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
-    cfg["features"] = {"ai": config.ai_features_enabled()}
+    cfg["features"] = {"ai": config.ai_features_enabled(),
+                       "lineage": config.lineage_ui_enabled()}
     return cfg
 
 @app.get("/api/config")

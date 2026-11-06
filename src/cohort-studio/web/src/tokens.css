@@ -835,3 +835,35 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .extract-bar { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-muted); }
 .extract-chip { padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 600;
   background: var(--accent-tint); color: var(--accent); }
+
+/* Settings lives in the top-right corner as a gear. */
+.topbar-settings { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+  margin-left: 8px; padding: 0; border-radius: 50%; border: 1px solid transparent; background: transparent;
+  color: var(--ink-muted); cursor: pointer; }
+.topbar-settings:hover { color: var(--ink); background: var(--hover); }
+.topbar-settings.active { color: var(--accent); background: var(--accent-tint); border-color: var(--accent-tint-border); }
+.topbar-settings:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Dataset header: count, source + freshness on one block; menus for the rest. */
+.hero-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hero-meta { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; color: var(--ink-muted); }
+.hero-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink-muted); font-size: 14px; }
+.icon-button:hover:not(:disabled) { color: var(--accent); background: var(--accent-tint); }
+.icon-button .spin { display: inline-block; animation: studio-spin 1s linear infinite; }
+@keyframes studio-spin { to { transform: rotate(360deg); } }
+.popover { position: relative; }
+.popover > button.active { border-color: var(--accent); color: var(--accent); }
+.popover-panel { position: absolute; top: calc(100% + 6px); z-index: 60; display: flex; flex-direction: column;
+  align-items: stretch; gap: 8px; min-width: 240px; max-width: min(420px, 90vw); padding: 10px;
+  background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: 0 8px 24px #0000001f; }
+.popover-right { right: 0; }
+.popover-left { left: 0; }
+.popover-row { display: flex; align-items: center; gap: 8px; }
+.popover-row > button, .popover-panel button { white-space: nowrap; }
+.popover-menu { display: flex; flex-direction: column; gap: 4px; }
+.popover-menu > button { justify-content: flex-start; text-align: left; border-color: transparent; background: transparent; }
+.popover-menu > button:hover { background: var(--hover); }
+.export-menu .popover-panel > button, .export-menu .popover-panel > div > button { width: 100%; }

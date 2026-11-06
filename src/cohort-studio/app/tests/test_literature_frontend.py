@@ -22,7 +22,7 @@ def test_ncbi_settings_save_remove_and_hide_key(page, app_url):
     page.route('**/api/workflows**', lambda route: route.fulfill(json={'available': False, 'jobs': []}))
     page.route('**/api/views/all', lambda route: route.fulfill(json={'views': [], 'unavailable': []}))
     page.goto(app_url)
-    page.locator('.topnav-link', has_text='Settings').click()
+    page.get_by_role('button', name='Settings', exact=True).click()
     key = page.locator('#ncbi-api-key')
     expect(key).to_have_attribute('type', 'password')
     key.fill('test_ncbi_key')

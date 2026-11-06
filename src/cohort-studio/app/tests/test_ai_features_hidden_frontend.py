@@ -16,6 +16,8 @@ def test_ai_features_default_off(monkeypatch):
     assert config.ai_features_enabled() is False
     monkeypatch.setenv("STUDIO_AI_FEATURES", "on")
     assert config.ai_features_enabled() is True
+    monkeypatch.delenv("STUDIO_LINEAGE_UI", raising=False)
+    assert config.lineage_ui_enabled() is False
 
 
 def _fulfill(route, body):
@@ -28,7 +30,7 @@ def _setup(page, ai):
             route.continue_()
             return
         body = route.fetch().json()
-        body["features"] = {"ai": ai}
+        body["features"] = {"ai": ai, "lineage": ai}
         _fulfill(route, body)
     page.route("**/api/config", cfg)
     page.route("**/api/datasources", lambda route: _fulfill(route, {
@@ -67,13 +69,17 @@ def test_ai_features_hidden_when_off(page, app_url):
     _setup(page, ai=False)
     _load_person(page, app_url)
     nav = page.locator(".topnav")
-    expect(nav).to_contain_text("Data Explorer")
+    expect(nav).to_contain_text("Data Builder")
     expect(nav.locator(".topnav-link")).to_have_text(
-        ["Explore", "Data Explorer", "Workflows", "Lineage", "Settings"])
+        ["Explore Cohort", "Data Builder", "Workflows"])
     expect(page.locator(".ask-ai")).to_have_count(0)
     expect(page.get_by_placeholder(re.compile("Ask AI|Ask the assistant"))).to_have_count(0)
 
-    nav.locator(".topnav-link").filter(has_text=re.compile(r"^Settings$")).click()
+    # Settings is the gear in the top-right corner, not a tab.
+    settings = page.get_by_role("button", name="Settings", exact=True)
+    assert settings.bounding_box()["x"] > page.viewport_size["width"] - 80
+    settings.click()
+    expect(page.locator(".topbar-settings")).to_have_attribute("aria-pressed", "true")
     expect(page.locator(".section-label", has_text="Appearance")).to_be_visible(timeout=10000)
     for label in ("AI model", "Jev join recommendations", "Agent", "MCP server (this app)",
                   "Other MCP connections"):
@@ -97,3 +103,4 @@ def test_ai_features_shown_when_on(page, app_url):
     _load_person(page, app_url)
     expect(page.locator(".topnav .topnav-link").filter(has_text=re.compile(r"^Agent$"))).to_have_count(1)
     expect(page.locator(".ask-ai")).to_have_count(1)
+    expect(page.locator(".topnav .topnav-link").filter(has_text=re.compile(r"^Lineage$"))).to_have_count(1)

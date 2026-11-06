@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
+from tests.ui_helpers import menu
 
 APP_DIR = Path(__file__).parent.parent
 FIXTURE_CSV = Path(__file__).parent / "fixtures" / "samples.csv"
@@ -136,7 +137,7 @@ def test_command_palette_navigates(loaded_page: Page):
 def test_settings_view_renders(page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     expect(page.get_by_text("AI model").first).to_be_visible(timeout=10000)
     expect(page.get_by_text("MCP connections").first).to_be_visible()
     expect(page.get_by_text("Verily Workbench").first).to_be_visible()
@@ -147,7 +148,7 @@ def test_settings_provider_switch_shows_per_provider_key(
         page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     provider = page.locator(".settings-card select").first
     expect(provider).to_be_visible(timeout=10000)
 
@@ -189,7 +190,7 @@ def test_chat_widget_opens_and_reports_unconfigured(loaded_page: Page):
 
 
 def test_save_to_aurora_control_opens(loaded_page: Page):
-    loaded_page.get_by_role("button", name="Save to Aurora").click()
+    menu(loaded_page, "Export options").get_by_role("button", name="Save to Aurora").click()
     expect(loaded_page.locator(".save-aurora input")).to_be_visible(
         timeout=10000)
 
@@ -200,7 +201,7 @@ def test_save_to_aurora_control_opens(loaded_page: Page):
 def test_settings_shows_palette_swatches(page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.locator(".topnav-link", has_text="Settings").click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     expect(page.get_by_text("Chart palette").first).to_be_visible(timeout=10000)
     expect(page.locator(".palette-swatch")).to_have_count(5)
 
@@ -230,7 +231,7 @@ def test_save_cohort_and_compare(loaded_page: Page):
 
 def test_derive_column(loaded_page: Page):
 
-    loaded_page.get_by_role("button", name="+ Calculated field").click()
+    menu(loaded_page, "Add to this view").get_by_role("button", name="+ Calculated field").click()
     panel = loaded_page.locator(".derive-panel")
     expect(panel).to_be_visible()
     panel.get_by_placeholder("e.g. age_group").fill("age_group")
@@ -345,7 +346,7 @@ def test_export_pdf_downloads(loaded_page: Page):
 
 
     with loaded_page.expect_download(timeout=20000) as dl:
-        loaded_page.get_by_role("button", name="Export PDF").click()
+        menu(loaded_page, "Export options").get_by_role("button", name="Export PDF").click()
     download = dl.value
     assert download.suggested_filename.endswith(".pdf")
     path = download.path()

@@ -34,7 +34,7 @@ def test_row_grain_and_session_performance_through_real_api(page: Page, app_url:
     expect(panel).to_contain_text('Key has duplicates or missing values',timeout=15000)
     expect(panel).to_contain_text('1 duplicate rows')
     page.get_by_role('button',name='Close dataset settings').click()
-    page.locator('.topnav').get_by_text('Settings',exact=True).click()
+    page.get_by_role('button', name='Settings', exact=True).click()
     perf = page.get_by_role('region',name='Performance',exact=True)
     perf.get_by_role('button',name='Refresh performance').click()
     expect(perf).to_contain_text('grain.check',timeout=15000)

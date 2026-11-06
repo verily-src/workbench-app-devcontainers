@@ -36,4 +36,4 @@ def test_agent_integrations_show_setup_status_and_open_settings(page, app_url):
     expect(panel.get_by_text("arXiv", exact=True)).to_be_visible()
     expect(panel.get_by_text("Not configured", exact=True)).to_have_count(1)
     panel.get_by_role("button", name="Manage integrations").click()
-    expect(page.locator(".topnav-link.active", has_text="Settings")).to_be_visible()
+    expect(page.locator(".topbar-settings.active")).to_be_visible()

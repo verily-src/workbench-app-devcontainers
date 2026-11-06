@@ -389,14 +389,32 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
     assert calls["join"][-1] == {**expected, "output": original["output"]}
 
 
-def test_join_panel_links_to_canvas(page, app_url):
+def test_join_entry_points_open_data_builder(page, app_url):
+    """There is one join builder: "Join tables" and a tab's "⋈ Join" open Data Builder,
+    and "⋈ Join" starts the canvas from that tab."""
     calls = {}
     _setup(page, app_url, calls)
     page.goto(app_url)
     page.get_by_role("button", name="Join tables").click()
-    page.locator(".join-panel").get_by_role("button", name="Open in Data Builder").click()
-    expect(page.locator(".jc")).to_be_visible()
+    canvas = page.locator(".jc")
+    expect(canvas).to_be_visible()
     expect(page.locator(".join-panel")).to_have_count(0)
+    canvas.get_by_role("button", name="Cancel", exact=True).click()
+    # Open a table in Explore, then "⋈ Join" it.
+    page.get_by_label("Source type", exact=True).select_option("aurora")
+    page.get_by_label("Datasource", exact=True).select_option("aurora:clinical")
+    page.get_by_label("Schema", exact=True).select_option("public")
+    page.get_by_label("Table", exact=True).select_option("person")
+    page.get_by_role("button", name="Load table").click()
+    expect(page.locator(".tab.active")).to_contain_text("person", timeout=10000)
+    expect(page.get_by_role("button", name="Edit join")).to_have_count(0)
+    page.get_by_role("button", name="Join in Data Builder").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    expect(canvas.locator(".jc-node").first).to_contain_text("person")
+    # Pressing it again doesn't add the same tab twice.
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore Cohort$")).click()
+    page.get_by_role("button", name="Join in Data Builder").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1)
 
 
 def _extract_result(dataset_id, rows, refreshed_at):
@@ -729,9 +747,11 @@ def test_edit_extract_reopens_its_join_and_rewrites_the_table(page, app_url):
 
     def extract(route):
         calls.setdefault("extract", []).append(route.request.post_data_json)
+        body = route.request.post_data_json
         _fulfill(route, {"job_id": "x1", "kind": "extract", "status": "complete", "result": {
-            "dataset_id": "extract-2", "source": "person_samples", "rows": 50, "columns": COLUMNS["person"],
-            "source_ref": extract_ref, "query_scope": "database",
+            "dataset_id": f"extract-{len(calls['extract'])}", "source": body["table"], "rows": 50,
+            "columns": COLUMNS["person"],
+            "source_ref": {**extract_ref, "table": body["table"]}, "query_scope": "database",
             "extract": {**info, "rows": 50, "refreshed_at": "2026-11-06T12:00:00+00:00"}}})
     page.route("**/api/data-jobs/extract", extract)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
@@ -749,3 +769,17 @@ def test_edit_extract_reopens_its_join_and_rewrites_the_table(page, app_url):
     assert calls["join"][-1]["output"] == {"exclude": ["state"]}
     expect(page.locator(".tab")).to_have_count(1)
     expect(bar).to_have_attribute("title", re.compile("50 rows"))
+
+    # Saving the edit to another table opens a new tab and keeps the original.
+    bar.get_by_role("button", name="Edit in Data Builder").click()
+    expect(canvas.get_by_label("Extract table name")).to_have_value("person_samples")
+    canvas.get_by_label("Extract table name").fill("person_samples_v2")
+    canvas.get_by_role("button", name="Save & open in Explore").click()
+    _wait_for(calls, "extract", lambda body: body["table"] == "person_samples_v2", page)
+    expect(page.locator(".tab")).to_have_count(2)
+
+    # Cancel drops the extract destination: the next join is Live again.
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Builder$")).click()
+    canvas.get_by_role("button", name="Cancel", exact=True).click()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Builder$")).click()
+    expect(canvas.get_by_role("radio", name="Live")).to_be_checked()

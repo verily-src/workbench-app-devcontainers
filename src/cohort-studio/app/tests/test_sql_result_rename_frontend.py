@@ -75,11 +75,11 @@ def test_sql_result_rename_persists_in_saved_view_and_reopens(page: Page, app_ur
     }))
 
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    page.get_by_role("button", name="SQL", exact=True).click()
-    page.get_by_label("SQL query").fill("SELECT 1 AS person_id")
-    page.get_by_role("button", name="Preview SQL").click()
-    page.get_by_role("button", name="Create dataset").click()
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".jc").get_by_role("radio", name="SQL", exact=True).click()
+    page.get_by_label("Data Builder SQL").fill("SELECT 1 AS person_id")
+    page.locator(".jc").get_by_role("button", name="Preview", exact=True).click()
+    page.get_by_role("button", name="Save & open in Explore").click()
     tab = page.locator(".tab.active")
     expect(tab).to_contain_text("SQL result", timeout=10000)
 

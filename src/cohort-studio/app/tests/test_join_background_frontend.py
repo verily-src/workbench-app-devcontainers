@@ -1,6 +1,8 @@
 import pytest
 from playwright.sync_api import expect
 
+from tests.ui_helpers import add_to_canvas, set_join_keys
+
 from tests.test_e2e import app_url
 
 pytestmark = pytest.mark.e2e
@@ -66,20 +68,13 @@ def test_join_runs_in_background_across_tab_switches(page, app_url):
         }],
     }))
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Join schema").select_option("public")
-    picker = panel.get_by_role("combobox", name="Source table to add")
-    picker.fill("person")
-    picker.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-    expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
-    picker.fill("visit")
-    picker.press("Enter")
-    expect(panel.get_by_role("button", name="Add table")).to_be_enabled(timeout=10000)
-    panel.get_by_role("button", name="Add table").click()
-    panel.get_by_label("Left key step 1 condition 1").select_option(label="person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option(label="person_id")
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    panel = page.locator(".jc")
+    add_to_canvas(panel, "person")
+    expect(panel.locator(".jc-node")).to_have_count(1, timeout=10000)
+    add_to_canvas(panel, "visit")
+    expect(panel.locator(".jc-node")).to_have_count(2, timeout=10000)
+    set_join_keys(panel, "person_id", "person_id")
 
     join_state = {"job_id": "join1", "kind": "join", "status": "running",
                   "label": "person + visit (inner on person_id)",
@@ -90,31 +85,24 @@ def test_join_runs_in_background_across_tab_switches(page, app_url):
     cancels = []
     page.route("**/api/data-jobs/join1/cancel", lambda route: (cancels.append(1), fulfill(route, join_state)))
 
-    panel.get_by_role("button", name="Join into new tab").click()
-    progress = panel.get_by_label("Join progress")
-    expect(progress).to_contain_text("Joining person + visit (inner on person_id)")
-    expect(progress).to_contain_text("runs in the database")
-    expect(progress.locator(".spinner")).to_be_visible()
-    join_tab = page.get_by_role("button", name="Join (running)")
-    expect(join_tab).to_contain_text("Joining…")
-    page.screenshot(path="/private/tmp/cohort-join-running-panel.png")
+    panel.get_by_role("button", name="Save & open in Explore").click()
+    expect(panel.get_by_role("button", name="Working…")).to_be_disabled()
 
-    # Switch to a data tab: the join keeps running and stays visible.
-    page.locator(".tab", has_text="person").locator("span").first.click()
+    # Switch to Explore Cohort: the join keeps running and its card shows progress.
+    page.locator(".topnav-link").filter(has_text="Explore Cohort").click()
     expect(panel).to_be_hidden()
-    expect(page.locator(".dataset-toolbar")).to_be_visible()
-    expect(join_tab).to_contain_text("Joining…")
-    expect(page.get_by_role("region", name="Data operations")).to_contain_text("Joining person + visit")
+    jobs = page.get_by_role("region", name="Data operations")
+    expect(jobs).to_contain_text("Joining person + visit (inner on person_id)")
+    expect(jobs).to_contain_text("Joining 2 tables inside the database (PostgreSQL)")
     page.screenshot(path="/private/tmp/cohort-join-running-other-tab.png")
 
-    # Return: the same builder and its live status are still there.
-    join_tab.click()
-    expect(panel).to_be_visible()
-    expect(panel.get_by_label("Left key step 1 condition 1")).to_have_value("person_id")
-    expect(progress).to_contain_text("Joining 2 tables inside the database (PostgreSQL)")
-    progress.get_by_role("button", name="Cancel", exact=True).click()
+    # Back in Data Builder the same canvas is still there.
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
+    expect(panel.locator(".jc-node")).to_have_count(2)
+    page.locator(".topnav-link").filter(has_text="Explore Cohort").click()
+    jobs.get_by_role("button", name="Cancel", exact=True).click()
     page.wait_for_timeout(300)
-    assert cancels, "Cancel in the join panel should call the job cancel endpoint"
+    assert cancels, "Cancel on the job card should call the job cancel endpoint"
 
     join_state.update({"status": "complete", "elapsed": 4.0, "result": {
         "dataset_id": "joined", "source": "person + visit", "rows": 2,
@@ -123,5 +111,4 @@ def test_join_runs_in_background_across_tab_switches(page, app_url):
         "join": {"engine": "aurora", "rows": 2, "total_rows": 2, "truncated": False,
                  "capped_inputs": [], "steps": [], "notes": []}}})
     expect(page.locator(".tab", has_text="person + visit")).to_be_visible(timeout=10000)
-    expect(panel).to_have_count(0)
-    expect(page.get_by_role("button", name="⋈ Join")).to_be_visible()
+    expect(page.get_by_role("button", name="Join in Data Builder")).to_contain_text("⋈ Join")

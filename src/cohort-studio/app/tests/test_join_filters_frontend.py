@@ -78,49 +78,54 @@ def _setup(page, app_url, validations):
 
     page.route("**/api/datasets/join/validate", validate)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Join schema").select_option("public")
-    picker = panel.get_by_role("combobox", name="Source table to add")
-    for table in ("person", "genotypes"):
-        picker.fill(table)
-        picker.press("Enter")
-        expect(panel.get_by_role("button", name="Add table")).to_be_enabled(timeout=10000)
-        panel.get_by_role("button", name="Add table").click()
-        expect(page.locator(".tab", has_text=table)).to_be_visible(timeout=10000)
-    expect(panel.get_by_label("Right key step 1 condition 1")).to_be_visible()
-    return panel
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    canvas = page.locator(".jc")
+    canvas.get_by_role("button", name="Add person to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    canvas.get_by_role("button", name="Add genotypes to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    config = canvas.get_by_role("region", name="Join configuration")
+    expect(config).to_be_visible(timeout=10000)
+    return canvas, config
+
+
+def _keys(config, left="person_id", right="person_id"):
+    for label, value in (("Left field, clause 1", left), ("Right field, clause 1", right)):
+        box = config.get_by_role("combobox", name=label)
+        box.fill(value)
+        box.press("Enter")
 
 
 def test_step_and_base_filters_reach_requests_and_generated_sql(page, app_url):
     validations, previews, joins = [], [], []
-    panel = _setup(page, app_url, validations)
-    panel.get_by_label("Left key step 1 condition 1").select_option(label="person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option(label="person_id")
-    expect(panel.locator(".join-step")).to_contain_text("number")      # column type shown
+    canvas, config = _setup(page, app_url, validations)
+    _keys(config)
 
-    # Step 1: genotypes.dosage >= 1 AND gene in (BRCA1, BRCA2)
-    panel.get_by_role("button", name="Add filter to Step 1").click()
-    expect(panel).to_contain_text("Filters this table before joining")
-    panel.get_by_label("Step 1 filter 1 column").select_option("dosage")
-    panel.get_by_label("Step 1 filter 1 operator").select_option(">=")
-    panel.get_by_label("Step 1 filter 1 value").fill("1")
+    # genotypes: dosage >= 1 AND gene in (BRCA1, BRCA2) AND gene is not null
+    config.get_by_role("button", name="Add filter to genotypes").click()
+    config.get_by_label("genotypes filter 1 column").select_option("dosage")
+    config.get_by_label("genotypes filter 1 operator").select_option(">=")
+    config.get_by_label("genotypes filter 1 value").fill("1")
     # Only one empty filter row at a time.
-    panel.get_by_role("button", name="Add filter to Step 1").click()
-    expect(panel.get_by_role("button", name="Add filter to Step 1")).to_be_disabled()
-    panel.get_by_label("Step 1 filter 2 column").select_option("gene")
-    panel.get_by_label("Step 1 filter 2 operator").select_option("in")
-    expect(panel.get_by_label("Step 1 filter 2 operator")).to_have_value("in")
-    panel.get_by_label("Step 1 filter 2 value").fill("BRCA1, BRCA2")
-    # Start table: status = case
-    panel.get_by_role("button", name="Add filter to Start table").click()
-    panel.get_by_label("Start table filter 1 column").select_option("status")
-    panel.get_by_label("Start table filter 1 value").fill("case")
+    config.get_by_role("button", name="Add filter to genotypes").click()
+    expect(config.get_by_role("button", name="Add filter to genotypes")).to_be_disabled()
+    config.get_by_label("genotypes filter 2 column").select_option("gene")
+    config.get_by_label("genotypes filter 2 operator").select_option("in")
+    expect(config.get_by_label("genotypes filter 2 operator")).to_have_value("in")
+    config.get_by_label("genotypes filter 2 value").fill("BRCA1, BRCA2")
     # Null checks take no value.
-    panel.get_by_role("button", name="Add filter to Step 1").click()
-    panel.get_by_label("Step 1 filter 3 column").select_option("gene")
-    panel.get_by_label("Step 1 filter 3 operator").select_option("is not null")
-    expect(panel.get_by_label("Step 1 filter 3 value")).to_have_count(0)
+    config.get_by_role("button", name="Add filter to genotypes").click()
+    config.get_by_label("genotypes filter 3 column").select_option("gene")
+    config.get_by_label("genotypes filter 3 operator").select_option("is not null")
+    expect(config.get_by_label("genotypes filter 3 value")).to_have_count(0)
+    config.get_by_role("button", name="Apply").click()
+    # Start table: status = case (Filters → Add)
+    canvas.locator(".jc-filters-summary").get_by_role("button", name="Add").click()
+    filters = page.get_by_role("dialog", name="Filters")
+    filters.get_by_role("button", name="Add filter to Start table").click()
+    filters.get_by_label("Start table filter 1 column").select_option("status")
+    filters.get_by_label("Start table filter 1 value").fill("case")
+    filters.get_by_role("button", name="Close filters").click()
 
     expected_filters = [{"column": "dosage", "op": ">=", "value": 1},
                         {"column": "gene", "op": "in", "value": ["BRCA1", "BRCA2"]},
@@ -136,11 +141,12 @@ def test_step_and_base_filters_reach_requests_and_generated_sql(page, app_url):
         page.wait_for_timeout(100)
     assert last_validation_has_filters(), validations[-1]
 
-    sql_details = panel.locator("details.join-evidence", has_text="Generated SQL")
-    sql_details.locator(":scope > summary").click()
-    sql_text = panel.get_by_label("Generated SQL", exact=True)
+    canvas.get_by_role("button", name="Show SQL").click()
+    dialog = page.get_by_role("dialog", name="Generated SQL dialog")
+    sql_text = dialog.get_by_label("Generated SQL", exact=True)
     expect(sql_text).to_contain_text("filter_input.dosage >= 1")
     expect(sql_text).to_contain_text("filter_input.gene in ['BRCA1', 'BRCA2']")
+    dialog.get_by_role("button", name="Close SQL").click()
 
     preview = {"engine": "aurora", "base_rows": 2, "rows": None, "total_rows": None,
                "truncated": False, "sample_only": True, "sample_truncated": False,
@@ -172,11 +178,11 @@ def test_step_and_base_filters_reach_requests_and_generated_sql(page, app_url):
 
     page.route("**/api/data-jobs/join_preview", preview_job)
     page.route("**/api/data-jobs/join", join_job)
-    panel.get_by_role("button", name="Preview", exact=True).click()
-    expect(panel.locator(".join-result-rows")).to_have_text("Result: ~2 rows", timeout=10000)
+    canvas.get_by_role("button", name="Preview", exact=True).first.click()
+    expect(canvas.locator(".join-result-rows")).to_contain_text("~2", timeout=10000)
     assert previews[-1]["steps"][0]["filters"] == expected_filters
     assert previews[-1]["base_filters"] == expected_base
-    panel.get_by_role("button", name="Join into new tab").click()
+    canvas.get_by_role("button", name="Save & open in Explore").click()
     expect(page.locator(".tab", has_text="person + genotypes")).to_be_visible(timeout=10000)
     assert joins[-1]["steps"][0]["filters"] == expected_filters
     assert joins[-1]["base_filters"] == expected_base
@@ -184,94 +190,67 @@ def test_step_and_base_filters_reach_requests_and_generated_sql(page, app_url):
         {"left": "person_id", "op": "=", "right": "person_id"}]
 
 
-def test_untouched_rows_stay_quiet_and_disabled_buttons_say_why(page, app_url):
+def test_filter_rows_validate_quietly_and_lists_round_trip(page, app_url):
+    """The shared filter editor in Data Builder: quiet until a row is left,
+    quoted list values, and list <-> scalar conversion when the operator changes."""
     validations = []
-    panel = _setup(page, app_url, validations)
-    join_button = panel.get_by_role("button", name="Join into new tab")
-    reason = panel.locator(".join-disabled-reason")
-    expect(join_button).to_be_disabled()
-    expect(reason).to_have_text("Choose at least one matching column pair.")
-    expect(join_button).to_have_attribute("aria-describedby", reason.get_attribute("id"))
-    # A blank, untouched condition row shows no errors, even after validation.
-    page.wait_for_timeout(600)
-    assert validations and validations[-1]["steps"][0]["conditions"] == []   # blank rows not sent
-    expect(panel.locator(".join-check.join-error")).to_have_count(0)
-    expect(panel).not_to_contain_text("is not a column")
-    expect(panel).not_to_contain_text("add at least one join condition")
-    # The type line explains the selected join in plain words.
-    expect(panel.locator(".join-how-hint")).to_have_text(
-        "Keep all person rows; add genotypes columns where they match.")
-    panel.get_by_role("radio", name="Inner").click()
-    expect(panel.locator(".join-how-hint")).to_have_text(
-        "Keep only rows where person and genotypes match.")
+    canvas, config = _setup(page, app_url, validations)
+    run = canvas.get_by_role("button", name="Save & open in Explore")
+    expect(run).to_be_disabled()
+    _keys(config)
 
-    # Picking one side and leaving the row flags the missing side by table name.
-    left = panel.get_by_label("Left key step 1 condition 1")
-    left.focus()
-    left.select_option(label="person_id")
-    expect(panel.locator(".join-check.join-error")).to_have_count(0)   # still editing the row
-    left.blur()
-    expect(panel.locator(".join-check.join-error")).to_have_text("Pick a column from genotypes.")
-    expect(reason).to_have_text("Finish or remove the incomplete condition.")
-    panel.get_by_label("Right key step 1 condition 1").select_option(label="person_id")
-    expect(panel.locator(".join-check.join-error")).to_have_count(0)
-    expect(join_button).to_be_enabled(timeout=10000)
-    expect(reason).to_have_text("")
+    def wait_filters(expected):
+        for _ in range(50):
+            if validations and validations[-1]["steps"][0].get("filters") == expected:
+                return
+            page.wait_for_timeout(100)
+        assert validations[-1]["steps"][0].get("filters") == expected, validations[-1]
 
-    # "+ condition" adds one blank row at a time; blank rows are ignored.
-    add = panel.get_by_role("button", name="+ condition")
-    add.click()
-    expect(add).to_be_disabled()
-    expect(panel.locator(".join-step .join-cond")).to_have_count(2)
-    expect(join_button).to_be_enabled()
-    panel.get_by_role("button", name="Remove step 1 condition 2").click()
-    expect(panel.locator(".join-step .join-cond")).to_have_count(1)
+    def reopen():
+        canvas.get_by_role("button", name="Join person to genotypes", exact=False).first.click()
+        expect(config).to_be_visible(timeout=10000)
 
-    # An incomplete filter blocks the join and says why once the row is left.
-    panel.get_by_role("button", name="Add filter to Step 1").click()
-    column = panel.get_by_label("Step 1 filter 1 column")
+    # An incomplete filter says why once the row is left, and blocks Apply.
+    config.get_by_role("button", name="Add filter to genotypes").click()
+    column = config.get_by_label("genotypes filter 1 column")
     column.focus()
     column.select_option("dosage")
+    expect(config.locator(".join-check.join-error")).to_have_count(0)   # still editing the row
     column.blur()
-    expect(panel.locator(".join-check.join-error")).to_have_text("Enter a value for dosage.")
-    expect(join_button).to_be_disabled()
-    expect(reason).to_have_text("Enter a value for dosage.")
-    panel.get_by_label("Step 1 filter 1 value").fill("2")
-    expect(join_button).to_be_enabled(timeout=10000)
-    expect(panel.locator(".join-check.join-error")).to_have_count(0)
+    expect(config.locator(".join-check.join-error")).to_have_text("Enter a value for dosage.")
+    config.get_by_label("genotypes filter 1 value").fill("2")
+    expect(config.locator(".join-check.join-error")).to_have_count(0)
 
     # List values: quoted items may contain commas and doubled quotes.
-    panel.get_by_role("button", name="Add filter to Step 1").click()
-    panel.get_by_label("Step 1 filter 2 column").select_option("gene")
-    panel.get_by_label("Step 1 filter 2 operator").select_option("in")
-    panel.get_by_label("Step 1 filter 2 value").fill('"Smith, John", Doe ,"say ""hi"""')
+    config.get_by_role("button", name="Add filter to genotypes").click()
+    config.get_by_label("genotypes filter 2 column").select_option("gene")
+    config.get_by_label("genotypes filter 2 operator").select_option("in")
+    config.get_by_label("genotypes filter 2 value").fill('"Smith, John", Doe ,"say ""hi"""')
+    config.get_by_role("button", name="Apply").click()
     expected = {"column": "gene", "op": "in", "value": ["Smith, John", "Doe", 'say "hi"']}
-    for _ in range(50):
-        if validations[-1]["steps"][0].get("filters", [None, None])[-1] == expected:
-            break
-        page.wait_for_timeout(100)
-    assert validations[-1]["steps"][0]["filters"] == [
-        {"column": "dosage", "op": "=", "value": 2}, expected]
+    wait_filters([{"column": "dosage", "op": "=", "value": 2}, expected])
+    expect(run).to_be_enabled(timeout=10000)
+
     # Switching to a single-value operator turns the one quoted list item back into plain text.
-    value = panel.get_by_label("Step 1 filter 2 value")
+    reopen()
+    value = config.get_by_label("genotypes filter 2 value")
     value.fill('"Smith, John"')
-    panel.get_by_label("Step 1 filter 2 operator").select_option("=")
+    config.get_by_label("genotypes filter 2 operator").select_option("=")
     expect(value).to_have_value("Smith, John")
-    scalar = {"column": "gene", "op": "=", "value": "Smith, John"}
-    for _ in range(50):
-        if validations[-1]["steps"][0].get("filters", [None, None])[-1] == scalar:
-            break
-        page.wait_for_timeout(100)
-    assert validations[-1]["steps"][0]["filters"][-1] == scalar
+    config.get_by_role("button", name="Apply").click()
+    wait_filters([{"column": "dosage", "op": "=", "value": 2},
+                  {"column": "gene", "op": "=", "value": "Smith, John"}])
     # And back to a list operator: the value is quoted so it stays one item.
-    panel.get_by_label("Step 1 filter 2 operator").select_option("in")
+    reopen()
+    value = config.get_by_label("genotypes filter 2 value")
+    config.get_by_label("genotypes filter 2 operator").select_option("in")
     expect(value).to_have_value('"Smith, John"')
     # A null check in between keeps the list as a list, and a later scalar operator unquotes it.
     value.fill("BRCA1, BRCA2")
-    panel.get_by_label("Step 1 filter 2 operator").select_option("is null")
-    panel.get_by_label("Step 1 filter 2 operator").select_option("in")
+    config.get_by_label("genotypes filter 2 operator").select_option("is null")
+    config.get_by_label("genotypes filter 2 operator").select_option("in")
     expect(value).to_have_value("BRCA1, BRCA2")
     value.fill('"Smith, John"')
-    panel.get_by_label("Step 1 filter 2 operator").select_option("is null")
-    panel.get_by_label("Step 1 filter 2 operator").select_option("=")
+    config.get_by_label("genotypes filter 2 operator").select_option("is null")
+    config.get_by_label("genotypes filter 2 operator").select_option("=")
     expect(value).to_have_value("Smith, John")

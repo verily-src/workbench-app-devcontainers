@@ -1,6 +1,8 @@
 import pytest
 from playwright.sync_api import expect
 
+from tests.ui_helpers import add_to_canvas, set_join_keys
+
 from tests.test_e2e import app_url
 
 pytestmark = pytest.mark.e2e
@@ -66,20 +68,13 @@ def test_large_growth_preview_requires_confirmation(page, app_url):
         }],
     }))
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Join schema").select_option("public")
-    picker = panel.get_by_role("combobox", name="Source table to add")
-    picker.fill("person")
-    picker.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-    expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
-    picker.fill("visit")
-    picker.press("Enter")
-    expect(panel.get_by_role("button", name="Add table")).to_be_enabled(timeout=10000)
-    panel.get_by_role("button", name="Add table").click()
-    panel.get_by_label("Left key step 1 condition 1").select_option(label="person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option(label="person_id")
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    panel = page.locator(".jc")
+    add_to_canvas(panel, "person")
+    expect(panel.locator(".jc-node")).to_have_count(1, timeout=10000)
+    add_to_canvas(panel, "visit")
+    expect(panel.locator(".jc-node")).to_have_count(2, timeout=10000)
+    set_join_keys(panel, "person_id", "person_id")
 
     preview = {"engine": "aurora", "base_rows": 200, "rows": None, "total_rows": None,
                "truncated": False, "sample_only": True, "sample_truncated": False,
@@ -90,10 +85,9 @@ def test_large_growth_preview_requires_confirmation(page, app_url):
                "capped_inputs": [], "columns": ["person_id"], "sample": [[1]]}
     page.route("**/api/data-jobs/join_preview", lambda route: fulfill(route, {
         "job_id": "pv", "kind": "join_preview", "status": "complete", "result": preview}))
-    join_button = panel.get_by_role("button", name="Join into new tab")
+    join_button = panel.get_by_role("button", name="Save & open in Explore")
     expect(join_button).to_be_enabled()
-    panel.get_by_role("button", name="Preview", exact=True).click()
-    expect(panel).to_contain_text("~200 rows (estimated)")
+    panel.get_by_role("button", name="Preview", exact=True).first.click()
     expect(panel).to_contain_text("~180,000")
     expect(panel).to_contain_text("multiplies rows")
     expect(join_button).to_be_disabled()

@@ -53,7 +53,7 @@ def test_map_chart_renders_in_browser(page, app_url, tmp_path):
     fixture.write_text('longitude,latitude\n' + ''.join(f'{-100 + i},{-40 + i * 0.5}\n' for i in range(100)))
     page.goto(app_url)
     page.locator('input[type="file"]').set_input_files(fixture)
-    expect(page.get_by_text('of 100 rows')).to_be_visible(timeout=15000)
+    expect(page.locator('.hero .count', has_text='100')).to_be_visible(timeout=15000)
     page.locator('select[name="kind"]').select_option('map')
     page.locator('select[name="x"]').select_option('longitude')
     page.locator('select[name="y"]').select_option('latitude')

@@ -19,7 +19,6 @@ interface Props {
   dataset: Dataset;
   palette: string;
   onUpdate: (changes: Partial<Dataset>) => void;
-  onEditJoin: (datasetId: string) => void;
   /** Reopens a joined tab's recipe on the visual join canvas. */
   onEditJoinCanvas?: (datasetId: string) => void;
   /** Opens a result (e.g. a full group summary) as a new dataset tab. */
@@ -121,7 +120,7 @@ function safeFilterAskError(error: unknown): string {
   return "The request could not be completed. Check the connection and try again.";
 }
 
-export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable, onRefreshExtract, onEditExtract }: Props) {
+export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOpenTable, onRefreshExtract, onEditExtract }: Props) {
   const aiFeatures = useAiFeatures();
   const plinkExport = usePlink();
   const { result, filters, charts } = dataset;
@@ -304,11 +303,13 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
             <span className="detail">
               {dataset.entityColumn && entityCount
                 ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
-                : `of ${result?.total.toLocaleString() ?? "…"} rows`}
+                // Unfiltered: "1,392,882 rows", not "1,392,882 of 1,392,882 rows".
+                : result && result.filtered === result.total ? "rows" : `of ${result?.total.toLocaleString() ?? "…"} rows`}
               {" · "}{scope === "database" ? "full database"
-                : result?.sampled ? "capped loaded sample" : "loaded rows"}
+                : result?.sampled ? "capped loaded sample" : "in memory"}
             </span>
             <span className="hero-meta">
+              <span aria-hidden>·</span>
               <span className="hero-source" title={dataset.source}>{dataset.source}</span>
               {databaseScoped && <>
                 <span className="settings-hint" title={result?.cache
@@ -338,8 +339,6 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
           </select>
         </label>
         <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} onEdit={onEditExtract} />
-        {dataset.sourceRef?.kind === "join" && <button className="quiet"
-          onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         {dataset.sourceRef?.kind === "join" && onEditJoinCanvas && <button className="quiet"
           title="Reopen this join in Data Builder"
           onClick={() => onEditJoinCanvas(dataset.id)}>Edit in Data Builder</button>}
@@ -411,10 +410,13 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
       <div className="cohort-bar">
         <span className="cohort-label">Cohorts</span>
         {cohorts.map((c) => (
-          <span key={c.name} className="cohort-chip"
-                title={`${c.filters.length} filter(s) — click ✕ to remove`}>
-            {c.name}
-            <button className="quiet" onClick={() => removeCohort(c.name)}>
+          <span key={c.name} className={`cohort-chip${JSON.stringify(c.filters) === JSON.stringify(filters) ? " active" : ""}`}>
+            <button type="button" className="quiet cohort-apply"
+                    title={`Apply ${c.name}: ${c.filters.length} filter(s)`}
+                    aria-label={`Apply cohort ${c.name}`}
+                    onClick={() => onUpdate({ filters: c.filters, page: 0 })}>{c.name}</button>
+            <button className="quiet" aria-label={`Remove cohort ${c.name}`} title="Remove cohort"
+                    onClick={() => removeCohort(c.name)}>
               ✕
             </button>
           </span>
@@ -512,6 +514,18 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
             onAxesChange={(x_axis, y_axis) => updateChart(i, { x_axis, y_axis })}
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
             onClose={() => updateChart(i, null)}
+            onMove={(delta) => {
+              const next = [...charts];
+              const j = i + delta;
+              if (j < 0 || j >= next.length) return;
+              [next[i], next[j]] = [next[j], next[i]];
+              onUpdate({ charts: next });
+            }}
+            canMoveUp={i > 0} canMoveDown={i < charts.length - 1}
+            onDuplicate={() => {
+              const copy = { ...spec, title: `${spec.title || (dataset.columns.find((c) => c.name === spec.x)?.label ?? spec.x)} (copy)` };
+              onUpdate({ charts: [...charts.slice(0, i + 1), copy, ...charts.slice(i + 1)] });
+            }}
           />
         ))}
       </div>}

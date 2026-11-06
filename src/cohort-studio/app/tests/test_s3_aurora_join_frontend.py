@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from playwright.sync_api import expect
 
@@ -6,7 +8,7 @@ from tests.test_e2e import app_url
 pytestmark = pytest.mark.e2e
 
 
-def test_join_panel_exposes_s3_files_for_aurora_join_with_full_source_consent(page, app_url):
+def test_data_builder_joins_s3_files_with_aurora_after_full_source_consent(page, app_url):
     sources = [
         {"kind": "aurora", "id": "clinical", "label": "Clinical"},
         {"kind": "s3", "id": "lake", "label": "Genetics files", "uuid": "lake-uuid"},
@@ -75,36 +77,31 @@ def test_join_panel_exposes_s3_files_for_aurora_join_with_full_source_consent(pa
 
     page.route("**/api/data-jobs/join", join)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    datasource = panel.get_by_label("Join datasource")
-    expect(datasource.locator("optgroup[label='S3 files'] option")).to_have_count(1)
-    datasource.select_option("aurora:clinical")
-    panel.get_by_label("Join schema").select_option("cdm")
-    table = panel.get_by_role("combobox", name="Source table to add")
-    table.click()
-    long_name = panel.get_by_role("option", name="cdm.condition_occurrence_with_a_long_table_name Aurora table")
-    expect(long_name).to_be_visible()
-    assert long_name.locator('.combo-label').evaluate('(el) => el.scrollWidth <= el.clientWidth')
-    table.fill("person")
-    table.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-
-    datasource.select_option("s3:lake")
-    file_picker = panel.get_by_role("combobox", name="S3 file to add")
-    file_picker.fill("samples.parquet")
-    file_picker.press("Enter")
-    panel.get_by_role("button", name="Add file").click()
-    expect(panel.locator(".join-step")).to_have_count(1)
-    panel.get_by_label("Left key step 1 condition 1").select_option(label="person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option(label="person_id")
-    consent = panel.get_by_label("Allow full-source cross-source join")
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    canvas = page.locator(".jc")
+    # Both datasources are listed as connections; S3 files show beside Aurora tables.
+    expect(canvas.get_by_role("button", name=re.compile("^Genetics files"))).to_be_visible()
+    canvas.get_by_role("button", name=re.compile("^Clinical")).click()
+    expect(canvas.get_by_role("button", name="Add cdm.condition_occurrence_with_a_long_table_name to canvas")).to_be_visible()
+    canvas.get_by_role("button", name="Add cdm.person to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    canvas.get_by_role("button", name=re.compile("^Genetics files")).click()
+    canvas.get_by_role("button", name="Add demo/samples.parquet to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    config = canvas.get_by_role("region", name="Join configuration")
+    for label in ("Left field, clause 1", "Right field, clause 1"):
+        box = config.get_by_role("combobox", name=label)
+        box.fill("person_id")
+        box.press("Enter")
+    config.get_by_role("button", name="Apply").click()
+    consent = canvas.get_by_label("Allow full-source cross-source join")
     expect(consent).not_to_be_checked()
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_disabled()
+    run = canvas.get_by_role("button", name="Save & open in Explore")
+    expect(run).to_be_disabled()
     consent.check()
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_enabled()
-    panel.get_by_role("button", name="Join into new tab").click()
-    expect(page.locator(".tab", has_text="Aurora + S3")).to_be_visible()
+    expect(run).to_be_enabled(timeout=10000)
+    run.click()
+    expect(page.locator(".tab", has_text="person + samples.parquet")).to_be_visible(timeout=10000)
     assert opened == [
         {"kind": "aurora", "resource_id": "clinical", "schema": "cdm", "table": "person"},
         {"kind": "s3", "resource_id": "lake", "uuid": "lake-uuid",

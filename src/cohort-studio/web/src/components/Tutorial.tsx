@@ -8,7 +8,6 @@ export interface TutorialProgress {
   sourceChosen: boolean;
   dataLoaded: boolean;
   hasSources: boolean;
-  joinPanelOpen: boolean;
   joinCreated: boolean;
   view: string;
   hasDataset: boolean;
@@ -129,7 +128,7 @@ export function Tutorial({ progress, onOpen }: { progress: TutorialProgress; onO
   const unavailable = current.unavailable(progress) || !targetAvailable;
   const selectors = useMemo(() => current.target(progress), [step,
     progress.sourceChosen, progress.dataLoaded, progress.hasSources,
-    progress.joinPanelOpen, progress.joinCreated, progress.view,
+    progress.joinCreated, progress.view,
     progress.hasDataset, progress.chatHistoryAvailable, progress.assistantConfigured,
     targetRefresh]);
   const keyboardState = useRef({ step, done });

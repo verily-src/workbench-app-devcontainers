@@ -3,7 +3,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.test_e2e import app_url, loaded_page
-from tests.ui_helpers import menu
+from tests.ui_helpers import add_to_canvas, canvas_join, menu, open_data_builder, set_join_keys
 
 pytestmark = pytest.mark.e2e
 
@@ -268,34 +268,6 @@ def test_aurora_sidebar_has_no_explore_view_toggle_or_omop_builder(
     expect(sidebar.get_by_role("group", name="Explore view")).to_have_count(0)
 
 
-def test_common_join_key_applies_to_all_steps(loaded_page: Page, tmp_path):
-    right_a = tmp_path / "right-a.csv"
-    right_b = tmp_path / "right-b.csv"
-    right_a.write_text("sample_id,measure_a\nGTEX-0000,1\n", encoding="utf-8")
-    right_b.write_text("sample_id,measure_b\nGTEX-0000,2\n", encoding="utf-8")
-    for path in (right_a, right_b):
-        loaded_page.locator('input[type="file"]').set_input_files(str(path))
-        expect(loaded_page.locator(".tab", has_text=path.name)).to_be_visible(
-            timeout=10000)
-
-    loaded_page.locator(".tab-join").click()
-    panel = loaded_page.locator(".join-panel")
-    panel.locator("button", has_text="add another table").click()
-    combo = panel.get_by_role("combobox", name="Table to join in step 2")
-    combo.click()
-    combo.fill("right-b")
-    combo.press("Enter")
-
-    panel.get_by_label("Common key").select_option("sample_id")
-    panel.get_by_role("button", name="Apply key to all").click()
-    expect(panel.locator(".join-step")).to_have_count(2)
-    for step in panel.locator(".join-step").all():
-        condition = step.locator(".join-cond").first
-        expect(condition.locator("select").nth(0)).to_have_value("sample_id")
-        expect(condition.locator("select.join-op")).to_have_value("=")
-        expect(condition.locator("select").nth(2)).to_have_value("sample_id")
-
-
 @pytest.mark.parametrize("sampled", [True, False])
 def test_large_loaded_preview_warning(page: Page, app_url: str, tmp_path, sampled):
     def fulfill(route, body):
@@ -525,13 +497,7 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab", has_text="people")).to_be_visible(timeout=10000)
 
-    page.locator(".tab-join").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_enabled(
-        timeout=10000)
-    panel.get_by_role("button", name="Join into new tab").click()
+    canvas_join(page, ["events", "people"], [("person_id", "person_id")])
     expect(page.locator(".tab", has_text="events + people")).to_be_visible(
         timeout=10000)
 
@@ -657,21 +623,8 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
          "schema": "cdm"},
     ]
     expect(page.locator(".tab")).to_have_count(2)
-    page.locator(".tab-join").click()
-    panel = page.locator(".join-panel")
-    expect(panel).to_be_visible()
-    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
-    expect(page.get_by_role("button", name="Export options")).to_have_count(0)
-    expect(page.locator(".cohort-bar")).to_have_count(0)
-    panel.get_by_role("button", name="✕").click()
-    expect(menu(page, "Export options").get_by_role("button", name="Save to Aurora")).to_be_visible()
-    expect(page.locator(".cohort-bar")).to_be_visible()
-    page.locator(".tab-join").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
-    panel.get_by_role("button", name="Join into new tab").click()
+    # Same-named tables from two schemas keep their schema in the join name.
+    canvas_join(page, ["person", "cdm.person"], [("person_id", "person_id")])
     expect(page.locator(".tab", has_text="person + cdm.person")).to_be_visible(
         timeout=10000)
 
@@ -752,30 +705,21 @@ def test_join_can_select_source_schema_and_apply_key_recommendation(
 
     route_data_job(page, "join", join)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Join schema").select_option("genetics")
-    table = panel.get_by_role("combobox", name="Source table to add")
-    table.fill("samples")
-    table.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-    expect(page.locator(".tab", has_text="genetics.samples")).to_be_visible(
-        timeout=10000)
-
-    panel.get_by_label("Join schema").select_option("public")
-    table.fill("person")
-    table.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-    expect(panel.get_by_role("button", name="Apply genetics.samples: person_id = person_id · foreign key")
-           ).to_be_visible(timeout=10000)
-    expect(panel.get_by_label("Left key step 1 condition 1")).to_have_value("")
-    panel.get_by_role("button", name="Apply genetics.samples: person_id = person_id · foreign key").click()
-    expect(panel.get_by_label("Left key step 1 condition 1")).to_have_value("person_id")
-    expect(panel.locator(".join-evidence")).not_to_have_attribute("open", "")
-    panel.locator(".join-evidence summary").click()
-    expect(panel.locator(".join-evidence")).to_have_attribute("open", "")
-    expect(panel.locator(".join-evidence")).to_contain_text("Declared foreign key")
-    panel.get_by_role("button", name="Join into new tab").click()
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    canvas = page.locator(".jc")
+    add_to_canvas(canvas, "genetics.samples")
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    add_to_canvas(canvas, "public.person")
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    config = canvas.get_by_role("region", name="Join configuration")
+    # The declared foreign key is offered as a suggested key; it fills the clause.
+    chip = config.get_by_role("button", name="person_id = person_id · foreign key")
+    expect(chip).to_be_visible(timeout=10000)
+    chip.click()
+    expect(config.get_by_role("combobox", name="Left field, clause 1")).to_have_value(re.compile("person_id"))
+    expect(config.get_by_role("combobox", name="Right field, clause 1")).to_have_value(re.compile("person_id"))
+    config.get_by_role("button", name="Apply").click()
+    canvas.get_by_role("button", name="Save & open in Explore").click()
     expect(page.locator(".tab", has_text="samples + person")).to_be_visible(
         timeout=10000)
     assert refs == [
@@ -854,10 +798,13 @@ def _durable_join_page(page: Page, app_url: str):
         page.get_by_label("Table", exact=True).select_option(name)
         page.get_by_role("button", name="Load table").click()
         expect(page.locator(".tab", has_text=name)).to_be_visible(timeout=10000)
-    page.locator(".tab-join").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
+    # Data Builder: start from the people tab, join the events tab on person_id.
+    page.locator(".tab", has_text="people").first.locator("> span").first.click()
+    canvas = open_data_builder(page)
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    add_to_canvas(canvas, "events", tab=True)
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    set_join_keys(canvas, "person_id", "person_id")
     return refs, open_requests, join_requests, query_dataset_ids
 
 
@@ -892,8 +839,7 @@ def test_join_expiry_reopens_durable_inputs_and_retries_once(page: Page, app_url
         })
 
     route_data_job(page, "join", join)
-    panel = page.locator(".join-panel")
-    panel.get_by_role("button", name="Join into new tab").click()
+    page.locator(".jc").get_by_role("button", name="Save & open in Explore").click()
     expect(page.locator(".tab", has_text="people + events")).to_be_visible(
         timeout=10000)
     assert len(join_requests) == 2
@@ -913,8 +859,7 @@ def test_join_non_expiry_error_does_not_reopen_inputs(page: Page, app_url: str):
         })
 
     route_data_job(page, "join", reject_join)
-    page.locator(".join-panel").get_by_role(
-        "button", name="Join into new tab").click()
+    page.locator(".jc").get_by_role("button", name="Save & open in Explore").click()
     expect(page.get_by_text("Join failed: join rejected", exact=False)).to_be_visible(
         timeout=10000)
     assert len(join_requests) == 1
@@ -946,8 +891,7 @@ def test_failed_join_recovery_closes_reopened_inputs_and_stops_after_one_retry(
 
     route_data_job(page, "join", join)
     page.route("**/api/datasets/*", close)
-    page.locator(".join-panel").get_by_role(
-        "button", name="Join into new tab").click()
+    page.locator(".jc").get_by_role("button", name="Save & open in Explore").click()
     expect(page.get_by_text("Automatic recovery failed: retry rejected", exact=False)
            ).to_be_visible(timeout=10000)
     assert len(join_requests) == 2
@@ -992,19 +936,15 @@ def test_recovered_repeat_join_opens_new_result_and_queries_new_id(
             fulfill(route, result("joined-recovered"))
 
     route_data_job(page, "join", join)
-    page.locator(".join-panel").get_by_role(
-        "button", name="Join into new tab").click()
+    page.locator(".jc").get_by_role("button", name="Save & open in Explore").click()
     expect(page.locator(".tab", has_text="people + events")).to_have_count(
         1, timeout=10000)
 
-    page.locator(".tab-join").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Left key step 1 condition 1").select_option("person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("person_id")
+    # Run the same canvas join again (Data Builder keeps the draft).
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     with page.expect_request(lambda request:
             request.url.endswith("/api/datasets/joined-recovered/query")) as queried:
-        page.locator(".join-panel").get_by_role(
-            "button", name="Join into new tab").click()
+        page.locator(".jc").get_by_role("button", name="Save & open in Explore").click()
     expect(page.locator(".tab", has_text="people + events")).to_have_count(
         2, timeout=10000)
     assert queried.value.url.endswith("/api/datasets/joined-recovered/query")
@@ -1037,11 +977,7 @@ def test_expired_upload_join_shows_reopen_guidance(loaded_page: Page, tmp_path):
 
     route_data_job(loaded_page, "open", reject_open)
     route_data_job(loaded_page, "join", expire_join)
-    loaded_page.locator(".tab-join").click()
-    panel = loaded_page.locator(".join-panel")
-    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
-    panel.get_by_role("button", name="Join into new tab").click()
+    canvas_join(loaded_page, ["samples.csv", "events.csv"], [("sample_id", "sample_id")])
     expect(loaded_page.get_by_text(
         "The join inputs expired. Reopen the source or upload the data again, then retry the join.",
         exact=False)).to_be_visible(timeout=10000)

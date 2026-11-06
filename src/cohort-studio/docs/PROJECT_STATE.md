@@ -4,6 +4,14 @@ Updated 2026-11-06. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **LOCAL (2026-11-06): one Data Builder; SQL mode; edit extracts; roadmap.**
+  - **One join builder.** The old Explore Join panel (`JoinPanel.tsx`) is gone. "Join tables" and "⋈ Join" open Data Builder, and "⋈ Join" starts the canvas from that tab. "Edit join" was removed in favour of "Edit in Data Builder". Shared parts moved to `joinParts.tsx`.
+  - **SQL mode.** Data Builder has "Build with: Visual | SQL": write one SELECT, preview it, then open it Live or as an Extract. "Edit as SQL" copies a same-database canvas join's SQL into the editor.
+  - **Edit extracts.** Extract tabs have "Edit in Data Builder", which reopens the recipe (joins, fields, filters, or SQL) and saves over the same table. Codex found three issues (a stale extract destination, stale sort/entity fields, and replacing the wrong tab); all are fixed with tests.
+  - **Count line.** The big count number is now one compact line ("N rows · scope · source · fetched … ↻"); "of N" shows only when filtered.
+  - **Tests.** 25 old panel tests were ported to Data Builder or dropped where the canvas already covers them; the commit message has the mapping. `tests/ui_helpers.py` has `open_data_builder`, `add_to_canvas`, `set_join_keys` and `canvas_join`.
+  - **Quick wins (done).** Clicking a saved cohort chip re-applies its filters, and the matching cohort is highlighted. Categorical filters with more than 8 values get a search box; selected values stay listed. Each chart's ⋯ menu has Move earlier, Move later and Duplicate.
+  - **Agreed roadmap (2026-11-06), after the Codex BI gap review.** Quick wins first: re-apply a saved cohort, search filter values, move charts, duplicate a chart. Then #3 richer filters and parameters (relative dates, AND/OR groups, reusable parameters), #2 date and conditional calculations, #1 chart measures and series, #7 box plots, reference lines and units, and #9 publishing (viewer mode, draft/published).
 - **LOCAL (2026-11-06): uncapped, refreshable extracts; AI hidden; Data Explorer.**
   - **Extracts write every row.** The old path exported at most 100,000 rows: same-database joins failed past it, and DuckDB-backed joins were silently truncated. Now the canvas Extract and "Save to Aurora" run an `extract` data job (`app/extracts.py`). It uses `CREATE TABLE AS` inside the database, or streams in batches, then swaps the table in atomically and records the recipe in `public._studio_extracts`.
   - **Refresh extract.** Extract tabs show rows, the last refresh, and **Refresh extract**, which reruns the recipe and replaces the rows. A failed refresh keeps the old table. Names of existing non-extract tables are refused.

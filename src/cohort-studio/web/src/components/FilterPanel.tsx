@@ -25,6 +25,31 @@ function CustomValue({ onAdd }: { onAdd: (value: string) => void }) {
   </form>;
 }
 
+/** Values of one categorical column, with a search box once the list is long.
+ *  Selected values always stay listed. */
+function ValueList({ name, values, selected, onToggle }: {
+  name: string; values: string[]; selected: string[]; onToggle: (value: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = q ? values.filter((v) => selected.includes(v) || v.toLowerCase().includes(q)) : values;
+  return <>
+    {values.length > 8 && (
+      <input type="search" className="filter-search" aria-label={`Search ${name} values`}
+             placeholder="Search values" value={query} onChange={(e) => setQuery(e.target.value)} />
+    )}
+    {shown.map((v) => (
+      <label key={v}>
+        <input type="checkbox" checked={selected.includes(v)} onChange={() => onToggle(v)} />
+        {v}
+      </label>
+    ))}
+    {q && !shown.some((v) => !selected.includes(v)) && (
+      <div className="settings-hint">No {selected.length ? "other " : ""}values match "{query.trim()}".</div>
+    )}
+  </>;
+}
+
 export function FilterPanel({ columns, filters, onChange }: Props) {
   const byColumn = new Map(filters.map((f) => [f.column, f]));
 
@@ -65,16 +90,9 @@ export function FilterPanel({ columns, filters, onChange }: Props) {
             </summary>
             {col.filter_kind === "categorical" ? (
               <div className="filter-values">
-                {[...new Set([...(col.values ?? []), ...(active?.values ?? [])])].map((v) => (
-                  <label key={v}>
-                    <input
-                      type="checkbox"
-                      checked={active?.values?.includes(v) ?? false}
-                      onChange={() => toggleValue(col, v)}
-                    />
-                    {v}
-                  </label>
-                ))}
+                <ValueList name={col.label || col.name}
+                           values={[...new Set([...(col.values ?? []), ...(active?.values ?? [])])]}
+                           selected={active?.values ?? []} onToggle={(v) => toggleValue(col, v)} />
                 <CustomValue onAdd={(value) => {
                   const values = byColumn.get(col.name)?.values ?? [];
                   if (!values.includes(value)) onChange(upsert(filters,

@@ -55,87 +55,60 @@ def test_local_postgres_source_picker_recommendation_and_join(
 
     page.goto(local_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.get_by_role("button", name="Join tables").click()
-    expect(page.locator("aside .section-label").filter(
-        has_text="Filters")).to_have_count(0)
-    panel = page.locator(".join-panel")
-    expect(panel.get_by_label("Join datasource")).to_have_value(
-        "aurora:local-postgres")
-    expect(panel.get_by_label("Join schema").locator(
-        "option", has_text="genetics_demo")).to_have_count(1, timeout=15000)
-    expect(panel.get_by_role("combobox", name="Source table to add")) \
-        .to_have_value("")
-    page.evaluate("window.scrollTo(0, 0)")
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    canvas = page.locator(".jc")
+    canvas.get_by_role("button", name=re.compile("^local-postgres|^Local")).first.click()
     page.screenshot(path="/tmp/local-join-source-picker-empty.png", full_page=True)
 
-    def add_table(schema, table, expected_steps):
-        panel.get_by_label("Join schema").select_option(schema)
-        picker = panel.get_by_role("combobox", name="Source table to add")
-        picker.fill(table)
-        option = panel.get_by_role("option", name=re.compile(
-            rf"^{re.escape(schema)}\.{re.escape(table)}"))
-        expect(option).to_be_visible(timeout=10000)
-        option.click()
-        expect(picker).to_have_value(f"{schema}.{table}")
-        add_button = panel.get_by_role("button", name="Add table")
-        expect(add_button).to_be_enabled(timeout=10000)
-        add_button.click()
-        expect(panel.locator(".join-step")).to_have_count(expected_steps,
-                                                          timeout=15000)
+    def add(table, count):
+        canvas.get_by_role("button", name=f"Add {table} to canvas").click()
+        expect(canvas.locator(".jc-node")).to_have_count(count, timeout=15000)
 
-    add_table("cdm", "person", 1)
-    add_table("genetics_demo", "samples", 1)
-    first_step = panel.locator(".join-step").nth(0)
-    matching_key = first_step.get_by_role(
-        "button", name=re.compile(r"person_id = person_id.*matching names"))
-    expect(matching_key).to_be_visible(timeout=15000)
-    matching_key.click()
-    expect(first_step.locator(".join-cond select").nth(0)).to_have_value("person_id")
-    expect(first_step.locator(".join-cond select").nth(2)).to_have_value("person_id")
+    def apply_keys(left, right):
+        config = canvas.get_by_role("region", name="Join configuration")
+        expect(config).to_be_visible(timeout=15000)
+        # Recommended keys pre-fill the draft; fill them anyway so the test is deterministic.
+        for label, value in (("Left field, clause 1", left), ("Right field, clause 1", right)):
+            box = config.get_by_role("combobox", name=label)
+            box.fill(value)
+            box.press("Enter")
+        config.get_by_role("button", name="Apply").click()
 
-    add_table("genetics_demo", "genotypes", 2)
-    sample_fk = panel.locator(".join-step").nth(1).get_by_role(
-        "button", name=re.compile(r"sample_id = sample_id.*foreign key"))
-    expect(sample_fk).to_be_visible(timeout=15000)
-    sample_fk.click()
-    expect(panel.locator(".join-step").nth(1).locator(".join-cond select").nth(0)
-           ).to_have_value("genetics_demo.samples → sample_id")
-    expect(panel.locator(".join-step").nth(1).locator(".join-cond select").nth(2)
-           ).to_have_value("sample_id")
+    def select(table):
+        canvas.locator(".jc-node", has_text=table).get_by_role("button", name=re.compile("Table details")).click()
 
-    add_table("genetics_demo", "variants", 3)
-    variant_fk = panel.locator(".join-step").nth(2).get_by_role(
-        "button", name=re.compile(r"variant_id = variant_id.*foreign key"))
-    expect(variant_fk).to_be_visible(timeout=15000)
-    page.evaluate("window.scrollTo(0, 0)")
+    add("cdm.person", 1)
+    add("genetics_demo.samples", 2)
+    apply_keys("person_id", "person_id")
+    select("samples")
+    add("genetics_demo.genotypes", 3)
+    apply_keys("sample_id", "sample_id")
+    select("genotypes")
+    add("genetics_demo.variants", 4)
+    apply_keys("variant_id", "variant_id")
     page.screenshot(path="/tmp/local-join-recommendation.png", full_page=True)
-    variant_fk.click()
-    expect(panel.locator(".join-step").nth(2).locator(".join-cond select").nth(0)
-           ).to_have_value("genetics_demo.genotypes → variant_id")
-    expect(panel.locator(".join-step").nth(2).locator(".join-cond select").nth(2)
-           ).to_have_value("variant_id")
 
-    with page.expect_response(lambda response:
-            response.url.endswith("/api/datasets/join/preview")
-            and response.request.method == "POST") as preview_response:
-        panel.get_by_role("button", name="Preview").click()
-    preview = preview_response.value.json()
+    with page.expect_response(lambda response: "/api/data-jobs/" in response.url
+                              and response.request.method == "GET"
+                              and response.json().get("kind") == "join_preview"
+                              and response.json().get("status") == "complete") as preview_response:
+        canvas.get_by_role("button", name="Preview", exact=True).first.click()
+    preview = preview_response.value.json()["result"]
     assert preview["engine"] == "aurora"
     assert preview["base_rows"] == 100
     assert [step["rows"] for step in preview["steps"]] == [100, 2_000, 2_000]
     assert preview["total_rows"] == 2_000
 
-    with page.expect_response(lambda response:
-            response.url.endswith("/api/datasets/join")
-            and response.request.method == "POST") as joined_response:
-        panel.get_by_role("button", name="Join into new tab").click()
-    result = joined_response.value.json()
+    with page.expect_response(lambda response: "/api/data-jobs/" in response.url
+                              and response.request.method == "GET"
+                              and response.json().get("kind") == "join"
+                              and response.json().get("status") == "complete") as joined_response:
+        canvas.get_by_role("button", name="Save & open in Explore").click()
+    result = joined_response.value.json()["result"]
     assert result["query_scope"] == "database"
     assert result["join"]["engine"] == "aurora"
     assert result["join"]["total_rows"] == 2_000
-    result_tab = page.locator(".tab.active")
-    expect(result_tab).to_contain_text(
-        "cdm.person + genetics_demo.samples + genetics_demo.genotypes + genetics_demo.variants")
+    expect(page.locator(".tab.active")).to_contain_text("person + samples + genotypes + variants")
     expect(page.locator(".hero .count")).to_contain_text("2,000", timeout=15000)
     response = page.request.post(
         f"{local_url}/api/datasets/{result['dataset_id']}/query",

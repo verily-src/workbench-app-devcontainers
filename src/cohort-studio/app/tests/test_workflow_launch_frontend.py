@@ -14,7 +14,7 @@ def loaded_workflow_page(page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.locator('input[type="file"]').set_input_files(FIXTURE_CSV)
-    expect(page.get_by_text("of 100 rows", exact=False)).to_be_visible(timeout=15000)
+    expect(page.locator(".hero .count", has_text="100")).to_be_visible(timeout=15000)
     return page
 
 

@@ -45,10 +45,10 @@ def _open_editor(page: Page, app_url: str, requests: list):
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_role("button", name="SQL", exact=True).click()
-    editor = panel.get_by_label("SQL query")
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".jc").get_by_role("radio", name="SQL", exact=True).click()
+    panel = page.get_by_role("region", name="SQL builder")
+    editor = panel.get_by_label("Data Builder SQL")
     editor.click()
     return panel, editor
 

@@ -1,3 +1,4 @@
+import re
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -168,34 +169,28 @@ def test_join_builder_adds_postgres_and_athena_with_schema_refs(page: Page, app_
 
     page.route("**/api/data-jobs/join", join)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Join datasource").select_option("postgres:postgres:rds-clinical")
-    expect(panel.get_by_label("Join schema").locator(
-        "option", has_text="cdm")).to_have_count(1, timeout=10000)
-    panel.get_by_label("Join schema").select_option("cdm")
-    table = panel.get_by_role("combobox", name="Source table to add")
-    table.fill("person")
-    table.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-    expect(panel.get_by_label("Start from")).to_have_value("cdm.person")
-
-    panel.get_by_label("Join datasource").select_option("athena:iceberg-catalog")
-    expect(panel.get_by_label("Join schema").locator(
-        "option", has_text="clinical")).to_have_count(1, timeout=10000)
-    panel.get_by_label("Join schema").select_option("clinical")
-    table.fill("samples")
-    table.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-    expect(panel.locator(".join-step")).to_have_count(1)
-    panel.get_by_label("Left key step 1 condition 1").select_option(label="person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option(label="person_id")
-    expect(panel.get_by_label("Allow full-source cross-source join")).not_to_be_checked()
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_disabled()
-    panel.get_by_label("Allow full-source cross-source join").check()
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_enabled(timeout=10000)
-    panel.get_by_role("button", name="Join into new tab").click()
-    expect(page.locator(".tab", has_text="Clinical join")).to_be_visible(timeout=10000)
+    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    canvas = page.locator(".jc")
+    canvas.get_by_role("button", name=re.compile("^Clinical RDS")).click()
+    canvas.get_by_role("button", name="Add cdm.person to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    canvas.get_by_role("button", name=re.compile("^Athena Iceberg")).click()
+    canvas.get_by_role("button", name="Add clinical.samples to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    config = canvas.get_by_role("region", name="Join configuration")
+    for label in ("Left field, clause 1", "Right field, clause 1"):
+        box = config.get_by_role("combobox", name=label)
+        box.fill("person_id")
+        box.press("Enter")
+    config.get_by_role("button", name="Apply").click()
+    consent = canvas.get_by_label("Allow full-source cross-source join")
+    expect(consent).not_to_be_checked()
+    run = canvas.get_by_role("button", name="Save & open in Explore")
+    expect(run).to_be_disabled()
+    consent.check()
+    expect(run).to_be_enabled(timeout=10000)
+    run.click()
+    expect(page.locator(".tab", has_text="person + samples")).to_be_visible(timeout=10000)
     assert opened == [
         {"kind": "postgres", "resource_id": "postgres:rds-clinical",
          "schema": "cdm", "table": "person"},
@@ -204,92 +199,4 @@ def test_join_builder_adds_postgres_and_athena_with_schema_refs(page: Page, app_
     ]
     assert join_bodies[0]["steps"][0]["conditions"] == [
         {"left": "person_id", "op": "=", "right": "person_id"}]
-    assert join_bodies[0]["allow_loaded"] is True
-
-
-def test_s3_source_can_join_loaded_rows_with_explicit_consent(page: Page, app_url: str):
-    sources = [
-        {"kind": "aurora", "id": "aurora:clinical", "label": "Clinical Aurora"},
-        {"kind": "s3", "id": "s3:lake", "label": "Parquet lake", "uuid": "lake-uuid"},
-    ]
-    opened = []
-    join_bodies = []
-
-    page.route("**/api/datasources", lambda route: _fulfill(route, {
-        "ready": True, "sources": sources, "catalogs_pending": False,
-    }))
-    page.route("**/api/workflows**", lambda route: _fulfill(route, {
-        "available": False, "jobs": [], "running_count": 0,
-    }))
-
-    def tables(route):
-        if "kind=s3" in route.request.url:
-            result = [{"name": "samples.parquet", "detail": "Parquet file"}]
-        else:
-            result = [{"name": "cdm.person", "schema": "cdm", "table": "person",
-                       "detail": "100 rows"}]
-        _fulfill(route, result)
-
-    page.route("**/api/tables?**", tables)
-
-    def open_source(route):
-        ref = route.request.post_data_json["source_ref"]
-        opened.append(ref)
-        _fulfill_job(route, "open", _open_result(f"opened-{len(opened)}", ref, "person_id"))
-
-    page.route("**/api/data-jobs/open", open_source)
-    page.route("**/api/datasets/*/query", lambda route: _fulfill(route, {
-        "total": 2, "filtered": 2, "scope": "loaded", "sampled": True,
-        "charts": [], "rows": {"page": 0, "page_size": 50,
-                                  "columns": ["person_id"], "data": [[1], [2]]},
-    }))
-    page.route("**/api/joins/recommend", lambda route: _fulfill(route, {
-        "candidates": [], "warnings": [],
-        "jev": {"status": "not_configured", "configured": False, "model": ""},
-    }))
-    page.route("**/api/datasets/join/suggest?**", lambda route: _fulfill(route, []))
-    page.route("**/api/datasets/join/validate", lambda route: _fulfill(route, {
-        "ok": True, "engine": "duckdb", "engine_reason": "loaded rows",
-        "capped_inputs": [], "problems": [], "steps": [],
-    }))
-
-    def join(route):
-        join_bodies.append(route.request.post_data_json)
-        body = route.request.post_data_json
-        _fulfill_job(route, "join", {"dataset_id": "joined-s3", "source": "S3 join",
-                         "rows": 2, "columns": [{"name": "person_id", "dtype": "int64",
-                                                    "filter_kind": "none"}],
-                         "source_ref": {"kind": "join", "base": opened[0], "allow_loaded": True,
-                                        "steps": [{"source": opened[1], "how": "inner",
-                                                   "conditions": body["steps"][0]["conditions"],
-                                                   "columns": None, "alias": "samples"}]},
-                         "query_scope": "loaded", "join": {"engine": "duckdb",
-                         "base_rows": 2, "rows": 2, "total_rows": 2,
-                         "truncated": False, "steps": [], "notes": [], "capped_inputs": []}})
-
-    page.route("**/api/data-jobs/join", join)
-    page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
-    panel = page.locator(".join-panel")
-    panel.get_by_label("Join datasource").select_option("aurora:aurora:clinical")
-    panel.get_by_label("Join schema").select_option("cdm")
-    table = panel.get_by_role("combobox", name="Source table to add")
-    table.fill("person")
-    table.press("Enter")
-    panel.get_by_role("button", name="Add table").click()
-    panel.get_by_label("Join datasource").select_option("s3:s3:lake")
-    s3_file = panel.get_by_role("combobox", name="S3 file to add")
-    s3_file.fill("samples.parquet")
-    s3_file.press("Enter")
-    panel.get_by_role("button", name="Add file").click()
-    expect(panel.locator(".join-step")).to_have_count(1)
-    panel.get_by_label("Left key step 1 condition 1").select_option(label="person_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option(label="person_id")
-    expect(panel.get_by_label("Allow full-source cross-source join")).not_to_be_checked()
-    panel.get_by_label("Allow full-source cross-source join").check()
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_enabled(timeout=10000)
-    panel.get_by_role("button", name="Join into new tab").click()
-    expect(page.locator(".tab", has_text="S3 join")).to_be_visible(timeout=10000)
-    assert opened[1] == {"kind": "s3", "resource_id": "s3:lake",
-                         "uuid": "lake-uuid", "table": "samples.parquet"}
     assert join_bodies[0]["allow_loaded"] is True

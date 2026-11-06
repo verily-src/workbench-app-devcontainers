@@ -1,5 +1,5 @@
 /** Visual join canvas: drag tables onto a canvas, link them, and run the join.
- * Builds exactly the same join request as the step builder (JoinPanel); see
+ * Builds the same JoinRequest the join API takes; see
  * joinModel.ts for the canvas ↔ request mapping. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
@@ -12,11 +12,11 @@ import { tableStats } from "../format";
 import { Combobox } from "./Combobox";
 import { JobProgress } from "./DataJobs";
 import { SqlEditor } from "./SqlEditor";
-import type { FilterRow } from "./JoinPanel";
+import type { FilterRow } from "./joinParts";
 import {
   ARROW, FilterEditor, KIND_LABEL, Venn, addsColumns, colKind, directAurora, filterProblem,
   sentFilters, sourceResources,
-} from "./JoinPanel";
+} from "./joinParts";
 import {
   MAX_JOINED, NODE_H, NODE_W, byNodeId, connector, fromPlan, isBlankCond, isCompleteCond,
   layout, localProblems, offeredColumns, orderedSteps, rootOf, subtree, toJoinRef, toPlan,
@@ -42,6 +42,8 @@ interface Props {
   edit?: { nonce: number; title: string; ref: JoinRef | SqlRef;
           /** Editing an extract: write back to this table. */
           extract?: { kind: string; resource_id: string; table: string } } | null;
+  /** Start from this open tab ("Join" on an Explore tab); a new nonce adds it. */
+  seed?: { nonce: number; datasetId: string } | null;
   onJoin: (p: CanvasJoinRequest) => Promise<unknown>;
   onOpenResult: (opened: OpenResult, title: string, sourceRef?: SourceRef) => void;
   onAddSource: () => void;
@@ -175,7 +177,7 @@ const toDataset = (opened: OpenResult, title: string, ref?: SourceRef): Dataset 
 
 const sameRef = (a?: SourceRef, b?: SourceRef) => Boolean(a && b) && JSON.stringify(a) === JSON.stringify(b);
 
-export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult, onAddSource, onClose }: Props) {
+export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpenResult, onAddSource, onClose }: Props) {
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
   const [name, setName] = useState("New join");
   // Until the user types a name, the join is named after its tables.
@@ -458,11 +460,12 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
 
   useEffect(() => {
     if (nameEdited) return;
+    if (buildMode === "sql") { setName("SQL result"); return; }
     setName(autoJoinName(nodes.map((n) => {
       const short = nodeLabel(n);
       return nodes.some((o) => o.title !== n.title && nodeLabel(o) === short) ? n.title : short;
     })));
-  }, [nodes, nameEdited]);
+  }, [nodes, nameEdited, buildMode]);
 
   // ---- Reconstruct a saved join (Edit join in canvas / reopen saved model) ----
   const reconstruct = async (ref: JoinRef, title: string, editing = false) => {
@@ -507,6 +510,16 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
       setError(`Could not open the join on the canvas: ${(e as Error).message}`);
     }
   };
+  // "Join" on an Explore tab: start the canvas from that tab, or add it to the
+  // current join when the canvas already has tables.
+  const lastSeed = useRef<number | null>(null);
+  useEffect(() => {
+    if (!seed || lastSeed.current === seed.nonce) return;
+    lastSeed.current = seed.nonce;
+    if (nodesRef.current.some((n) => n.dataset?.id === seed.datasetId)) return;
+    setBuildMode("visual");
+    void addItem({ type: "tab", datasetId: seed.datasetId });
+  }, [seed?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   const lastEdit = useRef<number | null>(null);
   useEffect(() => {
     if (!edit || lastEdit.current === edit.nonce) return;
@@ -516,6 +529,9 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
       // Rewrite the same extract table (the registry allows replacing its own extract).
       setMode("extract"); setExtractResource(target.resource_id);
       setExtractTable(target.table); setExtractTableEdited(true);
+    } else {
+      // Not an extract edit: never keep a previous extract's destination.
+      setMode("live"); setExtractTableEdited(false);
     }
     if (edit.ref.kind === "sql") {
       clearCanvas();
@@ -771,7 +787,11 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     setSaved(entry);
     setStatus(`Saved “${entry.name}” in this browser.`);
   };
-  const cancel = () => { clearCanvas(); setName("New join"); setNameEdited(false); onClose(); };
+  const cancel = () => {
+    clearCanvas(); setName("New join"); setNameEdited(false);
+    setMode("live"); setExtractTableEdited(false); setBuildMode("visual");
+    onClose();
+  };
 
   const copySql = async () => {
     const statement = validation?.generated_sql?.copyable_sql;

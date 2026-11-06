@@ -7,8 +7,8 @@
 import type {
   Dataset, JoinFilter, JoinHow, JoinOp, JoinOutput, JoinStep, SourceRef,
 } from "./types";
-import type { FilterRow } from "./components/JoinPanel";
-import { ARROW, addsColumns, aliasOf, fromFilter, sentFilters } from "./components/JoinPanel";
+import type { FilterRow } from "./components/joinParts";
+import { ARROW, addsColumns, aliasOf, fromFilter, sentFilters } from "./components/joinParts";
 
 /** Additional tables a join can carry (same limit as the step builder). */
 export const MAX_JOINED = 6;

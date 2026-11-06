@@ -6,6 +6,7 @@ import { getPalette, type Palette } from "../palette";
 import type { AxisSettings, BarDatum, PersonBarDatum, ChartResult, ChartSpec, ChartStyle, HistDatum } from "../types";
 import { AxisEditor } from "./AxisEditor";
 import { MarksMenu } from "./MarksMenu";
+import { Popover } from "./Popover";
 import { numericAxes, styleOf } from "../chartStyles";
 import type { ChartMarks, MarkType } from "../types";
 
@@ -265,6 +266,11 @@ interface Props {
   onMarksChange?: (marks: ChartMarks | undefined) => void;
   onToggleWide: () => void;
   onClose: () => void;
+  /** Reorder (undefined at the ends) and copy this chart. */
+  onMove?: (delta: -1 | 1) => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onDuplicate?: () => void;
   onRename?: (title: string) => void;
   onAxesChange?: (x: AxisSettings, y: AxisSettings) => void;
   readOnly?: boolean;
@@ -273,6 +279,7 @@ interface Props {
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onMarksChange, onToggleWide,
+                            onMove, canMoveUp = false, canMoveDown = false, onDuplicate,
                             onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
@@ -443,6 +450,17 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         {!readOnly && <>
           <button className="quiet" title="Toggle width"
                   onClick={onToggleWide}>⤢</button>
+          {(onMove || onDuplicate) && (
+            <Popover className="chart-actions" ariaLabel="Chart actions" label={<span aria-hidden>⋯</span>}>
+              {(close) => <div className="popover-menu">
+                {onMove && <button type="button" disabled={!canMoveUp}
+                                   onClick={() => { onMove(-1); close(); }}>Move earlier</button>}
+                {onMove && <button type="button" disabled={!canMoveDown}
+                                   onClick={() => { onMove(1); close(); }}>Move later</button>}
+                {onDuplicate && <button type="button" onClick={() => { onDuplicate(); close(); }}>Duplicate</button>}
+              </div>}
+            </Popover>
+          )}
           <button className="quiet" title="Remove chart"
                   onClick={onClose}>✕</button>
         </>}

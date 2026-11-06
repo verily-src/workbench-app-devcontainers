@@ -21,7 +21,6 @@ import { extractTarget } from "./extract";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
-const JoinPanel = lazy(() => import("./components/JoinPanel").then((m) => ({ default: m.JoinPanel })));
 const JoinCanvas = lazy(() => import("./components/JoinCanvas").then((m) => ({ default: m.JoinCanvas })));
 const StudioAgent = lazy(() => import("./components/StudioAgent").then((m) => ({ default: m.StudioAgent })));
 const SettingsView = lazy(() => import("./components/SettingsView").then((m) => ({ default: m.SettingsView })));
@@ -33,15 +32,6 @@ const AUTO_CHART_LIMIT = 8;
 
 class JoinRecoveryError extends Error {}
 
-interface JoinEdit {
-  originalDatasetId: string;
-  originalTitle: string;
-  baseId: string;
-  steps: JoinStep[];
-  allowLoaded: boolean;
-  baseFilters?: JoinFilter[];
-  inputs: Dataset[];
-}
 
 function autoCharts(columns: Dataset["columns"]): ChartSpec[] {
   const specs: ChartSpec[] = [];
@@ -134,15 +124,9 @@ export default function App() {
     extract?: { kind: string; resource_id: string; table: string } } | null>(null);
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
-  const [showJoin, setShowJoin] = useState(false);
-  // The join builder stays mounted (hidden) while you visit other tabs, so a
-  // draft or a running join is still there when you come back.
-  const [joinMounted, setJoinMounted] = useState(false);
   const [joinRunning, setJoinRunning] = useState(false);
-  // Bumped for each Edit join so a reopened editor remounts with fresh inputs.
-  const [joinSession, setJoinSession] = useState(0);
-  useEffect(() => { if (showJoin) setJoinMounted(true); }, [showJoin]);
-  const [editingJoin, setEditingJoin] = useState<JoinEdit | null>(null);
+  // "Join" on a tab opens Data Builder with that tab as the start table.
+  const [canvasSeed, setCanvasSeed] = useState<{ nonce: number; datasetId: string } | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [addSourceOpen, setAddSourceOpen] = useState(false);
@@ -183,7 +167,6 @@ export default function App() {
         void Promise.allSettled([
           import("./components/WorkflowsView"), import("./components/LineageView"),
           import("./components/StudioAgent"), import("./components/SettingsView"),
-          import("./components/JoinPanel"),
           import("./components/DatasetPane"), import("./pdf"),
         ]);
       };
@@ -301,76 +284,6 @@ export default function App() {
     });
   };
 
-  const closeEditInputs = (edit: JoinEdit) =>
-    Promise.allSettled(edit.inputs.map((dataset) => api.closeDataset(dataset.id)));
-
-  const closeJoinPanel = () => {
-    if (editingJoin) void closeEditInputs(editingJoin);
-    setEditingJoin(null);
-    setShowJoin(false);
-    setJoinMounted(false);
-  };
-
-  const editJoin = async (datasetId: string) => {
-    const original = datasets.find((dataset) => dataset.id === datasetId);
-    const ref = original?.sourceRef;
-    if (!original || ref?.kind !== "join") return;
-    if (joinRunning) {
-      setError("A join is still running. Wait for it to finish or cancel it before editing another join.");
-      return;
-    }
-    if (editingJoin) {
-      // Replace the previous (possibly hidden) edit session instead of leaking its inputs.
-      await closeEditInputs(editingJoin);
-      setEditingJoin(null);
-      setJoinMounted(false);
-    }
-    setActivity("Restoring join inputs…");
-    setError("");
-    const inputIds = new Map<string, string>();
-    datasets.forEach((dataset) => {
-      if (dataset.sourceRef) inputIds.set(JSON.stringify(dataset.sourceRef), dataset.id);
-    });
-    const openedInputs: Dataset[] = [];
-    const openInput = async (sourceRef: SourceRef): Promise<string> => {
-      const key = JSON.stringify(sourceRef);
-      const existing = inputIds.get(key);
-      if (existing) return existing;
-      const opened = await api.openSourceRef(sourceRef);
-      const title = sourceRef.kind === "join" ? "Joined input"
-        : sourceRef.kind === "derived" ? sourceRef.spec.name
-          : sourceRef.kind === "group_summary" ? `Group summary (${sourceRef.spec.group_by.join(", ")})`
-          : sourceRef.kind === "omop_cohort" ? sourceRef.name || "OMOP cohort"
-          : sourceRef.kind === "sql" ? sourceRef.name || "SQL result"
-          : sourceRef.kind === "materialized" ? "Saved join"
-            : sourceRef.table.split("/").pop() ?? sourceRef.table;
-      const input: Dataset = {
-        id: opened.dataset_id, title, source: opened.source,
-        sourceRef: opened.source_ref ?? sourceRef, queryScope: opened.query_scope,
-        columns: opened.columns, filters: [], charts: autoCharts(opened.columns),
-        cohorts: [], page: 0,
-      };
-      openedInputs.push(input);
-      inputIds.set(key, input.id);
-      return input.id;
-    };
-    try {
-      const baseId = await openInput(ref.base);
-      const steps: JoinStep[] = [];
-      for (const step of ref.steps)
-        steps.push({ ...step, right_id: await openInput(step.source) });
-      setEditingJoin({ originalDatasetId: original.id, originalTitle: original.title,
-        baseId, steps, allowLoaded: ref.allow_loaded ?? false,
-        baseFilters: ref.base_filters, inputs: openedInputs });
-      setJoinSession((n) => n + 1);
-      setShowJoin(true);
-    } catch (error) {
-      await Promise.allSettled(openedInputs.map((dataset) => api.closeDataset(dataset.id)));
-      setError(`Could not edit join: ${(error as Error).message}. The existing result is unchanged.`);
-    } finally {
-      setActivity("");
-    }
-  };
 
   const openTableDirect = async (src: Source, tbl: string) => {
     setActivity(`Loading ${tbl}…`);
@@ -558,7 +471,7 @@ export default function App() {
         const inputIds = [...new Set([
           p.baseId, ...p.steps.map((s) => s.right_id),
         ])];
-        const inputs = new Map([...datasets, ...(p.fromCanvas ? p.extraInputs ?? [] : editingJoin?.inputs ?? [])]
+        const inputs = new Map([...datasets, ...(p.extraInputs ?? [])]
           .map((d) => [d.id, d]));
         if (inputIds.some((id) => !inputs.get(id)?.sourceRef)) {
           throw new JoinRecoveryError(
@@ -619,14 +532,6 @@ export default function App() {
           + (join.capped_inputs?.length ? " Some inputs were capped — results may be incomplete." : "")
           + (join.large_growth ? ` Rows grew ${join.growth_total}× over the base — check for fan-out.` : ""),
       });
-      if (!p.fromCanvas) {
-        if (editingJoin) {
-          await closeEditInputs(editingJoin);
-          setEditingJoin(null);
-        }
-        setShowJoin(false);
-        setJoinMounted(false);
-      }
     } catch (e) {
       const message = (e as Error).message;
       setError(e instanceof JoinRecoveryError
@@ -640,9 +545,6 @@ export default function App() {
 
   const closeDataset = (index: number) => {
     const ds = datasets[index];
-    if (editingJoin && (ds.id === editingJoin.originalDatasetId
-        || ds.id === editingJoin.baseId
-        || editingJoin.steps.some((step) => step.right_id === ds.id))) closeJoinPanel();
     api.closeDataset(ds.id).catch(() => undefined);
     setDatasets((prev) => prev.filter((_, i) => i !== index));
     setActive((a) => Math.max(0, a > index ? a - 1 : Math.min(a,
@@ -694,7 +596,6 @@ export default function App() {
 
   const activeDs = datasets[active];
   const chartQuerySignature = JSON.stringify(activeDs?.charts.map(({ kind, x, y }) => ({ kind, x, y })) ?? []);
-  const joinBuilderDatasets = editingJoin ? [...datasets, ...editingJoin.inputs] : datasets;
 
   const TERMINAL = new Set(
     ["COMPLETED", "FAILED", "CANCELLED", "CANCELED", "DELETED"]);
@@ -846,7 +747,7 @@ export default function App() {
       <button type="button" className={`corner-tool${view === "settings" ? " active" : ""}`}
               data-tutorial-target="nav-settings" aria-label="Settings" title="Settings"
               aria-pressed={view === "settings"}
-              onClick={() => { closeJoinPanel(); setView("settings"); }}>
+              onClick={() => setView("settings")}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none"
              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="3" />
@@ -890,7 +791,7 @@ export default function App() {
         <DiscoveryBanner discovery={discovery} onRetry={retryDiscovery} />
 
         {datasets.length === 0 && sources.length > 0 && <button className="quiet"
-          data-tutorial-target="join-button" onClick={() => setShowJoin(true)}>Join tables</button>}
+          data-tutorial-target="join-button" onClick={() => setView("join")}>Join tables</button>}
         <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
           loading={!ready || Boolean(activity) || Boolean(listingTables)} busy={Boolean(activity)}
           listing={listingTables}
@@ -924,7 +825,7 @@ export default function App() {
           Upload CSV, TSV or Parquet
         </label>
 
-        {!showJoin && <>
+        {<>
         <div className="section-label">Filters</div>
 
         {activeDs ? (
@@ -962,7 +863,6 @@ export default function App() {
                     className={`topnav-link${view === v ? " active" : ""}`}
                     onClick={() => {
                       if (view === "settings") refreshTutorialAssistantStatus();
-                      if (v !== "explore") closeJoinPanel();
                       setView(v);
                     }}>
                 {NAV_LABEL[v]}
@@ -1003,12 +903,16 @@ export default function App() {
           <Suspense fallback={<div role="status">Loading…</div>}>
           {canvasMounted && (
             <div className="join-canvas-host" hidden={view !== "join"}>
-              <JoinCanvas datasets={datasets} sources={sources} busy={Boolean(activity)} edit={canvasEdit}
+              <JoinCanvas datasets={datasets} sources={sources} busy={Boolean(activity)} edit={canvasEdit} seed={canvasSeed}
                           onJoin={doJoin}
                           onOpenResult={(opened, title, sourceRef) => {
                             // Saving an edited extract replaces its open tab instead of adding one.
                             const edited = canvasEdit?.extract;
-                            const index = edited && opened.extract ? datasets.findIndex((d) => {
+                            // Only when it was saved back to the same table; a new destination opens a new tab.
+                            const saved = sourceRef as { resource_id?: string; table?: string } | undefined;
+                            const sameTarget = Boolean(edited && saved && saved.resource_id === edited.resource_id
+                              && saved.table === edited.table);
+                            const index = edited && sameTarget && opened.extract ? datasets.findIndex((d) => {
                               const t = extractTarget(d);
                               return t && t.resource_id === edited.resource_id && t.table === edited.table;
                             }) : -1;
@@ -1022,7 +926,10 @@ export default function App() {
                                   // Fields may have changed: keep only filters and charts that still apply.
                                   filters: d.filters.filter((f) => opened.columns.some((c) => c.name === f.column)),
                                   charts: d.charts.filter((c) => opened.columns.some((col) => col.name === c.x)
-                                    && (!c.y || opened.columns.some((col) => col.name === c.y))) }
+                                    && (!c.y || opened.columns.some((col) => col.name === c.y))),
+                                  sort: d.sort && opened.columns.some((c) => c.name === d.sort!.column) ? d.sort : undefined,
+                                  entityColumn: d.entityColumn && opened.columns.some((c) => c.name === d.entityColumn)
+                                    ? d.entityColumn : undefined }
                               : d));
                             setActive(index);
                             setView("explore");
@@ -1059,7 +966,7 @@ export default function App() {
                            onToggleSubscribe={alerts.toggle} />
           ) : view === "lineage" && lineageTab ? (
             <LineageView />
-          ) : datasets.length === 0 && !showJoin ? (
+          ) : datasets.length === 0 ? (
             <div className="empty">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
                    stroke="#9095a0" strokeWidth="1.5">
@@ -1099,7 +1006,7 @@ export default function App() {
                 {datasets.map((d, i) => (
                   <span key={d.id}
                         className={`tab${i === active ? " active" : ""}`}
-                        onClick={() => { setShowJoin(false); setActive(i); showExploreTables(); }}>
+                        onClick={() => { setActive(i); showExploreTables(); }}>
                     {renamingDatasetId === d.id ? <form className="tab-rename"
                       onClick={(event) => event.stopPropagation()}
                       onSubmit={(event) => { event.preventDefault(); saveDatasetName(d); }}>
@@ -1129,29 +1036,19 @@ export default function App() {
                   </span>
                 ))}
                 {(datasets.length >= 2 || sources.length > 0) && (
-                  <button className={`tab-join${showJoin ? " active" : ""}${joinRunning ? " running" : ""}`}
+                  <button className={`tab-join${joinRunning ? " running" : ""}`}
                           data-tutorial-target="join-button"
-                          aria-label={joinRunning ? "Join (running)" : undefined}
-                          onClick={() => setShowJoin(!showJoin)}>
+                          title="Join this tab with other tables in Data Builder"
+                          aria-label={joinRunning ? "Join (running)" : "Join in Data Builder"}
+                          onClick={() => {
+                            if (activeDs) setCanvasSeed((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, datasetId: activeDs.id }));
+                            setView("join");
+                          }}>
                     {joinRunning ? <><span className="spinner small" aria-hidden="true" />Joining…</> : "⋈ Join"}
                   </button>
                 )}
               </div>
-              {(showJoin || joinMounted) && <div hidden={!showJoin}>
-                <JoinPanel key={editingJoin ? `${editingJoin.originalDatasetId}:${joinSession}` : "new"}
-                           datasets={joinBuilderDatasets} sources={sources} busy={Boolean(activity)}
-                           initialPlan={editingJoin ? {
-                             title: editingJoin.originalTitle, baseId: editingJoin.baseId,
-                             steps: editingJoin.steps, allowLoaded: editingJoin.allowLoaded,
-                             baseFilters: editingJoin.baseFilters,
-                           } : undefined}
-                           onSourceOpened={(opened, title, sourceRef) =>
-                             openResult(opened, title, sourceRef, undefined,
-                               { forceNewTab: true })}
-                           onJoin={doJoin} onClose={closeJoinPanel}
-                           onOpenCanvas={() => { closeJoinPanel(); setView("join"); }} />
-              </div>}
-              {dependentJob && !showJoin && (
+              {dependentJob && (
                 <div className="wf-dep-banner">
                   <span className="wf-pulse" />
                   This data shares the output bucket of workflow{" "}
@@ -1163,12 +1060,11 @@ export default function App() {
                   </span>
                 </div>
               )}
-              {activeDs && !showJoin && (
+              {activeDs && (
                 <DatasetPane
                   dataset={activeDs}
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
-                  onEditJoin={editJoin}
                   onRefreshExtract={(datasetId) => void refreshExtract(datasetId)}
                   onEditExtract={(datasetId) => {
                     const tab = datasets.find((d) => d.id === datasetId);
@@ -1209,7 +1105,7 @@ export default function App() {
         }} /></Suspense>}
       <Tutorial progress={{
             sourceChosen: Boolean(sourceKey), dataLoaded: datasets.length > 0,
-            hasSources: sources.length > 0, joinPanelOpen: showJoin,
+            hasSources: sources.length > 0,
             joinCreated: datasets.some((dataset) => dataset.sourceRef?.kind === "join"),
             view, hasDataset: Boolean(activeDs),
             chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),

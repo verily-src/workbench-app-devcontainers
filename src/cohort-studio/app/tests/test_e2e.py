@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
-from tests.ui_helpers import menu
+from tests.ui_helpers import add_to_canvas, canvas_join, menu, open_data_builder, set_join_keys
 
 APP_DIR = Path(__file__).parent.parent
 FIXTURE_CSV = Path(__file__).parent / "fixtures" / "samples.csv"
@@ -65,7 +65,7 @@ def loaded_page(page: Page, app_url: str) -> Page:
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.locator('input[type="file"]').set_input_files(FIXTURE_CSV)
-    expect(page.get_by_text(re.compile(r"of 100 rows"))).to_be_visible(
+    expect(page.locator(".hero .count", has_text="100")).to_be_visible(
         timeout=15000)
     return page
 
@@ -366,74 +366,53 @@ def test_add_chart_with_line_style(loaded_page: Page):
 
 
 def test_join_two_tabs_into_new_dataset(loaded_page: Page):
-
     loaded_page.locator('input[type="file"]').set_input_files(PHENO_CSV)
-    expect(loaded_page.locator(".tab", has_text="phenotypes.csv")
-           ).to_be_visible(timeout=15000)
-    loaded_page.locator(".tab-join").click()
-    panel = loaded_page.locator(".join-panel")
-    expect(panel).to_be_visible()
-    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
+    expect(loaded_page.locator(".tab", has_text="phenotypes.csv")).to_be_visible(timeout=15000)
+    canvas_join(loaded_page, ["phenotypes.csv", "samples.csv"], [("sample_id", "sample_id")])
+    expect(loaded_page.locator(".tab.active", has_text="+")).to_be_visible(timeout=15000)
+    expect(loaded_page.get_by_role("columnheader", name="bmi")).to_be_visible(timeout=10000)
 
-    panel.get_by_role("button", name="Join into new tab").click()
 
-    expect(loaded_page.locator(".tab.active", has_text="+")
-           ).to_be_visible(timeout=15000)
-    expect(loaded_page.get_by_role("columnheader", name="bmi")
-           ).to_be_visible(timeout=10000)
+def _two_tab_canvas(page):
+    page.locator('input[type="file"]').set_input_files(PHENO_CSV)
+    expect(page.locator(".tab", has_text="phenotypes.csv")).to_be_visible(timeout=15000)
+    canvas = open_data_builder(page)
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    add_to_canvas(canvas, "samples.csv", tab=True)
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    return canvas
 
 
 def test_join_preview_shows_funnel_and_sample(loaded_page: Page):
-    loaded_page.locator('input[type="file"]').set_input_files(PHENO_CSV)
-    expect(loaded_page.locator(".tab", has_text="phenotypes.csv")
-           ).to_be_visible(timeout=15000)
-    loaded_page.locator(".tab-join").click()
-    panel = loaded_page.locator(".join-panel")
-    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
-    panel.get_by_role("radio", name="No match").click()
-    panel.get_by_role("button", name="Preview").click()
-    funnel = panel.locator(".join-funnel")
-    expect(funnel).to_contain_text("no match", timeout=10000)
-    expect(panel.locator(".join-sample th").first).to_have_text("sample_id")
+    canvas = _two_tab_canvas(loaded_page)
+    set_join_keys(canvas, "sample_id", "sample_id", how="No match")
+    canvas.get_by_role("button", name="Preview", exact=True).first.click()
+    expect(canvas.get_by_label("Row counts")).to_contain_text("no match", timeout=10000)
+    grid = canvas.get_by_role("table", name="Joined result rows")
+    expect(grid.locator("th", has_text="sample_id").first).to_be_visible()
 
 
 def test_join_table_combobox_and_inline_validation(loaded_page: Page):
-    loaded_page.locator('input[type="file"]').set_input_files(PHENO_CSV)
-    expect(loaded_page.locator(".tab", has_text="phenotypes.csv")
-           ).to_be_visible(timeout=15000)
-    loaded_page.locator(".tab-join").click()
-    panel = loaded_page.locator(".join-panel")
-    expect(panel.locator(".join-engine")).to_have_text("runs in memory",
-                                                       timeout=10000)
-
-
-    combo = panel.get_by_role("combobox", name="Table to join in step 1")
+    canvas = _two_tab_canvas(loaded_page)
+    config = canvas.get_by_role("region", name="Join configuration")
+    expect(config).to_be_visible(timeout=10000)
+    # The field picker filters as you type and says when nothing matches.
+    combo = config.get_by_role("combobox", name="Left field, clause 1")
     combo.click()
     combo.fill("zzz")
-    expect(panel.get_by_role("listbox")).to_contain_text("No matches")
+    expect(canvas.get_by_role("listbox")).to_contain_text("No matches")
     combo.press("Escape")
-    expect(panel.get_by_role("listbox")).to_have_count(0)
-    combo.fill("pheno")
-    expect(panel.get_by_role("option", name=re.compile("phenotypes.csv"))
-           ).to_be_visible()
+    expect(canvas.get_by_role("listbox")).to_have_count(0)
+    combo.fill("sample")
+    expect(canvas.get_by_role("option", name=re.compile("sample_id"))).to_be_visible()
     combo.press("Enter")
-    expect(combo).to_have_value("phenotypes.csv")
-
-    panel.get_by_label("Left key step 1 condition 1").select_option("sample_id")
-    panel.get_by_label("Right key step 1 condition 1").select_option("sample_id")
-
-    cond = panel.locator(".join-cond").first
-    cond.locator("select").nth(0).select_option("rin_score")
-    cond.locator("select.join-op").select_option("<")
-    expect(panel.locator(".join-check.join-error")).to_contain_text(
-        "can't compare", timeout=10000)
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_disabled()
-    cond.locator("select.join-op").select_option("=")
-    expect(panel.locator(".join-check.settings-hint")).to_contain_text(
-        "compared as text", timeout=10000)
-    expect(panel.get_by_role("button", name="Join into new tab")).to_be_enabled()
+    right = config.get_by_role("combobox", name="Right field, clause 1")
+    right.fill("sample_id")
+    right.press("Enter")
+    config.get_by_role("button", name="Apply").click()
+    # Uploaded tabs join in memory.
+    expect(canvas.get_by_label("Join status")).to_contain_text("runs in memory", timeout=10000)
+    expect(canvas.get_by_role("button", name="Save & open in Explore")).to_be_enabled(timeout=10000)
 
 
 def test_export_pdf_downloads(loaded_page: Page):

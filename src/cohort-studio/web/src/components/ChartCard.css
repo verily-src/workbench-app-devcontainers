@@ -96,3 +96,7 @@
 .chart-card .head .marks-menu > button { max-width: 100%; min-width: 0; overflow: hidden; }
 .chart-card .head .marks-menu > button > span:first-of-type { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chart-card .head .marks-menu > button > svg { flex: none; }
+.chart-card .head .chart-actions > button { min-width: 28px; min-height: 28px; padding: 4px; border-color: transparent;
+  background: transparent; color: var(--ink-muted); border-radius: 6px; font-size: 15px; line-height: 1; }
+.chart-card .head .chart-actions > button:hover { color: var(--ink); background: var(--hover); }
+.chart-card .head .chart-actions .popover-panel { min-width: 160px; }

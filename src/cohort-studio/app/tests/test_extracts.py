@@ -189,3 +189,54 @@ def test_extract_and_refresh_jobs_over_the_api(on_target, monkeypatch):
         assert clash["status"] == "failed" and clash["status_code"] == 409
     finally:
         datasets.close_dataset(ds["dataset_id"])
+
+
+def _column_type(engine, table, column):
+    with engine.connect() as conn:
+        return conn.execute(text(
+            "SELECT data_type FROM information_schema.columns WHERE table_schema = 'public' "
+            "AND table_name = :t AND column_name = :c"), {"t": table, "c": column}).scalar_one()
+
+
+def test_duckdb_nullable_bigint_ids_stay_exact(on_target, tmp_path):
+    path = str(tmp_path / "ids.duckdb")
+    con = duckdb.connect(path)
+    con.execute("CREATE TABLE data AS SELECT * FROM (VALUES (9007199254740993::BIGINT, 1.25::DECIMAL(10,2)), "
+                "(NULL, NULL)) AS t(id, amount)")
+    con.close()
+    table = _name()
+    extracts.write({"disk_source": {"path": path, "table": "data", "columns": ["id", "amount"]}},
+                   "res", table, "ids", None)
+    with on_target.connect() as conn:
+        rows = conn.execute(text(f'SELECT id, amount FROM public."{table}" ORDER BY id NULLS LAST')).all()
+    assert rows[0][0] == 9007199254740993 and str(rows[0][1]) == "1.25" and rows[1] == (None, None)
+    assert _column_type(on_target, table, "id") == "bigint"
+    assert _column_type(on_target, table, "amount") == "numeric"
+
+
+def test_streamed_live_rows_keep_integer_and_numeric_types(on_target):
+    table = _name()
+    live = {"resource_id": "other", "params": {},
+            "sql": "SELECT * FROM (VALUES (9007199254740993::bigint, 1.25::numeric(10,2)), "
+                   "(NULL::bigint, NULL::numeric)) AS t(id, amount)",
+            "columns": {"id": "id", "amount": "amount"}}
+    extracts.write({"live_source": live}, "res", table, "ids", None)
+    with on_target.connect() as conn:
+        rows = conn.execute(text(f'SELECT id, amount FROM public."{table}" ORDER BY id NULLS LAST')).all()
+    assert rows[0][0] == 9007199254740993 and str(rows[0][1]) == "1.25" and rows[1] == (None, None)
+    assert _column_type(on_target, table, "id") == "bigint"
+
+
+def test_cancelled_extract_keeps_the_old_table(on_target):
+    import query_cancellation
+    table = _name()
+    extracts.write({"df": _frame(10)}, "res", table, "t", None)
+    scope = query_cancellation.Scope()
+    token = query_cancellation.current.set(scope)
+    try:
+        with pytest.raises(query_cancellation.Cancelled):
+            extracts.write({"df": _frame(ROWS)}, "res", table, "t", None,
+                           progress=lambda rows: scope.cancel())
+    finally:
+        query_cancellation.current.reset(token)
+    assert _count(on_target, table) == 10 and _tmp_tables(on_target) == 0

@@ -523,6 +523,8 @@ def test_canvas_names_join_from_tables_and_long_names_fit(page, app_url):
     _setup(page, app_url, calls)
     schema = "cms_synpuf_100k_with_a_long_schema_name"
     page.route("**/api/tables?**", lambda route: _fulfill(route, [
+        {"name": "variants.parquet", "table": "variants.parquet", "detail": "S3"}]
+        if "kind=s3" in route.request.url else [
         {"name": f"{schema}.{name}", "schema": schema, "table": name, "detail": "Aurora",
          "rows": 12_486_453, "rows_estimated": True, "columns": len(COLUMNS[name])}
         for name in COLUMNS]))
@@ -555,6 +557,16 @@ def test_canvas_names_join_from_tables_and_long_names_fit(page, app_url):
     assert overflow == [], overflow
     if SHOTS:
         page.screenshot(path=os.path.join(SHOTS, "join-canvas-long-names.png"), full_page=False)
+
+    # File names keep their extension (only schema.table names are shortened).
+    canvas.get_by_role("button", name=re.compile("^Genetics lake")).click()
+    canvas.get_by_role("button", name="Add variants.parquet to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
+    expect(canvas.locator(".jc-node").nth(2).locator(".jc-node-title > span").first).to_have_text("variants.parquet")
+    expect(name_box).to_have_value("person + genotypes + variants.parquet")
+    canvas.get_by_role("button", name="Remove variants.parquet", exact=True).click()
+    expect(canvas.locator(".jc-node")).to_have_count(2)
+    canvas.get_by_role("button", name=re.compile("^Clinical Aurora")).click()
 
     # A typed name sticks while more tables are added.
     name_box.fill("Synpuf cohort")

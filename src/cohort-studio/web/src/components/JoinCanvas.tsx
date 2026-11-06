@@ -111,16 +111,21 @@ function TypeIcon({ column }: { column?: ColumnProfile }) {
   );
 }
 
-/** "cms_synpuf_100k.person" -> "person"; the full name stays in the tooltip. */
+/** "cms_synpuf_100k.person" -> "person"; the full name stays in the tooltip.
+ *  Only for database tables: file names such as "samples.csv" keep their name. */
 export const shortTitle = (title: string) => {
   const dot = title.lastIndexOf(".");
   return dot > 0 && dot < title.length - 1 ? title.slice(dot + 1) : title;
 };
 const compactFmt = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 const compact = (n: number) => (n < 10_000 ? n.toLocaleString() : compactFmt.format(n));
-/** Default join name from its tables: "person + drug_exposure + 1 more". */
-export const autoJoinName = (titles: string[]) => {
-  const names = titles.map(shortTitle);
+const DB_BADGES = new Set(["Aurora", "PostgreSQL", "Athena", "BigQuery"]);
+/** Database tables lose their schema prefix; files and tabs keep their full name. */
+const QUALIFIED = /^[A-Za-z_][\w$]*\.[A-Za-z_][\w$]*$/;
+export const nodeLabel = (n: { title: string; badge?: string }) =>
+  n.badge && DB_BADGES.has(n.badge) && QUALIFIED.test(n.title) ? shortTitle(n.title) : n.title;
+/** Default join name from its (display) table names: "person + drug_exposure + 1 more". */
+export const autoJoinName = (names: string[]) => {
   if (!names.length) return "New join";
   if (names.length <= 3) return names.join(" + ").slice(0, 128);
   return `${names.slice(0, 2).join(" + ")} + ${names.length - 2} more`.slice(0, 128);
@@ -433,7 +438,10 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
 
   useEffect(() => {
     if (nameEdited) return;
-    setName(autoJoinName(nodes.map((n) => n.title)));
+    setName(autoJoinName(nodes.map((n) => {
+      const short = nodeLabel(n);
+      return nodes.some((o) => o.title !== n.title && nodeLabel(o) === short) ? n.title : short;
+    })));
   }, [nodes, nameEdited]);
 
   // ---- Reconstruct a saved join (Edit join in canvas / reopen saved model) ----
@@ -560,10 +568,10 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   // ---- Problems and disabled reasons ----
   const stepIndex = new Map(steps.map((n, i) => [n.id, i]));
   /** Display name: the table name without its schema, unless two canvas tables share it. */
-  const disp = (n: { title: string } | undefined | null): string => {
+  const disp = (n: { title: string; badge?: string } | undefined | null): string => {
     if (!n) return "?";
-    const short = shortTitle(n.title);
-    return nodes.some((o) => o.title !== n.title && shortTitle(o.title) === short) ? n.title : short;
+    const short = nodeLabel(n);
+    return nodes.some((o) => o.title !== n.title && nodeLabel(o) === short) ? n.title : short;
   };
   const linkName = (n: CanvasNode) => `${disp(ids.get(n.parentId ?? "")) ?? "?"} → ${disp(n)}`;
   const problemsFor = (n: CanvasNode): string[] => {
@@ -989,7 +997,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                                 aria-label={`${n.title}${isRoot ? " (start table)" : ""}. Table details`}
                                 aria-pressed={selection?.type === "node" && selection.id === n.id}
                                 onClick={() => { setDraft(null); setSelection(selection?.type === "node" && selection.id === n.id ? null : { type: "node", id: n.id }); }}>
-                          <span className="jc-node-title" title={n.title}><TableIcon /><span>{shortTitle(n.title)}</span>
+                          <span className="jc-node-title" title={n.title}><TableIcon /><span>{disp(n)}</span>
                             {n.parentId && n.alias.trim() && n.alias.trim() !== n.title && <span className="jc-node-alias">as {n.alias.trim()}</span>}
                           </span>
                           <span className="jc-node-meta">

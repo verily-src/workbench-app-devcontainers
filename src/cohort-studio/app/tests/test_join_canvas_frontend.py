@@ -143,13 +143,13 @@ def _setup(page, app_url, calls, view_ref=None):
     page.route("**/api/datasets/*", close_dataset)
 
 
-def _open_canvas(page):
+def _open_canvas(page, first_table="person"):
     if SHOTS:
         page.set_viewport_size({"width": 1480, "height": 960})
-    page.locator(".topnav-link").filter(has_text=re.compile(r"^Join$")).click()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Explorer$")).click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
-    expect(canvas.locator(".jc-table-item[data-table='person']")).to_be_visible(timeout=10000)
+    expect(canvas.locator(f".jc-table-item[data-table='{first_table}']")).to_be_visible(timeout=10000)
     return canvas
 
 
@@ -335,7 +335,7 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
-    page.get_by_role("button", name="Edit in join canvas").click()
+    page.get_by_role("button", name="Edit in Data Explorer").click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
     expect(canvas.get_by_role("textbox", name="Join name")).to_have_value("Existing joined result (edited)")
@@ -365,7 +365,7 @@ def test_join_panel_links_to_canvas(page, app_url):
     _setup(page, app_url, calls)
     page.goto(app_url)
     page.get_by_role("button", name="Join tables").click()
-    page.locator(".join-panel").get_by_role("button", name="Open visual join canvas").click()
+    page.locator(".join-panel").get_by_role("button", name="Open in Data Explorer").click()
     expect(page.locator(".jc")).to_be_visible()
     expect(page.locator(".join-panel")).to_have_count(0)
 
@@ -448,7 +448,7 @@ def test_removing_one_of_two_steps_sharing_a_source_keeps_its_dataset(page, app_
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
-    page.get_by_role("button", name="Edit in join canvas").click()
+    page.get_by_role("button", name="Edit in Data Explorer").click()
     canvas = page.locator(".jc")
     expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
     _wait_for(calls, "validate", lambda b: [s["right_id"] for s in b["steps"]]
@@ -478,8 +478,53 @@ def test_loaded_status_card_shows_only_on_explore(page, app_url):
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
     loaded = page.locator(".data-job-done")
     expect(loaded).to_be_visible()
-    page.locator(".topnav-link").filter(has_text=re.compile(r"^Join$")).click()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Explorer$")).click()
     expect(page.locator(".jc")).to_be_visible()
     expect(loaded).to_have_count(0)
     page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore$")).click()
     expect(loaded).to_be_visible()
+
+
+def test_canvas_names_join_from_tables_and_long_names_fit(page, app_url):
+    """The join is named after its tables until the user types a name, and
+    long schema-qualified names and big row counts stay inside the cards."""
+    calls = {}
+    _setup(page, app_url, calls)
+    schema = "cms_synpuf_100k_with_a_long_schema_name"
+    page.route("**/api/tables?**", lambda route: _fulfill(route, [
+        {"name": f"{schema}.{name}", "schema": schema, "table": name, "detail": "Aurora",
+         "rows": 12_486_453, "rows_estimated": True, "columns": len(COLUMNS[name])}
+        for name in COLUMNS]))
+    page.goto(app_url)
+    canvas = _open_canvas(page, f"{schema}.person")
+    name_box = canvas.get_by_role("textbox", name="Join name")
+    expect(name_box).to_have_value("New join")
+    expect(canvas.locator(".jc-name .jc-label")).to_have_text("Name")
+
+    canvas.get_by_role("button", name=f"Add {schema}.person to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    expect(name_box).to_have_value("person")
+    canvas.get_by_role("button", name=f"Add {schema}.genotypes to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    expect(name_box).to_have_value("person + genotypes")
+
+    node = canvas.locator(".jc-node").first
+    expect(node.locator(".jc-node-title")).to_have_attribute("title", f"{schema}.person")
+    expect(node.locator(".jc-node-title > span").first).to_have_text("person")
+    expect(node).to_contain_text("~12.5M rows")
+    # Nothing in a card spills past its border.
+    overflow = page.evaluate("""() => [...document.querySelectorAll('.jc-node')].flatMap((card) => {
+        const box = card.getBoundingClientRect();
+        return [...card.querySelectorAll('.jc-node-main *')]
+          .filter((el) => el.getClientRects().length)
+          .map((el) => el.getBoundingClientRect())
+          .filter((r) => r.right > box.right + 1 || r.left < box.left - 1)
+          .map((r) => Math.round(r.right - box.right));
+    })""")
+    assert overflow == [], overflow
+
+    # A typed name sticks while more tables are added.
+    name_box.fill("Synpuf cohort")
+    canvas.get_by_role("button", name=f"Add {schema}.visits to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
+    expect(name_box).to_have_value("Synpuf cohort")

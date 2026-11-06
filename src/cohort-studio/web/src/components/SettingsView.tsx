@@ -2,6 +2,7 @@ import { PerformancePanel } from "./PerformancePanel";
 import { AgentMemorySettings } from "./AgentMemorySettings";
 import { useEffect, useState } from "react";
 import { KnowledgeBase } from "./KnowledgeBase";
+import { aiFeaturesFrom } from "../features";
 import { api, AppConfig, MCPConnection, Provider } from "../api";
 import { PALETTE_NAMES, getPalette } from "../palette";
 import { notificationsEnabled, setNotifications } from "../notifications";
@@ -255,12 +256,14 @@ export function SettingsView(
       prev.map((c, j) => (j === i ? { ...c, ...changes } : c)));
 
   if (!cfg) return <div className="activity"><span className="pulse" />Loading settings…</div>;
+  const ai = aiFeaturesFrom(cfg);
 
   const mcpLocalUrl = `http://localhost:8080${cfg.mcp.path}`;
   const mcpPageUrl = `${window.location.origin}${cfg.mcp.path}`;
 
   return (
     <div style={{ maxWidth: 680 }}>
+      {ai && <>
       <div className="section-label">AI model</div>
       <div className="settings-card">
         <div className="field-label">Provider</div>
@@ -427,6 +430,7 @@ export function SettingsView(
 
       <div className="section-label">Agent</div>
       <AgentMemorySettings />
+      </>}
 
       <div className="section-label">Appearance</div>
       <div className="settings-card">
@@ -486,6 +490,7 @@ export function SettingsView(
         {paletteStatus && <div className="settings-status" role="status">{paletteStatus}</div>}
       </div>
 
+      {ai && <>
       <div className="section-label">MCP server (this app)</div>
       <div className="settings-card">
         <p className="settings-caption">
@@ -561,8 +566,9 @@ export function SettingsView(
       </div>
 
       {connectionsStatus && <div className="settings-status" role="status">{connectionsStatus}</div>}
+      </>}
       <PerformancePanel />
-      <KnowledgeBase />
+      {ai && <KnowledgeBase />}
       {status && <div className="settings-status">{status}</div>}
     </div>
   );

@@ -16,6 +16,7 @@ import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinFilter, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
+import { AiFeaturesContext, aiFeaturesFrom } from "./features";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
@@ -93,6 +94,11 @@ function VersionFooter() {
 
 const QUERY_DEBOUNCE_MS = 250;
 
+const NAV_LABEL = {
+  explore: "Explore", join: "Data Explorer", agent: "Agent", workflows: "Workflows",
+  lineage: "Lineage", settings: "Settings",
+} as const;
+
 export default function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [ready, setReady] = useState(false);
@@ -116,6 +122,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [view, setView] = useState<
     "explore" | "join" | "agent" | "workflows" | "lineage" | "settings">("explore");
+  const [aiFeatures, setAiFeatures] = useState(false);
   // The visual join canvas stays mounted (hidden) after its first visit so a draft survives tab switches.
   const [canvasMounted, setCanvasMounted] = useState(false);
   useEffect(() => { if (view === "join") setCanvasMounted(true); }, [view]);
@@ -154,6 +161,7 @@ export default function App() {
   useEffect(() => {
     apiClient.config().then((c) => {
       setPalette(c.chart_palette);
+      setAiFeatures(aiFeaturesFrom(c));
       setTutorialAssistantConfigured(Boolean(c.llm?.providers?.[c.llm.provider]?.configured));
     })
       .catch(() => undefined);
@@ -763,9 +771,9 @@ export default function App() {
   // eslint-disable-line react-hooks/exhaustive-deps
 
   const commands: Command[] = [
-    ...(["explore", "workflows", "lineage", "settings"] as const).map((v) => ({
+    ...(["explore", "join", "workflows", "lineage", "settings"] as const).map((v) => ({
       id: `view:${v}`, group: "Go to",
-      label: v[0].toUpperCase() + v.slice(1), run: () => {
+      label: NAV_LABEL[v], run: () => {
         if (view === "settings" && v !== "settings") refreshTutorialAssistantStatus();
         setView(v);
       },
@@ -790,6 +798,7 @@ export default function App() {
   ];
 
   return (
+    <AiFeaturesContext.Provider value={aiFeatures}>
     <div className={`app${view !== "explore" ? " app-no-sidebar" : ""}${sidebarCollapsed ? " sidebar-is-collapsed" : ""}`}>
       {sidebarCollapsed && (
         <aside className="sidebar-rail" aria-label="Data sources (collapsed)">
@@ -884,6 +893,7 @@ export default function App() {
           </span>
           <nav className="topnav">
             {(["explore", "join", "agent", "workflows", "lineage", "settings"] as const)
+              .filter((v) => aiFeatures || v !== "agent")
               .map((v) => (
               <span key={v} data-tutorial-target={`nav-${v}`}
                     className={`topnav-link${view === v ? " active" : ""}`}
@@ -892,7 +902,7 @@ export default function App() {
                       if (v !== "explore") closeJoinPanel();
                       setView(v);
                     }}>
-                {v[0].toUpperCase() + v.slice(1)}
+                {NAV_LABEL[v]}
                 {v === "workflows" && (workflows?.running_count ?? 0) > 0 && (
                   <span className="nav-badge">{workflows!.running_count}</span>
                 )}
@@ -911,6 +921,7 @@ export default function App() {
             view, hasDataset: Boolean(activeDs),
             chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),
             assistantConfigured: tutorialAssistantConfigured,
+            aiFeatures,
           }} />
           {activity && !activityInCard && (
             <div className="activity"><span className="pulse" />{activity}</div>
@@ -950,7 +961,7 @@ export default function App() {
                           onClose={() => setView("explore")} />
             </div>
           )}
-          {view === "join" ? null : view === "agent" ? (
+          {view === "join" ? null : view === "agent" && aiFeatures ? (
             <StudioAgent onOpenSettings={() => setView("settings")} onOpenDashboard={(action: AgentDashboardAction & { update?: boolean }, verification?: AgentWorkflowVerification) => {
               const existing = action.update
                 ? datasets.findIndex((d) => d.id === action.dataset.dataset_id) : -1;
@@ -1118,5 +1129,6 @@ export default function App() {
       <CommandPalette open={cmdOpen} commands={commands}
                       onClose={() => setCmdOpen(false)} />
     </div>
+    </AiFeaturesContext.Provider>
   );
 }

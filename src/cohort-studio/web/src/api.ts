@@ -164,6 +164,8 @@ export interface AppConfig {
   mcp: { available: boolean; path: string };
   mcp_connections: MCPConnection[];
   chart_palette: string;
+  /** Off hides Agent, chat, Ask AI and AI settings (STUDIO_AI_FEATURES). */
+  features?: { ai?: boolean };
   jev: {
     model: string;
     api_key_set: boolean;

@@ -314,6 +314,12 @@ def update_literature_config(ncbi_api_key: str | None = None) -> dict:
                 secret_store.write_keys(secure_keys)
     return public_config()
 
+def ai_features_enabled() -> bool:
+    """Agent, chat, Ask AI and AI settings are hidden in the UI unless
+    STUDIO_AI_FEATURES is on. The UI hides them; the endpoints stay."""
+    return os.environ.get("STUDIO_AI_FEATURES", "off").strip().lower() in ("1", "on", "true", "yes")
+
+
 def public_config() -> dict:
 
     cfg = _load()

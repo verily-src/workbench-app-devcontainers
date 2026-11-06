@@ -195,6 +195,12 @@ def test_save_to_aurora_control_opens(loaded_page: Page):
         timeout=10000)
 
     expect(loaded_page.locator(".save-aurora select")).to_be_visible()
+    # Closing the Export menu keeps the form: reopening shows what was typed.
+    loaded_page.locator(".save-aurora input").fill("kept_table_name")
+    loaded_page.keyboard.press("Escape")
+    expect(loaded_page.locator(".save-aurora input")).to_be_hidden()
+    menu(loaded_page, "Export options")
+    expect(loaded_page.locator(".save-aurora input")).to_have_value("kept_table_name")
 
 
 

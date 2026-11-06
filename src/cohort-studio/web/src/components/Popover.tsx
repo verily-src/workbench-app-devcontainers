@@ -7,6 +7,8 @@ export function Popover({ label, ariaLabel, children, align = "right", className
   align?: "left" | "right"; className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { if (open) setMounted(true); }, [open]);
   const root = useRef<HTMLDivElement>(null);
   const id = useId();
   useEffect(() => {
@@ -35,7 +37,10 @@ export function Popover({ label, ariaLabel, children, align = "right", className
     <div className={`popover${className ? ` ${className}` : ""}`} ref={root}>
       <button type="button" aria-label={ariaLabel} aria-expanded={open} aria-controls={id}
               className={open ? "active" : undefined} onClick={toggle}>{label}</button>
-      {open && <div id={id} className={`popover-panel popover-${side}`} role="group" aria-label={ariaLabel}>
+      {/* Stays mounted once opened (hidden when closed) so forms and running
+          operations inside keep their state. */}
+      {(open || mounted) && <div id={id} className={`popover-panel popover-${side}`} role="group"
+                       aria-label={ariaLabel} hidden={!open}>
         {typeof children === "function" ? children(close) : children}
       </div>}
     </div>

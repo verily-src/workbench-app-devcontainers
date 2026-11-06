@@ -130,15 +130,37 @@ echo "Registering public key with WSM..."
 #
 # AWS is authorized with a pre-signed GetCallerIdentity request, which already
 # contains the necessary instance information.
-HTTP_CODE="$(curl_with_auth TOKEN -s -X POST \
-  -o "${RESPONSE_FILE}" -w '%{http_code}' \
-  -H "Content-Type: application/json" \
-  "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/secrets/registerKey" \
-  -d '{
-    "appResourceId": "'"${RESOURCE_ID}"'",
-    "key": "'"${BASE64_PUBLIC_KEY}"'",
-    "algorithm": "ED25519"
-  }')"
+function register_key() {
+  curl_with_auth TOKEN -s -X POST \
+    -o "${RESPONSE_FILE}" -w '%{http_code}' \
+    -H "Content-Type: application/json" \
+    "${WSM_URL}/api/workspaces/v1/${WORKSPACE_ID}/secrets/registerKey" \
+    -d '{
+      "appResourceId": "'"${RESOURCE_ID}"'",
+      "key": "'"${BASE64_PUBLIC_KEY}"'",
+      "algorithm": "ED25519"
+    }'
+}
+
+# A share-enabled VM can boot before WSM stores its instance ID, and WSM refuses
+# its registration with 403 until then. There, retry 403 for about 2 minutes.
+RETRY_DELAYS=()
+if is_share_enabled_vm; then
+  RETRY_DELAYS=(2 4 8 16 30 30 30)
+fi
+readonly RETRY_DELAYS
+
+attempt=0
+while true; do
+  HTTP_CODE="$(register_key)"
+  if [[ "${HTTP_CODE}" != 403 || ${attempt} -ge ${#RETRY_DELAYS[@]} ]]; then
+    break
+  fi
+  echo "Key registration returned 403; WSM may not have stored this VM's ID yet." \
+    "Retrying in ${RETRY_DELAYS[attempt]}s (retry $((attempt + 1)) of ${#RETRY_DELAYS[@]})."
+  sleep "${RETRY_DELAYS[attempt]}"
+  attempt=$((attempt + 1))
+done
 readonly HTTP_CODE
 
 if [[ "${HTTP_CODE}" -eq 204 ]]; then

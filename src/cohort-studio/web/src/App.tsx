@@ -918,7 +918,7 @@ export default function App() {
         <div className="topbar">
           <BrandMark size={20} />
           <span className="brand">
-            <span className="brand-verily">verily</span> Cohort Studio
+            <span className="brand-verily">verily</span> Cohort Browser
           </span>
           <nav className="topnav">
             {(["explore", "join", "agent", "workflows", "lineage"] as const)

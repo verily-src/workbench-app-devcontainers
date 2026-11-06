@@ -18,7 +18,7 @@ export function notifyDataReady(kind: string, id: string): void {
       !("Notification" in window) || Notification.permission !== "granted") return;
   try {
     const notification = new Notification(kind === "join" ? "Join is ready" : "Data is ready", {
-      body: "Open Cohort Studio to view the result.", tag: `cohort-data-${id}`,
+      body: "Open Cohort Browser to view the result.", tag: `cohort-data-${id}`,
     });
     notification.onclick = () => { window.focus(); notification.close(); };
   } catch { }

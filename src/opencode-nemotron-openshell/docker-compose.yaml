@@ -1,0 +1,157 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/config:cached
+      - port-guard-status:/opt/port-guard:ro
+      # The gateway's audit log (gateway.toml), read-only. Only this folder, not
+      # the gateway's keys.
+      - type: bind
+        source: /var/lib/openshell/audit
+        target: /var/lib/openshell-audit
+        read_only: true
+        bind:
+          create_host_path: true
+    ports:
+      # Workbench's proxy agent only finds ports published on all interfaces.
+      # port-guard below drops connections to it from other VMs.
+      - "8443:8443"
+      # OpenShell sandboxes reach Ollama as host.openshell.internal:11434, which
+      # the Docker driver maps to the VM's loopback. Loopback only: other VMs
+      # cannot reach it.
+      - "127.0.0.1:11434:11434"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+      # Workbench only substitutes a fixed set of template options on the VM
+      # (see startupscript/butane/050-parse-devcontainer.sh), so the model tag
+      # is set here rather than as a template option.
+      # Use "prompt" to defer the download until the first interactive opencode launch.
+      # Auto selects Lightning on A100/H100, experimental Nano 4B on T4/V100.
+      OLLAMA_MODEL: "auto"
+      OLLAMA_HOST: "127.0.0.1:11434"
+      # Address `ollama serve` listens on inside the container. It must not be
+      # loopback, or the published port above cannot reach it.
+      OLLAMA_BIND_ADDRESS: "0.0.0.0:11434"
+      # Default model store. To use a store on a bucket mount, write its path to
+      # /config/.opencode-model-store instead; the path depends on the workspace.
+      OLLAMA_MODELS: "/config/.ollama/models"
+      # A store may be shared by several apps; never delete blobs on startup.
+      OLLAMA_NOPRUNE: "true"
+      # A cold 30B load from local disk takes about 13 minutes; Ollama's default is 5m.
+      # validate-model.sh waits 25 minutes, so keep this value below that.
+      OLLAMA_LOAD_TIMEOUT: "20m"
+      # Single-user GPU: never unload the active model when idle. A cold reload
+      # of Lightning 30B takes about 3 minutes from a bucket mount, 12 from local disk.
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_FLASH_ATTENTION: "true"
+      # Room for OpenCode, Workbench context, and MCP tool definitions.
+      OLLAMA_CONTEXT_LENGTH: "65536"
+      # Bound memory use on smaller GPUs, including when switching models.
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      # OpenShell: `opencode` always runs the agent in a sandbox (see agent-sandbox.sh).
+      OPENSHELL_GATEWAY_ENDPOINT: "http://openshell-gateway:8080"
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+  # ---- OpenShell. Pattern from OpenShell's deploy/docker and the
+  # nemotron-eval OpenShell pilot. Only the gateway holds the Docker socket;
+  # the app container talks to it over app-network.
+  openshell-init:
+    image: &openshell-gateway ghcr.io/nvidia/openshell/gateway:0.1.4@sha256:bdb4fe248070032c88be78f029dad9325cb698480e90486e1413a674a5d8edc8
+    user: "0"
+    restart: "no"
+    command: ["generate-certs", "--output-dir", "/var/lib/openshell/tls"]
+    environment:
+      HOME: /var/lib/openshell
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+    volumes:
+      - &openshell-data
+        type: bind
+        source: /var/lib/openshell
+        target: /var/lib/openshell
+        bind:
+          create_host_path: true
+    network_mode: none
+
+  openshell-gateway:
+    container_name: "openshell-gateway"
+    image: *openshell-gateway
+    restart: always
+    depends_on:
+      openshell-init:
+        condition: service_completed_successfully
+      sandbox-image:
+        condition: service_completed_successfully
+    command: []
+    # Creates sandbox containers through the host Docker daemon: root on the VM
+    # in effect. Never mount the socket into the app or a sandbox.
+    user: "0"
+    ports:
+      # Supervisors run on the host network and call back here. Loopback only.
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - *openshell-data
+      - type: bind
+        source: ./openshell/gateway.toml
+        target: /etc/openshell/gateway.toml
+        read_only: true
+    environment:
+      OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
+      OPENSHELL_DB_URL: "sqlite:/var/lib/openshell/gateway.db?mode=rwc"
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+      XDG_DATA_HOME: /var/lib/openshell
+      HOME: /var/lib/openshell
+    networks:
+      - app-network
+
+  # Builds the sandbox workload image, then exits.
+  sandbox-image:
+    image: opencode-agent-sandbox:0.2
+    build:
+      context: .
+      dockerfile: sandbox-image/Dockerfile
+    command: ["true"]
+    restart: "no"
+    network_mode: none
+
+  # Closes code-server's port to other VMs: see port-guard.sh. Its status is
+  # readable in the app at /opt/port-guard/port-guard.
+  port-guard:
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: always
+    environment:
+      GUARDED_PORT: "8443"
+    command: ["sh", "/port-guard.sh"]
+    volumes:
+      - type: bind
+        source: ./port-guard.sh
+        target: /port-guard.sh
+        read_only: true
+      - port-guard-status:/status
+
+networks:
+  app-network:
+    external: true
+volumes:
+  work:
+  port-guard-status:

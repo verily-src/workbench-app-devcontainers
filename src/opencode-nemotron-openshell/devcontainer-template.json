@@ -1,0 +1,30 @@
+{
+    "id": "opencode-nemotron-openshell",
+    "version": "0.0.1",
+    "name": "OpenCode + NVIDIA Nemotron in NVIDIA OpenShell",
+    "description": "Code-server IDE with OpenCode running in an NVIDIA OpenShell sandbox on local NVIDIA Nemotron models. The sandbox has no credentials and, by default, no network access except the local models; its policy is user-editable. Defaults to Lightning 30B on A100/H100, or experimental Nano 4B on T4/V100.",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/opencode-nemotron-openshell",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

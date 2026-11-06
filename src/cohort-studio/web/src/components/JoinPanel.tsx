@@ -580,7 +580,10 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
   const resources = new Set(selectedInputs.flatMap((dataset) => sourceResources(dataset.sourceRef)));
   const hasUnbackedLoaded = selectedInputs.some((dataset) =>
     dataset.queryScope === "loaded" && !dataset.sourceRef);
-  const crossSource = resources.size > 1 || (resources.size > 0 && hasUnbackedLoaded);
+  // BigQuery inputs are read in full by the join (billed by bytes scanned), so
+  // they need the same approval as cross-source joins.
+  const readsBigQuery = selectedInputs.some((dataset) => dataset.sourceRef?.kind === "bq");
+  const crossSource = resources.size > 1 || (resources.size > 0 && hasUnbackedLoaded) || readsBigQuery;
 
   useEffect(() => {
     if (!commonKeys.includes(commonKey)) setCommonKey(commonKeys[0] ?? "");
@@ -1285,7 +1288,8 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
         </label>
         <div>{allowLoaded
           ? "Studio will scan each complete source and stage the join on disk. The operation stops above 1 TB."
-          : "Cross-source joins require your approval to scan complete sources."}</div>
+          : "Cross-source joins require your approval to scan complete sources."}
+          {readsBigQuery ? " BigQuery bills by bytes scanned." : ""}</div>
       </div>}
 
       {(validation?.problems ?? []).map((p) =>

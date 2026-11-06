@@ -337,3 +337,22 @@ def test_row_restriction_renders_safe_literals_and_keeps_inexact_filters():
                            "AND (`flag` = TRUE) AND (`day` < DATE '2024-01-31') "
                            "AND (`name` IS NOT NULL)")
     assert [f["column"] for f in residual] == ["ts", "name"]
+
+
+def test_bigquery_only_join_needs_approval_to_read_in_full(setup):
+    """No database input, so the old cross-source check never fired; a full
+    BigQuery read is billed, so it needs the same approval. Previews don't."""
+    left = setup.open({"kind": "bq", "resource_id": RID, "table": "variants"})
+    right = setup.open({"kind": "bq", "resource_id": RID, "table": "variants"})
+    body = {"base_id": left["dataset_id"], "steps": [{
+        "right_id": right["dataset_id"], "how": "inner", "alias": "v2", "columns": None,
+        "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}]}]}
+    refused = setup.client.post("/api/datasets/join", json=body)
+    assert refused.status_code == 400 and "BigQuery" in refused.text
+    assert setup.fake.sessions == []
+    preview = setup.client.post("/api/datasets/join/preview", json=body)
+    assert preview.status_code == 200, preview.text
+    assert setup.fake.sessions == []
+    approved = setup.client.post("/api/datasets/join", json={**body, "allow_loaded": True})
+    assert approved.status_code == 200, approved.text
+    assert setup.fake.sessions

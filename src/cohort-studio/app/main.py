@@ -61,7 +61,7 @@ import plink_api
 import join_discovery
 import sql_source
 import sql_completions
-from source_models import ColumnSetting, DerivedSpec, SourceFilter, SourceRef, source_dict
+from source_models import ColumnSetting, DerivedSpec, JoinOutput, SourceFilter, SourceRef, source_dict
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
@@ -246,6 +246,8 @@ class JoinRequest(BaseModel):
     base_id: str = ""
     base_filters: list[SourceFilter] = Field(default_factory=list, max_length=12)
     steps: list[JoinStep] = Field(default_factory=list)
+    # Drop/rename fields of the joined result (applied after joining).
+    output: JoinOutput | None = None
     left_id: str = ""
     right_id: str = ""
     left_on: str = ""
@@ -746,13 +748,14 @@ def _stored_ref(dataset_id):
                 "table": origin["table"], "schema": origin.get("schema") or "public"}
     return None
 
-def _join_ref(base_id, steps, base_filters=None):
+def _join_ref(base_id, steps, base_filters=None, output=None):
     base = _stored_ref(base_id)
     refs = [_stored_ref(step["right_id"]) for step in steps]
     if base is None or any(ref is None for ref in refs):
         return None
     return source_dict({"kind": "join", "base": base,
                         **({"base_filters": base_filters} if base_filters else {}),
+                        **({"output": output} if output and (output.get("exclude") or output.get("rename")) else {}),
                         "steps": [{"source": ref, **{k: step[k] for k in
                                    ("how", "conditions", "columns", "alias", "filters")
                                    if k in step and (k != "filters" or step[k])}}
@@ -804,7 +807,7 @@ def _open_source_impl(ref, temporary=False, profile=True):
                     k: step[k] for k in ("how", "conditions", "columns", "alias", "filters")
                     if k in step}})
             out = joins.run(base["dataset_id"], steps, allow_loaded=ref.get("allow_loaded", False),
-                            base_filters=ref.get("base_filters"))
+                            base_filters=ref.get("base_filters"), output=ref.get("output"))
             df, label = out["df"], " + ".join(labels)
             live = out.get("live_source")
             capped = bool(out["stats"]["truncated"] or out["stats"].get("capped_inputs"))
@@ -966,10 +969,12 @@ def join_datasets(req: JoinRequest):
     base_id, steps, sources = _join_pipeline(req)
     try:
         base_filters = [f.model_dump() for f in req.base_filters]
-        ref = _join_ref(base_id, steps, base_filters)
+        output = req.output.model_dump() if req.output else None
+        ref = _join_ref(base_id, steps, base_filters, output)
         if ref and req.allow_loaded:
             ref["allow_loaded"] = True
-        out = joins.run(base_id, steps, allow_loaded=req.allow_loaded, base_filters=base_filters)
+        out = joins.run(base_id, steps, allow_loaded=req.allow_loaded, base_filters=base_filters,
+                        output=output)
         joins._flag_growth(out["stats"])
         label = " + ".join(sources)
         data_jobs.report("Building the joined tab", rows=int(len(out["df"])),
@@ -1203,7 +1208,8 @@ def preview_join(req: JoinRequest):
     base_id, steps, _ = _join_pipeline(req)
     try:
         return joins.preview(base_id, steps, allow_loaded=req.allow_loaded,
-                             base_filters=[f.model_dump() for f in req.base_filters])
+                             base_filters=[f.model_dump() for f in req.base_filters],
+                             output=req.output.model_dump() if req.output else None)
     except disk_data.OperationTooLarge as e:
         raise HTTPException(413, str(e))
     except disk_data.SourceSizeUnknown as e:

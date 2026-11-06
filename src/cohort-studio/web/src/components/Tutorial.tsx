@@ -94,7 +94,8 @@ function saveProgress(progress: SavedProgress) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch {}
 }
 
-export function Tutorial({ progress }: { progress: TutorialProgress }) {
+/** `onOpen` lets the app show what the steps point at (the folded Data sources panel). */
+export function Tutorial({ progress, onOpen }: { progress: TutorialProgress; onOpen?: () => void }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(() => readProgress().step);
   const [targetRect, setTargetRect] = useState<Rect | null>(null);
@@ -213,6 +214,7 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
     <button className="tutorial-trigger" type="button" onClick={() => {
       const saved = readProgress();
       setStep(saved.dismissed ? 0 : saved.step);
+      onOpen?.();
       setOpen(true);
     }}>Tutorial</button>
     {open && <>

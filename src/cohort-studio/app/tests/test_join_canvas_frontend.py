@@ -237,8 +237,19 @@ def test_drag_and_keyboard_build_two_table_join(page, app_url):
     expect(canvas.get_by_label("Row counts")).to_contain_text("~1,180")
     assert calls["preview"][-1] == expected
     fields = canvas.get_by_role("table", name="Fields")
-    expect(fields).to_contain_text("genotypes → gene")
-    expect(fields.get_by_label("Include person_id")).to_be_disabled()
+    expect(fields.get_by_label("Name for genotypes → gene")).to_have_value("genotypes → gene")
+    # Start-table fields can be dropped and any field renamed (applied after the join).
+    fields.get_by_label("Include state").uncheck()
+    fields.get_by_label("Name for genotypes → gene").fill("gene_symbol")
+    expect(fields.get_by_label("Name for state")).to_be_disabled()
+    canvas.get_by_role("button", name="Preview", exact=True).first.click()
+    _wait_for(calls, "preview", lambda body: body.get("output") == {
+        "exclude": ["state"], "rename": {"genotypes → gene": "gene_symbol"}}, page)
+    # Restoring the defaults sends no output at all.
+    fields.get_by_label("Include state").check()
+    fields.get_by_label("Name for genotypes → gene").fill("genotypes → gene")
+    canvas.get_by_role("button", name="Preview", exact=True).first.click()
+    _wait_for(calls, "preview", lambda body: "output" not in body, page)
     # Excluding a joined field changes the request's columns.
     fields.get_by_label("Include genotypes → gene").uncheck()
     _wait_for(calls, "validate", lambda body: body["steps"][0]["columns"] == ["sample_id", "dosage"], page)
@@ -331,6 +342,7 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
              "conditions": [{"left": "samples → sample_id", "op": "=", "right": "sample_id"}],
              "filters": [{"column": "gene", "op": "in", "value": ["BRCA1", "BRCA2"]}]},
         ],
+        "output": {"exclude": ["state"], "rename": {"genotypes → dosage": "dose"}},
     }
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
@@ -348,6 +360,9 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
                    **{k: v for k, v in s.items() if k != "source"}} for s in original["steps"]],
     }
     assert _wait_for(calls, "validate", lambda b: b == expected, page) == expected
+    # The saved field choices come back with the recipe.
+    canvas.get_by_role("button", name="Preview", exact=True).first.click()
+    _wait_for(calls, "preview", lambda b: b.get("output") == original["output"], page)
     canvas.get_by_role("button", name=re.compile("^Join samples to genotypes")).click()
     config = canvas.get_by_role("region", name="Join configuration")
     expect(config.get_by_role("combobox", name="Left field, clause 1")).to_have_value("sample_id")
@@ -357,7 +372,7 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
     canvas.get_by_role("button", name="Save & open in Explore").click()
     expect(page.locator(".tab", has_text="Existing joined result (edited)")).to_be_visible(timeout=10000)
     expect(page.locator(".tab", has_text="Existing joined result")).to_have_count(2)
-    assert calls["join"][-1] == expected
+    assert calls["join"][-1] == {**expected, "output": original["output"]}
 
 
 def test_join_panel_links_to_canvas(page, app_url):
@@ -574,3 +589,55 @@ def test_canvas_names_join_from_tables_and_long_names_fit(page, app_url):
     canvas.get_by_role("button", name=f"Add {schema}.visits to canvas").click()
     expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
     expect(name_box).to_have_value("Synpuf cohort")
+
+
+def test_bigquery_join_asks_before_reading_full_tables(page, app_url):
+    calls = {}
+    _setup(page, app_url, calls)
+    page.route("**/api/datasources", lambda route: _fulfill(route, {
+        "ready": True, "catalogs_pending": False,
+        "sources": [{"kind": "bq", "id": "warehouse", "label": "Warehouse BigQuery"}]}))
+    page.route("**/api/tables?**", lambda route: _fulfill(route, [
+        {"name": name, "table": name, "schema": "genomics", "detail": "BigQuery", "columns": len(COLUMNS[name])}
+        for name in ("person", "genotypes")]))
+
+    def open_bq(route):
+        ref = route.request.post_data_json["source_ref"]
+        calls.setdefault("opened", []).append(ref)
+        _fulfill(route, {"job_id": "open", "status": "complete", "kind": "open", "result": {
+            "dataset_id": f"open-{ref['table']}", "source": ref["table"], "rows": 2, "capped": True,
+            "columns": COLUMNS[ref["table"]], "source_ref": ref, "query_scope": "loaded"}})
+    page.route("**/api/data-jobs/open", open_bq)
+    page.goto(app_url)
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Builder$")).click()
+    canvas = page.locator(".jc")
+    canvas.get_by_role("button", name="Add person to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    canvas.get_by_role("button", name="Add genotypes to canvas").click()
+    _set_keys(canvas, "person_id", "sample_id")
+    canvas.get_by_role("button", name="Apply").click()
+    consent = canvas.get_by_label(re.compile("Allow reading the full BigQuery tables"))
+    expect(consent).to_be_visible()
+    expect(canvas.locator(".jc-consent")).to_contain_text("BigQuery bills by bytes scanned")
+    expect(canvas.locator(".join-disabled-reason")).to_contain_text("Allow reading the full BigQuery tables")
+    expect(canvas.get_by_role("button", name="Save & open in Explore")).to_be_disabled()
+    consent.check()
+    canvas.get_by_role("button", name="Save & open in Explore").click()
+    _wait_for(calls, "join", lambda body: body["allow_loaded"] is True, page)
+
+
+def test_running_job_cards_stay_off_the_data_builder(page, app_url):
+    calls = {}
+    _setup(page, app_url, calls)
+    page.route("**/api/data-jobs/open", lambda route: _fulfill(route, {
+        "job_id": "slow", "kind": "open", "status": "running", "label": "person from clinical"}))
+    page.route("**/api/data-jobs/slow", lambda route: _fulfill(route, {
+        "job_id": "slow", "kind": "open", "status": "running", "label": "person from clinical"}))
+    page.goto(app_url)
+    canvas = _open_canvas(page)
+    canvas.get_by_role("button", name="Add person to canvas").click()
+    expect(canvas.locator(".jc-node")).to_contain_text("Opening…", timeout=10000)
+    page.wait_for_timeout(1000)  # a few polls
+    expect(page.locator(".data-jobs")).to_have_count(0)
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore Cohort$")).click()
+    expect(page.locator(".data-jobs")).to_contain_text("person from clinical", timeout=10000)

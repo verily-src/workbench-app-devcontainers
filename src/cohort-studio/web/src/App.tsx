@@ -14,7 +14,7 @@ import type { DiscoveryStatus } from "./api";
 import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
-import type { ChartSpec, Dataset, JoinFilter, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
+import type { ChartSpec, Dataset, JoinFilter, JoinOutput, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
 import { AiFeaturesContext, aiFeaturesFrom, lineageFrom } from "./features";
 import { extractTarget } from "./extract";
@@ -537,7 +537,7 @@ export default function App() {
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const doJoin = async (p: { baseId: string; steps: JoinStep[]; allowLoaded?: boolean;
-                              baseFilters?: JoinFilter[];
+                              baseFilters?: JoinFilter[]; output?: JoinOutput;
                               // From the visual join canvas: its private inputs and the tab title.
                               fromCanvas?: boolean; extraInputs?: Dataset[]; title?: string }) => {
     setActivity("Joining…");
@@ -547,7 +547,7 @@ export default function App() {
     try {
       let opened: OpenResult & { join: JoinStats };
       try {
-        opened = await api.join(p.baseId, p.steps, p.allowLoaded, p.baseFilters);
+        opened = await api.join(p.baseId, p.steps, p.allowLoaded, p.baseFilters, p.output);
       } catch (e) {
         if (!(e instanceof ApiError) || e.status !== 404
             || e.code !== "DATASET_EXPIRED") throw e;
@@ -577,7 +577,7 @@ export default function App() {
             ...step,
             right_id: reopened.get(step.right_id)!.dataset_id,
           }));
-          opened = await api.join(base.dataset_id, retrySteps, p.allowLoaded, p.baseFilters);
+          opened = await api.join(base.dataset_id, retrySteps, p.allowLoaded, p.baseFilters, p.output);
         } catch (retryError) {
           await Promise.allSettled(createdIds.map((id) => api.closeDataset(id)));
           const reason = retryError instanceof Error ? retryError.message : "unknown error";
@@ -951,7 +951,7 @@ export default function App() {
             chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),
             assistantConfigured: tutorialAssistantConfigured,
             aiFeatures,
-          }} />
+          }} onOpen={() => { if (sidebarCollapsed) setSidebarCollapsed(false); }} />
           {activity && !activityInCard && (
             <div className="activity"><span className="pulse" />{activity}</div>
           )}
@@ -972,7 +972,7 @@ export default function App() {
             </svg>
           </button>
         </div>
-        <DataJobs expected={openingTable} showDone={view === "explore"}
+        <DataJobs expected={openingTable} showDone={view === "explore"} showActive={view !== "join"}
                   onOpen={result => openResult(result, result.source, result.source_ref)} />
         <div className="content">
           {view === "explore" && workflowVerification?.result.verified

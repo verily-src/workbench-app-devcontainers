@@ -178,10 +178,25 @@ class SourceStep(BaseModel):
     filters: list[SourceFilter] | None = Field(default=None, max_length=12)
 
 
+class JoinOutput(BaseModel):
+    """Fields of the joined result: drop some, rename others (after joining)."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+    exclude: list[str] = Field(default_factory=list, max_length=500)
+    rename: dict[str, str] = Field(default_factory=dict, max_length=500)
+
+    @model_validator(mode="after")
+    def _names(self):
+        for old, new in self.rename.items():
+            if not old or not isinstance(new, str) or not new.strip() or len(new) > 128:
+                raise ValueError("Field names must be 1–128 characters.")
+        return self
+
+
 class JoinSource(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["join"]
     allow_loaded: bool = False
+    output: JoinOutput | None = None
     base: SourceRef
     base_filters: list[SourceFilter] | None = Field(default=None, max_length=12)
     steps: list[SourceStep] = Field(min_length=1, max_length=6)

@@ -4,6 +4,12 @@ Updated 2026-11-06. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
+- **LOCAL (2026-11-06): publishing lifecycle (roadmap #9).**
+  - **Revisions.** Saved views → Versions → Publish creates immutable rev N+1 (published_at, published_by from the VM login, optional note). The saved view stays the draft. Versions lists revisions with Open (read-only), Link and Roll back (copies the revision into the draft). The list shows "Draft · not published", "Published rev N" or "Published rev N · draft has changes".
+  - **Viewer mode.** `#view=…&published` (latest) or `&rev=N` opens a read-only viewer with a "Published · rev N · date" banner and Open draft. Saving, publishing, rollback, delete, Data Builder and extract refresh are hidden; filters, charts and parameters still work for the session. Plain draft links work as before.
+  - **Storage.** Aurora/PostgreSQL table `_studio_view_revisions`; S3 objects `_studio_views/_revisions/<name>/NNNNNN.json` written with `If-None-Match: *`. No overwrite route (405); races return 409. Revisions pin their materialized snapshots against cleanup. Refresh still updates shared snapshot rows, which is documented in architecture.md §5. Deleting a view deletes its revisions.
+  - **Not done.** There is no per-person audience or permission control; that needs per-user identity (access policy is deferred). Not yet verified against live Aurora or S3.
+  - **Tests.** `test_view_publishing.py` (7: sqlite and S3 lifecycle, validation/405/409, legacy rows, S3 CLI conditional put, real-PostgreSQL snapshot pinning) and `test_view_publishing_frontend.py` (1 Playwright: publish → viewer link → read-only → open draft → republish → rollback → open rev).
 - **LOCAL (2026-11-06): one Data Builder; SQL mode; edit extracts; roadmap.**
   - **One join builder.** The old Explore Join panel (`JoinPanel.tsx`) is gone. "Join tables" and "⋈ Join" open Data Builder, and "⋈ Join" starts the canvas from that tab. "Edit join" was removed in favour of "Edit in Data Builder". Shared parts moved to `joinParts.tsx`.
   - **SQL mode.** Data Builder has "Build with: Visual | SQL": write one SELECT, preview it, then open it Live or as an Extract. "Edit as SQL" copies a same-database canvas join's SQL into the editor.

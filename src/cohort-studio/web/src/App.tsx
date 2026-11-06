@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, OpenResult, WorkflowList, viewSpecs } from "./api";
 import { FilterPanel } from "./components/FilterPanel";
-import { SavedViews } from "./components/SavedViews";
+import { SavedViews, parseViewHash, viewLink } from "./components/SavedViews";
+import { PublishedBanner, type PublishedViewer } from "./components/PublishedBanner";
 import { SourcePicker } from "./components/SourcePicker";
 import { PublishCatalog } from "./components/PublishCatalog";
 import { Toasts } from "./components/Toasts";
@@ -125,6 +126,8 @@ export default function App() {
   // as the busy flag but don't repeat the text in the top bar.
   const [activityInCard, setActivityInCard] = useState(false);
   const [error, setError] = useState("");
+  // Set while a published revision is open read-only (viewer mode).
+  const [viewer, setViewer] = useState<PublishedViewer | null>(null);
   const [view, setView] = useState<
     "explore" | "join" | "agent" | "workflows" | "lineage" | "settings">("explore");
   const [aiFeatures, setAiFeatures] = useState(false);
@@ -353,12 +356,38 @@ export default function App() {
     try {
       const v = await api.getView(store.kind, store.id, name);
       await restoreSpecs(v.datasets ?? [], v.active ?? 0);
+      setViewer(null);
     } catch (e) {
       setError(`Could not load view: ${(e as Error).message}`);
     } finally {
       setActivity("");
     }
   };
+
+  const openRevision = async (store: { kind: string; id: string }, name: string,
+                              revision?: number) => {
+    setActivity(`Loading published ${name}…`);
+    setError("");
+    try {
+      const v = await api.getViewRevision(store.kind, store.id, name, revision);
+      await restoreSpecs(v.datasets ?? [], v.active ?? 0);
+      setViewer({ store, name, revision: v.published });
+    } catch (e) {
+      setError(`Could not open published view: ${(e as Error).message}`);
+    } finally {
+      setActivity("");
+    }
+  };
+
+  const openDraft = () => {
+    if (!viewer) return;
+    if (window.location.hash.includes("view=")) {
+      const link = viewLink({ kind: viewer.store.kind, resource_id: viewer.store.id, name: viewer.name });
+      window.history.replaceState(null, "", link.slice(link.indexOf("#")));
+    }
+    void loadView(viewer.store, viewer.name);
+  };
+  useEffect(() => { if (!datasets.length) setViewer(null); }, [datasets.length]);
 
   type ViewSpec = Awaited<ReturnType<typeof api.getView>>["datasets"][number];
   const restoreSpecs = async (specs: ViewSpec[], activeIndex: number) => {
@@ -467,10 +496,11 @@ export default function App() {
   const hashLoaded = useRef(false);
   useEffect(() => {
     if (!ready || hashLoaded.current) return;
-    const m = window.location.hash.match(/view=([^:]+):([^:]+):(.+)/);
-    if (m) {
+    const link = parseViewHash(window.location.hash);
+    if (link) {
       hashLoaded.current = true;
-      loadView({ kind: m[1], id: decodeURIComponent(m[2]) }, decodeURIComponent(m[3]));
+      if (link.published) void openRevision(link.store, link.name, link.revision);
+      else void loadView(link.store, link.name);
     }
   }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -726,7 +756,7 @@ export default function App() {
 
   const commands: Command[] = [
     ...(["explore", "join", "workflows", "lineage", "settings"] as const)
-      .filter((v) => lineageTab || v !== "lineage").map((v) => ({
+      .filter((v) => (lineageTab || v !== "lineage") && (!viewer || v !== "join")).map((v) => ({
       id: `view:${v}`, group: "Go to",
       label: NAV_LABEL[v], run: () => {
         if (view === "settings" && v !== "settings") refreshTutorialAssistantStatus();
@@ -812,7 +842,7 @@ export default function App() {
         )}
         <DiscoveryBanner discovery={discovery} onRetry={retryDiscovery} />
 
-        {datasets.length === 0 && sources.length > 0 && <button className="quiet"
+        {datasets.length === 0 && sources.length > 0 && !viewer && <button className="quiet"
           data-tutorial-target="join-button" onClick={() => setView("join")}>Join tables</button>}
         <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
           loading={!ready || Boolean(activity) || Boolean(listingTables)} busy={Boolean(activity)}
@@ -878,7 +908,7 @@ export default function App() {
         </>}
         <div className="section-label">Saved views</div>
         <SavedViews sources={sources} datasets={datasets} active={active}
-                    onLoadView={loadView} />
+                    onLoadView={loadView} onOpenRevision={openRevision} readOnly={Boolean(viewer)} />
 
         <VersionFooter />
         {view === "explore" && !sidebarCollapsed && cornerTools(false)}
@@ -894,7 +924,8 @@ export default function App() {
           </span>
           <nav className="topnav">
             {(["explore", "join", "agent", "workflows", "lineage"] as const)
-              .filter((v) => (aiFeatures || v !== "agent") && (lineageTab || v !== "lineage"))
+              .filter((v) => (aiFeatures || v !== "agent") && (lineageTab || v !== "lineage")
+                && (!viewer || v !== "join"))
               .map((v) => (
               <span key={v} data-tutorial-target={`nav-${v}`}
                     className={`topnav-link${view === v ? " active" : ""}`}
@@ -1042,6 +1073,7 @@ export default function App() {
             </div>
           ) : (
             <>
+              {viewer && <PublishedBanner viewer={viewer} onOpenDraft={openDraft} />}
               <div className="tabs">
                 {datasets.map((d, i) => (
                   <span key={d.id}
@@ -1075,7 +1107,7 @@ export default function App() {
                     }}>✕</button>
                   </span>
                 ))}
-                {(datasets.length >= 2 || sources.length > 0) && (
+                {!viewer && (datasets.length >= 2 || sources.length > 0) && (
                   <button className={`tab-join${joinRunning ? " running" : ""}`}
                           data-tutorial-target="join-button"
                           title="Join this tab with other tables in Data Builder"
@@ -1105,8 +1137,8 @@ export default function App() {
                   dataset={activeDs}
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
-                  onRefreshExtract={(datasetId) => void refreshExtract(datasetId)}
-                  onEditExtract={(datasetId) => {
+                  onRefreshExtract={viewer ? undefined : (datasetId) => void refreshExtract(datasetId)}
+                  onEditExtract={viewer ? undefined : (datasetId) => {
                     const tab = datasets.find((d) => d.id === datasetId);
                     const target = tab ? extractTarget(tab) : null;
                     const recipe = tab?.extract?.recipe;
@@ -1115,7 +1147,7 @@ export default function App() {
                       ref: recipe as Extract<SourceRef, { kind: "join" | "sql" }>, extract: target }));
                     setView("join");
                   }}
-                  onEditJoinCanvas={(datasetId) => {
+                  onEditJoinCanvas={viewer ? undefined : (datasetId) => {
                     const original = datasets.find((dataset) => dataset.id === datasetId);
                     if (original?.sourceRef?.kind !== "join") return;
                     setCanvasEdit((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, title: original.title,

@@ -1964,6 +1964,108 @@ def delete_view(kind: str, resource_id: str, name: str):
         raise HTTPException(400, str(e))
     return {"ok": True}
 
+
+VIEW_NAME_PATTERN = r"^[A-Za-z0-9 ._-]{1,80}$"
+
+
+class ViewRef(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["aurora", "s3"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    name: str = Field(pattern=VIEW_NAME_PATTERN)
+
+
+class PublishViewRequest(ViewRef):
+    note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("note")
+    @classmethod
+    def _clean_note(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if any(ord(ch) < 32 and ch not in "\n\t" for ch in value):
+            raise ValueError("Note may not contain control characters.")
+        return value or None
+
+
+class RollbackViewRequest(ViewRef):
+    revision: int = Field(ge=1, le=views.MAX_REVISION)
+
+
+class ViewRevisionQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["aurora", "s3"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    name: str = Field(pattern=VIEW_NAME_PATTERN)
+    revision: int | None = Field(default=None, ge=1, le=views.MAX_REVISION)
+
+
+class ViewRevisionsQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["aurora", "s3"]
+    resource_id: str = Field(min_length=1, max_length=256)
+    name: str = Field(pattern=VIEW_NAME_PATTERN)
+
+
+class ViewRevision(BaseModel):
+    name: str
+    revision: int = Field(ge=1)
+    published_at: str | None
+    published_by: str | None
+    note: str | None
+
+
+def _revision_errors(call):
+    try:
+        return call()
+    except (views.ViewNotFound, views.RevisionNotFound) as e:
+        raise HTTPException(404, str(e))
+    except views.RevisionConflict as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
+
+
+@app.post("/api/views/publish", response_model=ViewRevision)
+def publish_view(req: PublishViewRequest):
+    result = _revision_errors(lambda: views.publish_view(
+        req.kind, req.resource_id, req.name, req.note))
+    lineage.record(_lineage_engine(), "view_published", "view", req.name,
+                   payload={"store": f"{req.kind}:{req.resource_id}",
+                            "revision": result["revision"]})
+    return result
+
+
+@app.get("/api/views/revisions")
+def list_view_revisions(query: Annotated[ViewRevisionsQuery, Query()]):
+    rows = _revision_errors(lambda: views.list_revisions(
+        query.kind, query.resource_id, query.name))
+    return {"revisions": [ViewRevision(**row) for row in rows]}
+
+
+@app.get("/api/views/revision")
+def get_view_revision(query: Annotated[ViewRevisionQuery, Query()]):
+    found = _revision_errors(lambda: views.get_revision(
+        query.kind, query.resource_id, query.name, query.revision))
+    state = found["state"]
+    return {**state, "published": ViewRevision(
+        **{key: found[key] for key in ViewRevision.model_fields})}
+
+
+@app.post("/api/views/rollback")
+def rollback_view(req: RollbackViewRequest):
+    result = _revision_errors(lambda: views.rollback_view(
+        req.kind, req.resource_id, req.name, req.revision))
+    lineage.record(_lineage_engine(), "view_rolled_back", "view", req.name,
+                   payload={"store": f"{req.kind}:{req.resource_id}",
+                            "revision": result["revision"]})
+    return result
+
 @app.get("/api/lineage")
 def lineage_events():
     df = lineage.recent_events(_lineage_engine())

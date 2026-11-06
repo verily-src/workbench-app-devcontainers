@@ -411,6 +411,25 @@ button:focus-visible, select:focus-visible, .upload-btn:focus-within {
   border-radius: var(--radius-sm);
 }
 .view-load:hover { background: var(--hover); color: var(--accent); }
+.view-status { padding-left: 8px; }
+.view-status.published { color: var(--accent); }
+.view-versions {
+  display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px 8px;
+  padding: 6px 8px; border-left: 2px solid var(--border-strong); font-size: 12px;
+}
+.view-publish { display: flex; gap: 6px; }
+.view-publish input { flex: 1; min-width: 0; }
+.view-revisions { list-style: none; margin: 0; padding: 0; display: flex;
+  flex-direction: column; gap: 6px; }
+.view-revision-actions { display: flex; gap: 4px; }
+.published-banner {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--card); padding: 8px 12px; margin-bottom: 12px; font-size: 12.5px;
+}
+.published-banner strong { color: var(--accent); }
+.published-banner .published-note { color: var(--ink-soft); font-style: italic; }
+.published-banner .published-readonly { margin-left: auto; color: var(--ink-muted); }
 .tab-join {
   border: none; background: transparent; color: var(--accent);
   font-size: 12.5px; font-weight: 500; padding: 7px 10px; cursor: pointer;

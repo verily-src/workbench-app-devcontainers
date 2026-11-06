@@ -1211,6 +1211,11 @@ def open_catalog(ref: dict) -> tuple[pd.DataFrame, dict]:
 
 
 def _where(filters: list[dict], columns: list[str]):
+    """WHERE clause for Explore filters, including AND/OR criteria groups."""
+    return filter_rules.combine(filters, lambda flat: _where_flat(flat, columns))
+
+
+def _where_flat(filters: list[dict], columns: list[str]):
     clauses, params = [], []
     for item in filters:
         name = item.get("column")

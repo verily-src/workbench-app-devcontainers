@@ -829,7 +829,7 @@ export default function App() {
         <div className="section-label">Filters</div>
 
         {activeDs ? (
-          <FilterPanel
+          <FilterPanel key={activeDs.id}
             columns={activeDs.columns}
             filters={activeDs.filters}
             onChange={(filters) => updateDataset(activeDs.id, { filters })}

@@ -885,3 +885,13 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .date-filter-range input[type="date"] { flex: 1; min-width: 0; }
 .date-filter-range input[type="number"] { width: 72px; }
 .date-filter > .link { align-self: flex-start; }
+/* Match any group (OR of AND groups) */
+.criteria-groups { display: flex; flex-direction: column; gap: 10px; }
+.criteria-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.criteria-head .jc-spacer, .criteria-group-head .jc-spacer { flex: 1; }
+.criteria-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.criteria-group { position: relative; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.criteria-or { position: absolute; top: -9px; left: 10px; padding: 0 6px; font-size: 11px; font-weight: 700;
+  color: var(--accent); background: var(--card); letter-spacing: .04em; }
+.criteria-group-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.criteria-filters { max-height: 320px; overflow: auto; }

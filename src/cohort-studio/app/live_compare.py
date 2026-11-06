@@ -4,6 +4,7 @@ import numpy as np
 from scipy import stats
 
 import database as db
+import filter_rules
 import live_query
 from sql_utils import statement as text
 
@@ -18,6 +19,12 @@ def _q(value):
 
 
 def _where(filters, columns, prefix):
+    """Compare-group WHERE clause, with date filters and AND/OR criteria groups."""
+    return filter_rules.combine_named(
+        filters, lambda flat, sub: _where_flat(flat, columns, prefix + sub))
+
+
+def _where_flat(filters, columns, prefix):
     clauses, params = [], {}
     for i, item in enumerate(filters):
         name = item.get("column")
@@ -39,6 +46,14 @@ def _where(filters, columns, prefix):
             clauses.append(f"{live_query._numeric(col)} BETWEEN :{prefix}{i}_lo AND :{prefix}{i}_hi")
             params[f"{prefix}{i}_lo"] = lo
             params[f"{prefix}{i}_hi"] = hi
+        elif kind == "date" and filter_rules.is_active(item):
+            start, end = filter_rules.date_bounds(item)
+            if start:
+                clauses.append(f"{col} >= :{prefix}{i}_start")
+                params[f"{prefix}{i}_start"] = start
+            if end:
+                clauses.append(f"{col} < :{prefix}{i}_end")
+                params[f"{prefix}{i}_end"] = end
     return " AND ".join(clauses) if clauses else "TRUE", params
 
 

@@ -30,12 +30,15 @@ def test_23andme_brand_recolors_app_and_cobrands_header(page, app_url):
     page.route("**/api/config", cfg)
     page.goto(app_url)
     page.get_by_role("toolbar", name="App tools").get_by_role("button", name="Settings").click()
-    page.get_by_role("radiogroup", name="Brand").get_by_role("radio", name="Verily × 23andMe").click()
+    page.get_by_role("radiogroup", name="Brand").get_by_role("radio", name="23andMe × Verily").click()
     expect(page.locator("html")).to_have_attribute("data-brand", "23andme")
     accent = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()")
     assert accent == "#d50f67"
     # The header names the partner; Verily's own mark keeps Verily green.
-    expect(page.locator(".topbar .brand-partner")).to_contain_text("23andMe")
+    logo = page.locator(".topbar .brand-partner img")
+    expect(logo).to_have_attribute("alt", "23andMe")
+    page.wait_for_function("() => { const i = document.querySelector('.topbar .brand-partner img'); return i && i.complete && i.naturalWidth > 0; }")
+    expect(page.locator(".brand-partner-name")).to_have_count(0)   # the real logo, not the text fallback
     mark = page.evaluate("getComputedStyle(document.querySelector('.brandmark')).color")
     assert mark == "rgb(8, 122, 106)"
     # The chart palette list offers the 23andMe colours.

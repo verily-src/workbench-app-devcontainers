@@ -1,0 +1,20 @@
+{
+  "id": "sql-jupyter",
+  "version": "1.0.0",
+  "name": "SQL Query Tool (Based on Working Example)",
+  "description": "Simple BigQuery SQL interface using proven example app structure (Port: 8888)",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": ["gcp", "aws"],
+      "default": "gcp",
+      "description": "Cloud provider (gcp or aws)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": ["true", "false"],
+      "default": "false"
+    }
+  }
+}

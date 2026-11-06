@@ -1015,7 +1015,7 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
                             "large_warning": budget_used >= LARGE_OPERATION_BYTES}}
 
 @_bounded_materialization
-def derive(source: dict, spec: dict) -> tuple[pd.DataFrame, dict]:
+def derive(source: dict, spec: dict, frame: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict]:
     from source_models import DerivedSpec
 
     spec = DerivedSpec.model_validate(spec).model_dump(exclude_none=True)
@@ -1040,11 +1040,9 @@ def derive(source: dict, spec: dict) -> tuple[pd.DataFrame, dict]:
         expression = f"CASE WHEN {missing} THEN NULL ELSE {aggregate} OVER (PARTITION BY {', '.join(groups)}) END"
     elif spec["op"] == "expression":
         import calculations
-        tree = calculations.parse(spec["expression"], columns)
-        def numeric_column(column):
-            value = f"TRY_CAST({_q(column)} AS DOUBLE)"
-            return f"CASE WHEN ISFINITE({value}) THEN {value} ELSE NULL END"
-        expression = calculations.sql(tree, numeric_column, lambda value: repr(value))
+        types = calculations.column_types(frame) if frame is not None else {}
+        calc = calculations.parse(spec["expression"], columns, types, spec.get("parameters") or [])
+        expression = calculations.sql(calc, "duckdb", _q)
     elif spec["op"] == "bin":
         col = spec["column"]
         if col not in columns:

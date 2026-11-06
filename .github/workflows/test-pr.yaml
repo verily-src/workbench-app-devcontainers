@@ -129,7 +129,7 @@ jobs:
               | .value += ($v.filters // [])
             ] | from_entries' | yq -P >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           list-files: json

@@ -148,6 +148,23 @@ def profile_columns(df: pd.DataFrame) -> list[dict]:
     return profile
 
 def apply_filters(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
+    """Rows matching every filter; a criteria group keeps rows matching any of its groups."""
+    plain = [f for f in filters if f.get("kind") != "any"]
+    df = _apply_flat(df, plain)
+    for item in filters:
+        if item.get("kind") != "any":
+            continue
+        rows = pd.Series(range(len(df)), index=df.index)
+        keep = pd.Series(False, index=df.index)
+        marked = df.assign(__studio_row=range(len(df)))
+        for group in filter_rules.validate_groups(item):
+            hit = _apply_flat(marked, group)["__studio_row"]
+            keep |= rows.isin(hit)
+        df = df[keep.to_numpy()]
+    return df
+
+
+def _apply_flat(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
     for f in filters:
         col = f.get("column")
         if col not in df.columns:
@@ -265,7 +282,7 @@ def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
 
     if entity_column is not None and entity_column not in full.columns:
         raise ValueError(f"Unknown entity column: {entity_column!r}.")
-    for item in filters:
+    for item in filter_rules.leaves(filters):
         if item.get("column") not in full.columns:
             raise ValueError(f"Unknown filter column: {item.get('column')!r}.")
     if ds.get("live_source") is not None:

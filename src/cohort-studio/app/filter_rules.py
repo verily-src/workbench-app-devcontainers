@@ -67,3 +67,69 @@ def is_active(item: dict) -> bool:
     if kind == "date":
         return any(item.get(k) not in (None, "") for k in ("start", "end", "last"))
     return False
+
+
+# ---- AND/OR criteria groups -------------------------------------------------
+#
+# ``{"kind": "any", "groups": [[f, f], [f]]}`` keeps rows that match every
+# filter of at least one group: (f AND f) OR (f). Other filters in the list are
+# still ANDed with it. Groups hold ordinary filters only (no nesting).
+
+MAX_GROUPS = 20
+
+
+def leaves(filters: list[dict]) -> list[dict]:
+    """Every ordinary filter, including those inside criteria groups."""
+    out = []
+    for item in filters or []:
+        if item.get("kind") == "any":
+            for group in item.get("groups") or []:
+                out.extend(group)
+        else:
+            out.append(item)
+    return out
+
+
+def validate_groups(item: dict) -> list[list[dict]]:
+    groups = item.get("groups")
+    if not isinstance(groups, list) or not groups or len(groups) > MAX_GROUPS:
+        raise ValueError(f"A criteria group filter needs 1–{MAX_GROUPS} groups.")
+    for group in groups:
+        if not isinstance(group, list) or any(f.get("kind") == "any" for f in group):
+            raise ValueError("Criteria groups hold ordinary filters (no nested groups).")
+    return groups
+
+
+def combine(filters: list[dict], flat):
+    """Combine ordinary filters with criteria groups for '?'-style SQL.
+
+    ``flat(list_of_filters) -> (sql, params_list)`` is the engine's own AND builder."""
+    plain = [f for f in filters or [] if f.get("kind") != "any"]
+    sql, params = flat(plain)
+    parts, params = [sql], list(params)
+    for item in filters or []:
+        if item.get("kind") != "any":
+            continue
+        ors = []
+        for group in validate_groups(item):
+            group_sql, group_params = flat(group)
+            ors.append(f"({group_sql})")
+            params.extend(group_params)
+        parts.append("(" + " OR ".join(ors) + ")")
+    return " AND ".join(parts), params
+
+
+def combine_named(filters: list[dict], flat):
+    """Like ``combine`` for ':name' parameters: ``flat(filters, prefix) -> (sql, dict)``.
+    Each group gets its own parameter prefix so names never collide."""
+    plain = [f for f in filters or [] if f.get("kind") != "any"]
+    sql, params = flat(plain, "")
+    parts, params = [sql], dict(params)
+    for a, item in enumerate(f for f in filters or [] if f.get("kind") == "any"):
+        ors = []
+        for b, group in enumerate(validate_groups(item)):
+            group_sql, group_params = flat(group, f"g{a}_{b}_")
+            ors.append(f"({group_sql})")
+            params.update(group_params)
+        parts.append("(" + " OR ".join(ors) + ")")
+    return " AND ".join(parts), params

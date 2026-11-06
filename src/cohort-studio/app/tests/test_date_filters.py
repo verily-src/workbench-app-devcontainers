@@ -110,4 +110,4 @@ def test_live_postgres_engine_through_the_api(client, visits):
     assert count([{"column": "visit", "kind": "date", "last": 100, "unit": "year"}]) == 5
     bad = client.post(f"/api/datasets/{body['dataset_id']}/query", json={"filters": [
         {"column": "visit", "kind": "date", "start": "2024-02-01", "end": "2024-01-01"}]})
-    assert bad.status_code == 400 and "before its start" in bad.text
+    assert bad.status_code == 422 and "before its start" in bad.text   # rejected by the Filter model

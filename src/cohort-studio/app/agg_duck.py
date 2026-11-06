@@ -17,6 +17,11 @@ def _q(col: str) -> str:
     return '"' + col.replace('"', '""') + '"'
 
 def _where(filters: list[dict], columns: set) -> tuple[str, list]:
+    """WHERE clause for Explore filters, including AND/OR criteria groups."""
+    return filter_rules.combine(filters, lambda flat: _where_flat(flat, columns))
+
+
+def _where_flat(filters: list[dict], columns: set) -> tuple[str, list]:
 
     clauses, params = [], []
     for f in filters:

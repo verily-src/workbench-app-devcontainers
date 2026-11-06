@@ -52,10 +52,22 @@ def test_date_filter_between_and_last(page, app_url):
     assert last_filters() == [{"column": "visit_date", "kind": "date", "start": "2024-01-01", "end": "2024-03-31"}]
 
     group.get_by_role("radio", name="Last").click()
+    # Clearing the count while typing keeps the Last controls.
+    group.get_by_label("Last visit_date count").fill("")
+    expect(group.get_by_label("Last visit_date count")).to_be_visible()
+    expect(group.get_by_role("radio", name="Last")).to_have_attribute("aria-checked", "true")
     group.get_by_label("Last visit_date count").fill("6")
     group.get_by_label("Last visit_date unit").select_option("month")
     expect(page.locator(".chips .chip").first).to_have_text("visit_date: last 6 months ✕")
     page.wait_for_timeout(600)
     assert queries[-1] == [{"column": "visit_date", "kind": "date", "last": 6, "unit": "month"}]
+    # A saved cohort with another relative range updates the controls.
+    page.locator(".cohort-name").fill("Six months")
+    page.get_by_role("button", name="Save cohort").click()
+    group.get_by_label("Last visit_date count").fill("2")
+    expect(page.locator(".chips .chip").first).to_have_text("visit_date: last 2 months ✕")
+    page.get_by_role("button", name="Apply cohort Six months").click()
+    expect(group.get_by_label("Last visit_date count")).to_have_value("6")
+    expect(group.get_by_label("Last visit_date unit")).to_have_value("month")
     group.get_by_role("button", name="Clear").click()
     expect(page.locator(".chips")).to_have_count(0)

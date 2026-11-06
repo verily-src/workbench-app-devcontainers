@@ -5,6 +5,7 @@ import type { ChartSpec, ChartStyle, Dataset, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 import { Popover } from "./Popover";
+import { CriteriaGroups } from "./CriteriaGroups";
 import { useAiFeatures, usePlink } from "../features";
 import { extractTarget } from "../extract";
 import { describeFilter } from "../filterText";
@@ -129,6 +130,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
   const [showCompare, setShowCompare] = useState(false);
   const [showDerive, setShowDerive] = useState(false);
   const [showAggregate, setShowAggregate] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
   const [showSummary, setShowSummary] = useState(Boolean(dataset.groupSummary));
   useEffect(() => { setShowSummary(Boolean(dataset.groupSummary)); }, [dataset.id]);
   const [showLaunch, setShowLaunch] = useState(false);
@@ -166,9 +168,16 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
     });
   };
 
-  const chips: { label: string; remove: () => void }[] = [];
+  const chips: { label: string; title?: string; remove: () => void }[] = [];
   for (const f of filters) {
-    if (f.kind === "categorical") {
+    if (f.kind === "any") {
+      const n = f.groups?.length ?? 0;
+      chips.push({
+        label: `any of ${n} group${n === 1 ? "" : "s"}`,
+        title: describeFilter(f),
+        remove: () => onUpdate({ filters: filters.filter((o) => o !== f) }),
+      });
+    } else if (f.kind === "categorical") {
       for (const v of f.values ?? []) {
         chips.push({
           label: `${f.column}: ${v}`,
@@ -392,7 +401,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
       {chips.length > 0 && (
         <div className="chips">
           {chips.map((chip) => (
-            <span key={chip.label} className="chip" onClick={chip.remove}>
+            <span key={chip.label} className="chip" onClick={chip.remove} title={chip.title}>
               {chip.label} ✕
             </span>
           ))}
@@ -438,6 +447,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
               {showAggregate ? "Hide aggregation" : "+ Aggregation filter"}
             </button>
             <button onClick={() => { setShowSummary((v) => !v); close(); }}>{showSummary ? "Hide summary" : "+ Group summary"}</button>
+            <button onClick={() => { setShowGroups((v) => !v); close(); }}>{showGroups ? "Hide OR groups" : "+ Match any group (OR)"}</button>
           </div>}
         </Popover>
         <button onClick={() => setShowLaunch((v) => !v)}>
@@ -458,6 +468,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
                       onClose={() => setShowDerive(false)} />
       )}
 
+      {showGroups && <CriteriaGroups columns={dataset.columns} filters={filters}
+        onChange={(next) => onUpdate({ filters: next, page: 0 })} onClose={() => setShowGroups(false)} />}
       {showSummary && <GroupSummary dataset={dataset} onUpdate={onUpdate} onOpenTable={onOpenTable}
         onClose={() => { setShowSummary(false); onUpdate({ groupSummary: undefined }); }} />}
 

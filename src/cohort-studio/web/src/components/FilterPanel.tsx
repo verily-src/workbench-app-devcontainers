@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ColumnProfile, DateUnit, Filter } from "../types";
 
 interface Props {
@@ -55,9 +55,19 @@ function DateFilter({ col, active, onChange }: {
   col: ColumnProfile; active?: Filter; onChange: (next: Filter | null) => void;
 }) {
   const name = col.label || col.name;
-  const mode = active?.last ? "last" : "between";
+  // The mode is the user's choice, not derived from the applied filter, so clearing
+  // the count while typing doesn't flip back to Between.
+  const [mode, setMode] = useState<"between" | "last">(active?.last ? "last" : "between");
   const [lastDraft, setLastDraft] = useState(String(active?.last ?? 30));
   const [unit, setUnit] = useState<DateUnit>(active?.unit ?? "day");
+  // Follow filters applied from elsewhere (a saved cohort, another tab).
+  useEffect(() => {
+    if (active?.last) {
+      setMode("last"); setLastDraft(String(active.last)); setUnit(active.unit ?? "day");
+    } else if (active) {
+      setMode("between");
+    }
+  }, [active?.last, active?.unit, active?.start, active?.end]); // eslint-disable-line react-hooks/exhaustive-deps
   const between = (start?: string, end?: string) =>
     onChange(start || end ? { column: col.name, kind: "date", ...(start ? { start } : {}), ...(end ? { end } : {}) } : null);
   const last = (n: string, u: DateUnit) => {
@@ -69,7 +79,12 @@ function DateFilter({ col, active, onChange }: {
       <div className="date-filter-modes" role="radiogroup" aria-label={`${name} date filter`}>
         {(["between", "last"] as const).map((m) => (
           <button key={m} type="button" role="radio" aria-checked={mode === m}
-                  onClick={() => (m === "last" ? last(lastDraft, unit) : mode === "last" && onChange(null))}>
+                  onClick={() => {
+                    if (m === mode) return;
+                    setMode(m);
+                    if (m === "last") last(lastDraft, unit);
+                    else if (active?.last) onChange(null);
+                  }}>
             {m === "between" ? "Between" : "Last"}
           </button>
         ))}
@@ -102,6 +117,8 @@ function DateFilter({ col, active, onChange }: {
 
 export function FilterPanel({ columns, filters, onChange }: Props) {
   const byColumn = new Map(filters.map((f) => [f.column, f]));
+  // Groups the user opened stay open while their filter is edited or cleared.
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
 
   const toggleValue = (col: ColumnProfile, value: string) => {
     const current = byColumn.get(col.name)?.values ?? [];
@@ -131,7 +148,16 @@ export function FilterPanel({ columns, filters, onChange }: Props) {
         const active = byColumn.get(col.name);
         return (
           <details key={col.name} className="filter-group"
-                   open={Boolean(active)}>
+                   open={opened.has(col.name) || Boolean(active)}
+                   onToggle={(e) => {
+                     const isOpen = (e.currentTarget as HTMLDetailsElement).open;
+                     setOpened((prev) => {
+                       if (isOpen === prev.has(col.name)) return prev;
+                       const next = new Set(prev);
+                       if (isOpen) next.add(col.name); else next.delete(col.name);
+                       return next;
+                     });
+                   }}>
             <summary>
               {col.label || col.name}
               {active && <span className="badge">

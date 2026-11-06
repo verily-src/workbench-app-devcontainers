@@ -54,7 +54,7 @@ export type DateUnit = "day" | "week" | "month" | "year";
 
 export interface Filter {
   column: string;
-  kind: "categorical" | "range" | "date";
+  kind: "categorical" | "range" | "date" | "any";
   values?: string[];
   min?: number;
   max?: number;
@@ -63,6 +63,8 @@ export interface Filter {
   end?: string;
   last?: number;
   unit?: DateUnit;
+  /** kind "any": rows matching every filter of at least one group (OR of ANDs). */
+  groups?: Filter[][];
 }
 
 export interface AxisSettings {

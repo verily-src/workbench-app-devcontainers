@@ -53,6 +53,13 @@ def _json_value(value):
 
 def _where(filters: list[dict], columns: dict[str, str],
            numeric_types: dict[str, int] | None = None):
+    """WHERE clause for Explore filters, including AND/OR criteria groups."""
+    return filter_rules.combine_named(
+        filters, lambda flat, prefix: _where_flat(flat, columns, numeric_types, prefix))
+
+
+def _where_flat(filters: list[dict], columns: dict[str, str],
+                numeric_types: dict[str, int] | None = None, prefix: str = ""):
     numeric_types = numeric_types or {}
     clauses, params = [], {}
     for i, item in enumerate(filters):
@@ -67,7 +74,7 @@ def _where(filters: list[dict], columns: dict[str, str],
             ints = _as_ints(values) if integer else None
             keys = []
             for j, value in enumerate(values):
-                key = f"f{i}_{j}"
+                key = f"{prefix}f{i}_{j}"
                 keys.append(f":{key}")
                 params[key] = ints[j] if ints is not None else value
             # Native comparison on integer columns keeps btree indexes usable.
@@ -88,22 +95,22 @@ def _where(filters: list[dict], columns: dict[str, str],
                 if lo_i > hi_i:
                     clauses.append("FALSE")
                     continue
-                clauses.append(f"{col} BETWEEN :f{i}_lo AND :f{i}_hi")
-                params[f"f{i}_lo"], params[f"f{i}_hi"] = lo_i, hi_i
+                clauses.append(f"{col} BETWEEN :{prefix}f{i}_lo AND :{prefix}f{i}_hi")
+                params[f"{prefix}f{i}_lo"], params[f"{prefix}f{i}_hi"] = lo_i, hi_i
                 continue
-            clauses.append(f"{_numeric(col, numeric_types.get(name))} BETWEEN :f{i}_lo AND :f{i}_hi")
-            params[f"f{i}_lo"] = lo
-            params[f"f{i}_hi"] = hi
+            clauses.append(f"{_numeric(col, numeric_types.get(name))} BETWEEN :{prefix}f{i}_lo AND :{prefix}f{i}_hi")
+            params[f"{prefix}f{i}_lo"] = lo
+            params[f"{prefix}f{i}_hi"] = hi
         elif kind == "date" and filter_rules.is_active(item):
             # Compare the column itself with date parameters (PostgreSQL widens a
             # date to a timestamp), so indexes on date/timestamp columns still apply.
             start, end = filter_rules.date_bounds(item)
             if start:
-                clauses.append(f"{col} >= :f{i}_start")
-                params[f"f{i}_start"] = start
+                clauses.append(f"{col} >= :{prefix}f{i}_start")
+                params[f"{prefix}f{i}_start"] = start
             if end:
-                clauses.append(f"{col} < :f{i}_end")
-                params[f"f{i}_end"] = end
+                clauses.append(f"{col} < :{prefix}f{i}_end")
+                params[f"{prefix}f{i}_end"] = end
     return " AND ".join(clauses) if clauses else "TRUE", params
 
 
@@ -493,7 +500,7 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
             if sort.get("column") not in columns or sort.get("direction") not in ("asc", "desc"):
                 raise ValueError("Invalid sort column or direction.")
             order = f"live.{_q(columns[sort['column']])} {sort['direction'].upper()} NULLS LAST, {order}"
-        needed_numeric = [f["column"] for f in filters if f.get("kind") in ("range", "categorical")]
+        needed_numeric = [f["column"] for f in filter_rules.leaves(filters) if f.get("kind") in ("range", "categorical")]
         if summary:
             needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") in ("histogram", "bar"))
         numeric_types = _numeric_columns(conn, live_source, needed_numeric)
@@ -643,7 +650,7 @@ def fetch_frame(live_source: dict, filters: list[dict] | None = None,
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         numeric_types = _numeric_columns(
             conn, live_source,
-            [f["column"] for f in filters if f.get("kind") == "range"])
+            [f["column"] for f in filter_rules.leaves(filters) if f.get("kind") == "range"])
         where, params = _where(filters, live_source["columns"], numeric_types)
         rows = _query(conn, live_source,
                       f"SELECT {select} FROM {table} WHERE {where} LIMIT :limit",

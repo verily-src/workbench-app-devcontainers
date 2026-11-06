@@ -4,6 +4,9 @@ const UNIT_LABEL = { day: "day", week: "week", month: "month", year: "year" } as
 
 /** Short text for a filter chip, the PDF and saved-view summaries. */
 export function describeFilter(f: Filter, words = false): string {
+  if (f.kind === "any") {
+    return (f.groups ?? []).map((g) => `(${g.map((x) => describeFilter(x, words)).join(" and ")})`).join(" or ");
+  }
   if (f.kind === "categorical") return `${f.column}: ${(f.values ?? []).join(", ")}`;
   if (f.kind === "date") {
     if (f.last) return `${f.column}: last ${f.last} ${UNIT_LABEL[f.unit ?? "day"]}${f.last === 1 ? "" : "s"}`;

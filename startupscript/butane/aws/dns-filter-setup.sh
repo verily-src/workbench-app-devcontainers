@@ -38,9 +38,12 @@ if [[ "${NETWORK_POLICY}" != "DISABLE_ALL" ]]; then
     exit 0
 fi
 
-# Starts the filter open. probe-proxy-readiness.sh persists START_MODE=restricted here once setup
-# finishes, so later boots start already restricted - see the comment there for why.
-echo "START_MODE=open" > /home/core/dns-filter.env
+# Only initializes to open on the genuine first attempt (file doesn't exist yet).
+# probe-proxy-readiness.sh marks it restricted once setup succeeds; every boot after that leaves
+# it untouched, so the filter starts already restricted.
+if [[ ! -f /home/core/dns-filter.env ]]; then
+    echo "START_MODE=open" > /home/core/dns-filter.env
+fi
 
 DAEMON_JSON="/etc/docker/daemon.json"
 # Content-checked rather than gated on a marker file, so this stays correct even if something

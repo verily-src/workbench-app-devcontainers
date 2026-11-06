@@ -114,8 +114,10 @@ def test_chart_palette_roundtrips():
     updated = client.put("/api/config", json={"chart_palette": "indigo"}).json()
     assert updated["chart_palette"] == "indigo"
 
-    reset = client.put("/api/config", json={"chart_palette": "bogus"}).json()
-    assert reset["chart_palette"] == "verily"
+    # Unknown palettes are rejected by the pydantic model, leaving the setting alone.
+    assert client.put("/api/config", json={"chart_palette": "bogus"}).status_code == 422
+    assert client.get("/api/config").json()["chart_palette"] == "indigo"
+    assert client.put("/api/config", json={"chart_palette": "verily"}).json()["chart_palette"] == "verily"
 
 
 def test_mcp_mounted():

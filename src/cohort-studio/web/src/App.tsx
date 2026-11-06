@@ -93,14 +93,13 @@ const NAV_LABEL = {
   lineage: "Lineage", settings: "Settings",
 } as const;
 
-/** "× partner": the partner logo file when present, else its name in text. */
+/** The partner logo file when present, else its name in text. */
 function PartnerMark() {
   const [logoFailed, setLogoFailed] = useState(false);
   return (
     <span className="brand-partner">
-      <span className="brand-x" aria-hidden>×</span>
       {logoFailed ? <span className="brand-partner-name">partner</span>
-        : <img src={PARTNER_LOGO} alt="partner" height={18} onError={() => setLogoFailed(true)} />}
+        : <img src={PARTNER_LOGO} alt="partner" height={28} onError={() => setLogoFailed(true)} />}
     </span>
   );
 }
@@ -887,11 +886,11 @@ export default function App() {
 
       <div className="main">
         <div className="topbar">
+          {/* Co-branded: "partner × Verily", partner first. */}
+          {brand === "partner" && <><PartnerMark /><span className="brand-x" aria-hidden>×</span></>}
           <BrandMark size={20} />
           <span className="brand">
-            <span className="brand-verily">verily</span>
-            {brand === "partner" && <PartnerMark />}
-            {" "}Cohort Browser
+            <span className="brand-verily">verily</span>{" "}Cohort Browser
           </span>
           <nav className="topnav">
             {(["explore", "join", "agent", "workflows", "lineage"] as const)

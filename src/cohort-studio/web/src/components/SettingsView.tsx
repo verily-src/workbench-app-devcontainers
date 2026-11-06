@@ -466,7 +466,7 @@ export function SettingsView(
       <div className="settings-card">
         <p className="settings-caption">App colours and header. Applies to everyone using this app.</p>
         <div className="settings-segmented" role="radiogroup" aria-label="Brand">
-          {([["verily", "Verily"], ["partner", "Verily × partner"]] as const).map(([value, label]) => (
+          {([["verily", "Verily"], ["partner", "partner × Verily"]] as const).map(([value, label]) => (
             <button key={value} type="button" role="radio" aria-checked={(cfg.brand ?? "verily") === value}
                     onClick={async () => {
                       try {

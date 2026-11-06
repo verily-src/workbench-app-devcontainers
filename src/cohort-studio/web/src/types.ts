@@ -65,7 +65,14 @@ export interface Filter {
   unit?: DateUnit;
   /** kind "any": rows matching every filter of at least one group (OR of ANDs). */
   groups?: Filter[][];
+  /** Bounds that follow a tab parameter; min/max/start/end hold its current value. */
+  param?: ParamBinding;
 }
+
+export interface ParamBinding { min?: string; max?: string; start?: string; end?: string }
+
+/** A named value filters can follow (index_date, min_age, …). */
+export interface Parameter { name: string; kind: "number" | "date"; value: number | string }
 
 export interface AxisSettings {
   label?: string;
@@ -383,6 +390,7 @@ export interface Dataset {
   chatSessionId?: string;
   filterAskHistory?: FilterAskHistoryEntry[];
   groupSummary?: { group_by: string[]; measure: string | null };
+  parameters?: Parameter[];
   /** Set when this tab is a saved extract table; null once checked and it isn't. */
   extract?: ExtractInfo | null;
   /** A Refresh extract job is running for this tab. */

@@ -895,3 +895,14 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
   color: var(--accent); background: var(--card); letter-spacing: .04em; }
 .criteria-group-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .criteria-filters { max-height: 320px; overflow: auto; }
+/* Parameters (named values filters follow) */
+.parameters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.parameter-row { display: flex; align-items: center; gap: 6px; }
+.parameter-name { flex: 0 0 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px;
+  font-family: var(--mono, ui-monospace, monospace); color: var(--ink-soft); }
+.parameter-row input { flex: 1; min-width: 0; }
+.parameter-add { display: flex; gap: 6px; }
+.parameter-add input { flex: 1; min-width: 0; }
+.filter-follows-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.filter-follows { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ink-muted); }
+.filter-follows select { max-width: 110px; font-size: 12px; padding: 1px 4px; }

@@ -14,10 +14,12 @@ import type { DiscoveryStatus } from "./api";
 import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
 import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
-import type { ChartSpec, Dataset, JoinFilter, JoinOutput, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
+import type { ChartSpec, Dataset, Filter, JoinFilter, JoinOutput, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
 import { AiFeaturesContext, PlinkContext, aiFeaturesFrom, lineageFrom, plinkFrom } from "./features";
 import { extractTarget } from "./extract";
+import { applyParameters, unbindParameter } from "./params";
+import { ParametersPanel } from "./components/ParametersPanel";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
@@ -388,6 +390,7 @@ export default function App() {
         filterAskHistory: d.filter_ask_history ?? [],
         groupSummary: d.group_summary ?? undefined,
         sort: d.sort ?? undefined,
+        parameters: d.parameters ?? [],
         page: 0,
       }));
       setDatasets(restored);
@@ -826,12 +829,25 @@ export default function App() {
         </label>
 
         {<>
+        {activeDs && <>
+          <div className="section-label">Parameters</div>
+          <ParametersPanel key={`params-${activeDs.id}`} parameters={activeDs.parameters ?? []}
+            onChange={(next) => {
+              // Removed parameters unbind their filters; the rest push their values into them.
+              const removed = (activeDs.parameters ?? []).filter((p) => !next.some((n) => n.name === p.name));
+              const fix = (filters: Filter[]) => applyParameters(
+                removed.reduce((fs, p) => unbindParameter(fs, p.name), filters), next);
+              updateDataset(activeDs.id, { parameters: next, filters: fix(activeDs.filters), page: 0,
+                cohorts: (activeDs.cohorts ?? []).map((c) => ({ ...c, filters: fix(c.filters) })) });
+            }} />
+        </>}
         <div className="section-label">Filters</div>
 
         {activeDs ? (
           <FilterPanel key={activeDs.id}
             columns={activeDs.columns}
             filters={activeDs.filters}
+            parameters={activeDs.parameters ?? []}
             onChange={(filters) => updateDataset(activeDs.id, { filters })}
           />
         ) : (
@@ -924,7 +940,10 @@ export default function App() {
                                   queryScope: opened.query_scope, columns: opened.columns, extract: opened.extract,
                                   result: undefined, page: 0, queryLoading: true, queryError: undefined,
                                   // Fields may have changed: keep only filters and charts that still apply.
-                                  filters: d.filters.filter((f) => opened.columns.some((c) => c.name === f.column)),
+                                  // Keep filters (and OR groups) whose fields all still exist.
+                                  filters: d.filters.filter((f) => (f.kind === "any"
+                                    ? (f.groups ?? []).flat().map((x) => x.column) : [f.column])
+                                    .every((name) => opened.columns.some((c) => c.name === name))),
                                   charts: d.charts.filter((c) => opened.columns.some((col) => col.name === c.x)
                                     && (!c.y || opened.columns.some((col) => col.name === c.y))),
                                   sort: d.sort && opened.columns.some((c) => c.name === d.sort!.column) ? d.sort : undefined,

@@ -468,7 +468,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
                       onClose={() => setShowDerive(false)} />
       )}
 
-      {showGroups && <CriteriaGroups columns={dataset.columns} filters={filters}
+      {showGroups && <CriteriaGroups columns={dataset.columns} filters={filters} parameters={dataset.parameters ?? []}
         onChange={(next) => onUpdate({ filters: next, page: 0 })} onClose={() => setShowGroups(false)} />}
       {showSummary && <GroupSummary dataset={dataset} onUpdate={onUpdate} onOpenTable={onOpenTable}
         onClose={() => { setShowSummary(false); onUpdate({ groupSummary: undefined }); }} />}

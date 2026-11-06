@@ -2,7 +2,7 @@
  *  Edits the one {kind: "any"} filter of a tab; the sidebar filters still apply
  *  to every row. Each group uses the same filter controls as the sidebar. */
 import { useState } from "react";
-import type { ColumnProfile, Filter } from "../types";
+import type { ColumnProfile, Filter, Parameter } from "../types";
 import { FilterPanel } from "./FilterPanel";
 import { describeFilter } from "../filterText";
 
@@ -16,8 +16,8 @@ export function withGroups(filters: Filter[], groups: Filter[][]): Filter[] {
   return kept.length ? [...rest, { column: "", kind: "any", groups: kept }] : rest;
 }
 
-export function CriteriaGroups({ columns, filters, onChange, onClose }: {
-  columns: ColumnProfile[]; filters: Filter[];
+export function CriteriaGroups({ columns, filters, onChange, onClose, parameters = [] }: {
+  columns: ColumnProfile[]; filters: Filter[]; parameters?: Parameter[];
   onChange: (filters: Filter[]) => void; onClose: () => void;
 }) {
   const saved = groupsFilter(filters)?.groups ?? [];
@@ -55,7 +55,8 @@ export function CriteriaGroups({ columns, filters, onChange, onClose }: {
                       }}>Remove</button>
             </div>
             <div className="criteria-filters">
-              <FilterPanel columns={columns} filters={group} onChange={(next) => setGroup(i, next)} />
+              <FilterPanel columns={columns} filters={group} parameters={parameters}
+                           onChange={(next) => setGroup(i, next)} />
             </div>
           </div>
         ))}

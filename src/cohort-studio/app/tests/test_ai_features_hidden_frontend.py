@@ -82,11 +82,19 @@ def test_ai_features_hidden_when_off(page, app_url):
     expect(page.get_by_role("button", name="Export PLINK 2")).to_have_count(0)
     page.keyboard.press("Escape")
 
-    # Settings is the gear in the top-right corner, not a tab.
-    settings = page.get_by_role("button", name="Settings", exact=True)
-    assert settings.bounding_box()["x"] > page.viewport_size["width"] - 80
+    # Settings, Tutorial and ⌘K sit in the bottom-left corner, not in the tabs.
+    tools = page.get_by_role("toolbar", name="App tools")
+    settings = tools.get_by_role("button", name="Settings", exact=True)
+    box = settings.bounding_box()
+    assert box["x"] < 320 and box["y"] > page.viewport_size["height"] - 80, box
+    expect(tools.get_by_role("button", name="Tutorial")).to_be_visible()
+    expect(tools.get_by_role("button", name="Command palette")).to_be_visible()
     settings.click()
-    expect(page.locator(".topbar-settings")).to_have_attribute("aria-pressed", "true")
+    # On Settings (no sidebar) the tools move to a slim left rail, still bottom-left.
+    settings = page.get_by_role("toolbar", name="App tools").get_by_role("button", name="Settings")
+    expect(settings).to_have_attribute("aria-pressed", "true")
+    box = settings.bounding_box()
+    assert box["x"] < 60 and box["y"] > page.viewport_size["height"] - 80, box
     expect(page.locator(".section-label", has_text="Appearance")).to_be_visible(timeout=10000)
     for label in ("AI model", "Jev join recommendations", "Agent", "MCP server (this app)",
                   "Other MCP connections"):

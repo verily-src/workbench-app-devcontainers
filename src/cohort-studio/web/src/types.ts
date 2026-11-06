@@ -204,6 +204,8 @@ export interface SavedViewEntry extends SavedViewInfo {
   published_at?: string | null;
   /** True when the draft differs from the latest published revision. */
   draft_changed?: boolean | null;
+  /** Revisions could not be read; the view may still be published. */
+  publication_unknown?: boolean;
 }
 
 /** An immutable published revision of a saved view. */

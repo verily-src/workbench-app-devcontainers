@@ -216,6 +216,28 @@ def test_s3_publish_conflict_returns_409(s3_store, monkeypatch):
         "revision"] == 1
 
 
+def test_publish_and_rollback_wait_for_running_draft_job(sqlite_store, monkeypatch):
+    _save("aurora", "db1", "report", _dataset())
+    base = {"kind": "aurora", "resource_id": "db1", "name": "report"}
+    assert api.post("/api/views/publish", json=base).status_code == 200
+    monkeypatch.setattr(main.view_jobs, "running", lambda key: key == "db1:report")
+    for url, body in (("/api/views/publish", base),
+                      ("/api/views/rollback", {**base, "revision": 1})):
+        blocked = api.post(url, json=body)
+        assert blocked.status_code == 409 and "still running" in blocked.json()["detail"]
+    assert len(views.list_revisions("aurora", "db1", "report")) == 1
+
+
+def test_s3_revision_failure_reports_unknown_status(s3_store, monkeypatch):
+    _save("s3", "s3:lake", "report", _dataset())
+    def fail(*args, **kwargs):
+        raise RuntimeError("S3 view revisions could not be listed.")
+    monkeypatch.setattr(views, "_s3_revision_numbers", fail)
+    row = views.list_views("s3", "s3:lake")[0]
+    assert row["name"] == "report" and row["publication_unknown"] is True
+    assert row["published_revision"] is None
+
+
 def test_s3_cli_publish_uses_conditional_put(monkeypatch):
     calls = []
     draft = json.dumps({"version": 2, "datasets": [], "created_by": "a"})

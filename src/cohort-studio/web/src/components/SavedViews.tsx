@@ -42,13 +42,16 @@ export function parseViewHash(hash: string): {
 }
 
 export function publicationLabel(view: SavedViewEntry) {
+  if (view.publication_unknown) return "Publish status unavailable";
   if (!view.published_revision) return "Draft · not published";
   return `Published rev ${view.published_revision}`
     + (view.draft_changed ? " · draft has changes" : "");
 }
 
-function ViewVersions({ view, readOnly, onOpenRevision, onLoadView, onChanged, onStatus }: {
+function ViewVersions({ view, readOnly, draftPending, onOpenRevision, onLoadView, onChanged, onStatus }: {
   view: SavedViewEntry; readOnly?: boolean;
+  /** A save or snapshot job is still writing a draft. */
+  draftPending?: boolean;
   onOpenRevision: Props["onOpenRevision"]; onLoadView: Props["onLoadView"];
   onChanged: () => void; onStatus: (text: string) => void;
 }) {
@@ -104,8 +107,8 @@ function ViewVersions({ view, readOnly, onOpenRevision, onLoadView, onChanged, o
                aria-label={`Publish note for ${view.name}`}
                placeholder="note (optional)"
                onChange={(event) => setNote(event.target.value)}
-               onKeyDown={(event) => { if (event.key === "Enter" && !busy) void publish(); }} />
-        <button className="primary" disabled={busy} onClick={() => void publish()}>
+               onKeyDown={(event) => { if (event.key === "Enter" && !busy && !draftPending) void publish(); }} />
+        <button className="primary" disabled={busy || draftPending} onClick={() => void publish()}>
           {latest ? `Publish rev ${latest + 1}` : "Publish"}
         </button>
       </div>}
@@ -128,7 +131,7 @@ function ViewVersions({ view, readOnly, onOpenRevision, onLoadView, onChanged, o
                         onClick={() => onOpenRevision(store, view.name, rev.revision)}>Open</button>
                 <button className="quiet" aria-label={`Copy link to rev ${rev.revision} of ${view.name}`}
                         onClick={() => copy(rev.revision)}>Link</button>
-                {!readOnly && <button className="quiet" disabled={busy}
+                {!readOnly && <button className="quiet" disabled={busy || draftPending}
                         aria-label={`Roll back draft of ${view.name} to rev ${rev.revision}`}
                         onClick={() => void rollback(rev.revision)}>Roll back</button>}
               </div>
@@ -267,7 +270,9 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
   };
 
   const remove = async (view: SavedViewEntry) => {
-    if (view.published_revision && !window.confirm(
+    if (view.publication_unknown && !window.confirm(
+      `Delete ${view.name}? Its published revisions, if any, are deleted too.`)) return;
+    if (!view.publication_unknown && view.published_revision && !window.confirm(
       `Delete ${view.name} and its ${view.published_revision} published revision(s)?`)) return;
     try {
       await api.deleteView(view.kind, view.resource_id, view.name);
@@ -371,6 +376,7 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
                 {publicationLabel(view)}
               </div>
               {expanded === rowKey && <ViewVersions view={view} readOnly={readOnly}
+                draftPending={saving || !!taskRunning}
                 onOpenRevision={onOpenRevision} onLoadView={onLoadView}
                 onChanged={() => void refresh()} onStatus={setStatus} />}
               <div className="settings-hint"

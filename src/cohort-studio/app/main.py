@@ -2016,6 +2016,12 @@ class ViewRevision(BaseModel):
     note: str | None
 
 
+def _draft_settled(req: ViewRef):
+    if view_jobs.running(f"{req.resource_id}:{req.name}"):
+        raise HTTPException(409, "A save or refresh of this view is still running. "
+                                 "Try again when it finishes.")
+
+
 def _revision_errors(call):
     try:
         return call()
@@ -2033,6 +2039,7 @@ def _revision_errors(call):
 
 @app.post("/api/views/publish", response_model=ViewRevision)
 def publish_view(req: PublishViewRequest):
+    _draft_settled(req)
     result = _revision_errors(lambda: views.publish_view(
         req.kind, req.resource_id, req.name, req.note))
     lineage.record(_lineage_engine(), "view_published", "view", req.name,
@@ -2059,6 +2066,7 @@ def get_view_revision(query: Annotated[ViewRevisionQuery, Query()]):
 
 @app.post("/api/views/rollback")
 def rollback_view(req: RollbackViewRequest):
+    _draft_settled(req)
     result = _revision_errors(lambda: views.rollback_view(
         req.kind, req.resource_id, req.name, req.revision))
     lineage.record(_lineage_engine(), "view_rolled_back", "view", req.name,

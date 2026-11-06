@@ -7,7 +7,7 @@
 # This runs during VM startup, before container startup.
 #
 # Usage:
-#   ./register-key.sh <gcp/aws>
+#   ./register-key.sh <gcp/aws/azure>
 #
 # Prerequisites:
 #   - /home/core/metadata-utils.sh must be present
@@ -22,7 +22,7 @@ set -o pipefail
 set -o xtrace
 
 if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <gcp/aws>"
+  echo "Usage: $0 <gcp/aws/azure>"
   exit 1
 fi
 
@@ -77,6 +77,8 @@ if [[ "${CLOUD}" == "gcp" ]]; then
   RESOURCE_PATH="resources/controlled/gcp/gce-instances"
 elif [[ "${CLOUD}" == "aws" ]]; then
   RESOURCE_PATH="resources/controlled/aws/instances"
+elif [[ "${CLOUD}" == "azure" ]]; then
+  RESOURCE_PATH="resources/controlled/azure/instances"
 else
   >&2 echo "ERROR: Unsupported cloud: ${CLOUD}"
   exit 1
@@ -130,6 +132,9 @@ echo "Registering public key with WSM..."
 #
 # AWS is authorized with a pre-signed GetCallerIdentity request, which already
 # contains the necessary instance information.
+#
+# Azure uses an IMDS attested document token, which already
+# contains attested VM ID, along with resource ID in nonce.
 HTTP_CODE="$(curl_with_auth TOKEN -s -X POST \
   -o "${RESPONSE_FILE}" -w '%{http_code}' \
   -H "Content-Type: application/json" \

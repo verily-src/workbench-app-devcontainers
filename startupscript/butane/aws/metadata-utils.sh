@@ -86,3 +86,14 @@ function is_share_enabled_vm() {
   return 1
 }
 readonly -f is_share_enabled_vm
+
+# EC2 instances never switch to a shared-apps account.
+function service_account_changed() {
+  return 1
+}
+readonly -f service_account_changed
+
+function record_service_account() {
+  :
+}
+readonly -f record_service_account

@@ -91,6 +91,11 @@ if [[ "${LOG_IN}" == "true" ]]; then
   fi
   readonly LOG_IN_MODE
 
+  # A login cached for the VM's previous service account would otherwise be kept.
+  if [[ "${ACCOUNT_CHANGED:-false}" == "true" ]]; then
+    ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth revoke"
+  fi
+
   # Log in with app-default-credentials
   emit "Logging into workbench CLI with mode ${LOG_IN_MODE}"
   ${RUN_AS_LOGIN_USER} "'${WORKBENCH_INSTALL_PATH}' auth login --mode=${LOG_IN_MODE}"

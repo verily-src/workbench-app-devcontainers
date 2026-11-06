@@ -6,7 +6,7 @@ also require Docker with Compose.
 ```bash
 npm ci --prefix startupscript/butane
 bats scripts/test/parse-devcontainer.bats scripts/test/devcontainer.bats scripts/test/container-utils.bats \
-  scripts/test/share-enabled.bats
+  scripts/test/share-enabled.bats scripts/test/account-change.bats
 
 docker pull python:3.12-alpine
 docker build -t workbench-parser-test -f scripts/test/integration/parse-devcontainer.Dockerfile scripts/test/integration
@@ -26,6 +26,11 @@ bats scripts/test/integration
   can't be read, for a separate frontend on share-enabled VMs, or without a valid
   app-network address; and the bounded 403 retry in key registration, which other
   statuses and VMs don't get.
+- `account-change.bats`: a VM whose service account changed since the last boot.
+  The host and the app container log the CLI out and in again; the container
+  deletes cached git, SSH and gcloud credentials and mounts read-only for the
+  reader account. No change, an unreadable account and AWS leave everything as
+  before, and a failed logout is retried at the next start.
 - `integration/devcontainer.bats`: repeated offline restoration of the same initial
   snapshot, preserving setup-time files, the running browser, home data, and
   startup hooks while discarding later writable-layer changes; named home volume

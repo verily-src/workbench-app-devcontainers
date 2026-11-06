@@ -110,6 +110,9 @@ function saveProgress(progress: SavedProgress) {
 }
 
 /** `onOpen` lets the app show what the steps point at (the folded Data sources panel). */
+/** Opens the tutorial from a button elsewhere (the corner tools). */
+export const openTutorial = () => window.dispatchEvent(new Event("studio-tutorial-open"));
+
 export function Tutorial({ progress, onOpen }: { progress: TutorialProgress; onOpen?: () => void }) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(() => readProgress().step);
@@ -162,7 +165,10 @@ export function Tutorial({ progress, onOpen }: { progress: TutorialProgress; onO
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("change", onChange, true);
-      returnFocusRef.current?.focus();
+      // The trigger may have moved (corner tools change place between tabs).
+      const back = returnFocusRef.current?.isConnected ? returnFocusRef.current
+        : document.querySelector<HTMLElement>("[data-tutorial-target='tutorial']");
+      back?.focus();
     };
   }, [open]);
 
@@ -225,13 +231,22 @@ export function Tutorial({ progress, onOpen }: { progress: TutorialProgress; onO
   };
   changeStepRef.current = changeStep;
 
-  return <>
-    <button className="tutorial-trigger" type="button" onClick={() => {
+  // The trigger lives in the corner tools, which move between layouts; the
+  // tutorial itself stays mounted so changing tabs mid-tutorial keeps it open.
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  useEffect(() => {
+    const show = () => {
       const saved = readProgress();
       setStep(saved.dismissed ? 0 : saved.step);
-      onOpen?.();
+      onOpenRef.current?.();
       setOpen(true);
-    }}>Tutorial</button>
+    };
+    window.addEventListener("studio-tutorial-open", show);
+    return () => window.removeEventListener("studio-tutorial-open", show);
+  }, []);
+
+  return <>
     {open && <>
       {targetRect && <div className="tutorial-spotlight" data-target={selectors[0]}
         aria-hidden="true" style={{

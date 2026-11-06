@@ -8,7 +8,7 @@ import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
 import { CommandPalette, Command } from "./components/CommandPalette";
 import { DataJobs } from "./components/DataJobs";
-import { Tutorial } from "./components/Tutorial";
+import { Tutorial, openTutorial } from "./components/Tutorial";
 import { DiscoveryBanner, discoverySettled } from "./components/DiscoveryBanner";
 import type { DiscoveryStatus } from "./api";
 import type { AgentDashboardAction, AgentWorkflowVerification } from "./api";
@@ -828,6 +828,33 @@ export default function App() {
       run: () => fileRef.current?.click() },
   ];
 
+  /** ⌘K, Tutorial and Settings, bottom-left: the sidebar footer, the folded
+   *  rail, or a slim rail on views without the sidebar. */
+  const cornerTools = (vertical: boolean) => (
+    <div className={`corner-tools${vertical ? " vertical" : ""}`} role="toolbar" aria-label="App tools">
+      <button type="button" className="corner-tool corner-cmdk" title="Command palette (⌘K)"
+              aria-label="Command palette" onClick={() => setCmdOpen(true)}>⌘K</button>
+      <button type="button" className="corner-tool" aria-label="Tutorial" title="Tutorial"
+              data-tutorial-target="tutorial" onClick={openTutorial}>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"
+             strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6" />
+          <circle cx="12" cy="17" r=".6" fill="currentColor" />
+        </svg>
+      </button>
+      <button type="button" className={`corner-tool${view === "settings" ? " active" : ""}`}
+              data-tutorial-target="nav-settings" aria-label="Settings" title="Settings"
+              aria-pressed={view === "settings"}
+              onClick={() => { closeJoinPanel(); setView("settings"); }}>
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none"
+             stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+    </div>
+  );
+
   return (
     <AiFeaturesContext.Provider value={aiFeatures}>
     <PlinkContext.Provider value={plinkExport}>
@@ -838,8 +865,10 @@ export default function App() {
                   title="Show data sources" aria-expanded={false}
                   onClick={() => toggleSidebar(false)}>»</button>
           <span className="sidebar-rail-label" aria-hidden="true">Data sources</span>
+          {view === "explore" && cornerTools(true)}
         </aside>
       )}
+      {view !== "explore" && <aside className="tool-rail" aria-label="App tools rail">{cornerTools(true)}</aside>}
       <aside className="sidebar" hidden={sidebarCollapsed} id="data-sources-panel">
         <h2 className="sidebar-heading">
           <span>Data sources</span>
@@ -915,6 +944,7 @@ export default function App() {
                     onLoadView={loadView} />
 
         <VersionFooter />
+        {view === "explore" && !sidebarCollapsed && cornerTools(false)}
       </aside>
 
       <div className="main">
@@ -942,19 +972,6 @@ export default function App() {
             ))}
           </nav>
           <div style={{ flex: 1 }} />
-          <button className="cmdk-hint" onClick={() => setCmdOpen(true)}
-                  title="Command palette">
-            <span>⌘K</span>
-          </button>
-          <Tutorial progress={{
-            sourceChosen: Boolean(sourceKey), dataLoaded: datasets.length > 0,
-            hasSources: sources.length > 0, joinPanelOpen: showJoin,
-            joinCreated: datasets.some((dataset) => dataset.sourceRef?.kind === "join"),
-            view, hasDataset: Boolean(activeDs),
-            chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),
-            assistantConfigured: tutorialAssistantConfigured,
-            aiFeatures,
-          }} onOpen={() => { if (sidebarCollapsed) setSidebarCollapsed(false); }} />
           {activity && !activityInCard && (
             <div className="activity"><span className="pulse" />{activity}</div>
           )}
@@ -964,16 +981,6 @@ export default function App() {
               {error} ✕
             </div>
           )}
-          <button type="button" className={`topbar-settings${view === "settings" ? " active" : ""}`}
-                  data-tutorial-target="nav-settings" aria-label="Settings" title="Settings"
-                  aria-pressed={view === "settings"}
-                  onClick={() => { closeJoinPanel(); setView("settings"); }}>
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none"
-                 stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
         </div>
         <DataJobs expected={openingTable} showDone={view === "explore"} showActive={view !== "join"}
                   onOpen={result => openResult(result, result.source, result.source_ref)} />
@@ -1169,6 +1176,15 @@ export default function App() {
             }
           }).catch((e) => setError(`Source was added, but the list could not refresh: ${e.message}`));
         }} /></Suspense>}
+      <Tutorial progress={{
+            sourceChosen: Boolean(sourceKey), dataLoaded: datasets.length > 0,
+            hasSources: sources.length > 0, joinPanelOpen: showJoin,
+            joinCreated: datasets.some((dataset) => dataset.sourceRef?.kind === "join"),
+            view, hasDataset: Boolean(activeDs),
+            chatHistoryAvailable: datasets.some((dataset) => Boolean(dataset.chatSessionId)),
+            assistantConfigured: tutorialAssistantConfigured,
+            aiFeatures,
+          }} onOpen={() => { if (sidebarCollapsed) setSidebarCollapsed(false); }} />
       <CommandPalette open={cmdOpen} commands={commands}
                       onClose={() => setCmdOpen(false)} />
     </div>

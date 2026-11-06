@@ -259,22 +259,87 @@ def test_launch_workflow_panel_opens(loaded_page: Page):
     expect(panel.get_by_role("button", name="Submit job")).to_be_visible()
 
 
+def _mark(card, label):
+    """Open the chart's Marks menu and pick a mark type."""
+    card.get_by_role("button", name="Marks").click()
+    card.get_by_role("radio", name=label, exact=True).click()
+
+
 def test_change_chart_type(loaded_page: Page):
-
-
     card = loaded_page.locator(".chart-card", has_text="age").first
-    card.locator(".chart-kind").select_option("bar")
-    expect(card.locator(".chart-kind")).to_have_value("bar", timeout=10000)
-    expect(loaded_page.get_by_text(re.compile("Query failed"))
-           ).to_have_count(0)
+    _mark(card, "Bar")
+    expect(card.locator(".chart-plot")).to_have_attribute("data-chart-style", "bar", timeout=10000)
+    expect(card.get_by_role("button", name="Marks")).to_contain_text("Bar")
+    expect(loaded_page.get_by_text(re.compile("Query failed"))).to_have_count(0)
 
 
 def test_categorical_chart_has_no_numeric_type_option(loaded_page: Page):
-
-
     card = loaded_page.locator(".chart-card", has_text="tissue").first
     expect(card).to_be_visible()
-    expect(card.locator(".chart-kind")).to_have_count(0)
+    card.get_by_role("button", name="Marks").click()
+    types = card.get_by_role("radiogroup", name="Mark type")
+    enabled = [b.inner_text() for b in types.get_by_role("radio").all() if b.is_enabled()]
+    assert enabled == ["Automatic", "Bar", "Column", "Line", "Area", "Pie", "Donut"]
+    expect(types.get_by_role("radio", name="Circle")).to_have_attribute(
+        "title", "Circle needs two numeric fields.")
+
+
+def test_chart_styles_redraw_without_requery(loaded_page: Page):
+    queries = []
+    loaded_page.on("request", lambda r: "/query" in r.url and queries.append(r.url))
+    card = loaded_page.locator(".chart-card", has_text="tissue").first
+    plot = card.locator(".chart-plot")
+    expect(plot).to_have_attribute("data-chart-style", "bar")
+    for label, style in (("Column", "column"), ("Line", "line"), ("Area", "area"),
+                         ("Pie", "pie"), ("Donut", "donut")):
+        _mark(card, label)
+        expect(plot).to_have_attribute("data-chart-style", style)
+        expect(card.get_by_role("button", name="Marks")).to_contain_text(label)
+    loaded_page.wait_for_timeout(500)
+    assert queries == []  # a mark type on the same data only changes the drawing
+    # Numeric columns draw line and area over histogram bins.
+    age = loaded_page.locator(".chart-card", has_text="age").first
+    _mark(age, "Area")
+    expect(age.locator(".chart-plot")).to_have_attribute("data-chart-style", "area")
+    # Clicking a pie slice still filters by that category.
+    _mark(card, "Pie")
+    box = plot.bounding_box()
+    loaded_page.wait_for_timeout(1200)  # let the pie finish animating
+    point = plot.evaluate("""(el) => {
+        const chart = window.__studioEcharts.getInstanceByDom(el);
+        const layout = chart.getModel().getSeriesByIndex(0).getData().getItemLayout(0);
+        const angle = (layout.startAngle + layout.endAngle) / 2, r = (layout.r0 + layout.r) / 2 || layout.r / 2;
+        return [layout.cx + r * Math.cos(angle), layout.cy + r * Math.sin(angle)];
+    }""")
+    loaded_page.mouse.click(box["x"] + point[0], box["y"] + point[1])
+    expect(loaded_page.locator(".chips .chip").first).to_contain_text("tissue", timeout=10000)
+
+
+def test_mark_color_size_and_labels(loaded_page: Page):
+    card = loaded_page.locator(".chart-card", has_text="tissue").first
+    _mark(card, "Column")
+    card.get_by_role("button", name="Marks").click()
+    card.get_by_role("button", name="Color #eb6834").click()
+    card.get_by_role("radio", name="L", exact=True).click()
+    card.get_by_label("Show values").check()
+    series = card.locator(".chart-plot").evaluate("""(el) => {
+        const s = window.__studioEcharts.getInstanceByDom(el).getOption().series;
+        return s.map((x) => ({ name: x.name, color: x.itemStyle && x.itemStyle.color,
+                               max: x.barMaxWidth, label: Boolean(x.label && x.label.show) }));
+    }""")
+    selected = [x for x in series if x["name"] != "all"][0]
+    assert selected["color"] == "#eb6834" and selected["max"] == 34 and selected["label"] is True
+    assert all(not x["label"] for x in series if x["name"] == "all")
+
+
+def test_add_chart_with_line_style(loaded_page: Page):
+    form = loaded_page.locator("form", has=loaded_page.get_by_text("Add chart"))
+    form.locator('select[name="x"]').select_option("tissue")
+    form.locator('select[name="kind"]').select_option("line")
+    form.get_by_role("button", name="Add").click()
+    card = loaded_page.locator(".chart-card").last
+    expect(card.locator(".chart-plot")).to_have_attribute("data-chart-style", "line")
+    expect(card.get_by_role("button", name="Marks")).to_contain_text("Line")
 
 
 def test_join_two_tabs_into_new_dataset(loaded_page: Page):

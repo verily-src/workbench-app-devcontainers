@@ -3,8 +3,10 @@ import { echarts } from "../echarts";
 import type { EChartsOption, ECharts } from "../echarts";
 import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";
-import type { AxisSettings, BarDatum, PersonBarDatum, ChartResult, ChartSpec, HistDatum } from "../types";
+import type { AxisSettings, BarDatum, PersonBarDatum, ChartResult, ChartSpec, ChartStyle, HistDatum } from "../types";
 import { AxisEditor } from "./AxisEditor";
+import { MarksMenu } from "./MarksMenu";
+import type { ChartMarks, MarkType } from "../types";
 
 const INK_SOFT = "#5f6368";
 const GRID_LINE = "#e8eaed";
@@ -121,6 +123,145 @@ function heatmapOption(data: [string, string, number][],
   };
 }
 
+// ---- Chart styles: other ways to draw the same bar/histogram counts ----
+
+/** Styles per data kind. The first is the default (no `style` saved). */
+export const CHART_STYLES: Partial<Record<ChartSpec["kind"], { style: ChartStyle; label: string }[]>> = {
+  bar: [{ style: "bar", label: "Bar" }, { style: "column", label: "Column" },
+        { style: "line", label: "Line" }, { style: "area", label: "Area" },
+        { style: "pie", label: "Pie" }, { style: "donut", label: "Donut" }],
+  histogram: [{ style: "column", label: "Histogram" }, { style: "line", label: "Histogram (line)" },
+              { style: "area", label: "Histogram (area)" }],
+};
+export const styleOf = (spec: Pick<ChartSpec, "kind" | "style">): ChartStyle | undefined => {
+  const styles = CHART_STYLES[spec.kind];
+  if (!styles) return undefined;
+  return styles.some((s) => s.style === spec.style) ? spec.style : styles[0].style;
+};
+// A validated categorical order (fixed, never cycled) for pie and donut slices;
+// beyond 6 slices the tail folds into "Other".
+const SLICE_COLORS = {
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#6250d6"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"],
+};
+const MAX_SLICES = 6;
+
+type Counts = { cats: string[]; all: number[] | null; selected: number[] };
+
+function barCounts(data: (BarDatum | PersonBarDatum)[]): Counts {
+  const single = data.length > 0 && "value" in data[0];
+  return {
+    cats: data.map((d) => d.category),
+    all: single ? null : data.map((d) => ("all" in d ? d.all : 0)),
+    selected: data.map((d) => ("value" in d ? d.value : d.selected)),
+  };
+}
+
+/** Lines and areas read left to right, so categories go in natural order ("Other" last). */
+function naturalOrder(counts: Counts): Counts {
+  const idx = counts.cats.map((_, i) => i);
+  const numeric = counts.cats.every((c) => c === "Other" || (c.trim() !== "" && !Number.isNaN(Number(c))));
+  idx.sort((a, b) => {
+    const ca = counts.cats[a], cb = counts.cats[b];
+    if (ca === "Other") return 1;
+    if (cb === "Other") return -1;
+    return numeric ? Number(ca) - Number(cb) : ca.localeCompare(cb, undefined, { numeric: true });
+  });
+  return { cats: idx.map((i) => counts.cats[i]), all: counts.all && idx.map((i) => counts.all![i]),
+           selected: idx.map((i) => counts.selected[i]) };
+}
+
+function seriesOption(counts: Counts, style: "column" | "line" | "area", pal: Palette, ink: string, grid: string,
+                      labelFor?: (index: number) => string): EChartsOption {
+  const axis = AXIS(ink, grid);
+  const many = counts.cats.length > 40;
+  const valueAxis = { type: "value" as const, ...axis, axisLabel: { ...axis.axisLabel, hideOverlap: true,
+    formatter: (value: number) => compactNumber(value) } };
+  const categoryAxis = { type: "category" as const, data: counts.cats, ...axis, boundaryGap: style === "column",
+    axisLabel: { ...axis.axisLabel, hideOverlap: true, interval: "auto" as const,
+      ...(labelFor ? { formatter: (_v: string, i: number) => labelFor(i) } : {}) },
+    splitLine: { show: false } };
+  const line = (name: string, data: number[], color: string, faint: boolean) => ({
+    type: "line" as const, name, data, color, showSymbol: !many && counts.cats.length <= 24, symbolSize: 8,
+    lineStyle: { width: 2, color, cap: "round" as const, join: "round" as const, opacity: faint ? 0.9 : 1 },
+    itemStyle: { color },
+    ...(style === "area" ? { areaStyle: { color, opacity: faint ? 0.18 : 0.12 } } : {}),
+    emphasis: { focus: "series" as const },
+  });
+  const bar = (name: string, data: number[], color: string, overlay: boolean) => ({
+    type: "bar" as const, name, data, barMaxWidth: 24, itemStyle: { color, borderRadius: [4, 4, 0, 0] },
+    ...(overlay ? { barGap: "-100%" } : {}), emphasis: { itemStyle: { color } },
+  });
+  const series = style === "column"
+    ? [...(counts.all ? [bar("all", counts.all, pal.muted, false)] : []),
+       bar(counts.all ? "selected" : "persons", counts.selected, pal.accent, Boolean(counts.all))]
+    : [...(counts.all ? [line("all", counts.all, pal.muted, true)] : []),
+       line(counts.all ? "selected" : "persons", counts.selected, pal.accent, false)];
+  return {
+    grid: { left: 8, right: 16, top: counts.all && style !== "column" ? 28 : 8, bottom: 8, containLabel: true },
+    xAxis: categoryAxis, yAxis: valueAxis,
+    tooltip: { trigger: "axis", axisPointer: { type: style === "column" ? "shadow" : "line" } },
+    ...(counts.all && style !== "column" ? { legend: { top: 0, right: 8, itemWidth: 14, itemHeight: 2,
+      textStyle: { color: ink, fontFamily: FONT, fontSize: 11 } } } : {}),
+    series: series as EChartsOption["series"],
+  };
+}
+
+function pieOption(counts: Counts, donut: boolean, dark: boolean, ink: string, surface: string): { option: EChartsOption; cats: string[] } {
+  const rows = counts.cats.map((name, i) => ({ name, value: counts.selected[i] }))
+    .filter((r) => r.value > 0);
+  const named = rows.filter((r) => r.name !== "Other").sort((a, b) => b.value - a.value);
+  const other = rows.filter((r) => r.name === "Other").reduce((sum, r) => sum + r.value, 0);
+  const head = named.length + (other ? 1 : 0) > MAX_SLICES ? named.slice(0, MAX_SLICES - 1) : named;
+  const tail = named.slice(head.length).reduce((sum, r) => sum + r.value, 0) + other;
+  const colors = SLICE_COLORS[dark ? "dark" : "light"];
+  const slices = [...head.map((r, i) => ({ ...r, itemStyle: { color: colors[i] } })),
+    ...(tail ? [{ name: "Other", value: tail, itemStyle: { color: dark ? "#5f6368" : "#bdc1c6" } }] : [])];
+  return {
+    cats: slices.map((s) => s.name),
+    option: {
+      tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
+      legend: { type: "scroll", orient: "vertical", right: 4, top: "middle",
+        textStyle: { color: ink, fontFamily: FONT, fontSize: 11 } },
+      series: [{ type: "pie", radius: donut ? ["48%", "72%"] : "72%", center: ["38%", "52%"],
+        data: slices, avoidLabelOverlap: true,
+        itemStyle: { borderColor: surface, borderWidth: 2, borderRadius: donut ? 4 : 0 },
+        label: { color: ink, fontFamily: FONT, fontSize: 11, formatter: "{d}%" },
+        labelLine: { length: 6, length2: 6 } }],
+    },
+  };
+}
+
+const SIZE_SCALE = { s: 0.7, l: 1.4 } as const;
+const scalePct = (value: unknown, k: number) =>
+  typeof value === "string" && value.endsWith("%") ? `${Math.min(95, Math.round(parseFloat(value) * k))}%` : value;
+
+/** Mark settings applied to any built option: size scales bars, lines and dots;
+ *  labels print values in text ink (never the series color). */
+function applyMarks(option: EChartsOption, marks: ChartMarks | undefined, ink: string, horizontal: boolean) {
+  if (!marks || !option.series) return;
+  const k = marks.size ? SIZE_SCALE[marks.size] : 1;
+  const list = (Array.isArray(option.series) ? option.series : [option.series]) as Record<string, any>[];
+  for (const s of list) {
+    if (s.type === "bar") {
+      if (s.barWidth) s.barWidth = scalePct(s.barWidth, k);
+      if (s.barMaxWidth) s.barMaxWidth = Math.round(s.barMaxWidth * k);
+    } else if (s.type === "line") {
+      s.lineStyle = { ...(s.lineStyle ?? {}), width: 2 * k };
+      s.symbolSize = Math.round(8 * k);
+    } else if (s.type === "scatter") {
+      s.symbolSize = Math.round((typeof s.symbolSize === "number" ? s.symbolSize : 6) * k);
+    } else if (s.type === "pie") {
+      if (marks.labels) s.label = { ...(s.label ?? {}), formatter: "{b} · {d}%" };
+      continue;
+    }
+    if (marks.labels && s.name !== "all" && (s.type === "bar" || s.type === "line")) {
+      s.label = { show: true, position: horizontal ? "right" : "top", color: ink, fontFamily: FONT, fontSize: 10,
+        formatter: (p: { value: number }) => compactNumber(Number(p.value)) };
+    }
+  }
+}
+
 const trim = (n: number) => (Math.abs(n) >= 100 ? n.toFixed(0)
   : Math.round(n * 100) / 100).toString();
 
@@ -132,7 +273,8 @@ interface Props {
 
   kinds: ChartSpec["kind"][];
   onTapCategory: (column: string, value: string) => void;
-  onChangeKind: (kind: ChartSpec["kind"]) => void;
+  onChangeKind: (kind: ChartSpec["kind"], style?: ChartStyle, mark?: MarkType) => void;
+  onMarksChange?: (marks: ChartMarks | undefined) => void;
   onToggleWide: () => void;
   onClose: () => void;
   onRename?: (title: string) => void;
@@ -142,7 +284,7 @@ interface Props {
 }
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
-                            columnLabels = {}, onChangeKind, onToggleWide,
+                            columnLabels = {}, onChangeKind, onMarksChange, onToggleWide,
                             onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
@@ -192,19 +334,43 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     const ramp = ["--chart-ramp-1", "--chart-ramp-2", "--chart-ramp-3", "--chart-ramp-4"]
       .map((name) => styles.getPropertyValue(name).trim()).filter(Boolean) as
       [string, string, string, string];
+    const markColor = spec.marks?.color;
+    const basePalette: Palette = markColor ? { ...pal, accent: markColor } : pal;
     const chartPalette: Palette = dark
-      ? { ...pal, accent: lighten(pal.accent, 0.35),
+      ? { ...basePalette, accent: lighten(basePalette.accent, markColor ? 0.15 : 0.35),
           muted: styles.getPropertyValue("--chart-muted").trim() || pal.muted,
           ramp: ramp.length === 4 ? ramp : pal.ramp }
-      : pal;
+      : basePalette;
     let option: EChartsOption;
+    const style = styleOf({ kind: result.kind as ChartSpec["kind"], style: spec.style });
+    let clickCats: string[] | null = null;
     switch (result.kind) {
-      case "bar":
-        option = barOption(result.data as (BarDatum | PersonBarDatum)[], chartPalette, compactCategoryLabels, ink, grid);
+      case "bar": {
+        const data = result.data as (BarDatum | PersonBarDatum)[];
+        if (style === "pie" || style === "donut") {
+          const surface = styles.getPropertyValue("--card").trim() || (dark ? "#1f2023" : "#ffffff");
+          const pie = pieOption(barCounts(data), style === "donut", dark, ink, surface);
+          option = pie.option;
+          clickCats = pie.cats;
+        } else if (style === "column" || style === "line" || style === "area") {
+          const counts = style === "column" ? barCounts(data) : naturalOrder(barCounts(data));
+          option = seriesOption(counts, style, chartPalette, ink, grid);
+          clickCats = counts.cats;
+        } else {
+          option = barOption(data, chartPalette, compactCategoryLabels, ink, grid);
+          clickCats = data.map((d) => d.category);
+        }
         break;
-      case "histogram":
-        option = histogramOption(result.data as HistDatum[], chartPalette, ink, grid);
+      }
+      case "histogram": {
+        const data = result.data as HistDatum[];
+        option = style === "line" || style === "area"
+          ? seriesOption({ cats: data.map((d) => `${trim(d.lo)}–${trim(d.hi)}`), all: data.map((d) => d.all),
+                           selected: data.map((d) => d.selected) }, style, chartPalette, ink, grid,
+                         (i) => compactNumber(data[i]?.lo ?? 0))
+          : histogramOption(data, chartPalette, ink, grid);
         break;
+      }
       case "scatter":
         option = scatterOption(result.data as number[][],
                                columnLabels[spec.x] ?? spec.x,
@@ -234,26 +400,32 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       ...(numeric && settings?.min !== undefined ? { min: settings.min } : {}),
       ...(numeric && settings?.max !== undefined ? { max: settings.max } : {}),
     });
-    if (result.kind !== "map") {
-      option.xAxis = configure(option.xAxis, spec.x_axis, result.kind === "bar" || result.kind === "scatter", false) as EChartsOption["xAxis"];
-      option.yAxis = configure(option.yAxis, spec.y_axis, result.kind === "histogram" || result.kind === "scatter", true) as EChartsOption["yAxis"];
+    applyMarks(option, spec.marks, ink, result.kind === "bar" && style === "bar");
+    const hasAxes = result.kind !== "map" && option.xAxis !== undefined;
+    const isValue = (axis: unknown) => (axis as { type?: string } | undefined)?.type === "value";
+    if (hasAxes) {
+      option.xAxis = configure(option.xAxis, spec.x_axis, isValue(option.xAxis), false) as EChartsOption["xAxis"];
+      option.yAxis = configure(option.yAxis, spec.y_axis, isValue(option.yAxis), true) as EChartsOption["yAxis"];
     }
-    if (result.kind !== "map" && (spec.x_axis?.label || spec.y_axis?.label)) option.grid = {
-      left: spec.y_axis?.label ? 72 : 8, right: 16, top: 12,
+    if (hasAxes && (spec.x_axis?.label || spec.y_axis?.label)) option.grid = {
+      ...(option.grid as object),
+      left: spec.y_axis?.label ? 72 : 8, right: 16,
       bottom: spec.x_axis?.label ? 48 : 8, containLabel: true,
     };
     chart.current.setOption(option, true);
     chart.current.off("click");
-    if (result.kind === "bar" && !readOnly) {
-      const bars = result.data as BarDatum[];
+    if (result.kind === "bar" && !readOnly && clickCats) {
+      const cats = clickCats;
       chart.current.on("click", (params) => {
-        const cat = bars[params.dataIndex]?.category;
+        const cat = cats[params.dataIndex];
         if (cat && cat !== "Other") onTapCategory(spec.x, cat);
       });
     }
   }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus]);
 
-  const height = result?.kind === "bar"
+  const drawnStyle = styleOf(spec);
+  const height = result?.kind === "bar" && (drawnStyle === "pie" || drawnStyle === "donut") ? 260
+    : result?.kind === "bar" && drawnStyle === "bar"
     ? Math.min(Math.max(170, (result.data.length as number) * 26 + 60), 430)
     : result?.kind === "map" ? 340 : 240;
 
@@ -273,13 +445,9 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         {result?.sampled && <span className="badge" title="This chart uses sampled data">
           Sampled
         </span>}
-        {!readOnly && kinds.length > 1 && (
-          <select className="chart-kind" title="Chart type" value={spec.kind}
-                  onChange={(e) =>
-                    onChangeKind(e.target.value as ChartSpec["kind"])}>
-            {kinds.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
-        )}
+        {!readOnly && <MarksMenu spec={spec} kinds={kinds}
+          onChoose={(mark, choice) => onChangeKind(choice.kind, choice.style, mark)}
+          onMarks={(marks) => onMarksChange?.(Object.values(marks).some((v) => v !== undefined) ? marks : undefined)} />}
         {onRename && <button className="quiet" title="Rename chart" aria-label="Rename chart"
           onClick={() => { setTitleDraft(spec.title || columnLabels[spec.x] || spec.x); setEditingTitle(true); }}>✎</button>}
         {onAxesChange && spec.kind !== "map" && <button type="button" className="quiet" title="Edit axes" aria-label="Edit axes"
@@ -298,7 +466,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       {((spec.kind === "bar" || spec.kind === "scatter") && spec.x_axis?.scale === "log" ||
         (spec.kind === "histogram" || spec.kind === "scatter") && spec.y_axis?.scale === "log") &&
         <div className="axis-scale-note">Log scale shows positive values only.</div>}
-      <div ref={ref} className="chart-plot" style={{ width: "100%", height }} />
+      <div ref={ref} className="chart-plot" data-chart-style={drawnStyle ?? spec.kind}
+           style={{ width: "100%", height }} />
     </div>
   );
 }

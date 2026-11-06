@@ -62,8 +62,21 @@ export interface AxisSettings {
   max?: number;
 }
 
+/** How a chart is drawn; the data (kind) stays the same, so no requery. */
+export type ChartStyle = "bar" | "column" | "line" | "area" | "pie" | "donut";
+
+/** The Marks menu choice (what the user picked); kind/style hold what it draws. */
+export type MarkType = "automatic" | "bar" | "column" | "line" | "area" | "pie" | "donut"
+  | "circle" | "density" | "map";
+/** Mark settings: series color, mark size, and value labels. */
+export interface ChartMarks { color?: string; size?: "s" | "l"; labels?: boolean }
+
 export interface ChartSpec {
   kind: "bar" | "histogram" | "scatter" | "heatmap" | "map";
+  mark?: MarkType;
+  marks?: ChartMarks;
+  /** bar kind: bar (default), column, line, area, pie, donut. histogram: column (default), line, area. */
+  style?: ChartStyle;
   x: string;
   y?: string;
   wide?: boolean;

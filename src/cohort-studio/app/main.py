@@ -179,8 +179,20 @@ class AxisSettings(BaseModel):
         return self
 
 
+class ChartMarks(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    size: Literal["s", "l"] | None = None
+    labels: bool | None = None
+
+
 class ChartSpec(BaseModel):
     kind: str
+    # Display only (bar/column/line/area/pie/donut); the query uses `kind`.
+    style: Literal["bar", "column", "line", "area", "pie", "donut"] | None = None
+    mark: Literal["automatic", "bar", "column", "line", "area", "pie", "donut",
+                  "circle", "density", "map"] | None = None
+    marks: ChartMarks | None = None
     x: str
     y: str | None = None
     title: str | None = Field(default=None, max_length=120)

@@ -62,3 +62,32 @@
 .axis-editor input, .axis-editor select { width: 100%; box-sizing: border-box; }
 .axis-editor p, .axis-scale-note { color: var(--ink-muted); font-size: 12px; margin: 5px 0; }
 .axis-editor [role="alert"] { color: var(--danger, #b42318); }
+
+/* Marks menu (chart type + mark settings), modelled on a Marks card. */
+.chart-card .head .marks-menu { margin-left: auto; }
+.chart-card .head .marks-menu > button { display: inline-flex; align-items: center; gap: 6px; height: 26px;
+  padding: 0 8px; font-size: 12px; color: var(--ink-soft); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.chart-card .head .marks-menu > button:hover { border-color: var(--border-strong); }
+.marks-menu .popover-panel { width: 248px; gap: 10px; }
+.marks-title { font-size: 12px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .03em; }
+.marks-list { display: flex; flex-direction: column; gap: 1px; }
+.marks-list > button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 8px;
+  border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font-size: 13px;
+  text-align: left; justify-content: flex-start; }
+.marks-list > button:hover:not(:disabled) { background: var(--hover); }
+.marks-list > button.on { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.marks-list > button:disabled { color: var(--ink-faint); cursor: not-allowed; }
+.marks-props { display: grid; grid-template-columns: 1fr; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.marks-prop { margin: 0; padding: 0; border: 0; min-width: 0; }
+.marks-prop legend { padding: 0; margin-bottom: 4px; font-size: 11.5px; font-weight: 600; color: var(--ink-muted); }
+.marks-prop:disabled { opacity: .5; }
+.marks-swatches { display: flex; gap: 6px; }
+.marks-swatches > button { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid var(--card);
+  box-shadow: 0 0 0 1px var(--border-strong); }
+.marks-swatches > button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.marks-seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
+.marks-seg > button { min-width: 34px; height: 26px; padding: 0 8px; border: 0; border-radius: 0; background: transparent; font-size: 12px; }
+.marks-seg > button + button { border-left: 1px solid var(--border-strong); }
+.marks-seg > button[aria-checked="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.marks-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }

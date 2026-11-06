@@ -91,7 +91,8 @@ def list_views(kind: str, resource_id: str) -> list[dict]:
         except Exception:
             logger.warning("S3 view revisions could not be listed for %s", resource_id,
                            exc_info=True)
-            return [{**item, **_publication_status([], None)} for item in items]
+            return [{**item, **_publication_status([], None), "publication_unknown": True}
+                    for item in items]
     raise ValueError(f"Views can be stored in Aurora or S3, not {kind}.")
 
 _LIST_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="saved-view-list")

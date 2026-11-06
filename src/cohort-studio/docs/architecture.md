@@ -423,7 +423,9 @@ stored draft (not the open tabs) into a new immutable revision N+1 with
 `published_at`, `published_by` (the same `views._actor()` attribution as saves:
 the Workbench login, not a per-viewer identity) and an optional note. There is
 no route that changes a revision: publish only inserts, `PUT`/`PATCH`/`DELETE`
-on `/api/views/revision` return 405, and a lost race returns 409. Other routes:
+on `/api/views/revision` return 405, and a lost race returns 409. Publish and
+rollback also return 409 while a save or refresh job for the view is running,
+so they never act on a draft that is about to change. Other routes:
 `GET /api/views/revisions` (newest first), `GET /api/views/revision`
 (`revision` omitted = latest; returns the stored state plus `published`), and
 `POST /api/views/rollback`, which copies a revision into the draft. Pydantic
@@ -446,7 +448,8 @@ Status. Listings add `published_revision`, `published_at` and `draft_changed`.
 stored hash; `created_by` and per-tab `snapshot` metadata are excluded, so a
 snapshot refresh does not flag the draft. S3 listing reads the draft and the
 latest revision only for views that have revisions; if revision listing fails,
-the drafts still list.
+the drafts still list with `publication_unknown` ("Publish status unavailable"),
+and Delete still asks for confirmation.
 
 Snapshots. A revision keeps the materialized refs it was published with.
 `saved_snapshots._saved_refs` scans revisions as well as drafts, so re-saving

@@ -271,21 +271,36 @@ def get_revision(kind: str, resource_id: str, name: str,
 
 
 def rollback_view(kind: str, resource_id: str, name: str, revision: int) -> dict:
-    found = get_revision(kind, resource_id, name, revision)
     if kind == "aurora":
-        engine = _engine(resource_id)
-        if engine.dialect.name == "postgresql":
-            from saved_snapshots import restore_state
-            restore_state(resource_id, name, found["state"])
-        else:
-            with engine.begin() as conn:
-                conn.execute(delete(view_table).where(view_table.c.name == name))
-                conn.execute(insert(view_table).values(
-                    name=name, created_by=_actor(), state=json.dumps(found["state"])))
+        _aurora_rollback(resource_id, name, revision)
     else:
+        found = get_revision(kind, resource_id, name, revision)
         _s3_save(resource_id, name, found["state"])
     invalidate_listing(kind, resource_id)
-    return {"name": name, "revision": found["revision"]}
+    return {"name": name, "revision": revision}
+
+
+def _aurora_rollback(resource_id: str, name: str, revision: int) -> None:
+    _validate(name)
+    engine = _engine(resource_id)
+    postgres = engine.dialect.name == "postgresql"
+    actor = _actor()
+    with engine.begin() as conn:
+        if postgres:
+            from saved_snapshots import _public_path, _resource_lock
+            _resource_lock(conn, resource_id)
+            _public_path(conn)
+        raw = conn.execute(select(revision_table.c.state).where(
+            revision_table.c.view_name == name,
+            revision_table.c.revision == revision)).scalar_one_or_none()
+        if raw is None:
+            raise RevisionNotFound(f"Revision {revision} of view {name!r} was not found.")
+        if postgres:
+            from saved_snapshots import restore_state_locked
+            restore_state_locked(conn, resource_id, name, json.loads(raw))
+            return
+        conn.execute(delete(view_table).where(view_table.c.name == name))
+        conn.execute(insert(view_table).values(name=name, created_by=actor, state=raw))
 
 
 def _engine(resource_id: str) -> Engine:
@@ -584,7 +599,10 @@ def _s3_read_object(root: dict, key: str) -> dict | None:
                          "--profile", root["profile"]],
                         capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
-        return None
+        message = out.stderr or out.stdout or ""
+        if "(404)" in message or "NoSuchKey" in message or "Not Found" in message:
+            return None
+        raise RuntimeError("S3 view revision could not be read. Check access and retry.")
     return json.loads(out.stdout)
 
 
@@ -671,10 +689,15 @@ def _s3_with_publication(resource_id: str, items: list[dict]) -> list[dict]:
     numbers = _s3_revision_numbers(root)
     for item in items:
         revisions = numbers.get(item["name"])
-        latest = (_s3_read_object(root, _s3_revision_key(root, item["name"], max(revisions)))
-                  if revisions else None)
-        if latest is None:
+        if not revisions:
             item.update(_publication_status([], None))
+            continue
+        try:
+            latest = _s3_read_object(root, _s3_revision_key(root, item["name"], max(revisions)))
+        except Exception:
+            latest = None
+        if latest is None:
+            item.update(_publication_status([], None), publication_unknown=True)
             continue
         draft = _s3_get(resource_id, item["name"])
         item.update(_publication_status(

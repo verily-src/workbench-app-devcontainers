@@ -83,9 +83,26 @@ def _group_measure(df: pd.DataFrame, spec: dict) -> pd.Series:
     return grouped.transform({"group_mean": "mean", "group_min": "min", "group_max": "max"}[spec["op"]])
 
 
+def calculation(df: pd.DataFrame, spec: dict):
+    """The typed calculation for an expression spec, with column kinds from ``df``."""
+    import calculations
+    return calculations.parse(spec["expression"], df.columns, calculations.column_types(df),
+                              spec.get("parameters") or [])
+
+
 def _expression(df: pd.DataFrame, spec: dict) -> pd.Series:
     import calculations
-    return calculations.evaluate(calculations.parse(spec["expression"], df.columns), df)
+    return calculations.evaluate(calculation(df, spec), df)
+
+
+def _new_setting(name: str, op: str, df: pd.DataFrame, spec: dict) -> dict | None:
+    """Group aggregates are numbers; an expression's setting follows its result type."""
+    if op in _GROUP_OPS:
+        return {"name": name, "logical_type": "number", "filter_kind": "range"}
+    if op == "expression":
+        import calculations
+        return calculations.setting(name, calculation(df, spec).result_type)
+    return None
 
 _GROUP_OPS = {"group_count", "group_sum", "group_mean", "group_min", "group_max"}
 _OPS = {"bin": _bin, "formula": _formula, "map": _map, "group_count": _group_count,
@@ -107,15 +124,16 @@ def derive(dataset_id: str, spec: dict) -> dict:
     df = ds["df"]
     if op in _GROUP_OPS | {"expression"} and name in df.columns:
         raise ValueError("Choose a new name for the calculated column.")
+    new_setting = _new_setting(name, op, df, normalized)
     if ds.get("disk_source"):
         import column_settings
         import disk_data
 
-        preview, disk = disk_data.derive(ds["disk_source"], normalized)
+        preview, disk = disk_data.derive(ds["disk_source"], normalized, frame=df)
         remaining_settings = [s for s in ds.get("column_settings", [])
                               if s.get("name") != name]
-        if op in _GROUP_OPS | {"expression"}:
-            remaining_settings.append({"name": name, "logical_type": "number", "filter_kind": "range"})
+        if new_setting:
+            remaining_settings.append(new_setting)
         source_ref = None
         if ds.get("source_ref"):
             source_ref = source_dict({"kind": "derived", "base": ds["source_ref"],
@@ -161,8 +179,8 @@ def derive(dataset_id: str, spec: dict) -> dict:
             raise ValueError("The derived column could not be created in the database.")
         remaining_settings = [s for s in ds.get("column_settings", [])
                               if s.get("name") != name]
-        if op in _GROUP_OPS | {"expression"}:
-            remaining_settings.append({"name": name, "logical_type": "number", "filter_kind": "range"})
+        if new_setting:
+            remaining_settings.append(new_setting)
         baseline = {**ds, "df": preview, "live_source": live,
                     "column_settings": remaining_settings}
         columns = column_settings.profiles(baseline)
@@ -186,9 +204,9 @@ def derive(dataset_id: str, spec: dict) -> dict:
                 "rows": len(preview), "columns": columns, "source_ref": source_ref,
                 "query_scope": "database", "sampled": False}
     result = datasets.set_column(dataset_id, name, series)
-    if op in _GROUP_OPS | {"expression"}:
+    if new_setting:
         import column_settings
-        ds["column_settings"] = [*ds.get("column_settings", []),
-                                 {"name": name, "logical_type": "number", "filter_kind": "range"}]
+        ds["column_settings"] = [*[s for s in ds.get("column_settings", []) if s.get("name") != name],
+                                 new_setting]
         result["columns"] = column_settings.profiles(ds)
     return result

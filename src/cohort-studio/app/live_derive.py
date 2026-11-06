@@ -54,10 +54,11 @@ def _expression(frame: pd.DataFrame, live: dict, spec: dict,
 
     if op == "expression":
         import calculations
-        tree = calculations.parse(spec["expression"], columns)
-        def numeric(value):
-            return _bind(local, prefix, f"n{len(local)}", value)
-        return calculations.sql(tree, lambda name: _number(column(name)), numeric), local
+        import derive
+        calc = derive.calculation(frame[[name for name in frame.columns if name in columns]], spec)
+        def constant(value):
+            return _bind(local, prefix, f"c{len(local)}", value)
+        return calculations.sql(calc, "postgres", column, constant), local
 
     if op == "bin":
         name = spec.get("column")

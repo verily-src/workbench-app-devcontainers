@@ -385,6 +385,8 @@ export interface SourceInfo {
 
 export interface Dataset {
   id: string;
+  /** Set on tabs opened from a published saved-view revision (viewer mode). */
+  publishedRevision?: number;
   title: string;
   source: string;
   sourceRef?: SourceRef;

@@ -165,3 +165,9 @@ def test_publish_viewer_link_republish_and_rollback(page: Page, app_url: str):
     expect(banner).to_contain_text("Published · rev 2")
     expect(page.locator(".tab.active")).to_contain_text("Report v2")
     expect(page.get_by_label("Saved view name")).to_have_count(0)
+
+    page.locator(".upload-btn input[type=file]").set_input_files(files=[{
+        "name": "other.csv", "mimeType": "text/csv", "buffer": b"id,value\n1,2\n"}])
+    expect(page.locator(".tab.active")).to_contain_text("other")
+    expect(banner).to_have_count(0)
+    expect(page.locator(".topnav-link").filter(has_text="Data Builder")).to_have_count(1)

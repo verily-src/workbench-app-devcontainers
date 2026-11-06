@@ -466,7 +466,9 @@ Viewer mode. `#view=kind:resource:name&published` opens the latest revision;
 browser shows a "Published · rev N · date" banner with **Open draft**, and hides
 saving, Publish, Roll back, Delete, Refresh snapshot, Data Builder (nav, ⌘K,
 "⋈ Join", "Edit in Data Builder") and Refresh extract. Filters, chart clicks and
-parameters still work for the session. This is a UI mode, not access control:
+parameters still work for the session. Tabs opened from the revision carry
+`publishedRevision`; opening any other data (or closing every tab) leaves
+viewer mode, so the banner never labels unrelated data. This is a UI mode, not access control:
 anyone with the app can open the draft. Per-person audiences need a per-user
 identity first; see `docs/ACCESS_POLICY_SCOPE.md` (deferred).
 

@@ -370,7 +370,7 @@ export default function App() {
     setError("");
     try {
       const v = await api.getViewRevision(store.kind, store.id, name, revision);
-      await restoreSpecs(v.datasets ?? [], v.active ?? 0);
+      await restoreSpecs(v.datasets ?? [], v.active ?? 0, v.published.revision);
       setViewer({ store, name, revision: v.published });
     } catch (e) {
       setError(`Could not open published view: ${(e as Error).message}`);
@@ -387,10 +387,14 @@ export default function App() {
     }
     void loadView(viewer.store, viewer.name);
   };
-  useEffect(() => { if (!datasets.length) setViewer(null); }, [datasets.length]);
+  // Viewer mode covers only the tabs opened from the revision; other data leaves it.
+  useEffect(() => {
+    if (viewer && !(datasets.length
+        && datasets.every((d) => d.publishedRevision === viewer.revision.revision))) setViewer(null);
+  }, [datasets, viewer]);
 
   type ViewSpec = Awaited<ReturnType<typeof api.getView>>["datasets"][number];
-  const restoreSpecs = async (specs: ViewSpec[], activeIndex: number) => {
+  const restoreSpecs = async (specs: ViewSpec[], activeIndex: number, publishedRevision?: number) => {
     {
       // The server runs at most two data jobs per session, so open two at a
       // time; keep the tabs that open even if some fail.
@@ -440,6 +444,7 @@ export default function App() {
         sort: d.sort ?? undefined,
         parameters: d.parameters ?? [],
         page: 0,
+        publishedRevision,
       }));
       setDatasets(restored);
       setActive(Math.min(activeIndex, Math.max(0, restored.length - 1)));

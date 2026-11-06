@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./Tutorial.css";
 
-const STORAGE_KEY = "cohort-studio.tutorial.v4";
+// v5: steps follow the Explore Cohort / Data Builder / Workflows layout.
+const STORAGE_KEY = "cohort-studio.tutorial.v5";
 
 export interface TutorialProgress {
   sourceChosen: boolean;
@@ -42,12 +43,26 @@ const ALL_STEPS: Step[] = [
     unavailable: (p: TutorialProgress) => !p.sourceChosen,
   },
   {
-    title: "Join on matching keys",
-    text: "In Explore Cohort, open Join tables and add an Aurora table or S3 file. Match person_id to samples.person_id, then sample_id to genotypes.sample_id. Preview the result and Generated SQL. Cross-source joins use DuckDB and require your consent.",
-    target: (p: TutorialProgress) => p.joinPanelOpen
-      ? ["[aria-label='Join type']"] : ["[data-tutorial-target='join-button']"],
-    done: (p: TutorialProgress) => p.joinCreated,
+    title: "Filter and style charts",
+    text: "Click a bar or a slice to filter the cohort, or use Filters in the Data sources panel. Open Marks on a chart to draw it as a Bar, Column, Line, Area, Pie or Donut, and to set its color, size and value labels. Add chart adds another field.",
+    target: () => [".chart-card .marks-menu > button", "[data-tutorial-target='add-chart']"],
+    done: (p: TutorialProgress) => p.hasDataset,
+    unavailable: (p: TutorialProgress) => !p.hasDataset,
+  },
+  {
+    title: "Build a join in Data Builder",
+    text: "Open Data Builder and drag tables onto the canvas, or press + beside a table. Click the badge between two tables to choose the join type and matching fields. In Fields, untick or rename fields, then Preview. Live opens the result in Explore Cohort; Extract saves every row as a database table you can refresh later.",
+    target: (p: TutorialProgress) => p.view === "join"
+      ? ["[aria-label='Join canvas']"] : ["[data-tutorial-target='nav-join']"],
+    done: (p: TutorialProgress) => p.view === "join" || p.joinCreated,
     unavailable: (p: TutorialProgress) => !p.hasSources,
+  },
+  {
+    title: "Export and save",
+    text: "In Explore Cohort, Export downloads the rows (TSV, Parquet, JSON), a PDF of the charts, or saves the tab to Aurora. Save the open tabs as a view from the Data sources panel. Extract tabs show Refresh extract to rerun their join.",
+    target: () => ["[aria-label='Export options']"],
+    done: (p: TutorialProgress) => p.hasDataset,
+    unavailable: (p: TutorialProgress) => !p.hasDataset,
   },
   {
     title: "Check assistant settings",
@@ -68,7 +83,7 @@ const ALL_STEPS: Step[] = [
   },
   {
     title: "Review workflow runs",
-    textNoAi: "Open Workflows to inspect actual run status, inputs, outputs and logs.",
+    textNoAi: "Open Workflows to see each run's status, inputs, outputs and logs. Settings (the gear, top right) holds appearance, chart palette and notifications.",
     text: "Open Workflows to inspect actual run status. For the demo, ask Agent to prepare cohort-genetics-demo with nextflow_params input and nextflow_outputs output. Review the mapping before Run workflow. After completion, ask Agent to verify the output files and open the summary dashboard.",
     target: () => ["[data-tutorial-target='nav-workflows']"],
     done: (p: TutorialProgress) => p.view === "workflows",

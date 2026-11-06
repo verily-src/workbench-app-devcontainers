@@ -743,7 +743,7 @@ function AddChart({ dataset, onUpdate }:
   };
 
   return (
-    <form
+    <form data-tutorial-target="add-chart"
       style={{ display: "flex", gap: 8, alignItems: "end", margin: "10px 0" }}
       onSubmit={(e) => { e.preventDefault(); submit(e.currentTarget); }}
     >

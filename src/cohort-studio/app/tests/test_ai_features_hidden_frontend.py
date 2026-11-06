@@ -93,16 +93,15 @@ def test_ai_features_hidden_when_off(page, app_url):
         expect(page.locator(".section-label").filter(
             has_text=re.compile(f"^{re.escape(label)}$"))).to_have_count(0)
 
-    # The assistant and Agent steps are left out: 4 of the 6 steps remain.
+    # The assistant and Agent steps are left out: 6 of the 8 steps remain.
     page.get_by_role("button", name="Tutorial").click()
-    expect(page.locator(".tutorial-count")).to_have_text("Step 1 of 4")
-    for _ in range(3):
+    expect(page.locator(".tutorial-count")).to_have_text("Step 1 of 6")
+    for _ in range(5):
         expect(page.locator("#tutorial-text")).not_to_contain_text("Agent")
         page.get_by_role("button", name="Skip step").or_(
             page.get_by_role("button", name="Next")).first.click()
-    expect(page.locator(".tutorial-count")).to_have_text("Step 4 of 4")
-    expect(page.locator("#tutorial-text")).to_have_text(
-        "Open Workflows to inspect actual run status, inputs, outputs and logs.")
+    expect(page.locator(".tutorial-count")).to_have_text("Step 6 of 6")
+    expect(page.locator("#tutorial-text")).to_contain_text("Open Workflows to see each run's status")
 
 
 def test_ai_features_shown_when_on(page, app_url):

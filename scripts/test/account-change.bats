@@ -18,9 +18,12 @@ setup() {
     touch "${TEST_ROOT}/wb-calls" "${TEST_ROOT}/curl-calls"
 
     stub curl '
-url="${*: -1}"
+url="${*: -1}" data="" previous=""
+for arg in "$@"; do [[ "${previous}" == --data ]] && data="${arg}"; previous="${arg}"; done
 echo "${url}" >> "${TEST_ROOT}/curl-calls"
 case "${url}" in
+    */instance/guest-attributes/*)
+        printf "%s=%s\n" "${url##*/guest-attributes/}" "${data}" >> "${TEST_ROOT}/guest-attributes" ;;
     */instance/service-accounts/default/email)
         [[ -f "${TEST_ROOT}/email" ]] || exit 22; cat "${TEST_ROOT}/email" ;;
     */attributes/terra-cli-server) printf dev-stable ;;
@@ -322,4 +325,42 @@ auth login --mode APP_DEFAULT_CREDENTIALS" ]
     configure_wb
     [ "${status}" -ne 0 ]
     grep -qx "${OWNER}" "${CORE}/service-account"
+}
+
+# The app's copy of the startup scripts, as 050-parse-devcontainer.sh leaves it.
+app_startupscript() {
+    export APP_SCRIPTS="${TEST_ROOT}/app/startupscript"
+    mkdir -p "${TEST_ROOT}/app"
+    cp -R "${STARTUP}" "${APP_SCRIPTS}"
+}
+
+report_support() {
+    : > "${TEST_ROOT}/guest-attributes"
+    (source "${STARTUP}/butane/gcp/metadata-utils.sh" && report_account_change_support "${APP_SCRIPTS}" > /dev/null)
+    cat "${TEST_ROOT}/guest-attributes"
+}
+
+@test "the VM reports account-change support for WSM when the app's scripts handle it" {
+    app_startupscript
+    [ "$(report_support)" = "startup_script/account_change=supported" ]
+}
+
+@test "the VM clears the report when the app's copy of a startup script predates the check" {
+    app_startupscript
+    for script in post-startup.sh remount-on-restart.sh; do
+        cp -R "${STARTUP}/." "${APP_SCRIPTS}/"
+        grep -v check_service_account "${STARTUP}/${script}" > "${APP_SCRIPTS}/${script}"
+        [ "$(report_support)" = "startup_script/account_change=" ]
+        rm "${APP_SCRIPTS}/${script}"
+        [ "$(report_support)" = "startup_script/account_change=" ]
+    done
+    rm -rf "${APP_SCRIPTS}"
+    [ "$(report_support)" = "startup_script/account_change=" ]
+}
+
+@test "EC2 instances report nothing" {
+    app_startupscript
+    : > "${TEST_ROOT}/guest-attributes"
+    (source "${STARTUP}/butane/aws/metadata-utils.sh" && report_account_change_support "${APP_SCRIPTS}")
+    [ ! -s "${TEST_ROOT}/guest-attributes" ]
 }

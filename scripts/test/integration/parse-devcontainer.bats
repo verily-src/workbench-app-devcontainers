@@ -57,6 +57,7 @@ SH
 get_metadata_value() { cat /home/core/shm-size; }
 get_guest_attribute() { cat /home/core/guest-shm-size; }
 set_metadata() { printf '%s\n' "$2" > /home/core/published.json; }
+report_account_change_support() { printf '%s\n' "$1" > /home/core/account-change-dir; }
 SH
     chmod +x "$CORE/bin/"* "$CORE/prefetch-oci-features.sh"
 }
@@ -154,6 +155,8 @@ exercise_lifecycle() {
     jq -S '.services.browser' "$CORE/rendered.json" > "$CORE/initial-browser.json"
     check_settings 0 67108864 7516192768
     [ -f "$CORE/app/startupscript/post-startup.sh" ]
+    # Reported for the app's copy of the startup scripts, after it's in place.
+    [ "$(cat "$CORE/account-change-dir")" = /home/core/app/startupscript ]
     [ -f "$CORE/app/.devcontainer/features/workbench-tools/devcontainer-feature.json" ]
     if [[ "$AIRLOCKED" == true ]]; then
         check_airlocked_config "$template" "$expected_port"

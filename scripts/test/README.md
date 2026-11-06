@@ -30,7 +30,9 @@ bats scripts/test/integration
   The host and the app container log the CLI out and in again; the container
   deletes cached git, SSH and gcloud credentials and mounts read-only for the
   reader account. No change, an unreadable account and AWS leave everything as
-  before, and a failed logout is retried at the next start.
+  before, and a failed logout is retried at the next start. The VM reports
+  support in a guest attribute only when the app's copies of the scripts run the
+  check.
 - `integration/devcontainer.bats`: repeated offline restoration of the same initial
   snapshot, preserving setup-time files, the running browser, home data, and
   startup hooks while discarding later writable-layer changes; named home volume
@@ -40,7 +42,8 @@ bats scripts/test/integration
   same lifecycle verifies that similar names and proxy labels in another Compose
   project do not interfere with app lookup.
 - `integration/parse-devcontainer.bats`: runs the complete parser in Linux against
-  the Jupyter, RStudio, and regular R templates. Covers first creation, unchanged
+  the Jupyter, RStudio, and regular R templates, and checks it reports
+  account-change support for the app's copy of the startup scripts. Covers first creation, unchanged
   restarts, independent hardware changes, in-place memory updates, GPU removal,
   invalid and fallback shared memory, unset memory limits, workspace path normalization, and skipping prefetch
   only for airlocked snapshots. Also validates first-boot Compose overrides and

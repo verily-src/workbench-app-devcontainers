@@ -97,3 +97,8 @@ function record_service_account() {
   :
 }
 readonly -f record_service_account
+
+function report_account_change_support() {
+  :
+}
+readonly -f report_account_change_support

@@ -96,3 +96,17 @@ function record_service_account() {
   fi
 }
 readonly -f record_service_account
+
+# Reports in the startup_script/account_change guest attribute whether this VM
+# handles a service-account change, which WSM checks before turning sharing on.
+# This host's scripts do; the app container does if its copies of the startup
+# scripts in <startupscript-dir> run the check. Otherwise clears the attribute.
+function report_account_change_support() {
+  local dir="$1" value=""
+  if grep -qs check_service_account "${dir}/post-startup.sh" \
+      && grep -qs check_service_account "${dir}/remount-on-restart.sh"; then
+    value="supported"
+  fi
+  set_metadata "startup_script/account_change" "${value}"
+}
+readonly -f report_account_change_support

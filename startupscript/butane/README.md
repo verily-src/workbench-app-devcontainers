@@ -128,6 +128,12 @@ unreadable account counts as no change.
   account. The CLI then logs out and in again.
 - Buckets mount read-only when the VM runs as the reader account.
 
+- `050-parse-devcontainer.sh` sets the guest attribute
+  `startup_script/account_change` to `supported` once the app's copies of
+  `post-startup.sh` and `remount-on-restart.sh` run the check, and clears it
+  otherwise. WSM turns sharing on only for VMs that report it, since VMs keep
+  the scripts they downloaded and cloned at first boot.
+
 A failed logout leaves the old account recorded, so the next boot or restart
 tries again. Files the owner kept elsewhere in the home directory, such as cloned
 repos, stay.

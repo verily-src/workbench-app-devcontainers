@@ -277,6 +277,7 @@ echo 'publishing devcontainer.json to metadata'
 DEVCONTAINER_CUSTOMIZATIONS="$("${JSONC_STRIP_COMMENTS}" < "${DEVCONTAINER_CONFIG_PATH}" | jq -c .customizations.workbench)"
 readonly DEVCONTAINER_CUSTOMIZATIONS
 set_metadata 'devcontainer/customizations' "${DEVCONTAINER_CUSTOMIZATIONS}"
+report_account_change_support "${DEVCONTAINER_PATH}/startupscript"
 
 # Restoring an airlocked snapshot uses its installed features without registry access.
 if [[ $(jq -r '.AIRLOCK_ENABLED // false' <<< "$DEVCONTAINER_CUSTOMIZATIONS") == true ]] &&

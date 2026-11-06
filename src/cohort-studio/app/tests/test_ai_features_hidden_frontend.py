@@ -18,6 +18,8 @@ def test_ai_features_default_off(monkeypatch):
     assert config.ai_features_enabled() is True
     monkeypatch.delenv("STUDIO_LINEAGE_UI", raising=False)
     assert config.lineage_ui_enabled() is False
+    monkeypatch.delenv("STUDIO_PLINK_UI", raising=False)
+    assert config.plink_ui_enabled() is False
 
 
 def _fulfill(route, body):
@@ -30,7 +32,7 @@ def _setup(page, ai):
             route.continue_()
             return
         body = route.fetch().json()
-        body["features"] = {"ai": ai, "lineage": ai}
+        body["features"] = {"ai": ai, "lineage": ai, "plink": ai}
         _fulfill(route, body)
     page.route("**/api/config", cfg)
     page.route("**/api/datasources", lambda route: _fulfill(route, {
@@ -74,6 +76,11 @@ def test_ai_features_hidden_when_off(page, app_url):
         ["Explore Cohort", "Data Builder", "Workflows"])
     expect(page.locator(".ask-ai")).to_have_count(0)
     expect(page.get_by_placeholder(re.compile("Ask AI|Ask the assistant"))).to_have_count(0)
+    # PLINK 2 export is hidden from the Export menu.
+    page.get_by_role("button", name="Export options").click()
+    expect(page.get_by_role("button", name="Export PDF")).to_be_visible()
+    expect(page.get_by_role("button", name="Export PLINK 2")).to_have_count(0)
+    page.keyboard.press("Escape")
 
     # Settings is the gear in the top-right corner, not a tab.
     settings = page.get_by_role("button", name="Settings", exact=True)
@@ -103,4 +110,6 @@ def test_ai_features_shown_when_on(page, app_url):
     _load_person(page, app_url)
     expect(page.locator(".topnav .topnav-link").filter(has_text=re.compile(r"^Agent$"))).to_have_count(1)
     expect(page.locator(".ask-ai")).to_have_count(1)
+    page.get_by_role("button", name="Export options").click()
+    expect(page.get_by_role("button", name="Export PLINK 2")).to_be_visible()
     expect(page.locator(".topnav .topnav-link").filter(has_text=re.compile(r"^Lineage$"))).to_have_count(1)

@@ -323,6 +323,11 @@ def lineage_ui_enabled() -> bool:
     return _flag("STUDIO_LINEAGE_UI")
 
 
+def plink_ui_enabled() -> bool:
+    """PLINK 2 export is hidden in the UI unless STUDIO_PLINK_UI is on; the API stays."""
+    return _flag("STUDIO_PLINK_UI")
+
+
 def ai_features_enabled() -> bool:
     """Agent, chat, Ask AI and AI settings are hidden in the UI unless
     STUDIO_AI_FEATURES is on. The UI hides them; the endpoints stay."""

@@ -447,17 +447,12 @@ def delete_saved_view(resource_id: str, name: str) -> None:
         _cleanup_unshared(conn, views, resource_id, old_refs)
 
 
-def restore_state(resource_id: str, name: str, state: dict) -> None:
+def restore_state_locked(conn, resource_id: str, name: str, state: dict) -> None:
     import views
 
-    views._validate(name)
-    engine = views._engine(resource_id)
-    with engine.begin() as conn:
-        _resource_lock(conn, resource_id)
-        _public_path(conn)
-        old_state = _get_state(conn, views.view_table, name, for_update=True)
-        _put_state(conn, views, resource_id, name, state)
-        _cleanup_unshared(conn, views, resource_id, _state_refs(old_state or {}, resource_id))
+    old_state = _get_state(conn, views.view_table, name, for_update=True)
+    _put_state(conn, views, resource_id, name, state)
+    _cleanup_unshared(conn, views, resource_id, _state_refs(old_state or {}, resource_id))
 
 
 def list_status(conn, resource_id: str, state: dict) -> dict:

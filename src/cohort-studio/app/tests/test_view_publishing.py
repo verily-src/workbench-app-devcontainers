@@ -238,6 +238,28 @@ def test_s3_revision_failure_reports_unknown_status(s3_store, monkeypatch):
     assert row["published_revision"] is None
 
 
+def test_s3_unreadable_latest_revision_is_unknown_not_unpublished(s3_store, monkeypatch):
+    _save("s3", "s3:lake", "report", _dataset())
+    assert api.post("/api/views/publish", json={
+        "kind": "s3", "resource_id": "s3:lake", "name": "report"}).status_code == 200
+    def denied(root, key):
+        raise RuntimeError("S3 view revision could not be read.")
+    monkeypatch.setattr(views, "_s3_read_object", denied)
+    row = views.list_views("s3", "s3:lake")[0]
+    assert row["publication_unknown"] is True
+
+
+def test_s3_cli_read_error_is_not_missing(monkeypatch):
+    monkeypatch.setattr(views.cloud_cli, "run", lambda args, **kwargs: types.SimpleNamespace(
+        returncode=1, stdout="", stderr="An error occurred (403) when calling HeadObject"))
+    root = {"bucket": "b", "prefix": "p/", "region": None, "profile": "lake"}
+    with pytest.raises(RuntimeError):
+        views._s3_read_object(root, "p/r/000001.json")
+    monkeypatch.setattr(views.cloud_cli, "run", lambda args, **kwargs: types.SimpleNamespace(
+        returncode=1, stdout="", stderr="An error occurred (404) when calling HeadObject: Not Found"))
+    assert views._s3_read_object(root, "p/r/000001.json") is None
+
+
 def test_s3_cli_publish_uses_conditional_put(monkeypatch):
     calls = []
     draft = json.dumps({"version": 2, "datasets": [], "created_by": "a"})

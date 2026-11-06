@@ -8,7 +8,7 @@ def test_cancel_join_preview_sends_cancellation(loaded_page):
     path = __import__('pathlib').Path(__file__).parent / 'fixtures' / 'phenotypes.csv'
     page.locator('input[type="file"]').set_input_files(path)
     expect(page.locator('.tab', has_text='phenotypes.csv')).to_be_visible(timeout=15000)
-    canvas = open_data_builder(page)   # starts from the active tab (phenotypes.csv)
+    canvas = open_data_builder(page, 'phenotypes.csv')
     expect(canvas.locator('.jc-node')).to_have_count(1, timeout=10000)
     add_to_canvas(canvas, 'samples.csv', tab=True)
     expect(canvas.locator('.jc-node')).to_have_count(2, timeout=10000)

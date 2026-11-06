@@ -799,8 +799,7 @@ def _durable_join_page(page: Page, app_url: str):
         page.get_by_role("button", name="Load table").click()
         expect(page.locator(".tab", has_text=name)).to_be_visible(timeout=10000)
     # Data Builder: start from the people tab, join the events tab on person_id.
-    page.locator(".tab", has_text="people").first.locator("> span").first.click()
-    canvas = open_data_builder(page)
+    canvas = open_data_builder(page, "people")
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
     add_to_canvas(canvas, "events", tab=True)
     expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)

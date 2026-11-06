@@ -111,4 +111,4 @@ def test_join_runs_in_background_across_tab_switches(page, app_url):
         "join": {"engine": "aurora", "rows": 2, "total_rows": 2, "truncated": False,
                  "capped_inputs": [], "steps": [], "notes": []}}})
     expect(page.locator(".tab", has_text="person + visit")).to_be_visible(timeout=10000)
-    expect(page.get_by_role("button", name="Join in Data Builder")).to_contain_text("⋈ Join")
+    expect(page.locator(".tab-join")).to_have_count(0)   # joins live in Data Builder only

@@ -470,8 +470,10 @@ export function SettingsView(
             <button key={value} type="button" role="radio" aria-checked={(cfg.brand ?? "verily") === value}
                     onClick={async () => {
                       try {
-                        const updated = await api.updateConfig({ brand: value });
+                        // Co-branding also switches the colour theme to match.
+                        const updated = await api.updateConfig({ brand: value, chart_palette: value });
                         setCfg(updated); applyBrand(updated.brand);
+                        setPalette(updated.chart_palette); onPaletteChange?.(updated.chart_palette);
                         setPaletteStatus(`Brand set to ${label}.`);
                       } catch (error) { setPaletteStatus(`Save failed: ${safeProviderError(error, "")}`); }
                     }}>{label}</button>
@@ -479,11 +481,11 @@ export function SettingsView(
         </div>
       </div>
 
-      <div className="section-label">Chart palette</div>
+      <div className="section-label">Color theme</div>
       <div className="settings-card">
         <p className="settings-caption">
-          The colour charts use — the full cohort renders muted and the
-          filtered cohort in the accent.
+          Colours for the whole app — buttons, tabs, highlights — and its charts (the full
+          cohort renders muted and the filtered cohort in the accent). Applies to everyone using this app.
         </p>
         <div className="palette-grid">
           {PALETTE_NAMES.map((name) => {
@@ -503,7 +505,7 @@ export function SettingsView(
           })}
         </div>
         <button className="primary" style={{ marginTop: 10 }} onClick={savePalette}>
-          Save
+          Save color theme
         </button>
         {paletteStatus && <div className="settings-status" role="status">{paletteStatus}</div>}
       </div>

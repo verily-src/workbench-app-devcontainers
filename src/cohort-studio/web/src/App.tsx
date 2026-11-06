@@ -144,9 +144,12 @@ export default function App() {
     extract?: { kind: string; resource_id: string; table: string } } | null>(null);
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
-  const [joinRunning, setJoinRunning] = useState(false);
-  // "Join" on a tab opens Data Builder with that tab as the start table.
-  const [canvasSeed, setCanvasSeed] = useState<{ nonce: number; datasetId: string } | null>(null);
+  // The colour theme recolours the whole app, not just charts (Verily is the default).
+  useEffect(() => {
+    if (palette && palette !== "verily") document.documentElement.dataset.palette = palette;
+    else delete document.documentElement.dataset.palette;
+  }, [palette]);
+  const [, setJoinRunning] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowList | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [addSourceOpen, setAddSourceOpen] = useState(false);
@@ -940,7 +943,7 @@ export default function App() {
           <Suspense fallback={<div role="status">Loading…</div>}>
           {canvasMounted && (
             <div className="join-canvas-host" hidden={view !== "join"}>
-              <JoinCanvas datasets={datasets} sources={sources} busy={Boolean(activity)} edit={canvasEdit} seed={canvasSeed}
+              <JoinCanvas datasets={datasets} sources={sources} busy={Boolean(activity)} edit={canvasEdit}
                           onJoin={doJoin}
                           onOpenResult={(opened, title, sourceRef) => {
                             // Saving an edited extract replaces its open tab instead of adding one.
@@ -1075,18 +1078,6 @@ export default function App() {
                     }}>✕</button>
                   </span>
                 ))}
-                {(datasets.length >= 2 || sources.length > 0) && (
-                  <button className={`tab-join${joinRunning ? " running" : ""}`}
-                          data-tutorial-target="join-button"
-                          title="Join this tab with other tables in Data Builder"
-                          aria-label={joinRunning ? "Join (running)" : "Join in Data Builder"}
-                          onClick={() => {
-                            if (activeDs) setCanvasSeed((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, datasetId: activeDs.id }));
-                            setView("join");
-                          }}>
-                    {joinRunning ? <><span className="spinner small" aria-hidden="true" />Joining…</> : "⋈ Join"}
-                  </button>
-                )}
               </div>
               {dependentJob && (
                 <div className="wf-dep-banner">

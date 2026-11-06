@@ -390,8 +390,8 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
 
 
 def test_join_entry_points_open_data_builder(page, app_url):
-    """There is one join builder: "Join tables" and a tab's "⋈ Join" open Data Builder,
-    and "⋈ Join" starts the canvas from that tab."""
+    """There is one join builder: "Join tables" opens Data Builder, where open
+    Explore tabs can be added to the canvas."""
     calls = {}
     _setup(page, app_url, calls)
     page.goto(app_url)
@@ -408,15 +408,11 @@ def test_join_entry_points_open_data_builder(page, app_url):
     page.get_by_role("button", name="Load table").click()
     expect(page.locator(".tab.active")).to_contain_text("person", timeout=10000)
     expect(page.get_by_role("button", name="Edit join")).to_have_count(0)
-    page.get_by_role("button", name="Join in Data Builder").click()
+    # No join button on Explore tabs: open tabs are offered in Data Builder instead.
+    expect(page.locator(".tab-join")).to_have_count(0)
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Builder$")).click()
+    canvas.get_by_role("group", name="Open tabs").get_by_role("button", name="Add person to canvas").click()
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
-    expect(canvas.locator(".jc-node").first).to_contain_text("person")
-    # Pressing it again doesn't add the same tab twice, and always shows the visual join.
-    canvas.get_by_role("radio", name="SQL", exact=True).click()
-    page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore Cohort$")).click()
-    page.get_by_role("button", name="Join in Data Builder").click()
-    expect(canvas.get_by_role("radio", name="Visual", exact=True)).to_have_attribute("aria-checked", "true")
-    expect(canvas.locator(".jc-node")).to_have_count(1)
 
 
 def _extract_result(dataset_id, rows, refreshed_at):

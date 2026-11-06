@@ -448,11 +448,12 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         {onAxesChange && (numericAxes(spec).x || numericAxes(spec).y || spec.kind === "heatmap") && <button type="button" className="quiet" title="Edit axes" aria-label="Edit axes"
           aria-expanded={editingAxes} onClick={() => setEditingAxes(value => !value)}>⚙</button>}
         {!readOnly && <>
-          <button className="quiet" title="Toggle width"
-                  onClick={onToggleWide}>⤢</button>
-          {(onMove || onDuplicate) && (
+          {(
+
             <Popover className="chart-actions" ariaLabel="Chart actions" label={<span aria-hidden>⋯</span>}>
               {(close) => <div className="popover-menu">
+                <button type="button" onClick={() => { onToggleWide(); close(); }}>
+                  {spec.wide ? "Make narrow" : "Make wide"}</button>
                 {onMove && <button type="button" disabled={!canMoveUp}
                                    onClick={() => { onMove(-1); close(); }}>Move earlier</button>}
                 {onMove && <button type="button" disabled={!canMoveDown}

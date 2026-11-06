@@ -901,24 +901,31 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .parameter-name { flex: 0 0 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px;
   font-family: var(--mono, ui-monospace, monospace); color: var(--ink-soft); }
 .parameter-row input { flex: 1; min-width: 0; }
-.parameter-add { display: flex; gap: 6px; }
-.parameter-add input { flex: 1; min-width: 0; }
+.parameter-add { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.parameter-add input { grid-column: 1 / -1; min-width: 0; }
+.parameter-add select { min-width: 0; }
+.parameter-add button { white-space: nowrap; }
 .filter-follows-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .filter-follows { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ink-muted); }
 .filter-follows select { max-width: 110px; font-size: 12px; padding: 1px 4px; }
 
-/* Brand theme: Verily × 23andMe (23andMe magenta #d50f67, berry #8c0e45). */
-:root[data-brand="23andme"] {
-  --accent: #d50f67; --accent-dark: #8c0e45; --accent-tint: #fdeef4; --accent-tint-border: #f4c3d7;
-}
-:root[data-brand="23andme"][data-theme="dark"] {
-  --accent: #f05a9b; --accent-dark: #d50f67; --accent-tint: #3a1426; --accent-tint-border: #6b2346;
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-brand="23andme"][data-theme="system"] {
-    --accent: #f05a9b; --accent-dark: #d50f67; --accent-tint: #3a1426; --accent-tint-border: #6b2346;
-  }
-}
+/* Colour theme (Settings → Color theme): the app accent follows the chart palette.
+   Verily is the default in :root. Each theme has its own dark-mode steps. */
+:root[data-palette="indigo"] { --accent: #4a3aa7; --accent-dark: #2e2470; --accent-tint: #ece9f6; --accent-tint-border: #d7d3ec; }
+:root[data-palette="indigo"][data-theme="dark"] { --accent: #9b8fe0; --accent-dark: #7c6fd1; --accent-tint: #24203f; --accent-tint-border: #463d7a; }
+@media (prefers-color-scheme: dark) { :root[data-palette="indigo"][data-theme="system"] { --accent: #9b8fe0; --accent-dark: #7c6fd1; --accent-tint: #24203f; --accent-tint-border: #463d7a; } }
+:root[data-palette="amber"] { --accent: #b06a00; --accent-dark: #7a4900; --accent-tint: #fbeed6; --accent-tint-border: #f0dcbd; }
+:root[data-palette="amber"][data-theme="dark"] { --accent: #e0a03a; --accent-dark: #c8861f; --accent-tint: #3a2a10; --accent-tint-border: #6b4d1e; }
+@media (prefers-color-scheme: dark) { :root[data-palette="amber"][data-theme="system"] { --accent: #e0a03a; --accent-dark: #c8861f; --accent-tint: #3a2a10; --accent-tint-border: #6b4d1e; } }
+:root[data-palette="crimson"] { --accent: #b23a48; --accent-dark: #7d2832; --accent-tint: #f7e3e6; --accent-tint-border: #eccdd1; }
+:root[data-palette="crimson"][data-theme="dark"] { --accent: #e27886; --accent-dark: #c95b69; --accent-tint: #3c1a1f; --accent-tint-border: #6e323b; }
+@media (prefers-color-scheme: dark) { :root[data-palette="crimson"][data-theme="system"] { --accent: #e27886; --accent-dark: #c95b69; --accent-tint: #3c1a1f; --accent-tint-border: #6e323b; } }
+:root[data-palette="slate"] { --accent: #3f5a73; --accent-dark: #293b4d; --accent-tint: #e8edf1; --accent-tint-border: #d2dae2; }
+:root[data-palette="slate"][data-theme="dark"] { --accent: #8fa9c2; --accent-dark: #6f8aa5; --accent-tint: #1e2833; --accent-tint-border: #3b4c5e; }
+@media (prefers-color-scheme: dark) { :root[data-palette="slate"][data-theme="system"] { --accent: #8fa9c2; --accent-dark: #6f8aa5; --accent-tint: #1e2833; --accent-tint-border: #3b4c5e; } }
+:root[data-palette="23andme"] { --accent: #d50f67; --accent-dark: #8c0e45; --accent-tint: #fdeef4; --accent-tint-border: #f4c3d7; }
+:root[data-palette="23andme"][data-theme="dark"] { --accent: #f05a9b; --accent-dark: #d50f67; --accent-tint: #3a1426; --accent-tint-border: #6b2346; }
+@media (prefers-color-scheme: dark) { :root[data-palette="23andme"][data-theme="system"] { --accent: #f05a9b; --accent-dark: #d50f67; --accent-tint: #3a1426; --accent-tint-border: #6b2346; } }
 .brand-partner { display: inline-flex; align-items: center; vertical-align: middle; }
 .brand-partner img { display: block; height: 28px; width: auto; }
 .brand-x { color: var(--ink-faint); font-weight: 400; margin: 0 2px; }
@@ -928,5 +935,10 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .settings-segmented > button + button { border-left: 1px solid var(--border-strong); }
 .settings-segmented > button[aria-checked="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
 /* Verily's own mark keeps Verily green under a partner brand theme. */
-:root[data-brand="23andme"] .brand-verily, :root[data-brand="23andme"] .brandmark { color: #087a6a; }
-:root[data-brand="23andme"][data-theme="dark"] .brand-verily, :root[data-brand="23andme"][data-theme="dark"] .brandmark { color: #55c5b0; }
+:root[data-palette] .brand-verily, :root[data-palette] .brandmark { color: #087a6a; }
+:root[data-palette][data-theme="dark"] .brand-verily, :root[data-palette][data-theme="dark"] .brandmark { color: #55c5b0; }
+/* Cohort size in the Cohorts bar (the count no longer sits above the tab). */
+.cohort-size { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.dataset-toolbar .hero .count, .cohort-size .count { font-size: 16px; font-weight: 600; }
+.cohort-size .detail { font-size: 12.5px; }
+.hero-line { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; font-size: 12px; color: var(--ink-muted); }

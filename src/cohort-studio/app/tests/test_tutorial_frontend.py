@@ -69,18 +69,33 @@ def test_tutorial_highlights_real_controls_and_waits_for_actions(page: Page, app
     expect(dialog.get_by_role("button", name="Next")).to_be_enabled()
     dialog.get_by_role("button", name="Next").click()
 
-    dialog = page.get_by_role("dialog", name="Join on matching keys")
-    expect(dialog).to_be_visible()
+    dialog = page.get_by_role("dialog", name="Filter and style charts")
+    expect(dialog).to_contain_text("Marks")
     expect(page.locator(".tutorial-spotlight")).to_have_attribute(
-        "data-target", "[data-tutorial-target='join-button']")
+        "data-target", ".chart-card .marks-menu > button")
+    expect(dialog.get_by_role("button", name="Next")).to_be_enabled()
+    dialog.get_by_role("button", name="Next").click()
+
+    dialog = page.get_by_role("dialog", name="Build a join in Data Builder")
+    expect(dialog).to_contain_text("Extract saves every row")
+    expect(page.locator(".tutorial-spotlight")).to_have_attribute(
+        "data-target", "[data-tutorial-target='nav-join']")
     expect(page.get_by_role("button", name="OMOP", exact=True)).to_have_count(0)
     expect(dialog.get_by_role("button", name="Next")).to_be_disabled()
     page.keyboard.press("Alt+ArrowRight")
-    expect(page.get_by_role("dialog", name="Join on matching keys")).to_be_visible()
+    expect(page.get_by_role("dialog", name="Build a join in Data Builder")).to_be_visible()
     page.keyboard.press("Alt+ArrowLeft")
-    expect(page.get_by_role("dialog", name="Open a table")).to_be_visible()
+    expect(page.get_by_role("dialog", name="Filter and style charts")).to_be_visible()
     page.keyboard.press("Alt+ArrowRight")
-    expect(page.get_by_role("dialog", name="Join on matching keys")).to_be_visible()
+    page.locator('[data-tutorial-target="nav-join"]').click()
+    expect(page.locator(".tutorial-spotlight")).to_have_attribute("data-target", "[aria-label='Join canvas']")
+    dialog.get_by_role("button", name="Next").click()
+
+    dialog = page.get_by_role("dialog", name="Export and save")
+    page.locator(".topnav-link").filter(has_text="Explore Cohort").click()
+    expect(page.locator(".tutorial-spotlight")).to_have_attribute(
+        "data-target", "[aria-label='Export options']")
+    expect(dialog.get_by_role("button", name="Next")).to_be_enabled()
 
     page.keyboard.press("Escape")
     expect(page.get_by_role("dialog")).to_have_count(0)
@@ -102,8 +117,8 @@ def test_tutorial_current_agent_and_workflow_navigation(page: Page, app_url: str
     page.goto(app_url)
     page.get_by_role('button', name='Tutorial', exact=True).click()
     expect(page.get_by_role('dialog', name='Choose a source')).to_be_visible()
-    for title in ['Choose a source', 'Open a table', 'Join on matching keys',
-                  'Check assistant settings']:
+    for title in ['Choose a source', 'Open a table', 'Filter and style charts',
+                  'Build a join in Data Builder', 'Export and save', 'Check assistant settings']:
         dialog = page.get_by_role('dialog', name=title, exact=True)
         dialog.get_by_role('button', name='Skip step', exact=True).click()
     dialog = page.get_by_role('dialog', name='Open an Agent conversation')

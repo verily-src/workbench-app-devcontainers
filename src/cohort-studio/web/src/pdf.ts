@@ -1,3 +1,4 @@
+import { describeFilter } from "./filterText";
 import { echarts } from "./echarts";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -5,10 +6,7 @@ import type { Dataset, Filter } from "./types";
 
 function describeFilters(filters: Filter[]): string {
   if (filters.length === 0) return "none (full cohort)";
-  return filters.map((f) => f.kind === "categorical"
-    ? `${f.column}: ${(f.values ?? []).join(", ")}`
-    : f.max === Number.MAX_VALUE ? `${f.column}: at least ${f.min}` : f.min === -Number.MAX_VALUE
-      ? `${f.column}: at most ${f.max}` : `${f.column}: ${f.min} to ${f.max}`).join("; ");
+  return filters.map((f) => describeFilter(f, true)).join("; ");
 }
 
 const safeName = (s: string) =>

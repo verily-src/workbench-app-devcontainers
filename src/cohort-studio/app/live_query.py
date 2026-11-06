@@ -9,6 +9,7 @@ from sqlglot import exp
 from sql_utils import statement as text
 
 import database as db
+import filter_rules
 
 TIMEOUT_MS = 15_000
 PAGE_SIZE_MAX = 1000
@@ -93,6 +94,16 @@ def _where(filters: list[dict], columns: dict[str, str],
             clauses.append(f"{_numeric(col, numeric_types.get(name))} BETWEEN :f{i}_lo AND :f{i}_hi")
             params[f"f{i}_lo"] = lo
             params[f"f{i}_hi"] = hi
+        elif kind == "date" and filter_rules.is_active(item):
+            # Compare the column itself with date parameters (PostgreSQL widens a
+            # date to a timestamp), so indexes on date/timestamp columns still apply.
+            start, end = filter_rules.date_bounds(item)
+            if start:
+                clauses.append(f"{col} >= :f{i}_start")
+                params[f"f{i}_start"] = start
+            if end:
+                clauses.append(f"{col} < :f{i}_end")
+                params[f"f{i}_end"] = end
     return " AND ".join(clauses) if clauses else "TRUE", params
 
 
@@ -293,6 +304,25 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
+        dates = [entry for entry in result if entry.get("filter_kind") == "date"]
+        if dates:
+            parts = []
+            for entry in dates:
+                col = f"live.{_q(columns[entry['name']])}"
+                parts += [f"MIN({col})::date", f"MAX({col})::date"]
+            query_cancellation.check()
+            savepoint = conn.begin_nested()
+            try:
+                values = _query(conn, live_source, f"SELECT {', '.join(parts)} FROM {table}", {}).one()
+                savepoint.commit()
+                for i, entry in enumerate(dates):
+                    low, high = values[2 * i], values[2 * i + 1]
+                    if low is not None and high is not None:
+                        entry["min_date"], entry["max_date"] = low.isoformat(), high.isoformat()
+            except Exception as exc:
+                savepoint.rollback()
+                if "statement timeout" not in str(exc) and "canceling statement" not in str(exc):
+                    raise
         ranges = [entry for entry in result if entry.get("filter_kind") == "range"]
         numeric_columns = _numeric_columns(conn, live_source, [e["name"] for e in ranges])
         if ranges:

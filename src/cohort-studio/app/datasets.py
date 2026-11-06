@@ -8,6 +8,7 @@ import uuid
 import numpy as np
 import pandas as pd
 
+import filter_rules
 import queries
 
 MAX_DATASETS = 8
@@ -138,6 +139,11 @@ def profile_columns(df: pd.DataFrame) -> list[dict]:
         elif kind == "range":
             entry["min"] = float(df[col].min())
             entry["max"] = float(df[col].max())
+        elif kind == "date":
+            values = pd.to_datetime(df[col], errors="coerce").dropna()
+            if len(values):
+                entry["min_date"] = values.min().date().isoformat()
+                entry["max_date"] = values.max().date().isoformat()
         profile.append(entry)
     return profile
 
@@ -152,6 +158,17 @@ def apply_filters(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
             lo, hi = f.get("min"), f.get("max")
             if lo is not None and hi is not None:
                 df = df[df[col].between(lo, hi)]
+        elif f.get("kind") == "date" and filter_rules.is_active(f):
+            start, end = filter_rules.date_bounds(f)
+            values = pd.to_datetime(df[col], errors="coerce")
+            if getattr(values.dt, "tz", None) is not None:
+                values = values.dt.tz_localize(None)
+            keep = values.notna()
+            if start:
+                keep &= values >= pd.Timestamp(start)
+            if end:
+                keep &= values < pd.Timestamp(end)
+            df = df[keep]
     return df
 
 def _bar_aggregate(full: pd.DataFrame, filt: pd.DataFrame, x: str) -> dict:

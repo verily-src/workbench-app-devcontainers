@@ -161,6 +161,11 @@ class Filter(BaseModel):
     values: list[str] | None = None
     min: float | None = None
     max: float | None = None
+    # kind "date": absolute YYYY-MM-DD bounds (end inclusive) or "last N units".
+    start: str | None = Field(default=None, max_length=32)
+    end: str | None = Field(default=None, max_length=32)
+    last: int | None = Field(default=None, ge=1, le=10_000)
+    unit: Literal["day", "week", "month", "year"] | None = None
 
 class AxisSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)

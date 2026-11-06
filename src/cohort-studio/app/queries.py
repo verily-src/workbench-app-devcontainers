@@ -193,6 +193,17 @@ def create_demo_table(engine: Engine, name: str = "demo_samples",
     logger.info("Created demo table %s with %d rows", name, rows)
     return name
 
+def _is_date_series(series: pd.Series) -> bool:
+    """Dates and timestamps (pandas datetime64, or Python date/datetime objects)."""
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return True
+    if series.dtype == object and len(series):
+        import datetime as _dt
+        sample = series.head(50)
+        return all(isinstance(v, (_dt.date, _dt.datetime)) for v in sample)
+    return False
+
+
 def infer_filter_kinds(df: pd.DataFrame) -> dict[str, str]:
 
     kinds = {}
@@ -205,6 +216,8 @@ def infer_filter_kinds(df: pd.DataFrame) -> dict[str, str]:
             continue
         if unique == 0:
             kinds[col] = "none"
+        elif _is_date_series(series):
+            kinds[col] = "date"
         elif pd.api.types.is_bool_dtype(series):
             kinds[col] = "categorical"
         elif pd.api.types.is_float_dtype(series):

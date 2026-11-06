@@ -24,6 +24,7 @@ from sqlglot import exp
 
 import duck
 import database as db
+import filter_rules
 from sql_utils import statement as text
 
 MAX_OPERATION_BYTES = 1_000_000_000_000
@@ -425,6 +426,14 @@ def profile_columns(source: dict, profiles: list[dict]) -> list[dict]:
             ])
             expression_aliases.extend([low_alias, high_alias])
             result_slots[index] = ("range", low_alias, high_alias)
+        elif kind == "date":
+            low_alias, high_alias = f"_studio_min_{index}", f"_studio_max_{index}"
+            expressions.extend([
+                f"MIN(TRY_CAST({col} AS DATE)) AS {_q(low_alias)}",
+                f"MAX(TRY_CAST({col} AS DATE)) AS {_q(high_alias)}",
+            ])
+            expression_aliases.extend([low_alias, high_alias])
+            result_slots[index] = ("date", low_alias, high_alias)
         elif kind == "categorical":
             values_alias = f"_studio_values_{index}"
             expressions.append(
@@ -446,6 +455,11 @@ def profile_columns(source: dict, profiles: list[dict]) -> list[dict]:
                 low, high = by_name[low_alias], by_name[high_alias]
                 if low is not None and high is not None:
                     entry["min"], entry["max"] = float(low), float(high)
+            elif entry.get("filter_kind") == "date":
+                _, low_alias, high_alias = result_slots[index]
+                low, high = by_name[low_alias], by_name[high_alias]
+                if low is not None and high is not None:
+                    entry["min_date"], entry["max_date"] = low.isoformat(), high.isoformat()
             elif entry.get("filter_kind") == "categorical":
                 _, values_alias = result_slots[index]
                 entry["values"] = [str(value) for value in
@@ -1213,6 +1227,14 @@ def _where(filters: list[dict], columns: list[str]):
                 raise ValueError("Range filter values must be finite.")
             clauses.append(f"TRY_CAST({col} AS DOUBLE) BETWEEN ? AND ?")
             params.extend([low, high])
+        elif item.get("kind") == "date" and filter_rules.is_active(item):
+            start, end = filter_rules.date_bounds(item)
+            if start:
+                clauses.append(f"TRY_CAST({col} AS TIMESTAMP) >= ?")
+                params.append(start)
+            if end:
+                clauses.append(f"TRY_CAST({col} AS TIMESTAMP) < ?")
+                params.append(end)
     return " AND ".join(clauses) if clauses else "TRUE", params
 
 

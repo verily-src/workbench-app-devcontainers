@@ -411,9 +411,11 @@ def test_join_entry_points_open_data_builder(page, app_url):
     page.get_by_role("button", name="Join in Data Builder").click()
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
     expect(canvas.locator(".jc-node").first).to_contain_text("person")
-    # Pressing it again doesn't add the same tab twice.
+    # Pressing it again doesn't add the same tab twice, and always shows the visual join.
+    canvas.get_by_role("radio", name="SQL", exact=True).click()
     page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore Cohort$")).click()
     page.get_by_role("button", name="Join in Data Builder").click()
+    expect(canvas.get_by_role("radio", name="Visual", exact=True)).to_have_attribute("aria-checked", "true")
     expect(canvas.locator(".jc-node")).to_have_count(1)
 
 

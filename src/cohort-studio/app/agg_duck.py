@@ -4,6 +4,7 @@ import duckdb
 import numpy as np
 
 import queries
+import filter_rules
 
 DUCKDB_AGG_ROWS = int(os.environ.get("STUDIO_DUCKDB_AGG_ROWS", "50000"))
 
@@ -32,6 +33,15 @@ def _where(filters: list[dict], columns: set) -> tuple[str, list]:
             if lo is not None and hi is not None:
                 clauses.append(f"TRY_CAST({_q(col)} AS DOUBLE) BETWEEN ? AND ?")
                 params.extend([float(lo), float(hi)])
+        elif f.get("kind") == "date" and filter_rules.is_active(f):
+            start, end = filter_rules.date_bounds(f)
+            target = f"TRY_CAST({_q(col)} AS TIMESTAMP)"
+            if start:
+                clauses.append(f"{target} >= ?")
+                params.append(start)
+            if end:
+                clauses.append(f"{target} < ?")
+                params.append(end)
     return (" AND ".join(clauses) if clauses else "TRUE"), params
 
 class _Agg:

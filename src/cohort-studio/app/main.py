@@ -1494,11 +1494,14 @@ class SaveViewRequest(BaseModel):
     active: int = Field(default=0, ge=0)
 
 
+def _with_app_info(cfg: dict) -> dict:
+    cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
+    cfg["features"] = {"ai": config.ai_features_enabled()}
+    return cfg
+
 @app.get("/api/config")
 def get_config():
-    cfg = config.public_config()
-    cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
-    return cfg
+    return _with_app_info(config.public_config())
 
 @app.put("/api/config")
 def put_config(req: ConfigUpdate):
@@ -1515,9 +1518,7 @@ def put_config(req: ConfigUpdate):
             [c.model_dump() for c in req.mcp_connections])
     if req.chart_palette is not None:
         config.update_chart_palette(req.chart_palette)
-    cfg = config.public_config()
-    cfg["mcp"] = {"available": mcp_server.AVAILABLE, "path": "/mcp"}
-    return cfg
+    return _with_app_info(config.public_config())
 
 @app.post("/api/config/keys/migrate")
 def migrate_model_keys():

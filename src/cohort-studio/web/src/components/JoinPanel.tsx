@@ -864,7 +864,7 @@ export function JoinPanel({ datasets, sources, busy, onJoin, initialPlan,
         <div style={{ flex: 2 }} />
         {onOpenCanvas && !initialPlan && <button type="button" className="link join-open-canvas"
           title="Build the join by dragging tables onto a canvas" onClick={onOpenCanvas}>
-          Open visual join canvas
+          Open in Data Explorer
         </button>}
         <button className="quiet" onClick={onClose}>✕</button>
       </div>

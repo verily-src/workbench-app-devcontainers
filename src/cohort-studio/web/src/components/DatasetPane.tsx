@@ -4,6 +4,7 @@ import type { ExportJob, OpenResult } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
+import { useAiFeatures } from "../features";
 import { DatasetSettings } from "./DatasetSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
@@ -77,6 +78,7 @@ function safeFilterAskError(error: unknown): string {
 }
 
 export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable }: Props) {
+  const aiFeatures = useAiFeatures();
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
@@ -277,8 +279,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
         {dataset.sourceRef?.kind === "join" && <button className="quiet"
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         {dataset.sourceRef?.kind === "join" && onEditJoinCanvas && <button className="quiet"
-          title="Reopen this join on the visual join canvas"
-          onClick={() => onEditJoinCanvas(dataset.id)}>Edit in join canvas</button>}
+          title="Reopen this join in Data Explorer"
+          onClick={() => onEditJoinCanvas(dataset.id)}>Edit in Data Explorer</button>}
         <DatasetSettings dataset={dataset} onUpdate={onUpdate} />
         <label className="inline-field format-select">Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
@@ -414,14 +416,14 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
                         onSubmitted={() => undefined} />
       )}
 
-      {(databaseScoped || !chatOpen) && <AskAI dataset={dataset} onUpdate={onUpdate}
+      {aiFeatures && (databaseScoped || !chatOpen) && <AskAI dataset={dataset} onUpdate={onUpdate}
         databaseScoped={databaseScoped} onOpenChatDraft={(text) => {
           const id = chatDraftNumber + 1;
           setChatDraftNumber(id);
           setChatDraft({ id: `${dataset.id}-${id}`, text, datasetId: dataset.id });
         }} />}
 
-      {databaseScoped ? null : <ChatWidget key={dataset.id} dataset={dataset}
+      {databaseScoped || !aiFeatures ? null : <ChatWidget key={dataset.id} dataset={dataset}
         onUpdate={onUpdate} draft={chatDraft?.datasetId === dataset.id ? chatDraft : null}
         onOpenChange={setChatOpen} />}
 

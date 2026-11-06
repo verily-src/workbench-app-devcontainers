@@ -111,6 +111,21 @@ function TypeIcon({ column }: { column?: ColumnProfile }) {
   );
 }
 
+/** "cms_synpuf_100k.person" -> "person"; the full name stays in the tooltip. */
+export const shortTitle = (title: string) => {
+  const dot = title.lastIndexOf(".");
+  return dot > 0 && dot < title.length - 1 ? title.slice(dot + 1) : title;
+};
+const compactFmt = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
+const compact = (n: number) => (n < 10_000 ? n.toLocaleString() : compactFmt.format(n));
+/** Default join name from its tables: "person + drug_exposure + 1 more". */
+export const autoJoinName = (titles: string[]) => {
+  const names = titles.map(shortTitle);
+  if (!names.length) return "New join";
+  if (names.length <= 3) return names.join(" + ").slice(0, 128);
+  return `${names.slice(0, 2).join(" + ")} + ${names.length - 2} more`.slice(0, 128);
+};
+
 function TableIcon() {
   return (
     <svg className="jc-table-icon" width="14" height="14" viewBox="0 0 16 16" fill="none"
@@ -154,6 +169,8 @@ const sameRef = (a?: SourceRef, b?: SourceRef) => Boolean(a && b) && JSON.string
 export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult, onAddSource, onClose }: Props) {
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
   const [name, setName] = useState("New join");
+  // Until the user types a name, the join is named after its tables.
+  const [nameEdited, setNameEdited] = useState(false);
   const [selection, setSelection] = useState<{ type: "node" | "link"; id: string } | null>(null);
   const [draft, setDraft] = useState<LinkDraft | null>(null);
   const [mode, setMode] = useState<"live" | "extract">("live");
@@ -414,6 +431,11 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     setAllowLoaded(false); setStatus(""); setError("");
   };
 
+  useEffect(() => {
+    if (nameEdited) return;
+    setName(autoJoinName(nodes.map((n) => n.title)));
+  }, [nodes, nameEdited]);
+
   // ---- Reconstruct a saved join (Edit join in canvas / reopen saved model) ----
   const reconstruct = async (ref: JoinRef, title: string, editing = false) => {
     clearCanvas();
@@ -446,6 +468,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
         });
       setNodes(list);
       setName(editing ? `${title} (edited)` : title);
+      setNameEdited(true);
       setAllowLoaded(ref.allow_loaded ?? false);
       setStatus("");
     } catch (e) {
@@ -637,7 +660,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     setSaved(entry);
     setStatus(`Saved “${entry.name}” in this browser.`);
   };
-  const cancel = () => { clearCanvas(); setName("New join"); onClose(); };
+  const cancel = () => { clearCanvas(); setName("New join"); setNameEdited(false); onClose(); };
 
   const copySql = async () => {
     const statement = validation?.generated_sql?.copyable_sql;
@@ -747,10 +770,10 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     <div className="jc" aria-label="Visual join canvas">
       {/* Top bar */}
       <div className="jc-topbar">
-        <label className="jc-name">
-          <span className="sr-only">Join name</span>
-          <input type="text" aria-label="Join name" value={name} maxLength={128}
-                 onChange={(e) => setName(e.target.value)} />
+        <label className="jc-name" title="Name of the joined tab (and the default extract table name)">
+          <span className="jc-label">Name</span>
+          <input type="text" aria-label="Join name" value={name} maxLength={128} placeholder="Name this join"
+                 onChange={(e) => { setName(e.target.value); setNameEdited(true); }} />
         </label>
         <div className="jc-mode" role="radiogroup" aria-label="Connection">
           <span className="jc-label">Connection</span>
@@ -956,15 +979,16 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                                 aria-label={`${n.title}${isRoot ? " (start table)" : ""}. Table details`}
                                 aria-pressed={selection?.type === "node" && selection.id === n.id}
                                 onClick={() => { setDraft(null); setSelection(selection?.type === "node" && selection.id === n.id ? null : { type: "node", id: n.id }); }}>
-                          <span className="jc-node-title"><TableIcon /><span>{n.title}</span>
+                          <span className="jc-node-title" title={n.title}><TableIcon /><span>{shortTitle(n.title)}</span>
                             {n.parentId && n.alias.trim() && n.alias.trim() !== n.title && <span className="jc-node-alias">as {n.alias.trim()}</span>}
                           </span>
                           <span className="jc-node-meta">
                             <span className="jc-chip">{n.badge}</span>
                             {isRoot && <span className="jc-chip jc-chip-root">Start</span>}
                             {!n.dataset ? <span>Opening…</span> : <span>
-                              {n.rows != null ? `${n.rowsEstimated ? "~" : ""}${n.rows.toLocaleString()} rows · ` : ""}
-                              {cols != null ? `${cols} columns` : ""}
+                              {n.rows != null ? `${n.rowsEstimated ? "~" : ""}${compact(n.rows)} rows` : ""}
+                              {n.rows != null && cols != null ? " · " : ""}
+                              {cols != null ? `${cols} cols` : ""}
                             </span>}
                           </span>
                         </button>

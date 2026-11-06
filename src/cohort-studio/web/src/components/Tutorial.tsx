@@ -13,9 +13,17 @@ export interface TutorialProgress {
   hasDataset: boolean;
   chatHistoryAvailable: boolean;
   assistantConfigured: boolean;
+  /** False hides the assistant and Agent steps. */
+  aiFeatures?: boolean;
 }
 
-const steps = [
+type Step = {
+  title: string; text: string; textNoAi?: string; ai?: true;
+  target: (p: TutorialProgress) => string[];
+  done: (p: TutorialProgress) => boolean;
+  unavailable: (p: TutorialProgress) => boolean;
+};
+const ALL_STEPS: Step[] = [
   {
     title: "Choose a source",
     text: "Choose a source type, then select its datasource. The table picker appears after the datasource loads.",
@@ -43,6 +51,7 @@ const steps = [
   },
   {
     title: "Check assistant settings",
+    ai: true,
     text: "Open Settings to choose a provider and model. Add a key if your provider needs one. If your workspace is already set up, continue.",
     target: () => ["[data-tutorial-target='nav-settings']"],
     done: (p: TutorialProgress) => p.assistantConfigured,
@@ -50,6 +59,7 @@ const steps = [
   },
   {
     title: "Open an Agent conversation",
+    ai: true,
     text: "Open Agent and select New chat. Ask it to build your cohort and inspect its tool results. Conversations are listed on the left; closing one keeps its history. Workflow plans require Run workflow approval.",
     target: (p: TutorialProgress) => p.view === "agent"
       ? ["[aria-label='Message the Studio Agent']"] : ["[data-tutorial-target='nav-agent']"],
@@ -58,6 +68,7 @@ const steps = [
   },
   {
     title: "Review workflow runs",
+    textNoAi: "Open Workflows to inspect actual run status, inputs, outputs and logs.",
     text: "Open Workflows to inspect actual run status. For the demo, ask Agent to prepare cohort-genetics-demo with nextflow_params input and nextflow_outputs output. Review the mapping before Run workflow. After completion, ask Agent to verify the output files and open the summary dashboard.",
     target: () => ["[data-tutorial-target='nav-workflows']"],
     done: (p: TutorialProgress) => p.view === "workflows",
@@ -72,7 +83,7 @@ function readProgress(): SavedProgress {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (saved?.version === 3 && Number.isInteger(saved.step)) {
-      return { version: 3, step: Math.max(0, Math.min(steps.length - 1, saved.step)),
+      return { version: 3, step: Math.max(0, Math.min(ALL_STEPS.length - 1, saved.step)),
         dismissed: saved.dismissed === true };
     }
   } catch {}
@@ -92,7 +103,9 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
   const [panelPosition, setPanelPosition] = useState({ top: 24, right: 24 });
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const current = steps[step];
+  const ai = progress.aiFeatures !== false;
+  const steps = ai ? ALL_STEPS : ALL_STEPS.filter((s) => !s.ai);
+  const current = steps[Math.min(step, steps.length - 1)];
   const done = current.done(progress);
   const unavailable = current.unavailable(progress) || !targetAvailable;
   const selectors = useMemo(() => current.target(progress), [step,
@@ -217,7 +230,7 @@ export function Tutorial({ progress }: { progress: TutorialProgress }) {
             aria-label="Close tutorial" onClick={close}>×</button>
         </div>
         <h2 id="tutorial-title">{current.title}</h2>
-        <p id="tutorial-text">{current.text}</p>
+        <p id="tutorial-text">{!ai && current.textNoAi ? current.textNoAi : current.text}</p>
         {unavailable && <p className="tutorial-unavailable" role="status">
           This step is not available for the current sources or tab. Skip it to continue.
         </p>}

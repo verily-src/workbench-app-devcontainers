@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+# The suite covers the AI features; test_ai_features_hidden turns them off.
+os.environ.setdefault("STUDIO_AI_FEATURES", "on")
 # Keep test runs (and the e2e uvicorn they spawn) off the app's real
 # discovery snapshot beside studio_config.json.
 os.environ.setdefault("STUDIO_DISCOVERY_CACHE_PATH", os.path.join(

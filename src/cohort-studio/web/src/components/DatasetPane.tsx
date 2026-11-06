@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { ExportJob, OpenResult } from "../api";
-import type { ChartSpec, Dataset, Filter, Source } from "../types";
+import type { ChartSpec, ChartStyle, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 import { Popover } from "./Popover";
@@ -497,7 +497,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
             palette={palette}
             kinds={allowedKinds(spec)}
             onTapCategory={toggleCategory}
-            onChangeKind={(kind) => updateChart(i, { kind })}
+            onChangeKind={(kind, style, mark) => updateChart(i, { kind, style, mark })}
+            onMarksChange={(marks) => updateChart(i, { marks })}
             onRename={(title) => updateChart(i, { title: title || undefined })}
             onAxesChange={(x_axis, y_axis) => updateChart(i, { x_axis, y_axis })}
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
@@ -716,19 +717,24 @@ function AddChart({ dataset, onUpdate }:
 
   const submit = (form: HTMLFormElement) => {
     const data = new FormData(form);
-    const kind = data.get("kind") as ChartSpec["kind"] | "auto";
+    const picked = data.get("kind") as string;
+    // Styles (column, line, area, pie, donut) draw bar or histogram counts.
+    const styleKinds: Record<string, ChartStyle> = { column: "column", line: "line", area: "area", pie: "pie", donut: "donut" };
+    const style = styleKinds[picked];
+    const kind = (style ? "auto" : picked) as ChartSpec["kind"] | "auto";
     const x = data.get("x") as string;
     const y = (data.get("y") as string) || undefined;
     if (!x) return;
     const col = dataset.columns.find((c) => c.name === x);
+    const numericX = col?.filter_kind === "range";
     const resolved: ChartSpec["kind"] = kind === "auto"
-      ? (col?.filter_kind === "range" ? "histogram" : "bar") : kind;
+      ? (numericX && style !== "pie" && style !== "donut" ? "histogram" : "bar") : kind;
     if (resolved === "map" && (!y || x === y || !numeric.includes(x) || !numeric.includes(y))) {
       setError("Map requires numeric longitude and latitude columns.");
       return;
     }
     setError("");
-    const spec: ChartSpec = { kind: resolved, x, y,
+    const spec: ChartSpec = { kind: resolved, x, ...(style ? { style, y: undefined } : { y }),
       wide: resolved === "scatter" || resolved === "heatmap" || resolved === "map" };
     onUpdate({ charts: [...dataset.charts, spec] });
     form.reset();
@@ -750,7 +756,7 @@ function AddChart({ dataset, onUpdate }:
       <div style={{ width: 120 }}>
         <div className="field-label">Type</div>
         <select name="kind" value={chartKind} onChange={e => setChartKind(e.target.value)}>
-          {["auto", "bar", "histogram", "scatter", "heatmap", "map"].map((k) => (
+          {["auto", "bar", "column", "line", "area", "pie", "donut", "histogram", "scatter", "heatmap", "map"].map((k) => (
             <option key={k}>{k}</option>
           ))}
         </select>

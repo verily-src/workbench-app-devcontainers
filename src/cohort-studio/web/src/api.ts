@@ -1,8 +1,8 @@
-import type { ExtractInfo,
+import type { ExtractInfo, JoinOutput,
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
-  TableInfo, OmopInfo, OmopConcept, OmopSpec, OmopCount, OmopSummary, SqlPreview,
+  TableInfo, OmopSpec, OmopCount, SqlPreview,
   SavedViewJob, SavedViewList, SourceInfo, SqlCompletions,
 } from "./types";
 
@@ -369,9 +369,12 @@ function workflows(refresh = false): Promise<WorkflowList> {
 
 /** Join request body; filters are sent only when set, so older servers and
  * recorded requests see the same shape as before. */
+const hasOutput = (o?: JoinOutput) => Boolean(o && (o.exclude?.length || Object.keys(o.rename ?? {}).length));
+
 function joinBody(baseId: string, steps: JoinStep[], allowLoaded: boolean,
-                  baseFilters?: JoinFilter[]) {
+                  baseFilters?: JoinFilter[], output?: JoinOutput) {
   return {
+    ...(hasOutput(output) ? { output } : {}),
     base_id: baseId,
     steps: steps.map(({ filters, ...step }) => filters?.length ? { ...step, filters } : step),
     allow_loaded: allowLoaded,
@@ -419,9 +422,6 @@ export const api = {
     if (before !== undefined) query.set("before", String(before));
     return request<ChatHistory>(`/api/agent/chat/history?${query}`);
   },
-  agentChat: (message: string, sessionId?: string, newSession = false) =>
-    request<StudioAgentResponse>("/api/agent/chat",
-      post({ message, session_id: sessionId, new_session: newSession })),
   approveAgentWorkflow: (planId: string) =>
     request<AgentWorkflowPlan>(
       `/api/agent/workflows/${encodeURIComponent(planId)}/approve`, post({})),
@@ -433,27 +433,6 @@ export const api = {
   openAgentWorkflowResults: (planId: string) =>
     request<{ action: AgentDashboardAction; verification: AgentWorkflowVerification }>(
       `/api/agent/workflows/${encodeURIComponent(planId)}/results/open`, post({})),
-  omopAgent: (id: string, message: string,
-              _history: { role: string; content: string }[], spec: OmopSpec, sessionId?: string) =>
-    request<CohortAgentResult>(`/api/omop/${encodeURIComponent(id)}/cohort/agent`,
-      post({ message, spec, session_id: sessionId })),
-
-  omopInfo: (id: string, refresh = false) => request<OmopInfo>(
-    `/api/omop/${encodeURIComponent(id)}?refresh=${refresh}`),
-  omopConcepts: (id: string, q: string, domain: string, standard: boolean) =>
-    request<{ concepts: OmopConcept[] }>(`/api/omop/${encodeURIComponent(id)}/concepts?`
-      + new URLSearchParams({ q, domain, standard_only: String(standard) })),
-  omopCount: (id: string, spec: OmopSpec) => request<OmopCount>(
-    `/api/omop/${encodeURIComponent(id)}/cohort/count`, post(spec)),
-  omopSummary: (id: string, spec: OmopSpec, signal?: AbortSignal) =>
-    request<OmopSummary>(`/api/omop/${encodeURIComponent(id)}/cohort/summary`,
-      { ...post({ spec }), signal }),
-  omopOpen: (id: string, spec: OmopSpec, name: string) => request<OpenResult>(
-    `/api/omop/${encodeURIComponent(id)}/cohort/open`, post({ spec, name })),
-  omopDomain: (id: string, table: string, spec: OmopSpec | null, names: boolean) =>
-    request<OpenResult>(`/api/omop/${encodeURIComponent(id)}/domain/open`,
-      post({ table, spec, concept_names: names })),
-
   datasources: () =>
     request<{ ready: boolean; sources: Source[];
               catalogs_pending?: boolean; discovery?: DiscoveryStatus }>("/api/datasources"),
@@ -511,13 +490,14 @@ export const api = {
       body: JSON.stringify({ columns }),
     }),
 
-  join: (baseId: string, steps: JoinStep[], allowLoaded = false, baseFilters?: JoinFilter[]) =>
+  join: (baseId: string, steps: JoinStep[], allowLoaded = false, baseFilters?: JoinFilter[],
+         output?: JoinOutput) =>
     dataJob<OpenResult & { join: JoinStats }>("join",
-      joinBody(baseId, steps, allowLoaded, baseFilters)),
+      joinBody(baseId, steps, allowLoaded, baseFilters, output)),
 
   previewJoin: (baseId: string, steps: JoinStep[], allowLoaded = false, signal?: AbortSignal,
-                onProgress?: (job: DataJob) => void, baseFilters?: JoinFilter[]) =>
-    dataJob<JoinPreview>("join_preview", joinBody(baseId, steps, allowLoaded, baseFilters),
+                onProgress?: (job: DataJob) => void, baseFilters?: JoinFilter[], output?: JoinOutput) =>
+    dataJob<JoinPreview>("join_preview", joinBody(baseId, steps, allowLoaded, baseFilters, output),
       signal, onProgress),
 
   validateJoin: (baseId: string, steps: JoinStep[], signal?: AbortSignal,
@@ -551,11 +531,6 @@ export const api = {
   closeDataset: (datasetId: string) =>
     request<{ ok: boolean }>(`/api/datasets/${datasetId}`,
       { method: "DELETE" }),
-
-  seedGtex: (resourceId: string) =>
-    request<{ rows: number }>(
-      `/api/seed/gtex?resource_id=${encodeURIComponent(resourceId)}`,
-      { method: "POST" }),
 
   version: () => request<{ sha: string }>("/api/version"),
 
@@ -626,21 +601,12 @@ export const api = {
     request<{ extract: ExtractInfo | null }>(
       `/api/extracts/info?${new URLSearchParams({ resource_id: resourceId, table })}`),
 
-  materialize: (datasetId: string, resourceId: string, table: string) =>
-    request<{ table: string; resource_id: string; rows: number }>(
-      `/api/datasets/${datasetId}/materialize`,
-      post({ resource_id: resourceId, table })),
-
   ask: (datasetId: string, question: string, filters: Filter[]) =>
     request<{ filters: Filter[]; explanation: string }>(
       `/api/datasets/${datasetId}/ask`, post({ question, filters })),
 
   adminUpdate: () =>
     request<{ started: boolean }>("/api/admin/update", { method: "POST" }),
-
-  listViews: (kind: string, resourceId: string) =>
-    request<{ name: string }[]>(
-      `/api/views?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`),
 
   listAllViews: () => request<SavedViewList>("/api/views/all"),
 

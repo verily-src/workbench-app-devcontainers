@@ -5,7 +5,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type { DataJob, OpenResult } from "../api";
 import type {
-  ColumnProfile, Dataset, JoinFilter, JoinHow, JoinOp, JoinPreview, JoinRecommendation,
+  ColumnProfile, Dataset, JoinFilter, JoinHow, JoinOp, JoinOutput, JoinPreview, JoinRecommendation,
   JoinStep, JoinSuggestion, JoinValidation, Source, SourceRef, TableInfo,
 } from "../types";
 import { tableStats } from "../format";
@@ -27,7 +27,7 @@ import "./JoinCanvas.css";
 type JoinRef = Extract<SourceRef, { kind: "join" }>;
 
 export interface CanvasJoinRequest {
-  baseId: string; steps: JoinStep[]; allowLoaded: boolean; baseFilters: JoinFilter[];
+  baseId: string; steps: JoinStep[]; allowLoaded: boolean; baseFilters: JoinFilter[]; output?: JoinOutput;
   title: string; extraInputs: Dataset[]; fromCanvas: true;
 }
 
@@ -198,6 +198,10 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   const [gridOpen, setGridOpen] = useState(true);
   const [fieldsOpen, setFieldsOpen] = useState(true);
   const [fieldSearch, setFieldSearch] = useState("");
+  // Output fields: start-table columns to drop, and new names for any field
+  // (keyed by the joined field name). Applied after the join (`output`).
+  const [rootExcluded, setRootExcluded] = useState<string[]>([]);
+  const [renames, setRenames] = useState<Record<string, string>>({});
   const [tablePreview, setTablePreview] = useState<{ nodeId: string; columns: string[]; data: unknown[][];
     total?: number; error?: string; loading?: boolean } | null>(null);
   const [running, setRunning] = useState(false);
@@ -251,7 +255,11 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   const resources = new Set(inputs.flatMap((d) => sourceResources(d.sourceRef)));
   const crossSource = resources.size > 1
     || (resources.size > 0 && inputs.some((d) => d.queryScope === "loaded" && !d.sourceRef));
-  const sentAllowLoaded = crossSource && allowLoaded;
+  // A full join reads BigQuery inputs completely (billed by bytes scanned),
+  // so it needs approval even when every input is in BigQuery. Previews don't.
+  const readsBigQuery = inputs.some((d) => d.sourceRef?.kind === "bq");
+  const needsConsent = crossSource || readsBigQuery;
+  const sentAllowLoaded = needsConsent && allowLoaded;
   const auroraTargets = sources.filter((s) => (s.kind === "aurora" || s.kind === "postgres") && !s.read_only);
   const extractReason = auroraTargets.length ? null
     : "Extract saves the joined rows as a new database table and needs a writable Aurora or PostgreSQL datasource.";
@@ -432,6 +440,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
 
   const clearCanvas = () => {
     closeOwned(nodesRef.current);
+    setRootExcluded([]); setRenames({});
     setNodes([]); setSelection(null); setDraft(null); setGridTable("result");
     setAllowLoaded(false); setStatus(""); setError("");
   };
@@ -475,6 +484,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                    badge: KIND_BADGE[entry.ref.kind] ?? entry.ref.kind };
         });
       setNodes(list);
+      setRootExcluded(ref.output?.exclude ?? []);
+      setRenames(ref.output?.rename ?? {});
       setName(editing ? `${title} (edited)` : title);
       setNameEdited(true);
       setAllowLoaded(ref.allow_loaded ?? false);
@@ -607,7 +618,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   })();
   const needsGrowthConfirm = Boolean(preview?.large_growth) && !growthConfirmed;
   const footerReason = disabledReason
-    ?? (crossSource && !allowLoaded ? "Allow the full-source cross-source join to continue." : null)
+    ?? (needsConsent && !allowLoaded ? (readsBigQuery && !crossSource
+      ? "Allow reading the full BigQuery tables to continue." : "Allow the full-source cross-source join to continue.") : null)
     ?? (needsGrowthConfirm ? "Confirm the large result to continue." : null)
     ?? (mode === "extract" && (!extractResource || !extractTable.trim()) ? "Choose where to save the extract." : null)
     ?? (busy || running ? "Waiting for the current operation to finish." : null);
@@ -624,7 +636,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     try {
       const result = await api.previewJoin(plan.baseId, plan.steps, sentAllowLoaded, controller.signal,
         (job) => { if (requestId === previewRequest.current) setPreviewJob({ job, receivedAt: Date.now() }); },
-        plan.baseFilters);
+        plan.baseFilters, joinOutput);
       if (requestId === previewRequest.current) setPreview(result);
     } catch (e) {
       if (requestId === previewRequest.current) setPreviewErr((e as Error).message);
@@ -640,14 +652,14 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     const title = name.trim() || "Joined table";
     if (mode === "live") {
       await onJoin({ baseId: plan.baseId, steps: plan.steps, allowLoaded: sentAllowLoaded,
-        baseFilters: plan.baseFilters, title, extraInputs: inputs, fromCanvas: true });
+        baseFilters: plan.baseFilters, output: joinOutput, title, extraInputs: inputs, fromCanvas: true });
       return;
     }
     setRunning(true);
     let joinedId = "";
     try {
       setStatus("Joining…");
-      const joined = await api.join(plan.baseId, plan.steps, sentAllowLoaded, plan.baseFilters);
+      const joined = await api.join(plan.baseId, plan.steps, sentAllowLoaded, plan.baseFilters, joinOutput);
       joinedId = joined.dataset_id;
       setStatus(`Saving every row to ${extractResource}…`);
       const target = auroraTargets.find((s) => s.id === extractResource);
@@ -669,8 +681,6 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     }
   };
 
-  const saveRecipe = toJoinRef(nodes, sentAllowLoaded);
-  const saveReason = !ready ? "Add tables to the canvas first." : "reason" in saveRecipe ? saveRecipe.reason : null;
   const save = () => {
     if ("reason" in saveRecipe) return;
     const entry = { name: name.trim() || "New join", ref: saveRecipe.ref, savedAt: new Date().toISOString() };
@@ -715,20 +725,50 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
       return cols.map((c) => ({
         field: n.parentId && !gridNode ? `${n.alias.trim()}${ARROW}${c.name}` : c.name,
         node: n, remote: c.name, column: c,
-        included: !n.parentId || n.columns === null || n.columns.includes(c.name),
+        included: n.parentId ? n.columns === null || n.columns.includes(c.name)
+          : gridNode ? true : !rootExcluded.includes(c.name),
       }));
     });
   };
   const fields = fieldRows();
+  // The output projection sent with join, preview and save; only names that
+  // still exist (aliases and picked columns can change) are kept.
+  const joinOutput: JoinOutput | undefined = useMemo(() => {
+    if (!root) return undefined;
+    const rootNames = new Set(root.dataset?.columns.map((c) => c.name) ?? []);
+    const exclude = rootExcluded.filter((c) => rootNames.has(c));
+    const live = new Set(fieldRows().filter((f) => f.included).map((f) => f.field));
+    const rename = Object.fromEntries(Object.entries(renames)
+      .filter(([from, to]) => live.has(from) && to.trim() && to.trim() !== from)
+      .map(([from, to]) => [from, to.trim()]));
+    return exclude.length || Object.keys(rename).length
+      ? { ...(exclude.length ? { exclude } : {}), ...(Object.keys(rename).length ? { rename } : {}) } : undefined;
+  }, [nodes, rootExcluded, renames]); // eslint-disable-line react-hooks/exhaustive-deps
+  const outputKey = JSON.stringify(joinOutput ?? null);
+  const saveRecipe = toJoinRef(nodes, sentAllowLoaded, joinOutput);
+  const saveReason = !ready ? "Add tables to the canvas first." : "reason" in saveRecipe ? saveRecipe.reason : null;
+  // A preview shows the fields it was run with; changing them clears it.
+  const firstOutput = useRef(true);
+  useEffect(() => {
+    if (firstOutput.current) { firstOutput.current = false; return; }
+    setPreview(null);
+  }, [outputKey]);
   const visibleFields = fields.filter((f) => !fieldSearch.trim()
     || `${f.field} ${f.node.title}`.toLowerCase().includes(fieldSearch.trim().toLowerCase()));
   const toggleField = (n: CanvasNode, remote: string, on: boolean) => {
+    if (!n.parentId) {
+      setRootExcluded((prev) => on ? prev.filter((c) => c !== remote) : [...new Set([...prev, remote])]);
+      return;
+    }
     const all = n.dataset?.columns.map((c) => c.name) ?? [];
     const picked = n.columns ?? all;
     const next = on ? all.filter((c) => c === remote || picked.includes(c)) : picked.filter((c) => c !== remote);
     patchNode(n.id, { columns: next.length === all.length ? null : next });
   };
   const setAllFields = (on: boolean) => {
+    const rootShown = visibleFields.filter((f) => !f.node.parentId).map((f) => f.remote);
+    if (rootShown.length) setRootExcluded((prev) => on ? prev.filter((c) => !rootShown.includes(c))
+      : [...new Set([...prev, ...rootShown])]);
     const touched = new Set(visibleFields.filter((f) => f.node.parentId).map((f) => f.node.id));
     setNodes((prev) => prev.map((n) => {
       if (!touched.has(n.id)) return n;
@@ -1041,13 +1081,15 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                 Run anyway: {preview.steps[preview.steps.length - 1]?.rows.toLocaleString()} rows ({preview.growth_total}× the start table)
               </label>
             )}
-            {crossSource && (
-              <label className="jc-consent join-warn" title={allowLoaded
+            {needsConsent && (
+              <label className="jc-consent join-warn" title={(allowLoaded
                 ? "Studio will scan each complete source and stage the join on disk. The operation stops above 1 TB."
-                : "Cross-source joins require your approval to scan complete sources."}>
+                : "Joins that read complete sources need your approval.")
+                + (readsBigQuery ? " BigQuery bills by bytes scanned; Preview uses the loaded rows only." : "")}>
                 <input type="checkbox" checked={allowLoaded} disabled={busy || previewing || running}
                        onChange={(e) => setAllowLoaded(e.target.checked)} />
-                Allow full-source cross-source join
+                {readsBigQuery && !crossSource ? "Allow reading the full BigQuery tables" : "Allow full-source cross-source join"}
+                {readsBigQuery && <span className="settings-hint"> · BigQuery bills by bytes scanned</span>}
               </label>
             )}
             <span className="jc-spacer" />
@@ -1292,9 +1334,9 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                       <div className="jc-fields-tools">
                         <input type="search" aria-label="Search fields" placeholder="Search fields"
                                value={fieldSearch} onChange={(e) => setFieldSearch(e.target.value)} />
-                        <button type="button" className="link" disabled={!visibleFields.some((f) => f.node.parentId)}
+                        <button type="button" className="link" disabled={!visibleFields.length || Boolean(gridNode)}
                                 onClick={() => setAllFields(true)}>All</button>
-                        <button type="button" className="link" disabled={!visibleFields.some((f) => f.node.parentId)}
+                        <button type="button" className="link" disabled={!visibleFields.length || Boolean(gridNode)}
                                 onClick={() => setAllFields(false)}>None</button>
                       </div>
                       <table className="jc-fields-table" aria-label="Fields">
@@ -1303,12 +1345,18 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                           {visibleFields.map((f) => (
                             <tr key={`${f.node.id}:${f.remote}`} className={f.included ? "" : "excluded"}>
                               <td><input type="checkbox" checked={f.included}
-                                         disabled={!f.node.parentId || Boolean(gridNode)}
+                                         disabled={Boolean(gridNode)}
                                          aria-label={`Include ${f.field}`}
-                                         title={!f.node.parentId ? "The start table keeps all its columns" : gridNode ? "Choose fields on the joined result" : undefined}
+                                         title={gridNode ? "Choose fields on the joined result" : undefined}
                                          onChange={(e) => toggleField(f.node, f.remote, e.target.checked)} /></td>
                               <td><TypeIcon column={f.column} /></td>
-                              <td>{f.field}</td>
+                              <td>{gridNode ? f.field : (
+                                <input type="text" className="jc-field-name" aria-label={`Name for ${f.field}`}
+                                       value={renames[f.field] ?? f.field} maxLength={128} disabled={!f.included}
+                                       title={renames[f.field] && renames[f.field] !== f.field ? `Renamed from ${f.field}` : "Rename this field in the result"}
+                                       onChange={(e) => setRenames((prev) => ({ ...prev, [f.field]: e.target.value }))}
+                                       onBlur={(e) => { if (!e.target.value.trim()) setRenames(({ [f.field]: _drop, ...rest }) => rest); }} />
+                              )}</td>
                               <td>{disp(f.node)}</td>
                               <td>{f.remote}</td>
                             </tr>

@@ -5,7 +5,7 @@
  * step's conditions name a column of an earlier table by node id, so renaming
  * an alias never breaks a condition. Pure functions only (no React, no I/O). */
 import type {
-  Dataset, JoinFilter, JoinHow, JoinOp, JoinStep, SourceRef,
+  Dataset, JoinFilter, JoinHow, JoinOp, JoinOutput, JoinStep, SourceRef,
 } from "./types";
 import type { FilterRow } from "./components/JoinPanel";
 import { ARROW, addsColumns, aliasOf, fromFilter, sentFilters } from "./components/JoinPanel";
@@ -162,7 +162,7 @@ export function fromPlan(plan: JoinPlan,
 }
 
 /** Recipe of the canvas as a join source reference (for Save), or a reason it can't be saved. */
-export function toJoinRef(nodes: CanvasNode[], allowLoaded: boolean):
+export function toJoinRef(nodes: CanvasNode[], allowLoaded: boolean, output?: JoinOutput):
     { ref: Extract<SourceRef, { kind: "join" }> } | { reason: string } {
   const plan = toPlan(nodes);
   const root = rootOf(nodes);
@@ -174,6 +174,7 @@ export function toJoinRef(nodes: CanvasNode[], allowLoaded: boolean):
     kind: "join", base: root.dataset!.sourceRef!,
     ...(plan.baseFilters.length ? { base_filters: plan.baseFilters } : {}),
     ...(allowLoaded ? { allow_loaded: true } : {}),
+    ...(output && (output.exclude?.length || Object.keys(output.rename ?? {}).length) ? { output } : {}),
     steps: plan.steps.map(({ right_id: _id, ...step }, i) => ({
       ...step, source: steps[i].dataset!.sourceRef!,
     })),

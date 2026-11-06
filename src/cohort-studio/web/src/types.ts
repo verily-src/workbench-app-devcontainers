@@ -62,6 +62,9 @@ export interface AxisSettings {
   max?: number;
 }
 
+/** Fields of a joined result: dropped and renamed after joining. */
+export interface JoinOutput { exclude?: string[]; rename?: Record<string, string> }
+
 /** How a chart is drawn; the data (kind) stays the same, so no requery. */
 export type ChartStyle = "bar" | "column" | "line" | "area" | "pie" | "donut";
 
@@ -161,7 +164,7 @@ export type SourceRef = ({ grain?: GrainDefinition } & (
       spec: { group_by: string[]; measure?: string | null };
       settings?: ColumnSetting[] }
   | { kind: "join"; base: SourceRef; allow_loaded?: boolean;
-      base_filters?: JoinFilter[]; steps: {
+      base_filters?: JoinFilter[]; output?: JoinOutput; steps: {
       source: SourceRef; how: JoinHow; conditions: JoinCondition[];
       columns: string[] | null; alias: string; filters?: JoinFilter[];
     }[] }));

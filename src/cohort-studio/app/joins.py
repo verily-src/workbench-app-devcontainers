@@ -933,7 +933,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
     return {"df": df, "stats": stats, "live_source": live_source}
 
 def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False,
-                  base_filters: list | None = None) -> dict:
+                  base_filters: list | None = None, full_reads: bool = True) -> dict:
     if not steps:
         raise ValueError("Add at least one join step.")
     if len(steps) > MAX_STEPS:
@@ -943,6 +943,12 @@ def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False,
                    [p["base"]] + [s["ds"] for s in p["steps"]])
     if has_live and p["engine"] != "aurora" and not allow_loaded:
         raise ValueError("Cross-source joins require explicit approval to read each full source.")
+    # A full join reads capped BigQuery inputs completely (BigQuery bills per
+    # bytes scanned), so it needs the same approval; previews use loaded rows.
+    if (full_reads and p["engine"] != "aurora" and not allow_loaded
+            and any(full_reader_kind(ds) == "bq" for ds in [p["base"]] + [s["ds"] for s in p["steps"]])):
+        raise ValueError("Joining BigQuery tables reads each one in full, which BigQuery bills by "
+                         "bytes scanned. Approve the full-source join to continue.")
     error = _first_error(p)
     if error:
         raise ValueError(error)
@@ -961,9 +967,59 @@ def _report_engine(p: dict) -> None:
         _report(f"Joining {n} sources in DuckDB", engine="duckdb", sources=n)
 
 
+def project_output(out: dict, output: dict | None) -> dict:
+    """Drop and rename fields of a finished join (any engine).
+
+    In-memory frames are projected directly, live (SQL) sources remap their
+    logical column names, and DuckDB results get a view over the join table.
+    """
+    if not output or not (output.get("exclude") or output.get("rename")):
+        return out
+    import copy
+    exclude = set(output.get("exclude") or [])
+    rename = {k: v.strip() for k, v in (output.get("rename") or {}).items()}
+    columns = list(out["df"].columns)
+    unknown = sorted((exclude | set(rename)) - set(columns))
+    if unknown:
+        raise ValueError(f"Unknown field(s) in the join result: {', '.join(unknown[:5])}.")
+    keep = [c for c in columns if c not in exclude]
+    if not keep:
+        raise ValueError("Keep at least one field in the joined result.")
+    final = [rename.get(c, c) for c in keep]
+    dupes = sorted({n for n in final if final.count(n) > 1})
+    if dupes:
+        raise ValueError(f"Field names must be unique: {', '.join(dupes[:5])}.")
+    out = {**out, "df": out["df"][keep].rename(columns=rename)}
+    live = out.get("live_source")
+    if live:
+        projected = copy.copy(live)
+        projected["columns"] = {rename.get(c, c): live["columns"][c] for c in keep}
+        out["live_source"] = projected
+    disk = out.get("disk_source")
+    if disk:
+        import uuid
+        import disk_data
+        view = f"fields_{uuid.uuid4().hex[:12]}"
+        con = disk_data._connect(disk["path"])
+        try:
+            con.execute(f"CREATE VIEW {disk_data._q(view)} AS SELECT " + ", ".join(
+                f"{disk_data._q(c)} AS {disk_data._q(rename.get(c, c))}" for c in keep)
+                + f" FROM {disk_data._q(disk['table'])}")
+        finally:
+            con.close()
+        out["disk_source"] = {**disk, "table": view, "columns": final}
+    return out
+
+
 @execution.workload("bulk")
 def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
-        allow_loaded: bool = False, base_filters: list | None = None) -> dict:
+        allow_loaded: bool = False, base_filters: list | None = None,
+        output: dict | None = None) -> dict:
+    return project_output(_run(base_id, steps, cap, allow_loaded, base_filters), output)
+
+
+def _run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
+         allow_loaded: bool = False, base_filters: list | None = None) -> dict:
 
     p = (_checked_plan(base_id, steps, allow_loaded, base_filters) if base_filters
          else _checked_plan(base_id, steps, allow_loaded))
@@ -984,10 +1040,9 @@ def run(base_id: str, steps: list[dict], cap: int = queries.ROW_CAP,
     return disk_data.run_join(p)
 
 def preview(base_id: str, steps: list[dict], allow_loaded: bool = False,
-            base_filters: list | None = None) -> dict:
+            base_filters: list | None = None, output: dict | None = None) -> dict:
 
-    p = (_checked_plan(base_id, steps, allow_loaded, base_filters) if base_filters
-         else _checked_plan(base_id, steps, allow_loaded))
+    p = _checked_plan(base_id, steps, allow_loaded, base_filters, full_reads=False)
     _report_engine(p)
     if p["engine"] == "aurora":
         try:
@@ -1006,6 +1061,13 @@ def preview(base_id: str, steps: list[dict], allow_loaded: bool = False,
         # BigQuery inputs preview on their loaded rows (the notes say so);
         # running the join reads them in full.
         out = disk_data.run_join(p, full_readers=False)
+    try:
+        out = project_output(out, output)
+    except Exception:
+        if out.get("disk_source"):
+            import disk_data
+            disk_data.remove(out["disk_source"])
+        raise
     df = out["df"].head(PREVIEW_ROWS)
     _flag_growth(out["stats"])
     result = {**out["stats"], "columns": list(df.columns),

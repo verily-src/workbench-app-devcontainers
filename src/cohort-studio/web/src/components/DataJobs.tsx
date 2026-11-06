@@ -116,10 +116,12 @@ function DoneSummary({ job, onHide }: { job: DataJob; onHide: () => void }) {
   );
 }
 
-export function DataJobs({ onOpen, expected, showDone = true }: {
+export function DataJobs({ onOpen, expected, showDone = true, showActive = true }: {
   onOpen: (result: OpenResult) => void;
   /** Show the "Loaded …" completion cards (Explore only); progress always shows. */
   showDone?: boolean;
+  /** Off on views with their own progress (Data Builder); jobs keep being tracked. */
+  showActive?: boolean;
   /** Listing metadata for the table being opened, shown while it loads. */
   expected?: TableInfo | null;
 }) {
@@ -178,7 +180,7 @@ export function DataJobs({ onOpen, expected, showDone = true }: {
       pending.clear();
     };
   }, []);
-  const active = Object.values(jobs);
+  const active = showActive ? Object.values(jobs) : [];
   const openJobs = active.filter(({ job }) => job.kind === "open").length;
   const doneJobs = showDone ? Object.values(done) : [];
   if (!active.length && !Object.keys(recovered).length && !doneJobs.length && !error) return null;

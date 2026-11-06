@@ -236,7 +236,7 @@ class Expression(_Node):
         if nodes > MAX_NODES:
             raise ValueError("Calculation expression is too complex.")
         if deepest > MAX_TREE_DEPTH:
-            raise ValueError("Calculation expression is too deeply nested.")
+            raise ValueError("Calculation expression is too long: split it into two calculated fields.")
         return self
 
 
@@ -416,7 +416,9 @@ class _Parser:
                 operand = self.unary()
             finally:
                 self.depth -= 1
-            return operand if tok.text == "+" else _make(Negate, operand=operand)
+            if tok.text == "+":   # keeps the numeric context: +text_column is a number
+                return _make(Arithmetic, op="+", left=NumberLit(value=0.0), right=operand)
+            return _make(Negate, operand=operand)
         return self.primary()
 
     def primary(self):
@@ -645,6 +647,8 @@ class _Typer:
     def hint(self, node):
         if isinstance(node, Column):
             return self.calc.hints.get(node.name, "text")
+        if isinstance(node, Comparison):
+            return self.shared_hint([node.left, node.right])
         branches = []
         if isinstance(node, Case):
             branches = [w.result for w in node.whens] + [node.otherwise]
@@ -652,12 +656,16 @@ class _Typer:
             branches = node.args
         elif isinstance(node, Call) and node.function == "if":
             branches = node.args[1:]
-        kinds = {self.hint(b) for b in branches if b is not None and self.natural(b) is None} - {None}
+        return self.shared_hint(branches)
+
+    def shared_hint(self, nodes):
+        """One type for several type-less values; text columns convert to the others."""
+        kinds = {self.hint(b) for b in nodes if b is not None and self.natural(b) is None} - {None}
         if len(kinds) > 1:
             typed = kinds - {"text"}   # text columns convert to any other type
             if len(typed) > 1:
                 raise ValueError(f"These columns hold different types ({', '.join(sorted(typed))}); "
-                                 "use one type in COALESCE, IF and CASE.")
+                                 "compare or combine values of one type.")
             return typed.pop()
         return kinds.pop() if kinds else None
 
@@ -691,7 +699,7 @@ class _Typer:
             left, right = self.natural(node.left), self.natural(node.right)
             if left and right and left != right:
                 raise ValueError(f"Can't compare {TYPE_LABEL[left]} with {TYPE_LABEL[right]}.")
-            operand = left or right or self.hint(node.left) or self.hint(node.right) or "text"
+            operand = left or right or self.hint(node) or "text"
             if node.op not in {"=", "!="} and operand not in {"number", "date"}:
                 raise ValueError(f"'{node.op}' compares numbers or dates; use = or != for {TYPE_LABEL[operand]}.")
             self.resolve(node.left, operand, f"The left side of '{node.op}'")
@@ -1071,6 +1079,14 @@ def sql(calc: Calculation, dialect: str, column: Callable[[str], str],
         return f"TRUNC(CAST({key(end)} - {key(start)} AS {d.double}) / 100)"
 
     def run(node):
+        # Checked per node: sqrt() and DATEDIFF repeat their arguments, so nested
+        # calls grow the SQL geometrically and must stop before it gets large.
+        out = compile_node(node)
+        if len(out) > MAX_SQL:
+            raise ValueError("Calculation expression is too complex.")
+        return out
+
+    def compile_node(node):
         kind = types.get(id(node))
         if isinstance(node, NumberLit):
             return d.number(node.value)

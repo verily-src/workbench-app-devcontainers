@@ -55,6 +55,10 @@ def test_expression_examples_parameters_and_errors(page, app_url):
     params.get_by_label("New parameter type").select_option("date")
     params.get_by_role("button", name="Add parameter").click()
     params.get_by_label("Parameter index_date", exact=True).fill("2024-03-01")
+    params.get_by_label("New parameter name").fill("cut")
+    params.get_by_label("New parameter type").select_option("number")
+    params.get_by_role("button", name="Add parameter").click()
+    params.get_by_label("Parameter cut", exact=True).fill("6.5")
 
     menu(page, "Add to this view").get_by_role("button", name="+ Calculated field").click()
     panel = page.locator(".derive-panel")
@@ -93,3 +97,9 @@ def test_expression_examples_parameters_and_errors(page, app_url):
     group = page.locator(".filter-group", has_text="index_month")
     group.locator("summary").click()
     expect(group).to_contain_text("Data from 1960-01-01 to 2010-01-01")
+    # Number parameters are sent as numbers.
+    panel.get_by_label("New column name").fill("high")
+    panel.get_by_label("Calculation expression").fill("IF(person_id > @cut, 'high', 'low')")
+    panel.get_by_role("button", name="Add column").click()
+    expect(panel.get_by_text('Added "high".')).to_be_visible()
+    assert derives[-1]["parameters"] == [{"name": "cut", "kind": "number", "value": 6.5}]

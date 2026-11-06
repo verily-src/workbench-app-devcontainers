@@ -117,3 +117,24 @@ def test_live_postgres_query_and_compare(client, people):
     assert compared.status_code == 200, compared.text
     body = compared.json()
     assert body["a_n"] == 2 and body["b_n"] == 3
+
+
+def test_a_column_named_like_an_internal_marker_is_left_alone():
+    frame = pd.DataFrame({"__studio_row": [10, 20, 30], "dx": ["A", "B", "A"]})
+    group = {"kind": "any", "groups": [[{"column": "__studio_row", "kind": "categorical", "values": ["10"]}]]}
+    assert datasets.apply_filters(frame, [group])["__studio_row"].tolist() == [10]
+    # Duplicate index labels don't break the positional match either.
+    dup = frame.set_index(pd.Index([0, 0, 1]))
+    assert datasets.apply_filters(dup, [group])["__studio_row"].tolist() == [10]
+
+
+def test_group_summary_accepts_criteria_groups(client, people):
+    opened = client.post("/api/datasets/open", json={"source_ref": {
+        "kind": "aurora", "resource_id": RID, "table": people}})
+    dataset_id = opened.json()["dataset_id"]
+    response = client.post(f"/api/datasets/{dataset_id}/summary", json={
+        "group_by": ["dx"], "filters": [GROUP], "page": 0, "page_size": 50})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["input_rows"] == 2   # persons 1 (A, 60) and 3 (B, 2024 visit)
+    assert sorted(map(tuple, body["rows"])) == [("A", 1), ("B", 1)]

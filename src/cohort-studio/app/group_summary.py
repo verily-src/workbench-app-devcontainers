@@ -12,6 +12,7 @@ import execution
 import live_query
 import queries
 import query_cancellation
+import filter_rules
 from source_models import SummaryFilter, SummarySpec
 from sql_utils import statement as text
 
@@ -64,8 +65,8 @@ def _prepare(ds, req):
     columns = list(ds["df"].columns)
     if any(name not in columns for name in [*req.group_by, *([req.measure] if req.measure else [])]):
         raise ValueError("Unknown grouping or value column.")
-    filters = [item.model_dump() for item in req.filters]
-    if any(item["column"] not in columns for item in filters):
+    filters = [item.model_dump(exclude_none=True) for item in req.filters]
+    if any(item["column"] not in columns for item in filter_rules.leaves(filters)):
         raise ValueError("Unknown filter column.")
     aliases = _aliases(req.group_by, req.measure)
     order = ", ".join(f"{live_query._q(name)} ASC NULLS LAST" for name in req.group_by)
@@ -80,7 +81,7 @@ def _begin_live(con):
 
 def _live_sql(con, live, req, filters, aliases):
     q = live_query._q
-    numeric = live_query._numeric_columns(con, live, [item["column"] for item in filters if item["kind"] == "range"] + ([req.measure] if req.measure else []))
+    numeric = live_query._numeric_columns(con, live, [item["column"] for item in filter_rules.leaves(filters) if item["kind"] == "range"] + ([req.measure] if req.measure else []))
     where, params = live_query._where(filters, live["columns"], numeric)
     groups = [f"src.{q(live['columns'][name])}" for name in req.group_by]
     selection = [f"{col} AS {q(name)}" for col, name in zip(groups, req.group_by)]

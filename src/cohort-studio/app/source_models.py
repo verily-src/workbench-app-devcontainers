@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from typing import Annotated, Literal, Union
 
 from pydantic import (BaseModel, ConfigDict, Field, TypeAdapter, field_validator,
@@ -213,14 +215,102 @@ class DerivedSource(BaseModel):
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 
 
-class SummaryFilter(BaseModel):
-    """A dashboard filter applied before a group summary (same shape as the summary endpoint)."""
+def _iso_date(value: str | None) -> str | None:
+    """A YYYY-MM-DD string (kept as text so filters stay JSON for caches and views)."""
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(value[:10]).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"{value!r} is not a valid YYYY-MM-DD date.") from exc
+
+
+PARAM_NAME = r"^[A-Za-z_][A-Za-z0-9_]{0,39}$"
+
+
+class Parameter(BaseModel):
+    """A named value a tab's filters can follow (e.g. index_date, min_age)."""
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
-    column: str = Field(min_length=1, max_length=512)
-    kind: Literal["categorical", "range"]
-    values: list[str] | None = Field(default=None, max_length=1000)
+    name: str = Field(pattern=PARAM_NAME)
+    kind: Literal["number", "date"]
+    value: float | str
+
+    @model_validator(mode="after")
+    def _value_matches_kind(self):
+        if self.kind == "number":
+            if isinstance(self.value, str):
+                raise ValueError(f"Parameter {self.name!r} is a number.")
+        else:
+            if not isinstance(self.value, str):
+                raise ValueError(f"Parameter {self.name!r} is a YYYY-MM-DD date.")
+            self.value = _iso_date(self.value) or ""
+            if not self.value:
+                raise ValueError(f"Parameter {self.name!r} needs a date.")
+        return self
+
+
+class ParamBinding(BaseModel):
+    """Which filter bounds follow a parameter. The filter keeps the resolved
+    value too, so engines never see bindings."""
+    model_config = ConfigDict(extra="forbid")
+    min: str | None = Field(default=None, pattern=PARAM_NAME)
+    max: str | None = Field(default=None, pattern=PARAM_NAME)
+    start: str | None = Field(default=None, pattern=PARAM_NAME)
+    end: str | None = Field(default=None, pattern=PARAM_NAME)
+
+
+class Filter(BaseModel):
+    """One Explore filter. Pydantic checks each kind's shape before any engine runs."""
+    model_config = ConfigDict(allow_inf_nan=False)
+    column: str = Field(default="", max_length=512)
+    kind: Literal["categorical", "range", "date", "any"]
+    values: list[str] | None = Field(default=None, max_length=5000)
     min: float | None = None
     max: float | None = None
+    # kind "date": absolute YYYY-MM-DD bounds (end inclusive) or "last N units".
+    start: str | None = Field(default=None, max_length=32)
+    end: str | None = Field(default=None, max_length=32)
+    last: int | None = Field(default=None, ge=1, le=10_000)
+    unit: Literal["day", "week", "month", "year"] | None = None
+    # kind "any": rows matching every filter of at least one group (OR of ANDs).
+    groups: list[Annotated[list["Filter"], Field(max_length=50)]] | None = Field(default=None, max_length=20)
+    param: ParamBinding | None = None
+
+    @field_validator("start", "end")
+    @classmethod
+    def _iso(cls, value: str | None) -> str | None:
+        return _iso_date(value)
+
+    @model_validator(mode="after")
+    def _shape(self):
+        if self.kind == "any":
+            if not self.groups or any(not group for group in self.groups):
+                raise ValueError("A criteria group filter needs at least one non-empty group.")
+            if any(f.kind == "any" for group in self.groups for f in group):
+                raise ValueError("Criteria groups can't be nested.")
+            return self
+        if not self.column:
+            raise ValueError("Filter column is required.")
+        if self.groups is not None:
+            raise ValueError("Only criteria group filters have groups.")
+        if self.param is not None:
+            wrong = (self.kind == "range" and (self.param.start or self.param.end)) or \
+                    (self.kind == "date" and (self.param.min or self.param.max)) or self.kind == "categorical"
+            if wrong:
+                raise ValueError(f"Filter on {self.column!r} binds a parameter to a bound it doesn't have.")
+        if self.kind == "range" and self.min is not None and self.max is not None and self.min > self.max:
+            raise ValueError(f"Range filter on {self.column!r}: minimum is above maximum.")
+        if self.kind == "date":
+            if (self.last is None) != (self.unit is None):
+                raise ValueError("A relative date filter needs both 'last' and 'unit'.")
+            if self.last is not None and (self.start or self.end):
+                raise ValueError("Use either a relative date (last/unit) or start/end, not both.")
+            if self.start and self.end and self.end < self.start:
+                raise ValueError(f"Date filter on {self.column!r}: end is before its start.")
+        return self
+
+# Group summaries filter the same way as Explore: one model for both.
+SummaryFilter = Filter
 
 
 class SummarySpec(BaseModel):

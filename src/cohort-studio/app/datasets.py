@@ -154,13 +154,13 @@ def apply_filters(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
     for item in filters:
         if item.get("kind") != "any":
             continue
-        rows = pd.Series(range(len(df)), index=df.index)
-        keep = pd.Series(False, index=df.index)
-        marked = df.assign(__studio_row=range(len(df)))
+        # Track rows by position (a RangeIndex copy), so no marker column can
+        # collide with the data and duplicate index labels don't matter.
+        positional = df.reset_index(drop=True)
+        keep = np.zeros(len(df), dtype=bool)
         for group in filter_rules.validate_groups(item):
-            hit = _apply_flat(marked, group)["__studio_row"]
-            keep |= rows.isin(hit)
-        df = df[keep.to_numpy()]
+            keep[_apply_flat(positional, group).index.to_numpy()] = True
+        df = df[keep]
     return df
 
 

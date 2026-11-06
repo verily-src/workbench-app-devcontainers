@@ -62,7 +62,8 @@ import plink_api
 import join_discovery
 import sql_source
 import sql_completions
-from source_models import ColumnSetting, DerivedSpec, JoinOutput, SourceFilter, SourceRef, source_dict
+from source_models import (ColumnSetting, DerivedSpec, Filter, JoinOutput, Parameter, ParamBinding,
+                           SourceFilter, SourceRef, source_dict)
 
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
@@ -154,60 +155,6 @@ class SQLPreviewRequest(BaseModel):
         if value is not None and not value.strip():
             raise ValueError("SQL source name cannot be blank.")
         return value
-
-def _iso_date(value: str | None) -> str | None:
-    """A YYYY-MM-DD string (kept as text so filters stay JSON for caches and views)."""
-    if value in (None, ""):
-        return None
-    try:
-        return date.fromisoformat(value[:10]).isoformat()
-    except ValueError as exc:
-        raise ValueError(f"{value!r} is not a valid YYYY-MM-DD date.") from exc
-
-
-class Filter(BaseModel):
-    """One Explore filter. Pydantic checks each kind's shape before any engine runs."""
-    model_config = ConfigDict(allow_inf_nan=False)
-    column: str = Field(default="", max_length=512)
-    kind: Literal["categorical", "range", "date", "any"]
-    values: list[str] | None = Field(default=None, max_length=5000)
-    min: float | None = None
-    max: float | None = None
-    # kind "date": absolute YYYY-MM-DD bounds (end inclusive) or "last N units".
-    start: str | None = Field(default=None, max_length=32)
-    end: str | None = Field(default=None, max_length=32)
-    last: int | None = Field(default=None, ge=1, le=10_000)
-    unit: Literal["day", "week", "month", "year"] | None = None
-    # kind "any": rows matching every filter of at least one group (OR of ANDs).
-    groups: list[Annotated[list["Filter"], Field(max_length=50)]] | None = Field(default=None, max_length=20)
-
-    @field_validator("start", "end")
-    @classmethod
-    def _iso(cls, value: str | None) -> str | None:
-        return _iso_date(value)
-
-    @model_validator(mode="after")
-    def _shape(self):
-        if self.kind == "any":
-            if not self.groups or any(not group for group in self.groups):
-                raise ValueError("A criteria group filter needs at least one non-empty group.")
-            if any(f.kind == "any" for group in self.groups for f in group):
-                raise ValueError("Criteria groups can't be nested.")
-            return self
-        if not self.column:
-            raise ValueError("Filter column is required.")
-        if self.groups is not None:
-            raise ValueError("Only criteria group filters have groups.")
-        if self.kind == "range" and self.min is not None and self.max is not None and self.min > self.max:
-            raise ValueError(f"Range filter on {self.column!r}: minimum is above maximum.")
-        if self.kind == "date":
-            if (self.last is None) != (self.unit is None):
-                raise ValueError("A relative date filter needs both 'last' and 'unit'.")
-            if self.last is not None and (self.start or self.end):
-                raise ValueError("Use either a relative date (last/unit) or start/end, not both.")
-            if self.start and self.end and self.end < self.start:
-                raise ValueError(f"Date filter on {self.column!r}: end is before its start.")
-        return self
 
 class AxisSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
@@ -1658,6 +1605,29 @@ class ViewDataset(BaseModel):
     charts: list[ChartSpec] = Field(default_factory=list)
     cohorts: list[Cohort] = Field(default_factory=list)
     filter_ask_history: list[FilterAskEntry] = Field(default_factory=list, max_length=25)
+    parameters: list[Parameter] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def _bindings_use_defined_parameters(self):
+        kinds = {p.name: p.kind for p in self.parameters}
+        if len(kinds) != len(self.parameters):
+            raise ValueError("Parameter names must be unique.")
+        def check(filters):
+            for f in filters:
+                if f.kind == "any":
+                    for group in f.groups or []:
+                        check(group)
+                    continue
+                for bound, name in (f.param.model_dump().items() if f.param else []):
+                    if name is None:
+                        continue
+                    want = "date" if bound in ("start", "end") else "number"
+                    if kinds.get(name) != want:
+                        raise ValueError(f"Filter on {f.column!r} uses {name!r}, which is not a {want} parameter.")
+        check(self.filters)
+        for cohort in self.cohorts:
+            check(cohort.filters)
+        return self
 
 class SaveViewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)

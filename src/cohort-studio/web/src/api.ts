@@ -1,4 +1,4 @@
-import type { ExtractInfo, JoinOutput,
+import type { ExtractInfo, JoinOutput, Parameter,
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
@@ -69,6 +69,7 @@ export function viewSpecs(datasets: Dataset[]) {
     filter_ask_history: d.filterAskHistory ?? [],
     group_summary: d.groupSummary ?? null,
     sort: d.sort ?? null,
+    parameters: d.parameters ?? [],
   }));
 }
 
@@ -629,6 +630,7 @@ export const api = {
         filter_ask_history?: Dataset["filterAskHistory"];
         group_summary?: Dataset["groupSummary"] | null;
         sort?: Dataset["sort"] | null;
+        parameters?: Parameter[];
       }>;
     }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),

@@ -22,6 +22,7 @@ ROWS = pd.DataFrame({
     "index_text": ["2024-01-15", "2024-02-30", "not a date", "2010-01-31 08:00:00", None],
     "dx": ["E11", "I10", None, "it's", "E11"],
     "hba1c": [7.5, 5.0, None, 6.5, 9.1],
+    "smoker": [True, False, None, True, False],
 })
 PARAMETERS = [{"name": "start", "kind": "date", "value": "2024-02-01"},
               {"name": "cut", "kind": "number", "value": 7}]
@@ -41,6 +42,7 @@ FIELDS = {
     "in_window": "visit_date >= @start AND visit_date < DATE '2024-04-01'",
     "above_cut": "IF(hba1c > @cut, 1, 0)",
     "past_or_missing": "NOT (DATEDIFF(day, visit_date, TODAY()) < 0) OR visit_date IS NULL",
+    "smoker_high": "smoker AND hba1c > 6",
 }
 EXPECTED = {
     "age": [43, 23, None, 0, 49],
@@ -57,6 +59,7 @@ EXPECTED = {
     "in_window": ["true", "true", None, "false", "false"],
     "above_cut": [1, 0, 0, 0, 1],
     "past_or_missing": ["true", "true", "true", "true", "true"],
+    "smoker_high": ["true", "false", None, "true", "false"],
 }
 
 
@@ -108,7 +111,7 @@ def test_duckdb_date_and_conditional_fields(tmp_path):
     con = duckdb.connect(path)
     con.register("frame", ROWS)
     con.execute("CREATE TABLE data AS SELECT person_id, CAST(birth_date AS DATE) AS birth_date, "
-                "CAST(visit_date AS DATE) AS visit_date, index_text, dx, hba1c FROM frame")
+                "CAST(visit_date AS DATE) AS visit_date, index_text, dx, hba1c, CAST(smoker AS BOOLEAN) AS smoker FROM frame")
     preview = con.execute("SELECT * FROM data").df()
     con.close()
     source = {"path": path, "table": "data", "columns": list(ROWS.columns), "rows": len(ROWS)}
@@ -125,11 +128,12 @@ def date_table(engine, monkeypatch):
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE IF EXISTS public.calc_dates_test"))
         conn.execute(text("CREATE TABLE public.calc_dates_test (person_id integer, birth_date date, "
-                          "visit_date timestamp, index_text text, dx text, hba1c double precision)"))
+                          "visit_date timestamp, index_text text, dx text, hba1c double precision, smoker boolean)"))
         for row in ROWS.to_dict("records"):
             conn.execute(text("INSERT INTO public.calc_dates_test VALUES "
-                              "(:person_id, :birth_date, :visit_date, :index_text, :dx, :hba1c)"),
-                         {**row, "hba1c": None if pd.isna(row["hba1c"]) else row["hba1c"]})
+                              "(:person_id, :birth_date, :visit_date, :index_text, :dx, :hba1c, :smoker)"),
+                         {**row, "hba1c": None if pd.isna(row["hba1c"]) else row["hba1c"],
+                          "smoker": None if row["smoker"] is None else bool(row["smoker"])})
     yield {"kind": "aurora", "resource_id": "omopdb", "schema": "public", "table": "calc_dates_test"}
     with engine.begin() as conn:
         conn.execute(text("DROP TABLE public.calc_dates_test"))
@@ -141,7 +145,7 @@ def test_postgres_date_and_conditional_fields_and_recipe(date_table):
         result = check(opened["dataset_id"])
         assert result["query_scope"] == "database"
         spec = result["source_ref"]["spec"]
-        assert spec["expression"] == FIELDS["past_or_missing"]
+        assert spec["expression"] == FIELDS["smoker_high"]
         assert spec["parameters"][0] == {"name": "start", "kind": "date", "value": "2024-02-01"}
         reopened = main._open_source(result["source_ref"])
         try:
@@ -233,9 +237,28 @@ def test_keyword_named_columns_and_text_literals_stay_safe():
     assert "OR 1=1" in calculations.sql(hostile, "duckdb", lambda n: f'"{n}"')
     assert "''" in calculations.sql(hostile, "duckdb", lambda n: f'"{n}"')
     params = {}
-    pg = calculations.sql(hostile, "postgres", lambda n: f'"{n}"',
-                          lambda v: params.setdefault(f":p{len(params)}", v) and f":p{len(params) - 1}")
+
+    def bind(value):
+        key = f"p{len(params)}"
+        params[key] = value
+        return f":{key}"
+    pg = calculations.sql(hostile, "postgres", lambda n: f'"{n}"', bind)
     assert "OR 1=1" not in pg and "x') OR 1=1 --" in params.values()
+
+
+def test_review_fixes_symmetric_hints_unary_plus_and_sql_growth():
+    types = calculations.column_types(ROWS)
+    assert types["smoker"] == "bool"
+    for expression in ("index_text = visit_date", "visit_date = index_text"):
+        calc = calculations.parse(expression, ROWS.columns, types)
+        assert calculations.evaluate(calc, ROWS).tolist() == ["false", None, None, "false", None]
+    frame = pd.DataFrame({"n": ["12", "invalid"]})
+    plus = calculations.parse("+n", frame.columns, calculations.column_types(frame))
+    assert plus.result_type == "number"
+    assert calculations.evaluate(plus, frame).tolist()[0] == 12 and math.isnan(calculations.evaluate(plus, frame)[1])
+    nested = calculations.parse("sqrt(" * 23 + "hba1c" + ")" * 23, ROWS.columns, types)
+    with pytest.raises(ValueError, match="too complex"):
+        calculations.sql(nested, "duckdb", lambda n: f'"{n}"')
 
 
 def test_spec_validation_is_pydantic_and_reaches_the_api(client):

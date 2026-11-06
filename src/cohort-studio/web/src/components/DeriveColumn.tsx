@@ -50,7 +50,8 @@ export function usedParameters(expression: string, parameters: Parameter[]):
   for (const match of expression.replace(QUOTED, "''").matchAll(PARAM_REF)) {
     const parameter = byName.get(match[1]);
     if (!parameter) return { used: [...used.values()], missing: match[1] };
-    used.set(parameter.name, { name: parameter.name, kind: parameter.kind, value: parameter.value });
+    const value = parameter.kind === "number" ? Number(parameter.value) : String(parameter.value);
+    used.set(parameter.name, { name: parameter.name, kind: parameter.kind, value });
   }
   return { used: [...used.values()] };
 }

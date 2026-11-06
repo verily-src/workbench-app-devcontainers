@@ -1535,7 +1535,8 @@ class ConfigUpdate(BaseModel):
     ncbi_api_key: str | None = Field(default=None, max_length=128,
                                      pattern=r"^[A-Za-z0-9_-]*$")
     mcp_connections: list[MCPConnection] | None = Field(default=None, max_length=128)
-    chart_palette: str | None = None
+    chart_palette: Literal["verily", "indigo", "amber", "crimson", "slate", "23andme"] | None = None
+    brand: Literal["verily", "23andme"] | None = None
 
 class AskRequest(BaseModel):
     question: str
@@ -1664,6 +1665,8 @@ def put_config(req: ConfigUpdate):
             [c.model_dump() for c in req.mcp_connections])
     if req.chart_palette is not None:
         config.update_chart_palette(req.chart_palette)
+    if req.brand is not None:
+        config.update_brand(req.brand)
     return _with_app_info(config.public_config())
 
 @app.post("/api/config/keys/migrate")
@@ -1916,17 +1919,16 @@ def save_view(req: SaveViewRequest, request: Request, response: Response):
             "group_summary": d.group_summary.model_dump() if d.group_summary else None,
             "sort": d.sort.model_dump() if d.sort else None,
             "title": d.title,
-            "filters": [{k: v for k, v in f.model_dump().items()
-                         if v is not None} for f in d.filters],
+            "filters": [f.model_dump(exclude_none=True) for f in d.filters],
             "charts": [{k: v for k, v in c.model_dump().items()
                         if v is not None} for c in d.charts],
             "cohorts": [{
                 "name": ch.name,
-                "filters": [{k: v for k, v in f.model_dump().items()
-                             if v is not None} for f in ch.filters],
+                "filters": [f.model_dump(exclude_none=True) for f in ch.filters],
             } for ch in d.cohorts],
             "filter_ask_history": [entry.model_dump()
                                    for entry in d.filter_ask_history],
+            "parameters": [p.model_dump() for p in d.parameters],
         } for d in req.datasets],
     }
     try:

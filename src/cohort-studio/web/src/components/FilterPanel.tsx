@@ -93,14 +93,17 @@ function DateFilter({ col, active, onChange, parameters = [] }: {
       setMode("between");
     }
   }, [active?.last, active?.unit, active?.start, active?.end]); // eslint-disable-line react-hooks/exhaustive-deps
-  const between = (start?: string, end?: string, param = active?.param) =>
+  // param: undefined keeps the current binding, null removes it.
+  const between = (start?: string, end?: string, param?: ParamBinding | null) => {
+    const binding = param === undefined ? active?.param : param ?? undefined;
     onChange(start || end ? { column: col.name, kind: "date", ...(start ? { start } : {}), ...(end ? { end } : {}),
-                              ...(param ? { param } : {}) } : null);
+                              ...(binding ? { param: binding } : {}) } : null);
+  };
   const follow = (bound: "start" | "end", name: string) => {
     const p = dateParams.find((x) => x.name === name);
     const start = bound === "start" && p ? String(p.value) : active?.start;
     const end = bound === "end" && p ? String(p.value) : active?.end;
-    between(start, end, rebind(active?.param, bound, name));
+    between(start, end, rebind(active?.param, bound, name) ?? null);
   };
   const last = (n: string, u: DateUnit) => {
     const value = Number(n);
@@ -173,8 +176,11 @@ export function FilterPanel({ columns, filters, onChange, parameters = [] }: Pro
       ? { column: col.name, kind: "categorical", values } : null, col.name));
   };
 
+  // param: undefined keeps the current binding (minus an edited bound), null removes it.
   const setRange = (col: ColumnProfile, lo: number, hi: number, edited?: "min" | "max",
-                    param = edited ? rebind(byColumn.get(col.name)?.param, edited, "") : byColumn.get(col.name)?.param) => {
+                    explicit?: ParamBinding | null) => {
+    const current = byColumn.get(col.name)?.param;
+    const param = explicit === undefined ? (edited ? rebind(current, edited, "") : current) : explicit ?? undefined;
     const active = Boolean(param) || lo > (col.min ?? -Infinity) || hi < (col.max ?? Infinity);
     onChange(upsert(filters, active
       ? { column: col.name, kind: "range", min: lo, max: hi, ...(param ? { param } : {}) } : null,
@@ -185,7 +191,7 @@ export function FilterPanel({ columns, filters, onChange, parameters = [] }: Pro
     const p = numberParams.find((x) => x.name === name);
     const lo = bound === "min" && p ? Number(p.value) : current?.min ?? col.min ?? 0;
     const hi = bound === "max" && p ? Number(p.value) : current?.max ?? col.max ?? 0;
-    setRange(col, lo, hi, undefined, rebind(current?.param, bound, name));
+    setRange(col, lo, hi, undefined, rebind(current?.param, bound, name) ?? null);
   };
 
   const filterable = columns.filter((c) => c.filter_kind !== "none");

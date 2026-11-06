@@ -16,7 +16,10 @@ CONFIG_PATH = Path(os.environ.get(
 
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_PALETTE = "verily"
-PALETTES = ("verily", "indigo", "amber", "crimson", "slate")
+PALETTES = ("verily", "indigo", "amber", "crimson", "slate", "23andme")
+# App brand theme: accent colors and the header (Verily, or Verily × 23andMe).
+BRANDS = ("verily", "23andme")
+DEFAULT_BRAND = "verily"
 
 DEFAULT_PROVIDER = "anthropic"
 PROVIDERS = ("anthropic", "openai", "gemini", "openrouter", "bedrock",
@@ -420,6 +423,7 @@ def public_config() -> dict:
         },
         "mcp_connections": connections,
         "chart_palette": _load().get("chart_palette") or DEFAULT_PALETTE,
+        "brand": _load().get("brand") if _load().get("brand") in BRANDS else DEFAULT_BRAND,
     }
 
 def update_llm_config(model: str | None = None,
@@ -514,6 +518,13 @@ def update_chart_palette(palette: str) -> dict:
     with _lock:
         cfg = _load()
         cfg["chart_palette"] = palette if palette in PALETTES else DEFAULT_PALETTE
+        _write(cfg)
+    return public_config()
+
+def update_brand(brand: str) -> dict:
+    with _lock:
+        cfg = _load()
+        cfg["brand"] = brand if brand in BRANDS else DEFAULT_BRAND
         _write(cfg)
     return public_config()
 

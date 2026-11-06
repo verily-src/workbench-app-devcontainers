@@ -922,7 +922,7 @@ export default function App() {
             </div>
           )}
         </div>
-        <DataJobs expected={openingTable}
+        <DataJobs expected={openingTable} showDone={view === "explore"}
                   onOpen={result => openResult(result, result.source, result.source_ref)} />
         <div className="content">
           {view === "explore" && workflowVerification?.result.verified

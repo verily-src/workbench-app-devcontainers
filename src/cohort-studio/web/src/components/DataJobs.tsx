@@ -111,8 +111,10 @@ function DoneSummary({ job, onHide }: { job: DataJob; onHide: () => void }) {
   );
 }
 
-export function DataJobs({ onOpen, expected }: {
+export function DataJobs({ onOpen, expected, showDone = true }: {
   onOpen: (result: OpenResult) => void;
+  /** Show the "Loaded …" completion cards (Explore only); progress always shows. */
+  showDone?: boolean;
   /** Listing metadata for the table being opened, shown while it loads. */
   expected?: TableInfo | null;
 }) {
@@ -173,7 +175,8 @@ export function DataJobs({ onOpen, expected }: {
   }, []);
   const active = Object.values(jobs);
   const openJobs = active.filter(({ job }) => job.kind === "open").length;
-  if (!active.length && !Object.keys(recovered).length && !Object.keys(done).length && !error) return null;
+  const doneJobs = showDone ? Object.values(done) : [];
+  if (!active.length && !Object.keys(recovered).length && !doneJobs.length && !error) return null;
   return <section aria-label="Data operations" className="data-jobs">
     {Object.values(recovered).map(job => <div key={job.job_id} role="status" className="data-job" data-status={job.status}>
       <div className="data-job-body">
@@ -204,7 +207,7 @@ export function DataJobs({ onOpen, expected }: {
           } catch (e) { setError((e as Error).message); }
         }} />
     </div>)}
-    {Object.values(done).map(job => <div key={job.job_id}>
+    {doneJobs.map(job => <div key={job.job_id}>
       <DoneSummary job={job} onHide={() => setDone(old => { const next = { ...old }; delete next[job.job_id]; return next; })} />
     </div>)}
     {error && <p role="alert">{error}</p>}

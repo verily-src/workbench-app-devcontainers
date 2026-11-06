@@ -50,9 +50,10 @@ class FakeBigQuery:
 
     def get_table(self, name):
         self.table_name = name
-        schema = [SimpleNamespace(name=n, field_type=t) for n, t in [
-            ("person_id", "INTEGER"), ("variant", "STRING"), ("score", "INTEGER"),
-            ("tags", "STRING"), ("extra", "STRING")]]
+        schema = [SimpleNamespace(name=n, field_type=t, mode=m) for n, t, m in [
+            ("person_id", "INTEGER", "NULLABLE"), ("variant", "STRING", "NULLABLE"),
+            ("score", "INTEGER", "NULLABLE"), ("tags", "STRING", "REPEATED"),
+            ("extra", "STRING", "NULLABLE")]]
         return SimpleNamespace(schema=schema, num_rows=FULL_ROWS, num_bytes=self.num_bytes,
                                table_type=self.table_type, modified=None)
 
@@ -202,6 +203,41 @@ def test_join_filters_are_pushed_into_the_bigquery_read(setup):
     assert result["join"]["complete_source"] is True
     got = _rows(result["dataset_id"], "SELECT person_id FROM {t} ORDER BY person_id")
     assert [r[0] for r in got] == sorted(want.person_id.tolist())
+
+
+def test_repeated_field_filter_stays_in_duckdb_on_the_flattened_value(setup):
+    setup.fake.predicate = lambda f: f["variant"] == "A"
+    people, variants = _open_pair(setup)
+    request = _request(people, variants, columns=["variant"], filters=[
+        {"column": "variant", "op": "=", "value": "A"},
+        {"column": "tags", "op": "=", "value": "x, y"},        # REPEATED STRING
+        {"column": "tags", "op": "is not null"},
+    ])
+    response = setup.client.post("/api/datasets/join", json=request)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    setup.opened.append(result["dataset_id"])
+    session = setup.fake.sessions[-1]
+    assert session["restriction"] == "(`variant` = 'A')"
+    assert "tags" in session["fields"]                   # read so DuckDB can filter it
+    full = _full_frame()
+    want = full[(full.variant == "A") & full.tags.map(lambda t: t == ["x", "y"])]
+    assert result["join"]["rows"] == len(want) > 0
+    assert result["join"]["complete_source"] is True
+    got = _rows(result["dataset_id"], "SELECT person_id FROM {t} ORDER BY person_id")
+    assert [r[0] for r in got] == sorted(want.person_id.tolist())
+
+
+def test_row_restriction_never_pushes_repeated_or_record_fields():
+    kinds = {"tags": "text", "info": "text"}
+    raw = [{"column": "tags", "op": "=", "value": "x, y"},
+           {"column": "tags", "op": "is null"},
+           {"column": "info", "op": "is not null"}]
+    checked = [joins._check_filter(f, kinds, "t") for f in raw]
+    restriction, residual = bq.row_restriction(
+        checked, {"tags": "STRING", "info": "RECORD"}, {"tags": "REPEATED", "info": "NULLABLE"})
+    assert restriction == ""
+    assert residual == checked
 
 
 def test_bigquery_read_over_budget_is_refused_before_reading(setup):

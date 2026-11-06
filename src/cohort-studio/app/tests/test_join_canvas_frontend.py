@@ -409,3 +409,77 @@ def test_extract_mode_materializes_and_save_reopens(page, app_url):
     assert any(url.endswith("/api/datasets/joined") for url in calls["closed"])   # intermediate join closed
     assert calls["join"][-1]["steps"][0]["conditions"] == [
         {"left": "person_id", "op": "=", "right": "person_id"}]
+    # The recipe is stored under a key scoped to this app's path (apps share an origin).
+    keys = page.evaluate("Object.keys(localStorage)")
+    path = page.evaluate("window.location.pathname")
+    assert f"cohort-studio.join-canvas.saved:{path}" in keys
+    assert "cohort-studio.join-canvas.saved" not in keys
+
+
+def test_saved_join_from_another_app_path_is_not_offered(page, app_url):
+    calls = {}
+    _setup(page, app_url, calls)
+    recipe = {"name": "Other app join", "savedAt": "2026-01-01T00:00:00Z", "ref": {
+        "kind": "join", "base": _ref("person"),
+        "steps": [{"source": _ref("samples"), "how": "left", "columns": None, "alias": "samples",
+                   "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}]}]}}
+    page.add_init_script(f"""
+      const recipe = {__import__("json").dumps(recipe)};
+      localStorage.setItem("cohort-studio.join-canvas.saved", JSON.stringify(recipe));
+      localStorage.setItem("cohort-studio.join-canvas.saved:/some/other/app/", JSON.stringify(recipe));
+    """)
+    page.goto(app_url)
+    canvas = _open_canvas(page)
+    expect(canvas.get_by_role("button", name=re.compile("^Reopen saved join"))).to_have_count(0)
+
+
+def test_removing_one_of_two_steps_sharing_a_source_keeps_its_dataset(page, app_url):
+    calls = {}
+    cond = [{"left": "person_id", "op": "=", "right": "person_id"}]
+    original = {
+        "kind": "join", "base": _ref("person"),
+        "steps": [
+            {"source": _ref("samples"), "how": "left", "columns": None, "alias": "samples",
+             "conditions": cond},
+            {"source": _ref("samples"), "how": "inner", "columns": None, "alias": "samples_again",
+             "conditions": cond},
+        ],
+    }
+    _setup(page, app_url, calls, view_ref=original)
+    page.goto(f"{app_url}/#view=aurora:clinical:existing")
+    expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
+    page.get_by_role("button", name="Edit in join canvas").click()
+    canvas = page.locator(".jc")
+    expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
+    _wait_for(calls, "validate", lambda b: [s["right_id"] for s in b["steps"]]
+              == ["open-samples", "open-samples"], page)
+    # The first samples node owns the shared dataset; removing it must not close it.
+    canvas.get_by_role("button", name="Remove samples", exact=True).first.click()
+    expect(canvas.locator(".jc-node")).to_have_count(2)
+    body = _wait_for(calls, "validate", lambda b: len(b["steps"]) == 1, page)
+    assert body["steps"][0]["right_id"] == "open-samples"
+    assert body["steps"][0]["alias"] == "samples_again"
+    page.wait_for_timeout(300)
+    assert not any(url.endswith("/api/datasets/open-samples") for url in calls.get("closed", []))
+    # Removing the last user closes it.
+    canvas.get_by_role("button", name="Remove samples", exact=True).click()
+    expect(canvas.locator(".jc-node")).to_have_count(1)
+    for _ in range(30):
+        if any(url.endswith("/api/datasets/open-samples") for url in calls.get("closed", [])):
+            break
+        page.wait_for_timeout(100)
+    assert sum(url.endswith("/api/datasets/open-samples") for url in calls.get("closed", [])) == 1
+
+
+def test_loaded_status_card_shows_only_on_explore(page, app_url):
+    calls = {}
+    _setup(page, app_url, calls, view_ref=_ref("person"))
+    page.goto(f"{app_url}/#view=aurora:clinical:existing")
+    expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
+    loaded = page.locator(".data-job-done")
+    expect(loaded).to_be_visible()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Join$")).click()
+    expect(page.locator(".jc")).to_be_visible()
+    expect(loaded).to_have_count(0)
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore$")).click()
+    expect(loaded).to_be_visible()

@@ -143,6 +143,7 @@ def _fetch_resources() -> list[dict]:
     workspace = [f"--workspace={discovery.workspace_id()}"] if discovery.workspace_id() else []
     found: list[dict] = []
     failed: dict[str, discovery.DiscoveryError] = {}
+    failed_types: set[str] = set()
     for kind, types in discovery.KIND_TYPES.items():
         for rtype in types:
             try:
@@ -151,10 +152,11 @@ def _fetch_resources() -> list[dict]:
                 if e.code in discovery.GLOBAL_CODES:
                     raise e
                 failed.setdefault(kind, e)
+                failed_types.add(rtype)
     if len(failed) == len(discovery.KIND_TYPES):
         raise err
     if failed:
-        raise discovery.PartialDiscovery(found, failed)
+        raise discovery.PartialDiscovery(found, failed, failed_types)
     return found
 
 
@@ -273,8 +275,8 @@ def _refresh_resource_cache():
         except discovery.PartialDiscovery as p:
             failed_kinds = p.failed
             # Keep the last known entries of the kinds that failed.
-            fetched = p.resources + [r for r in (_resource_cache or [])
-                                     if discovery.kind_of(r) in failed_kinds]
+            fetched = discovery.merge_partial(p.resources, _resource_cache or [],
+                                              failed_kinds, p.failed_types)
         except Exception as e:
             failure = discovery.classify(e)
             fetched = None

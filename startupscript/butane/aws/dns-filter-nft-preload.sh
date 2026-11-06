@@ -1,13 +1,11 @@
 #!/bin/bash
 # dns-filter-nft-preload.sh installs the DNS-filter bypass-block rule before Docker starts, for an
 # instance already confirmed airlocked on a previous boot (see dns-filter-nft-preload.service's
-# ConditionPathExists). Docker can restart already-existing containers with their own restart
-# policy (application-server, proxy-agent) as part of its own startup, before dns-filter-setup.sh
-# - which runs After=docker.service - gets a chance to apply the same rule via the DOCKER-USER
-# chain. Confirmed live on a real reboot: Docker's restart-policy reconciliation lands within
-# milliseconds of docker.service itself becoming active, well before an After=docker.service unit
-# can run. A standalone table is used here, not DOCKER-USER, since that chain doesn't exist until
-# Docker creates it - this script runs before Docker has started at all this boot.
+# ConditionPathExists). Docker restarts already-existing restart-policy containers
+# (application-server, proxy-agent) as part of its own startup, before dns-filter-setup.sh - which
+# runs After=docker.service - gets a chance to apply the same rule via the DOCKER-USER chain. A
+# standalone table is used here, not DOCKER-USER, since that chain doesn't exist until Docker
+# creates it - this script runs before Docker has started at all this boot.
 #
 # This only covers reboots of an already-airlocked instance. On the genuine first boot this script
 # doesn't run (the flag file doesn't exist yet); dns-filter-setup.sh still installs the equivalent

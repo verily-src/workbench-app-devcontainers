@@ -26,11 +26,14 @@ interface Props {
   onOpenTable?: (opened: OpenResult, title: string) => void;
   /** Reruns this extract tab's recipe and replaces its rows. */
   onRefreshExtract?: (datasetId: string) => void;
+  /** Opens this extract's recipe in Data Builder to change and rewrite it. */
+  onEditExtract?: (datasetId: string) => void;
 }
 
 
-function ExtractBar({ dataset, onUpdate, onRefresh }: {
+function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
   dataset: Dataset; onUpdate: (changes: Partial<Dataset>) => void; onRefresh?: (id: string) => void;
+  onEdit?: (id: string) => void;
 }) {
   const target = extractTarget(dataset);
   const key = target ? `${target.resource_id}/${target.table}` : "";
@@ -56,6 +59,11 @@ function ExtractBar({ dataset, onUpdate, onRefresh }: {
               onClick={() => onRefresh?.(dataset.id)}>
         {dataset.extractRefreshing ? "Refreshing…" : "Refresh extract"}
       </button>
+      {onEdit && (info.recipe?.kind === "join" || info.recipe?.kind === "sql") && (
+        <button type="button" className="quiet" disabled={dataset.extractRefreshing}
+                title="Open the joins or SQL behind this extract, change them, and save over it"
+                onClick={() => onEdit(dataset.id)}>Edit in Data Builder</button>
+      )}
     </div>
   );
 }
@@ -113,7 +121,7 @@ function safeFilterAskError(error: unknown): string {
   return "The request could not be completed. Check the connection and try again.";
 }
 
-export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable, onRefreshExtract }: Props) {
+export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable, onRefreshExtract, onEditExtract }: Props) {
   const aiFeatures = useAiFeatures();
   const plinkExport = usePlink();
   const { result, filters, charts } = dataset;
@@ -329,7 +337,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
             ))}
           </select>
         </label>
-        <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} />
+        <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} onEdit={onEditExtract} />
         {dataset.sourceRef?.kind === "join" && <button className="quiet"
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         {dataset.sourceRef?.kind === "join" && onEditJoinCanvas && <button className="quiet"

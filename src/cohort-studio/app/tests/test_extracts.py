@@ -72,6 +72,7 @@ def test_same_database_live_join_is_created_in_the_database(on_target, monkeypat
     info = extracts.write({"live_source": live}, "res", table, "Live", recipe)
     assert info["rows"] == ROWS and _count(on_target, table) == ROWS
     assert info["refreshable"] is True
+    assert extracts.info("res", table)["recipe"] == recipe  # Data Builder reopens it
 
 
 def test_live_source_from_another_database_streams_every_row(on_target, monkeypatch):

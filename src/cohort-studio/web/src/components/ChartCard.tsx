@@ -3,7 +3,8 @@ import { echarts } from "../echarts";
 import type { EChartsOption, ECharts } from "../echarts";
 import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";
-import type { AxisSettings, BarDatum, PersonBarDatum, ChartResult, ChartSpec, ChartStyle, HistDatum } from "../types";
+import type { AxisSettings, BarDatum, PersonBarDatum, ChartMeasure, ChartResult, ChartSpec, ChartStyle, ColumnProfile,
+  HistDatum, SeriesBarDatum } from "../types";
 import { AxisEditor } from "./AxisEditor";
 import { MarksMenu } from "./MarksMenu";
 import { Popover } from "./Popover";
@@ -37,7 +38,8 @@ const AXIS = (ink = INK_SOFT, grid = GRID_LINE) => ({
   splitLine: { lineStyle: { color: grid } },
 });
 
-function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCategoryLabels = false, ink = INK_SOFT, grid = GRID_LINE): EChartsOption {
+function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCategoryLabels = false, ink = INK_SOFT, grid = GRID_LINE,
+                   valueName = "persons"): EChartsOption {
   const axis = AXIS(ink, grid);
   const cats = data.map((d) => d.category);
   const singleSeries = data.length > 0 && "value" in data[0];
@@ -51,10 +53,10 @@ function barOption(data: (BarDatum | PersonBarDatum)[], pal: Palette, compactCat
     tooltip: { trigger: "axis", axisPointer: { type: "none" },
       ...(compactCategoryLabels ? { formatter: (items: unknown) => {
         const item = Array.isArray(items) ? items[0] as { axisValue?: string; value?: number } : items as { axisValue?: string; value?: number };
-        return `${item?.axisValue ?? ""}<br/>persons: ${item?.value ?? ""}`;
+        return `${item?.axisValue ?? ""}<br/>${valueName}: ${item?.value ?? ""}`;
       } } : {}) },
     series: singleSeries ? [
-      { type: "bar", name: "persons", data: data.map((d) =>
+      { type: "bar", name: valueName, data: data.map((d) =>
         "value" in d ? d.value : d.selected),
         itemStyle: { color: pal.accent, borderRadius: 3 }, barWidth: "62%" },
     ] : [
@@ -135,7 +137,7 @@ const SLICE_COLORS = {
 };
 const MAX_SLICES = 6;
 
-type Counts = { cats: string[]; all: number[] | null; selected: number[] };
+type Counts = { cats: string[]; all: number[] | null; selected: (number | null)[]; name?: string };
 
 function barCounts(data: (BarDatum | PersonBarDatum)[]): Counts {
   const single = data.length > 0 && "value" in data[0];
@@ -157,7 +159,7 @@ function naturalOrder(counts: Counts): Counts {
     return numeric ? Number(ca) - Number(cb) : ca.localeCompare(cb, undefined, { numeric: true });
   });
   return { cats: idx.map((i) => counts.cats[i]), all: counts.all && idx.map((i) => counts.all![i]),
-           selected: idx.map((i) => counts.selected[i]) };
+           selected: idx.map((i) => counts.selected[i]), name: counts.name };
 }
 
 function seriesOption(counts: Counts, style: "column" | "line" | "area", pal: Palette, ink: string, grid: string,
@@ -170,22 +172,22 @@ function seriesOption(counts: Counts, style: "column" | "line" | "area", pal: Pa
     axisLabel: { ...axis.axisLabel, hideOverlap: true, interval: "auto" as const,
       ...(labelFor ? { formatter: (_v: string, i: number) => labelFor(i) } : {}) },
     splitLine: { show: false } };
-  const line = (name: string, data: number[], color: string, faint: boolean) => ({
+  const line = (name: string, data: (number | null)[], color: string, faint: boolean) => ({
     type: "line" as const, name, data, color, showSymbol: !many && counts.cats.length <= 24, symbolSize: 8,
     lineStyle: { width: 2, color, cap: "round" as const, join: "round" as const, opacity: faint ? 0.9 : 1 },
     itemStyle: { color },
     ...(style === "area" ? { areaStyle: { color, opacity: faint ? 0.18 : 0.12 } } : {}),
     emphasis: { focus: "series" as const },
   });
-  const bar = (name: string, data: number[], color: string, overlay: boolean) => ({
+  const bar = (name: string, data: (number | null)[], color: string, overlay: boolean) => ({
     type: "bar" as const, name, data, barMaxWidth: 24, itemStyle: { color, borderRadius: [4, 4, 0, 0] },
     ...(overlay ? { barGap: "-100%" } : {}), emphasis: { itemStyle: { color } },
   });
   const series = style === "column"
     ? [...(counts.all ? [bar("all", counts.all, pal.muted, false)] : []),
-       bar(counts.all ? "selected" : "persons", counts.selected, pal.accent, Boolean(counts.all))]
+       bar(counts.all ? "selected" : counts.name ?? "persons", counts.selected, pal.accent, Boolean(counts.all))]
     : [...(counts.all ? [line("all", counts.all, pal.muted, true)] : []),
-       line(counts.all ? "selected" : "persons", counts.selected, pal.accent, false)];
+       line(counts.all ? "selected" : counts.name ?? "persons", counts.selected, pal.accent, false)];
   return {
     grid: { left: 8, right: 16, top: counts.all && style !== "column" ? 28 : 8, bottom: 8, containLabel: true },
     xAxis: categoryAxis, yAxis: valueAxis,
@@ -196,8 +198,78 @@ function seriesOption(counts: Counts, style: "column" | "line" | "area", pal: Pa
   };
 }
 
+const OTHER_COLOR = { light: "#bdc1c6", dark: "#5f6368" };
+
+/** Category order for drawing: lines and areas read left to right ("Other" last). */
+function categoryOrder(cats: string[], natural: boolean): number[] {
+  const idx = cats.map((_, i) => i);
+  if (!natural) return idx;
+  const numeric = cats.every((c) => c === "Other" || (c.trim() !== "" && !Number.isNaN(Number(c))));
+  return idx.sort((a, b) => {
+    const ca = cats[a], cb = cats[b];
+    if (ca === "Other") return 1;
+    if (cb === "Other") return -1;
+    return numeric ? Number(ca) - Number(cb) : ca.localeCompare(cb, undefined, { numeric: true });
+  });
+}
+
+/** One series per value of the Split by field, in the fixed categorical order. */
+function splitOption(result: ChartResult, style: ChartStyle, dark: boolean, ink: string, grid: string,
+                     surface: string, stack: boolean, format: (value: number) => string): { option: EChartsOption; cats: string[] } {
+  const data = result.data as SeriesBarDatum[];
+  const names = result.series ?? [];
+  const axis = AXIS(ink, grid);
+  const order = categoryOrder(data.map((d) => d.category), style === "line" || style === "area");
+  const cats = order.map((i) => data[i].category);
+  const colors = SLICE_COLORS[dark ? "dark" : "light"];
+  const horizontal = style === "bar";
+  const bars = style === "bar" || style === "column" || style === "pie" || style === "donut";
+  const radius = horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0];
+  const many = cats.length > 24;
+  const series = names.map((name, s) => {
+    const color = name === "Other" ? OTHER_COLOR[dark ? "dark" : "light"] : colors[s % colors.length];
+    const values = order.map((i) => data[i].values[s] ?? null);
+    return bars
+      ? { type: "bar" as const, name, data: values, barMaxWidth: 24, ...(stack ? { stack: "total" } : {}),
+          itemStyle: { color, borderRadius: stack ? 0 : radius, ...(stack ? { borderColor: surface, borderWidth: 1 } : {}) },
+          emphasis: { focus: "series" as const } }
+      : { type: "line" as const, name, data: values, color, connectNulls: false,
+          showSymbol: !many, symbolSize: 8, ...(stack && style === "area" ? { stack: "total" } : {}),
+          lineStyle: { width: 2, color, cap: "round" as const, join: "round" as const }, itemStyle: { color },
+          ...(style === "area" ? { areaStyle: { color, opacity: stack ? 0.3 : 0.1 } } : {}),
+          emphasis: { focus: "series" as const } };
+  });
+  const valueAxis = { type: "value" as const, ...axis, axisLabel: { ...axis.axisLabel, hideOverlap: true,
+    formatter: (value: number) => format(value) } };
+  const categoryAxis = { type: "category" as const, data: cats, ...axis, boundaryGap: bars,
+    axisLabel: { ...axis.axisLabel, hideOverlap: true, interval: "auto" as const }, splitLine: { show: false } };
+  return {
+    cats,
+    option: {
+      grid: { left: 8, right: 16, top: names.length > 1 ? 30 : 8, bottom: 8, containLabel: true },
+      xAxis: horizontal ? valueAxis : categoryAxis,
+      yAxis: horizontal ? categoryAxis : valueAxis,
+      tooltip: { trigger: "axis", axisPointer: { type: bars ? "shadow" : "line" },
+        valueFormatter: (value: unknown) => (value === null || value === undefined ? "—" : format(Number(value))) },
+      ...(names.length > 1 ? { legend: { type: "scroll", top: 0, left: 8, right: 8, itemWidth: 14, itemHeight: 8,
+        textStyle: { color: ink, fontFamily: FONT, fontSize: 11 } } } : {}),
+      series: series as EChartsOption["series"],
+    },
+  };
+}
+
+const AGG_LABEL: Record<string, string> = {
+  count: "Rows", count_distinct: "Distinct", sum: "Sum of", mean: "Mean", median: "Median",
+  min: "Minimum", max: "Maximum",
+};
+/** "Mean HbA1c", "Distinct patient_id"; undefined for plain row counts. */
+export function measureLabel(measure: ChartMeasure | undefined, labels: Record<string, string>): string | undefined {
+  if (!measure || measure.agg === "count" || !measure.column) return undefined;
+  return `${AGG_LABEL[measure.agg]} ${labels[measure.column] ?? measure.column}`;
+}
+
 function pieOption(counts: Counts, donut: boolean, dark: boolean, ink: string, surface: string): { option: EChartsOption; cats: string[] } {
-  const rows = counts.cats.map((name, i) => ({ name, value: counts.selected[i] }))
+  const rows = counts.cats.map((name, i) => ({ name, value: counts.selected[i] ?? 0 }))
     .filter((r) => r.value > 0);
   const named = rows.filter((r) => r.name !== "Other").sort((a, b) => b.value - a.value);
   const other = rows.filter((r) => r.name === "Other").reduce((sum, r) => sum + r.value, 0);
@@ -246,7 +318,7 @@ function applyMarks(option: EChartsOption, marks: ChartMarks | undefined, ink: s
     }
     if (marks.labels && s.name !== "all" && (s.type === "bar" || s.type === "line")) {
       s.label = { show: true, position: horizontal ? "right" : "top", color: ink, fontFamily: FONT, fontSize: 10,
-        formatter: (p: { value: number }) => compactNumber(Number(p.value)) };
+        formatter: (p: { value: number | null }) => (p.value === null || p.value === undefined ? "" : compactNumber(Number(p.value))) };
     }
   }
 }
@@ -275,12 +347,24 @@ interface Props {
   onAxesChange?: (x: AxisSettings, y: AxisSettings) => void;
   readOnly?: boolean;
   compactCategoryLabels?: boolean;
+  /** The tab's fields, for the Measure and Split by controls. */
+  fields?: ColumnProfile[];
+  /** Data-affecting edits (measure, series), which requery. */
+  onDataChange?: (changes: Partial<ChartSpec>) => void;
+}
+
+function defaultTitle(spec: ChartSpec, labels: Record<string, string>): string {
+  const x = labels[spec.x] ?? spec.x;
+  const measure = measureLabel(spec.measure, labels);
+  const base = measure ? `${measure} by ${x}` : `${x}${spec.y ? ` × ${labels[spec.y] ?? spec.y}` : ""}`;
+  return spec.series ? `${base}, split by ${labels[spec.series] ?? spec.series}` : base;
 }
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onMarksChange, onToggleWide,
                             onMove, canMoveUp = false, canMoveDown = false, onDuplicate,
-                            onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false }: Props) {
+                            onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false,
+                            fields, onDataChange }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<ECharts>();
@@ -342,17 +426,25 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     switch (result.kind) {
       case "bar": {
         const data = result.data as (BarDatum | PersonBarDatum)[];
-        if (style === "pie" || style === "donut") {
-          const surface = styles.getPropertyValue("--card").trim() || (dark ? "#1f2023" : "#ffffff");
+        const surface = styles.getPropertyValue("--card").trim() || (dark ? "#1f2023" : "#ffffff");
+        const valueName = measureLabel(result.measure, columnLabels);
+        if (result.series) {
+          const additive = !result.measure || result.measure.agg === "count" || result.measure.agg === "sum";
+          const split = splitOption(result, style ?? "bar", dark, ink, grid, surface,
+            Boolean(spec.marks?.stack) && additive && style !== "line", compactNumber);
+          option = split.option;
+          clickCats = split.cats;
+        } else if (style === "pie" || style === "donut") {
           const pie = pieOption(barCounts(data), style === "donut", dark, ink, surface);
           option = pie.option;
           clickCats = pie.cats;
         } else if (style === "column" || style === "line" || style === "area") {
-          const counts = style === "column" ? barCounts(data) : naturalOrder(barCounts(data));
+          const base = { ...barCounts(data), name: valueName };
+          const counts = style === "column" ? base : naturalOrder(base);
           option = seriesOption(counts, style, chartPalette, ink, grid);
           clickCats = counts.cats;
         } else {
-          option = barOption(data, chartPalette, compactCategoryLabels, ink, grid);
+          option = barOption(data, chartPalette, compactCategoryLabels, ink, grid, valueName);
           clickCats = data.map((d) => d.category);
         }
         break;
@@ -420,6 +512,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
 
   const drawnStyle = styleOf(spec);
   const height = result?.kind === "bar" && (drawnStyle === "pie" || drawnStyle === "donut") ? 260
+    : result?.kind === "bar" && drawnStyle === "bar" && result.series
+    ? Math.min(Math.max(220, result.data.length * (result.series.length * 7 + 12) + 70), 600)
     : result?.kind === "bar" && drawnStyle === "bar"
     ? Math.min(Math.max(170, (result.data.length as number) * 26 + 60), 430)
     : result?.kind === "map" ? 340 : 240;
@@ -434,13 +528,12 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
             if (event.key === "Escape") setEditingTitle(false);
           }} onBlur={() => { onRename?.(titleDraft.trim()); setEditingTitle(false); }} /> :
         <span className="title">
-          {spec.title || `${columnLabels[spec.x] ?? spec.x}${spec.y
-            ? ` × ${columnLabels[spec.y] ?? spec.y}` : ""}`}
+          {spec.title || defaultTitle(spec, columnLabels)}
         </span>}
         {result?.sampled && <span className="badge" title="This chart uses sampled data">
           Sampled
         </span>}
-        {!readOnly && <MarksMenu spec={spec} kinds={kinds}
+        {!readOnly && <MarksMenu spec={spec} kinds={kinds} fields={fields} onData={onDataChange}
           onChoose={(mark, choice) => onChangeKind(choice.kind, choice.style, mark)}
           onMarks={(marks) => onMarksChange?.(Object.values(marks).some((v) => v !== undefined) ? marks : undefined)} />}
         {onRename && <button className="quiet" title="Rename chart" aria-label="Rename chart"

@@ -1241,15 +1241,27 @@ def _where_flat(filters: list[dict], columns: list[str]):
     return " AND ".join(clauses) if clauses else "TRUE", params
 
 
+def _duck_dialect(con, relation: str, where: str, params: list):
+    import chart_measures
+    return chart_measures.Dialect(
+        rel=f"{relation} AS src", col=lambda name: f"src.{_q(name)}",
+        number=lambda name: chart_measures.duck_number(f"src.{_q(name)}"),
+        text_type="VARCHAR", named=False, where=where, where_params=params,
+        run=lambda sql, values: con.execute(sql, values).fetchall(), postgres=False)
+
+
 def _aggregate(con, relation: str, where: str, params: list,
                charts: list[dict], columns: list[str]):
+    import chart_measures
     out = []
     for chart in charts:
         kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
         if x not in columns or (y and y not in columns):
             raise ValueError("Unknown chart column.")
         qx = f"src.{_q(x)}"
-        if kind == "bar":
+        if chart_measures.is_measured(chart):
+            out.append(chart_measures.sql_bar(_duck_dialect(con, relation, where, params), chart))
+        elif kind == "bar":
             counts = con.execute(
                 f"SELECT CAST({qx} AS VARCHAR), COUNT(*) FROM {relation} AS src "
                 f"WHERE {qx} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 12").fetchall()

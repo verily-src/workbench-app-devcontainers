@@ -91,6 +91,9 @@
 .marks-seg > button + button { border-left: 1px solid var(--border-strong); }
 .marks-seg > button[aria-checked="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
 .marks-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.marks-menu .popover-panel { max-height: min(82vh, 720px); overflow-y: auto; }
+.marks-data { display: flex; flex-wrap: wrap; gap: 6px; }
+.marks-data select { flex: 1 1 100%; min-width: 0; height: 28px; font-size: 12.5px; }
 /* On very narrow cards the Marks button shrinks (its label truncates) instead of overflowing. */
 .chart-card .head .marks-menu { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .chart-card .head .marks-menu > button { max-width: 100%; min-width: 0; overflow: hidden; }

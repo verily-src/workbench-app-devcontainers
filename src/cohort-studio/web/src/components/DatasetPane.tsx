@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { ExportJob, OpenResult } from "../api";
-import type { ChartSpec, ChartStyle, Dataset, Source } from "../types";
+import type { ChartMeasure, ChartSpec, ChartStyle, Dataset, MarkType, MeasureAgg, Source } from "../types";
 import { ChartCard } from "./ChartCard";
+import { isMeasured, MEASURE_LABEL, measureFields, resolveMark, seriesFields } from "./MarksMenu";
 import { ChatWidget } from "./ChatWidget";
 import { Popover } from "./Popover";
 import { CriteriaGroups } from "./CriteriaGroups";
@@ -525,6 +526,8 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
             onTapCategory={toggleCategory}
             onChangeKind={(kind, style, mark) => updateChart(i, { kind, style, mark })}
             onMarksChange={(marks) => updateChart(i, { marks })}
+            fields={dataset.columns}
+            onDataChange={(changes) => updateChart(i, changes)}
             onRename={(title) => updateChart(i, { title: title || undefined })}
             onAxesChange={(x_axis, y_axis) => updateChart(i, { x_axis, y_axis })}
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
@@ -755,10 +758,16 @@ function AddChart({ dataset, onUpdate }:
   const all = dataset.columns.map((c) => c.name);
   const [error, setError] = useState("");
   const [chartKind, setChartKind] = useState("auto");
+  const [agg, setAgg] = useState<MeasureAgg>("count");
+  const [chartX, setChartX] = useState("");
+  const measureChoices = measureFields(dataset.columns, agg, chartX);
 
   const submit = (form: HTMLFormElement) => {
     const data = new FormData(form);
     const picked = data.get("kind") as string;
+    const measureColumn = (data.get("measure_column") as string) || undefined;
+    const series = (data.get("series") as string) || undefined;
+    const measure: ChartMeasure | undefined = agg !== "count" && measureColumn ? { agg, column: measureColumn } : undefined;
     // Styles (column, line, area, pie, donut) draw bar or histogram counts.
     const styleKinds: Record<string, ChartStyle> = { column: "column", line: "line", area: "area", pie: "pie", donut: "donut" };
     const style = styleKinds[picked];
@@ -768,28 +777,41 @@ function AddChart({ dataset, onUpdate }:
     if (!x) return;
     const col = dataset.columns.find((c) => c.name === x);
     const numericX = col?.filter_kind === "range";
+    const measured = isMeasured({ measure, series });
     const resolved: ChartSpec["kind"] = kind === "auto"
-      ? (numericX && style !== "pie" && style !== "donut" ? "histogram" : "bar") : kind;
+      ? (numericX && !measured && style !== "pie" && style !== "donut" ? "histogram" : "bar") : kind;
     if (resolved === "map" && (!y || x === y || !numeric.includes(x) || !numeric.includes(y))) {
       setError("Map requires numeric longitude and latitude columns.");
       return;
     }
+    if (measured && (resolved !== "bar" || (y && !style))) {
+      setError("Measure and Split by apply to bar, column, line and area charts of one field.");
+      return;
+    }
+    if (series === x) { setError("Split by needs a field other than the chart field."); return; }
+    if (measured && style && typeof resolveMark(style as MarkType, ["bar"], false, { measure, series }) === "string") {
+      setError(resolveMark(style as MarkType, ["bar"], false, { measure, series }) as string);
+      return;
+    }
     setError("");
     const spec: ChartSpec = { kind: resolved, x, ...(style ? { style, y: undefined } : { y }),
-      wide: resolved === "scatter" || resolved === "heatmap" || resolved === "map" };
+      ...(measure ? { measure } : {}), ...(series ? { series } : {}),
+      wide: resolved === "scatter" || resolved === "heatmap" || resolved === "map" || Boolean(series) };
     onUpdate({ charts: [...dataset.charts, spec] });
     form.reset();
     setChartKind("auto");
+    setAgg("count");
+    setChartX("");
   };
 
   return (
     <form data-tutorial-target="add-chart"
-      style={{ display: "flex", gap: 8, alignItems: "end", margin: "10px 0" }}
+      style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "end", margin: "10px 0" }}
       onSubmit={(e) => { e.preventDefault(); submit(e.currentTarget); }}
     >
       <div style={{ width: 220 }}>
         <div className="field-label">{chartKind === "map" ? "Longitude" : "Add chart"}</div>
-        <select name="x" defaultValue="">
+        <select name="x" value={chartX} onChange={(e) => setChartX(e.target.value)}>
           <option value="" disabled>Choose a column…</option>
           {all.map((c) => <option key={c}>{c}</option>)}
         </select>
@@ -807,6 +829,26 @@ function AddChart({ dataset, onUpdate }:
         <select name="y" defaultValue="">
           <option value="">—</option>
           {numeric.map((c) => <option key={c}>{c}</option>)}
+        </select>
+      </div>
+      <div style={{ width: 130 }}>
+        <div className="field-label">Measure</div>
+        <select aria-label="New chart measure" value={agg} onChange={(e) => setAgg(e.target.value as MeasureAgg)}>
+          {(Object.keys(MEASURE_LABEL) as MeasureAgg[]).map((a) => <option key={a} value={a}>{MEASURE_LABEL[a]}</option>)}
+        </select>
+      </div>
+      {agg !== "count" && <div style={{ width: 150 }}>
+        <div className="field-label">Of</div>
+        <select name="measure_column" aria-label="New chart measure field" key={agg}
+                defaultValue={measureChoices[0]?.name ?? ""}>
+          {measureChoices.map((c) => <option key={c.name} value={c.name}>{c.label || c.name}</option>)}
+        </select>
+      </div>}
+      <div style={{ width: 140 }}>
+        <div className="field-label">Split by</div>
+        <select name="series" aria-label="New chart split by" defaultValue="">
+          <option value="">None</option>
+          {seriesFields(dataset.columns, chartX).map((c) => <option key={c.name} value={c.name}>{c.label || c.name}</option>)}
         </select>
       </div>
       <button className="primary" type="submit">Add</button>

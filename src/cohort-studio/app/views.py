@@ -694,6 +694,9 @@ def _s3_delete_revisions(resource_id: str, name: str) -> None:
             client.delete_object(Bucket=root["bucket"], Key=key)
         return
     for key in keys:
-        cloud_cli.run(["aws", "s3", "rm", f"s3://{root['bucket']}/{key}",
-                       "--profile", root["profile"]],
-                      capture_output=True, text=True, timeout=120)
+        out = cloud_cli.run(["aws", "s3", "rm", f"s3://{root['bucket']}/{key}",
+                             "--profile", root["profile"]],
+                            capture_output=True, text=True, timeout=120)
+        if out.returncode != 0:
+            raise RuntimeError("Published revisions could not be deleted, so the view "
+                               "was kept. Check S3 access and retry.")

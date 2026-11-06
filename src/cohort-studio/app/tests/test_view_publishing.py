@@ -265,6 +265,25 @@ def test_s3_cli_publish_uses_conditional_put(monkeypatch):
     assert put[put.index("--bucket") + 1] == "bucket"
 
 
+def test_s3_cli_delete_keeps_draft_when_revision_delete_fails(monkeypatch):
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        if args[:3] == ["aws", "s3api", "list-objects-v2"]:
+            return types.SimpleNamespace(returncode=0, stdout=json.dumps({"Contents": [
+                {"Key": "views/_studio_views/_revisions/r/000001.json"}]}), stderr="")
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="AccessDenied")
+
+    monkeypatch.setattr(views, "_registered_s3_view_location", lambda rid, view: None)
+    monkeypatch.setattr(views.db, "resolve_s3_uri", lambda rid: "s3://bucket/views")
+    monkeypatch.setattr(views.cloud_cli, "run", run)
+    response = api.delete("/api/views", params={"kind": "s3", "resource_id": "lake", "name": "r"})
+    assert response.status_code == 502 and "could not be deleted" in response.json()["detail"]
+    assert ["aws", "s3", "rm", "s3://bucket/views/_studio_views/r.json",
+            "--profile", "lake"] not in calls
+
+
 def _snapshot_exists(engine, resource_id, materialized_id):
     with engine.connect() as conn:
         return conn.execute(text(

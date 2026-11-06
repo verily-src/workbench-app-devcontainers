@@ -1962,6 +1962,8 @@ def delete_view(kind: str, resource_id: str, name: str):
         views.delete_view(kind, resource_id, name)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, str(e).split("\n")[0][:300])
     return {"ok": True}
 
 

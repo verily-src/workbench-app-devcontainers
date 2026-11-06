@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VerilyMe Program Generator</title>
+  <style>
+    :root {
+      --primary: #1a73e8;
+      --primary-hover: #1557b0;
+      --danger: #d93025;
+      --success: #1e8e3e;
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --border: #dadce0;
+      --text: #202124;
+      --text-secondary: #5f6368;
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 20px; font-weight: 500; }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+    .card h2 {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--text-secondary);
+    }
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+    }
+    textarea:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(26,115,232,0.2);
+    }
+    textarea.yaml-editor {
+      font-family: 'Roboto Mono', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      min-height: 400px;
+      tab-size: 2;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 20px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled {
+      background: #a8c7fa;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--primary);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: #f1f3f4; }
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+    .btn-danger:hover { background: #b3261e; }
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+    .btn-success:hover { background: #137333; }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .status-bar {
+      padding: 10px 16px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      margin-top: 12px;
+      display: none;
+    }
+    .status-bar.error {
+      background: #fce8e6;
+      color: var(--danger);
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
+    .status-bar.success {
+      background: #e6f4ea;
+      color: var(--success);
+      border: 1px solid #b7e1cd;
+      display: block;
+    }
+    .status-bar.info {
+      background: #e8f0fe;
+      color: var(--primary);
+      border: 1px solid #a8c7fa;
+      display: block;
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .templates-list {
+      list-style: none;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .templates-list li {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .templates-list li:hover { background: #f1f3f4; }
+    .templates-list li:last-child { border-bottom: none; }
+    .template-name { font-weight: 500; }
+    .template-date { font-size: 12px; color: var(--text-secondary); }
+    .validation-result {
+      margin-top: 12px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-family: 'Roboto Mono', monospace;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      display: none;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 350px;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+    .program-link {
+      display: block;
+      margin-top: 12px;
+      padding: 12px;
+      background: #e6f4ea;
+      border: 1px solid #b7e1cd;
+      border-radius: var(--radius);
+      text-align: center;
+    }
+    .program-link a {
+      color: var(--success);
+      font-weight: 500;
+      text-decoration: none;
+    }
+    .program-link a:hover { text-decoration: underline; }
+    .empty-state {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VerilyMe Program Generator</h1>
+    <span id="health-indicator" style="font-size:12px; color:var(--text-secondary);">Checking...</span>
+  </header>
+
+  <div class="container">
+    <!-- Step 1: Generate -->
+    <div class="card">
+      <h2>1. Describe Your Program</h2>
+      <label for="prompt-input">What kind of VerilyMe program do you want to create?</label>
+      <textarea id="prompt-input" rows="4" placeholder="e.g. A weight management program with weekly check-ins, BMI tracking survey, and health tips. Include a consent step for data collection."></textarea>
+      <div class="btn-group">
+        <button class="btn btn-primary" id="generate-btn" onclick="generateProgram()">
+          Generate YAML
+        </button>
+      </div>
+      <div class="status-bar" id="generate-status"></div>
+    </div>
+
+    <div class="two-col">
+      <!-- Step 2: Edit YAML -->
+      <div>
+        <div class="card">
+          <h2>2. Review &amp; Edit YAML</h2>
+          <textarea id="yaml-editor" class="yaml-editor" placeholder="Generated YAML will appear here. You can also paste or type YAML directly."></textarea>
+          <div class="btn-group">
+            <button class="btn btn-secondary" onclick="validateYaml()">Validate (Dry Run)</button>
+            <button class="btn btn-success" onclick="seedProgram()">Seed to FHIR</button>
+            <button class="btn btn-secondary" onclick="exportYaml()">Export YAML</button>
+            <button class="btn btn-secondary" onclick="showSaveDialog()">Save Template</button>
+          </div>
+          <div class="status-bar" id="yaml-status"></div>
+          <div class="validation-result" id="validation-result"></div>
+          <div id="program-output" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Sidebar: Saved Templates -->
+      <div>
+        <div class="card">
+          <h2>Saved Templates</h2>
+          <div id="templates-container">
+            <div class="empty-state">No saved templates yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save Dialog (simple overlay) -->
+  <div id="save-dialog" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:100; display:none; align-items:center; justify-content:center;">
+    <div class="card" style="width:400px; margin:auto; margin-top:20vh;">
+      <h2>Save Template</h2>
+      <label for="template-name">Template Name</label>
+      <input type="text" id="template-name" placeholder="e.g. Weight Management Program v1">
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="saveTemplate()">Save</button>
+        <button class="btn btn-secondary" onclick="hideSaveDialog()">Cancel</button>
+      </div>
+      <div class="status-bar" id="save-status"></div>
+    </div>
+  </div>
+
+  <script>
+    // --- Health check ---
+    async function checkHealth() {
+      try {
+        const resp = await fetch('/api/health');
+        if (resp.ok) {
+          document.getElementById('health-indicator').textContent = 'Connected';
+          document.getElementById('health-indicator').style.color = '#1e8e3e';
+        } else {
+          throw new Error();
+        }
+      } catch {
+        document.getElementById('health-indicator').textContent = 'Disconnected';
+        document.getElementById('health-indicator').style.color = '#d93025';
+      }
+    }
+    checkHealth();
+    setInterval(checkHealth, 30000);
+
+    // --- Status helpers ---
+    function setStatus(id, type, msg) {
+      const el = document.getElementById(id);
+      el.className = 'status-bar ' + type;
+      el.textContent = msg;
+    }
+    function clearStatus(id) {
+      const el = document.getElementById(id);
+      el.className = 'status-bar';
+      el.textContent = '';
+    }
+
+    // --- Generate ---
+    async function generateProgram() {
+      const prompt = document.getElementById('prompt-input').value.trim();
+      if (!prompt) {
+        setStatus('generate-status', 'error', 'Please enter a description.');
+        return;
+      }
+      const btn = document.getElementById('generate-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Generating...';
+      clearStatus('generate-status');
+      setStatus('generate-status', 'info', 'Generating program YAML — this may take up to a minute...');
+
+      try {
+        const resp = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt }),
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text);
+        }
+        const data = await resp.json();
+        document.getElementById('yaml-editor').value = data.yaml;
+        setStatus('generate-status', 'success', 'YAML generated successfully.');
+      } catch (err) {
+        setStatus('generate-status', 'error', 'Generation failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Generate YAML';
+      }
+    }
+
+    // --- Validate ---
+    async function validateYaml() {
+      const yaml = document.getElementById('yaml-editor').value.trim();
+      if (!yaml) {
+        setStatus('yaml-status', 'error', 'No YAML to validate.');
+        return;
+      }
+      setStatus('yaml-status', 'info', 'Validating...');
+      const resultEl = document.getElementById('validation-result');
+      resultEl.style.display = 'none';
+
+      try {
+        const resp = await fetch('/api/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ yaml }),
+        });
+        const data = await resp.json();
+        if (data.valid) {
+          setStatus('yaml-status', 'success',
+            'Valid! Program: "' + data.name + '" — ' + data.bundleCount + ' bundle(s)');
+          resultEl.style.display = 'block';
+          resultEl.style.background = '#f1f3f4';
+          resultEl.style.border = '1px solid var(--border)';
+          resultEl.textContent = JSON.stringify(data.bundle, null, 2);
+        } else {
+          setStatus('yaml-status', 'error', 'Validation failed: ' + data.error);
+          resultEl.style.display = 'none';
+        }
+      } catch (err) {
+        setStatus('yaml-status', 'error', 'Validation request failed: ' + err.message);
+      }
+    }
+
+    // --- Seed ---
+    async function seedProgram() {
+      const yaml = document.getElementById('yaml-editor').value.trim();
+      if (!yaml) {
+        setStatus('yaml-status', 'error', 'No YAML to seed.');
+        return;
+      }
+      if (!confirm('This will create real FHIR resources in the configured FHIR store. Continue?')) {
+        return;
+      }
+      setStatus('yaml-status', 'info', 'Seeding program to FHIR store...');
+      document.getElementById('program-output').style.display = 'none';
+
+      try {
+        const resp = await fetch('/api/seed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ yaml }),
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text);
+        }
+        const data = await resp.json();
+        setStatus('yaml-status', 'success', 'Program seeded successfully!');
+
+        const outputEl = document.getElementById('program-output');
+        outputEl.style.display = 'block';
+
+        let html = '<div class="validation-result" style="display:block; background:#f1f3f4; border:1px solid var(--border);">';
+        html += '<strong>Seeding Results:</strong>\n';
+        html += 'Program: ' + (data.program_name || 'N/A') + '\n';
+        html += 'Organization: ' + (data.org_id || 'N/A') + '\n';
+        if (data.resources_created) {
+          html += '\nResources created: ' + data.resources_created.length + '\n';
+          data.resources_created.forEach(function(r) {
+            html += '  - ' + r.type + ': ' + r.id + '\n';
+          });
+        }
+        if (data.program_url) {
+          html += '\n';
+          html += '</div>';
+          html += '<div class="program-link"><a href="' + data.program_url + '" target="_blank">View Program in VerilyMe &rarr;</a></div>';
+        } else {
+          html += '</div>';
+        }
+        outputEl.innerHTML = html;
+      } catch (err) {
+        setStatus('yaml-status', 'error', 'Seeding failed: ' + err.message);
+      }
+    }
+
+    // --- Export ---
+    function exportYaml() {
+      const yaml = document.getElementById('yaml-editor').value.trim();
+      if (!yaml) {
+        setStatus('yaml-status', 'error', 'No YAML to export.');
+        return;
+      }
+      const blob = new Blob([yaml], { type: 'text/yaml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'program-template.yaml';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // --- Save Template ---
+    function showSaveDialog() {
+      const yaml = document.getElementById('yaml-editor').value.trim();
+      if (!yaml) {
+        setStatus('yaml-status', 'error', 'No YAML to save.');
+        return;
+      }
+      document.getElementById('save-dialog').style.display = 'flex';
+      document.getElementById('template-name').focus();
+      clearStatus('save-status');
+    }
+    function hideSaveDialog() {
+      document.getElementById('save-dialog').style.display = 'none';
+    }
+    async function saveTemplate() {
+      const name = document.getElementById('template-name').value.trim();
+      const yaml = document.getElementById('yaml-editor').value.trim();
+      if (!name) {
+        setStatus('save-status', 'error', 'Name is required.');
+        return;
+      }
+      try {
+        const resp = await fetch('/api/templates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, yaml }),
+        });
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text);
+        }
+        hideSaveDialog();
+        setStatus('yaml-status', 'success', 'Template "' + name + '" saved.');
+        loadTemplates();
+      } catch (err) {
+        setStatus('save-status', 'error', 'Save failed: ' + err.message);
+      }
+    }
+
+    // --- Load Templates ---
+    async function loadTemplates() {
+      try {
+        const resp = await fetch('/api/templates');
+        const templates = await resp.json();
+        const container = document.getElementById('templates-container');
+        if (!templates || templates.length === 0) {
+          container.innerHTML = '<div class="empty-state">No saved templates yet.</div>';
+          return;
+        }
+        let html = '<ul class="templates-list">';
+        templates.forEach(function(t) {
+          const date = new Date(t.created_at).toLocaleDateString();
+          html += '<li onclick="loadTemplate(' + t.id + ')">';
+          html += '<span class="template-name">' + escapeHtml(t.name) + '</span>';
+          html += '<span class="template-date">' + date + '</span>';
+          html += '</li>';
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+      } catch {
+        // silently fail
+      }
+    }
+
+    async function loadTemplate(id) {
+      try {
+        const resp = await fetch('/api/templates/' + id);
+        const t = await resp.json();
+        document.getElementById('yaml-editor').value = t.yaml;
+        setStatus('yaml-status', 'success', 'Loaded template: ' + t.name);
+      } catch (err) {
+        setStatus('yaml-status', 'error', 'Failed to load template.');
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Initial load
+    loadTemplates();
+  </script>
+</body>
+</html>

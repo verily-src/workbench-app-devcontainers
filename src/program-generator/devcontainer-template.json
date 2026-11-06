@@ -1,0 +1,6 @@
+{
+  "id": "program-generator",
+  "version": "1.0.0",
+  "name": "Program Generator",
+  "description": "AI-powered VerilyMe program generator with visual preview and FHIR seeding"
+}

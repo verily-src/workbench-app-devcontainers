@@ -17,6 +17,7 @@ import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinFilter, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
 import { AiFeaturesContext, aiFeaturesFrom } from "./features";
+import { extractTarget } from "./extract";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
@@ -281,6 +282,7 @@ export default function App() {
       sourceRef: opened.source_ref ?? sourceRef,
       sourceInfo: opened.source_info,
       queryScope: opened.query_scope,
+      extract: opened.extract,
       entityColumn: initial?.entityColumn,
       columns: opened.columns,
       filters: initial?.filters ?? [],
@@ -659,6 +661,30 @@ export default function App() {
     }));
     setRenamingDatasetId(null);
     setRenameDraft("");
+  };
+
+  /** Rerun an extract tab's recipe, then swap the tab to the refreshed table. */
+  const refreshExtract = async (datasetId: string) => {
+    const current = datasets.find((d) => d.id === datasetId);
+    const target = current ? extractTarget(current) : null;
+    if (!current || !target) return;
+    const mark = (changes: Partial<Dataset>) =>
+      setDatasets((prev) => prev.map((d) => d.id === datasetId ? { ...d, ...changes } : d));
+    mark({ extractRefreshing: true });
+    try {
+      const opened = await api.refreshExtract(target.kind, target.resource_id, target.table);
+      setDatasets((prev) => prev.map((d) => d.id === datasetId
+        ? { ...d, id: opened.dataset_id, source: opened.source,
+            sourceRef: opened.source_ref ?? d.sourceRef, sourceInfo: opened.source_info,
+            queryScope: opened.query_scope, columns: opened.columns,
+            extract: opened.extract ?? d.extract, extractRefreshing: false,
+            result: undefined, page: 0, queryLoading: true, queryError: undefined }
+        : d));
+      if (opened.dataset_id !== datasetId) void api.closeDataset(datasetId).catch(() => undefined);
+    } catch (e) {
+      mark({ extractRefreshing: false });
+      setError(`Refresh extract failed: ${(e as Error).message}`);
+    }
   };
 
   const activeDs = datasets[active];
@@ -1098,6 +1124,7 @@ export default function App() {
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
                   onEditJoin={editJoin}
+                  onRefreshExtract={(datasetId) => void refreshExtract(datasetId)}
                   onEditJoinCanvas={(datasetId) => {
                     const original = datasets.find((dataset) => dataset.id === datasetId);
                     if (original?.sourceRef?.kind !== "join") return;

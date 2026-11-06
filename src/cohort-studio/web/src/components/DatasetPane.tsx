@@ -5,6 +5,7 @@ import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 import { useAiFeatures } from "../features";
+import { extractTarget } from "../extract";
 import { DatasetSettings } from "./DatasetSettings";
 import { ComparePanel } from "./ComparePanel";
 import { DeriveColumn } from "./DeriveColumn";
@@ -22,6 +23,41 @@ interface Props {
   onEditJoinCanvas?: (datasetId: string) => void;
   /** Opens a result (e.g. a full group summary) as a new dataset tab. */
   onOpenTable?: (opened: OpenResult, title: string) => void;
+  /** Reruns this extract tab's recipe and replaces its rows. */
+  onRefreshExtract?: (datasetId: string) => void;
+}
+
+
+function ExtractBar({ dataset, onUpdate, onRefresh }: {
+  dataset: Dataset; onUpdate: (changes: Partial<Dataset>) => void; onRefresh?: (id: string) => void;
+}) {
+  const target = extractTarget(dataset);
+  const key = target ? `${target.resource_id}/${target.table}` : "";
+  useEffect(() => {
+    if (!target || dataset.extract !== undefined) return;
+    let stale = false;
+    api.extractInfo(target.resource_id, target.table)
+      .then((out) => { if (!stale) onUpdate({ extract: out.extract }); })
+      .catch(() => { if (!stale) onUpdate({ extract: null }); });
+    return () => { stale = true; };
+  }, [key, dataset.extract === undefined]); // eslint-disable-line react-hooks/exhaustive-deps
+  const info = dataset.extract;
+  if (!target || !info) return null;
+  const refreshed = new Date(info.refreshed_at);
+  return (
+    <div className="extract-bar" role="group" aria-label="Extract">
+      <span className="extract-chip">Extract</span>
+      <span>{info.rows.toLocaleString()} rows · refreshed{" "}
+        <time dateTime={info.refreshed_at} title={refreshed.toLocaleString()}>{cacheAge(info.refreshed_at)}</time>
+      </span>
+      <button type="button" className="quiet" disabled={!info.refreshable || dataset.extractRefreshing || !onRefresh}
+              title={info.refreshable ? "Rerun the join and replace every row of this table"
+                : "This extract's inputs (for example an uploaded file) can't be reopened, so it can't be refreshed."}
+              onClick={() => onRefresh?.(dataset.id)}>
+        {dataset.extractRefreshing ? "Refreshing…" : "Refresh extract"}
+      </button>
+    </div>
+  );
 }
 
 function describeFilter(f: Filter): string {
@@ -77,7 +113,7 @@ function safeFilterAskError(error: unknown): string {
   return "The request could not be completed. Check the connection and try again.";
 }
 
-export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable }: Props) {
+export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable, onRefreshExtract }: Props) {
   const aiFeatures = useAiFeatures();
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
@@ -275,6 +311,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
             ))}
           </select>
         </label>
+        <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} />
         <SaveToAurora dataset={dataset} />
         {dataset.sourceRef?.kind === "join" && <button className="quiet"
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
@@ -532,8 +569,13 @@ function SaveToAurora({ dataset }: { dataset: Dataset }) {
     setBusy(true);
     setStatus("");
     try {
-      const out = await api.materialize(dataset.id, resourceId, table);
-      setStatus(`Saved ${out.rows.toLocaleString()} rows to ${out.table}.`);
+      // Every row is written (no row cap); the recipe is kept so the table can be refreshed.
+      const out = await api.extract(dataset.id, "aurora", resourceId, table, dataset.title, (job) => {
+        const rows = job.detail?.rows;
+        if (typeof rows === "number" && rows > 0) setStatus(`Saving… ${rows.toLocaleString()} rows written`);
+      });
+      void api.closeDataset(out.dataset_id).catch(() => undefined);
+      setStatus(`Saved ${(out.extract?.rows ?? 0).toLocaleString()} rows to ${table}.`);
     } catch (e) {
       setStatus(`Failed: ${(e as Error).message}`);
     } finally {

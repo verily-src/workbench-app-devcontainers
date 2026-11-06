@@ -290,7 +290,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
       const both = directAurora(left.sourceRef) && directAurora(right.sourceRef);
       const recs = both
         ? api.recommendJoin(left.sourceRef!, right.sourceRef!).then((r) => r.candidates
-            .filter((c) => c.keys.length > 0).map((c) => ({ ...c, sourceTitle: parent!.title })))
+            .filter((c) => c.keys.length > 0).map((c) => ({ ...c, sourceTitle: disp(parent!) })))
             .catch(() => [])
         : Promise.resolve([]);
       const sugg = both ? Promise.resolve([] as JoinSuggestion[])
@@ -559,7 +559,13 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
 
   // ---- Problems and disabled reasons ----
   const stepIndex = new Map(steps.map((n, i) => [n.id, i]));
-  const linkName = (n: CanvasNode) => `${ids.get(n.parentId ?? "")?.title ?? "?"} → ${n.title}`;
+  /** Display name: the table name without its schema, unless two canvas tables share it. */
+  const disp = (n: { title: string } | undefined | null): string => {
+    if (!n) return "?";
+    const short = shortTitle(n.title);
+    return nodes.some((o) => o.title !== n.title && shortTitle(o.title) === short) ? n.title : short;
+  };
+  const linkName = (n: CanvasNode) => `${disp(ids.get(n.parentId ?? "")) ?? "?"} → ${disp(n)}`;
   const problemsFor = (n: CanvasNode): string[] => {
     const i = stepIndex.get(n.id);
     const server = i === undefined ? undefined : validation?.steps[i];
@@ -580,13 +586,13 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     if (!ready) return "Waiting for tables to open.";
     if (!steps.length) return "Add a second table to join.";
     const pendingBase = root.filterRows.find((r) => filterProblem(r));
-    if (pendingBase) return `${root.title}: ${filterProblem(pendingBase)}`;
+    if (pendingBase) return `${disp(root)}: ${filterProblem(pendingBase)}`;
     for (const n of steps) {
       if (!n.conditions.some(isCompleteCond)) return `Choose matching fields for ${linkName(n)}.`;
       const lp = local.get(n.id);
       if (lp?.length) return `${linkName(n)}: ${lp[0]}`;
       const fp = n.filterRows.find((r) => filterProblem(r));
-      if (fp) return `${n.title}: ${filterProblem(fp)}`;
+      if (fp) return `${disp(n)}: ${filterProblem(fp)}`;
     }
     if (validation?.ok === false) return "Fix the problems listed under the canvas.";
     return null;
@@ -635,13 +641,17 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
       setStatus("Joining…");
       const joined = await api.join(plan.baseId, plan.steps, sentAllowLoaded, plan.baseFilters);
       joinedId = joined.dataset_id;
-      setStatus(`Saving the extract to ${extractResource}…`);
-      const out = await api.materialize(joinedId, extractResource, extractTable.trim());
+      setStatus(`Saving every row to ${extractResource}…`);
       const target = auroraTargets.find((s) => s.id === extractResource);
-      const ref = { kind: target?.kind ?? "aurora", resource_id: extractResource, table: out.table } as SourceRef;
-      const opened = await api.openSourceRef(ref);
+      const kind = target?.kind ?? "aurora";
+      const table = extractTable.trim();
+      const opened = await api.extract(joinedId, kind, extractResource, table, title, (job) => {
+        const rows = job.detail?.rows;
+        if (typeof rows === "number" && rows > 0) setStatus(`Saving every row to ${extractResource}… ${rows.toLocaleString()} written`);
+      });
+      const ref = { kind, resource_id: extractResource, table } as SourceRef;
       onOpenResult(opened, title, ref);
-      setStatus(`Saved ${out.rows.toLocaleString()} rows to ${out.table}.`);
+      setStatus(`Saved ${(opened.extract?.rows ?? 0).toLocaleString()} rows to ${table}.`);
     } catch (e) {
       setError(`Extract failed: ${(e as Error).message}`);
       setStatus("");
@@ -736,7 +746,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   const resultRows = lastStat ? `${lastStat.estimated ? "~" : ""}${lastStat.rows.toLocaleString()} rows`
     + (preview?.growth_total != null && preview.growth_total !== 1 ? ` (${preview.growth_total}× the start table)` : "")
     : null;
-  const estimate = root?.rows != null ? `${root.title}: ${root.rowsEstimated ? "~" : ""}${root.rows.toLocaleString()} rows` : null;
+  const estimate = root?.rows != null ? `${disp(root)}: ${root.rowsEstimated ? "~" : ""}${root.rows.toLocaleString()} rows` : null;
 
   // ---- Layout ----
   const { pos, width, height } = layout(nodes);
@@ -760,8 +770,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   const addTarget = selection?.type === "node" ? selection.id : selection?.type === "link" ? selection.id : undefined;
 
   const nodeFilterEditor = (n: CanvasNode) => (
-    <FilterEditor rows={n.filterRows} columns={n.dataset?.columns ?? []} table={n.title}
-                  label={n.parentId ? n.title : "Start table"}
+    <FilterEditor rows={n.filterRows} columns={n.dataset?.columns ?? []} table={disp(n)}
+                  label={n.parentId ? disp(n) : "Start table"}
                   checks={n.parentId ? validation?.steps[stepIndex.get(n.id) ?? -1]?.filters : validation?.base_filters}
                   disabled={busy || running} onChange={(rows) => patchNode(n.id, { filterRows: rows })} />
   );
@@ -858,7 +868,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
             {tablesError && <div className="join-error" role="alert">{tablesError}</div>}
             {tableGroups.map(([schema, items]) => (
               <div key={schema} role="group" aria-label={schema ? `Schema ${schema}` : "Tables"}>
-                {schema && <div className="jc-group-label">{schema}</div>}
+                {schema && <div className="jc-group-label" title={schema}>{schema}</div>}
                 <ul>
                   {items.map((t) => (
                     <li key={t.name} className="jc-table-item" draggable={!full}
@@ -1039,7 +1049,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
             <ul className="jc-problems" aria-label="Join problems">
               {error && <li className="join-error" role="alert">{error}</li>}
               {(validation?.problems ?? []).map((p) => <li key={p} className="join-error">{p}</li>)}
-              {baseProblems.map((p) => <li key={p} className="join-error">{root?.title}: {p}</li>)}
+              {baseProblems.map((p) => <li key={p} className="join-error">{disp(root)}: {p}</li>)}
               {shownProblems.map(({ node, problems }) => (
                 <li key={node.id} className="join-error">
                   <button type="button" className="link" onClick={() => openLink(node.id)}>{linkName(node)}</button>
@@ -1059,7 +1069,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
             <section className="jc-bottom jc-config" aria-label="Join configuration">
               <div className="jc-bottom-head">
                 <h3>Join configuration</h3>
-                <span className="settings-hint">{draftParent.title} → {draftNode.title}</span>
+                <span className="settings-hint">{disp(draftParent)} → {disp(draftNode)}</span>
                 <span className="jc-spacer" />
                 <button type="button" className="quiet" aria-label="Close join configuration" onClick={cancelDraft}>✕</button>
               </div>
@@ -1067,7 +1077,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                 <div className="jc-clauses" role="group" aria-label="Join clauses">
                   <div className="jc-section-title">Join clauses</div>
                   <div className="jc-clause jc-clause-head" aria-hidden>
-                    <span>{draftParent.title}</span><span /><span>{draftNode.title}</span><span />
+                    <span>{disp(draftParent)}</span><span /><span>{disp(draftNode)}</span><span />
                   </div>
                   {draft.conditions.map((c, k) => {
                     const leftNode = ids.get(c.leftNode) ?? draftParent;
@@ -1075,7 +1085,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                       id: `${draftParent.id}::${col}`, label: col,
                       hint: KIND_LABEL[colKind(draftParent.dataset?.columns.find((x) => x.name === col))] }));
                     if (c.left && leftNode.id !== draftParent.id)
-                      leftOptions.unshift({ id: `${leftNode.id}::${c.left}`, label: `${leftNode.title} · ${c.left}`, hint: "earlier table" });
+                      leftOptions.unshift({ id: `${leftNode.id}::${c.left}`, label: `${disp(leftNode)} · ${c.left}`, hint: "earlier table" });
                     const rightOptions = (draftNode.dataset?.columns ?? []).map((col) => ({
                       id: col.name, label: col.name, hint: KIND_LABEL[colKind(col)] }));
                     const setCond = (patch: Partial<CanvasCond>) => setDraftPatch({
@@ -1086,14 +1096,14 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                       <Fragment key={k}>
                         <div className="jc-clause">
                           <Combobox label={`Left field, clause ${k + 1}`} value={c.left ? `${leftNode.id}::${c.left}` : ""}
-                                    options={leftOptions} placeholder={`Search ${draftParent.title} fields…`}
+                                    options={leftOptions} placeholder={`Search ${disp(draftParent)} fields…`}
                                     onChange={(id) => { const at = id.indexOf("::"); setCond({ leftNode: id.slice(0, at), left: id.slice(at + 2) }); }} />
                           <select className="join-op" aria-label={`Operator, clause ${k + 1}`} value={c.op}
                                   onChange={(e) => setCond({ op: e.target.value as JoinOp })}>
                             {OPS.map((o) => <option key={o}>{o}</option>)}
                           </select>
                           <Combobox label={`Right field, clause ${k + 1}`} value={c.right} options={rightOptions}
-                                    placeholder={`Search ${draftNode.title} fields…`} onChange={(id) => setCond({ right: id })} />
+                                    placeholder={`Search ${disp(draftNode)} fields…`} onChange={(id) => setCond({ right: id })} />
                           <button type="button" className="quiet" aria-label={`Remove clause ${k + 1}`}
                                   disabled={draft.conditions.length === 1 && isBlankCond(c)}
                                   onClick={() => setDraftPatch({ conditions: draft.conditions.length === 1
@@ -1142,8 +1152,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                       </div>
                     );
                   })()}
-                  <FilterEditor rows={draft.filterRows} columns={draftNode.dataset?.columns ?? []} table={draftNode.title}
-                                label={draftNode.title}
+                  <FilterEditor rows={draft.filterRows} columns={draftNode.dataset?.columns ?? []} table={disp(draftNode)}
+                                label={disp(draftNode)}
                                 checks={JSON.stringify(draft.filterRows) === JSON.stringify(draftNode.filterRows)
                                   ? validation?.steps[stepIndex.get(draftNode.id) ?? -1]?.filters : undefined}
                                 disabled={busy || running} onChange={(rows) => setDraftPatch({ filterRows: rows })} />
@@ -1171,12 +1181,12 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                       ))}
                     </div>
                   </details>
-                  <p className="jc-explain" aria-live="polite">{explain(draft.how, draftParent.title, draftNode.title)}</p>
+                  <p className="jc-explain" aria-live="polite">{explain(draft.how, disp(draftParent), disp(draftNode))}</p>
                 </div>
               </div>
               <div className="jc-bottom-foot">
                 <button type="button" className="quiet jc-danger" onClick={() => removeNode(draftNode.id)}>
-                  Remove {draftNode.title} from the join
+                  Remove {disp(draftNode)} from the join
                 </button>
                 <span className="jc-spacer" />
                 <button type="button" className="quiet" onClick={cancelDraft}>Cancel</button>
@@ -1190,7 +1200,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
           ) : selectedNode ? (
             <section className="jc-bottom jc-details" aria-label={`${selectedNode.title} details`}>
               <div className="jc-bottom-head">
-                <h3>{selectedNode.title}</h3>
+                <h3>{disp(selectedNode)}</h3>
                 <span className="jc-chip">{selectedNode.badge}</span>
                 {!selectedNode.parentId && <span className="jc-chip jc-chip-root">Start table</span>}
                 <span className="settings-hint">{selectedNode.dataset?.source}</span>
@@ -1209,12 +1219,12 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                               onChange={(e) => reparent(selectedNode.id, e.target.value)}>
                         {nodes.filter((n) => !subtree(nodes, selectedNode.id).has(n.id)).map((n) => (
                           <option key={n.id} value={n.id} disabled={Boolean(n.parentId) && !addsColumns(n.how)}>
-                            {n.title}{n.parentId ? "" : " (start table)"}
+                            {disp(n)}{n.parentId ? "" : " (start table)"}
                           </option>
                         ))}
                       </select>
                     </label>
-                    <button type="button" className="link" onClick={() => openLink(selectedNode.id)}>Edit join with {ids.get(selectedNode.parentId)?.title}</button>
+                    <button type="button" className="link" onClick={() => openLink(selectedNode.id)}>Edit join with {disp(ids.get(selectedNode.parentId))}</button>
                   </>) : <p className="settings-hint">The start table keeps all its columns; the other tables are joined to it.</p>}
                   {nodeFilterEditor(selectedNode)}
                 </div>
@@ -1246,7 +1256,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                   <span className="sr-only">Preview table</span>
                   <select aria-label="Preview table" value={gridTable} onChange={(e) => setGridTable(e.target.value)}>
                     <option value="result">Joined result</option>
-                    {nodes.map((n) => <option key={n.id} value={n.id} disabled={!n.dataset}>{n.title}</option>)}
+                    {nodes.map((n) => <option key={n.id} value={n.id} disabled={!n.dataset}>{disp(n)}</option>)}
                   </select>
                 </label>
                 <span className="settings-hint" aria-live="polite">
@@ -1291,7 +1301,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                                          onChange={(e) => toggleField(f.node, f.remote, e.target.checked)} /></td>
                               <td><TypeIcon column={f.column} /></td>
                               <td>{f.field}</td>
-                              <td>{f.node.title}</td>
+                              <td>{disp(f.node)}</td>
                               <td>{f.remote}</td>
                             </tr>
                           ))}
@@ -1305,7 +1315,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                       tablePreview?.loading ? <div className="settings-hint" role="status">Loading rows…</div>
                         : tablePreview?.error ? <div className="join-error" role="alert">{tablePreview.error}</div>
                         : tablePreview && <PreviewTable columns={tablePreview.columns} rows={tablePreview.data.slice(0, rowLimit)}
-                                                       describe={resultColumn} label={`${gridNode.title} rows`} />
+                                                       describe={resultColumn} label={`${disp(gridNode)} rows`} />
                     ) : previewing ? (
                       <div className="join-preview-progress" role="status" aria-label="Preview progress">
                         {previewJob ? <JobProgress job={previewJob.job} receivedAt={previewJob.receivedAt} /> : "Previewing…"}
@@ -1320,7 +1330,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                             ? `~${preview.base_rows.toLocaleString()} rows (estimated)` : "Sample preview · full counts not calculated")
                           : `${preview.base_rows?.toLocaleString() ?? "Unknown"} rows`}</span>
                         {preview.steps.map((st, i) => (
-                          <span key={i}>→ {HOW_LABEL[steps[i]?.how ?? "left"].toLowerCase()} {steps[i]?.title}:{" "}
+                          <span key={i}>→ {HOW_LABEL[steps[i]?.how ?? "left"].toLowerCase()} {disp(steps[i])}:{" "}
                             <strong>{st.estimated ? "~" : ""}{st.rows.toLocaleString()}</strong>
                             {st.fanout && <span className="join-warn join-fanout" title="Rows multiplied: the join key repeats on the joined side."> ×{st.growth} fan-out</span>}
                           </span>
@@ -1363,7 +1373,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
               <select aria-label="Filter table" value={filterTable} onChange={(e) => setFilterTable(e.target.value)}>
                 {nodes.map((n) => (
                   <option key={n.id} value={n.id}>
-                    {n.title} ({sentFilters(n.filterRows, n.dataset?.columns ?? []).length})
+                    {disp(n)} ({sentFilters(n.filterRows, n.dataset?.columns ?? []).length})
                   </option>
                 ))}
               </select>

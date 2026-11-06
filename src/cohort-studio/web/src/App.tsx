@@ -16,7 +16,7 @@ import { useWorkflowAlerts } from "./workflowAlerts";
 import { api as apiClient } from "./api";
 import type { ChartSpec, Dataset, JoinFilter, JoinOutput, JoinStats, JoinStep, Source, SourceRef, TableInfo } from "./types";
 import { tableStats } from "./format";
-import { AiFeaturesContext, aiFeaturesFrom, lineageFrom } from "./features";
+import { AiFeaturesContext, PlinkContext, aiFeaturesFrom, lineageFrom, plinkFrom } from "./features";
 import { extractTarget } from "./extract";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
@@ -125,6 +125,7 @@ export default function App() {
     "explore" | "join" | "agent" | "workflows" | "lineage" | "settings">("explore");
   const [aiFeatures, setAiFeatures] = useState(false);
   const [lineageTab, setLineageTab] = useState(false);
+  const [plinkExport, setPlinkExport] = useState(false);
   // The visual join canvas stays mounted (hidden) after its first visit so a draft survives tab switches.
   const [canvasMounted, setCanvasMounted] = useState(false);
   useEffect(() => { if (view === "join") setCanvasMounted(true); }, [view]);
@@ -165,6 +166,7 @@ export default function App() {
       setPalette(c.chart_palette);
       setAiFeatures(aiFeaturesFrom(c));
       setLineageTab(lineageFrom(c));
+      setPlinkExport(plinkFrom(c));
       setTutorialAssistantConfigured(Boolean(c.llm?.providers?.[c.llm.provider]?.configured));
     })
       .catch(() => undefined);
@@ -828,6 +830,7 @@ export default function App() {
 
   return (
     <AiFeaturesContext.Provider value={aiFeatures}>
+    <PlinkContext.Provider value={plinkExport}>
     <div className={`app${view !== "explore" ? " app-no-sidebar" : ""}${sidebarCollapsed ? " sidebar-is-collapsed" : ""}`}>
       {sidebarCollapsed && (
         <aside className="sidebar-rail" aria-label="Data sources (collapsed)">
@@ -1169,6 +1172,7 @@ export default function App() {
       <CommandPalette open={cmdOpen} commands={commands}
                       onClose={() => setCmdOpen(false)} />
     </div>
+    </PlinkContext.Provider>
     </AiFeaturesContext.Provider>
   );
 }

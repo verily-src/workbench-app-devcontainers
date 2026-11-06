@@ -5,7 +5,7 @@ import type { ChartSpec, ChartStyle, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
 import { Popover } from "./Popover";
-import { useAiFeatures } from "../features";
+import { useAiFeatures, usePlink } from "../features";
 import { extractTarget } from "../extract";
 import { DatasetSettings } from "./DatasetSettings";
 import { ComparePanel } from "./ComparePanel";
@@ -115,6 +115,7 @@ function safeFilterAskError(error: unknown): string {
 
 export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoinCanvas, onOpenTable, onRefreshExtract }: Props) {
   const aiFeatures = useAiFeatures();
+  const plinkExport = usePlink();
   const { result, filters, charts } = dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
@@ -342,7 +343,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
           {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}`}
         </button>
         </div>
-        <PlinkExport key={dataset.id} dataset={dataset} />
+        {plinkExport && <PlinkExport key={dataset.id} dataset={dataset} />}
         <button onClick={() => { void import("../pdf").then(({ captureCharts, captureGroupSummary, exportDatasetPdf }) =>
           exportDatasetPdf(dataset, captureCharts(), captureGroupSummary())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
                 disabled={!result}>

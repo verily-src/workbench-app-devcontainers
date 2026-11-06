@@ -208,7 +208,7 @@ identity mappings must be explicit, not guessed from similar column names.
 
 ### AI features flag (2026-11-06)
 
-`STUDIO_AI_FEATURES` (default off) is sent as `features.ai` on `/api/config`. When it is off, the UI hides the Agent tab, chat, Ask AI, the AI, Jev, Literature, Agent memory, MCP and knowledge-base settings, and the assistant tutorial steps. The agent, chat and MCP endpoints still run; only the UI is hidden. A config without `features` (an older server) keeps the features shown. `STUDIO_LINEAGE_UI` (default off, sent as `features.lineage`) likewise hides the Lineage tab; lineage events are still recorded. The test suite turns both flags on in `conftest.py`.
+`STUDIO_AI_FEATURES` (default off) is sent as `features.ai` on `/api/config`. When it is off, the UI hides the Agent tab, chat, Ask AI, the AI, Jev, Literature, Agent memory, MCP and knowledge-base settings, and the assistant tutorial steps. The agent, chat and MCP endpoints still run; only the UI is hidden. A config without `features` (an older server) keeps the features shown. `STUDIO_LINEAGE_UI` (default off, sent as `features.lineage`) likewise hides the Lineage tab; lineage events are still recorded. `STUDIO_PLINK_UI` (default off, `features.plink`) hides PLINK 2 export in the Export menu; the PLINK API stays. The test suite turns both flags on in `conftest.py`.
 
 Default “data cube” means a reusable logical query model. Optional cached extracts
 are execution choices with visible scope, freshness and refresh controls. Same-

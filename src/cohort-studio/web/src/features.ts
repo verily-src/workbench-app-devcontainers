@@ -4,6 +4,11 @@ import { createContext, useContext } from "react";
  *  `features.ai`; it is off unless STUDIO_AI_FEATURES is on. */
 export const AiFeaturesContext = createContext(false);
 export const useAiFeatures = () => useContext(AiFeaturesContext);
+/** PLINK 2 export (STUDIO_PLINK_UI); a config without the key keeps it shown. */
+export const PlinkContext = createContext(false);
+export const usePlink = () => useContext(PlinkContext);
+export const plinkFrom = (cfg: { features?: { plink?: boolean } } | null | undefined) =>
+  cfg?.features?.plink !== false;
 /** The Lineage tab (STUDIO_LINEAGE_UI); a config without the key keeps it shown. */
 export const lineageFrom = (cfg: { features?: { lineage?: boolean } } | null | undefined) =>
   cfg?.features?.lineage !== false;

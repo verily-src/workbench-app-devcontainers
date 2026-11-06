@@ -201,6 +201,33 @@ def test_one_broken_kind_still_lists_the_others(disc):
     assert sorted(r["id"] for r in saved["resources"]) == ["bq-ref", "omop"]
 
 
+def test_partly_listed_kind_is_not_duplicated_across_retries(disc):
+    aurora_ref = {"id": "omop-ref", "resourceType": "AWS_AURORA_DATABASE_REFERENCE",
+                  "uuid": "u-r", "databaseName": "refdb", "region": "us-east-1"}
+    gone = dict(AURORA, id="dropped", uuid="u-d")
+    discovery.save([AURORA, gone, aurora_ref, FOLDER], {})
+    db.load_cached_resources()
+    snapshot = disc["path"].read_text()
+    disc["use"]({
+        None: fail("Error: one reference cannot be resolved"),
+        "AWS_AURORA_DATABASE": [AURORA],
+        "AWS_AURORA_DATABASE_REFERENCE": fail("Error: reference cannot be resolved"),
+        "AWS_S3_STORAGE_FOLDER": [FOLDER],
+        "*": [],
+    })
+
+    for _ in range(3):                         # background retries
+        db._refresh_resource_cache()
+        ids = [r["id"] for r in db._resource_cache]
+        # Managed Aurora comes from the fresh listing (the dropped one is gone);
+        # the reference whose listing failed is kept from the cache, once.
+        assert sorted(ids) == ["omop", "omop-ref", "patient-data"]
+        body = client.get("/api/datasources").json()
+        assert _ids(body, "aurora") == ["omop", "omop-ref"]
+        assert body["discovery"]["failed_kinds"] == ["aurora"]
+    assert disc["path"].read_text() == snapshot
+
+
 def test_snapshot_holds_no_secrets_and_is_private(disc):
     leaky = dict(AURORA, password="hunter2", connectionString="postgresql://u:hunter2@h/db",
                  credentials={"secretAccessKey": "hunter2"}, description="x" * 10)

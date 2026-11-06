@@ -65,7 +65,10 @@ const HOW_LABEL: Record<JoinHow, string> = {
 };
 const OPS: JoinOp[] = ["=", "!=", "<", "<=", ">", ">="];
 const VALIDATE_DELAY_MS = 300;
-const SAVED_KEY = "cohort-studio.join-canvas.saved";
+/** Scoped to the app path like App's `studio-session-v1:<path>` key: Workbench apps
+ * share one browser origin, so an unscoped key would mix up different apps' joins.
+ * The old unscoped key is deliberately ignored. */
+const savedKey = () => `cohort-studio.join-canvas.saved:${window.location.pathname}`;
 const DRAG_TYPE = "application/x-cohort-table";
 
 function explain(how: JoinHow, left: string, right: string): string {
@@ -183,7 +186,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   const [connectDrag, setConnectDrag] = useState<{ from: string; x: number; y: number } | null>(null);
   const [ideas, setIdeas] = useState<Record<string, KeyIdeas>>({});
   const [saved, setSaved] = useState<{ name: string; ref: JoinRef; savedAt: string } | null>(() => {
-    try { return JSON.parse(localStorage.getItem(SAVED_KEY) || "null"); } catch { return null; }
+    try { return JSON.parse(localStorage.getItem(savedKey()) || "null"); } catch { return null; }
   });
 
   // Connections pane.
@@ -333,8 +336,17 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
 
   const removeNode = (id: string) => {
     const gone = subtree(nodesRef.current, id);
-    closeOwned(nodesRef.current.filter((n) => gone.has(n.id)));
-    setNodes((prev) => prev.filter((n) => !gone.has(n.id)));
+    // A reconstructed join reuses one dataset for repeated source references and
+    // marks only the first node as owner. When that owner goes but another
+    // surviving node still uses the dataset, hand ownership over instead of closing.
+    let survivors = nodesRef.current.filter((n) => !gone.has(n.id));
+    for (const n of nodesRef.current) {
+      if (!gone.has(n.id) || !n.owned || !n.dataset) continue;
+      const heir = survivors.find((s) => s.dataset?.id === n.dataset!.id);
+      if (heir) survivors = survivors.map((s) => (s.id === heir.id ? { ...s, owned: true } : s));
+      else void api.closeDataset(n.dataset.id).catch(() => undefined);
+    }
+    setNodes(survivors);
     if (selection && gone.has(selection.id)) { setSelection(null); setDraft(null); }
     if (gone.has(gridTable)) setGridTable("result");
   };
@@ -621,7 +633,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   const save = () => {
     if ("reason" in saveRecipe) return;
     const entry = { name: name.trim() || "New join", ref: saveRecipe.ref, savedAt: new Date().toISOString() };
-    try { localStorage.setItem(SAVED_KEY, JSON.stringify(entry)); } catch { /* storage disabled */ }
+    try { localStorage.setItem(savedKey(), JSON.stringify(entry)); } catch { /* storage disabled */ }
     setSaved(entry);
     setStatus(`Saved “${entry.name}” in this browser.`);
   };

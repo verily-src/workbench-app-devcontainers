@@ -799,7 +799,8 @@ def stage_bigquery(con, source: dict, dataset: dict, table: str, budget_used: in
 
     spec, meta, estimate = source["spec"], source["meta"], source["estimate"]
     _budget(budget_used, estimate)
-    restriction, residual = bq.row_restriction(filters or [], meta["types"])
+    restriction, residual = bq.row_restriction(filters or [], meta["types"],
+                                           meta.get("modes"))
     columns = source.get("columns")
     if columns is not None:
         columns = list(dict.fromkeys(columns + [f["column"] for f in residual]))

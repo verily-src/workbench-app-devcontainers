@@ -85,12 +85,56 @@ class DiscoveryError(Exception):
 
 
 class PartialDiscovery(Exception):
-    """Some kinds listed, others failed (`failed` maps kind -> DiscoveryError)."""
+    """Some kinds listed, others failed (`failed` maps kind -> DiscoveryError).
 
-    def __init__(self, resources: list[dict], failed: dict[str, DiscoveryError]):
+    `failed_types` names the `--type` listings that failed; a kind can be
+    partly listed (e.g. managed Aurora listed, Aurora references failed).
+    """
+
+    def __init__(self, resources: list[dict], failed: dict[str, DiscoveryError],
+                 failed_types: set[str] | None = None):
         super().__init__(", ".join(sorted(failed)))
         self.resources = resources
         self.failed = failed
+        self.failed_types = set(failed_types) if failed_types is not None else {
+            t for k in failed for t in KIND_TYPES.get(k, ())}
+
+
+def _identities(resource: dict) -> set[tuple[str, str]]:
+    return {(key, str(resource[key])) for key in ("id", "uuid") if resource.get(key)}
+
+
+def merge_partial(fresh: list[dict], cached: list[dict], failed_kinds,
+                  failed_types: set[str]) -> list[dict]:
+    """Fresh listing plus the cached entries the failed listings would have returned.
+
+    Merged by resource identity (id, and uuid when present) so a kind that
+    partly listed is not duplicated, and repeated partial refreshes stay
+    stable: fresh entries win; a cached entry is kept only when no fresh
+    entry shares its identity and its type belongs to a failed listing.
+    """
+    listable = {t for types in KIND_TYPES.values() for t in types}
+    seen: set[tuple[str, str]] = set()
+    merged: list[dict] = []
+
+    def add(r: dict) -> None:
+        ids = _identities(r)
+        if ids & seen:
+            return
+        seen.update(ids)
+        merged.append(r)
+
+    for r in fresh:
+        add(r)
+    for r in cached or []:
+        kind = kind_of(r)
+        if kind not in failed_kinds:
+            continue
+        rtype = str(r.get("resourceType") or "")
+        # Types the CLI reports under another name (BQ_DATA_TABLE) follow their kind.
+        if rtype in failed_types or rtype not in listable:
+            add(r)
+    return merged
 
 
 def classify(exc: BaseException) -> DiscoveryError:

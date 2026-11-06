@@ -140,6 +140,10 @@ def table_meta(spec: dict) -> dict:
     """Schema, size and type of a table from metadata (no query cost)."""
     t = _client(spec["billing"]).get_table(f"{spec['project']}.{spec['dataset']}.{spec['table']}")
     return {"types": {f.name: str(f.field_type).upper() for f in t.schema},
+            # REPEATED / RECORD fields are flattened to strings when staged, so
+            # their filters must never be pushed into the read.
+            "modes": {f.name: str(getattr(f, "mode", None) or "NULLABLE").upper()
+                      for f in t.schema},
             "num_rows": None if t.num_rows is None else int(t.num_rows),
             "num_bytes": None if t.num_bytes is None else int(t.num_bytes),
             "table_type": str(getattr(t, "table_type", "") or "").upper()}
@@ -173,18 +177,27 @@ def _bq_literal(value, kind: str, bq_type: str) -> str | None:
     return None
 
 
-def row_restriction(filters: list[dict], types: dict[str, str]) -> tuple[str, list[dict]]:
+_NESTED_TYPES = {"RECORD", "STRUCT"}
+
+
+def row_restriction(filters: list[dict], types: dict[str, str],
+                    modes: dict[str, str] | None = None) -> tuple[str, list[dict]]:
     """(BigQuery row restriction, residual filters) for checked join filters.
 
     A filter is pushed into the read only when BigQuery evaluates it exactly
     as DuckDB would after staging: matching column and value types and the
     same comparison semantics. `contains` (ILIKE with an escape) and
-    timestamp comparisons (time zones) always stay residual.
+    timestamp comparisons (time zones) always stay residual, as do filters
+    on REPEATED or RECORD fields: staging flattens those to strings, so the
+    filter is on the flattened value, which BigQuery cannot compare.
     """
+    modes = modes or {}
     clauses, residual = [], []
     for f in filters:
         column, op = f["column"], f["op"]
         bq_type = types.get(column)
+        if bq_type in _NESTED_TYPES or modes.get(column) == "REPEATED":
+            bq_type = None
         clause = None
         if bq_type and _IDENTIFIER.match(column) and op != "contains":
             ref = f"`{column}`"

@@ -45,7 +45,7 @@ export function ParametersPanel({ parameters, onChange }: {
           <option value="number">Number</option>
           <option value="date">Date</option>
         </select>
-        <button type="submit" disabled={!trimmed || Boolean(problem)}>Add</button>
+        <button type="submit" disabled={!trimmed || Boolean(problem)}>Add parameter</button>
       </form>
       {problem && <div className="settings-hint" role="alert">{problem}</div>}
     </div>

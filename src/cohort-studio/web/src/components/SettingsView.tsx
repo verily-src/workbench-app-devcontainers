@@ -1,3 +1,4 @@
+import { applyBrand } from "../brand";
 import { PerformancePanel } from "./PerformancePanel";
 import { AgentMemorySettings } from "./AgentMemorySettings";
 import { useEffect, useState } from "react";
@@ -461,6 +462,23 @@ export function SettingsView(
         <p>Notifications appear when this tab is in the background. Keep the app open.</p>
         {notificationStatus && <p role="status">{notificationStatus}</p>}
       </div>
+      <div className="section-label">Brand</div>
+      <div className="settings-card">
+        <p className="settings-caption">App colours and header. Applies to everyone using this app.</p>
+        <div className="settings-segmented" role="radiogroup" aria-label="Brand">
+          {([["verily", "Verily"], ["partner", "Verily × partner"]] as const).map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={(cfg.brand ?? "verily") === value}
+                    onClick={async () => {
+                      try {
+                        const updated = await api.updateConfig({ brand: value });
+                        setCfg(updated); applyBrand(updated.brand);
+                        setPaletteStatus(`Brand set to ${label}.`);
+                      } catch (error) { setPaletteStatus(`Save failed: ${safeProviderError(error, "")}`); }
+                    }}>{label}</button>
+          ))}
+        </div>
+      </div>
+
       <div className="section-label">Chart palette</div>
       <div className="settings-card">
         <p className="settings-caption">

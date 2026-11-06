@@ -18,6 +18,7 @@ import type { ChartSpec, Dataset, Filter, JoinFilter, JoinOutput, JoinStats, Joi
 import { tableStats } from "./format";
 import { AiFeaturesContext, PlinkContext, aiFeaturesFrom, lineageFrom, plinkFrom } from "./features";
 import { extractTarget } from "./extract";
+import { BRAND_EVENT, PARTNER_LOGO, applyBrand, type Brand } from "./brand";
 import { applyParameters, unbindParameter } from "./params";
 import { ParametersPanel } from "./components/ParametersPanel";
 
@@ -92,6 +93,18 @@ const NAV_LABEL = {
   lineage: "Lineage", settings: "Settings",
 } as const;
 
+/** "× partner": the partner logo file when present, else its name in text. */
+function PartnerMark() {
+  const [logoFailed, setLogoFailed] = useState(false);
+  return (
+    <span className="brand-partner">
+      <span className="brand-x" aria-hidden>×</span>
+      {logoFailed ? <span className="brand-partner-name">partner</span>
+        : <img src={PARTNER_LOGO} alt="partner" height={18} onError={() => setLogoFailed(true)} />}
+    </span>
+  );
+}
+
 export default function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [ready, setReady] = useState(false);
@@ -116,6 +129,12 @@ export default function App() {
   const [view, setView] = useState<
     "explore" | "join" | "agent" | "workflows" | "lineage" | "settings">("explore");
   const [aiFeatures, setAiFeatures] = useState(false);
+  const [brand, setBrand] = useState<Brand>("verily");
+  useEffect(() => {
+    const on = (e: Event) => setBrand((e as CustomEvent<Brand>).detail);
+    window.addEventListener(BRAND_EVENT, on);
+    return () => window.removeEventListener(BRAND_EVENT, on);
+  }, []);
   const [lineageTab, setLineageTab] = useState(false);
   const [plinkExport, setPlinkExport] = useState(false);
   // The visual join canvas stays mounted (hidden) after its first visit so a draft survives tab switches.
@@ -151,6 +170,7 @@ export default function App() {
   useEffect(() => {
     apiClient.config().then((c) => {
       setPalette(c.chart_palette);
+      applyBrand(c.brand);
       setAiFeatures(aiFeaturesFrom(c));
       setLineageTab(lineageFrom(c));
       setPlinkExport(plinkFrom(c));
@@ -869,7 +889,9 @@ export default function App() {
         <div className="topbar">
           <BrandMark size={20} />
           <span className="brand">
-            <span className="brand-verily">verily</span> Cohort Browser
+            <span className="brand-verily">verily</span>
+            {brand === "partner" && <PartnerMark />}
+            {" "}Cohort Browser
           </span>
           <nav className="topnav">
             {(["explore", "join", "agent", "workflows", "lineage"] as const)

@@ -282,7 +282,7 @@ select:hover { border-color: #c9c8cc; }
   background: linear-gradient(135deg, var(--accent) 0%, #0a9c87 100%);
   box-shadow: 0 1px 2px rgba(8, 122, 106, 0.35);
 }
-.brandmark { display: block; }
+.brandmark { display: block; color: var(--accent); }
 .brand-verily {
   color: var(--accent); font-weight: 700; letter-spacing: -0.01em;
   margin-right: 2px;
@@ -906,3 +906,27 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .filter-follows-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .filter-follows { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ink-muted); }
 .filter-follows select { max-width: 110px; font-size: 12px; padding: 1px 4px; }
+
+/* Brand theme: Verily × partner (partner magenta #d50f67, berry #8c0e45). */
+:root[data-brand="partner"] {
+  --accent: #d50f67; --accent-dark: #8c0e45; --accent-tint: #fdeef4; --accent-tint-border: #f4c3d7;
+}
+:root[data-brand="partner"][data-theme="dark"] {
+  --accent: #f05a9b; --accent-dark: #d50f67; --accent-tint: #3a1426; --accent-tint-border: #6b2346;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-brand="partner"][data-theme="system"] {
+    --accent: #f05a9b; --accent-dark: #d50f67; --accent-tint: #3a1426; --accent-tint-border: #6b2346;
+  }
+}
+.brand-partner { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; vertical-align: middle; }
+.brand-partner img { display: block; height: 18px; width: auto; }
+.brand-x { color: var(--ink-faint); font-weight: 400; }
+.brand-partner-name { font-weight: 700; color: #d50f67; }
+.settings-segmented { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
+.settings-segmented > button { padding: 6px 14px; border: 0; border-radius: 0; background: transparent; }
+.settings-segmented > button + button { border-left: 1px solid var(--border-strong); }
+.settings-segmented > button[aria-checked="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+/* Verily's own mark keeps Verily green under a partner brand theme. */
+:root[data-brand="partner"] .brand-verily, :root[data-brand="partner"] .brandmark { color: #087a6a; }
+:root[data-brand="partner"][data-theme="dark"] .brand-verily, :root[data-brand="partner"][data-theme="dark"] .brandmark { color: #55c5b0; }

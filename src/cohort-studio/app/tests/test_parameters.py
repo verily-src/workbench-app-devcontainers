@@ -65,3 +65,26 @@ def test_query_accepts_bound_filters_and_uses_their_values(client):
         assert response.json()["filtered"] == 2
     finally:
         datasets.close_dataset(ds["dataset_id"])
+
+
+def test_saved_view_keeps_parameters_and_bindings(monkeypatch, tmp_path):
+    import views
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    engine = create_engine(f"sqlite:///{tmp_path/'views.db'}")
+    monkeypatch.setattr(main.db, "get_engine_for_resource", lambda rid: engine)
+    monkeypatch.setattr(views.db, "get_engine_for_resource", lambda rid: engine)
+    monkeypatch.setattr(main.lineage, "record", lambda *a, **k: None)
+    views._prepared.clear()
+    client = TestClient(main.app)
+    bound = {"column": "age", "kind": "range", "min": 50.0, "max": 120.0, "param": {"min": "min_age"}}
+    ds = {"source": {"kind": "s3", "resource_id": "folder", "table": "x.csv"}, "title": "x",
+          "filters": [bound], "charts": [], "parameters": PARAMS,
+          "cohorts": [{"name": "older", "filters": [bound]}]}
+    saved = client.post("/api/views", json={"kind": "aurora", "resource_id": "db1", "name": "params",
+                                             "active": 0, "datasets": [ds]})
+    assert saved.status_code == 200, saved.text
+    got = client.get("/api/views/one?kind=aurora&resource_id=db1&name=params").json()["datasets"][0]
+    assert got["parameters"] == [{"name": "min_age", "kind": "number", "value": 50.0},
+                                 {"name": "index_date", "kind": "date", "value": "2024-01-01"}]
+    assert got["filters"] == [bound] and got["cohorts"][0]["filters"] == [bound]

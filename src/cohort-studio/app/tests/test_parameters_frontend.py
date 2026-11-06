@@ -49,7 +49,7 @@ def test_filters_follow_parameters(page, app_url):
     params.get_by_label("New parameter name").fill("1bad")
     expect(params.get_by_role("alert")).to_contain_text("start with a letter")
     params.get_by_label("New parameter name").fill("min_age")
-    params.get_by_role("button", name="Add").click()
+    params.get_by_role("button", name="Add parameter").click()
     params.get_by_label("Parameter min_age", exact=True).fill("60")
 
     age = page.locator(".filter-group", has_text="age").first
@@ -60,11 +60,16 @@ def test_filters_follow_parameters(page, app_url):
     # Changing the parameter updates the bound filter.
     params.get_by_label("Parameter min_age", exact=True).fill("70")
     wait_for(lambda f: f and f[0]["min"] == 70)
+    # "—" unbinds: the input is editable again and the filter keeps its value.
+    age.get_by_label("Minimum age follows").select_option("")
+    expect(age.get_by_label("Minimum age", exact=True)).to_be_enabled()
+    wait_for(lambda f: f and f[0]["min"] == 70 and "param" not in f[0])
+    age.get_by_label("Minimum age follows").select_option("min_age")
 
     # Date parameter bound to a date filter's start.
     params.get_by_label("New parameter name").fill("index_date")
     params.get_by_label("New parameter type").select_option("date")
-    params.get_by_role("button", name="Add").click()
+    params.get_by_role("button", name="Add parameter").click()
     params.get_by_label("Parameter index_date", exact=True).fill("2024-03-01")
     visit = page.locator(".filter-group", has_text="visit")
     visit.locator("summary").click()

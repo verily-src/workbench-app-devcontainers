@@ -15,6 +15,9 @@ export const PALETTES: Record<string, Palette> = {
             ramp: ["#f7e3e6", "#dca3ab", "#b23a48", "#7d2832"] },
   slate:  { accent: "#3f5a73", muted: "#d2dae2",
             ramp: ["#e8edf1", "#a7b8c7", "#3f5a73", "#293b4d"] },
+  // partner brand magenta (#d50f67) with its deep berry (#8c0e45).
+  "partner": { accent: "#d50f67", muted: "#f4c3d7",
+            ramp: ["#fdeef4", "#ef8fb8", "#d50f67", "#8c0e45"] },
 };
 
 export const PALETTE_NAMES = Object.keys(PALETTES);

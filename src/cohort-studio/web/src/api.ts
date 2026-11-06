@@ -165,6 +165,8 @@ export interface AppConfig {
   mcp: { available: boolean; path: string };
   mcp_connections: MCPConnection[];
   chart_palette: string;
+  /** App brand theme: "verily" or co-branded "partner". */
+  brand?: "verily" | "partner";
   /** Off hides Agent, chat, Ask AI and AI settings (STUDIO_AI_FEATURES). */
   features?: { ai?: boolean; lineage?: boolean; plink?: boolean };
   jev: {
@@ -542,6 +544,7 @@ export const api = {
     jev_api_key?: string; jev_model?: string;
     ncbi_api_key?: string;
     mcp_connections?: Omit<MCPConnection, "token_set">[]; chart_palette?: string;
+    brand?: "verily" | "partner";
   }) => request<AppConfig>("/api/config",
     { method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body) }),

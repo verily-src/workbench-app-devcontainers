@@ -140,3 +140,14 @@ def test_bad_measures_are_rejected(client):
         response = client.post(url, json={"charts": [chart]})
         assert response.status_code == status, (chart, response.text)
         assert message in response.text
+
+
+def test_a_real_other_value_keeps_its_own_group():
+    frame = pd.DataFrame({"x": ["a"] * 18, "s": ["Other"] * 10 + list("abcdefgh")})
+    chart = {"kind": "bar", "x": "x", "series": "s"}
+    pandas_out = chart_measures.frame_bar(frame, frame, chart)
+    duck_out = agg_duck.query(frame, [], [chart], 0, 5)["charts"][0]
+    for out in (pandas_out, duck_out):
+        assert out["series"] == ["Other", "a", "b", "c", "d", "e", "Other values"]
+        assert out["other_series"] == "Other values"
+        assert out["data"][0]["values"] == [10, 1, 1, 1, 1, 1, 3]

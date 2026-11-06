@@ -74,23 +74,34 @@ def _sort_categories(cats: list[str]) -> list[str]:
 def _shape(chart: dict, cats: list[str], series: list[str] | None, values: dict, has_other_cat: bool,
            has_other_series: bool) -> dict:
     """values maps (category or None, series or None) -> number; None means Other."""
-    x = chart["x"]
-    ordered = _sort_categories(list(cats)) + ([OTHER] if has_other_cat else [])
-    key = lambda c: None if c == OTHER and has_other_cat else c
     measure = measure_of(chart)
-    out = {"kind": "bar", "x": x, "measure": measure}
-    if not series:
-        out["data"] = [{"category": c, "value": _clean(values.get((key(c), None)))}
-                       for c in ordered if (key(c), None) in values or c != OTHER]
-        return out
-    names = list(series) + ([OTHER] if has_other_series else [])
-    skey = lambda s: None if s == OTHER and has_other_series else s
-    out["series_column"] = chart["series"]
-    out["series"] = names
+    out = {"kind": "bar", "x": chart["x"], "measure": measure}
+    # (key, label) pairs: folded rows have key None and a label no real value uses.
+    groups = [(c, c) for c in _sort_categories(list(cats))]
+    if has_other_cat:
+        groups.append((None, fold_label(cats)))
+        out["other_category"] = groups[-1][1]
     count = measure["agg"] in ("count", "count_distinct")
-    out["data"] = [{"category": c, "values": [
-        _clean(values.get((key(c), skey(s)), 0 if count else None)) for s in names]} for c in ordered]
+    if not series:
+        out["data"] = [{"category": label, "value": _clean(values.get((key, None), 0 if count else None))}
+                       for key, label in groups]
+        return out
+    names = [(s, s) for s in series] + ([(None, fold_label(series))] if has_other_series else [])
+    out["series_column"] = chart["series"]
+    out["series"] = [label for _, label in names]
+    if has_other_series:
+        out["other_series"] = names[-1][1]
+    out["data"] = [{"category": label, "values": [
+        _clean(values.get((key, skey), 0 if count else None)) for skey, _ in names]} for key, label in groups]
     return out
+
+
+def fold_label(shown: list) -> str:
+    """'Other', unless a shown value is literally 'Other'."""
+    label = OTHER
+    while label in shown:
+        label += " values" if label == OTHER else "+"
+    return label
 
 
 # ---- pandas ----

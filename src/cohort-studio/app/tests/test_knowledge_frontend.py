@@ -7,7 +7,7 @@ pytestmark = pytest.mark.e2e
 
 def test_upload_search_and_remove_document(page, app_url):
     page.goto(app_url)
-    page.locator(".topnav").get_by_text("Settings", exact=True).click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     section = page.get_by_role("region", name="Knowledge base")
     expect(section.get_by_role("heading", name="Built-in assistant guidance")).to_be_visible()
     expect(section).to_contain_text("bioinformatics, data science, data engineering, OMOP and cohort work")
@@ -29,7 +29,7 @@ def test_upload_search_and_remove_document(page, app_url):
     remove = section.get_by_role("button", name="Remove test-genetics-dictionary.txt")
     expect(remove).to_be_visible()
     page.reload()
-    page.locator(".topnav").get_by_text("Settings", exact=True).click()
+    page.get_by_role("button", name="Settings", exact=True).click()
     section.get_by_label("Search attached documents").fill("kb_unique_sample_key")
     section.get_by_role("button", name="Search documents").click()
     expect(section.locator("article")).to_contain_text("KB:")

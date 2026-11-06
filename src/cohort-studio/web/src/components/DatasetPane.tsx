@@ -4,6 +4,7 @@ import type { ExportJob, OpenResult } from "../api";
 import type { ChartSpec, Dataset, Filter, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { ChatWidget } from "./ChatWidget";
+import { Popover } from "./Popover";
 import { useAiFeatures } from "../features";
 import { extractTarget } from "../extract";
 import { DatasetSettings } from "./DatasetSettings";
@@ -45,11 +46,10 @@ function ExtractBar({ dataset, onUpdate, onRefresh }: {
   if (!target || !info) return null;
   const refreshed = new Date(info.refreshed_at);
   return (
-    <div className="extract-bar" role="group" aria-label="Extract">
+    <div className="extract-bar" role="group" aria-label="Extract"
+         title={`Extract of ${info.rows.toLocaleString()} rows, refreshed ${refreshed.toLocaleString()}`}>
       <span className="extract-chip">Extract</span>
-      <span>{info.rows.toLocaleString()} rows · refreshed{" "}
-        <time dateTime={info.refreshed_at} title={refreshed.toLocaleString()}>{cacheAge(info.refreshed_at)}</time>
-      </span>
+      <span>refreshed <time dateTime={info.refreshed_at}>{cacheAge(info.refreshed_at)}</time></span>
       <button type="button" className="quiet" disabled={!info.refreshable || dataset.extractRefreshing || !onRefresh}
               title={info.refreshable ? "Rerun the join and replace every row of this table"
                 : "This extract's inputs (for example an uploaded file) can't be reopened, so it can't be refreshed."}
@@ -291,13 +291,30 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
               ? entityCount.filtered.toLocaleString()
               : result.filtered.toLocaleString()) : "…"}
           </span>
-          <span className="detail">
-            {dataset.entityColumn && entityCount
-              ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
-              : `of ${result?.total.toLocaleString() ?? "…"} rows`}
-            {" · "}{scope === "database" ? "counts cover the full database"
-              : result?.sampled ? "capped loaded sample" : "loaded rows"}
-            {" · "}{dataset.source}
+          <span className="hero-text">
+            <span className="detail">
+              {dataset.entityColumn && entityCount
+                ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+                : `of ${result?.total.toLocaleString() ?? "…"} rows`}
+              {" · "}{scope === "database" ? "full database"
+                : result?.sampled ? "capped loaded sample" : "loaded rows"}
+            </span>
+            <span className="hero-meta">
+              <span className="hero-source" title={dataset.source}>{dataset.source}</span>
+              {databaseScoped && <>
+                <span className="settings-hint" title={result?.cache
+                  ? `${result.cache.hit ? "Cached" : "Fetched"} ${cacheTime(result.cache.as_of)} · cache TTL ${result.cache.ttl_seconds ?? 30} s`
+                  : "Database result status unavailable"}>
+                  {" · "}{result?.cache ? `${result.cache.hit ? "cached" : "fetched"} ${cacheAge(result.cache.as_of)}` : "status unavailable"}
+                </span>
+                <button type="button" className="icon-button" aria-label={dataset.refreshing ? "Refreshing…" : "Refresh data"}
+                        title={dataset.refreshing ? "Refreshing…" : "Refresh data"} disabled={dataset.refreshing}
+                        onClick={() => onUpdate({ refreshNonce: (dataset.refreshNonce ?? 0) + 1,
+                          refreshing: true })}>
+                  <span aria-hidden className={dataset.refreshing ? "spin" : undefined}>↻</span>
+                </button>
+              </>}
+            </span>
           </span>
         </div>
         <label className="entity-select">Count unique
@@ -312,23 +329,27 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
           </select>
         </label>
         <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} />
-        <SaveToAurora dataset={dataset} />
         {dataset.sourceRef?.kind === "join" && <button className="quiet"
           onClick={() => onEditJoin(dataset.id)}>Edit join</button>}
         {dataset.sourceRef?.kind === "join" && onEditJoinCanvas && <button className="quiet"
-          title="Reopen this join in Data Explorer"
-          onClick={() => onEditJoinCanvas(dataset.id)}>Edit in Data Explorer</button>}
+          title="Reopen this join in Data Builder"
+          onClick={() => onEditJoinCanvas(dataset.id)}>Edit in Data Builder</button>}
         <DatasetSettings dataset={dataset} onUpdate={onUpdate} />
+        <Popover label={<>Export <span aria-hidden>▾</span></>} ariaLabel="Export options" className="export-menu">
+        <div className="popover-row">
         <label className="inline-field format-select">Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
           {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}`}
         </button>
+        </div>
         <PlinkExport key={dataset.id} dataset={dataset} />
         <button onClick={() => { void import("../pdf").then(({ captureCharts, captureGroupSummary, exportDatasetPdf }) =>
           exportDatasetPdf(dataset, captureCharts(), captureGroupSummary())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
                 disabled={!result}>
           Export PDF
         </button>
+        <SaveToAurora dataset={dataset} />
+        </Popover>
       </div>
 
       {databaseScoped && exportJob && <div className="export-job" role="status">
@@ -355,27 +376,12 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
       </div>}
       {exportError && <div className="settings-hint" role="alert">{exportError}</div>}
 
-      {databaseScoped && <div className="query-cache-row">
-        <span className="settings-hint" title={`Cache TTL: ${result?.cache?.ttl_seconds ?? 30} seconds`}>
-          {result?.cache
-            ? `${result.cache.hit ? "Cached" : "Fetched"} result · ${cacheAge(result.cache.as_of)} · ${cacheTime(result.cache.as_of)}`
-            : "Database result status unavailable"}
-        </span>
-        <button className="quiet" disabled={dataset.refreshing}
-                onClick={() => onUpdate({ refreshNonce: (dataset.refreshNonce ?? 0) + 1,
-                  refreshing: true })}>
-          {dataset.refreshing ? "Refreshing…" : "Refresh data"}
-        </button>
-      </div>}
-
       {dataset.sourceInfo?.format === "vcf" && <div className="large-data-warning" role="status">
         <div>{dataset.sourceInfo.note}</div>
         <div>Reference header (not verified): {dataset.sourceInfo.reference || "not specified"} · {dataset.sourceInfo.sample_count.toLocaleString()} samples · {dataset.sourceInfo.calls.toLocaleString()} calls</div>
       </div>}
-      {largeDataset && <div className="large-data-warning" role="status">
-        <div>{scope === "database"
-          ? `This source has ${result!.total.toLocaleString()} rows. Counts cover the full database, but large queries may take longer. Add filters to narrow the result.`
-          : result?.sampled
+      {largeDataset && scope !== "database" && <div className="large-data-warning" role="status">
+        <div>{result?.sampled
             ? `This loaded preview has ${result!.total.toLocaleString()} rows. Counts cover only the loaded preview, not the full source. Add filters to narrow the preview.`
             : `This dataset has ${result!.total.toLocaleString()} loaded rows. Large queries may take longer. Add filters to narrow the result.`}</div>
       </div>}
@@ -417,19 +423,23 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoin, onEditJoin
         <button onClick={() => setShowCompare((v) => !v)}>
           {showCompare ? "Hide compare" : "Compare groups"}
         </button>
-        <button onClick={() => setShowDerive((v) => !v)}>
-          {showDerive ? "Hide calculated field" : "+ Calculated field"}
-        </button>
-        <button onClick={() => setShowAggregate((v) => !v)}>
-          {showAggregate ? "Hide aggregation" : "+ Aggregation filter"}
-        </button>
-        <button onClick={() => setShowSummary((v) => !v)}>{showSummary ? "Hide summary" : "+ Group summary"}</button>
+        <Popover label={<>+ Add <span aria-hidden>▾</span></>} ariaLabel="Add to this view" align="left">
+          {(close) => <div className="popover-menu">
+            <button onClick={() => { setShowDerive((v) => !v); close(); }}>
+              {showDerive ? "Hide calculated field" : "+ Calculated field"}
+            </button>
+            <button onClick={() => { setShowAggregate((v) => !v); close(); }}>
+              {showAggregate ? "Hide aggregation" : "+ Aggregation filter"}
+            </button>
+            <button onClick={() => { setShowSummary((v) => !v); close(); }}>{showSummary ? "Hide summary" : "+ Group summary"}</button>
+          </div>}
+        </Popover>
         <button onClick={() => setShowLaunch((v) => !v)}>
           {showLaunch ? "Hide workflow" : "Run workflow ▸"}
         </button>
       </div>
 
-      {databaseScoped && <div className="settings-hint">
+      {databaseScoped && aiFeatures && <div className="settings-hint">
         Chat uses loaded rows and is unavailable for this full-source dataset.
       </div>}
 

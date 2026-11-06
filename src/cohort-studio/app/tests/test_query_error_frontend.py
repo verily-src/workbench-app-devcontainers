@@ -68,7 +68,7 @@ def test_query_failure_has_retry_and_keeps_last_successful_charts(page, app_url)
     expect(page.get_by_role("alert")).to_have_count(0)
 
     page.get_by_role("button", name="Refresh data", exact=True).click()
-    expect(page.get_by_text("Refreshing…", exact=True)).to_be_visible()
+    expect(page.get_by_role("button", name="Refreshing…", exact=True)).to_be_disabled()
     pending[1].fulfill(status=504, content_type="application/json",
                        json={"detail": "Database query timed out again."})
     expect(page.get_by_role("alert")).to_contain_text("504: Database query timed out again.")

@@ -1,10 +1,11 @@
 from playwright.sync_api import expect
 from tests.test_e2e import app_url, loaded_page
+from tests.ui_helpers import menu
 
 
 def test_summary_table_and_pagination(loaded_page):
     page = loaded_page
-    page.get_by_role('button', name='+ Group summary').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Group summary').click()
     panel = page.get_by_role('region', name='Group summary')
     panel.get_by_label('Group by').select_option('sample_id')
     panel.get_by_role('button', name='Summarize').click()
@@ -26,7 +27,7 @@ def test_summary_follows_active_filters(loaded_page):
     group.locator('summary').click()
     group.get_by_label('liver').check()
     expect(page.locator('.hero .count')).to_have_text('25', timeout=15000)
-    page.get_by_role('button', name='+ Group summary').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Group summary').click()
     panel = page.get_by_role('region', name='Group summary')
     panel.get_by_label('Group by').select_option('tissue')
     panel.get_by_role('button', name='Summarize').click()

@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from playwright.sync_api import expect
 from tests.test_e2e import app_url, loaded_page
+from tests.ui_helpers import menu
 
 
 def test_chart_rename_and_dark_theme_pdf(loaded_page):
@@ -17,7 +18,7 @@ def test_chart_rename_and_dark_theme_pdf(loaded_page):
     card.get_by_label('Y axis label').fill('Tissue')
     card.get_by_role('button', name='Apply').click()
     with page.expect_download(timeout=30000) as download:
-        page.get_by_role('button', name='Export PDF').click()
+        menu(page, 'Export options').get_by_role('button', name='Export PDF').click()
     download.value.save_as('/private/tmp/cohort-improved.pdf')
     assert card.locator('canvas').count() > 0
     pdf = Path('/private/tmp/cohort-improved.pdf').read_bytes()

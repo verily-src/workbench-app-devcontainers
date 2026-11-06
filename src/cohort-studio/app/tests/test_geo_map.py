@@ -6,6 +6,7 @@ import database
 import main
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import menu
 
 POINTS = pd.DataFrame({'longitude': [-79.38, 0.0, 181.0, 2.0, None],
                        'latitude': [43.65, 0.0, 5.0, 91.0, 8.0]})
@@ -65,7 +66,7 @@ def test_map_chart_renders_in_browser(page, app_url, tmp_path):
     expect(card.get_by_role('alert')).to_have_count(0)
     card.screenshot(path='/private/tmp/cohort-map-chart.png')
     with page.expect_download(timeout=30000) as download:
-        page.get_by_role('button', name='Export PDF').click()
+        menu(page, 'Export options').get_by_role('button', name='Export PDF').click()
     output = tmp_path / 'map.pdf'
     download.value.save_as(output)
     assert output.stat().st_size > 10000

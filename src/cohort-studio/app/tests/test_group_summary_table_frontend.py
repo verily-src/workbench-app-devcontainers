@@ -6,13 +6,14 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url, loaded_page
+from tests.ui_helpers import menu
 
 pytestmark = pytest.mark.e2e
 
 
 def test_open_summary_as_table_with_real_backend(loaded_page):
     page = loaded_page
-    page.get_by_role('button', name='+ Group summary').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Group summary').click()
     panel = page.get_by_role('region', name='Group summary')
     open_table = panel.get_by_role('button', name='Open as table')
     expect(open_table).to_be_disabled()
@@ -28,7 +29,7 @@ def test_open_summary_as_table_with_real_backend(loaded_page):
     expect(table.locator('tbody tr')).to_have_count(4)
     expect(table.locator('tbody tr', has_text='liver')).to_contain_text('25')
     # The new tab is a regular dataset: its own summary panel works on the groups.
-    page.get_by_role('button', name='+ Group summary').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Group summary').click()
     inner = page.get_by_role('region', name='Group summary')
     inner.get_by_label('Group by').select_option('Rows')
     inner.get_by_role('button', name='Summarize').click()
@@ -97,7 +98,7 @@ def test_summary_table_saves_and_reopens_with_the_view(page, app_url):
     page.locator('.filter-group', has_text='tissue').locator('summary').click()
     page.locator('.filter-group', has_text='tissue').get_by_label('liver').check()
     page.locator('.filter-group', has_text='tissue').get_by_label('lung').check()
-    page.get_by_role('button', name='+ Group summary').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Group summary').click()
     panel = page.get_by_role('region', name='Group summary')
     panel.get_by_label('Group by').select_option('tissue')
     panel.get_by_label('Value column').select_option('value')

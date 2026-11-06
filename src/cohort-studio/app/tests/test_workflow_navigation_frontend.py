@@ -13,7 +13,7 @@ def test_row_sort_and_hide_sidebar(loaded_page):
     expect(page.locator('.data-table tbody tr').first).to_contain_text('79', timeout=10000)
     page.get_by_text('Workflows',exact=True).first.click()
     expect(page.locator('.sidebar')).to_be_hidden()
-    page.get_by_text('Explore',exact=True).first.click()
+    page.get_by_text('Explore Cohort',exact=True).first.click()
     expect(page.locator('.sidebar')).to_be_visible()
 
 

@@ -71,7 +71,7 @@ def test_large_scale_is_selectable_and_persists(page, app_url):
     _load(page, app_url, bodies)
     # Settings needs the full config; let it reach the real test server.
     page.route('**/api/config', lambda r: r.continue_())
-    page.locator('.topnav').get_by_text('Settings', exact=True).click()
+    page.get_by_role('button', name='Settings', exact=True).click()
     page.get_by_label('Display size').select_option('large')
     assert page.evaluate("document.documentElement.dataset.uiScale") == "large"
     page.reload()

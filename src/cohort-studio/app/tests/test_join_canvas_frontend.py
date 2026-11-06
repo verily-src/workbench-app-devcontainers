@@ -146,7 +146,7 @@ def _setup(page, app_url, calls, view_ref=None):
 def _open_canvas(page, first_table="person"):
     if SHOTS:
         page.set_viewport_size({"width": 1480, "height": 960})
-    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Explorer$")).click()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Builder$")).click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
     expect(canvas.locator(f".jc-table-item[data-table='{first_table}']")).to_be_visible(timeout=10000)
@@ -335,7 +335,7 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
-    page.get_by_role("button", name="Edit in Data Explorer").click()
+    page.get_by_role("button", name="Edit in Data Builder").click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
     expect(canvas.get_by_role("textbox", name="Join name")).to_have_value("Existing joined result (edited)")
@@ -365,7 +365,7 @@ def test_join_panel_links_to_canvas(page, app_url):
     _setup(page, app_url, calls)
     page.goto(app_url)
     page.get_by_role("button", name="Join tables").click()
-    page.locator(".join-panel").get_by_role("button", name="Open in Data Explorer").click()
+    page.locator(".join-panel").get_by_role("button", name="Open in Data Builder").click()
     expect(page.locator(".jc")).to_be_visible()
     expect(page.locator(".join-panel")).to_have_count(0)
 
@@ -426,9 +426,10 @@ def test_extract_mode_writes_every_row_refreshes_and_save_reopens(page, app_url)
 
     # The extract tab says it is an extract and can be refreshed in place.
     bar = page.get_by_role("group", name="Extract")
-    expect(bar).to_contain_text("250,000 rows")
+    expect(bar).to_have_attribute("title", re.compile("250,000 rows"))
+    expect(page.locator(".hero .count")).to_be_visible()
     bar.get_by_role("button", name="Refresh extract").click()
-    expect(bar).to_contain_text("260,000 rows")
+    expect(bar).to_have_attribute("title", re.compile("260,000 rows"))
     assert calls["refresh"][-1] == {"kind": "aurora", "resource_id": "clinical", "table": "person_samples"}
     expect(page.locator(".tab")).to_have_count(1)
     expect(page.locator(".tab.active")).to_contain_text("Person samples")
@@ -479,7 +480,7 @@ def test_removing_one_of_two_steps_sharing_a_source_keeps_its_dataset(page, app_
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
-    page.get_by_role("button", name="Edit in Data Explorer").click()
+    page.get_by_role("button", name="Edit in Data Builder").click()
     canvas = page.locator(".jc")
     expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
     _wait_for(calls, "validate", lambda b: [s["right_id"] for s in b["steps"]]
@@ -509,10 +510,10 @@ def test_loaded_status_card_shows_only_on_explore(page, app_url):
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
     loaded = page.locator(".data-job-done")
     expect(loaded).to_be_visible()
-    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Explorer$")).click()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Data Builder$")).click()
     expect(page.locator(".jc")).to_be_visible()
     expect(loaded).to_have_count(0)
-    page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore$")).click()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore Cohort$")).click()
     expect(loaded).to_be_visible()
 
 

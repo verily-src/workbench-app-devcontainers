@@ -1,10 +1,11 @@
 from playwright.sync_api import expect
 from tests.test_e2e import app_url, loaded_page
+from tests.ui_helpers import menu
 
 
 def test_summary_layout_light_and_dark(loaded_page, tmp_path):
     page = loaded_page
-    page.get_by_role('button', name='+ Group summary').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Group summary').click()
     panel = page.get_by_role('region', name='Group summary')
     panel.get_by_label('Group by').select_option('tissue')
     panel.get_by_role('button', name='Summarize').click()

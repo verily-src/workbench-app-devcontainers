@@ -1,5 +1,6 @@
 from playwright.sync_api import expect
 from tests.test_e2e import app_url, loaded_page
+from tests.ui_helpers import menu
 
 
 def test_initial_page_defers_charts_pdf_and_agent(page, app_url):
@@ -60,7 +61,7 @@ def test_custom_categorical_filter_accepts_values_not_in_picker(loaded_page):
 
 def test_aggregation_filter_keeps_rows_from_qualifying_groups(loaded_page):
     page = loaded_page
-    page.get_by_role('button', name='+ Aggregation filter').click()
+    menu(page, 'Add to this view').get_by_role('button', name='+ Aggregation filter').click()
     panel = page.get_by_role('region', name='Aggregation filter')
     panel.get_by_label('Group by').select_option('tissue')
     panel.get_by_label('At least', exact=True).fill('26')

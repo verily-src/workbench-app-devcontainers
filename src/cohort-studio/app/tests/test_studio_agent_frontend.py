@@ -1,3 +1,4 @@
+import re
 import json
 
 import pytest
@@ -302,5 +303,5 @@ def test_agent_stream_progress_cancel_and_refresh_without_dashboard(page, app_ur
     box.fill("Count again")
     page.get_by_role("button", name="Send", exact=True).click()
     expect(page.get_by_role("button", name="Cancel", exact=True)).to_be_visible()
-    page.locator(".topnav-link", has_text="Explore").click()
+    page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore$")).click()
     assert page.evaluate("window.agentStreamTest.aborted") is True

@@ -61,9 +61,9 @@ if [[ "${status}" != "ERROR" ]]; then
     # switch fails, errexit stops the script here rather than marking the VM ready while still open.
     if [[ -f /home/core/airlock-enabled ]]; then
         docker kill -s SIGUSR1 dns-filter
-        # Also persist the mode for future boots: dns-filter-setup.sh always starts the filter open,
-        # since it can't tell "first boot" from "setup previously failed partway" on its own. Once
-        # setup has genuinely succeeded once, no boot after this needs the filter open again.
+        # Also persists the mode for future boots: dns-filter-setup.sh only initializes this file
+        # to "open" if it doesn't exist yet, so once setup succeeds here, every boot after this one
+        # starts the filter already restricted.
         echo "START_MODE=restricted" > /home/core/dns-filter.env
     fi
     set_metadata "startup_script/status" "COMPLETE"

@@ -6,6 +6,7 @@ import { getPalette, type Palette } from "../palette";
 import type { AxisSettings, BarDatum, PersonBarDatum, ChartResult, ChartSpec, ChartStyle, HistDatum } from "../types";
 import { AxisEditor } from "./AxisEditor";
 import { MarksMenu } from "./MarksMenu";
+import { numericAxes, styleOf } from "../chartStyles";
 import type { ChartMarks, MarkType } from "../types";
 
 const INK_SOFT = "#5f6368";
@@ -125,19 +126,6 @@ function heatmapOption(data: [string, string, number][],
 
 // ---- Chart styles: other ways to draw the same bar/histogram counts ----
 
-/** Styles per data kind. The first is the default (no `style` saved). */
-export const CHART_STYLES: Partial<Record<ChartSpec["kind"], { style: ChartStyle; label: string }[]>> = {
-  bar: [{ style: "bar", label: "Bar" }, { style: "column", label: "Column" },
-        { style: "line", label: "Line" }, { style: "area", label: "Area" },
-        { style: "pie", label: "Pie" }, { style: "donut", label: "Donut" }],
-  histogram: [{ style: "column", label: "Histogram" }, { style: "line", label: "Histogram (line)" },
-              { style: "area", label: "Histogram (area)" }],
-};
-export const styleOf = (spec: Pick<ChartSpec, "kind" | "style">): ChartStyle | undefined => {
-  const styles = CHART_STYLES[spec.kind];
-  if (!styles) return undefined;
-  return styles.some((s) => s.style === spec.style) ? spec.style : styles[0].style;
-};
 // A validated categorical order (fixed, never cycled) for pie and donut slices;
 // beyond 6 slices the tail folds into "Other".
 const SLICE_COLORS = {
@@ -450,7 +438,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
           onMarks={(marks) => onMarksChange?.(Object.values(marks).some((v) => v !== undefined) ? marks : undefined)} />}
         {onRename && <button className="quiet" title="Rename chart" aria-label="Rename chart"
           onClick={() => { setTitleDraft(spec.title || columnLabels[spec.x] || spec.x); setEditingTitle(true); }}>✎</button>}
-        {onAxesChange && spec.kind !== "map" && <button type="button" className="quiet" title="Edit axes" aria-label="Edit axes"
+        {onAxesChange && (numericAxes(spec).x || numericAxes(spec).y || spec.kind === "heatmap") && <button type="button" className="quiet" title="Edit axes" aria-label="Edit axes"
           aria-expanded={editingAxes} onClick={() => setEditingAxes(value => !value)}>⚙</button>}
         {!readOnly && <>
           <button className="quiet" title="Toggle width"
@@ -463,8 +451,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       {result?.kind === "map" && mapStatus === "error" && <div role="alert">Could not load the map.</div>}
       {editingAxes && onAxesChange && <AxisEditor spec={spec}
         onCancel={() => setEditingAxes(false)} onApply={(x, y) => { onAxesChange(x, y); setEditingAxes(false); }} />}
-      {((spec.kind === "bar" || spec.kind === "scatter") && spec.x_axis?.scale === "log" ||
-        (spec.kind === "histogram" || spec.kind === "scatter") && spec.y_axis?.scale === "log") &&
+      {(numericAxes(spec).x && spec.x_axis?.scale === "log" ||
+        numericAxes(spec).y && spec.y_axis?.scale === "log") &&
         <div className="axis-scale-note">Log scale shows positive values only.</div>}
       <div ref={ref} className="chart-plot" data-chart-style={drawnStyle ?? spec.kind}
            style={{ width: "100%", height }} />

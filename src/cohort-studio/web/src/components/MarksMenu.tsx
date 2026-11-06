@@ -71,6 +71,10 @@ export function MarksMenu({ spec, kinds, onChoose, onMarks }: {
   const mark = currentMark(spec);
   const marks = spec.marks ?? {};
   const pie = spec.kind === "bar" && (spec.style === "pie" || spec.style === "donut");
+  // Only offer settings the renderer applies to this chart.
+  const noColor = pie || spec.kind === "heatmap";
+  const noSize = pie || spec.kind === "heatmap";
+  const noLabels = spec.kind === "map" || spec.kind === "heatmap" || spec.kind === "scatter";
   return (
     <Popover className="marks-menu" ariaLabel="Marks"
              label={<>{ICONS[mark]}<span>{MARK_LABEL[mark]}</span><span aria-hidden>▾</span></>}>
@@ -91,19 +95,19 @@ export function MarksMenu({ spec, kinds, onChoose, onMarks }: {
           })}
         </div>
         <div className="marks-props">
-          <fieldset className="marks-prop" disabled={pie}>
+          <fieldset className="marks-prop" disabled={noColor}
+                    title={pie ? "Pie and donut slices use a fixed color order" : spec.kind === "heatmap" ? "Density uses the theme's color scale" : undefined}>
             <legend>Color</legend>
             <div className="marks-swatches">
               {MARK_COLORS.map((c, i) => (
                 <button key={c} type="button" aria-label={i === 0 ? "Theme color" : `Color ${c}`}
                         aria-pressed={(marks.color ?? MARK_COLORS[0]) === c}
-                        title={pie ? "Pie and donut slices use a fixed color order" : undefined}
                         style={{ background: i === 0 ? "var(--accent)" : c }}
                         onClick={() => onMarks({ ...marks, color: i === 0 ? undefined : c })} />
               ))}
             </div>
           </fieldset>
-          <fieldset className="marks-prop">
+          <fieldset className="marks-prop" disabled={noSize}>
             <legend>Size</legend>
             <div className="marks-seg" role="radiogroup" aria-label="Mark size">
               {(["s", "m", "l"] as const).map((v) => (
@@ -113,7 +117,7 @@ export function MarksMenu({ spec, kinds, onChoose, onMarks }: {
               ))}
             </div>
           </fieldset>
-          <fieldset className="marks-prop" disabled={spec.kind === "map" || spec.kind === "heatmap"}>
+          <fieldset className="marks-prop" disabled={noLabels}>
             <legend>Labels</legend>
             <label className="marks-toggle">
               <input type="checkbox" checked={Boolean(marks.labels)}

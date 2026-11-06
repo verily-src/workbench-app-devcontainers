@@ -1,3 +1,4 @@
+import { numericAxes } from "../chartStyles";
 import { useState } from "react";
 import type { AxisSettings, ChartSpec } from "../types";
 
@@ -15,8 +16,8 @@ export function AxisEditor({ spec, onApply, onCancel }: {
   const [x, setX] = useState(() => draft(spec.x_axis));
   const [y, setY] = useState(() => draft(spec.y_axis));
   const [error, setError] = useState("");
-  const xNumeric = spec.kind === "bar" || spec.kind === "scatter";
-  const yNumeric = spec.kind === "histogram" || spec.kind === "scatter";
+  // The drawn style decides the numeric axis (a categorical Line has numbers on Y).
+  const { x: xNumeric, y: yNumeric } = numericAxes(spec);
   const build = (value: Draft, numeric: boolean): AxisSettings => {
     const label = value.label.trim() || undefined;
     if (!numeric) return { label };

@@ -128,6 +128,9 @@ export interface ChartResult {
   measure?: ChartMeasure;
   series_column?: string;
   series?: string[];
+  /** Labels of the folded "Other" category and series (measured bar results). */
+  other_category?: string;
+  other_series?: string;
   data: BarDatum[] | PersonBarDatum[] | SeriesBarDatum[] | HistDatum[] | number[][] | [string, string, number][];
 }
 

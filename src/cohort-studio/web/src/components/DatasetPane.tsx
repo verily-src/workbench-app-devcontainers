@@ -767,6 +767,7 @@ function AddChart({ dataset, onUpdate }:
     const picked = data.get("kind") as string;
     const measureColumn = (data.get("measure_column") as string) || undefined;
     const series = (data.get("series") as string) || undefined;
+    if (agg !== "count" && !measureColumn) { setError(`Choose a field for ${MEASURE_LABEL[agg]}.`); return; }
     const measure: ChartMeasure | undefined = agg !== "count" && measureColumn ? { agg, column: measureColumn } : undefined;
     // Styles (column, line, area, pie, donut) draw bar or histogram counts.
     const styleKinds: Record<string, ChartStyle> = { column: "column", line: "line", area: "area", pie: "pie", donut: "donut" };
@@ -834,7 +835,8 @@ function AddChart({ dataset, onUpdate }:
       <div style={{ width: 130 }}>
         <div className="field-label">Measure</div>
         <select aria-label="New chart measure" value={agg} onChange={(e) => setAgg(e.target.value as MeasureAgg)}>
-          {(Object.keys(MEASURE_LABEL) as MeasureAgg[]).map((a) => <option key={a} value={a}>{MEASURE_LABEL[a]}</option>)}
+          {(Object.keys(MEASURE_LABEL) as MeasureAgg[]).map((a) => <option key={a} value={a}
+            disabled={a !== "count" && measureFields(dataset.columns, a, chartX).length === 0}>{MEASURE_LABEL[a]}</option>)}
         </select>
       </div>
       {agg !== "count" && <div style={{ width: 150 }}>

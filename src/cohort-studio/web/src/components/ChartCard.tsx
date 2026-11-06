@@ -227,7 +227,7 @@ function splitOption(result: ChartResult, style: ChartStyle, dark: boolean, ink:
   const radius = horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0];
   const many = cats.length > 24;
   const series = names.map((name, s) => {
-    const color = name === "Other" ? OTHER_COLOR[dark ? "dark" : "light"] : colors[s % colors.length];
+    const color = name === result.other_series ? OTHER_COLOR[dark ? "dark" : "light"] : colors[s % colors.length];
     const values = order.map((i) => data[i].values[s] ?? null);
     return bars
       ? { type: "bar" as const, name, data: values, barMaxWidth: 24, ...(stack ? { stack: "total" } : {}),
@@ -505,7 +505,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       const cats = clickCats;
       chart.current.on("click", (params) => {
         const cat = cats[params.dataIndex];
-        if (cat && cat !== "Other") onTapCategory(spec.x, cat);
+        if (cat && cat !== (result.measure ? result.other_category : "Other")) onTapCategory(spec.x, cat);
       });
     }
   }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus]);

@@ -130,7 +130,8 @@ export default function App() {
   const [canvasMounted, setCanvasMounted] = useState(false);
   useEffect(() => { if (view === "join") setCanvasMounted(true); }, [view]);
   const [canvasEdit, setCanvasEdit] = useState<{ nonce: number; title: string;
-    ref: Extract<SourceRef, { kind: "join" }> } | null>(null);
+    ref: Extract<SourceRef, { kind: "join" | "sql" }>;
+    extract?: { kind: string; resource_id: string; table: string } } | null>(null);
   const [tutorialAssistantConfigured, setTutorialAssistantConfigured] = useState(false);
   const [palette, setPalette] = useState("verily");
   const [showJoin, setShowJoin] = useState(false);
@@ -1004,8 +1005,29 @@ export default function App() {
             <div className="join-canvas-host" hidden={view !== "join"}>
               <JoinCanvas datasets={datasets} sources={sources} busy={Boolean(activity)} edit={canvasEdit}
                           onJoin={doJoin}
-                          onOpenResult={(opened, title, sourceRef) =>
-                            openResult(opened, title, sourceRef, undefined, { forceNewTab: true })}
+                          onOpenResult={(opened, title, sourceRef) => {
+                            // Saving an edited extract replaces its open tab instead of adding one.
+                            const edited = canvasEdit?.extract;
+                            const index = edited && opened.extract ? datasets.findIndex((d) => {
+                              const t = extractTarget(d);
+                              return t && t.resource_id === edited.resource_id && t.table === edited.table;
+                            }) : -1;
+                            if (index < 0) { openResult(opened, title, sourceRef, undefined, { forceNewTab: true }); return; }
+                            const old = datasets[index];
+                            setDatasets((prev) => prev.map((d, i) => i === index
+                              ? { ...d, id: opened.dataset_id, title, source: opened.source,
+                                  sourceRef: opened.source_ref ?? d.sourceRef, sourceInfo: opened.source_info,
+                                  queryScope: opened.query_scope, columns: opened.columns, extract: opened.extract,
+                                  result: undefined, page: 0, queryLoading: true, queryError: undefined,
+                                  // Fields may have changed: keep only filters and charts that still apply.
+                                  filters: d.filters.filter((f) => opened.columns.some((c) => c.name === f.column)),
+                                  charts: d.charts.filter((c) => opened.columns.some((col) => col.name === c.x)
+                                    && (!c.y || opened.columns.some((col) => col.name === c.y))) }
+                              : d));
+                            setActive(index);
+                            setView("explore");
+                            if (old.id !== opened.dataset_id) void api.closeDataset(old.id).catch(() => undefined);
+                          }}
                           onAddSource={() => setAddSourceOpen(true)}
                           onClose={() => setView("explore")} />
             </div>
@@ -1148,6 +1170,15 @@ export default function App() {
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
                   onEditJoin={editJoin}
                   onRefreshExtract={(datasetId) => void refreshExtract(datasetId)}
+                  onEditExtract={(datasetId) => {
+                    const tab = datasets.find((d) => d.id === datasetId);
+                    const target = tab ? extractTarget(tab) : null;
+                    const recipe = tab?.extract?.recipe;
+                    if (!tab || !target || (recipe?.kind !== "join" && recipe?.kind !== "sql")) return;
+                    setCanvasEdit((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, title: tab.title,
+                      ref: recipe as Extract<SourceRef, { kind: "join" | "sql" }>, extract: target }));
+                    setView("join");
+                  }}
                   onEditJoinCanvas={(datasetId) => {
                     const original = datasets.find((dataset) => dataset.id === datasetId);
                     if (original?.sourceRef?.kind !== "join") return;

@@ -6,11 +6,12 @@ import { api } from "../api";
 import type { DataJob, OpenResult } from "../api";
 import type {
   ColumnProfile, Dataset, JoinFilter, JoinHow, JoinOp, JoinOutput, JoinPreview, JoinRecommendation,
-  JoinStep, JoinSuggestion, JoinValidation, Source, SourceRef, TableInfo,
+  JoinStep, JoinSuggestion, JoinValidation, Source, SourceRef, SqlPreview, TableInfo,
 } from "../types";
 import { tableStats } from "../format";
 import { Combobox } from "./Combobox";
 import { JobProgress } from "./DataJobs";
+import { SqlEditor } from "./SqlEditor";
 import type { FilterRow } from "./JoinPanel";
 import {
   ARROW, FilterEditor, KIND_LABEL, Venn, addsColumns, colKind, directAurora, filterProblem,
@@ -25,6 +26,7 @@ import type { CanvasCond, CanvasNode, JoinPlan } from "../joinModel";
 import "./JoinCanvas.css";
 
 type JoinRef = Extract<SourceRef, { kind: "join" }>;
+type SqlRef = Extract<SourceRef, { kind: "sql" }>;
 
 export interface CanvasJoinRequest {
   baseId: string; steps: JoinStep[]; allowLoaded: boolean; baseFilters: JoinFilter[]; output?: JoinOutput;
@@ -37,7 +39,9 @@ interface Props {
   sources: Source[];
   busy: boolean;
   /** A saved join to reconstruct (Edit join in canvas); a new nonce reopens. */
-  edit?: { nonce: number; title: string; ref: JoinRef } | null;
+  edit?: { nonce: number; title: string; ref: JoinRef | SqlRef;
+          /** Editing an extract: write back to this table. */
+          extract?: { kind: string; resource_id: string; table: string } } | null;
   onJoin: (p: CanvasJoinRequest) => Promise<unknown>;
   onOpenResult: (opened: OpenResult, title: string, sourceRef?: SourceRef) => void;
   onAddSource: () => void;
@@ -179,6 +183,13 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   const [selection, setSelection] = useState<{ type: "node" | "link"; id: string } | null>(null);
   const [draft, setDraft] = useState<LinkDraft | null>(null);
   const [mode, setMode] = useState<"live" | "extract">("live");
+  // Build with the visual canvas, or with one SQL query against a database.
+  const [buildMode, setBuildMode] = useState<"visual" | "sql">("visual");
+  const [sqlResource, setSqlResource] = useState("");
+  const [sqlText, setSqlText] = useState("");
+  const [sqlPreview, setSqlPreview] = useState<SqlPreview | null>(null);
+  const [sqlBusy, setSqlBusy] = useState(false);
+  const [sqlError, setSqlError] = useState("");
   const [extractResource, setExtractResource] = useState("");
   const [extractTable, setExtractTable] = useState("");
   const [allowLoaded, setAllowLoaded] = useState(false);
@@ -500,7 +511,21 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
   useEffect(() => {
     if (!edit || lastEdit.current === edit.nonce) return;
     lastEdit.current = edit.nonce;
-    void reconstruct(edit.ref, edit.title, true);
+    const target = edit.extract;
+    if (target) {
+      // Rewrite the same extract table (the registry allows replacing its own extract).
+      setMode("extract"); setExtractResource(target.resource_id);
+      setExtractTable(target.table); setExtractTableEdited(true);
+    }
+    if (edit.ref.kind === "sql") {
+      clearCanvas();
+      setBuildMode("sql"); setSqlResource(edit.ref.resource_id); setSqlText(edit.ref.sql);
+      setSqlPreview(null); setSqlError("");
+      setName(edit.title); setNameEdited(true);
+    } else {
+      setBuildMode("visual");
+      void reconstruct(edit.ref, edit.title, !target);
+    }
   }, [edit?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Drag and drop ----
@@ -646,7 +671,65 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
     }
   };
 
+  // ---- SQL mode ----
+  const sqlSources = sources.filter((x) => x.kind === "aurora" || x.kind === "postgres");
+  useEffect(() => {
+    if (!sqlResource && sqlSources[0]) setSqlResource(sqlSources[0].id);
+  }, [sqlSources.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sqlReason = !sqlSources.length ? "SQL needs an Aurora or PostgreSQL datasource."
+    : !sqlResource ? "Choose a database." : !sqlText.trim() ? "Write a SELECT query." : null;
+  const sqlRunReason = sqlReason
+    ?? (mode === "extract" && (!extractResource || !extractTable.trim()) ? "Choose where to save the extract." : null)
+    ?? (busy || running || sqlBusy ? "Waiting for the current operation to finish." : null);
+  // The canvas join as SQL, when it runs inside one database (DuckDB SQL can't).
+  const canvasSql = validation?.generated_sql?.engine === "aurora" ? validation.generated_sql.copyable_sql : undefined;
+  const canvasSqlResource = root?.dataset?.sourceRef && "resource_id" in root.dataset.sourceRef
+    ? root.dataset.sourceRef.resource_id : "";
+  const useCanvasSql = () => {
+    if (!canvasSql) return;
+    setSqlText(canvasSql);
+    if (canvasSqlResource) setSqlResource(canvasSqlResource);
+    setSqlPreview(null); setSqlError(""); setBuildMode("sql");
+  };
+  const runSqlPreview = async () => {
+    if (sqlReason) return;
+    setSqlBusy(true); setSqlError(""); setSqlPreview(null);
+    try { setSqlPreview(await api.previewSql(sqlResource, sqlText.trim())); }
+    catch (e) { setSqlError((e as Error).message); }
+    finally { setSqlBusy(false); }
+  };
+  const createSql = async () => {
+    if (sqlRunReason) return;
+    const title = name.trim() || "SQL result";
+    const ref = { kind: "sql", resource_id: sqlResource, sql: sqlText.trim(), name: title } as SourceRef;
+    setRunning(true); setSqlError(""); setError("");
+    let openedId = "";
+    try {
+      setStatus("Running the query…");
+      const opened = await api.openSourceRef(ref);
+      if (mode === "live") {
+        onOpenResult(opened, title, opened.source_ref ?? ref);
+        setStatus("");
+        return;
+      }
+      openedId = opened.dataset_id;
+      const target = auroraTargets.find((x) => x.id === extractResource);
+      const kind = target?.kind ?? "aurora";
+      const table = extractTable.trim();
+      setStatus(`Saving every row to ${extractResource}…`);
+      const out = await api.extract(openedId, kind, extractResource, table, title);
+      onOpenResult(out, title, { kind, resource_id: extractResource, table } as SourceRef);
+      setStatus(`Saved ${(out.extract?.rows ?? 0).toLocaleString()} rows to ${table}.`);
+    } catch (e) {
+      setSqlError((e as Error).message); setStatus("");
+    } finally {
+      if (openedId) void api.closeDataset(openedId).catch(() => undefined);
+      setRunning(false);
+    }
+  };
+
   const create = async () => {
+    if (buildMode === "sql") return createSql();
     if (!plan || !canRun) return;
     setError(""); setStatus("");
     const title = name.trim() || "Joined table";
@@ -835,6 +918,12 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
           <input type="text" aria-label="Join name" value={name} maxLength={128} placeholder="Name this join"
                  onChange={(e) => { setName(e.target.value); setNameEdited(true); }} />
         </label>
+        <div className="jc-build" role="radiogroup" aria-label="Build with">
+          {(["visual", "sql"] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={buildMode === m}
+                    onClick={() => setBuildMode(m)}>{m === "visual" ? "Visual" : "SQL"}</button>
+          ))}
+        </div>
         <div className="jc-mode" role="radiogroup" aria-label="Connection">
           <span className="jc-label">Connection</span>
           <label title="The joined tab queries its sources; same-database Aurora joins run in the database.">
@@ -855,30 +944,72 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
                    onChange={(e) => { setExtractTable(e.target.value); setExtractTableEdited(true); }} />
           </div>
         )}
-        <div className="jc-filters-summary">
+        {buildMode === "visual" && <div className="jc-filters-summary">
           <span className="jc-label">Filters</span> <strong>{filterCount}</strong>
           <button type="button" className="link" disabled={!ready} onClick={() => {
             setSelection(null); setDraft(null);
             setFilterTable(filterTable && ids.has(filterTable) ? filterTable : root?.id ?? ""); setFiltersOpen(true); }}>
             Add
           </button>
-        </div>
+        </div>}
         <div className="jc-spacer" />
-        <button type="button" className="quiet" disabled={!validation?.generated_sql}
-                title={validation?.generated_sql ? "Show the SQL Studio runs" : "SQL appears once the join is valid"}
-                onClick={() => setShowSql(true)}>Show SQL</button>
-        <button type="button" className="quiet" disabled={!canPreview} onClick={() => void runPreview()}
-                aria-describedby={footerReason ? reasonId : undefined}>{previewing ? "Previewing…" : "Preview"}</button>
+        {buildMode === "visual" ? <>
+          <button type="button" className="quiet" disabled={!validation?.generated_sql}
+                  title={validation?.generated_sql ? "Show the SQL Studio runs" : "SQL appears once the join is valid"}
+                  onClick={() => setShowSql(true)}>Show SQL</button>
+          <button type="button" className="quiet" disabled={!canPreview} onClick={() => void runPreview()}
+                  aria-describedby={footerReason ? reasonId : undefined}>{previewing ? "Previewing…" : "Preview"}</button>
+        </> : (
+          <button type="button" className="quiet" disabled={Boolean(sqlReason) || sqlBusy}
+                  title={sqlReason ?? "Run the query on a sample of rows"}
+                  onClick={() => void runSqlPreview()}>{sqlBusy ? "Previewing…" : "Preview"}</button>
+        )}
         <button type="button" className="quiet" onClick={cancel}>Cancel</button>
-        <button type="button" disabled={Boolean(saveReason)} title={saveReason ?? "Keep this join model in this browser"}
+        <button type="button" disabled={buildMode === "sql" || Boolean(saveReason)}
+                title={buildMode === "sql" ? "Save keeps visual joins; Save & open keeps the SQL with its tab"
+                  : saveReason ?? "Keep this join model in this browser"}
                 onClick={save}>Save</button>
-        <button type="button" className="primary" disabled={!canRun} onClick={() => void create()}
-                aria-describedby={footerReason ? reasonId : undefined}>
+        <button type="button" className="primary" disabled={buildMode === "sql" ? Boolean(sqlRunReason) : !canRun}
+                title={buildMode === "sql" ? sqlRunReason ?? undefined : undefined}
+                onClick={() => void create()}
+                aria-describedby={buildMode === "visual" && footerReason ? reasonId : undefined}>
           {busy || running ? "Working…" : "Save & open in Explore"}
         </button>
       </div>
 
-      <div className="jc-body">
+      {buildMode === "sql" && (
+        <section className="jc-sql" aria-label="SQL builder">
+          <div className="jc-sql-tools">
+            <label className="jc-sql-db">Database
+              <select aria-label="SQL database" value={sqlResource}
+                      onChange={(e) => { setSqlResource(e.target.value); setSqlPreview(null); }}>
+                {!sqlSources.length && <option value="">No Aurora or PostgreSQL datasource</option>}
+                {sqlSources.map((x) => <option key={x.id} value={x.id}>{x.label || x.id}</option>)}
+              </select>
+            </label>
+            <button type="button" className="link" disabled={!canvasSql}
+                    title={canvasSql ? "Replace the query with the SQL of the visual join"
+                      : "Build a same-database join on the canvas first"}
+                    onClick={useCanvasSql}>Use canvas SQL</button>
+            <span className="settings-hint">One read-only SELECT. Live tabs query the database; Extract saves every row.</span>
+          </div>
+          <SqlEditor value={sqlText} label="Data Builder SQL" resourceId={sqlResource || undefined}
+                     placeholder="SELECT p.person_id, c.condition_concept_id FROM cdm.person p JOIN cdm.condition_occurrence c USING (person_id)"
+                     onChange={(v) => { setSqlText(v); setSqlPreview(null); }} disabled={running} />
+          {sqlError && <div className="join-error" role="alert">{sqlError}</div>}
+          {status && <div className="jc-status" role="status">{status}</div>}
+          {sqlRunReason && !sqlError && <div className="join-disabled-reason">{sqlRunReason}</div>}
+          {sqlPreview && <div className="jc-sql-preview">
+            <div className="settings-hint" aria-live="polite">
+              {sqlPreview.rows.toLocaleString()} sample row{sqlPreview.rows === 1 ? "" : "s"}
+              {sqlPreview.truncated ? " (more in the full result)" : ""} · {sqlPreview.columns.length} columns
+            </div>
+            <PreviewTable columns={sqlPreview.columns} rows={sqlPreview.sample} label="SQL result rows"
+                          describe={(field) => ({ table: "SQL", field })} />
+          </div>}
+        </section>
+      )}
+      <div className="jc-body" hidden={buildMode === "sql"}>
         {/* Connections pane */}
         <aside className="jc-connections" aria-label="Connections">
           <div className="jc-pane-head">
@@ -1453,6 +1584,9 @@ export function JoinCanvas({ datasets, sources, busy, edit, onJoin, onOpenResult
               <h3>Generated SQL</h3>
               <span className="settings-hint">Engine: {validation.generated_sql.engine === "aurora" ? "Aurora" : "DuckDB"}</span>
               <span className="jc-spacer" />
+              <button type="button" className="link" disabled={!canvasSql}
+                      title={canvasSql ? "Open this query in the SQL builder to edit it" : "Only same-database joins can be edited as SQL"}
+                      onClick={() => { setShowSql(false); useCanvasSql(); }}>Edit as SQL</button>
               <button type="button" className="quiet" aria-label="Close SQL" onClick={() => setShowSql(false)}>✕</button>
             </div>
             {validation.generated_sql.staged_inputs?.length ? (

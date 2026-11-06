@@ -82,8 +82,9 @@ def _entry(conn, table: str) -> dict | None:
 def public_info(entry: dict | None) -> dict | None:
     if entry is None:
         return None
-    return {k: v for k, v in entry.items() if k != "recipe"} | {
-        "refreshable": entry.get("recipe") is not None}
+    # The recipe is the dataset's source_ref (as stored in saved views); the UI
+    # reopens it in Data Builder to edit the extract.
+    return {**entry, "refreshable": entry.get("recipe") is not None}
 
 
 def info(resource_id: str, table: str) -> dict | None:

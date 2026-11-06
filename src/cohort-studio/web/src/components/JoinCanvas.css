@@ -194,3 +194,17 @@
 .jc-field-name { width: 100%; min-width: 120px; padding: 2px 6px; font-size: 13px; border-color: transparent; background: transparent; }
 .jc-field-name:hover:not(:disabled), .jc-field-name:focus { border-color: var(--border-strong); background: var(--card); }
 .jc-fields-table tr.excluded .jc-field-name { text-decoration: line-through; color: var(--ink-faint); }
+
+/* Build with: Visual | SQL */
+.jc-build { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
+.jc-build > button { height: 28px; padding: 0 12px; border: 0; border-radius: 0; background: transparent; font-size: 13px; }
+.jc-build > button + button { border-left: 1px solid var(--border-strong); }
+.jc-build > button[aria-checked="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+.jc-sql { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-height: 0; flex: 1;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; }
+.jc-sql-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.jc-sql-db { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.jc-sql-db select { min-width: 220px; }
+.jc-sql .sql-editor, .jc-sql textarea { min-height: 220px; }
+.jc-sql-preview { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.jc-body[hidden] { display: none; }

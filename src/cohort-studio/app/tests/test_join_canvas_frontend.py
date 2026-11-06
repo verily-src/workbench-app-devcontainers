@@ -69,8 +69,9 @@ def _setup(page, app_url, calls, view_ref=None):
                       "rows": 3, "columns": COLUMNS["person"], "source_ref": ref,
                       "query_scope": "database"}
         else:
-            result = {"dataset_id": f"open-{ref['table']}", "source": ref["table"], "rows": 2,
-                      "columns": COLUMNS.get(ref["table"], COLUMNS["person"]), "source_ref": ref,
+            table = ref.get("table") or ref.get("name") or "sql"   # SQL sources have no table
+            result = {"dataset_id": f"open-{table}", "source": table, "rows": 2,
+                      "columns": COLUMNS.get(table, COLUMNS["person"]), "source_ref": ref,
                       "query_scope": "database"}
         _fulfill(route, {"job_id": "open", "status": "complete", "kind": "open", "result": result})
     page.route("**/api/data-jobs/open", open_job)
@@ -654,3 +655,97 @@ def test_running_job_cards_stay_off_the_data_builder(page, app_url):
     expect(page.locator(".data-jobs")).to_have_count(0)
     page.locator(".topnav-link").filter(has_text=re.compile(r"^Explore Cohort$")).click()
     expect(page.locator(".data-jobs")).to_contain_text("person from clinical", timeout=10000)
+
+
+def _sql_routes(page, calls):
+    page.route("**/api/sql/lint", lambda route: _fulfill(route, {"ok": True, "message": "Looks valid."}))
+    page.route("**/api/sql/completions**", lambda route: _fulfill(route, {"schemas": [], "keywords": []}))
+
+    def preview(route):
+        calls.setdefault("sql_preview", []).append(route.request.post_data_json)
+        _fulfill(route, {"source_ref": {"kind": "sql", "resource_id": "clinical", "sql": "x"},
+                         "columns": ["person_id", "n"], "sample": [[1, 3], [2, 5]], "rows": 2, "truncated": False})
+    page.route("**/api/sql/preview", preview)
+
+
+def test_sql_mode_previews_and_opens_a_sql_tab(page, app_url):
+    calls = {}
+    _setup(page, app_url, calls)
+    _sql_routes(page, calls)
+    page.goto(app_url)
+    canvas = _open_canvas(page)
+    canvas.get_by_role("radio", name="SQL", exact=True).click()
+    sql = canvas.get_by_role("region", name="SQL builder")
+    expect(sql.get_by_label("SQL database")).to_have_value("clinical")
+    expect(canvas.get_by_role("button", name="Save & open in Explore")).to_be_disabled()
+    query = "SELECT person_id, count(*) AS n FROM public.samples GROUP BY 1"
+    sql.get_by_label("Data Builder SQL").fill(query)
+    canvas.get_by_role("button", name="Preview", exact=True).click()
+    expect(sql.get_by_role("table", name="SQL result rows")).to_contain_text("person_id")
+    assert calls["sql_preview"][-1] == {"resource_id": "clinical", "sql": query}
+    expect(canvas.get_by_role("button", name="Save", exact=True)).to_be_disabled()
+    canvas.get_by_role("textbox", name="Join name").fill("Samples per person")
+    canvas.get_by_role("button", name="Save & open in Explore").click()
+    _wait_for(calls, "opened", lambda ref: ref.get("kind") == "sql", page)
+    assert calls["opened"][-1] == {"kind": "sql", "resource_id": "clinical", "sql": query,
+                                   "name": "Samples per person"}
+    expect(page.locator(".tab", has_text="Samples per person")).to_be_visible(timeout=10000)
+
+
+def test_canvas_join_can_be_edited_as_sql(page, app_url):
+    calls = {}
+    _setup(page, app_url, calls)
+    _sql_routes(page, calls)
+    page.goto(app_url)
+    canvas = _open_canvas(page)
+    canvas.get_by_role("button", name="Add person to canvas").click()
+    expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
+    canvas.get_by_role("button", name="Add samples to canvas").click()
+    _set_keys(canvas, "person_id", "person_id")
+    canvas.get_by_role("button", name="Apply").click()
+    _wait_for(calls, "validate", lambda body: body["steps"][0]["conditions"], page)
+    canvas.get_by_role("button", name="Show SQL").click()
+    page.get_by_role("dialog", name="Generated SQL dialog").get_by_role("button", name="Edit as SQL").click()
+    sql = canvas.get_by_role("region", name="SQL builder")
+    expect(sql.get_by_label("Data Builder SQL")).to_have_value(re.compile(r"^SELECT \* FROM public.person AS l LEFT JOIN samples"))
+    expect(sql.get_by_label("SQL database")).to_have_value("clinical")
+    # Back to the canvas: the visual join is still there.
+    canvas.get_by_role("radio", name="Visual", exact=True).click()
+    expect(canvas.locator(".jc-node")).to_have_count(2)
+
+
+def test_edit_extract_reopens_its_join_and_rewrites_the_table(page, app_url):
+    calls = {}
+    extract_ref = {"kind": "aurora", "resource_id": "clinical", "table": "person_samples"}
+    recipe = {"kind": "join", "base": _ref("person"), "steps": [
+        {"source": _ref("samples"), "how": "left", "columns": None, "alias": "samples",
+         "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}]}],
+        "output": {"exclude": ["state"]}}
+    info = {"table": "person_samples", "title": "Person samples", "rows": 42, "refreshable": True,
+            "created_at": "2026-11-06T10:00:00+00:00", "refreshed_at": "2026-11-06T10:00:00+00:00",
+            "recipe": recipe}
+    _setup(page, app_url, calls, view_ref=extract_ref)
+    page.route("**/api/extracts/info?**", lambda route: _fulfill(route, {"extract": info}))
+
+    def extract(route):
+        calls.setdefault("extract", []).append(route.request.post_data_json)
+        _fulfill(route, {"job_id": "x1", "kind": "extract", "status": "complete", "result": {
+            "dataset_id": "extract-2", "source": "person_samples", "rows": 50, "columns": COLUMNS["person"],
+            "source_ref": extract_ref, "query_scope": "database",
+            "extract": {**info, "rows": 50, "refreshed_at": "2026-11-06T12:00:00+00:00"}}})
+    page.route("**/api/data-jobs/extract", extract)
+    page.goto(f"{app_url}/#view=aurora:clinical:existing")
+    expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
+    bar = page.get_by_role("group", name="Extract")
+    bar.get_by_role("button", name="Edit in Data Builder").click()
+    canvas = page.locator(".jc")
+    expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
+    expect(canvas.get_by_role("radio", name="Extract")).to_be_checked()
+    expect(canvas.get_by_label("Extract table name")).to_have_value("person_samples")
+    expect(canvas.get_by_role("textbox", name="Join name")).to_have_value("Existing joined result")
+    canvas.get_by_role("button", name="Save & open in Explore").click()
+    _wait_for(calls, "extract", lambda body: body["table"] == "person_samples", page)
+    # The join ran with the saved field choices, and the tab was replaced, not duplicated.
+    assert calls["join"][-1]["output"] == {"exclude": ["state"]}
+    expect(page.locator(".tab")).to_have_count(1)
+    expect(bar).to_have_attribute("title", re.compile("50 rows"))

@@ -385,6 +385,8 @@ export interface ExtractInfo {
   refreshed_at: string;
   /** False when its inputs (for example an upload) can't be reopened. */
   refreshable: boolean;
+  /** The source recipe it was built from (join or SQL); Data Builder reopens it to edit. */
+  recipe?: SourceRef | null;
 }
 
 export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"

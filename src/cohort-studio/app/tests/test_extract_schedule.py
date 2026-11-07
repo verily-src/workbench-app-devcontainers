@@ -251,6 +251,31 @@ def test_job_cancelled_before_it_started_is_due_at_next_start(on_db):
     assert scheduler.pending == set()
 
 
+def test_run_lost_to_a_killed_app_is_due_again(on_db):
+    table = _extract()
+    _set(table, {"every": "daily", "hour": 6}, now=NOW - timedelta(days=1))
+    # The app was killed mid-run: still "running", next run already moved on.
+    due = [r for r in extracts.due("res", NOW) if r["table"] == table][0]
+    started = NOW - timedelta(hours=2)
+    assert extracts.claim("res", table, due["next_run_at"], NOW + timedelta(hours=18), started)
+    submit = Submits()
+    with extracts.refresh_lock("res", table):     # another process is still refreshing
+        _scheduler(submit).tick()
+    assert extracts.info("res", table)["last_run_status"] == "running"
+    recent = _extract()
+    _set(recent, {"every": "daily", "hour": 6}, now=NOW - timedelta(days=1))
+    due = [r for r in extracts.due("res", NOW) if r["table"] == recent][0]
+    extracts.claim("res", recent, due["next_run_at"], NOW + timedelta(hours=18),
+                   NOW - timedelta(minutes=5))   # may still be queued in another process
+    scheduler = _scheduler(submit)
+    scheduler.tick()
+    info = extracts.info("res", table)
+    assert info["last_run_status"] == "failed" and info["next_run_at"] == NOW.isoformat()
+    assert extracts.info("res", recent)["last_run_status"] == "running"
+    scheduler.tick()                              # and the catch-up runs
+    assert submit.calls.count(table) == 1 and recent not in submit.calls
+
+
 def test_busy_admission_retries_soon(on_db):
     table = _extract()
     _set(table, {"every": "weekly", "weekday": 0, "hour": 6}, now=NOW - timedelta(days=7))

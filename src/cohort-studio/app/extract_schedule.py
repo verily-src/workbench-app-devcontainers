@@ -28,6 +28,7 @@ import extracts
 logger = logging.getLogger(__name__)
 
 RETRY_BUSY = timedelta(minutes=5)
+LOST_AFTER = timedelta(minutes=15)
 RESOURCE_BACKOFF_S = 600.0
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -132,6 +133,7 @@ class Scheduler:
                                RESOURCE_BACKOFF_S // 60)
                 continue
             self.backoff.pop(resource_id, None)
+            self._recover_lost(resource_id, now)
             for row in rows:
                 try:
                     outcomes.append((resource_id, row["table"], self._run_one(resource_id, row, now)))
@@ -139,6 +141,20 @@ class Scheduler:
                     logger.warning("Extract schedules: could not start %s in %s", row["table"],
                                    resource_id, exc_info=True)
         return outcomes
+
+    def _recover_lost(self, resource_id: str, now: datetime) -> None:
+        """A run marked running that no process is doing (the app was killed
+        mid-run) is due again now. Recent ones may still be queued elsewhere."""
+        try:
+            for table in extracts.started_before(resource_id, now - LOST_AFTER):
+                with self.lock:
+                    queued = (resource_id, table) in self.pending
+                if not queued and not extracts.refresh_running(resource_id, table):
+                    extracts.record_run(resource_id, table, "failed",
+                                        "Stopped before it finished.", now, retry_at=now)
+        except Exception:
+            logger.warning("Extract schedules: could not check lost runs in %s", resource_id,
+                           exc_info=True)
 
     def _run_one(self, resource_id: str, row: dict, now: datetime) -> str:
         import data_jobs

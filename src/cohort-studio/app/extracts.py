@@ -71,6 +71,8 @@ def _ensure_registry(conn) -> None:
         "refreshed_at timestamptz NOT NULL)")
     # Schedule columns (2026-11-07). Registries written before them gain the
     # columns on their next write; reads never name them (see _entry).
+    if _has_schedule_columns(conn):
+        return
     conn.exec_driver_sql(
         f"ALTER TABLE public.{_q(REGISTRY)} "
         "ADD COLUMN IF NOT EXISTS schedule jsonb, "
@@ -422,6 +424,17 @@ def due(resource_id: str, now: datetime) -> list[dict]:
             "WHERE schedule IS NOT NULL AND next_run_at IS NOT NULL AND next_run_at <= :now "
             "ORDER BY next_run_at"), {"now": now}).all()
     return [{"table": t, "schedule": json.loads(s), "next_run_at": n} for t, s, n in rows]
+
+
+def started_before(resource_id: str, before: datetime) -> list[str]:
+    """Scheduled runs still marked running that started before ``before``."""
+    with db.get_engine_for_resource(resource_id).connect() as conn:
+        if not _registry_exists(conn) or not _has_schedule_columns(conn):
+            return []
+        return list(conn.execute(text(
+            f"SELECT table_name FROM public.{_q(REGISTRY)} WHERE schedule IS NOT NULL "
+            "AND last_run_status = 'running' AND last_run_at < :before"),
+            {"before": before}).scalars())
 
 
 def claim(resource_id: str, table: str, old_next: datetime, new_next: datetime,

@@ -200,9 +200,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
     let base: ChartSpec["kind"][];
     if (spec.y) {
       base = isNumeric(spec.x) && isNumeric(spec.y)
-        ? ["scatter", "heatmap", "map"] : ["heatmap"];
+        ? ["scatter", "heatmap", "map", "box"] : isNumeric(spec.x) ? ["heatmap", "box"] : ["heatmap"];
     } else {
-      base = isNumeric(spec.x) ? ["bar", "histogram"] : ["bar"];
+      base = isNumeric(spec.x) ? ["bar", "histogram", "box"] : ["bar"];
     }
 
     return base.includes(spec.kind) ? base : [spec.kind, ...base];
@@ -524,12 +524,14 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
             palette={palette}
             kinds={allowedKinds(spec)}
             onTapCategory={toggleCategory}
-            onChangeKind={(kind, style, mark) => updateChart(i, { kind, style, mark })}
+            onChangeKind={(kind, style, mark) => updateChart(i, kind === "bar" ? { kind, style, mark }
+              : { kind, style, mark, measure: undefined, series: undefined })}
             onMarksChange={(marks) => updateChart(i, { marks })}
             fields={dataset.columns}
             onDataChange={(changes) => updateChart(i, changes)}
             onRename={(title) => updateChart(i, { title: title || undefined })}
-            onAxesChange={(x_axis, y_axis) => updateChart(i, { x_axis, y_axis })}
+            onAxesChange={(x_axis, y_axis, references) => updateChart(i, { x_axis, y_axis, references })}
+            parameters={dataset.parameters}
             onToggleWide={() => updateChart(i, { wide: !spec.wide })}
             onClose={() => updateChart(i, null)}
             onMove={(delta) => {
@@ -785,6 +787,10 @@ function AddChart({ dataset, onUpdate }:
       setError("Map requires numeric longitude and latitude columns.");
       return;
     }
+    if (resolved === "box" && (!numeric.includes(x) || x === y)) {
+      setError("Box needs a numeric field; Group by is optional.");
+      return;
+    }
     if (measured && (resolved !== "bar" || (y && !style))) {
       setError("Measure and Split by apply to bar, column, line and area charts of one field.");
       return;
@@ -820,16 +826,16 @@ function AddChart({ dataset, onUpdate }:
       <div style={{ width: 120 }}>
         <div className="field-label">Type</div>
         <select name="kind" value={chartKind} onChange={e => setChartKind(e.target.value)}>
-          {["auto", "bar", "column", "line", "area", "pie", "donut", "histogram", "scatter", "heatmap", "map"].map((k) => (
+          {["auto", "bar", "column", "line", "area", "pie", "donut", "histogram", "box", "scatter", "heatmap", "map"].map((k) => (
             <option key={k}>{k}</option>
           ))}
         </select>
       </div>
       <div style={{ width: 160 }}>
-        <div className="field-label">{chartKind === "map" ? "Latitude" : "Second field"}</div>
+        <div className="field-label">{chartKind === "map" ? "Latitude" : chartKind === "box" ? "Group by" : "Second field"}</div>
         <select name="y" defaultValue="">
           <option value="">—</option>
-          {numeric.map((c) => <option key={c}>{c}</option>)}
+          {(chartKind === "box" ? seriesFields(dataset.columns, chartX).map((c) => c.name) : numeric).map((c) => <option key={c}>{c}</option>)}
         </select>
       </div>
       <div style={{ width: 130 }}>

@@ -1,4 +1,4 @@
-"""Chart measures and series, computed the same way on every engine.
+"""Chart measures, series and box plots, computed the same way on every engine.
 
 pandas works on frames. The SQL engines (in-memory DuckDB, DuckDB on disk and
 live PostgreSQL) share one builder and differ only in a small ``Dialect``.
@@ -246,3 +246,86 @@ def sql_bar(d: Dialect, chart: dict) -> dict:
 def duck_number(col: str) -> str:
     value = f"TRY_CAST({col} AS DOUBLE)"
     return f"CASE WHEN ISFINITE({value}) THEN {value} END"
+
+
+# ---- Box plots: quartiles and 1.5 IQR whiskers over the filtered rows ----
+
+def _box_stats(values: np.ndarray) -> dict:
+    q1, median, q3 = (float(v) for v in np.quantile(values, [0.25, 0.5, 0.75]))
+    iqr = q3 - q1
+    lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+    inside = values[(values >= lo) & (values <= hi)]
+    return {"n": int(len(values)), "min": float(values.min()), "q1": q1, "median": median, "q3": q3,
+            "max": float(values.max()), "low": float(inside.min()), "high": float(inside.max()),
+            "outliers": int(len(values) - len(inside))}
+
+
+def frame_box(full: pd.DataFrame, filt: pd.DataFrame, chart: dict) -> dict:
+    x, g = chart["x"], chart.get("y")
+    out = {"kind": "box", "x": x, "y": g, "data": []}
+    if g:
+        cats, other = _top(full.loc[full[g].notna(), g].astype(str), TOP_CATEGORIES)
+        rows = filt[filt[g].notna()]
+        labels = rows[g].astype(str)
+        labels = labels.where(labels.isin(cats), None)
+    else:
+        cats, other, rows = [None], False, filt
+        labels = pd.Series(None, index=rows.index, dtype=object)
+    values = _frame_numeric(rows[x])
+    groups = _box_groups(out, cats if g else None, other)
+    for key, cat in groups:
+        mask = labels.isna() if key is None else labels == key
+        group = values[mask].dropna().to_numpy(dtype=float)
+        if len(group):
+            out["data"].append({"category": cat, **_box_stats(group)})
+    return out
+
+
+def _box_groups(out: dict, cats: list | None, other: bool) -> list[tuple]:
+    """(key, label) per box; folded rows (and the single ungrouped box) have key None."""
+    if cats is None:
+        return [(None, None)]
+    groups = [(c, c) for c in _sort_categories(list(cats))]
+    if other:
+        groups.append((None, fold_label(cats)))
+        out["other_category"] = groups[-1][1]
+    return groups
+
+
+def sql_box(d: Dialect, chart: dict) -> dict:
+    x, g = chart["x"], chart.get("y")
+    out = {"kind": "box", "x": x, "y": g, "data": []}
+    b = _Binder(d)
+    if g:
+        cats, other = _sql_top(d, g, None, TOP_CATEGORIES)
+        if not cats:
+            return out
+        group = f"CASE WHEN {d.text(g)} IN ({b.values(cats)}) THEN {d.text(g)} END"
+        group_filter = f"{d.col(g)} IS NOT NULL AND "
+    else:
+        cats, other, group, group_filter = [None], False, f"CAST(NULL AS {d.text_type})", ""
+    number = d.number(x)
+    where = b.where()
+    q = d.quantile
+    sql = (f"WITH b AS (SELECT {group} AS g, {number} AS v FROM {d.rel} WHERE {group_filter}({where})), "
+           f"s AS (SELECT g, COUNT(v) AS n, MIN(v) AS mn, {q('v', 0.25)} AS q1, {q('v', 0.5)} AS med, "
+           f"{q('v', 0.75)} AS q3, MAX(v) AS mx FROM b WHERE v IS NOT NULL GROUP BY g) "
+           "SELECT s.g, s.n, s.mn, s.q1, s.med, s.q3, s.mx, "
+           "MIN(b.v) FILTER (WHERE b.v >= s.q1 - 1.5 * (s.q3 - s.q1)), "
+           "MAX(b.v) FILTER (WHERE b.v <= s.q3 + 1.5 * (s.q3 - s.q1)), "
+           "COUNT(*) FILTER (WHERE b.v < s.q1 - 1.5 * (s.q3 - s.q1) OR b.v > s.q3 + 1.5 * (s.q3 - s.q1)) "
+           "FROM s JOIN b ON b.g IS NOT DISTINCT FROM s.g AND b.v IS NOT NULL "
+           "GROUP BY s.g, s.n, s.mn, s.q1, s.med, s.q3, s.mx")
+    stats = {r[0]: r for r in d.run(sql, b.params)}
+    groups = _box_groups(out, cats if g else None, other)
+    for key, cat in groups:
+        row = stats.get(key)
+        if row is None or not row[1]:
+            continue
+        n, mn, q1, med, q3, mx, low, high, outliers = row[1:]
+        out["data"].append({"category": cat, "n": int(n), "min": float(mn), "q1": float(q1),
+                            "median": float(med), "q3": float(q3), "max": float(mx),
+                            "low": float(low), "high": float(high), "outliers": int(outliers)})
+    return out
+
+

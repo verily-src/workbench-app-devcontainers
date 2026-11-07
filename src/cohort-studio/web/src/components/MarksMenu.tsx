@@ -23,12 +23,13 @@ const ICONS: Record<MarkType, ReactNode> = {
   density: I(<><rect x="2.5" y="2.5" width="5" height="5" /><rect x="8.5" y="2.5" width="5" height="5" fill="currentColor" opacity=".35" />
     <rect x="2.5" y="8.5" width="5" height="5" fill="currentColor" opacity=".7" /><rect x="8.5" y="8.5" width="5" height="5" /></>),
   map: I(<><path d="M2 4l4-1.5 4 1.5 4-1.5v9.5L10 13.5 6 12 2 13.5z" /><path d="M6 2.5V12M10 4v9.5" /></>),
+  box: I(<><rect x="4.5" y="5" width="7" height="6" rx="1" /><path d="M8 2v3M8 11v3M6 2h4M6 14h4M4.5 8h7" /></>),
 };
 export const MARK_LABEL: Record<MarkType, string> = {
   automatic: "Automatic", bar: "Bar", column: "Column", line: "Line", area: "Area", pie: "Pie",
-  donut: "Donut", circle: "Circle", density: "Density", map: "Map",
+  donut: "Donut", circle: "Circle", density: "Density", map: "Map", box: "Box",
 };
-const ORDER: MarkType[] = ["automatic", "bar", "column", "line", "area", "pie", "donut", "circle", "density", "map"];
+const ORDER: MarkType[] = ["automatic", "bar", "column", "line", "area", "pie", "donut", "box", "circle", "density", "map"];
 
 /** A measure other than row count, or a Split by field: drawn from grouped (bar) data, never bins. */
 export function isMeasured(spec: Pick<ChartSpec, "measure" | "series">): boolean {
@@ -60,6 +61,7 @@ export function resolveMark(mark: MarkType, kinds: ChartSpec["kind"][], hasY: bo
     case "circle": return has("scatter") ? { kind: "scatter" } : "Circle needs two numeric fields.";
     case "density": return has("heatmap") ? { kind: "heatmap" } : "Density needs a second field.";
     case "map": return has("map") ? { kind: "map" } : "Map needs numeric longitude and latitude fields.";
+    case "box": return has("box") ? { kind: "box" } : "Box needs a numeric field (and an optional group).";
   }
 }
 
@@ -69,6 +71,7 @@ export function currentMark(spec: ChartSpec): MarkType {
   if (spec.kind === "scatter") return "circle";
   if (spec.kind === "heatmap") return "density";
   if (spec.kind === "map") return "map";
+  if (spec.kind === "box") return "box";
   if (spec.kind === "histogram") return spec.style === "line" || spec.style === "area" ? spec.style : "column";
   return (spec.style as MarkType | undefined) ?? "bar";
 }
@@ -164,8 +167,8 @@ export function MarksMenu({ spec, kinds, onChoose, onMarks, fields, onData }: {
   const dataControls = Boolean(fields && onData) && !spec.y && (spec.kind === "bar" || spec.kind === "histogram");
   // Only offer settings the renderer applies to this chart.
   const noColor = pie || spec.kind === "heatmap" || Boolean(spec.series);
-  const noSize = pie || spec.kind === "heatmap";
-  const noLabels = spec.kind === "map" || spec.kind === "heatmap" || spec.kind === "scatter";
+  const noSize = pie || spec.kind === "heatmap" || spec.kind === "box";
+  const noLabels = spec.kind === "map" || spec.kind === "heatmap" || spec.kind === "scatter" || spec.kind === "box";
   return (
     <Popover className="marks-menu" ariaLabel="Marks"
              label={<>{ICONS[mark]}<span>{MARK_LABEL[mark]}</span><span aria-hidden>▾</span></>}>

@@ -3,12 +3,13 @@ import { echarts } from "../echarts";
 import type { EChartsOption, ECharts } from "../echarts";
 import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";
-import type { AxisSettings, BarDatum, PersonBarDatum, ChartMeasure, ChartResult, ChartSpec, ChartStyle, ColumnProfile,
+import type { AxisSettings, BarDatum, BoxDatum, PersonBarDatum, ChartMeasure, ChartReference, ChartResult, ChartSpec, ChartStyle,
+  ColumnProfile, Parameter,
   HistDatum, SeriesBarDatum } from "../types";
 import { AxisEditor } from "./AxisEditor";
 import { MarksMenu } from "./MarksMenu";
 import { Popover } from "./Popover";
-import { numericAxes, styleOf } from "../chartStyles";
+import { formatNumber, numericAxes, referenceAxes, resolveReference, styleOf } from "../chartStyles";
 import type { ChartMarks, MarkType } from "../types";
 
 const INK_SOFT = "#5f6368";
@@ -300,7 +301,8 @@ const scalePct = (value: unknown, k: number) =>
 
 /** Mark settings applied to any built option: size scales bars, lines and dots;
  *  labels print values in text ink (never the series color). */
-function applyMarks(option: EChartsOption, marks: ChartMarks | undefined, ink: string, horizontal: boolean) {
+function applyMarks(option: EChartsOption, marks: ChartMarks | undefined, ink: string, horizontal: boolean,
+                    format: (value: number) => string = compactNumber) {
   if (!marks || !option.series) return;
   const k = marks.size ? SIZE_SCALE[marks.size] : 1;
   const list = (Array.isArray(option.series) ? option.series : [option.series]) as Record<string, any>[];
@@ -319,13 +321,72 @@ function applyMarks(option: EChartsOption, marks: ChartMarks | undefined, ink: s
     }
     if (marks.labels && s.name !== "all" && (s.type === "bar" || s.type === "line")) {
       s.label = { show: true, position: horizontal ? "right" : "top", color: ink, fontFamily: FONT, fontSize: 10,
-        formatter: (p: { value: number | null }) => (p.value === null || p.value === undefined ? "" : compactNumber(Number(p.value))) };
+        formatter: (p: { value: number | null }) => (p.value === null || p.value === undefined ? "" : format(Number(p.value))) };
     }
   }
 }
 
+/** Box plots: whiskers at the furthest values within 1.5 IQR; extremes and outliers in the tooltip. */
+function boxOption(data: BoxDatum[], field: string, pal: Palette, ink: string, grid: string,
+                   format: (value: number) => string): EChartsOption {
+  const axis = AXIS(ink, grid);
+  const cats = data.map((d) => d.category ?? field);
+  return {
+    grid: { left: 8, right: 16, top: 12, bottom: 8, containLabel: true },
+    xAxis: { type: "category", data: cats, ...axis, axisLabel: { ...axis.axisLabel, hideOverlap: true, interval: "auto" },
+             splitLine: { show: false } },
+    yAxis: { type: "value", scale: true, ...axis, axisLabel: { ...axis.axisLabel, hideOverlap: true,
+      formatter: (value: number) => format(value) } },
+    tooltip: { trigger: "item", formatter: (p: unknown) => {
+      const d = data[(p as { dataIndex: number }).dataIndex];
+      if (!d) return "";
+      return [`<b>${cats[(p as { dataIndex: number }).dataIndex]}</b>`, `median ${format(d.median)}`,
+        `quartiles ${format(d.q1)} – ${format(d.q3)}`, `whiskers ${format(d.low)} – ${format(d.high)}`,
+        `min ${format(d.min)} · max ${format(d.max)}`,
+        `${d.n.toLocaleString("en")} values${d.outliers ? ` · ${d.outliers.toLocaleString("en")} outside 1.5 IQR` : ""}`].join("<br/>");
+    } },
+    series: [{ type: "boxplot", name: field, data: data.map((d) => [d.low, d.q1, d.median, d.q3, d.high]),
+      boxWidth: [8, 40], itemStyle: { color: lighten(pal.accent, 0.82), borderColor: pal.accent, borderWidth: 1.5 },
+      emphasis: { itemStyle: { borderWidth: 2 } } }],
+  };
+}
+
+type Marks = { lines: Record<string, unknown>[]; bands: Record<string, unknown>[][] };
+type Placed = Marks & { bins: Marks & { lo: number; hi: number } | null; extent: { x: number[]; y: number[] } };
+/** Reference lines and bands as markLine/markArea items. A histogram's x axis is a category axis
+ *  of bins, so x references go on a hidden value axis spanning the bin edges (`bins`). */
+function placeReferences(references: ChartReference[] | undefined, parameters: Parameter[], axes: ("x" | "y")[],
+                         result: ChartResult, spec: ChartSpec): Placed {
+  const placed: Placed = { lines: [], bands: [], bins: null, extent: { x: [], y: [] } };
+  const hist = result.kind === "histogram" ? result.data as HistDatum[] : [];
+  for (const ref of references ?? []) {
+    const resolved = resolveReference(ref, parameters);
+    const axis = ref.axis && axes.includes(ref.axis) ? ref.axis : axes[0];
+    if (!resolved || !axis) continue;
+    const fmt = (value: number) => formatNumber(value, (axis === "x" ? spec.x_axis : spec.y_axis)?.format);
+    let target: Marks = placed;
+    if (result.kind === "histogram" && axis === "x") {
+      if (!hist.length) continue;
+      placed.bins ??= { lines: [], bands: [], lo: hist[0].lo, hi: hist[hist.length - 1].hi };
+      target = placed.bins;
+    } else {
+      placed.extent[axis].push(resolved.value, ...(resolved.to !== undefined ? [resolved.to] : []));
+    }
+    const key = axis === "x" ? "xAxis" : "yAxis";
+    if (resolved.to === undefined) {
+      target.lines.push({ name: resolved.label || fmt(resolved.value), [key]: resolved.value });
+    } else {
+      const [a, b] = [resolved.value, resolved.to].sort((p, q) => p - q);
+      target.bands.push([{ name: resolved.label || `${fmt(a)} – ${fmt(b)}`, [key]: a }, { [key]: b }]);
+    }
+  }
+  return placed;
+}
+
 const trim = (n: number) => (Math.abs(n) >= 100 ? n.toFixed(0)
   : Math.round(n * 100) / 100).toString();
+
+const NO_PARAMETERS: Parameter[] = [];
 
 interface Props {
   spec: ChartSpec;
@@ -345,7 +406,9 @@ interface Props {
   canMoveDown?: boolean;
   onDuplicate?: () => void;
   onRename?: (title: string) => void;
-  onAxesChange?: (x: AxisSettings, y: AxisSettings) => void;
+  onAxesChange?: (x: AxisSettings, y: AxisSettings, references?: ChartReference[]) => void;
+  /** Tab parameters, for reference lines that follow one. */
+  parameters?: Parameter[];
   readOnly?: boolean;
   compactCategoryLabels?: boolean;
   /** The tab's fields, for the Measure and Split by controls. */
@@ -357,7 +420,8 @@ interface Props {
 function defaultTitle(spec: ChartSpec, labels: Record<string, string>): string {
   const x = labels[spec.x] ?? spec.x;
   const measure = measureLabel(spec.measure, labels);
-  const base = measure ? `${measure} by ${x}` : `${x}${spec.y ? ` × ${labels[spec.y] ?? spec.y}` : ""}`;
+  const base = measure ? `${measure} by ${x}` : spec.kind === "box" && spec.y ? `${x} by ${labels[spec.y] ?? spec.y}`
+    : `${x}${spec.y ? ` × ${labels[spec.y] ?? spec.y}` : ""}`;
   return spec.series ? `${base}, split by ${labels[spec.series] ?? spec.series}` : base;
 }
 
@@ -365,7 +429,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onMarksChange, onToggleWide,
                             onMove, canMoveUp = false, canMoveDown = false, onDuplicate,
                             onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false,
-                            fields, onDataChange }: Props) {
+                            fields, onDataChange, parameters = NO_PARAMETERS }: Props) {
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<ECharts>();
@@ -424,6 +488,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     let option: EChartsOption;
     const style = styleOf({ kind: result.kind as ChartSpec["kind"], style: spec.style });
     let clickCats: string[] | null = null;
+    const horizontal = result.kind === "bar" && style === "bar";
+    const valueFormat = (horizontal ? spec.x_axis : spec.y_axis)?.format;
     // Folded groups ("Other") stand for many values, so a click never filters on them.
     const folded = new Set<string>(result.measure ? (result.other_category ? [result.other_category] : []) : ["Other"]);
     switch (result.kind) {
@@ -434,7 +500,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         if (result.series) {
           const additive = !result.measure || result.measure.agg === "count" || result.measure.agg === "sum";
           const split = splitOption(result, style ?? "bar", dark, ink, grid, surface,
-            Boolean(spec.marks?.stack) && additive && style !== "line", compactNumber);
+            Boolean(spec.marks?.stack) && additive && style !== "line", (value) => formatNumber(value, valueFormat));
           option = split.option;
           clickCats = split.cats;
         } else if (style === "pie" || style === "donut") {
@@ -480,24 +546,65 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
             symbolSize: 7, itemStyle: { color: chartPalette.accent, opacity: 0.75 } }],
         };
         break;
+      case "box":
+        option = boxOption(result.data as BoxDatum[], columnLabels[spec.x] ?? spec.x, chartPalette, ink, grid,
+          (value) => formatNumber(value, spec.y_axis?.format));
+        break;
       default:
         return;
     }
-    const configure = (axis: unknown, settings: AxisSettings | undefined, numeric: boolean, vertical: boolean) => ({
+    const drawn = { kind: result.kind as ChartSpec["kind"], style: spec.style };
+    const refs = placeReferences(spec.references, parameters, referenceAxes(drawn), result, spec);
+    const configure = (axis: unknown, settings: AxisSettings | undefined, numeric: boolean, vertical: boolean,
+                       extent: number[]) => ({
       ...(axis as object),
       ...(settings?.label ? { name: settings.label, nameLocation: "middle", nameGap: vertical ? 64 : 32,
         nameTextStyle: { color: ink, fontFamily: FONT } } : {}),
       ...(numeric && settings?.scale === "log" ? { type: "log", logBase: 10 } : {}),
+      ...(numeric && settings?.format ? { axisLabel: { ...((axis as { axisLabel?: object }).axisLabel ?? {}),
+        formatter: (value: number) => formatNumber(value, settings.format) } } : {}),
+      // Keep reference lines in view unless the user fixed the bounds.
+      ...(numeric && extent.length && settings?.scale !== "log" ? {
+        min: (e: { min: number; max: number }) => {
+          const low = (axis as { scale?: boolean }).scale ? e.min : Math.min(0, e.min);
+          const ref = Math.min(...extent);
+          return ref < low ? ref - 0.05 * (Math.max(e.max, ...extent) - ref || 1) : undefined;
+        },
+        max: (e: { min: number; max: number }) => {
+          const ref = Math.max(...extent);
+          return ref > e.max ? ref + 0.05 * (ref - Math.min(e.min, ...extent) || 1) : undefined;
+        } } : {}),
       ...(numeric && settings?.min !== undefined ? { min: settings.min } : {}),
       ...(numeric && settings?.max !== undefined ? { max: settings.max } : {}),
     });
-    applyMarks(option, spec.marks, ink, result.kind === "bar" && style === "bar");
+    applyMarks(option, spec.marks, ink, horizontal, (value) => formatNumber(value, valueFormat));
     const hasAxes = result.kind !== "map" && option.xAxis !== undefined;
     const isValue = (axis: unknown) => (axis as { type?: string } | undefined)?.type === "value";
     if (hasAxes) {
-      option.xAxis = configure(option.xAxis, spec.x_axis, isValue(option.xAxis), false) as EChartsOption["xAxis"];
-      option.yAxis = configure(option.yAxis, spec.y_axis, isValue(option.yAxis), true) as EChartsOption["yAxis"];
+      option.xAxis = configure(option.xAxis, spec.x_axis, isValue(option.xAxis), false, refs.extent.x) as EChartsOption["xAxis"];
+      option.yAxis = configure(option.yAxis, spec.y_axis, isValue(option.yAxis), true, refs.extent.y) as EChartsOption["yAxis"];
+      const label = { color: ink, fontFamily: FONT, fontSize: 10, formatter: (p: { name?: string }) => p.name ?? "" };
+      const attach = (series: Record<string, unknown>, marks: { lines: unknown[]; bands: unknown[] }) => {
+        if (marks.lines.length) series.markLine = { silent: true, symbol: "none", animation: false,
+          lineStyle: { color: ink, width: 1, type: "solid", opacity: 0.75 },
+          label: { ...label, position: "insideEndTop" }, data: marks.lines };
+        if (marks.bands.length) series.markArea = { silent: true, animation: false,
+          itemStyle: { color: ink, opacity: 0.08 }, label: { ...label, position: "insideTop" }, data: marks.bands };
+      };
+      const list = (Array.isArray(option.series) ? option.series : [option.series]) as Record<string, unknown>[];
+      if (list[0]) attach(list[0], refs);
+      if (refs.bins) {
+        // A hidden value axis over the bin edges places x references at exact values.
+        option.xAxis = [option.xAxis as object, { type: "value", min: refs.bins.lo, max: refs.bins.hi, show: false }] as EChartsOption["xAxis"];
+        const holder: Record<string, unknown> = { type: "line", name: "references", xAxisIndex: 1, data: [], silent: true,
+          tooltip: { show: false } };
+        attach(holder, refs.bins);
+        option.series = [...list, holder] as EChartsOption["series"];
+      }
     }
+    if (valueFormat && option.tooltip && !(option.tooltip as { formatter?: unknown }).formatter)
+      option.tooltip = { ...(option.tooltip as object),
+        valueFormatter: (value: unknown) => (value === null || value === undefined ? "—" : formatNumber(Number(value), valueFormat)) };
     if (hasAxes && (spec.x_axis?.label || spec.y_axis?.label)) option.grid = {
       ...(option.grid as object),
       left: spec.y_axis?.label ? 72 : 8, right: 16,
@@ -512,7 +619,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         if (cat && !folded.has(cat)) onTapCategory(spec.x, cat);
       });
     }
-  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus]);
+  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus, parameters]);
 
   const drawnStyle = styleOf(spec);
   const height = result?.kind === "bar" && (drawnStyle === "pie" || drawnStyle === "donut") ? 260
@@ -520,7 +627,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     ? Math.min(Math.max(220, result.data.length * (result.series.length * 7 + 12) + 70), 600)
     : result?.kind === "bar" && drawnStyle === "bar"
     ? Math.min(Math.max(170, (result.data.length as number) * 26 + 60), 430)
-    : result?.kind === "map" ? 340 : 240;
+    : result?.kind === "map" ? 340 : result?.kind === "box" ? 280 : 240;
 
   return (
     <div className={`chart-card${spec.wide ? " wide" : ""}`}>
@@ -566,7 +673,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       {result?.kind === "map" && <div className="axis-scale-note">Longitude and latitude; up to 2,000 valid points.</div>}
       {result?.kind === "map" && mapStatus === "error" && <div role="alert">Could not load the map.</div>}
       {editingAxes && onAxesChange && <AxisEditor spec={spec}
-        onCancel={() => setEditingAxes(false)} onApply={(x, y) => { onAxesChange(x, y); setEditingAxes(false); }} />}
+        onCancel={() => setEditingAxes(false)} parameters={parameters}
+        onApply={(x, y, references) => { onAxesChange(x, y, references); setEditingAxes(false); }} />}
       {(numericAxes(spec).x && spec.x_axis?.scale === "log" ||
         numericAxes(spec).y && spec.y_axis?.scale === "log") &&
         <div className="axis-scale-note">Log scale shows positive values only.</div>}

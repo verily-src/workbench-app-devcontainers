@@ -74,11 +74,16 @@ export interface ParamBinding { min?: string; max?: string; start?: string; end?
 /** A named value filters can follow (index_date, min_age, …). */
 export interface Parameter { name: string; kind: "number" | "date"; value: number | string }
 
+export interface AxisFormat { decimals?: number; unit?: string; percent?: boolean }
+export interface ChartReference { axis?: "x" | "y"; value?: number; param?: string; to?: number; to_param?: string; label?: string }
+
 export interface AxisSettings {
   label?: string;
   scale?: "linear" | "log";
   min?: number;
   max?: number;
+  /** Display-only number format for a value axis, its tooltips and labels. */
+  format?: AxisFormat;
 }
 
 /** Fields of a joined result: dropped and renamed after joining. */
@@ -89,7 +94,7 @@ export type ChartStyle = "bar" | "column" | "line" | "area" | "pie" | "donut";
 
 /** The Marks menu choice (what the user picked); kind/style hold what it draws. */
 export type MarkType = "automatic" | "bar" | "column" | "line" | "area" | "pie" | "donut"
-  | "circle" | "density" | "map";
+  | "circle" | "density" | "map" | "box";
 /** Mark settings: series color, mark size, and value labels. */
 export interface ChartMarks { color?: string; size?: "s" | "l"; labels?: boolean; stack?: boolean }
 
@@ -98,7 +103,7 @@ export type MeasureAgg = "count" | "count_distinct" | "sum" | "mean" | "median" 
 export interface ChartMeasure { agg: MeasureAgg; column?: string | null }
 
 export interface ChartSpec {
-  kind: "bar" | "histogram" | "scatter" | "heatmap" | "map";
+  kind: "bar" | "histogram" | "scatter" | "heatmap" | "map" | "box";
   mark?: MarkType;
   marks?: ChartMarks;
   /** bar kind: bar (default), column, line, area, pie, donut. histogram: column (default), line, area. */
@@ -112,6 +117,8 @@ export interface ChartSpec {
   /** Data-affecting (bar kind): the measure, and a field that splits it into series. */
   measure?: ChartMeasure;
   series?: string;
+  /** Display only: reference lines (value) and bands (value to `to`); a param follows a number parameter. */
+  references?: ChartReference[];
 }
 
 export interface BarDatum { category: string; all: number; selected: number }
@@ -119,6 +126,9 @@ export interface PersonBarDatum { category: string; value: number | null }
 /** One value per series (ChartResult.series), in the same order. */
 export interface SeriesBarDatum { category: string; values: (number | null)[] }
 export interface HistDatum { lo: number; hi: number; all: number; selected: number }
+/** One box: quartiles, 1.5 IQR whiskers (low/high), extremes and the outlier count. category is null when ungrouped. */
+export interface BoxDatum { category: string | null; n: number; min: number; q1: number; median: number; q3: number;
+  max: number; low: number; high: number; outliers: number }
 
 export interface ChartResult {
   kind: string;
@@ -131,7 +141,7 @@ export interface ChartResult {
   /** Labels of the folded "Other" category and series (measured bar results). */
   other_category?: string;
   other_series?: string;
-  data: BarDatum[] | PersonBarDatum[] | SeriesBarDatum[] | HistDatum[] | number[][] | [string, string, number][];
+  data: BarDatum[] | PersonBarDatum[] | SeriesBarDatum[] | HistDatum[] | BoxDatum[] | number[][] | [string, string, number][];
 }
 
 export interface QueryResult {

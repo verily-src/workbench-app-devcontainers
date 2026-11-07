@@ -555,7 +555,7 @@ def guard_live_query(live_source: dict, charts: list[dict],
     scans = 3 + (2 if entity_column else 0)
     for chart in charts:
         scans += {"bar": 4, "histogram": 5, "scatter": 1, "map": 1,
-                  "heatmap": 1}.get(chart.get("kind"), 1)
+                  "heatmap": 1, "box": 3}.get(chart.get("kind"), 1)
     return _budget(estimate * scans)
 
 
@@ -1261,6 +1261,8 @@ def _aggregate(con, relation: str, where: str, params: list,
         qx = f"src.{_q(x)}"
         if chart_measures.is_measured(chart):
             out.append(chart_measures.sql_bar(_duck_dialect(con, relation, where, params), chart))
+        elif kind == "box":
+            out.append(chart_measures.sql_box(_duck_dialect(con, relation, where, params), chart))
         elif kind == "bar":
             counts = con.execute(
                 f"SELECT CAST({qx} AS VARCHAR), COUNT(*) FROM {relation} AS src "
@@ -1354,7 +1356,7 @@ def query(source: dict, filters: list[dict], charts: list[dict], page: int,
     scans = 3 + (2 if entity_column else 0)
     for chart in charts:
         scans += {"bar": 4, "histogram": 5, "scatter": 1, "map": 1,
-                  "heatmap": 1}.get(chart.get("kind"), 1)
+                  "heatmap": 1, "box": 3}.get(chart.get("kind"), 1)
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])) * scans)
     where, params = _where(filters, columns)
     relation = f"{_q(source.get('table', 'data'))}"

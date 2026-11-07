@@ -326,6 +326,9 @@ function applyMarks(option: EChartsOption, marks: ChartMarks | undefined, ink: s
   }
 }
 
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
 /** Box plots: whiskers at the furthest values within 1.5 IQR; extremes and outliers in the tooltip. */
 function boxOption(data: BoxDatum[], field: string, pal: Palette, ink: string, grid: string,
                    format: (value: number) => string): EChartsOption {
@@ -340,9 +343,11 @@ function boxOption(data: BoxDatum[], field: string, pal: Palette, ink: string, g
     tooltip: { trigger: "item", formatter: (p: unknown) => {
       const d = data[(p as { dataIndex: number }).dataIndex];
       if (!d) return "";
-      return [`<b>${cats[(p as { dataIndex: number }).dataIndex]}</b>`, `median ${format(d.median)}`,
-        `quartiles ${format(d.q1)} – ${format(d.q3)}`, `whiskers ${format(d.low)} – ${format(d.high)}`,
-        `min ${format(d.min)} · max ${format(d.max)}`,
+      // The tooltip is HTML: escape group names and formatted units (they come from the data and the user).
+      const f = (value: number) => escapeHtml(format(value));
+      return [`<b>${escapeHtml(cats[(p as { dataIndex: number }).dataIndex])}</b>`, `median ${f(d.median)}`,
+        `quartiles ${f(d.q1)} – ${f(d.q3)}`, `whiskers ${f(d.low)} – ${f(d.high)}`,
+        `min ${f(d.min)} · max ${f(d.max)}`,
         `${d.n.toLocaleString("en")} values${d.outliers ? ` · ${d.outliers.toLocaleString("en")} outside 1.5 IQR` : ""}`].join("<br/>");
     } },
     series: [{ type: "boxplot", name: field, data: data.map((d) => [d.low, d.q1, d.median, d.q3, d.high]),
@@ -594,8 +599,12 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       const list = (Array.isArray(option.series) ? option.series : [option.series]) as Record<string, unknown>[];
       if (list[0]) attach(list[0], refs);
       if (refs.bins) {
-        // A hidden value axis over the bin edges places x references at exact values.
-        option.xAxis = [option.xAxis as object, { type: "value", min: refs.bins.lo, max: refs.bins.hi, show: false }] as EChartsOption["xAxis"];
+        // A hidden value axis over the bin edges places x references at exact values. Line and area
+        // histograms have no boundary gap: their first and last bin centers sit at the grid edges.
+        const half = (result.data as HistDatum[])[0] ? ((result.data as HistDatum[])[0].hi - (result.data as HistDatum[])[0].lo) / 2 : 0;
+        const centered = (option.xAxis as { boundaryGap?: boolean }).boundaryGap === false;
+        option.xAxis = [option.xAxis as object, { type: "value", show: false,
+          min: refs.bins.lo + (centered ? half : 0), max: refs.bins.hi - (centered ? half : 0) }] as EChartsOption["xAxis"];
         const holder: Record<string, unknown> = { type: "line", name: "references", xAxisIndex: 1, data: [], silent: true,
           tooltip: { show: false } };
         attach(holder, refs.bins);

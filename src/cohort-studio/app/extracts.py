@@ -16,6 +16,8 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Callable, Iterable, Iterator
 
 import pandas as pd
@@ -41,6 +43,10 @@ class NotRefreshable(ValueError):
     pass
 
 
+class RefreshRunning(RuntimeError):
+    """Another refresh of this extract holds its lock (any app process)."""
+
+
 def _q(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
@@ -63,20 +69,40 @@ def _ensure_registry(conn) -> None:
         "table_name text PRIMARY KEY, title text NOT NULL, recipe jsonb, "
         "row_count bigint NOT NULL, created_at timestamptz NOT NULL, "
         "refreshed_at timestamptz NOT NULL)")
+    # Schedule columns (2026-11-07). Registries written before them gain the
+    # columns on their next write; reads never name them (see _entry).
+    conn.exec_driver_sql(
+        f"ALTER TABLE public.{_q(REGISTRY)} "
+        "ADD COLUMN IF NOT EXISTS schedule jsonb, "
+        "ADD COLUMN IF NOT EXISTS next_run_at timestamptz, "
+        "ADD COLUMN IF NOT EXISTS last_run_at timestamptz, "
+        "ADD COLUMN IF NOT EXISTS last_run_status text, "
+        "ADD COLUMN IF NOT EXISTS last_run_error text")
+
+
+def _utc_iso(value) -> str | None:
+    if value is None:
+        return None
+    return datetime.fromisoformat(value).astimezone(timezone.utc).isoformat()
 
 
 def _entry(conn, table: str) -> dict | None:
     if not _registry_exists(conn):
         return None
+    # to_jsonb(r) reads old registries (without the schedule columns) too.
     row = conn.execute(text(
-        f"SELECT title, recipe::text, row_count, created_at, refreshed_at "
-        f"FROM public.{_q(REGISTRY)} WHERE table_name = :table"), {"table": table}).one_or_none()
+        f"SELECT to_jsonb(r)::text FROM public.{_q(REGISTRY)} AS r WHERE table_name = :table"),
+        {"table": table}).scalar_one_or_none()
     if row is None:
         return None
-    title, recipe, rows, created, refreshed = row
-    return {"table": table, "title": title, "recipe": json.loads(recipe) if recipe else None,
-            "rows": int(rows), "created_at": created.isoformat(),
-            "refreshed_at": refreshed.isoformat()}
+    r = json.loads(row)
+    return {"table": table, "title": r["title"], "recipe": r.get("recipe"),
+            "rows": int(r["row_count"]), "created_at": _utc_iso(r["created_at"]),
+            "refreshed_at": _utc_iso(r["refreshed_at"]), "schedule": r.get("schedule"),
+            "next_run_at": _utc_iso(r.get("next_run_at")),
+            "last_run_at": _utc_iso(r.get("last_run_at")),
+            "last_run_status": r.get("last_run_status"),
+            "last_run_error": r.get("last_run_error")}
 
 
 def public_info(entry: dict | None) -> dict | None:
@@ -303,6 +329,40 @@ def write(ds: dict, resource_id: str, table: str, title: str, recipe: dict | Non
     return public_info(entry)
 
 
+_LOCK_SQL = "hashtext('cohort-studio-extract'), hashtext(:table)"
+
+
+@contextmanager
+def refresh_lock(resource_id: str, table: str):
+    """Hold the extract's PostgreSQL advisory lock, or raise RefreshRunning.
+
+    The lock lives in the target database, so it also guards refreshes from
+    other app processes. It is a session lock on a dedicated connection.
+    """
+    with db.get_engine_for_resource(resource_id).connect() as conn:
+        if not conn.execute(text(f"SELECT pg_try_advisory_lock({_LOCK_SQL})"),
+                            {"table": table}).scalar_one():
+            conn.rollback()
+            raise RefreshRunning(f"A refresh of {table} is already running.")
+        conn.commit()
+        try:
+            yield
+        finally:
+            try:
+                conn.execute(text(f"SELECT pg_advisory_unlock({_LOCK_SQL})"), {"table": table})
+                conn.commit()
+            except Exception:
+                conn.invalidate()  # closing the session releases the lock
+
+
+def refresh_running(resource_id: str, table: str) -> bool:
+    try:
+        with refresh_lock(resource_id, table):
+            return False
+    except RefreshRunning:
+        return True
+
+
 def refresh(resource_id: str, table: str, open_recipe: Callable[[dict], dict],
             get_dataset: Callable[[str], dict], close_dataset: Callable[[str], None],
             progress: Callable[[int], None] | None = None) -> dict:
@@ -315,9 +375,76 @@ def refresh(resource_id: str, table: str, open_recipe: Callable[[dict], dict],
     if not entry.get("recipe"):
         raise NotRefreshable(f"{table} can't be refreshed: its inputs (for example an "
                              "uploaded file) can't be reopened.")
-    opened = open_recipe(entry["recipe"])
-    try:
-        return write(get_dataset(opened["dataset_id"]), resource_id, table, entry["title"],
-                     entry["recipe"], replace=True, progress=progress)
-    finally:
-        close_dataset(opened["dataset_id"])
+    with refresh_lock(resource_id, table):
+        opened = open_recipe(entry["recipe"])
+        try:
+            return write(get_dataset(opened["dataset_id"]), resource_id, table, entry["title"],
+                         entry["recipe"], replace=True, progress=progress)
+        finally:
+            close_dataset(opened["dataset_id"])
+
+
+# ---- Schedules --------------------------------------------------------------
+
+def _has_schedule_columns(conn) -> bool:
+    return bool(conn.execute(text(
+        "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' "
+        "AND table_name = :t AND column_name = 'next_run_at'"), {"t": REGISTRY}).first())
+
+
+def set_schedule(resource_id: str, table: str, schedule: dict | None,
+                 next_run_at: datetime | None) -> dict:
+    """Store (or clear, with None) an extract's refresh schedule."""
+    validate_name(table)
+    with db.get_engine_for_resource(resource_id).begin() as conn:
+        entry = _entry(conn, table)
+        if entry is None:
+            raise LookupError(f"{table} is not an extract in {resource_id}.")
+        if schedule is not None and not entry.get("recipe"):
+            raise NotRefreshable(f"{table} can't be scheduled: its inputs (for example an "
+                                 "uploaded file) can't be reopened.")
+        _ensure_registry(conn)
+        conn.execute(text(
+            f"UPDATE public.{_q(REGISTRY)} SET schedule = CAST(:schedule AS jsonb), "
+            "next_run_at = :next WHERE table_name = :table"), {
+                "table": table, "schedule": json.dumps(schedule) if schedule else None,
+                "next": next_run_at})
+        return public_info(_entry(conn, table))
+
+
+def due(resource_id: str, now: datetime) -> list[dict]:
+    """Scheduled extracts whose next run is at or before ``now``."""
+    with db.get_engine_for_resource(resource_id).connect() as conn:
+        if not _registry_exists(conn) or not _has_schedule_columns(conn):
+            return []
+        rows = conn.execute(text(
+            f"SELECT table_name, schedule::text, next_run_at FROM public.{_q(REGISTRY)} "
+            "WHERE schedule IS NOT NULL AND next_run_at IS NOT NULL AND next_run_at <= :now "
+            "ORDER BY next_run_at"), {"now": now}).all()
+    return [{"table": t, "schedule": json.loads(s), "next_run_at": n} for t, s, n in rows]
+
+
+def claim(resource_id: str, table: str, old_next: datetime, new_next: datetime,
+          now: datetime) -> bool:
+    """Move a due run to ``new_next`` unless another process already did."""
+    with db.get_engine_for_resource(resource_id).begin() as conn:
+        return conn.execute(text(
+            f"UPDATE public.{_q(REGISTRY)} SET next_run_at = :new, last_run_at = :now, "
+            "last_run_status = 'running', last_run_error = NULL "
+            "WHERE table_name = :table AND next_run_at = :old AND schedule IS NOT NULL"), {
+                "table": table, "old": old_next, "new": new_next, "now": now}).rowcount == 1
+
+
+def record_run(resource_id: str, table: str, status: str, error: str | None, now: datetime,
+               retry_at: datetime | None = None) -> None:
+    """Store a scheduled run's outcome; ``retry_at`` brings the next run forward."""
+    with db.get_engine_for_resource(resource_id).begin() as conn:
+        if not _registry_exists(conn) or not _has_schedule_columns(conn):
+            return
+        conn.execute(text(
+            f"UPDATE public.{_q(REGISTRY)} SET last_run_at = :now, last_run_status = :status, "
+            "last_run_error = :error, next_run_at = CASE WHEN CAST(:retry AS timestamptz) IS NOT NULL "
+            "AND schedule IS NOT NULL THEN LEAST(next_run_at, CAST(:retry AS timestamptz)) "
+            "ELSE next_run_at END WHERE table_name = :table"), {
+                "table": table, "status": status, "error": (error or None) and error[:500],
+                "now": now, "retry": retry_at})

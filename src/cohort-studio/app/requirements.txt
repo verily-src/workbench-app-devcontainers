@@ -9,6 +9,7 @@ sqlglot>=26.0
 psycopg[binary]>=3.1
 duckdb>=1.1
 pyarrow>=17.0
+tzdata>=2024.1  # IANA zones for extract schedules (zoneinfo)
 google-cloud-bigquery>=3.25
 google-cloud-bigquery-storage>=2.25  # Storage Read API: ~8x faster to_dataframe than REST
 google-auth>=2.35

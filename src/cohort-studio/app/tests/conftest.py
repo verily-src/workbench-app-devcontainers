@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault("STUDIO_AI_FEATURES", "on")
 os.environ.setdefault("STUDIO_LINEAGE_UI", "on")
 os.environ.setdefault("STUDIO_PLINK_UI", "on")
+# Scheduled extract refresh is driven by explicit ticks in its tests.
+os.environ.setdefault("STUDIO_EXTRACT_SCHEDULER", "off")
 # Keep test runs (and the e2e uvicorn they spawn) off the app's real
 # discovery snapshot beside studio_config.json.
 os.environ.setdefault("STUDIO_DISCOVERY_CACHE_PATH", os.path.join(

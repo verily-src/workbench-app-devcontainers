@@ -48,6 +48,7 @@ import queries
 import views
 import materialized_sources
 import extracts
+import extract_schedule
 import saved_snapshots
 import query_cancellation
 import disconnect_watch
@@ -73,6 +74,8 @@ async def lifespan(_app: FastAPI):
     db.warm_resource_cache()
     if knowledge.store.path.exists():
         knowledge_vectors.schedule(knowledge.store)
+    if extract_schedule.enabled():
+        extract_scheduler.start()
     try:
         if mcp_server.AVAILABLE:
             async with mcp_server.mcp.session_manager.run():
@@ -80,6 +83,7 @@ async def lifespan(_app: FastAPI):
         else:
             yield
     finally:
+        await extract_scheduler.stop()
         knowledge_vectors.shutdown()
         data_jobs.shutdown()
         export_jobs.shutdown()
@@ -1129,7 +1133,7 @@ def _after_table_write(resource_id: str) -> None:
 def _extract_error(exc: Exception) -> HTTPException:
     if isinstance(exc, HTTPException):
         return exc
-    if isinstance(exc, extracts.ExtractExists):
+    if isinstance(exc, (extracts.ExtractExists, extracts.RefreshRunning)):
         return HTTPException(409, str(exc))
     if isinstance(exc, LookupError):
         return HTTPException(404, str(exc))
@@ -1171,26 +1175,107 @@ def run_extract(req: ExtractRequest) -> dict:
     return _open_extract_table(req.kind, req.resource_id, req.table, info)
 
 
-def run_refresh_extract(req: RefreshExtractRequest) -> dict:
+def _refresh_extract_rows(resource_id: str, table: str, scheduled: bool = False) -> dict:
+    """Rerun the recipe and replace the rows; the manual and scheduled paths share this."""
     def open_recipe(recipe):
         data_jobs.report("Rerunning the extract's source")
         return open_dataset(OpenRequest.model_validate({"source_ref": recipe}))
     try:
-        info = extracts.refresh(req.resource_id, req.table, open_recipe, datasets.get,
+        info = extracts.refresh(resource_id, table, open_recipe, datasets.get,
                                 datasets.close_dataset, progress=_progress)
     except Exception as exc:
         raise _extract_error(exc) from exc
-    _after_table_write(req.resource_id)
-    lineage.record(db.get_engine_for_resource(req.resource_id), "extract_refreshed", "table",
-                   req.table, payload={"resource_id": req.resource_id, "rows": info["rows"]})
+    _after_table_write(resource_id)
+    lineage.record(db.get_engine_for_resource(resource_id), "extract_refreshed", "table",
+                   table, payload={"resource_id": resource_id, "rows": info["rows"],
+                                   **({"scheduled": True} if scheduled else {})})
+    return info
+
+
+def run_refresh_extract(req: RefreshExtractRequest) -> dict:
+    info = _refresh_extract_rows(req.resource_id, req.table)
     data_jobs.report("Opening the extract")
     return _open_extract_table(req.kind, req.resource_id, req.table, info)
+
+
+SCHEDULER_OWNER = "extract-scheduler"
+
+
+def _record_scheduled(resource_id: str, table: str, status: str, error: str | None,
+                      retry_at=None) -> None:
+    try:
+        extracts.record_run(resource_id, table, status, error, extract_schedule_clock(),
+                            retry_at=retry_at)
+    except Exception:
+        logger.warning("Could not record the scheduled refresh of %s", table, exc_info=True)
+
+
+def _submit_scheduled_refresh(resource_id: str, table: str, on_done) -> dict:
+    """Run a scheduled refresh as a normal refresh_extract data job (same
+    admission and lock); it records the outcome and does not open the table."""
+    def work():
+        now = extract_schedule_clock()
+        try:
+            info = _refresh_extract_rows(resource_id, table, scheduled=True)
+        except Exception as exc:
+            cause = exc.__cause__ if isinstance(exc, HTTPException) else exc
+            if isinstance(cause, query_cancellation.Cancelled):
+                # Stopped (for example the app shut down): run again on the next check.
+                _record_scheduled(resource_id, table, "failed", "Stopped before it finished.",
+                                  retry_at=now)
+            elif isinstance(cause, extracts.RefreshRunning):
+                _record_scheduled(resource_id, table, "skipped", str(cause))
+            else:
+                detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+                _record_scheduled(resource_id, table, "failed", str(detail))
+            raise
+        finally:
+            on_done()
+        _record_scheduled(resource_id, table, "ok", None)
+        return {"extract": info}
+    try:
+        return data_jobs.manager().submit("refresh_extract", SCHEDULER_OWNER, work,
+                                          lambda _result: None, label=f"{table} in {resource_id} (scheduled)")
+    except Exception:
+        on_done()
+        raise
+
+
+def _schedule_resources() -> list[str]:
+    return [r["id"] for r in db.list_aurora_resources() if r.get("id")]
+
+
+def extract_schedule_clock():
+    return extract_scheduler.clock()
+
+
+extract_scheduler = extract_schedule.Scheduler(_submit_scheduled_refresh, _schedule_resources)
 
 
 @app.get("/api/extracts/info")
 def extract_info(resource_id: str, table: str):
     try:
         return {"extract": extracts.info(resource_id, table)}
+    except Exception as exc:
+        raise _extract_error(exc) from exc
+
+
+class ExtractScheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["aurora", "postgres"] = "aurora"
+    resource_id: str
+    table: str
+    schedule: extract_schedule.ExtractSchedule
+
+
+@app.put("/api/extracts/schedule")
+def set_extract_schedule(req: ExtractScheduleRequest, request: Request, response: Response):
+    agent_sessions.owner(request, response)  # same session check as Refresh extract
+    stored = req.schedule.stored()
+    upcoming = (extract_schedule.next_run(stored, extract_schedule_clock())
+                if stored else None)
+    try:
+        return {"extract": extracts.set_schedule(req.resource_id, req.table, stored, upcoming)}
     except Exception as exc:
         raise _extract_error(exc) from exc
 

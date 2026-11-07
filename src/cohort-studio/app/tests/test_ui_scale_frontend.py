@@ -46,6 +46,8 @@ def test_default_comfortable_scale_fits_window_and_chart_clicks_hit(page, app_ur
     assert _fits(page) == [True, True]
     canvas = page.locator('.chart-card canvas').first
     expect(canvas).to_be_visible(timeout=10000)
+    # Charts sit below the cohort bar and chart tools; bring the first one on screen.
+    canvas.scroll_into_view_if_needed()
     page.wait_for_timeout(600)
     # Screen position of bar "B" = canvas rect + chart pixel scaled by the zoom.
     point = page.evaluate("""() => {

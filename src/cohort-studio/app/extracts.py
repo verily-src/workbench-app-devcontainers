@@ -426,15 +426,35 @@ def due(resource_id: str, now: datetime) -> list[dict]:
     return [{"table": t, "schedule": json.loads(s), "next_run_at": n} for t, s, n in rows]
 
 
-def started_before(resource_id: str, before: datetime) -> list[str]:
-    """Scheduled runs still marked running that started before ``before``."""
+def started_before(resource_id: str, before: datetime) -> list[tuple[str, datetime]]:
+    """(table, started) for scheduled runs still marked running since before ``before``."""
     with db.get_engine_for_resource(resource_id).connect() as conn:
         if not _registry_exists(conn) or not _has_schedule_columns(conn):
             return []
-        return list(conn.execute(text(
-            f"SELECT table_name FROM public.{_q(REGISTRY)} WHERE schedule IS NOT NULL "
+        return [tuple(r) for r in conn.execute(text(
+            f"SELECT table_name, last_run_at FROM public.{_q(REGISTRY)} WHERE schedule IS NOT NULL "
             "AND last_run_status = 'running' AND last_run_at < :before"),
-            {"before": before}).scalars())
+            {"before": before}).all()]
+
+
+def recover_lost(resource_id: str, table: str, started: datetime, now: datetime) -> bool:
+    """Mark a run that no process is doing as failed and due now.
+
+    Holds the refresh lock, and changes the row only if it is still that run
+    and no refresh has replaced the rows since it started.
+    """
+    try:
+        with refresh_lock(resource_id, table):
+            with db.get_engine_for_resource(resource_id).begin() as conn:
+                return conn.execute(text(
+                    f"UPDATE public.{_q(REGISTRY)} SET last_run_status = 'failed', "
+                    "last_run_error = 'Stopped before it finished.', last_run_at = :now, "
+                    "next_run_at = LEAST(next_run_at, :now) WHERE table_name = :table "
+                    "AND schedule IS NOT NULL AND last_run_status = 'running' "
+                    "AND last_run_at = :started AND refreshed_at < last_run_at"), {
+                        "table": table, "started": started, "now": now}).rowcount == 1
+    except RefreshRunning:
+        return False
 
 
 def claim(resource_id: str, table: str, old_next: datetime, new_next: datetime,

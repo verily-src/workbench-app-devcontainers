@@ -146,12 +146,11 @@ class Scheduler:
         """A run marked running that no process is doing (the app was killed
         mid-run) is due again now. Recent ones may still be queued elsewhere."""
         try:
-            for table in extracts.started_before(resource_id, now - LOST_AFTER):
+            for table, started in extracts.started_before(resource_id, now - LOST_AFTER):
                 with self.lock:
                     queued = (resource_id, table) in self.pending
-                if not queued and not extracts.refresh_running(resource_id, table):
-                    extracts.record_run(resource_id, table, "failed",
-                                        "Stopped before it finished.", now, retry_at=now)
+                if not queued:
+                    extracts.recover_lost(resource_id, table, started, now)
         except Exception:
             logger.warning("Extract schedules: could not check lost runs in %s", resource_id,
                            exc_info=True)

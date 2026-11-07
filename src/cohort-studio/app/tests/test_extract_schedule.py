@@ -267,13 +267,27 @@ def test_run_lost_to_a_killed_app_is_due_again(on_db):
     due = [r for r in extracts.due("res", NOW) if r["table"] == recent][0]
     extracts.claim("res", recent, due["next_run_at"], NOW + timedelta(hours=18),
                    NOW - timedelta(minutes=5))   # may still be queued in another process
+    finished = _extract()                          # its rows landed; only the status write is late
+    _set(finished, {"every": "daily", "hour": 6}, now=NOW - timedelta(days=1))
+    due = [r for r in extracts.due("res", NOW) if r["table"] == finished][0]
+    extracts.claim("res", finished, due["next_run_at"], NOW + timedelta(hours=18), started)
+    with on_db.begin() as conn:
+        conn.execute(text("UPDATE public._studio_extracts SET refreshed_at = :t "
+                          "WHERE table_name IN (:a, :b)"),
+                     {"t": started - timedelta(days=1), "a": table, "b": recent})
+        conn.execute(text("UPDATE public._studio_extracts SET refreshed_at = :t "
+                          "WHERE table_name = :c"), {"t": started + timedelta(hours=1), "c": finished})
     scheduler = _scheduler(submit)
     scheduler.tick()
     info = extracts.info("res", table)
     assert info["last_run_status"] == "failed" and info["next_run_at"] == NOW.isoformat()
     assert extracts.info("res", recent)["last_run_status"] == "running"
+    assert extracts.info("res", finished)["last_run_status"] == "running"
     scheduler.tick()                              # and the catch-up runs
-    assert submit.calls.count(table) == 1 and recent not in submit.calls
+    assert submit.calls.count(table) == 1
+    assert recent not in submit.calls and finished not in submit.calls
+    # A stale snapshot of the row (the run was reclaimed since) changes nothing.
+    assert not extracts.recover_lost("res", table, started, NOW)
 
 
 def test_busy_admission_retries_soon(on_db):

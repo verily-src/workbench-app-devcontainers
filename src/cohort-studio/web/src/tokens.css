@@ -184,18 +184,26 @@ button:disabled { opacity: 0.45; cursor: default; }
 .hero .count { font-size: 22px; font-weight: 600; color: var(--ink);
   letter-spacing: -0.02em; }
 .hero .detail { font-size: 13px; font-weight: 500; color: var(--ink-muted); }
-.chart-grid { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+/* Charts fill the width in equal columns; "auto" fits as many ≥380px columns as the
+   screen allows, dense packing floats smaller cards into gaps, wide cards take a row. */
+.chart-grid { display: grid; gap: 12px; margin: 12px 0; grid-auto-flow: row dense;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); }
+.chart-grid[data-cols="1"] { grid-template-columns: minmax(0, 1fr); }
+.chart-grid[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.chart-grid[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.chart-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 900px) { .chart-grid[data-cols] { grid-template-columns: minmax(0, 1fr); } }
 .chart-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   padding: 8px 12px 4px;
-  width: 400px;
+  min-width: 0;
   transition: border-color 0.12s ease;
 }
 .chart-card:hover { border-color: #cfd0d3; }
-.chart-card.wide { width: 816px; }
+.chart-card.wide { grid-column: 1 / -1; }
 .chart-card .head { display: flex; align-items: center; height: 26px; }
 .chart-card .head .title { font-size: 12px; font-weight: 500;
   color: var(--ink-soft); flex: 1; }
@@ -954,3 +962,6 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .dataset-toolbar .hero .count, .cohort-size .count { font-size: 16px; font-weight: 600; }
 .cohort-size .detail { font-size: 12.5px; }
 .hero-line { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; font-size: 12px; color: var(--ink-muted); }
+.chart-tools { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.chart-tools > form { flex: 1 1 auto; }
+.chart-columns { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; color: var(--ink-muted); white-space: nowrap; }

@@ -391,6 +391,8 @@ export interface Dataset {
   filterAskHistory?: FilterAskHistoryEntry[];
   groupSummary?: { group_by: string[]; measure: string | null };
   parameters?: Parameter[];
+  /** Charts per row: 0 = auto (fill the screen), 1–4 = fixed equal columns. */
+  chartColumns?: 0 | 1 | 2 | 3 | 4;
   /** Set when this tab is a saved extract table; null once checked and it isn't. */
   extract?: ExtractInfo | null;
   /** A Refresh extract job is running for this tab. */

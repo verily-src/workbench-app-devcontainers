@@ -85,3 +85,42 @@ def test_filter_values_can_be_searched(page, app_url):
     search.fill("zz")
     expect(group).to_contain_text('No other values match "zz".')
     expect(group.get_by_label("site_03")).to_be_checked()
+
+
+def test_charts_fill_the_width_in_equal_columns(loaded_page):
+    page = loaded_page
+    page.set_viewport_size({"width": 1600, "height": 900})
+    expect(page.locator(".chart-card")).to_have_count(3, timeout=10000)
+
+    def layout():
+        return page.evaluate("""() => {
+            const grid = document.querySelector('.chart-grid').getBoundingClientRect();
+            const cards = [...document.querySelectorAll('.chart-card')].map((c) => c.getBoundingClientRect());
+            return { grid: grid.width, cards: cards.map((r) => ({ w: Math.round(r.width), top: Math.round(r.top), right: Math.round(r.right) })),
+                     gridRight: Math.round(grid.right) };
+        }""")
+
+    # Auto: equal-width cards, and the row reaches the right edge (no empty strip).
+    page.wait_for_timeout(300)
+    auto = layout()
+    first_row = [c for c in auto["cards"] if c["top"] == auto["cards"][0]["top"]]
+    assert len(first_row) >= 2 and len({c["w"] for c in first_row}) == 1, auto
+    assert abs(first_row[-1]["right"] - auto["gridRight"]) <= 2, auto
+    # Two per row: halves; a wide chart takes the whole row.
+    page.get_by_label("Charts per row").select_option("2")
+    page.wait_for_timeout(300)
+    two = layout()
+    assert abs(two["cards"][0]["w"] - two["cards"][1]["w"]) <= 1 and two["cards"][0]["top"] == two["cards"][1]["top"]
+    assert abs(two["cards"][0]["w"] * 2 - two["grid"]) < 40
+    card = page.locator(".chart-card").first
+    card.get_by_role("button", name="Chart actions").click()
+    card.get_by_role("button", name="Make wide").click()
+    page.wait_for_timeout(300)
+    wide = layout()
+    assert abs(wide["cards"][0]["w"] - wide["grid"]) <= 2
+    # Charts redraw at the new width (ECharts follows the card).
+    page.wait_for_function("""(target) => {
+        const el = document.querySelector('.chart-card .chart-plot');
+        const chart = window.__studioEcharts.getInstanceByDom(el);
+        return chart && Math.abs(chart.getWidth() - el.clientWidth) <= 2 && el.clientWidth > target * 0.8;
+    }""", arg=wide["grid"], timeout=5000)

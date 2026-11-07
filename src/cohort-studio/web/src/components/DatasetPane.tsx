@@ -491,7 +491,16 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
         onUpdate={onUpdate} draft={chatDraft?.datasetId === dataset.id ? chatDraft : null}
         onOpenChange={setChatOpen} />}
 
-      <AddChart dataset={dataset} onUpdate={onUpdate} />
+      <div className="chart-tools">
+        <AddChart dataset={dataset} onUpdate={onUpdate} />
+        <label className="chart-columns">Charts per row
+          <select aria-label="Charts per row" value={String(dataset.chartColumns ?? 0)}
+                  onChange={(e) => onUpdate({ chartColumns: Number(e.target.value) as 0 | 1 | 2 | 3 | 4 })}>
+            <option value="0">Auto (fill screen)</option>
+            {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </div>
 
       {dataset.queryError && <div className="query-error" role="alert">
         <span>{dataset.queryError}{result ? " Showing the last successful result." : ""}</span>
@@ -503,7 +512,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
         Loading data and charts…
       </p>}
 
-      {result && <div className="chart-grid">
+      {result && <div className="chart-grid" data-cols={dataset.chartColumns ? String(dataset.chartColumns) : undefined}>
         {charts.map((spec, i) => (
           <ChartCard
             key={`${spec.kind}-${spec.x}-${spec.y ?? ""}-${i}`}

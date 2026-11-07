@@ -413,6 +413,7 @@ export default function App() {
         groupSummary: d.group_summary ?? undefined,
         sort: d.sort ?? undefined,
         parameters: d.parameters ?? [],
+        chartColumns: d.chart_columns ?? 0,
         page: 0,
       }));
       setDatasets(restored);

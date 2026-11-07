@@ -117,7 +117,7 @@ def test_saved_snapshot_save_open_cache_refresh_failure_and_delete(
     assert saved_state.status_code == 200, saved_state.text
     saved_chart = saved_state.json()["datasets"][0]["charts"][0]
     assert saved_chart["title"] == "People"
-    assert saved_chart["x_axis"] == {"label": "Count", "scale": "log", "min": 1.0, "max": 100.0}
+    assert saved_chart["x_axis"] == {"label": "Count", "scale": "log", "min": 1.0, "max": 100.0, "format": None}
     assert saved_chart["y_axis"]["label"] == "Person"
     materialized_ref = saved_state.json()["datasets"][0]["source"]
     assert materialized_ref["kind"] == "materialized"

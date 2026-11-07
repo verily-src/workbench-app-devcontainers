@@ -982,5 +982,6 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .cohort-size .detail { font-size: 12.5px; }
 .hero-line { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; font-size: 12px; color: var(--ink-muted); }
 .chart-tools { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.chart-tools > form { flex: 1 1 auto; }
+.chart-tools > form { flex: 1 1 0; min-width: 0; }
 .chart-columns { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; color: var(--ink-muted); white-space: nowrap; }
+.chart-columns select { width: auto; min-width: 156px; }

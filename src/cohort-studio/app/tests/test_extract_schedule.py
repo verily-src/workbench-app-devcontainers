@@ -139,12 +139,34 @@ def test_registry_without_schedule_columns_still_reads_and_migrates(pg, monkeypa
         assert info["rows"] == 1 and info["refreshable"] is True
         assert info["schedule"] is None and info["next_run_at"] is None
         assert extracts.due("res", NOW) == []          # no columns yet: nothing due
+        extracts.write({"df": _frame(4)}, "res", "old_cohort", "Old", RECIPE, replace=True)
+        with legacy.connect() as conn:
+            assert not extracts._has_schedule_columns(conn)
         info = _set("old_cohort", {"every": "daily", "hour": 6, "tz": "UTC"})
         assert info["schedule"] == {"every": "daily", "minute": 0, "hour": 6, "tz": "UTC"}
         assert info["next_run_at"] == "2026-11-08T06:00:00+00:00"
-        assert info["title"] == "Old" and info["rows"] == 1
+        assert info["title"] == "Old" and info["rows"] == 4
     finally:
         legacy.dispose()
+
+
+def test_legacy_registry_write_does_not_require_table_ownership(on_db):
+    role = f"sched_writer_{uuid.uuid4().hex[:8]}"
+    table = _extract()
+    try:
+        with on_db.begin() as conn:
+            conn.exec_driver_sql(f'CREATE ROLE "{role}"')
+            conn.exec_driver_sql(f'GRANT USAGE ON SCHEMA public TO "{role}"')
+            conn.exec_driver_sql(f'GRANT SELECT, INSERT, UPDATE ON public._studio_extracts TO "{role}"')
+        with on_db.begin() as conn:
+            conn.exec_driver_sql(f'SET LOCAL ROLE "{role}"')
+            extracts._ensure_registry(conn)
+            conn.execute(text("UPDATE public._studio_extracts SET title = 'Allowed' WHERE table_name = :t"),
+                         {"t": table})
+    finally:
+        with on_db.begin() as conn:
+            conn.exec_driver_sql(f'DROP OWNED BY "{role}"')
+            conn.exec_driver_sql(f'DROP ROLE "{role}"')
 
 
 def test_refresh_and_rewrite_keep_the_schedule(on_db):
@@ -185,6 +207,20 @@ class Submits:
 
 def _scheduler(submit):
     return extract_schedule.Scheduler(submit, lambda: ["res"], clock=lambda: NOW)
+
+
+def test_scheduler_discovers_writable_postgres(on_db, monkeypatch):
+    table = _extract()
+    _set(table, {"every": "hourly", "minute": 0}, now=NOW - timedelta(hours=2))
+    monkeypatch.setattr(db, "list_aurora_resources", lambda: [])
+    monkeypatch.setattr(main.postgres_sources, "resources", lambda: [
+        {"id": "postgres:write", "read_only": False},
+        {"id": "postgres:read", "read_only": True},
+    ])
+    submit = Submits()
+    scheduler = extract_schedule.Scheduler(submit, main._schedule_resources, clock=lambda: NOW)
+    assert ("postgres:write", table, "submitted") in scheduler.tick()
+    assert submit.calls.count(table) == 1
 
 
 def test_missed_runs_become_one_catch_up(on_db):

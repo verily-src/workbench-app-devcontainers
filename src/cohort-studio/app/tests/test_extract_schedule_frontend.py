@@ -91,17 +91,9 @@ def _tick_at(iso):
 
 
 def _load_table(page, name):
-    """Pick a table once the listing has settled, then load it."""
-    table = page.get_by_label("Table", exact=True)
-    expect(page.get_by_role("button", name="Refresh list")).to_be_enabled(timeout=60000)
-    expect(table.locator("option", has_text=name)).to_have_count(1, timeout=60000)
-    values = table.locator("option").evaluate_all("els => els.map(e => e.value)")
-    value = next(v for v in values if v.endswith(name))
-    table.select_option(value)
-    expect(table).to_have_value(value)
-    load = page.get_by_role("button", name="Load table")
-    expect(load).to_be_enabled(timeout=30000)
-    load.click()
+    """Open `name` Live from Data Builder once the listing has it."""
+    from tests.ui_helpers import load_table
+    load_table(page, f"aurora:{RID}", name, timeout=60000)
 
 
 def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkeypatch):
@@ -121,9 +113,6 @@ def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkey
     page.request.get(f"{url}/api/version")
     page.clock.install()
     page.goto(url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option(f"aurora:{RID}")
-    table = page.get_by_label("Table", exact=True)
     _load_table(page, "sched_cohort")
     bar = page.get_by_role("group", name="Extract")
     expect(bar).to_have_attribute("title", re.compile("25 rows"), timeout=60000)
@@ -177,7 +166,8 @@ def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkey
     tokyo = {"every": "weekly", "weekday": 2, "hour": 7, "minute": 45, "tz": "Asia/Tokyo"}
     extracts.set_schedule(RID, "sched_other", tokyo, next_run(tokyo, datetime.now().astimezone()))
     db.list_aurora_tables.invalidate()
-    page.get_by_role("button", name="Refresh list").click()
+    from tests.ui_helpers import open_data_builder
+    open_data_builder(page).get_by_role("button", name="Refresh list").click()
     _load_table(page, "sched_other")
     expect(page.locator(".tab.active")).to_contain_text("sched_other", timeout=60000)
     other_button = page.get_by_role("group", name="Extract").get_by_role(

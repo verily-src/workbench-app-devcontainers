@@ -63,15 +63,14 @@ def _registry_exists(conn) -> bool:
                         {"name": f"public.{REGISTRY}"}).scalar_one()
 
 
-def _ensure_registry(conn) -> None:
-    conn.exec_driver_sql(
-        f"CREATE TABLE IF NOT EXISTS public.{_q(REGISTRY)} ("
-        "table_name text PRIMARY KEY, title text NOT NULL, recipe jsonb, "
-        "row_count bigint NOT NULL, created_at timestamptz NOT NULL, "
-        "refreshed_at timestamptz NOT NULL)")
-    # Schedule columns (2026-11-07). Registries written before them gain the
-    # columns on their next write; reads never name them (see _entry).
-    if _has_schedule_columns(conn):
+def _ensure_registry(conn, *, schedule: bool = False) -> None:
+    if not _registry_exists(conn):
+        conn.exec_driver_sql(
+            f"CREATE TABLE IF NOT EXISTS public.{_q(REGISTRY)} ("
+            "table_name text PRIMARY KEY, title text NOT NULL, recipe jsonb, "
+            "row_count bigint NOT NULL, created_at timestamptz NOT NULL, "
+            "refreshed_at timestamptz NOT NULL)")
+    if not schedule or _has_schedule_columns(conn):
         return
     conn.exec_driver_sql(
         f"ALTER TABLE public.{_q(REGISTRY)} "
@@ -405,7 +404,7 @@ def set_schedule(resource_id: str, table: str, schedule: dict | None,
         if schedule is not None and not entry.get("recipe"):
             raise NotRefreshable(f"{table} can't be scheduled: its inputs (for example an "
                                  "uploaded file) can't be reopened.")
-        _ensure_registry(conn)
+        _ensure_registry(conn, schedule=True)
         conn.execute(text(
             f"UPDATE public.{_q(REGISTRY)} SET schedule = CAST(:schedule AS jsonb), "
             "next_run_at = :next WHERE table_name = :table"), {

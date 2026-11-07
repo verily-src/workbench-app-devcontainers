@@ -17,6 +17,12 @@ def _q(col: str) -> str:
 
     return '"' + col.replace('"', '""') + '"'
 
+def _text(col, types):
+    q = _q(col)
+    if types.get(col) == "BOOLEAN":
+        return f"CASE WHEN {q} THEN 'True' WHEN NOT {q} THEN 'False' END"
+    return f"CAST({q} AS VARCHAR)"
+
 def _where(filters: list[dict], columns: set) -> tuple[str, list]:
     """WHERE clause for Explore filters, including AND/OR criteria groups."""
     return filter_rules.combine(filters, lambda flat: _where_flat(flat, columns))
@@ -32,7 +38,7 @@ def _where_flat(filters: list[dict], columns: set) -> tuple[str, list]:
         if f.get("kind") == "categorical" and f.get("values"):
             vals = [str(v) for v in f["values"]]
             placeholders = ", ".join(["?"] * len(vals))
-            clauses.append(f"CAST({_q(col)} AS VARCHAR) IN ({placeholders})")
+            clauses.append(f"{_text(col, columns) if isinstance(columns, dict) else f'CAST({_q(col)} AS VARCHAR)'} IN ({placeholders})")
             params.extend(vals)
         elif f.get("kind") == "range":
             lo, hi = f.get("min"), f.get("max")
@@ -51,10 +57,11 @@ def _where_flat(filters: list[dict], columns: set) -> tuple[str, list]:
     return (" AND ".join(clauses) if clauses else "TRUE"), params
 
 class _Agg:
-    def __init__(self, con, where: str, params: list):
+    def __init__(self, con, where: str, params: list, types):
         self.con = con
         self.where = where
         self.params = params
+        self.types = types
 
     def one(self, sql: str, params: list):
         return self.con.execute(sql, params).fetchone()
@@ -64,9 +71,10 @@ class _Agg:
 
 def _bar(agg: _Agg, x: str) -> dict:
     qx = _q(x)
+    tx = _text(x, agg.types)
 
     full_top = agg.all(
-        f"SELECT CAST({qx} AS VARCHAR) v, COUNT(*) c FROM t "
+        f"SELECT {tx} v, COUNT(*) c FROM t "
         f"WHERE {qx} IS NOT NULL GROUP BY v ORDER BY c DESC, v LIMIT {BAR_TOP_N}",
         [])
     full_total = agg.one(
@@ -85,8 +93,8 @@ def _bar(agg: _Agg, x: str) -> dict:
     if cats:
         ph = ", ".join(["?"] * len(cats))
         rows = agg.all(
-            f"SELECT CAST({qx} AS VARCHAR) v, COUNT(*) c FROM t "
-            f"WHERE ({agg.where}) AND CAST({qx} AS VARCHAR) IN ({ph}) "
+            f"SELECT {tx} v, COUNT(*) c FROM t "
+            f"WHERE ({agg.where}) AND {tx} IN ({ph}) "
             f"GROUP BY v", agg.params + cats)
         sel_counts = {r[0]: int(r[1]) for r in rows}
 
@@ -146,14 +154,17 @@ def _scatter(agg: _Agg, x: str, y: str) -> dict:
 def _heatmap(agg: _Agg, x: str, y: str) -> dict:
     qx, qy = _q(x), _q(y)
     rows = agg.all(
-        f"SELECT CAST({qx} AS VARCHAR) a, CAST({qy} AS VARCHAR) b, COUNT(*) c "
+        f"SELECT {_text(x, agg.types)} a, {_text(y, agg.types)} b, COUNT(*) c "
         f"FROM t WHERE ({agg.where}) AND {qx} IS NOT NULL AND {qy} IS NOT NULL "
         f"GROUP BY a, b ORDER BY c DESC, a, b LIMIT 400", agg.params)
     return {"kind": "heatmap", "x": x, "y": y,
             "data": [[a, b, int(c)] for a, b, c in rows]}
 
 def _dialect(agg: _Agg) -> chart_measures.Dialect:
-    return chart_measures.Dialect(
+    class DuckDialect(chart_measures.Dialect):
+        def text(self, name):
+            return _text(name, agg.types)
+    return DuckDialect(
         rel="t", col=_q, number=lambda name: chart_measures.duck_number(_q(name)),
         text_type="VARCHAR", named=False, where=agg.where, where_params=agg.params,
         run=agg.all, postgres=False)
@@ -183,8 +194,6 @@ def query(df, filters: list[dict], chart_specs: list[dict],
           page: int, page_size: int) -> dict:
 
     columns = set(df.columns)
-    where, params = _where(filters, columns)
-
     pos = "__pos__"
     while pos in columns:
         pos += "_"
@@ -194,7 +203,9 @@ def query(df, filters: list[dict], chart_specs: list[dict],
     con = duckdb.connect()
     try:
         con.register("t", pos_df)
-        agg = _Agg(con, where, params)
+        types = {row[0]: row[1] for row in con.execute("DESCRIBE t").fetchall()}
+        where, params = _where(filters, types)
+        agg = _Agg(con, where, params, types)
         total = len(df)
         filtered = agg.one(f"SELECT COUNT(*) FROM t WHERE {where}", params)[0]
         charts = [_chart(agg, c, columns) for c in chart_specs]

@@ -31,13 +31,8 @@ def _common_routes(page: Page):
 
 def _load_person(page: Page, app_url: str):
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    picker = page.get_by_label("Datasource", exact=True)
-    expect(picker.locator("option", has_text="Fixture")).to_be_attached(timeout=10000)
-    picker.select_option("aurora:fixture")
-    expect(page.get_by_label("Table", exact=True)).to_be_enabled(timeout=10000)
-    page.get_by_label("Table", exact=True).select_option("person")
-    page.get_by_role("button", name="Load table").click()
+    from tests.ui_helpers import load_table
+    load_table(page, "aurora:fixture", "person")
 
 
 def test_expired_snapshot_job_stops_polling_and_reenables_save(page: Page, app_url: str):

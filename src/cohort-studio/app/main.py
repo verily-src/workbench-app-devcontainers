@@ -1250,7 +1250,9 @@ def _submit_scheduled_refresh(resource_id: str, table: str, on_done) -> dict:
 
 
 def _schedule_resources() -> list[str]:
-    return [r["id"] for r in db.list_aurora_resources() if r.get("id")]
+    resources = db.list_aurora_resources() + [
+        r for r in postgres_sources.resources() if not r.get("read_only")]
+    return list(dict.fromkeys(r["id"] for r in resources if r.get("id")))
 
 
 def extract_schedule_clock():

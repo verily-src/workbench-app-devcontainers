@@ -39,10 +39,8 @@ def owner(request: Request, response: Response) -> str:
 
 
 async def preserve_owner_cookie(request: Request, call_next):
-    path = request.url.path
-    active = path.startswith("/api/")
     existing = request.cookies.get(_COOKIE, "")
-    fresh = active and not re.fullmatch(r"[a-f0-9]{64}", existing)
+    fresh = not re.fullmatch(r"[a-f0-9]{64}", existing)
     if fresh:
         request.state.chat_owner = secrets.token_hex(32)
     response = await call_next(request)

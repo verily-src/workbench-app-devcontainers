@@ -300,3 +300,21 @@ def test_compiled_sql_stays_bounded():
     huge = " + ".join([nested] * 12)
     with pytest.raises(ValueError, match="too complex"):
         calculations.sql(calculations.parse(huge, columns, types), "postgres", lambda n: f'"{n}"', lambda v: ":p")
+
+
+def test_review_arrow_parquet_dates_and_old_escaped_column_names(tmp_path):
+    """Parquet date columns arrive as Arrow dtypes; old recipes used Python escapes in col()."""
+    import pandas as pd
+    import calculations
+    path = tmp_path / "d.parquet"
+    pd.DataFrame({"d": pd.to_datetime(["2020-05-01", "2024-02-29"]).date}).to_parquet(path)
+    frame = pd.read_parquet(path, dtype_backend="pyarrow")
+    assert isinstance(frame["d"].dtype, pd.ArrowDtype)
+    calc = calculations.parse("YEAR(d)", list(frame.columns), calculations.column_types(frame))
+    assert list(calculations.evaluate(calc, frame).astype(int)) == [2020, 2024]
+    # Escaped quotes / backslashes in col("...") decode like the old Python parser.
+    names = ['say "hi"', "back\\slash", "plain"]
+    for expr, expected in (('col("say \\"hi\\"")', 'say "hi"'), ('col("back\\\\slash")', "back\\slash"),
+                           ('col("plain")', "plain"), ('col("say ""hi""")', 'say "hi"')):
+        calc = calculations.parse(expr, names)
+        assert calc.root.name == expected, (expr, calc.root)

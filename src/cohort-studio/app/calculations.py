@@ -258,7 +258,7 @@ def _children(node):
 _TOKEN = re.compile(r"""
     (?P<space>\s+)
   | (?P<number>(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)
-  | (?P<string>'(?:[^']|'')*'|"(?:[^"]|"")*")
+  | (?P<string>'(?:[^'\\]|\\.|'')*'|"(?:[^"\\]|\\.|"")*")
   | (?P<param>@[A-Za-z_][A-Za-z0-9_]*)
   | (?P<name>[^\W\d]\w*)
   | (?P<op><=|>=|!=|<>|==|[-+*/(),=<>])
@@ -478,7 +478,7 @@ class _Parser:
             if tok.kind != "string":
                 raise ValueError('Write col("column name") with the name in quotes.')
             self.expect_op(")", 'to close col("…")')
-            return _make(Column, name=_unquote(tok.text))
+            return _make(Column, name=_unquote_column(tok.text))
         unit, args = None, []
         if function in UNIT_FUNCTIONS:
             tok = self.peek()
@@ -505,6 +505,21 @@ class _Parser:
 def _unquote(text: str) -> str:
     quote = text[0]
     return text[1:-1].replace(quote * 2, quote)
+
+
+def _unquote_column(text: str) -> str:
+    """Column names in col("…"). Saved recipes from the old Python-AST parser may use
+    Python string escapes (\\", \\\\, \\n); decode those exactly as before.
+    Otherwise a doubled quote stands for one quote."""
+    if "\\" in text:
+        import ast as _ast
+        try:
+            value = _ast.literal_eval(text)
+        except (SyntaxError, ValueError) as exc:
+            raise ValueError("The column name in col(…) has an invalid escape.") from exc
+        if isinstance(value, str):
+            return value
+    return _unquote(text)
 
 
 def _parse_tree(expression: str) -> Expression:
@@ -786,9 +801,13 @@ def _dates_from_text(text: np.ndarray) -> np.ndarray:
 
 def _dates_from_column(series: pd.Series) -> np.ndarray:
     import datetime as dt
+    if isinstance(series.dtype, pd.ArrowDtype) and pd.api.types.is_datetime64_any_dtype(series.dtype):
+        # Arrow date/timestamp storage (e.g. Parquet uploads): decode via Python values;
+        # Arrow date columns have no .dt.tz.
+        series = pd.to_datetime(series.astype(object), errors="coerce")
     if pd.api.types.is_datetime64_any_dtype(series.dtype):
         values = series
-        if getattr(series.dt, "tz", None) is not None:
+        if getattr(series.dtype, "tz", None) is not None:
             values = series.dt.tz_localize(None)
         return values.to_numpy().astype("datetime64[D]")
     out = np.full(len(series), np.datetime64("NaT"), dtype="datetime64[D]")

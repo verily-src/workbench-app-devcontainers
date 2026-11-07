@@ -209,3 +209,39 @@ def test_viewer_mode_exports_and_copies_revision_link(page: Page, app_url: str):
     card.get_by_role("button", name="Chart actions").click()
     data = _download(page, lambda: card.get_by_role("button", name="Download PNG").click(), "viewer-chart.png")
     assert _pixels(page, data, "#087a6a")["accent"] > 200
+
+    # After a failed query the charts are stale, so image exports wait for a good result.
+    page.unroute("**/api/datasets/report-ds/query")
+    page.route("**/api/datasets/report-ds/query", lambda r: r.fulfill(status=500, json={"detail": "boom"}))
+    page.get_by_role("button", name="Refresh data").click()
+    expect(page.locator(".query-error")).to_contain_text("Showing the last successful result", timeout=10000)
+    menu(page, "Export options")
+    expect(page.get_by_role("button", name="Dashboard PNG")).to_be_disabled()
+    expect(page.get_by_role("button", name="Dashboard PDF")).to_be_disabled()
+    card.get_by_role("button", name="Chart actions").click()
+    expect(card.get_by_role("button", name="Download PNG")).to_be_disabled()
+
+
+def test_very_long_dashboard_png_stays_within_canvas_limits(loaded_page: Page):
+    page = loaded_page
+    page.get_by_label("Charts per row").select_option("1")
+    page.add_style_tag(content=".chart-grid .chart-plot { height: 6000px !important; }")
+    _settled(page)
+    grid_w, grid_h = page.evaluate("[document.querySelector('.chart-grid').offsetWidth,"
+                                   " document.querySelector('.chart-grid').offsetHeight]")
+    assert grid_h > 16000
+    menu(page, "Export options")
+    data = _download(page, lambda: page.get_by_role("button", name="Dashboard PNG").click(),
+                     "cohort-dashboard-long.png")
+    width, height = _png_size(data)
+    assert height <= 32000 and width * height <= 250e6
+    assert width < 2 * (grid_w + 48)
+    # The last chart is drawn, not cut off or blank.
+    tail = page.evaluate("""async (b64) => {
+      const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+      const c = document.createElement('canvas'); c.width = img.width; c.height = 400;
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, img.height - 1200, img.width, 400, 0, 0, img.width, 400);
+      const d = ctx.getImageData(0, 0, c.width, 400).data; let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] < 200) n++;
+      return n; }""", base64.b64encode(data).decode())
+    assert tail > 100

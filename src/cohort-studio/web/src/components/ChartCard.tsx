@@ -412,6 +412,8 @@ interface Props {
   onDuplicate?: () => void;
   /** Saves this card (title, chart, tab filters) as a PNG. */
   onDownloadPng?: (card: HTMLElement) => void;
+  /** Why Download PNG is unavailable right now, if it is. */
+  downloadBlocked?: string;
   onRename?: (title: string) => void;
   onAxesChange?: (x: AxisSettings, y: AxisSettings, references?: ChartReference[]) => void;
   /** Tab parameters, for reference lines that follow one. */
@@ -434,7 +436,7 @@ function defaultTitle(spec: ChartSpec, labels: Record<string, string>): string {
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onMarksChange, onToggleWide,
-                            onMove, canMoveUp = false, canMoveDown = false, onDuplicate, onDownloadPng,
+                            onMove, canMoveUp = false, canMoveDown = false, onDuplicate, onDownloadPng, downloadBlocked = "",
                             onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false,
                             fields, onDataChange, parameters = NO_PARAMETERS }: Props) {
   const pal = getPalette(palette);
@@ -675,7 +677,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                 {onMove && <button type="button" disabled={!canMoveDown}
                                    onClick={() => { onMove(1); close(); }}>Move later</button>}
                 {onDuplicate && <button type="button" onClick={() => { onDuplicate(); close(); }}>Duplicate</button>}
-                {onDownloadPng && <button type="button" disabled={!result}
+                {onDownloadPng && <button type="button" disabled={!result || Boolean(downloadBlocked)}
+                  title={downloadBlocked || undefined}
                   onClick={() => { close(); if (cardRef.current) onDownloadPng(cardRef.current); }}>Download PNG</button>}
               </div>}
             </Popover>

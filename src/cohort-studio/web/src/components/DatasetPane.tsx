@@ -221,8 +221,12 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
     onUpdate({ charts: next });
   };
 
+  // A pending or failed query leaves the last result on screen under the new filters; don't label it with them.
+  const imageBlocked = !result ? "No result yet"
+    : dataset.queryLoading ? "Wait for the charts to update"
+      : dataset.queryError ? "The latest query failed; retry it first" : "";
   const runImageExport = (label: string, run: (mod: typeof import("../dashboardExport")) => Promise<void>) => {
-    if (imageExport) return;
+    if (imageExport || imageBlocked) return;
     setImageExport(label);
     setExportError("");
     void import("../dashboardExport").then(run)
@@ -361,13 +365,13 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
         </div>
         {plinkExport && <PlinkExport key={dataset.id} dataset={dataset} />}
         <div className="popover-row" role="group" aria-label="Dashboard image">
-          <button disabled={!result || charts.length === 0 || Boolean(imageExport)}
-                  title="The charts as laid out, with the filters and cohort size"
+          <button disabled={Boolean(imageBlocked) || charts.length === 0 || Boolean(imageExport)}
+                  title={imageBlocked || "The charts as laid out, with the filters and cohort size"}
                   onClick={() => runImageExport("dashboard PNG", (m) => m.exportDashboardPng(dataset))}>
             {imageExport === "dashboard PNG" ? "Drawing…" : "Dashboard PNG"}
           </button>
-          <button disabled={!result || charts.length === 0 || Boolean(imageExport)}
-                  title="The charts as laid out on landscape pages, with the filters and cohort size"
+          <button disabled={Boolean(imageBlocked) || charts.length === 0 || Boolean(imageExport)}
+                  title={imageBlocked || "The charts as laid out on landscape pages, with the filters and cohort size"}
                   onClick={() => runImageExport("dashboard PDF", (m) => m.exportDashboardPdf(dataset))}>
             {imageExport === "dashboard PDF" ? "Drawing…" : "Dashboard PDF"}
           </button>
@@ -577,6 +581,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
                          ...(result ? { result: { ...result, charts: swap(result.charts) } } : {}) });
             }}
             canMoveUp={i > 0} canMoveDown={i < charts.length - 1}
+            downloadBlocked={imageBlocked || (imageExport ? "Drawing…" : "")}
             onDownloadPng={(card) => runImageExport("chart PNG", (m) => m.exportChartPng(dataset, card))}
             onDuplicate={() => {
               const copy = { ...spec, title: `${spec.title || (dataset.columns.find((c) => c.name === spec.x)?.label ?? spec.x)} (copy)` };

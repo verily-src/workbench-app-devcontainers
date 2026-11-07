@@ -51,7 +51,6 @@ export function exportNotes(dataset: Dataset): string[] {
   const notes: string[] = [];
   if (r?.sampled) notes.push("Counts and charts use the capped loaded sample. They do not describe the full source population.");
   else if (r?.charts.some((c) => c?.sampled)) notes.push("Charts marked Sampled use sampled data.");
-  if (dataset.queryError) notes.push("The latest query failed. This shows the last successful result.");
   return notes;
 }
 
@@ -211,9 +210,11 @@ async function compose(frame: HTMLElement, cards: HTMLElement[], h: Header): Pro
   const height = Math.ceil(top + bottom + PAD);
 
   const canvas = document.createElement("canvas");
-  canvas.width = width * SCALE; canvas.height = height * SCALE;
+  // Browsers refuse canvases past about 32k px a side or 268M px; long dashboards draw at a lower scale.
+  const scale = Math.min(SCALE, 32000 / height, Math.sqrt(250e6 / (width * height)));
+  canvas.width = Math.floor(width * scale); canvas.height = Math.floor(height * scale);
   const ctx = canvas.getContext("2d")!;
-  ctx.scale(SCALE, SCALE);
+  ctx.scale(scale, scale);
   ctx.fillStyle = t.surface; ctx.fillRect(0, 0, width, height);
   header(ctx, t, h, width, generated, partner, true);
 
@@ -263,7 +264,7 @@ async function compose(frame: HTMLElement, cards: HTMLElement[], h: Header): Pro
   });
 
   const rowTops = Array.from(new Set(boxes.map((b) => Math.round(b.y)))).sort((a, b) => a - b);
-  const breaks = [top - 8, ...rowTops.slice(1).map((y) => top + y - 6), height].map((y) => Math.round(y * SCALE));
+  const breaks = [top - 8, ...rowTops.slice(1).map((y) => top + y - 6), height].map((y) => Math.min(canvas.height, Math.round(y * scale)));
   return { canvas, breaks };
 }
 

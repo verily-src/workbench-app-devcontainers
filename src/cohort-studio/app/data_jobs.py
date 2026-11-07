@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import os
 from contextlib import contextmanager
 import contextvars
@@ -17,6 +18,34 @@ import config
 
 class Busy(ValueError):
     pass
+
+
+class JobStatus(str, enum.Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    CANCELLING = "cancelling"
+    COMPLETE = "complete"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    INTERRUPTED = "interrupted"
+
+
+TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
+    JobStatus.QUEUED: frozenset({JobStatus.RUNNING, JobStatus.CANCELLING, JobStatus.CANCELLED,
+                                 JobStatus.FAILED, JobStatus.INTERRUPTED}),
+    JobStatus.RUNNING: frozenset({JobStatus.CANCELLING, JobStatus.COMPLETE, JobStatus.FAILED,
+                                  JobStatus.INTERRUPTED}),
+    JobStatus.CANCELLING: frozenset({JobStatus.CANCELLED, JobStatus.INTERRUPTED}),
+    # Results live in memory only, so a restart turns a finished job into interrupted.
+    JobStatus.COMPLETE: frozenset({JobStatus.INTERRUPTED}),
+    JobStatus.FAILED: frozenset(),
+    JobStatus.CANCELLED: frozenset(),
+    JobStatus.INTERRUPTED: frozenset(),
+}
+
+
+def predecessors(status: JobStatus) -> list[str]:
+    return [old.value for old, allowed in TRANSITIONS.items() if status in allowed]
 
 
 _current_progress = contextvars.ContextVar("data_job_progress", default=None)
@@ -56,7 +85,7 @@ class DataJobs:
         os.chmod(path, 0o600)
         with self.connect() as db:
             db.execute('CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, owner TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, updated REAL NOT NULL)')
-            db.execute("UPDATE jobs SET status='interrupted' WHERE status IN ('queued','running','cancelling','complete')")
+            self._transition(db, None, JobStatus.INTERRUPTED)
 
     @contextmanager
     def connect(self):
@@ -67,9 +96,18 @@ class DataJobs:
         finally:
             db.close()
 
-    def state(self, job_id, status):
+    @staticmethod
+    def _transition(db, job_id, status: JobStatus) -> int:
+        allowed = predecessors(status)
+        marks = ",".join("?" * len(allowed))
+        where = f"status IN ({marks})" + ("" if job_id is None else " AND id=?")
+        args = [status.value, time.time(), *allowed, *([] if job_id is None else [job_id])]
+        return db.execute(f"UPDATE jobs SET status=?, updated=? WHERE {where}", args).rowcount
+
+    def state(self, job_id, status) -> bool:
+        """Move a job to `status` if the transition is allowed; return whether it moved."""
         with self.connect() as db:
-            db.execute('UPDATE jobs SET status=?, updated=? WHERE id=?', (status, time.time(), job_id))
+            return self._transition(db, job_id, JobStatus(status)) > 0
 
     def get(self, job_id, owner):
         with self.lock, self.connect() as db:
@@ -90,8 +128,8 @@ class DataJobs:
     def cancel(self, job_id, owner):
         with self.lock:
             job = self.get(job_id, owner)
-            if job and job['status'] in {'queued', 'running'}:
-                self.state(job_id, 'cancelling')
+            if job and job['status'] in {JobStatus.QUEUED.value, JobStatus.RUNNING.value} \
+                    and self.state(job_id, JobStatus.CANCELLING):
                 scope = self.scopes.get(job_id)
             else:
                 scope = None
@@ -134,24 +172,22 @@ class DataJobs:
                 progress['phase'] = 'Starting'
                 try:
                     with self.lock:
-                        if self.get(job_id, owner)['status'] == 'cancelling':
-                            self.state(job_id, 'cancelled')
+                        if not self.state(job_id, JobStatus.RUNNING):
+                            self.state(job_id, JobStatus.CANCELLED)
                             return
-                        self.state(job_id, 'running')
                     scope.check()
                     result = work()
                     with self.lock:
-                        if self.get(job_id, owner)['status'] == 'cancelling':
-                            cleanup(result)
-                            self.state(job_id, 'cancelled')
-                        else:
+                        if self.state(job_id, JobStatus.COMPLETE):
                             self.results[job_id] = {'result': result}
-                            self.state(job_id, 'complete')
+                        else:
+                            cleanup(result)
+                            self.state(job_id, JobStatus.CANCELLED)
                 except Exception as exc:
                     with self.lock:
-                        status = self.get(job_id, owner)['status']
                         self.results[job_id] = {'error': getattr(exc, 'detail', 'Data operation failed. Retry or check server logs.'), 'status_code': getattr(exc, 'status_code', 500)}
-                        self.state(job_id, 'cancelled' if status == 'cancelling' else 'failed')
+                        if not self.state(job_id, JobStatus.FAILED):
+                            self.state(job_id, JobStatus.CANCELLED)
                 finally:
                     progress['finished'] = time.time()
                     _current_progress.reset(progress_token)
@@ -168,7 +204,9 @@ class DataJobs:
         with self.lock:
             self.closed = True
             with self.connect() as db:
-                db.execute("UPDATE jobs SET status='cancelling' WHERE status IN ('queued','running')")
+                db.execute("UPDATE jobs SET status=?, updated=? WHERE status IN (?,?)",
+                           (JobStatus.CANCELLING.value, time.time(),
+                            JobStatus.QUEUED.value, JobStatus.RUNNING.value))
             scopes = list(self.scopes.values())
         for scope in scopes:
             scope.cancel()

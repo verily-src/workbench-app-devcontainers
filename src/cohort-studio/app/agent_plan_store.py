@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import enum
 import hashlib
 import json
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -34,6 +36,37 @@ CREATE INDEX IF NOT EXISTS workflow_plans_owner_updated_idx
 CREATE INDEX IF NOT EXISTS workflow_plans_expiry_idx
     ON _studio_agent.workflow_plans (expires_at) WHERE expires_at IS NOT NULL;
 """
+
+
+class PlanStatus(str, enum.Enum):
+    BLOCKED = "blocked"
+    READY = "ready"
+    SUBMITTING = "submitting"
+    SUBMISSION_UNKNOWN = "submission_unknown"
+    SUBMITTED = "submitted"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+_REMOTE = {PlanStatus.SUBMITTED, PlanStatus.RUNNING, PlanStatus.COMPLETED, PlanStatus.FAILED}
+TRANSITIONS: dict[PlanStatus, frozenset[PlanStatus]] = {
+    PlanStatus.BLOCKED: frozenset(),
+    PlanStatus.READY: frozenset({PlanStatus.SUBMITTING}),
+    PlanStatus.SUBMITTING: frozenset({PlanStatus.SUBMITTING, PlanStatus.SUBMISSION_UNKNOWN, *_REMOTE}),
+    PlanStatus.SUBMISSION_UNKNOWN: frozenset({PlanStatus.SUBMISSION_UNKNOWN, *_REMOTE}),
+    PlanStatus.SUBMITTED: frozenset(_REMOTE),
+    PlanStatus.RUNNING: frozenset({PlanStatus.RUNNING, PlanStatus.COMPLETED, PlanStatus.FAILED}),
+    PlanStatus.COMPLETED: frozenset(),
+    PlanStatus.FAILED: frozenset(),
+}
+
+
+def can_transition(old: str, new: str) -> bool:
+    try:
+        return PlanStatus(new) in TRANSITIONS[PlanStatus(old)]
+    except ValueError:
+        return False
 
 
 class PlanRequest(BaseModel):
@@ -85,6 +118,10 @@ class AgentPlanStore:
             raise AgentPlanStoreError("Could not save workflow plan to Aurora.") from exc
 
     def get(self, plan_id: str, owner: str) -> dict:
+        return self.get_record(plan_id, owner)[0]
+
+    def get_record(self, plan_id: str, owner: str) -> tuple[dict, datetime]:
+        """Return the plan payload and its last database update time."""
         parsed_id = _plan_id(plan_id)
         owner_hash = _owner_hash(owner)
         try:
@@ -92,7 +129,7 @@ class AgentPlanStore:
                 agent_store._set_timeouts(conn)
                 agent_store._require_schema(conn)
                 row = conn.execute(text(f"""
-                    SELECT owner_hash, status, payload, expires_at
+                    SELECT owner_hash, status, payload, expires_at, updated_at
                     FROM {SCHEMA}.workflow_plans WHERE plan_id = :plan_id
                 """), {"plan_id": parsed_id}).mappings().first()
             if row is None:
@@ -101,7 +138,7 @@ class AgentPlanStore:
                 raise agent_store.AgentStoreOwnershipError("Workflow plan belongs to another owner.")
             if _is_expired(row):
                 raise agent_store.AgentStoreNotFound("Workflow plan expired.")
-            return dict(row["payload"])
+            return dict(row["payload"]), row["updated_at"]
         except (agent_store.AgentStoreError, AgentPlanStoreError):
             raise
         except SQLAlchemyError as exc:
@@ -155,7 +192,10 @@ class AgentPlanStore:
         except SQLAlchemyError as exc:
             raise AgentPlanStoreError("Could not claim workflow plan in Aurora.") from exc
 
-    def update(self, plan_id: str, owner: str, payload: dict[str, Any]) -> dict:
+    def update(self, plan_id: str, owner: str, payload: dict[str, Any], *,
+               expected_status: str | Iterable[str] | None = None) -> dict | None:
+        """Write a plan. With `expected_status`, write only if the stored status
+        still matches and the transition is allowed; return None on a mismatch."""
         parsed_id = _plan_id(plan_id)
         owner_hash = _owner_hash(owner)
         encoded = json.dumps(payload, separators=(",", ":"), sort_keys=True)
@@ -163,6 +203,13 @@ class AgentPlanStore:
             raise AgentPlanStoreError("Workflow plan is too large to store.")
         now = datetime.now(timezone.utc)
         status = str(payload.get("status", ""))
+        expected = None
+        if expected_status is not None:
+            expected = ([str(expected_status)] if isinstance(expected_status, str)
+                        else [str(value) for value in expected_status])
+            if not expected or not all(can_transition(old, status) for old in expected):
+                raise AgentPlanStoreError(
+                    f"Workflow plan cannot move from {'/'.join(expected)} to {status}.")
         try:
             with self.engine.begin() as conn:
                 agent_store._set_timeouts(conn)
@@ -172,12 +219,16 @@ class AgentPlanStore:
                     SET status = :new_status, payload = CAST(:payload AS jsonb), updated_at = :now,
                         expires_at = CASE WHEN :pending_status IN ('blocked', 'ready') THEN expires_at ELSE NULL END
                     WHERE plan_id = :plan_id AND owner_hash = :owner_hash
+                      AND (CAST(:any_status AS boolean) OR status = ANY(CAST(:expected AS text[])))
                     RETURNING plan_id
                 """), {"plan_id": parsed_id, "owner_hash": owner_hash,
                        "new_status": status, "pending_status": status,
+                       "any_status": expected is None, "expected": expected or [],
                        "payload": encoded, "now": now}).first()
             if row is None:
                 self.get(str(parsed_id), owner)
+                if expected is not None:
+                    return None
                 raise agent_store.AgentStoreNotFound("Workflow plan was not found.")
             return payload
         except (agent_store.AgentStoreError, AgentPlanStoreError):

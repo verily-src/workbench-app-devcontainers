@@ -56,6 +56,9 @@ const post = (body: unknown): RequestInit => ({
 });
 
 import { notifyDataReady } from "./notifications";
+import type { DataJobStatus } from "./dataJobStatus";
+import { isActiveDataJob, isTransientPollError, POLL_RETRY_BUDGET_MS,
+  POLL_RETRY_MAX_DELAY_MS } from "./dataJobStatus";
 
 /** Serializable recipe for each open tab (saved views and session restore). */
 export function viewSpecs(datasets: Dataset[]) {
@@ -93,7 +96,7 @@ export interface SavedViewState {
 }
 
 export interface DataJob {
-  job_id: string; kind: string; status: string; result?: OpenResult;
+  job_id: string; kind: string; status: DataJobStatus; result?: OpenResult;
   error?: string | { code?: string; message?: string }; status_code?: number;
   /** What is being loaded or joined, e.g. "cdm.person from omop". */
   label?: string;
@@ -118,6 +121,23 @@ export function forgetDataJob(id: string) {
 
 let dataSubmissions: Promise<unknown> = Promise.resolve();
 
+const POLL_MS = 750;
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Reads a job, retrying network and gateway errors with backoff for up to a minute. */
+async function pollDataJob(jobId: string, signal?: AbortSignal): Promise<DataJob> {
+  const started = Date.now();
+  for (let delay = POLL_MS; ; delay = Math.min(delay * 2, POLL_RETRY_MAX_DELAY_MS)) {
+    try {
+      return await request<DataJob>(`/api/data-jobs/${jobId}`);
+    } catch (error) {
+      if (signal?.aborted || !isTransientPollError(error)
+          || Date.now() - started + delay > POLL_RETRY_BUDGET_MS) throw error;
+      await sleep(delay);
+    }
+  }
+}
+
 async function dataJob<T>(kind: string, body: unknown, signal?: AbortSignal,
                           onProgress?: (job: DataJob) => void): Promise<T> {
   const started = dataSubmissions.then(() => request<DataJob>(`/api/data-jobs/${kind}`, post(body)));
@@ -129,11 +149,11 @@ async function dataJob<T>(kind: string, body: unknown, signal?: AbortSignal,
   const notify = (value: DataJob | null) => { if (kind !== "join_preview") window.dispatchEvent(
     new CustomEvent("studio-data-job", { detail: { id: job.job_id, job: value } })); };
   try {
-    while (["queued", "running", "cancelling"].includes(job.status)) {
+    while (isActiveDataJob(job.status)) {
       notify(job);
       onProgress?.(job);
-      await new Promise(resolve => setTimeout(resolve, 750));
-      job = await request<DataJob>(`/api/data-jobs/${job.job_id}`);
+      await sleep(POLL_MS);
+      job = await pollDataJob(job.job_id, signal);
     }
     forgetDataJob(job.job_id);
     notify(job);

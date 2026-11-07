@@ -98,3 +98,57 @@ def test_histogram_threshold_line_follows_a_parameter(measured_page):
     card.get_by_role("button", name="Edit axes").click()
     form = card.get_by_role("form", name="Chart axes")
     expect(form.get_by_role("group", name="Reference 1").get_by_label("Reference value")).to_have_value("8")
+
+
+def test_line_histogram_references_align_and_band_parameters_survive_edits(measured_page):
+    page = measured_page
+    _add(page, "rin_score", "line")
+    card = page.locator(".chart-card", has_text="rin_score").last
+    plot = card.locator(".chart-plot")
+    page.wait_for_function(WAIT % "o.series[0].type === 'line'", arg=plot.element_handle())
+    page.get_by_label("New parameter name").fill("upper")
+    page.get_by_role("button", name="Add parameter").click()
+    page.get_by_label("Parameter upper", exact=True).fill("8")
+    card.get_by_role("button", name="Edit axes").click()
+    form = card.get_by_role("form", name="Chart axes")
+    form.get_by_role("button", name="+ Reference line").click()
+    ref = form.get_by_role("group", name="Reference 1")
+    ref.get_by_label("Reference value").fill("6")
+    ref.get_by_label("Reference band parameter").select_option("upper")
+    form.get_by_role("button", name="Apply").click()
+    page.wait_for_function(WAIT % "o.series[o.series.length - 1].markArea", arg=plot.element_handle())
+    card.get_by_role("button", name="Edit axes").click()           # reopen and apply unchanged
+    card.get_by_role("form", name="Chart axes").get_by_role("button", name="Apply").click()
+    page.wait_for_timeout(300)
+    out = plot.evaluate("""el => {
+      const chart = window.__studioEcharts.getInstanceByDom(el);
+      const o = chart.getOption();
+      const lo = 5.0, width = (9.9 - 5.0) / o.xAxis[0].data.length;
+      return { band: o.series[o.series.length - 1].markArea.data[0].map(p => p.xAxis),
+               center: chart.convertToPixel({ xAxisIndex: 1 }, lo + width / 2), first: chart.convertToPixel({ xAxisIndex: 0 }, 0),
+               lastCenter: chart.convertToPixel({ xAxisIndex: 1 }, 9.9 - width / 2),
+               last: chart.convertToPixel({ xAxisIndex: 0 }, o.xAxis[0].data.length - 1) };
+    }""")
+    assert out["band"] == [6, 8]                                 # to_param kept through the editor
+    assert abs(out["center"] - out["first"]) < 0.5 and abs(out["lastCenter"] - out["last"]) < 0.5
+
+
+def test_box_tooltip_escapes_group_names(page, app_url, tmp_path):  # noqa: F811
+    path = tmp_path / "html.csv"
+    path.write_text("grp,v\n" + "".join(f"<img src=x onerror=window.__xss=1>,{i * 1.1:.1f}\nplain,{i * 1.3:.1f}\n" for i in range(15)))
+    page.goto(app_url)
+    expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
+    page.locator('input[type="file"]').set_input_files(str(path))
+    expect(page.locator(".hero .count", has_text="30")).to_be_visible(timeout=15000)
+    _add(page, "v", "box", y="grp")
+    card = page.locator(".chart-card", has_text="v by grp")
+    plot = card.locator(".chart-plot")
+    page.wait_for_function(WAIT % "o.series[0].type === 'boxplot'", arg=plot.element_handle())
+    html = plot.evaluate("""el => {
+      const chart = window.__studioEcharts.getInstanceByDom(el);
+      const cats = chart.getOption().xAxis[0].data;
+      const i = cats.findIndex(c => c.startsWith('<img'));
+      return chart.getOption().tooltip[0].formatter({ dataIndex: i });
+    }""")
+    assert "&lt;img" in html and "<img" not in html
+    assert not page.evaluate("window.__xss")

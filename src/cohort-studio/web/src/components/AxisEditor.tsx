@@ -11,10 +11,10 @@ function draft(axis?: AxisSettings): Draft {
     percent: Boolean(axis?.format?.percent) };
 }
 
-type RefDraft = { axis: "x" | "y"; value: string; param: string; to: string; label: string };
+type RefDraft = { axis: "x" | "y"; value: string; param: string; to: string; label: string; to_param?: string };
 const refDraft = (ref: ChartReference, axis: "x" | "y"): RefDraft => ({
   axis: ref.axis ?? axis, value: ref.value?.toString() ?? "", param: ref.param ?? "",
-  to: ref.to?.toString() ?? "", label: ref.label ?? "" });
+  to: ref.to?.toString() ?? "", label: ref.label ?? "", ...(ref.to_param ? { to_param: ref.to_param } : {}) });
 
 const MAX_REFERENCES = 5;
 
@@ -61,6 +61,7 @@ export function AxisEditor({ spec, onApply, onCancel, parameters = [] }: {
       if (value === undefined && !r.param) throw new Error(`Reference ${i + 1} needs a value or a parameter.`);
       return { ...(axes.length > 1 ? { axis: r.axis } : {}), ...(value !== undefined ? { value } : {}),
         ...(r.param ? { param: r.param } : {}), ...(to !== undefined ? { to } : {}),
+        ...(r.to_param ? { to_param: r.to_param } : {}),
         ...(r.label.trim() ? { label: r.label.trim() } : {}) };
     });
     return out.length ? out : undefined;
@@ -115,6 +116,10 @@ export function AxisEditor({ spec, onApply, onCancel, parameters = [] }: {
           {numbers.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}</select></label>}
         <label>Band to<input aria-label="Reference band end" type="number" step="any" value={r.to}
           onChange={e => setRef(i, { to: e.target.value })} placeholder="Line" /></label>
+        {numbers.length > 0 && <label>Band to parameter<select aria-label="Reference band parameter" value={r.to_param ?? ""}
+          onChange={e => setRef(i, { to_param: e.target.value || undefined })}>
+          <option value="">None</option>
+          {numbers.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}</select></label>}
         <label>Label<input aria-label="Reference label" maxLength={60} value={r.label}
           onChange={e => setRef(i, { label: e.target.value })} placeholder="e.g. HbA1c 6.5" /></label>
         <button type="button" className="quiet" aria-label={`Remove reference ${i + 1}`}

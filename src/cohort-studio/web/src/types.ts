@@ -452,6 +452,21 @@ export interface ExtractInfo {
   refreshable: boolean;
   /** The source recipe it was built from (join or SQL); Data Builder reopens it to edit. */
   recipe?: SourceRef | null;
+  /** Scheduled refresh; null when off. Times are UTC ISO strings. */
+  schedule?: ExtractSchedule | null;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+  last_run_status?: "running" | "ok" | "failed" | "skipped" | null;
+  last_run_error?: string | null;
+}
+
+/** weekday: 0 = Monday … 6 = Sunday; hour/minute are wall-clock time in tz. */
+export interface ExtractSchedule {
+  every: "off" | "hourly" | "daily" | "weekly";
+  minute?: number;
+  hour?: number;
+  weekday?: number;
+  tz?: string;
 }
 
 export type OmopDomain = "condition" | "drug" | "procedure" | "measurement"

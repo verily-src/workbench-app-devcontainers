@@ -1,4 +1,4 @@
-import type { ExtractInfo, JoinOutput, Parameter,
+import type { ExtractInfo, ExtractSchedule, JoinOutput, Parameter,
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
@@ -639,6 +639,11 @@ export const api = {
                    onProgress?: (job: DataJob) => void) =>
     dataJob<OpenResult>("refresh_extract", { kind, resource_id: resourceId, table },
       undefined, onProgress),
+
+  /** Set or clear (every: "off") an extract's refresh schedule. */
+  setExtractSchedule: (kind: string, resourceId: string, table: string, schedule: ExtractSchedule) =>
+    request<{ extract: ExtractInfo }>("/api/extracts/schedule", {
+      ...post({ kind, resource_id: resourceId, table, schedule }), method: "PUT" }),
 
   extractInfo: (resourceId: string, table: string) =>
     request<{ extract: ExtractInfo | null }>(

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../api";
 import type { ExportJob, OpenResult } from "../api";
 import type { ChartMeasure, ChartSpec, ChartStyle, Dataset, Filter, MarkType, MeasureAgg, Source } from "../types";
@@ -9,6 +9,7 @@ import { Popover } from "./Popover";
 import { CriteriaGroups } from "./CriteriaGroups";
 import { useAiFeatures, usePlink } from "../features";
 import { extractTarget } from "../extract";
+import { ExtractScheduleControl, scheduledFailure } from "./ExtractScheduleControl";
 import { describeFilter } from "../filterText";
 import { DatasetSettings } from "./DatasetSettings";
 import { ComparePanel } from "./ComparePanel";
@@ -53,9 +54,31 @@ function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
       .catch(() => { if (!stale) onUpdate({ extract: null }); });
     return () => { stale = true; };
   }, [key, dataset.extract === undefined]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scheduled = Boolean(dataset.extract?.schedule);
+  const latest = useRef(dataset);
+  latest.current = dataset;
+  useEffect(() => {
+    // Scheduled runs happen on the server; pick up their outcome, and requery
+    // the tab when a run replaced the rows.
+    if (!target || !scheduled) return;
+    const id = window.setInterval(() => {
+      api.extractInfo(target.resource_id, target.table)
+        .then((out) => {
+          const ds = latest.current;
+          if (!out.extract) return;
+          const rewritten = ds.extract && out.extract.refreshed_at !== ds.extract.refreshed_at;
+          onUpdate(rewritten && !ds.extractRefreshing
+            ? { extract: out.extract, refreshNonce: (ds.refreshNonce ?? 0) + 1, refreshing: true }
+            : { extract: out.extract });
+        })
+        .catch(() => undefined);
+    }, 60000);
+    return () => window.clearInterval(id);
+  }, [key, scheduled]); // eslint-disable-line react-hooks/exhaustive-deps
   const info = dataset.extract;
   if (!target || !info) return null;
   const refreshed = new Date(info.refreshed_at);
+  const failure = scheduledFailure(info);
   return (
     <div className="extract-bar" role="group" aria-label="Extract"
          title={`Extract of ${info.rows.toLocaleString()} rows, refreshed ${refreshed.toLocaleString()}`}>
@@ -67,6 +90,13 @@ function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
               onClick={() => onRefresh?.(dataset.id)}>
         {dataset.extractRefreshing ? "Refreshing…" : "Refresh extract"}
       </button>
+      {onRefresh && (info.refreshable || info.schedule) && (
+        <ExtractScheduleControl key={`${key}:${JSON.stringify(info.schedule ?? null)}`} info={info} kind={target.kind} resourceId={target.resource_id}
+                                table={target.table} disabled={dataset.extractRefreshing}
+                                onSaved={(extract) => onUpdate({ extract })} />
+      )}
+      {failure && <span className="extract-failed" role="status" title={failure}>
+        Scheduled refresh failed</span>}
       {onEdit && (info.recipe?.kind === "join" || info.recipe?.kind === "sql") && (
         <button type="button" className="quiet" disabled={dataset.extractRefreshing}
                 title="Open the joins or SQL behind this extract, change them, and save over it"

@@ -241,3 +241,22 @@ def test_cancelled_extract_keeps_the_old_table(on_target):
     finally:
         query_cancellation.current.reset(token)
     assert _count(on_target, table) == 10 and _tmp_tables(on_target) == 0
+
+
+def test_capped_bigquery_sample_is_not_extracted(on_target):
+    """A large BigQuery table opens as a ROW_CAP sample in memory; an extract of it
+    would miss rows, so the job fails with 400 and writes no table. A capped
+    in-memory join (every row already in memory) still extracts."""
+    client = TestClient(main.app)
+    table = _name()
+    ds = datasets.open_dataset(_frame(10), "pub / big", capped=True)
+    datasets.get(ds["dataset_id"])["source_ref"] = {"kind": "bq", "resource_id": "bq:pub", "table": "big"}
+    try:
+        failed = _wait(client, client.post("/api/data-jobs/extract", json={
+            "dataset_id": ds["dataset_id"], "resource_id": "res", "table": table}).json())
+        assert failed["status"] == "failed" and failed["status_code"] == 400, failed
+        assert "sample" in failed["error"]
+        with on_target.connect() as conn:
+            assert not extracts._table_exists(conn, table)
+    finally:
+        datasets.close_dataset(ds["dataset_id"])

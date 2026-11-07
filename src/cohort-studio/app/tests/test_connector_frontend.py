@@ -74,14 +74,14 @@ def test_postgres_athena_and_s3_use_shared_datasource_open_flow(page: Page, app_
 
     page.goto(app_url)
     load_table(page, "postgres:postgres:rds-clinical", "cdm.person")
-    expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
+    expect(page.locator(".tab.active", has_text="cdm.person")).to_be_visible(timeout=10000)
     assert opened[-1]["source_ref"] == {
         "kind": "postgres", "resource_id": "postgres:rds-clinical",
         "table": "person", "schema": "cdm",
     }
 
     load_table(page, "athena:iceberg-catalog", "clinical.person")
-    expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
+    expect(page.locator(".tab.active", has_text="clinical.person")).to_be_visible(timeout=10000)
     assert opened[-1]["source_ref"] == {
         "kind": "athena", "resource_id": "iceberg-catalog",
         "table": "person", "schema": "clinical",

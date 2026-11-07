@@ -34,7 +34,10 @@ interface Props {
   onOpenResult: (opened: OpenResult, title: string, sourceRef?: SourceRef) => void;
 }
 
-export function OpenTableCard({ source, info, targets, extractReason, busy, onOpenLive, onOpenResult }: Props) {
+export function OpenTableCard({ source, info, targets, extractReason: noTarget, busy, onOpenLive, onOpenResult }: Props) {
+  // BigQuery tables open as a capped sample, so an extract would miss rows (the server refuses it too).
+  const extractReason = noTarget ?? (source.kind === "bq"
+    ? "Extract needs every row; BigQuery tables open as a 100,000-row sample." : null);
   const [mode, setMode] = useState<"live" | "extract">("live");
   const [target, setTarget] = useState(targets[0]?.id ?? "");
   const [name, setName] = useState(() => extractName(info));

@@ -36,7 +36,8 @@ def _mock(page):
 
     page.route("**/api/datasources", lambda r: reply(r, {"ready": True, "catalogs_pending": False, "sources": [
         {"kind": "aurora", "id": "omop", "label": "OMOP"},
-        {"kind": "s3", "id": "lake", "label": "Lake"}]}))
+        {"kind": "s3", "id": "lake", "label": "Lake"},
+        {"kind": "bq", "id": "bq:pub", "label": "Public BigQuery"}]}))
     page.route("**/api/config", lambda r: reply(r, {"chart_palette": "verily"}))
     page.route("**/api/workflows**", lambda r: reply(r, {"available": False, "jobs": [], "running_count": 0}))
     page.route("**/api/views/all", lambda r: reply(r, {"views": [], "unavailable": [], "pending": []}))
@@ -161,6 +162,15 @@ def test_a_table_opens_as_an_extract_from_data_builder(page, app_url):
     expect(source.get_by_role("button", name="Edit in Data Builder")).to_have_count(0)
     source.get_by_role("button", name="⋈ Join…").click()
     expect(page.locator(".jc .jc-node")).to_have_count(1, timeout=10000)
+
+
+def test_bigquery_tables_open_live_only(page, app_url):
+    """A BigQuery table opens as a capped sample, so Extract (every row) is off."""
+    _mock(page)
+    page.goto(app_url)
+    card = pick_table(page, "bq:bq:pub", "raw/a.csv")
+    expect(card.get_by_role("radio", name="Extract")).to_be_disabled()
+    expect(card.get_by_role("radio", name="Live")).to_be_checked()
 
 
 def test_upload_lives_in_data_builder_and_the_card_says_upload(page, app_url):

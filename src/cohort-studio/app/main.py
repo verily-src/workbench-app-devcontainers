@@ -1157,6 +1157,11 @@ def run_extract(req: ExtractRequest) -> dict:
         ds = datasets.get(req.dataset_id)
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    # A BigQuery table opens as a ROW_CAP sample held in memory; extracting it would miss rows.
+    if ((ds.get("source_ref") or {}).get("kind") == "bq" and ds.get("capped")
+            and not ds.get("live_source") and not ds.get("disk_source")):
+        raise HTTPException(400, f"This BigQuery table opened as a {queries.ROW_CAP:,}-row sample, "
+                                 "so an extract would miss rows. Open it Live instead.")
     try:
         data_jobs.report("Writing rows", rows=0)
         info = extracts.write(ds, req.resource_id, req.table, req.title or ds["source"],

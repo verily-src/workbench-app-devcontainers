@@ -156,12 +156,21 @@ class SQLPreviewRequest(BaseModel):
             raise ValueError("SQL source name cannot be blank.")
         return value
 
+class AxisFormat(BaseModel):
+    """Display-only number format for a value axis, its tooltips and labels."""
+    model_config = ConfigDict(extra="forbid")
+    decimals: int | None = Field(default=None, ge=0, le=6)
+    unit: str | None = Field(default=None, max_length=16)
+    percent: bool | None = None
+
+
 class AxisSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     label: str | None = Field(default=None, max_length=120)
     scale: Literal["linear", "log"] = "linear"
     min: float | None = None
     max: float | None = None
+    format: AxisFormat | None = None
 
     @model_validator(mode="after")
     def valid_bounds(self):
@@ -178,6 +187,39 @@ class ChartMarks(BaseModel):
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     size: Literal["s", "l"] | None = None
     labels: bool | None = None
+    stack: bool | None = None
+
+
+class ChartMeasure(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agg: Literal["count", "count_distinct", "sum", "mean", "median", "min", "max"] = "count"
+    column: str | None = Field(default=None, min_length=1, max_length=512)
+
+    @model_validator(mode="after")
+    def needs_column(self):
+        if self.agg == "count":
+            self.column = None
+        elif not self.column:
+            raise ValueError(f"Choose a field for the {self.agg.replace('_', ' ')} measure.")
+        return self
+
+
+class ChartReference(BaseModel):
+    """A reference line (value) or band (value to `to`), drawn on one numeric axis.
+    `param`/`to_param` follow a number parameter of the tab; the values are the fallback."""
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    axis: Literal["x", "y"] | None = None
+    value: float | None = None
+    param: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,39}$")
+    to: float | None = None
+    to_param: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,39}$")
+    label: str | None = Field(default=None, max_length=60)
+
+    @model_validator(mode="after")
+    def has_value(self):
+        if self.value is None and self.param is None:
+            raise ValueError("A reference line needs a value or a parameter.")
+        return self
 
 
 class ChartSpec(BaseModel):
@@ -185,7 +227,7 @@ class ChartSpec(BaseModel):
     # Display only (bar/column/line/area/pie/donut); the query uses `kind`.
     style: Literal["bar", "column", "line", "area", "pie", "donut"] | None = None
     mark: Literal["automatic", "bar", "column", "line", "area", "pie", "donut",
-                  "circle", "density", "map"] | None = None
+                  "circle", "density", "map", "box"] | None = None
     marks: ChartMarks | None = None
     x: str
     y: str | None = None
@@ -193,11 +235,21 @@ class ChartSpec(BaseModel):
     wide: bool | None = None
     x_axis: AxisSettings | None = None
     y_axis: AxisSettings | None = None
+    # Data-affecting (bar kind only): what each bar measures, and one series per value.
+    measure: ChartMeasure | None = None
+    series: str | None = Field(default=None, min_length=1, max_length=512)
+    # Display only: reference lines and bands.
+    references: list[ChartReference] | None = Field(default=None, max_length=5)
 
     @model_validator(mode="after")
     def valid_map(self):
         if self.kind == "map" and (not self.y or self.y == self.x):
             raise ValueError("Map requires distinct longitude and latitude columns.")
+        measured = self.series or (self.measure and self.measure.agg != "count")
+        if measured and self.kind != "bar":
+            raise ValueError("Measures and Split by apply to bar, column, line and area charts.")
+        if self.series and self.series in (self.x, self.y):
+            raise ValueError("Split by needs a field other than the chart field.")
         return self
 
 class RowSort(BaseModel):
@@ -1630,6 +1682,16 @@ class ViewDataset(BaseModel):
         check(self.filters)
         for cohort in self.cohorts:
             check(cohort.filters)
+        return self
+
+    @model_validator(mode="after")
+    def _chart_references_use_number_parameters(self):
+        kinds = {p.name: p.kind for p in self.parameters}
+        for chart in self.charts:
+            for ref in chart.references or []:
+                for name in (ref.param, ref.to_param):
+                    if name is not None and kinds.get(name) != "number":
+                        raise ValueError(f"A reference line uses {name!r}, which is not a number parameter.")
         return self
 
 class SaveViewRequest(BaseModel):

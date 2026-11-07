@@ -164,6 +164,8 @@ def _chart(agg: _Agg, chart: dict, columns: set) -> dict:
         return {"kind": kind, "x": x, "data": []}
     if chart_measures.is_measured(chart):
         return chart_measures.sql_bar(_dialect(agg), chart)
+    if kind == "box":
+        return chart_measures.sql_box(_dialect(agg), chart)
     if kind == "bar":
         return _bar(agg, x)
     if kind == "histogram":

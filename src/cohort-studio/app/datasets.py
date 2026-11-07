@@ -242,6 +242,8 @@ def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
         return {"kind": kind, "x": x, "data": []}
     if chart_measures.is_measured(chart):
         return chart_measures.frame_bar(full, filt, chart)
+    if kind == "box":
+        return chart_measures.frame_box(full, filt, chart)
     if kind == "bar":
         return _bar_aggregate(full, filt, x)
     if kind == "histogram":

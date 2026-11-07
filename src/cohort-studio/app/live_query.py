@@ -381,12 +381,13 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
     qx = f"live.{_q(columns[x])}"
     qy = f"live.{_q(columns[y])}" if y else None
     source = live_source["sql"]
-    if chart_measures.is_measured(chart):
-        return chart_measures.sql_bar(chart_measures.Dialect(
+    if chart_measures.is_measured(chart) or kind == "box":
+        dialect = chart_measures.Dialect(
             rel=table, col=lambda name: f"live.{_q(columns[name])}",
             number=lambda name: _numeric(f"live.{_q(columns[name])}", numeric_types.get(name)),
             text_type="text", named=True, where=where, where_params=params,
-            run=lambda sql, values: _query(conn, live_source, sql, values).all(), postgres=True), chart)
+            run=lambda sql, values: _query(conn, live_source, sql, values).all(), postgres=True)
+        return (chart_measures.sql_box if kind == "box" else chart_measures.sql_bar)(dialect, chart)
     if kind == "bar":
         integer = numeric_types.get(x) in _INTEGER_TYPE_OIDS
         # One statement: top-N groups with their filtered counts plus both totals
@@ -509,7 +510,7 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
             order = f"live.{_q(columns[sort['column']])} {sort['direction'].upper()} NULLS LAST, {order}"
         needed_numeric = [f["column"] for f in filter_rules.leaves(filters) if f.get("kind") in ("range", "categorical")]
         if summary:
-            needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") in ("histogram", "bar"))
+            needed_numeric.extend(c["x"] for c in chart_specs if c.get("kind") in ("histogram", "bar", "box"))
             needed_numeric.extend(name for c in chart_specs for name in chart_measures.columns_used(c))
         numeric_types = _numeric_columns(conn, live_source, needed_numeric)
         where, params = _where(filters, columns, numeric_types)

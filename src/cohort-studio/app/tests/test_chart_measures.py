@@ -4,6 +4,7 @@ import math
 import uuid
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pytest
 from sqlalchemy import text
@@ -22,7 +23,7 @@ def _frame() -> pd.DataFrame:
         for j in range(20 + i):
             n = len(rows)
             rows.append({"dx": f"d{i:02d}", "grp": f"g{n % 8}", "patient": f"p{n % 37}",
-                         "lab": None if n % 11 == 0 else round(4 + (n * 7919 % 97) / 10, 1),
+                         "lab": None if n % 11 == 0 else 40.0 if n % 50 == 7 else round(4 + (n * 7919 % 97) / 10, 1),
                          "age": 20 + n % 60})
     return pd.DataFrame(rows)
 
@@ -35,6 +36,9 @@ CHARTS = [
     {"kind": "bar", "x": "dx", "series": "grp"},
     {"kind": "bar", "x": "dx", "series": "grp", "measure": {"agg": "mean", "column": "lab"}},
     {"kind": "bar", "x": "grp", "series": "dx", "measure": {"agg": "median", "column": "lab"}},
+    {"kind": "box", "x": "lab", "y": "dx"},
+    {"kind": "box", "x": "lab"},
+    {"kind": "box", "x": "age", "y": "grp"},
 ]
 
 
@@ -57,7 +61,7 @@ def _close(a, b):
 def expected():
     df = _frame()
     filt = datasets.apply_filters(df, FILTERS)
-    return [chart_measures.frame_bar(df, filt, c) for c in CHARTS]
+    return [datasets.chart_aggregate(df, filt, c) for c in CHARTS]
 
 
 def test_pandas_shapes_and_values(expected):
@@ -151,3 +155,46 @@ def test_a_real_other_value_keeps_its_own_group():
         assert out["series"] == ["Other", "a", "b", "c", "d", "e", "Other values"]
         assert out["other_series"] == "Other values"
         assert out["data"][0]["values"] == [10, 1, 1, 1, 1, 1, 3]
+
+
+def test_box_plot_quartiles_and_whiskers(expected):
+    df = _frame()
+    filt = datasets.apply_filters(df, FILTERS)
+    single = next(e for e in expected if e["kind"] == "box" and not e["y"])
+    assert len(single["data"]) == 1 and single["data"][0]["category"] is None
+    values = filt.lab.dropna().to_numpy()
+    q1, med, q3 = np.quantile(values, [0.25, 0.5, 0.75])
+    box = single["data"][0]
+    assert math.isclose(box["q1"], q1) and math.isclose(box["median"], med) and math.isclose(box["q3"], q3)
+    fence = q3 + 1.5 * (q3 - q1)
+    assert box["max"] == 40.0 and box["high"] == values[values <= fence].max() < 40
+    assert box["outliers"] == int((values > fence).sum() + (values < q1 - 1.5 * (q3 - q1)).sum()) > 0
+    assert box["n"] == len(values)
+    grouped = next(e for e in expected if e["kind"] == "box" and e["y"] == "dx")
+    assert [d["category"] for d in grouped["data"]][-1] == "Other"
+    assert grouped["other_category"] == "Other" and len(grouped["data"]) == 13
+
+
+def test_reference_lines_and_axis_format_are_validated(client):
+    import main
+    dataset_id = datasets.open_dataset(_frame(), "labs.csv")["dataset_id"]
+    url = f"/api/datasets/{dataset_id}/query"
+    good = {"kind": "histogram", "x": "lab", "references": [
+        {"axis": "x", "value": 6.5, "label": "HbA1c 6.5"}, {"value": 2, "to": 4, "param": "low"}],
+        "y_axis": {"format": {"decimals": 1, "unit": "%", "percent": False}}}
+    assert client.post(url, json={"charts": [good]}).status_code == 200
+    for chart, message in (
+        ({**good, "references": [{"label": "no value"}]}, "needs a value"),
+        ({**good, "references": [{"value": 1, "param": "bad name"}]}, "pattern"),
+        ({**good, "references": [{"value": 1}] * 6}, "at most 5"),
+        ({**good, "y_axis": {"format": {"decimals": 9}}}, "less than or equal"),
+        ({**good, "y_axis": {"format": {"unit": "x" * 17}}}, "at most 16"),
+    ):
+        response = client.post(url, json={"charts": [chart]})
+        assert response.status_code == 422, (chart, response.text)
+        assert message in response.text, response.text
+    source = {"kind": "aurora", "resource_id": RID, "table": "labs"}
+    view = {"source": source, "charts": [good], "parameters": [{"name": "low", "kind": "number", "value": 3}]}
+    main.ViewDataset.model_validate(view)
+    with pytest.raises(ValueError, match="not a number parameter"):
+        main.ViewDataset.model_validate({**view, "parameters": []})

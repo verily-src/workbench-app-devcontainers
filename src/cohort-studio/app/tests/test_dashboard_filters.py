@@ -61,3 +61,17 @@ def test_bad_dashboard_filters_are_rejected(client, dashboard, message):
     response = _save(client, dashboard)
     assert response.status_code == 422
     assert message in response.text
+
+
+def test_compare_stays_inside_the_dashboard_scope(client):
+    import pandas as pd
+    import datasets
+    frame = pd.DataFrame({"site": ["x"] * 6 + ["y"] * 4, "sex": list("FFFMMM") + list("FFMM")})
+    opened = datasets.open_dataset(frame, "people")
+    body = {"filters_a": [SEX], "filters_b": [], "b_is_rest": True,
+            "scope": [{"column": "site", "kind": "categorical", "values": ["x"]}]}
+    got = client.post(f"/api/datasets/{opened['dataset_id']}/compare", json=body).json()
+    assert (got["a_n"], got["b_n"]) == (3, 3)          # rest = site x minus A, not every other row
+    body.update(b_is_rest=False, filters_b=[{"column": "sex", "kind": "categorical", "values": ["M"]}])
+    got = client.post(f"/api/datasets/{opened['dataset_id']}/compare", json=body).json()
+    assert (got["a_n"], got["b_n"]) == (3, 3)

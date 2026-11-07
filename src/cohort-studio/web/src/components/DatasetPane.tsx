@@ -501,7 +501,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
       </div>}
 
       {showCompare && (
-        <ComparePanel dataset={scoped}onClose={() => setShowCompare(false)} />
+        <ComparePanel dataset={dataset} scope={dashboardFilters} onClose={() => setShowCompare(false)} />
       )}
 
       {showDerive && (

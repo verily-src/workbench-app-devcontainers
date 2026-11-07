@@ -70,9 +70,32 @@ def test_filter_applies_to_every_tab_with_the_column(page: Page, app_url: str):
         "button", name="Apply to all tabs", exact=True).click()
     _tab(page, "people.csv")
     expect(page.locator(".hero .count")).to_have_text("6", timeout=10000)
+    # Compare groups stays inside the dashboard filters: "rest" is not every other row.
+    compares = []
+    page.on("request", lambda r: "/compare" in r.url and compares.append(r.post_data_json))
+    page.get_by_role("button", name="Compare groups", exact=True).click()
+    panel = page.locator(".compare-panel")
+    panel.get_by_role("button", name="Compare", exact=True).click()
+    expect(panel.locator(".data-table")).to_be_visible(timeout=10000)
+    assert compares[-1]["scope"] == [{"column": "sex", "kind": "categorical", "values": ["F"]}]
+    page.get_by_role("button", name="Hide compare", exact=True).click()
+
     strip.get_by_role("button", name="Remove dashboard filter sex: F", exact=True).click()
     expect(strip).to_have_count(0)
     expect(page.locator(".hero .count")).to_have_text("10", timeout=10000)
+
+    # Closing every tab drops the dashboard filters; the next table starts without them.
+    sex = page.locator(".filter-group", has_text="sex")
+    if not sex.get_by_label("F", exact=True).is_visible():
+        sex.locator("summary").click()
+    sex.get_by_label("F", exact=True).check()
+    sex.get_by_role(
+        "button", name="Apply to all tabs", exact=True).click()
+    expect(strip).to_be_visible()
+    while page.locator(".tab").count():
+        page.locator(".tab").first.get_by_role("button", name="✕", exact=True).click()
+    _upload(page, "labs.csv", LABS, 8)
+    expect(strip).to_have_count(0)
 
 
 def _routes(page, queries, saves, view_state=None):

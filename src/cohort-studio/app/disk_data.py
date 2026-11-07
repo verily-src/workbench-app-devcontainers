@@ -1443,14 +1443,15 @@ def aggregate(source: dict, agg: str, column: str, group_by: str,
 
 
 def compare(source: dict, profiles: list[dict], filters_a: list[dict],
-            filters_b: list[dict], b_is_rest: bool = False) -> dict:
+            filters_b: list[dict], b_is_rest: bool = False, scope=()) -> dict:
     import compare as compare_module
     from scipy import stats
 
     columns = source["columns"]
     a_where, a_params = _where(filters_a, columns)
     if b_is_rest:
-        b_where, b_params = f"NOT COALESCE(({a_where}), FALSE)", a_params
+        s_where, s_params = _where(list(scope), columns)
+        b_where, b_params = f"({s_where}) AND NOT COALESCE(({a_where}), FALSE)", [*s_params, *a_params]
     else:
         b_where, b_params = _where(filters_b, columns)
     compare_scan_count = 2 + 4 * len(profiles)

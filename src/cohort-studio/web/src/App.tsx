@@ -620,6 +620,8 @@ export default function App() {
     const ds = datasets[index];
     api.closeDataset(ds.id).catch(() => undefined);
     setDatasets((prev) => prev.filter((_, i) => i !== index));
+    // Dashboard filters belong to the open tabs; the next table starts without them.
+    if (datasets.length <= 1) setDashboardFiltersState([]);
     setActive((a) => Math.max(0, a > index ? a - 1 : Math.min(a,
       datasets.length - 2)));
   };

@@ -4,6 +4,8 @@ import type { Cohort, Dataset, Filter } from "../types";
 
 interface Props {
   dataset: Dataset;
+  /** Dashboard filters: both groups, and "rest", stay inside them. */
+  scope?: Filter[];
   onClose: () => void;
 }
 
@@ -22,7 +24,7 @@ function summaryText(row: CompareRow, side: "a" | "b"): string {
 const fmtP = (p: number | null) =>
   p == null ? "—" : p < 0.001 ? p.toExponential(1) : p.toFixed(3);
 
-export function ComparePanel({ dataset, onClose }: Props) {
+export function ComparePanel({ dataset, scope = [], onClose }: Props) {
   const cohorts = dataset.cohorts ?? [];
   const [aKey, setAKey] = useState(CURRENT);
   const [bKey, setBKey] = useState(REST);
@@ -40,7 +42,7 @@ export function ComparePanel({ dataset, onClose }: Props) {
     setBusy(true); setError(""); setResult(null);
     try {
       setResult(await api.compare(
-        dataset.id, filtersFor(aKey), filtersFor(bKey), bKey === REST));
+        dataset.id, filtersFor(aKey), filtersFor(bKey), bKey === REST, scope));
     } catch (e) {
       setError((e as Error).message);
     } finally {

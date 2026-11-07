@@ -183,15 +183,16 @@ def _benjamini_hochberg(pvals):
     return qvals
 
 
-def compare(live_source, profiles, filters_a, filters_b, b_is_rest=False):
+def compare(live_source, profiles, filters_a, filters_b, b_is_rest=False, scope=()):
     columns = live_source["columns"]
     a_where, a_params = _where(filters_a, columns, "a")
     b_where, b_params = _where(filters_b, columns, "b")
     source_params = live_source.get("params", {})
     params = {**source_params, **a_params, **b_params}
     if b_is_rest:
-        b_where = f"NOT COALESCE(({a_where}), FALSE)"
-        params = {**source_params, **a_params}
+        s_where, s_params = _where(list(scope), columns, "s")
+        b_where = f"({s_where}) AND NOT COALESCE(({a_where}), FALSE)"
+        params = {**source_params, **a_params, **s_params}
     table = f"({live_source['sql']}) AS src"
     results = []
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:

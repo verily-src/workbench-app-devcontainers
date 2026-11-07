@@ -112,6 +112,10 @@ def test_s3_sources_join_and_page_past_preview(tmp_path, monkeypatch, client):
             {"column": "join_id", "kind": "range", "min": 0, "max": 49_999}], [
             {"column": "join_id", "kind": "range", "min": 50_000, "max": 100_004}])
         assert compared["a_n"] == 50_000 and compared["b_n"] == 50_005
+        scoped = compare.compare(body["dataset_id"], [
+            {"column": "join_id", "kind": "range", "min": 0, "max": 4_999}], [], b_is_rest=True,
+            scope=[{"column": "join_id", "kind": "range", "min": 0, "max": 9_999}])
+        assert (scoped["a_n"], scoped["b_n"]) == (5_000, 5_000)
         assert any(row["column"] == "group_name" for row in compared["results"])
 
         ui, actions = {"filters": [], "charts": []}, []

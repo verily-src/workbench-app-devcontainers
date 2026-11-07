@@ -540,9 +540,9 @@ export const api = {
     request<SqlPreview>("/api/sql/preview", post({ resource_id: resourceId, sql })),
 
   compare: (datasetId: string, filtersA: Filter[], filtersB: Filter[],
-            bIsRest: boolean) =>
+            bIsRest: boolean, scope: Filter[] = []) =>
     request<CompareResult>(`/api/datasets/${datasetId}/compare`, post({
-      filters_a: filtersA, filters_b: filtersB, b_is_rest: bIsRest })),
+      filters_a: filtersA, filters_b: filtersB, b_is_rest: bIsRest, scope })),
 
   derive: (datasetId: string, spec: Record<string, unknown>) =>
     request<{ name: string; rows: number; columns: ColumnProfile[];

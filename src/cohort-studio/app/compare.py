@@ -115,18 +115,20 @@ def _p(x) -> float | None:
     return round(x, -int(math.floor(math.log10(abs(x)))) + 2)
 
 def compare(dataset_id: str, filters_a: list[dict], filters_b: list[dict],
-            b_is_rest: bool = False) -> dict:
-
+            b_is_rest: bool = False, scope: list[dict] | None = None) -> dict:
+    """``scope`` (dashboard filters) limits both groups; "rest" is the scope minus A."""
+    scope = list(scope or [])
+    filters_a, filters_b = [*scope, *filters_a], [*scope, *filters_b]
     ds = datasets.get(dataset_id)
     if ds.get("live_source") is not None:
         import live_compare
         return live_compare.compare(ds["live_source"], _profiles(ds),
-                                   filters_a, filters_b, b_is_rest)
+                                   filters_a, filters_b, b_is_rest, scope)
     if ds.get("disk_source") is not None:
         import disk_data
         return disk_data.compare(ds["disk_source"], _profiles(ds),
-                                 filters_a, filters_b, b_is_rest)
-    df = ds["df"]
+                                 filters_a, filters_b, b_is_rest, scope)
+    df = datasets.apply_filters(ds["df"], scope)
     a = datasets.apply_filters(df, filters_a)
     if b_is_rest:
         b = df.loc[~df.index.isin(a.index)]

@@ -305,6 +305,8 @@ class CompareRequest(BaseModel):
     filters_a: list[Filter] = Field(default_factory=list)
     filters_b: list[Filter] = Field(default_factory=list)
     b_is_rest: bool = False
+    # Dashboard filters: both groups (and "rest") stay inside them.
+    scope: list[Filter] = Field(default_factory=list, max_length=20)
 
 class ExportCohortRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -1303,7 +1305,8 @@ def compare_cohorts(dataset_id: str, req: CompareRequest):
             dataset_id,
             [f.model_dump() for f in req.filters_a],
             [f.model_dump() for f in req.filters_b],
-            b_is_rest=req.b_is_rest)
+            b_is_rest=req.b_is_rest,
+            scope=[f.model_dump() for f in req.scope])
     except datasets.DatasetNotFound:
         raise HTTPException(404, "Dataset expired or unknown — reload it.")
     except ValueError as e:

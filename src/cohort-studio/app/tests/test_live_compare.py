@@ -45,6 +45,12 @@ def test_live_compare_uses_full_source_and_null_safe_rest(engine, monkeypatch):
             [], b_is_rest=True)
         assert result["scope"] == "database"
         assert (result["a_n"], result["b_n"], result["n_overlap"]) == (60000, 60001, 0)
+        # Dashboard scope: both A and "rest" stay inside it.
+        scoped = compare.compare(
+            opened["dataset_id"],
+            [{"column": "cohort", "kind": "categorical", "values": ["A"]}],
+            [], b_is_rest=True, scope=[{"column": "entity_id", "kind": "range", "min": 1, "max": 100}])
+        assert (scoped["a_n"], scoped["b_n"]) == (50, 50)
         metric = next(r for r in result["results"] if r["column"] == "metric")
         assert metric["a"]["n"] == 60000
         assert metric["b"]["n"] == 60000

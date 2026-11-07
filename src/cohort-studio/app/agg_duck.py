@@ -3,6 +3,7 @@ import os
 import duckdb
 import numpy as np
 
+import chart_measures
 import queries
 import filter_rules
 
@@ -151,10 +152,20 @@ def _heatmap(agg: _Agg, x: str, y: str) -> dict:
     return {"kind": "heatmap", "x": x, "y": y,
             "data": [[a, b, int(c)] for a, b, c in rows]}
 
+def _dialect(agg: _Agg) -> chart_measures.Dialect:
+    return chart_measures.Dialect(
+        rel="t", col=_q, number=lambda name: chart_measures.duck_number(_q(name)),
+        text_type="VARCHAR", named=False, where=agg.where, where_params=agg.params,
+        run=agg.all, postgres=False)
+
 def _chart(agg: _Agg, chart: dict, columns: set) -> dict:
     kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
     if x not in columns or (y and y not in columns):
         return {"kind": kind, "x": x, "data": []}
+    if chart_measures.is_measured(chart):
+        return chart_measures.sql_bar(_dialect(agg), chart)
+    if kind == "box":
+        return chart_measures.sql_box(_dialect(agg), chart)
     if kind == "bar":
         return _bar(agg, x)
     if kind == "histogram":

@@ -487,7 +487,7 @@ export const api = {
           page: number, entityColumn?: string, refresh = false, sort?: Dataset["sort"],
           signal?: AbortSignal) => {
     const init = {
-      ...post({ filters, charts: charts.map(({ kind, x, y }) => ({ kind, x, y })),
+      ...post({ filters, charts: charts.map(({ kind, x, y, measure, series }) => ({ kind, x, y, measure, series })),
                page, page_size: 50, entity_column: entityColumn ?? null,
                refresh, sort: sort ?? null }),
       signal,

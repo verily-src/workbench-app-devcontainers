@@ -57,6 +57,13 @@
 
 .axis-editor { margin: 8px 0; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
 .axis-editor-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.axis-editor label.axis-check { display: flex; align-items: center; gap: 6px; }
+.axis-editor label.axis-check input { width: auto; }
+.axis-editor .axis-sample { margin: 2px 0 0; }
+.axis-editor .axis-references { margin-top: 10px; }
+.axis-reference { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; margin-bottom: 6px; }
+.axis-reference label { flex: 1 1 90px; margin-bottom: 0; }
+.axis-reference > button { flex: none; }
 .axis-editor fieldset { min-width: 0; margin: 0; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
 .axis-editor label { display: grid; gap: 3px; margin-bottom: 6px; color: var(--ink-muted); font-size: 12px; }
 .axis-editor input, .axis-editor select { width: 100%; box-sizing: border-box; }
@@ -91,6 +98,9 @@
 .marks-seg > button + button { border-left: 1px solid var(--border-strong); }
 .marks-seg > button[aria-checked="true"] { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
 .marks-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.marks-menu .popover-panel { max-height: min(82vh, 720px); overflow-y: auto; }
+.marks-data { display: flex; flex-wrap: wrap; gap: 6px; }
+.marks-data select { flex: 1 1 100%; min-width: 0; height: 28px; font-size: 12.5px; }
 /* On very narrow cards the Marks button shrinks (its label truncates) instead of overflowing. */
 .chart-card .head .marks-menu { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .chart-card .head .marks-menu > button { max-width: 100%; min-width: 0; overflow: hidden; }

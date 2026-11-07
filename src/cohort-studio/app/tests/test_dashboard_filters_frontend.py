@@ -178,7 +178,8 @@ def _bar_point(page, card, category):
       const value = raw !== null && typeof raw === 'object' ? raw.value : raw;
       const [x, y] = chart.convertToPixel({seriesIndex: 0}, [value / 2, cat]);
       const rect = el.getBoundingClientRect();
-      return [rect.left + x, rect.top + y];   // ECharts reads client offsets without the UI zoom
+      const scale = rect.width / el.offsetWidth;   // screen position under the UI zoom
+      return [rect.left + x * scale, rect.top + y * scale];
     }""", category)
 
 

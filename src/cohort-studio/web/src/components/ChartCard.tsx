@@ -1,5 +1,5 @@
 import "./ChartCard.css";
-import { echarts } from "../echarts";
+import { correctZoomedPointer, echarts } from "../echarts";
 import type { EChartsOption, ECharts } from "../echarts";
 import { useEffect, useRef, useState } from "react";
 import { getPalette, type Palette } from "../palette";
@@ -497,9 +497,10 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
   useEffect(() => {
     if (!ref.current) return;
     chart.current = echarts.init(ref.current);
+    const unzoom = correctZoomedPointer(ref.current);
     const observer = new ResizeObserver(() => chart.current?.resize());
     observer.observe(ref.current);
-    return () => { observer.disconnect(); chart.current?.dispose(); };
+    return () => { observer.disconnect(); unzoom(); chart.current?.dispose(); };
   }, []);
 
   useEffect(() => {

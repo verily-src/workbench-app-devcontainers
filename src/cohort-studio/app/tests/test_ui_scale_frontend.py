@@ -54,7 +54,7 @@ def test_default_comfortable_scale_fits_window_and_chart_clicks_hit(page, app_ur
       const host = [...document.querySelectorAll('.chart-card [_echarts_instance_]')][0];
       const inst = window.__studioEcharts && window.__studioEcharts.getInstanceByDom(host);
       if (!inst) return null;
-      const [px, py] = inst.convertToPixel({seriesIndex: 0}, [1.5, 'B'])   // middle of bar B (value 3);
+      const [px, py] = inst.convertToPixel({seriesIndex: 0}, [2.85, 'B'])   // near the end of bar B (value 3): misses if clicks ignore the zoom
       const rect = host.getBoundingClientRect();
       const scale = rect.width / host.offsetWidth;
       return [rect.left + px * scale, rect.top + py * scale];

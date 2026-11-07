@@ -56,7 +56,7 @@ def test_saved_view_preserves_chart_axes(page, app_url):
     form.get_by_label('X axis maximum').fill('50')
     form.get_by_role('button', name='Apply').click()
     page.get_by_label('Saved view name').fill('Saved')
-    page.locator('.view-save').get_by_role('button', name='Save', exact=True).click()
+    page.locator('.view-save').get_by_role('button', name='Save dashboard', exact=True).click()
     expect(page.get_by_text('Saved 1 tab(s) to DB.')).to_be_visible()
     chart = saved[0]['datasets'][0]['charts'][0]
     assert chart['title'] == 'Tissues' and chart['x_axis']['label'] == 'Participants'

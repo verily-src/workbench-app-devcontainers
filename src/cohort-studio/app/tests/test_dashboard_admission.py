@@ -2,6 +2,7 @@ import threading
 import time
 import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import httpx
@@ -140,7 +141,8 @@ def test_saturated_dashboard_queue_keeps_sync_endpoints_responsive(monkeypatch):
             gate.release()
             return [response.status_code for response in await asyncio.gather(*tasks)]
     try:
-        assert asyncio.run(exercise()) == [200] * 8
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(lambda: asyncio.run(exercise())).result(timeout=20) == [200] * 8
     finally:
         if gate.owners.get(None):
             gate.release()

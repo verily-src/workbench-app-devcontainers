@@ -127,7 +127,7 @@ def test_unified_saved_views_restore_recipe_and_delete_from_its_store(
 
     page.get_by_label("Saved view name").fill("Aurora copy")
     page.locator(".view-save").get_by_role(
-        "button", name="Save", exact=True).click()
+        "button", name="Save dashboard", exact=True).click()
     expect(page.get_by_text(
         "Saved 1 tab(s) to Clinical database.")).to_be_visible()
     assert saves[0]["kind"] == "aurora"

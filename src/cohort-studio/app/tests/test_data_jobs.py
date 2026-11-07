@@ -109,9 +109,10 @@ def test_resource_polling_does_not_restart_warmup_or_erase_good_cache(monkeypatc
     records = [{'id':'existing','resourceType':'AWS_AURORA_DATABASE'}]
     monkeypatch.setattr(db, '_resource_cache', records)
     monkeypatch.setattr(db, '_last_refresh', time.monotonic()-30)
+    monkeypatch.setattr(db, '_needs_warm', False)
     calls = []
     monkeypatch.setattr(db, '_fetch_resources', lambda: calls.append('fetch') or [])
-    monkeypatch.setattr(db, 'configure_aws_profiles', lambda: calls.append('configure'))
+    monkeypatch.setattr(db, 'configure_aws_profiles', lambda resource_ids=None: calls.append('configure'))
     assert db._ensure_cache() == records
     assert calls == []
     db._refresh_resource_cache()

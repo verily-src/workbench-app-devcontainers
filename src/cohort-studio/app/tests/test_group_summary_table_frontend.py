@@ -120,7 +120,7 @@ def test_summary_table_saves_and_reopens_with_the_view(page, app_url):
     assert session['datasets'][1]['source'] == summary_source
 
     page.get_by_label('Saved view name').fill('people')
-    page.locator('.view-save').get_by_role('button', name='Save', exact=True).click()
+    page.locator('.view-save').get_by_role('button', name='Save dashboard', exact=True).click()
     expect(page.get_by_text('Saved 2 tab(s) to Database.')).to_be_visible()
     assert saves[0]['datasets'][0]['group_summary'] == {'group_by': ['tissue'], 'measure': 'value'}
     assert saves[0]['datasets'][1]['source'] == summary_source
@@ -143,6 +143,6 @@ def test_summary_table_saves_and_reopens_with_the_view(page, app_url):
     panel.get_by_role('button', name='Close').click()
     expect(page.get_by_role('region', name='Group summary')).to_have_count(0)
     page.get_by_label('Saved view name').fill('people')
-    page.locator('.view-save').get_by_role('button', name='Save', exact=True).click()
+    page.locator('.view-save').get_by_role('button', name='Save dashboard', exact=True).click()
     expect(page.get_by_text(re.compile('Saved 2 tab'))).to_be_visible()
     assert saves[-1]['datasets'][0]['group_summary'] is None

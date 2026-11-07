@@ -28,6 +28,6 @@ def test_open_summary_recipe_and_save_again(page, app_url):
     assert calls[0]['group_by']==['tissue'] and calls[0]['measure']=='value'
     assert calls[0]['filters'][0]['values']==['liver']
     page.get_by_label('Saved view name').fill('copy')
-    page.locator('.view-save').get_by_role('button',name='Save',exact=True).click()
+    page.locator('.view-save').get_by_role('button',name='Save dashboard',exact=True).click()
     expect(page.get_by_text('Saved 1 tab(s) to Database.')).to_be_visible()
     assert saves[0]['datasets'][0]['group_summary']=={'group_by':['tissue'],'measure':'value'}

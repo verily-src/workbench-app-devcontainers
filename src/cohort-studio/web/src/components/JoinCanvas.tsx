@@ -2,6 +2,7 @@
  * Builds the same JoinRequest the join API takes; see
  * joinModel.ts for the canvas ↔ request mapping. */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "../api";
 import type { DataJob, OpenResult } from "../api";
 import type {
@@ -12,6 +13,7 @@ import { tableStats } from "../format";
 import { Combobox } from "./Combobox";
 import { JobProgress } from "./DataJobs";
 import { SqlEditor } from "./SqlEditor";
+import { OpenTableCard } from "./OpenTableCard";
 import type { FilterRow } from "./joinParts";
 import {
   ARROW, FilterEditor, KIND_LABEL, Venn, addsColumns, colKind, directAurora, filterProblem,
@@ -48,7 +50,29 @@ interface Props {
   onOpenResult: (opened: OpenResult, title: string, sourceRef?: SourceRef) => void;
   onAddSource: () => void;
   onClose: () => void;
+  /** Connections state lives in App, so ⌘K, Add data source and Explore's "Change…" share it. */
+  sourceKey: string;
+  onSourceKeyChange: (key: string) => void;
+  tables: TableInfo[];
+  /** Datasource whose tables are being listed. */
+  listing: string;
+  tablesError: string;
+  onRefreshTables: () => void;
+  /** The table picked in Connections; its details and Open actions show below the list. */
+  table: string;
+  onTableChange: (name: string) => void;
+  /** Opens one table as a Live tab in Explore. */
+  onOpenTable: (source: Source, info: TableInfo) => void;
+  /** Opens the file chooser for CSV, TSV or Parquet uploads. */
+  onUpload: () => void;
+  /** Datasource discovery status, above the datasource list. */
+  connectionsStatus?: ReactNode;
+  /** Source-specific actions (e.g. publish an S3 catalog), below the table list. */
+  connectionsExtra?: ReactNode;
 }
+
+/** Folder of an S3 file ("" at the top level); a Parquet folder entry ("events/") is its own item. */
+const fileFolder = (t: TableInfo) => t.schema ? "" : t.name.replace(/\/$/, "").split("/").slice(0, -1).join("/");
 
 const KIND_BADGE: Record<string, string> = {
   aurora: "Aurora", postgres: "PostgreSQL", athena: "Athena", s3: "S3", bq: "BigQuery",
@@ -177,7 +201,9 @@ const toDataset = (opened: OpenResult, title: string, ref?: SourceRef): Dataset 
 
 const sameRef = (a?: SourceRef, b?: SourceRef) => Boolean(a && b) && JSON.stringify(a) === JSON.stringify(b);
 
-export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpenResult, onAddSource, onClose }: Props) {
+export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpenResult, onAddSource, onClose,
+  sourceKey, onSourceKeyChange: setSourceKey, tables, listing, tablesError, onRefreshTables, table, onTableChange,
+  onOpenTable, onUpload, connectionsStatus, connectionsExtra }: Props) {
   const [nodes, setNodes] = useState<CanvasNode[]>([]);
   const [name, setName] = useState("New join");
   // Until the user types a name, the join is named after its tables.
@@ -229,11 +255,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
   });
 
   // Connections pane.
-  const [sourceKey, setSourceKey] = useState("");
-  const [tables, setTables] = useState<TableInfo[]>([]);
-  const [tablesLoading, setTablesLoading] = useState(false);
-  const [tablesError, setTablesError] = useState("");
-  const [tablesRefresh, setTablesRefresh] = useState(0);
+  const tablesLoading = Boolean(listing);
   const [tableSearch, setTableSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -243,19 +265,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
   const previewAbort = useRef<AbortController | null>(null);
 
   const selectedSource = sources.find((s) => `${s.kind}:${s.id}` === sourceKey);
-  useEffect(() => {
-    if (!sourceKey && sources.length) setSourceKey(`${sources[0].kind}:${sources[0].id}`);
-  }, [sourceKey, sources]);
-  useEffect(() => {
-    if (!selectedSource) { setTables([]); return; }
-    let current = true;
-    setTables([]); setTablesError(""); setTablesLoading(true);
-    api.tables(selectedSource.kind, selectedSource.id, tablesRefresh > 0)
-      .then((items) => { if (current) setTables(items); })
-      .catch((e) => { if (current) setTablesError((e as Error).message); })
-      .finally(() => { if (current) setTablesLoading(false); });
-    return () => { current = false; };
-  }, [sourceKey, tablesRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectedTable = selectedSource ? tables.find((t) => t.name === table) : undefined;
 
   const ids = useMemo(() => byNodeId(nodes), [nodes]);
   const root = rootOf(nodes);
@@ -910,9 +920,10 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
   const tableGroups = useMemo(() => {
     const needle = tableSearch.trim().toLowerCase();
     const shown = tables.filter((t) => !needle || t.name.toLowerCase().includes(needle));
+    // Database tables group by schema; S3 files by folder.
     const groups = new Map<string, TableInfo[]>();
     for (const t of shown) {
-      const key = t.schema ?? "";
+      const key = t.schema ? `Schema ${t.schema}` : fileFolder(t) ? `Folder ${fileFolder(t)}` : "";
       groups.set(key, [...(groups.get(key) ?? []), t]);
     }
     return [...groups.entries()];
@@ -1034,14 +1045,15 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
         <aside className="jc-connections" aria-label="Connections">
           <div className="jc-pane-head">
             <h3>Connections</h3>
-            <button type="button" className="link" onClick={onAddSource}>Add</button>
+            <button type="button" className="link" onClick={onAddSource}>+ Add data source</button>
           </div>
+          {connectionsStatus}
           <ul className="jc-sources" aria-label="Datasources">
             {sources.map((s) => {
               const key = `${s.kind}:${s.id}`;
               return (
                 <li key={key}>
-                  <button type="button" aria-pressed={key === sourceKey}
+                  <button type="button" aria-pressed={key === sourceKey} data-source-key={key}
                           className={`jc-source${key === sourceKey ? " on" : ""}`}
                           onClick={() => { setSourceKey(key); setTableSearch(""); }}>
                     <span className="jc-source-name">{s.label || s.id}</span>
@@ -1055,7 +1067,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
           <div className="jc-pane-head">
             <h3>Tables</h3>
             <button type="button" className="link" disabled={!selectedSource || tablesLoading}
-                    title="List tables again" onClick={() => setTablesRefresh((n) => n + 1)}>Refresh</button>
+                    aria-label="Refresh list" title="List again, including schemas, tables or files added outside the app"
+                    onClick={onRefreshTables}>Refresh</button>
           </div>
           <div className="jc-search">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
@@ -1065,20 +1078,26 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
                    value={tableSearch} onChange={(e) => setTableSearch(e.target.value)} />
           </div>
           <div className="jc-table-list">
-            {tablesLoading && <div className="settings-hint" role="status">Listing tables…</div>}
+            {tablesLoading && <div className="picker-status" role="status">
+              <span className="spinner small" aria-hidden="true" />Listing tables in {listing}…
+            </div>}
             {tablesError && <div className="join-error" role="alert">{tablesError}</div>}
-            {tableGroups.map(([schema, items]) => (
-              <div key={schema} role="group" aria-label={schema ? `Schema ${schema}` : "Tables"}>
-                {schema && <div className="jc-group-label" title={schema}>{schema}</div>}
+            {tableGroups.map(([group, items]) => (
+              <div key={group} role="group" aria-label={group || "Tables"}>
+                {group && <div className="jc-group-label" title={group}>{group.replace(/^(Schema|Folder) /, "")}</div>}
                 <ul>
                   {items.map((t) => (
                     <li key={t.name} className="jc-table-item" draggable={!full}
                         data-table={t.name}
                         onDragStart={(e) => startDrag(e, { type: "table", sourceKey, name: t.name })}>
-                      <TableIcon />
-                      <span className="jc-table-name" title={[t.detail, tableStats(t)].filter(Boolean).join(" · ")}>
-                        {t.table ?? t.name}
-                      </span>
+                      <button type="button" className={`jc-table-pick${t.name === table ? " on" : ""}`}
+                              aria-pressed={t.name === table}
+                              title={[t.name, t.detail, tableStats(t)].filter(Boolean).join(" · ")}
+                              onClick={() => onTableChange(t.name)}
+                              onDoubleClick={() => { if (selectedSource && !busy) onOpenTable(selectedSource, t); }}>
+                        <TableIcon />
+                        <span className="jc-table-name">{t.table ?? (fileFolder(t) ? t.name.slice(fileFolder(t).length + 1) : t.name)}</span>
+                      </button>
                       <button type="button" className="quiet jc-add" disabled={full}
                               aria-label={`Add ${t.name} to canvas`}
                               title={full ? `A join can include up to ${MAX_JOINED} additional tables.`
@@ -1107,6 +1126,19 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
               </div>
             )}
           </div>
+          {selectedSource && selectedTable && (
+            <OpenTableCard key={`${sourceKey}/${selectedTable.name}`} source={selectedSource} info={selectedTable}
+                           targets={auroraTargets} extractReason={extractReason} busy={busy || running}
+                           onOpenLive={() => onOpenTable(selectedSource, selectedTable)} onOpenResult={onOpenResult} />
+          )}
+          {connectionsExtra}
+          <button type="button" className="upload-btn jc-upload" onClick={onUpload}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M12 16V4m0 0l-4 4m4-4l4 4" />
+              <path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2" />
+            </svg>
+            Upload CSV, TSV or Parquet
+          </button>
         </aside>
 
         <div className="jc-main">

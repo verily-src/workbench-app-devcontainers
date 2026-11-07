@@ -77,7 +77,7 @@ def test_data_builder_joins_s3_files_with_aurora_after_full_source_consent(page,
 
     page.route("**/api/data-jobs/join", join)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     # Both datasources are listed as connections; S3 files show beside Aurora tables.
     expect(canvas.get_by_role("button", name=re.compile("^Genetics files"))).to_be_visible()

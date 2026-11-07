@@ -1,6 +1,7 @@
 import pytest
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import open_data_builder, pick_table
 
 pytestmark = pytest.mark.e2e
 
@@ -48,21 +49,19 @@ def test_table_details_running_card_and_completion_summary(page, app_url):
         'rows': {'page': 0, 'page_size': 50, 'columns': ['person_id', 'cost'], 'data': [[1, 2.5]]}}))
 
     page.goto(app_url)
-    page.get_by_label('Source type', exact=True).select_option('aurora')
-    page.get_by_label('Datasource', exact=True).select_option('aurora:omop')
-    page.get_by_label('Schema', exact=True).select_option('cms')
-    options = page.get_by_label('Table', exact=True).locator('option')
-    expect(options.nth(1)).to_have_text('cost (table · ~32.4M rows · 6.1 GB · 22 cols)')
-    expect(options.nth(3)).to_have_text('v_people (view · 4 cols)')
+    canvas = open_data_builder(page)
+    rows = canvas.get_by_role('group', name='Schema cms').locator('.jc-table-pick')
+    expect(rows.nth(0)).to_have_attribute('title', 'cms.cost · table · ~32.4M rows · 6.1 GB · 22 cols')
+    expect(rows.nth(2)).to_have_attribute('title', 'cms.v_people · view · 4 cols')
 
-    page.get_by_label('Table', exact=True).select_option('cms.cost')
-    details = page.get_by_label('Table details')
+    card = pick_table(page, 'aurora:omop', 'cms.cost')
+    details = card.get_by_label('Table details')
     expect(details).to_contain_text('Rows~32.4M')
     expect(details).to_contain_text('Size6.1 GB')
     expect(details).to_contain_text('Columns22')
     expect(details).to_contain_text('Stats as of')
 
-    page.get_by_role('button', name='Load table', exact=True).click()
+    card.get_by_role('button', name='Open in Explore', exact=True).click()
     panel = page.get_by_role('region', name='Data operations')
     expect(panel).to_contain_text('Loading cms.cost from omop')
     expect(panel).to_contain_text('Reading cms.cost from omop')

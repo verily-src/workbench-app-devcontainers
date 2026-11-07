@@ -2,6 +2,7 @@ import duckdb
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url
+from tests.ui_helpers import pick_table
 
 
 def test_s3_parquet_folder_lists_and_opens_as_one_dataset(page, app_url):
@@ -35,18 +36,12 @@ def test_s3_parquet_folder_lists_and_opens_as_one_dataset(page, app_url):
         'total': 2, 'filtered': 2, 'charts': [], 'scope': 'loaded', 'sampled': False,
         'rows': {'page': 0, 'page_size': 50, 'columns': ['year'], 'data': [[2024], [2025]]}}))
     page.goto(app_url)
-    page.get_by_label('Source type').select_option('s3')
-    page.get_by_label('Datasource').select_option('s3:lake')
-    table = page.get_by_label('Table')
-    expect(table.locator('option', has_text='Parquet folder · 2 parts')).to_have_count(1)
-    page.get_by_label('File folder').select_option('events')
-    expect(table.locator('option', has_text='All parts in events/')).to_have_count(1)
-    table.select_option('events/')
-    details = page.get_by_label('Table details')
+    card = pick_table(page, 's3:lake', 'events/')
+    details = card.get_by_label('Table details')
     expect(details).to_contain_text('Parquet folder · 2 parts')
     expect(details.locator('[title="Total size of the Parquet parts in S3"]')).to_have_count(1)
-    page.get_by_role('button', name='Load file').click()
-    expect(page.get_by_text('lake / events/')).to_be_visible(timeout=10000)
+    card.get_by_role('button', name='Open in Explore').click()
+    expect(page.locator('.hero-source', has_text='lake / events/')).to_be_visible(timeout=10000)
     assert opened_refs[0]['table'] == 'events/'
     assert opened_refs[0]['kind'] == 's3'
 
@@ -58,7 +53,7 @@ def test_local_parquet_upload_opens_a_tab(page, app_url, tmp_path):
                 f"TO '{path}' (FORMAT PARQUET)")
     con.close()
     page.goto(app_url)
-    upload = page.locator('.sidebar input[type="file"]')
+    upload = page.get_by_label('Upload CSV, TSV or Parquet')
     assert '.parquet' in upload.get_attribute('accept')
     upload.set_input_files(str(path))
     expect(page.locator('.tab.active', has_text='local_cohort.parquet')).to_be_visible(timeout=10000)

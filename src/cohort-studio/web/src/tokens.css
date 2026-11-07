@@ -844,6 +844,42 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
   height: calc(100vh / var(--ui-scale));
 }
 
+/* Explore side panel: foldable sections (Data source, Parameters, Filters, Saved views). */
+.fold-section { padding-bottom: 10px; }
+.fold-section + .fold-section { border-top: 1px solid var(--border); }
+.fold-section.folded { padding-bottom: 0; }
+.fold-head { margin: 0; }
+.fold-head > button { display: flex; align-items: center; gap: 6px; width: calc(100% + 8px); margin: 0 -4px;
+  padding: 12px 4px 8px; border: 0; background: transparent; color: inherit; font: inherit;
+  letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+.fold-head > button:hover { color: var(--ink); background: transparent; }
+.fold-chevron { flex: none; transition: transform .12s ease; transform: rotate(90deg); }
+.fold-section.folded .fold-chevron { transform: none; }
+.fold-badge { margin-left: auto; min-width: 18px; padding: 0 6px; border-radius: 9px; text-align: center;
+  font-size: 10.5px; letter-spacing: 0; background: var(--accent-tint); color: var(--accent); }
+.fold-body[hidden] { display: none; }
+.side-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; color: var(--ink-muted); font-size: 12.5px; }
+
+/* Data source card: what the active tab reads from. */
+.source-card { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--card); }
+.source-card-path { font-weight: 600; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-card-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.source-chip { padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 600;
+  background: var(--surface); color: var(--ink-soft); border: 1px solid var(--border); }
+.source-chip.mode { background: var(--accent-tint); color: var(--accent); border-color: var(--accent-tint-border); }
+.source-card-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; margin: 0; font-size: 12px; }
+.source-card-facts > div { min-width: 0; }
+.source-card-facts > div.wide { grid-column: 1 / -1; }
+.source-card-facts dt { color: var(--ink-muted); font-size: 11px; }
+.source-card-facts dd { margin: 1px 0 0; color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-card-facts dd.error { color: var(--danger, #c93a38); }
+.source-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.source-card-actions { gap: 12px; }
+.source-card-actions > .link { font-size: 12.5px; }
+.source-card-actions > .icon-button { margin-left: auto; }
+
 /* Collapsible Data sources panel */
 .sidebar-heading { justify-content: space-between; gap: 8px; }
 .sidebar-toggle { padding: 2px 8px; font-size: 15px; line-height: 1; color: var(--ink-muted); }

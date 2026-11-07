@@ -3,7 +3,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url  # noqa: F401
-from tests.ui_helpers import menu
+from tests.ui_helpers import load_table, menu
 
 pytestmark = pytest.mark.e2e
 
@@ -44,11 +44,7 @@ def test_expression_examples_parameters_and_errors(page, app_url):
         "rows": {"page": 0, "page_size": 50, "columns": ["person_id"], "data": [[1]]}}))
     page.route("**/api/datasets/*/derive", derive)
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:db")
-    page.get_by_label("Schema", exact=True).select_option("public")
-    page.get_by_label("Table", exact=True).select_option("public.people")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:db", "public.people")
 
     params = page.get_by_role("group", name="Parameters")
     params.get_by_label("New parameter name").fill("index_date")

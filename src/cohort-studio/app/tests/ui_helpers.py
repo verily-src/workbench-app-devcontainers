@@ -24,6 +24,39 @@ def open_data_builder(page, start_tab=None):
     return canvas
 
 
+def pick_table(page, datasource, table, timeout=15000):
+    """Data Builder → Connections: choose `datasource` ("kind:id"), then click `table`
+    (its listed name, e.g. "public.person" or "clinical/person.parquet").
+    Returns the "Selected table" card (details, Live/Extract, Open in Explore)."""
+    from playwright.sync_api import expect
+    canvas = open_data_builder(page)
+    source = canvas.locator(f'[data-source-key="{datasource}"]')
+    expect(source).to_be_visible(timeout=timeout)
+    if source.get_attribute("aria-pressed") != "true":
+        source.click()
+    row = canvas.locator(f'li.jc-table-item[data-table="{table}"] .jc-table-pick')
+    expect(row).to_be_visible(timeout=timeout)
+    row.click()
+    card = canvas.get_by_role("region", name="Selected table")
+    expect(card).to_be_visible()
+    return card
+
+
+def load_table(page, datasource, table, extract=None, timeout=15000):
+    """Open one table in Explore from Data Builder (Live, or Extract with
+    extract=(database, table_name)) and wait for its tab."""
+    from playwright.sync_api import expect
+    card = pick_table(page, datasource, table, timeout)
+    if extract:
+        card.get_by_role("radio", name="Extract").check()
+        database, name = extract
+        card.get_by_label("Save extract to").select_option(database)
+        card.get_by_label("Extract table").fill(name)
+    card.get_by_role("button", name="Open in Explore").click()
+    expect(page.locator(".join-canvas-host")).to_be_hidden(timeout=timeout)
+    return page
+
+
 def add_to_canvas(canvas, name, tab=False):
     """Press + for an open tab ("Open tabs") or a datasource table."""
     scope = canvas.get_by_role("group", name="Open tabs") if tab else canvas

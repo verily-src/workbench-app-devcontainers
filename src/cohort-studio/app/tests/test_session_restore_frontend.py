@@ -1,6 +1,7 @@
 import pytest
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 from tests.test_table_info_progress_frontend import _mock_app, COLUMNS
 
 pytestmark = pytest.mark.e2e
@@ -26,11 +27,7 @@ def test_open_tabs_can_be_restored_after_reload(page, app_url):
     opens = []
     _routes(page, opens)
     page.goto(app_url)
-    page.get_by_label('Source type', exact=True).select_option('aurora')
-    page.get_by_label('Datasource', exact=True).select_option('aurora:omop')
-    page.get_by_label('Schema', exact=True).select_option('cms')
-    page.get_by_label('Table', exact=True).select_option('cms.cost')
-    page.get_by_role('button', name='Load table', exact=True).click()
+    load_table(page, "aurora:omop", "cms.cost")
     expect(page.locator('.dataset-toolbar')).to_be_visible(timeout=10000)
     page.wait_for_timeout(1200)                       # autosave debounce
 

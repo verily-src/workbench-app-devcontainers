@@ -3,6 +3,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url  # noqa: F401
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -31,11 +32,7 @@ def test_date_filter_between_and_last(page, app_url):
                                 "min_date": "2023-01-05", "max_date": "2024-12-30"}]}}))
     page.route("**/api/datasets/*/query", query)
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:db")
-    page.get_by_label("Schema", exact=True).select_option("public")
-    page.get_by_label("Table", exact=True).select_option("public.visits")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:db", "public.visits")
     group = page.locator(".filter-group", has_text="visit_date")
     group.locator("summary").click()
     expect(group).to_contain_text("Data from 2023-01-05 to 2024-12-30")

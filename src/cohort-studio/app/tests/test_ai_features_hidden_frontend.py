@@ -7,6 +7,7 @@ from playwright.sync_api import expect
 
 import config
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -59,11 +60,7 @@ def _setup(page, ai):
 
 def _load_person(page, app_url):
     page.goto(app_url)
-    page.get_by_label("Source type").select_option("aurora")
-    page.get_by_label("Datasource").select_option("aurora:clinical")
-    page.get_by_label("Schema").select_option("public")
-    page.get_by_label("Table", exact=True).select_option("public.person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:clinical", "public.person")
     expect(page.locator(".tab.active")).to_contain_text("person")
 
 

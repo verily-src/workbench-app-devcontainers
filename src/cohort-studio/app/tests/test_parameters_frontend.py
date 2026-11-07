@@ -3,6 +3,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url  # noqa: F401
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -32,11 +33,7 @@ def test_filters_follow_parameters(page, app_url):
                                 "min_date": "2023-01-01", "max_date": "2024-12-31"}]}}))
     page.route("**/api/datasets/*/query", query)
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:db")
-    page.get_by_label("Schema", exact=True).select_option("public")
-    page.get_by_label("Table", exact=True).select_option("public.people")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:db", "public.people")
 
     def wait_for(predicate):
         for _ in range(50):

@@ -2,11 +2,12 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table, open_data_builder
 
 pytestmark = pytest.mark.e2e
 
 
-def test_source_picker_cascades_without_autoload_and_keeps_datasource(
+def test_connections_list_sources_and_tables_without_autoload(
         page: Page, app_url: str):
     sources = [
         {"kind": "aurora", "id": "clinical-a", "label": "clinical-a · Aurora"},
@@ -63,48 +64,40 @@ def test_source_picker_cascades_without_autoload_and_keeps_datasource(
         "scope": "loaded", "sampled": False,
     }))
     page.goto(app_url)
-
-    page.get_by_label("Source type").select_option("aurora")
-    expect(page.get_by_label("Datasource")).to_be_enabled()
-    expect(page.get_by_label("Datasource").locator("option")).to_have_count(3)
-    page.get_by_label("Datasource").select_option("aurora:clinical-a")
-    expect(page.get_by_label("Schema")).to_be_visible()
-    expect(page.get_by_label("Schema")).to_have_value("")
-    expect(page.get_by_label("Table")).to_be_disabled()
-    page.get_by_label("Schema").select_option("cdm")
-    expect(page.get_by_label("Table").locator("option")).to_have_count(2)
-    expect(page.get_by_label("Table").locator("option").nth(1)).to_have_text("person (table)")
-    expect(page.get_by_label("Datasource")).to_have_value("aurora:clinical-a")
+    expect(page.get_by_text("Saved views", exact=True)).to_be_visible()
     expect(page.get_by_role("group", name="Explore view")).to_have_count(0)
     expect(page.get_by_role("button", name="OMOP", exact=True)).to_have_count(0)
-    expect(page.get_by_text("Saved views", exact=True)).to_be_visible()
+
+    canvas = open_data_builder(page)
+    sources_list = canvas.get_by_role("list", name="Datasources")
+    expect(sources_list.get_by_role("button")).to_have_count(3)
+    # Connections starts on the first datasource and lists its tables by schema.
+    first = canvas.locator('[data-source-key="aurora:clinical-a"]')
+    expect(first).to_have_attribute("aria-pressed", "true")
+    cdm = canvas.get_by_role("group", name="Schema cdm")
+    expect(cdm.locator(".jc-table-pick")).to_have_count(1)
+    expect(cdm.locator(".jc-table-pick")).to_have_text("person")
+    expect(canvas.get_by_role("group", name="Schema public").locator(".jc-table-pick")).to_have_text("samples")
+    # Picking a table shows its details; nothing opens until Open in Explore.
+    canvas.locator('li[data-table="cdm.person"] .jc-table-pick').click()
+    expect(canvas.get_by_role("region", name="Selected table")).to_contain_text("person")
     assert opened == []
 
-    page.get_by_label("Schema").select_option("public")
-    expect(page.get_by_label("Datasource")).to_have_value("aurora:clinical-a")
-    expect(page.get_by_label("Table")).to_have_value("")
+    canvas.locator('[data-source-key="aurora:clinical-b"]').click()
+    expect(canvas.get_by_role("region", name="Selected table")).to_have_count(0)
+    expect(canvas.locator('li[data-table="public.events"]')).to_have_count(1)
     assert opened == []
 
-    page.get_by_label("Source type").select_option("s3")
-    expect(page.get_by_label("Datasource")).to_have_value("")
-    expect(page.get_by_label("Schema")).to_have_count(0)
-    expect(page.get_by_label("Table")).to_have_count(0)
-    page.get_by_label("Datasource").select_option("s3:lake")
-    expect(page.get_by_label("File folder")).to_have_value("")
-    page.get_by_label("File folder").select_option("exports/nested")
-    expect(page.get_by_label("Table").locator("option")).to_have_count(2)
-    expect(page.get_by_label("Table").locator("option").nth(1)).to_have_text(
-        "details.csv (file)")
-    page.get_by_label("File folder").select_option("exports")
-    expect(page.get_by_label("Table").locator("option")).to_have_count(3)
-    expect(page.get_by_label("Table").locator("option").nth(1)).to_have_text(
-        "result.csv (file)")
-    expect(page.get_by_label("Schema")).to_have_count(0)
+    # S3 files group by folder; search narrows the list.
+    canvas.locator('[data-source-key="s3:lake"]').click()
+    expect(canvas.get_by_role("group", name="Folder exports", exact=True).locator(".jc-table-pick")).to_have_text("result.csv")
+    expect(canvas.get_by_role("group", name="Folder exports/nested", exact=True).locator(".jc-table-pick")).to_have_text("details.csv")
+    canvas.get_by_role("searchbox", name="Search tables").fill("nested")
+    expect(canvas.locator(".jc-table-list .jc-table-pick")).to_have_count(1)
+    canvas.get_by_role("searchbox", name="Search tables").fill("")
     assert opened == []
 
-    page.get_by_label("File folder").select_option("")
-    page.get_by_label("Table").select_option("other/summary.csv")
-    page.get_by_role("button", name="Load file").click()
+    load_table(page, "s3:lake", "other/summary.csv")
     expect(page.locator(".tab.active")).to_contain_text("summary.csv")
     assert opened == [{"kind": "s3", "resource_id": "lake",
                        "table": "other/summary.csv"}]

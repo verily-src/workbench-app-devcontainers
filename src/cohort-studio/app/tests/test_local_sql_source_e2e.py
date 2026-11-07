@@ -25,7 +25,7 @@ def test_local_sql_source_preview_join_and_reopen(page: Page, local_sql_url: str
     page.goto(local_sql_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     # Data Builder, SQL mode: preview the query, then open it as a tab.
-    page.get_by_role("button", name="Join tables").click()
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     canvas.get_by_role("radio", name="SQL", exact=True).click()
     sql = canvas.get_by_role("region", name="SQL builder")

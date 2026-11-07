@@ -3,7 +3,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.test_e2e import app_url, loaded_page
-from tests.ui_helpers import add_to_canvas, canvas_join, menu, open_data_builder, set_join_keys
+from tests.ui_helpers import add_to_canvas, canvas_join, load_table, menu, open_data_builder, pick_table, set_join_keys
 
 pytestmark = pytest.mark.e2e
 
@@ -38,16 +38,6 @@ class _DataJobRoute:
 def route_data_job(page: Page, kind: str, handler):
     page.route(f"**/api/data-jobs/{kind}",
                lambda route: handler(_DataJobRoute(route, kind)))
-
-
-def choose_source(page: Page, key: str):
-    """Pick a datasource through the sidebar's type then datasource selects."""
-    kind = key.split(":", 1)[0]
-    source_type = page.get_by_label("Source type", exact=True)
-    expect(source_type.locator(f'option[value="{kind}"]')).to_have_count(1)
-    if source_type.input_value() != kind:
-        source_type.select_option(kind)
-    page.get_by_label("Datasource", exact=True).select_option(key)
 
 
 def test_entity_count_and_column_settings(loaded_page: Page):
@@ -165,9 +155,7 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
     page.route("**/api/views**", views)
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    choose_source(page, "aurora:fixture")
-    page.get_by_label("Table", exact=True).select_option("person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:fixture", "person")
 
     expect(page.locator(".hero .detail")).to_contain_text(
         "full database", timeout=10000)
@@ -251,8 +239,7 @@ def test_aurora_sidebar_has_no_explore_view_toggle_or_omop_builder(
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    choose_source(page, "aurora:aurora-a")
-    expect(page.get_by_label("Table", exact=True)).to_be_enabled(timeout=10000)
+    pick_table(page, "aurora:aurora-a", "person")
     sidebar = page.locator(".sidebar")
     expect(sidebar.get_by_role("group", name="Explore view")).to_have_count(0)
     expect(sidebar.get_by_text("Explore view")).to_have_count(0)
@@ -260,8 +247,7 @@ def test_aurora_sidebar_has_no_explore_view_toggle_or_omop_builder(
     expect(page.get_by_label("OMOP cohort builder")).to_have_count(0)
     expect(page.locator("[data-tutorial-target='omop-toggle']")).to_have_count(0)
 
-    page.get_by_label("Table", exact=True).select_option("person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:aurora-a", "person")
     expect(page.locator(".tab.active", has_text="person")).to_be_visible(
         timeout=10000)
     expect(sidebar.locator(".section-label", has_text="Filters")).to_be_visible()
@@ -370,9 +356,7 @@ def test_database_export_job_progress_cancel_and_download(page: Page, app_url: s
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    choose_source(page, "aurora:fixture")
-    page.get_by_label("Table", exact=True).select_option("person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:fixture", "person")
 
     menu(page, "Export options").get_by_role("button", name="Export TSV").click()
     expect(page.locator(".export-job")).to_contain_text("Preparing export", timeout=10000)
@@ -489,12 +473,9 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    choose_source(page, "aurora:fixture")
-    page.get_by_label("Table", exact=True).select_option("events")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:fixture", "events")
     expect(page.locator(".tab", has_text="events")).to_be_visible(timeout=10000)
-    page.get_by_label("Table", exact=True).select_option("people")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:fixture", "people")
     expect(page.locator(".tab", has_text="people")).to_be_visible(timeout=10000)
 
     canvas_join(page, ["events", "people"], [("person_id", "person_id")])
@@ -601,19 +582,14 @@ def test_aurora_schema_tables_open_with_explicit_schema_and_join(
     route_data_job(page, "join", join)
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    choose_source(page, "aurora:fixture")
-    table_select = page.get_by_label("Table", exact=True)
-    expect(table_select.locator("option", has_text="cdm.person")).to_have_count(1)
-    # Same table name in two schemas: the table list waits for a schema.
-    expect(table_select).to_be_disabled()
-    schema_select = page.get_by_label("Schema", exact=True)
-    schema_select.select_option("public")
-    table_select.select_option("person")
-    page.get_by_role("button", name="Load table").click()
+    pick_table(page, "aurora:fixture", "person")
+    # Same table name in two schemas: Connections lists each under its schema.
+    canvas = page.locator(".jc")
+    expect(canvas.get_by_role("group", name="Schema public").locator('li[data-table="person"]')).to_have_count(1)
+    expect(canvas.get_by_role("group", name="Schema cdm").locator('li[data-table="cdm.person"]')).to_have_count(1)
+    load_table(page, "aurora:fixture", "person")
     expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
-    schema_select.select_option("cdm")
-    table_select.select_option("cdm.person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:fixture", "cdm.person")
     expect(page.locator(".tab", has_text="cdm.person")).to_be_visible(timeout=10000)
 
     assert opened_refs == [
@@ -705,7 +681,7 @@ def test_join_can_select_source_schema_and_apply_key_recommendation(
 
     route_data_job(page, "join", join)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     add_to_canvas(canvas, "genetics.samples")
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)
@@ -793,10 +769,8 @@ def _durable_join_page(page: Page, app_url: str):
     page.route("**/api/datasets/join/suggest?**", lambda route: fulfill(route, []))
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    choose_source(page, "aurora:fixture")
     for name in ("people", "events"):
-        page.get_by_label("Table", exact=True).select_option(name)
-        page.get_by_role("button", name="Load table").click()
+        load_table(page, "aurora:fixture", name)
         expect(page.locator(".tab", has_text=name)).to_be_visible(timeout=10000)
     # Data Builder: start from the people tab, join the events tab on person_id.
     canvas = open_data_builder(page, "people")

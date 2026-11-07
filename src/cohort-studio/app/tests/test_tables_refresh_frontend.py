@@ -2,6 +2,7 @@
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url  # noqa: F401  (fixture)
+from tests.ui_helpers import open_data_builder
 
 
 def test_refresh_tables_lists_new_schema(page, app_url):
@@ -26,10 +27,9 @@ def test_refresh_tables_lists_new_schema(page, app_url):
     page.route("**/api/workflows**", lambda r: fulfill(r, {"available": False, "jobs": [], "running_count": 0}))
     page.route("**/api/views/all", lambda r: fulfill(r, {"views": [], "unavailable": []}))
     page.goto(app_url)
-    page.get_by_label("Source type").select_option("aurora")
-    page.get_by_label("Datasource").select_option("aurora:omop")
-    schema = page.get_by_label("Schema")
-    expect(schema.locator("option", has_text="eunomia_gibleed")).to_have_count(0)
-    page.get_by_role("button", name="Refresh list").click()
-    expect(schema.locator("option", has_text="eunomia_gibleed")).to_have_count(1)
+    canvas = open_data_builder(page)
+    expect(canvas.get_by_role("group", name="Schema cms_synpuf_100k")).to_be_visible()
+    expect(canvas.get_by_role("group", name="Schema eunomia_gibleed")).to_have_count(0)
+    canvas.get_by_role("button", name="Refresh list").click()
+    expect(canvas.get_by_role("group", name="Schema eunomia_gibleed")).to_have_count(1)
     assert "refresh=true" not in calls[0] and "refresh=true" in calls[-1]

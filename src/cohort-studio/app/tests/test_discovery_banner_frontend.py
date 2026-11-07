@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import open_data_builder
 
 SOURCES = [{"kind": "aurora", "id": "omop", "label": "omop · Aurora"}]
 NO_WORKSPACE = ("The Workbench CLI has no workspace set on the app VM; "
@@ -44,6 +45,7 @@ def test_stale_discovery_shows_banner_and_retry_posts_refresh(page, app_url):
              "error": NO_WORKSPACE, "error_code": "no_workspace"}
     served = _mock(page, [stale], refresh_calls)
     page.goto(app_url)
+    open_data_builder(page)   # datasource status sits in Connections
 
     banner = page.get_by_role("status").filter(has_text="Showing datasources from")
     expect(banner).to_be_visible(timeout=15000)
@@ -72,6 +74,7 @@ def test_failed_partial_kind_message_and_refreshing_status(page, app_url):
     refreshing = {"status": "refreshing", "from_cache": True, "updated_at": _ago(3)}
     _mock(page, [refreshing, refreshing, partial], refresh_calls)
     page.goto(app_url)
+    open_data_builder(page)   # datasource status sits in Connections
     expect(page.get_by_role("status").filter(has_text="Refreshing datasources…")
            ).to_be_visible(timeout=15000)
     banner = page.get_by_role("status").filter(has_text="BigQuery resources could not be listed")
@@ -88,6 +91,7 @@ def test_failed_without_cache_shows_failure_banner(page, app_url):
     page.route("**/api/views/all", lambda r: r.fulfill(
         json={"views": [], "pending": [], "unavailable": []}))
     page.goto(app_url)
+    open_data_builder(page)   # datasource status sits in Connections
     banner = page.locator(".discovery-banner")
     expect(banner).to_contain_text("Workspace datasources could not be listed", timeout=15000)
     expect(banner).to_contain_text("wb auth login")
@@ -99,6 +103,7 @@ def test_fresh_or_absent_discovery_shows_no_banner(page, app_url):
     fresh = {"status": "fresh", "from_cache": False, "updated_at": _ago(0)}
     served = _mock(page, [fresh], refresh_calls)
     page.goto(app_url)
+    open_data_builder(page)   # datasource status sits in Connections
     expect(page.get_by_text("1 available")).to_be_visible(timeout=15000)
     page.wait_for_timeout(500)
     expect(page.locator(".discovery-banner")).to_have_count(0)
@@ -112,5 +117,6 @@ def test_fresh_or_absent_discovery_shows_no_banner(page, app_url):
 def test_older_server_without_discovery_field_shows_no_banner(page, app_url):
     _mock(page, [None], [])
     page.goto(app_url)
+    open_data_builder(page)   # datasource status sits in Connections
     expect(page.get_by_text("1 available")).to_be_visible(timeout=15000)
     expect(page.locator(".discovery-banner")).to_have_count(0)

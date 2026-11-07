@@ -1,6 +1,7 @@
 import pytest
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table, open_data_builder
 from tests.test_table_info_progress_frontend import _mock_app
 
 pytestmark = pytest.mark.e2e
@@ -25,11 +26,7 @@ def _load(page, app_url, bodies):
                       'rows': {'page': 0, 'page_size': 50, 'columns': ['group'], 'data': [['A']]}})
     page.route('**/api/datasets/ds1/query', query)
     page.goto(app_url)
-    page.get_by_label('Source type', exact=True).select_option('aurora')
-    page.get_by_label('Datasource', exact=True).select_option('aurora:omop')
-    page.get_by_label('Schema', exact=True).select_option('cms')
-    page.get_by_label('Table', exact=True).select_option('cms.cost')
-    page.get_by_role('button', name='Load table', exact=True).click()
+    load_table(page, "aurora:omop", "cms.cost")
     expect(page.locator('.dataset-toolbar')).to_be_visible(timeout=10000)
 
 
@@ -107,6 +104,7 @@ def test_large_scale_drawer_and_dialog_stay_on_screen(page, app_url):
     expect(page.get_by_role("dialog", name="Dataset settings")).to_be_visible()
     assert _inside(page, ".dataset-settings-drawer")
     page.keyboard.press("Escape")
+    open_data_builder(page)
     page.get_by_role("button", name="Add data source").click()
     expect(page.get_by_role("dialog")).to_be_visible()
     assert _inside(page, "[aria-labelledby='add-source-title']")

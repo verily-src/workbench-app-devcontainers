@@ -19,7 +19,7 @@ def test_create_sql_dataset_without_preview(page,app_url):
     page.route('**/api/data-jobs/open',source_job)
     page.route('**/api/datasets/sql-open/query',lambda r:ok(r,{'total':1,'filtered':1,'scope':'database','charts':[],'rows':{'page':0,'page_size':50,'columns':['person_id'],'data':[[1]]}}))
     page.goto(app_url)
-    page.get_by_role('button',name='Join tables').click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     page.locator('.jc').get_by_role('radio',name='SQL',exact=True).click()
     page.get_by_role('textbox',name='Join name').fill('My people')
     page.get_by_label('Data Builder SQL').fill('SELECT person_id FROM public.people')

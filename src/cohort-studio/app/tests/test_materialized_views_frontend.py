@@ -2,6 +2,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -118,13 +119,7 @@ def test_saved_view_materialization_status_refresh_and_failure(page: Page, app_u
     }))
 
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    source_picker = page.get_by_label("Datasource", exact=True)
-    expect(source_picker.locator("option", has_text="Fixture")).to_be_attached(timeout=10000)
-    source_picker.select_option("aurora:fixture")
-    expect(page.get_by_label("Table", exact=True)).to_be_enabled(timeout=10000)
-    page.get_by_label("Table", exact=True).select_option("person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:fixture", "person")
     expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
     name_input = page.get_by_placeholder("name this view (1 tab)")
     name_input.fill("people joins")

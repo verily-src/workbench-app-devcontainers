@@ -40,7 +40,7 @@ const ALL_STEPS: Step[] = [
     target: (p: TutorialProgress) => p.view !== "join" ? ["[data-tutorial-target='nav-join']"]
       : p.tableChosen ? ["[data-tutorial-target='open-table']"] : [".jc-table-list .jc-table-pick"],
     done: (p: TutorialProgress) => p.dataLoaded,
-    unavailable: (p: TutorialProgress) => !p.sourceChosen,
+    unavailable: (p: TutorialProgress) => !p.hasSources,
   },
   {
     title: "Filter and style charts",

@@ -52,3 +52,8 @@ def test_tutorial_opens_a_folded_side_panel(page, app_url):
     # The first step points at Data Builder, where data loads.
     expect(page.locator(".tutorial-spotlight")).to_have_attribute("data-target", "[data-tutorial-target='nav-join']")
     expect(page.locator(".tutorial-unavailable")).to_have_count(0)
+    # Skipping to "Open a table" from Explore still points at Data Builder (not "unavailable").
+    page.get_by_role("dialog", name="Choose a source").get_by_role("button", name="Skip step").click()
+    expect(page.get_by_role("dialog", name="Open a table")).to_be_visible()
+    expect(page.locator(".tutorial-spotlight")).to_have_attribute("data-target", "[data-tutorial-target='nav-join']")
+    expect(page.locator(".tutorial-unavailable")).to_have_count(0)

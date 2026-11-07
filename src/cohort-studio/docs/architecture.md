@@ -416,6 +416,62 @@ reapplied to the original source, so a second type change has the same result
 before and after reopening. Aurora logical numbers use exact numeric storage
 to preserve distinct large IDs; chart coordinates still use floating-point values.
 
+### Published revisions and viewer mode (2026-11-06)
+
+The saved view is the editable **draft**. `POST /api/views/publish` copies the
+stored draft (not the open tabs) into a new immutable revision N+1 with
+`published_at`, `published_by` (the same `views._actor()` attribution as saves:
+the Workbench login, not a per-viewer identity) and an optional note. There is
+no route that changes a revision: publish only inserts, `PUT`/`PATCH`/`DELETE`
+on `/api/views/revision` return 405, and a lost race returns 409. Publish and
+rollback also return 409 while a save or refresh job for the view is running,
+so they never act on a draft that is about to change. Other routes:
+`GET /api/views/revisions` (newest first), `GET /api/views/revision`
+(`revision` omitted = latest; returns the stored state plus `published`), and
+`POST /api/views/rollback`, which copies a revision into the draft. Pydantic
+models (`ViewRef`, `PublishViewRequest`, `RollbackViewRequest`,
+`ViewRevisionQuery`) bound the name pattern, store kind, note (≤500 chars, no
+control characters, blank → null) and revision (1–999,999); unknown views or
+revisions are 404.
+
+Storage. Aurora/PostgreSQL uses a `_studio_view_revisions` table (unique
+`view_name, revision`), created by the same `metadata.create_all` as
+`_studio_views`, so existing stores gain it on first use. PostgreSQL publishes
+under the per-resource advisory lock. S3 writes
+`_studio_views/_revisions/<name>/NNNNNN.json` with `If-None-Match: *`
+(boto3 `IfNoneMatch`, or `aws s3api put-object --if-none-match`), so an existing
+revision is never overwritten. Draft listing ignores keys with `/`, so old
+clients see only drafts. Existing views list as unpublished drafts.
+
+Status. Listings add `published_revision`, `published_at` and `draft_changed`.
+`draft_changed` compares a SHA-256 of canonical draft JSON with the revision's
+stored hash; `created_by` and per-tab `snapshot` metadata are excluded, so a
+snapshot refresh does not flag the draft. S3 listing reads the draft and the
+latest revision only for views that have revisions; if revision listing fails,
+the drafts still list with `publication_unknown` ("Publish status unavailable"),
+and Delete still asks for confirmation.
+
+Snapshots. A revision keeps the materialized refs it was published with.
+`saved_snapshots._saved_refs` scans revisions as well as drafts, so re-saving
+the draft (which builds a new snapshot) does not drop the snapshot a revision
+uses. Rollback writes the revision state into the draft and cleans up the
+draft's old unshared refs. A revision freezes the report **definition**
+(sources, filters, charts, cohorts, parameters), not the rows: live recipe
+sources requery on open, and Refresh on the draft refreshes a shared snapshot
+in place, so a pinned revision sees the refreshed rows too. Deleting a view
+deletes its revisions; the UI asks first when the view is published.
+
+Viewer mode. `#view=kind:resource:name&published` opens the latest revision;
+`&rev=N` opens one revision; the plain link opens the draft. In viewer mode the
+browser shows a "Published · rev N · date" banner with **Open draft**, and hides
+saving, Publish, Roll back, Delete, Refresh snapshot, Data Builder (nav, ⌘K,
+"⋈ Join", "Edit in Data Builder") and Refresh extract. Filters, chart clicks and
+parameters still work for the session. Tabs opened from the revision carry
+`publishedRevision`; opening any other data (or closing every tab) leaves
+viewer mode, so the banner never labels unrelated data. This is a UI mode, not access control:
+anyone with the app can open the draft. Per-person audiences need a per-user
+identity first; see `docs/ACCESS_POLICY_SCOPE.md` (deferred).
+
 ## 6. Isolated browser deployment
 
 `src/virtual-browser-cohort-studio` runs the same Studio image behind a

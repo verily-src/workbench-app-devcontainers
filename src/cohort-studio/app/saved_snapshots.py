@@ -126,10 +126,10 @@ def _write_state(conn, views_module, resource_id: str, name: str,
 
 def _saved_refs(conn, views_module, resource_id: str) -> set[str]:
     _public_path(conn)
-    rows = conn.execute(views_module.select(views_module.view_table.c.state)).scalars()
     refs = set()
-    for raw in rows:
-        refs.update(_state_refs(json.loads(raw), resource_id))
+    for table in (views_module.view_table, views_module.revision_table):
+        for raw in conn.execute(views_module.select(table.c.state)).scalars():
+            refs.update(_state_refs(json.loads(raw), resource_id))
     return refs
 
 
@@ -435,13 +435,24 @@ def delete_saved_view(resource_id: str, name: str) -> None:
         _resource_lock(conn, resource_id)
         _public_path(conn)
         old_state = _get_state(conn, views.view_table, name, for_update=True)
-        if old_state is None:
-            _cleanup_unshared(conn, views, resource_id, set())
-            return
-        old_refs = _state_refs(old_state, resource_id)
-        conn.execute(views.delete(views.view_table).where(
-            views.view_table.c.name == name))
+        revisions = views.revision_table
+        old_refs = _state_refs(old_state or {}, resource_id)
+        for raw in conn.execute(views.select(revisions.c.state).where(
+                revisions.c.view_name == name)).scalars():
+            old_refs.update(_state_refs(json.loads(raw), resource_id))
+        conn.execute(views.delete(revisions).where(revisions.c.view_name == name))
+        if old_state is not None:
+            conn.execute(views.delete(views.view_table).where(
+                views.view_table.c.name == name))
         _cleanup_unshared(conn, views, resource_id, old_refs)
+
+
+def restore_state_locked(conn, resource_id: str, name: str, state: dict) -> None:
+    import views
+
+    old_state = _get_state(conn, views.view_table, name, for_update=True)
+    _put_state(conn, views, resource_id, name, state)
+    _cleanup_unshared(conn, views, resource_id, _state_refs(old_state or {}, resource_id))
 
 
 def list_status(conn, resource_id: str, state: dict) -> dict:

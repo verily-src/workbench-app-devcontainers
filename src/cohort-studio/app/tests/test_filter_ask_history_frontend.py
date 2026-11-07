@@ -2,6 +2,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -73,12 +74,7 @@ def test_database_filter_ask_history_folds_and_survives_tab_switch(page, app_url
 
     page.route("**/api/datasets/*/ask", ask)
     page.goto(app_url)
-    page.get_by_label("Source type").select_option("aurora")
-    page.get_by_label("Datasource").select_option("aurora:clinical")
-    page.get_by_label("Schema").select_option("public")
-    expect(page.get_by_label("Table", exact=True).locator("option")).to_have_count(3)
-    page.get_by_label("Table", exact=True).select_option("public.person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:clinical", "public.person")
     expect(page.locator(".tab.active")).to_contain_text("person")
 
     question = page.get_by_placeholder('Ask AI to filter — e.g. "liver samples with RIN above 7"')
@@ -96,8 +92,7 @@ def test_database_filter_ask_history_folds_and_survives_tab_switch(page, app_url
     expect(page.get_by_text("Applied filter for question 2")).to_be_visible()
     expect(page.get_by_text("Only people with condition A")).to_be_visible()
 
-    page.get_by_label("Table", exact=True).select_option("public.visit")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:clinical", "public.visit")
     expect(page.locator(".tabs > span")).to_have_count(2)
     # Click the tab title, not the tab centre, which can land on its Rename button.
     page.locator(".tabs > span").first.locator("> span").click()

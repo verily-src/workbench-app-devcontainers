@@ -78,7 +78,7 @@ def _setup(page, app_url, validations):
 
     page.route("**/api/datasets/join/validate", validate)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     canvas.get_by_role("button", name="Add person to canvas").click()
     expect(canvas.locator(".jc-node")).to_have_count(1, timeout=10000)

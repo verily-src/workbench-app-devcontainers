@@ -68,7 +68,7 @@ def test_large_growth_preview_requires_confirmation(page, app_url):
         }],
     }))
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     panel = page.locator(".jc")
     add_to_canvas(panel, "person")
     expect(panel.locator(".jc-node")).to_have_count(1, timeout=10000)

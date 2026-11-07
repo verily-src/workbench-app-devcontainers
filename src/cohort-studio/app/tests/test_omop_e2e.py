@@ -19,7 +19,7 @@ import db
 import main
 from tests.test_agent_store import agent_store
 from tests.conftest import remount_mcp_if_started
-from tests.ui_helpers import menu
+from tests.ui_helpers import load_table, menu
 
 pytestmark = pytest.mark.e2e
 
@@ -165,11 +165,7 @@ def test_omop_cohort_api_on_real_postgres(ref, omop_app_url: str):
 
 def test_aggregation_filter_on_real_postgres(ref, page: Page, omop_app_url: str):
     page.goto(omop_app_url)
-    page.get_by_label('Source type', exact=True).select_option('aurora')
-    page.get_by_label('Datasource', exact=True).select_option('aurora:omopdb')
-    page.get_by_label('Schema', exact=True).select_option('cdm')
-    page.get_by_label('Table', exact=True).select_option('cdm.person')
-    page.get_by_role('button', name='Load table').click()
+    load_table(page, "aurora:omopdb", "cdm.person")
     expect(page.locator('.hero .count')).to_have_text('100', timeout=30000)
     menu(page, 'Add to this view').get_by_role('button', name='+ Aggregation filter').click()
     panel = page.get_by_role('region', name='Aggregation filter')

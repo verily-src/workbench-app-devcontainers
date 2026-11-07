@@ -3,6 +3,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_frontend_e2e import loaded_page, app_url  # noqa: F401
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -70,11 +71,7 @@ def test_filter_values_can_be_searched(page, app_url):
         "total": 12, "filtered": 12, "scope": "database", "sampled": False, "charts": [],
         "rows": {"page": 0, "page_size": 50, "columns": ["site"], "data": [[v] for v in values]}}))
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:db")
-    page.get_by_label("Schema", exact=True).select_option("public")
-    page.get_by_label("Table", exact=True).select_option("public.visits")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:db", "public.visits")
     group = page.locator(".filter-group", has_text="site")
     group.locator("summary").click()
     group.get_by_label("site_03").check()

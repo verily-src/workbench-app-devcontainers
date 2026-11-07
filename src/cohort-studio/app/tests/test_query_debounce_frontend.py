@@ -1,6 +1,7 @@
 import pytest
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -38,10 +39,7 @@ def _body(selected):
 
 def _load(page, app_url):
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:db")
-    page.get_by_label("Table", exact=True).select_option("public.person")
-    page.get_by_role("button", name="Load table", exact=True).click()
+    load_table(page, "aurora:db", "public.person")
     expect(page.locator(".dataset-toolbar")).to_be_visible(timeout=10000)
 
 

@@ -1,6 +1,7 @@
 import pytest
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table, open_data_builder
 
 pytestmark = pytest.mark.e2e
 
@@ -22,17 +23,15 @@ def test_load_progress_cancel_and_reload_resume(page, app_url):
         reply(route,state)
     page.route('**/api/data-jobs/job1/cancel', cancel)
     page.goto(app_url)
-    page.get_by_label('Source type', exact=True).select_option('aurora')
-    page.get_by_label('Datasource', exact=True).select_option('aurora:db')
-    page.get_by_label('Table', exact=True).select_option('public.person')
-    page.get_by_role('button', name='Load table', exact=True).click()
+    load_table(page, "aurora:db", "public.person")
     panel = page.get_by_role('region', name='Data operations')
     expect(panel).to_contain_text('running')
     assert panel.bounding_box()['y'] >= page.locator('.topbar').bounding_box()['height']
     page.screenshot(path='/private/tmp/cohort-data-job-progress.png')
     panel.get_by_role('button', name='Cancel', exact=True).click()
     expect(panel).not_to_be_visible(timeout=5000)
-    expect(page.get_by_role('button',name='Load table',exact=True)).to_be_enabled()
+    open_data_builder(page)
+    expect(page.get_by_role('button', name='Open in Explore', exact=True)).to_be_enabled()
     page.evaluate("sessionStorage.setItem('studio-data-jobs', JSON.stringify(['job1']))")
     state['status'] = 'interrupted'
     page.reload()

@@ -3,7 +3,9 @@ import { api, ApiError, OpenResult, WorkflowList, viewSpecs } from "./api";
 import { FilterPanel } from "./components/FilterPanel";
 import { SavedViews, parseViewHash, viewLink } from "./components/SavedViews";
 import { PublishedBanner, type PublishedViewer } from "./components/PublishedBanner";
-import { SourcePicker } from "./components/SourcePicker";
+import { FoldSection } from "./components/FoldSection";
+import { SourceCard } from "./components/SourceCard";
+import { openTable, tableTitle } from "./components/OpenTableCard";
 import { PublishCatalog } from "./components/PublishCatalog";
 import { Toasts } from "./components/Toasts";
 import { BrandMark } from "./components/BrandMark";
@@ -122,6 +124,9 @@ export default function App() {
   const [active, setActive] = useState(0);
   const [activity, setActivity] = useState("");
   const [listingTables, setListingTables] = useState("");   // datasource being listed
+  const [tablesError, setTablesError] = useState("");
+  // Table to pick once a datasource chosen from Explore ("Change…") finishes listing.
+  const pendingTable = useRef("");
   const [openingTable, setOpeningTable] = useState<TableInfo | null>(null);
   // Opens and joins show progress in the Data operations card; keep `activity`
   // as the busy flag but don't repeat the text in the top bar.
@@ -143,6 +148,7 @@ export default function App() {
   // The visual join canvas stays mounted (hidden) after its first visit so a draft survives tab switches.
   const [canvasMounted, setCanvasMounted] = useState(false);
   useEffect(() => { if (view === "join") setCanvasMounted(true); }, [view]);
+  const [canvasSeed, setCanvasSeed] = useState<{ nonce: number; datasetId: string } | null>(null);
   const [canvasEdit, setCanvasEdit] = useState<{ nonce: number; title: string;
     ref: Extract<SourceRef, { kind: "join" | "sql" }>;
     extract?: { kind: string; resource_id: string; table: string } } | null>(null);
@@ -259,23 +265,29 @@ export default function App() {
     setSidebarCollapsed(collapsed);
     try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch { /* private mode */ }
   };
+  // Data Builder's Connections pane starts on the first datasource.
   useEffect(() => {
-    if (!source) return;
+    if (view === "join" && !sourceKey && sources.length) setSourceKey(`${sources[0].kind}:${sources[0].id}`);
+  }, [view, sourceKey, sources]);
+  useEffect(() => {
     setTables([]);
     setTable("");
-    // Shown next to the Table picker; a newer datasource choice wins.
+    setTablesError("");
+    if (!source) return;
+    // Shown in Connections; a newer datasource choice wins.
     let current = true;
     setListingTables(source.id);
     api.tables(source.kind, source.id, tablesRefresh > 0)
       .then((t) => {
         if (!current) return;
         setTables(t);
-        if (!t.length) setError(`No tables or data files in ${source.id}.`);
+        if (!t.length) setTablesError(`No tables or data files in ${source.id}.`);
+        if (pendingTable.current && t.some((x) => x.name === pendingTable.current)) setTable(pendingTable.current);
       })
-      .catch((e) => { if (current) setError(`Could not list tables: ${e.message}`); })
-      .finally(() => { if (current) setListingTables(""); });
+      .catch((e) => { if (current) setTablesError(`Could not list tables: ${e.message}`); })
+      .finally(() => { if (current) { setListingTables(""); pendingTable.current = ""; } });
     return () => { current = false; };
-  }, [sourceKey, tablesRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sourceKey, tablesRefresh, Boolean(source)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openResult = (
     opened: OpenResult, title: string,
@@ -313,18 +325,17 @@ export default function App() {
   };
 
 
-  const openTableDirect = async (src: Source, tbl: string) => {
+  /** Opens one table as a Live tab; Explore shows the load progress. */
+  const openTableDirect = async (src: Source, info: TableInfo) => {
+    const tbl = info.name;
+    setView("explore");
     setActivity(`Loading ${tbl}…`);
     setActivityInCard(true);
     setError("");
-    const info = tables.find((t) => t.name === tbl);
-    setOpeningTable(info ?? null);
+    setOpeningTable(info);
     try {
-      const opened = (src.kind === "aurora" || src.kind === "postgres" || src.kind === "athena") && info?.schema && info?.table
-        ? await api.openSourceRef({ kind: src.kind, resource_id: src.id,
-            table: info.table, schema: info.schema })
-        : await api.openDataset(src.kind, src.id, tbl);
-      openResult(opened, tbl.split("/").pop() ?? tbl,
+      const opened = await openTable(src, info);
+      openResult(opened, tableTitle(info),
         { kind: src.kind, resource_id: src.id, table: tbl, uuid: src.uuid });
       setView("explore");
     } catch (e) {
@@ -334,11 +345,6 @@ export default function App() {
       setActivityInCard(false);
       setOpeningTable(null);
     }
-  };
-
-  const loadTable = async () => {
-    if (!source || !table) return;
-    await openTableDirect(source, table);
   };
 
   const uploadCsv = async (file: File) => {
@@ -656,6 +662,45 @@ export default function App() {
     }
   };
 
+  /** Reopens an extract's recipe in Data Builder to change and rewrite it. */
+  const editExtract = (datasetId: string) => {
+    const tab = datasets.find((d) => d.id === datasetId);
+    const target = tab ? extractTarget(tab) : null;
+    const recipe = tab?.extract?.recipe;
+    if (!tab || !target || (recipe?.kind !== "join" && recipe?.kind !== "sql")) return;
+    setCanvasEdit((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, title: tab.title,
+      ref: recipe as Extract<SourceRef, { kind: "join" | "sql" }>, extract: target }));
+    setView("join");
+  };
+  /** Reopens a join (or SQL) tab's recipe in Data Builder. */
+  const editRecipe = (datasetId: string) => {
+    const original = datasets.find((dataset) => dataset.id === datasetId);
+    const ref = original?.sourceRef;
+    if (!original || (ref?.kind !== "join" && ref?.kind !== "sql")) return;
+    setCanvasEdit((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, title: original.title,
+                                ref: ref as Extract<SourceRef, { kind: "join" | "sql" }> }));
+    setView("join");
+  };
+  /** Data Builder with Connections on this tab's datasource (and its table, when listed). */
+  const changeSource = (dataset: Dataset) => {
+    const ref = dataset.extract ? extractTarget(dataset) : dataset.sourceRef;
+    if (ref && "resource_id" in ref && "table" in ref) {
+      const key = `${ref.kind}:${ref.resource_id}`;
+      const name = "schema" in ref && ref.schema ? `${ref.schema}.${ref.table}` : ref.table;
+      if (sources.some((s) => `${s.kind}:${s.id}` === key)) {
+        if (key === sourceKey) setTable(tables.some((t) => t.name === name) ? name : "");
+        else { pendingTable.current = name; setSourceKey(key); }
+      }
+    }
+    setView("join");
+  };
+  const joinFrom = (datasetId: string) => {
+    setCanvasSeed((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, datasetId }));
+    setView("join");
+  };
+  /** The hidden file input lives at the app root; Data Builder and ⌘K open it. */
+  const chooseUpload = () => fileRef.current?.click();
+
   const activeDs = datasets[active];
   const chartQuerySignature = JSON.stringify(activeDs?.charts.map(({ kind, x, y, measure, series }) => ({ kind, x, y, measure, series })) ?? []);
 
@@ -781,15 +826,15 @@ export default function App() {
     ...sources.map((s) => ({
       id: `src:${s.kind}:${s.id}`, group: "Datasource",
       label: s.id, hint: s.kind.toUpperCase(),
-      run: () => { setSourceKey(`${s.kind}:${s.id}`); setView("explore"); },
+      run: () => { setSourceKey(`${s.kind}:${s.id}`); setView("join"); },
     })),
     ...(source ? tables.map((t) => ({
       id: `tbl:${t.name}`, group: `Open from ${source.id}`,
       label: t.name, hint: [t.detail, tableStats(t)].filter(Boolean).join(" · "),
-      run: () => openTableDirect(source, t.name),
+      run: () => openTableDirect(source, t),
     })) : []),
     { id: "act:upload", group: "Action", label: "Upload a CSV, TSV or Parquet file…",
-      run: () => fileRef.current?.click() },
+      run: chooseUpload },
   ];
 
   /** ⌘K, Tutorial and Settings, bottom-left: the sidebar footer, the folded
@@ -824,72 +869,48 @@ export default function App() {
     <PlinkContext.Provider value={plinkExport}>
     <div className={`app${view !== "explore" ? " app-no-sidebar" : ""}${sidebarCollapsed ? " sidebar-is-collapsed" : ""}`}>
       {sidebarCollapsed && (
-        <aside className="sidebar-rail" aria-label="Data sources (collapsed)">
-          <button type="button" className="quiet sidebar-toggle" aria-label="Expand data sources"
-                  title="Show data sources" aria-expanded={false}
+        <aside className="sidebar-rail" aria-label="Side panel (collapsed)">
+          <button type="button" className="quiet sidebar-toggle" aria-label="Expand side panel"
+                  title="Show the data source, filters and settings" aria-expanded={false}
                   onClick={() => toggleSidebar(false)}>»</button>
-          <span className="sidebar-rail-label" aria-hidden="true">Data sources</span>
+          <span className="sidebar-rail-label" aria-hidden="true">Data &amp; filters</span>
           {view === "explore" && cornerTools(true)}
         </aside>
       )}
       {view !== "explore" && <aside className="tool-rail" aria-label="App tools rail">{cornerTools(true)}</aside>}
-      <aside className="sidebar" hidden={sidebarCollapsed} id="data-sources-panel">
+      <aside className="sidebar" hidden={sidebarCollapsed} id="data-sources-panel" aria-label="Side panel">
         <h2 className="sidebar-heading">
-          <span>Data sources</span>
-          <button type="button" className="quiet sidebar-toggle" aria-label="Collapse data sources"
-                  title="Hide data sources" aria-expanded={true} aria-controls="data-sources-panel"
+          <span>Data &amp; filters</span>
+          <button type="button" className="quiet sidebar-toggle" aria-label="Collapse side panel"
+                  title="Hide the side panel" aria-expanded={true} aria-controls="data-sources-panel"
                   onClick={() => toggleSidebar(true)}>«</button>
         </h2>
-        {!ready ? (
-          <div className="activity"><span className="pulse" />
-            Connecting to workspace…</div>
-        ) : (
-          <div style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
-            {sources.length
-              ? `${sources.length} available`
-              : "Waiting for workspace datasources… File upload works now."}
-          </div>
-        )}
-        <DiscoveryBanner discovery={discovery} onRetry={retryDiscovery} />
 
-        {datasets.length === 0 && sources.length > 0 && !viewer && <button className="quiet"
-          data-tutorial-target="join-button" onClick={() => setView("join")}>Join tables</button>}
-        <SourcePicker sources={sources} tables={tables} sourceKey={sourceKey} table={table}
-          loading={!ready || Boolean(activity) || Boolean(listingTables)} busy={Boolean(activity)}
-          listing={listingTables}
-          onRefreshTables={() => setTablesRefresh((n) => n + 1)}
-          onSourceKeyChange={setSourceKey} onTableChange={setTable} onLoadTable={loadTable} />
-        <button className="quiet" onClick={() => setAddSourceOpen(true)}>+ Add data source</button>
-        {source?.kind === "s3" && (
-          <PublishCatalog source={source} onToast={alerts.pushToast}
-                          onPublished={() => api.datasources()
-                            .then((out) => setSources(out.sources))
-                            .catch(() => undefined)} />
-        )}
+        <FoldSection id="source" title="Data source">
+          {activeDs ? (
+            <SourceCard dataset={activeDs}
+              onChange={viewer ? undefined : () => changeSource(activeDs)}
+              onEdit={viewer ? undefined
+                : activeDs.extract && (activeDs.extract.recipe?.kind === "join" || activeDs.extract.recipe?.kind === "sql")
+                  ? () => editExtract(activeDs.id)
+                  : !activeDs.extract && (activeDs.sourceRef?.kind === "join" || activeDs.sourceRef?.kind === "sql")
+                    ? () => editRecipe(activeDs.id) : undefined}
+              onJoin={viewer || activeDs.sourceRef?.kind === "join" ? undefined : () => joinFrom(activeDs.id)}
+              onRefresh={activeDs.extract && !viewer ? (activeDs.extract.refreshable ? () => void refreshExtract(activeDs.id) : undefined)
+                : activeDs.queryScope === "database"
+                  ? () => updateDataset(activeDs.id, { refreshNonce: (activeDs.refreshNonce ?? 0) + 1, refreshing: true })
+                  : undefined} />
+          ) : (
+            <div className="side-empty">
+              <span>No tab open.</span>
+              {!viewer && <button type="button" className="quiet" onClick={() => setView("join")}>Open Data Builder</button>}
+            </div>
+          )}
+        </FoldSection>
 
-        <div className="section-label">Upload</div>
-        <label className="upload-btn">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.tsv,.txt,.gz,.parquet"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) uploadCsv(f);
-              e.target.value = "";
-            }}
-          />
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" strokeWidth="2">
-            <path d="M12 16V4m0 0l-4 4m4-4l4 4" />
-            <path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2" />
-          </svg>
-          Upload CSV, TSV or Parquet
-        </label>
-
-        {<>
-        {activeDs && <>
-          <div className="section-label">Parameters</div>
+        {activeDs && (
+          <FoldSection id="parameters" title="Parameters"
+                       badge={activeDs.parameters?.length ? activeDs.parameters.length : undefined}>
           <ParametersPanel key={`params-${activeDs.id}`} parameters={activeDs.parameters ?? []}
             onChange={(next) => {
               // Removed parameters unbind their filters; the rest push their values into them.
@@ -903,9 +924,10 @@ export default function App() {
               updateDataset(activeDs.id, { parameters: next, filters: fix(activeDs.filters), page: 0, charts,
                 cohorts: (activeDs.cohorts ?? []).map((c) => ({ ...c, filters: fix(c.filters) })) });
             }} />
-        </>}
-        <div className="section-label">Filters</div>
+          </FoldSection>
+        )}
 
+        <FoldSection id="filters" title="Filters" badge={activeDs?.filters.length ? activeDs.filters.length : undefined}>
         {activeDs ? (
           <FilterPanel key={activeDs.id}
             columns={activeDs.columns}
@@ -918,15 +940,23 @@ export default function App() {
             Load a table to see filters.
           </div>
         )}
+        </FoldSection>
 
-        </>}
-        <div className="section-label">Saved views</div>
+        <FoldSection id="saved-views" title="Saved views">
         <SavedViews sources={sources} datasets={datasets} active={active}
                     onLoadView={loadView} onOpenRevision={openRevision} readOnly={Boolean(viewer)} />
+        </FoldSection>
 
         <VersionFooter />
         {view === "explore" && !sidebarCollapsed && cornerTools(false)}
       </aside>
+      <input ref={fileRef} type="file" hidden aria-label="Upload CSV, TSV or Parquet"
+             accept=".csv,.tsv,.txt,.gz,.parquet"
+             onChange={(e) => {
+               const f = e.target.files?.[0];
+               if (f) uploadCsv(f);
+               e.target.value = "";
+             }} />
 
       <div className="main">
         <div className="topbar">
@@ -1021,7 +1051,26 @@ export default function App() {
                             if (old.id !== opened.dataset_id) void api.closeDataset(old.id).catch(() => undefined);
                           }}
                           onAddSource={() => setAddSourceOpen(true)}
-                          onClose={() => setView("explore")} />
+                          onClose={() => setView("explore")}
+                          seed={canvasSeed}
+                          sourceKey={sourceKey} onSourceKeyChange={setSourceKey}
+                          tables={tables} listing={listingTables} tablesError={tablesError}
+                          onRefreshTables={() => setTablesRefresh((n) => n + 1)}
+                          table={table} onTableChange={setTable}
+                          onOpenTable={(src, info) => void openTableDirect(src, info)}
+                          onUpload={chooseUpload}
+                          connectionsStatus={<>
+                            {!ready ? <div className="activity"><span className="pulse" />Connecting to workspace…</div>
+                              : !sources.length && <div className="settings-hint">Waiting for workspace datasources… File upload works now.</div>}
+                            {ready && sources.length > 0 && <div className="settings-hint">{sources.length} available</div>}
+                            <DiscoveryBanner discovery={discovery} onRetry={retryDiscovery} />
+                          </>}
+                          connectionsExtra={source?.kind === "s3" ? (
+                            <PublishCatalog source={source} onToast={alerts.pushToast}
+                                            onPublished={() => api.datasources()
+                                              .then((out) => setSources(out.sources))
+                                              .catch(() => undefined)} />
+                          ) : undefined} />
             </div>
           )}
           {view === "join" ? null : view === "agent" && aiFeatures ? (
@@ -1071,16 +1120,10 @@ export default function App() {
                   <button className="quiet" onClick={dismissSession}>Dismiss</button>
                 </div>
               )}
-              {sources.length > 0 && (
-                  <button className="primary" data-tutorial-target="load-data"
-                    onClick={() => {
-                      toggleSidebar(false);
-                      window.setTimeout(() => {
-                        const picker = document.querySelector<HTMLSelectElement>("[aria-label='Source type']");
-                        picker?.scrollIntoView({ block: "nearest" });
-                        picker?.focus();
-                      });
-                    }}>
+              {!viewer && (
+                <button className="primary" data-tutorial-target="load-data"
+                  title="Open a table, join tables or upload a file in Data Builder"
+                  onClick={() => setView("join")}>
                   Load data
                 </button>
               )}
@@ -1140,22 +1183,8 @@ export default function App() {
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
                   onRefreshExtract={viewer ? undefined : (datasetId) => void refreshExtract(datasetId)}
-                  onEditExtract={viewer ? undefined : (datasetId) => {
-                    const tab = datasets.find((d) => d.id === datasetId);
-                    const target = tab ? extractTarget(tab) : null;
-                    const recipe = tab?.extract?.recipe;
-                    if (!tab || !target || (recipe?.kind !== "join" && recipe?.kind !== "sql")) return;
-                    setCanvasEdit((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, title: tab.title,
-                      ref: recipe as Extract<SourceRef, { kind: "join" | "sql" }>, extract: target }));
-                    setView("join");
-                  }}
-                  onEditJoinCanvas={viewer ? undefined : (datasetId) => {
-                    const original = datasets.find((dataset) => dataset.id === datasetId);
-                    if (original?.sourceRef?.kind !== "join") return;
-                    setCanvasEdit((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, title: original.title,
-                                                ref: original.sourceRef as Extract<SourceRef, { kind: "join" }> }));
-                    setView("join");
-                  }}
+                  onEditExtract={viewer ? undefined : editExtract}
+                  onEditJoinCanvas={viewer ? undefined : editRecipe}
                   onOpenTable={(opened, title) => openResult(opened, title, undefined, undefined, { forceNewTab: true })}
                 />
               )}
@@ -1173,12 +1202,12 @@ export default function App() {
             const created = out.sources.find((item) => item.kind === kind && item.id === id);
             if (created) {
               setSourceKey(`${created.kind}:${created.id}`);
-              setView("explore");
+              setView("join");
             }
           }).catch((e) => setError(`Source was added, but the list could not refresh: ${e.message}`));
         }} /></Suspense>}
       <Tutorial progress={{
-            sourceChosen: Boolean(sourceKey), dataLoaded: datasets.length > 0,
+            sourceChosen: Boolean(sourceKey), tableChosen: Boolean(table), dataLoaded: datasets.length > 0,
             hasSources: sources.length > 0,
             joinCreated: datasets.some((dataset) => dataset.sourceRef?.kind === "join"),
             view, hasDataset: Boolean(activeDs),

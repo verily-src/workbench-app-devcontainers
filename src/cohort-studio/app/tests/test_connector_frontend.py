@@ -3,6 +3,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -72,37 +73,21 @@ def test_postgres_athena_and_s3_use_shared_datasource_open_flow(page: Page, app_
     }))
 
     page.goto(app_url)
-    page.get_by_label("Source type").select_option("postgres")
-    source_picker = page.get_by_label("Datasource", exact=True)
-    expect(source_picker.locator(
-        "option", has_text="Clinical RDS")).to_be_attached(timeout=10000)
-    source_picker.select_option("postgres:postgres:rds-clinical")
-    table_select = page.get_by_label("Table", exact=True)
-    expect(table_select.locator("option", has_text="person")).to_be_attached(timeout=10000)
-    table_select.select_option("cdm.person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "postgres:postgres:rds-clinical", "cdm.person")
     expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
     assert opened[-1]["source_ref"] == {
         "kind": "postgres", "resource_id": "postgres:rds-clinical",
         "table": "person", "schema": "cdm",
     }
 
-    page.get_by_label("Source type").select_option("athena")
-    page.get_by_label("Datasource", exact=True).select_option("athena:iceberg-catalog")
-    expect(table_select.locator("option", has_text="person")).to_be_attached(timeout=10000)
-    table_select.select_option("clinical.person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "athena:iceberg-catalog", "clinical.person")
     expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
     assert opened[-1]["source_ref"] == {
         "kind": "athena", "resource_id": "iceberg-catalog",
         "table": "person", "schema": "clinical",
     }
 
-    page.get_by_label("Source type").select_option("s3")
-    page.get_by_label("Datasource", exact=True).select_option("s3:lake-files")
-    expect(table_select.locator("option", has_text="clinical/person.parquet")).to_be_attached(timeout=10000)
-    table_select.select_option("clinical/person.parquet")
-    page.get_by_role("button", name="Load file").click()
+    load_table(page, "s3:lake-files", "clinical/person.parquet")
     expect(page.locator(".tab", has_text="person.parquet")).to_be_visible(timeout=10000)
     assert opened[-1] == {"kind": "s3", "resource_id": "lake-files",
                           "table": "clinical/person.parquet"}
@@ -169,7 +154,7 @@ def test_join_builder_adds_postgres_and_athena_with_schema_refs(page: Page, app_
 
     page.route("**/api/data-jobs/join", join)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     canvas.get_by_role("button", name=re.compile("^Clinical RDS")).click()
     canvas.get_by_role("button", name="Add cdm.person to canvas").click()

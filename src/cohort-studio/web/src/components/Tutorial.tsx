@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./Tutorial.css";
 
-// v5: steps follow the Explore Cohort / Data Builder / Workflows layout.
-const STORAGE_KEY = "cohort-studio.tutorial.v5";
+// v6: data loads in Data Builder; Explore's left pane holds the source card and filters.
+const STORAGE_KEY = "cohort-studio.tutorial.v6";
 
 export interface TutorialProgress {
   sourceChosen: boolean;
+  /** A table is picked in Data Builder → Connections. */
+  tableChosen?: boolean;
   dataLoaded: boolean;
   hasSources: boolean;
   joinCreated: boolean;
@@ -26,24 +28,23 @@ type Step = {
 const ALL_STEPS: Step[] = [
   {
     title: "Choose a source",
-    text: "Choose a source type, then select its datasource. The table picker appears after the datasource loads.",
-    target: () => {
-      const type = document.querySelector<HTMLSelectElement>("[aria-label='Source type']");
-      return [type?.value ? "[aria-label='Datasource']" : "[aria-label='Source type']"];
-    },
-    done: (p: TutorialProgress) => p.sourceChosen,
+    text: "Data loads in Data Builder. Open it, then pick a datasource under Connections. Upload CSV, TSV or Parquet and + Add data source are there too.",
+    target: (p: TutorialProgress) => p.view === "join"
+      ? ["[aria-label='Datasources']"] : ["[data-tutorial-target='nav-join']"],
+    done: (p: TutorialProgress) => p.view === "join" && p.sourceChosen,
     unavailable: (p: TutorialProgress) => !p.hasSources,
   },
   {
     title: "Open a table",
-    text: "For Aurora, choose Schema → Table → Load table. For S3, choose File folder → File → Load file. You can rename the opened tab.",
-    target: () => ["[aria-label='Table']", "[aria-label='File']", "[aria-label='Schema']"],
+    text: "Click a table to see its rows, size and columns. Choose Live or Extract, then Open in Explore. Double-click a table to open it Live. You can rename the opened tab.",
+    target: (p: TutorialProgress) => p.view !== "join" ? ["[data-tutorial-target='nav-join']"]
+      : p.tableChosen ? ["[data-tutorial-target='open-table']"] : [".jc-table-list .jc-table-pick"],
     done: (p: TutorialProgress) => p.dataLoaded,
     unavailable: (p: TutorialProgress) => !p.sourceChosen,
   },
   {
     title: "Filter and style charts",
-    text: "Click a bar or a slice to filter the cohort, or use Filters in the Data sources panel. Open Marks on a chart to draw it as a Bar, Column, Line, Area, Pie or Donut, and to set its color, size and value labels. Add chart adds another field.",
+    text: "Click a bar or a slice to filter the cohort, or use Filters in the left pane, under the Data source card. Each section folds by its header. Open Marks on a chart to draw it as a Bar, Column, Line, Area, Pie or Donut, and to set its color, size and value labels. Add chart adds another field.",
     target: () => [".chart-card .marks-menu > button", "[data-tutorial-target='add-chart']"],
     done: (p: TutorialProgress) => p.hasDataset,
     unavailable: (p: TutorialProgress) => !p.hasDataset,
@@ -58,7 +59,7 @@ const ALL_STEPS: Step[] = [
   },
   {
     title: "Export and save",
-    text: "In Explore Cohort, Export downloads the rows (TSV, Parquet, JSON), a PDF of the charts, or saves the tab to Aurora. Save the open tabs as a view from the Data sources panel. Extract tabs show Refresh extract to rerun their join.",
+    text: "In Explore Cohort, Export downloads the rows (TSV, Parquet, JSON), a PDF of the charts, or saves the tab to Aurora. Save the open tabs under Saved views in the left pane. Extract tabs show Refresh extract to rerun their join.",
     target: () => ["[aria-label='Export options']"],
     done: (p: TutorialProgress) => p.hasDataset,
     unavailable: (p: TutorialProgress) => !p.hasDataset,
@@ -108,7 +109,7 @@ function saveProgress(progress: SavedProgress) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); } catch {}
 }
 
-/** `onOpen` lets the app show what the steps point at (the folded Data sources panel). */
+/** `onOpen` lets the app show what the steps point at (the folded side panel). */
 /** Opens the tutorial from a button elsewhere (the corner tools). */
 export const openTutorial = () => window.dispatchEvent(new Event("studio-tutorial-open"));
 
@@ -127,7 +128,7 @@ export function Tutorial({ progress, onOpen }: { progress: TutorialProgress; onO
   const done = current.done(progress);
   const unavailable = current.unavailable(progress) || !targetAvailable;
   const selectors = useMemo(() => current.target(progress), [step,
-    progress.sourceChosen, progress.dataLoaded, progress.hasSources,
+    progress.sourceChosen, progress.tableChosen, progress.dataLoaded, progress.hasSources,
     progress.joinCreated, progress.view,
     progress.hasDataset, progress.chatHistoryAvailable, progress.assistantConfigured,
     targetRefresh]);

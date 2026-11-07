@@ -63,7 +63,7 @@ def test_sql_editor_highlights_lints_and_formats(page: Page, app_url: str):
 
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     page.locator(".jc").get_by_role("radio", name="SQL", exact=True).click()
     panel = page.get_by_role("region", name="SQL builder")
     editor = panel.get_by_label("Data Builder SQL")

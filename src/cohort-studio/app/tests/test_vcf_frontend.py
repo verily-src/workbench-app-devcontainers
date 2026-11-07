@@ -1,5 +1,6 @@
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 
 
 def test_vcf_source_displays_scope_and_unverified_reference(page, app_url):
@@ -17,9 +18,6 @@ def test_vcf_source_displays_scope_and_unverified_reference(page, app_url):
     page.route('**/api/datasets/vcf-1/query', lambda r: fulfill(r, {'total':2,'filtered':2,'charts':[],
         'rows':{'page':0,'page_size':50,'columns':[],'data':[[],[]]},'scope':'loaded','sampled':False}))
     page.goto(app_url)
-    page.get_by_label('Source type').select_option('s3')
-    page.get_by_label('Datasource').select_option('s3:lake')
-    page.get_by_label('Table').select_option('genetics.vcf.gz')
-    page.get_by_role('button', name='Load file').click()
+    load_table(page, "s3:lake", "genetics.vcf.gz")
     expect(page.get_by_text('Reference header (not verified): GRCh38 · 2 samples · 2 calls')).to_be_visible(timeout=15000)
     expect(page.get_by_text('VCF 4.2–4.5: unphased diploid GT-only biallelic SNPs. Missing allele counts are null; genotype retains ./.. QUAL and INFO are not retained.')).to_be_visible()

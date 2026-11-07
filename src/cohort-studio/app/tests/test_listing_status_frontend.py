@@ -1,11 +1,12 @@
 import pytest
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
+from tests.ui_helpers import open_data_builder
 
 pytestmark = pytest.mark.e2e
 
 
-def test_table_listing_status_sits_by_the_picker_and_latest_source_wins(page, app_url):
+def test_table_listing_status_sits_in_connections_and_latest_source_wins(page, app_url):
     def reply(route, value):
         route.fulfill(status=200, json=value)
     page.route('**/api/datasources', lambda r: reply(r, {'ready': True, 'sources': [
@@ -20,15 +21,13 @@ def test_table_listing_status_sits_by_the_picker_and_latest_source_wins(page, ap
     page.route('**/api/tables?**', lambda route: held.setdefault(
         'slowdb' if 'slowdb' in route.request.url else 'fastdb', route))
     page.goto(app_url)
-    page.get_by_label('Source type', exact=True).select_option('aurora')
-    page.get_by_label('Datasource', exact=True).select_option('aurora:slowdb')
-    status = page.locator('.source-picker .picker-status')
+    canvas = open_data_builder(page)   # Connections starts on the first datasource (slowdb)
+    status = canvas.get_by_role('complementary', name='Connections').locator('.picker-status')
     expect(status).to_contain_text('Listing tables in slowdb')
-    expect(page.get_by_label('Table', exact=True).locator('option').first).to_have_text('Listing tables…')
     expect(page.locator('.topbar .activity')).to_have_count(0)
     page.screenshot(path='/private/tmp/cohort-listing-status.png')
 
-    page.get_by_label('Datasource', exact=True).select_option('aurora:fastdb')
+    canvas.locator('[data-source-key="aurora:fastdb"]').click()
     expect(status).to_contain_text('Listing tables in fastdb')
     # Answer the newer request first, then the stale one.
     for _ in range(50):
@@ -39,5 +38,5 @@ def test_table_listing_status_sits_by_the_picker_and_latest_source_wins(page, ap
     expect(status).to_have_count(0, timeout=5000)
     reply(held['slowdb'], [{'name': 'public.slow_table', 'schema': 'public', 'table': 'slow_table', 'detail': 'table'}])
     page.wait_for_timeout(500)
-    options = page.get_by_label('Table', exact=True).locator('option').all_inner_texts()
-    assert any('fast_table' in o for o in options) and not any('slow_table' in o for o in options), options
+    expect(canvas.locator('li[data-table="public.fast_table"]')).to_have_count(1)
+    expect(canvas.locator('li[data-table="public.slow_table"]')).to_have_count(0)

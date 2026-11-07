@@ -1,6 +1,6 @@
 from playwright.sync_api import expect
 from tests.test_e2e import app_url
-from tests.ui_helpers import menu
+from tests.ui_helpers import load_table, menu
 
 
 def test_explicit_mapping_confirmation_and_download(page, app_url):
@@ -26,10 +26,7 @@ def test_explicit_mapping_confirmation_and_download(page, app_url):
         route.fulfill(status=200, content_type='application/zip', body=b'PKtest')
     page.route('**/api/datasets/vcf-1/export/plink2', export)
     page.goto(app_url)
-    page.get_by_label('Source type').select_option('s3')
-    page.get_by_label('Datasource').select_option('s3:lake')
-    page.get_by_label('Table').select_option('g.vcf.gz')
-    page.get_by_role('button',name='Load file').click()
+    load_table(page, "s3:lake", "g.vcf.gz")
     menu(page, 'Export options').get_by_role('button', name='Export PLINK 2').click()
     section=page.get_by_role('region',name='PLINK 2 export')
     button=section.get_by_role('button',name='Download PLINK 2 zip')

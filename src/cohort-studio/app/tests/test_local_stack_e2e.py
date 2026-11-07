@@ -55,7 +55,7 @@ def test_local_postgres_source_picker_recommendation_and_join(
 
     page.goto(local_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
-    page.get_by_role("button", name="Join tables").click()   # opens Data Builder
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     canvas.get_by_role("button", name=re.compile("^local-postgres|^Local")).first.click()
     page.screenshot(path="/tmp/local-join-source-picker-empty.png", full_page=True)

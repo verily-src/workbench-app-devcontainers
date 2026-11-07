@@ -6,6 +6,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url
+from tests.ui_helpers import load_table
 
 pytestmark = pytest.mark.e2e
 
@@ -361,7 +362,8 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
-    page.get_by_role("button", name="Edit in Data Builder").click()
+    # The side panel's Data source card reopens the recipe too.
+    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit in Data Builder").click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
     expect(canvas.get_by_role("textbox", name="Join name")).to_have_value("Existing joined result (edited)")
@@ -395,17 +397,13 @@ def test_join_entry_points_open_data_builder(page, app_url):
     calls = {}
     _setup(page, app_url, calls)
     page.goto(app_url)
-    page.get_by_role("button", name="Join tables").click()
+    page.locator(".topnav-link").filter(has_text="Data Builder").click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
     expect(page.locator(".join-panel")).to_have_count(0)
     canvas.get_by_role("button", name="Cancel", exact=True).click()
     # Open a table in Explore, then "⋈ Join" it.
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:clinical")
-    page.get_by_label("Schema", exact=True).select_option("public")
-    page.get_by_label("Table", exact=True).select_option("person")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:clinical", "person")
     expect(page.locator(".tab.active")).to_contain_text("person", timeout=10000)
     expect(page.get_by_role("button", name="Edit join")).to_have_count(0)
     # No join button on Explore tabs: open tabs are offered in Data Builder instead.
@@ -525,7 +523,7 @@ def test_removing_one_of_two_steps_sharing_a_source_keeps_its_dataset(page, app_
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
-    page.get_by_role("button", name="Edit in Data Builder").click()
+    page.locator(".dataset-toolbar").get_by_role("button", name="Edit in Data Builder").click()
     canvas = page.locator(".jc")
     expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
     _wait_for(calls, "validate", lambda b: [s["right_id"] for s in b["steps"]]

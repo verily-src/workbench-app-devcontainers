@@ -208,3 +208,29 @@
 .jc-sql .sql-editor, .jc-sql textarea { min-height: 220px; }
 .jc-sql-preview { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .jc-body[hidden] { display: none; }
+
+/* Connections: pick a table to see its details and open it on its own. */
+.jc-table-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 2px 0;
+  border: 0; background: transparent; color: inherit; font: inherit; font-weight: 400; text-align: left; cursor: inherit; }
+.jc-table-pick:hover { background: transparent; }
+.jc-table-item:has(.jc-table-pick.on) { background: var(--accent-tint); }
+.jc-table-pick.on .jc-table-name { font-weight: 600; }
+.jc-open-card { display: flex; flex-direction: column; gap: 6px; padding: 8px; flex-shrink: 0;
+  border: 1px solid var(--accent-tint-border); border-radius: var(--radius-sm); background: var(--surface); }
+.jc-open-title { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jc-open-card .table-details { margin: 0; padding: 6px 8px; gap: 4px 8px; background: var(--card);
+  grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* The card and upload stay reachable: the pane scrolls within the body height. */
+.jc-body { grid-template-rows: minmax(0, 1fr); }
+.jc-connections { overflow-y: auto; }
+@media (max-width: 900px) { .jc-body { grid-template-rows: none; } }
+.jc-connections > .jc-sources { flex-shrink: 0; }
+.jc-connections > .jc-table-list { min-height: 120px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.jc-open-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; }
+.jc-open-row > .primary { flex: 1 0 auto; padding: 6px 12px; white-space: nowrap; }
+.jc-open-mode { display: flex; gap: 10px; font-size: 12.5px; }
+.jc-open-mode label { display: inline-flex; align-items: center; gap: 4px; }
+.jc-open-mode label.disabled { color: var(--ink-muted); }
+.jc-open-extract { display: grid; gap: 4px; }
+.jc-open-extract select, .jc-open-extract input { width: 100%; box-sizing: border-box; min-width: 0; }
+.jc-upload { justify-content: center; flex-shrink: 0; }

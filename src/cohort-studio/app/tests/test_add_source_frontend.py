@@ -2,6 +2,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.test_e2e import app_url
+from tests.ui_helpers import open_data_builder
 
 pytestmark = pytest.mark.e2e
 
@@ -33,6 +34,8 @@ def test_add_postgres_s3_and_athena_sources(page: Page, app_url: str):
     page.route("**/api/sources", add_source)
     page.goto(app_url)
 
+    open_data_builder(page)   # + Add data source sits in Connections
+
     def form(kind: str):
         page.get_by_role("button", name="Add data source").click()
         page.get_by_role("dialog").get_by_label("Source type").select_option(kind)
@@ -46,9 +49,10 @@ def test_add_postgres_s3_and_athena_sources(page: Page, app_url: str):
     for label, value in fields.items(): page.get_by_label(label).fill(value)
     page.screenshot(path="/private/tmp/studio-add-source.png")
     page.get_by_role("button", name="Test and add source").click()
-    expect(page.get_by_label("Datasource")).to_have_value("postgres:postgres:clinical", timeout=10000)
-
-    expect(page.get_by_label("Datasource")).to_contain_text("Clinical RDS")
+    # The new datasource is selected in Connections.
+    added = page.locator('[data-source-key="postgres:postgres:clinical"]')
+    expect(added).to_have_attribute("aria-pressed", "true", timeout=10000)
+    expect(added).to_contain_text("Clinical RDS")
 
     form("s3")
     for label, value in {"Source ID": "lake", "Display name": "Lake",
@@ -56,7 +60,7 @@ def test_add_postgres_s3_and_athena_sources(page: Page, app_url: str):
                          "AWS region": "us-east-1"}.items():
         page.get_by_label(label).fill(value)
     page.get_by_role("button", name="Test and add source").click()
-    expect(page.get_by_label("Datasource")).to_have_value("s3:s3:lake", timeout=10000)
+    expect(page.locator('[data-source-key="s3:s3:lake"]')).to_have_attribute("aria-pressed", "true", timeout=10000)
 
     form("athena")
     for label, value in {"Source ID": "iceberg", "Display name": "Iceberg",
@@ -65,7 +69,7 @@ def test_add_postgres_s3_and_athena_sources(page: Page, app_url: str):
                          "Databases (comma separated)": "clinical, genetics"}.items():
         page.get_by_label(label).fill(value)
     page.get_by_role("button", name="Test and add source").click()
-    expect(page.get_by_label("Datasource")).to_have_value("athena:iceberg", timeout=10000)
+    expect(page.locator('[data-source-key="athena:iceberg"]')).to_have_attribute("aria-pressed", "true", timeout=10000)
 
     assert submitted == [
         {"kind": "postgres", "id": "clinical", "label": "Clinical RDS",
@@ -98,6 +102,7 @@ def test_add_bigquery_source(page: Page, app_url: str):
         fulfill(route, source)
     page.route("**/api/sources", add_source)
     page.goto(app_url)
+    open_data_builder(page)
     page.get_by_role("button", name="Add data source").click()
     dialog = page.get_by_role("dialog")
     dialog.get_by_label("Source type").select_option("bq")

@@ -3,7 +3,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url  # noqa: F401
-from tests.ui_helpers import menu
+from tests.ui_helpers import load_table, menu
 
 pytestmark = pytest.mark.e2e
 
@@ -32,11 +32,7 @@ def test_or_groups_build_one_any_filter(page, app_url):
                                {"name": "age", "dtype": "int64", "filter_kind": "range", "min": 20, "max": 90}]}}))
     page.route("**/api/datasets/*/query", query)
     page.goto(app_url)
-    page.get_by_label("Source type", exact=True).select_option("aurora")
-    page.get_by_label("Datasource", exact=True).select_option("aurora:db")
-    page.get_by_label("Schema", exact=True).select_option("public")
-    page.get_by_label("Table", exact=True).select_option("public.people")
-    page.get_by_role("button", name="Load table").click()
+    load_table(page, "aurora:db", "public.people")
 
     menu(page, "Add to this view").get_by_role("button", name="+ Match any group (OR)").click()
     panel = page.get_by_role("region", name="Match any group")

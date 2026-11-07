@@ -7,7 +7,7 @@ def test_chart_controls_and_picker_remain_usable_in_both_themes(loaded_page):
     card = page.locator('.chart-grid .chart-card').first
     expect(card).to_be_visible()
     expect(card.get_by_role('button', name='Rename chart')).to_be_visible()
-    assert page.get_by_label('Source type').is_visible()
+    assert page.get_by_role('group', name='Data source of this tab').is_visible()
     for theme in ('light', 'dark'):
         page.evaluate('(theme) => document.documentElement.dataset.theme = theme', theme)
         page.set_viewport_size({'width': 1440, 'height': 900})

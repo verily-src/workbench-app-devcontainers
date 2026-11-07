@@ -166,7 +166,7 @@ def test_publish_viewer_link_republish_and_rollback(page: Page, app_url: str):
     expect(page.locator(".tab.active")).to_contain_text("Report v2")
     expect(page.get_by_label("Saved view name")).to_have_count(0)
 
-    page.locator(".upload-btn input[type=file]").set_input_files(files=[{
+    page.get_by_label("Upload CSV, TSV or Parquet").set_input_files(files=[{
         "name": "other.csv", "mimeType": "text/csv", "buffer": b"id,value\n1,2\n"}])
     expect(page.locator(".tab.active")).to_contain_text("other")
     expect(banner).to_have_count(0)

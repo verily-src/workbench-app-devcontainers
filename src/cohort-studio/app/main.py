@@ -1607,6 +1607,8 @@ class ViewDataset(BaseModel):
     cohorts: list[Cohort] = Field(default_factory=list)
     filter_ask_history: list[FilterAskEntry] = Field(default_factory=list, max_length=25)
     parameters: list[Parameter] = Field(default_factory=list, max_length=50)
+    # Charts per row: 0 = auto (fill the screen), 1–4 = fixed equal columns.
+    chart_columns: int = Field(default=0, ge=0, le=4)
 
     @model_validator(mode="after")
     def _bindings_use_defined_parameters(self):
@@ -1929,6 +1931,7 @@ def save_view(req: SaveViewRequest, request: Request, response: Response):
             "filter_ask_history": [entry.model_dump()
                                    for entry in d.filter_ask_history],
             "parameters": [p.model_dump() for p in d.parameters],
+            "chart_columns": d.chart_columns,
         } for d in req.datasets],
     }
     try:

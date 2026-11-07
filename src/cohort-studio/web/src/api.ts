@@ -70,6 +70,7 @@ export function viewSpecs(datasets: Dataset[]) {
     group_summary: d.groupSummary ?? null,
     sort: d.sort ?? null,
     parameters: d.parameters ?? [],
+    chart_columns: d.chartColumns ?? 0,
   }));
 }
 
@@ -634,6 +635,7 @@ export const api = {
         group_summary?: Dataset["groupSummary"] | null;
         sort?: Dataset["sort"] | null;
         parameters?: Parameter[];
+        chart_columns?: 0 | 1 | 2 | 3 | 4;
       }>;
     }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),

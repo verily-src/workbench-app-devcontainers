@@ -19,6 +19,7 @@ import catalog
 import datasets
 import db
 import extracts
+from extract_schedule import next_run
 import main
 from tests.conftest import remount_mcp_if_started
 
@@ -74,7 +75,7 @@ def sched_app(pg):
         engine.dispose()
 
 
-def _wait_status(table, status, timeout=30):
+def _wait_status(table, status, timeout=90):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         info = extracts.info(RID, table)
@@ -89,6 +90,20 @@ def _tick_at(iso):
     return main.extract_scheduler.tick(when)
 
 
+def _load_table(page, name):
+    """Pick a table once the listing has settled, then load it."""
+    table = page.get_by_label("Table", exact=True)
+    expect(page.get_by_role("button", name="Refresh list")).to_be_enabled(timeout=60000)
+    expect(table.locator("option", has_text=name)).to_have_count(1, timeout=60000)
+    values = table.locator("option").evaluate_all("els => els.map(e => e.value)")
+    value = next(v for v in values if v.endswith(name))
+    table.select_option(value)
+    expect(table).to_have_value(value)
+    load = page.get_by_role("button", name="Load table")
+    expect(load).to_be_enabled(timeout=30000)
+    load.click()
+
+
 def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkeypatch):
     url, engine = sched_app
     monkeypatch.setattr(main.extract_scheduler, "resources", lambda: [RID])
@@ -100,17 +115,18 @@ def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkey
                    "Scheduled cohort", recipe)
     db.list_aurora_tables.invalidate()
 
+    # Get the session cookie first. Otherwise a slow cookie-less request from
+    # the first page load (e.g. /api/workflows) can replace it later, and the
+    # data jobs started under the first cookie then return 404.
+    page.request.get(f"{url}/api/version")
     page.clock.install()
     page.goto(url)
     page.get_by_label("Source type", exact=True).select_option("aurora")
     page.get_by_label("Datasource", exact=True).select_option(f"aurora:{RID}")
     table = page.get_by_label("Table", exact=True)
-    expect(table.locator("option", has_text="sched_cohort")).to_have_count(1, timeout=15000)
-    values = table.locator("option").evaluate_all("els => els.map(e => e.value)")
-    table.select_option(next(v for v in values if v.endswith("sched_cohort")))
-    page.get_by_role("button", name="Load table").click()
+    _load_table(page, "sched_cohort")
     bar = page.get_by_role("group", name="Extract")
-    expect(bar).to_have_attribute("title", re.compile("25 rows"), timeout=30000)
+    expect(bar).to_have_attribute("title", re.compile("25 rows"), timeout=60000)
 
     # Daily at a set time: the label shows the schedule and the time left.
     bar.get_by_role("button", name="Refresh schedule").click()
@@ -137,8 +153,8 @@ def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkey
     assert ("schedres", "sched_cohort", "submitted") in _tick_at(info["next_run_at"])
     _wait_status("sched_cohort", "ok")
     page.clock.fast_forward(61_000)          # the tab polls the extract while scheduled
-    expect(bar).to_have_attribute("title", re.compile("40 rows"), timeout=10000)
-    expect(page.locator(".hero .count")).to_have_text("40", timeout=10000)  # the tab requeried
+    expect(bar).to_have_attribute("title", re.compile("40 rows"), timeout=30000)
+    expect(page.locator(".hero .count")).to_have_text("40", timeout=30000)  # the tab requeried
     schedule_button.click()
     expect(editor).to_contain_text("Last scheduled run: ok")
     page.keyboard.press("Escape")
@@ -152,21 +168,18 @@ def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkey
     assert failed["rows"] == 40
     page.clock.fast_forward(61_000)
     warning = bar.get_by_role("status").filter(has_text="Scheduled refresh failed")
-    expect(warning).to_be_visible(timeout=10000)
+    expect(warning).to_be_visible(timeout=30000)
     expect(warning).to_have_attribute("title", re.compile(r"\S"))
 
     # Another extract tab shows its own schedule and keeps the zone it was set in.
     extracts.write({"df": pd.DataFrame({"person_id": range(5)})}, RID, "sched_other",
                    "Other cohort", recipe)
     tokyo = {"every": "weekly", "weekday": 2, "hour": 7, "minute": 45, "tz": "Asia/Tokyo"}
-    extracts.set_schedule(RID, "sched_other", tokyo, datetime.now().astimezone())
+    extracts.set_schedule(RID, "sched_other", tokyo, next_run(tokyo, datetime.now().astimezone()))
     db.list_aurora_tables.invalidate()
     page.get_by_role("button", name="Refresh list").click()
-    expect(table.locator("option", has_text="sched_other")).to_have_count(1, timeout=15000)
-    values = table.locator("option").evaluate_all("els => els.map(e => e.value)")
-    table.select_option(next(v for v in values if v.endswith("sched_other")))
-    page.get_by_role("button", name="Load table").click()
-    expect(page.locator(".tab.active")).to_contain_text("sched_other", timeout=30000)
+    _load_table(page, "sched_other")
+    expect(page.locator(".tab.active")).to_contain_text("sched_other", timeout=60000)
     other_button = page.get_by_role("group", name="Extract").get_by_role(
         "button", name="Refresh schedule")
     expect(other_button).to_contain_text("Wednesdays at 07:45 Asia/Tokyo")

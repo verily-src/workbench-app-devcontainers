@@ -203,7 +203,7 @@ export default function App() {
         void Promise.allSettled([
           import("./components/WorkflowsView"), import("./components/LineageView"),
           import("./components/StudioAgent"), import("./components/SettingsView"),
-          import("./components/DatasetPane"), import("./pdf"),
+          import("./components/DatasetPane"), import("./pdf"), import("./dashboardExport"),
         ]);
       };
       if ("requestIdleCallback" in window) idle = window.requestIdleCallback(prefetch, { timeout: 1500 });
@@ -1168,6 +1168,11 @@ export default function App() {
                   dashboardFilters={activeDashboard}
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
+                  shareLink={viewer ? { label: `Copy link · rev ${viewer.revision.revision}`,
+                    url: viewLink({ kind: viewer.store.kind, resource_id: viewer.store.id, name: viewer.name },
+                      viewer.revision.revision),
+                    copied: `Link copied. It opens published rev ${viewer.revision.revision} without changes made here.` }
+                    : undefined}
                   onRefreshExtract={viewer ? undefined : (datasetId) => void refreshExtract(datasetId)}
                   onEditExtract={viewer ? undefined : (datasetId) => {
                     const tab = datasets.find((d) => d.id === datasetId);

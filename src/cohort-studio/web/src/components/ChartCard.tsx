@@ -431,6 +431,10 @@ interface Props {
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onDuplicate?: () => void;
+  /** Saves this card (title, chart, tab filters) as a PNG. */
+  onDownloadPng?: (card: HTMLElement) => void;
+  /** Why Download PNG is unavailable right now, if it is. */
+  downloadBlocked?: string;
   onRename?: (title: string) => void;
   onAxesChange?: (x: AxisSettings, y: AxisSettings, references?: ChartReference[]) => void;
   /** Tab parameters, for reference lines that follow one. */
@@ -453,13 +457,14 @@ function defaultTitle(spec: ChartSpec, labels: Record<string, string>): string {
 
 export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onMarksChange, onToggleWide,
-                            onMove, canMoveUp = false, canMoveDown = false, onDuplicate,
+                            onMove, canMoveUp = false, canMoveDown = false, onDuplicate, onDownloadPng, downloadBlocked = "",
                             onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false,
                             fields, onDataChange, parameters = NO_PARAMETERS,
                             selection = NO_SELECTION, onClearSelection }: Props) {
   const selectionKey = selection.join("\u0000");
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const chart = useRef<ECharts>();
   const [themeVersion, setThemeVersion] = useState(0);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -666,7 +671,7 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
     : result?.kind === "map" ? 340 : result?.kind === "box" ? 280 : 240;
 
   return (
-    <div className={`chart-card${spec.wide ? " wide" : ""}`}>
+    <div ref={cardRef} className={`chart-card${spec.wide ? " wide" : ""}`}>
       <div className="head">
         {editingTitle ? <input aria-label="Chart title" maxLength={120} value={titleDraft}
           autoFocus onChange={(event) => setTitleDraft(event.target.value)}
@@ -705,6 +710,9 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                 {onMove && <button type="button" disabled={!canMoveDown}
                                    onClick={() => { onMove(1); close(); }}>Move later</button>}
                 {onDuplicate && <button type="button" onClick={() => { onDuplicate(); close(); }}>Duplicate</button>}
+                {onDownloadPng && <button type="button" disabled={!result || Boolean(downloadBlocked)}
+                  title={downloadBlocked || undefined}
+                  onClick={() => { close(); if (cardRef.current) onDownloadPng(cardRef.current); }}>Download PNG</button>}
               </div>}
             </Popover>
           )}

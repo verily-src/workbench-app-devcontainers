@@ -34,6 +34,8 @@ interface Props {
   onRefreshExtract?: (datasetId: string) => void;
   /** Opens this extract's recipe in Data Builder to change and rewrite it. */
   onEditExtract?: (datasetId: string) => void;
+  /** Viewer mode: link to the published revision on screen. */
+  shareLink?: { label: string; url: string; copied: string };
 }
 
 
@@ -122,7 +124,7 @@ function safeFilterAskError(error: unknown): string {
 }
 
 export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, onUpdate, onEditJoinCanvas, onOpenTable,
-                             onRefreshExtract, onEditExtract }: Props) {
+                             onRefreshExtract, onEditExtract, shareLink }: Props) {
   const aiFeatures = useAiFeatures();
   const plinkExport = usePlink();
   const { result, filters, charts } = dataset;
@@ -135,6 +137,9 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
   useEffect(() => { setExportFormat("tsv"); }, [dataset.id]);
   const [cancelingExport, setCancelingExport] = useState(false);
   const [creatingExport, setCreatingExport] = useState(false);
+  const [imageExport, setImageExport] = useState("");
+  const [shareStatus, setShareStatus] = useState("");
+  useEffect(() => { setShareStatus(""); }, [dataset.id, shareLink?.url]);
   const cohorts = dataset.cohorts ?? [];
   const [showCompare, setShowCompare] = useState(false);
   const [showDerive, setShowDerive] = useState(false);
@@ -255,6 +260,25 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
       return changes ? [{ ...c, ...changes }] : [];
     });
     onUpdate({ charts: next });
+  };
+
+  // A pending or failed query leaves the last result on screen under the new filters; don't label it with them.
+  const imageBlocked = !result ? "No result yet"
+    : dataset.queryLoading ? "Wait for the charts to update"
+      : dataset.queryError ? "The latest query failed; retry it first" : "";
+  const runImageExport = (label: string, run: (mod: typeof import("../dashboardExport")) => Promise<void>) => {
+    if (imageExport || imageBlocked) return;
+    setImageExport(label);
+    setExportError("");
+    void import("../dashboardExport").then(run)
+      .catch((e) => setExportError(`Could not export ${label}: ${(e as Error).message}`))
+      .finally(() => setImageExport(""));
+  };
+  const copyShareLink = () => {
+    if (!shareLink) return;
+    if (!navigator.clipboard) { setShareStatus(shareLink.url); return; }
+    navigator.clipboard.writeText(shareLink.url).then(
+      () => setShareStatus(shareLink.copied), () => setShareStatus(shareLink.url));
   };
 
   const pageCount = result
@@ -381,7 +405,21 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
         </button>
         </div>
         {plinkExport && <PlinkExport key={dataset.id} dataset={scoped} />}
-        <button onClick={() => { void import("../pdf").then(({ captureCharts, captureGroupSummary, exportDatasetPdf }) =>
+        <div className="popover-row" role="group" aria-label="Dashboard image">
+          <button disabled={Boolean(imageBlocked) || charts.length === 0 || Boolean(imageExport)}
+                  title={imageBlocked || "The charts as laid out, with the filters and cohort size"}
+                  onClick={() => runImageExport("dashboard PNG", (m) => m.exportDashboardPng(scoped))}>
+            {imageExport === "dashboard PNG" ? "Drawing…" : "Dashboard PNG"}
+          </button>
+          <button disabled={Boolean(imageBlocked) || charts.length === 0 || Boolean(imageExport)}
+                  title={imageBlocked || "The charts as laid out on landscape pages, with the filters and cohort size"}
+                  onClick={() => runImageExport("dashboard PDF", (m) => m.exportDashboardPdf(scoped))}>
+            {imageExport === "dashboard PDF" ? "Drawing…" : "Dashboard PDF"}
+          </button>
+        </div>
+        {shareLink && <button onClick={copyShareLink}>{shareLink.label}</button>}
+        {shareStatus && <span className="settings-hint" role="status">{shareStatus}</span>}
+        <button title="One chart per page, then the displayed rows" onClick={() => { void import("../pdf").then(({ captureCharts, captureGroupSummary, exportDatasetPdf }) =>
           exportDatasetPdf(scoped, captureCharts(), captureGroupSummary())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
                 disabled={!result}>
           Export PDF
@@ -586,6 +624,8 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
                          ...(result ? { result: { ...result, charts: swap(result.charts) } } : {}) });
             }}
             canMoveUp={i > 0} canMoveDown={i < charts.length - 1}
+            downloadBlocked={imageBlocked || (imageExport ? "Drawing…" : "")}
+            onDownloadPng={(card) => runImageExport("chart PNG", (m) => m.exportChartPng(scoped, card))}
             onDuplicate={() => {
               const copy = { ...spec, title: `${spec.title || (dataset.columns.find((c) => c.name === spec.x)?.label ?? spec.x)} (copy)` };
               const insert = <T,>(list: T[], item: T) => [...list.slice(0, i + 1), item, ...list.slice(i + 1)];

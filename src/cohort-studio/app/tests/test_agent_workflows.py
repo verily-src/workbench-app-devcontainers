@@ -388,3 +388,82 @@ def test_plans_are_scoped_to_conversation_and_legacy_remains_accessible():
     assert [plan['id'] for plan in plans.list_plans('alice', session_id=second_id)] == [second['id']]
     assert plans.list_plans('bob', session_id=first_id) == []
     assert {plan['id'] for plan in plans.list_plans('alice')} == {first['id'], second['id'], legacy['id']}
+
+
+def _age_plan(engine, plan_id, minutes):
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE _studio_agent.workflow_plans "
+                          "SET updated_at = now() - make_interval(mins => :m) WHERE plan_id = :id"),
+                     {"id": plan_id, "m": minutes})
+
+
+def _no_jobs(**_):
+    return {"available": True, "jobs": []}
+
+
+def test_status_poll_leaves_in_flight_submission_alone(agent_store_fixture):
+    store = AgentPlanStore(engine=agent_store_fixture.engine)
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **callbacks(), store=store)
+    assert store.claim(plan["id"], "alice")["status"] == "submitting"
+    polled = plans.status(plan["id"], "alice", list_jobs=_no_jobs, store=store)
+    assert polled["status"] == "submitting"
+    assert polled["errors"] == []
+    assert store.get(plan["id"], "alice")["status"] == "submitting"
+
+    _age_plan(agent_store_fixture.engine, plan["id"], 11)
+    stale = plans.status(plan["id"], "alice", list_jobs=_no_jobs, store=store)
+    assert stale["status"] == "submission_unknown"
+
+
+def test_poll_during_approve_does_not_clobber_submitted_run(agent_store_fixture):
+    store = AgentPlanStore(engine=agent_store_fixture.engine)
+    options = callbacks()
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **options, store=store)
+    polls = []
+
+    def submit(*_args):
+        polls.append(plans.status(plan["id"], "alice", list_jobs=_no_jobs, store=store))
+        return {"run_id": "run-1", "status": "PENDING"}
+
+    result = plans.approve(plan["id"], "alice", inspect_dataset=options["inspect_dataset"],
+                           export_cohort=lambda *_: {"s3_uri": plan["input_uri"], "rows": plan["rows"]},
+                           submit_workflow=submit, store=store)
+    assert polls[0]["status"] == "submitting"
+    assert result["status"] == "submitted"
+    stored = store.get(plan["id"], "alice")
+    assert stored["status"] == "submitted" and stored["run"]["run_id"] == "run-1"
+
+
+def test_stale_status_write_cannot_overwrite_a_newer_status(agent_store_fixture):
+    store = AgentPlanStore(engine=agent_store_fixture.engine)
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **callbacks(), store=store)
+    claimed = store.claim(plan["id"], "alice")
+    other = AgentPlanStore(engine=agent_store_fixture.engine)
+    assert other.update(plan["id"], "alice", {**claimed, "status": "submitted", "run": {"run_id": "r"}},
+                        expected_status="submitting")
+    assert store.update(plan["id"], "alice", {**claimed, "status": "submission_unknown"},
+                        expected_status="submitting") is None
+    stored = store.get(plan["id"], "alice")
+    assert stored["status"] == "submitted" and stored["run"] == {"run_id": "r"}
+    with pytest.raises(plans.agent_plan_store.AgentPlanStoreError):
+        store.update(plan["id"], "alice", {**stored, "status": "running"}, expected_status="completed")
+
+
+def test_late_submit_reconciles_after_lease_expired(agent_store_fixture):
+    store = AgentPlanStore(engine=agent_store_fixture.engine)
+    options = callbacks()
+    plan = plans.prepare("dataset-1", "input", "output", [], "alice", **options, store=store)
+
+    def slow_submit(*_args):
+        _age_plan(agent_store_fixture.engine, plan["id"], 11)
+        assert plans.status(plan["id"], "alice", list_jobs=_no_jobs,
+                            store=store)["status"] == "submission_unknown"
+        return {"run_id": "late-run"}
+
+    result = plans.approve(plan["id"], "alice", inspect_dataset=options["inspect_dataset"],
+                           export_cohort=lambda *_: {"s3_uri": plan["input_uri"], "rows": plan["rows"]},
+                           submit_workflow=slow_submit, store=store)
+    assert result["status"] == "submitted"
+    assert result["errors"] == []
+    assert store.get(plan["id"], "alice")["run"]["run_id"] == "late-run"

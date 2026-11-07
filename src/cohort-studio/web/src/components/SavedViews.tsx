@@ -1,10 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import type {
   Dataset, SavedViewEntry, SavedViewJob, SavedViewStoreError, Source, ViewRevision,
 } from "../types";
 
 type Store = { kind: string; id: string };
+
+type TaskTarget = { kind: string; id: string; action: "save" | "refresh" };
+/** Save/refresh snapshot job as seen by this browser. */
+type SnapshotTask =
+  | { state: "idle" }
+  | (TaskTarget & { state: "polling"; job: SavedViewJob; attempt: number })
+  | (TaskTarget & { state: "done"; job: SavedViewJob })
+  | (TaskTarget & { state: "failed"; error: string });
+
+const POLL_MS = 1200;
+const MAX_POLL_BACKOFF_MS = 10_000;
+const MAX_POLL_RETRIES = 8;
+export const EXPIRED_SAVE_JOB = "This save job expired (the app restarted). Reload the view.";
+
+function taskFor(job: SavedViewJob, target: TaskTarget): SnapshotTask {
+  if (job.status === "complete") return { ...target, state: "done", job };
+  if (job.status === "failed")
+    return { ...target, state: "failed", error: job.error || "Unknown error" };
+  return { ...target, state: "polling", job, attempt: 0 };
+}
 
 interface Props {
   sources: Source[];
@@ -156,10 +176,8 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
   const [saving, setSaving] = useState(false);
   const [listError, setListError] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [task, setTask] = useState<{
-    job: SavedViewJob; kind: string; id: string; action: "save" | "refresh";
-  } | null>(null);
-  const taskRunning = task?.job.status === "queued" || task?.job.status === "running";
+  const [task, setTask] = useState<SnapshotTask>({ state: "idle" });
+  const taskRunning = task.state === "polling";
   const storeKey = useMemo(() => stores.map((source) =>
     `${source.kind}:${source.id}`).sort().join("|"), [sources]);
   const storeKeyRef = useRef(storeKey);
@@ -190,27 +208,41 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
   }, [pending, views, unavailable, listError]);
 
   useEffect(() => {
-    if (!task || !taskRunning) return;
+    if (task.state !== "polling") return;
+    const { kind, id, action, attempt } = task;
     let cancelled = false;
+    const delay = attempt === 0 ? POLL_MS : Math.min(POLL_MS * 2 ** attempt, MAX_POLL_BACKOFF_MS);
     const timer = setTimeout(() => {
       api.savedViewJob(task.job.job_id).then((job) => {
         if (cancelled) return;
-        setTask({ ...task, job });
-        if (job.status === "complete") {
+        const next = taskFor(job, { kind, id, action });
+        setTask(next);
+        if (next.state === "done") {
           setStatus(job.materialized_sources === 0
             ? `Saved ${job.name} without a snapshot.`
             : `Snapshot ready for ${job.name}.`);
           void refresh();
-          onLoadView({ kind: task.kind, id: task.id }, job.name);
-        } else if (job.status === "failed") {
-          setStatus(`Snapshot failed: ${job.error || "Unknown error"}`);
+          onLoadView({ kind, id }, job.name);
+        } else if (next.state === "failed") {
+          setStatus(`Snapshot failed: ${next.error}`);
+        } else if (attempt > 0) {
+          setStatus(`Building snapshot for ${job.name}…`);
         }
       }).catch((error) => {
         if (cancelled) return;
-        setStatus(`Could not check snapshot status: ${(error as Error).message}`);
-        setTask({ ...task });
+        if (error instanceof ApiError && error.status === 404) {
+          setTask({ kind, id, action, state: "failed", error: EXPIRED_SAVE_JOB });
+          setStatus(EXPIRED_SAVE_JOB);
+        } else if (attempt >= MAX_POLL_RETRIES) {
+          const message = `Could not check snapshot status: ${(error as Error).message}`;
+          setTask({ kind, id, action, state: "failed", error: message });
+          setStatus(message);
+        } else {
+          setStatus(`Could not check snapshot status: ${(error as Error).message}. Retrying…`);
+          setTask({ ...task, attempt: attempt + 1 });
+        }
       });
-    }, 1200);
+    }, delay);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [task]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -228,7 +260,7 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
       if (result.job_id) {
         const job = { ...result, status: result.status ?? "queued",
           completed_sources: result.completed_sources ?? 0, total_sources: result.total_sources ?? 0 } as SavedViewJob;
-        setTask({ job, kind: defaultStore.kind, id: defaultStore.id, action: "save" });
+        setTask(taskFor(job, { kind: defaultStore.kind, id: defaultStore.id, action: "save" }));
         setStatus(job.status === "complete"
           ? `Snapshot ready for ${result.name}.`
           : job.status === "failed"
@@ -254,7 +286,7 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
     setStatus(`Refreshing snapshot for ${view.name}…`);
     try {
       const job = await api.refreshView(view.kind, view.resource_id, view.name);
-      setTask({ job, kind: view.kind, id: view.resource_id, action: "refresh" });
+      setTask(taskFor(job, { kind: view.kind, id: view.resource_id, action: "refresh" }));
       if (job.status === "complete") {
         setStatus(job.materialized_sources === 0
             ? `Saved ${job.name} without a snapshot.`
@@ -328,8 +360,9 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
           <div className="settings-hint">No saved views.</div>
         )}
         {views.map((view) => {
-          const taskForView = taskRunning && task?.job.name === view.name
-            && task.kind === view.kind && task.id === view.resource_id;
+          const viewTask = task.state === "polling" && task.job.name === view.name
+            && task.kind === view.kind && task.id === view.resource_id ? task : null;
+          const taskForView = viewTask !== null;
           const updated = view.refreshed_at
             ? new Date(view.refreshed_at).toLocaleString() : "";
           const duplicate = (counts.get(view.name) ?? 0) > 1;
@@ -353,7 +386,7 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
                         aria-label={`Refresh saved data for ${view.name} from ${view.store_label}`}
                         disabled={!!taskRunning || saving}
                         onClick={() => void refreshSnapshot(view)}>
-                  {taskForView && task?.action === "refresh" ? "Refreshing…" : "Refresh"}
+                  {viewTask?.action === "refresh" ? "Refreshing…" : "Refresh"}
                 </button>}
                 <button className="quiet" title="Copy share link"
                         aria-label={`Copy link for ${view.name} from ${view.store_label}`}
@@ -387,13 +420,13 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
               </div>
               {view.materialized_sources > 0 && view.refresh_mode === "blocking" && (
                 <div className="settings-hint" title="Refreshing this snapshot can pause queries that use it.">
-                  {taskForView && task?.action === "refresh"
+                  {viewTask?.action === "refresh"
                     ? "Refreshing — queries may wait"
                     : "Refresh can pause queries"}
                 </div>
               )}
-              {taskForView && <div className="settings-hint" role="status">
-                {task!.action === "refresh" ? "Refreshing snapshot" : "Building snapshot"} · {task!.job.completed_sources}/{task!.job.total_sources} sources
+              {viewTask && <div className="settings-hint" role="status">
+                {viewTask.action === "refresh" ? "Refreshing snapshot" : "Building snapshot"} · {viewTask.job.completed_sources}/{viewTask.job.total_sources} sources
               </div>}
             </div>
           );

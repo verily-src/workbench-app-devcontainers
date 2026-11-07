@@ -18,6 +18,8 @@ REQUIRED_INPUT_COLUMNS = (
 )
 PLAN_TTL = 30 * 60
 MAX_PLANS = 128
+SUBMIT_LEASE = timedelta(minutes=10)
+PlanStatus = agent_plan_store.PlanStatus
 
 class PlanNotFound(KeyError):
     pass
@@ -256,7 +258,9 @@ def approve(plan_id: str, owner: str, *, inspect_dataset, export_cohort,
         if exported.get("s3_uri") != snapshot["input_uri"]:
             raise _PlanValidationFailure("Export did not write to the approved input path; no workflow was submitted.")
         snapshot["export"] = {"s3_uri": exported["s3_uri"], "rows": snapshot["rows"]}
-        repository.update(plan_id, owner, snapshot)
+        if repository.update(plan_id, owner, snapshot,
+                             expected_status=PlanStatus.SUBMITTING.value) is None:
+            return _public(repository.get(plan_id, owner))
         submission_started = True
         run = submit_workflow(
             WORKFLOW_ID, snapshot["input_resource_id"], snapshot["input_path"],
@@ -272,21 +276,27 @@ def approve(plan_id: str, owner: str, *, inspect_dataset, export_cohort,
             "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
                     if run.get(key) is not None}
         snapshot["run"] = safe_run
-        snapshot["status"] = "submitted"
+        snapshot["status"] = PlanStatus.SUBMITTED.value
+        snapshot["errors"] = []
         if any(run.get(key) is not None for key in (
                 "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")):
             snapshot["results_location"] = {
                 key: run[key] for key in (
                     "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
                 if run.get(key) is not None}
-        repository.update(plan_id, owner, snapshot)
+        if repository.update(plan_id, owner, snapshot, expected_status=(
+                PlanStatus.SUBMITTING.value, PlanStatus.SUBMISSION_UNKNOWN.value)) is None:
+            return _public(repository.get(plan_id, owner))
         return _public(snapshot)
     except Exception as error:
-        snapshot["status"] = "submission_unknown" if submission_started else "failed"
+        snapshot["status"] = (PlanStatus.SUBMISSION_UNKNOWN if submission_started
+                              else PlanStatus.FAILED).value
         snapshot["errors"] = (["Submission state is unknown. Check workflow jobs before taking action."]
                                if submission_started else [_safe_error(error)])
         try:
-            repository.update(plan_id, owner, snapshot)
+            if repository.update(plan_id, owner, snapshot,
+                                 expected_status=PlanStatus.SUBMITTING.value) is None:
+                return _public(repository.get(plan_id, owner))
         except agent_store.AgentStoreError as store_error:
             _translate_store_error(store_error)
         return _public(snapshot)
@@ -295,9 +305,14 @@ def approve(plan_id: str, owner: str, *, inspect_dataset, export_cohort,
 def status(plan_id: str, owner: str, *, list_jobs, store=None) -> dict:
     repository = _repo(store)
     try:
-        snapshot = copy.deepcopy(repository.get(plan_id, owner))
+        stored, updated_at = repository.get_record(plan_id, owner)
     except agent_store.AgentStoreError as error:
         _translate_store_error(error)
+    snapshot = copy.deepcopy(stored)
+    read_status = snapshot["status"]
+    if (read_status == PlanStatus.SUBMITTING.value and updated_at is not None
+            and datetime.now(timezone.utc) - updated_at < SUBMIT_LEASE):
+        return _public(snapshot)
     run_id = (snapshot.get("run") or {}).get("run_id")
     recovering = snapshot["status"] in {"submitting", "submission_unknown"}
     if not recovering and (snapshot["status"] not in {"submitted", "running"} or not run_id):
@@ -350,11 +365,15 @@ def status(plan_id: str, owner: str, *, list_jobs, store=None) -> dict:
                     key: safe_run[key] for key in (
                         "output_bucket_uuid", "output_bucket_resource", "output_bucket_path")
                     if safe_run.get(key) is not None}
-            repository.update(plan_id, owner, snapshot)
-            return _public(snapshot)
+            return _write_status(repository, plan_id, owner, snapshot, read_status)
         if recovering and jobs.get("available", True):
-            repository.update(plan_id, owner, snapshot)
-            return _public(snapshot)
+            return _write_status(repository, plan_id, owner, snapshot, read_status)
     except Exception:
         pass
+    return _public(snapshot)
+
+
+def _write_status(repository, plan_id, owner, snapshot, read_status):
+    if repository.update(plan_id, owner, snapshot, expected_status=read_status) is None:
+        return _public(repository.get(plan_id, owner))
     return _public(snapshot)

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { pendingDataJobs, forgetDataJob } from "../api";
+import { ACTIVE_DATA_JOB_STATUSES as ACTIVE, isTerminalDataJob } from "../dataJobStatus";
 import { notifyDataReady } from "../notifications";
 import type { DataJob, OpenResult } from "../api";
 import type { TableInfo } from "../types";
 import { formatCount, formatElapsed, tableStats } from "../format";
 import "./DataJobs.css";
 
-const ACTIVE = new Set(["queued", "running", "cancelling"]);
 const DONE_VISIBLE_MS = 8000;
 
 interface Tracked { job: DataJob; receivedAt: number; firstSeen?: number; firstElapsed?: number }
@@ -133,13 +133,18 @@ export function DataJobs({ onOpen, expected, showDone = true, showActive = true 
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => {
     const ids = pendingDataJobs();
+    if (!ids.length) return;
+    const settled = new Set<string>();
     let stopped = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
     const poll = async () => {
       for (const id of ids) {
+        if (settled.has(id)) continue;
         try {
           const response = await fetch(`/api/data-jobs/${id}`);
           if (!response.ok) { if (response.status === 404) forgetDataJob(id); continue; }
           const job = await response.json() as DataJob;
+          if (isTerminalDataJob(job.status)) settled.add(id);
           if (!stopped && job.status === "complete" && !notified.current.has(id)) {
             notified.current.add(id);
             notifyDataReady(job.kind, id);
@@ -147,9 +152,10 @@ export function DataJobs({ onOpen, expected, showDone = true, showActive = true 
           if (!stopped && pendingDataJobs().includes(id)) setRecovered(old => ({ ...old, [id]: job }));
         } catch { }
       }
+      if (ids.every(id => settled.has(id) || !pendingDataJobs().includes(id))) clearInterval(timer);
     };
     void poll();
-    const timer = setInterval(poll, 2000);
+    timer = setInterval(poll, 2000);
     return () => { stopped = true; clearInterval(timer); };
   }, []);
   useEffect(() => {
@@ -196,7 +202,7 @@ export function DataJobs({ onOpen, expected, showDone = true, showActive = true 
         onOpen(job.result!); forgetDataJob(job.job_id);
         setRecovered(old => { const next = { ...old }; delete next[job.job_id]; return next; });
       }}>Open result</button>}
-      {["failed", "interrupted", "cancelled"].includes(job.status) && <button onClick={() => {
+      {isTerminalDataJob(job.status) && job.status !== "complete" && <button onClick={() => {
         forgetDataJob(job.job_id);
         setRecovered(old => { const next = { ...old }; delete next[job.job_id]; return next; });
       }}>Dismiss</button>}

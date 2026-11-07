@@ -245,8 +245,9 @@ export function StudioAgent({ onOpenSettings, onOpenDashboard }: Props) {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       for (const plan of pending) {
+        if (inFlight.current.has(plan.id)) continue;
         api.agentWorkflowStatus(plan.id).then((result) => {
-          if (cancelled) return;
+          if (cancelled || inFlight.current.has(plan.id)) return;
           setPlans((current) => mergePlans(current, [result]));
         }).catch((caught) => {
           if (!cancelled) setPlanUi((current) => ({ ...current, [plan.id]: {

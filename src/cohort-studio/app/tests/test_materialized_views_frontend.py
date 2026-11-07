@@ -121,12 +121,12 @@ def test_saved_view_materialization_status_refresh_and_failure(page: Page, app_u
     page.goto(app_url)
     load_table(page, "aurora:fixture", "person")
     expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
-    name_input = page.get_by_placeholder("name this view (1 tab)")
+    name_input = page.get_by_placeholder("Name dashboard (1 tab)")
     name_input.fill("people joins")
-    page.get_by_role("button", name="Save", exact=True).click()
+    page.get_by_role("button", name="Save dashboard", exact=True).click()
     expect(page.locator(".sidebar").get_by_text(
         "Building snapshot for people joins…", exact=True)).to_be_visible(timeout=10000)
-    expect(page.get_by_role("button", name="Save", exact=True)).to_be_disabled()
+    expect(page.get_by_role("button", name="Save dashboard", exact=True)).to_be_disabled()
     expect(page.locator(".sidebar").get_by_text(
         "Snapshot ready for people joins.", exact=True)).to_be_visible(timeout=10000)
     expect(page.locator(".view-row")).to_contain_text("Snapshot · 1 source")

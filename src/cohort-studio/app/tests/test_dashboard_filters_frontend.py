@@ -10,6 +10,8 @@ pytestmark = pytest.mark.e2e
 PEOPLE = "id,sex,age\n" + "".join(f"p{i},{'F' if i < 6 else 'M'},{20 + i}\n" for i in range(10))
 LABS = "id,sex,value\n" + "".join(f"l{i},{'F' if i < 3 else 'M'},{i}\n" for i in range(8))
 SITES = "site,sex\n" + "".join(f"s{i},{i + 0.5}\n" for i in range(12))
+RACES = "person_id,race_concept_id\n" + "".join(
+    f"{i},{8516 if i < 6 else 8527}\n" for i in range(10))
 
 
 def _upload(page, name, text, rows):
@@ -22,6 +24,37 @@ def _upload(page, name, text, rows):
 def _tab(page, name):
     page.locator(".tab", has_text=name).locator("span").first.click()
     expect(page.locator(".tab.active", has_text=name)).to_be_visible()
+
+
+def test_apply_to_all_keeps_selected_filter_visible_and_editable(page: Page, app_url: str):
+    page.goto(app_url)
+    _upload(page, "race2.csv", RACES, 10)
+    _upload(page, "race.csv", RACES, 10)
+    group = page.locator(".filter-group", has_text="race_concept_id")
+    group.locator("summary").click()
+    group.get_by_label("8516", exact=True).check()
+    expect(page.locator(".hero .count")).to_have_text("6", timeout=10000)
+    group.get_by_role("button", name="Apply to all tabs").click()
+    expect(group.get_by_label("8516", exact=True)).to_be_checked()
+    expect(group.get_by_text("Applied to all tabs")).to_be_visible()
+    expect(page.get_by_role("region", name="Dashboard filters")).to_contain_text("8516")
+    expect(page.locator(".hero .count")).to_have_text("6", timeout=10000)
+    _tab(page, "race2.csv")
+    group = page.locator(".filter-group", has_text="race_concept_id")
+    expect(group.get_by_label("8516", exact=True)).to_be_checked()
+    expect(page.locator(".hero .count")).to_have_text("6", timeout=10000)
+    group.get_by_label("8527", exact=True).check()
+    expect(page.locator(".hero .count")).to_have_text("10", timeout=10000)
+    expect(page.get_by_role("region", name="Dashboard filters")).to_contain_text("8527")
+    group.get_by_label("8516", exact=True).uncheck()
+    expect(page.locator(".hero .count")).to_have_text("4", timeout=10000)
+    _tab(page, "race.csv")
+    group = page.locator(".filter-group", has_text="race_concept_id")
+    expect(group.get_by_label("8527", exact=True)).to_be_checked()
+    expect(page.locator(".hero .count")).to_have_text("4", timeout=10000)
+    group.get_by_label("8527", exact=True).uncheck()
+    expect(page.get_by_role("region", name="Dashboard filters")).to_have_count(0)
+    expect(page.locator(".hero .count")).to_have_text("10", timeout=10000)
 
 
 def test_filter_applies_to_every_tab_with_the_column(page: Page, app_url: str):
@@ -154,7 +187,7 @@ def test_dashboard_filters_save_with_views_and_restore_with_the_session(page: Pa
     expect(strip.locator(".dashboard-chip")).to_contain_text("not in this tab")
 
     page.get_by_label("Saved view name").fill("copy")
-    page.locator(".view-save").get_by_role("button", name="Save", exact=True).click()
+    page.locator(".view-save").get_by_role("button", name="Save dashboard", exact=True).click()
     expect(page.get_by_text("Saved 2 tab(s)", exact=False)).to_be_visible(timeout=10000)
     assert saves[-1]["dashboard_filters"] == [SEX_F]
 

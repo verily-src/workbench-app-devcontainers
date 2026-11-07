@@ -1,3 +1,5 @@
+import logging
+import math
 import sqlite3
 import execution
 import count_contract
@@ -8,9 +10,12 @@ import uuid
 import numpy as np
 import pandas as pd
 
+import category_text
 import chart_measures
 import filter_rules
 import queries
+
+logger = logging.getLogger(__name__)
 
 MAX_DATASETS = 8
 DATASET_TTL = 4 * 3600
@@ -18,6 +23,7 @@ CATEGORICAL_VALUES_LIMIT = 50
 BAR_TOP_N = 12
 HIST_BINS = 24
 SCATTER_SAMPLE = 2000
+HEATMAP_LIMIT = 400
 
 _store: dict[str, dict] = {}
 _lock = threading.Lock()
@@ -134,14 +140,13 @@ def profile_columns(df: pd.DataFrame) -> list[dict]:
         entry = {"name": col, "filter_kind": kind,
                  "dtype": str(df[col].dtype)}
         if kind == "categorical":
-            values = (df[col].dropna().astype(str).value_counts()
-                      .head(CATEGORICAL_VALUES_LIMIT))
-            entry["values"] = list(values.index)
+            entry["values"], _more = chart_measures._top(
+                category_text.frame_text(df[col]).dropna(), CATEGORICAL_VALUES_LIMIT)
         elif kind == "range":
             entry["min"] = float(df[col].min())
             entry["max"] = float(df[col].max())
         elif kind == "date":
-            values = pd.to_datetime(df[col], errors="coerce").dropna()
+            values = datetimes(df[col]).dropna()
             if len(values):
                 entry["min_date"] = values.min().date().isoformat()
                 entry["max_date"] = values.max().date().isoformat()
@@ -165,22 +170,58 @@ def apply_filters(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
     return df
 
 
+def datetimes(series: pd.Series) -> pd.Series:
+    """Naive UTC timestamps; text is read as ISO 8601 (no offset means UTC)."""
+    if pd.api.types.is_datetime64_any_dtype(series.dtype):
+        values = series
+    else:
+        values = pd.to_datetime(series, errors="coerce", format="ISO8601", utc=True)
+    if getattr(values.dt, "tz", None) is not None:
+        values = values.dt.tz_convert("UTC").dt.tz_localize(None)
+    return values
+
+
+def _range_mask(series: pd.Series, name: str, item: dict) -> np.ndarray:
+    low, high = filter_rules.range_bounds(item)
+    category_text.check_range_dtype(name, series)
+    if pd.api.types.is_integer_dtype(series.dtype):
+        dtype = series.dtype.pyarrow_dtype.to_pandas_dtype() if isinstance(series.dtype, pd.ArrowDtype) else getattr(series.dtype, "numpy_dtype", series.dtype)
+        domain = np.iinfo(dtype)
+        keep = series.notna()
+        if low is not None:
+            threshold = math.ceil(low)
+            keep &= series.ge(threshold) if domain.min <= threshold <= domain.max else threshold < domain.min
+        if high is not None:
+            threshold = math.floor(high)
+            keep &= series.le(threshold) if domain.min <= threshold <= domain.max else threshold > domain.max
+        return keep.to_numpy(dtype=bool, na_value=False)
+    values = pd.to_numeric(series, errors="coerce").to_numpy(dtype="float64", na_value=np.nan)
+    keep = np.isfinite(values)
+    if low is not None:
+        keep &= values >= low
+    if high is not None:
+        keep &= values <= high
+    return keep
+
+
 def _apply_flat(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
     for f in filters:
         col = f.get("column")
         if col not in df.columns:
             raise ValueError(f"Unknown filter column: {col!r}.")
         if f.get("kind") == "categorical" and f.get("values"):
-            df = df[df[col].astype(str).isin(f["values"])]
-        elif f.get("kind") == "range":
-            lo, hi = f.get("min"), f.get("max")
-            if lo is not None and hi is not None:
-                df = df[df[col].between(lo, hi)]
+            if pd.api.types.is_float_dtype(df[col].dtype):
+                values = pd.to_numeric(pd.Series(f["values"]), errors="coerce").dropna()
+                values = values.astype(df[col].dtype)
+                df = df[df[col].notna() & df[col].isin(values)]
+                continue
+            values = category_text.filter_values(f["values"], category_text.series_value_kind(df[col]))
+            df = df[category_text.frame_text(df[col]).isin(values).to_numpy(dtype=bool)]
+        elif f.get("kind") == "range" and filter_rules.is_active(f):
+            df = df[_range_mask(df[col], col, f)]
         elif f.get("kind") == "date" and filter_rules.is_active(f):
             start, end = filter_rules.date_bounds(f)
-            values = pd.to_datetime(df[col], errors="coerce")
-            if getattr(values.dt, "tz", None) is not None:
-                values = values.dt.tz_localize(None)
+            values = datetimes(df[col])
             keep = values.notna()
             if start:
                 keep &= values >= pd.Timestamp(start)
@@ -190,17 +231,18 @@ def _apply_flat(df: pd.DataFrame, filters: list[dict]) -> pd.DataFrame:
     return df
 
 def _bar_aggregate(full: pd.DataFrame, filt: pd.DataFrame, x: str) -> dict:
-    counts = full[x].dropna().astype(str).value_counts()
-    cats = list(counts.head(BAR_TOP_N).index)
+    values = category_text.frame_text(full[x]).dropna()
+    counts = values.value_counts()
+    cats, _more = chart_measures._top(values, BAR_TOP_N)
     try:
         cats.sort(key=float)
     except ValueError:
         pass
-    selected = filt[x].dropna().astype(str).value_counts()
+    selected = category_text.frame_text(filt[x]).dropna().value_counts()
     rows = [{"category": c, "all": int(counts[c]),
              "selected": int(selected.get(c, 0))} for c in cats]
     if len(counts) > BAR_TOP_N:
-        rest = counts.index[BAR_TOP_N:]
+        rest = counts.index.difference(cats)
         rows.append({"category": "Other", "all": int(counts[rest].sum()),
                      "selected": int(selected.reindex(rest).fillna(0).sum())})
     return {"kind": "bar", "x": x, "data": rows}
@@ -221,19 +263,23 @@ def _histogram_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
 
 def _scatter_aggregate(filt: pd.DataFrame, x: str, y: str) -> dict:
 
-    sub = pd.DataFrame({x: pd.to_numeric(filt[x], errors="coerce"),
-                        y: pd.to_numeric(filt[y], errors="coerce")}).dropna()
-    if len(sub) > SCATTER_SAMPLE:
+    sub = pd.DataFrame({"a": pd.to_numeric(filt[x], errors="coerce"),
+                        "b": pd.to_numeric(filt[y], errors="coerce")}).dropna()
+    sampled = len(sub) > SCATTER_SAMPLE
+    if sampled:
         sub = sub.sample(SCATTER_SAMPLE, random_state=7)
     return {"kind": "scatter", "x": x, "y": y,
-            "data": sub.values.tolist()}
+            "data": sub.values.tolist(), "sampled": sampled}
 
 def _heatmap_aggregate(filt: pd.DataFrame, x: str, y: str) -> dict:
-    counts = (filt.dropna(subset=[x, y]).astype({x: str, y: str})
-              .groupby([x, y], observed=True).size().reset_index(name="n"))
-    counts = counts.nlargest(400, "n")
-    return {"kind": "heatmap", "x": x, "y": y,
-            "data": counts.values.tolist()}
+    cells = pd.DataFrame({"a": category_text.frame_text(filt[x]),
+                          "b": category_text.frame_text(filt[y])}).dropna()
+    counts = (cells.groupby(["a", "b"]).size().reset_index(name="n")
+              .sort_values(["n", "a", "b"], ascending=[False, True, True], kind="stable"))
+    sampled = len(counts) > HEATMAP_LIMIT
+    return {"kind": "heatmap", "x": x, "y": y, "sampled": sampled,
+            "data": [[a, b, int(n)] for a, b, n in
+                     counts.head(HEATMAP_LIMIT).itertuples(index=False)]}
 
 def chart_aggregate(full: pd.DataFrame, filt: pd.DataFrame,
                     chart: dict) -> dict:
@@ -306,20 +352,19 @@ def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
                                page, page_size, entity_column, sort=sort)
 
     import agg_duck
-    if not sort and agg_duck.should_use(full):
+    if agg_duck.should_use(full):
         try:
-            out = agg_duck.query(full, filters, chart_specs, page, page_size)
+            out = agg_duck.query(full, filters, chart_specs, page, page_size,
+                                 entity_column=entity_column, sort=sort)
             out.update(scope="loaded", sampled=bool(ds.get("capped")))
-            if entity_column is not None:
-                filtered = apply_filters(full, filters)
-                out["entity"] = {"column": entity_column,
-                                 "total": int(full[entity_column].nunique(dropna=True)),
-                                 "filtered": int(filtered[entity_column].nunique(dropna=True))}
             return out
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
-                "DuckDB agg path failed, falling back to pandas: %s", e)
+        except ValueError:
+            raise
+        except Exception:
+            # Both engines share one filter and category semantics, so pandas
+            # returns the same result; the failure is still an engine defect.
+            logger.exception("DuckDB aggregation failed for dataset %s (%d rows); "
+                             "this query ran on pandas instead.", dataset_id, len(full))
     filt = apply_filters(full, filters)
     start = page * page_size
     ordered = filt.sort_values(sort["column"], ascending=sort["direction"] == "asc", na_position="last", kind="stable") if sort else filt

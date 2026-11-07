@@ -102,7 +102,7 @@ def test_database_filter_ask_history_folds_and_survives_tab_switch(page, app_url
         "Question history (2)")
     expect(page.locator(".filter-ask-history button")).to_have_attribute("aria-expanded", "true")
     page.get_by_label("Saved view name").fill("Ask history")
-    page.get_by_role("button", name="Save", exact=True).click()
+    page.get_by_role("button", name="Save dashboard", exact=True).click()
     expect(page.get_by_role("button", name="Ask history", exact=True)).to_be_visible()
     assert saved_payloads[0]["datasets"][0]["filter_ask_history"] == [
         {"question": "Only people with condition A", "answer": "Applied filter for question 1"},

@@ -10,6 +10,7 @@ understand absolute filters. This module turns the richer UI forms into them:
 """
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 
 UNITS = ("day", "week", "month", "year")
@@ -58,12 +59,35 @@ def date_bounds(item: dict, today: date | None = None) -> tuple[date | None, dat
     return start, (end + timedelta(days=1)) if end else None
 
 
+def range_bounds(item: dict) -> tuple[int | float | None, int | float | None]:
+    """(min, max) of a range filter, both inclusive; either may be None (one-sided)."""
+    bounds = []
+    for key in ("min", "max"):
+        value = item.get(key)
+        if value is None:
+            bounds.append(None)
+            continue
+        if isinstance(value, bool):
+            raise ValueError("Range filter values must be numbers.")
+        try:
+            number = value if isinstance(value, int) else float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Range filter values must be numbers.") from exc
+        if isinstance(number, float) and not math.isfinite(number):
+            raise ValueError("Range filter values must be finite.")
+        bounds.append(number)
+    low, high = bounds
+    if low is not None and high is not None and low > high:
+        raise ValueError(f"Range filter on {item.get('column')!r}: minimum is above maximum.")
+    return low, high
+
+
 def is_active(item: dict) -> bool:
     kind = item.get("kind")
     if kind == "categorical":
         return bool(item.get("values"))
     if kind == "range":
-        return item.get("min") is not None and item.get("max") is not None
+        return item.get("min") is not None or item.get("max") is not None
     if kind == "date":
         return any(item.get(k) not in (None, "") for k in ("start", "end", "last"))
     return False

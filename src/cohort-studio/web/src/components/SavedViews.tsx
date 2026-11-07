@@ -333,13 +333,13 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
         <div className="view-save">
           <input type="text"
                  aria-label="Saved view name"
-                 placeholder={`name this view (${saveable.length} tab${saveable.length > 1 ? "s" : ""})`}
+                 placeholder={`Name dashboard (${saveable.length} tab${saveable.length > 1 ? "s" : ""})`}
                  value={name}
                  onChange={(event) => setName(event.target.value)}
                  onKeyDown={(event) => { if (event.key === "Enter") void save(); }} />
           <button className="primary" onClick={() => void save()}
                   disabled={!name.trim() || saving || !!taskRunning}>
-            Save
+            Save dashboard
           </button>
           <span className="settings-hint" title="New views use this default store.">
             {defaultStore.label}

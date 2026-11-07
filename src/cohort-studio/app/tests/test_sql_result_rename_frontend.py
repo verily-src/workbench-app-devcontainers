@@ -99,7 +99,7 @@ def test_sql_result_rename_persists_in_saved_view_and_reopens(page: Page, app_ur
     expect(page.locator(".tab.active")).to_contain_text("Renamed SQL result")
 
     page.get_by_label("Saved view name").fill("SQL recipe")
-    page.locator(".view-save").get_by_role("button", name="Save", exact=True).click()
+    page.locator(".view-save").get_by_role("button", name="Save dashboard", exact=True).click()
     expect(page.get_by_text("SQL recipe", exact=True)).to_be_visible()
     recipe = saved[0]["datasets"][0]
     assert recipe["title"] == "Renamed SQL result"

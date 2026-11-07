@@ -146,7 +146,7 @@ def test_publish_viewer_link_republish_and_rollback(page: Page, app_url: str):
     page.get_by_label("Name for Report v1").fill("Report v2")
     page.get_by_role("button", name="Save tab name").click()
     page.get_by_label("Saved view name").fill(NAME)
-    page.locator(".view-save").get_by_role("button", name="Save", exact=True).click()
+    page.locator(".view-save").get_by_role("button", name="Save dashboard", exact=True).click()
     expect(row.get_by_text("Published rev 1 · draft has changes")).to_be_visible()
     assert store["revisions"][0]["state"]["datasets"][0]["title"] == "Report v1"
 

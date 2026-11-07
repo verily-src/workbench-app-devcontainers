@@ -1136,6 +1136,8 @@ Scheduled extract refreshes store their schedule, time zone and next run with th
 
 Dashboard filters are held in the browser and applied to compatible columns by name and filter kind on each tab. Chart selection uses the tab's categorical filter. Dashboard image exports are generated in the browser from the current chart layout and results; export is disabled while results are stale.
 
+Dashboard query admission waits up to 30 seconds for a slot, with at most eight waiting requests. Disconnects cancel waiting work. A full queue or an expired wait still returns 429.
+
 The browser loads dashboard, chart, PDF, agent and settings modules on demand. The OMOP builder remains mounted after first use to retain its state. Optional browser notifications report completed data loads and joins only while an open app tab is hidden; permission and preference stay in the browser. This is not a service-worker push subscription.
 
 

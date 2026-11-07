@@ -51,9 +51,9 @@ def test_expired_snapshot_job_stops_polling_and_reenables_save(page: Page, app_u
     page.route("**/api/views/jobs/**", view_job)
     _load_person(page, app_url)
     expect(page.locator(".tab", has_text="person")).to_be_visible(timeout=10000)
-    name_input = page.get_by_placeholder("name this view (1 tab)")
+    name_input = page.get_by_placeholder("Name dashboard (1 tab)")
     name_input.fill("people")
-    save = page.get_by_role("button", name="Save", exact=True)
+    save = page.get_by_role("button", name="Save dashboard", exact=True)
     save.click()
     expect(page.locator(".sidebar").get_by_text(
         "This save job expired (the app restarted). Reload the view.", exact=True)

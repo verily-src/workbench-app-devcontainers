@@ -24,20 +24,29 @@ class AdmissionGate:
         self.waiters = []
         self.condition = threading.Condition()
 
-    def acquire(self, timeout=None, owner=None):
+    def acquire(self, timeout=None, owner=None, check_cancel=None, max_waiters=None):
         ticket = (object(), owner)
         deadline = None if timeout is None else time.monotonic() + timeout
         with self.condition:
+            if max_waiters is not None and len(self.waiters) >= max_waiters:
+                return False
             self.waiters.append(ticket)
             try:
                 def eligible():
                     return next((item for item in self.waiters
                                  if item[1] is None or self.owners.get(item[1], 0) < self.per_owner), None)
                 while eligible() is not ticket or self.active >= self.capacity:
+                    if check_cancel is not None:
+                        check_cancel()
                     remaining = None if deadline is None else deadline - time.monotonic()
                     if remaining is not None and remaining <= 0:
                         return False
-                    self.condition.wait(remaining)
+                    wait_for = remaining
+                    if check_cancel is not None:
+                        wait_for = min(remaining, 0.1) if remaining is not None else 0.1
+                    self.condition.wait(wait_for)
+                if check_cancel is not None:
+                    check_cancel()
                 self.active += 1
                 self.owners[owner] = self.owners.get(owner, 0) + 1
                 return True
@@ -59,6 +68,8 @@ class AdmissionGate:
 
 
 _gates = {"interactive": AdmissionGate(4, 2), "bulk": AdmissionGate(2, 1)}
+INTERACTIVE_QUERY_WAIT_S = 30
+INTERACTIVE_QUERY_MAX_WAITERS = 8
 
 
 class FairExecutor:
@@ -149,7 +160,11 @@ def operation(name, lane):
     lane_token = None
     try:
         if _lane.get() is None:
-            acquired = (_gates[lane].acquire(timeout=0.25, owner=owner_id.get()) if lane == "interactive"
+            import query_cancellation
+            scope = query_cancellation.current.get() if lane == "interactive" else None
+            acquired = (_gates[lane].acquire(timeout=INTERACTIVE_QUERY_WAIT_S if scope else 0.25,
+                                             owner=owner_id.get(), check_cancel=scope.check if scope else None,
+                                             max_waiters=INTERACTIVE_QUERY_MAX_WAITERS if scope else None) if lane == "interactive"
                         else _gates[lane].acquire(owner=owner_id.get()))
             if not acquired:
                 emit("operation.rejected", operation=name, lane=lane)

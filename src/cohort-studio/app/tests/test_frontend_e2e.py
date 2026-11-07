@@ -184,7 +184,7 @@ def test_database_scope_compare_derive_cache_and_chat_guard(page: Page, app_url:
                                                            timeout=10000)
     expect(page.locator(".hero .detail")).to_contain_text("full database")
     page.locator(".view-save input").fill("derived-view")
-    page.get_by_role("button", name="Save", exact=True).click()
+    page.get_by_role("button", name="Save dashboard", exact=True).click()
     expect(page.get_by_text("Saved 1 tab(s) to Fixture.")).to_be_visible(timeout=10000)
     assert saved_view["datasets"][0]["source"]["kind"] == "derived"
     assert saved_view["datasets"][0]["source"]["spec"]["name"] == "age_group"
@@ -483,7 +483,7 @@ def test_join_source_ref_saves_and_reopens(page: Page, app_url: str):
         timeout=10000)
 
     page.locator(".view-save input").fill("joined-view")
-    page.get_by_role("button", name="Save", exact=True).click()
+    page.get_by_role("button", name="Save dashboard", exact=True).click()
     expect(page.get_by_text("Saved 3 tab(s) to Fixture.")).to_be_visible(
         timeout=10000)
     assert saved_state["datasets"][-1]["source"]["kind"] == "join"

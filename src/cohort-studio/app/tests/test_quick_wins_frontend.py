@@ -36,11 +36,13 @@ def test_charts_move_and_duplicate(loaded_page):
 
 def test_saved_cohort_applies_its_filters(loaded_page):
     page = loaded_page
+    expect(page.get_by_label("Cohort filter name")).to_be_disabled()
+    expect(page.get_by_role("button", name="Save cohort filters")).to_be_disabled()
     page.locator(".filter-group summary", has_text="tissue").click()
     page.locator(".filter-group", has_text="tissue").get_by_label("liver").check()
     expect(page.locator(".chips .chip").first).to_contain_text("tissue: liver", timeout=10000)
     page.locator(".cohort-name").fill("Liver")
-    page.get_by_role("button", name="Save cohort").click()
+    page.get_by_role("button", name="Save cohort filters").click()
     expect(page.locator(".cohort-chip.active")).to_contain_text("Liver")
     page.locator(".chips .chip.clear").click()
     expect(page.locator(".chips")).to_have_count(0)

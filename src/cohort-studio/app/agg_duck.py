@@ -1,10 +1,11 @@
 import os
+import math
 
 import duckdb
 import numpy as np
 
+import category_text
 import chart_measures
-import queries
 import filter_rules
 
 DUCKDB_AGG_ROWS = int(os.environ.get("STUDIO_DUCKDB_AGG_ROWS", "50000"))
@@ -12,42 +13,64 @@ DUCKDB_AGG_ROWS = int(os.environ.get("STUDIO_DUCKDB_AGG_ROWS", "50000"))
 BAR_TOP_N = 12
 HIST_BINS = 24
 SCATTER_SAMPLE = 2000
+HEATMAP_LIMIT = 400
 
 def _q(col: str) -> str:
 
     return '"' + col.replace('"', '""') + '"'
 
-def _text(col, types):
-    q = _q(col)
-    if types.get(col) == "BOOLEAN":
-        return f"CASE WHEN {q} THEN 'True' WHEN NOT {q} THEN 'False' END"
-    return f"CAST({q} AS VARCHAR)"
+def _where(filters: list[dict], columns) -> tuple[str, list]:
+    """WHERE clause for Explore filters, including AND/OR criteria groups.
 
-def _where(filters: list[dict], columns: set) -> tuple[str, list]:
-    """WHERE clause for Explore filters, including AND/OR criteria groups."""
-    return filter_rules.combine(filters, lambda flat: _where_flat(flat, columns))
+    ``columns`` maps names to DuckDB types (a plain set of names when unknown)."""
+    return filter_rules.combine(filters, lambda flat: where_flat(flat, columns))
 
 
-def _where_flat(filters: list[dict], columns: set) -> tuple[str, list]:
-
+def where_flat(filters: list[dict], columns, qualifier: str = "") -> tuple[str, list]:
+    """AND of ordinary filters for DuckDB, shared by in-memory and disk data."""
+    types = columns if isinstance(columns, dict) else {}
     clauses, params = [], []
     for f in filters:
-        col = f.get("column")
-        if col not in columns:
-            continue
+        name = f.get("column")
+        if name not in columns:
+            raise ValueError(f"Unknown filter column: {name!r}.")
+        col = qualifier + _q(name)
         if f.get("kind") == "categorical" and f.get("values"):
-            vals = [str(v) for v in f["values"]]
+            kind = (types.get(name) or "").upper()
+            if kind in ("DOUBLE", "FLOAT", "REAL", "FLOAT4", "FLOAT8"):
+                clauses.append(f"{col} IN (SELECT TRY_CAST(unnest(?) AS {kind}))")
+                params.append([str(v) for v in f["values"]])
+                continue
+            vals = category_text.filter_values(f["values"], category_text.value_kind(types.get(name) or ""))
+            if kind in ("BOOLEAN", "BOOL"):
+                vals = [value.lower() for value in vals]
             placeholders = ", ".join(["?"] * len(vals))
-            clauses.append(f"{_text(col, columns) if isinstance(columns, dict) else f'CAST({_q(col)} AS VARCHAR)'} IN ({placeholders})")
+            clauses.append(f"{category_text.duck_text(col, types.get(name))} IN ({placeholders})")
             params.extend(vals)
-        elif f.get("kind") == "range":
-            lo, hi = f.get("min"), f.get("max")
-            if lo is not None and hi is not None:
-                clauses.append(f"TRY_CAST({_q(col)} AS DOUBLE) BETWEEN ? AND ?")
-                params.extend([float(lo), float(hi)])
+        elif f.get("kind") == "range" and filter_rules.is_active(f):
+            low, high = filter_rules.range_bounds(f)
+            category_text.check_range_duck(name, types.get(name))
+            kind = (types.get(name) or "").upper()
+            if kind in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT"):
+                lower = -(2**127) if low is None else math.ceil(low)
+                upper = 2**127 - 1 if high is None else math.floor(high)
+                if lower > upper or lower > 2**127 - 1 or upper < -(2**127):
+                    clauses.append("FALSE")
+                else:
+                    clauses.append(f"{col} BETWEEN CAST(? AS HUGEINT) AND CAST(? AS HUGEINT)")
+                    params.extend([str(max(lower, -(2**127))), str(min(upper, 2**127 - 1))])
+                continue
+            target = chart_measures.duck_number(col)
+            if low is not None:
+                clauses.append(f"{target} >= ?")
+                params.append(low)
+            if high is not None:
+                clauses.append(f"{target} <= ?")
+                params.append(high)
         elif f.get("kind") == "date" and filter_rules.is_active(f):
+            # TIMESTAMPTZ reads ISO text with or without an offset; sessions run in UTC.
             start, end = filter_rules.date_bounds(f)
-            target = f"TRY_CAST({_q(col)} AS TIMESTAMP)"
+            target = f"TRY_CAST({col} AS TIMESTAMPTZ)"
             if start:
                 clauses.append(f"{target} >= ?")
                 params.append(start)
@@ -57,21 +80,23 @@ def _where_flat(filters: list[dict], columns: set) -> tuple[str, list]:
     return (" AND ".join(clauses) if clauses else "TRUE"), params
 
 class _Agg:
-    def __init__(self, con, where: str, params: list, types):
+    def __init__(self, con, where: str, params: list, types: dict):
         self.con = con
         self.where = where
         self.params = params
         self.types = types
 
+    def text(self, name: str) -> str:
+        return category_text.duck_text(_q(name), self.types.get(name))
+
     def one(self, sql: str, params: list):
-        return self.con.execute(sql, params).fetchone()
+        return self.con.execute(sql, params).fetchall()[0]
 
     def all(self, sql: str, params: list):
         return self.con.execute(sql, params).fetchall()
 
 def _bar(agg: _Agg, x: str) -> dict:
-    qx = _q(x)
-    tx = _text(x, agg.types)
+    qx, tx = _q(x), agg.text(x)
 
     full_top = agg.all(
         f"SELECT {tx} v, COUNT(*) c FROM t "
@@ -142,34 +167,32 @@ def _scatter(agg: _Agg, x: str, y: str) -> dict:
            f"FROM t WHERE ({agg.where}) AND TRY_CAST({qx} AS DOUBLE) IS NOT NULL "
            f"AND TRY_CAST({qy} AS DOUBLE) IS NOT NULL")
     n = agg.one(f"SELECT COUNT(*) FROM ({val})", agg.params)[0]
-    if n > SCATTER_SAMPLE:
+    sampled = n > SCATTER_SAMPLE
+    if sampled:
         rows = agg.all(
             f"{val} USING SAMPLE {SCATTER_SAMPLE} ROWS (reservoir, 7)",
             agg.params)
     else:
         rows = agg.all(val, agg.params)
-    return {"kind": "scatter", "x": x, "y": y,
+    return {"kind": "scatter", "x": x, "y": y, "sampled": sampled,
             "data": [[float(a), float(b)] for a, b in rows]}
 
 def _heatmap(agg: _Agg, x: str, y: str) -> dict:
     qx, qy = _q(x), _q(y)
     rows = agg.all(
-        f"SELECT {_text(x, agg.types)} a, {_text(y, agg.types)} b, COUNT(*) c "
+        f"SELECT {agg.text(x)} a, {agg.text(y)} b, COUNT(*) c "
         f"FROM t WHERE ({agg.where}) AND {qx} IS NOT NULL AND {qy} IS NOT NULL "
-        f"GROUP BY a, b ORDER BY c DESC, a, b LIMIT 400", agg.params)
-    return {"kind": "heatmap", "x": x, "y": y,
-            "data": [[a, b, int(c)] for a, b, c in rows]}
+        f"GROUP BY a, b ORDER BY c DESC, a, b LIMIT {HEATMAP_LIMIT + 1}", agg.params)
+    return {"kind": "heatmap", "x": x, "y": y, "sampled": len(rows) > HEATMAP_LIMIT,
+            "data": [[a, b, int(c)] for a, b, c in rows[:HEATMAP_LIMIT]]}
 
 def _dialect(agg: _Agg) -> chart_measures.Dialect:
-    class DuckDialect(chart_measures.Dialect):
-        def text(self, name):
-            return _text(name, agg.types)
-    return DuckDialect(
+    return chart_measures.Dialect(
         rel="t", col=_q, number=lambda name: chart_measures.duck_number(_q(name)),
         text_type="VARCHAR", named=False, where=agg.where, where_params=agg.params,
-        run=agg.all, postgres=False)
+        run=agg.all, postgres=False, text=agg.text)
 
-def _chart(agg: _Agg, chart: dict, columns: set) -> dict:
+def _chart(agg: _Agg, chart: dict, columns) -> dict:
     kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
     if x not in columns or (y and y not in columns):
         return {"kind": kind, "x": x, "data": []}
@@ -188,31 +211,50 @@ def _chart(agg: _Agg, chart: dict, columns: set) -> dict:
     return {"kind": kind, "x": x, "data": []}
 
 def should_use(df) -> bool:
-    return len(df) >= DUCKDB_AGG_ROWS
+    names = [str(name).casefold() for name in df.columns]
+    return len(df) >= DUCKDB_AGG_ROWS and len(names) == len(set(names))
+
+def connect():
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")
+    return con
 
 def query(df, filters: list[dict], chart_specs: list[dict],
-          page: int, page_size: int) -> dict:
+          page: int, page_size: int, entity_column: str | None = None,
+          sort: dict | None = None) -> dict:
 
-    columns = set(df.columns)
     pos = "__pos__"
-    while pos in columns:
+    names = {str(name).casefold() for name in df.columns}
+    while pos.casefold() in names:
         pos += "_"
     pos_df = df.copy(deep=False)
     pos_df[pos] = np.arange(len(df))
     sel = ", ".join(_q(c) for c in df.columns)
-    con = duckdb.connect()
+    con = connect()
     try:
         con.register("t", pos_df)
-        types = {row[0]: row[1] for row in con.execute("DESCRIBE t").fetchall()}
+        described = {row[0]: row[1] for row in con.execute("DESCRIBE t").fetchall()}
+        types = {name: described.get(name) for name in df.columns}
         where, params = _where(filters, types)
         agg = _Agg(con, where, params, types)
         total = len(df)
         filtered = agg.one(f"SELECT COUNT(*) FROM t WHERE {where}", params)[0]
-        charts = [_chart(agg, c, columns) for c in chart_specs]
+        entity = None
+        if entity_column is not None:
+            qe = _q(entity_column)
+            entity_total, entity_filtered = agg.one(
+                f"SELECT COUNT(DISTINCT {qe}), COUNT(DISTINCT {qe}) FILTER (WHERE {where}) FROM t",
+                params)
+            entity = {"column": entity_column, "total": int(entity_total),
+                      "filtered": int(entity_filtered)}
+        charts = [category_text.normalize_chart(_chart(agg, c, types), types) for c in chart_specs]
         start = page * page_size
+        order = _q(pos)
+        if sort:
+            order = f"{_q(sort['column'])} {sort['direction'].upper()} NULLS LAST, {order}"
         page_rows = con.execute(
             f"SELECT {sel} FROM t WHERE {where} "
-            f"ORDER BY {_q(pos)} LIMIT {page_size} OFFSET {start}",
+            f"ORDER BY {order} LIMIT {int(page_size)} OFFSET {int(start)}",
             params).df()
         rows = {
             "page": page, "page_size": page_size,
@@ -222,5 +264,8 @@ def query(df, filters: list[dict], chart_specs: list[dict],
         }
     finally:
         con.close()
-    return {"total": int(total), "filtered": int(filtered),
-            "charts": charts, "rows": rows}
+    out = {"total": int(total), "filtered": int(filtered),
+           "charts": charts, "rows": rows}
+    if entity is not None:
+        out["entity"] = entity
+    return out

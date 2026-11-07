@@ -9,6 +9,7 @@ interface Props {
   parameters?: Parameter[];
   /** Move an active filter to dashboard level (every tab with this column). */
   onApplyToAll?: (f: Filter) => void;
+  dashboardColumns?: Set<string>;
 }
 
 /** A binding with one bound changed (name "" removes it); undefined when empty. */
@@ -163,7 +164,7 @@ function DateFilter({ col, active, onChange, parameters = [] }: {
   );
 }
 
-export function FilterPanel({ columns, filters, onChange, parameters = [], onApplyToAll }: Props) {
+export function FilterPanel({ columns, filters, onChange, parameters = [], onApplyToAll, dashboardColumns }: Props) {
   const numberParams = parameters.filter((p) => p.kind === "number");
   const byColumn = new Map(filters.map((f) => [f.column, f]));
   // Groups the user opened stay open while their filter is edited or cleared.
@@ -225,7 +226,7 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
                   ? active.values?.length : col.filter_kind === "date" ? "date" : "range"}</span>}
             </summary>
             {col.filter_kind === "date" ? (
-              <DateFilter col={col} active={active} parameters={parameters}
+              <DateFilter col={col} active={active} parameters={dashboardColumns?.has(col.name) ? [] : parameters}
                           onChange={(next) => onChange(upsert(filters, next, col.name))} />
             ) : col.filter_kind === "categorical" ? (
               <div className="filter-values">
@@ -258,7 +259,7 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
                   onChange={(e) => setRange(col,
                     active?.min ?? col.min ?? 0, e.target.value === "" ? Number.MAX_VALUE : Number(e.target.value), "max")}
                 />
-                {numberParams.length > 0 && <div className="filter-follows-row">
+                {numberParams.length > 0 && !dashboardColumns?.has(col.name) && <div className="filter-follows-row">
                   <Follows label={`Minimum ${col.label || col.name} follows`} value={active?.param?.min}
                            options={numberParams} onChange={(n) => followRange(col, "min", n)} />
                   <Follows label={`Maximum ${col.label || col.name} follows`} value={active?.param?.max}
@@ -266,8 +267,9 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
                 </div>}
               </div>
             )}
-            {active && onApplyToAll && <button type="button" className="link filter-apply-all"
+            {active && !dashboardColumns?.has(col.name) && onApplyToAll && <button type="button" className="link filter-apply-all"
               onClick={() => onApplyToAll(active)}>Apply to all tabs</button>}
+            {active && dashboardColumns?.has(col.name) && <span className="filter-apply-all">Applied to all tabs</span>}
           </details>
         );
       })}

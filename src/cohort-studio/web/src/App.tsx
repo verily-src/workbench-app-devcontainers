@@ -942,13 +942,31 @@ export default function App() {
           </FoldSection>
         )}
 
-        <FoldSection id="filters" title="Filters" badge={activeDs?.filters.length ? activeDs.filters.length : undefined}>
+        <FoldSection id="filters" title="Filters" badge={activeDs
+          ? new Set([...activeDs.filters.map((f) => f.column), ...activeDashboard.map((f) => f.column)]).size || undefined
+          : undefined}>
         {activeDs ? (
           <FilterPanel key={activeDs.id}
             columns={activeDs.columns}
-            filters={activeDs.filters}
+            filters={[...activeDs.filters.filter((f) => !activeDashboard.some((d) => d.column === f.column)), ...activeDashboard]}
+            dashboardColumns={new Set(activeDashboard.map((f) => f.column))}
             parameters={activeDs.parameters ?? []}
-            onChange={(filters) => updateDataset(activeDs.id, { filters })}
+            onChange={(filters) => {
+              const changed = activeDashboard.find((f) =>
+                JSON.stringify(filters.find((next) => next.column === f.column)) !== JSON.stringify(f));
+              if (changed) {
+                const next = filters.find((f) => f.column === changed.column);
+                setDashboardFilters(next
+                  ? withDashboardFilter(dashboardFilters, next)
+                  : dashboardFilters.filter((f) => f.column !== changed.column));
+              } else {
+                const globalColumns = new Set(activeDashboard.map((f) => f.column));
+                updateDataset(activeDs.id, { filters: [
+                  ...activeDs.filters.filter((f) => globalColumns.has(f.column)),
+                  ...filters.filter((f) => !globalColumns.has(f.column)),
+                ] });
+              }
+            }}
             onApplyToAll={(f) => {
               // The filter moves to dashboard level, so this tab doesn't apply it twice.
               setDashboardFilters(withDashboardFilter(dashboardFilters, f));

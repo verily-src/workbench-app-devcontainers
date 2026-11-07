@@ -14,6 +14,7 @@ import database as db
 import datasets
 import disk_data
 import execution
+import filter_rules
 import live_query
 from group_summary import _clean
 
@@ -103,11 +104,13 @@ def _live_aggregate(ds, req, metrics_in, filters):
     live = ds["live_source"]
     q = live_query._q
     disk_data.guard_live_query(live, [], None)
-    numeric_names = [f["column"] for f in filters if f["kind"] == "range"] + [
+    numeric_names = [f["column"] for f in filter_rules.leaves(filters)
+                     if f["kind"] in ("range", "categorical")] + [
         m.column for m in metrics_in if m.op in _NUMERIC_OPS]
     with db.get_engine_for_resource(live["resource_id"]).begin() as con:
         con.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         con.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+        con.exec_driver_sql("SET LOCAL TimeZone = 'UTC'")
         con.exec_driver_sql(f"SET LOCAL statement_timeout = {live_query.TIMEOUT_MS}")
         numeric = live_query._numeric_columns(con, live, numeric_names)
         where, params = live_query._where(filters, live["columns"], numeric)
@@ -135,7 +138,7 @@ def _disk_aggregate(ds, req, metrics_in, filters):
     disk = ds["disk_source"]
     q = live_query._q
     disk_data._budget(int(disk.get("scan_bytes") or os.path.getsize(disk["path"])) * 2)
-    where, params = disk_data._where(filters, disk["columns"])
+    where, params = disk_data._where(filters, disk_data.column_types(disk))
     groups = [f"src.{q(name)}" for name in req.group_by]
     metrics = []
     for metric in metrics_in:

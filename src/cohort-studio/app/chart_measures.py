@@ -10,6 +10,8 @@ import math
 import numpy as np
 import pandas as pd
 
+import category_text
+
 AGGS = ("count", "count_distinct", "sum", "mean", "median", "min", "max")
 NUMERIC_AGGS = {"sum", "mean", "median", "min", "max"}
 TOP_CATEGORIES = 12
@@ -121,13 +123,14 @@ def frame_bar(full: pd.DataFrame, filt: pd.DataFrame, chart: dict) -> dict:
     x, s = chart["x"], chart.get("series")
     measure = measure_of(chart)
     keep = full[x].notna() & (full[s].notna() if s else True)
-    cats, other_cat = _top(full.loc[keep, x].astype(str), TOP_CATEGORIES)
-    series, other_series = _top(full.loc[keep, s].astype(str), TOP_SERIES) if s else (None, False)
+    cats, other_cat = _top(category_text.frame_text(full.loc[keep, x]), TOP_CATEGORIES)
+    series, other_series = (_top(category_text.frame_text(full.loc[keep, s]), TOP_SERIES)
+                            if s else (None, False))
     rows = filt[filt[x].notna() & (filt[s].notna() if s else True)]
-    cat = rows[x].astype(str)
+    cat = category_text.frame_text(rows[x])
     work = pd.DataFrame({"c": cat.where(cat.isin(cats), None)}, index=rows.index)
     if s:
-        ser = rows[s].astype(str)
+        ser = category_text.frame_text(rows[s])
         work["s"] = ser.where(ser.isin(series), None)
     else:
         work["s"] = None
@@ -164,12 +167,15 @@ class Dialect:
     ``where``/``where_params`` the engine's own filter clause."""
 
     def __init__(self, *, rel: str, col, number, text_type: str, named: bool, where: str,
-                 where_params, run, postgres: bool):
+                 where_params, run, postgres: bool, text=None):
         self.rel, self.col, self.number = rel, col, number
         self.text_type, self.named, self.postgres = text_type, named, postgres
         self.where, self.where_params, self.run = where, where_params, run
+        self._text = text
 
     def text(self, name: str) -> str:
+        if self._text is not None:
+            return self._text(name)
         return f"CAST({self.col(name)} AS {self.text_type})"
 
     def quantile(self, expr: str, p: float) -> str:
@@ -264,9 +270,9 @@ def frame_box(full: pd.DataFrame, filt: pd.DataFrame, chart: dict) -> dict:
     x, g = chart["x"], chart.get("y")
     out = {"kind": "box", "x": x, "y": g, "data": []}
     if g:
-        cats, other = _top(full.loc[full[g].notna(), g].astype(str), TOP_CATEGORIES)
+        cats, other = _top(category_text.frame_text(full.loc[full[g].notna(), g]), TOP_CATEGORIES)
         rows = filt[filt[g].notna()]
-        labels = rows[g].astype(str)
+        labels = category_text.frame_text(rows[g])
         labels = labels.where(labels.isin(cats), None)
     else:
         cats, other, rows = [None], False, filt

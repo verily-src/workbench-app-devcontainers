@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+import category_text
 import datasets
 
 MIN_GROUP_N = 5
@@ -29,8 +30,8 @@ def _numeric_test(a: pd.Series, b: pd.Series) -> dict:
         return {**summary, "p": None, "note": str(e)[:80]}
 
 def _categorical_test(a: pd.Series, b: pd.Series) -> dict:
-    a = a.dropna().astype(str)
-    b = b.dropna().astype(str)
+    a = category_text.frame_text(a).dropna()
+    b = category_text.frame_text(b).dropna()
 
     top = (pd.concat([a, b]).value_counts().head(CAT_TOP_N).index.tolist())
     other_key = object()

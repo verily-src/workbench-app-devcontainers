@@ -3,6 +3,7 @@ import math
 import numpy as np
 from scipy import stats
 
+import category_text
 import database as db
 import filter_rules
 import live_query
@@ -18,13 +19,16 @@ def _q(value):
     return '"' + value.replace('"', '""') + '"'
 
 
-def _where(filters, columns, prefix):
-    """Compare-group WHERE clause, with date filters and AND/OR criteria groups."""
+def _where(filters, columns, prefix, types=None):
+    """Compare-group WHERE clause, with date filters and AND/OR criteria groups.
+
+    ``types`` maps names to PostgreSQL type OIDs (``live_query._numeric_columns``)."""
     return filter_rules.combine_named(
-        filters, lambda flat, sub: _where_flat(flat, columns, prefix + sub))
+        filters, lambda flat, sub: _where_flat(flat, columns, prefix + sub, types or {}))
 
 
-def _where_flat(filters, columns, prefix):
+def _where_flat(filters, columns, prefix, types=None):
+    types = types or {}
     clauses, params = [], {}
     for i, item in enumerate(filters):
         name = item.get("column")
@@ -34,18 +38,52 @@ def _where_flat(filters, columns, prefix):
         kind = item.get("kind")
         if kind == "categorical" and item.get("values"):
             keys = []
-            for j, value in enumerate(item["values"]):
+            values = category_text.filter_values(item["values"], live_query._VALUE_KINDS.get(types.get(name)))
+            if types.get(name) == 16:
+                values = [value.lower() for value in values]
+            if types.get(name) in (700, 701):
+                numbers = []
+                for value in values:
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    numbers.append(number)
+                if not numbers:
+                    clauses.append("FALSE")
+                    continue
+                cast = "real" if types[name] == 700 else "double precision"
+                for j, number in enumerate(numbers):
+                    key = f"{prefix}{i}_{j}"
+                    keys.append(f"CAST(:{key} AS {cast})")
+                    params[key] = number
+                clauses.append(f"{col} IN ({', '.join(keys)})")
+                continue
+            for j, value in enumerate(values):
                 key = f"{prefix}{i}_{j}"
                 keys.append(f":{key}")
-                params[key] = str(value)
+                params[key] = value
             clauses.append(f"CAST({col} AS text) IN ({', '.join(keys)})")
-        elif kind == "range" and item.get("min") is not None and item.get("max") is not None:
-            lo, hi = float(item["min"]), float(item["max"])
-            if not math.isfinite(lo) or not math.isfinite(hi):
-                raise ValueError("Range filter values must be finite.")
-            clauses.append(f"{live_query._numeric(col)} BETWEEN :{prefix}{i}_lo AND :{prefix}{i}_hi")
-            params[f"{prefix}{i}_lo"] = lo
-            params[f"{prefix}{i}_hi"] = hi
+        elif kind == "range" and filter_rules.is_active(item):
+            lo, hi = filter_rules.range_bounds(item)
+            if types.get(name) in live_query._NON_NUMERIC_TYPE_OIDS:
+                raise ValueError(f"Range filters require a numeric column: {name}")
+            if types.get(name) in live_query._INTEGER_TYPE_OIDS:
+                lower = live_query._INT64_MIN if lo is None else max(live_query._INT64_MIN, math.ceil(lo))
+                upper = live_query._INT64_MAX if hi is None else min(live_query._INT64_MAX, math.floor(hi))
+                if lower > upper:
+                    clauses.append("FALSE")
+                else:
+                    clauses.append(f"{col} BETWEEN :{prefix}{i}_lo AND :{prefix}{i}_hi")
+                    params[f"{prefix}{i}_lo"], params[f"{prefix}{i}_hi"] = lower, upper
+                continue
+            target = live_query._numeric(col, types.get(name))
+            if lo is not None:
+                clauses.append(f"{target} >= :{prefix}{i}_lo")
+                params[f"{prefix}{i}_lo"] = lo
+            if hi is not None:
+                clauses.append(f"{target} <= :{prefix}{i}_hi")
+                params[f"{prefix}{i}_hi"] = hi
         elif kind == "date" and filter_rules.is_active(item):
             start, end = filter_rules.date_bounds(item)
             if start:
@@ -185,20 +223,27 @@ def _benjamini_hochberg(pvals):
 
 def compare(live_source, profiles, filters_a, filters_b, b_is_rest=False, scope=()):
     columns = live_source["columns"]
-    a_where, a_params = _where(filters_a, columns, "a")
-    b_where, b_params = _where(filters_b, columns, "b")
+    for item in filter_rules.leaves([*filters_a, *filters_b, *scope]):
+        if item.get("column") not in columns:
+            raise ValueError(f"Unknown filter column: {item.get('column')!r}.")
     source_params = live_source.get("params", {})
-    params = {**source_params, **a_params, **b_params}
-    if b_is_rest:
-        s_where, s_params = _where(list(scope), columns, "s")
-        b_where = f"({s_where}) AND NOT COALESCE(({a_where}), FALSE)"
-        params = {**source_params, **a_params, **s_params}
     table = f"({live_source['sql']}) AS src"
     results = []
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+        conn.exec_driver_sql("SET LOCAL TimeZone = 'UTC'")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
+        types = live_query._numeric_columns(conn, live_source, [
+            *[item["column"] for item in filter_rules.leaves([*filters_a, *filters_b, *scope])],
+            *[p["name"] for p in profiles if p.get("name") in columns]])
+        a_where, a_params = _where(filters_a, columns, "a", types)
+        b_where, b_params = _where(filters_b, columns, "b", types)
+        params = {**source_params, **a_params, **b_params}
+        if b_is_rest:
+            s_where, s_params = _where(list(scope), columns, "s", types)
+            b_where = f"({s_where}) AND NOT COALESCE(({a_where}), FALSE)"
+            params = {**source_params, **a_params, **s_params}
         a_n = int(conn.execute(text(f"SELECT COUNT(*) FROM {table} WHERE ({a_where})"),
                                {**source_params, **a_params}).scalar_one())
         b_n = int(conn.execute(text(f"SELECT COUNT(*) FROM {table} WHERE ({b_where})"),
@@ -219,6 +264,9 @@ def compare(live_source, profiles, filters_a, filters_b, b_is_rest=False, scope=
                 result = _numeric(conn, table, pg_name, a_where, b_where, params)
             elif kind == "categorical":
                 result = _categorical(conn, table, pg_name, a_where, b_where, params)
+                for group in ("a", "b"):
+                    for value in result[group]["top"]:
+                        value["value"] = category_text.normalize_label(value["value"], types.get(name))
             else:
                 continue
             results.append({"column": name, "kind": kind, **result})

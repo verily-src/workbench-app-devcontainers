@@ -8,6 +8,7 @@ import sqlglot
 from sqlglot import exp
 from sql_utils import statement as text
 
+import category_text
 import chart_measures
 import database as db
 import filter_rules
@@ -27,6 +28,9 @@ ORDER_CACHE_TTL = 300
 # Refresh invalidates them along with everything else for the resource.
 BASE_CACHE_TTL = 600
 _FLOAT_TYPE_OIDS = {700, 701, 1700}
+# bool, date, time, timestamp, timestamptz, interval, timetz
+_NON_NUMERIC_TYPE_OIDS = {16, 1082, 1083, 1114, 1184, 1186, 1266}
+_VALUE_KINDS = {16: "bool", 700: "float", 701: "float"}
 
 
 def _q(value: str) -> str:
@@ -71,7 +75,28 @@ def _where_flat(filters: list[dict], columns: dict[str, str],
         kind = item.get("kind")
         integer = numeric_types.get(name) in _INTEGER_TYPE_OIDS
         if kind == "categorical" and item.get("values"):
-            values = [str(v) for v in item["values"]]
+            values = category_text.filter_values(item["values"], _VALUE_KINDS.get(numeric_types.get(name)))
+            if numeric_types.get(name) == 16:
+                values = [value.lower() for value in values]
+            if numeric_types.get(name) in (700, 701):
+                numbers = []
+                for value in values:
+                    try:
+                        number = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    numbers.append(number)
+                if not numbers:
+                    clauses.append("FALSE")
+                    continue
+                cast = "real" if numeric_types[name] == 700 else "double precision"
+                keys = []
+                for j, number in enumerate(numbers):
+                    key = f"{prefix}f{i}_{j}"
+                    keys.append(f"CAST(:{key} AS {cast})")
+                    params[key] = number
+                clauses.append(f"{col} IN ({', '.join(keys)})")
+                continue
             ints = _as_ints(values) if integer else None
             keys = []
             for j, value in enumerate(values):
@@ -81,27 +106,31 @@ def _where_flat(filters: list[dict], columns: dict[str, str],
             # Native comparison on integer columns keeps btree indexes usable.
             target = col if ints is not None else f"CAST({col} AS text)"
             clauses.append(f"{target} IN ({', '.join(keys)})")
-        elif kind == "range" and item.get("min") is not None and item.get("max") is not None:
-            lo, hi = float(item["min"]), float(item["max"])
-            if not math.isfinite(lo) or not math.isfinite(hi):
-                raise ValueError("Range filter values must be finite.")
+        elif kind == "range" and filter_rules.is_active(item):
+            lo, hi = filter_rules.range_bounds(item)
+            if numeric_types.get(name) in _NON_NUMERIC_TYPE_OIDS:
+                raise ValueError(f"Range filters require a numeric column: {name}")
             if integer:
                 # Intersect with the bigint domain; an empty intersection
                 # matches nothing rather than snapping to a boundary value.
-                raw_lo, raw_hi = item["min"], item["max"]
+                raw_lo, raw_hi = item.get("min"), item.get("max")
                 exact = lambda v: isinstance(v, int) and not isinstance(v, bool)
                 # JSON integers stay exact; float() would round 2**63-1 up to 2**63.
-                lo_i = max(_INT64_MIN, raw_lo if exact(raw_lo) else math.ceil(lo))
-                hi_i = min(_INT64_MAX, raw_hi if exact(raw_hi) else math.floor(hi))
+                lo_i = _INT64_MIN if lo is None else max(_INT64_MIN, raw_lo if exact(raw_lo) else math.ceil(lo))
+                hi_i = _INT64_MAX if hi is None else min(_INT64_MAX, raw_hi if exact(raw_hi) else math.floor(hi))
                 if lo_i > hi_i:
                     clauses.append("FALSE")
                     continue
                 clauses.append(f"{col} BETWEEN :{prefix}f{i}_lo AND :{prefix}f{i}_hi")
                 params[f"{prefix}f{i}_lo"], params[f"{prefix}f{i}_hi"] = lo_i, hi_i
                 continue
-            clauses.append(f"{_numeric(col, numeric_types.get(name))} BETWEEN :{prefix}f{i}_lo AND :{prefix}f{i}_hi")
-            params[f"{prefix}f{i}_lo"] = lo
-            params[f"{prefix}f{i}_hi"] = hi
+            target = _numeric(col, numeric_types.get(name))
+            if lo is not None:
+                clauses.append(f"{target} >= :{prefix}f{i}_lo")
+                params[f"{prefix}f{i}_lo"] = lo
+            if hi is not None:
+                clauses.append(f"{target} <= :{prefix}f{i}_hi")
+                params[f"{prefix}f{i}_hi"] = hi
         elif kind == "date" and filter_rules.is_active(item):
             # Compare the column itself with date parameters (PostgreSQL widens a
             # date to a timestamp), so indexes on date/timestamp columns still apply.
@@ -144,9 +173,9 @@ def _numeric_columns(conn, live_source: dict, names) -> dict[str, int]:
                     f"SELECT {projection} FROM ({live_source['sql']}) AS live LIMIT 0", {})
     try:
         description = result.cursor.description
+        # Every column's type OID; _numeric treats non-numeric OIDs as text.
         return {name: column.type_code for name, column in zip(selected, description)
-                if getattr(column, "type_code", None) in
-                _INTEGER_TYPE_OIDS | _FLOAT_TYPE_OIDS}
+                if getattr(column, "type_code", None) is not None}
     finally:
         result.close()
 
@@ -311,6 +340,7 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
     with engine.begin() as conn, query_cancellation.postgres_connection(conn):
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+        conn.exec_driver_sql("SET LOCAL TimeZone = 'UTC'")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         dates = [entry for entry in result if entry.get("filter_kind") == "date"]
         if dates:
@@ -332,7 +362,8 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
                 if "statement timeout" not in str(exc) and "canceling statement" not in str(exc):
                     raise
         ranges = [entry for entry in result if entry.get("filter_kind") == "range"]
-        numeric_columns = _numeric_columns(conn, live_source, [e["name"] for e in ranges])
+        numeric_columns = _numeric_columns(conn, live_source, [e["name"] for e in result
+                                                               if e.get("filter_kind") in ("range", "categorical")])
         if ranges:
             # One scan for every range column instead of one scan each.
             parts = []
@@ -367,7 +398,8 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
                     raise
                 # A slow column keeps its loaded-sample values instead of failing the open.
                 continue
-            entry["values"] = [str(value) for value in values]
+            entry["values"] = [category_text.normalize_label(str(value), numeric_columns.get(entry["name"]))
+                               for value in values]
     return result
 
 
@@ -398,7 +430,7 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
                       f"SELECT CAST({qx} AS text), COUNT(*), {selected_expr}, "
                       f"SUM(COUNT(*)) OVER (), SUM({selected_expr}) OVER () "
                       f"FROM {table} WHERE {qx} IS NOT NULL GROUP BY {group} "
-                      f"ORDER BY COUNT(*) DESC, {group} LIMIT {BAR_TOP_N}",
+                      f"ORDER BY COUNT(*) DESC, CAST({qx} AS text) LIMIT {BAR_TOP_N}",
                       params if has_filters else {}).all()
         top = [(str(v), int(n)) for v, n, *_ in rows]
         selected = {str(v): int(sel) for v, _n, sel, *_ in rows}
@@ -474,10 +506,10 @@ def _chart(conn, live_source: dict, chart: dict, where: str,
                       f"SELECT CAST({qx} AS text), CAST({qy} AS text), COUNT(*) "
                       f"FROM {table} WHERE ({where}) AND {qx} IS NOT NULL "
                       f"AND {qy} IS NOT NULL GROUP BY 1, 2 "
-                      f"ORDER BY COUNT(*) DESC, 1, 2 LIMIT {HEATMAP_LIMIT}", params).all()
+                      f"ORDER BY COUNT(*) DESC, 1, 2 LIMIT {HEATMAP_LIMIT + 1}", params).all()
         return {"kind": kind, "x": x, "y": y,
-                "data": [[a, b, int(n)] for a, b, n in rows],
-                "sampled": len(rows) == HEATMAP_LIMIT}
+                "data": [[a, b, int(n)] for a, b, n in rows[:HEATMAP_LIMIT]],
+                "sampled": len(rows) > HEATMAP_LIMIT}
     return {"kind": kind, "x": x, "data": []}
 
 
@@ -501,6 +533,7 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
     with engine.begin() as conn, query_cancellation.postgres_connection(conn):
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+        conn.exec_driver_sql("SET LOCAL TimeZone = 'UTC'")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         order = ((_requested_order(live_source) or _cached_primary_key_order(conn, live_source)
                   or "to_jsonb(live)::text") if rows else "")
@@ -536,8 +569,9 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
                 entity_filtered = int(counts[index + 1]) if has_filters else entity_total
                 out["entity"] = {"column": entity_column, "total": entity_total,
                                  "filtered": entity_filtered}
-            out["charts"] = [_chart(conn, live_source, chart, where, params, columns,
-                                    numeric_types, has_filters, base_cache)
+            out["charts"] = [category_text.normalize_chart(
+                                 _chart(conn, live_source, chart, where, params, columns,
+                                        numeric_types, has_filters, base_cache), numeric_types)
                              for chart in chart_specs]
         if rows:
             fetched = _query(conn, live_source,
@@ -656,10 +690,11 @@ def fetch_frame(live_source: dict, filters: list[dict] | None = None,
     with db.get_engine_for_resource(live_source["resource_id"]).begin() as conn:
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+        conn.exec_driver_sql("SET LOCAL TimeZone = 'UTC'")
         conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
         numeric_types = _numeric_columns(
             conn, live_source,
-            [f["column"] for f in filter_rules.leaves(filters) if f.get("kind") == "range"])
+            [f["column"] for f in filter_rules.leaves(filters) if f.get("kind") in ("range", "categorical")])
         where, params = _where(filters, live_source["columns"], numeric_types)
         rows = _query(conn, live_source,
                       f"SELECT {select} FROM {table} WHERE {where} LIMIT :limit",

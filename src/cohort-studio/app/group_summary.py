@@ -76,12 +76,13 @@ def _prepare(ds, req):
 def _begin_live(con):
     con.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
     con.exec_driver_sql("SET LOCAL search_path = pg_catalog")
+    con.exec_driver_sql("SET LOCAL TimeZone = 'UTC'")
     con.exec_driver_sql(f"SET LOCAL statement_timeout = {live_query.TIMEOUT_MS}")
 
 
 def _live_sql(con, live, req, filters, aliases):
     q = live_query._q
-    numeric = live_query._numeric_columns(con, live, [item["column"] for item in filter_rules.leaves(filters) if item["kind"] == "range"] + ([req.measure] if req.measure else []))
+    numeric = live_query._numeric_columns(con, live, [item["column"] for item in filter_rules.leaves(filters) if item["kind"] in ("range", "categorical")] + ([req.measure] if req.measure else []))
     where, params = live_query._where(filters, live["columns"], numeric)
     groups = [f"src.{q(live['columns'][name])}" for name in req.group_by]
     selection = [f"{col} AS {q(name)}" for col, name in zip(groups, req.group_by)]
@@ -91,7 +92,7 @@ def _live_sql(con, live, req, filters, aliases):
 
 def _disk_sql(disk, req, filters, aliases, relation):
     q = live_query._q
-    where, params = disk_data._where(filters, disk["columns"])
+    where, params = disk_data._where(filters, disk_data.column_types(disk))
     groups = [f"src.{q(name)}" for name in req.group_by]
     selection = [f"{col} AS {q(name)}" for col, name in zip(groups, req.group_by)]
     numeric = f"TRY_CAST(src.{q(req.measure)} AS DOUBLE)" if req.measure else None

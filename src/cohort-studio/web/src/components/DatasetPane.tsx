@@ -535,14 +535,15 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
           </span>
         ))}
         <input type="text" className="cohort-name"
+               aria-label="Cohort filter name"
                placeholder={filters.length
-                 ? "name current filters…" : "set filters to save a cohort"}
+                 ? "Name these filters…" : "Select filters to save a cohort"}
                value={cohortName} disabled={filters.length === 0}
                onChange={(e) => setCohortName(e.target.value)}
                onKeyDown={(e) => { if (e.key === "Enter") saveCohort(); }} />
         <button onClick={saveCohort}
                 disabled={!cohortName.trim() || filters.length === 0}>
-          Save cohort
+          Save cohort filters
         </button>
         <button onClick={() => setShowCompare((v) => !v)}>
           {showCompare ? "Hide compare" : "Compare groups"}

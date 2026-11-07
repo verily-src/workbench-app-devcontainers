@@ -47,7 +47,7 @@ class PlinkExportRequest(BaseModel):
 @disk_data._bounded_materialization
 @execution.workload('bulk')
 def _create_archive(source, filters, mapping, vcf_filter_policy, source_label):
-    where, params = disk_data._where(filters, source['columns'])
+    where, params = disk_data._where(filters, disk_data.column_types(source))
     names = [mapping.sample_id, mapping.variant_id, mapping.chromosome, mapping.position,
              mapping.reference_allele, mapping.alternate_allele, mapping.alternate_allele_count]
     if any(name not in source['columns'] for name in names):

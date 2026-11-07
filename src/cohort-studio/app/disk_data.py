@@ -22,6 +22,7 @@ import pandas as pd
 import sqlglot
 from sqlglot import exp
 
+import category_text
 import duck
 import database as db
 import filter_rules
@@ -160,6 +161,7 @@ def _new_path() -> str:
 def _configure(con, temp_directory: str | Path | None = None):
     try:
         con.execute("SET memory_limit = '2GB'")
+        con.execute("SET TimeZone = 'UTC'")
         con.execute(f"SET temp_directory = {_lit(str(temp_directory or _ROOT))}")
         con.execute(f"SET max_temp_directory_size = '{MAX_OPERATION_BYTES}B'")
         return con
@@ -373,6 +375,8 @@ def _catalog_size(uri: str, profile: str | None, view_sql: str | None = None) ->
 def _stream_result(reader, path: str, estimated_bytes: int,
                    table: str = "data") -> tuple[list[str], int, int]:
     columns = list(reader.schema.names)
+    # DuckDB would rename a case-folded duplicate (age -> age_1), so the stored
+    # columns would no longer match the source's column list.
     dbcon = _connect(path)
     conname = "_studio_batch"
     total_bytes = 0
@@ -383,6 +387,9 @@ def _stream_result(reader, path: str, estimated_bytes: int,
         dbcon.register(conname, empty)
         dbcon.execute(f"CREATE TABLE {_q(table)} AS SELECT * FROM {conname}")
         dbcon.unregister(conname)
+        stored = [row[0] for row in dbcon.execute(f"DESCRIBE {_q(table)}").fetchall()]
+        if stored != columns:
+            raise ValueError("Stored columns differ from the source columns; rename duplicate columns.")
         created = True
         for batch in reader:
             batch_bytes = int(batch.nbytes)
@@ -414,6 +421,11 @@ def _preview(path: str, table: str = "data", limit: int = 100_000) -> pd.DataFra
 def profile_columns(source: dict, profiles: list[dict]) -> list[dict]:
     con = _connect(source["path"], read_only=True)
     relation = _q(source.get("table", "data"))
+    try:
+        types = {row[0]: row[1] for row in con.execute(f"DESCRIBE {relation}").fetchall()}
+    except Exception:
+        con.close()
+        raise
     result, expressions, expression_aliases, result_slots = [], [], [], {}
     for index, profile in enumerate(profiles):
         name, kind = profile["name"], profile.get("filter_kind")
@@ -428,16 +440,18 @@ def profile_columns(source: dict, profiles: list[dict]) -> list[dict]:
             result_slots[index] = ("range", low_alias, high_alias)
         elif kind == "date":
             low_alias, high_alias = f"_studio_min_{index}", f"_studio_max_{index}"
+            day = f"TRY_CAST(TRY_CAST({col} AS TIMESTAMPTZ) AS DATE)"
             expressions.extend([
-                f"MIN(TRY_CAST({col} AS DATE)) AS {_q(low_alias)}",
-                f"MAX(TRY_CAST({col} AS DATE)) AS {_q(high_alias)}",
+                f"MIN({day}) AS {_q(low_alias)}",
+                f"MAX({day}) AS {_q(high_alias)}",
             ])
             expression_aliases.extend([low_alias, high_alias])
             result_slots[index] = ("date", low_alias, high_alias)
         elif kind == "categorical":
             values_alias = f"_studio_values_{index}"
             expressions.append(
-                f"APPROX_TOP_K(CAST({col} AS VARCHAR), 50) AS {_q(values_alias)}")
+                f"APPROX_TOP_K({category_text.duck_text(col, types.get(name))}, 50) "
+                f"AS {_q(values_alias)}")
             expression_aliases.append(values_alias)
             result_slots[index] = ("categorical", values_alias)
     try:
@@ -462,7 +476,7 @@ def profile_columns(source: dict, profiles: list[dict]) -> list[dict]:
                     entry["min_date"], entry["max_date"] = low.isoformat(), high.isoformat()
             elif entry.get("filter_kind") == "categorical":
                 _, values_alias = result_slots[index]
-                entry["values"] = [str(value) for value in
+                entry["values"] = [category_text.normalize_label(str(value), types.get(entry["name"])) for value in
                                    (by_name.get(values_alias) or [])]
             result.append(entry)
     finally:
@@ -1208,71 +1222,66 @@ def open_catalog(ref: dict) -> tuple[pd.DataFrame, dict]:
                             "materialized_bytes": materialized}
 
 
-def _where(filters: list[dict], columns: list[str]):
-    """WHERE clause for Explore filters, including AND/OR criteria groups."""
-    return filter_rules.combine(filters, lambda flat: _where_flat(flat, columns))
+def column_types(source: dict) -> dict[str, str]:
+    """Stored DuckDB type of each column (cached on the source)."""
+    types = source.get("types")
+    if not isinstance(types, dict) or set(types) != set(source["columns"]):
+        con = _connect(source["path"], read_only=True)
+        try:
+            described = {row[0]: row[1] for row in con.execute(
+                f"DESCRIBE {_q(source.get('table', 'data'))}").fetchall()}
+        finally:
+            con.close()
+        types = {name: described.get(name) for name in source["columns"]}
+        source["types"] = types
+    return types
 
 
-def _where_flat(filters: list[dict], columns: list[str]):
-    clauses, params = [], []
-    for item in filters:
-        name = item.get("column")
-        if name not in columns:
-            raise ValueError(f"Unknown filter column: {name!r}.")
-        col = f"src.{_q(name)}"
-        if item.get("kind") == "categorical" and item.get("values"):
-            vals = [str(value) for value in item["values"]]
-            clauses.append(f"CAST({col} AS VARCHAR) IN ({', '.join('?' for _ in vals)})")
-            params.extend(vals)
-        elif item.get("kind") == "range" and item.get("min") is not None and item.get("max") is not None:
-            low, high = float(item["min"]), float(item["max"])
-            if not math.isfinite(low) or not math.isfinite(high):
-                raise ValueError("Range filter values must be finite.")
-            clauses.append(f"TRY_CAST({col} AS DOUBLE) BETWEEN ? AND ?")
-            params.extend([low, high])
-        elif item.get("kind") == "date" and filter_rules.is_active(item):
-            start, end = filter_rules.date_bounds(item)
-            if start:
-                clauses.append(f"TRY_CAST({col} AS TIMESTAMP) >= ?")
-                params.append(start)
-            if end:
-                clauses.append(f"TRY_CAST({col} AS TIMESTAMP) < ?")
-                params.append(end)
-    return " AND ".join(clauses) if clauses else "TRUE", params
+def _where(filters: list[dict], columns):
+    """WHERE clause for Explore filters, including AND/OR criteria groups.
+
+    ``columns`` maps names to stored types (``column_types``); a plain list of
+    names still works, without type-aware category text."""
+    import agg_duck
+    return filter_rules.combine(filters, lambda flat: agg_duck.where_flat(flat, columns, "src."))
 
 
-def _duck_dialect(con, relation: str, where: str, params: list):
+def _duck_dialect(con, relation: str, where: str, params: list, types: dict | None = None):
     import chart_measures
+    types = types or {}
     return chart_measures.Dialect(
         rel=f"{relation} AS src", col=lambda name: f"src.{_q(name)}",
         number=lambda name: chart_measures.duck_number(f"src.{_q(name)}"),
         text_type="VARCHAR", named=False, where=where, where_params=params,
-        run=lambda sql, values: con.execute(sql, values).fetchall(), postgres=False)
+        run=lambda sql, values: con.execute(sql, values).fetchall(), postgres=False,
+        text=lambda name: category_text.duck_text(f"src.{_q(name)}", types.get(name)))
 
 
 def _aggregate(con, relation: str, where: str, params: list,
-               charts: list[dict], columns: list[str]):
+               charts: list[dict], columns, types: dict | None = None):
     import chart_measures
+    types = types or {}
     out = []
     for chart in charts:
         kind, x, y = chart.get("kind"), chart.get("x"), chart.get("y")
         if x not in columns or (y and y not in columns):
             raise ValueError("Unknown chart column.")
         qx = f"src.{_q(x)}"
+        tx = category_text.duck_text(qx, types.get(x))
         if chart_measures.is_measured(chart):
-            out.append(chart_measures.sql_bar(_duck_dialect(con, relation, where, params), chart))
+            out.append(chart_measures.sql_bar(_duck_dialect(con, relation, where, params, types), chart))
         elif kind == "box":
-            out.append(chart_measures.sql_box(_duck_dialect(con, relation, where, params), chart))
+            out.append(chart_measures.sql_box(_duck_dialect(con, relation, where, params, types), chart))
         elif kind == "bar":
             counts = con.execute(
-                f"SELECT CAST({qx} AS VARCHAR), COUNT(*) FROM {relation} AS src "
+                f"SELECT {tx}, COUNT(*) FROM {relation} AS src "
                 f"WHERE {qx} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 12").fetchall()
             selected = {}
             if counts:
                 values = [str(row[0]) for row in counts]
                 selected = dict(con.execute(
-                    f"SELECT CAST({qx} AS VARCHAR), COUNT(*) FROM {relation} AS src "
-                    f"WHERE ({where}) AND CAST({qx} AS VARCHAR) IN "
+                    f"SELECT {tx}, COUNT(*) FROM {relation} AS src "
+                    f"WHERE ({where}) AND {tx} IN "
                     f"({', '.join('?' for _ in values)}) GROUP BY 1",
                     [*params, *values]).fetchall())
             total = int(con.execute(
@@ -1332,14 +1341,22 @@ def _aggregate(con, relation: str, where: str, params: list,
         elif kind == "heatmap" and y:
             qy = f"src.{_q(y)}"
             rows = con.execute(
-                f"SELECT CAST({qx} AS VARCHAR), CAST({qy} AS VARCHAR), COUNT(*) "
+                f"SELECT {tx}, {category_text.duck_text(qy, types.get(y))}, COUNT(*) "
                 f"FROM {relation} AS src WHERE ({where}) AND {qx} IS NOT NULL "
-                f"AND {qy} IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 400", params).fetchall()
-            out.append({"kind": kind, "x": x, "y": y, "data": rows,
-                        "sampled": len(rows) == 400})
+                f"AND {qy} IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC, 1, 2 LIMIT 401", params).fetchall()
+            out.append({"kind": kind, "x": x, "y": y,
+                        "data": [[a, b, int(n)] for a, b, n in rows[:400]],
+                        "sampled": len(rows) > 400})
         else:
             out.append({"kind": kind, "x": x, "data": []})
     return out
+
+
+def _row_key(columns) -> str:
+    """Stable tiebreak for sorted pages: the table's rowid, else every column."""
+    if any(str(name).casefold() == "rowid" for name in columns):
+        return ", ".join(f"src.{_q(name)} NULLS LAST" for name in columns)
+    return "src.rowid"
 
 
 def query(source: dict, filters: list[dict], charts: list[dict], page: int,
@@ -1358,15 +1375,18 @@ def query(source: dict, filters: list[dict], charts: list[dict], page: int,
         scans += {"bar": 4, "histogram": 5, "scatter": 1, "map": 1,
                   "heatmap": 1, "box": 3}.get(chart.get("kind"), 1)
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])) * scans)
-    where, params = _where(filters, columns)
+    types = column_types(source)
+    where, params = _where(filters, types)
     relation = f"{_q(source.get('table', 'data'))}"
     con = _connect(source["path"], read_only=True)
     try:
         total = int(con.execute(f"SELECT COUNT(*) FROM {relation}").fetchone()[0])
         filtered = int(con.execute(
             f"SELECT COUNT(*) FROM {relation} AS src WHERE {where}", params).fetchone()[0])
-        charts_out = _aggregate(con, relation, where, params, charts, columns)
-        ordering = f" ORDER BY src.{_q(sort['column'])} {sort['direction'].upper()} NULLS LAST" if sort else ""
+        charts_out = [category_text.normalize_chart(chart, types) for chart in
+                      _aggregate(con, relation, where, params, charts, columns, types)]
+        ordering = (f" ORDER BY src.{_q(sort['column'])} {sort['direction'].upper()} NULLS LAST, "
+                    f"{_row_key(columns)}") if sort else ""
         frame = con.execute(
             f"SELECT * FROM {relation} AS src WHERE {where}{ordering} LIMIT ? OFFSET ?",
             [*params, page_size, page * page_size]).to_arrow_table().to_pandas(types_mapper=pd.ArrowDtype)
@@ -1403,7 +1423,7 @@ def aggregate(source: dict, agg: str, column: str, group_by: str,
         if name and name not in columns:
             raise ValueError(f"Unknown column: {name}")
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])))
-    where, params = _where(filters, columns)
+    where, params = _where(filters, column_types(source))
     relation = _q(source.get("table", "data"))
     con = _connect(source["path"], read_only=True)
     try:
@@ -1448,12 +1468,12 @@ def compare(source: dict, profiles: list[dict], filters_a: list[dict],
     from scipy import stats
 
     columns = source["columns"]
-    a_where, a_params = _where(filters_a, columns)
+    a_where, a_params = _where(filters_a, column_types(source))
     if b_is_rest:
-        s_where, s_params = _where(list(scope), columns)
+        s_where, s_params = _where(list(scope), column_types(source))
         b_where, b_params = f"({s_where}) AND NOT COALESCE(({a_where}), FALSE)", [*s_params, *a_params]
     else:
-        b_where, b_params = _where(filters_b, columns)
+        b_where, b_params = _where(filters_b, column_types(source))
     compare_scan_count = 2 + 4 * len(profiles)
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"]))
             * compare_scan_count)
@@ -1589,7 +1609,7 @@ def count_by_group(source: dict, group_by: str, filters: list[dict],
         raise ValueError(f"Unknown column: {group_by}")
     scan_bytes = int(source.get("scan_bytes") or os.path.getsize(source["path"]))
     _budget(scan_bytes, scan_bytes)
-    where, params = _where(filters, source["columns"])
+    where, params = _where(filters, column_types(source))
     relation, col = _q(source.get("table", "data")), f"src.{_q(group_by)}"
     con = _connect(source["path"], read_only=True)
     try:
@@ -1643,7 +1663,7 @@ def _finite(value):
 
 def export_frame(source: dict, filters: list[dict], max_rows: int) -> pd.DataFrame:
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])))
-    where, params = _where(filters, source["columns"])
+    where, params = _where(filters, column_types(source))
     relation = _q(source.get("table", "data"))
     con = _connect(source["path"], read_only=True)
     try:
@@ -1669,7 +1689,7 @@ def export_tsv(source: dict, filters: list[dict], max_rows: int, format: str = "
     if format not in _EXPORT_OPTIONS:
         raise ValueError("Unsupported export format.")
     _budget(int(source.get("scan_bytes") or os.path.getsize(source["path"])))
-    where, params = _where(filters, source["columns"])
+    where, params = _where(filters, column_types(source))
     relation = _q(source.get("table", "data"))
     fd, path = tempfile.mkstemp(prefix="export-", suffix="." + format, dir=_ROOT)
     os.close(fd)

@@ -271,8 +271,8 @@ class Filter(BaseModel):
     column: str = Field(default="", max_length=512)
     kind: Literal["categorical", "range", "date", "any"]
     values: list[str] | None = Field(default=None, max_length=5000)
-    min: float | None = None
-    max: float | None = None
+    min: int | float | None = None
+    max: int | float | None = None
     # kind "date": absolute YYYY-MM-DD bounds (end inclusive) or "last N units".
     start: str | None = Field(default=None, max_length=32)
     end: str | None = Field(default=None, max_length=32)

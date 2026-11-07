@@ -110,3 +110,5 @@
   background: transparent; color: var(--ink-muted); border-radius: 6px; font-size: 15px; line-height: 1; }
 .chart-card .head .chart-actions > button:hover { color: var(--ink); background: var(--hover); }
 .chart-card .head .chart-actions .popover-panel { min-width: 160px; }
+.chart-card .head .chart-selection { display: inline-flex; align-items: center; gap: 2px; max-width: 160px; font-size: 11px;
+  color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

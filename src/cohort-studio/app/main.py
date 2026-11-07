@@ -1701,6 +1701,22 @@ class SaveViewRequest(BaseModel):
     name: str = Field(pattern=r"^[A-Za-z0-9 ._-]{1,80}$")
     datasets: list[ViewDataset] = Field(default_factory=list, max_length=16)
     active: int = Field(default=0, ge=0)
+    # Filters by column name that the browser adds to every tab with a matching column.
+    dashboard_filters: list[Filter] = Field(default_factory=list, max_length=20)
+
+    @field_validator("dashboard_filters")
+    @classmethod
+    def _plain_dashboard_filters(cls, filters):
+        seen = set()
+        for f in filters:
+            if f.kind == "any":
+                raise ValueError("A dashboard filter can't be a criteria group.")
+            if f.param is not None:
+                raise ValueError(f"Dashboard filter on {f.column!r} can't follow a tab parameter.")
+            if f.column in seen:
+                raise ValueError(f"Only one dashboard filter per column ({f.column!r}).")
+            seen.add(f.column)
+        return filters
 
 
 def _with_app_info(cfg: dict) -> dict:
@@ -1995,6 +2011,7 @@ def save_view(req: SaveViewRequest, request: Request, response: Response):
             "parameters": [p.model_dump() for p in d.parameters],
             "chart_columns": d.chart_columns,
         } for d in req.datasets],
+        "dashboard_filters": [f.model_dump(exclude_none=True) for f in req.dashboard_filters],
     }
     try:
         if req.kind == "aurora" and (saved_snapshots.has_join_source(state, req.resource_id)

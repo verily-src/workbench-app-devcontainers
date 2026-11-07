@@ -1,0 +1,10 @@
+.dashboard-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
+.dashboard-filters-label { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.dashboard-chip { padding: 1px 4px 1px 2px; gap: 0; cursor: default; }
+.dashboard-chip .popover > button { border: none; background: transparent; color: inherit; font-size: 12px;
+  padding: 2px 6px; cursor: pointer; }
+.dashboard-chip > button.quiet { padding: 0 4px; font-size: 11px; }
+.dashboard-chip.off { background: transparent; border-style: dashed; color: var(--ink-muted); }
+.dashboard-off { color: var(--ink-muted); }
+.filter-group > .filter-apply-all { margin: 2px 0 4px; }
+

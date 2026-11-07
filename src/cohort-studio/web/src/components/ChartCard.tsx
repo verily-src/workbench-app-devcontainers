@@ -326,6 +326,23 @@ function applyMarks(option: EChartsOption, marks: ChartMarks | undefined, ink: s
   }
 }
 
+/** Dim the categories outside a chart's selection (bar, line and pie data share the category order). */
+function highlightSelection(option: EChartsOption, cats: string[], selection: string[]) {
+  const chosen = new Set(selection);
+  if (!chosen.size || !cats.some((c) => chosen.has(c)) || !option.series) return;
+  const list = (Array.isArray(option.series) ? option.series : [option.series]) as Record<string, any>[];
+  for (const s of list) {
+    if (!Array.isArray(s.data) || !["bar", "line", "pie"].includes(s.type)) continue;
+    s.data = s.data.map((d: unknown, i: number) => {
+      if (cats[i] === undefined) return d;
+      const item = d !== null && typeof d === "object" && !Array.isArray(d) ? d as Record<string, any> : { value: d };
+      return { ...item, itemStyle: { ...(item.itemStyle ?? {}), opacity: chosen.has(cats[i]) ? 1 : 0.3 } };
+    });
+  }
+}
+
+const NO_SELECTION: string[] = [];
+
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -400,7 +417,11 @@ interface Props {
   palette: string;
 
   kinds: ChartSpec["kind"][];
-  onTapCategory: (column: string, value: string) => void;
+  /** A click on a category; `additive` (Ctrl, ⌘ or Shift) adds or removes it instead of selecting only it. */
+  onTapCategory: (column: string, value: string, additive: boolean) => void;
+  /** Values of this chart's field that the tab filters on (the chart's selection). */
+  selection?: string[];
+  onClearSelection?: () => void;
   onChangeKind: (kind: ChartSpec["kind"], style?: ChartStyle, mark?: MarkType) => void;
   onMarksChange?: (marks: ChartMarks | undefined) => void;
   onToggleWide: () => void;
@@ -434,7 +455,9 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
                             columnLabels = {}, onChangeKind, onMarksChange, onToggleWide,
                             onMove, canMoveUp = false, canMoveDown = false, onDuplicate,
                             onClose, onRename, onAxesChange, readOnly = false, compactCategoryLabels = false,
-                            fields, onDataChange, parameters = NO_PARAMETERS }: Props) {
+                            fields, onDataChange, parameters = NO_PARAMETERS,
+                            selection = NO_SELECTION, onClearSelection }: Props) {
+  const selectionKey = selection.join("\u0000");
   const pal = getPalette(palette);
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<ECharts>();
@@ -619,16 +642,20 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
       left: spec.y_axis?.label ? 72 : 8, right: 16,
       bottom: spec.x_axis?.label ? 48 : 8, containLabel: true,
     };
+    if (result.kind === "bar" && clickCats) highlightSelection(option, clickCats, selection);
     chart.current.setOption(option, true);
     chart.current.off("click");
     if (result.kind === "bar" && !readOnly && clickCats) {
       const cats = clickCats;
       chart.current.on("click", (params) => {
         const cat = cats[params.dataIndex];
-        if (cat && !folded.has(cat)) onTapCategory(spec.x, cat);
+        const native = (params.event as { event?: MouseEvent } | undefined)?.event;
+        const additive = Boolean(native && (native.ctrlKey || native.metaKey || native.shiftKey));
+        if (cat && !folded.has(cat)) onTapCategory(spec.x, cat, additive);
       });
     }
-  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus, parameters]);
+  }, [result, spec, pal, onTapCategory, columnLabels, readOnly, compactCategoryLabels, themeVersion, mapStatus, parameters,
+      selectionKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const drawnStyle = styleOf(spec);
   const height = result?.kind === "bar" && (drawnStyle === "pie" || drawnStyle === "donut") ? 260
@@ -653,6 +680,12 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
         {result?.sampled && <span className="badge" title="This chart uses sampled data">
           Sampled
         </span>}
+        {result?.kind === "bar" && selection.length > 0 && onClearSelection && !readOnly &&
+          <span className="chart-selection" title={selection.join(", ")}>
+            {selection.length === 1 ? selection[0] : `${selection.length} selected`}
+            <button type="button" className="quiet" aria-label="Clear selection"
+                    title="Clear selection (Esc)" onClick={onClearSelection}>✕</button>
+          </span>}
         {!readOnly && <MarksMenu spec={spec} kinds={kinds} fields={fields} onData={onDataChange}
           onChoose={(mark, choice) => onChangeKind(choice.kind, choice.style, mark)}
           onMarks={(marks) => onMarksChange?.(Object.values(marks).some((v) => v !== undefined) ? marks : undefined)} />}

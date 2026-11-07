@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import type {
-  Dataset, SavedViewEntry, SavedViewJob, SavedViewStoreError, Source, ViewRevision,
+  Dataset, Filter, SavedViewEntry, SavedViewJob, SavedViewStoreError, Source, ViewRevision,
 } from "../types";
 
 type Store = { kind: string; id: string };
@@ -15,6 +15,8 @@ interface Props {
   onOpenRevision: (store: Store, name: string, revision?: number) => void;
   /** Viewer mode: no saving, publishing, rollback or delete. */
   readOnly?: boolean;
+  /** Dashboard filters, saved with the view. */
+  dashboardFilters?: Filter[];
 }
 
 /** Share link for a saved view; `published` links always open the latest revision. */
@@ -143,7 +145,7 @@ function ViewVersions({ view, readOnly, draftPending, onOpenRevision, onLoadView
   );
 }
 
-export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevision, readOnly }: Props) {
+export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevision, readOnly, dashboardFilters = [] }: Props) {
   const saveable = datasets.filter((dataset) => dataset.sourceRef);
   const stores = sources.filter((source) => source.kind === "aurora" || source.kind === "s3");
   const defaultStore = stores.find((source) => source.kind === "aurora")
@@ -223,7 +225,7 @@ export function SavedViews({ sources, datasets, active, onLoadView, onOpenRevisi
       const activeSaveIdx = Math.max(0, saveable.findIndex(
         (dataset) => dataset === datasets[active]));
       const result = await api.saveView(defaultStore.kind, defaultStore.id,
-        name.trim(), saveable, activeSaveIdx);
+        name.trim(), saveable, activeSaveIdx, dashboardFilters);
       setName("");
       if (result.job_id) {
         const job = { ...result, status: result.status ?? "queued",

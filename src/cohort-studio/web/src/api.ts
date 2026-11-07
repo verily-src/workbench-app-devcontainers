@@ -88,6 +88,8 @@ export interface SavedViewState {
     parameters?: Parameter[];
     chart_columns?: 0 | 1 | 2 | 3 | 4;
   }>;
+  /** Filters by column name added to every tab with a matching column. */
+  dashboard_filters?: Filter[];
 }
 
 export interface DataJob {
@@ -644,10 +646,10 @@ export const api = {
        + `&name=${encodeURIComponent(name)}`),
 
   saveView: (kind: string, resourceId: string, name: string,
-             datasets: Dataset[], active: number) =>
+             datasets: Dataset[], active: number, dashboardFilters: Filter[] = []) =>
     request<{ name: string; job_id?: string; status?: SavedViewJob["status"]; completed_sources?: number; total_sources?: number; error?: string | null }>("/api/views", post({
       kind, resource_id: resourceId, name, active,
-      datasets: viewSpecs(datasets),
+      datasets: viewSpecs(datasets), dashboard_filters: dashboardFilters,
     })),
 
   publishView: (kind: string, resourceId: string, name: string, note: string) =>

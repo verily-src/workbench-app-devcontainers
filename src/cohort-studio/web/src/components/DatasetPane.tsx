@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { ExportJob, OpenResult } from "../api";
-import type { ChartMeasure, ChartSpec, ChartStyle, Dataset, MarkType, MeasureAgg, Source } from "../types";
+import type { ChartMeasure, ChartSpec, ChartStyle, Dataset, Filter, MarkType, MeasureAgg, Source } from "../types";
 import { ChartCard } from "./ChartCard";
 import { isMeasured, MEASURE_LABEL, measureFields, resolveMark, seriesFields } from "./MarksMenu";
 import { ChatWidget } from "./ChatWidget";
@@ -18,8 +18,12 @@ import { GroupSummary } from "./GroupSummary";
 import { LaunchWorkflow } from "./LaunchWorkflow";
 import { PlinkExport } from "./PlinkExport";
 
+const NO_FILTERS: Filter[] = [];
+
 interface Props {
   dataset: Dataset;
+  /** Dashboard filters that apply to this tab; the query adds them to the tab's own filters. */
+  dashboardFilters?: Filter[];
   palette: string;
   onUpdate: (changes: Partial<Dataset>) => void;
   /** Reopens a joined tab's recipe on the visual join canvas. */
@@ -117,10 +121,14 @@ function safeFilterAskError(error: unknown): string {
   return "The request could not be completed. Check the connection and try again.";
 }
 
-export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOpenTable, onRefreshExtract, onEditExtract }: Props) {
+export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, onUpdate, onEditJoinCanvas, onOpenTable,
+                             onRefreshExtract, onEditExtract }: Props) {
   const aiFeatures = useAiFeatures();
   const plinkExport = usePlink();
   const { result, filters, charts } = dataset;
+  // The rows the user sees: this tab's filters and the dashboard filters. Exports, compare,
+  // summaries and workflows read these; edits (chips, cohorts, OR groups) keep the tab's own.
+  const scoped = dashboardFilters.length ? { ...dataset, filters: [...filters, ...dashboardFilters] } : dataset;
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
   const [exportError, setExportError] = useState("");
   const [exportFormat, setExportFormat] = useState<"tsv" | "tsv.gz" | "parquet" | "json" | "duckdb">("tsv");
@@ -168,6 +176,39 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
         ? [...rest, { column, kind: "categorical", values }] : rest,
     });
   };
+
+  // Chart clicks select: a plain click selects only that category (again clears it),
+  // Ctrl/⌘/Shift-click adds or removes one. The selection is the tab's categorical filter
+  // on the chart's field, so every chart on the tab follows it.
+  const [lastSelected, setLastSelected] = useState<string | null>(null);
+  useEffect(() => { setLastSelected(null); }, [dataset.id]);
+  const selectionOf = (column: string) =>
+    filters.find((f) => f.column === column && f.kind === "categorical")?.values ?? [];
+  const setSelection = (column: string, values: string[]) => {
+    const rest = filters.filter((f) => f.column !== column);
+    onUpdate({ filters: values.length ? [...rest, { column, kind: "categorical", values }] : rest });
+  };
+  const selectCategory = (column: string, value: string, additive: boolean) => {
+    const current = selectionOf(column);
+    setSelection(column, additive
+      ? (current.includes(value) ? current.filter((v) => v !== value) : [...current, value])
+      : (current.length === 1 && current[0] === value ? [] : [value]));
+    setLastSelected(column);
+  };
+  // Esc clears the selection of the chart clicked last, unless Esc is closing a menu or editing a field.
+  useEffect(() => {
+    if (!lastSelected) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable], [role=dialog]")) return;
+      if (document.querySelector(".popover-panel:not([hidden]), [role=dialog]")) return;
+      if (selectionOf(lastSelected).length) setSelection(lastSelected, []);
+      setLastSelected(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
 
   const chips: { label: string; title?: string; remove: () => void }[] = [];
   for (const f of filters) {
@@ -258,9 +299,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
     try {
       if (databaseScoped) {
         if (exportFormat === "duckdb") throw new Error("DuckDB export is not available for Aurora yet.");
-        setExportJob(await api.createExport(dataset.id, filters, exportFormat));
+        setExportJob(await api.createExport(dataset.id, scoped.filters, exportFormat));
       }
-      else await api.export(dataset.id, filters, exportFormat);
+      else await api.export(dataset.id, scoped.filters, exportFormat);
     } catch (e) {
       setExportError((e as Error).message);
     } finally {
@@ -339,9 +380,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
           {creatingExport ? "Starting export…" : `Export ${{tsv: "TSV", "tsv.gz": "TSV.gz", parquet: "Parquet", json: "JSON", duckdb: "DuckDB"}[exportFormat]}`}
         </button>
         </div>
-        {plinkExport && <PlinkExport key={dataset.id} dataset={dataset} />}
+        {plinkExport && <PlinkExport key={dataset.id} dataset={scoped} />}
         <button onClick={() => { void import("../pdf").then(({ captureCharts, captureGroupSummary, exportDatasetPdf }) =>
-          exportDatasetPdf(dataset, captureCharts(), captureGroupSummary())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
+          exportDatasetPdf(scoped, captureCharts(), captureGroupSummary())).catch(() => setExportError("Could not load PDF export. Try again.")); }}
                 disabled={!result}>
           Export PDF
         </button>
@@ -460,7 +501,7 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
       </div>}
 
       {showCompare && (
-        <ComparePanel dataset={dataset} onClose={() => setShowCompare(false)} />
+        <ComparePanel dataset={scoped}onClose={() => setShowCompare(false)} />
       )}
 
       {showDerive && (
@@ -470,14 +511,14 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
 
       {showGroups && <CriteriaGroups columns={dataset.columns} filters={filters} parameters={dataset.parameters ?? []}
         onChange={(next) => onUpdate({ filters: next, page: 0 })} onClose={() => setShowGroups(false)} />}
-      {showSummary && <GroupSummary dataset={dataset} onUpdate={onUpdate} onOpenTable={onOpenTable}
+      {showSummary && <GroupSummary dataset={scoped}onUpdate={onUpdate} onOpenTable={onOpenTable}
         onClose={() => { setShowSummary(false); onUpdate({ groupSummary: undefined }); }} />}
 
       {showAggregate && <AggregateFilter dataset={dataset} onUpdate={onUpdate}
         onClose={() => setShowAggregate(false)} />}
 
       {showLaunch && (
-        <LaunchWorkflow dataset={dataset} onClose={() => setShowLaunch(false)}
+        <LaunchWorkflow dataset={scoped}onClose={() => setShowLaunch(false)}
                         onSubmitted={() => undefined} />
       )}
 
@@ -523,7 +564,9 @@ export function DatasetPane({ dataset, palette, onUpdate, onEditJoinCanvas, onOp
               [c.name, c.label || c.name]))}
             palette={palette}
             kinds={allowedKinds(spec)}
-            onTapCategory={toggleCategory}
+            onTapCategory={selectCategory}
+            selection={selectionOf(spec.x)}
+            onClearSelection={() => setSelection(spec.x, [])}
             onChangeKind={(kind, style, mark) => updateChart(i, kind === "bar" ? { kind, style, mark }
               : { kind, style, mark, measure: undefined, series: undefined })}
             onMarksChange={(marks) => updateChart(i, { marks })}

@@ -7,6 +7,8 @@ interface Props {
   onChange: (filters: Filter[]) => void;
   /** Tab parameters a bound can follow. */
   parameters?: Parameter[];
+  /** Move an active filter to dashboard level (every tab with this column). */
+  onApplyToAll?: (f: Filter) => void;
 }
 
 /** A binding with one bound changed (name "" removes it); undefined when empty. */
@@ -161,7 +163,7 @@ function DateFilter({ col, active, onChange, parameters = [] }: {
   );
 }
 
-export function FilterPanel({ columns, filters, onChange, parameters = [] }: Props) {
+export function FilterPanel({ columns, filters, onChange, parameters = [], onApplyToAll }: Props) {
   const numberParams = parameters.filter((p) => p.kind === "number");
   const byColumn = new Map(filters.map((f) => [f.column, f]));
   // Groups the user opened stay open while their filter is edited or cleared.
@@ -264,6 +266,8 @@ export function FilterPanel({ columns, filters, onChange, parameters = [] }: Pro
                 </div>}
               </div>
             )}
+            {active && onApplyToAll && <button type="button" className="link filter-apply-all"
+              onClick={() => onApplyToAll(active)}>Apply to all tabs</button>}
           </details>
         );
       })}

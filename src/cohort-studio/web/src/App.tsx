@@ -23,6 +23,8 @@ import { BRAND_EVENT, PARTNER_LOGO, applyBrand, type Brand } from "./brand";
 import { applyParameters, unbindParameter } from "./params";
 import { unbindChartParameter } from "./chartStyles";
 import { ParametersPanel } from "./components/ParametersPanel";
+import { DashboardFilters } from "./components/DashboardFilters";
+import { applicableFilters, withDashboardFilter } from "./dashboardFilters";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
 const DatasetPane = lazy(() => import("./components/DatasetPane").then((m) => ({ default: m.DatasetPane })));
@@ -114,6 +116,12 @@ export default function App() {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [table, setTable] = useState("");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  // Filters by column name, added to the query of every tab that has a matching column.
+  const [dashboardFilters, setDashboardFiltersState] = useState<Filter[]>([]);
+  const setDashboardFilters = useCallback((next: Filter[]) => {
+    setDashboardFiltersState(next);
+    setDatasets((prev) => prev.map((d) => d.page ? { ...d, page: 0 } : d));
+  }, []);
   const [workflowVerification, setWorkflowVerification] = useState<{
     result: AgentWorkflowVerification; datasetId: string; strata?: number;
   } | null>(null);
@@ -359,7 +367,7 @@ export default function App() {
     setError("");
     try {
       const v = await api.getView(store.kind, store.id, name);
-      await restoreSpecs(v.datasets ?? [], v.active ?? 0);
+      await restoreSpecs(v.datasets ?? [], v.active ?? 0, undefined, v.dashboard_filters);
       setViewer(null);
     } catch (e) {
       setError(`Could not load view: ${(e as Error).message}`);
@@ -374,7 +382,7 @@ export default function App() {
     setError("");
     try {
       const v = await api.getViewRevision(store.kind, store.id, name, revision);
-      await restoreSpecs(v.datasets ?? [], v.active ?? 0, v.published.revision);
+      await restoreSpecs(v.datasets ?? [], v.active ?? 0, v.published.revision, v.dashboard_filters);
       setViewer({ store, name, revision: v.published });
     } catch (e) {
       setError(`Could not open published view: ${(e as Error).message}`);
@@ -398,7 +406,8 @@ export default function App() {
   }, [datasets, viewer]);
 
   type ViewSpec = Awaited<ReturnType<typeof api.getView>>["datasets"][number];
-  const restoreSpecs = async (specs: ViewSpec[], activeIndex: number, publishedRevision?: number) => {
+  const restoreSpecs = async (specs: ViewSpec[], activeIndex: number, publishedRevision?: number,
+                              dashboard?: Filter[]) => {
     {
       // The server runs at most two data jobs per session, so open two at a
       // time; keep the tabs that open even if some fail.
@@ -452,6 +461,7 @@ export default function App() {
         publishedRevision,
       }));
       setDatasets(restored);
+      setDashboardFiltersState(dashboard ?? []);
       setActive(Math.min(activeIndex, Math.max(0, restored.length - 1)));
       showExploreTables();
     }
@@ -461,7 +471,7 @@ export default function App() {
   // offer to reopen them after a reload or app restart.
   const sessionKey = `studio-session-v1:${window.location.pathname}`;
   const [savedSession, setSavedSession] = useState<{ savedAt: string; active: number;
-    datasets: ViewSpec[]; skipped: number } | null>(() => {
+    datasets: ViewSpec[]; skipped: number; dashboardFilters?: Filter[] } | null>(() => {
     try { return JSON.parse(localStorage.getItem(sessionKey) || "null"); } catch { return null; }
   });
   const hadDatasets = useRef(false);
@@ -475,7 +485,8 @@ export default function App() {
           const activeInSaved = Math.max(0, restorable.indexOf(datasets[active]));
           localStorage.setItem(sessionKey, JSON.stringify({
             savedAt: new Date().toISOString(), active: activeInSaved,
-            datasets: viewSpecs(restorable), skipped: datasets.length - restorable.length }));
+            datasets: viewSpecs(restorable), skipped: datasets.length - restorable.length,
+            dashboardFilters }));
         } else if (hadDatasets.current) {
           // Every restorable tab was closed (only uploads, or nothing, remain).
           localStorage.removeItem(sessionKey);
@@ -483,7 +494,7 @@ export default function App() {
       } catch { /* storage may be full or disabled */ }
     }, 800);
     return () => clearTimeout(timer);
-  }, [datasets, active]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasets, active, dashboardFilters]); // eslint-disable-line react-hooks/exhaustive-deps
   const restoreSession = async () => {
     if (!savedSession) return;
     const session = savedSession;
@@ -491,7 +502,7 @@ export default function App() {
     setActivity(`Restoring ${session.datasets.length} tab(s)…`);
     setError("");
     try {
-      await restoreSpecs(session.datasets, session.active);
+      await restoreSpecs(session.datasets, session.active, undefined, session.dashboardFilters);
     } catch (e) {
       setError(`Could not restore the last session: ${(e as Error).message}`);
     } finally {
@@ -657,6 +668,8 @@ export default function App() {
   };
 
   const activeDs = datasets[active];
+  const activeDashboard = activeDs ? applicableFilters(activeDs.columns, dashboardFilters) : [];
+  const dashboardSignature = JSON.stringify(activeDashboard);
   const chartQuerySignature = JSON.stringify(activeDs?.charts.map(({ kind, x, y, measure, series }) => ({ kind, x, y, measure, series })) ?? []);
 
   const TERMINAL = new Set(
@@ -692,7 +705,7 @@ export default function App() {
     const started = delay === 0
       ? Promise.resolve()          // send now, in the same tick as before
       : new Promise<void>((resolve) => { timer = setTimeout(resolve, delay); });
-    const send = () => api.query(activeDs.id, activeDs.filters, activeDs.charts, activeDs.page,
+    const send = () => api.query(activeDs.id, [...activeDs.filters, ...activeDashboard], activeDs.charts, activeDs.page,
       activeDs.entityColumn, forceRefresh, activeDs.sort, controller.signal);
     const request = delay === 0 ? send() : started.then(send);
     request
@@ -761,7 +774,7 @@ export default function App() {
       });
     return () => { cancelled = true; if (timer) clearTimeout(timer); controller.abort(); };
   }, [activeDs?.id, activeDs?.filters, chartQuerySignature, activeDs?.page,
-      activeDs?.entityColumn, activeDs?.refreshNonce, activeDs?.sort]);
+      activeDs?.entityColumn, activeDs?.refreshNonce, activeDs?.sort, dashboardSignature]);
   // eslint-disable-line react-hooks/exhaustive-deps
 
   const commands: Command[] = [
@@ -912,6 +925,11 @@ export default function App() {
             filters={activeDs.filters}
             parameters={activeDs.parameters ?? []}
             onChange={(filters) => updateDataset(activeDs.id, { filters })}
+            onApplyToAll={(f) => {
+              // The filter moves to dashboard level, so this tab doesn't apply it twice.
+              setDashboardFilters(withDashboardFilter(dashboardFilters, f));
+              updateDataset(activeDs.id, { filters: activeDs.filters.filter((o) => o !== f) });
+            }}
           />
         ) : (
           <div style={{ color: "var(--ink-muted)" }}>
@@ -922,7 +940,8 @@ export default function App() {
         </>}
         <div className="section-label">Saved views</div>
         <SavedViews sources={sources} datasets={datasets} active={active}
-                    onLoadView={loadView} onOpenRevision={openRevision} readOnly={Boolean(viewer)} />
+                    onLoadView={loadView} onOpenRevision={openRevision} readOnly={Boolean(viewer)}
+                    dashboardFilters={dashboardFilters} />
 
         <VersionFooter />
         {view === "explore" && !sidebarCollapsed && cornerTools(false)}
@@ -1122,6 +1141,13 @@ export default function App() {
                   </span>
                 ))}
               </div>
+              <DashboardFilters filters={dashboardFilters} columns={activeDs?.columns}
+                onChange={setDashboardFilters}
+                onEditHere={(f) => {
+                  if (!activeDs) return;
+                  setDashboardFilters(dashboardFilters.filter((o) => o !== f));
+                  updateDataset(activeDs.id, { filters: [...activeDs.filters.filter((o) => o.column !== f.column || o.kind === "any"), f] });
+                }} />
               {dependentJob && (
                 <div className="wf-dep-banner">
                   <span className="wf-pulse" />
@@ -1137,6 +1163,7 @@ export default function App() {
               {activeDs && (
                 <DatasetPane
                   dataset={activeDs}
+                  dashboardFilters={activeDashboard}
                   palette={palette}
                   onUpdate={(changes) => updateDataset(activeDs.id, changes)}
                   onRefreshExtract={viewer ? undefined : (datasetId) => void refreshExtract(datasetId)}

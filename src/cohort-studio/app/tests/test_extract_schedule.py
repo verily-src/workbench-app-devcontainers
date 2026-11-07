@@ -239,6 +239,18 @@ def test_running_refresh_is_not_run_twice(on_db):
     assert queued.calls.count(table) == 1
 
 
+def test_job_cancelled_before_it_started_is_due_at_next_start(on_db):
+    table = _extract()
+    _set(table, {"every": "weekly", "weekday": 0, "hour": 6}, now=NOW - timedelta(days=7))
+    scheduler = _scheduler(Submits(finish=False))   # queued; shutdown cancels it unstarted
+    scheduler.tick()
+    assert extracts.info("res", table)["next_run_at"] > NOW.isoformat()
+    scheduler.recover_pending()
+    info = extracts.info("res", table)
+    assert info["next_run_at"] == NOW.isoformat() and info["last_run_status"] == "failed"
+    assert scheduler.pending == set()
+
+
 def test_busy_admission_retries_soon(on_db):
     table = _extract()
     _set(table, {"every": "weekly", "weekday": 0, "hour": 6}, now=NOW - timedelta(days=7))

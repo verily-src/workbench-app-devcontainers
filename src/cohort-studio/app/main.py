@@ -86,6 +86,7 @@ async def lifespan(_app: FastAPI):
         await extract_scheduler.stop()
         knowledge_vectors.shutdown()
         data_jobs.shutdown()
+        extract_scheduler.recover_pending()
         export_jobs.shutdown()
         view_jobs.shutdown()
         datasets.clear()

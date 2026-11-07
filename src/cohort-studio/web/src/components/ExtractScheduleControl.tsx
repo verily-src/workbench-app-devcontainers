@@ -75,11 +75,13 @@ export function ExtractScheduleControl({ info, kind, resourceId, table, disabled
     return () => window.clearInterval(id);
   }, [info.schedule]);
 
+  // Editing keeps the zone the schedule was set in; a new schedule uses this browser's.
+  const zone = current.tz ?? browserZone();
   const save = async (close: () => void) => {
     const [hour, min] = time.split(":").map((v) => Number(v));
     const schedule: ExtractSchedule = every === "off" ? { every }
-      : every === "hourly" ? { every, minute, tz: browserZone() }
-      : { every, hour, minute: min, tz: browserZone(),
+      : every === "hourly" ? { every, minute, tz: zone }
+      : { every, hour, minute: min, tz: zone,
           ...(every === "weekly" ? { weekday } : {}) };
     setSaving(true);
     setError(null);
@@ -132,7 +134,7 @@ export function ExtractScheduleControl({ info, kind, resourceId, table, disabled
         {error && <div className="derive-error" role="alert">{error}</div>}
         {last && <div className="extract-schedule-note">{last}</div>}
         <div className="extract-schedule-note">
-          Times are in {browserZone()}. Schedules run only while this app is running.
+          Times are in {zone}. Schedules run only while this app is running.
         </div>
       </>}
     </Popover>

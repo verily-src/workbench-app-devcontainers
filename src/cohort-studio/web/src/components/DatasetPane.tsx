@@ -85,7 +85,7 @@ function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
         {dataset.extractRefreshing ? "Refreshing…" : "Refresh extract"}
       </button>
       {onRefresh && (info.refreshable || info.schedule) && (
-        <ExtractScheduleControl info={info} kind={target.kind} resourceId={target.resource_id}
+        <ExtractScheduleControl key={`${key}:${JSON.stringify(info.schedule ?? null)}`} info={info} kind={target.kind} resourceId={target.resource_id}
                                 table={target.table} disabled={dataset.extractRefreshing}
                                 onSaved={(extract) => onUpdate({ extract })} />
       )}

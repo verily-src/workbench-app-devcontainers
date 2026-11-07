@@ -168,6 +168,19 @@ class Scheduler:
             return "failed"
         return "submitted"
 
+    def recover_pending(self) -> None:
+        """After data jobs shut down: jobs cancelled before they started never
+        reported back, so make their extracts due again for the next start."""
+        with self.lock:
+            keys, self.pending = list(self.pending), set()
+        now = self.clock()
+        for resource_id, table in keys:
+            try:
+                extracts.record_run(resource_id, table, "failed", "Stopped before it started.",
+                                    now, retry_at=now)
+            except Exception:
+                logger.warning("Could not reschedule %s in %s", table, resource_id, exc_info=True)
+
     async def run(self) -> None:
         while True:
             try:

@@ -155,6 +155,32 @@ def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkey
     expect(warning).to_be_visible(timeout=10000)
     expect(warning).to_have_attribute("title", re.compile(r"\S"))
 
+    # Another extract tab shows its own schedule and keeps the zone it was set in.
+    extracts.write({"df": pd.DataFrame({"person_id": range(5)})}, RID, "sched_other",
+                   "Other cohort", recipe)
+    tokyo = {"every": "weekly", "weekday": 2, "hour": 7, "minute": 45, "tz": "Asia/Tokyo"}
+    extracts.set_schedule(RID, "sched_other", tokyo, datetime.now().astimezone())
+    db.list_aurora_tables.invalidate()
+    page.get_by_role("button", name="Refresh list").click()
+    expect(table.locator("option", has_text="sched_other")).to_have_count(1, timeout=15000)
+    values = table.locator("option").evaluate_all("els => els.map(e => e.value)")
+    table.select_option(next(v for v in values if v.endswith("sched_other")))
+    page.get_by_role("button", name="Load table").click()
+    expect(page.locator(".tab.active")).to_contain_text("sched_other", timeout=30000)
+    other_button = page.get_by_role("group", name="Extract").get_by_role(
+        "button", name="Refresh schedule")
+    expect(other_button).to_contain_text("Wednesdays at 07:45 Asia/Tokyo")
+    other_button.click()
+    expect(editor.get_by_label("Repeat")).to_have_value("weekly")
+    expect(editor.get_by_label("Day")).to_have_value("2")
+    expect(editor.get_by_label("Time")).to_have_value("07:45")
+    editor.get_by_role("button", name="Save schedule").click()
+    expect(editor).to_be_hidden()
+    assert extracts.info(RID, "sched_other")["schedule"] == tokyo
+    page.locator(".tab", has_text="sched_cohort").get_by_text("sched_cohort", exact=True).click()
+    expect(bar).to_have_attribute("title", re.compile("40 rows"))
+    expect(schedule_button).to_contain_text("Hourly at :15")
+
     # Off clears it.
     schedule_button.click()
     editor.get_by_label("Repeat").select_option("off")

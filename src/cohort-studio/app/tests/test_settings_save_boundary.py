@@ -75,7 +75,7 @@ def test_settings_saves_against_real_api_with_default_mcp_read_fields(page, sett
 
     palette = page.locator(".settings-card").filter(has=page.get_by_role("button", name="amber", exact=True))
     palette.get_by_role("button", name="amber", exact=True).click()
-    palette.get_by_role("button", name="Save", exact=True).click()
+    palette.get_by_role("button", name="Save color theme", exact=True).click()
     expect(palette.get_by_role("status")).to_have_text("Palette saved.")
     mcp = page.locator(".settings-card").filter(has=page.get_by_role("button", name="Add connection", exact=True))
     with page.expect_response(lambda r: r.url.endswith("/api/config") and r.request.method == "PUT") as response:

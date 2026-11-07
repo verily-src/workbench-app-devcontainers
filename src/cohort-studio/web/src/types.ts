@@ -199,6 +199,22 @@ export interface SavedViewEntry extends SavedViewInfo {
   kind: "aurora" | "s3";
   resource_id: string;
   store_label: string;
+  /** Latest published revision; null or absent for an unpublished draft. */
+  published_revision?: number | null;
+  published_at?: string | null;
+  /** True when the draft differs from the latest published revision. */
+  draft_changed?: boolean | null;
+  /** Revisions could not be read; the view may still be published. */
+  publication_unknown?: boolean;
+}
+
+/** An immutable published revision of a saved view. */
+export interface ViewRevision {
+  name: string;
+  revision: number;
+  published_at: string | null;
+  published_by: string | null;
+  note: string | null;
 }
 
 export interface SavedViewStoreError {
@@ -369,6 +385,8 @@ export interface SourceInfo {
 
 export interface Dataset {
   id: string;
+  /** Set on tabs opened from a published saved-view revision (viewer mode). */
+  publishedRevision?: number;
   title: string;
   source: string;
   sourceRef?: SourceRef;

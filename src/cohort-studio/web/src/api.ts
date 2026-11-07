@@ -3,7 +3,7 @@ import type { ExtractInfo, JoinOutput, Parameter,
   ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
   TableInfo, OmopSpec, OmopCount, SqlPreview,
-  SavedViewJob, SavedViewList, SourceInfo, SqlCompletions,
+  SavedViewJob, SavedViewList, SourceInfo, SqlCompletions, ViewRevision,
 } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -72,6 +72,22 @@ export function viewSpecs(datasets: Dataset[]) {
     parameters: d.parameters ?? [],
     chart_columns: d.chartColumns ?? 0,
   }));
+}
+
+/** A saved view's stored tab set (draft or published revision). */
+export interface SavedViewState {
+  version?: number; active?: number;
+  datasets: Array<{
+    source: SourceRef;
+    title?: string; filters: Filter[]; charts: ChartSpec[];
+    cohorts?: Cohort[];
+    entity_column?: string | null;
+    filter_ask_history?: Dataset["filterAskHistory"];
+    group_summary?: Dataset["groupSummary"] | null;
+    sort?: Dataset["sort"] | null;
+    parameters?: Parameter[];
+    chart_columns?: 0 | 1 | 2 | 3 | 4;
+  }>;
 }
 
 export interface DataJob {
@@ -624,20 +640,7 @@ export const api = {
     })),
 
   getView: (kind: string, resourceId: string, name: string) =>
-    request<{
-      version?: number; active?: number;
-      datasets: Array<{
-        source: SourceRef;
-        title?: string; filters: Filter[]; charts: ChartSpec[];
-        cohorts?: Cohort[];
-        entity_column?: string | null;
-        filter_ask_history?: Dataset["filterAskHistory"];
-        group_summary?: Dataset["groupSummary"] | null;
-        sort?: Dataset["sort"] | null;
-        parameters?: Parameter[];
-        chart_columns?: 0 | 1 | 2 | 3 | 4;
-      }>;
-    }>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
+    request<SavedViewState>(`/api/views/one?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
        + `&name=${encodeURIComponent(name)}`),
 
   saveView: (kind: string, resourceId: string, name: string,
@@ -645,6 +648,26 @@ export const api = {
     request<{ name: string; job_id?: string; status?: SavedViewJob["status"]; completed_sources?: number; total_sources?: number; error?: string | null }>("/api/views", post({
       kind, resource_id: resourceId, name, active,
       datasets: viewSpecs(datasets),
+    })),
+
+  publishView: (kind: string, resourceId: string, name: string, note: string) =>
+    request<ViewRevision>("/api/views/publish", post({
+      kind, resource_id: resourceId, name, note: note.trim() || null,
+    })),
+
+  listViewRevisions: (kind: string, resourceId: string, name: string) =>
+    request<{ revisions: ViewRevision[] }>(`/api/views/revisions?${new URLSearchParams({
+      kind, resource_id: resourceId, name })}`),
+
+  /** A published revision; without `revision`, the latest one. */
+  getViewRevision: (kind: string, resourceId: string, name: string, revision?: number) =>
+    request<SavedViewState & { published: ViewRevision }>(
+      `/api/views/revision?${new URLSearchParams({ kind, resource_id: resourceId, name,
+        ...(revision ? { revision: String(revision) } : {}) })}`),
+
+  rollbackView: (kind: string, resourceId: string, name: string, revision: number) =>
+    request<{ name: string; revision: number }>("/api/views/rollback", post({
+      kind, resource_id: resourceId, name, revision,
     })),
 
   deleteView: (kind: string, resourceId: string, name: string) =>

@@ -33,6 +33,12 @@ def _copy(job: dict) -> dict:
     return {key: value for key, value in job.items() if key not in {"updated", "key", "owner"}}
 
 
+def running(key: str) -> bool:
+    with _lock:
+        return any(job.get("key") == key and job["status"] in {"queued", "running"}
+                   for job in _jobs.values())
+
+
 def submit(name: str, total_sources: int, work, key: str | None = None, owner: str | None = None) -> dict:
     global _executor
     if not isinstance(name, str) or not name:

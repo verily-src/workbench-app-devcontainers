@@ -1,6 +1,9 @@
 import os
 import re
 import pytest
+from email import policy
+from email.parser import BytesParser
+from pathlib import Path
 from playwright.sync_api import expect
 
 pytestmark = pytest.mark.e2e
@@ -24,11 +27,14 @@ def test_single_table_and_report(page, url):
     button.click()
     expect(page.locator(".tab.active")).to_contain_text("person", timeout=30000)
     expect(page.locator(".hero .count")).to_have_text("100", timeout=30000)
+    tools = page.get_by_role("complementary", name="Dashboard tools")
+    for name in ("Dataset statistics", "Analysis actions", "Chart builder"):
+        expect(tools.get_by_role("region", name=name)).to_be_visible()
     source = page.get_by_role("group", name="Data source of this tab")
     expect(source.get_by_role("button", name="Edit…")).to_be_visible()
     page.get_by_role("button", name="Report issue").click()
     dialog = page.get_by_role("dialog", name="Report issue")
-    expect(dialog.get_by_label("Email to")).to_have_value("olekskazakov@tvc.verily.health")
+    expect(dialog.get_by_role("button", name="Send")).to_be_visible()
     assert dialog.evaluate("el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + 20)); }")
 
 def test_wide_table_scroll(page, url):
@@ -43,3 +49,19 @@ def test_wide_table_scroll(page, url):
     assert page.evaluate("document.querySelector('.rows-table-scroll').getBoundingClientRect().right <= document.querySelector('.chart-builder').getBoundingClientRect().left")
     rows.evaluate("el => el.scrollLeft = el.scrollWidth")
     expect(rows.get_by_role("button", name="long_field_29")).to_be_in_viewport()
+
+
+def test_report_reaches_mail_server_with_attachment(page, url):
+    path = os.environ.get("STUDIO_TEST_MAIL_CAPTURE")
+    if not path:
+        pytest.skip("Set STUDIO_TEST_MAIL_CAPTURE to the local SMTP receiver file.")
+    page.goto(url)
+    page.get_by_role("button", name="Report issue").click()
+    dialog = page.get_by_role("dialog", name="Report issue")
+    dialog.get_by_label("What happened?").fill("Container test issue")
+    dialog.get_by_role("button", name="Send").click()
+    expect(dialog.get_by_role("status")).to_have_text("Report sent.", timeout=15000)
+    message = BytesParser(policy=policy.default).parsebytes(Path(path).read_bytes())
+    assert message["To"] == "help@example.com"
+    assert "Container test issue" in message.get_body(preferencelist=("plain",)).get_content()
+    assert [item.get_filename() for item in message.iter_attachments()] == ["cohort-browser-diagnostics.json"]

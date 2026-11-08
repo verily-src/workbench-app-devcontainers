@@ -693,16 +693,18 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
             </select>
           </label>
         </section>
-        <div className="chart-builder-actions">
+        <section className="chart-builder-actions" aria-label="Analysis actions">
+          <h3>Analysis</h3>
           <button type="button" onClick={() => setShowCompare((v) => !v)}>
             {showCompare ? "Hide compare" : "Compare groups"}
           </button>
           <button type="button" onClick={() => { setLaunchMounted(true); setShowLaunch((v) => !v); }}>
             {showLaunch ? "Hide workflow" : "Run workflow ▸"}
           </button>
-        </div>
+        </section>
         {showCompare && <div className="chart-builder-detail"><ComparePanel dataset={dataset} scope={dashboardFilters} onClose={() => setShowCompare(false)} /></div>}
         {launchMounted && <div className="chart-builder-detail" hidden={!showLaunch}><LaunchWorkflow dataset={scoped} onClose={() => setShowLaunch(false)} onSubmitted={() => undefined} /></div>}
+        <section className="chart-builder-charts" aria-label="Chart builder">
         <h3>Chart builder</h3>
         <AddChart dataset={dataset} onUpdate={onUpdate} />
         <label className="chart-columns">Charts per row
@@ -712,6 +714,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
             {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
+        </section>
       </div>
     </aside>
     </div>

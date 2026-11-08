@@ -1036,10 +1036,13 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .chart-builder-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .chart-builder-heading h2 { margin: 0; font-size: 15px; }
 .chart-builder h3 { margin: 16px 0 6px; font-size: 13px; }
+.chart-builder-stats, .chart-builder-actions, .chart-builder-charts { padding: 14px 0; }
+.chart-builder-actions, .chart-builder-charts { border-top: 1px solid var(--border-strong); }
+.chart-builder-stats h3, .chart-builder-actions h3, .chart-builder-charts h3 { margin: 0 0 10px; }
 .chart-builder-stats .cohort-size { display: flex; flex-wrap: wrap; white-space: normal; }
 .chart-builder-stats .entity-select { display: grid; gap: 4px; margin: 8px 0; }
 .chart-builder-stats select { width: 100%; }
-.chart-builder-actions { display: grid; gap: 8px; margin-top: 16px; }
+.chart-builder-actions { display: grid; gap: 8px; }
 .chart-builder-detail { overflow-x: auto; }
 .chart-builder-detail .compare-row, .chart-builder-detail .launch-row { flex-wrap: wrap; }
 .chart-builder-form { display: grid; gap: 10px; margin: 14px 0; }

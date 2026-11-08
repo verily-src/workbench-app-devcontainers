@@ -1004,7 +1004,7 @@ def upload_dataset(file: UploadFile):
 
 def _join_pipeline(req: JoinRequest) -> tuple[str, list[dict], list[str]]:
 
-    if req.steps:
+    if req.steps or req.base_id:
         base_id, steps = req.base_id, [s.model_dump() for s in req.steps]
     else:
         base_id, steps = req.left_id, [{

@@ -625,6 +625,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
             Counts and rows use the capped loaded sample. They do not describe
             the full source population.
           </div>}
+          <div className="rows-table-scroll" role="region" aria-label="Rows" tabIndex={0}>
           <table className="data-table">
             <thead>
               <tr>
@@ -648,6 +649,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
               ))}
             </tbody>
           </table>
+          </div>
           <div className="pager">
             <button disabled={dataset.page === 0}
                     onClick={() => onUpdate({ page: dataset.page - 1 })}>

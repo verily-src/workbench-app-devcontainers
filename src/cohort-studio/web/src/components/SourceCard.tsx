@@ -21,13 +21,11 @@ interface Props {
   onChange?: () => void;
   /** Reopens a join, SQL or extract recipe in Data Builder. */
   onEdit?: () => void;
-  /** Starts a Data Builder join from this tab. */
-  onJoin?: () => void;
   /** Reruns an extract, or queries a live source again. */
   onRefresh?: () => void;
 }
 
-export function SourceCard({ dataset, onChange, onEdit, onJoin, onRefresh }: Props) {
+export function SourceCard({ dataset, onChange, onEdit, onRefresh }: Props) {
   const kind = dataset.sourceRef?.kind;
   const mode = sourceMode(dataset);
   const rows = dataset.result?.total;
@@ -52,9 +50,7 @@ export function SourceCard({ dataset, onChange, onEdit, onJoin, onRefresh }: Pro
         {onChange && <button type="button" className="link" aria-label="Change data source"
                              title="Open Data Builder to choose another table" onClick={onChange}>Change…</button>}
         {onEdit && <button type="button" className="link" onClick={onEdit} disabled={dataset.extractRefreshing}
-                           title="Reopen this recipe in Data Builder">Edit in Data Builder</button>}
-        {onJoin && <button type="button" className="link" onClick={onJoin}
-                           title="Start a Data Builder join from this tab">⋈ Join…</button>}
+                           title="Open this source in Data Builder">Edit…</button>}
         {onRefresh && <button type="button" className="icon-button" aria-label="Refresh source"
                               title={dataset.extract ? "Rerun the extract and replace its rows" : "Query the source again"}
                               disabled={refreshing} onClick={onRefresh}>

@@ -966,6 +966,11 @@ def _run_join_materialization(plan, datasets, source_estimates, path, writer, re
 
     current, params, count = filtered(0, relations[id(plan["base"])], plan.get("base_filters") or [])
     base_rows = before = row_counts[id(plan["base"])] if count is None else count
+    if not plan["steps"]:
+        before, materialized = _stream_duck_query(
+            reader, writer, f"SELECT * FROM {current}", "step_0", budget_used, params)
+        budget_used += materialized
+        current, params = _q("step_0"), {}
     step_stats, notes = [], []
     for step in plan["steps"]:
         query_cancellation.check()

@@ -207,7 +207,7 @@ class JoinSource(BaseModel):
     output: JoinOutput | None = None
     base: SourceRef
     base_filters: list[SourceFilter] | None = Field(default=None, max_length=12)
-    steps: list[SourceStep] = Field(min_length=1, max_length=6)
+    steps: list[SourceStep] = Field(max_length=6)
     grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)
 

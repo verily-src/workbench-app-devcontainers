@@ -363,7 +363,7 @@ def test_edit_join_in_canvas_reconstructs_tree(page, app_url):
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
     # The side panel's Data source card reopens the recipe too.
-    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit in Data Builder").click()
+    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit…").click()
     canvas = page.locator(".jc")
     expect(canvas).to_be_visible()
     expect(canvas.get_by_role("textbox", name="Join name")).to_have_value("Existing joined result (edited)")
@@ -526,7 +526,7 @@ def test_removing_one_of_two_steps_sharing_a_source_keeps_its_dataset(page, app_
     _setup(page, app_url, calls, view_ref=original)
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
-    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit in Data Builder").click()
+    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit…").click()
     canvas = page.locator(".jc")
     expect(canvas.locator(".jc-node")).to_have_count(3, timeout=10000)
     _wait_for(calls, "validate", lambda b: [s["right_id"] for s in b["steps"]]
@@ -756,7 +756,7 @@ def test_edit_extract_reopens_its_join_and_rewrites_the_table(page, app_url):
     page.goto(f"{app_url}/#view=aurora:clinical:existing")
     expect(page.locator(".tab.active")).to_contain_text("Existing joined result", timeout=15000)
     bar = page.get_by_role("group", name="Extract")
-    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit in Data Builder").click()
+    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit…").click()
     canvas = page.locator(".jc")
     expect(canvas.locator(".jc-node")).to_have_count(2, timeout=10000)
     expect(canvas.get_by_role("radio", name="Extract")).to_be_checked()
@@ -770,7 +770,7 @@ def test_edit_extract_reopens_its_join_and_rewrites_the_table(page, app_url):
     expect(bar).to_have_attribute("title", re.compile("50 rows"))
 
     # Saving the edit to another table opens a new tab and keeps the original.
-    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit in Data Builder").click()
+    page.get_by_role("group", name="Data source of this tab").get_by_role("button", name="Edit…").click()
     expect(canvas.get_by_label("Extract table name")).to_have_value("person_samples")
     canvas.get_by_label("Extract table name").fill("person_samples_v2")
     canvas.get_by_role("button", name="Save & open in Explore").click()

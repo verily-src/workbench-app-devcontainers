@@ -158,9 +158,7 @@ def test_a_table_opens_as_an_extract_from_data_builder(page, app_url):
     source = page.get_by_role("group", name="Data source of this tab")
     expect(source.locator(".source-chip.mode")).to_have_text("Extract")
     expect(source).to_contain_text("Refreshed")
-    # A plain-table extract has no join or SQL recipe to edit, but can start a join.
-    expect(source.get_by_role("button", name="Edit in Data Builder")).to_have_count(0)
-    source.get_by_role("button", name="⋈ Join…").click()
+    source.get_by_role("button", name="Edit…").click()
     expect(page.locator(".jc .jc-node")).to_have_count(1, timeout=10000)
 
 

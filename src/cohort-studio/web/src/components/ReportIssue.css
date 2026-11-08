@@ -3,5 +3,6 @@
 .report-issue-heading { display: flex; align-items: center; justify-content: space-between; }
 .report-issue-heading h2 { margin: 0; font-size: 18px; }
 .report-issue label { display: grid; gap: 4px; margin: 12px 0; }
+.report-issue label.report-issue-checkbox { display: flex; align-items: center; }
 .report-issue textarea { min-height: 80px; resize: vertical; }
 .report-issue-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

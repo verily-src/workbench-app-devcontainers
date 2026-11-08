@@ -303,7 +303,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
     previewRequest.current += 1;
     previewAbort.current?.abort();
     setPreview(null); setPreviewErr(""); setPreviewing(false); setGrowthConfirmed(false);
-    if (!plan || !plan.steps.length) return;
+    if (!plan) return;
     const ctrl = new AbortController();
     const timer = setTimeout(() => {
       api.validateJoin(plan.baseId, plan.steps, ctrl.signal, sentAllowLoaded, plan.baseFilters)
@@ -654,7 +654,6 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
   const disabledReason = ((): string | null => {
     if (!root) return "Drag a table onto the canvas to start.";
     if (!ready) return "Waiting for tables to open.";
-    if (!steps.length) return "Add a second table to join.";
     const pendingBase = root.filterRows.find((r) => filterProblem(r));
     if (pendingBase) return `${disp(root)}: ${filterProblem(pendingBase)}`;
     for (const n of steps) {
@@ -767,7 +766,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
     setRunning(true);
     let joinedId = "";
     try {
-      setStatus("Joining…");
+      setStatus(plan.steps.length ? "Joining…" : "Preparing table…");
       const joined = await api.join(plan.baseId, plan.steps, sentAllowLoaded, plan.baseFilters, joinOutput);
       joinedId = joined.dataset_id;
       setStatus(`Saving every row to ${extractResource}…`);

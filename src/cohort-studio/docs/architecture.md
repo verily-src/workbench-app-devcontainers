@@ -49,6 +49,9 @@ release `194f397b5`:
   produces a new result tab; cancellation or failure preserves the original.
   Validation returns the actual compiler SQL, engine and separate bound values.
   DuckDB SQL uses logical staged aliases rather than physical file paths.
+  A recipe may have no join steps: it represents one source with optional input
+  filters and output field selection or renaming. Live sources stay database-backed;
+  disk sources are materialized into an owned result before the tab opens.
 - Saved views are listed across permitted stores. Each entry retains its storage
   identity so opening, deletion and sharing use the correct store automatically.
 - `knowledge.py` owns validated HTTP requests and prompt context formatting;

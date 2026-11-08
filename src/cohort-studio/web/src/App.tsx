@@ -533,7 +533,7 @@ export default function App() {
                               baseFilters?: JoinFilter[]; output?: JoinOutput;
                               // From the visual join canvas: its private inputs and the tab title.
                               fromCanvas?: boolean; extraInputs?: Dataset[]; title?: string }) => {
-    setActivity("Joining…");
+    setActivity(p.steps.length ? "Joining…" : "Opening table…");
     setActivityInCard(true);
     setJoinRunning(true);
     setError("");
@@ -600,11 +600,11 @@ export default function App() {
       { forceNewTab: true });
       const { join } = opened;
       alerts.pushToast({
-        title: join.truncated ? "Join capped" : "Joined",
+        title: join.truncated ? "Result capped" : p.steps.length ? "Joined" : "Opened",
         tone: join.truncated ? "fail" : "ok",
         body: (join.truncated
           ? `Showing ${join.rows.toLocaleString()} of ${join.total_rows.toLocaleString()} rows`
-          : `${join.rows.toLocaleString()} rows from ${p.steps.length + 1} tables`)
+          : `${join.rows.toLocaleString()} rows from ${p.steps.length + 1} ${p.steps.length ? "tables" : "table"}`)
           + (join.engine === "aurora" ? " (ran in Aurora)." : " (ran in memory).")
           + (join.capped_inputs?.length ? " Some inputs were capped — results may be incomplete." : "")
           + (join.large_growth ? ` Rows grew ${join.growth_total}× over the base — check for fan-out.` : ""),
@@ -915,8 +915,7 @@ export default function App() {
                 : activeDs.extract && (activeDs.extract.recipe?.kind === "join" || activeDs.extract.recipe?.kind === "sql")
                   ? () => editExtract(activeDs.id)
                   : !activeDs.extract && (activeDs.sourceRef?.kind === "join" || activeDs.sourceRef?.kind === "sql")
-                    ? () => editRecipe(activeDs.id) : undefined}
-              onJoin={viewer || activeDs.sourceRef?.kind === "join" ? undefined : () => joinFrom(activeDs.id)}
+                    ? () => editRecipe(activeDs.id) : () => joinFrom(activeDs.id)}
               onRefresh={activeDs.extract && !viewer ? (activeDs.extract.refreshable ? () => void refreshExtract(activeDs.id) : undefined)
                 : activeDs.queryScope === "database"
                   ? () => updateDataset(activeDs.id, { refreshNonce: (activeDs.refreshNonce ?? 0) + 1, refreshing: true })

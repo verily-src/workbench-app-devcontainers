@@ -97,7 +97,10 @@ def test_local_postgres_source_picker_recommendation_and_join(
     assert preview["engine"] == "aurora"
     assert preview["base_rows"] == 100
     assert [step["rows"] for step in preview["steps"]] == [100, 2_000, 2_000]
-    assert preview["total_rows"] == 2_000
+    assert preview["sample_only"] is True
+    assert preview["total_rows"] is None
+    if preview["large_growth"]:
+        canvas.get_by_role("checkbox", name=re.compile("Run anyway")).check()
 
     with page.expect_response(lambda response: "/api/data-jobs/" in response.url
                               and response.request.method == "GET"
@@ -108,7 +111,7 @@ def test_local_postgres_source_picker_recommendation_and_join(
     assert result["query_scope"] == "database"
     assert result["join"]["engine"] == "aurora"
     assert result["join"]["total_rows"] == 2_000
-    expect(page.locator(".tab.active")).to_contain_text("person + samples + genotypes + variants")
+    expect(page.locator(".tab.active")).to_contain_text("person + samples + 2 more")
     expect(page.locator(".hero .count")).to_contain_text("2,000", timeout=15000)
     response = page.request.post(
         f"{local_url}/api/datasets/{result['dataset_id']}/query",

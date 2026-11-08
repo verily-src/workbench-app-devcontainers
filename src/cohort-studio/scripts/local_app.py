@@ -20,7 +20,7 @@ db.list_aurora_resources = lambda wait=False: [{
     "id": RESOURCE_ID, "database": database_name, "region": "local",
 }]
 db.list_s3_folders = lambda wait=False: []
-db.list_bq_datasets = lambda wait=False: []
+db.list_bq_datasets = lambda wait=False, include_registered=True: []
 
 
 def get_engine(resource_id):

@@ -397,8 +397,6 @@ def _plan_step(step: dict, left: dict[str, str], right_ds: dict,
 def plan(base_id: str, steps: list[dict], base_filters: list | None = None) -> dict:
 
     problems = []
-    if not steps:
-        problems.append("Add at least one join step.")
     if len(steps) > MAX_STEPS:
         problems.append(f"At most {MAX_STEPS} joins in one pipeline.")
     base = datasets.get(base_id)
@@ -494,8 +492,8 @@ def _duckdb_sql(p: dict) -> dict:
         parameters.update(params)
         sql = _step_sql(step, left, right)
         ctes.append(f"{_q(name)} AS ({sql})")
-    final = _q(f"step_{len(p['steps'])}")
-    statement = "WITH " + ", ".join(ctes) + f" SELECT * FROM {final}"
+    final = _q(f"step_{len(p['steps'])}") if ctes else base_rel
+    statement = ("WITH " + ", ".join(ctes) + " " if ctes else "") + f"SELECT * FROM {final}"
     return {"engine": "duckdb", "sql": statement, "parameters": parameters,
             "staged_inputs": staged_inputs}
 
@@ -664,11 +662,12 @@ def _input_rel(ds: dict, no: int, filters: list[dict], p: dict | None = None) ->
 def aurora_sql(p: dict) -> dict:
 
     used: set[str] = set()
-    names = {c: _pg_name(c, used) for c in p["steps"][0]["left"]}
+    base_columns = p["steps"][0]["left"] if p["steps"] else list(p["base"]["df"].columns)
+    names = {c: _pg_name(c, used) for c in base_columns}
     base_names = (p["base"].get("live_source") or {}).get("columns", {})
     base_cols = ", ".join(
         f"{_q(base_names.get(c, c))} AS {_q(names[c])}"
-                          for c in p["steps"][0]["left"])
+                          for c in base_columns)
     base_where = ""
     if p.get("base_filters"):
         where, _ = _filter_where(p["base_filters"],
@@ -753,6 +752,9 @@ def _flag_growth(stats: dict) -> None:
 
 
 def _finish(stats: dict, rows: int) -> dict:
+    if not stats["steps"]:
+        stats.update(rows=rows, total_rows=stats["base_rows"], truncated=False)
+        return stats
     last = stats["steps"][-1]
     stats.update(rows=rows, total_rows=last["rows"],
                  truncated=any(s["truncated"] for s in stats["steps"]))
@@ -894,7 +896,7 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
             else:
                 before = base_rows = table_rows(p["base"], 0, p.get("base_filters") or [])
                 steps = []
-                last_no = p["steps"][-1]["no"]
+                last_no = p["steps"][-1]["no"] if p["steps"] else 0
                 for step in p["steps"]:
                     mark = len(estimated)
                     # The final total stays exact (one run of the whole chain);
@@ -940,8 +942,6 @@ def _run_aurora(p: dict, cap: int, timeout_ms: int,
 
 def _checked_plan(base_id: str, steps: list[dict], allow_loaded: bool = False,
                   base_filters: list | None = None, full_reads: bool = True) -> dict:
-    if not steps:
-        raise ValueError("Add at least one join step.")
     if len(steps) > MAX_STEPS:
         raise ValueError(f"At most {MAX_STEPS} joins in one pipeline.")
     p = plan(base_id, steps, base_filters)

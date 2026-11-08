@@ -4,6 +4,7 @@ from playwright.sync_api import Page, expect
 
 from tests.test_e2e import FIXTURE_CSV, app_url  # noqa: F401
 from tests.test_table_info_progress_frontend import _mock_app
+from tests.ui_helpers import pick_table
 
 pytestmark = pytest.mark.e2e
 
@@ -24,6 +25,34 @@ def _upload(page, name, text, rows):
 def _tab(page, name):
     page.locator(".tab", has_text=name).locator("span").first.click()
     expect(page.locator(".tab.active", has_text=name)).to_be_visible()
+
+
+def test_add_view_opens_another_source_with_shared_filters(page: Page, app_url: str):
+    reply = _mock_app(page)
+    requests = []
+    page.route("**/api/data-jobs/open", lambda r: reply(r, {"job_id": "new", "kind": "open", "status": "complete",
+        "result": {"dataset_id": "new-view", "source": "omop / cms.person", "rows": 8,
+                   "source_ref": r.request.post_data_json["source_ref"], "query_scope": "database",
+                   "columns": [{"name": "sex", "dtype": "object", "filter_kind": "categorical", "values": ["F", "M"]}]}}))
+    def query(route):
+        requests.append(route.request.post_data_json)
+        reply(route, {"total": 8, "filtered": 3, "scope": "database", "charts": [],
+                      "rows": {"page": 0, "page_size": 50, "columns": ["sex"], "data": [["F"]]}})
+    page.route("**/api/datasets/new-view/query", query)
+    page.goto(app_url)
+    _upload(page, "people.csv", PEOPLE, 10)
+    group = page.locator(".filter-group", has_text="sex")
+    group.locator("summary").click()
+    group.get_by_label("F", exact=True).check()
+    group.get_by_role("button", name="Apply to all tabs").click()
+    page.get_by_role("button", name="+ Add view").click()
+    expect(page.locator(".jc")).to_be_visible()
+    card = pick_table(page, "aurora:omop", "cms.person")
+    card.get_by_role("button", name="Open in Explore").click()
+    expect(page.locator(".tab.active")).to_contain_text("person", timeout=15000)
+    expect(page.get_by_role("region", name="Dashboard filters")).to_contain_text("sex: F")
+    expect(page.locator(".hero .count")).to_have_text("3", timeout=15000)
+    assert any(f.get("column") == "sex" and f.get("values") == ["F"] for f in requests[-1]["filters"])
 
 
 def test_apply_to_all_keeps_selected_filter_visible_and_editable(page: Page, app_url: str):

@@ -1136,6 +1136,8 @@ Scheduled extract refreshes store their schedule, time zone and next run with th
 
 Dashboard filters are held in the browser and applied to compatible columns by name and filter kind on each tab. Chart selection uses the tab's categorical filter. Dashboard image exports are generated in the browser from the current chart layout and results; export is disabled while results are stale.
 
+Add view opens Data Builder to select another source. Existing dashboard filters apply to matching columns in the new tab. Source details and recipe editing live in the source card.
+
 Dashboard query admission waits up to 30 seconds for a slot, with at most eight waiting requests. Disconnects cancel waiting work. A full queue or an expired wait still returns 429.
 
 Extract writes reject sources known to be incomplete. Managed extract tables carry an identity marker; replacement checks the table and registry identity under locks. Older unmarked tables need a one-time manual confirmation tied to the observed identity before refresh. Scheduled refresh cannot grant this confirmation. The marker detects accidental replacement, not an actor able to copy table comments.

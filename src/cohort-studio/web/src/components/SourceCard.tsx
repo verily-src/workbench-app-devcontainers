@@ -51,7 +51,7 @@ export function SourceCard({ dataset, onChange, onEdit, onJoin, onRefresh }: Pro
       <div className="source-card-actions">
         {onChange && <button type="button" className="link" aria-label="Change data source"
                              title="Open Data Builder to choose another table" onClick={onChange}>Change…</button>}
-        {onEdit && <button type="button" className="link" onClick={onEdit}
+        {onEdit && <button type="button" className="link" onClick={onEdit} disabled={dataset.extractRefreshing}
                            title="Reopen this recipe in Data Builder">Edit in Data Builder</button>}
         {onJoin && <button type="button" className="link" onClick={onJoin}
                            title="Start a Data Builder join from this tab">⋈ Join…</button>}

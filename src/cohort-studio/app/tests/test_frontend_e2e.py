@@ -287,6 +287,12 @@ def test_large_loaded_preview_warning(page: Page, app_url: str, tmp_path, sample
     expect(page.locator(".large-data-warning")).not_to_contain_text("Exports support")
     if sampled:
         expect(page.locator(".hero .detail")).to_contain_text("capped loaded sample")
+        expect(page.get_by_role("button", name="Dismiss large dataset notice")).to_have_count(0)
+    else:
+        page.get_by_role("button", name="Dismiss large dataset notice").click()
+        expect(page.locator(".large-data-warning")).to_have_count(0)
+        page.get_by_label("Count unique").select_option("person_id")
+        expect(page.locator(".large-data-warning")).to_have_count(0)
 
 
 def test_database_export_job_progress_cancel_and_download(page: Page, app_url: str):

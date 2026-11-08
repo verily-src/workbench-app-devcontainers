@@ -41,7 +41,7 @@ def test_s3_parquet_folder_lists_and_opens_as_one_dataset(page, app_url):
     expect(details).to_contain_text('Parquet folder · 2 parts')
     expect(details.locator('[title="Total size of the Parquet parts in S3"]')).to_have_count(1)
     card.get_by_role('button', name='Open in Explore').click()
-    expect(page.locator('.hero-source', has_text='lake / events/')).to_be_visible(timeout=10000)
+    expect(page.get_by_role('group', name='Data source of this tab')).to_contain_text('lake / events/', timeout=10000)
     assert opened_refs[0]['table'] == 'events/'
     assert opened_refs[0]['kind'] == 's3'
 

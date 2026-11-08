@@ -27,22 +27,17 @@ interface Props {
   dashboardFilters?: Filter[];
   palette: string;
   onUpdate: (changes: Partial<Dataset>) => void;
-  /** Reopens a joined tab's recipe on the visual join canvas. */
-  onEditJoinCanvas?: (datasetId: string) => void;
   /** Opens a result (e.g. a full group summary) as a new dataset tab. */
   onOpenTable?: (opened: OpenResult, title: string) => void;
   /** Reruns this extract tab's recipe and replaces its rows. */
   onRefreshExtract?: (datasetId: string) => void;
-  /** Opens this extract's recipe in Data Builder to change and rewrite it. */
-  onEditExtract?: (datasetId: string) => void;
   /** Viewer mode: link to the published revision on screen. */
   shareLink?: { label: string; url: string; copied: string };
 }
 
 
-function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
+function ExtractBar({ dataset, onUpdate, onRefresh }: {
   dataset: Dataset; onUpdate: (changes: Partial<Dataset>) => void; onRefresh?: (id: string) => void;
-  onEdit?: (id: string) => void;
 }) {
   const target = extractTarget(dataset);
   const key = target ? `${target.resource_id}/${target.table}` : "";
@@ -98,11 +93,6 @@ function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
       )}
       {failure && <span className="extract-failed" role="status" title={failure}>
         Scheduled refresh failed</span>}
-      {onEdit && (info.recipe?.kind === "join" || info.recipe?.kind === "sql") && (
-        <button type="button" className="quiet" disabled={dataset.extractRefreshing}
-                title="Open the joins or SQL behind this extract, change them, and save over it"
-                onClick={() => onEdit(dataset.id)}>Edit in Data Builder</button>
-      )}
     </div>
   );
 }
@@ -154,8 +144,8 @@ function safeFilterAskError(error: unknown): string {
   return "The request could not be completed. Check the connection and try again.";
 }
 
-export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, onUpdate, onEditJoinCanvas, onOpenTable,
-                             onRefreshExtract, onEditExtract, shareLink }: Props) {
+export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, onUpdate, onOpenTable,
+                             onRefreshExtract, shareLink }: Props) {
   const aiFeatures = useAiFeatures();
   const plinkExport = usePlink();
   const { result, filters, charts } = dataset;
@@ -182,6 +172,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
   const [launchMounted, setLaunchMounted] = useState(false);
   const [cohortName, setCohortName] = useState("");
   const [chartBuilderOpen, setChartBuilderOpen] = useState(true);
+  const [dismissedLargeNotices, setDismissedLargeNotices] = useState<Set<string>>(() => new Set());
   const [chatDraft, setChatDraft] = useState<{ id: string; text: string; datasetId: string } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraftNumber, setChatDraftNumber] = useState(0);
@@ -407,14 +398,12 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
     <div className={`dataset-layout${chartBuilderOpen ? "" : " chart-builder-collapsed"}${showCompare || showLaunch ? " chart-builder-expanded" : ""}`}>
     <div className="dataset-content">
       <div className="dataset-toolbar">
-        <div className="hero-line">
+        {databaseScoped && <div className="hero-line">
             <span className="hero-meta">
-              <span className="hero-source" title={dataset.source}>{dataset.source}</span>
-              {databaseScoped && <>
                 <span className="settings-hint" title={result?.cache
                   ? `${result.cache.hit ? "Cached" : "Fetched"} ${cacheTime(result.cache.as_of)} · cache TTL ${result.cache.ttl_seconds ?? 30} s`
                   : "Database result status unavailable"}>
-                  {" · "}{result?.cache ? `${result.cache.hit ? "cached" : "fetched"} ${cacheAge(result.cache.as_of)}` : "status unavailable"}
+                  {result?.cache ? `${result.cache.hit ? "cached" : "fetched"} ${cacheAge(result.cache.as_of)}` : "status unavailable"}
                 </span>
                 <button type="button" className="icon-button" aria-label={dataset.refreshing ? "Refreshing…" : "Refresh data"}
                         title={dataset.refreshing ? "Refreshing…" : "Refresh data"} disabled={dataset.refreshing}
@@ -422,13 +411,9 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
                           refreshing: true })}>
                   <span aria-hidden className={dataset.refreshing ? "spin" : undefined}>↻</span>
                 </button>
-              </>}
             </span>
-        </div>
-        <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} onEdit={onEditExtract} />
-        {dataset.sourceRef?.kind === "join" && onEditJoinCanvas && <button className="quiet"
-          title="Reopen this join in Data Builder"
-          onClick={() => onEditJoinCanvas(dataset.id)}>Edit in Data Builder</button>}
+        </div>}
+        <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} />
         <DatasetSettings dataset={dataset} onUpdate={onUpdate} />
         <Popover label={<>Export <span aria-hidden>▾</span></>} ariaLabel="Export options" className="export-menu">
         {(close) => <>
@@ -491,10 +476,12 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
         <div>{dataset.sourceInfo.note}</div>
         <div>Reference header (not verified): {dataset.sourceInfo.reference || "not specified"} · {dataset.sourceInfo.sample_count.toLocaleString()} samples · {dataset.sourceInfo.calls.toLocaleString()} calls</div>
       </div>}
-      {largeDataset && scope !== "database" && <div className="large-data-warning" role="status">
+      {largeDataset && scope !== "database" && (result?.sampled || !dismissedLargeNotices.has(dataset.id)) && <div className="large-data-warning" role="status">
         <div>{result?.sampled
             ? `This loaded preview has ${result!.total.toLocaleString()} rows. Counts cover only the loaded preview, not the full source. Add filters to narrow the preview.`
             : `This dataset has ${result!.total.toLocaleString()} loaded rows. Large queries may take longer. Add filters to narrow the result.`}</div>
+        {!result?.sampled && <button type="button" className="quiet large-data-dismiss" aria-label="Dismiss large dataset notice"
+          onClick={() => setDismissedLargeNotices((ids) => new Set(ids).add(dataset.id))}>✕</button>}
       </div>}
 
       {chips.length > 0 && (

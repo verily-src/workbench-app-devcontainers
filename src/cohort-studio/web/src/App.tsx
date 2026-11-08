@@ -1192,6 +1192,7 @@ export default function App() {
                     }}>✕</button>
                   </span>
                 ))}
+                {!viewer && <button type="button" className="quiet add-view" onClick={() => setView("join")}>+ Add view</button>}
               </div>
               <DashboardFilters filters={dashboardFilters} columns={activeDs?.columns}
                 onChange={setDashboardFilters}
@@ -1224,8 +1225,6 @@ export default function App() {
                     copied: `Link copied. It opens published rev ${viewer.revision.revision} without changes made here.` }
                     : undefined}
                   onRefreshExtract={viewer ? undefined : (datasetId) => void refreshExtract(datasetId)}
-                  onEditExtract={viewer ? undefined : editExtract}
-                  onEditJoinCanvas={viewer ? undefined : editRecipe}
                   onOpenTable={(opened, title) => openResult(opened, title, undefined, undefined, { forceNewTab: true })}
                 />
               )}

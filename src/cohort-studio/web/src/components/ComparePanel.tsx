@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, CompareResult, CompareRow } from "../api";
 import type { Cohort, Dataset, Filter } from "../types";
 
@@ -28,9 +28,10 @@ export function ComparePanel({ dataset, scope = [], onClose }: Props) {
   const cohorts = dataset.cohorts ?? [];
   const [aKey, setAKey] = useState(CURRENT);
   const [bKey, setBKey] = useState(REST);
-  const [result, setResult] = useState<CompareResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [storedResult, setResult] = useState<{ key: string; value: CompareResult } | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [storedError, setError] = useState<{ key: string; message: string } | null>(null);
+  const requestNo = useRef(0);
 
   const filtersFor = (key: string): Filter[] => {
     if (key === CURRENT) return dataset.filters;
@@ -38,15 +39,37 @@ export function ComparePanel({ dataset, scope = [], onClose }: Props) {
     return cohorts.find((c: Cohort) => c.name === key)?.filters ?? [];
   };
 
+  const comparisonKey = JSON.stringify([dataset.id, filtersFor(aKey), filtersFor(bKey), bKey === REST, scope]);
+  const currentKey = useRef(comparisonKey);
+  currentKey.current = comparisonKey;
+  const result = storedResult?.key === comparisonKey ? storedResult.value : null;
+  const error = storedError?.key === comparisonKey ? storedError.message : "";
+  const busy = busyKey === comparisonKey;
+
+  useEffect(() => {
+    setAKey(CURRENT);
+    setBKey(REST);
+  }, [dataset.id]);
+
+  useEffect(() => {
+    requestNo.current += 1;
+    setResult(null);
+    setError(null);
+    setBusyKey(null);
+  }, [comparisonKey]);
+
   const run = async () => {
-    setBusy(true); setError(""); setResult(null);
+    const key = comparisonKey;
+    const request = ++requestNo.current;
+    setBusyKey(key); setError(null); setResult(null);
     try {
-      setResult(await api.compare(
-        dataset.id, filtersFor(aKey), filtersFor(bKey), bKey === REST, scope));
+      const value = await api.compare(
+        dataset.id, filtersFor(aKey), filtersFor(bKey), bKey === REST, scope);
+      if (requestNo.current === request && currentKey.current === key) setResult({ key, value });
     } catch (e) {
-      setError((e as Error).message);
+      if (requestNo.current === request && currentKey.current === key) setError({ key, message: (e as Error).message });
     } finally {
-      setBusy(false);
+      if (requestNo.current === request) setBusyKey(null);
     }
   };
 

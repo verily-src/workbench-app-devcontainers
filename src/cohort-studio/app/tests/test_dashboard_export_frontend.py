@@ -108,6 +108,7 @@ def test_dashboard_png_pdf_and_chart_png(loaded_page: Page):
     titles = page.locator(".chart-grid .chart-card .head .title").all_inner_texts()
     assert all(any(t.startswith(title.strip()[:20]) for t in texts) for title in titles)
 
+    menu(page, "Export options")
     pdf = _download(page, lambda: page.get_by_role("button", name="Dashboard PDF").click(),
                     "cohort-dashboard.pdf")
     assert pdf.startswith(b"%PDF-")

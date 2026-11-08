@@ -3,7 +3,7 @@ import pytest
 from playwright.sync_api import expect
 
 from tests.test_e2e import app_url  # noqa: F401
-from tests.ui_helpers import load_table, menu
+from tests.ui_helpers import menu
 
 pytestmark = pytest.mark.e2e
 
@@ -33,7 +33,12 @@ def test_expression_examples_parameters_and_errors(page, app_url):
     page.route("**/api/datasources", lambda r: fulfill(r, {
         "ready": True, "sources": [{"kind": "aurora", "id": "db", "label": "DB"}], "catalogs_pending": False}))
     page.route("**/api/workflows**", lambda r: fulfill(r, {"available": False, "jobs": [], "running_count": 0}))
-    page.route("**/api/views/all", lambda r: fulfill(r, {"views": [], "unavailable": []}))
+    page.route("**/api/views/all", lambda r: fulfill(r, {"views": [{"name": "Legacy", "kind": "aurora", "resource_id": "db", "store_label": "DB"}], "unavailable": []}))
+    page.route("**/api/views/one?**", lambda r: fulfill(r, {"version": 2, "active": 0, "datasets": [{
+        "source": {"kind": "aurora", "resource_id": "db", "table": "people"}, "title": "People",
+        "filters": [], "charts": [], "cohorts": [], "parameters": [
+            {"name": "index_date", "kind": "date", "value": "2024-03-01"},
+            {"name": "cut", "kind": "number", "value": 6.5}]}]}))
     page.route("**/api/tables?**", lambda r: fulfill(r, [
         {"name": "public.people", "schema": "public", "table": "people", "detail": "table"}]))
     page.route("**/api/data-jobs/open", lambda r: fulfill(r, {"job_id": "o", "kind": "open", "status": "complete",
@@ -44,17 +49,9 @@ def test_expression_examples_parameters_and_errors(page, app_url):
         "rows": {"page": 0, "page_size": 50, "columns": ["person_id"], "data": [[1]]}}))
     page.route("**/api/datasets/*/derive", derive)
     page.goto(app_url)
-    load_table(page, "aurora:db", "public.people")
-
-    params = page.get_by_role("group", name="Parameters")
-    params.get_by_label("New parameter name").fill("index_date")
-    params.get_by_label("New parameter type").select_option("date")
-    params.get_by_role("button", name="Add parameter").click()
-    params.get_by_label("Parameter index_date", exact=True).fill("2024-03-01")
-    params.get_by_label("New parameter name").fill("cut")
-    params.get_by_label("New parameter type").select_option("number")
-    params.get_by_role("button", name="Add parameter").click()
-    params.get_by_label("Parameter cut", exact=True).fill("6.5")
+    page.get_by_role("button", name="Legacy", exact=True).click()
+    expect(page.locator(".tab.active")).to_contain_text("People")
+    expect(page.get_by_role("group", name="Parameters", exact=True)).to_have_count(0)
 
     menu(page, "Add to this view").get_by_role("button", name="+ Calculated field").click()
     panel = page.locator(".derive-panel")
@@ -66,13 +63,13 @@ def test_expression_examples_parameters_and_errors(page, app_url):
 
     # An example fills the expression and, when empty, the column name.
     panel.get_by_role("group", name="Expression examples").get_by_role("button", name="Age at index").click()
-    expect(panel.get_by_label("Calculation expression")).to_have_value("AGE_AT(birth_date, @index_date)")
+    expect(panel.get_by_label("Calculation expression")).to_have_value("AGE_AT(birth_date, index_date)")
     expect(panel.get_by_label("New column name")).to_have_value("age_at_index")
 
     # An unknown parameter is caught before any request.
     panel.get_by_label("Calculation expression").fill("DATEDIFF(day, birth_date, @nope)")
     panel.get_by_role("button", name="Add column").click()
-    expect(panel.get_by_role("alert")).to_have_text("Unknown parameter @nope. Add it under Parameters first.")
+    expect(panel.get_by_role("alert")).to_have_text("Unknown parameter @nope. Use a column or a fixed value instead.")
     assert derives == []
 
     # Server validation errors are shown without pydantic's prefix.

@@ -15,15 +15,26 @@ def _titles(page):
 def test_chart_builder_is_on_right_and_can_be_collapsed(loaded_page):
     page = loaded_page
     page.set_viewport_size({"width": 1600, "height": 900})
-    builder = page.get_by_role("complementary", name="Chart builder")
+    builder = page.get_by_role("complementary", name="Dashboard tools")
     grid = page.locator(".chart-grid")
     expect(builder.get_by_role("button", name="Add", exact=True)).to_be_visible()
+    expect(builder.get_by_role("region", name="Dataset statistics")).to_contain_text("rows")
+    expect(builder.get_by_role("button", name="Compare groups")).to_be_visible()
+    expect(builder.get_by_role("button", name="Run workflow ▸")).to_be_visible()
+    expect(page.get_by_role("group", name="Parameters")).to_have_count(0)
     assert builder.bounding_box()["x"] >= grid.bounding_box()["x"] + grid.bounding_box()["width"]
     width = grid.bounding_box()["width"]
-    builder.get_by_role("button", name="Collapse chart builder").click()
+    builder.get_by_role("button", name="Compare groups").click()
+    expect(builder.get_by_label("Group A")).to_be_visible()
+    builder.get_by_role("button", name="Run workflow ▸").click()
+    builder.get_by_role("button", name="Collapse dashboard tools").click()
+    expect(builder.get_by_role("button", name="Expand dashboard tools")).to_be_visible()
+    assert "rows" in builder.locator(".chart-builder-info").get_attribute("title")
     assert grid.bounding_box()["width"] > width
-    builder.get_by_role("button", name="Expand chart builder").click()
+    builder.get_by_role("button", name="Expand dashboard tools").click()
     expect(builder.get_by_role("button", name="Add", exact=True)).to_be_visible()
+    expect(builder.get_by_label("Group A")).to_be_visible()
+    expect(builder.get_by_role("button", name="Hide workflow")).to_be_visible()
     page.set_viewport_size({"width": 700, "height": 900})
     expect(builder.get_by_role("button", name="Add", exact=True)).to_be_visible()
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { Dataset, Source } from "../types";
 
@@ -25,17 +25,19 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
   const [workflow, setWorkflow] = useState("");
   const [outputBucket, setOutputBucket] = useState("");
   const [inputBucket, setInputBucket] = useState("");
-  const defaultPath =
-    `cohort-studio/${dataset.title.replace(/[^A-Za-z0-9_-]+/g, "_")}.csv`;
+  const defaultPath = `cohort-studio/${dataset.title.replace(/[^A-Za-z0-9_-]+/g, "_")}.csv`;
+  const defaultJobName = `cohort-studio-${dataset.title.replace(/[^A-Za-z0-9_-]+/g, "_")}`;
   const [csvPath, setCsvPath] = useState(defaultPath);
-  const [jobName, setJobName] = useState(
-    `cohort-studio-${dataset.title.replace(/[^A-Za-z0-9_-]+/g, "_")}`);
+  const [jobName, setJobName] = useState(defaultJobName);
   const [columnMapping, setColumnMapping] = useState("");
   const [rowSelection, setRowSelection] = useState("");
   const [exported, setExported] = useState<ExportedCohort | null>(null);
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState("");
   const filterKey = JSON.stringify(dataset.filters ?? []);
+  const context = JSON.stringify([dataset.id, filterKey]);
+  const currentContext = useRef(context);
+  currentContext.current = context;
   const isGeneticsDemo = workflow === GENETICS_WORKFLOW_ID;
   const safeDemoJobId = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(jobName);
   const exportFingerprint = JSON.stringify([
@@ -65,6 +67,11 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
     setStatus("");
   }, [dataset.id, filterKey]);
 
+  useEffect(() => {
+    setCsvPath(defaultPath);
+    setJobName(defaultJobName);
+  }, [dataset.id]);
+
   const writeCsv = async () => {
     setBusy("export"); setStatus("");
     try {
@@ -73,9 +80,9 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
         isGeneticsDemo ? GENETICS_WORKFLOW_ID : undefined);
       setExported({ s3_uri: out.s3_uri, rows: out.rows,
                     fingerprint: exportFingerprint });
-      setStatus(`Wrote ${out.rows.toLocaleString()} rows → ${out.s3_uri}`);
+      setStatus(`Wrote ${out.rows.toLocaleString()} rows for ${dataset.title} → ${out.s3_uri}${currentContext.current === context ? "" : " · previous selection"}`);
     } catch (e) {
-      setStatus(`Export failed: ${(e as Error).message}`);
+      setStatus(`Export failed for ${dataset.title}: ${(e as Error).message}${currentContext.current === context ? "" : " · previous selection"}`);
     } finally {
       setBusy("");
     }
@@ -103,10 +110,10 @@ export function LaunchWorkflow({ dataset, onClose, onSubmitted }: Props) {
           column_mapping: columnMapping, row_selection: rowSelection,
         } : {}),
       });
-      setStatus(`Submitted "${job.name}" — ${job.status}.`);
+      setStatus(`Submitted "${job.name}" — ${job.status} (from ${dataset.title}${currentContext.current === context ? "" : ", previous selection"}).`);
       onSubmitted(job.name);
     } catch (e) {
-      setStatus(`Submit failed: ${(e as Error).message}`);
+      setStatus(`Submit failed for ${dataset.title}: ${(e as Error).message}${currentContext.current === context ? "" : " · previous selection"}`);
     } finally {
       setBusy("");
     }

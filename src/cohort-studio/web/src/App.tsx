@@ -22,9 +22,6 @@ import { tableStats } from "./format";
 import { AiFeaturesContext, PlinkContext, aiFeaturesFrom, lineageFrom, plinkFrom } from "./features";
 import { extractTarget } from "./extract";
 import { BRAND_EVENT, PARTNER_LOGO, applyBrand, type Brand } from "./brand";
-import { applyParameters, unbindParameter } from "./params";
-import { unbindChartParameter } from "./chartStyles";
-import { ParametersPanel } from "./components/ParametersPanel";
 import { DashboardFilters } from "./components/DashboardFilters";
 import { applicableFilters, withDashboardFilter } from "./dashboardFilters";
 
@@ -929,25 +926,6 @@ export default function App() {
             </div>
           )}
         </FoldSection>
-
-        {activeDs && (
-          <FoldSection id="parameters" title="Parameters"
-                       badge={activeDs.parameters?.length ? activeDs.parameters.length : undefined}>
-          <ParametersPanel key={`params-${activeDs.id}`} parameters={activeDs.parameters ?? []}
-            onChange={(next) => {
-              // Removed parameters unbind their filters; the rest push their values into them.
-              const removed = (activeDs.parameters ?? []).filter((p) => !next.some((n) => n.name === p.name));
-              const fix = (filters: Filter[]) => applyParameters(
-                removed.reduce((fs, p) => unbindParameter(fs, p.name), filters), next);
-              // Chart reference lines keep the last value of a number parameter that goes away.
-              const lostNumbers = (activeDs.parameters ?? []).filter((p) => p.kind === "number"
-                && !next.some((n) => n.name === p.name && n.kind === "number"));
-              const charts = lostNumbers.reduce((cs, p) => unbindChartParameter(cs, p.name, Number(p.value)), activeDs.charts);
-              updateDataset(activeDs.id, { parameters: next, filters: fix(activeDs.filters), page: 0, charts,
-                cohorts: (activeDs.cohorts ?? []).map((c) => ({ ...c, filters: fix(c.filters) })) });
-            }} />
-          </FoldSection>
-        )}
 
         <FoldSection id="filters" title="Filters" badge={activeDs
           ? new Set([...activeDs.filters.map((f) => f.column), ...activeDashboard.map((f) => f.column)]).size || undefined

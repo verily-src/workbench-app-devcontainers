@@ -24,19 +24,18 @@ const FUNCTION_HELP: [string, string][] = [
   ["DATE_TRUNC(unit, date)", "start of the date's week, month or year"],
   ["YEAR(date), MONTH(date), TODAY()", "date parts and today's date"],
   ["DATE '2024-01-01', 'text', 42, TRUE", "values"],
-  ["@name", "a parameter of this tab"],
   ["abs, sqrt, ln", "number functions"],
   ['col("any name")', "a column whose name has spaces or symbols"],
 ];
 
 const EXAMPLES: { label: string; name: string; expression: string }[] = [
-  { label: "Age at index", name: "age_at_index", expression: "AGE_AT(birth_date, @index_date)" },
+  { label: "Age at index", name: "age_at_index", expression: "AGE_AT(birth_date, index_date)" },
   { label: "Days of follow-up", name: "follow_up_days",
     expression: "DATEDIFF(day, index_date, COALESCE(end_date, TODAY()))" },
   { label: "Has diabetes", name: "has_diabetes",
     expression: "condition = 'Type 2 diabetes' OR hba1c >= 6.5" },
   { label: "30-day window", name: "in_window",
-    expression: "visit_date >= @index_date AND DATEDIFF(day, @index_date, visit_date) <= 30" },
+    expression: "visit_date >= index_date AND DATEDIFF(day, index_date, visit_date) <= 30" },
 ];
 
 const QUOTED = /'(?:[^']|'')*'|"(?:[^"]|"")*"/g;
@@ -100,7 +99,7 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
       if (!text) { fail("Write an expression."); return; }
       // Parameters are resolved now; the spec keeps both the @name and its value.
       const { used, missing } = usedParameters(text, parameters);
-      if (missing) { fail(`Unknown parameter @${missing}. Add it under Parameters first.`); return; }
+      if (missing) { fail(`Unknown parameter @${missing}. Use a column or a fixed value instead.`); return; }
       spec = { ...spec, expression: text, ...(used.length ? { parameters: used } : {}) };
     } else {
       const mapping: Record<string, string> = {};
@@ -188,7 +187,7 @@ export function DeriveColumn({ dataset, onUpdate, onClose }: Props) {
         <div className="derive-row">
           <label>Expression
             <textarea aria-label="Calculation expression" rows={3} value={expression}
-              placeholder="AGE_AT(birth_date, @index_date)"
+              placeholder="AGE_AT(birth_date, index_date)"
               onChange={(event) => setExpression(event.target.value)} />
           </label>
         </div>

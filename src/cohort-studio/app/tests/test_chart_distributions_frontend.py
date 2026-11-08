@@ -48,23 +48,19 @@ def test_box_plot_grouped_by_category_with_units(measured_page):
     assert not queries                      # formats are display only
 
 
-def test_histogram_threshold_line_follows_a_parameter(measured_page):
+def test_histogram_threshold_line_and_band(measured_page):
     page = measured_page
     _add(page, "rin_score", "histogram")
     card = page.locator(".chart-card", has_text="rin_score").last
     plot = card.locator(".chart-plot")
     page.wait_for_function(WAIT % "o.series[0].type === 'bar'", arg=plot.element_handle())
-    page.get_by_label("New parameter name").fill("cutoff")
-    page.get_by_role("button", name="Add parameter").click()
-    page.get_by_label("Parameter cutoff", exact=True).fill("6.5")
 
     card.get_by_role("button", name="Edit axes").click()
     form = card.get_by_role("form", name="Chart axes")
     form.get_by_role("button", name="+ Reference line").click()
     ref = form.get_by_role("group", name="Reference 1")
     expect(ref.get_by_label("Reference axis")).to_have_value("x")
-    ref.get_by_label("Reference value").fill("6")
-    ref.get_by_label("Reference parameter").select_option("cutoff")
+    ref.get_by_label("Reference value").fill("6.5")
     ref.get_by_label("Reference label").fill("RIN 6.5")
     form.get_by_role("button", name="+ Reference line").click()
     band = form.get_by_role("group", name="Reference 2")
@@ -89,32 +85,20 @@ def test_histogram_threshold_line_follows_a_parameter(measured_page):
     expected = placed["left"] - width / 2 + (6.5 - lo) / ((hi - lo) / placed["bins"]) * width
     assert abs(placed["at"] - expected) < 0.5                # x references sit at exact values
 
-    page.get_by_label("Parameter cutoff", exact=True).fill("8")
-    page.wait_for_function("""el => {
-      const o = window.__studioEcharts.getInstanceByDom(el).getOption();
-      return o.series[o.series.length - 1].markLine.data[0].xAxis === %s; }""" % (
-        8), arg=plot.element_handle())
-    page.get_by_role("button", name="Remove parameter cutoff").click()
-    card.get_by_role("button", name="Edit axes").click()
-    form = card.get_by_role("form", name="Chart axes")
-    expect(form.get_by_role("group", name="Reference 1").get_by_label("Reference value")).to_have_value("8")
 
 
-def test_line_histogram_references_align_and_band_parameters_survive_edits(measured_page):
+def test_line_histogram_reference_band_survives_edits(measured_page):
     page = measured_page
     _add(page, "rin_score", "line")
     card = page.locator(".chart-card", has_text="rin_score").last
     plot = card.locator(".chart-plot")
     page.wait_for_function(WAIT % "o.series[0].type === 'line'", arg=plot.element_handle())
-    page.get_by_label("New parameter name").fill("upper")
-    page.get_by_role("button", name="Add parameter").click()
-    page.get_by_label("Parameter upper", exact=True).fill("8")
     card.get_by_role("button", name="Edit axes").click()
     form = card.get_by_role("form", name="Chart axes")
     form.get_by_role("button", name="+ Reference line").click()
     ref = form.get_by_role("group", name="Reference 1")
     ref.get_by_label("Reference value").fill("6")
-    ref.get_by_label("Reference band parameter").select_option("upper")
+    ref.get_by_label("Reference band end").fill("8")
     form.get_by_role("button", name="Apply").click()
     page.wait_for_function(WAIT % "o.series[o.series.length - 1].markArea", arg=plot.element_handle())
     card.get_by_role("button", name="Edit axes").click()           # reopen and apply unchanged
@@ -129,7 +113,7 @@ def test_line_histogram_references_align_and_band_parameters_survive_edits(measu
                lastCenter: chart.convertToPixel({ xAxisIndex: 1 }, 9.9 - width / 2),
                last: chart.convertToPixel({ xAxisIndex: 0 }, o.xAxis[0].data.length - 1) };
     }""")
-    assert out["band"] == [6, 8]                                 # to_param kept through the editor
+    assert out["band"] == [6, 8]
     assert abs(out["center"] - out["first"]) < 0.5 and abs(out["lastCenter"] - out["last"]) < 0.5
 
 

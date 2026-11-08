@@ -179,6 +179,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
   const [showSummary, setShowSummary] = useState(Boolean(dataset.groupSummary));
   useEffect(() => { setShowSummary(Boolean(dataset.groupSummary)); }, [dataset.id]);
   const [showLaunch, setShowLaunch] = useState(false);
+  const [launchMounted, setLaunchMounted] = useState(false);
   const [cohortName, setCohortName] = useState("");
   const [chartBuilderOpen, setChartBuilderOpen] = useState(true);
   const [chatDraft, setChatDraft] = useState<{ id: string; text: string; datasetId: string } | null>(null);
@@ -322,6 +323,11 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
     ? Math.max(1, Math.ceil(result.filtered / result.rows.page_size)) : 1;
   const scope = result?.scope ?? dataset.queryScope ?? "loaded";
   const entityCount = result?.entity;
+  const scopeLabel = scope === "database" ? "full database" : result?.sampled ? "capped loaded sample" : "in memory";
+  const countLabel = result ? (dataset.entityColumn && entityCount
+    ? `${entityCount.filtered.toLocaleString()} of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+    : result.filtered === result.total ? `${result.filtered.toLocaleString()} rows`
+      : `${result.filtered.toLocaleString()} of ${result.total.toLocaleString()} rows`) : "Count unavailable";
   const databaseScoped = scope === "database";
   const largeDataset = Boolean(result && (result.total >= 100_000 || result.sampled));
   const exportStatus = exportJob?.status.toLowerCase();
@@ -398,7 +404,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
   };
 
   return (
-    <div className={`dataset-layout${chartBuilderOpen ? "" : " chart-builder-collapsed"}`}>
+    <div className={`dataset-layout${chartBuilderOpen ? "" : " chart-builder-collapsed"}${showCompare || showLaunch ? " chart-builder-expanded" : ""}`}>
     <div className="dataset-content">
       <div className="dataset-toolbar">
         <div className="hero-line">
@@ -419,23 +425,13 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
               </>}
             </span>
         </div>
-        <label className="entity-select">Count unique
-          <select value={dataset.entityColumn ?? ""}
-                  onChange={(e) => onUpdate({
-                    entityColumn: e.target.value || undefined,
-                  })}>
-            <option value="">Rows</option>
-            {dataset.columns.map((c) => (
-              <option key={c.name} value={c.name}>{c.label || c.name}</option>
-            ))}
-          </select>
-        </label>
         <ExtractBar dataset={dataset} onUpdate={onUpdate} onRefresh={onRefreshExtract} onEdit={onEditExtract} />
         {dataset.sourceRef?.kind === "join" && onEditJoinCanvas && <button className="quiet"
           title="Reopen this join in Data Builder"
           onClick={() => onEditJoinCanvas(dataset.id)}>Edit in Data Builder</button>}
         <DatasetSettings dataset={dataset} onUpdate={onUpdate} />
         <Popover label={<>Export <span aria-hidden>▾</span></>} ariaLabel="Export options" className="export-menu">
+        {(close) => <>
         <div className="popover-row">
         <label className="inline-field format-select">Format <select aria-label="Export format" value={exportFormat} disabled={exportRunning || creatingExport || Boolean(exportJob)} onChange={e => setExportFormat(e.target.value as "tsv" | "tsv.gz" | "parquet" | "json" | "duckdb")}><option value="tsv">TSV</option><option value="tsv.gz">TSV.gz</option><option value="parquet">Parquet</option><option value="json">JSON</option>{!databaseScoped && <option value="duckdb">DuckDB</option>}</select></label>
         <button onClick={startExport} disabled={exportRunning || creatingExport || Boolean(exportJob)}>
@@ -446,12 +442,12 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
         <div className="popover-row" role="group" aria-label="Dashboard image">
           <button disabled={Boolean(imageBlocked) || charts.length === 0 || Boolean(imageExport)}
                   title={imageBlocked || "The charts as laid out, with the filters and cohort size"}
-                  onClick={() => runImageExport("dashboard PNG", (m) => m.exportDashboardPng(scoped))}>
+                  onClick={() => { close(); runImageExport("dashboard PNG", (m) => m.exportDashboardPng(scoped)); }}>
             {imageExport === "dashboard PNG" ? "Drawing…" : "Dashboard PNG"}
           </button>
           <button disabled={Boolean(imageBlocked) || charts.length === 0 || Boolean(imageExport)}
                   title={imageBlocked || "The charts as laid out on landscape pages, with the filters and cohort size"}
-                  onClick={() => runImageExport("dashboard PDF", (m) => m.exportDashboardPdf(scoped))}>
+                  onClick={() => { close(); runImageExport("dashboard PDF", (m) => m.exportDashboardPdf(scoped)); }}>
             {imageExport === "dashboard PDF" ? "Drawing…" : "Dashboard PDF"}
           </button>
         </div>
@@ -463,6 +459,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
           Export PDF
         </button>
         <SaveToAurora dataset={dataset} />
+        </>}
         </Popover>
       </div>
 
@@ -515,21 +512,6 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
 
       <div className="cohort-bar">
         <span className="cohort-label">Cohorts</span>
-        <span className="hero cohort-size" aria-label="Cohort size">
-          <span className="count">
-            {result ? (dataset.entityColumn && entityCount
-              ? entityCount.filtered.toLocaleString()
-              : result.filtered.toLocaleString()) : "…"}
-          </span>
-            <span className="detail">
-              {dataset.entityColumn && entityCount
-                ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
-                // Unfiltered: "1,392,882 rows", not "1,392,882 of 1,392,882 rows".
-                : result && result.filtered === result.total ? "rows" : `of ${result?.total.toLocaleString() ?? "…"} rows`}
-              {" · "}{scope === "database" ? "full database"
-                : result?.sampled ? "capped loaded sample" : "in memory"}
-            </span>
-        </span>
         {cohorts.map((c) => (
           <span key={c.name} className={`cohort-chip${JSON.stringify(c.filters) === JSON.stringify(filters) ? " active" : ""}`}>
             <button type="button" className="quiet cohort-apply"
@@ -553,9 +535,6 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
                 disabled={!cohortName.trim() || filters.length === 0}>
           Save cohort filters
         </button>
-        <button onClick={() => setShowCompare((v) => !v)}>
-          {showCompare ? "Hide compare" : "Compare groups"}
-        </button>
         <Popover label={<>+ Add <span aria-hidden>▾</span></>} ariaLabel="Add to this view" align="left">
           {(close) => <div className="popover-menu">
             <button onClick={() => { setShowDerive((v) => !v); close(); }}>
@@ -568,18 +547,11 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
             <button onClick={() => { setShowGroups((v) => !v); close(); }}>{showGroups ? "Hide OR groups" : "+ Match any group (OR)"}</button>
           </div>}
         </Popover>
-        <button onClick={() => setShowLaunch((v) => !v)}>
-          {showLaunch ? "Hide workflow" : "Run workflow ▸"}
-        </button>
       </div>
 
       {databaseScoped && aiFeatures && <div className="settings-hint">
         Chat uses loaded rows and is unavailable for this full-source dataset.
       </div>}
-
-      {showCompare && (
-        <ComparePanel dataset={dataset} scope={dashboardFilters} onClose={() => setShowCompare(false)} />
-      )}
 
       {showDerive && (
         <DeriveColumn dataset={dataset} onUpdate={onUpdate}
@@ -593,11 +565,6 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
 
       {showAggregate && <AggregateFilter dataset={dataset} onUpdate={onUpdate}
         onClose={() => setShowAggregate(false)} />}
-
-      {showLaunch && (
-        <LaunchWorkflow dataset={scoped}onClose={() => setShowLaunch(false)}
-                        onSubmitted={() => undefined} />
-      )}
 
       {aiFeatures && (databaseScoped || !chatOpen) && <AskAI dataset={dataset} onUpdate={onUpdate}
         databaseScoped={databaseScoped} onOpenChatDraft={(text) => {
@@ -708,15 +675,46 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
         </>
       )}
     </div>
-    <aside className="chart-builder" aria-label="Chart builder">
+    <aside className="chart-builder" aria-label="Dashboard tools">
       <div className="chart-builder-heading">
-        {chartBuilderOpen && <h2>Chart builder</h2>}
-        <button type="button" className="quiet" aria-label={chartBuilderOpen ? "Collapse chart builder" : "Expand chart builder"}
+        {chartBuilderOpen && <h2>Tools</h2>}
+        <button type="button" className="quiet" aria-label={chartBuilderOpen ? "Collapse dashboard tools" : "Expand dashboard tools"}
                 aria-expanded={chartBuilderOpen} onClick={() => setChartBuilderOpen((open) => !open)}>
           {chartBuilderOpen ? "›" : "‹"}
         </button>
       </div>
-      {chartBuilderOpen && <>
+      {!chartBuilderOpen && <button type="button" className="quiet chart-builder-info"
+        title={`${countLabel} · ${scopeLabel}`} aria-label={`${countLabel} · ${scopeLabel}`}
+        onClick={() => setChartBuilderOpen(true)}>ⓘ</button>}
+      <div hidden={!chartBuilderOpen}>
+        <section className="chart-builder-stats" aria-label="Dataset statistics">
+          <h3>Data</h3>
+          <span className="hero cohort-size" aria-label="Cohort size">
+            <span className="count">{result ? (dataset.entityColumn && entityCount
+              ? entityCount.filtered.toLocaleString() : result.filtered.toLocaleString()) : "…"}</span>
+            <span className="detail">{dataset.entityColumn && entityCount
+              ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+              : result && result.filtered === result.total ? "rows" : `of ${result?.total.toLocaleString() ?? "…"} rows`}
+              {" · "}{scopeLabel}</span>
+          </span>
+          <label className="entity-select">Count unique
+            <select value={dataset.entityColumn ?? ""} onChange={(e) => onUpdate({ entityColumn: e.target.value || undefined })}>
+              <option value="">Rows</option>
+              {dataset.columns.map((c) => <option key={c.name} value={c.name}>{c.label || c.name}</option>)}
+            </select>
+          </label>
+        </section>
+        <div className="chart-builder-actions">
+          <button type="button" onClick={() => setShowCompare((v) => !v)}>
+            {showCompare ? "Hide compare" : "Compare groups"}
+          </button>
+          <button type="button" onClick={() => { setLaunchMounted(true); setShowLaunch((v) => !v); }}>
+            {showLaunch ? "Hide workflow" : "Run workflow ▸"}
+          </button>
+        </div>
+        {showCompare && <div className="chart-builder-detail"><ComparePanel dataset={dataset} scope={dashboardFilters} onClose={() => setShowCompare(false)} /></div>}
+        {launchMounted && <div className="chart-builder-detail" hidden={!showLaunch}><LaunchWorkflow dataset={scoped} onClose={() => setShowLaunch(false)} onSubmitted={() => undefined} /></div>}
+        <h3>Chart builder</h3>
         <AddChart dataset={dataset} onUpdate={onUpdate} />
         <label className="chart-columns">Charts per row
           <select aria-label="Charts per row" value={String(dataset.chartColumns ?? 0)}
@@ -725,7 +723,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
             {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
-      </>}
+      </div>
     </aside>
     </div>
   );

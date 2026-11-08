@@ -1,9 +1,6 @@
 import os
 import re
 import pytest
-from email import policy
-from email.parser import BytesParser
-from pathlib import Path
 from playwright.sync_api import expect
 
 pytestmark = pytest.mark.e2e
@@ -15,7 +12,7 @@ def url():
         pytest.skip("Set STUDIO_LOCAL_URL to the running local container app.")
     return value
 
-def test_single_table_and_report(page, url):
+def test_single_table_and_tools(page, url):
     page.goto(url)
     page.get_by_role("button", name="Data Builder").click()
     canvas = page.locator(".jc")
@@ -32,10 +29,9 @@ def test_single_table_and_report(page, url):
         expect(tools.get_by_role("region", name=name)).to_be_visible()
     source = page.get_by_role("group", name="Data source of this tab")
     expect(source.get_by_role("button", name="Edit…")).to_be_visible()
-    page.get_by_role("button", name="Report issue").click()
-    dialog = page.get_by_role("dialog", name="Report issue")
-    expect(dialog.get_by_role("button", name="Send")).to_be_visible()
-    assert dialog.evaluate("el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + 20)); }")
+    expect(page.get_by_role("button", name="Report issue")).to_have_count(0)
+    response = page.request.post(f"{url}/api/support/report", data={"details": "test"})
+    assert response.status in (404, 405)
 
 def test_wide_table_scroll(page, url):
     page.set_viewport_size({"width": 1440, "height": 900})
@@ -49,19 +45,3 @@ def test_wide_table_scroll(page, url):
     assert page.evaluate("document.querySelector('.rows-table-scroll').getBoundingClientRect().right <= document.querySelector('.chart-builder').getBoundingClientRect().left")
     rows.evaluate("el => el.scrollLeft = el.scrollWidth")
     expect(rows.get_by_role("button", name="long_field_29")).to_be_in_viewport()
-
-
-def test_report_reaches_mail_server_with_attachment(page, url):
-    path = os.environ.get("STUDIO_TEST_MAIL_CAPTURE")
-    if not path:
-        pytest.skip("Set STUDIO_TEST_MAIL_CAPTURE to the local SMTP receiver file.")
-    page.goto(url)
-    page.get_by_role("button", name="Report issue").click()
-    dialog = page.get_by_role("dialog", name="Report issue")
-    dialog.get_by_label("What happened?").fill("Container test issue")
-    dialog.get_by_role("button", name="Send").click()
-    expect(dialog.get_by_role("status")).to_have_text("Report sent.", timeout=15000)
-    message = BytesParser(policy=policy.default).parsebytes(Path(path).read_bytes())
-    assert message["To"] == "help@example.com"
-    assert "Container test issue" in message.get_body(preferencelist=("plain",)).get_content()
-    assert [item.get_filename() for item in message.iter_attachments()] == ["cohort-browser-diagnostics.json"]

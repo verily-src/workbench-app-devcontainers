@@ -1145,7 +1145,6 @@ Dashboard query admission waits up to 30 seconds for a slot, with at most eight 
 
 Live Aurora joins with large estimated output use preview-based column suggestions. Other live joins use a bounded profiling budget and fall back to preview suggestions on a profiling timeout. The UI marks preview-derived suggestions; filters and dashboard queries still use the full source. An all-null preview may require a filter type to be selected in Dataset settings. This does not remove query timeouts or workload guards.
 
-Report issue sends email through an SMTP service when the user clicks Send. The server attaches bounded, allowlisted operational events for the current browser session. It excludes raw logs, rows, SQL and filter values. Configure `STUDIO_SUPPORT_SMTP_HOST` and `STUDIO_SUPPORT_FROM`; `STUDIO_SUPPORT_SMTP_PORT`, `STUDIO_SUPPORT_SMTP_USERNAME`, `STUDIO_SUPPORT_SMTP_PASSWORD`, `STUDIO_SUPPORT_SMTP_SECURITY` (`starttls` by default, or `ssl`) and server-side `STUDIO_SUPPORT_EMAIL` are optional. Plain SMTP is limited to loopback for local testing. Delivery reports an error when the mail service is unavailable; it does not queue or retry messages.
 
 Extract writes reject sources known to be incomplete. Managed extract tables carry an identity marker; replacement checks the table and registry identity under locks. Older unmarked tables need a one-time manual confirmation tied to the observed identity before refresh. Scheduled refresh cannot grant this confirmation. The marker detects accidental replacement, not an actor able to copy table comments.
 

@@ -77,6 +77,7 @@ log "Validating staged backend imports"
 
 log "Activating staged backend"
 cp -a "${tmp}/app/." "${APP_ROOT}/"
+rm -f "${APP_ROOT}/support_mail.py"
 
 log "Activating staged frontend"
 if [[ -d "${APP_ROOT}/static" ]]; then

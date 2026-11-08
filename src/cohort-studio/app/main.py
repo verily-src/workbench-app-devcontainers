@@ -63,7 +63,6 @@ import plink_api
 import join_discovery
 import sql_source
 import sql_completions
-import support_mail
 from source_models import (ColumnSetting, DerivedSpec, Filter, JoinOutput, Parameter, ParamBinding,
                            SourceFilter, SourceRef, source_dict)
 
@@ -2541,47 +2540,6 @@ def performance(request: Request, response: Response):
     summary = operational_store.store().summary(agent_sessions.owner(request, response))
     summary["cache"] = query_cache.cache.stats()
     return summary
-
-
-class SupportDiagnostics(BaseModel):
-    generated_at: str
-    version: str
-    events: list[dict]
-
-
-@app.get("/api/support/diagnostics", response_model=SupportDiagnostics)
-def support_diagnostics(request: Request, response: Response):
-    from datetime import datetime, timezone
-    import re
-
-    sha = version()["sha"]
-    if not re.fullmatch(r"(?:[0-9a-fA-F]{7,64}|dev)", sha):
-        sha = "unknown"
-    routes = {route.path for route in app.routes if getattr(route, "path", None)}
-    response.headers["Cache-Control"] = "no-store"
-    return {"generated_at": datetime.now(timezone.utc).isoformat(), "version": sha,
-            "events": operational_store.store().diagnostic_events(agent_sessions.owner(request, response), routes)}
-
-
-class SupportReport(BaseModel):
-    details: str = Field(min_length=1, max_length=2000)
-
-    @field_validator("details")
-    @classmethod
-    def nonempty_details(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("Describe the issue.")
-        return value.strip()
-
-
-@app.post("/api/support/report")
-def report_issue(report: SupportReport, request: Request, response: Response):
-    diagnostics = support_diagnostics(request, response)
-    try:
-        support_mail.send(report.details, diagnostics)
-    except support_mail.DeliveryUnavailable as exc:
-        raise HTTPException(503, str(exc)) from exc
-    return {"sent": True}
 
 
 @app.get("/api/datasets/{dataset_id}/grain")

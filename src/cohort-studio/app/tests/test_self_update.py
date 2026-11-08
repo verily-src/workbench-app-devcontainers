@@ -56,6 +56,7 @@ exit 0
     (app / "requirements.txt").write_text("old dependency\n")
     (app / "static/index.html").write_text("old frontend\n")
     (app / "APP_SHA").write_text("old-sha\n")
+    (app / "support_mail.py").write_text("old mail module\n")
     pip_marker = tmp_path / "pip-called"
     lock = tmp_path / "update.lock"
 
@@ -76,6 +77,7 @@ exit 0
     assert (app / "requirements.txt").read_text() == "old dependency\n"
     assert (app / "static/index.html").read_text() == "old frontend\n"
     assert (app / "APP_SHA").read_text() == "old-sha\n"
+    assert (app / "support_mail.py").exists()
     assert not pip_marker.exists()
 
 
@@ -130,6 +132,7 @@ exit 0
     (app / "requirements.txt").write_text("old dependency\n")
     (app / "static/index.html").write_text("old frontend\n")
     (app / "APP_SHA").write_text("old-sha\n")
+    (app / "support_mail.py").write_text("old mail module\n")
     env = os.environ.copy()
     env.update({
         "PATH": f"{stubs}:{env['PATH']}",
@@ -145,3 +148,4 @@ exit 0
     assert (app / "main.py").read_text() == "value = 'new backend'\n"
     assert (app / "static/index.html").read_text() == "<html>new frontend</html>\n"
     assert (app / "APP_SHA").read_text() == f"{remote_sha}\n"
+    assert not (app / "support_mail.py").exists()

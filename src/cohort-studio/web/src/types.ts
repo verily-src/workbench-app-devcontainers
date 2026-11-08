@@ -31,6 +31,7 @@ export interface TableInfo {
 
 export interface ColumnProfile {
   name: string;
+  profile_sampled?: boolean;
   filter_kind: "categorical" | "range" | "date" | "none";
   dtype: string;
   /** Earliest/latest date (YYYY-MM-DD) for date columns. */

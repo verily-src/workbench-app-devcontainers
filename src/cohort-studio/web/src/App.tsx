@@ -23,6 +23,7 @@ import { AiFeaturesContext, PlinkContext, aiFeaturesFrom, lineageFrom, plinkFrom
 import { extractTarget } from "./extract";
 import { BRAND_EVENT, PARTNER_LOGO, applyBrand, type Brand } from "./brand";
 import { DashboardFilters } from "./components/DashboardFilters";
+import { ReportIssue } from "./components/ReportIssue";
 import { applicableFilters, withDashboardFilter } from "./dashboardFilters";
 
 const SIDEBAR_KEY = "cohort-studio.sidebar-collapsed";
@@ -862,6 +863,7 @@ export default function App() {
     <div className={`corner-tools${vertical ? " vertical" : ""}`} role="toolbar" aria-label="App tools">
       <button type="button" className="corner-tool corner-cmdk" title="Command palette (⌘K)"
               aria-label="Command palette" onClick={() => setCmdOpen(true)}>⌘K</button>
+      <ReportIssue />
       <button type="button" className="corner-tool" aria-label="Tutorial" title="Tutorial"
               data-tutorial-target="tutorial" onClick={openTutorial}>
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor"

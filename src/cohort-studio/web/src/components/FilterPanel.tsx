@@ -132,11 +132,11 @@ function DateFilter({ col, active, onChange, parameters = [] }: {
       </div>
       {mode === "between" ? (
         <div className="date-filter-range">
-          <input type="date" aria-label={`From ${name}`} min={col.min_date} max={col.max_date}
+          <input type="date" aria-label={`From ${name}`} min={col.profile_sampled ? undefined : col.min_date} max={col.profile_sampled ? undefined : col.max_date}
                  disabled={Boolean(active?.param?.start)} value={active?.start ?? ""}
                  onChange={(e) => between(e.target.value || undefined, active?.end)} />
           <span aria-hidden>–</span>
-          <input type="date" aria-label={`To ${name}`} min={col.min_date} max={col.max_date}
+          <input type="date" aria-label={`To ${name}`} min={col.profile_sampled ? undefined : col.min_date} max={col.profile_sampled ? undefined : col.max_date}
                  disabled={Boolean(active?.param?.end)} value={active?.end ?? ""}
                  onChange={(e) => between(active?.start, e.target.value || undefined)} />
         </div>
@@ -160,7 +160,7 @@ function DateFilter({ col, active, onChange, parameters = [] }: {
         </div>
       )}
       {(col.min_date || col.max_date) && (
-        <div className="settings-hint">Data from {col.min_date ?? "?"} to {col.max_date ?? "?"}</div>
+        <div className="settings-hint">{col.profile_sampled ? "Preview" : "Data"} from {col.min_date ?? "?"} to {col.max_date ?? "?"}</div>
       )}
       {active && <button type="button" className="link" onClick={() => onChange(null)}>Clear</button>}
     </div>
@@ -188,7 +188,9 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
                     explicit?: ParamBinding | null) => {
     const current = byColumn.get(col.name)?.param;
     const param = explicit === undefined ? (edited ? rebind(current, edited, "") : current) : explicit ?? undefined;
-    const active = Boolean(param) || lo > (col.min ?? -Infinity) || hi < (col.max ?? Infinity);
+    const active = Boolean(param) || (col.profile_sampled
+      ? lo !== -Number.MAX_VALUE || hi !== Number.MAX_VALUE
+      : lo > (col.min ?? -Infinity) || hi < (col.max ?? Infinity));
     onChange(upsert(filters, active
       ? { column: col.name, kind: "range", min: lo, max: hi, ...(param ? { param } : {}) } : null,
       col.name));
@@ -196,19 +198,23 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
   const followRange = (col: ColumnProfile, bound: "min" | "max", name: string) => {
     const current = byColumn.get(col.name);
     const p = numberParams.find((x) => x.name === name);
-    const lo = bound === "min" && p ? Number(p.value) : current?.min ?? col.min ?? 0;
-    const hi = bound === "max" && p ? Number(p.value) : current?.max ?? col.max ?? 0;
+    const lo = bound === "min" && p ? Number(p.value) : current?.min ?? (col.profile_sampled ? -Number.MAX_VALUE : col.min ?? 0);
+    const hi = bound === "max" && p ? Number(p.value) : current?.max ?? (col.profile_sampled ? Number.MAX_VALUE : col.max ?? 0);
     setRange(col, lo, hi, undefined, rebind(current?.param, bound, name) ?? null);
   };
 
   const filterable = columns.filter((c) => c.filter_kind !== "none");
   if (!filterable.length) {
     return <div style={{ color: "var(--ink-muted)" }}>
-      No filterable columns.</div>;
+      No filterable columns.
+      {columns.some((c) => c.profile_sampled) && <div>Preview rows can miss fields. Use Dataset settings → Columns to enable a filter.</div>}
+    </div>;
   }
 
   return (
     <>
+      {columns.some((c) => c.profile_sampled && c.filter_kind === "none") &&
+        <div className="settings-hint">Preview rows can miss fields. Use Dataset settings → Columns to enable a filter.</div>}
       {filterable.map((col) => {
         const active = byColumn.get(col.name);
         return (
@@ -229,6 +235,7 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
                 {col.filter_kind === "categorical"
                   ? active.values?.length : col.filter_kind === "date" ? "date" : "range"}</span>}
             </summary>
+            {col.profile_sampled && <div className="settings-hint">Filter suggestions are based on preview rows. Filters apply to all rows.</div>}
             {col.filter_kind === "date" ? (
               <DateFilter col={col} active={active} parameters={dashboardColumns?.has(col.name) ? [] : parameters}
                           onChange={(next) => onChange(upsert(filters, next, col.name))} />
@@ -249,19 +256,19 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
                   type="number" step="any"
                   aria-label={`Minimum ${col.label || col.name}`}
                   placeholder="No minimum"
-                  value={active?.min === -Number.MAX_VALUE ? "" : active?.min ?? col.min ?? 0}
+                  value={active?.min === -Number.MAX_VALUE ? "" : active?.min ?? (col.profile_sampled ? "" : col.min ?? 0)}
                   disabled={Boolean(active?.param?.min)}
                   onChange={(e) => setRange(col, e.target.value === "" ? -Number.MAX_VALUE : Number(e.target.value),
-                    active?.max ?? col.max ?? 0, "min")}
+                    active?.max ?? (col.profile_sampled ? Number.MAX_VALUE : col.max ?? 0), "min")}
                 />
                 <input
                   type="number" step="any"
                   aria-label={`Maximum ${col.label || col.name}`}
                   placeholder="No maximum"
-                  value={active?.max === Number.MAX_VALUE ? "" : active?.max ?? col.max ?? 0}
+                  value={active?.max === Number.MAX_VALUE ? "" : active?.max ?? (col.profile_sampled ? "" : col.max ?? 0)}
                   disabled={Boolean(active?.param?.max)}
                   onChange={(e) => setRange(col,
-                    active?.min ?? col.min ?? 0, e.target.value === "" ? Number.MAX_VALUE : Number(e.target.value), "max")}
+                    active?.min ?? (col.profile_sampled ? -Number.MAX_VALUE : col.min ?? 0), e.target.value === "" ? Number.MAX_VALUE : Number(e.target.value), "max")}
                 />
                 {numberParams.length > 0 && !dashboardColumns?.has(col.name) && <div className="filter-follows-row">
                   <Follows label={`Minimum ${col.label || col.name} follows`} value={active?.param?.min}

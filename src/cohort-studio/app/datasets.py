@@ -54,7 +54,8 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
                  capped: bool | None = None,
                  live_source: dict | None = None,
                  disk_source: dict | None = None,
-                 temporary: bool = False, profile_source: bool = True) -> dict:
+                 temporary: bool = False, profile_source: bool = True,
+                 profile_sampled: bool = False, bounded_join_profile: bool = False) -> dict:
     """Register a dataset. `profile_source=False` skips the full-source
     database/disk profiling (sample-based profiles only), for inputs whose
     profiles are never shown, such as the tables behind a reopened join."""
@@ -69,11 +70,16 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
         capped = len(df) >= queries.ROW_CAP
     try:
         columns = profile_columns(df)
+        if profile_sampled:
+            for column in columns:
+                column["profile_sampled"] = True
         if not profile_source:
             pass
         elif live_source is not None:
             import live_query
-            columns = live_query.profile_columns(live_source, columns)
+            columns = (live_query.profile_columns(live_source, columns, bounded_join=True)
+                       if bounded_join_profile else live_query.profile_columns(live_source, columns))
+            profile_sampled = any(col.get("profile_sampled") for col in columns)
         elif disk_source is not None:
             import disk_data
             columns = disk_data.profile_columns(disk_source, columns)
@@ -89,6 +95,8 @@ def open_dataset(df: pd.DataFrame, source: str, origin: dict | None = None,
         _store[dataset_id] = {"df": df, "source": source, "origin": origin,
                               "capped": capped, "live_source": live_source,
                               "disk_source": disk_source,
+                              "profile_sampled": profile_sampled,
+                              "bounded_join_profile": bounded_join_profile,
                               "created": time.monotonic(), "temporary": temporary}
     estimate_source = disk_source or live_source or {}
     return {"dataset_id": dataset_id, "source": source,

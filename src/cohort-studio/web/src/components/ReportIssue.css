@@ -1,0 +1,7 @@
+.report-issue-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; background: rgb(0 0 0 / 40%); }
+.report-issue { width: min(calc(92 * var(--vw)), 520px); max-height: calc(90 * var(--vh)); overflow: auto; padding: 20px; border-radius: var(--radius); background: var(--surface); color: var(--ink); }
+.report-issue-heading { display: flex; align-items: center; justify-content: space-between; }
+.report-issue-heading h2 { margin: 0; font-size: 18px; }
+.report-issue label { display: grid; gap: 4px; margin: 12px 0; }
+.report-issue textarea { min-height: 80px; resize: vertical; }
+.report-issue-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

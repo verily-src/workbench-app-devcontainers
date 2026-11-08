@@ -14,6 +14,7 @@ import database as db
 import filter_rules
 
 TIMEOUT_MS = 15_000
+JOIN_PROFILE_BUDGET_S = 3.0
 PAGE_SIZE_MAX = 1000
 CATEGORICAL_VALUES_LIMIT = 50
 BAR_TOP_N = 12
@@ -331,24 +332,44 @@ def _cached_primary_key_order(conn, live_source: dict) -> str | None:
     return order
 
 
-def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
+class _ProfileBudgetExceeded(Exception):
+    pass
+
+
+def profile_columns(live_source: dict, profiles: list[dict], *, bounded_join: bool = False) -> list[dict]:
+    import query_cancellation
+    try:
+        return _profile_columns(live_source, profiles, bounded_join=bounded_join)
+    except Exception as exc:
+        query_cancellation.check()
+        if not bounded_join or (not isinstance(exc, _ProfileBudgetExceeded) and "statement timeout" not in str(exc)):
+            raise
+        return [{**profile, "profile_sampled": True} for profile in profiles]
+
+
+def _profile_columns(live_source: dict, profiles: list[dict], *, bounded_join: bool) -> list[dict]:
     import query_cancellation
     table = f"({live_source['sql']}) AS live"
     columns = live_source["columns"]
     result = [dict(profile) for profile in profiles]
+    deadline = time.monotonic() + JOIN_PROFILE_BUDGET_S if bounded_join else None
+    def check_budget():
+        query_cancellation.check()
+        if deadline is not None and time.monotonic() >= deadline:
+            raise _ProfileBudgetExceeded()
     engine = db.get_engine_for_resource(live_source["resource_id"])
     with engine.begin() as conn, query_cancellation.postgres_connection(conn):
         conn.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         conn.exec_driver_sql("SET LOCAL search_path = pg_catalog")
         conn.exec_driver_sql("SET LOCAL TimeZone = 'UTC'")
-        conn.exec_driver_sql(f"SET LOCAL statement_timeout = {TIMEOUT_MS}")
+        conn.exec_driver_sql(f"SET LOCAL statement_timeout = {min(TIMEOUT_MS, 2000) if bounded_join else TIMEOUT_MS}")
         dates = [entry for entry in result if entry.get("filter_kind") == "date"]
         if dates:
             parts = []
             for entry in dates:
                 col = f"live.{_q(columns[entry['name']])}"
                 parts += [f"MIN({col})::date", f"MAX({col})::date"]
-            query_cancellation.check()
+            check_budget()
             savepoint = conn.begin_nested()
             try:
                 values = _query(conn, live_source, f"SELECT {', '.join(parts)} FROM {table}", {}).one()
@@ -359,9 +380,13 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
                         entry["min_date"], entry["max_date"] = low.isoformat(), high.isoformat()
             except Exception as exc:
                 savepoint.rollback()
+                query_cancellation.check()
+                if bounded_join:
+                    raise
                 if "statement timeout" not in str(exc) and "canceling statement" not in str(exc):
                     raise
         ranges = [entry for entry in result if entry.get("filter_kind") == "range"]
+        check_budget()
         numeric_columns = _numeric_columns(conn, live_source, [e["name"] for e in result
                                                                if e.get("filter_kind") in ("range", "categorical")])
         if ranges:
@@ -371,7 +396,7 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
                 numeric = _numeric(f"live.{_q(columns[entry['name']])}",
                                    numeric_columns.get(entry["name"]))
                 parts += [f"MIN({numeric})", f"MAX({numeric})"]
-            query_cancellation.check()
+            check_budget()
             values = _query(conn, live_source,
                             f"SELECT {', '.join(parts)} FROM {table}", {}).one()
             for i, entry in enumerate(ranges):
@@ -382,7 +407,7 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
             if entry.get("filter_kind") != "categorical":
                 continue
             col = f"live.{_q(columns[entry['name']])}"
-            query_cancellation.check()
+            check_budget()
             savepoint = conn.begin_nested()
             try:
                 values = _query(conn, live_source,
@@ -394,6 +419,8 @@ def profile_columns(live_source: dict, profiles: list[dict]) -> list[dict]:
             except Exception as exc:
                 savepoint.rollback()
                 query_cancellation.check()
+                if bounded_join:
+                    raise
                 if "statement timeout" not in str(exc) and "canceling statement" not in str(exc):
                     raise
                 # A slow column keeps its loaded-sample values instead of failing the open.

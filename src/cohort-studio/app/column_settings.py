@@ -17,6 +17,9 @@ def _q(name):
 
 def profiles(ds):
     result = datasets.profile_columns(ds["df"])
+    if ds.get("profile_sampled"):
+        for col in result:
+            col["profile_sampled"] = True
     settings = {s["name"]: s for s in ds.get("column_settings", [])}
     for col in result:
         setting = settings.get(col["name"], {})
@@ -31,8 +34,13 @@ def profiles(ds):
                 values = series.dropna()
                 if len(values):
                     col["min"], col["max"] = float(values.min()), float(values.max())
-    if ds.get("live_source"):
-        result = live_query.profile_columns(ds["live_source"], result)
+    if ds.get("profile_sampled"):
+        pass
+    elif ds.get("live_source"):
+        result = (live_query.profile_columns(ds["live_source"], result, bounded_join=True)
+                  if ds.get("bounded_join_profile") else live_query.profile_columns(ds["live_source"], result))
+        if any(col.get("profile_sampled") for col in result):
+            ds["profile_sampled"] = True
     elif ds.get("disk_source"):
         import disk_data
         result = disk_data.profile_columns(ds["disk_source"], result)
@@ -105,6 +113,7 @@ def apply(dataset_id, settings):
         merged[name] = combined
     preview = {**ds, "df": frame, "live_source": live, "column_settings": list(merged.values())}
     columns = profiles(preview)
+    ds["profile_sampled"] = preview.get("profile_sampled", False)
     ds["settings_base_df"] = base_frame
     ds["settings_base_live"] = base_live
     ds["settings_base_origin"] = base_origin

@@ -356,7 +356,7 @@ def test_axes_and_mark_settings_follow_the_drawn_chart(loaded_page: Page):
 
 
 def test_add_chart_with_line_style(loaded_page: Page):
-    form = loaded_page.locator("form", has=loaded_page.get_by_text("Add chart"))
+    form = loaded_page.locator("form.chart-builder-form")
     form.locator('select[name="x"]').select_option("tissue")
     form.locator('select[name="kind"]').select_option("line")
     form.get_by_role("button", name="Add").click()

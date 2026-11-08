@@ -5,6 +5,7 @@ import math
 import os
 from pathlib import Path
 import queue
+import re
 import sqlite3
 import threading
 import time
@@ -114,6 +115,47 @@ class Store:
         return {'scope': 'current_session', 'retention_days': 7, 'max_events': MAX_EVENTS,
                 'dropped_events_since_restart': self.dropped,
                 'groups': sorted(result, key=lambda g: (g['event'], g['name']))}
+
+    def diagnostic_events(self, owner, routes):
+        with self.lock, self.connect() as db:
+            rows = db.execute('SELECT created,payload FROM metrics WHERE owner=? AND created>=? '
+                              'ORDER BY id DESC LIMIT 200', (owner, time.time() - 86400)).fetchall()
+        events = []
+        allowed_events = {'http.finished', 'operation.started', 'operation.finished',
+                          'operation.rejected', 'sql.finished', 'job.submitted'}
+        allowed_operations = {'datasets.query', 'joins.run', 'grain.check',
+                              'group_summary.summarize', 'group_summary.materialize',
+                              'agent_analysis.aggregate', 'agent_analysis.compare_groups',
+                              'data_jobs.run', 'view_jobs.run', 'export_jobs._run', 'plink_api._create_archive'}
+        for created, raw in reversed(rows):
+            try:
+                item = json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(item, dict) or not isinstance(item.get('event'), str) or item['event'] not in allowed_events:
+                continue
+            out = {'at': round(created), 'event': item['event']}
+            trace = item.get('trace_id')
+            if isinstance(trace, str) and re.fullmatch(r'[0-9a-f]{32}', trace):
+                out['trace_id'] = trace
+            if isinstance(item.get('route'), str) and item['route'] in routes:
+                out['route'] = item['route']
+            if isinstance(item.get('operation'), str) and item['operation'] in allowed_operations:
+                out['operation'] = item['operation']
+            for key, values in (('lane', {'interactive', 'bulk'}),
+                                ('method', {'GET', 'POST', 'PUT', 'DELETE', 'PATCH'}),
+                                ('engine', {'postgresql', 'duckdb', 'sqlite'})):
+                if isinstance(item.get(key), str) and item[key] in values:
+                    out[key] = item[key]
+            status = item.get('status')
+            if status in ('complete', 'failed') or type(status) is int and 100 <= status <= 599:
+                out['status'] = status
+            for key in ('queue_ms', 'elapsed_ms'):
+                value = item.get(key)
+                if type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 86400000:
+                    out[key] = value
+            events.append(out)
+        return events
 
     def shutdown(self):
         self.closed = True

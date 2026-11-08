@@ -1140,6 +1140,10 @@ Add view opens Data Builder to select another source. Existing dashboard filters
 
 Dashboard query admission waits up to 30 seconds for a slot, with at most eight waiting requests. Disconnects cancel waiting work. A full queue or an expired wait still returns 429.
 
+Live Aurora joins with large estimated output use preview-based column suggestions. Other live joins use a bounded profiling budget and fall back to preview suggestions on a profiling timeout. The UI marks preview-derived suggestions; filters and dashboard queries still use the full source. An all-null preview may require a filter type to be selected in Dataset settings. This does not remove query timeouts or workload guards.
+
+Report issue downloads a bounded diagnostic file of allowlisted events for the current browser session and opens a mail draft. It excludes raw logs, rows, SQL and filter values. The user must attach the file and send it; `STUDIO_SUPPORT_EMAIL` optionally supplies the recipient. This is not an automatic email service.
+
 Extract writes reject sources known to be incomplete. Managed extract tables carry an identity marker; replacement checks the table and registry identity under locks. Older unmarked tables need a one-time manual confirmation tied to the observed identity before refresh. Scheduled refresh cannot grant this confirmation. The marker detects accidental replacement, not an actor able to copy table comments.
 
 The browser loads dashboard, chart, PDF, agent and settings modules on demand. The OMOP builder remains mounted after first use to retain its state. Optional browser notifications report completed data loads and joins only while an open app tab is hidden; permission and preference stay in the browser. This is not a service-worker push subscription.

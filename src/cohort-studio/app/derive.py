@@ -184,6 +184,7 @@ def derive(dataset_id: str, spec: dict) -> dict:
         baseline = {**ds, "df": preview, "live_source": live,
                     "column_settings": remaining_settings}
         columns = column_settings.profiles(baseline)
+        ds["profile_sampled"] = baseline.get("profile_sampled", False)
         source_ref = None
         if ds.get("source_ref"):
             source_ref = source_dict({"kind": "derived", "base": ds["source_ref"],

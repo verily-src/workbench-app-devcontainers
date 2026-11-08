@@ -829,6 +829,8 @@ def _open_source_impl(ref, temporary=False, profile=True):
     live = None
     disk = None
     capped = None
+    inherited_profile_sampled = False
+    inherited_bounded_join = False
     try:
         if ref["kind"] == "derived":
             base = _open_source(ref["base"], temporary=True)
@@ -837,6 +839,8 @@ def _open_source_impl(ref, temporary=False, profile=True):
             ds = datasets.get(base["dataset_id"])
             df, label = ds["df"], ds["source"]
             live, capped = ds.get("live_source"), ds.get("capped")
+            inherited_profile_sampled = bool(ds.get("profile_sampled"))
+            inherited_bounded_join = bool(ds.get("bounded_join_profile"))
             disk = ds.pop("disk_source", None)
         elif ref["kind"] == "group_summary":
             # Reopen the base recipe, then rerun the same full summary.
@@ -934,8 +938,10 @@ def _open_source_impl(ref, temporary=False, profile=True):
         for child in children:
             datasets.close_dataset(child)
     data_jobs.report("Profiling columns", rows=int(len(df)), columns=int(len(df.columns)))
+    profile_sampled = inherited_profile_sampled or bool(profile and out and joins.sample_join_profiles(out))
     result = datasets.open_dataset(
-        df, label, origin=origin, temporary=temporary, profile_source=profile,
+        df, label, origin=origin, temporary=temporary, profile_source=profile and not profile_sampled,
+        profile_sampled=profile_sampled, bounded_join_profile=inherited_bounded_join or bool(out and live),
         capped=capped, live_source=live, disk_source=disk)
     dataset_id = result["dataset_id"]
     datasets.get(dataset_id)["source_ref"] = ref
@@ -1033,11 +1039,15 @@ def join_datasets(req: JoinRequest):
         label = " + ".join(sources)
         data_jobs.report("Building the joined tab", rows=int(len(out["df"])),
                          columns=int(len(out["df"].columns)))
+        profile_sampled = joins.sample_join_profiles(out)
         result = datasets.open_dataset(out["df"], label,
                                        capped=bool(out["stats"]["truncated"]
                                                    or out["stats"].get("capped_inputs")),
                                        live_source=out.get("live_source"),
-                                       disk_source=out.get("disk_source"))
+                                       disk_source=out.get("disk_source"),
+                                       profile_source=not profile_sampled,
+                                       profile_sampled=profile_sampled,
+                                       bounded_join_profile=bool(out.get("live_source")))
         datasets.get(result["dataset_id"])["source_ref"] = ref
         result["source_ref"] = ref
     except disk_data.OperationTooLarge as e:
@@ -2530,6 +2540,31 @@ def performance(request: Request, response: Response):
     summary = operational_store.store().summary(agent_sessions.owner(request, response))
     summary["cache"] = query_cache.cache.stats()
     return summary
+
+
+class SupportDiagnostics(BaseModel):
+    generated_at: str
+    version: str
+    recipient: str | None
+    events: list[dict]
+
+
+@app.get("/api/support/diagnostics", response_model=SupportDiagnostics)
+def support_diagnostics(request: Request, response: Response):
+    from datetime import datetime, timezone
+    import re
+
+    recipient = os.environ.get("STUDIO_SUPPORT_EMAIL", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", recipient) or len(recipient) > 254:
+        recipient = None
+    sha = version()["sha"]
+    if not re.fullmatch(r"(?:[0-9a-fA-F]{7,64}|dev)", sha):
+        sha = "unknown"
+    routes = {route.path for route in app.routes if getattr(route, "path", None)}
+    response.headers["Cache-Control"] = "no-store"
+    return {"generated_at": datetime.now(timezone.utc).isoformat(), "version": sha,
+            "recipient": recipient,
+            "events": operational_store.store().diagnostic_events(agent_sessions.owner(request, response), routes)}
 
 
 @app.get("/api/datasets/{dataset_id}/grain")

@@ -43,10 +43,7 @@ def route_data_job(page: Page, kind: str, handler):
 def test_entity_count_and_column_settings(loaded_page: Page):
     loaded_page.set_viewport_size({"width": 2048, "height": 1100})
     entity = loaded_page.locator(".entity-select select")
-    select_box = entity.bounding_box()
-    export_box = loaded_page.get_by_role("button", name="Export options", exact=True).bounding_box()
-    assert select_box and export_box
-    assert abs(select_box["y"] + select_box["height"] / 2 - export_box["y"] - export_box["height"] / 2) < 2
+    expect(loaded_page.get_by_role("complementary", name="Dashboard tools").locator(".entity-select select")).to_be_visible()
     entity.select_option("sample_id")
     expect(loaded_page.locator(".hero .count")).to_have_text("100", timeout=10000)
     expect(loaded_page.locator(".hero .detail")).to_contain_text(

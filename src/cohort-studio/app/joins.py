@@ -724,6 +724,12 @@ def _step_stats(before: int, right_rows: int, total: int, cap: int) -> dict:
             "fanout": growth is not None and growth > FANOUT_RATIO}
 
 GROWTH_WARNING = 10.0
+LARGE_JOIN_PROFILE_ROWS = 1_000_000
+
+
+def sample_join_profiles(out: dict) -> bool:
+    return bool(out.get("live_source") and
+                (out.get("stats", {}).get("total_rows") or 0) >= LARGE_JOIN_PROFILE_ROWS)
 
 
 def _flag_growth(stats: dict) -> None:

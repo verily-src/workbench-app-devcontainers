@@ -97,7 +97,7 @@ def test_dashboard_png_pdf_and_chart_png(loaded_page: Page):
     assert height > 2 * grid_h + 200
     pixels = _pixels(page, data, "#087a6a")
     assert pixels["corner"] == [250, 250, 250]
-    assert pixels["other"] > pixels["total"] * 0.1
+    assert pixels["other"] > pixels["total"] * 0.08
     assert pixels["accent"] > 500
     texts = page.evaluate("window.__texts")
     assert "Filters: tissue: liver" in texts

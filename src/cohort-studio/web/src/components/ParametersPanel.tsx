@@ -19,6 +19,10 @@ export function ParametersPanel({ parameters, onChange }: {
   return (
     <div className="parameters" role="group" aria-label="Parameters">
       <p className="parameter-help">Create a value, then select it under Follows in a filter.</p>
+      <details className="parameter-example">
+        <summary>Example: filter by birth year</summary>
+        <p>Create a Number parameter named <strong>min_year</strong> and set it to 1980. Open the <strong>year_of_birth</strong> filter and select <strong>min_year</strong> under the minimum value. Changing min_year then updates that filter.</p>
+      </details>
       {parameters.map((p, i) => (
         <div key={p.name} className="parameter-row">
           <span className="parameter-name" title={`${p.kind} parameter`}>{p.name}</span>

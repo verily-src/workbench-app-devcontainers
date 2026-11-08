@@ -44,6 +44,8 @@ def test_filters_follow_parameters(page, app_url):
 
     params = page.get_by_role("group", name="Parameters")
     expect(params.get_by_text("Create a value, then select it under Follows in a filter.")).to_be_visible()
+    params.get_by_text("Example: filter by birth year").click()
+    expect(params.get_by_text("min_year", exact=True).first).to_be_visible()
     expect(params.get_by_label("New parameter name")).to_have_attribute("placeholder", "e.g. min_age")
     params.get_by_label("New parameter name").fill("1bad")
     expect(params.get_by_role("alert")).to_contain_text("start with a letter")

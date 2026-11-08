@@ -180,6 +180,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
   useEffect(() => { setShowSummary(Boolean(dataset.groupSummary)); }, [dataset.id]);
   const [showLaunch, setShowLaunch] = useState(false);
   const [cohortName, setCohortName] = useState("");
+  const [chartBuilderOpen, setChartBuilderOpen] = useState(true);
   const [chatDraft, setChatDraft] = useState<{ id: string; text: string; datasetId: string } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDraftNumber, setChatDraftNumber] = useState(0);
@@ -397,7 +398,8 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
   };
 
   return (
-    <div>
+    <div className={`dataset-layout${chartBuilderOpen ? "" : " chart-builder-collapsed"}`}>
+    <div className="dataset-content">
       <div className="dataset-toolbar">
         <div className="hero-line">
             <span className="hero-meta">
@@ -608,17 +610,6 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
         onUpdate={onUpdate} draft={chatDraft?.datasetId === dataset.id ? chatDraft : null}
         onOpenChange={setChatOpen} />}
 
-      <div className="chart-tools">
-        <AddChart dataset={dataset} onUpdate={onUpdate} />
-        <label className="chart-columns">Charts per row
-          <select aria-label="Charts per row" value={String(dataset.chartColumns ?? 0)}
-                  onChange={(e) => onUpdate({ chartColumns: Number(e.target.value) as 0 | 1 | 2 | 3 | 4 })}>
-            <option value="0">Auto (fill screen)</option>
-            {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </label>
-      </div>
-
       {dataset.queryError && <div className="query-error" role="alert">
         <span>{dataset.queryError}{result ? " Showing the last successful result." : ""}</span>
         <button type="button" className="quiet" onClick={() => onUpdate({
@@ -716,6 +707,26 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
           </div>
         </>
       )}
+    </div>
+    <aside className="chart-builder" aria-label="Chart builder">
+      <div className="chart-builder-heading">
+        {chartBuilderOpen && <h2>Chart builder</h2>}
+        <button type="button" className="quiet" aria-label={chartBuilderOpen ? "Collapse chart builder" : "Expand chart builder"}
+                aria-expanded={chartBuilderOpen} onClick={() => setChartBuilderOpen((open) => !open)}>
+          {chartBuilderOpen ? "›" : "‹"}
+        </button>
+      </div>
+      {chartBuilderOpen && <>
+        <AddChart dataset={dataset} onUpdate={onUpdate} />
+        <label className="chart-columns">Charts per row
+          <select aria-label="Charts per row" value={String(dataset.chartColumns ?? 0)}
+                  onChange={(e) => onUpdate({ chartColumns: Number(e.target.value) as 0 | 1 | 2 | 3 | 4 })}>
+            <option value="0">Auto (fill screen)</option>
+            {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </>}
+    </aside>
     </div>
   );
 }
@@ -932,47 +943,46 @@ function AddChart({ dataset, onUpdate }:
   };
 
   return (
-    <form data-tutorial-target="add-chart"
-      style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "end", margin: "10px 0" }}
+    <form data-tutorial-target="add-chart" className="chart-builder-form"
       onSubmit={(e) => { e.preventDefault(); submit(e.currentTarget); }}
     >
-      <div style={{ width: 220 }}>
-        <div className="field-label">{chartKind === "map" ? "Longitude" : "Add chart"}</div>
-        <select name="x" value={chartX} onChange={(e) => setChartX(e.target.value)}>
+      <div>
+        <div className="field-label">{chartKind === "map" ? "Longitude" : "Column"}</div>
+        <select name="x" aria-label={chartKind === "map" ? "Longitude" : "Chart column"} value={chartX} onChange={(e) => setChartX(e.target.value)}>
           <option value="" disabled>Choose a column…</option>
           {all.map((c) => <option key={c}>{c}</option>)}
         </select>
       </div>
-      <div style={{ width: 120 }}>
+      <div>
         <div className="field-label">Type</div>
-        <select name="kind" value={chartKind} onChange={e => setChartKind(e.target.value)}>
+        <select name="kind" aria-label="Chart type" value={chartKind} onChange={e => setChartKind(e.target.value)}>
           {["auto", "bar", "column", "line", "area", "pie", "donut", "histogram", "box", "scatter", "heatmap", "map"].map((k) => (
             <option key={k}>{k}</option>
           ))}
         </select>
       </div>
-      <div style={{ width: 160 }}>
+      <div>
         <div className="field-label">{chartKind === "map" ? "Latitude" : chartKind === "box" ? "Group by" : "Second field"}</div>
-        <select name="y" defaultValue="">
+        <select name="y" aria-label={chartKind === "map" ? "Latitude" : chartKind === "box" ? "Group by" : "Second field"} defaultValue="">
           <option value="">—</option>
           {(chartKind === "box" ? seriesFields(dataset.columns, chartX).map((c) => c.name) : numeric).map((c) => <option key={c}>{c}</option>)}
         </select>
       </div>
-      <div style={{ width: 130 }}>
+      <div>
         <div className="field-label">Measure</div>
         <select aria-label="New chart measure" value={agg} onChange={(e) => setAgg(e.target.value as MeasureAgg)}>
           {(Object.keys(MEASURE_LABEL) as MeasureAgg[]).map((a) => <option key={a} value={a}
             disabled={a !== "count" && measureFields(dataset.columns, a, chartX).length === 0}>{MEASURE_LABEL[a]}</option>)}
         </select>
       </div>
-      {agg !== "count" && <div style={{ width: 150 }}>
+      {agg !== "count" && <div>
         <div className="field-label">Of</div>
         <select name="measure_column" aria-label="New chart measure field" key={agg}
                 defaultValue={measureChoices[0]?.name ?? ""}>
           {measureChoices.map((c) => <option key={c.name} value={c.name}>{c.label || c.name}</option>)}
         </select>
       </div>}
-      <div style={{ width: 140 }}>
+      <div>
         <div className="field-label">Split by</div>
         <select name="series" aria-label="New chart split by" defaultValue="">
           <option value="">None</option>

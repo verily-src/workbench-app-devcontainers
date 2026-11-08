@@ -1024,7 +1024,21 @@ button.primary:not(:disabled):hover { box-shadow: 0 3px 9px rgb(0 0 0 / 12%); }
 .dataset-toolbar .hero .count, .cohort-size .count { font-size: 16px; font-weight: 600; }
 .cohort-size .detail { font-size: 12.5px; }
 .hero-line { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 0 1 auto; font-size: 12px; color: var(--ink-muted); }
-.chart-tools { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.chart-tools > form { flex: 1 1 0; min-width: 0; }
-.chart-columns { display: inline-flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 13px; color: var(--ink-muted); white-space: nowrap; }
-.chart-columns select { width: auto; min-width: 156px; }
+.dataset-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 20px; align-items: start; }
+.dataset-layout.chart-builder-collapsed { grid-template-columns: minmax(0, 1fr) 42px; }
+.dataset-content { min-width: 0; }
+.chart-builder { position: sticky; top: 12px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.chart-builder-collapsed .chart-builder { padding: 6px; }
+.chart-builder-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chart-builder-heading h2 { margin: 0; font-size: 15px; }
+.chart-builder-form { display: grid; gap: 10px; margin: 14px 0; }
+.chart-builder-form select { width: 100%; }
+.chart-columns { display: grid; gap: 4px; font-size: 13px; color: var(--ink-muted); }
+.chart-columns select { width: 100%; }
+.parameter-example { font-size: 12px; color: var(--ink-muted); margin: 6px 0; }
+.parameter-example summary { cursor: pointer; }
+.parameter-example p { margin: 6px 0; }
+@media (max-width: 850px) {
+  .dataset-layout, .dataset-layout.chart-builder-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .chart-builder { position: static; }
+}

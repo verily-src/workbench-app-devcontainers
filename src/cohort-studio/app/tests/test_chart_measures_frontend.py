@@ -150,7 +150,8 @@ SLICE_POINT = """el => {
   const i = names.indexOf(%r);
   const l = data.getItemLayout(i);
   const a = (l.startAngle + l.endAngle) / 2, r = (l.r0 + l.r) / 2 || l.r * 0.6;
-  return { names, x: l.cx + r * Math.cos(a), y: l.cy + r * Math.sin(a) };
+  const scale = el.getBoundingClientRect().width / el.clientWidth;
+  return { names, x: (l.cx + r * Math.cos(a)) * scale, y: (l.cy + r * Math.sin(a)) * scale };
 }"""
 
 

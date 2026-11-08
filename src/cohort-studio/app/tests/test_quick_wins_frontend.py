@@ -12,6 +12,22 @@ def _titles(page):
     return [t.strip() for t in page.locator(".chart-card .head .title").all_inner_texts()]
 
 
+def test_chart_builder_is_on_right_and_can_be_collapsed(loaded_page):
+    page = loaded_page
+    page.set_viewport_size({"width": 1600, "height": 900})
+    builder = page.get_by_role("complementary", name="Chart builder")
+    grid = page.locator(".chart-grid")
+    expect(builder.get_by_role("button", name="Add", exact=True)).to_be_visible()
+    assert builder.bounding_box()["x"] >= grid.bounding_box()["x"] + grid.bounding_box()["width"]
+    width = grid.bounding_box()["width"]
+    builder.get_by_role("button", name="Collapse chart builder").click()
+    assert grid.bounding_box()["width"] > width
+    builder.get_by_role("button", name="Expand chart builder").click()
+    expect(builder.get_by_role("button", name="Add", exact=True)).to_be_visible()
+    page.set_viewport_size({"width": 700, "height": 900})
+    expect(builder.get_by_role("button", name="Add", exact=True)).to_be_visible()
+
+
 def test_charts_move_and_duplicate(loaded_page):
     page = loaded_page
     expect(page.locator(".chart-card")).to_have_count(3, timeout=10000)

@@ -14,6 +14,7 @@ the record, because that table no longer matches the recipe.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import uuid
 from contextlib import contextmanager
@@ -40,6 +41,10 @@ class ExtractExists(ValueError):
 
 
 class NotRefreshable(ValueError):
+    pass
+
+
+class IncompleteSource(ValueError):
     pass
 
 
@@ -87,12 +92,13 @@ def _utc_iso(value) -> str | None:
     return datetime.fromisoformat(value).astimezone(timezone.utc).isoformat()
 
 
-def _entry(conn, table: str) -> dict | None:
+def _entry(conn, table: str, *, for_update: bool = False) -> dict | None:
     if not _registry_exists(conn):
         return None
     # to_jsonb(r) reads old registries (without the schedule columns) too.
     row = conn.execute(text(
-        f"SELECT to_jsonb(r)::text FROM public.{_q(REGISTRY)} AS r WHERE table_name = :table"),
+        f"SELECT to_jsonb(r)::text FROM public.{_q(REGISTRY)} AS r WHERE table_name = :table"
+        + (" FOR UPDATE" if for_update else "")),
         {"table": table}).scalar_one_or_none()
     if row is None:
         return None
@@ -116,7 +122,11 @@ def public_info(entry: dict | None) -> dict | None:
 
 def info(resource_id: str, table: str) -> dict | None:
     with db.get_engine_for_resource(resource_id).connect() as conn:
-        return public_info(_entry(conn, table))
+        entry = _entry(conn, table)
+        if entry is None:
+            return None
+        return {**public_info(entry), "identity_verified": _matches_registry(conn, table, entry),
+                "identity_token": _identity_token(entry, _table_oid(conn, table))}
 
 
 def forget(resource_id: str, table: str) -> None:
@@ -130,6 +140,28 @@ def forget(resource_id: str, table: str) -> None:
 def _table_exists(conn, table: str) -> bool:
     return conn.execute(text("SELECT to_regclass(:name) IS NOT NULL"),
                         {"name": f"public.{_q(table)}"}).scalar_one()
+
+
+def _table_oid(conn, table: str) -> int | None:
+    return conn.execute(text("SELECT to_regclass(:name)::oid"),
+                        {"name": f"public.{_q(table)}"}).scalar_one_or_none()
+
+
+def _marker(entry: dict) -> str:
+    identity = f'{entry["table"]}\0{entry["created_at"]}'.encode()
+    return "cohort-studio-extract:" + hashlib.sha256(identity).hexdigest()
+
+
+def _identity_token(entry: dict, oid: int | None) -> str:
+    return hashlib.sha256(f'{_marker(entry)}\0{oid}'.encode()).hexdigest()
+
+
+def _matches_registry(conn, table: str, entry: dict | None) -> bool:
+    if entry is None:
+        return False
+    comment = conn.execute(text("SELECT obj_description(to_regclass(:name), 'pg_class')"),
+                           {"name": f"public.{_q(table)}"}).scalar_one_or_none()
+    return comment == _marker(entry)
 
 
 # ---- Writing rows -----------------------------------------------------------
@@ -286,20 +318,31 @@ def _drop_quietly(engine, tmp: str) -> None:
 
 
 def write(ds: dict, resource_id: str, table: str, title: str, recipe: dict | None,
-          replace: bool = False, progress: Callable[[int], None] | None = None) -> dict:
+          replace: bool = False, progress: Callable[[int], None] | None = None,
+          expected_identity: str | None = None) -> dict:
     """Write every row of ``ds`` to ``public.<table>`` and record the extract.
 
     An existing table with this name is replaced only when it is already an
     extract or ``replace`` is set; otherwise ``ExtractExists`` is raised.
     """
     validate_name(table)
+    if ds.get("capped") and not ds.get("live_source"):
+        raise IncompleteSource("This dataset contains only part of its source. "
+                               "Open the full source before creating or refreshing an extract.")
     recipe = source_dict(recipe) if recipe else None
     engine = db.get_engine_for_resource(resource_id)
     with engine.connect() as conn:
         existing = _entry(conn, table)
-        if existing is None and not replace and _table_exists(conn, table):
+        original_oid = _table_oid(conn, table)
+        if expected_identity is not None and (
+            not existing or not original_oid or
+            _identity_token(existing, original_oid) != expected_identity
+        ):
+            raise ExtractExists(f"The table {table} changed. Check it again before replacing it.")
+        if original_oid and not replace and not _matches_registry(conn, table, existing):
             raise ExtractExists(
-                f"A table named {table} already exists in {resource_id}. Choose another name.")
+                f"A table named {table} cannot be verified as this extract. "
+                "Choose another name or explicitly replace it.")
     tmp = f"{TMP_PREFIX}{uuid.uuid4().hex[:24]}"
     live = ds.get("live_source")
     try:
@@ -309,8 +352,27 @@ def write(ds: dict, resource_id: str, table: str, title: str, recipe: dict | Non
             rows = _write_batches(engine, frames(ds), tmp, progress)
         query_cancellation.check()  # a cancelled job must not replace the extract
         with engine.begin() as conn:
+            if not _registry_exists(conn):
+                conn.exec_driver_sql("SELECT pg_advisory_xact_lock(hashtext('cohort-studio-extract-registry'), 0)")
             _ensure_registry(conn)
-            conn.exec_driver_sql(f"DROP TABLE IF EXISTS public.{_q(table)}")
+            conn.execute(text("SELECT pg_advisory_xact_lock("
+                              "hashtext('cohort-studio-extract-swap'), hashtext(:table))"),
+                         {"table": table})
+            current_oid = _table_oid(conn, table)
+            if current_oid != original_oid:
+                raise ExtractExists(f"The table {table} changed while the extract was being written. "
+                                    "Retry after checking the destination.")
+            if current_oid:
+                conn.exec_driver_sql(f"LOCK TABLE public.{_q(table)} IN ACCESS EXCLUSIVE MODE")
+                current_entry = _entry(conn, table, for_update=True)
+                if (_table_oid(conn, table) != original_oid or
+                    (expected_identity is not None and (
+                        not current_entry or _identity_token(current_entry, current_oid) != expected_identity
+                    )) or (not replace and not _matches_registry(conn, table, current_entry))):
+                    raise ExtractExists(
+                        f"The table {table} changed while the extract was being written. "
+                        "Retry after checking the destination.")
+                conn.exec_driver_sql(f"DROP TABLE public.{_q(table)}")
             conn.exec_driver_sql(f"ALTER TABLE public.{_q(tmp)} RENAME TO {_q(table)}")
             now = conn.execute(text("SELECT CURRENT_TIMESTAMP")).scalar_one()
             conn.execute(text(
@@ -324,10 +386,17 @@ def write(ds: dict, resource_id: str, table: str, title: str, recipe: dict | Non
                     "recipe": json.dumps(recipe) if recipe else None,
                     "rows": rows, "now": now})
             entry = _entry(conn, table)
-    except Exception:
+            conn.exec_driver_sql(f"COMMENT ON TABLE public.{_q(table)} IS '{_marker(entry)}'")
+    except Exception as exc:
         _drop_quietly(engine, tmp)
+        original = getattr(exc, "orig", None)
+        if (getattr(original, "sqlstate", None) == "42P07" or
+            (getattr(original, "sqlstate", None) == "23505" and
+             getattr(getattr(original, "diag", None), "constraint_name", None) == "pg_class_relname_nsp_index")):
+            raise ExtractExists(
+                f"A table named {table} already exists in {resource_id}. Choose another name.") from exc
         raise
-    return public_info(entry)
+    return {**public_info(entry), "identity_verified": True}
 
 
 _LOCK_SQL = "hashtext('cohort-studio-extract'), hashtext(:table)"
@@ -366,7 +435,8 @@ def refresh_running(resource_id: str, table: str) -> bool:
 
 def refresh(resource_id: str, table: str, open_recipe: Callable[[dict], dict],
             get_dataset: Callable[[str], dict], close_dataset: Callable[[str], None],
-            progress: Callable[[int], None] | None = None) -> dict:
+            progress: Callable[[int], None] | None = None,
+            replace_unverified: bool = False, identity_token: str | None = None) -> dict:
     """Rerun an extract's recipe and replace its rows."""
     validate_name(table)
     with db.get_engine_for_resource(resource_id).connect() as conn:
@@ -376,11 +446,14 @@ def refresh(resource_id: str, table: str, open_recipe: Callable[[dict], dict],
     if not entry.get("recipe"):
         raise NotRefreshable(f"{table} can't be refreshed: its inputs (for example an "
                              "uploaded file) can't be reopened.")
+    if replace_unverified and not identity_token:
+        raise ValueError("Check the table identity before confirming replacement.")
     with refresh_lock(resource_id, table):
         opened = open_recipe(entry["recipe"])
         try:
             return write(get_dataset(opened["dataset_id"]), resource_id, table, entry["title"],
-                         entry["recipe"], replace=True, progress=progress)
+                         entry["recipe"], replace=replace_unverified, progress=progress,
+                         expected_identity=identity_token if replace_unverified else None)
         finally:
             close_dataset(opened["dataset_id"])
 
@@ -410,7 +483,8 @@ def set_schedule(resource_id: str, table: str, schedule: dict | None,
             "next_run_at = :next WHERE table_name = :table"), {
                 "table": table, "schedule": json.dumps(schedule) if schedule else None,
                 "next": next_run_at})
-        return public_info(_entry(conn, table))
+        entry = _entry(conn, table)
+        return {**public_info(entry), "identity_verified": _matches_registry(conn, table, entry)}
 
 
 def due(resource_id: str, now: datetime) -> list[dict]:

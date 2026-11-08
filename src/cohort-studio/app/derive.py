@@ -153,7 +153,7 @@ def derive(dataset_id: str, spec: dict) -> dict:
         disk_data.remove(old_disk)
         return {"dataset_id": dataset_id, "source": ds["source"], "name": name,
                 "rows": len(preview), "columns": columns, "source_ref": source_ref,
-                "query_scope": "loaded", "sampled": False,
+                "query_scope": "loaded", "sampled": bool(ds.get("capped")),
                 "estimated_bytes": disk.get("estimated_bytes"),
                 "large_warning": disk.get("large_warning", False)}
     series = _OPS[op](df, normalized)

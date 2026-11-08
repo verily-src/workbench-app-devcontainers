@@ -504,7 +504,8 @@ export function ChartCard({ spec, result, palette, kinds, onTapCategory,
   }, []);
 
   useEffect(() => {
-    if (!chart.current || !result) return;
+    if (!chart.current) return;
+    if (!result) { chart.current.clear(); return; }
     const styles = getComputedStyle(document.documentElement);
     const ink = styles.getPropertyValue("--chart-ink").trim() || INK_SOFT;
     const grid = styles.getPropertyValue("--chart-grid").trim() || GRID_LINE;

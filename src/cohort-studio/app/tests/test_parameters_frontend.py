@@ -43,6 +43,8 @@ def test_filters_follow_parameters(page, app_url):
         raise AssertionError(queries[-1:])
 
     params = page.get_by_role("group", name="Parameters")
+    expect(params.get_by_text("Create a value, then select it under Follows in a filter.")).to_be_visible()
+    expect(params.get_by_label("New parameter name")).to_have_attribute("placeholder", "e.g. min_age")
     params.get_by_label("New parameter name").fill("1bad")
     expect(params.get_by_role("alert")).to_contain_text("start with a letter")
     params.get_by_label("New parameter name").fill("min_age")
@@ -66,6 +68,7 @@ def test_filters_follow_parameters(page, app_url):
     # Date parameter bound to a date filter's start.
     params.get_by_label("New parameter name").fill("index_date")
     params.get_by_label("New parameter type").select_option("date")
+    expect(params.get_by_label("New parameter name")).to_have_attribute("placeholder", "e.g. index_date")
     params.get_by_role("button", name="Add parameter").click()
     params.get_by_label("Parameter index_date", exact=True).fill("2024-03-01")
     visit = page.locator(".filter-group", has_text="visit")

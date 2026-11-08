@@ -96,6 +96,34 @@ def _load_table(page, name):
     load_table(page, f"aurora:{RID}", name, timeout=60000)
 
 
+def test_legacy_extract_requires_confirmation_before_refresh(page: Page, sched_app):
+    url, engine = sched_app
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE public.legacy_source AS SELECT 1 AS person_id UNION ALL SELECT 2"))
+    recipe = {"kind": "aurora", "resource_id": RID, "table": "legacy_source"}
+    extracts.write({"df": pd.DataFrame({"person_id": [1]})}, RID, "legacy_extract", "Legacy", recipe)
+    with engine.begin() as conn:
+        conn.execute(text("COMMENT ON TABLE public.legacy_extract IS NULL"))
+    db.list_aurora_tables.invalidate()
+    page.goto(url)
+    _load_table(page, "legacy_extract")
+    bar = page.get_by_role("group", name="Extract")
+    expect(bar).to_contain_text("Table identity unverified", timeout=60000)
+    with page.expect_event("dialog") as dialog:
+        bar.get_by_role("button", name="Refresh extract").click()
+    dialog.value.dismiss()
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM public.legacy_extract")).scalar_one() == 1
+    with page.expect_event("dialog") as dialog:
+        bar.get_by_role("button", name="Refresh extract").click()
+    dialog.value.accept()
+    try:
+        expect(bar).to_have_attribute("title", re.compile("2 rows"), timeout=15000)
+    except AssertionError as exc:
+        raise AssertionError(page.locator("body").inner_text()) from exc
+    assert extracts.info(RID, "legacy_extract")["identity_verified"] is True
+
+
 def test_schedule_extract_refresh_and_see_last_run(page: Page, sched_app, monkeypatch):
     url, engine = sched_app
     monkeypatch.setattr(main.extract_scheduler, "resources", lambda: [RID])

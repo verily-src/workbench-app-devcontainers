@@ -658,9 +658,16 @@ export default function App() {
     if (!current || !target) return;
     const mark = (changes: Partial<Dataset>) =>
       setDatasets((prev) => prev.map((d) => d.id === datasetId ? { ...d, ...changes } : d));
-    mark({ extractRefreshing: true });
     try {
-      const opened = await api.refreshExtract(target.kind, target.resource_id, target.table);
+      const info = await api.extractInfo(target.resource_id, target.table);
+      const unverified = info.extract?.identity_verified === false;
+      if (unverified && !window.confirm(
+        `The table ${target.table} cannot be verified as the original extract. ` +
+        "Refreshing will replace every row in this table. Confirm the table is yours before continuing. " +
+        "Scheduled refreshes cannot run until you confirm a manual refresh.")) return;
+      mark({ extractRefreshing: true });
+      const opened = await api.refreshExtract(target.kind, target.resource_id, target.table, undefined,
+        unverified ? info.extract?.identity_token : undefined);
       setDatasets((prev) => prev.map((d) => d.id === datasetId
         ? { ...d, id: opened.dataset_id, source: opened.source,
             sourceRef: opened.source_ref ?? d.sourceRef, sourceInfo: opened.source_info,
@@ -950,6 +957,10 @@ export default function App() {
             columns={activeDs.columns}
             filters={[...activeDs.filters.filter((f) => !activeDashboard.some((d) => d.column === f.column)), ...activeDashboard]}
             dashboardColumns={new Set(activeDashboard.map((f) => f.column))}
+            tabFilters={activeDs.filters}
+            onClearTabFilter={(f) => updateDataset(activeDs.id, {
+              filters: activeDs.filters.filter((local) => local !== f), page: 0,
+            })}
             parameters={activeDs.parameters ?? []}
             onChange={(filters) => {
               const changed = activeDashboard.find((f) =>

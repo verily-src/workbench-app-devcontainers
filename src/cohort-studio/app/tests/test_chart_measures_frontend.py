@@ -100,6 +100,20 @@ def test_mean_measure_from_add_chart_then_split_by_in_marks(measured_page):
     assert option["x"] == ["heart", "liver", "lung"]   # lines read in natural order
 
 
+def test_changed_measure_does_not_show_old_data_after_query_failure(measured_page):
+    page = measured_page
+    _add_chart(page, "tissue", "Mean", of="rin_score")
+    card = page.locator(".chart-card", has_text="Mean rin_score by tissue")
+    page.wait_for_function(WAIT % "o.series[0].name === 'Mean rin_score'",
+                           arg=card.locator(".chart-plot").element_handle())
+    page.route("**/api/datasets/*/query", lambda r: r.fulfill(status=500, json={"detail": "test failure"}))
+    _open_marks(card)
+    card.locator(".marks-menu .popover-panel").get_by_label("Split by").select_option("sex")
+    expect(page.get_by_role("alert")).to_contain_text("test failure")
+    page.wait_for_function("el => !(window.__studioEcharts.getInstanceByDom(el).getOption().series || []).length",
+                           arg=card.locator(".chart-plot").element_handle())
+
+
 def test_count_split_by_stacks_and_lines_sort_numeric_x(measured_page):
     page = measured_page
     df = _rows()

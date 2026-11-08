@@ -2,12 +2,55 @@ from pathlib import Path
 import uuid
 
 import duckdb
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 import main
 import datasets
 import disk_data
+
+
+def test_chained_join_retains_incomplete_source_warning(client):
+    opened = []
+    try:
+        for name, capped in [("sample", True), ("first", False), ("second", False)]:
+            dataset = datasets.open_dataset(pd.DataFrame({"person_id": [1, 2]}), name, capped=capped)
+            opened.append(dataset["dataset_id"])
+
+        def join(left, right, alias):
+            response = client.post("/api/datasets/join", json={
+                "base_id": left, "allow_loaded": True, "steps": [{
+                    "right_id": right, "how": "inner", "alias": alias,
+                    "conditions": [{"left": "person_id", "op": "=", "right": "person_id"}],
+                }],
+            })
+            assert response.status_code == 200, response.text
+            result = response.json()
+            opened.append(result["dataset_id"])
+            return result
+
+        first = join(opened[0], opened[1], "first")
+        assert first["sampled"] is True
+        assert first["join"]["complete_source"] is False
+        assert datasets.get(first["dataset_id"])["disk_source"]
+
+        derived = client.post(f"/api/datasets/{first['dataset_id']}/derive", json={
+            "op": "formula", "name": "next_id", "left": "person_id", "operator": "+", "right": "1",
+        })
+        assert derived.status_code == 200, derived.text
+        assert derived.json()["sampled"] is True
+
+        second = join(first["dataset_id"], opened[2], "second")
+        assert second["sampled"] is True
+        assert second["join"]["complete_source"] is False
+        assert first["source"] in second["join"]["capped_inputs"]
+        query = client.post(f"/api/datasets/{second['dataset_id']}/query", json={})
+        assert query.status_code == 200, query.text
+        assert query.json()["sampled"] is True
+    finally:
+        for dataset_id in reversed(opened):
+            datasets.close_dataset(dataset_id)
 
 
 @pytest.fixture
@@ -74,6 +117,7 @@ def test_aurora_and_s3_join_uses_duckdb_and_requires_consent(client, engine,
             "page": 0, "page_size": 20, "filters": [], "charts": [],
         })
         assert query.status_code == 200, query.text
+        assert query.json()["sampled"] is False
         assert query.json()["rows"]["data"] == [
             [1, "case", 1, "first"], [2, "control", 2, "second"],
         ]

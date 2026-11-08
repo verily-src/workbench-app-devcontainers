@@ -1,5 +1,6 @@
 """Extracts write every row (no 100k cap), replace atomically, and refresh."""
 import time
+import threading
 import uuid
 
 import duckdb
@@ -166,7 +167,7 @@ def test_extract_and_refresh_jobs_over_the_api(on_target, monkeypatch):
         "rows": 0, "columns": []})
     client = TestClient(main.app)
     table = _name()
-    ds = datasets.open_dataset(_frame(), "joined tab")
+    ds = datasets.open_dataset(_frame(), "joined tab", capped=False)
     try:
         job = client.post("/api/data-jobs/extract", json={
             "dataset_id": ds["dataset_id"], "resource_id": "res", "table": table,
@@ -190,6 +191,187 @@ def test_extract_and_refresh_jobs_over_the_api(on_target, monkeypatch):
         assert clash["status"] == "failed" and clash["status_code"] == 409
     finally:
         datasets.close_dataset(ds["dataset_id"])
+
+
+def test_partial_source_cannot_create_or_refresh_extract(on_target):
+    table = _name()
+    recipe = {"kind": "aurora", "resource_id": "res", "table": "person"}
+    extracts.write({"df": _frame(10)}, "res", table, "Existing", recipe)
+    closed = []
+    for partial in ({"df": _frame(3), "capped": True},
+                    {"disk_source": {"path": "unused"}, "capped": True}):
+        with pytest.raises(extracts.IncompleteSource):
+            extracts.refresh("res", table, lambda _: {"dataset_id": "partial"},
+                             lambda _: partial, closed.append)
+        assert _count(on_target, table) == 10
+    assert closed == ["partial", "partial"]
+
+    ds = datasets.open_dataset(_frame(3), "partial join", capped=True)
+    try:
+        client = TestClient(main.app)
+        new_table = _name()
+        job = _wait(client, client.post("/api/data-jobs/extract", json={
+            "dataset_id": ds["dataset_id"], "resource_id": "res", "table": new_table}).json())
+        assert job["status"] == "failed" and job["status_code"] == 413
+        with on_target.connect() as conn:
+            assert not extracts._table_exists(conn, new_table)
+    finally:
+        datasets.close_dataset(ds["dataset_id"])
+
+
+def test_new_plain_table_created_during_extract_is_preserved(on_target):
+    table = _name()
+
+    def create_destination(_rows):
+        with on_target.begin() as conn:
+            conn.execute(text(f'CREATE TABLE public."{table}" AS SELECT 42 AS keep'))
+
+    with pytest.raises(extracts.ExtractExists):
+        extracts.write({"df": _frame(3)}, "res", table, "Extract", None,
+                       progress=create_destination)
+    with on_target.connect() as conn:
+        assert conn.execute(text(f'SELECT keep FROM public."{table}"')).scalar_one() == 42
+    assert extracts.info("res", table) is None
+    assert _tmp_tables(on_target) == 0
+
+
+def test_concurrent_new_extracts_do_not_overwrite_each_other(on_target):
+    table = _name()
+    staged = threading.Barrier(2)
+    outcomes = []
+
+    def create(n):
+        try:
+            extracts.write({"df": _frame(n)}, "res", table, "Concurrent", None,
+                           progress=lambda _: staged.wait(timeout=10))
+            outcomes.append(("created", n))
+        except extracts.ExtractExists:
+            outcomes.append(("conflict", n))
+
+    threads = [threading.Thread(target=create, args=(n,)) for n in (3, 5)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+    assert all(not thread.is_alive() for thread in threads)
+    assert sorted(kind for kind, _ in outcomes) == ["conflict", "created"]
+    assert _count(on_target, table) == next(n for kind, n in outcomes if kind == "created")
+
+
+def test_recreated_table_does_not_inherit_extract_identity(on_target):
+    table = _name()
+    recipe = {"kind": "aurora", "resource_id": "res", "table": "person"}
+    extracts.write({"df": _frame(3)}, "res", table, "Original", recipe)
+    with on_target.begin() as conn:
+        conn.execute(text(f'DROP TABLE public."{table}"'))
+        conn.execute(text(f'CREATE TABLE public."{table}" AS SELECT 42 AS keep'))
+    with pytest.raises(extracts.ExtractExists):
+        extracts.write({"df": _frame(4)}, "res", table, "New", recipe)
+    with pytest.raises(extracts.ExtractExists):
+        extracts.refresh("res", table, lambda _: {"dataset_id": "fresh"},
+                         lambda _: {"df": _frame(4)}, lambda _: None)
+    with on_target.connect() as conn:
+        assert conn.execute(text(f'SELECT keep FROM public."{table}"')).scalar_one() == 42
+    extracts.write({"df": _frame(4)}, "res", table, "New", recipe, replace=True)
+    assert _count(on_target, table) == 4
+    extracts.refresh("res", table, lambda _: {"dataset_id": "fresh"},
+                     lambda _: {"df": _frame(5)}, lambda _: None)
+    assert _count(on_target, table) == 5
+
+
+def test_table_recreated_during_extract_is_preserved(on_target):
+    table = _name()
+    extracts.write({"df": _frame(3)}, "res", table, "Original", None)
+
+    def replace_destination(_rows):
+        with on_target.begin() as conn:
+            conn.execute(text(f'DROP TABLE public."{table}"'))
+            conn.execute(text(f'CREATE TABLE public."{table}" AS SELECT 42 AS keep'))
+
+    with pytest.raises(extracts.ExtractExists):
+        extracts.write({"df": _frame(4)}, "res", table, "New", None,
+                       progress=replace_destination)
+    with on_target.connect() as conn:
+        assert conn.execute(text(f'SELECT keep FROM public."{table}"')).scalar_one() == 42
+
+
+def test_legacy_unmarked_extract_needs_explicit_replacement(on_target):
+    table = _name()
+    recipe = {"kind": "aurora", "resource_id": "res", "table": "person"}
+    extracts.write({"df": _frame(3)}, "res", table, "Original", recipe)
+    with on_target.begin() as conn:
+        conn.execute(text(f'COMMENT ON TABLE public."{table}" IS NULL'))
+    assert extracts.info("res", table)["recipe"] == recipe
+    with pytest.raises(extracts.ExtractExists, match="cannot be verified"):
+        extracts.refresh("res", table, lambda _: {"dataset_id": "fresh"},
+                         lambda _: {"df": _frame(4)}, lambda _: None)
+    assert _count(on_target, table) == 3
+    identity = extracts.info("res", table)["identity_token"]
+    extracts.refresh("res", table, lambda _: {"dataset_id": "fresh"},
+                     lambda _: {"df": _frame(4)}, lambda _: None,
+                     replace_unverified=True, identity_token=identity)
+    extracts.refresh("res", table, lambda _: {"dataset_id": "fresh"},
+                     lambda _: {"df": _frame(5)}, lambda _: None)
+    assert _count(on_target, table) == 5
+
+
+def test_legacy_confirmation_does_not_authorize_a_different_table(on_target):
+    table = _name()
+    recipe = {"kind": "aurora", "resource_id": "res", "table": "person"}
+    extracts.write({"df": _frame(3)}, "res", table, "Original", recipe)
+    with on_target.begin() as conn:
+        conn.execute(text(f'COMMENT ON TABLE public."{table}" IS NULL'))
+    identity = extracts.info("res", table)["identity_token"]
+    with on_target.begin() as conn:
+        conn.execute(text(f'DROP TABLE public."{table}"'))
+        conn.execute(text(f'CREATE TABLE public."{table}" AS SELECT 42 AS keep'))
+    with pytest.raises(extracts.ExtractExists, match="changed"):
+        extracts.refresh("res", table, lambda _: {"dataset_id": "fresh"},
+                         lambda _: {"df": _frame(4)}, lambda _: None,
+                         replace_unverified=True, identity_token=identity)
+    with on_target.connect() as conn:
+        assert conn.execute(text(f'SELECT keep FROM public."{table}"')).scalar_one() == 42
+
+
+def test_legacy_confirmation_rechecks_registry_at_swap(on_target):
+    table = _name()
+    recipe = {"kind": "aurora", "resource_id": "res", "table": "person"}
+    extracts.write({"df": _frame(3)}, "res", table, "Original", recipe)
+    with on_target.begin() as conn:
+        conn.execute(text(f'COMMENT ON TABLE public."{table}" IS NULL'))
+    identity = extracts.info("res", table)["identity_token"]
+
+    def change_registry(_rows):
+        with on_target.begin() as conn:
+            conn.execute(text("UPDATE public._studio_extracts SET created_at = created_at + interval '1 second' "
+                              "WHERE table_name = :table"), {"table": table})
+
+    with pytest.raises(extracts.ExtractExists, match="changed"):
+        extracts.refresh("res", table, lambda _: {"dataset_id": "fresh"},
+                         lambda _: {"df": _frame(4)}, lambda _: None,
+                         progress=change_registry, replace_unverified=True, identity_token=identity)
+    assert _count(on_target, table) == 3
+
+
+def test_queued_confirmed_refresh_rejects_replaced_table(on_target, monkeypatch):
+    table = _name()
+    recipe = {"kind": "aurora", "resource_id": "res", "table": "person"}
+    extracts.write({"df": _frame(3)}, "res", table, "Original", recipe)
+    with on_target.begin() as conn:
+        conn.execute(text(f'COMMENT ON TABLE public."{table}" IS NULL'))
+    client = TestClient(main.app)
+    identity = client.get("/api/extracts/info", params={"resource_id": "res", "table": table}).json()["extract"]["identity_token"]
+    with on_target.begin() as conn:
+        conn.execute(text(f'DROP TABLE public."{table}"'))
+        conn.execute(text(f'CREATE TABLE public."{table}" AS SELECT 42 AS keep'))
+    source = datasets.open_dataset(_frame(4), "fresh", capped=False)
+    monkeypatch.setattr(main, "open_dataset", lambda _: source)
+    job = _wait(client, client.post("/api/data-jobs/refresh_extract", json={
+        "resource_id": "res", "table": table, "replace_unverified": True,
+        "identity_token": identity}).json())
+    assert job["status"] == "failed" and job["status_code"] == 409
+    with on_target.connect() as conn:
+        assert conn.execute(text(f'SELECT keep FROM public."{table}"')).scalar_one() == 42
 
 
 def _column_type(engine, table, column):

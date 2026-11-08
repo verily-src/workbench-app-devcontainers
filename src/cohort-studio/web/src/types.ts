@@ -152,7 +152,7 @@ export interface QueryResult {
   sampled?: boolean;
   cache?: { hit: boolean; as_of: string; ttl_seconds: number };
   columns?: ColumnProfile[];
-  charts: ChartResult[];
+  charts: (ChartResult | null)[];
   rows: { page: number; page_size: number; columns: string[]; data: unknown[][] };
 }
 
@@ -450,6 +450,8 @@ export interface ExtractInfo {
   refreshed_at: string;
   /** False when its inputs (for example an upload) can't be reopened. */
   refreshable: boolean;
+  identity_verified?: boolean;
+  identity_token?: string;
   /** The source recipe it was built from (join or SQL); Data Builder reopens it to edit. */
   recipe?: SourceRef | null;
   /** Scheduled refresh; null when off. Times are UTC ISO strings. */

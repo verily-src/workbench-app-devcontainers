@@ -34,6 +34,22 @@ def test_charts_move_and_duplicate(loaded_page):
     expect(card.get_by_role("button", name="Move earlier")).to_be_disabled()
 
 
+def test_removing_chart_keeps_remaining_result_when_query_fails(loaded_page):
+    page = loaded_page
+    expect(page.locator(".chart-card")).to_have_count(3)
+    second = _titles(page)[1]
+    data = page.evaluate("""() => JSON.stringify(window.__studioEcharts.getInstanceByDom(
+        document.querySelectorAll('.chart-card .chart-plot')[1]).getOption().series)""")
+    page.route("**/api/datasets/*/query", lambda r: r.fulfill(status=500, json={"detail": "test failure"}))
+    page.locator(".chart-card").first.get_by_title("Remove chart").click()
+    expect(page.get_by_role("alert")).to_contain_text("test failure")
+    expect(page.locator(".chart-card")).to_have_count(2)
+    assert _titles(page)[0] == second
+    remaining = page.evaluate("""() => JSON.stringify(window.__studioEcharts.getInstanceByDom(
+        document.querySelector('.chart-card .chart-plot')).getOption().series)""")
+    assert remaining == data
+
+
 def test_saved_cohort_applies_its_filters(loaded_page):
     page = loaded_page
     expect(page.get_by_label("Cohort filter name")).to_be_disabled()

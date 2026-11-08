@@ -636,8 +636,9 @@ export const api = {
 
   /** Rerun an extract's recipe, replace its rows, and reopen it. */
   refreshExtract: (kind: string, resourceId: string, table: string,
-                   onProgress?: (job: DataJob) => void) =>
-    dataJob<OpenResult>("refresh_extract", { kind, resource_id: resourceId, table },
+                   onProgress?: (job: DataJob) => void, identityToken?: string) =>
+    dataJob<OpenResult>("refresh_extract", { kind, resource_id: resourceId, table,
+      ...(identityToken ? { replace_unverified: true, identity_token: identityToken } : {}) },
       undefined, onProgress),
 
   /** Set or clear (every: "off") an extract's refresh schedule. */

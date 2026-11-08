@@ -1138,6 +1138,8 @@ Dashboard filters are held in the browser and applied to compatible columns by n
 
 Dashboard query admission waits up to 30 seconds for a slot, with at most eight waiting requests. Disconnects cancel waiting work. A full queue or an expired wait still returns 429.
 
+Extract writes reject sources known to be incomplete. Managed extract tables carry an identity marker; replacement checks the table and registry identity under locks. Older unmarked tables need a one-time manual confirmation tied to the observed identity before refresh. Scheduled refresh cannot grant this confirmation. The marker detects accidental replacement, not an actor able to copy table comments.
+
 The browser loads dashboard, chart, PDF, agent and settings modules on demand. The OMOP builder remains mounted after first use to retain its state. Optional browser notifications report completed data loads and joins only while an open app tab is hidden; permission and preference stay in the browser. This is not a service-worker push subscription.
 
 

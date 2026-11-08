@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ColumnProfile, DateUnit, Filter, ParamBinding, Parameter } from "../types";
+import { describeFilter } from "../filterText";
 
 interface Props {
   columns: ColumnProfile[];
@@ -10,6 +11,8 @@ interface Props {
   /** Move an active filter to dashboard level (every tab with this column). */
   onApplyToAll?: (f: Filter) => void;
   dashboardColumns?: Set<string>;
+  tabFilters?: Filter[];
+  onClearTabFilter?: (f: Filter) => void;
 }
 
 /** A binding with one bound changed (name "" removes it); undefined when empty. */
@@ -164,7 +167,8 @@ function DateFilter({ col, active, onChange, parameters = [] }: {
   );
 }
 
-export function FilterPanel({ columns, filters, onChange, parameters = [], onApplyToAll, dashboardColumns }: Props) {
+export function FilterPanel({ columns, filters, onChange, parameters = [], onApplyToAll, dashboardColumns,
+  tabFilters, onClearTabFilter }: Props) {
   const numberParams = parameters.filter((p) => p.kind === "number");
   const byColumn = new Map(filters.map((f) => [f.column, f]));
   // Groups the user opened stay open while their filter is edited or cleared.
@@ -270,6 +274,13 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
             {active && !dashboardColumns?.has(col.name) && onApplyToAll && <button type="button" className="link filter-apply-all"
               onClick={() => onApplyToAll(active)}>Apply to all tabs</button>}
             {active && dashboardColumns?.has(col.name) && <span className="filter-apply-all">Applied to all tabs</span>}
+            {dashboardColumns?.has(col.name) && tabFilters?.filter((f) => f.column === col.name && f.kind !== "any").map((f, index) => (
+              <div key={index} className="filter-apply-all">
+                <span>Also on this tab: {describeFilter(f)}</span>{" "}
+                <button type="button" className="link" aria-label={`Clear tab filter ${describeFilter(f)}`}
+                        onClick={() => onClearTabFilter?.(f)}>Clear</button>
+              </div>
+            ))}
           </details>
         );
       })}

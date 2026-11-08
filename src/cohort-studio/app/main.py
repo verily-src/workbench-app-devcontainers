@@ -837,6 +837,7 @@ def _open_source_impl(ref, temporary=False, profile=True):
             ds = datasets.get(base["dataset_id"])
             df, label = ds["df"], ds["source"]
             live, capped = ds.get("live_source"), ds.get("capped")
+            disk = ds.pop("disk_source", None)
         elif ref["kind"] == "group_summary":
             # Reopen the base recipe, then rerun the same full summary.
             base = _open_source(ref["base"], temporary=True, profile=False)
@@ -1123,6 +1124,8 @@ class RefreshExtractRequest(BaseModel):
     kind: Literal["aurora", "postgres"] = "aurora"
     resource_id: str
     table: str
+    replace_unverified: bool = False
+    identity_token: str | None = Field(default=None, max_length=64)
 
 
 def _after_table_write(resource_id: str) -> None:
@@ -1136,6 +1139,8 @@ def _after_table_write(resource_id: str) -> None:
 def _extract_error(exc: Exception) -> HTTPException:
     if isinstance(exc, HTTPException):
         return exc
+    if isinstance(exc, extracts.IncompleteSource):
+        return HTTPException(413, str(exc))
     if isinstance(exc, (extracts.ExtractExists, extracts.RefreshRunning)):
         return HTTPException(409, str(exc))
     if isinstance(exc, LookupError):
@@ -1183,14 +1188,16 @@ def run_extract(req: ExtractRequest) -> dict:
     return _open_extract_table(req.kind, req.resource_id, req.table, info)
 
 
-def _refresh_extract_rows(resource_id: str, table: str, scheduled: bool = False) -> dict:
+def _refresh_extract_rows(resource_id: str, table: str, scheduled: bool = False,
+                          replace_unverified: bool = False, identity_token: str | None = None) -> dict:
     """Rerun the recipe and replace the rows; the manual and scheduled paths share this."""
     def open_recipe(recipe):
         data_jobs.report("Rerunning the extract's source")
         return open_dataset(OpenRequest.model_validate({"source_ref": recipe}))
     try:
         info = extracts.refresh(resource_id, table, open_recipe, datasets.get,
-                                datasets.close_dataset, progress=_progress)
+                                datasets.close_dataset, progress=_progress,
+                                replace_unverified=replace_unverified, identity_token=identity_token)
     except Exception as exc:
         raise _extract_error(exc) from exc
     _after_table_write(resource_id)
@@ -1201,7 +1208,8 @@ def _refresh_extract_rows(resource_id: str, table: str, scheduled: bool = False)
 
 
 def run_refresh_extract(req: RefreshExtractRequest) -> dict:
-    info = _refresh_extract_rows(req.resource_id, req.table)
+    info = _refresh_extract_rows(req.resource_id, req.table, replace_unverified=req.replace_unverified,
+                                 identity_token=req.identity_token)
     data_jobs.report("Opening the extract")
     return _open_extract_table(req.kind, req.resource_id, req.table, info)
 

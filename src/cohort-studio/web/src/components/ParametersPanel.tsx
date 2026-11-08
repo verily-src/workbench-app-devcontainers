@@ -18,6 +18,7 @@ export function ParametersPanel({ parameters, onChange }: {
     onChange(parameters.map((p, i) => (i === index ? { ...p, value } : p)));
   return (
     <div className="parameters" role="group" aria-label="Parameters">
+      <p className="parameter-help">Create a value, then select it under Follows in a filter.</p>
       {parameters.map((p, i) => (
         <div key={p.name} className="parameter-row">
           <span className="parameter-name" title={`${p.kind} parameter`}>{p.name}</span>
@@ -39,7 +40,7 @@ export function ParametersPanel({ parameters, onChange }: {
         onChange([...parameters, { name: trimmed, kind, value }]);
         setName("");
       }}>
-        <input aria-label="New parameter name" placeholder="e.g. min_age" value={name} maxLength={40}
+        <input aria-label="New parameter name" placeholder={kind === "number" ? "e.g. min_age" : "e.g. index_date"} value={name} maxLength={40}
                onChange={(e) => setName(e.target.value)} />
         <select aria-label="New parameter type" value={kind} onChange={(e) => setKind(e.target.value as Parameter["kind"])}>
           <option value="number">Number</option>

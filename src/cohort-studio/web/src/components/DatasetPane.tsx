@@ -84,6 +84,7 @@ function ExtractBar({ dataset, onUpdate, onRefresh, onEdit }: {
          title={`Extract of ${info.rows.toLocaleString()} rows, refreshed ${refreshed.toLocaleString()}`}>
       <span className="extract-chip">Extract</span>
       <span>refreshed <time dateTime={info.refreshed_at}>{cacheAge(info.refreshed_at)}</time></span>
+      {info.identity_verified === false && <span role="status">Table identity unverified · confirm a manual refresh before scheduled refreshes can run</span>}
       <button type="button" className="quiet" disabled={!info.refreshable || dataset.extractRefreshing || !onRefresh}
               title={info.refreshable ? "Rerun the join and replace every row of this table"
                 : "This extract's inputs (for example an uploaded file) can't be reopened, so it can't be refreshed."}
@@ -289,7 +290,12 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
       if (i !== index) return [c];
       return changes ? [{ ...c, ...changes }] : [];
     });
-    onUpdate({ charts: next });
+    const dataChanged = changes && ["kind", "x", "y", "measure", "series"].some(
+      (key) => key in changes && JSON.stringify(changes[key as keyof ChartSpec]) !== JSON.stringify(charts[index][key as keyof ChartSpec]));
+    const chartResults = result && (!changes
+      ? result.charts.filter((_, i) => i !== index)
+      : dataChanged ? result.charts.map((r, i) => i === index ? null : r) : result.charts);
+    onUpdate({ charts: next, ...(result && chartResults ? { result: { ...result, charts: chartResults } } : {}) });
   };
 
   // A pending or failed query leaves the last result on screen under the new filters; don't label it with them.
@@ -628,7 +634,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
           <ChartCard
             key={`${spec.kind}-${spec.x}-${spec.y ?? ""}-${i}`}
             spec={spec}
-            result={result?.charts[i]}
+            result={result?.charts[i] ?? undefined}
             columnLabels={Object.fromEntries(dataset.columns.map((c) =>
               [c.name, c.label || c.name]))}
             palette={palette}

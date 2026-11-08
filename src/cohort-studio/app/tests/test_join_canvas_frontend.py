@@ -437,6 +437,9 @@ def test_extract_mode_writes_every_row_refreshes_and_save_reopens(page, app_url)
         _fulfill(route, {"job_id": "x2", "kind": "refresh_extract", "status": "complete",
                          "result": _extract_result("extract-2", 260_000, "2026-11-06T11:00:00+00:00")})
     page.route("**/api/data-jobs/refresh_extract", refresh)
+    page.route("**/api/extracts/info?**", lambda route: _fulfill(route, {"extract": {
+        **_extract_result("extract-1", 250_000, "2026-11-06T10:00:00+00:00")["extract"],
+        "identity_verified": True}}))
     page.goto(app_url)
     canvas = _open_canvas(page)
     canvas.get_by_role("button", name="Add person to canvas").click()

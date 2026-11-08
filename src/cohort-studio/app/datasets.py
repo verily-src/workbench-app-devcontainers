@@ -348,8 +348,10 @@ def _query(dataset_id: str, filters: list[dict], chart_specs: list[dict],
         if refresh:
             raise ValueError("Refresh is not available for a disk-backed source.")
         import disk_data
-        return disk_data.query(ds["disk_source"], filters, chart_specs,
-                               page, page_size, entity_column, sort=sort)
+        result = disk_data.query(ds["disk_source"], filters, chart_specs,
+                                 page, page_size, entity_column, sort=sort)
+        result["sampled"] = bool(result.get("sampled") or ds.get("capped"))
+        return result
 
     import agg_duck
     if agg_duck.should_use(full):

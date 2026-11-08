@@ -553,10 +553,10 @@ def full_reader_kind(ds: dict) -> str | None:
 
 
 def capped_inputs(inputs: list[dict], full: set[int] = frozenset()) -> list[str]:
-    """Sources of capped in-memory inputs, except those (by id) read in full."""
+    """Incomplete inputs, except those (by id) read in full from their source."""
     return list(dict.fromkeys(ds["source"] for ds in inputs
                               if ds.get("capped") and not ds.get("live_source")
-                              and not ds.get("disk_source") and id(ds) not in full))
+                              and id(ds) not in full))
 
 
 def _capped_inputs(p: dict, readers: bool = False) -> list[str]:

@@ -57,6 +57,29 @@ def test_apply_to_all_keeps_selected_filter_visible_and_editable(page: Page, app
     expect(page.locator(".hero .count")).to_have_text("10", timeout=10000)
 
 
+def test_dashboard_filter_exposes_existing_tab_filter(page: Page, app_url: str):
+    page.goto(app_url)
+    _upload(page, "labs.csv", LABS, 8)
+    group = page.locator(".filter-group", has_text="sex")
+    group.locator("summary").click()
+    group.get_by_label("M", exact=True).check()
+    expect(page.locator(".hero .count")).to_have_text("5", timeout=10000)
+    _upload(page, "people.csv", PEOPLE, 10)
+    group = page.locator(".filter-group", has_text="sex")
+    group.locator("summary").click()
+    group.get_by_label("F", exact=True).check()
+    group.get_by_role("button", name="Apply to all tabs").click()
+    _tab(page, "labs.csv")
+    group = page.locator(".filter-group", has_text="sex")
+    expect(group.get_by_label("F", exact=True)).to_be_checked()
+    expect(group.get_by_text("Also on this tab: sex: M")).to_be_visible()
+    expect(page.locator(".hero .count")).to_have_text("0", timeout=10000)
+    group.get_by_role("button", name="Clear tab filter sex: M").click()
+    expect(group.get_by_text("Also on this tab: sex: M")).to_have_count(0)
+    expect(group.get_by_label("F", exact=True)).to_be_checked()
+    expect(page.locator(".hero .count")).to_have_text("3", timeout=10000)
+
+
 def test_filter_applies_to_every_tab_with_the_column(page: Page, app_url: str):
     page.goto(app_url)
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)

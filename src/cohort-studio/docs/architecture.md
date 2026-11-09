@@ -249,6 +249,12 @@ uses the OMOP person gender concept. The canvas stores a live
 This creates a logical dataset source, not a database view. Concept search
 does not calculate per-concept person counts for this picker.
 
+Selected cohort features are checked against their required tables and columns;
+the dialog shows the match percentage and blocks queries when a required input is
+missing. Similar table names are matched only when required OMOP 5.4 columns
+are present and the match is unambiguous. Users review inferred names; saved
+cohort recipes pin the selected physical tables and reject mapping changes.
+
 `omop.py` detects a CDM and vocabulary schema on the selected Aurora resource,
 searches concepts, and compiles validated cohort specifications into
 parameterized SQL. Cohorts retain a validated `omop_cohort` source recipe with
@@ -1403,41 +1409,41 @@ The links below point to commit `395536d4`, so line numbers do not move when the
 
 | Diagram element | Implementation |
 | --- | --- |
-| Explore controls and results | [DatasetPane.tsx:118](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/components/DatasetPane.tsx#L118) |
-| Build joins and configure inputs | [JoinCanvas.tsx:204](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/components/JoinCanvas.tsx#L204) |
-| Send filters, charts and page from browser | [App.tsx:740](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/App.tsx#L740), [api.ts:506](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/api.ts#L506) |
-| Query and join request models | [main.py:263](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L263), [main.py:290](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L290) |
-| Dashboard query endpoint | [main.py:1494](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L1494) |
-| Join endpoint | [main.py:1025](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L1025) |
+| Explore controls and results | [DatasetPane.tsx:118](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/web/src/components/DatasetPane.tsx#L118) |
+| Build joins and configure inputs | [JoinCanvas.tsx:204](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/web/src/components/JoinCanvas.tsx#L204) |
+| Send filters, charts and page from browser | [App.tsx:740](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/web/src/App.tsx#L740), [api.ts:506](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/web/src/api.ts#L506) |
+| Query and join request models | [main.py:263](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L263), [main.py:290](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L290) |
+| Dashboard query endpoint | [main.py:1494](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L1494) |
+| Join endpoint | [main.py:1025](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L1025) |
 
 #### OMOP filtering
 
 | Diagram element | Implementation |
 | --- | --- |
-| Detect CDM and vocabulary schemas | [omop.py:175](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L175) |
-| Search concepts | [omop.py:350](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L350) |
-| Validate cohort criteria | [omop.py:440](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L440) |
-| Check required tables and vocabulary | [omop.py:515](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L515) |
-| Compile criteria, descendant expansion and person-level flags | [omop.py:574](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L574) |
-| Count and cumulative attrition | [omop.py:682](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L682) |
-| Cohort summary and live source | [omop.py:698](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L698), [omop.py:867](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L867) |
-| Count, summary and open endpoints | [main.py:2408](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L2408), [main.py:2418](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L2418), [main.py:2427](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L2427) |
+| Detect CDM and vocabulary schemas | [omop.py:175](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L175) |
+| Search concepts | [omop.py:350](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L350) |
+| Validate cohort criteria | [omop.py:440](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L440) |
+| Check required tables and vocabulary | [omop.py:515](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L515) |
+| Compile criteria, descendant expansion and person-level flags | [omop.py:574](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L574) |
+| Count and cumulative attrition | [omop.py:682](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L682) |
+| Cohort summary and live source | [omop.py:698](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L698), [omop.py:867](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/omop.py#L867) |
+| Count, summary and open endpoints | [main.py:2408](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L2408), [main.py:2418](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L2418), [main.py:2427](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L2427) |
 
 #### Query engines and joins
 
 | Diagram element | Implementation |
 | --- | --- |
-| Register dataset and source metadata | [datasets.py:53](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/datasets.py#L53) |
-| Dispatch by live, disk or loaded source | [datasets.py:333](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/datasets.py#L333) |
-| Live PostgreSQL dashboard query | [live_query.py:643](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/live_query.py#L643) |
-| Loaded-frame DuckDB threshold and query | [agg_duck.py:11](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/agg_duck.py#L11), [agg_duck.py:222](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/agg_duck.py#L222) |
-| Join validation and engine selection | [joins.py:397](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L397), [joins.py:943](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L943), [joins.py:1037](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L1037) |
-| Same-database PostgreSQL join | [joins.py:803](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L803) |
-| Cross-source readers, staging and join | [disk_data.py:698](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L698), [disk_data.py:776](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L776), [disk_data.py:904](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L904) |
-| S3 staging and disk-backed queries | [disk_data.py:1172](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L1172), [disk_data.py:1367](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L1367) |
-| BigQuery batch reader | [bq.py:244](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/bq.py#L244) |
-| Temporary DuckDB files and connections | [disk_data.py:153](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L153), [disk_data.py:173](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L173) |
-| Manual extracts and saved views | [extracts.py:320](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/extracts.py#L320), [views.py:72](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/views.py#L72) |
-| Scheduled refresh restriction | [main.py:1297](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L1297) |
+| Register dataset and source metadata | [datasets.py:53](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/datasets.py#L53) |
+| Dispatch by live, disk or loaded source | [datasets.py:333](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/datasets.py#L333) |
+| Live PostgreSQL dashboard query | [live_query.py:643](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/live_query.py#L643) |
+| Loaded-frame DuckDB threshold and query | [agg_duck.py:11](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/agg_duck.py#L11), [agg_duck.py:222](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/agg_duck.py#L222) |
+| Join validation and engine selection | [joins.py:397](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/joins.py#L397), [joins.py:943](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/joins.py#L943), [joins.py:1037](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/joins.py#L1037) |
+| Same-database PostgreSQL join | [joins.py:803](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/joins.py#L803) |
+| Cross-source readers, staging and join | [disk_data.py:698](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/disk_data.py#L698), [disk_data.py:776](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/disk_data.py#L776), [disk_data.py:904](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/disk_data.py#L904) |
+| S3 staging and disk-backed queries | [disk_data.py:1172](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/disk_data.py#L1172), [disk_data.py:1367](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/disk_data.py#L1367) |
+| BigQuery batch reader | [bq.py:244](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/bq.py#L244) |
+| Temporary DuckDB files and connections | [disk_data.py:153](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/disk_data.py#L153), [disk_data.py:173](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/disk_data.py#L173) |
+| Manual extracts and saved views | [extracts.py:320](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/extracts.py#L320), [views.py:72](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/views.py#L72) |
+| Scheduled refresh restriction | [main.py:1297](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/app/main.py#L1297) |
 
-The maintained reference is [architecture.md](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/docs/architecture.md).
+The maintained reference is [architecture.md](https://github.com/verily-src/workbench-app-devcontainers/blob/BENCH-10576-cohort-browser/src/cohort-studio/docs/architecture.md).

@@ -482,7 +482,13 @@ export interface OmopInfo {
                   default: boolean }[];
   vocab_schema?: string | null;
   version?: string | null;
+  table_mapping?: Record<string, string>;
+  ambiguous_tables?: Record<string, string[]>;
   tables?: { name: string; schema: string; domain: string; rows: number; approx: boolean }[];
+}
+export interface OmopCompatibility {
+  matched: number; total: number; percent: number; meets_threshold: boolean;
+  missing_tables: string[]; missing_columns: Record<string, string[]>; required_tables: string[];
 }
 export interface OmopConcept {
   concept_id: number;

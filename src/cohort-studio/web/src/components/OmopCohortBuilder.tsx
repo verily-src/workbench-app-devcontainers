@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { OmopConcept, OmopCount, OmopCriterion, OmopDomain, OmopInfo, OmopSpec, SourceRef } from "../types";
+import type { OmopCompatibility, OmopConcept, OmopCount, OmopCriterion, OmopDomain, OmopInfo, OmopSpec, SourceRef } from "../types";
 import "./OmopCohortBuilder.css";
 
 const DOMAINS: { value: OmopDomain; label: string }[] = [
@@ -45,6 +45,9 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
   const [count, setCount] = useState<OmopCount | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [compatibility, setCompatibility] = useState<OmopCompatibility | null>(null);
+  const [compatError, setCompatError] = useState("");
+  const [reviewedMapping, setReviewedMapping] = useState(false);
 
   useEffect(() => {
     let current = true;
@@ -74,9 +77,32 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
     ...(ageMin ? { age_min: number(ageMin) } : {}), ...(ageMax ? { age_max: number(ageMax) } : {}),
     ...(birthMin ? { year_of_birth_min: number(birthMin) } : {}), ...(birthMax ? { year_of_birth_max: number(birthMax) } : {}),
   }, require_observation: observation };
+  const specKey = JSON.stringify(spec);
+  const aliases = Object.entries(info?.table_mapping ?? {});
+  const needsReview = aliases.length > 0 && !reviewedMapping;
+  useEffect(() => {
+    if (!schema) return;
+    let current = true;
+    setReviewedMapping(false);
+    api.omopInfo(resourceId, schema).then((result) => { if (current) setInfo(result); })
+      .catch((e) => { if (current) setError((e as Error).message); });
+    return () => { current = false; };
+  }, [resourceId, schema]);
+  useEffect(() => {
+    if (!schema || demographicError) { setCompatibility(null); return; }
+    let current = true;
+    setCompatibility(null); setCompatError("");
+    const timer = window.setTimeout(() => {
+      api.omopCompatibility(resourceId, schema, JSON.parse(specKey) as OmopSpec)
+        .then((result) => { if (current) setCompatibility(result); })
+        .catch((e) => { if (current) setCompatError((e as Error).message); });
+    }, 200);
+    return () => { current = false; window.clearTimeout(timer); };
+  }, [resourceId, schema, specKey, demographicError]);
+  const incompatible = !compatibility || !compatibility.meets_threshold || compatibility.matched !== compatibility.total;
   useEffect(() => { setCount(null); }, [rules, observation, schema, gender, ageMin, ageMax, birthMin, birthMax]);
   const search = async () => {
-    if (!schema || !query.trim()) return;
+    if (!schema || !query.trim() || needsReview) return;
     setBusy("Searching…"); setError(""); setSearched(false);
     try { setResults((await api.omopConcepts(resourceId, schema, query.trim(), domain, standardOnly)).concepts); setSearched(true); }
     catch (e) { setError((e as Error).message); }
@@ -145,6 +171,18 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
             {(info.cdm_schemas ?? []).map((s) => <option key={s.cdm_schema} value={s.cdm_schema}>{s.cdm_schema}</option>)}
           </select></label>
         </div>
+        {aliases.length > 0 && <div><strong>Review matched table names</strong>
+          <ul>{aliases.map(([standard, actual]) => <li key={standard}>{standard} → {actual}</li>)}</ul>
+          <label className="omop-check"><input type="checkbox" checked={reviewedMapping} onChange={(e) => setReviewedMapping(e.target.checked)} /> I verified these tables contain the corresponding OMOP data</label>
+        </div>}
+        {Boolean(Object.keys(info.ambiguous_tables ?? {}).length) && <div>Multiple possible table matches were not selected:
+          <ul>{Object.entries(info.ambiguous_tables ?? {}).map(([name, candidates]) => <li key={name}>{name}: {candidates.join(", ")}</li>)}</ul>
+        </div>}
+        {compatibility && <div role="status">Selected features: {compatibility.matched} of {compatibility.total} required tables match ({compatibility.percent}%).
+          {compatibility.missing_tables.length > 0 && <p>Missing tables: {compatibility.missing_tables.join(", ")}.</p>}
+          {Object.entries(compatibility.missing_columns).map(([table, columns]) => <p key={table}>Missing columns in {table}: {columns.join(", ")}.</p>)}
+        </div>}
+        {compatError && <p role="alert">Could not check OMOP compatibility: {compatError}</p>}
         <label className="omop-check"><input type="checkbox" checked={observation} onChange={(e) => setObservation(e.target.checked)} /> Require an observation period</label>
         <h4>Demographics</h4>
         <div className="omop-fields">
@@ -186,7 +224,7 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
         </div>
         {domain !== "death" && <>
           <div className="omop-search"><label>Search concepts<input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void search(); } }} /></label>
-            <button type="button" disabled={!query.trim()} onClick={() => void search()}>Search</button></div>
+            <button type="button" disabled={!query.trim() || needsReview} onClick={() => void search()}>Search</button></div>
           <label className="omop-check"><input type="checkbox" checked={standardOnly} onChange={(e) => { setStandardOnly(e.target.checked); setResults([]); setSearched(false); }} /> Standard concepts only</label>
           {!standardOnly && <p>Nonstandard concepts may not be present in the domain's concept ID field.</p>}
           {results.length > 0 && <div className="omop-results" role="group" aria-label="Concept search results">{results.map((concept) => <label key={concept.concept_id} className="omop-check">
@@ -214,8 +252,8 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
         <button type="button" disabled={domain !== "death" && !selected.length || editing === null && rules.length >= 12 || ruleError || indexConflict} onClick={addRule}>{editing === null ? "Add criterion" : "Update criterion"}</button>
         {editing !== null && <button type="button" onClick={cancelEdit}>Cancel edit</button>}
         {(selected.length > 0 || editing !== null) && <p>{editing === null ? "Add the selected concepts as a criterion before continuing." : "Update or cancel the criterion before continuing."}</p>}
-        <div className="omop-actions"><button type="button" disabled={!schema || selected.length > 0 || editing !== null || demographicError} onClick={() => void countCohort()}>Count people</button>
-          <button type="button" className="primary" disabled={!schema || selected.length > 0 || editing !== null || demographicError} onClick={() => void add()}>Add to Data Builder</button></div>
+        <div className="omop-actions"><button type="button" disabled={!schema || selected.length > 0 || editing !== null || demographicError || incompatible || needsReview} onClick={() => void countCohort()}>Count people</button>
+          <button type="button" className="primary" disabled={!schema || selected.length > 0 || editing !== null || demographicError || incompatible || needsReview} onClick={() => void add()}>Add to Data Builder</button></div>
       </fieldset>}
     </section>
   </div>;

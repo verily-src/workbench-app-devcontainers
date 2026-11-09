@@ -869,9 +869,14 @@ def _open_source_impl(ref, temporary=False, profile=True):
             disk = out.get("disk_source")
         elif ref["kind"] == "omop_cohort":
             engine, info = _omop_cdm_for(ref["resource_id"], ref.get("cdm_schema"))
+            if ref.get("table_mapping") is not None:
+                info = omop.detect(engine, ref.get("cdm_schema"), ref["resource_id"])
+                if info is None:
+                    raise ValueError("The saved OMOP schema is no longer available.")
+            ref["table_mapping"] = omop.pin_table_mapping(info, ref["spec"], ref.get("table_mapping"))
             df, live = omop.open_cohort_source(
                 engine, info, ref["resource_id"], ref["spec"],
-                cdm_schema=ref.get("cdm_schema"))
+                cdm_schema=ref.get("cdm_schema"), table_mapping=ref["table_mapping"])
             capped = False
             schema_part = f"{ref['cdm_schema']} / " if ref.get("cdm_schema") else ""
             label = f"{ref['resource_id']} / {schema_part}{ref.get('name') or 'OMOP cohort'}"
@@ -2375,6 +2380,12 @@ class OmopSummaryRequest(BaseModel):
     def validate_spec(self):
         omop.parse_spec(self.spec)
         return self
+
+@app.post("/api/omop/{resource_id}/cohort/compatibility")
+def omop_compatibility(resource_id: str, req: OmopSpecRequest,
+                       cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+    _, info = _omop_cdm_for(resource_id, cdm_schema)
+    return omop.compatibility(info, req.root)
 
 @app.post("/api/omop/{resource_id}/cohort/agent")
 def omop_agent(resource_id: str, req: CohortAgentRequest, request: Request, response: Response,

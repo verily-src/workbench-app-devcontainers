@@ -12,6 +12,7 @@ from sqlalchemy import Engine, text
 
 import database as db
 import queries
+import omop_matching
 from cache import ttl_cache
 
 logger = logging.getLogger(__name__)
@@ -73,10 +74,10 @@ def _q(ident: str) -> str:
     return '"' + str(ident).replace('"', '""') + '"'
 
 def _cdm(info: dict, table: str) -> str:
-    return f"{_q(info['cdm_schema'])}.{_q(table)}"
+    return f"{_q(info['cdm_schema'])}.{_q(info.get('table_mapping', {}).get(table, table))}"
 
 def _voc(info: dict, table: str) -> str:
-    return f"{_q(info['vocab_schema'])}.{_q(table)}"
+    return f"{_q(info['vocab_schema'])}.{_q(info.get('table_mapping', {}).get(table, table))}"
 
 def _error(e: Exception, timeout_ms: int) -> Exception:
     orig = getattr(e, "orig", None) or e
@@ -189,13 +190,18 @@ def detect(engine: Engine, schema: str | None = None,
         rows = conn.execute(text(
             "SELECT table_schema, table_name, column_name "
             "FROM information_schema.columns "
-            "WHERE table_name = ANY(:names) "
-            "AND table_schema NOT IN ('pg_catalog', 'information_schema') "
-            "ORDER BY table_schema, table_name, ordinal_position"),
-            {"names": list(KNOWN_TABLES)}).fetchall()
-        schemas: dict[str, dict[str, list[str]]] = {}
+            "WHERE table_schema NOT IN ('pg_catalog', 'information_schema') "
+            "AND table_schema NOT LIKE 'pg\\_%' ESCAPE '\\' "
+            "ORDER BY table_schema, table_name, ordinal_position")).fetchall()
+        physical_schemas: dict[str, dict[str, list[str]]] = {}
         for name, table, column in rows:
-            schemas.setdefault(name, {}).setdefault(table, []).append(column)
+            physical_schemas.setdefault(name, {}).setdefault(table, []).append(column)
+        schemas: dict[str, dict[str, list[str]]] = {}
+        mappings, ambiguous = {}, {}
+        for name, physical in physical_schemas.items():
+            mapping, conflicts = omop_matching.resolve(physical, set(KNOWN_TABLES))
+            mappings[name], ambiguous[name] = mapping, conflicts
+            schemas[name] = {logical: physical[actual] for logical, actual in mapping.items()}
         domain_tables = {d["table"] for d in DOMAINS.values()}
         cdm = sorted(s for s, t in schemas.items()
                      if {"person", "observation_period"} <= set(t)
@@ -210,7 +216,7 @@ def detect(engine: Engine, schema: str | None = None,
         # A CDM schema without its own vocabulary borrows a vocabulary-only
         # schema first, so it never silently uses another CDM's vocabulary.
         fallback = sorted(vocab, key=lambda s: (s in cdm, s))[0] if vocab else None
-        persons = {s: _row_counts(conn, s, ["person"])["person"] for s in cdm}
+        persons = {s: _row_counts(conn, s, [mappings[s]["person"]])[mappings[s]["person"]] for s in cdm}
         default = sorted(cdm, key=lambda s: (-(persons[s][0] or 0), -len(schemas[s]), s))[0]
         preferred = _env_default(resource_id)
         if preferred in cdm:
@@ -227,9 +233,13 @@ def detect(engine: Engine, schema: str | None = None,
         columns = {t: c for t, c in schemas[cdm_schema].items() if t not in VOCAB_TABLES}
         if vocab_schema:
             columns |= {t: c for t, c in schemas[vocab_schema].items() if t in VOCAB_TABLES}
+        table_mapping = {t: mappings[cdm_schema][t] for t in columns if t not in VOCAB_TABLES}
+        if vocab_schema:
+            table_mapping.update({t: mappings[vocab_schema][t] for t in columns if t in VOCAB_TABLES})
         info = {"cdm": True, "cdm_schema": cdm_schema, "vocab_schema": vocab_schema,
                 "columns": columns, "default_cdm_schema": default,
-                "cdm_schemas": cdm_schemas}
+                "cdm_schemas": cdm_schemas, "table_mapping": table_mapping,
+                "ambiguous_tables": ambiguous[cdm_schema] | (ambiguous.get(vocab_schema, {}) if vocab_schema else {})}
         info["version"] = _version(conn, info)
         by_schema: dict[str, list[str]] = {}
         for t in columns:
@@ -237,9 +247,9 @@ def detect(engine: Engine, schema: str | None = None,
                                  []).append(t)
         tables = []
         for name, names in by_schema.items():
-            counts = _row_counts(conn, name, names)
+            counts = _row_counts(conn, name, [table_mapping[t] for t in names])
             tables += [{"name": t, "schema": name, "domain": KNOWN_TABLES[t],
-                        "rows": counts[t][0], "approx": counts[t][1]} for t in names]
+                        "rows": counts[table_mapping[t]][0], "approx": counts[table_mapping[t]][1]} for t in names]
     order = list(KNOWN_TABLES)
     info["tables"] = sorted(tables, key=lambda t: order.index(t["name"]))
     return info
@@ -251,6 +261,8 @@ def public(info: dict | None) -> dict:
     out = {k: info[k] for k in ("cdm", "cdm_schema", "vocab_schema", "version", "tables")}
     out["default_cdm_schema"] = info.get("default_cdm_schema", info["cdm_schema"])
     out["cdm_schemas"] = schema_summary(info)
+    out["table_mapping"] = {k: v for k, v in info.get("table_mapping", {}).items() if k != v}
+    out["ambiguous_tables"] = info.get("ambiguous_tables", {})
     return out
 
 def schema_summary(info: dict | None) -> list[dict]:
@@ -527,6 +539,47 @@ def _check_tables(info: dict, spec: dict):
                                             for c in spec["criteria"]):
         raise ValueError("Descendant expansion needs the concept_ancestor table; "
                          "set descendants to false.")
+    report = compatibility(info, spec)
+    if report["missing_columns"]:
+        detail = "; ".join(f"{table}: {', '.join(cols)}" for table, cols in report["missing_columns"].items())
+        raise ValueError(f"The selected OMOP features need missing columns: {detail}.")
+
+
+def compatibility(info: dict, spec: dict) -> dict:
+    spec = parse_spec(spec)
+    needed = {"person": {"person_id", "gender_concept_id", "race_concept_id", "ethnicity_concept_id", "year_of_birth"}}
+    if spec["require_observation"] or "observation_period" in info["columns"]:
+        needed["observation_period"] = {"person_id", "observation_period_start_date", "observation_period_end_date"}
+    for criterion in spec["criteria"]:
+        domain = DOMAINS[criterion["domain"]]
+        columns = needed.setdefault(domain["table"], {"person_id", domain["date"]})
+        if criterion["concept_ids"]:
+            columns.add(domain["concept"])
+            if info.get("vocab_schema"):
+                needed["concept"] = {"concept_id", "concept_name"}
+            if criterion["descendants"]:
+                needed["concept_ancestor"] = {"ancestor_concept_id", "descendant_concept_id"}
+        if criterion["value_min"] is not None or criterion["value_max"] is not None:
+            columns.add(domain["value"])
+    missing_tables = sorted(t for t in needed if t not in info["columns"])
+    missing_columns = {t: sorted(cols - set(info["columns"][t])) for t, cols in needed.items()
+                       if t in info["columns"] and cols - set(info["columns"][t])}
+    matched = len(needed) - len(missing_tables) - len(missing_columns)
+    return {"matched": matched, "total": len(needed), "percent": round(100 * matched / len(needed), 1),
+            "meets_threshold": matched * 5 >= len(needed) * 4,
+            "missing_tables": missing_tables, "missing_columns": missing_columns,
+            "required_tables": sorted(needed)}
+
+
+def pin_table_mapping(info: dict, spec: dict, previous: dict | None = None) -> dict[str, str]:
+    report = compatibility(info, spec)
+    current = {table: f"{info['vocab_schema'] if table in VOCAB_TABLES else info['cdm_schema']}."
+                      f"{info.get('table_mapping', {}).get(table, table)}"
+               for table in report["required_tables"] if table in info["columns"]}
+    if previous is not None and previous != current:
+        raise ValueError("OMOP table mappings have changed since this cohort was saved. "
+                         "Review the dataset and rebuild the cohort.")
+    return current
 
 def _concept_names(conn, info: dict, ids: list[int]) -> dict[int, str]:
     if not ids or not info.get("vocab_schema"):
@@ -869,7 +922,8 @@ def open_cohort(engine: Engine, info: dict, spec: dict | None,
 def open_cohort_source(engine: Engine, info: dict, resource_id: str,
                        spec: dict | None,
                        cap: int = queries.ROW_CAP,
-                       cdm_schema: str | None = None) -> tuple[pd.DataFrame, dict]:
+                       cdm_schema: str | None = None,
+                       table_mapping: dict | None = None) -> tuple[pd.DataFrame, dict]:
     df, sql, params, rename = _cohort_data(engine, info, spec, cap)
     physical_names = {logical: physical for physical, logical in rename.items()}
     live_source = {"resource_id": resource_id, "sql": sql, "params": params,
@@ -878,6 +932,8 @@ def open_cohort_source(engine: Engine, info: dict, resource_id: str,
     import disk_data
     source_ref = {"kind": "omop_cohort", "resource_id": resource_id,
                   "spec": parse_spec(spec), "membership_mode": "live"}
+    if table_mapping is not None:
+        source_ref["table_mapping"] = table_mapping
     if cdm_schema:
         source_ref["cdm_schema"] = cdm_schema
     live_source = disk_data._compiled_omop_query(source_ref, live_source)
@@ -910,7 +966,7 @@ def open_domain(engine: Engine, info: dict, table: str, spec: dict | None = None
     origin = None
     if spec is None and not enrich and resource_id:
         origin = {"kind": "aurora", "resource_id": resource_id,
-                  "schema": info["cdm_schema"], "table": table}
+                  "schema": info["cdm_schema"], "table": info.get("table_mapping", {}).get(table, table)}
     return df, origin
 
 def tables_used(info: dict, spec: dict | None) -> list[str]:
@@ -924,6 +980,6 @@ def tables_used(info: dict, spec: dict | None) -> list[str]:
         vocab_names = ["concept"]
         if any(c["concept_ids"] and c["descendants"] for c in spec["criteria"]):
             vocab_names.append("concept_ancestor")
-        return ([f"{info['cdm_schema']}.{t}" for t in dict.fromkeys(names)]
-                + [f"{info['vocab_schema']}.{t}" for t in vocab_names])
-    return [f"{info['cdm_schema']}.{t}" for t in dict.fromkeys(names)]
+        return ([f"{info['cdm_schema']}.{info.get('table_mapping', {}).get(t, t)}" for t in dict.fromkeys(names)]
+                + [f"{info['vocab_schema']}.{info.get('table_mapping', {}).get(t, t)}" for t in vocab_names])
+    return [f"{info['cdm_schema']}.{info.get('table_mapping', {}).get(t, t)}" for t in dict.fromkeys(names)]

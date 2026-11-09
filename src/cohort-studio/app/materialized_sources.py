@@ -123,6 +123,7 @@ def _collect_relations(recipe: dict, resource_id: str,
             info = omop.detect(conn.engine, node.get("cdm_schema"), resource_id)
             if info is None:
                 raise ValueError("OMOP source was not found.")
+            omop.pin_table_mapping(info, node["spec"], node.get("table_mapping"))
             compiled = omop._prepare(conn, info, node["spec"])
             query, _ = omop._cohort_select(info, compiled)
             statement = parse(query, read="postgres")[0]

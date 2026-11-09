@@ -126,6 +126,7 @@ class OmopCohortSource(BaseModel):
     membership_mode: Literal["live"] = "live"
     # CDM schema of a database with several; omitted means the default schema.
     cdm_schema: str | None = Field(default=None, min_length=1, max_length=63)
+    table_mapping: dict[str, str] | None = Field(default=None, max_length=40)
     name: str | None = Field(default=None, min_length=1, max_length=128)
     grain: Definition | None = None
     settings: list[ColumnSetting] = Field(default_factory=list, max_length=200)

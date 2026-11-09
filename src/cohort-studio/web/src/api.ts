@@ -490,8 +490,11 @@ export const api = {
       `/api/tables?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
       + (refresh ? "&refresh=true" : "")),
 
-  omopInfo: (resourceId: string) =>
-    request<OmopInfo>(`/api/omop/${encodeURIComponent(resourceId)}`),
+  omopInfo: (resourceId: string, schema?: string) =>
+    request<OmopInfo>(`/api/omop/${encodeURIComponent(resourceId)}${schema ? `?${new URLSearchParams({ cdm_schema: schema })}` : ""}`),
+
+  omopCompatibility: (resourceId: string, schema: string, spec: OmopSpec) =>
+    request<import("./types").OmopCompatibility>(`/api/omop/${encodeURIComponent(resourceId)}/cohort/compatibility?${new URLSearchParams({ cdm_schema: schema })}`, post(spec)),
 
   omopConcepts: (resourceId: string, schema: string, q: string, domain: string, standardOnly = true) => {
     const params = new URLSearchParams({ q, domain, cdm_schema: schema, persons: "false", standard_only: String(standardOnly) });

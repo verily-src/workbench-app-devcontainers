@@ -198,6 +198,7 @@ export type SourceRef = ({ grain?: GrainDefinition } & (
       settings?: ColumnSetting[] }
   | { kind: "omop_cohort"; resource_id: string; spec: OmopSpec;
       membership_mode: "live"; name?: string; settings?: ColumnSetting[];
+      table_mapping?: Record<string, string>;
       /** CDM schema when the database has several; omitted = default schema. */
       cdm_schema?: string }
   | { kind: "sql"; resource_id: string; sql: string; name?: string }
@@ -489,6 +490,10 @@ export interface OmopInfo {
 export interface OmopCompatibility {
   matched: number; total: number; percent: number; meets_threshold: boolean;
   missing_tables: string[]; missing_columns: Record<string, string[]>; required_tables: string[];
+}
+export interface OmopRelations {
+  start: string;
+  relations: { left: string; right: string; operation: string; condition: string; detail: string }[];
 }
 export interface OmopConcept {
   concept_id: number;

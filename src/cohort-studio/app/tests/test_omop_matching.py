@@ -68,3 +68,23 @@ def test_compatibility_uses_only_selected_features_and_checks_required_columns(i
     assert report["missing_columns"]["condition_occurrence"] == ["condition_concept_id", "condition_start_date"]
     with pytest.raises(ValueError, match="missing columns"):
         omop._check_tables(broken, omop.parse_spec({"criteria": [{"domain": "condition", "concept_ids": [192671]}]}))
+
+
+def test_relations_follow_cohort_criteria_and_saved_legacy_mapping(info):
+    spec = {"criteria": [
+        {"domain": "condition", "concept_ids": [192671]},
+        {"domain": "measurement", "concept_ids": [3006322], "descendants": False,
+         "exclude": True, "index_relation": "after"}]}
+    graph = omop.cohort_relations(info, spec)
+    assert graph["start"] == "cdm.person"
+    rows = graph["relations"]
+    assert any(r["operation"] == "LEFT JOIN" and "condition_occurrence" in r["right"] for r in rows)
+    assert any(r["operation"] == "EXISTS" and "observation_period" in r["right"] for r in rows)
+    assert sum(r["operation"] == "IN subquery" for r in rows) == 1
+    assert any(r["operation"] == "INNER JOIN" and "after index" in r["condition"] for r in rows)
+    assert any("Exclude;" in r["detail"] and "measurement" in r["right"] for r in rows)
+    assert sum(r["operation"] == "LEFT JOIN" and r["right"].endswith(".concept") for r in rows) == 3
+    current = omop.pin_table_mapping(info, {})
+    assert "concept" in current
+    legacy = {key: value for key, value in current.items() if key != "concept"}
+    assert omop.pin_table_mapping(info, {}, legacy) == current

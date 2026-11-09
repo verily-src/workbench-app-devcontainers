@@ -254,6 +254,10 @@ the dialog shows the match percentage and blocks queries when a required input i
 missing. Similar table names are matched only when required OMOP 5.4 columns
 are present and the match is unambiguous. Users review inferred names; saved
 cohort recipes pin the selected physical tables and reject mapping changes.
+Selecting an OMOP cohort card in Data Builder shows its read-only internal
+relations, including grouped event joins, observation checks, descendant
+subqueries, timing joins and vocabulary lookups. The cohort stays one logical
+source in the editable join canvas.
 
 `omop.py` detects a CDM and vocabulary schema on the selected Aurora resource,
 searches concepts, and compiles validated cohort specifications into
@@ -1306,6 +1310,7 @@ flowchart TD
   Open --> DB
   DB --> UI["Explore: charts, filters and results"]
   Open --> Recipe["Recipe stores resource, schema, specification and table mappings"]
+  Open --> Relations["Data Builder displays read-only cohort relations"]
   Recipe -->|"Reopen"| Check["Reject changed table mappings"]
   Check --> DB
 ```

@@ -15,6 +15,7 @@ import { JobProgress } from "./DataJobs";
 import { SqlEditor } from "./SqlEditor";
 import { OpenTableCard } from "./OpenTableCard";
 import { OmopCohortBuilder } from "./OmopCohortBuilder";
+import { OmopRelations } from "./OmopRelations";
 import type { FilterRow } from "./joinParts";
 import {
   ARROW, FilterEditor, KIND_LABEL, Venn, addsColumns, colKind, directAurora, filterProblem,
@@ -1162,7 +1163,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
           </button>
         </aside>
 
-        <div className="jc-main">
+        <div className={`jc-main${selectedNode?.dataset?.sourceRef?.kind === "omop_cohort" ? " omop-selected" : ""}`}>
           {/* Canvas */}
           <section className="jc-canvas-wrap" aria-label="Join canvas">
             <div className="jc-canvas-head">
@@ -1271,6 +1272,9 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
               )}
             </div>
           </section>
+
+          {selectedNode?.dataset?.sourceRef?.kind === "omop_cohort" &&
+            <OmopRelations key={selectedNode.id} source={selectedNode.dataset.sourceRef} />}
 
           {/* Status bar: validation, estimates, consent */}
           <div className="jc-statusbar" aria-label="Join status">

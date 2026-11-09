@@ -44,6 +44,15 @@ def test_omop_cohort_builds_live_dataset_and_joins(page):
     expect(dialog).to_be_hidden(timeout=30000)
     expect(canvas.locator(".jc-node")).to_have_count(1)
     expect(canvas.locator(".jc-node").first).to_contain_text("GI bleed cohort")
+    relations = canvas.get_by_role("region", name="OMOP cohort relations")
+    expect(relations).to_contain_text("cdm.person", timeout=20000)
+    expect(relations).to_contain_text("cdm.condition_occurrence")
+    expect(relations).to_contain_text("cdm.observation_period")
+    expect(relations).to_contain_text("cdm.concept_ancestor")
+    expect(relations).to_contain_text("LEFT JOIN")
+    expect(relations).to_contain_text("IN subquery")
+    assert relations.bounding_box()["height"] >= 150
+    page.screenshot(path="/private/tmp/cohort-omop-relations.png")
 
     canvas.get_by_role("button", name="Add genetics_demo.samples to canvas").click()
     expect(canvas.locator(".jc-node")).to_have_count(2, timeout=20000)
@@ -100,6 +109,8 @@ def test_omop_exclusion_builds_expected_population(page):
     expect(dialog.get_by_role("status").filter(has_text="60 people")).to_be_visible(timeout=20000)
     dialog.get_by_role("button", name="Add to Data Builder").click()
     expect(dialog).to_be_hidden(timeout=30000)
+    relations = canvas.get_by_role("region", name="OMOP cohort relations")
+    expect(relations).to_contain_text("Exclude; events grouped by person", timeout=20000)
     with page.expect_response(lambda response: "/api/data-jobs/" in response.url
                               and response.request.method == "GET"
                               and response.json().get("kind") == "join"
@@ -198,6 +209,9 @@ def test_renamed_omop_tables_are_reviewed_and_saved_mapping_is_checked(page):
         expect(dialog.get_by_text(re.compile(r"Selected features: .*100%"))).to_be_visible()
         dialog.get_by_role("button", name="Add to Data Builder").click()
         expect(dialog).to_be_hidden(timeout=30000)
+        relations = canvas.get_by_role("region", name="OMOP cohort relations")
+        expect(relations).to_contain_text(f"{schema}.persons", timeout=20000)
+        expect(relations).to_contain_text(f"{schema}.condition_occurence")
         with page.expect_response(lambda response: "/api/data-jobs/" in response.url
                                   and response.request.method == "GET"
                                   and response.json().get("kind") == "join"

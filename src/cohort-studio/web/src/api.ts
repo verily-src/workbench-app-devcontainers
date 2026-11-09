@@ -496,6 +496,9 @@ export const api = {
   omopCompatibility: (resourceId: string, schema: string, spec: OmopSpec) =>
     request<import("./types").OmopCompatibility>(`/api/omop/${encodeURIComponent(resourceId)}/cohort/compatibility?${new URLSearchParams({ cdm_schema: schema })}`, post(spec)),
 
+  omopRelations: (ref: Extract<SourceRef, { kind: "omop_cohort" }>) =>
+    request<import("./types").OmopRelations>(`/api/omop/${encodeURIComponent(ref.resource_id)}/cohort/relations`, post(ref)),
+
   omopConcepts: (resourceId: string, schema: string, q: string, domain: string, standardOnly = true) => {
     const params = new URLSearchParams({ q, domain, cdm_schema: schema, persons: "false", standard_only: String(standardOnly) });
     return request<{ concepts: OmopConcept[] }>(`/api/omop/${encodeURIComponent(resourceId)}/concepts?${params}`);

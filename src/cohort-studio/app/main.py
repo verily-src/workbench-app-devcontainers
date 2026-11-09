@@ -63,7 +63,7 @@ import plink_api
 import join_discovery
 import sql_source
 import sql_completions
-from source_models import (ColumnSetting, DerivedSpec, Filter, JoinOutput, Parameter, ParamBinding,
+from source_models import (ColumnSetting, DerivedSpec, Filter, JoinOutput, OmopCohortSource, Parameter, ParamBinding,
                            SourceFilter, SourceRef, source_dict)
 
 logging.basicConfig(level=logging.INFO, force=True)
@@ -2386,6 +2386,21 @@ def omop_compatibility(resource_id: str, req: OmopSpecRequest,
                        cdm_schema: str | None = _CDM_SCHEMA_QUERY):
     _, info = _omop_cdm_for(resource_id, cdm_schema)
     return omop.compatibility(info, req.root)
+
+@app.post("/api/omop/{resource_id}/cohort/relations")
+def omop_relations(resource_id: str, req: OmopCohortSource):
+    if req.resource_id != resource_id:
+        raise HTTPException(400, "The cohort and resource do not match.")
+    engine, info = _omop_cdm_for(resource_id, req.cdm_schema)
+    try:
+        if req.table_mapping is not None:
+            info = omop.detect(engine, req.cdm_schema, resource_id)
+            if info is None:
+                raise ValueError("The saved OMOP schema is no longer available.")
+            omop.pin_table_mapping(info, req.spec, req.table_mapping)
+        return omop.cohort_relations(info, req.spec)
+    except Exception as e:
+        raise _omop_error(e)
 
 @app.post("/api/omop/{resource_id}/cohort/agent")
 def omop_agent(resource_id: str, req: CohortAgentRequest, request: Request, response: Response,

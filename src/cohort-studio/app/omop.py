@@ -550,6 +550,8 @@ def _check_tables(info: dict, spec: dict):
 def compatibility(info: dict, spec: dict) -> dict:
     spec = parse_spec(spec)
     needed = {"person": {"person_id", "gender_concept_id", "race_concept_id", "ethnicity_concept_id", "year_of_birth"}}
+    if info.get("vocab_schema"):
+        needed["concept"] = {"concept_id", "concept_name"}
     if spec["require_observation"] or "observation_period" in info["columns"]:
         needed["observation_period"] = {"person_id", "observation_period_start_date", "observation_period_end_date"}
     for criterion in spec["criteria"]:
@@ -578,10 +580,50 @@ def pin_table_mapping(info: dict, spec: dict, previous: dict | None = None) -> d
     current = {table: f"{info['vocab_schema'] if table in VOCAB_TABLES else info['cdm_schema']}."
                       f"{info.get('table_mapping', {}).get(table, table)}"
                for table in report["required_tables"] if table in info["columns"]}
-    if previous is not None and previous != current:
+    if previous is not None and any(current.get(table) != physical for table, physical in previous.items()):
         raise ValueError("OMOP table mappings have changed since this cohort was saved. "
                          "Review the dataset and rebuild the cohort.")
     return current
+
+
+def cohort_relations(info: dict, spec: dict | None) -> dict:
+    spec = parse_spec(spec)
+    _check_tables(info, spec)
+    mapping = info.get("table_mapping", {})
+    def table(name: str) -> str:
+        schema = info["vocab_schema"] if name in VOCAB_TABLES else info["cdm_schema"]
+        return f"{schema}.{mapping.get(name, name)}"
+
+    person = table("person")
+    links = []
+    def add(left, right, operation, condition, detail=""):
+        links.append({"left": left, "right": right, "operation": operation,
+                      "condition": condition, "detail": detail})
+
+    if "observation_period" in info["columns"]:
+        add(person, table("observation_period"), "LEFT JOIN", "person_id = person_id",
+            "Observation periods grouped by person; " + ("required" if spec["require_observation"] else "optional"))
+    first = next((i for i, criterion in enumerate(spec["criteria"]) if not criterion["exclude"]), None)
+    for i, criterion in enumerate(spec["criteria"]):
+        domain = DOMAINS[criterion["domain"]]
+        event = table(domain["table"])
+        label = f"Criterion {i + 1}: {event}"
+        add(person, label, "LEFT JOIN", "person_id = person_id",
+            f"{'Exclude' if criterion['exclude'] else 'Include'}; events grouped by person; minimum {criterion['min_count']}")
+        if spec["require_observation"] and criterion["domain"] != "death":
+            add(label, table("observation_period"), "EXISTS", f"person_id = person_id; {domain['date']} within observation period")
+        if criterion["concept_ids"] and criterion["descendants"]:
+            add(label, table("concept_ancestor"), "IN subquery", f"{domain['concept']} = descendant_concept_id",
+                "Includes selected concepts and descendants")
+        if criterion["index_relation"]:
+            anchor = f"Criterion {first + 1}: {table(DOMAINS[spec['criteria'][first]['domain']]['table'])}" if first is not None else table("observation_period")
+            add(label, anchor, "INNER JOIN", f"person_id = person_id; {domain['date']} {criterion['index_relation']} index date")
+    if info.get("vocab_schema"):
+        for field in ("gender", "race", "ethnicity"):
+            add(person, table("concept"), "LEFT JOIN", f"{field}_concept_id = concept_id", f"{field.capitalize()} label")
+        if any(c["concept_ids"] for c in spec["criteria"]):
+            add("Selected concepts", table("concept"), "LOOKUP", "concept_id", "Criterion labels")
+    return {"start": person, "relations": links}
 
 def _concept_names(conn, info: dict, ids: list[int]) -> dict[int, str]:
     if not ids or not info.get("vocab_schema"):

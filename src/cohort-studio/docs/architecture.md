@@ -137,7 +137,7 @@ keys take precedence; legacy local keys remain readable until an explicit,
 read-back-verified migration removes them. Public settings expose key-presence
 booleans and source labels only. Settings can replace or remove the Jev token;
 saving does not test the provider connection. Join discovery reports whether
-Jev was used or unavailable. See [AI access and key storage](AWS_AI_ACCESS.md).
+Jev was used or unavailable.
 AgentCore identity and network requirements remain open.
 
 Athena resources use `STUDIO_ATHENA_RESOURCES` server configuration. Each

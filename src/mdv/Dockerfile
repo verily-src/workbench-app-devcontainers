@@ -16,7 +16,7 @@ USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         sudo gnupg curl ca-certificates lsb-release apt-transport-https \
-        fuse3 \
+        fuse3 nginx-light gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # trixie renamed the `fuse` package to `fuse3`. Workbench's post-startup.sh runs
@@ -40,5 +40,15 @@ RUN chmod +x /usr/local/bin/apt-key
 RUN echo 'pn ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/pn \
     && chmod 0440 /etc/sudoers.d/pn
 
+# Same-origin nginx proxy that adds Document-Isolation-Policy so
+# SharedArrayBuffer/WASM threads work (BENCH-9901). Runs MDV's own gunicorn
+# on loopback:5056 and proxies 5055 (Workbench's expected port) through
+# nginx instead. nginx runs as `pn`, so its pid/temp paths live under /tmp.
+COPY nginx.conf.template /opt/mdv-nginx/nginx.conf.template
+COPY start.sh /opt/mdv-nginx/start.sh
+RUN chmod +x /opt/mdv-nginx/start.sh
+
 # Restore the app's runtime user (image default).
 USER pn
+
+CMD ["/opt/mdv-nginx/start.sh"]

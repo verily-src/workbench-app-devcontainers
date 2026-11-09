@@ -9,13 +9,26 @@ MDV is not a single-container app. It ships as two coupled services:
 
 | Service  | Image               | Role                                                                 |
 | -------- | ------------------- | ------------------------------------------------------------------- |
-| `app`    | `mdvadmin/mdv:stable` | Flask + gunicorn backend serving the built React frontend on **5055**. Runs as user **`pn`**. |
+| `app`    | `mdvadmin/mdv:stable` | nginx on **5055** in front of Flask + gunicorn (loopback `5056`), serving the built React frontend. Runs as user **`pn`**. |
 | `mdv_db` | `postgres:16`       | Stores project metadata, including filesystem paths to each project. |
 
 The `app` service is the Workbench primary container (`container_name:
 application-server`) and joins the external `app-network`. `mdv_db` sits on a
 **private** `mdv-internal` network with no host port exposed; only `app` can
 reach it. `app` waits for the database healthcheck before starting.
+
+### nginx and `Document-Isolation-Policy`
+
+MDV needs `SharedArrayBuffer`, which browsers only expose on a cross-origin
+isolated document. Workbench embeds custom apps in an iframe inside a console
+page that isn't itself isolated, so MDV's own `COOP`/`COEP` headers (and its
+client-side `coi-serviceworker` fallback, which forces a jarring reload on
+first visit — costly for large datasets) aren't enough on their own. [`start.sh`](start.sh)
+runs MDV's gunicorn on loopback `127.0.0.1:5056` and puts nginx
+([`nginx.conf.template`](nginx.conf.template)) in front of it on `5055`, adding
+`Document-Isolation-Policy: isolate-and-require-corp` on every response —
+this isolates the document without requiring the embedding frame chain to be
+isolated too, and without any reload. See BENCH-9901.
 
 ## Data & persistence
 

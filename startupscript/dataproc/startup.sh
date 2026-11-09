@@ -44,6 +44,14 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+# Dataproc 2.2.85+ images have no default conda channel, so use conda-forge.
+# Runs before the checks below so it applies to every node on every boot.
+readonly CONDA_BIN="/opt/conda/miniconda3/bin/conda"
+if [[ -x "${CONDA_BIN}" ]]; then
+  "${CONDA_BIN}" config --system --remove channels defaults 2>/dev/null || true
+  "${CONDA_BIN}" config --system --add channels conda-forge
+fi
+
 # Only run on the dataproc manager node. Exit silently if otherwise.
 ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
 if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi

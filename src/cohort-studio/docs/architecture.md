@@ -1283,10 +1283,12 @@ flowchart TB
 ```mermaid
 flowchart TD
   Start["Select Aurora resource and optional CDM schema"] --> Detect["Detect CDM and vocabulary schemas"]
-  Detect --> Search["Search concepts by name, domain or vocabulary"]
+  Detect --> Match["Match table names and required OMOP columns"]
+  Match --> Review["Review inferred table names when present"]
+  Review --> Search["Search concepts by name, domain or vocabulary"]
   Search --> Spec["Build cohort specification"]
   Spec --> Validate["Validate criteria and demographics"]
-  Validate --> Tables["Check required tables and vocabulary"]
+  Validate --> Tables["Check selected features' tables and columns; report match percentage"]
   Tables --> Compile["Compile parameterized SQL"]
   Compile --> Desc{"Include descendants?"}
   Desc -->|"Yes"| Ancestor["Expand selected concepts with concept_ancestor"]
@@ -1303,11 +1305,12 @@ flowchart TD
   Summary --> DB
   Open --> DB
   DB --> UI["Explore: charts, filters and results"]
-  Open --> Recipe["Recipe stores resource, schema and validated specification"]
-  Recipe -->|"Reopen / live queries"| DB
+  Open --> Recipe["Recipe stores resource, schema, specification and table mappings"]
+  Recipe -->|"Reopen"| Check["Reject changed table mappings"]
+  Check --> DB
 ```
 
-Schema-name suggestions require explicit selection; nonstandard table and column aliases are not inferred. The first inclusion criterion supplies the index date. Later criteria can use before/after relationships. A live cohort is recalculated against the current database; it is not a frozen membership snapshot. The initial preview is bounded, while live counts, filtering and paging use the database source.
+Schema-name suggestions require explicit selection. Similar table names can be matched when required OMOP columns are present and the match is unambiguous; Data Builder asks users to review inferred names. Column aliases are not inferred. The 80% check covers tables needed by the selected features, and all inputs required by the query must be present. The first inclusion criterion supplies the index date. Later criteria can use before/after relationships. A live cohort is recalculated against the current database; it is not a frozen membership snapshot. The initial preview is bounded, while live counts, filtering and paging use the database source.
 
 ### Dashboard query dispatch
 

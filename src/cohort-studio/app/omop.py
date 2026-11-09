@@ -540,6 +540,8 @@ def _check_tables(info: dict, spec: dict):
         raise ValueError("Descendant expansion needs the concept_ancestor table; "
                          "set descendants to false.")
     report = compatibility(info, spec)
+    if report["missing_tables"]:
+        raise ValueError(f"The selected OMOP features need missing tables: {', '.join(report['missing_tables'])}.")
     if report["missing_columns"]:
         detail = "; ".join(f"{table}: {', '.join(cols)}" for table, cols in report["missing_columns"].items())
         raise ValueError(f"The selected OMOP features need missing columns: {detail}.")

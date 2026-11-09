@@ -1197,3 +1197,240 @@ Parameters: the frontend finds `@name` references outside quotes and sends the t
 Grouped filters support one to five keys, count, sum, mean, minimum and maximum, and at-least, at-most or bounded ranges. They compute over the source before dashboard filters and retain matching source rows; null group keys do not match.
 
 Saved source recipes remain limited to 16 total steps and four join levels; calculated steps no longer consume join depth. SQL generated from validated derived recipes uses the private compiler provenance marker, with a 100,000-character compiled SQL limit and a 30,000-character expression limit. User-provided SQL remains separately validated. The feature does not create a grouped summary table.
+
+## Detailed service and OMOP diagrams
+
+The diagrams describe the repository implementation. They do not assert that every optional integration is configured in a particular Workbench deployment.
+
+### Service architecture
+
+```mermaid
+flowchart TB
+  User["Researcher / analyst"]
+  subgraph Browser["Browser"]
+    Explore["Explore: views, charts, filters"]
+    Builder["Data Builder: sources, filters, joins, live or extract"]
+    Assistant["Optional assistant and MCP client"]
+  end
+  User --> Explore
+  User --> Builder
+  User -.-> Assistant
+
+  subgraph App["Workbench app container"]
+    API["FastAPI endpoints and validation"]
+    Discovery["Resource discovery and credentials"]
+    OMOP["OMOP schema discovery, concept search and cohort compiler"]
+    Query["Dashboard filtering, aggregation and pagination"]
+    Join["Join planning and execution"]
+    Memory["In-memory datasets and bounded previews"]
+    Duck["DuckDB: file reads and mixed-source processing"]
+    Jobs["Background jobs: joins, extracts and exports"]
+    Views["Saved view recipes and settings"]
+    Agents["Optional agent tools and provider adapters"]
+    Update["In-app updater"]
+  end
+  Explore -->|"HTTP"| API
+  Builder -->|"HTTP"| API
+  Assistant -.-> API
+  API --> Discovery
+  API --> OMOP
+  API --> Query
+  API --> Join
+  API --> Jobs
+  API --> Views
+  API -.-> Agents
+  Query --> Memory
+  Query --> Duck
+  Join --> Duck
+  Join --> Jobs
+  Agents -.-> OMOP
+
+  subgraph Sources["Workspace data sources"]
+    Aurora[("Aurora / PostgreSQL")]
+    S3[("S3 files")]
+    BQ[("BigQuery")]
+    Athena[("Athena / Glue")]
+  end
+  Discovery --> Sources
+  OMOP -->|"Parameterized queries"| Aurora
+  Query -->|"Live database queries"| Aurora
+  Join -->|"Same-database SQL"| Aurora
+  Duck -->|"File reads / staging"| S3
+  Join -->|"Stage inputs when needed"| Aurora
+  API --> BQ
+  API --> Athena
+  Jobs -->|"Extracts where configured"| Aurora
+  Views -->|"Configured view stores"| Sources
+  Agents -.->|"Optional inference"| LLM["Configured model provider"]
+  Update -->|"Fetch and build branch"| Git["Repository"]
+```
+
+### OMOP cohort filtering
+
+```mermaid
+flowchart TD
+  Start["Select Aurora resource and optional CDM schema"] --> Detect["Detect CDM and vocabulary schemas"]
+  Detect --> Search["Search concepts by name, domain or vocabulary"]
+  Search --> Spec["Build cohort specification"]
+  Spec --> Validate["Validate criteria and demographics"]
+  Validate --> Tables["Check required tables and vocabulary"]
+  Tables --> Compile["Compile parameterized SQL"]
+  Compile --> Desc{"Include descendants?"}
+  Desc -->|"Yes"| Ancestor["Expand selected concepts with concept_ancestor"]
+  Desc -->|"No"| Exact["Use selected concept IDs"]
+  Ancestor --> Events["Filter clinical events by domain, dates, counts and values"]
+  Exact --> Events
+  Events --> Obs["Apply observation-period and index-date rules when requested"]
+  Obs --> Flags["Create person-level inclusion, exclusion and demographic flags"]
+  Flags --> Action{"Operation"}
+  Action -->|"Count"| Count["Count people and cumulative attrition"]
+  Action -->|"Summary"| Summary["Calculate cohort aggregates"]
+  Action -->|"Open"| Open["Create live cohort recipe and bounded preview"]
+  Count --> DB[("Aurora PostgreSQL")]
+  Summary --> DB
+  Open --> DB
+  DB --> UI["Explore: charts, filters and results"]
+  Open --> Recipe["Recipe stores resource, schema and validated specification"]
+  Recipe -->|"Reopen / live queries"| DB
+```
+
+Schema-name suggestions require explicit selection; nonstandard table and column aliases are not inferred. The first inclusion criterion supplies the index date. Later criteria can use before/after relationships. A live cohort is recalculated against the current database; it is not a frozen membership snapshot. The initial preview is bounded, while live counts, filtering and paging use the database source.
+
+### Dashboard query dispatch
+
+The frontend sends the dataset ID, filters, chart definitions and requested page to the query API. The backend chooses an execution path from the dataset's source metadata; it returns counts, chart aggregates and a page of rows for rendering.
+
+```mermaid
+flowchart TB
+  UI["Browser: filters + chart specifications + page"] --> API["POST /api/datasets/id/query"]
+  API --> Validate["Pydantic request validation<br/>filter and chart validation"]
+  Validate --> Registry["datasets.py: resolve dataset ID<br/>and inspect source metadata"]
+  Registry --> Route{"Dataset backing"}
+
+  Route -->|"live_source"| Live["live_query.py<br/>generate parameterized PostgreSQL SQL"]
+  Live --> PG[("Aurora / PostgreSQL<br/>full underlying source")]
+  PG --> LiveResult["Counts, aggregates and page"]
+
+  Route -->|"disk_source"| Disk["disk_data.py<br/>DuckDB SQL against owned file"]
+  Disk --> File[("Local DuckDB file<br/>dataset table + optional spill")]
+  File --> DiskResult["Counts, aggregates and page<br/>over staged rows"]
+
+  Route -->|"loaded DataFrame"| Size{"Frame size"}
+  Size -->|"small"| Pandas["pandas filtering and aggregation"]
+  Size -->|"default: 50,000 rows or more"| MemDuck["agg_duck.py<br/>DuckDB SQL over in-memory frame"]
+  MemDuck -.->|"DuckDB error"| Pandas
+  Pandas --> FrameResult["Counts, aggregates and page<br/>over loaded rows"]
+  MemDuck --> FrameResult
+
+  LiveResult --> Response["API response: total, filtered,<br/>chart data and rows"]
+  DiskResult --> Response
+  FrameResult --> Response
+  Response --> Charts["ECharts renders results"]
+```
+
+The 50,000-row threshold is the default and can be changed with `STUDIO_DUCKDB_AGG_ROWS`. Live PostgreSQL datasets retain a bounded in-memory preview; it is not substituted when a full-source query fails. Disk-backed results query the staged dataset, while an explicitly capped loaded frame can represent only a subset of its original source.
+
+### Join planning and execution
+
+```mermaid
+flowchart TB
+  Builder["Data Builder: nodes, join keys,<br/>input filters and selected fields"] --> Request["Validated join request / source recipe"]
+  Request --> Plan["joins.py: validate columns and types;<br/>order steps and select engine"]
+  Plan --> Engine{"Source compatibility"}
+
+  subgraph LivePath["Same PostgreSQL resource"]
+    Engine -->|"eligible live inputs"| PGSQL["Compile PostgreSQL CTEs / joins<br/>and bound filter values"]
+    PGSQL --> PG[("Aurora / PostgreSQL")]
+    PG --> LiveRef["Live source: SQL + parameters<br/>+ physical column mapping"]
+    PG --> Preview1["Bounded preview DataFrame"]
+  end
+
+  subgraph MixedPath["Mixed-source / disk-backed path"]
+    Engine -->|"cross-source or staged inputs"| Admission["Check explicit consent, source scope,<br/>estimated size and resource limits"]
+    Admission --> Readers{"Input readers"}
+    Readers -->|"live PostgreSQL"| PGRead["Stream database rows<br/>apply eligible input filters"]
+    Readers -->|"S3 file"| S3Read["DuckDB reads supported files<br/>using configured credentials"]
+    Readers -->|"eligible BigQuery table"| BQRead["Storage Read API Arrow batches<br/>with eligible filter pushdown"]
+    Readers -->|"already loaded or disk-backed"| Existing["Read available frame or staged data"]
+    PGRead --> Stage["disk_data.py: stage typed inputs<br/>in an owned DuckDB file"]
+    S3Read --> Stage
+    BQRead --> Stage
+    Existing --> Stage
+    Stage --> DuckJoin["DuckDB executes join and projection<br/>with bounded memory / disk spill"]
+    DuckJoin --> DiskRef["Disk source: owned file path,<br/>result table and column metadata"]
+    DuckJoin --> Preview2["Bounded preview DataFrame"]
+  end
+
+  LiveRef --> Dataset["datasets.py: dataset ID and source metadata"]
+  Preview1 --> Dataset
+  DiskRef --> Dataset
+  Preview2 --> Dataset
+  Dataset --> Dashboard["Explore: later queries dispatch by backing"]
+  Request --> Saved["Optional saved source recipe"]
+  Saved -->|"Reopen: resolve inputs and rerun"| Plan
+```
+
+For cross-source joins, the app uses full readers when available. Some sources remain capped; the result reports capped inputs and may require explicit consent. A filter on a live input used once can be pushed down while that input is staged. PostgreSQL driver metadata is used for staged storage types; unsupported or unconstrained types may be stored as text to avoid loss of precision. Preview rows do not establish full-source completeness.
+
+### Storage lifetime and extract boundary
+
+```mermaid
+flowchart LR
+  Live["PostgreSQL live source<br/>SQL + source metadata"] -->|"Requery"| Database[("Aurora / PostgreSQL")]
+  Frame["Loaded DataFrame<br/>application memory"] --> Runtime["App process / VM"]
+  Disk["Owned DuckDB file<br/>local temporary storage"] --> Runtime
+  Runtime -->|"Restart or VM shutdown"| Expiry["In-memory dataset registrations are lost;<br/>local files depend on storage lifetime"]
+  Recipe["Saved source / dashboard recipe"] -->|"Reopen and re-execute<br/>if sources remain accessible"| Rebuild["New dataset and preview"]
+  Live -->|"Manual extract job"| Extract["Materialize complete result<br/>to target database"]
+  Disk -->|"Manual extract job"| Extract
+  Extract --> Table[("Target table and extract registry<br/>currently in public schema")]
+```
+
+A saved recipe records how to rebuild data; it is not the same as a frozen result. An extract is materialized in the target database. Existing scheduled extract refreshes do not run: scheduling is disabled. Manual extracts remain available and currently use the target database's `public` schema. Large reads and joins remain subject to runtime limits, source permissions and available disk space.
+
+### Code references
+
+The links below point to commit `395536d4`, so line numbers do not move when the branch changes. Repository access is required.
+
+#### Browser and API
+
+| Diagram element | Implementation |
+| --- | --- |
+| Explore controls and results | [DatasetPane.tsx:118](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/components/DatasetPane.tsx#L118) |
+| Build joins and configure inputs | [JoinCanvas.tsx:204](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/components/JoinCanvas.tsx#L204) |
+| Send filters, charts and page from browser | [App.tsx:740](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/App.tsx#L740), [api.ts:506](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/web/src/api.ts#L506) |
+| Query and join request models | [main.py:263](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L263), [main.py:290](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L290) |
+| Dashboard query endpoint | [main.py:1494](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L1494) |
+| Join endpoint | [main.py:1025](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L1025) |
+
+#### OMOP filtering
+
+| Diagram element | Implementation |
+| --- | --- |
+| Detect CDM and vocabulary schemas | [omop.py:175](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L175) |
+| Search concepts | [omop.py:350](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L350) |
+| Validate cohort criteria | [omop.py:440](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L440) |
+| Check required tables and vocabulary | [omop.py:515](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L515) |
+| Compile criteria, descendant expansion and person-level flags | [omop.py:574](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L574) |
+| Count and cumulative attrition | [omop.py:682](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L682) |
+| Cohort summary and live source | [omop.py:698](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L698), [omop.py:867](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/omop.py#L867) |
+| Count, summary and open endpoints | [main.py:2408](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L2408), [main.py:2418](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L2418), [main.py:2427](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L2427) |
+
+#### Query engines and joins
+
+| Diagram element | Implementation |
+| --- | --- |
+| Register dataset and source metadata | [datasets.py:53](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/datasets.py#L53) |
+| Dispatch by live, disk or loaded source | [datasets.py:333](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/datasets.py#L333) |
+| Live PostgreSQL dashboard query | [live_query.py:643](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/live_query.py#L643) |
+| Loaded-frame DuckDB threshold and query | [agg_duck.py:11](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/agg_duck.py#L11), [agg_duck.py:222](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/agg_duck.py#L222) |
+| Join validation and engine selection | [joins.py:397](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L397), [joins.py:943](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L943), [joins.py:1037](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L1037) |
+| Same-database PostgreSQL join | [joins.py:803](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/joins.py#L803) |
+| Cross-source readers, staging and join | [disk_data.py:698](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L698), [disk_data.py:776](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L776), [disk_data.py:904](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L904) |
+| S3 staging and disk-backed queries | [disk_data.py:1172](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L1172), [disk_data.py:1367](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L1367) |
+| BigQuery batch reader | [bq.py:244](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/bq.py#L244) |
+| Temporary DuckDB files and connections | [disk_data.py:153](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L153), [disk_data.py:173](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/disk_data.py#L173) |
+| Manual extracts and saved views | [extracts.py:320](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/extracts.py#L320), [views.py:72](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/views.py#L72) |
+| Scheduled refresh restriction | [main.py:1297](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/app/main.py#L1297) |
+
+The maintained reference is [architecture.md](https://github.com/verily-src/workbench-app-devcontainers/blob/395536d40b61ac6fbab9be55fefe33b47c665489/src/cohort-studio/docs/architecture.md).

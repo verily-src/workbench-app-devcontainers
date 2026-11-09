@@ -179,18 +179,16 @@ def test_refresh_and_rewrite_keep_the_schedule(on_db):
     assert off["schedule"] is None and off["next_run_at"] is None
 
 
-def test_schedule_endpoint_checks_the_extract(on_db):
-    client = TestClient(main.app)
-    upload = _extract(recipe=None)
-    put = lambda table, schedule: client.put("/api/extracts/schedule", json={  # noqa: E731
-        "resource_id": "res", "table": table, "schedule": schedule})
-    assert put(upload, {"every": "daily", "hour": 6}).status_code == 400  # can't be rerun
-    assert put(upload, {"every": "off"}).status_code == 200
-    assert put(_name(), {"every": "daily", "hour": 6}).status_code == 404
+def test_schedule_endpoint_rejects_schedule_changes(on_db):
     table = _extract()
-    out = put(table, {"every": "weekly", "weekday": 2, "hour": 6, "minute": 30,
-                      "tz": "Europe/London"}).json()["extract"]
-    assert out["schedule"]["tz"] == "Europe/London" and out["next_run_at"] > out["refreshed_at"]
+    _set(table, {"every": "hourly", "minute": 5})
+    before = extracts.info("res", table)
+    client = TestClient(main.app)
+    for schedule in ({"every": "daily", "hour": 6}, {"every": "off"}):
+        response = client.put("/api/extracts/schedule", json={
+            "resource_id": "res", "table": table, "schedule": schedule})
+        assert response.status_code == 403
+    assert extracts.info("res", table)["schedule"] == before["schedule"]
 
 
 # ---- The scheduler ---------------------------------------------------------
@@ -406,7 +404,7 @@ def test_cancelled_scheduled_run_catches_up_next_start(on_db, monkeypatch):
     assert info["next_run_at"] == NOW.isoformat()   # due again on the next check
 
 
-def test_lifespan_runs_the_scheduler_with_startup_catch_up(on_db, monkeypatch):
+def test_lifespan_does_not_run_saved_schedules(on_db, monkeypatch):
     table = _extract(3)
     _set(table, {"every": "daily", "hour": 6}, now=NOW - timedelta(days=5))
     monkeypatch.setenv("STUDIO_EXTRACT_SCHEDULER", "on")
@@ -414,7 +412,6 @@ def test_lifespan_runs_the_scheduler_with_startup_catch_up(on_db, monkeypatch):
     monkeypatch.setattr(main.extract_scheduler, "clock", lambda: NOW)
     monkeypatch.setattr(main, "open_dataset", _open_frame(11))
     with TestClient(main.app):
-        assert main.extract_scheduler.task is not None
-        info = _wait_status(table, "ok")
-    assert main.extract_scheduler.task is None
-    assert info["rows"] == 11 and info["next_run_at"] == "2026-11-08T06:00:00+00:00"
+        assert main.extract_scheduler.task is None
+        assert extracts.info("res", table)["rows"] == 3
+    assert extracts.info("res", table)["last_run_status"] is None

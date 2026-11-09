@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { ExportJob, OpenResult } from "../api";
 import type { ChartMeasure, ChartSpec, ChartStyle, Dataset, Filter, MarkType, MeasureAgg, Source } from "../types";
@@ -9,7 +9,6 @@ import { Popover } from "./Popover";
 import { CriteriaGroups } from "./CriteriaGroups";
 import { useAiFeatures, usePlink } from "../features";
 import { extractTarget } from "../extract";
-import { ExtractScheduleControl, scheduledFailure } from "./ExtractScheduleControl";
 import { describeFilter } from "../filterText";
 import { DatasetSettings } from "./DatasetSettings";
 import { ComparePanel } from "./ComparePanel";
@@ -49,50 +48,22 @@ function ExtractBar({ dataset, onUpdate, onRefresh }: {
       .catch(() => { if (!stale) onUpdate({ extract: null }); });
     return () => { stale = true; };
   }, [key, dataset.extract === undefined]); // eslint-disable-line react-hooks/exhaustive-deps
-  const scheduled = Boolean(dataset.extract?.schedule);
-  const latest = useRef(dataset);
-  latest.current = dataset;
-  useEffect(() => {
-    // Scheduled runs happen on the server; pick up their outcome, and requery
-    // the tab when a run replaced the rows.
-    if (!target || !scheduled) return;
-    const id = window.setInterval(() => {
-      api.extractInfo(target.resource_id, target.table)
-        .then((out) => {
-          const ds = latest.current;
-          if (!out.extract) return;
-          const rewritten = ds.extract && out.extract.refreshed_at !== ds.extract.refreshed_at;
-          onUpdate(rewritten && !ds.extractRefreshing
-            ? { extract: out.extract, refreshNonce: (ds.refreshNonce ?? 0) + 1, refreshing: true }
-            : { extract: out.extract });
-        })
-        .catch(() => undefined);
-    }, 60000);
-    return () => window.clearInterval(id);
-  }, [key, scheduled]); // eslint-disable-line react-hooks/exhaustive-deps
   const info = dataset.extract;
   if (!target || !info) return null;
   const refreshed = new Date(info.refreshed_at);
-  const failure = scheduledFailure(info);
   return (
     <div className="extract-bar" role="group" aria-label="Extract"
          title={`Extract of ${info.rows.toLocaleString()} rows, refreshed ${refreshed.toLocaleString()}`}>
       <span className="extract-chip">Extract</span>
       <span>refreshed <time dateTime={info.refreshed_at}>{cacheAge(info.refreshed_at)}</time></span>
-      {info.identity_verified === false && <span role="status">Table identity unverified · confirm a manual refresh before scheduled refreshes can run</span>}
+      {info.identity_verified === false && <span role="status">Table identity unverified · confirm a manual refresh to continue</span>}
+      {info.schedule && <span role="status">Scheduled refresh is disabled.</span>}
       <button type="button" className="quiet" disabled={!info.refreshable || dataset.extractRefreshing || !onRefresh}
               title={info.refreshable ? "Rerun the join and replace every row of this table"
                 : "This extract's inputs (for example an uploaded file) can't be reopened, so it can't be refreshed."}
               onClick={() => onRefresh?.(dataset.id)}>
         {dataset.extractRefreshing ? "Refreshing…" : "Refresh extract"}
       </button>
-      {onRefresh && (info.refreshable || info.schedule) && (
-        <ExtractScheduleControl key={`${key}:${JSON.stringify(info.schedule ?? null)}`} info={info} kind={target.kind} resourceId={target.resource_id}
-                                table={target.table} disabled={dataset.extractRefreshing}
-                                onSaved={(extract) => onUpdate({ extract })} />
-      )}
-      {failure && <span className="extract-failed" role="status" title={failure}>
-        Scheduled refresh failed</span>}
     </div>
   );
 }

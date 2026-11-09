@@ -209,7 +209,7 @@ def test_settings_shows_palette_swatches(page: Page, app_url: str):
     expect(page.get_by_text("No data loaded")).to_be_visible(timeout=15000)
     page.get_by_role("button", name="Settings", exact=True).click()
     expect(page.get_by_text("Color theme").first).to_be_visible(timeout=10000)
-    expect(page.locator(".palette-swatch")).to_have_count(6)   # verily, indigo, amber, crimson, slate, partner
+    expect(page.locator(".palette-swatch")).to_have_count(5)
 
 
 def test_save_cohort_and_compare(loaded_page: Page):

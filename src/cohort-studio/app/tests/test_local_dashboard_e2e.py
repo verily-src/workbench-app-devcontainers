@@ -14,6 +14,8 @@ def url():
 
 def test_single_table_and_tools(page, url):
     page.goto(url)
+    expect(page.locator(".topbar .brand-partner")).to_have_count(0)
+    expect(page.locator(".topbar .brand")).to_contain_text("verily Cohort Browser")
     page.get_by_role("button", name="Data Builder").click()
     canvas = page.locator(".jc")
     canvas.get_by_role("button", name=re.compile("^local-postgres|^Local")).first.click()
@@ -32,6 +34,9 @@ def test_single_table_and_tools(page, url):
     expect(page.get_by_role("button", name="Report issue")).to_have_count(0)
     response = page.request.post(f"{url}/api/support/report", data={"details": "test"})
     assert response.status in (404, 405)
+    response = page.request.put(f"{url}/api/extracts/schedule", data={
+        "resource_id": "local-postgres", "table": "example", "schedule": {"every": "daily", "hour": 6}})
+    assert response.status == 403
 
 def test_wide_table_scroll(page, url):
     page.set_viewport_size({"width": 1440, "height": 900})

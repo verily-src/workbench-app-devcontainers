@@ -141,11 +141,10 @@ def test_dashboard_png_pdf_and_chart_png(loaded_page: Page):
     assert "Filters: tissue: liver" in page.evaluate("window.__texts")
 
 
-def test_dark_theme_and_partner_brand_export(loaded_page: Page):
+def test_dark_theme_export(loaded_page: Page):
     page = loaded_page
     page.evaluate(RECORD)
-    page.evaluate("document.documentElement.setAttribute('data-theme', 'dark');"
-                  "document.documentElement.dataset.brand = 'partner'")
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'dark')")
     _settled(page)
     menu(page, "Export options")
     data = _download(page, lambda: page.get_by_role("button", name="Dashboard PNG").click(),
@@ -153,7 +152,6 @@ def test_dark_theme_and_partner_brand_export(loaded_page: Page):
     pixels = _pixels(page, data, "#087a6a")
     assert pixels["corner"] == [23, 27, 32]
     assert pixels["other"] > pixels["total"] * 0.1
-    assert any("partner-logo.svg" in src for src in page.evaluate("window.__images"))
     assert "Filters: none (full cohort)" in page.evaluate("window.__texts")
 
 

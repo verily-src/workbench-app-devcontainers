@@ -259,6 +259,9 @@ returns 400 with the valid names. `omop_cohort` recipes carry an optional
 default schema. The Agent's concept-ID guard and working-state concepts are
 keyed by resource and CDM schema, so IDs found in one vocabulary do not validate
 a cohort in another.
+When a requested schema name is close to an available name, the error suggests
+matches. A suggestion is not selected automatically; the caller must use the
+exact name. Table and column aliases are not inferred.
 This is not a frozen membership snapshot. Cohort counts, paging, joins and derived
 columns query Aurora; only a bounded preview stays in memory. Internal compiler
 queries carry a typed wrapper so OMOP CTE/EXISTS SQL can use resource guards
@@ -1135,7 +1138,7 @@ New Agent workflow plans store their conversation ID in the existing owner-scope
 
 Aggregation filters derive a windowed count, sum or mean for each non-null group. They retain the original rows and apply the threshold through the existing range-filter pipeline. Aggregates cover the source before ordinary dashboard filters; loaded previews use their available rows. Null group keys are excluded; invalid and non-finite numeric measures are ignored. Source recipes retain the derived column. PostgreSQL, DuckDB and loaded data use equivalent behavior.
 
-Scheduled extract refreshes store their schedule, time zone and next run with the extract registry in PostgreSQL. An in-process scheduler claims due work with a conditional database update and submits the normal refresh job. It runs only while the app is running; a missed schedule results in one catch-up run. The registry records the outcome and supports recovery of lost runs. Recovery assumes one app process per extract registry: another process can mistake a job queued for over 15 minutes for a lost run and enqueue it again.
+Scheduled extract refreshes are disabled. Existing schedules remain stored but are not run or recovered at startup; schedule changes are rejected. Manual extract operations remain available and currently write tables and an extract registry in the public schema.
 
 Dashboard filters are held in the browser and applied to compatible columns by name and filter kind on each tab. Chart selection uses the tab's categorical filter. Dashboard image exports are generated in the browser from the current chart layout and results; export is disabled while results are stale.
 

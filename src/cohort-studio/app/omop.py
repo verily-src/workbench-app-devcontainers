@@ -1,4 +1,5 @@
 import datetime as dt
+import difflib
 import logging
 import math
 import re
@@ -161,8 +162,14 @@ def _env_default(resource_id: str | None) -> str | None:
 
 
 def unknown_schema(schema: str, available: list[str]) -> ValueError:
-    return ValueError(f"Unknown OMOP CDM schema {schema!r}. Available CDM schemas: "
-                      f"{', '.join(available) or 'none'}.")
+    normalized = schema.casefold()
+    candidates = difflib.get_close_matches(normalized, [name.casefold() for name in available], n=3, cutoff=0.6)
+    suggestions = [name for candidate in candidates for name in available if name.casefold() == candidate]
+    message = (f"Unknown OMOP CDM schema {schema!r}. Available CDM schemas: "
+               f"{', '.join(available) or 'none'}.")
+    if suggestions:
+        message += f" Did you mean: {', '.join(suggestions)}?"
+    return ValueError(message)
 
 
 def detect(engine: Engine, schema: str | None = None,

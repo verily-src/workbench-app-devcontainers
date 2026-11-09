@@ -74,8 +74,6 @@ async def lifespan(_app: FastAPI):
     db.warm_resource_cache()
     if knowledge.store.path.exists():
         knowledge_vectors.schedule(knowledge.store)
-    if extract_schedule.enabled():
-        extract_scheduler.start()
     try:
         if mcp_server.AVAILABLE:
             async with mcp_server.mcp.session_manager.run():
@@ -86,7 +84,6 @@ async def lifespan(_app: FastAPI):
         await extract_scheduler.stop()
         knowledge_vectors.shutdown()
         data_jobs.shutdown()
-        extract_scheduler.recover_pending()
         export_jobs.shutdown()
         view_jobs.shutdown()
         datasets.clear()
@@ -1298,14 +1295,7 @@ class ExtractScheduleRequest(BaseModel):
 
 @app.put("/api/extracts/schedule")
 def set_extract_schedule(req: ExtractScheduleRequest, request: Request, response: Response):
-    agent_sessions.owner(request, response)  # same session check as Refresh extract
-    stored = req.schedule.stored()
-    upcoming = (extract_schedule.next_run(stored, extract_schedule_clock())
-                if stored else None)
-    try:
-        return {"extract": extracts.set_schedule(req.resource_id, req.table, stored, upcoming)}
-    except Exception as exc:
-        raise _extract_error(exc) from exc
+    raise HTTPException(403, "Scheduled refreshes are disabled.")
 
 
 def _submit_data_job(kind, req, request, response):
@@ -1701,8 +1691,8 @@ class ConfigUpdate(BaseModel):
     ncbi_api_key: str | None = Field(default=None, max_length=128,
                                      pattern=r"^[A-Za-z0-9_-]*$")
     mcp_connections: list[MCPConnection] | None = Field(default=None, max_length=128)
-    chart_palette: Literal["verily", "indigo", "amber", "crimson", "slate", "partner"] | None = None
-    brand: Literal["verily", "partner"] | None = None
+    chart_palette: Literal["verily", "indigo", "amber", "crimson", "slate"] | None = None
+    brand: Literal["verily"] | None = None
 
 class AskRequest(BaseModel):
     question: str

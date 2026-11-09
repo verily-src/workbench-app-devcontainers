@@ -115,8 +115,8 @@ def test_load_data_opens_data_builder_and_a_table_opens_live_in_explore(page, ap
     expect(source).to_contain_text("32,355,293")
     expect(side.locator(".section-label", has_text="Filters")).to_be_visible()
     page.screenshot(path=f"{SHOTS}/cohort-explore-side-panel.png")
-    page.evaluate("document.documentElement.dataset.theme = 'dark'; document.documentElement.dataset.palette = 'partner'")
-    page.screenshot(path=f"{SHOTS}/cohort-explore-side-panel-dark-partner.png")
+    page.evaluate("document.documentElement.dataset.theme = 'dark'; document.documentElement.dataset.palette = 'indigo'")
+    page.screenshot(path=f"{SHOTS}/cohort-explore-side-panel-dark-indigo.png")
     page.evaluate("document.documentElement.dataset.theme = 'light'; delete document.documentElement.dataset.palette")
 
     # Refresh source queries the live table again.

@@ -1,7 +1,6 @@
 import { jsPDF } from "jspdf";
 import { echarts } from "./echarts";
 import { describeFilter } from "./filterText";
-import { PARTNER_LOGO } from "./brand";
 import type { Dataset } from "./types";
 
 const SCALE = 2;
@@ -100,23 +99,11 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
 
 const BRAND_H = 22;
 
-/** Draws the header brand ("[partner] × [mark] verily Cohort Browser") and returns its width. */
-function drawBrand(ctx: CanvasRenderingContext2D, t: Theme, x: number, y: number, partner: HTMLImageElement | null | undefined) {
+/** Draws the header brand and returns its width. */
+function drawBrand(ctx: CanvasRenderingContext2D, t: Theme, x: number, y: number) {
   let cx = x;
   ctx.textBaseline = "middle";
   const mid = y + BRAND_H / 2;
-  if (partner !== undefined) {
-    if (partner) {
-      const w = partner.naturalWidth && partner.naturalHeight ? BRAND_H * partner.naturalWidth / partner.naturalHeight : BRAND_H * 3.5;
-      ctx.drawImage(partner, cx, y, w, BRAND_H);
-      cx += w + 6;
-    } else {
-      ctx.font = `600 14px ${t.font}`; ctx.fillStyle = t.ink;
-      ctx.fillText("partner", cx, mid); cx += ctx.measureText("partner").width + 6;
-    }
-    ctx.font = `400 14px ${t.font}`; ctx.fillStyle = t.muted;
-    ctx.fillText("×", cx, mid); cx += ctx.measureText("×").width + 6;
-  }
   const s = 18 / 100;
   ctx.save();
   ctx.translate(cx, mid - 82 * s / 2);
@@ -141,11 +128,11 @@ const LINE_FONT: Record<Header["lines"][number]["kind"], [string, number]> = {
 
 /** Header height in CSS px; draws it when ctx is given. */
 function header(ctx: CanvasRenderingContext2D, t: Theme, h: Header, width: number, generated: Date,
-                partner: HTMLImageElement | null | undefined, draw: boolean): number {
+                draw: boolean): number {
   let y = PAD;
   const inner = width - 2 * PAD;
   if (draw) {
-    drawBrand(ctx, t, PAD, y, partner);
+    drawBrand(ctx, t, PAD, y);
     ctx.font = `400 12px ${t.font}`; ctx.fillStyle = t.muted; ctx.textAlign = "right";
     ctx.fillText(`Generated ${generated.toLocaleString()}`, width - PAD, y + BRAND_H / 2);
     ctx.textAlign = "left";
@@ -200,11 +187,10 @@ async function compose(frame: HTMLElement, cards: HTMLElement[], h: Header): Pro
   const instances = plots.map((plot) => (plot ? echarts.getInstanceByDom(plot) : undefined));
   await settle(instances.filter((i): i is Instance => Boolean(i)));
 
-  const partner = document.documentElement.dataset.brand === "partner" ? await loadImage(PARTNER_LOGO) : undefined;
   const width = Math.max(Math.ceil(frame.offsetWidth) + 2 * PAD, 640);
   const measure = document.createElement("canvas").getContext("2d")!;
   const generated = new Date();
-  const top = header(measure, t, h, width, generated, partner, false);
+  const top = header(measure, t, h, width, generated, false);
   const boxes = cards.map(rel);
   const bottom = Math.max(0, ...boxes.map((b) => b.y + b.h));
   const height = Math.ceil(top + bottom + PAD);
@@ -216,7 +202,7 @@ async function compose(frame: HTMLElement, cards: HTMLElement[], h: Header): Pro
   const ctx = canvas.getContext("2d")!;
   ctx.scale(scale, scale);
   ctx.fillStyle = t.surface; ctx.fillRect(0, 0, width, height);
-  header(ctx, t, h, width, generated, partner, true);
+  header(ctx, t, h, width, generated, true);
 
   const left = PAD + (width - 2 * PAD - frame.offsetWidth) / 2;
   const images = await Promise.all(instances.map((chart) => chart

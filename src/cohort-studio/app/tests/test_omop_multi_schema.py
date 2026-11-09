@@ -90,6 +90,9 @@ def test_detection_lists_every_cdm_schema_and_defaults_to_most_persons(engine, m
     assert public["cdm_schema"] == TWO and len(public["cdm_schemas"]) == 2
     with pytest.raises(ValueError, match="Available CDM schemas: alt_cdm, cdm"):
         omop.detect(engine, "missing")
+    with pytest.raises(ValueError, match="Did you mean: alt_cdm"):
+        omop.detect(engine, "ALT_CD")
+    assert omop.detect(engine, TWO)["cdm_schema"] == TWO
 
 
 def test_default_schema_env_override(engine, monkeypatch):

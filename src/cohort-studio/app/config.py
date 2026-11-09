@@ -16,9 +16,8 @@ CONFIG_PATH = Path(os.environ.get(
 
 DEFAULT_MODEL = "claude-opus-5-5"
 DEFAULT_PALETTE = "verily"
-PALETTES = ("verily", "indigo", "amber", "crimson", "slate", "partner")
-# App brand theme: accent colors and the header (Verily, or Verily × partner).
-BRANDS = ("verily", "partner")
+PALETTES = ("verily", "indigo", "amber", "crimson", "slate")
+BRANDS = ("verily",)
 DEFAULT_BRAND = "verily"
 
 DEFAULT_PROVIDER = "anthropic"
@@ -422,7 +421,7 @@ def public_config() -> dict:
             "secure_key_store_available": secure_store_available,
         },
         "mcp_connections": connections,
-        "chart_palette": _load().get("chart_palette") or DEFAULT_PALETTE,
+        "chart_palette": _load().get("chart_palette") if _load().get("chart_palette") in PALETTES else DEFAULT_PALETTE,
         "brand": _load().get("brand") if _load().get("brand") in BRANDS else DEFAULT_BRAND,
     }
 

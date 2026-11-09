@@ -58,9 +58,8 @@ release `194f397b5`:
   `knowledge_store.py` owns SQLite/FTS persistence and retrieval. The knowledge
   base remains app-shared; relevant passages go to the selected inference provider.
 
-The demo's cohort-to-genetics-to-workflow handoff is scoped in
-[DEMO_OMOP_GENETICS.md](DEMO_OMOP_GENETICS.md). Exact cohort membership must persist
-across the join. The Nextflow demo and S3 artifact round trip are verified.
+The demo's cohort-to-genetics-to-workflow handoff requires exact cohort
+membership to persist across the join. The Nextflow demo and S3 artifact round trip are verified.
 Lineage records exact dataset IDs and event IDs for cohort, exported input,
 parameter file and submitted run; output metadata records returned identifiers.
 Automatic output-file discovery and notebook execution remain separate work.
@@ -139,8 +138,7 @@ read-back-verified migration removes them. Public settings expose key-presence
 booleans and source labels only. Settings can replace or remove the Jev token;
 saving does not test the provider connection. Join discovery reports whether
 Jev was used or unavailable. See [AI access and key storage](AWS_AI_ACCESS.md).
-AgentCore identity and network requirements remain open in the
-[agent plan](AGENT_PLAN.md).
+AgentCore identity and network requirements remain open.
 
 Athena resources use `STUDIO_ATHENA_RESOURCES` server configuration. Each
 resource names an AWS Region, Glue catalog, enabled Athena engine 3 workgroup,
@@ -286,7 +284,7 @@ concept search, aggregate counts, validated proposals, and read-only
 workflow/app status. The cohort
 assistant does not write database rows or mutate workflows/apps. The user
 reviews and applies a proposal in the UI, then uses the existing Count/Open
-actions. AgentCore is a separate, unprovisioned plan ([agent plan](AGENT_PLAN.md)).
+actions. AgentCore is a separate, unprovisioned plan.
 
 ### CMS SynPUF export and import path
 
@@ -480,7 +478,7 @@ parameters still work for the session. Tabs opened from the revision carry
 `publishedRevision`; opening any other data (or closing every tab) leaves
 viewer mode, so the banner never labels unrelated data. This is a UI mode, not access control:
 anyone with the app can open the draft. Per-person audiences need a per-user
-identity first; see `docs/ACCESS_POLICY_SCOPE.md` (deferred).
+identity first.
 
 ## 6. Isolated browser deployment
 
@@ -640,8 +638,7 @@ use bounded process caches with a default 30-second TTL and explicit refresh.
 
 The local Compose stack runs PostgreSQL, an idempotent synthetic fixture seed,
 and the built Studio app. A local-only launcher registers that database without
-Workbench credentials or changes to production `db.py`. See
-[local validation](LOCAL_VALIDATION.md) for commands and verification limits.
+Workbench credentials or changes to production `db.py`.
 
 ### Automatic OMOP cohort summaries (2026-10-23)
 
@@ -676,7 +673,7 @@ can use the current cohort or the whole table. Dataset count controls and
 export actions use one wrapping, aligned toolbar.
 
 The proposed workflow demo uses the existing Workbench workflow/S3 handoff.
-It is scoped, not implemented or submitted; see [demo scope](DEMO_WORKFLOW_SCOPE.md).
+It is scoped, not implemented or submitted.
 
 ### Custom Aurora SQL sources (2026-10-23)
 
@@ -1043,7 +1040,7 @@ Local runtime/provider regression checks pass; deployment status is in PROJECT_S
 `scripts/evaluate_studio.py` runs deterministic agent, Jev, and demo contracts
 against fresh loopback PostgreSQL databases. The demo runs real local Nextflow,
 with file-backed S3/HealthOmics adapters. Reports separate this evidence from
-live model quality and cloud/browser acceptance. See EVALUATIONS.md.
+live model quality and cloud/browser acceptance.
 
 `scripts/evaluate_agent_live.py` is the separate **live** score for the
 platform agent. It calls a running app over HTTP the way the browser does:

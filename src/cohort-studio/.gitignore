@@ -22,3 +22,15 @@ app/.studio-data-jobs.sqlite3*
 app/.studio-discovery-cache.json
 
 .eval-results/
+
+# Local project notes and planning artifacts
+docs/PROJECT_STATE.md
+docs/ACCESS_POLICY_SCOPE.md
+docs/AGENT_PLAN.md
+docs/DEMO_*.md
+docs/EVALUATIONS.md
+docs/LOCAL_VALIDATION.md
+docs/SECURITY_AUDIT.md
+docs/VALIDATION_BROWSER.md
+docs/JEV_SCOPE.md
+docs/*REVIEW*.md

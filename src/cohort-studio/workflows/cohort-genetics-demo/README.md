@@ -129,4 +129,3 @@ Workbench run `ceea2bdc-50fa-4922-a1a3-53e2a3e2b3fe` / HealthOmics `4806228`
 completed with 1,475 records selected by the OMOP cohort and joined to synthetic
 genotypes and an S3 dictionary. Six summary rows total 431 carriers and 1,044
 noncarriers. The live app reopened the summary and verified manifest URIs.
-See [demo runbook](../../docs/DEMO_OMOP_GENETICS.md) for the exact inputs and paths.

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Golden live tasks for the Studio platform agent (Agent page). Expected values are only those documented in docs/imports/CMS_SYNPUF_100K.md, docs/imports/GENETICS_DEMO.md, docs/DEMO_OMOP_GENETICS.md and docs/PROJECT_STATE.md. Anything undocumented is checked for presence only.",
+  "description": "Golden live tasks for the Studio platform agent (Agent page). Expected values are only those documented in docs/imports/CMS_SYNPUF_100K.md, docs/imports/GENETICS_DEMO.md, local validation records. Anything undocumented is checked for presence only.",
   "vars": {},
   "tasks": [
     {
@@ -37,7 +37,7 @@
       "id": "omop_female_1930_1950",
       "category": "person_count",
       "datasets": ["cms_synpuf_100k"],
-      "notes": "DEMO_OMOP_GENETICS.md / PROJECT_STATE.md: 29,553 people with observation period, gender concept 8532, birth year 1930-1950.",
+      "notes": "Local validation: 29,553 people with observation period, gender concept 8532, birth year 1930-1950.",
       "turns": [
         {
           "message": "Count the people in cms_synpuf_100k who are female, were born from 1930 through 1950, and have an observation period.",
@@ -54,7 +54,7 @@
       "id": "concept_female_gender",
       "category": "concept_lookup",
       "datasets": ["cms_synpuf_100k"],
-      "notes": "DEMO_OMOP_GENETICS.md: gender concept 8532 is Female.",
+      "notes": "Local validation: gender concept 8532 is Female.",
       "turns": [
         {
           "message": "Which OMOP concept ID represents female gender in the cms_synpuf_100k vocabulary? Look it up in the data rather than answering from memory.",
@@ -69,7 +69,7 @@
       "id": "condition_75344_count",
       "category": "person_count",
       "datasets": ["cms_synpuf_100k"],
-      "notes": "PROJECT_STATE.md (2026-10-23 live check): condition 75344 cohort 3,006 persons with the default summary spec (observation period required, app-default descendant matching).",
+      "notes": "Local validation (2026-10-23): condition 75344 cohort 3,006 persons with the default summary spec (observation period required, app-default descendant matching).",
       "turns": [
         {
           "message": "Using the cms_synpuf_100k OMOP cohort counter with its default settings (observation period required), how many people have condition concept 75344?",
@@ -182,7 +182,7 @@
       "id": "followup_restrict_to_women",
       "category": "follow_up",
       "datasets": ["cms_synpuf_100k"],
-      "notes": "PROJECT_STATE.md: person-table dashboard 55,612 female / 44,388 male of 100,000 (no observation-period filter). A different turn-2 number is an undocumented value and fails.",
+      "notes": "Local validation: person-table dashboard 55,612 female / 44,388 male of 100,000 (no observation-period filter). A different turn-2 number is an undocumented value and fails.",
       "turns": [
         {
           "message": "How many people are in the cms_synpuf_100k person table in total? Count all persons, not just those with an observation period.",

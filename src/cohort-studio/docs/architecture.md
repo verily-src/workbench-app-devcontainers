@@ -239,6 +239,13 @@ the shared datasource selector, not a separate global workspace or database.
 Collection data must be exported/accessed and loaded into Aurora before CDM
 detection can find it; selecting a collection does not create clinical tables.
 
+In Data Builder, select an Aurora connection and use **Build OMOP cohort** to
+choose a CDM schema, search standard concepts, add inclusion or exclusion
+criteria, count the cohort and add it to the canvas. The canvas stores a live
+`omop_cohort` source recipe; it can be opened alone or joined to other inputs.
+This creates a logical dataset source, not a database view. Concept search
+does not calculate per-concept person counts for this picker.
+
 `omop.py` detects a CDM and vocabulary schema on the selected Aurora resource,
 searches concepts, and compiles validated cohort specifications into
 parameterized SQL. Cohorts retain a validated `omop_cohort` source recipe with

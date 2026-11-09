@@ -1,0 +1,16 @@
+.omop-builder { padding-bottom: 16px; }
+.omop-builder > p { margin: 12px; }
+.omop-builder fieldset { border: 0; margin: 0; padding: 12px; min-width: 0; }
+.omop-builder h4 { margin: 16px 0 6px; }
+.omop-builder p { margin: 8px 0; color: var(--ink-muted); }
+.omop-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.omop-fields label, .omop-search label { display: grid; gap: 4px; }
+.omop-check { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.omop-search { display: flex; align-items: end; gap: 8px; margin: 12px 0; }
+.omop-search label { flex: 1; }
+.omop-results { max-height: 180px; overflow-y: auto; border: 1px solid var(--border); padding: 0 8px; }
+.omop-rules { list-style: none; padding: 0; }
+.omop-rules li { display: flex; justify-content: space-between; gap: 8px; align-items: start; border-bottom: 1px solid var(--border); padding: 5px 0; }
+.omop-actions { position: sticky; bottom: -16px; display: flex; gap: 8px; margin: 12px 0 -12px; padding: 12px 0; background: var(--card); border-top: 1px solid var(--border); }
+.omop-count { margin-top: 12px; }
+.jc-omop-button { width: 100%; margin: 10px 0; }

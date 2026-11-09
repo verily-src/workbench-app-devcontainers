@@ -133,7 +133,12 @@ class OmopCohortSource(BaseModel):
     @field_validator("spec")
     @classmethod
     def validate_spec(cls, value: dict) -> dict:
-        return omop.parse_spec(value)
+        spec = omop.parse_spec(value)
+        for criterion in spec["criteria"]:
+            for key in ("start", "end"):
+                if criterion[key] is not None:
+                    criterion[key] = criterion[key].isoformat()
+        return spec
 
     @field_validator("name")
     @classmethod

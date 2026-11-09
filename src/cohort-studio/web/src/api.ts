@@ -2,7 +2,7 @@ import type { ExtractInfo, ExtractSchedule, JoinOutput, Parameter,
   ChartSpec, ChatMsg, Cohort, ColumnProfile, Dataset, Filter, JoinPreview,
   ColumnSetting, JoinFilter, JoinStats, JoinStep, JoinSuggestion, JoinRecommendation, JoinValidation, QueryResult, Source,
   SourceRef, GrainDefinition, GrainInfo, GrainCheck, PerformanceSummary,
-  TableInfo, OmopSpec, OmopCount, SqlPreview,
+  TableInfo, OmopSpec, OmopCount, OmopInfo, OmopConcept, SqlPreview,
   SavedViewJob, SavedViewList, SourceInfo, SqlCompletions, ViewRevision,
 } from "./types";
 
@@ -489,6 +489,17 @@ export const api = {
     request<TableInfo[]>(
       `/api/tables?kind=${kind}&resource_id=${encodeURIComponent(resourceId)}`
       + (refresh ? "&refresh=true" : "")),
+
+  omopInfo: (resourceId: string) =>
+    request<OmopInfo>(`/api/omop/${encodeURIComponent(resourceId)}`),
+
+  omopConcepts: (resourceId: string, schema: string, q: string, domain: string) => {
+    const params = new URLSearchParams({ q, domain, cdm_schema: schema, persons: "false" });
+    return request<{ concepts: OmopConcept[] }>(`/api/omop/${encodeURIComponent(resourceId)}/concepts?${params}`);
+  },
+
+  omopCount: (resourceId: string, schema: string, spec: OmopSpec) =>
+    request<OmopCount>(`/api/omop/${encodeURIComponent(resourceId)}/cohort/count?${new URLSearchParams({ cdm_schema: schema })}`, post(spec)),
 
   openDataset: (kind: string, resourceId: string, table: string) =>
     dataJob<OpenResult>("open", { kind, resource_id: resourceId, table }),

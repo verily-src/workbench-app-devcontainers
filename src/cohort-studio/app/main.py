@@ -2329,12 +2329,12 @@ def omop_detect(resource_id: str, refresh: bool = False,
 @app.get("/api/omop/{resource_id}/concepts")
 def omop_concepts(resource_id: str, q: str = "", domain: str = "",
                   vocabulary: str = "", standard_only: bool = True,
-                  limit: int = 50, cdm_schema: str | None = _CDM_SCHEMA_QUERY):
+                  limit: int = 50, persons: bool = True, cdm_schema: str | None = _CDM_SCHEMA_QUERY):
     engine, info = _omop_cdm_for(resource_id, cdm_schema)
     try:
         return {"concepts": omop.search_concepts(
             engine, info, q, domain or None, vocabulary or None,
-            standard_only=standard_only, limit=limit)}
+            standard_only=standard_only, limit=limit, persons=persons)}
     except Exception as e:
         raise _omop_error(e)
 

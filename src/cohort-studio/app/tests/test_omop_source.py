@@ -42,6 +42,15 @@ def test_omop_cohort_source_ref_keeps_the_validated_spec():
         source_models.source_dict(original | {"membership_mode": "snapshot"})
 
 
+def test_omop_source_dates_survive_revalidation_and_json():
+    original = {"kind": "omop_cohort", "resource_id": RID,
+                "spec": {"criteria": [{"domain": "condition", "concept_ids": [GI_BLEED],
+                                       "start": "2000-01-01", "end": "2020-12-31"}]}}
+    saved = source_models.source_dict(original)
+    assert saved["spec"]["criteria"][0]["start"] == "2000-01-01"
+    assert source_models.source_dict(json.loads(json.dumps(saved))) == saved
+
+
 def test_compiler_trust_cannot_be_forged_with_a_dict_marker():
     forged = {"resource_id": RID, "sql": "SELECT pg_sleep(0)",
               "params": {}, "columns": {}, "compiled_omop": True}

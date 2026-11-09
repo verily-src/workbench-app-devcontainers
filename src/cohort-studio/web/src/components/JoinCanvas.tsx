@@ -14,6 +14,7 @@ import { Combobox } from "./Combobox";
 import { JobProgress } from "./DataJobs";
 import { SqlEditor } from "./SqlEditor";
 import { OpenTableCard } from "./OpenTableCard";
+import { OmopCohortBuilder } from "./OmopCohortBuilder";
 import type { FilterRow } from "./joinParts";
 import {
   ARROW, FilterEditor, KIND_LABEL, Venn, addsColumns, colKind, directAurora, filterProblem,
@@ -230,6 +231,7 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
   const [showSql, setShowSql] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [omopResource, setOmopResource] = useState("");
   const [filterTable, setFilterTable] = useState("");
   const [gridTable, setGridTable] = useState("result");
   const [rowLimitText, setRowLimitText] = useState("100");
@@ -459,6 +461,24 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
       setNodes((prev) => prev.filter((n) => n.id !== id));
       setError(`Could not open ${title}: ${(e as Error).message}`);
     }
+  };
+
+  const addOmop = async (ref: Extract<SourceRef, { kind: "omop_cohort" }>) => {
+    const opened = await api.openSourceRef(ref);
+    const list = nodesRef.current;
+    if (list.length > MAX_JOINED) {
+      void api.closeDataset(opened.dataset_id).catch(() => undefined);
+      throw new Error(`A join can include up to ${MAX_JOINED} additional tables.`);
+    }
+    const target = selection?.type === "node" || selection?.type === "link" ? selection.id : undefined;
+    const parentId = list.length ? (target && list.some((n) => n.id === target) ? target : rootOf(list)!.id) : undefined;
+    const id = nodeId(), title = ref.name || "OMOP cohort";
+    const node: CanvasNode = { id, title, badge: "OMOP", owned: true,
+      dataset: toDataset(opened, title, ref), alias: uniqueAlias(title, list),
+      columns: null, filterRows: [], parentId, how: "left", conditions: [], touched: false };
+    const next = [...list, node];
+    setNodes(next);
+    if (parentId) openLink(id, next); else setSelection({ type: "node", id });
   };
 
   const clearCanvas = () => {
@@ -1063,6 +1083,8 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
             })}
             {!sources.length && <li className="settings-hint">Waiting for workspace datasources…</li>}
           </ul>
+          {selectedSource?.kind === "aurora" && <button type="button" className="jc-omop-button"
+            disabled={full || busy || running} onClick={() => setOmopResource(selectedSource.id)}>Build OMOP cohort</button>}
           <div className="jc-pane-head">
             <h3>Tables</h3>
             <button type="button" className="link" disabled={!selectedSource || tablesLoading}
@@ -1598,6 +1620,9 @@ export function JoinCanvas({ datasets, sources, busy, edit, seed, onJoin, onOpen
           )}
         </div>
       </div>
+
+      {omopResource && <OmopCohortBuilder key={omopResource} resourceId={omopResource}
+        onAdd={addOmop} onClose={() => setOmopResource("")} />}
 
       {filtersOpen && (
         <div className="jc-dialog-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setFiltersOpen(false); }}>

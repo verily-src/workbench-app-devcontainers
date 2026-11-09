@@ -410,6 +410,8 @@ def _number(value, what: str) -> float | None:
 def _date(value, what: str) -> dt.date | None:
     if value is None:
         return None
+    if type(value) is dt.date:
+        return value
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise ValueError(f"{what} must be an ISO date (YYYY-MM-DD).")
     try:

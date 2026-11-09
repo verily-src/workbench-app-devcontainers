@@ -4,7 +4,8 @@ Updated 2026-11-06. This is the shared project memory for Codex, Claude, Cursor,
 
 ## Latest local change
 
-- **LOCAL (2026-11-09):** Added a short, shareable architecture overview linked to the maintained detailed reference. Mermaid source was checked structurally; rendering was not checked.
+- **LOCAL (2026-11-09):** Removed standalone review and scope documents at the user's request and removed links to them.
+- **PUSHED `b6659d2d` (2026-11-09):** Added a short, shareable architecture overview linked to the maintained detailed reference. Mermaid source was checked structurally; rendering was not checked.
 - **PUSHED `36c10444` (2026-11-09):** Added detailed service, OMOP, query-engine, join and storage diagrams to the maintained architecture reference. The five Mermaid blocks and 39 commit-pinned code-line links passed structural checks; diagram rendering was not checked.
 - **PUSHED `395536d4`, deployment pending (2026-11-09):** Removed the alternate partner branding, asset, settings, export rendering and palette; unsupported saved theme values fall back to Verily. Scheduled extract refreshes are disabled: the API rejects schedule changes and the application does not start or recover scheduled runs. Existing schedules remain stored. Manual extracts still write tables and a registry to the target public schema. OMOP filtering remains intact; close schema names are suggested on error without automatic selection. Table and column aliases are not inferred. Seventy PostgreSQL OMOP and scheduler checks, eight focused browser checks, and four container end-to-end checks passed. Live verification remains pending. Historical worktrees and Git history were not rewritten.
 - **PUSHED `1d092b7d`, deployment pending (2026-11-08):** Removed issue reporting and SMTP delivery at the user's request. The dashboard tools layout remains. The container build and three browser E2E checks passed against containerized PostgreSQL; checks confirm the report button and send endpoint are absent. Two updater checks passed, including removal of the old mail module during update. Live update remains pending.
@@ -636,14 +637,14 @@ Local-only indexed work queue: `docs/LOCAL_BACKLOG.md` (do not commit or publish
   implemented, including preview, full-source joins and durable saved recipes.
   Final isolated suite: **216 passed in 72.93s**, including three real-container
   browser flows. OpenCode GLM max frontend/backend review and the independent
-  security recheck found no remaining blocker after fixes. See [review](SQL_SOURCE_REVIEW.md). Workflow demo is scoped in
+  security recheck found no remaining blocker after fixes. Workflow demo is scoped in
   [DEMO_WORKFLOW_SCOPE.md](DEMO_WORKFLOW_SCOPE.md); no job submitted. These
   follow-up changes are deployed at `ad62261`, verified below.
 
 - Standing validation rule: always validate changes locally where possible before shipping or declaring them complete. Prefer local app/container E2E checks of the user outcome. Record results and limits; verify cloud-specific behavior in the live environment separately. This rule is also in root AGENTS.md, shared with Claude through CLAUDE.md.
 - Next update scoped 2026-10-23: source selection inside the join builder,
   schema-first key discovery and optional Jev/TypeSafe ranking, with bounded
-  local probes and user-applied recommendations. See [scope](JEV_SCOPE.md).
+  local probes and user-applied recommendations.
   Deployed and verified at `d7b01a8` on 2026-10-23. User also requires a
   simpler builder and real container/browser validation with local PostgreSQL
   as the Aurora substitute. Production storage remains Aurora.
@@ -752,7 +753,7 @@ Local-only indexed work queue: `docs/LOCAL_BACKLOG.md` (do not commit or publish
 - The older synchronous export, materialization and S3 workflow export still cap at 100,000 rows. No Aurora schema, Aurora resource or DuckDB service was added.
 - Same-resource source recipes use validated Pydantic models and survive saved-view reloads. Derived recipes store a base and validated operation; client SQL is not accepted.
 - Earlier join/cache snapshot passed **146 tests in 27.67 s**, excluding the unrelated local db.py override. The previous streaming release frontend build passed and `test_frontend_e2e.py` passed **7 tests**, including streaming export and live Compare/Derive. This is local evidence, not live Aurora or Workbench deployment verification.
-- Independent Codex CLI review (`gpt-6-luna`) found no remaining blocker after checking chart/filter contracts. OpenCode GLM max approved the join/settings scope after its initial defects were fixed. Codex and OpenCode GLM max also approved the cache scope; final browser/suite checks passed. See [review, evidence and next priorities](REVIEW_2026-10-21_JOINS.md).
+- Independent Codex CLI review (`gpt-6-luna`) found no remaining blocker after checking chart/filter contracts. OpenCode GLM max approved the join/settings scope after its initial defects were fixed. Codex and OpenCode GLM max also approved the cache scope; final browser/suite checks passed.
 
 ## Implemented in this change
 
@@ -770,9 +771,9 @@ Local-only indexed work queue: `docs/LOCAL_BACKLOG.md` (do not commit or publish
 
 ## Verification
 
-- Streaming/full-source tools: isolated release snapshot passed **152 tests in 49.35 s**, no skips, with the unrelated db.py edit excluded. Final cleanup, polling and saved-settings fixes are included. Codex and OpenCode GLM max found no confirmed release blocker. See [review and limits](REVIEW_2026-10-21_STREAMING.md).
+- Streaming/full-source tools: isolated release snapshot passed **152 tests in 49.35 s**, no skips, with the unrelated db.py edit excluded. Final cleanup, polling and saved-settings fixes are included. Codex and OpenCode GLM max found no confirmed release blocker.
 
-- Previous join/cache snapshot: **146 passed in 27.67 s**, no skips, from an isolated copy with the unrelated db.py edit excluded. Frontend production build passed. Codex CLI (`gpt-6-luna`) and OpenCode GLM max approved the reviewed scope. See [review evidence](REVIEW_2026-10-21_JOINS.md).
+- Previous join/cache snapshot: **146 passed in 27.67 s**, no skips, from an isolated copy with the unrelated db.py edit excluded. Frontend production build passed. Codex CLI (`gpt-6-luna`) and OpenCode GLM max approved the reviewed scope.
 - Previous streaming UI scope: production build passed; all **7** tests in `app/tests/test_frontend_e2e.py` passed. Browser mocks do not verify live Aurora exports or a deployed Workbench app.
 
 - Prior cleanup suite: **127 passed in 19.74 s**. Standalone unit-test modules and direct helper checks were removed at user request. Browser/MCP HTTP flows, HTTP application outcomes, real database checks and updater subprocess tests remain. Shared database fixtures now live in conftest.py.
@@ -787,7 +788,7 @@ Local-only indexed work queue: `docs/LOCAL_BACKLOG.md` (do not commit or publish
 - Bedrock request shapes validated through a real Boto3 client with botocore Stubber. No live model calls.
 - Update tests cover failed frontend build leaving the live app unchanged and successful staged activation. Docker image build/smoke was not run.
 - Screenshot inspected: `/tmp/cohort-studio-omop.png` (local test artifact).
-- OpenCode independent review: **GLM 5.3 Flash, max reasoning**, read-only, requested by user; complete. No verified release blocker or wrong-cohort result found. See [review and triage](REVIEW_2026-10-20.md). Earlier DeepSeek review was stopped when user selected GLM.
+- OpenCode independent review: **GLM 5.3 Flash, max reasoning**, read-only, requested by user; complete. No verified release blocker or wrong-cohort result found. Earlier DeepSeek review was stopped when user selected GLM.
 
 ## Remaining limits / next steps
 
@@ -801,8 +802,8 @@ Local-only indexed work queue: `docs/LOCAL_BACKLOG.md` (do not commit or publish
 - Support the browser isolation sidecar, following `src/virtual-browser-jupyter` on master. This branch already has `src/virtual-browser-cohort-studio` and shared `src/browser-common`. The audit confirmed the same two-container routing. The isolated build now accepts `APP_SHA`; its smoke script checks Studio HTML, health and version before the existing browser/network checks. Shell syntax passes. Runtime validation is pending: this machine has neither a Docker daemon nor a Compose plugin. A local browser test alone does not verify Selkies or Workbench proxy routing.
 - In the isolated template, the proxy reaches the browser on port 3000. The backend stays on `backend-network`, with no published port. S3 imports and model calls run on the backend. MCP clients must have private network access; do not expose port 8080 to bypass isolation.
 - User clarified that release means the **in-app Update button**. It fetches pushed code and restarts the existing container, without recreating the Workbench app/VM. Do not substitute CLI app lifecycle actions for this flow.
-- Jev assessment assumes TypeSafe's decision model. [Scope](JEV_SCOPE.md): optional future unified-assistant routing or ranking retrieved concepts, evaluated before use. No adapter is installed or invoked. Existing UI selection and SQL cohort logic remain authoritative.
-- [Join branch comparison](JOIN_BRANCH_REVIEW.md) reviewed `yp-cohort-explorer-joins` at `4d25d21`. The five identified gaps are implemented in the current work: full-database exploration of joined sources, distinct entity counts, restored join recipes, schema overrides and an apply-to-all key picker. No Explorer stack was copied; Studio already has broader join semantics and cross-source support.
+- Jev assessment assumes TypeSafe's decision model. Scope: optional future unified-assistant routing or ranking retrieved concepts, evaluated before use. No adapter is installed or invoked. Existing UI selection and SQL cohort logic remain authoritative.
+- Join branch comparison reviewed `yp-cohort-explorer-joins` at `4d25d21`. The five identified gaps are implemented in the current work: full-database exploration of joined sources, distinct entity counts, restored join recipes, schema overrides and an apply-to-all key picker. No Explorer stack was copied; Studio already has broader join semantics and cross-source support.
 
 1. Preserve the concurrent db.py local-mode edit and Cursor settings outside the release. GLM follow-up fixes and final local checks are complete.
 2. Branch publication is complete. Start/update `Cohort_Studio_EC2_MCP` through the UI, then verify `/api/version`, frontend, and real resource operations from inside the workspace. This installed CLI cannot start AWS apps.
@@ -825,7 +826,7 @@ Local-only indexed work queue: `docs/LOCAL_BACKLOG.md` (do not commit or publish
 - 2026-10-20: Inspected current code and Claude session history. Latest two Claude sessions ended at usage limits. Older personal memory was stale; root AGENTS.md and CLAUDE.md now point here.
 - 2026-10-20: Added OMOP UI and outcome tests, fixed spec validation/lineage, hardened update path.
 - 2026-10-20: Added OpenRouter, Bedrock Converse, and specialized cohort assistant with workflow/app status tools. Used lower-cost subagents at user request.
-- 2026-10-20: Adopted uv and Pydantic preferences. Full suite passed. GLM max external review completed; follow-up fixes and final checks are recorded in REVIEW_2026-10-20.md. Release not performed.
+- 2026-10-20: Adopted uv and Pydantic preferences. Full suite passed. GLM max external review completed; follow-up fixes and final checks are complete. Release not performed.
 - 2026-10-20: Added generic S3-to-Aurora import CLI and hardened isolated-template build/smoke checks. Full suite passed (292). Recorded CMS SynPUF source ambiguity, failed Aurora network check, and missing Docker runtime. No cloud data load or release performed.
 - 2026-10-21: Published code release c911229 after 294 tests on the release snapshot. CLI start failed for the AWS app; UI start/update and runtime verification remain. Browser-sidecar template changes require a new instance, not an in-app code update.
 - 2026-10-21: Reduced the suite to outcome/boundary tests, removed ordinary code comments, refreshed architecture.md and its decision record, and scoped Jev without implementation. In-app Update is the requested code-release path.

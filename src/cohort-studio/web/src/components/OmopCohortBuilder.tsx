@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { OmopCompatibility, OmopConcept, OmopCount, OmopCriterion, OmopDomain, OmopInfo, OmopSpec, SourceRef } from "../types";
 import "./OmopCohortBuilder.css";
@@ -43,6 +43,10 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
   const [birthMin, setBirthMin] = useState("");
   const [birthMax, setBirthMax] = useState("");
   const [count, setCount] = useState<OmopCount | null>(null);
+  const [counting, setCounting] = useState(false);
+  const [countError, setCountError] = useState("");
+  const countRequest = useRef(0);
+  const countQueue = useRef<Promise<unknown>>(Promise.resolve());
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [compatibility, setCompatibility] = useState<OmopCompatibility | null>(null);
@@ -77,7 +81,17 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
     ...(ageMin ? { age_min: number(ageMin) } : {}), ...(ageMax ? { age_max: number(ageMax) } : {}),
     ...(birthMin ? { year_of_birth_min: number(birthMin) } : {}), ...(birthMax ? { year_of_birth_max: number(birthMax) } : {}),
   }, require_observation: observation };
-  const specKey = JSON.stringify(spec);
+  const previewing = selected.length > 0 || editing !== null;
+  const canPreview = !previewing || (!ruleError && !indexConflict && (editing !== null || rules.length < 12)
+    && (domain === "death" || selected.length > 0));
+  const draftCriterion: OmopCriterion = { domain, concept_ids: selected.map((c) => c.concept_id),
+    descendants: domain === "death" ? false : descendants, exclude, min_count: Number(minCount),
+    ...(start ? { start } : {}), ...(end ? { end } : {}), ...(timing && canUseTiming ? { index_relation: timing } : {}),
+    ...(domain === "measurement" && valueMin ? { value_min: number(valueMin) } : {}),
+    ...(domain === "measurement" && valueMax ? { value_max: number(valueMax) } : {}) };
+  const countSpec: OmopSpec = previewing && canPreview ? { ...spec, criteria: editing === null
+    ? [...spec.criteria, draftCriterion] : spec.criteria.map((criterion, index) => index === editing ? draftCriterion : criterion) } : spec;
+  const specKey = JSON.stringify(countSpec);
   const aliases = Object.entries(info?.table_mapping ?? {});
   const needsReview = aliases.length > 0 && !reviewedMapping;
   useEffect(() => {
@@ -89,7 +103,7 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
     return () => { current = false; };
   }, [resourceId, schema]);
   useEffect(() => {
-    if (!schema || demographicError) { setCompatibility(null); return; }
+    if (!schema || demographicError || !canPreview) { setCompatibility(null); return; }
     let current = true;
     setCompatibility(null); setCompatError("");
     const timer = window.setTimeout(() => {
@@ -98,9 +112,31 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
         .catch((e) => { if (current) setCompatError((e as Error).message); });
     }, 200);
     return () => { current = false; window.clearTimeout(timer); };
-  }, [resourceId, schema, specKey, demographicError]);
+  }, [resourceId, schema, specKey, demographicError, canPreview]);
   const incompatible = !compatibility || !compatibility.meets_threshold || compatibility.matched !== compatibility.total;
-  useEffect(() => { setCount(null); }, [rules, observation, schema, gender, ageMin, ageMax, birthMin, birthMax]);
+  useEffect(() => {
+    const requestId = ++countRequest.current;
+    setCount(null); setCountError(""); setCounting(false);
+    if (!schema || incompatible || needsReview || demographicError || !canPreview) return;
+    const timer = window.setTimeout(() => {
+      if (countRequest.current !== requestId) return;
+      setCounting(true);
+      const pending = countQueue.current.then(async () => {
+        if (countRequest.current !== requestId) return;
+        try {
+          const result = await api.omopCount(resourceId, schema, JSON.parse(specKey) as OmopSpec);
+          if (countRequest.current === requestId) setCount(result);
+        } catch (e) {
+          if (countRequest.current === requestId) setCountError((e as Error).message);
+        } finally {
+          if (countRequest.current === requestId) setCounting(false);
+        }
+      });
+      countQueue.current = pending;
+    }, 700);
+    return () => { window.clearTimeout(timer); };
+  }, [resourceId, schema, specKey, incompatible, needsReview, demographicError, canPreview, previewing]);
+  useEffect(() => () => { countRequest.current++; }, []);
   const search = async () => {
     if (!schema || !query.trim() || needsReview) return;
     setBusy("Searching…"); setError(""); setSearched(false);
@@ -111,11 +147,7 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
   const addRule = () => {
     if (domain !== "death" && !selected.length) return;
     const rule: Rule = {
-      criterion: { domain, concept_ids: selected.map((c) => c.concept_id), descendants: domain === "death" ? false : descendants, exclude,
-        min_count: Number(minCount), ...(start ? { start } : {}), ...(end ? { end } : {}),
-        ...(timing && canUseTiming ? { index_relation: timing } : {}),
-        ...(domain === "measurement" && valueMin ? { value_min: number(valueMin) } : {}),
-        ...(domain === "measurement" && valueMax ? { value_max: number(valueMax) } : {}) },
+      criterion: draftCriterion,
       concepts: selected,
     };
     setRules((previous) => editing === null ? [...previous, rule] : previous.map((item, i) => i === editing ? rule : item));
@@ -138,10 +170,14 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
     setStart(""); setEnd(""); setMinCount("1"); setValueMin(""); setValueMax(""); setTiming("");
   };
   const countCohort = async () => {
+    const requestId = ++countRequest.current;
     setBusy("Counting…"); setError("");
-    try { setCount(await api.omopCount(resourceId, schema, spec)); }
-    catch (e) { setError((e as Error).message); }
-    finally { setBusy(""); }
+    setCount(null); setCountError(""); setCounting(true);
+    const pending = countQueue.current.then(() => api.omopCount(resourceId, schema, spec));
+    countQueue.current = pending.catch(() => undefined);
+    try { const result = await pending; if (countRequest.current === requestId) setCount(result); }
+    catch (e) { if (countRequest.current === requestId) setCountError((e as Error).message); }
+    finally { if (countRequest.current === requestId) setCounting(false); setBusy(""); }
   };
   const add = async () => {
     setBusy("Opening cohort…"); setError("");
@@ -183,37 +219,9 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
           {Object.entries(compatibility.missing_columns).map(([table, columns]) => <p key={table}>Missing columns in {table}: {columns.join(", ")}.</p>)}
         </div>}
         {compatError && <p role="alert">Could not check OMOP compatibility: {compatError}</p>}
-        <label className="omop-check"><input type="checkbox" checked={observation} onChange={(e) => setObservation(e.target.checked)} /> Require an observation period</label>
-        <h4>Demographics</h4>
-        <div className="omop-fields">
-          <label>Gender (OMOP)<select value={gender} onChange={(e) => setGender(e.target.value)}>
-            <option value="">Any</option><option value="8532">Female</option><option value="8507">Male</option>
-          </select></label>
-          <label>Minimum age at index<input type="number" value={ageMin} onChange={(e) => setAgeMin(e.target.value)} /></label>
-          <label>Maximum age at index<input type="number" value={ageMax} onChange={(e) => setAgeMax(e.target.value)} /></label>
-          <label>Birth year from<input type="number" step="1" value={birthMin} onChange={(e) => setBirthMin(e.target.value)} /></label>
-          <label>Birth year through<input type="number" step="1" value={birthMax} onChange={(e) => setBirthMax(e.target.value)} /></label>
-        </div>
-        <p>Gender uses the OMOP person gender concept. Age is index year minus birth year; people without an index date cannot match an age filter.</p>
-        {demographicError && <p role="alert">Check the age and birth-year ranges.</p>}
-        {count && editing === null && <div role="status" className="omop-count"><strong>{count.persons.toLocaleString()} people</strong> of {count.total_persons.toLocaleString()}
-          {count.attrition.length > 0 && <details><summary>Show cohort steps</summary><ol>{count.attrition.map((step, i) => <li key={i}>{step.label}: {step.persons.toLocaleString()}</li>)}</ol></details>}</div>}
-        <h4>Criteria</h4>
-        <p>All criteria must match. Concepts within one criterion match any selected concept.</p>
-        {rules.length === 0 && <p>Without criteria, the cohort includes everyone in the selected population.</p>}
-        {rules.length > 0 && <ul className="omop-rules">{rules.map((rule, index) => <li key={index}>
-          <span>{rule.criterion.exclude ? "Exclude" : "Include"} {rule.criterion.domain}: {rule.concepts.map((c) => `${c.concept_name} (${c.concept_id})`).join(", ") || "any"}{rule.criterion.descendants ? " · descendants" : ""}
-            {rule.criterion.min_count && rule.criterion.min_count > 1 ? ` · at least ${rule.criterion.min_count} events` : ""}
-            {rule.criterion.start ? ` · from ${rule.criterion.start}` : ""}{rule.criterion.end ? ` · through ${rule.criterion.end}` : ""}
-            {rule.criterion.value_min !== undefined ? ` · value ≥ ${rule.criterion.value_min}` : ""}{rule.criterion.value_max !== undefined ? ` · value ≤ ${rule.criterion.value_max}` : ""}
-            {rule.criterion.index_relation ? ` · ${rule.criterion.index_relation} index` : ""}{index === firstIncluded ? " · index event" : ""}</span>
-          <span className="omop-rule-actions"><button type="button" className="quiet" disabled={editing !== null} onClick={() => editRule(index)} aria-label={`Edit criterion ${index + 1}`}>Edit</button>
-          <button type="button" className="quiet" aria-label={`Remove criterion ${index + 1}`}
-            disabled={editing !== null || index === firstIncluded && rules.some((item) => Boolean(item.criterion.index_relation))}
-            title={index === firstIncluded && rules.some((item) => Boolean(item.criterion.index_relation)) ? "Remove time-relative criteria first." : undefined}
-            onClick={() => { if (index === firstIncluded) setTiming(""); setRules((items) => items.filter((_, i) => i !== index)); }}>✕</button></span>
-        </li>)}</ul>}
-        {rules.some((item) => Boolean(item.criterion.index_relation)) && <p>Remove time-relative criteria before removing the index event.</p>}
+        <div className="omop-layout">
+        <section className="omop-criteria" aria-label="Concept criteria">
+        <h4>Find concepts</h4>
         <div className="omop-fields">
           <label>Domain<select aria-label="Domain" value={domain} onChange={(e) => { setDomain(e.target.value as OmopDomain); setSelected([]); setResults([]); setQuery(""); setSearched(false); setValueMin(""); setValueMax(""); }}>
             {DOMAINS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
@@ -223,13 +231,13 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
           </select></label>
         </div>
         {domain !== "death" && <>
-          <div className="omop-search"><label>Search concepts<input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void search(); } }} /></label>
-            <button type="button" disabled={!query.trim() || needsReview} onClick={() => void search()}>Search</button></div>
+          <div className="omop-search"><label>Search concepts<input type="search" placeholder="Search by concept name, ID, or code" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void search(); } }} /></label>
+            <button type="button" className="primary" disabled={!query.trim() || needsReview} onClick={() => void search()}>Search</button></div>
           <label className="omop-check"><input type="checkbox" checked={standardOnly} onChange={(e) => { setStandardOnly(e.target.checked); setResults([]); setSearched(false); }} /> Standard concepts only</label>
           {!standardOnly && <p>Nonstandard concepts may not be present in the domain's concept ID field.</p>}
-          {results.length > 0 && <div className="omop-results" role="group" aria-label="Concept search results">{results.map((concept) => <label key={concept.concept_id} className="omop-check">
+          {results.length > 0 && <div className="omop-results" role="group" aria-label="Concept search results">{results.map((concept) => <label key={concept.concept_id} className="omop-result">
             <input type="checkbox" checked={selected.some((c) => c.concept_id === concept.concept_id)} onChange={(e) => setSelected((items) => e.target.checked ? [...items, concept] : items.filter((c) => c.concept_id !== concept.concept_id))} />
-            {concept.concept_name} · {concept.concept_id} · {concept.vocabulary_id}{concept.standard_concept !== "S" ? " · nonstandard" : ""}</label>)}</div>}
+            <span><strong>{concept.concept_name}</strong><small>{concept.concept_id} · {concept.vocabulary_id}{concept.standard_concept !== "S" ? " · nonstandard" : ""}</small></span></label>)}</div>}
           {searched && results.length === 0 && <p role="status">No concepts found.</p>}
           {selected.length > 0 && <div aria-label="Selected concepts"><strong>Selected concepts</strong><ul className="omop-rules">{selected.map((concept) => <li key={concept.concept_id}>
             <span>{concept.concept_name} · {concept.concept_id}</span><button type="button" className="quiet" aria-label={`Remove concept ${concept.concept_id}`} onClick={() => setSelected((items) => items.filter((item) => item.concept_id !== concept.concept_id))}>✕</button>
@@ -245,14 +253,52 @@ export function OmopCohortBuilder({ resourceId, onAdd, onClose }: {
           </select></label>
           {domain === "measurement" && <><label>Minimum value<input type="number" step="any" value={valueMin} onChange={(e) => setValueMin(e.target.value)} /></label>
             <label>Maximum value<input type="number" step="any" value={valueMax} onChange={(e) => setValueMax(e.target.value)} /></label></>}
-        </div></details>
-        <p>The index date is the first event of the first included criterion, or the first observation start if there is no included criterion. Before and after are exclusive.</p>
+        </div><p>The index date is the first event of the first included criterion, or the first observation start if there is no included criterion. Before and after are exclusive.</p></details>
         {ruleError && <p role="alert">Check the event dates, counts and measurement values.</p>}
         {indexConflict && <p role="alert">Remove time-relative criteria before changing the index event.</p>}
-        <button type="button" disabled={domain !== "death" && !selected.length || editing === null && rules.length >= 12 || ruleError || indexConflict} onClick={addRule}>{editing === null ? "Add criterion" : "Update criterion"}</button>
-        {editing !== null && <button type="button" onClick={cancelEdit}>Cancel edit</button>}
         {(selected.length > 0 || editing !== null) && <p>{editing === null ? "Add the selected concepts as a criterion before continuing." : "Update or cancel the criterion before continuing."}</p>}
-        <div className="omop-actions"><button type="button" disabled={!schema || selected.length > 0 || editing !== null || demographicError || incompatible || needsReview} onClick={() => void countCohort()}>Count people</button>
+        <h4>Cohort criteria</h4>
+        {rules.length > 0 && <p>All criteria must match. Concepts within one criterion match any selected concept.</p>}
+        {rules.length > 0 && <ul className="omop-rules">{rules.map((rule, index) => <li key={index}>
+          <span>{rule.criterion.exclude ? "Exclude" : "Include"} {rule.criterion.domain}: {rule.concepts.map((c) => `${c.concept_name} (${c.concept_id})`).join(", ") || "any"}{rule.criterion.descendants ? " · descendants" : ""}
+            {rule.criterion.min_count && rule.criterion.min_count > 1 ? ` · at least ${rule.criterion.min_count} events` : ""}
+            {rule.criterion.start ? ` · from ${rule.criterion.start}` : ""}{rule.criterion.end ? ` · through ${rule.criterion.end}` : ""}
+            {rule.criterion.value_min !== undefined ? ` · value ≥ ${rule.criterion.value_min}` : ""}{rule.criterion.value_max !== undefined ? ` · value ≤ ${rule.criterion.value_max}` : ""}
+            {rule.criterion.index_relation ? ` · ${rule.criterion.index_relation} index` : ""}{index === firstIncluded ? " · index event" : ""}</span>
+          <span className="omop-rule-actions"><button type="button" className="quiet" disabled={editing !== null} onClick={() => editRule(index)} aria-label={`Edit criterion ${index + 1}`}>Edit</button>
+          <button type="button" className="quiet" aria-label={`Remove criterion ${index + 1}`}
+            disabled={editing !== null || index === firstIncluded && rules.some((item) => Boolean(item.criterion.index_relation))}
+            title={index === firstIncluded && rules.some((item) => Boolean(item.criterion.index_relation)) ? "Remove time-relative criteria first." : undefined}
+            onClick={() => { if (index === firstIncluded) setTiming(""); setRules((items) => items.filter((_, i) => i !== index)); }}>✕</button></span>
+        </li>)}</ul>}
+        {rules.some((item) => Boolean(item.criterion.index_relation)) && <p>Remove time-relative criteria before removing the index event.</p>}
+        </section>
+        <aside className="omop-demographics" aria-label="Demographics and observation">
+        <h4>Demographics</h4>
+        <div className="omop-fields">
+          <label>Gender (OMOP)<select value={gender} onChange={(e) => setGender(e.target.value)}>
+            <option value="">Any</option><option value="8532">Female</option><option value="8507">Male</option>
+          </select></label>
+          <label>Minimum age at index<input type="number" value={ageMin} onChange={(e) => setAgeMin(e.target.value)} /></label>
+          <label>Maximum age at index<input type="number" value={ageMax} onChange={(e) => setAgeMax(e.target.value)} /></label>
+          <label>Birth year from<input type="number" step="1" value={birthMin} onChange={(e) => setBirthMin(e.target.value)} /></label>
+          <label>Birth year through<input type="number" step="1" value={birthMax} onChange={(e) => setBirthMax(e.target.value)} /></label>
+        </div>
+        <p className="omop-demographic-hint">Age is index year minus birth year; people without an index date cannot match an age filter.</p>
+        <label className="omop-check"><input type="checkbox" checked={observation} onChange={(e) => setObservation(e.target.checked)} /> Require an observation period</label>
+        {demographicError && <p role="alert">Check the age and birth-year ranges.</p>}
+        </aside>
+        </div>
+        <div className="omop-actions"><div className="omop-count" role="status" aria-live="polite">
+          {!canPreview ? "Check the criterion to see the count."
+            : counting ? "Counting people…"
+            : countError ? `Count unavailable: ${countError}`
+            : count ? <>{previewing && "Preview: "}<strong>{count.persons.toLocaleString()} people</strong> of {count.total_persons.toLocaleString()}
+              {count.attrition.length > 0 && <details><summary>Show cohort steps</summary><ol>{count.attrition.map((step, i) => <li key={i}>{step.label}: {step.persons.toLocaleString()}</li>)}</ol></details>}</>
+            : ""}
+        </div>{editing !== null && <button type="button" onClick={cancelEdit}>Cancel edit</button>}
+          <button type="button" disabled={domain !== "death" && !selected.length || editing === null && rules.length >= 12 || ruleError || indexConflict} onClick={addRule}>{editing === null ? "Add criterion" : "Update criterion"}</button>
+          <button type="button" disabled={!schema || selected.length > 0 || editing !== null || demographicError || incompatible || needsReview} onClick={() => void countCohort()}>Count people</button>
           <button type="button" className="primary" disabled={!schema || selected.length > 0 || editing !== null || demographicError || incompatible || needsReview} onClick={() => void add()}>Add to Data Builder</button></div>
       </fieldset>}
     </section>

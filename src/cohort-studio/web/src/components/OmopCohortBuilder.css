@@ -1,18 +1,44 @@
-.omop-builder { padding-bottom: 16px; }
+.jc-dialog.wide.omop-builder { width: min(1180px, calc(94 * var(--vw, 1vw))); max-height: calc(82 * var(--vh, 1vh)); padding-bottom: 16px; }
 .omop-builder > .jc-bottom-head { position: sticky; top: 0; z-index: 2; background: var(--card); }
-.omop-builder > p { margin: 12px; }
-.omop-builder fieldset { border: 0; margin: 0; padding: 12px; min-width: 0; }
-.omop-builder h4 { margin: 16px 0 6px; }
+.omop-builder > p { margin: 12px 20px; }
+.omop-builder fieldset { border: 0; margin: 0; padding: 18px 20px; min-width: 0; }
+.omop-builder h4 { margin: 0 0 12px; font-size: 15px; }
 .omop-builder p { margin: 8px 0; color: var(--ink-muted); }
 .omop-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-.omop-fields label, .omop-search label { display: grid; gap: 4px; }
-.omop-check { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-.omop-search { display: flex; align-items: end; gap: 8px; margin: 12px 0; }
-.omop-search label { flex: 1; }
-.omop-results { max-height: 180px; overflow-y: auto; border: 1px solid var(--border); padding: 0 8px; }
+.omop-fields label, .omop-search label { display: grid; gap: 5px; }
+.omop-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 290px); align-items: start; gap: 24px; margin-top: 22px; }
+.omop-criteria { min-width: 0; }
+.omop-criteria > h4:not(:first-child) { margin-top: 22px; }
+.omop-demographics { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.omop-demographics .omop-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.omop-demographics .omop-fields label:first-child { grid-column: 1 / -1; }
+.omop-demographics .omop-fields label { min-width: 0; }
+.omop-demographics .omop-fields input, .omop-demographics .omop-fields select { width: 100%; min-width: 0; }
+.omop-demographic-hint { font-size: 12px; }
+.omop-check { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+.omop-search { display: flex; align-items: end; gap: 8px; margin: 18px 0 12px; }
+.omop-search label { flex: 1; min-width: 0; font-weight: 600; }
+.omop-search input { width: 100%; min-width: 0; height: 50px; padding: 10px 14px; font-size: 16px; }
+.omop-search button { height: 50px; padding: 0 22px; }
+.omop-results { max-height: min(340px, 38vh); overflow-y: auto; margin: 12px 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.omop-result { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; cursor: pointer; }
+.omop-result + .omop-result { border-top: 1px solid var(--border); }
+.omop-result:hover { background: var(--hover); }
+.omop-result input { margin-top: 3px; flex: none; }
+.omop-result span { display: grid; gap: 3px; }
+.omop-result strong { font-weight: 600; }
+.omop-result small { color: var(--ink-muted); }
 .omop-rules { list-style: none; padding: 0; }
-.omop-rules li { display: flex; justify-content: space-between; gap: 8px; align-items: start; border-bottom: 1px solid var(--border); padding: 5px 0; }
+.omop-rules li { display: flex; justify-content: space-between; gap: 8px; align-items: start; border-bottom: 1px solid var(--border); padding: 8px 0; }
 .omop-rule-actions { display: inline-flex; gap: 4px; flex: none; }
-.omop-actions { position: sticky; bottom: -16px; display: flex; gap: 8px; margin: 12px 0 -12px; padding: 12px 0; background: var(--card); border-top: 1px solid var(--border); }
-.omop-count { margin-top: 12px; }
+.omop-actions { position: sticky; bottom: -16px; z-index: 1; display: flex; align-items: center; gap: 8px; margin: 18px -20px -18px; padding: 14px 20px; background: var(--card); border-top: 1px solid var(--border); }
+.omop-actions > button { flex: none; white-space: nowrap; }
+.omop-count { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; color: var(--ink-muted); }
+.omop-count strong { color: var(--ink); font-size: 15px; }
 .jc-omop-button { width: 100%; margin: 10px 0; }
+@media (max-width: 760px) {
+  .omop-layout { grid-template-columns: 1fr; gap: 18px; }
+  .omop-search button { padding: 0 14px; }
+  .omop-actions { flex-wrap: wrap; }
+  .omop-count { flex-basis: 100%; }
+}

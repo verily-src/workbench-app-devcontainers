@@ -248,6 +248,8 @@ uses the OMOP person gender concept. The canvas stores a live
 `omop_cohort` source recipe; it can be opened alone or joined to other inputs.
 This creates a logical dataset source, not a database view. Concept search
 does not calculate per-concept person counts for this picker.
+The builder debounces cohort counts and previews the effect of selected concepts;
+it runs one count at a time and discards results for outdated selections.
 
 Selected cohort features are checked against their required tables and columns;
 the dialog shows the match percentage and blocks queries when a required input is

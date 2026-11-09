@@ -493,8 +493,8 @@ export const api = {
   omopInfo: (resourceId: string) =>
     request<OmopInfo>(`/api/omop/${encodeURIComponent(resourceId)}`),
 
-  omopConcepts: (resourceId: string, schema: string, q: string, domain: string) => {
-    const params = new URLSearchParams({ q, domain, cdm_schema: schema, persons: "false" });
+  omopConcepts: (resourceId: string, schema: string, q: string, domain: string, standardOnly = true) => {
+    const params = new URLSearchParams({ q, domain, cdm_schema: schema, persons: "false", standard_only: String(standardOnly) });
     return request<{ concepts: OmopConcept[] }>(`/api/omop/${encodeURIComponent(resourceId)}/concepts?${params}`);
   },
 

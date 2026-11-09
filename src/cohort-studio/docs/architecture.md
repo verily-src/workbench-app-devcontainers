@@ -241,7 +241,10 @@ detection can find it; selecting a collection does not create clinical tables.
 
 In Data Builder, select an Aurora connection and use **Build OMOP cohort** to
 choose a CDM schema, search standard concepts, add inclusion or exclusion
-criteria, count the cohort and add it to the canvas. The canvas stores a live
+criteria, demographic filters, event timing and measurement value limits, count
+the cohort and add it to the canvas. Criteria can be edited; changes that would
+silently move the index while other criteria depend on it are blocked. Age is index year minus birth year; gender
+uses the OMOP person gender concept. The canvas stores a live
 `omop_cohort` source recipe; it can be opened alone or joined to other inputs.
 This creates a logical dataset source, not a database view. Concept search
 does not calculate per-concept person counts for this picker.

@@ -27,6 +27,17 @@ def test_omop_cohort_builds_live_dataset_and_joins(page):
     dialog.get_by_role("button", name="Add criterion").click()
     dialog.get_by_role("button", name="Count people").click()
     expect(dialog.get_by_role("status").filter(has_text="40 people")).to_be_visible(timeout=20000)
+    dialog.get_by_label("Gender (OMOP)").select_option("8532")
+    expect(dialog.get_by_role("status").filter(has_text="40 people")).to_have_count(0)
+    dialog.get_by_label("Minimum age at index").fill("70")
+    dialog.get_by_label("Maximum age at index").fill("30")
+    expect(dialog.get_by_role("button", name="Count people")).to_be_disabled()
+    dialog.get_by_label("Minimum age at index").fill("0")
+    dialog.get_by_label("Maximum age at index").fill("120")
+    dialog.get_by_label("Birth year from").fill("1900")
+    dialog.get_by_label("Birth year through").fill("2100")
+    dialog.get_by_role("button", name="Count people").click()
+    expect(dialog.get_by_role("status").filter(has_text="20 people")).to_be_visible(timeout=20000)
     page.screenshot(path="/private/tmp/cohort-omop-builder.png")
     dialog.get_by_role("button", name="Add to Data Builder").click()
     expect(dialog).to_be_hidden(timeout=30000)
@@ -49,17 +60,20 @@ def test_omop_cohort_builds_live_dataset_and_joins(page):
         canvas.get_by_role("button", name="Save & open in Explore").click(timeout=30000)
     result = joined.value.json()["result"]
     assert result["query_scope"] == "database"
-    assert result["join"]["total_rows"] == 40
+    assert result["join"]["total_rows"] == 20
     assert result["source_ref"]["base"]["kind"] == "omop_cohort"
     assert result["source_ref"]["base"]["spec"]["criteria"][0]["concept_ids"] == [192671]
-    expect(page.locator(".hero .count")).to_have_text("40", timeout=30000)
+    assert result["source_ref"]["base"]["spec"]["demographics"] == {
+        "gender_concept_ids": [8532], "age_min": 0, "age_max": 120,
+        "year_of_birth_min": 1900, "year_of_birth_max": 2100}
+    expect(page.locator(".hero .count")).to_have_text("20", timeout=30000)
     reopened = page.request.post(f"{url}/api/datasets/open", data={"source_ref": result["source_ref"]}, timeout=60000)
     assert reopened.ok, reopened.text()
     restored = reopened.json()
     assert restored["query_scope"] == "database"
     queried = page.request.post(f"{url}/api/datasets/{restored['dataset_id']}/query", data={"page": 0, "page_size": 20})
     assert queried.ok, queried.text()
-    assert queried.json()["filtered"] == 40
+    assert queried.json()["filtered"] == 20
 
 
 def test_omop_exclusion_builds_expected_population(page):
@@ -96,3 +110,50 @@ def test_omop_exclusion_builds_expected_population(page):
     assert result["source_ref"]["base"]["spec"]["criteria"][0]["exclude"] is True
     assert result["source_ref"]["base"]["spec"]["criteria"][0]["start"] == "1900-01-01"
     expect(page.locator(".hero .count")).to_have_text("60", timeout=30000)
+
+
+def test_omop_measurement_and_index_timing(page):
+    url = os.environ.get("STUDIO_LOCAL_URL", "").rstrip("/")
+    if not url:
+        pytest.skip("Set STUDIO_LOCAL_URL to the running local container app.")
+    page.goto(url)
+    page.get_by_role("button", name="Data Builder").click()
+    canvas = page.locator(".jc")
+    canvas.get_by_role("button", name=re.compile("^local-postgres|^Local")).first.click()
+    canvas.get_by_role("button", name="Build OMOP cohort").click()
+    dialog = page.get_by_role("dialog", name="Build OMOP cohort")
+    expect(dialog.get_by_label("CDM schema")).to_have_value("cdm", timeout=20000)
+    dialog.get_by_label("Search concepts").fill("192671")
+    dialog.get_by_role("button", name="Search", exact=True).click()
+    dialog.get_by_role("group", name="Concept search results").get_by_role("checkbox", name=re.compile("192671")).first.check(timeout=15000)
+    dialog.get_by_role("button", name="Add criterion").click()
+    dialog.get_by_label("Domain", exact=True).select_option("measurement")
+    dialog.get_by_label("Search concepts").fill("3006322")
+    dialog.get_by_label("Standard concepts only").uncheck()
+    with page.expect_request(lambda request: "/concepts?" in request.url and "standard_only=false" in request.url):
+        dialog.get_by_role("button", name="Search", exact=True).click()
+    dialog.get_by_role("group", name="Concept search results").get_by_role("checkbox", name=re.compile("3006322")).first.check(timeout=15000)
+    dialog.get_by_text("Event limits", exact=True).click()
+    dialog.get_by_label("Timing relative to index").select_option("after")
+    dialog.get_by_label("Minimum value").fill("37")
+    dialog.get_by_label("Maximum value").fill("39")
+    dialog.get_by_role("button", name="Add criterion").click()
+    expect(dialog.get_by_role("button", name="Remove criterion 1")).to_be_disabled()
+    dialog.get_by_role("button", name="Edit criterion 2").click()
+    expect(dialog.get_by_role("button", name="Count people")).to_be_disabled()
+    expect(dialog.get_by_label("Timing relative to index")).to_have_value("after")
+    expect(dialog.get_by_label("Minimum value")).to_have_value("37")
+    dialog.get_by_label("Minimum value").fill("38")
+    dialog.get_by_role("button", name="Update criterion").click()
+    with page.expect_request(lambda request: "/cohort/count?" in request.url and request.method == "POST") as sent:
+        dialog.get_by_role("button", name="Count people").click()
+    criteria = sent.value.post_data_json["criteria"]
+    assert criteria[1]["index_relation"] == "after"
+    assert (criteria[1]["value_min"], criteria[1]["value_max"]) == (38, 39)
+    expect(dialog.get_by_role("status").filter(has_text="0 people")).to_be_visible(timeout=20000)
+    dialog.get_by_role("button", name="Edit criterion 1").click()
+    dialog.get_by_label("Match", exact=True).select_option("exclude")
+    expect(dialog.get_by_text("Remove time-relative criteria before changing the index event.")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Update criterion")).to_be_disabled()
+    dialog.get_by_role("button", name="Cancel edit").click()
+    expect(dialog.get_by_role("status").filter(has_text="0 people")).to_be_visible()

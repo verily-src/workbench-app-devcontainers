@@ -489,6 +489,7 @@ export interface OmopConcept {
   concept_name: string;
   vocabulary_id: string;
   domain_id: string;
+  standard_concept?: string | null;
   persons: number | null;
 }
 export interface OmopCriterion {

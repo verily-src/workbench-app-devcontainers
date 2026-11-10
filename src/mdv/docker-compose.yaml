@@ -15,6 +15,8 @@ services:
       # Live project store (project directories + .h5 files). Keep on a local
       # volume — gcsfuse buckets cannot host MDV's random/mmap .h5 writes.
       - mdv-data:/app/mdv
+      # Large sample project, built once at first start when the workspace has no MDV data.
+      - mdv-samples:/var/lib/mdv-samples
     ports:
       # MDV's port; forwarded and surfaced by the Workbench UI.
       - 5055:5055
@@ -31,6 +33,19 @@ services:
       - MDV_API_ROOT=/
       # Access is gated by Workbench; MDV's own auth stays off.
       - ENABLE_AUTH=0
+      # Cross-origin isolation for SharedArrayBuffer: credentialless (default) or require-corp.
+      - MDV_ISOLATION_MODE=credentialless
+      # Workspace data sync (see workspace-sync/ and README.md).
+      # Folder in each bucket that holds MDV data: <bucket>/mdv/projects/, <bucket>/mdv/data/.
+      - MDV_WORKSPACE_FOLDER=mdv
+      # Convert .h5ad/.h5mu files in <bucket>/mdv/data/ into MDV projects.
+      - MDV_WORKSPACE_CONVERT=true
+      # Minutes between syncs; 0 = only at app start.
+      - MDV_SYNC_INTERVAL_MINUTES=10
+      # Sample projects: auto = only when no bucket has MDV data; always; never.
+      - MDV_SAMPLE_DATA=auto
+      # Variants in the large sample; 0 = as many as the VM's memory allows (up to all of chr1).
+      - MDV_SAMPLE_VCF_MAX_SITES=0
     networks:
       - app-network      # Workbench-facing (external)
       - mdv-internal     # reaches the DB
@@ -65,6 +80,7 @@ services:
 
 volumes:
   mdv-data:
+  mdv-samples:
   postgres-data:
 
 networks:

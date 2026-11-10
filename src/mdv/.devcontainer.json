@@ -12,13 +12,7 @@
     "${templateOption:cloud}",
     "${templateOption:login}"
   ],
-  "postStartCommand": [
-    "./startupscript/remount-on-restart.sh",
-    "pn",
-    "/home/pn",
-    "${templateOption:cloud}",
-    "${templateOption:login}"
-  ],
+  "postStartCommand": "./startupscript/remount-on-restart.sh pn /home/pn '${templateOption:cloud}' '${templateOption:login}' && /opt/mdv-workbench/start-workspace-sync.sh pn /home/pn",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {
       "version": "17"

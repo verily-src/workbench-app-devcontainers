@@ -47,13 +47,25 @@ http {
         proxy_request_buffering off;
         proxy_read_timeout 300s;
 
+        # Workspace data sync log, for checking what was linked or converted (read-only).
+        location = /_workspace-sync.log {
+            default_type text/plain;
+            add_header Cache-Control "no-store" always;
+            alias /var/lib/mdv-workspace-sync/sync.log;
+        }
+
         location ${MDV_API_ROOT} {
-            # credentialless (not require-corp): lets no-CORS cross-origin
+            # credentialless (default, not require-corp): lets no-CORS cross-origin
             # subresources (e.g. <img>/<script> against public S3/GCS buckets,
             # Ensembl, EBI without a Cross-Origin-Resource-Policy header) keep
             # loading, just without credentials attached. require-corp would
             # hard-block those. See BENCH-9901.
-            add_header Document-Isolation-Policy "isolate-and-credentialless" always;
+            # MDV's Flask app always sends COEP require-corp, and the browser enforces COEP and
+            # DIP together, so COEP is replaced to match; changing DIP alone still blocks those
+            # loads. MDV_ISOLATION_MODE (start.sh) selects the mode.
+            proxy_hide_header Cross-Origin-Embedder-Policy;
+            add_header Cross-Origin-Embedder-Policy "${MDV_COEP}" always;
+            add_header Document-Isolation-Policy "isolate-and-${MDV_COEP}" always;
             proxy_pass http://127.0.0.1:5056/;
         }
     }

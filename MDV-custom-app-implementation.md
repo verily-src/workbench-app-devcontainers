@@ -130,6 +130,22 @@ The failed run was missing host tools, not app problems:
 The repo's own CI installs these in [tests/common/build.sh](tests/common/build.sh)
 (`npm install -g @devcontainers/cli`) before running `devcontainer up`.
 
+## Cross-origin isolation, workspace data and samples (BENCH-9901)
+
+Later changes, documented in [src/mdv/README.md](src/mdv/README.md):
+
+- **Isolation inside the Workbench frame:** nginx in front of MDV sends
+  `Document-Isolation-Policy` and a matching `Cross-Origin-Embedder-Policy`
+  (`MDV_ISOLATION_MODE`, default `credentialless`), so `SharedArrayBuffer` works while
+  Workbench frames the app. Chrome/Edge 137+ only.
+- **Workspace data:** [src/mdv/workspace-sync/](src/mdv/workspace-sync/) links MDV projects
+  from `<bucket>/mdv/projects/` read-only and converts `.h5ad`/`.h5mu` files from
+  `<bucket>/mdv/data/`, at app start and every 10 minutes.
+- **Samples:** when no bucket has MDV data, MDV opens with `pbmc3k_processed` and a
+  1000 Genomes chromosome 1 variant project sized to the VM's memory.
+
+Workbench test steps: [src/mdv/WORKBENCH-TESTING.md](src/mdv/WORKBENCH-TESTING.md).
+
 ## Production follow-ups (not blocking a test app)
 
 * Pin the wrapper's `FROM` to a specific MDV tag/digest instead of `:stable`.

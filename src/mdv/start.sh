@@ -9,7 +9,18 @@ set -euo pipefail
 MDV_API_ROOT="${MDV_API_ROOT:-/}"
 export MDV_API_ROOT
 
-envsubst '${MDV_API_ROOT}' \
+# Cross-origin isolation mode for MDV's document (BENCH-9901):
+#   credentialless (default): public cross-origin files and images load without CORP headers,
+#     sent without cookies. Data read by JavaScript (fetch/XHR) still needs CORS in either mode.
+#   require-corp: cross-origin subresources load only if they send CORP or CORS headers.
+case "${MDV_ISOLATION_MODE:-credentialless}" in
+  credentialless | require-corp) MDV_COEP="${MDV_ISOLATION_MODE:-credentialless}" ;;
+  *) echo "Invalid MDV_ISOLATION_MODE '${MDV_ISOLATION_MODE}'" >&2; exit 1 ;;
+esac
+export MDV_COEP
+
+# shellcheck disable=SC2016 # envsubst takes literal variable names
+envsubst '${MDV_API_ROOT} ${MDV_COEP}' \
     < /opt/mdv-nginx/nginx.conf.template \
     > /tmp/mdv-nginx.conf
 

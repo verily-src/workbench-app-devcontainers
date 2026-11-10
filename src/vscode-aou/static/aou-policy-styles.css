@@ -11,6 +11,9 @@
     justify-content: center;
     z-index: 10000;
     animation: aou-fade-in 0.2s ease-out;
+    /* The modal sits outside VS Code's workbench, which sets the page font. */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
 }
 
 @keyframes aou-fade-in {
@@ -60,6 +63,7 @@
 }
 
 .aou-modal-body p {
+    font-size: 16px;
     margin: 0 0 12px 0;
     line-height: 1.6;
     color: #24292e;

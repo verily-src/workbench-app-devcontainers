@@ -13,8 +13,6 @@ checked and logged. The policy is part of the image; the app user cannot change 
 
 Template path: `src/ai-research-assistant`.
 
-**Status:** this version has not yet been built and self-tested as a deployed app.
-
 ## How it works
 
 ```
@@ -59,7 +57,8 @@ agent-sandbox help                         # status, logs, policy, audit, reset
 - Every self-test check should pass before you rely on the sandbox.
 - The sandbox has its own filesystem: it cannot see `/config`, your repos or the bucket mounts.
   Its files last until `agent-sandbox reset --yes`.
-- The first start downloads 21.6 GB of weights and takes several minutes. Later starts reuse them.
+- The first start builds the app and downloads 21.6 GB of weights; allow about 45 minutes.
+  Later starts reuse both.
 
 ## Policy
 

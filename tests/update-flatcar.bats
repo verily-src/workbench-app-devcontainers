@@ -7,6 +7,11 @@ readonly UPDATE_CONF=$'REBOOT_STRATEGY=off\nSERVER=disabled\n'
 readonly CLEAR=$'metadata os_update/reboot_required=\nmetadata os_update/timestamp=\n'
 readonly UPDATE=$'flatcar-update --to-version 4593.2.10 --disable-afterwards\n'
 readonly RESET=$'cgpt prioritize /dev/sda4\nreset\n'
+readonly INSTALLED="Installed Flatcar version: 4593.2.5"
+readonly APPROVED="Approved Flatcar version: 4593.2.10"
+readonly NOT_OLDER="Installed version is not older than approved; skipping"
+readonly NO_PIN="Could not read the approved Flatcar version from ${VERSION_URL}"
+readonly STAGING=$'Updating Flatcar from 4593.2.5 to 4593.2.10\nStaged Flatcar 4593.2.10; it applies on the next reboot'
 
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" >/dev/null 2>&1 && pwd)"
@@ -94,7 +99,13 @@ run_update() {
         bash "${ROOT}/update-flatcar.sh" "${VERSION_URL}"
 }
 
-# usage: expect <success|failure> <actions>
+# usage: lines <line>...
+lines() {
+    local IFS=$'\n'
+    echo "$*"
+}
+
+# usage: expect <success|failure> <actions> [output]
 expect() {
     if [[ "$1" == success && "${status}" -ne 0 ]] || [[ "$1" == failure && "${status}" -eq 0 ]]; then
         echo "status ${status}, want $1; output: ${output}"
@@ -105,6 +116,10 @@ expect() {
     actions="${actions%x}"
     if [[ "${actions}" != "$2" ]]; then
         echo "actions = $(printf '%q' "${actions}"), want $(printf '%q' "$2"); output: ${output}"
+        return 1
+    fi
+    if [[ $# -ge 3 && "${output}" != "$3" ]]; then
+        echo "output = $(printf '%q' "${output}"), want $(printf '%q' "$3")"
         return 1
     fi
     local conf
@@ -119,32 +134,33 @@ expect() {
 @test "same version" {
     PIN='{"flatcar_stable_version":"4593.2.5"}'
     run_update
-    expect success "${CLEAR}"
+    expect success "${CLEAR}" "$(lines "${INSTALLED}" "Approved Flatcar version: 4593.2.5" "${NOT_OLDER}")"
 }
 
 @test "newer version" {
     run_update
-    expect success "${CLEAR}${UPDATE}"
+    expect success "${CLEAR}${UPDATE}" "$(lines "${INSTALLED}" "${APPROVED}" "${STAGING}")"
 }
 
 @test "matching staged version" {
     ENGINE_STATE="UPDATE_STATUS_UPDATED_NEED_REBOOT"
     STAGED_VERSION="4593.2.10"
     run_update
-    expect success ""
+    expect success "" "$(lines "${INSTALLED}" "${APPROVED}" "Approved version is already staged; skipping until reboot")"
 }
 
 @test "obsolete staged version" {
     ENGINE_STATE="UPDATE_STATUS_UPDATED_NEED_REBOOT"
     STAGED_VERSION="4757.2.0"
     run_update
-    expect success "${RESET}${UPDATE}"
+    expect success "${RESET}${UPDATE}" "$(lines "${INSTALLED}" "${APPROVED}" \
+        "Canceling staged 4757.2.0; approved version is 4593.2.10" "${STAGING}")"
 }
 
 @test "rollback without staged update" {
     CURRENT_VERSION="4757.2.0"
     run_update
-    expect success "${CLEAR}"
+    expect success "${CLEAR}" "$(lines "Installed Flatcar version: 4757.2.0" "${APPROVED}" "${NOT_OLDER}")"
 }
 
 @test "rollback cancels staged update" {
@@ -152,7 +168,8 @@ expect() {
     ENGINE_STATE="UPDATE_STATUS_UPDATED_NEED_REBOOT"
     STAGED_VERSION="4790.1.0"
     run_update
-    expect success "${RESET}${CLEAR}"
+    expect success "${RESET}${CLEAR}" "$(lines "Installed Flatcar version: 4757.2.0" "${APPROVED}" \
+        "Canceling staged 4790.1.0; approved version is not newer than installed")"
 }
 
 @test "same version cancels staged update" {
@@ -160,25 +177,26 @@ expect() {
     STAGED_VERSION="4757.2.0"
     PIN='{"flatcar_stable_version":"4593.2.5"}'
     run_update
-    expect success "${RESET}${CLEAR}"
+    expect success "${RESET}${CLEAR}" "$(lines "${INSTALLED}" "Approved Flatcar version: 4593.2.5" \
+        "Canceling staged 4757.2.0; approved version is not newer than installed")"
 }
 
 @test "status failure" {
     STATUS_EXIT=1
     run_update
-    expect failure ""
+    expect failure "" ""
 }
 
 @test "unknown status" {
     ENGINE_STATE="unexpected"
     run_update
-    expect failure ""
+    expect failure "" $'Unexpected update engine status: CURRENT_OP=unexpected\nNEW_VERSION='
 }
 
 @test "curl failure" {
     CURL_EXIT=22
     run_update
-    expect failure "${CLEAR}"
+    expect failure "${CLEAR}" "$(lines "${INSTALLED}" "${NO_PIN}")"
 }
 
 @test "curl failure with staged update" {
@@ -186,13 +204,13 @@ expect() {
     STAGED_VERSION="4757.2.0"
     CURL_EXIT=22
     run_update
-    expect failure ""
+    expect failure "" "$(lines "${INSTALLED}" "${NO_PIN}")"
 }
 
 @test "missing pin" {
     PIN='{}'
     run_update
-    expect failure "${CLEAR}"
+    expect failure "${CLEAR}" "$(lines "${INSTALLED}" "${NO_PIN}")"
 }
 
 @test "missing pin with staged update" {
@@ -200,25 +218,25 @@ expect() {
     STAGED_VERSION="4757.2.0"
     PIN='{}'
     run_update
-    expect failure ""
+    expect failure "" "$(lines "${INSTALLED}" "${NO_PIN}")"
 }
 
 @test "null pin" {
     PIN='{"flatcar_stable_version":null}'
     run_update
-    expect failure "${CLEAR}"
+    expect failure "${CLEAR}" "$(lines "${INSTALLED}" "${NO_PIN}")"
 }
 
 @test "non-string pin" {
     PIN='{"flatcar_stable_version":4593}'
     run_update
-    expect failure "${CLEAR}"
+    expect failure "${CLEAR}" "$(lines "${INSTALLED}" "${NO_PIN}")"
 }
 
 @test "malformed pin" {
     PIN='{"flatcar_stable_version":"4593.2.10;reboot"}'
     run_update
-    expect failure "${CLEAR}"
+    expect failure "${CLEAR}" "$(lines "${INSTALLED}" "${NO_PIN}")"
 }
 
 @test "malformed JSON" {
@@ -230,7 +248,7 @@ expect() {
 @test "invalid running version" {
     CURRENT_VERSION="invalid"
     run_update
-    expect failure ""
+    expect failure "" "Invalid running Flatcar version: invalid"
 }
 
 @test "busy update engine states are left alone" {
@@ -239,26 +257,26 @@ expect() {
         UPDATE_STATUS_REPORTING_ERROR_EVENT; do
         ENGINE_STATE="${state}"
         run_update
-        expect success "" || { echo "state ${state}"; return 1; }
+        expect success "" "update-engine is busy (${state}); skipping" || { echo "state ${state}"; return 1; }
     done
 }
 
 @test "lock held" {
     FLOCK_EXIT=1
     run_update
-    expect success ""
+    expect success "" "Another update check holds the lock; skipping"
 }
 
 @test "update failure" {
     UPDATE_EXIT=1
     run_update
-    expect failure "${CLEAR}${UPDATE}"
+    expect failure "${CLEAR}${UPDATE}" "$(lines "${INSTALLED}" "${APPROVED}" "Updating Flatcar from 4593.2.5 to 4593.2.10")"
 }
 
 @test "non-stable GROUP is refused" {
     GROUP_CONF="GROUP=beta"
     run_update
-    expect failure ""
+    expect failure "" "Booted channel is 'beta'; only stable is pinned"
 }
 
 @test "GROUP missing" {
@@ -279,7 +297,8 @@ expect() {
     PIN='{"flatcar_stable_version":"4593.2.5"}'
     CGPT_EXIT=1
     run_update
-    expect failure $'cgpt prioritize /dev/sda4\n'
+    expect failure $'cgpt prioritize /dev/sda4\n' "$(lines "${INSTALLED}" "Approved Flatcar version: 4593.2.5" \
+        "Canceling staged 4757.2.0; approved version is not newer than installed")"
 }
 
 @test "failed boot-priority restore is retried on the next poll" {

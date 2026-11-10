@@ -92,7 +92,7 @@ projects instead. They're removed automatically once workspace data appears.
 | Sample | Size | Available |
 | --- | --- | --- |
 | `sample--pbmc3k-processed` — Scanpy `pbmc3k_processed`, the dataset in MDV's quickstart | 2,638 cells × 1,838 genes | Immediately; built into the image |
-| `sample--1000genomes-chr1-variants` — 1000 Genomes phase 3 chromosome 1 variants, the example in MDV's backend tools tutorial | Up to ~6.5 million variants, scaled to the VM's memory (`MDV_SAMPLE_VCF_MAX_SITES`) | After a background download (1.2 GB) and conversion on first start; kept on the `mdv-samples` volume |
+| `sample--1000genomes-chr1-variants` — 1000 Genomes phase 3 chromosome 1 variants, the example in MDV's backend tools tutorial | Up to all 6.47 million variants, scaled to the VM's memory (`MDV_SAMPLE_VCF_MAX_SITES`); the full set needs about 3.2 GB to convert | After a background download (1.2 GB) and conversion on first start; kept on the `mdv-samples` volume |
 
 ## Data & persistence
 

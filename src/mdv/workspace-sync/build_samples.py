@@ -28,8 +28,8 @@ VCF_URL = ("https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/"
 SAMPLE_NAME = "1000genomes-chr1-variants"
 COMPLETE_MARKER = ".mdv-sample-complete"
 FAILURE_FILE = ".last-failure.json"
-# Measured: converting 500,000 variants peaks at ~560 MB; allow 1.2 GB per million.
-MB_PER_MILLION_SITES = 1200
+# Measured: converting all 6.47M chr1 variants peaks at 3.2 GB (~0.5 GB per million); allow 0.6.
+MB_PER_MILLION_SITES = 600
 RETRY_AFTER_SECONDS = 6 * 3600
 
 

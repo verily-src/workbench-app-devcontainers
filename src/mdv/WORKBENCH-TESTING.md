@@ -44,8 +44,9 @@ Branch under test: `erogge/mdv-workspace-data` in
    - Repository branch: `erogge/mdv-workspace-data`
    - Repository folder path: `src/mdv`
 3. **Compute options**: at least **4 vCPUs and 15 GB memory** (for example `n1-standard-4`).
-   The large sample scales to memory: about 1.2 GB per million variants, using up to half of
-   the free memory.
+   The large sample scales to memory, using up to half of the free memory at about 0.6 GB per
+   million variants. With 15 GB it uses all 6.5 million chromosome 1 variants (measured peak
+   3.2 GB, about 4 minutes to convert).
 4. **Review details** → create. Wait until the app shows **Running**. The first start builds the
    image and can take 15–25 minutes.
 
@@ -99,8 +100,8 @@ Workbench.
    `0 workspace source(s) in N mounted resource(s)`, `linked /opt/mdv-samples/pbmc3k-processed`,
    then `building sample 1000genomes-chr1-variants with up to N variants`.
 4. Wait for the large sample. Rerun the log command every few minutes until you see
-   `sample ready` (expect roughly 10–25 minutes: a 1.2 GB download, about 6 minutes of extraction,
-   then conversion). Reload the MDV catalog.
+   `sample ready` (expect roughly 15–20 minutes: a 1.2 GB download, about 6 minutes of extraction,
+   then about 4 minutes of conversion). Reload the MDV catalog.
 5. **Expect:** **`sample--1000genomes-chr1-variants`** in the catalog. Open it; the variant table
    loads. Try a filter or a histogram on `POS` or `QUAL`.
 

@@ -26,9 +26,19 @@ client-side `coi-serviceworker` fallback, which forces a jarring reload on
 first visit — costly for large datasets) aren't enough on their own. [`start.sh`](start.sh)
 runs MDV's gunicorn on loopback `127.0.0.1:5056` and puts nginx
 ([`nginx.conf.template`](nginx.conf.template)) in front of it on `5055`, adding
-`Document-Isolation-Policy: isolate-and-require-corp` on every response —
+`Document-Isolation-Policy: isolate-and-credentialless` on every response —
 this isolates the document without requiring the embedding frame chain to be
 isolated too, and without any reload. See BENCH-9901.
+
+`credentialless` rather than `require-corp`: Oxford's data includes public
+sources (S3/GCS buckets, Ensembl, EBI) that don't send a
+`Cross-Origin-Resource-Policy` header. `require-corp` would hard-block any
+`<img>`/`<script>`/iframe load against those; `credentialless` lets no-CORS
+cross-origin subresources keep loading, just without credentials attached —
+which public data doesn't need anyway. CORS-mode fetches against hosts that
+send `Access-Control-Allow-Origin` (the common case for S3/GCS/EBI) are
+unaffected either way, since a successful CORS response is exempt from this
+check under both modes.
 
 ## Data & persistence
 

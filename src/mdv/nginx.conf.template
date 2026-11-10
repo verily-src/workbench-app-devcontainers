@@ -48,7 +48,12 @@ http {
         proxy_read_timeout 300s;
 
         location ${MDV_API_ROOT} {
-            add_header Document-Isolation-Policy "isolate-and-require-corp" always;
+            # credentialless (not require-corp): lets no-CORS cross-origin
+            # subresources (e.g. <img>/<script> against public S3/GCS buckets,
+            # Ensembl, EBI without a Cross-Origin-Resource-Policy header) keep
+            # loading, just without credentials attached. require-corp would
+            # hard-block those. See BENCH-9901.
+            add_header Document-Isolation-Policy "isolate-and-credentialless" always;
             proxy_pass http://127.0.0.1:5056/;
         }
     }

@@ -106,10 +106,8 @@ readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/boot-o
 
 readonly JUPYTER_SERVICE_NAME="jupyter.service"
 readonly JUPYTER_SERVICE="/etc/systemd/system/${JUPYTER_SERVICE_NAME}"
-# Dataproc configures either `jupyter notebook` (e.g. 2.2.59) or `jupyter lab` (e.g. 2.2.88).
-readonly JUPYTER_NOTEBOOK_CONFIG="/etc/jupyter/jupyter_notebook_config.py"
-readonly JUPYTER_LAB_CONFIG="/etc/jupyter/jupyter_lab_config.py"
-readonly WORKBENCH_JUPYTER_START_SCRIPT="${USER_WORKBENCH_CONFIG_DIR}/start-jupyter.sh"
+# Dataproc 2.2.88+ runs `jupyter lab`, configured through jupyter_lab_config.py.
+readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_lab_config.py"
 
 readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
 readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
@@ -1191,17 +1189,6 @@ fi
 
 emit "Configuring Jupyter systemd service..."
 
-# Pick the app when the service starts, after Dataproc has written its config.
-cat << EOF >"${WORKBENCH_JUPYTER_START_SCRIPT}"
-#!/bin/bash
-if [[ -f "${JUPYTER_LAB_CONFIG}" ]]; then
-  exec ${RUN_JUPYTER} lab
-fi
-exec ${RUN_JUPYTER} notebook
-EOF
-chmod +x "${WORKBENCH_JUPYTER_START_SCRIPT}"
-chown "${LOGIN_USER}:${LOGIN_USER}" "${WORKBENCH_JUPYTER_START_SCRIPT}"
-
 # Modify the jupyter service configuration
 cat << EOF >${JUPYTER_SERVICE}
 [Unit]
@@ -1215,7 +1202,7 @@ Group=${LOGIN_USER}
 EnvironmentFile=/etc/environment
 EnvironmentFile=/etc/default/jupyter
 WorkingDirectory=${USER_HOME_DIR}
-ExecStart=/bin/bash --login -c '${WORKBENCH_JUPYTER_START_SCRIPT} &>> ${USER_HOME_DIR}/jupyter_notebook.log'
+ExecStart=/bin/bash --login -c '/opt/conda/miniconda3/bin/jupyter lab &>> ${USER_HOME_DIR}/jupyter_notebook.log'
 Restart=on-failure
 
 [Install]
@@ -1438,14 +1425,6 @@ a#workspace {\
   ###########################
 
   emit "Configuring Jupyter service..."
-  if [[ -f "${JUPYTER_LAB_CONFIG}" ]]; then
-    JUPYTER_CONFIG="${JUPYTER_LAB_CONFIG}"
-    JUPYTER_APP="LabApp"
-  else
-    JUPYTER_CONFIG="${JUPYTER_NOTEBOOK_CONFIG}"
-    JUPYTER_APP="NotebookApp"
-  fi
-
   # Add a marker for the Workbench-specific customizations
   cat << EOF >> "${JUPYTER_CONFIG}"
 
@@ -1462,9 +1441,9 @@ EOF
 
   if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
     cat << EOF >> "${JUPYTER_CONFIG}"
-c.${JUPYTER_APP}.allow_origin_pat += "|(https?://)?(${APP_PROXY_URL})"
-c.${JUPYTER_APP}.allow_remote_access= True
-c.${JUPYTER_APP}.local_hostnames.append('${PROXY_SERVICE_URL}')
+c.LabApp.allow_origin_pat += "|(https?://)?(${APP_PROXY_URL})"
+c.LabApp.allow_remote_access= True
+c.LabApp.local_hostnames.append('${PROXY_SERVICE_URL}')
 EOF
   fi
   # Add a marker for the Workbench-specific customizations

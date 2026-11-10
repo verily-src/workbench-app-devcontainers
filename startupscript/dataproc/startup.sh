@@ -44,6 +44,14 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
+# Dataproc 2.2.85+ images have no default conda channel, so use conda-forge.
+# Runs before the checks below so it applies to every node on every boot.
+readonly CONDA_BIN="/opt/conda/miniconda3/bin/conda"
+if [[ -x "${CONDA_BIN}" ]]; then
+  "${CONDA_BIN}" config --system --remove channels defaults 2>/dev/null || true
+  "${CONDA_BIN}" config --system --add channels conda-forge
+fi
+
 # Only run on the dataproc manager node. Exit silently if otherwise.
 ROLE="$(/usr/share/google/get_metadata_value attributes/dataproc-role)"
 if [[ "${ROLE}" != 'Master' ]]; then exit 0; fi
@@ -98,7 +106,8 @@ readonly WORKBENCH_BOOT_SERVICE_OUTPUT_FILE="${USER_WORKBENCH_CONFIG_DIR}/boot-o
 
 readonly JUPYTER_SERVICE_NAME="jupyter.service"
 readonly JUPYTER_SERVICE="/etc/systemd/system/${JUPYTER_SERVICE_NAME}"
-readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_notebook_config.py"
+# Dataproc 2.2.88+ runs `jupyter lab`, configured through jupyter_lab_config.py.
+readonly JUPYTER_CONFIG="/etc/jupyter/jupyter_lab_config.py"
 
 readonly WORKBENCH_PROXY_AGENT_SERVICE_NAME="workbench-proxy-agent.service"
 readonly WORKBENCH_PROXY_AGENT_SERVICE="/etc/systemd/system/${WORKBENCH_PROXY_AGENT_SERVICE_NAME}"
@@ -1193,7 +1202,7 @@ Group=${LOGIN_USER}
 EnvironmentFile=/etc/environment
 EnvironmentFile=/etc/default/jupyter
 WorkingDirectory=${USER_HOME_DIR}
-ExecStart=/bin/bash --login -c '/opt/conda/miniconda3/bin/jupyter notebook &>> ${USER_HOME_DIR}/jupyter_notebook.log'
+ExecStart=/bin/bash --login -c '/opt/conda/miniconda3/bin/jupyter lab &>> ${USER_HOME_DIR}/jupyter_notebook.log'
 Restart=on-failure
 
 [Install]
@@ -1432,9 +1441,9 @@ EOF
 
   if [[ "${PROXY_TYPE}" != "${PROXY_TYPE_GOOGLE}" ]]; then
     cat << EOF >> "${JUPYTER_CONFIG}"
-c.NotebookApp.allow_origin_pat += "|(https?://)?(${APP_PROXY_URL})"
-c.NotebookApp.allow_remote_access= True
-c.NotebookApp.local_hostnames.append('${PROXY_SERVICE_URL}')
+c.LabApp.allow_origin_pat += "|(https?://)?(${APP_PROXY_URL})"
+c.LabApp.allow_remote_access= True
+c.LabApp.local_hostnames.append('${PROXY_SERVICE_URL}')
 EOF
   fi
   # Add a marker for the Workbench-specific customizations

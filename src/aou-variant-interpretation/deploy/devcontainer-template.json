@@ -1,0 +1,25 @@
+{
+  "id": "variant-interpretation",
+  "version": "0.1.0",
+  "name": "variant-interpretation",
+  "description": "Variant interpretation app: React + TypeScript frontend served by a Java + Spring Boot backend on port 8080.",
+  "options": {
+    "cloud": {
+      "type": "string",
+      "enum": [
+        "gcp"
+      ],
+      "default": "gcp",
+      "description": "Cloud provider (only gcp is supported)"
+    },
+    "login": {
+      "type": "string",
+      "description": "Whether to log in to workbench CLI",
+      "proposals": [
+        "true",
+        "false"
+      ],
+      "default": "true"
+    }
+  }
+}

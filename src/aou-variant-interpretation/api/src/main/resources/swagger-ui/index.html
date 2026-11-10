@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<!--
+  Adapted from the swagger-ui webjar's own index.html. We ship our own copy because the
+  webjar's swagger-initializer.js hardcodes the Swagger petstore URL, and swagger-ui
+  ignores the ?url= query parameter unless queryConfigEnabled is set. Asset paths omit the
+  webjar version -- webjars-locator-lite resolves it (see build.gradle).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Variant Interpretation API</title>
+    <link rel="stylesheet" type="text/css" href="/webjars/swagger-ui/swagger-ui.css" />
+  </head>
+
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="/webjars/swagger-ui/swagger-ui-bundle.js" charset="UTF-8"></script>
+    <script src="/webjars/swagger-ui/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+    <script>
+      window.onload = function () {
+        window.ui = SwaggerUIBundle({
+          url: "/openapi/api.yaml",
+          dom_id: "#swagger-ui",
+          deepLinking: true,
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+          layout: "StandaloneLayout"
+        });
+      };
+    </script>
+  </body>
+</html>

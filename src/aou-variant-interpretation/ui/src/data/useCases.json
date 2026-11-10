@@ -1,0 +1,113 @@
+[
+  {
+    "key": "tetralogy_of_fallot",
+    "title": "Tetralogy of Fallot",
+    "description": "Congenital heart disease genes",
+    "variants": [
+      "5-173232894-C-T",
+      "5-173232768-T-A",
+      "19-18868731-G-A",
+      "8-105561350-C-T",
+      "5-180613051-C-T",
+      "22-19766732-T-G",
+      "22-19764329-G-A",
+      "20-10639518-G-A",
+      "20-10673605-T-C",
+      "20-10652589-G-A",
+      "8-11708704-C-G",
+      "8-11757083-G-A",
+      "18-22171340-G-C",
+      "18-22172281-T-C",
+      "12-114366299-G-T"
+    ],
+    "condition": {
+      "conceptId": 9000010,
+      "name": "Tetralogy of Fallot",
+      "estimatedParticipantCount": 205
+    }
+  },
+  {
+    "key": "hypertrophic_cardiomyopathy",
+    "title": "Hypertrophic cardiomyopathy",
+    "description": "Sarcomere genes",
+    "variants": [
+      "14-23429278-C-T",
+      "11-47342698-G-A",
+      "11-47348424-C-T",
+      "1-201365297-C-T",
+      "19-55154146-G-C",
+      "11-47351379-G-A",
+      "14-23426833-C-T",
+      "15-63060899-G-A",
+      "15-34793398-C-T",
+      "1-201359245-G-A",
+      "11-47335928-C-T",
+      "11-47337728-C-T",
+      "11-47336013-T-C",
+      "11-47342867-CA-C",
+      "11-47347892-G-A",
+      "11-47349908-A-C"
+    ],
+    "condition": {
+      "conceptId": 9000040,
+      "name": "Hypertrophic cardiomyopathy",
+      "estimatedParticipantCount": 212
+    }
+  },
+  {
+    "key": "familial_hypercholesterolemia",
+    "title": "Familial hypercholesterolemia",
+    "description": "LDLR, APOB and PCSK9",
+    "variants": [
+      "19-11116928-G-A",
+      "19-11120425-C-A",
+      "2-21006288-C-T",
+      "1-55039974-G-T",
+      "19-11123297-C-A",
+      "19-11120436-C-T",
+      "19-11102774-G-A",
+      "19-11123210-C-T",
+      "1-55046549-C-G",
+      "1-55063542-C-A",
+      "2-21006196-G-A",
+      "19-11089616-G-A",
+      "19-11105540-TC-T",
+      "19-11120413-C-A",
+      "19-11120205-T-C",
+      "19-11116132-T-A"
+    ],
+    "condition": {
+      "conceptId": 9000050,
+      "name": "Familial hypercholesterolemia",
+      "estimatedParticipantCount": 386
+    }
+  },
+  {
+    "key": "long_qt_syndrome",
+    "title": "Long QT syndrome",
+    "description": "Cardiac ion channel genes",
+    "variants": [
+      "11-2583535-C-T",
+      "11-2778009-G-A",
+      "7-150951711-G-A",
+      "3-38551022-C-T",
+      "3-38603929-T-C",
+      "21-34449382-C-T",
+      "7-150974917-G-A",
+      "3-38551504-C-T",
+      "7-150948446-T-G",
+      "3-38579416-G-T",
+      "11-2570714-G-A",
+      "11-2661960-G-T",
+      "7-150948465-AG-A",
+      "11-2778034-CAA-C",
+      "7-150952515-G-A",
+      "7-150974885-T-G"
+    ],
+    "condition": {
+      "conceptId": 9000060,
+      "name": "Long QT syndrome",
+      "estimatedParticipantCount": 128
+    }
+  }
+]

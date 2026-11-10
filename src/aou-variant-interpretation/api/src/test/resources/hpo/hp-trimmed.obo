@@ -1,0 +1,181 @@
+format-version: 1.2
+data-version: hp/releases/2026-09-01
+subsetdef: secondary_consequence "Consequence of a disorder in another organ system."
+synonymtypedef: abbreviation "abbreviation"
+synonymtypedef: allelic_requirement "allelic_requirement"
+synonymtypedef: layperson "layperson term"
+synonymtypedef: obsolete_synonym "discarded/obsoleted synonym"
+synonymtypedef: plural_form "plural form"
+synonymtypedef: uk_spelling "UK spelling"
+default-namespace: human_phenotype
+idspace: dc http://purl.org/dc/elements/1.1/ 
+idspace: oboInOwl http://www.geneontology.org/formats/oboInOwl# 
+idspace: terms http://purl.org/dc/terms/ 
+remark: Please see license of HPO at http://www.human-phenotype-ontology.org
+ontology: hp.obo
+property_value: dc:creator "Human Phenotype Ontology Consortium" xsd:string
+property_value: dc:creator "Monarch Initiative" xsd:string
+property_value: dc:creator "Peter Robinson" xsd:string
+property_value: dc:creator "Sebastian Köhler" xsd:string
+property_value: dc:description "The Human Phenotype Ontology (HPO) provides a standardized vocabulary of phenotypic abnormalities and clinical features encountered in human disease." xsd:string
+property_value: dc:rights "Peter Robinson, Sebastian Koehler, The Human Phenotype Ontology Consortium, and The Monarch Initiative" xsd:string
+property_value: dc:subject "Phenotypic abnormalities encountered in human disease" xsd:string
+property_value: dc:title "Human Phenotype Ontology" xsd:string
+property_value: IAO:0000700 HP:0000001
+property_value: owl:versionInfo "2026-09-01" xsd:string
+property_value: terms:license https://hpo.jax.org/app/license
+logical-definition-view-relation: has_part
+
+[Term]
+id: HP:0000001
+name: All
+comment: Root of all terms in the Human Phenotype Ontology.
+
+[Term]
+id: HP:0000118
+name: Phenotypic abnormality
+def: "A phenotypic abnormality." [https://orcid.org/0000-0002-0736-9199]
+comment: This is the root of the phenotypic abnormality subontology of the HPO.
+synonym: "Organ abnormality" EXACT []
+is_a: HP:0000001 ! All
+
+[Term]
+id: HP:0000005
+name: Mode of inheritance
+alt_id: HP:0001425
+alt_id: HP:0001453
+alt_id: HP:0001461
+alt_id: HP:0010985
+def: "The pattern in which a particular genetic trait or disorder is passed from one generation to the next." [https://orcid.org/0000-0002-0736-9199]
+comment: While there is a close conceptual relationship between allelic requirement and inheritance, they serve different purposes; allelic requirement is necessary for variant annotation pipelines and to determine if a given variant in a specific context is relevant to the phenotype of the patient e.g. a heterozygous variant (in the absence of compound heterozygosity) is relevant for dominant but not for recessive disease; while inheritance is used for describing the mode of inheritance of a phenotype and is particularly applicable in the clinical setting for communicating recurrence risk, to guide family screening, and to guide reproductive advice.
+synonym: "Inheritance" EXACT []
+is_a: HP:0000001 ! All
+
+[Term]
+id: HP:0001626
+name: Abnormality of the cardiovascular system
+alt_id: HP:0003114
+alt_id: HP:0003116
+def: "Any abnormality of the cardiovascular system." [https://orcid.org/0000-0002-0736-9199]
+comment: The cardiovascular system consists of the heart, vasculature, and the lymphatic system.
+synonym: "Abnormality of the cardiovascular system" EXACT layperson []
+synonym: "Cardiovascular abnormality" EXACT layperson []
+synonym: "Cardiovascular disease" RELATED layperson []
+is_a: HP:0000118 ! Phenotypic abnormality
+
+[Term]
+id: HP:0001627
+name: Abnormal heart morphology
+alt_id: HP:3000001
+def: "Any structural anomaly of the heart." [https://orcid.org/0000-0002-0736-9199]
+synonym: "Abnormality of cardiac morphology" EXACT []
+synonym: "Abnormality of the heart" EXACT layperson []
+synonym: "Abnormally shaped heart" EXACT layperson [https://orcid.org/0000-0001-5208-3432]
+synonym: "Cardiac abnormality" EXACT []
+synonym: "Cardiac anomalies" EXACT []
+synonym: "Cardiac anomaly" EXACT []
+synonym: "Congenital heart defect" EXACT []
+synonym: "Congenital heart defects" EXACT []
+synonym: "Heart defect" EXACT layperson []
+is_a: HP:0001626 ! (re-parented for the trimmed fixture)
+
+[Term]
+id: HP:0001636
+name: Tetralogy of Fallot
+def: "A congenital cardiac malformation comprising pulmonary stenosis, overriding aorta, ventricular septum defect, and right ventricular hypertrophy. The diagnosis of TOF is made if at least three of the four above mentioned features are present." [https://orcid.org/0000-0002-0736-9199]
+synonym: "Tetrology of fallot" EXACT []
+xref: ICD-10:Q21.3
+is_a: HP:0001710 ! Conotruncal defect
+
+[Term]
+id: HP:0001637
+name: Abnormal myocardium morphology
+def: "A structural anomaly of the muscle layer of the heart wall." []
+synonym: "Abnormality of the myocardium" EXACT []
+is_a: HP:0001627 ! Abnormal heart morphology
+
+[Term]
+id: HP:0001638
+name: Cardiomyopathy
+def: "A myocardial disorder in which the heart muscle is structurally and functionally abnormal, in the absence of coronary artery disease, hypertension, valvular disease and congenital heart disease sufficient to cause the observed myocardial abnormality." [https://orcid.org/0000-0002-0736-9199, PMID:17916581]
+synonym: "Disease of the heart muscle" EXACT layperson [https://orcid.org/0000-0002-6548-5200]
+xref: Fyler:1840
+is_a: HP:0001637 ! Abnormal myocardium morphology
+
+[Term]
+id: HP:0001639
+name: Hypertrophic cardiomyopathy
+def: "Hypertrophic cardiomyopathy (HCM) is defined by the presence of increased ventricular wall thickness or mass in the absence of loading conditions (hypertension, valve disease) sufficient to cause the observed abnormality." [PMID:17916581]
+synonym: "Cardiomyopathy, hypertrophic" EXACT []
+synonym: "Enlarged and thickened heart muscle" EXACT layperson [https://orcid.org/0000-0002-6548-5200]
+synonym: "HCM" EXACT abbreviation []
+is_a: HP:0001638 ! Cardiomyopathy
+
+[Term]
+id: HP:0001657
+name: Prolonged QT interval
+def: "Increased time between the start of the Q wave and the end of the T wave as measured by the electrocardiogram (EKG)." [https://orcid.org/0000-0002-0736-9199]
+comment: The QT interval represents electrical depolarization and repolarization of the left and right ventricles.
+synonym: "Long Q-T syndrome" RELATED []
+synonym: "Long QT syndrome" EXACT []
+synonym: "Prolong qt interval on ekg" EXACT []
+is_a: HP:0030956 ! (re-parented for the trimmed fixture)
+
+[Term]
+id: HP:0003124
+name: Hypercholesterolemia
+alt_id: HP:0008154
+alt_id: HP:0008173
+alt_id: HP:0008359
+def: "An increased concentration of cholesterol in the blood." [HPO_CONTRIBUTOR:gcarletti]
+synonym: "Elevated serum cholesterol" EXACT layperson []
+synonym: "Elevated total cholesterol" EXACT layperson []
+synonym: "High cholesterol" BROAD layperson []
+synonym: "Increased total cholesterol" EXACT layperson []
+is_a: HP:0000118 ! (re-parented for the trimmed fixture)
+
+[Term]
+id: HP:0012516
+name: Tetralogy of Fallot with pulmonary atresia
+def: "An extreme form of tetralogy of Fallot characterized by absence of flow from the right ventricle to the pulmonary arteries." [https://orcid.org/0000-0001-5208-3432, PMID:22368654]
+comment: Tetralogy of Fallot with Pulmonary Atresia (TOF/PA) is a complex lesion with many different anatomic variants. The primary source of variability in this lesion is in the anatomy of the pulmonary arteries, with the spectrum ranging from well-formed, confluent pulmonary artery branches to completely absent native pulmonary arteries and major aorto-pulmonary collaterals (MAPCA's) providing all the pulmonary blood flow. The majority of cases fall somewhere in between these two ends of the spectrum, with the total pulmonary blood flow provided by a combination of diminutive native pulmonary arteries and multiple MAPCA.
+is_a: HP:0001636 ! Tetralogy of Fallot
+property_value: terms:creator https://orcid.org/0000-0002-0736-9199
+property_value: terms:date "2013-12-08T09:44:24Z" xsd:dateTime
+
+[Term]
+id: HP:0001710
+name: Conotruncal defect
+def: "A congenital malformation of the outflow tract of the heart. Conotruncal defects are thought to result from a disturbance of the outflow tract of the embryonic heart, and comprise truncus arteriosus, tetralogy of Fallot, interrupted aortic arch, transposition of the great arteries, and double outlet right ventricle." [https://orcid.org/0000-0002-0736-9199]
+synonym: "Conotruncal heart defects" EXACT []
+is_a: HP:0001627 ! (re-parented for the trimmed fixture)
+
+[Term]
+id: HP:0030956
+name: Abnormality of cardiovascular system electrophysiology
+def: "An anomaly of the electrical conduction physiology of the heart." []
+property_value: terms:creator https://orcid.org/0000-0002-0736-9199
+property_value: terms:date "2017-03-17T17:47:04Z" xsd:dateTime
+is_a: HP:0001626 ! (re-parented for the trimmed fixture)
+
+[Term]
+id: HP:0000057
+name: obsolete Clitoromegaly
+is_obsolete: true
+replaced_by: HP:0008665
+
+[Term]
+id: HP:9999999
+name: obsolete Retired cardiac term
+synonym: "Tetralogy of Fallot" EXACT []
+is_a: HP:0001626 ! Abnormality of the cardiovascular system
+is_obsolete: true
+
+[Term]
+id: HP:9999998
+name: Pain
+is_a: HP:0000118 ! Phenotypic abnormality
+
+[Typedef]
+id: part_of
+name: part of

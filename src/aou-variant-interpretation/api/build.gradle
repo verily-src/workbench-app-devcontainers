@@ -1,0 +1,160 @@
+plugins {
+  id 'java'
+  id 'jacoco'
+  id 'org.springframework.boot' version '4.1.2'
+  id 'io.spring.dependency-management' version '1.1.7'
+  id 'org.openapi.generator' version '7.26.0'
+}
+
+group = 'org.broadinstitute'
+version = '0.1.0-SNAPSHOT'
+description = 'Backend for the variant interpretation application'
+
+java {
+  toolchain {
+    languageVersion = JavaLanguageVersion.of(21)
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  implementation platform('com.google.cloud:libraries-bom:26.91.0')
+
+  implementation 'org.springframework.boot:spring-boot-starter-web'
+  implementation 'org.springframework.boot:spring-boot-starter-validation'
+  implementation 'io.swagger.core.v3:swagger-annotations:3.0.0'
+  implementation 'org.openapitools:jackson-databind-nullable:0.2.13'
+  implementation 'com.google.cloud:google-cloud-bigquery'
+  // Swagger UI assets, served by SwaggerUiConfig against the api.yaml spec itself.
+  // webjars-locator-lite lets /webjars/swagger-ui/* resolve without the version in
+  // the URL, so bumping the webjar below is the only edit a version bump needs.
+  implementation 'org.webjars:swagger-ui:5.34.1'
+  implementation 'org.webjars:webjars-locator-lite'
+  testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+// The Human Phenotype Ontology (HPO), pinned to a release and fetched at build time into the
+// jar's resources. VIA shouldn't make external API calls from within AoU RWB, so the ontology
+// is packaged inside it. HpoOntology reads it from the classpath at startup.
+//
+// To bump the release: change the tag, then the checksum, which GitHub lists on the release
+// page or `shasum -a 256 hp.obo` prints. The next build downloads the new file in one go: the
+// pin is a task input, so Gradle reruns the task, and a file that doesn't match the checksum
+// is replaced rather than reported. One build per release needs network access.
+def hpoRelease = 'v2026-09-01'
+def hpoSha256 = '93dace952fcb3ec4728818857f6ba76bc2d5312f4d83266519b8694b8e798f22'
+def hpoDir = layout.buildDirectory.dir('generated-resources/hpo').get().asFile
+
+def sha256 = { File file ->
+  def digest = java.security.MessageDigest.getInstance('SHA-256')
+  file.withInputStream { stream ->
+    byte[] buffer = new byte[1 << 16]
+    for (int read = stream.read(buffer); read != -1; read = stream.read(buffer)) digest.update(buffer, 0, read)
+  }
+  digest.digest().encodeHex().toString()
+}
+
+tasks.register('downloadHpo') {
+  description = "Fetches hp.obo ${hpoRelease} into the build's resources, verifying its checksum."
+  def target = new File(hpoDir, 'hpo/hp.obo')
+  inputs.property('release', hpoRelease)
+  inputs.property('sha256', hpoSha256)
+  outputs.file(target)
+  doLast {
+    target.parentFile.mkdirs()
+    if (!target.exists() || sha256(target) != hpoSha256) {
+      ant.get(
+        src: "https://github.com/obophenotype/human-phenotype-ontology/releases/download/${hpoRelease}/hp.obo",
+        dest: target,
+        verbose: false)
+    }
+    def actual = sha256(target)
+    if (actual != hpoSha256) {
+      target.delete()
+      throw new GradleException("hp.obo ${hpoRelease} has SHA-256 ${actual}, expected ${hpoSha256}")
+    }
+  }
+}
+
+sourceSets.main.resources.srcDir(hpoDir)
+tasks.named('processResources') { dependsOn tasks.named('downloadHpo') }
+
+def openApiSpec = "$projectDir/src/main/resources/openapi/api.yaml"
+def generatedSourcesDir = layout.buildDirectory.dir('generated/sources/openapi').get().asFile
+
+// The OpenAPI spec (src/main/resources/openapi/api.yaml) is the source of
+// truth for the API: this generates the server interfaces and models that
+// controllers implement, instead of hand-writing them.
+openApiGenerate {
+  generatorName = 'spring'
+  inputSpec = openApiSpec
+  outputDir = generatedSourcesDir.toString()
+  apiPackage = 'org.broadinstitute.variantinterpretation.api'
+  modelPackage = 'org.broadinstitute.variantinterpretation.model'
+  invokerPackage = 'org.broadinstitute.variantinterpretation.invoker'
+  configOptions = [
+    interfaceOnly       : 'true',
+    skipDefaultInterface: 'true',
+    useTags             : 'true',
+    useSpringBoot3      : 'true',
+    dateLibrary         : 'java8'
+  ]
+  generateApiTests = false
+  generateModelTests = false
+  generateApiDocumentation = false
+  generateModelDocumentation = false
+}
+
+sourceSets {
+  main {
+    java {
+      srcDir "${generatedSourcesDir}/src/main/java"
+    }
+  }
+}
+
+compileJava.dependsOn tasks.openApiGenerate
+
+tasks.named('test') {
+  useJUnitPlatform()
+  // The pinned HPO release, so the smoke test over the real file can check it without a second copy of the date.
+  systemProperty 'via.hpo.release', hpoRelease
+  finalizedBy tasks.named('jacocoTestReport')
+}
+
+// Excluded from coverage: the OpenAPI-generated interfaces and models, and the wiring that has no
+// logic of its own (the entry point, Spring configuration and the SPA forward), so the gate below
+// measures the code that does something.
+def coverageExcludes = [
+  '**/api/**', '**/model/**', '**/invoker/**',
+  '**/Application*', '**/config/**', '**/controller/SpaController*',
+]
+
+tasks.named('jacocoTestReport') {
+  dependsOn tasks.named('test')
+  reports {
+    xml.required = true
+    html.required = true
+  }
+  classDirectories.setFrom(files(classDirectories.files.collect { fileTree(dir: it, excludes: coverageExcludes) }))
+}
+
+tasks.named('jacocoTestCoverageVerification') {
+  dependsOn tasks.named('jacocoTestReport')
+  classDirectories.setFrom(files(classDirectories.files.collect { fileTree(dir: it, excludes: coverageExcludes) }))
+  violationRules {
+    rule {
+      limit {
+        counter = 'LINE'
+        minimum = 0.80
+      }
+    }
+  }
+}
+
+tasks.named('check') {
+  dependsOn tasks.named('jacocoTestCoverageVerification')
+}

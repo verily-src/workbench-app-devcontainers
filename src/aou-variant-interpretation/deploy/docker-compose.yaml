@@ -1,0 +1,59 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    image: us-central1-docker.pkg.dev/dsp-artifact-registry/via/via:latest
+    pull_policy: always
+    restart: always
+    # Most Workbench values (OWNER_EMAIL, GOOGLE_PROJECT, etc.) aren't
+    # available here at container start -- they're fetched by post-startup.sh
+    # only after the container is already running (see .devcontainer.json and
+    # entrypoint.sh), so they can't be passed via this environment: block.
+    environment:
+      # The exception: the workspace's CDR dataset ("project.dataset") is set
+      # on the VM itself, so it's passed straight through. When it isn't set,
+      # entrypoint.sh drops the empty value so application.properties'
+      # default applies, and logs a warning saying so.
+      - WORKSPACE_CDR=${WORKSPACE_CDR:-}
+      # Set to "true" for local dev to skip entrypoint.sh's wait for
+      # /home/via/.workbench-env, which is only ever created by Workbench's
+      # postCreateCommand and never appears on a plain local `docker compose up`.
+      - SKIP_WORKBENCH_WAIT=${SKIP_WORKBENCH_WAIT:-false}
+      # Local dev stand-in for the value Workbench normally injects via
+      # /home/via/.workbench-env; set this when using SKIP_WORKBENCH_WAIT so the
+      # profile endpoint has something to return.
+      - WORKBENCH_USER_EMAIL=${WORKBENCH_USER_EMAIL:-}
+    volumes:
+      - .:/workspace:cached
+    # The port specified here will be forwarded and accessible from the
+    # Workbench UI. The Spring Boot backend serves both the API and the
+    # built frontend on this single port.
+    ports:
+      - 8080:8080
+    # The service must be connected to the "app-network" Docker network
+    networks:
+      - app-network
+    # Start the egress limiter before the app, and don't start the app at all
+    # if the limiter can't be started (e.g. its image can't be pulled): for
+    # exfiltration controls, failing closed is the right default.
+    depends_on:
+      - wondershaper
+  # AoU Researcher Workbench egress limiter, identical to the sidecar in the
+  # upstream AoU templates (r-analysis-aou, jupyter-aou, aou-sas). It runs
+  # wondershaper (tc-based traffic shaping) on the VM's own network stack --
+  # hence host networking and NET_ADMIN -- capping upload bandwidth for the
+  # whole VM, including this app's container. The app container itself keeps
+  # no extra capabilities.
+  wondershaper:
+    container_name: "wondershaper"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:896eb0c4e1233a14284d326c4742aa0544a49b74c545c503a8e6a44ee3b9745e"
+    restart: always
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

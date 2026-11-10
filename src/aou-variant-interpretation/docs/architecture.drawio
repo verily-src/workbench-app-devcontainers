@@ -1,0 +1,68 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="VIA Architecture" id="via-architecture">
+    <mxGraphModel dx="1184" dy="749" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="950" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="clinician" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Clinician&lt;br&gt;(browser)" vertex="1">
+          <mxGeometry height="70" width="200" x="500" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="workbench" parent="1" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;fontSize=14;fontStyle=1;container=1;collapsible=0;fillColor=none;strokeColor=#000000;" value="All of Us Verily Researcher Workbench" vertex="1">
+          <mxGeometry height="760" width="1120" x="40" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="workspace" parent="workbench" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;fontSize=13;fontStyle=1;container=1;collapsible=0;fillColor=#f5f5f5;strokeColor=#666666;dashed=1;" value="Workspace GCP Project (VPC Service Controls perimeter)" vertex="1">
+          <mxGeometry height="680" width="1080" x="20" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ce" parent="workspace" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;fontSize=12;fontStyle=1;container=1;collapsible=0;fillColor=#ffffff;strokeColor=#999999;" value="Cloud Environment VM" vertex="1">
+          <mxGeometry height="530" width="640" x="20" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="container" parent="ce" style="rounded=0;whiteSpace=wrap;html=1;verticalAlign=top;fontSize=12;fontStyle=1;container=1;collapsible=0;fillColor=#d5e8d4;strokeColor=#82b366;" value="VIA container — port 8080" vertex="1">
+          <mxGeometry height="160" width="600" x="20" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ui" parent="container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" value="React UI" vertex="1">
+          <mxGeometry height="100" width="260" x="20" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="api" parent="container" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;" value="Java Spring Boot API" vertex="1">
+          <mxGeometry height="100" width="260" x="320" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="postgres" parent="ce" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" value="PostgreSQL (local)&lt;br&gt;user session + search history" vertex="1">
+          <mxGeometry height="110" width="290" x="325" y="235" as="geometry" />
+        </mxCell>
+        <mxCell id="disk" parent="ce" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;fillColor=#f5f5f5;strokeColor=#666666;" value="Persistent disk&lt;br&gt;(attached to VM)" vertex="1">
+          <mxGeometry height="110" width="290" x="325" y="410" as="geometry" />
+        </mxCell>
+        <mxCell id="ct" parent="workspace" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#f8cecc;strokeColor=#b85450;" value="Controlled Tier CDR&lt;br&gt;BigQuery dataset (CDRv8)&lt;br&gt;All of Us participant genomic + phenotype data" vertex="1">
+          <mxGeometry height="150" width="320" x="720" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="refdata" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="Public reference data&lt;br&gt;gnomAD, ClinVar, SpliceAI, LOFTEE" vertex="1">
+          <mxGeometry height="120" width="260" x="1190" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="clinician" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="ui" value="HTTPS, app URL">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="ui" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="api" value="/api/*">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="refdata" value="annotation lookups">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="postgres" value="session + search history">
+          <mxGeometry relative="1" x="0.2308" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="postgres" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;dashed=1;" target="disk" value="data directory persisted&lt;br&gt;across VM restarts">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="api" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" target="ct" value="variant/cohort queries">
+          <mxGeometry relative="1" x="-0.0587" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="vjE_9-VaeevmSWLzPuke-3" parent="1" style="shape=actor;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="60" width="40" x="520" y="25" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

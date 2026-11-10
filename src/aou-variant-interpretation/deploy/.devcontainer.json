@@ -1,0 +1,10 @@
+{
+  "name": "variant-interpretation",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "runServices": ["app", "wondershaper"],
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "./startupscript/post-startup.sh via /home/via '${templateOption:cloud}' '${templateOption:login}' && (grep '^export ' /home/via/.bashrc > /home/via/.workbench-env || true) && chown via:via /home/via/.workbench-env",
+  "remoteUser": "root"
+}

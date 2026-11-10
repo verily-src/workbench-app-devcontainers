@@ -1,0 +1,82 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "condition_occurrence_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "person_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_concept_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_start_date",
+    "type": "DATE"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_start_datetime",
+    "type": "DATETIME"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_end_date",
+    "type": "DATE"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_end_datetime",
+    "type": "DATETIME"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_type_concept_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_status_concept_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "stop_reason",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "provider_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "visit_occurrence_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "visit_detail_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_source_value",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_source_concept_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "condition_status_source_value",
+    "type": "STRING"
+  }
+]

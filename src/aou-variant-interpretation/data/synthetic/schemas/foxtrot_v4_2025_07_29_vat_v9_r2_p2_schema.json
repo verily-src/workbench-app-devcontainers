@@ -1,0 +1,572 @@
+[
+  {
+    "mode": "NULLABLE",
+    "name": "vid",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "transcript",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "contig",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "position",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "ref_allele",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "alt_allele",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_all_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_all_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_all_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_all_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_max_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_max_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_max_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_max_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_max_subpop",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_afr_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_afr_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_afr_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_afr_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_amr_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_amr_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_amr_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_amr_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eas_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eas_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eas_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eas_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eur_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eur_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eur_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_eur_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_mid_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_mid_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_mid_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_mid_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_oth_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_oth_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_oth_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_oth_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_sas_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_sas_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_sas_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gvs_sas_sc",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gene_symbol",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "transcript_source",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "aa_change",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "consequence",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "dna_change_in_transcript",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "variant_type",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "exon_number",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "intron_number",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "genomic_location",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "dbsnp_rsid",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gene_id",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gene_omim_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "is_canonical_transcript",
+    "type": "BOOLEAN"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_all_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_all_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_all_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_failed_filter",
+    "type": "BOOLEAN"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_max_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_max_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_max_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_max_subpop",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_afr_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_afr_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_afr_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_amr_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_amr_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_amr_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_asj_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_asj_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_asj_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_eas_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_eas_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_eas_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_fin_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_fin_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_fin_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_nfe_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_nfe_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_nfe_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_sas_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_sas_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_sas_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_oth_ac",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_oth_an",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "gnomad_oth_af",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "revel",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_acceptor_gain_score",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_acceptor_gain_distance",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_acceptor_loss_score",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_acceptor_loss_distance",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_donor_gain_score",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_donor_gain_distance",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_donor_loss_score",
+    "type": "FLOAT"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "splice_ai_donor_loss_distance",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "omim_phenotypes_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "omim_phenotypes_name",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "clinvar_classification",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "clinvar_last_updated",
+    "type": "DATE"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "clinvar_phenotype",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "clinvar_rcv_ids",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "clinvar_rcv_classifications",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "clinvar_rcv_num_stars",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "mane_select_name",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "mane_plus_clinical_name",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "hgnc_symbol",
+    "type": "STRING"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "hgnc_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "LoF",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "LoF_filter",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "LoF_flags",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "LoF_info",
+    "type": "STRING"
+  },
+  {
+    "mode": "REPEATED",
+    "name": "GERP",
+    "type": "FLOAT"
+  }
+]

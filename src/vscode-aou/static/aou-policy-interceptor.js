@@ -114,16 +114,91 @@
       if (type === "upload") uploadAckUntil = Date.now() + ACK_WINDOW_MS;
     }
 
+    // Clicking the dialog closes VS Code's context menu, so the original click
+    // can't be resumed. Remember where the menu was opened, then reopen it on
+    // the same element after Continue and choose the item again. The click on
+    // Continue is the user gesture the browser needs for the download or the
+    // file picker.
+    let lastContext = null;
+    document.addEventListener(
+      "contextmenu",
+      (e) => {
+        lastContext = { target: e.target, x: e.clientX, y: e.clientY };
+      },
+      true,
+    );
+
+    function findMenuItem(type) {
+      return Array.from(
+        document.querySelectorAll(".monaco-menu .action-item"),
+      ).find((item) => menuAction(item) === type);
+    }
+
+    function replayMenuAction(type) {
+      return new Promise((resolve) => {
+        const ctx = lastContext;
+        if (!ctx || !ctx.target.isConnected) return resolve(false);
+
+        const mouse = (name, x, y) =>
+          new MouseEvent(name, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            button: 0,
+            clientX: x,
+            clientY: y,
+          });
+        ctx.target.dispatchEvent(mouse("contextmenu", ctx.x, ctx.y));
+
+        let tries = 0;
+        const timer = setInterval(() => {
+          const item = findMenuItem(type);
+          if (item) {
+            clearInterval(timer);
+            // VS Code ignores clicks that arrive right after a menu opens.
+            setTimeout(() => {
+              const rect = item.getBoundingClientRect();
+              const x = rect.left + rect.width / 2;
+              const y = rect.top + rect.height / 2;
+              for (const name of ["mousedown", "mouseup", "click"]) {
+                item.dispatchEvent(mouse(name, x, y));
+              }
+              // The menu closes once the item runs.
+              setTimeout(() => resolve(!item.isConnected), 400);
+            }, 300);
+          } else if (++tries > 20) {
+            clearInterval(timer);
+            resolve(false);
+          }
+        }, 50);
+      });
+    }
+
+    function showHint(text) {
+      const hint = document.createElement("div");
+      hint.className = "aou-hint";
+      hint.textContent = text;
+      hint.style.cssText =
+        "position:fixed;bottom:40px;left:50%;transform:translateX(-50%);" +
+        "background:#323232;color:#fff;padding:10px 16px;border-radius:4px;" +
+        "z-index:100000;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.4)";
+      document.body.appendChild(hint);
+      setTimeout(() => hint.remove(), 8000);
+    }
+
     function remind(type) {
       if (document.getElementById("aou-policy-modal")) return;
       const label = type === "download" ? "Download" : "Upload";
-      createModal(
-        type,
-        (accepted) => {
-          if (accepted) menuAckUntil[type] = Date.now() + ACK_WINDOW_MS;
-        },
-        `After you continue, choose ${label} again.`,
-      );
+      createModal(type, async (accepted) => {
+        if (!accepted) return;
+        // Let the replayed events through the interceptor.
+        menuAckUntil[type] = Date.now() + ACK_WINDOW_MS;
+        if (await replayMenuAction(type)) {
+          consume(type);
+        } else {
+          showHint(`Choose ${label} again to continue.`);
+        }
+      });
     }
 
     function handle(e) {

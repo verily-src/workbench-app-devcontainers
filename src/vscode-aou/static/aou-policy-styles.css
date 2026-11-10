@@ -1,0 +1,154 @@
+/* AoU Policy Modal Overlay */
+.aou-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: aou-fade-in 0.2s ease-out;
+}
+
+@keyframes aou-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Modal Content */
+.aou-modal-content {
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-width: 500px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: aou-slide-up 0.3s ease-out;
+}
+
+@keyframes aou-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal Header */
+.aou-modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e1e4e8;
+}
+
+.aou-modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #24292e;
+}
+
+/* Modal Body */
+.aou-modal-body {
+    padding: 20px;
+}
+
+.aou-modal-body p {
+    margin: 0 0 12px 0;
+    line-height: 1.6;
+    color: #24292e;
+}
+
+.aou-modal-body p:first-child {
+    margin-top: 0;
+}
+
+.aou-modal-body p:last-of-type {
+    margin-bottom: 16px;
+}
+
+/* Input Group */
+.aou-input-group {
+    margin: 16px 0;
+}
+
+.aou-input-group input[type="text"] {
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 14px;
+    line-height: 20px;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.aou-input-group input[type="text"]:focus {
+    outline: none;
+    border-color: #0366d6;
+    box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+}
+
+/* Error Message */
+.aou-error-message {
+    color: #d73a49;
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+/* Modal Footer */
+.aou-modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid #e1e4e8;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+/* Buttons */
+.aou-button {
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    border-radius: 4px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.aou-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.aou-button-secondary {
+    background: white;
+    border-color: #d1d5da;
+    color: #24292e;
+}
+
+.aou-button-secondary:hover:not(:disabled) {
+    background: #f6f8fa;
+}
+
+.aou-button-warning {
+    background: #ffeaa7;
+    border-color: #f39c12;
+    color: #856404;
+}
+
+.aou-button-warning:hover:not(:disabled) {
+    background: #ffd93d;
+}
+
+.aou-button-warning:disabled {
+    background: #f0f0f0;
+    border-color: #ccc;
+    color: #999;
+}

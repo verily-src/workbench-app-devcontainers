@@ -15,9 +15,12 @@
   };
 
   const REPLAY = "__aouReplay";
-  // After the reminder is acknowledged, the next file picker selection or drop
-  // goes through without another prompt.
+  // After the reminder is acknowledged, the next matching action goes through
+  // without another prompt. Menu clicks can't be replayed because clicking the
+  // dialog closes VS Code's context menu, so the user repeats the action.
   const ACK_WINDOW_MS = 60 * 1000;
+  const menuAckUntil = { download: 0, upload: 0 };
+  // Next file picker selection or drop after an acknowledged upload.
   let uploadAckUntil = 0;
 
   function createModal(type, callback, note) {
@@ -87,31 +90,39 @@
 
   // Explorer context menu: "Download..." and "Upload...".
   function interceptMenus() {
-    let pending = null;
+    function acknowledged(type) {
+      return Date.now() < menuAckUntil[type];
+    }
+
+    function consume(type) {
+      menuAckUntil[type] = 0;
+      if (type === "upload") uploadAckUntil = Date.now() + ACK_WINDOW_MS;
+    }
+
+    function remind(type) {
+      if (document.getElementById("aou-policy-modal")) return;
+      const label = type === "download" ? "Download" : "Upload";
+      createModal(
+        type,
+        (accepted) => {
+          if (accepted) menuAckUntil[type] = Date.now() + ACK_WINDOW_MS;
+        },
+        `After you continue, choose ${label} again.`,
+      );
+    }
 
     function handle(e) {
-      if (e[REPLAY]) return;
       const type = menuAction(e.target);
       if (!type) return;
 
+      if (acknowledged(type)) {
+        if (e.type === "click") consume(type);
+        return;
+      }
+
       stop(e);
       // A click is made of several events; only open one modal for it.
-      if (e.type !== "click" && e.type !== "keydown") return;
-      if (document.getElementById("aou-policy-modal")) return;
-
-      const item = e.target.closest(".monaco-menu .action-item");
-      pending = item;
-      createModal(type, (accepted) => {
-        const el = pending;
-        pending = null;
-        if (!accepted || !el || !el.isConnected) return;
-        if (type === "upload") uploadAckUntil = Date.now() + ACK_WINDOW_MS;
-        for (const name of ["mousedown", "mouseup", "click"]) {
-          const ev = new MouseEvent(name, { bubbles: true, cancelable: true });
-          ev[REPLAY] = true;
-          el.querySelector(".action-label, a, span").dispatchEvent(ev);
-        }
-      });
+      if (e.type === "click") remind(type);
     }
 
     for (const name of ["mousedown", "mouseup", "click"]) {
@@ -124,16 +135,15 @@
         const focused = document.querySelector(
           ".monaco-menu .action-item.focused",
         );
-        if (!focused || !menuAction(focused)) return;
-        const type = menuAction(focused);
+        const type = focused && menuAction(focused);
+        if (!type) return;
+
+        if (acknowledged(type)) {
+          consume(type);
+          return;
+        }
         stop(e);
-        createModal(type, (accepted) => {
-          if (!accepted || !focused.isConnected) return;
-          if (type === "upload") uploadAckUntil = Date.now() + ACK_WINDOW_MS;
-          const ev = new MouseEvent("click", { bubbles: true, cancelable: true });
-          ev[REPLAY] = true;
-          focused.querySelector(".action-label, a, span").dispatchEvent(ev);
-        });
+        remind(type);
       },
       true,
     );

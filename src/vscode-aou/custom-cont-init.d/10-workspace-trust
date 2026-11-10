@@ -1,0 +1,18 @@
+#!/usr/bin/with-contenv bash
+# Applies the WORKSPACE_TRUST container setting (from the devcontainer template
+# option "workspaceTrust") to code-server's user settings on every start.
+settings=/config/data/User/settings.json
+value=true
+if [[ "${WORKSPACE_TRUST:-true}" == "false" ]]; then
+  value=false
+fi
+
+/app/code-server/lib/node -e '
+  const fs = require("fs");
+  const [file, value] = process.argv.slice(1);
+  let s = {};
+  try { s = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) {}
+  s["security.workspace.trust.enabled"] = value === "true";
+  fs.writeFileSync(file, JSON.stringify(s, null, 2) + "\n");
+' "${settings}" "${value}"
+chown abc:abc "${settings}"

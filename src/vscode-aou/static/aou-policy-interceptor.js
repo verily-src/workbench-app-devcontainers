@@ -14,6 +14,21 @@
       "The All of Us Data Use Policies prohibit you from removing participant-level data from the workbench. You are also prohibited from publishing or otherwise distributing any data or aggregate statistics corresponding to fewer than 20 participants unless expressly permitted by our data use policies.",
   };
 
+  // VS Code downloads folders and files over 32 MB through showDirectoryPicker.
+  // Workbench embeds the app in a cross-origin iframe, where browsers refuse to
+  // show file pickers, so those downloads fail silently with a SecurityError.
+  // Hiding the API makes VS Code fall back to a direct download for large
+  // files. Folders can't be downloaded without the picker.
+  try {
+    Object.defineProperty(window, "showDirectoryPicker", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+  } catch (e) {
+    // Leave the API in place if it can't be hidden.
+  }
+
   const REPLAY = "__aouReplay";
   // After the reminder is acknowledged, the next matching action goes through
   // without another prompt. Menu clicks can't be replayed because clicking the

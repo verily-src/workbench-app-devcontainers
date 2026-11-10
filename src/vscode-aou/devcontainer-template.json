@@ -18,12 +18,6 @@
       "proposals": ["true", "false"],
       "default": "false"
     },
-    "workspaceTrust": {
-      "type": "string",
-      "description": "Whether VS Code workspace trust (Restricted Mode) is enabled. Set to false so extensions that do not support untrusted workspaces, such as the CSV editor, work.",
-      "proposals": ["true", "false"],
-      "default": "true"
-    },
     "shmSize": {
       "type": "string",
       "description": "Shared memory size for the application-server container",

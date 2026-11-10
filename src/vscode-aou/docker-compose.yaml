@@ -20,7 +20,6 @@ services:
     environment:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
-      WORKSPACE_TRUST: "${templateOption:workspaceTrust}"
     networks:
       - app-network
     depends_on:

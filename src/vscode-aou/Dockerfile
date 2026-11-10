@@ -19,16 +19,14 @@ RUN mkdir -p /config/extensions /config/data/User \
     && chown -R ${USER}:${USER} /config/extensions /config/data
 
 # Spreadsheet-style CSV editor. It does not declare untrusted-workspace support,
-# so it only works when workspace trust is turned off (see workspaceTrust).
+# so it only works once the user trusts the workspace or turns off workspace
+# trust in VS Code settings.
 # XDG_CONFIG_HOME points at a scratch dir because /config itself is root-owned.
 RUN XDG_CONFIG_HOME=/tmp/xdg s6-setuidgid ${USER} /app/code-server/bin/code-server \
     --extensions-dir /config/extensions \
     --user-data-dir /config/data \
     --install-extension janisdd.vscode-edit-csv \
     && rm -rf /tmp/xdg
-
-# Applies the workspaceTrust template option to settings.json on each start.
-COPY --chmod=755 custom-cont-init.d/ /custom-cont-init.d/
 
 COPY --from=load-envs --chown=${USER} \
     /dist/load-env /dist/load-env.sh ${HOME}/

@@ -25,4 +25,15 @@ RUN curl -fsSL 'https://open-vsx.org/api/Google/geminicodeassist/2.79.0' \
 
 USER root
 
+# Workbench embeds the app in a cross-origin iframe, where browsers refuse file
+# pickers. Hide showDirectoryPicker so folder-sized and large-file downloads fall
+# back to a direct download instead of failing silently. The script is served
+# next to workbench.html and loaded with the page's script nonce. A content hash
+# in the URL makes browsers fetch updates despite the year-long static cache.
+ARG WORKBENCH_DIR=/app/code-server/lib/vscode/out/vs/code/browser/workbench
+COPY static/disable-directory-picker.js ${WORKBENCH_DIR}/
+RUN JS_HASH=$(md5sum ${WORKBENCH_DIR}/disable-directory-picker.js | cut -c1-12) \
+    && sed -i "s|</head>|<script nonce=\"{{WORKBENCH_SCRIPT_NONCE}}\" src=\"{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/disable-directory-picker.js?v=${JS_HASH}\"></script></head>|" ${WORKBENCH_DIR}/workbench.html \
+    && grep -q "disable-directory-picker.js?v=${JS_HASH}" ${WORKBENCH_DIR}/workbench.html
+
 WORKDIR /config

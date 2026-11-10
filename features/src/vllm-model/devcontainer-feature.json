@@ -1,0 +1,21 @@
+{
+  "id": "vllm-model",
+  "version": "1.0.0",
+  "name": "Local model served by vLLM",
+  "description": "Serves an open-weight model (NVIDIA Nemotron by default) with vLLM on the app's GPU: a pinned vLLM in /opt/vllm, a model catalog with GPU fit and pinned revisions, a model store that can live on a bucket mount, and the scripts that start and validate the server. Debian-based images on x86_64 with an NVIDIA driver (580 or newer for this vLLM release).",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user. The server runs as this user at start-up (start-vllm.sh)."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user: where the model store, caches and log live (APP_USER_HOME at run time)."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
+}

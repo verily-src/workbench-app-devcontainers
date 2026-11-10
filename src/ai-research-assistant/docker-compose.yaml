@@ -1,0 +1,195 @@
+services:
+  app:
+    container_name: "application-server"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    volumes:
+      # Only the lifecycle scripts, not the app folder: the app's user is root here, and a writable
+      # copy of gateway.toml or the compose file would let them change what the next restart runs.
+      - ./startupscript:/workspace/startupscript:ro
+      - ./sudo-passwordless.sh:/workspace/sudo-passwordless.sh:ro
+      - ./start-services.sh:/workspace/start-services.sh:ro
+      - work:/config:cached
+      - port-guard-status:/opt/port-guard:ro
+    ports:
+      # Workbench's proxy agent forwards to the first port published on all interfaces: the front
+      # door (opencode-web below). code-server's own 8443 is not published.
+      - "8080:8080"
+      # vLLM, for the sandbox, as host.openshell.internal:8000. Loopback only.
+      - "127.0.0.1:8000:8000"
+      # The Workbench MCP server, for the sandbox, the same way. Loopback only.
+      - "127.0.0.1:9242:9242"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+      # Workbench substitutes only a fixed set of template options, so the model is set here.
+      # Needs an A100 40 GB or larger.
+      VLLM_MODEL: "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+      VLLM_PORT: "8000"
+      # Not loopback, or the published port above cannot reach it.
+      VLLM_BIND_ADDRESS: "0.0.0.0"
+      VLLM_MODELS: "/config/.vllm/models"
+      VLLM_CONTEXT_LENGTH: "65536"
+      VLLM_GPU_MEMORY_UTILIZATION: "0.90"
+      VLLM_MAX_NUM_SEQS: "8"
+      VLLM_LOAD_TIMEOUT_MINUTES: "25"
+      VLLM_EXTRA_ARGS: ""
+      # Every agent-sandbox command goes to the sandbox-broker below.
+      AGENT_BROKER: "sandbox-broker"
+      # Where the sandbox reaches the model and the Workbench tools: the two loopback ports above.
+      # The broker below gets the same two values.
+      AGENT_MODEL_URL: "http://host.openshell.internal:8000/v1"
+      AGENT_MCP_URL: "http://host.openshell.internal:9242"
+      # Prints the model the harness uses: the one vLLM serves.
+      AGENT_MODEL_COMMAND: "/opt/vllm-model/resolve-model.sh"
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+  # The front door (caddy/Caddyfile), in the app container's network namespace: it owns port
+  # 8080 and reaches code-server on localhost and the broker's forward over app-network.
+  opencode-web:
+    image: caddy:2.11-alpine
+    restart: always
+    network_mode: "service:app"
+    volumes:
+      - ./caddy:/etc/caddy:ro
+    depends_on:
+      - app
+
+  # The event bridge the front door uses (event-bridge/bridge.py).
+  opencode-web-events:
+    build:
+      context: .
+      dockerfile: event-bridge/Dockerfile
+    restart: always
+    network_mode: "service:app"
+    environment:
+      UPSTREAM: "sandbox-broker:4096"
+      LISTEN: "9001"
+    depends_on:
+      - app
+
+  openshell-init:
+    image: &openshell-gateway ghcr.io/nvidia/openshell/gateway:0.1.4@sha256:bdb4fe248070032c88be78f029dad9325cb698480e90486e1413a674a5d8edc8
+    user: "0"
+    restart: "no"
+    command: ["generate-certs", "--output-dir", "/var/lib/openshell/tls"]
+    environment:
+      HOME: /var/lib/openshell
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+    volumes:
+      - &openshell-data
+        type: bind
+        source: /var/lib/openshell
+        target: /var/lib/openshell
+        bind:
+          create_host_path: true
+    network_mode: none
+
+  openshell-gateway:
+    container_name: "openshell-gateway"
+    image: *openshell-gateway
+    restart: always
+    depends_on:
+      openshell-init:
+        condition: service_completed_successfully
+      sandbox-image:
+        condition: service_completed_successfully
+    command: []
+    # Creates sandbox containers through the host Docker daemon: root on the VM
+    # in effect. Never mount the socket into the app or a sandbox.
+    user: "0"
+    ports:
+      # Supervisors run on the host network and call back here. Loopback only.
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - *openshell-data
+      - type: bind
+        source: ./openshell/gateway.toml
+        target: /etc/openshell/gateway.toml
+        read_only: true
+    environment:
+      OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
+      OPENSHELL_DB_URL: "sqlite:/var/lib/openshell/gateway.db?mode=rwc"
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+      XDG_DATA_HOME: /var/lib/openshell
+      HOME: /var/lib/openshell
+    networks:
+      - openshell-net
+
+  # The only container that reaches the gateway (the agent-sandbox README, "Admin-locked mode").
+  sandbox-broker:
+    container_name: "sandbox-broker"
+    build:
+      context: .
+      dockerfile: broker/Dockerfile
+    restart: always
+    depends_on:
+      openshell-gateway:
+        condition: service_started
+    # Root for sshd only; sessions run as abc (broker/entrypoint.sh).
+    user: "0"
+    volumes:
+      - work:/config
+      - broker-keys:/etc/ssh/keys
+      - port-guard-status:/opt/port-guard:ro
+    environment:
+      OPENSHELL_GATEWAY_ENDPOINT: "http://openshell-gateway:8080"
+      OPENSHELL_TELEMETRY_ENABLED: "false"
+      # The same values as the app above: the harness's configuration is built here.
+      AGENT_MODEL_URL: "http://host.openshell.internal:8000/v1"
+      AGENT_CONTEXT_LENGTH: "65536"
+      AGENT_MCP_URL: "http://host.openshell.internal:9242"
+    networks:
+      - app-network
+      - openshell-net
+
+  # Builds the sandbox image (the opencode-harness feature's Dockerfile), then exits.
+  sandbox-image:
+    image: opencode-agent-sandbox:0.2
+    build:
+      context: .
+      dockerfile: .devcontainer/features/opencode-harness/sandbox/Dockerfile
+    command: ["true"]
+    restart: "no"
+    network_mode: none
+
+  # Drops connections to port 8080 from other VMs (port-guard.sh).
+  port-guard:
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: always
+    environment:
+      GUARDED_PORT: "8080"
+    command: ["sh", "/port-guard.sh"]
+    volumes:
+      - type: bind
+        source: ./port-guard.sh
+        target: /port-guard.sh
+        read_only: true
+      - port-guard-status:/status
+
+networks:
+  app-network:
+    external: true
+  # The gateway and the broker. Not `internal`: the gateway refreshes Google
+  # tokens and pulls OpenShell's images.
+  openshell-net:
+volumes:
+  work:
+  port-guard-status:
+  broker-keys:

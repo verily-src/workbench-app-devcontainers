@@ -1,0 +1,34 @@
+# The base OpenShell policy for the agent sandbox: the filesystem and the local model.
+# Anything not listed is denied. Administrators edit ai-policy.yaml, not this file;
+# render-policy.py adds the harness's binaries, the data rules and the Workbench tools rule.
+#
+# Reference: https://docs.nvidia.com/openshell/latest/how-it-works/policies/schema
+version: 1
+
+filesystem_policy:
+  include_workdir: true
+  read_only: [/bin, /sbin, /usr, /lib, /lib64, /etc, /opt, /var/log, /proc, /dev/urandom, /dev/random]
+  # /dev/tty is for OpenCode's terminal interface.
+  read_write: [/sandbox, /tmp, /dev/null, /dev/tty]
+
+landlock:
+  # Fail closed. Workbench's Flatcar 6.12 VMs provide Landlock ABI 6.
+  compatibility: hard_requirement
+
+network_policies:
+  # The local model's chat API. The server's other endpoints stay blocked.
+  local_models:
+    name: local_models
+    endpoints:
+      - host: host.openshell.internal
+        port: 8000
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: {method: POST, path: /v1/chat/completions}
+          - allow: {method: GET, path: /v1/models}
+    # render-policy.py replaces this list with the harness's binaries plus curl, which lets the
+    # self-test check the path rules.
+    binaries:
+      - path: /usr/bin/curl
+

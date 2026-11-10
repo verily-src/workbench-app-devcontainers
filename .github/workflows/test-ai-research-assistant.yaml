@@ -1,0 +1,50 @@
+name: "CI - Test the AI Research Assistant template and its features"
+on:
+  pull_request:
+    paths:
+      - 'src/ai-research-assistant/**'
+      - 'features/src/vllm-model/**'
+      - 'features/src/ai-policy/**'
+      - 'features/src/agent-sandbox/**'
+      - 'features/src/opencode-harness/**'
+      - 'features/src/wb-mcp-server/main.go'
+      - 'tests/ai-research-assistant/**'
+      - 'tests/vllm-model/**'
+      - 'tests/ai-policy/**'
+      - 'tests/agent-sandbox/**'
+      - 'tests/opencode-harness/**'
+      - '.github/workflows/test-ai-research-assistant.yaml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/ai-research-assistant/**'
+      - 'features/src/vllm-model/**'
+      - 'features/src/ai-policy/**'
+      - 'features/src/agent-sandbox/**'
+      - 'features/src/opencode-harness/**'
+      - 'features/src/wb-mcp-server/main.go'
+      - 'tests/ai-research-assistant/**'
+      - 'tests/vllm-model/**'
+      - 'tests/ai-policy/**'
+      - 'tests/agent-sandbox/**'
+      - 'tests/opencode-harness/**'
+      - '.github/workflows/test-ai-research-assistant.yaml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell scripts
+        run: |
+          shellcheck src/ai-research-assistant/*.sh \
+            features/src/vllm-model/*.sh \
+            features/src/ai-policy/*.sh \
+            features/src/agent-sandbox/*.sh features/src/agent-sandbox/broker/*.sh \
+            features/src/opencode-harness/*.sh features/src/opencode-harness/harnesses/*.sh
+      - name: Test the features and the template without a GPU
+        run: |
+          python3 -m pip install --quiet pyyaml
+          for suite in vllm-model ai-policy agent-sandbox opencode-harness ai-research-assistant; do
+            python3 -m unittest discover -s "tests/${suite}" -v
+          done

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+    "revision": "bee7596271d1495f6992ae224aefde4410e816b8",
+    "name": "Nemotron 3.5 Lightning 30B (NVFP4 weights, W4A16 on A100/H100)",
+    "weights": "21.6 GB",
+    "gpu": "A100 40 GB (primary); A100 80 GB, H100 80 GB, or H100 80 GB MEGA",
+    "minimum_vram_mib": 40000,
+    "serve_args": [
+      "--quantization",
+      "modelopt_fp4",
+      "--moe-backend",
+      "humming",
+      "--linear-backend",
+      "humming"
+    ]
+  }
+]

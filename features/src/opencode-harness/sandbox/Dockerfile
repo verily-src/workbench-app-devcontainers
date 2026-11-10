@@ -1,0 +1,49 @@
+# Sandbox image for OpenCode (the opencode-harness feature). The app's compose file builds it
+# from the app folder, where the platform puts the features under .devcontainer/features/.
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
+
+ARG OPENCODE_VERSION=1.18.22
+
+# iproute2 is required by OpenShell for full network namespace isolation.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash ca-certificates curl git iproute2 jq less \
+        procps python3 python3-venv ripgrep \
+    && rm -rf /var/lib/apt/lists/*
+
+# The policy names the real binary path, /opt/opencode/.opencode/bin/opencode.
+RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh \
+    && HOME=/opt/opencode bash /tmp/install-opencode.sh \
+        --version "${OPENCODE_VERSION}" --no-modify-path \
+    && rm /tmp/install-opencode.sh \
+    && chmod -R a+rX /opt/opencode \
+    && ln -s /opt/opencode/.opencode/bin/opencode /usr/local/bin/opencode \
+    && HOME=/tmp opencode --version
+
+# Google client libraries for data access. The venv's python is the real /usr/bin/python3.11
+# the data rules name.
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir google-cloud-bigquery==3.46.2 google-cloud-storage==3.17.1 requests \
+    && chmod -R a+rX /opt/venv
+
+# From the agent-sandbox feature: the agent's instructions, the self-test's probe and the
+# Cloud Storage helper (into the venv, so `import wbstorage` works).
+COPY .devcontainer/features/agent-sandbox/sandbox/instructions.md /opt/agent-sandbox/instructions.md
+COPY .devcontainer/features/agent-sandbox/sandbox/data-probe.py /opt/agent-sandbox/data-probe.py
+COPY .devcontainer/features/agent-sandbox/sandbox/wbstorage.py /opt/venv/lib/python3.11/site-packages/wbstorage.py
+
+# /sandbox is the only writable directory besides /tmp, so it is also HOME.
+RUN useradd --uid 1500 --home-dir /sandbox --create-home --shell /bin/bash sandbox \
+    && install -d -o sandbox -g sandbox /sandbox/work
+
+# Turn off the OpenCode features that would reach the internet. `sandbox exec` doesn't pass
+# these on, so the harness file sets them again; here they apply to `docker run`.
+ENV HOME=/sandbox \
+    OPENCODE_DISABLE_AUTOUPDATE=true \
+    OPENCODE_DISABLE_MODELS_FETCH=true \
+    OPENCODE_DISABLE_LSP_DOWNLOAD=true \
+    OPENCODE_DISABLE_DEFAULT_PLUGINS=true \
+    OPENCODE_DISABLE_SHARE=true \
+    OPENCODE_DISABLE_CLAUDE_CODE=true
+
+USER sandbox
+WORKDIR /sandbox/work

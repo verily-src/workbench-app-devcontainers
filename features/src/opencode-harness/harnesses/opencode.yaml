@@ -1,0 +1,43 @@
+# The OpenCode harness. The agent-sandbox README, "Harness", explains each field.
+name: opencode
+
+# Built by the app's compose file from sandbox/Dockerfile.
+image: opencode-agent-sandbox:0.2
+
+# Real paths, not symlinks.
+binaries:
+  - /opt/opencode/.opencode/bin/opencode
+
+workdir: /sandbox/work
+
+# Turn off every OpenCode feature that would reach the internet. `sandbox exec` doesn't pass
+# the image's own environment, so they are set here.
+env:
+  OPENCODE_DISABLE_AUTOUPDATE: "true"
+  OPENCODE_DISABLE_MODELS_FETCH: "true"
+  OPENCODE_DISABLE_LSP_DOWNLOAD: "true"
+  OPENCODE_DISABLE_DEFAULT_PLUGINS: "true"
+  OPENCODE_DISABLE_SHARE: "true"
+  OPENCODE_DISABLE_CLAUDE_CODE: "true"
+  # OpenShell answers the model host's name with a short-lived synthetic address; a cached
+  # answer outliving it is refused ("Cannot connect to API: Was there a typo in the url or
+  # port?"). OpenCode runs on Bun, whose resolver caches for 30 s by default.
+  BUN_CONFIG_DNS_TIME_TO_LIVE_SECONDS: "5"
+
+# Arguments you give `opencode` are appended.
+command: [opencode]
+
+# The OpenCode web UI, which the app's front door shows.
+serve:
+  command: [opencode, web, --hostname, "127.0.0.1", --port, "4096"]
+  port: 4096
+
+# Runs on the broker and prints OpenCode's configuration, passed into the sandbox in this variable.
+config:
+  hook: opencode-config.sh
+  env: OPENCODE_CONFIG_CONTENT
+
+# `agent-sandbox selftest` runs the command with these arguments and greps the output for this.
+selftest:
+  args: [run, --format, json, "Reply with exactly one word: ready"]
+  expect: '"type":"step_finish".*"reason":"stop"'

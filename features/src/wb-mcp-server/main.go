@@ -3940,11 +3940,22 @@ func buildLiteral(dataType string, value interface{}) map[string]interface{} {
 func handleRequest(req JSONRPCRequest) JSONRPCResponse {
 	switch req.Method {
 	case "initialize":
+		// Answer with the revision the client asked for when this server supports it (the
+		// tools-only surface is the same in all of them), so a client, or a proxy inspecting
+		// the traffic such as NVIDIA OpenShell, sees a revision it knows on later requests.
+		protocolVersion := "2025-03-26"
+		var params InitializeParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			switch params.ProtocolVersion {
+			case "2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25":
+				protocolVersion = params.ProtocolVersion
+			}
+		}
 		return JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result: InitializeResult{
-				ProtocolVersion: "2024-11-05",
+				ProtocolVersion: protocolVersion,
 				Capabilities:    map[string]interface{}{"tools": map[string]interface{}{}},
 				ServerInfo:      ServerInfo{Name: "wb-mcp-server", Version: "2.0.0"},
 			},
@@ -3997,10 +4008,10 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Run server in HTTP mode
-func runHTTPServer(port string) {
+func runHTTPServer(bind, port string) {
 	http.HandleFunc("/", handleHTTP)
 
-	addr := "127.0.0.1:" + port
+	addr := bind + ":" + port
 	log.Printf("Starting HTTP MCP server on %s (port arg: %q)\n", addr, port)
 	log.Printf("Ready - %d tools available\n", len(wbTools))
 
@@ -4039,9 +4050,11 @@ func runStdioServer() {
 func main() {
 	var httpMode bool
 	var port string
+	var bind string
 
 	flag.BoolVar(&httpMode, "http", false, "Run in HTTP mode instead of stdio")
 	flag.StringVar(&port, "port", "9242", "Port for HTTP server")
+	flag.StringVar(&bind, "bind", "127.0.0.1", "Address the HTTP server listens on (0.0.0.0 to let the container's port be published)")
 	flag.Parse()
 
 	log.SetOutput(os.Stderr)
@@ -4052,7 +4065,7 @@ func main() {
 	}
 
 	if httpMode {
-		runHTTPServer(port)
+		runHTTPServer(bind, port)
 	} else {
 		runStdioServer()
 	}

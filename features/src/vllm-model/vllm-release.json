@@ -1,0 +1,6 @@
+{
+  "version": "0.32.0",
+  "note": "vLLM release installed into /opt/vllm by install.sh and required by start-vllm.sh. Wheels ship CUDA 13.0 binaries; the host driver must be 580 or newer (or 525+ with CUDA forward compatibility).",
+  "flashinfer_version": "0.7.0.post1",
+  "flashinfer_note": "flashinfer-python version pinned by this vLLM release. install.sh installs the matching prebuilt flashinfer-cubin wheel, the flashinfer-jit-cache shim (installed without its dependencies, which are the kernel sets for every GPU architecture) and the sm80 (A100) and sm90a (H100) flashinfer-jit-cache provider packages from https://flashinfer.ai/whl/cu130/, so FlashInfer never compiles kernels at start-up; the pip CUDA toolkit's nvcc (13.4) does not match its headers (13.0)."
+}

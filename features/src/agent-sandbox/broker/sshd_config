@@ -1,0 +1,26 @@
+# sshd on the sandbox-broker (the agent-sandbox README, "Admin-locked mode"). One user, one key source, one
+# command: every session runs broker/command.sh, whatever the client asked for.
+Port 22
+AddressFamily inet
+HostKey /etc/ssh/keys/ssh_host_ed25519_key
+
+PermitRootLogin no
+AllowUsers abc
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM no
+AuthorizedKeysFile none
+AuthorizedKeysCommand /opt/agent-sandbox/broker/authorized-keys.sh %u
+AuthorizedKeysCommandUser nobody
+
+ForceCommand /opt/agent-sandbox/broker/command.sh
+PermitUserEnvironment no
+AllowTcpForwarding no
+AllowStreamLocalForwarding no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+PermitTTY yes
+PrintMotd no
+LogLevel INFO

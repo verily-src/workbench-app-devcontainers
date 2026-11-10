@@ -1,0 +1,24 @@
+# The AI policy of the sandboxed agent: the one file an administrator sets (the ai-policy
+# README). It is part of the image; a workspace user cannot edit it.
+version: 1
+
+data:
+  # workspace: read every BigQuery dataset and bucket the workspace lists.
+  # none: no data and no credential.
+  read: workspace
+  # controlled: also write to the resources the workspace owns. none: read-only everywhere.
+  write: controlled
+
+tools:
+  # Groups of Workbench tools (tool-groups.yaml) the agent may call: all, none, or a list.
+  allow: all
+  # Never callable: tools that run arbitrary commands as the user, tools that hand out
+  # credentials, and bq_execute, which would run SQL outside the sandbox's data rules.
+  deny:
+    - wb_execute
+    - gcloud_execute
+    - gsutil_execute
+    - git_execute
+    - resource_credentials
+    - aurora_resolve_connection
+    - bq_execute

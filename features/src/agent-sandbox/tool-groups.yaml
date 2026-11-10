@@ -1,0 +1,125 @@
+# The Workbench MCP server's tools (features/src/wb-mcp-server), by what they do. This is a
+# catalog, not policy: ai-policy.yaml names groups from here in tools.allow, and tools in
+# tools.deny. render-policy.py writes the allowed names into the sandbox's workbench_tools
+# rule, and OpenShell checks every call's tool name against it. A tool in no group is not
+# callable; a tool added to the server must be added here. tests/ai-policy checks the two
+# agree. The server will carry its own grouping one day; this file follows it then.
+groups:
+  discovery:
+    - wb_status
+    - wb_workspace_list
+    - workspace_list_all
+    - workspace_get
+    - workspace_list_resources
+    - workspace_list_users
+    - workspace_list_data_collections
+    - platform_list_data_collections
+    - resource_list_tree
+    - folder_list_tree
+    - resource_check_access
+    - resolve
+    - version
+    - auth_status
+    - server_list
+    - server_status
+    - server_list_regions
+    - organization_list
+  data-explorer:
+    - underlay_list
+    - underlay_get_schema
+    - underlay_list_entities
+    - underlay_get_entity
+    - underlay_list_criteria_selectors
+    - data_query_hints
+    - data_sample_instances
+    - study_list
+    - study_list_cohorts
+    - cohort_create_in_workspace
+    - cohort_update_criteria
+    - cohort_count_instances
+    - export_list_models
+    - export_describe
+    - export_preview
+    - export_cohort
+    - filter_build_attribute
+    - filter_build_relationship
+    - filter_build_boolean_logic
+    - filter_build_hierarchy
+  workspace-admin:
+    - workspace_create
+    - workspace_delete
+    - workspace_update
+    - workspace_duplicate
+    - workspace_set_property
+    - workspace_delete_property
+    - workspace_add_user
+    - workspace_remove_user
+    - workspace_configure_aws
+  resources:
+    - resource_create_bucket
+    - resource_create_bq_dataset
+    - resource_delete
+    - resource_update
+    - resource_add_reference
+    - resource_move
+    - folder_create
+    - folder_delete
+    - folder_update
+    - resource_mount
+    - resource_unmount
+    - resource_open_console
+    - resource_create_aurora_database
+    - resource_create_s3_folder
+    - resource_create_s3_external_bucket
+  groups-and-pods:
+    - group_create
+    - group_delete
+    - group_list
+    - group_describe
+    - group_add_user
+    - group_remove_user
+    - pod_list
+    - pod_describe
+    - pod_role_list
+    - pod_role_grant
+    - pod_role_revoke
+    - server_set
+  apps-and-compute:
+    - app_create
+    - app_delete
+    - app_list
+    - app_start
+    - app_stop
+    - app_get_url
+    - notebook_start
+    - notebook_stop
+    - notebook_launch
+    - cluster_start
+    - cluster_stop
+    - cluster_launch
+  workflows:
+    - workflow_list
+    - workflow_create
+    - workflow_describe
+    - workflow_job_list
+    - workflow_job_describe
+    - workflow_job_run
+    - workflow_job_cancel
+    - cromwell_generate_config
+  cloud-shell:
+    - wb_execute
+    - bq_execute
+    - gcloud_execute
+    - gsutil_execute
+    - git_execute
+  credentials:
+    - resource_credentials
+    - aurora_resolve_connection
+  aws-data:
+    - aurora_query
+    - aurora_list_tables
+    - aurora_describe_table
+    - s3_list_objects
+    - s3_read_file
+    - s3_write_file
+    - s3_copy

@@ -1,0 +1,52 @@
+# Front door of the app (docker-compose.yaml, service opencode-web): OpenCode's web UI at the
+# root, forwarded from the sandbox by the sandbox-broker, and code-server under /ide/.
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	# code-server, the terminal: https://<app>/ide/
+	handle_path /ide/* {
+		reverse_proxy 127.0.0.1:8443
+	}
+
+	# Opening the app lands on a new session in the harness's working directory: OpenCode's
+	# project page, with the directory (/sandbox/work) base64url-encoded. 302, not 301: browsers
+	# would remember a 301 across an upgrade that changes the route.
+	@home {
+		path /
+		header Accept *text/html*
+	}
+	redir @home /L3NhbmRib3gvd29yaw 302
+
+	# Everything else is the OpenCode web UI. Its page, the shim and the shim's websocket go
+	# through the event bridge (event-bridge/bridge.py), because Workbench's proxy delivers a
+	# plain stream only once it ends.
+	@page header Accept *text/html*
+	handle {
+		route {
+			reverse_proxy /__event-ws 127.0.0.1:9001
+			reverse_proxy /__event-shim.js 127.0.0.1:9001
+			reverse_proxy @page 127.0.0.1:9001
+			reverse_proxy sandbox-broker:4096 {
+				flush_interval -1
+			}
+		}
+	}
+
+	# One line per request on the container's output.
+	log {
+		output stdout
+		format console
+	}
+
+	# While the sandbox or the forward is not up yet, say so instead of a bare error.
+	handle_errors {
+		@down expression `{http.error.status_code} in [502, 503, 504]`
+		handle @down {
+			header Content-Type "text/plain; charset=utf-8"
+			respond "OpenCode is starting. The sandbox and its web UI come up with the app; if this stays, open /ide/ and run: agent-sandbox web" 503
+		}
+	}
+}

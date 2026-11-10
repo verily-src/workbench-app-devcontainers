@@ -1,6 +1,6 @@
 {
   "id": "wb-mcp-server",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "name": "Workbench MCP Server",
   "description": "Installs an MCP (Model Context Protocol) HTTP server that wraps the wb CLI, enabling AI assistants to interact with Workbench. Runs as a persistent daemon on port 9242, eliminating lazy-loading delays. Auto-configures Claude CLI and Gemini CLI.",
   "options": {
@@ -18,6 +18,11 @@
       "type": "string",
       "default": "9242",
       "description": "Port for the HTTP MCP server"
+    },
+    "bindAddress": {
+      "type": "string",
+      "default": "127.0.0.1",
+      "description": "Address the HTTP MCP server listens on. 127.0.0.1 (default) keeps it to this container; 0.0.0.0 lets the container publish the port, for example to sandboxed agents on the same VM. WB_MCP_BIND overrides it at start."
     }
   },
   "installsAfter": [

@@ -53,6 +53,17 @@ if [[ "${TERRA_SERVER}" == "dev-stable" ]]; then
 fi
 readonly OPTIONS
 
+# The registry login from docker-auth.sh used an access token that expires after an hour, and a
+# long image build can take longer than that: log in again before pulling. The token goes in on
+# stdin, so xtrace does not print it.
+if [[ "${COMPUTE_PLATFORM^^}" == "GCP" && "${PROXY_IMAGE}" =~ ^([a-z0-9-]+-docker\.pkg\.dev)/ ]]; then
+    PROXY_REGISTRY="${BASH_REMATCH[1]}"
+    if ! curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+        | jq -r .access_token | docker login -u oauth2accesstoken --password-stdin "https://${PROXY_REGISTRY}"; then
+        echo "WARNING: could not refresh the login to ${PROXY_REGISTRY}; pulling with the existing credentials" >&2
+    fi
+fi
+
 # Pull the latest proxy agent. Without internet access, such as an airlocked
 # restart, fall back to the local image.
 if ! docker pull "${PROXY_IMAGE}"; then

@@ -1,0 +1,30 @@
+{
+    "id": "ai-research-assistant",
+    "version": "0.0.1",
+    "name": "AI Research Assistant",
+    "description": "Code-server with OpenCode in an NVIDIA OpenShell sandbox, on a local NVIDIA Nemotron model served by vLLM (Lightning 30B; A100 or H100). The sandbox holds no credentials; a policy in the image decides which workspace data and Workbench tools the agent reaches.",
+    "documentationURL": "https://github.com/verily-src/workbench-app-devcontainers/tree/master/src/ai-research-assistant",
+    "licenseURL": "https://github.com/verily-src/workbench-app-devcontainers/blob/master/LICENSE",
+    "options": {
+        "cloud": {
+            "type": "string",
+            "description": "VM cloud environment",
+            "proposals": [
+                "gcp"
+            ],
+            "default": "gcp"
+        },
+        "login": {
+            "type": "string",
+            "description": "Whether to log in to workbench CLI",
+            "proposals": [
+                "true",
+                "false"
+            ],
+            "default": "false"
+        }
+    },
+    "platforms": [
+        "Any"
+    ]
+}

@@ -43,6 +43,11 @@ jobs:
               filters:
                 - 'features/src/workbench-tools/**'
                 - 'features/src/postgres-client/**'
+            vscode-aou:
+              filters:
+                - 'features/src/workbench-tools/**'
+                - 'features/src/postgres-client/**'
+                - 'src/aou-common/**'
             vscode-docker:
               filters:
                 - 'features/src/workbench-tools/**'

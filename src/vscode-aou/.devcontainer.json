@@ -1,0 +1,68 @@
+{
+  "name": "VS Code App for AoU",
+  "dockerComposeFile": ["docker-compose.yaml", "../aou-common/aou-common-compose.yaml"],
+  "service": "app",
+  "runServices": ["app", "wondershaper"],
+  "shutdownAction": "none",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\"",
+  // re-mount bucket files on container start up
+  "postStartCommand": [
+    "./startupscript/remount-on-restart.sh",
+    "abc",
+    "/config",
+    "${templateOption:cloud}",
+    "${templateOption:login}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/java@sha256:61a839211feda1e2a1f10646648a948e733e4d98d770f3a4b6698a3c5fc92abe": {
+      "version": "17",
+      "jdkDistro": "tem"
+    },
+    "ghcr.io/devcontainers/features/node@sha256:8c0de46939b61958041700ee89e3493f3b2e4131a06dc46b4d9423427d06e5f6": {
+      "version": "24.22.1"
+    },
+    "ghcr.io/devcontainers/features/aws-cli@sha256:d6dee5e399eaee4090b5847afb7516ae7b52a066a863cc29120f66bea9f2d580": {},
+    "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli@sha256:e3af02f936916198f58ef4088d3be608372246d208f6f627c902ce62a8ae12ec": {},
+    "./.devcontainer/features/workbench-tools": {
+      "cloud": "${templateOption:cloud}",
+      "username": "abc",
+      "userHomeDir": "/config"
+    },
+    "./.devcontainer/features/postgres-client": {
+      "version": "16"
+    }
+  },
+  "remoteUser": "root",
+  "customizations": {
+    "workbench": {
+      "opens": {
+        "extensions": [
+          // Source.
+          ".c",
+          ".cjs",
+          ".cpp",
+          ".go",
+          ".java",
+          ".js",
+          ".mjs",
+          ".php",
+          ".scala",
+          ".sh",
+          ".ts",
+          // Documents
+          ".md",
+          ".html",
+          // Data
+          ".csv",
+          ".json",
+          ".jsonc",
+          ".tsv",
+          ".xml",
+          ".yml"
+        ],
+        "fileUrlSuffix": "?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+      }
+    }
+  }
+}

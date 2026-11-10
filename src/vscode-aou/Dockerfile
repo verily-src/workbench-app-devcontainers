@@ -5,10 +5,14 @@ ARG HOME=/config
 ARG WORKBENCH_DIR=/app/code-server/lib/vscode/out/vs/code/browser/workbench
 
 # Show AoU policy reminders when files are uploaded or downloaded. The script is
-# served next to workbench.html and loaded with the page's script nonce.
+# served next to workbench.html and loaded with the page's script nonce. Static
+# files are cached for a year under a URL that only changes with the code-server
+# version, so a content hash in the query string makes browsers fetch updates.
 COPY static/aou-policy-interceptor.js static/aou-policy-styles.css ${WORKBENCH_DIR}/
-RUN sed -i 's|</head>|<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/aou-policy-styles.css"><script nonce="{{WORKBENCH_SCRIPT_NONCE}}" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/aou-policy-interceptor.js"></script></head>|' ${WORKBENCH_DIR}/workbench.html \
-    && grep -q aou-policy-interceptor.js ${WORKBENCH_DIR}/workbench.html
+RUN JS_HASH=$(md5sum ${WORKBENCH_DIR}/aou-policy-interceptor.js | cut -c1-12) \
+    && CSS_HASH=$(md5sum ${WORKBENCH_DIR}/aou-policy-styles.css | cut -c1-12) \
+    && sed -i "s|</head>|<link rel=\"stylesheet\" href=\"{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/aou-policy-styles.css?v=${CSS_HASH}\"><script nonce=\"{{WORKBENCH_SCRIPT_NONCE}}\" src=\"{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/aou-policy-interceptor.js?v=${JS_HASH}\"></script></head>|" ${WORKBENCH_DIR}/workbench.html \
+    && grep -q "aou-policy-interceptor.js?v=${JS_HASH}" ${WORKBENCH_DIR}/workbench.html
 
 # The user gets no sudo. linuxserver only enables it when SUDO_PASSWORD is set,
 # which docker-compose.yaml leaves unset.

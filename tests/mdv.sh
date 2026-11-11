@@ -35,6 +35,20 @@ docker exec --user root "$CONTAINER_NAME" bash -c '
   echo "isolation headers OK"
 '
 
+echo "# Checking the Workspace data browser"
+# shellcheck disable=SC2016 # expands inside the container
+docker exec --user root "$CONTAINER_NAME" bash -c '
+  curl -fsS http://localhost:5055/ | grep -q "<script src=\"/_workspace/ui.js\" defer></script>" \
+    || { echo "ERROR: Workspace data script not injected into MDV pages"; exit 1; }
+  curl -fsS -o /dev/null http://localhost:5055/_workspace/ui.js \
+    || { echo "ERROR: /_workspace/ui.js not served"; exit 1; }
+  curl -fsS "http://localhost:5055/_workspace/api/list?path=" | grep -q "\"entries\"" \
+    || { echo "ERROR: /_workspace/api/list not working"; exit 1; }
+  [[ "$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:5055/_workspace/api/list?path=../../etc")" == 400 ]] \
+    || { echo "ERROR: path outside workspace buckets not rejected"; exit 1; }
+  echo "Workspace data browser OK"
+'
+
 echo "# Checking PostgreSQL backend is reachable from the app container"
 docker exec --user root "$CONTAINER_NAME" bash -c '
   getent hosts mdv_db > /dev/null || { echo "ERROR: mdv_db not resolvable"; exit 1; }

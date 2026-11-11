@@ -34,8 +34,18 @@ gunicorn_pid=$!
 nginx -c /tmp/mdv-nginx.conf -g 'daemon off;' &
 nginx_pid=$!
 
+# Workspace data browser backend on 127.0.0.1:5057 (nginx routes /_workspace/ to it).
+# Restarted if it exits; MDV keeps working without it.
+(
+    while true; do
+        python3 /opt/mdv-workbench/workspace_ui.py || true
+        sleep 2
+    done
+) &
+workspace_ui_pid=$!
+
 cleanup() {
-    kill -TERM "$gunicorn_pid" "$nginx_pid" 2>/dev/null || true
+    kill -TERM "$gunicorn_pid" "$nginx_pid" "$workspace_ui_pid" 2>/dev/null || true
 }
 trap cleanup TERM INT
 

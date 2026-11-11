@@ -8,14 +8,15 @@ What's being tested:
 
 1. **Cross-origin isolation inside the Workbench frame.** MDV gets `SharedArrayBuffer` while
    framed by Workbench (Document-Isolation-Policy), so its worker threads can load data.
-2. **Workspace data.** Data in a workspace bucket's `mdv/` folder appears in MDV automatically,
-   read-only.
+2. **Workspace data, no uploads.** Users open files and MDV projects from any workspace bucket
+   with MDV's **Workspace data** button; data in a bucket's `mdv/` folder appears automatically.
+   Bucket data stays read-only.
 3. **Sample data.** When no bucket has MDV data, MDV opens with sample projects.
 4. **Public data.** Public datasets can be fetched by MDV's worker threads into shared memory.
 
-Already verified locally (headless Chromium 141, MDV framed by a non-isolated page from another
-origin; not a substitute for these steps): steps 1–4 above, restart ordering, and data
-conversion. Not verifiable locally: real Workbench framing, `wb` bucket mounts (gcsfuse) and
+Already verified locally (Chromium 141, MDV framed by a non-isolated page from another origin;
+not a substitute for these steps): all four above, including the Workspace data button end to
+end (browse, open, convert, MDV opens the project), restart ordering, and removal. Not verifiable locally: real Workbench framing, `wb` bucket mounts (gcsfuse) and
 the Workbench proxy.
 
 ## 0. Before you start
@@ -23,14 +24,14 @@ the Workbench proxy.
 You need:
 
 - **Chrome or Edge, version 137 or later** (check at `chrome://version`). Firefox and Safari
-  don't support Document-Isolation-Policy yet; step 9 checks the expected failure there.
+  don't support Document-Isolation-Policy yet; step 10 checks the expected failure there.
 - A Workbench workspace where you can create apps, with a **controlled bucket** you can upload to.
   For step 3, at least one bucket must be mounted and none may have an `mdv/` folder at the top
   level. If you aren't sure, create a new controlled bucket before creating the app (buckets are
   mounted when the app starts).
 - About 25 MB of test data: download
   [`pbmc3k.h5ad`](https://raw.githubusercontent.com/chanzuckerberg/cellxgene/main/example-dataset/pbmc3k.h5ad)
-  (cellxgene's example dataset) to your computer.
+  (cellxgene's example dataset) to your computer. Don't upload it yet.
 
 Branch under test: `erogge/mdv-workspace-data` in
 `https://github.com/verily-src/workbench-app-devcontainers`.
@@ -90,7 +91,8 @@ Workbench.
    the app opening.
 2. Open it. **Expect:** `cells` (2,638) and `genes` (1,838) tables load with no
    `SharedArrayBuffer is not defined` error.
-3. Read the sync log: in the Console with the app frame selected, run
+3. Read the sync log: click **Workspace data** → **Activity log** (bottom of the dialog), or in
+   the Console with the app frame selected, run
 
    ```js
    fetch('/_workspace-sync.log', { cache: 'no-store' }).then(r => r.text()).then(t => console.log(t))
@@ -148,10 +150,30 @@ blocked.
 **Record:** the returned object. If any value is negative, also record the Console errors (look
 for `ERR_BLOCKED_BY_RESPONSE`).
 
-## 5. Workspace data
+## 5. Open workspace data with the Workspace data button
 
-1. In Workbench, open the controlled bucket. Create the folders and upload:
-   - `mdv/data/pbmc3k.h5ad` — the file from step 0.
+1. In Workbench, open the controlled bucket and upload `pbmc3k.h5ad` to a new folder named
+   `experiments` (not `mdv`): `experiments/pbmc3k.h5ad`. The app doesn't need restarting; the
+   bucket is already mounted.
+2. In MDV (catalog or any project), click **Workspace data** in the bottom-right corner.
+   **Expect:** a dialog listing the workspace's buckets by Workbench resource name.
+3. Click the bucket, then `experiments`. **Expect:** `pbmc3k.h5ad` with its size and an **Open**
+   button. If it isn't listed yet, wait a minute and click the folder name again (bucket listings
+   can be cached briefly). Unsupported files are shown greyed out, without **Open**.
+4. Click **Open**. **Expect:** "Converting pbmc3k.h5ad…" with an elapsed time, then MDV opens
+   project **`<resource>--pbmc3k`** (2,700 cells) by itself, typically within a minute. The sample
+   projects disappear from the catalog.
+5. On the new project, rerun the step 2 isolation check and the step 4 snippet.
+6. Click **Workspace data** again. **Expect:** it reopens in `experiments`. Click **Open** on
+   `pbmc3k.h5ad` again. **Expect:** MDV goes straight to the same project, without converting.
+
+**Record:** time from clicking **Open** to the project showing, the snippet outputs, and a
+screenshot of the dialog. If it fails, record the message and expand **Details** in the dialog.
+
+## 6. Workspace data in the bucket's `mdv/` folder (automatic)
+
+1. Upload the same file again as `mdv/data/pbmc3k-auto.h5ad` (note the `mdv/data/` folder at the
+   top of the bucket).
 
    (Optional, if you have `mdvtools`: `pip install mdvtools`, then
    `mdvtools convert-scanpy pbmc3k-project pbmc3k.h5ad`, and upload the `pbmc3k-project`
@@ -161,22 +183,21 @@ for `ERR_BLOCKED_BY_RESPONSE`).
 3. Reload the MDV catalog.
 
 **Expect:**
-- **`<resource>--pbmc3k`** appears. `<resource>` is the bucket's Workbench resource name; if the
-  bucket is inside a Workbench folder, the name starts with the folder path.
+- **`<resource>--pbmc3k-auto`** appears without using the button. `<resource>` is the bucket's
+  Workbench resource name; if the bucket is inside a Workbench folder, the name starts with the
+  folder path.
 - The optional ready-made project appears as **`<resource>--pbmc3k-project`**.
-- Both sample projects are gone from the catalog.
-- The sync log shows `converting .../mdv/data/pbmc3k.h5ad`, `converted ... in N s`,
-  `removed sample--...` and `registered new projects with MDV`.
+- The sync log shows `converting .../mdv/data/pbmc3k-auto.h5ad`, `converted ... in N s` and
+  `registered new projects with MDV`.
 
-4. Open `<resource>--pbmc3k`. Data loads. Rerun the step 2 isolation check and the step 4
-   snippet on this project page.
+4. Open `<resource>--pbmc3k-auto`. Data loads.
 
-**Record:** project names, conversion time from the log, and the snippet output.
+**Record:** project names and the conversion time from the log.
 
-## 6. Workspace data is read-only; views still save
+## 7. Workspace data is read-only; views still save
 
-Use the ready-made project if you uploaded it (the linked one). Otherwise use the converted
-project, which is a local copy, so only the view part applies.
+Use the ready-made project if you uploaded it (it's linked to the bucket). Otherwise use a
+converted project, which is a local copy, so only the view part applies.
 
 1. Change the layout (for example add a chart), then click **Save view** (disk icon). Reload the
    page. **Expect:** the change is still there.
@@ -187,13 +208,13 @@ project, which is a local copy, so only the view part applies.
 
 **Record:** results of each check.
 
-## 7. App restart
+## 8. App restart
 
 1. Stop the app in Workbench, then start it again.
 2. Open MDV.
 
 **Expect:**
-- The same projects are listed, with saved views kept.
+- The same projects are listed (including the one opened with the button), with saved views kept.
 - Converted projects aren't converted again (no new `converting` line in the sync log for
   unchanged files).
 - Data loads. If a linked project shows an error in the first minute after start, wait a minute
@@ -201,18 +222,19 @@ project, which is a local copy, so only the view part applies.
 
 **Record:** results, and how long until data loaded.
 
-## 8. Removing workspace data
+## 9. Removing workspace data
 
-1. Delete `mdv/data/pbmc3k.h5ad` from the bucket.
+1. Delete `experiments/pbmc3k.h5ad` and `mdv/data/pbmc3k-auto.h5ad` from the bucket (and the
+   optional `mdv/projects/pbmc3k-project/`).
 2. Wait up to 10 minutes, or restart the app.
 
-**Expect:** `<resource>--pbmc3k` disappears from the catalog; the log shows
-`removed <resource>--pbmc3k`. When no `mdv/` data remains, the sample projects come back (with new
-names ending `-2`).
+**Expect:** their projects disappear from the catalog; the log shows `removed <resource>--...`
+for each. Once no workspace data is open in MDV, the sample projects come back (with new names
+ending `-2`).
 
 **Record:** results.
 
-## 9. Unsupported browsers (expected failure)
+## 10. Unsupported browsers (expected failure)
 
 Open the app in **Firefox** (and Safari if available) and open any project.
 
@@ -229,11 +251,12 @@ limitation of Document-Isolation-Policy.
 | 2 Isolation in frame | | app frame `isolated`/`sab`, top `isolated`, headers |
 | 3 Samples | | variant count, timings |
 | 4 Worker + shared memory, public data | | returned object |
-| 5 Workspace data | | project names, conversion time |
-| 6 Read-only, views save | | |
-| 7 Restart | | |
-| 8 Removal | | |
-| 9 Firefox/Safari | | |
+| 5 Workspace data button | | time to open, snippet outputs |
+| 6 `mdv/` folder | | project names, conversion time |
+| 7 Read-only, views save | | |
+| 8 Restart | | |
+| 9 Removal | | |
+| 10 Firefox/Safari | | |
 
 Also attach the full sync log (step 3 command) at the end of testing.
 
@@ -245,5 +268,8 @@ Also attach the full sync log (step 3 command) at the end of testing.
 | `isolated: false` in the app frame | Response headers in step 2.5, and the Chrome version (must be 137+). |
 | No buckets in the sync log (`0 mounted resource(s)`) | Buckets created after the app started aren't mounted until a restart. |
 | Workspace project missing | The folder must be `mdv/` at the top of the bucket, with files under `mdv/data/` or `mdv/projects/<name>/`. Check the sync log for `skipping` or `conversion failed`. |
+| No **Workspace data** button | Reload the page. Check that `<script src="/_workspace/ui.js"` is in the page source of the app frame. |
+| Button shows no buckets | Buckets are mounted when the app starts; wait a minute after start, or restart the app if the bucket was created after it started. |
+| "Couldn't open …" in the dialog | Expand **Details** and record it, with the sync log. |
 | Large sample never appears | Look for `sample build failed` in the sync log. It retries after 6 hours; restart the app to retry immediately. |
 | Public data blocked (negative values in step 4) | The host must send CORS headers for data read by JavaScript. Record the URL and Console error. |

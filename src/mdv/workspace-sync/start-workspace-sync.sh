@@ -32,6 +32,8 @@ mkdir -p "${STATE_DIR}" "${RO_ROOT}" /var/lib/mdv-samples
 chown "${APP_USER}:${APP_USER}" "${STATE_DIR}" /var/lib/mdv-samples
 # A failed sample build waits 6 hours before retrying; an app restart retries right away.
 rm -f /var/lib/mdv-samples/.last-failure.json
+# The Workspace data browser (running as the app user) appends to the same log.
+touch "${LOG_FILE}" && chown "${APP_USER}:${APP_USER}" "${LOG_FILE}"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 echo "$(date -Is) start-workspace-sync: starting"
 

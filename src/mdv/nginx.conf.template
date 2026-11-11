@@ -43,6 +43,8 @@ http {
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
+        # Uncompressed upstream responses, so sub_filter can add the Workspace data browser.
+        proxy_set_header Accept-Encoding "";
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_read_timeout 300s;
@@ -52,6 +54,13 @@ http {
             default_type text/plain;
             add_header Cache-Control "no-store" always;
             alias /var/lib/mdv-workspace-sync/sync.log;
+        }
+
+        # Workspace data browser (workspace-sync/workspace_ui.py): browse workspace buckets and
+        # open files or MDV projects in MDV without uploading them.
+        location /_workspace/ {
+            proxy_pass http://127.0.0.1:5057/;
+            proxy_read_timeout 60s;
         }
 
         location ${MDV_API_ROOT} {
@@ -66,6 +75,9 @@ http {
             proxy_hide_header Cross-Origin-Embedder-Policy;
             add_header Cross-Origin-Embedder-Policy "${MDV_COEP}" always;
             add_header Document-Isolation-Policy "isolate-and-${MDV_COEP}" always;
+            # Adds the Workspace data button to MDV's pages (catalog and projects).
+            sub_filter '</head>' '<script src="/_workspace/ui.js" defer></script></head>';
+            sub_filter_once on;
             proxy_pass http://127.0.0.1:5056/;
         }
     }

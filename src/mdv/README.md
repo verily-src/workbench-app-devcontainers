@@ -3,7 +3,8 @@
 A Workbench custom application that runs [MDV](https://github.com/Taylor-CCB-Group/MDV)
 (Multi-Dimensional Viewer) — a web app for visualising spatial and molecular data.
 
-Testing in Workbench: [WORKBENCH-TESTING.md](WORKBENCH-TESTING.md).
+- Using the app: [USER-GUIDE.md](USER-GUIDE.md).
+- Testing in Workbench: [WORKBENCH-TESTING.md](WORKBENCH-TESTING.md).
 
 ## Architecture
 
@@ -55,14 +56,34 @@ those browsers MDV fails to load data with `SharedArrayBuffer is not defined`.
 
 ## Workspace data
 
-At every app start, after Workbench mounts the workspace's buckets, the app makes
-their MDV data available in MDV's catalog. Users don't need to upload anything.
-Put data in a folder named `mdv` at the top of any workspace bucket:
+Users open data from the workspace's buckets without uploading it, in two ways.
+Either way, the app links or converts the data directly from the bucket mount, so
+large files never go through the browser or the Workbench proxy.
+
+**1. The Workspace data button (on demand).** A **Workspace data** button in the
+bottom-right corner of every MDV page opens a browser of the workspace's mounted
+buckets. Users go to any folder and click **Open** next to a file or MDV project;
+MDV opens the result when it's ready (seconds for small files, minutes for large
+ones). Opening the same item again goes straight to the existing project.
+
+**2. The `mdv/` folder (automatic).** Anything in a folder named `mdv` at the top
+of a bucket appears in MDV's catalog at app start and every 10 minutes:
 
 | Put this in a bucket | MDV shows |
 | --- | --- |
-| `mdv/projects/<name>/` — an MDV project folder (has `datasources.json`), e.g. made with `mdvtools convert-scanpy` | Project `<bucket>--<name>`. Linked in place: the data isn't copied. |
-| `mdv/data/<name>.h5ad` or `<name>.h5mu` | Project `<bucket>--<name>`, converted on the app's disk in the background. Large files take a while. |
+| `mdv/projects/<name>/` — an MDV project folder (has `datasources.json`) | Project `<bucket>--<name>` |
+| `mdv/data/<file>` — a supported file (below) | Project `<bucket>--<file name>` |
+
+| Supported | How it's opened |
+| --- | --- |
+| MDV project folder (has `datasources.json`), e.g. made with `mdvtools convert-scanpy` or exported from MDV and unzipped | Linked in place; data isn't copied |
+| AnnData `.h5ad`, MuData `.h5mu` | Converted (`mdvtools` `convert_scanpy_to_mdv` / `convert_mudata_to_mdv`) |
+| VCF `.vcf`, `.vcf.gz` | Converted (`convert_vcf_to_mdv`), with a genome browser track |
+| Tables `.csv`, `.tsv`, optionally `.gz` | Converted to a single-table project |
+
+Converted projects are written to the app's disk; the bucket isn't changed. `<bucket>`
+is the bucket's Workbench resource name, prefixed by its Workbench folder path if it's
+in a folder.
 
 How it works ([`workspace-sync/`](workspace-sync/)):
 
@@ -71,18 +92,30 @@ How it works ([`workspace-sync/`](workspace-sync/)):
   **read-only** under `/mnt/mdv-workspace-ro/<bucket>`, so MDV can never modify bucket
   data, even for writable controlled buckets.
 - [`mdv_workspace_sync.py`](workspace-sync/mdv_workspace_sync.py) creates one folder per
-  project under MDV's projects directory (`/app/mdv`). For linked projects, data files are
-  symlinks into the read-only mount; the small files MDV edits (`views.json`,
-  `state.json`, `datasources.json`, `README.md`) are local copies, so saving views works.
-  It then registers new projects with MDV (`/rescan_projects`).
+  project under MDV's projects directory (`/app/mdv`) and registers new projects with MDV
+  (`/rescan_projects`). For linked projects, data files are symlinks into the read-only
+  mount and directories are local; the small files MDV edits (`views.json`, `state.json`,
+  `datasources.json`, `README.md`) are local copies, so saving views works.
+  [`convert_file.py`](workspace-sync/convert_file.py) does conversions with MDV's Python.
+- [`workspace_ui.py`](workspace-sync/workspace_ui.py) (on `127.0.0.1:5057`, routed by
+  nginx at `/_workspace/`) serves the Workspace data browser. It lists only the read-only
+  mounts and rejects paths outside them. When a user opens an item, it records it in
+  `/app/mdv/.workspace-imports.json` and runs the sync for that item. nginx adds
+  [`workspace-ui.js`](workspace-sync/workspace-ui.js) to MDV's HTML pages (`sub_filter`).
 - [`workspace-sync-loop.sh`](workspace-sync/workspace-sync-loop.sh) repeats the sync every
-  `MDV_SYNC_INTERVAL_MINUTES` to pick up new data and converts raw files.
-- When a source disappears from a mounted bucket, its project is removed from MDV.
+  `MDV_SYNC_INTERVAL_MINUTES` to pick up new or changed data.
+- When a source is deleted from a mounted bucket, its project is removed from MDV.
   Nothing is removed just because a bucket isn't mounted.
 
 Actions that change a linked project's data (add datasource, add or combine AnnData,
 add images) fail, because the data is read-only. Saving views and layouts works.
 To change the data, update it in the bucket.
+
+Why not the Workbench SDK file picker: it intercepts MDV's file inputs, but delivers the
+selected files to the browser (the SDK docs note large selections cause memory
+pressure), and MDV would then upload them back through the Workbench proxy in 256 KB
+chunks. That's two slow passes for multi-GB omics files, it doesn't cover drag-and-drop
+or existing MDV projects, and it needs Node.js 24 in the image (MDV's has 22).
 
 ### Sample data
 
@@ -121,7 +154,7 @@ Settings in `docker-compose.yaml` (`app` service `environment`):
 | --- | --- | --- |
 | `MDV_ISOLATION_MODE` | `credentialless` | Cross-origin isolation mode; see above. |
 | `MDV_WORKSPACE_FOLDER` | `mdv` | Folder in each bucket that holds MDV data. |
-| `MDV_WORKSPACE_CONVERT` | `true` | Convert `.h5ad`/`.h5mu` files in `<bucket>/mdv/data/`. |
+| `MDV_WORKSPACE_CONVERT` | `true` | Convert supported files (from `<bucket>/mdv/data/` or the Workspace data button). |
 | `MDV_SYNC_INTERVAL_MINUTES` | `10` | Minutes between syncs; `0` = only at app start. |
 | `MDV_SAMPLE_DATA` | `auto` | `auto` (only when no bucket has MDV data), `always` or `never`. |
 | `MDV_SAMPLE_VCF_MAX_SITES` | `0` | Variants in the large sample; `0` = as many as memory allows. |
@@ -143,8 +176,8 @@ images use `uv run`, so update `start.sh` when moving the pin.
 
 ## Logs
 
-- Workspace sync: `/var/lib/mdv-workspace-sync/sync.log` in the `application-server`
-  container.
+- Workspace sync and imports: `/var/lib/mdv-workspace-sync/sync.log` in the
+  `application-server` container, also at `<app URL>/_workspace-sync.log`.
 - MDV and nginx: `docker logs application-server`.
 
 ## Ports

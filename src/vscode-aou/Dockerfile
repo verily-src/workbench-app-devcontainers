@@ -29,8 +29,12 @@ RUN /app/code-server/lib/node /tmp/patch-large-file-download.js ${WORKBENCH_DIR}
 # which docker-compose.yaml leaves unset.
 RUN rm -f /etc/sudoers.d/${USER}
 
+# Remove the built-in GitHub Copilot extension and turn off VS Code's AI
+# features (chat, inline suggestions) in the default user settings.
+RUN rm -rf /app/code-server/lib/vscode/extensions/copilot
+
 RUN mkdir -p /config/extensions /config/data/User \
-    && echo '{"http.systemCertificatesNode":true}' > /config/data/User/settings.json \
+    && echo '{"http.systemCertificatesNode":true,"chat.disableAIFeatures":true}' > /config/data/User/settings.json \
     && chown -R ${USER}:${USER} /config/extensions /config/data
 
 # Spreadsheet-style editors: Edit csv for CSV files, Table Viewer for .xlsx files

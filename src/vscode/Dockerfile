@@ -36,4 +36,15 @@ RUN JS_HASH=$(md5sum ${WORKBENCH_DIR}/disable-directory-picker.js | cut -c1-12) 
     && sed -i "s|</head>|<script nonce=\"{{WORKBENCH_SCRIPT_NONCE}}\" src=\"{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/disable-directory-picker.js?v=${JS_HASH}\"></script></head>|" ${WORKBENCH_DIR}/workbench.html \
     && grep -q "disable-directory-picker.js?v=${JS_HASH}" ${WORKBENCH_DIR}/workbench.html
 
+# Large downloads: stop VS Code reading the whole file before it starts the
+# direct download. The build fails if the code it patches changes.
+COPY static/patch-large-file-download.js /tmp/
+RUN /app/code-server/lib/node /tmp/patch-large-file-download.js ${WORKBENCH_DIR}/workbench.js \
+    && rm /tmp/patch-large-file-download.js \
+    && WB_HASH=$(md5sum ${WORKBENCH_DIR}/workbench.js | cut -c1-12) \
+    && sed -i "s|/out/vs/code/browser/workbench/workbench.js\"|/out/vs/code/browser/workbench/workbench.js?v=${WB_HASH}\"|" ${WORKBENCH_DIR}/workbench.html \
+    && grep -q "workbench.js?v=${WB_HASH}" ${WORKBENCH_DIR}/workbench.html
+# The patched bundle keeps its URL, which browsers cache for a year. The hash in
+# the query string above makes them fetch the patched copy.
+
 WORKDIR /config

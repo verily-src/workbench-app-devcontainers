@@ -14,6 +14,17 @@ RUN JS_HASH=$(md5sum ${WORKBENCH_DIR}/aou-policy-interceptor.js | cut -c1-12) \
     && sed -i "s|</head>|<link rel=\"stylesheet\" href=\"{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/aou-policy-styles.css?v=${CSS_HASH}\"><script nonce=\"{{WORKBENCH_SCRIPT_NONCE}}\" src=\"{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/aou-policy-interceptor.js?v=${JS_HASH}\"></script></head>|" ${WORKBENCH_DIR}/workbench.html \
     && grep -q "aou-policy-interceptor.js?v=${JS_HASH}" ${WORKBENCH_DIR}/workbench.html
 
+# Large downloads: stop VS Code reading the whole file before it starts the
+# direct download. The build fails if the code it patches changes.
+COPY static/patch-large-file-download.js /tmp/
+RUN /app/code-server/lib/node /tmp/patch-large-file-download.js ${WORKBENCH_DIR}/workbench.js \
+    && rm /tmp/patch-large-file-download.js \
+    && WB_HASH=$(md5sum ${WORKBENCH_DIR}/workbench.js | cut -c1-12) \
+    && sed -i "s|/out/vs/code/browser/workbench/workbench.js\"|/out/vs/code/browser/workbench/workbench.js?v=${WB_HASH}\"|" ${WORKBENCH_DIR}/workbench.html \
+    && grep -q "workbench.js?v=${WB_HASH}" ${WORKBENCH_DIR}/workbench.html
+# The patched bundle keeps its URL, which browsers cache for a year. The hash in
+# the query string above makes them fetch the patched copy.
+
 # The user gets no sudo. linuxserver only enables it when SUDO_PASSWORD is set,
 # which docker-compose.yaml leaves unset.
 RUN rm -f /etc/sudoers.d/${USER}
@@ -22,14 +33,16 @@ RUN mkdir -p /config/extensions /config/data/User \
     && echo '{"http.systemCertificatesNode":true}' > /config/data/User/settings.json \
     && chown -R ${USER}:${USER} /config/extensions /config/data
 
-# Spreadsheet-style CSV editor. It does not declare untrusted-workspace support,
-# so it only works once the user trusts the workspace or turns off workspace
-# trust in VS Code settings.
+# Spreadsheet-style editors: Edit csv for CSV files, Table Viewer for .xlsx files
+# with formula evaluation. Neither declares untrusted-workspace support, so they
+# only work once the user trusts the workspace or turns off workspace trust in
+# VS Code settings.
 # XDG_CONFIG_HOME points at a scratch dir because /config itself is root-owned.
 RUN XDG_CONFIG_HOME=/tmp/xdg s6-setuidgid ${USER} /app/code-server/bin/code-server \
     --extensions-dir /config/extensions \
     --user-data-dir /config/data \
     --install-extension janisdd.vscode-edit-csv \
+    --install-extension jbearak.table-viewer \
     && rm -rf /tmp/xdg
 
 COPY --from=load-envs --chown=${USER} \

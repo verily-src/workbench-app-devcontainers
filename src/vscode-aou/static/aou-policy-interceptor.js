@@ -10,8 +10,11 @@
     uploadMessage:
       "The All of Us Data Use Policies prohibit you from uploading data or files containing personally identifiable information (PII). Any external data, files, or software that is uploaded into the Workspace should be exclusively for the research purpose that was provided for this Workspace.",
     downloadTitle: "Policy Reminder",
-    downloadMessage:
+    downloadMessage: [
       "The All of Us Data Use Policies prohibit you from removing participant-level data from the workbench. You are also prohibited from publishing or otherwise distributing any data or aggregate statistics corresponding to fewer than 20 participants unless expressly permitted by our data use policies.",
+      'To continue, affirm that this download will be used in accordance with the All of Us data use policy by typing "affirm" below.',
+    ],
+    affirmText: "affirm",
   };
 
   // VS Code downloads folders and files over 32 MB through showDirectoryPicker.
@@ -58,12 +61,25 @@
         <h2>${isDownload ? POLICY_CONFIG.downloadTitle : POLICY_CONFIG.uploadTitle}</h2>
       </div>
       <div class="aou-modal-body">
-        <p>${isDownload ? POLICY_CONFIG.downloadMessage : POLICY_CONFIG.uploadMessage}</p>
+        ${
+          isDownload
+            ? POLICY_CONFIG.downloadMessage.map((m) => `<p>${m}</p>`).join("")
+            : `<p>${POLICY_CONFIG.uploadMessage}</p>`
+        }
         ${note ? `<p><strong>${note}</strong></p>` : ""}
+        ${
+          isDownload
+            ? `<div class="aou-input-group">
+                 <input type="text" id="aou-affirm-input"
+                        placeholder="Type 'affirm' to continue"
+                        autocomplete="off" spellcheck="false">
+               </div>`
+            : ""
+        }
       </div>
       <div class="aou-modal-footer">
         <button class="aou-button aou-button-secondary" data-action="cancel">Cancel</button>
-        <button class="aou-button aou-button-warning" data-action="continue">Continue</button>
+        <button class="aou-button aou-button-warning" data-action="continue"${isDownload ? " disabled" : ""}>Continue</button>
       </div>
     `;
 
@@ -71,10 +87,24 @@
       modal.remove();
       callback(accepted);
     };
+    const continueButton = content.querySelector('[data-action="continue"]');
+    const affirmInput = content.querySelector("#aou-affirm-input");
+    const affirmed = () =>
+      affirmInput.value.trim().toLowerCase() === POLICY_CONFIG.affirmText;
+
     content.querySelector('[data-action="cancel"]').onclick = () =>
       finish(false);
-    content.querySelector('[data-action="continue"]').onclick = () =>
-      finish(true);
+    continueButton.onclick = () => {
+      if (!affirmInput || affirmed()) finish(true);
+    };
+    if (affirmInput) {
+      affirmInput.oninput = () => {
+        continueButton.disabled = !affirmed();
+      };
+      affirmInput.onkeydown = (e) => {
+        if (e.key === "Enter" && affirmed()) continueButton.click();
+      };
+    }
     modal.onclick = (e) => {
       if (e.target === modal) finish(false);
     };
@@ -85,7 +115,7 @@
 
     modal.appendChild(content);
     document.body.appendChild(modal);
-    content.querySelector('[data-action="continue"]').focus();
+    (affirmInput || continueButton).focus();
   }
 
   function menuAction(target) {

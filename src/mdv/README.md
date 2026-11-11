@@ -60,19 +60,23 @@ Users open data from the workspace's buckets without uploading it, in two ways.
 Either way, the app links or converts the data directly from the bucket mount, so
 large files never go through the browser or the Workbench proxy.
 
-**1. The Workspace data button (on demand).** A **Workspace data** button in the
-bottom-right corner of every MDV page opens a browser of the workspace's mounted
-buckets. Users go to any folder and click **Open** next to a file or MDV project;
-MDV opens the result when it's ready (seconds for small files, minutes for large
-ones). Opening the same item again goes straight to the existing project.
+**1. Open from workspace (on demand).** MDV's project catalog gets an **Open from
+workspace** card next to "Create new project" and "Import an existing project", and the
+project toolbar gets a matching button after "Add Datasource". Both are built from MDV's
+own elements. They open a dialog that shows the workspace's resources the way Workbench
+does: the workspace name, Workbench folders, and Cloud Storage buckets with their
+stewardship (Controlled/Referenced) and description. The dialog follows MDV's light or
+dark theme. Users select a file or MDV project and click **Open** (or double-click it).
+MDV opens the result when it's ready: seconds for small files, minutes for large ones.
+Opening the same item again goes straight to the existing project.
 
 **2. The `mdv/` folder (automatic).** Anything in a folder named `mdv` at the top
 of a bucket appears in MDV's catalog at app start and every 10 minutes:
 
 | Put this in a bucket | MDV shows |
 | --- | --- |
-| `mdv/projects/<name>/` — an MDV project folder (has `datasources.json`) | Project `<bucket>--<name>` |
-| `mdv/data/<file>` — a supported file (below) | Project `<bucket>--<file name>` |
+| `mdv/projects/<name>/` — an MDV project folder (has `datasources.json`) | Project `<name>` |
+| `mdv/data/<file>` — a supported file (below) | Project `<file name without extension>` |
 
 | Supported | How it's opened |
 | --- | --- |
@@ -81,9 +85,9 @@ of a bucket appears in MDV's catalog at app start and every 10 minutes:
 | VCF `.vcf`, `.vcf.gz` | Converted (`convert_vcf_to_mdv`), with a genome browser track |
 | Tables `.csv`, `.tsv`, optionally `.gz` | Converted to a single-table project |
 
-Converted projects are written to the app's disk; the bucket isn't changed. `<bucket>`
-is the bucket's Workbench resource name, prefixed by its Workbench folder path if it's
-in a folder.
+Converted projects are written to the app's disk; the bucket isn't changed. If two
+items have the same name, later ones get `-2`, `-3`, and so on. Each project's README
+(shown in MDV's **Project Info**) records the workspace resource and path it came from.
 
 How it works ([`workspace-sync/`](workspace-sync/)):
 
@@ -98,10 +102,14 @@ How it works ([`workspace-sync/`](workspace-sync/)):
   `datasources.json`, `README.md`) are local copies, so saving views works.
   [`convert_file.py`](workspace-sync/convert_file.py) does conversions with MDV's Python.
 - [`workspace_ui.py`](workspace-sync/workspace_ui.py) (on `127.0.0.1:5057`, routed by
-  nginx at `/_workspace/`) serves the Workspace data browser. It lists only the read-only
-  mounts and rejects paths outside them. When a user opens an item, it records it in
+  nginx at `/_workspace/`) serves the dialog. It lists only the read-only mounts and
+  rejects paths outside them. Workspace and resource details come from
+  `wb workspace describe` and `wb resource list`, saved at app start; without the
+  Workbench CLI logged in, the dialog shows mount names only. When a user opens an item, it records it in
   `/app/mdv/.workspace-imports.json` and runs the sync for that item. nginx adds
-  [`workspace-ui.js`](workspace-sync/workspace-ui.js) to MDV's HTML pages (`sub_filter`).
+  [`workspace-ui.js`](workspace-sync/workspace-ui.js) to MDV's HTML pages (`sub_filter`). If
+  MDV's layout changes and neither entry point can be placed, it falls back to a floating
+  button.
 - [`workspace-sync-loop.sh`](workspace-sync/workspace-sync-loop.sh) repeats the sync every
   `MDV_SYNC_INTERVAL_MINUTES` to pick up new or changed data.
 - When a source is deleted from a mounted bucket, its project is removed from MDV.
@@ -154,7 +162,7 @@ Settings in `docker-compose.yaml` (`app` service `environment`):
 | --- | --- | --- |
 | `MDV_ISOLATION_MODE` | `credentialless` | Cross-origin isolation mode; see above. |
 | `MDV_WORKSPACE_FOLDER` | `mdv` | Folder in each bucket that holds MDV data. |
-| `MDV_WORKSPACE_CONVERT` | `true` | Convert supported files (from `<bucket>/mdv/data/` or the Workspace data button). |
+| `MDV_WORKSPACE_CONVERT` | `true` | Convert supported files (from `<bucket>/mdv/data/` or **Open from workspace**). |
 | `MDV_SYNC_INTERVAL_MINUTES` | `10` | Minutes between syncs; `0` = only at app start. |
 | `MDV_SAMPLE_DATA` | `auto` | `auto` (only when no bucket has MDV data), `always` or `never`. |
 | `MDV_SAMPLE_VCF_MAX_SITES` | `0` | Variants in the large sample; `0` = as many as memory allows. |

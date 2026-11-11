@@ -112,16 +112,15 @@ class Sync:
             try:
                 if not os.path.isdir(base):
                     continue
-                res_slug = slugify(rel.replace("/", "--"))
-                sources.update(self.discover_projects(rel, res_slug, os.path.join(base, "projects")))
+                sources.update(self.discover_projects(rel, os.path.join(base, "projects")))
                 if self.args.convert:
-                    sources.update(self.discover_data(rel, res_slug, os.path.join(base, "data")))
+                    sources.update(self.discover_data(rel, os.path.join(base, "data")))
             except OSError as e:
                 LOG.warning("cannot read %s: %s", base, e)
         return sources, mounted
 
     @staticmethod
-    def discover_projects(rel, res_slug, projects):
+    def discover_projects(rel, projects):
         found = {}
         if not os.path.isdir(projects):
             return found
@@ -134,11 +133,11 @@ class Sync:
                 continue
             found[f"ws:link:{rel}/{name}"] = {
                 "kind": "link", "path": src, "resource": rel,
-                "slug_base": f"{res_slug}--{slugify(name)}"}
+                "slug_base": slugify(name)}
         return found
 
     @staticmethod
-    def discover_data(rel, res_slug, data):
+    def discover_data(rel, data):
         found = {}
         if not os.path.isdir(data):
             return found
@@ -148,7 +147,7 @@ class Sync:
                 continue
             found[f"ws:convert:{rel}/{name}"] = {
                 "kind": "convert", "path": src, "resource": rel,
-                "slug_base": f"{res_slug}--{slugify(stem_of(name))}"}
+                "slug_base": slugify(stem_of(name))}
         return found
 
     def discover_imports(self, mounted, taken_paths):
@@ -165,13 +164,12 @@ class Sync:
             src = os.path.join(self.args.source_root, resource, item["subpath"])
             if resource not in mounted or src in taken_paths or not os.path.exists(src):
                 continue
-            base = slugify(resource.replace("/", "--"))
             if item["kind"] == "link":
                 found[key] = {"kind": "link", "path": src, "resource": resource,
-                              "slug_base": f"{base}--{slugify(os.path.basename(src))}"}
+                              "slug_base": slugify(os.path.basename(src))}
             elif self.args.convert:
                 found[key] = {"kind": "convert", "path": src, "resource": resource,
-                              "slug_base": f"{base}--{slugify(stem_of(src))}"}
+                              "slug_base": slugify(stem_of(src))}
         return found
 
     def discover_samples(self):
@@ -192,6 +190,17 @@ class Sync:
 
     # ---- linking -----------------------------------------------------------------------------
 
+    def describe_source(self, project_dir, src, how):
+        """Adds a README saying where the project came from (MDV shows it in its catalog)."""
+        readme = os.path.join(project_dir, "README.md")
+        if src["resource"] is None or os.path.lexists(readme):
+            return
+        where = os.path.relpath(src["path"], self.args.source_root)
+        with open(readme, "w") as f:
+            f.write(f"# {os.path.basename(src['path'])}\n\n"
+                    f"{how} from the Workbench workspace: `{where}`.\n\n"
+                    "The data stays in the workspace bucket and isn't changed by MDV.\n")
+
     @staticmethod
     def signature(path):
         st = os.stat(path)
@@ -205,6 +214,7 @@ class Sync:
             shutil.rmtree(tmp, ignore_errors=True)
             os.makedirs(tmp)
             self.populate_overlay(tmp, src["path"], previous=None)
+            self.describe_source(tmp, src, "Opened")
             shutil.move(tmp, dest)
             self.changed = True
             LOG.info("linked %s -> %s", src["path"], dest)
@@ -280,6 +290,7 @@ class Sync:
             LOG.error("conversion failed for %s:\n%s", src["path"], result.stderr[-4000:])
             shutil.rmtree(tmp, ignore_errors=True)
             return
+        self.describe_source(tmp, src, "Converted")
         dest = os.path.join(self.projects_dir, slug)
         if os.path.isdir(dest):
             # Replace contents in place so the path MDV registered stays valid.

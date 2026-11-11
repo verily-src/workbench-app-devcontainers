@@ -5,7 +5,7 @@ single-cell, spatial, variant and other multi-dimensional data, developed at the
 Oxford. This guide explains how to set up MDV in a Verily Workbench workspace and open your
 workspace data in it.
 
-**In short:** create the MDV app once, open it, then click **Workspace data** in MDV to open
+**In short:** create the MDV app once, open it, then use **Open from workspace** in MDV to open
 files straight from your workspace's buckets. Nothing needs to be uploaded or copied.
 
 ## Before you start
@@ -59,16 +59,18 @@ The samples disappear automatically once you open your own data.
 
 ## 3. Open your data
 
-### With the Workspace data button
+### With Open from workspace
 
-1. In MDV, click **Workspace data** in the bottom-right corner. It's on every MDV page.
-2. Click a bucket, then go to the folder with your data.
-3. Click **Open** next to a file or MDV project.
+1. In MDV's project list, click **Open from workspace** (next to "Create new project"). Inside a
+   project, use the folder button in the toolbar (after "Add Datasource").
+2. You'll see your workspace's **Resources**, as in Workbench: its folders and Cloud Storage
+   buckets. Go to the folder with your data.
+3. Select a file or MDV project and click **Open** (or double-click it).
 
 MDV converts or links the data directly from the bucket, then opens it. Small files take
 seconds; large files can take several minutes, and you can keep the dialog open while you wait.
-Next time, the project is already in MDV's project list, and clicking **Open** again goes
-straight to it.
+Next time, the project is already in MDV's project list, and opening it again goes straight to
+it.
 
 MDV can open:
 
@@ -94,9 +96,9 @@ MDV checks for new or changed data when the app starts and every 10 minutes.
 
 ### Project names
 
-Projects are named `<bucket>--<file or folder name>`, where `<bucket>` is the bucket's name in
-the workspace. For example, `experiments/tumour-B.h5ad` in a bucket named `oxford-results`
-becomes `oxford-results--tumour-B`.
+Projects are named after the file or folder they came from: `experiments/tumour-B.h5ad`
+becomes `tumour-B`. If two have the same name, the later one gets `-2`. To see where a project
+came from, open the **⋮** menu on its card in MDV's project list and choose **Project Info**.
 
 ## 4. Working with your data
 
@@ -121,7 +123,7 @@ Any of these work:
 - **From another Workbench app** (for example JupyterLab): workspace buckets are mounted under
   `~/workspace/<bucket>/`; save files there.
 
-Buckets added to the workspace after your MDV app started appear in **Workspace data** after you
+Buckets added to the workspace after your MDV app started appear in **Open from workspace** after you
 stop and start the app.
 
 **BigQuery tables:** export the table or query result to a bucket as CSV (BigQuery's **Export**
@@ -146,12 +148,12 @@ as SpatialData (`convert-spatial`). MDV then opens the project instantly, withou
 
 MDV can load public data from the web where the hosting site allows it, which most large public
 repositories (for example EBI and public cloud storage buckets) do. If MDV can't load a public
-dataset directly, download it into a workspace bucket and open it with **Workspace data**.
+dataset directly, download it into a workspace bucket and open it with **Open from workspace**.
 
 ## Sharing with colleagues
 
 - Everyone in the workspace who uses an MDV app sees the same bucket data, through
-  **Workspace data** and the `mdv` folders.
+  **Open from workspace** and the `mdv` folders.
 - Saved views and layouts are kept in each person's own app, and aren't shared.
 
 ## Stopping the app and costs
@@ -168,16 +170,16 @@ affected; you can open it again in a new app.
 | Problem | What to do |
 | --- | --- |
 | `SharedArrayBuffer is not defined` when opening a project | Use Chrome or Edge 137 or later. |
-| No **Workspace data** button | Reload the page. |
-| **Workspace data** shows no buckets, or a bucket is missing | Buckets are made available when the app starts. Wait a minute after starting, or stop and start the app if the bucket was created after the app started. |
-| A new file isn't listed | Wait a minute, then click the folder again. |
-| "Couldn't open …" | Click **Details** in the dialog. Very large files may need a bigger machine (see step 1). |
+| No **Open from workspace** card or button | Reload the page. |
+| **Open from workspace** shows no buckets, or a bucket is missing | Buckets are made available when the app starts. Wait a minute after starting, or stop and start the app if the bucket was created after the app started. |
+| A new file isn't listed | Wait a minute, then open the folder again. |
+| "Couldn't open …" | Open **Details** in the dialog. Very large files may need a bigger machine (see step 1). |
 | A project shows an error just after the app started | Wait a minute and reload; buckets are reconnected shortly after start. |
 | Large sample never appears | It downloads about 1.2 GB on first start. Stop and start the app to retry. |
 
 When asking for help, include what you did, any message from the **Details** section, and the
-app's activity log: click **Workspace data**, then **Activity log** at the bottom of the dialog,
-and copy its contents.
+app's activity: open **Open from workspace**, click **View activity** at the bottom of the
+dialog, and copy its contents.
 
 ## For workspace administrators
 

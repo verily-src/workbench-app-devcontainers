@@ -66,6 +66,23 @@ install -m 0644 "${tmp_resources}" "${RESOURCES_FILE}"
 rm -f "${tmp_resources}"
 echo "$(wc -l < "${RESOURCES_FILE}") workspace resource(s) available to MDV"
 
+# Workspace and resource details (names, types, descriptions) for the Workspace data browser.
+# Needs the Workbench CLI logged in as the app user; without it the browser shows mount names only.
+save_wb_json() {
+  local dest="${STATE_DIR}/$1"; shift
+  if runuser -u "${APP_USER}" -- bash -lc "timeout 60 wb $* --format=json < /dev/null" \
+      > "${dest}.tmp" 2> /dev/null; then
+    mv "${dest}.tmp" "${dest}"
+  else
+    rm -f "${dest}.tmp"
+    echo "wb $* unavailable (Workbench CLI not logged in?); browser shows mount names only"
+  fi
+}
+if command -v wb > /dev/null 2>&1; then
+  save_wb_json workspace.json workspace describe
+  save_wb_json resources.json resource list
+fi
+
 # 2. Fast pass: link existing projects (workspace or built-in samples) and register them.
 runuser -u "${APP_USER}" -- python3 "${SYNC_DIR}/mdv_workspace_sync.py" --link-only \
   || echo "WARNING: initial sync failed; the background loop will retry"

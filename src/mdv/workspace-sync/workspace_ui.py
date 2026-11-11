@@ -33,6 +33,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ENV = os.environ.get
 RO_ROOT = os.path.realpath(ENV("MDV_WORKSPACE_RO_ROOT", "/mnt/mdv-workspace-ro"))
 RESOURCES_FILE = ENV("MDV_WORKSPACE_RESOURCES_FILE", "/var/lib/mdv-workspace-sync/resources.txt")
+META_DIR = os.path.dirname(RESOURCES_FILE)
+STEWARDSHIP = {"CONTROLLED": "Controlled", "REFERENCED": "Referenced"}
+RESOURCE_TYPES = {"GCS_BUCKET": "Cloud Storage bucket", "GCS_OBJECT": "Cloud Storage object",
+                  "AWS_S3_STORAGE_FOLDER": "S3 Storage Folder"}
 PROJECTS_DIR = ENV("MDV_PROJECTS_DIR", "/app/mdv")
 STATE_FILE = os.path.join(PROJECTS_DIR, ".workspace-sync-state.json")
 IMPORTS_FILE = os.path.join(PROJECTS_DIR, ".workspace-imports.json")
@@ -77,14 +81,57 @@ def resolve(path):
     return resource, subpath, absolute
 
 
+def workspace_name():
+    data = read_json(os.path.join(META_DIR, "workspace.json"), {})
+    return data.get("name") or data.get("id") or ""
+
+
+def resource_details():
+    """Workbench resource metadata by resource name, from `wb resource list` at app start."""
+    data = read_json(os.path.join(META_DIR, "resources.json"), [])
+    return {r.get("id"): r for r in data if isinstance(r, dict) and r.get("id")}
+
+
+def resource_entry(rel, details):
+    meta = details.get(rel.rsplit("/", 1)[-1], {})
+    kind = RESOURCE_TYPES.get(meta.get("resourceType"), "Cloud Storage bucket")
+    labels = [kind]
+    if meta.get("stewardshipType") in STEWARDSHIP:
+        labels.append(STEWARDSHIP[meta["stewardshipType"]])
+    return {"name": rel.rsplit("/", 1)[-1], "path": rel, "type": "bucket",
+            "label": " · ".join(labels), "description": meta.get("description") or ""}
+
+
+def list_virtual(path):
+    """Workbench folders and the resources in them, above the bucket level."""
+    prefix = f"{path}/" if path else ""
+    details, folders, entries = resource_details(), set(), []
+    for rel in mounted_resources():
+        if not rel.startswith(prefix):
+            continue
+        rest = rel[len(prefix):]
+        if "/" in rest:
+            folders.add(rest.split("/", 1)[0])
+        else:
+            entries.append(resource_entry(rel, details))
+    entries += [{"name": f, "path": prefix + f, "type": "wbfolder"} for f in folders]
+    order = {"wbfolder": 0, "bucket": 1}
+    entries.sort(key=lambda e: (order[e["type"]], e["name"].lower()))
+    return {"path": path, "workspace": workspace_name(), "entries": entries, "truncated": False}
+
+
 def is_project(directory):
     return os.path.isfile(os.path.join(directory, "datasources.json"))
 
 
 def list_path(path):
-    if not path.strip("/"):
-        return {"path": "", "entries": [
-            {"name": r, "path": r, "type": "bucket"} for r in sorted(mounted_resources())]}
+    path = path.strip("/")
+    resources = mounted_resources()
+    if not path or (path not in resources and
+                    not any(path.startswith(r + "/") for r in resources)):
+        if path and not any(r.startswith(path + "/") for r in resources):
+            raise BadRequest("not in a mounted workspace bucket")
+        return list_virtual(path)
     _, _, absolute = resolve(path)
     if not os.path.isdir(absolute):
         raise BadRequest("not a folder")
@@ -93,7 +140,7 @@ def list_path(path):
         for entry in it:
             if entry.name.startswith("."):
                 continue
-            rel = f"{path.strip('/')}/{entry.name}"
+            rel = f"{path}/{entry.name}"
             if entry.is_dir(follow_symlinks=False):
                 project = checked < PROJECT_CHECK_LIMIT and is_project(entry.path)
                 checked += 1
@@ -103,12 +150,13 @@ def list_path(path):
                 st = entry.stat()
                 entries.append({"name": entry.name, "path": rel, "type": "file",
                                 "size": st.st_size, "modified": int(st.st_mtime),
+                                "kind": kind_of(entry.name),
                                 "importable": kind_of(entry.name) is not None})
             if len(entries) >= MAX_ENTRIES:
                 break
     order = {"project": 0, "folder": 1, "file": 2}
     entries.sort(key=lambda e: (order[e["type"]], e["name"].lower()))
-    return {"path": path.strip("/"), "entries": entries,
+    return {"path": path, "workspace": workspace_name(), "entries": entries,
             "truncated": len(entries) >= MAX_ENTRIES}
 
 

@@ -52,19 +52,9 @@ function get_guest_attribute() {
 }
 readonly -f get_guest_attribute
 
-# Reads WSM-internal tags with no prefix, e.g. "network-policy". Unlike vwbusr/vwbapp tags, these
-# are not namespaced - the create-instance API's customTags path validates against those prefixes
-# specifically, so a caller can never set or overwrite a tag read through this function.
-function get_system_tag() {
-  get_tag "" "${1}" "${2}"
-}
-readonly -f get_system_tag
-
-# Like get_system_tag, but returns the describe-tags call's own exit status instead of treating a
-# failed read the same as a confirmed-absent tag. get_system_tag (and get_tag) always return 0
-# because their other callers run under `set -o errexit` without guarding the call, and shouldn't
-# abort on a transient failure. This variant is for a caller that needs to tell "the tag isn't set"
-# and "couldn't tell" apart - e.g. an airlock decision that must fail closed on the latter.
+# Reads an unprefixed, WSM-internal tag (e.g. "network-policy") and, unlike get_tag, returns the
+# describe-tags call's own exit status - so a caller like an airlock decision can fail closed on a
+# transient read failure instead of treating it the same as a confirmed-absent tag.
 function get_system_tag_checked() (
   { set +o xtrace; } 2>/dev/null
   local tag_key="$1"

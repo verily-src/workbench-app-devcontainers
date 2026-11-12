@@ -1,9 +1,6 @@
-# PHP-187853: dnsmasq restricted-mode config, templated. dns-filter-setup.sh substitutes the
-# region placeholder below with this instance's own region (read via IMDS) and appends a server=
-# line for this instance's WSM environment (derived from the terra-cli-server tag via
-# service-utils.sh's get_service_url, the same mapping every other script already uses for that),
-# writing the result to /home/core/allowlist.conf. dns-filter.service bind-mounts that file into
-# the container - this file is not baked into the dns-filter image itself.
+# dnsmasq restricted-mode config, templated. dns-filter-setup.sh resolves the region placeholder
+# and appends a server= line for this instance's WSM environment before writing the result to
+# /home/core/allowlist.conf, which dns-filter.service bind-mounts into the container.
 no-resolv
 listen-address=172.17.0.1
 bind-interfaces

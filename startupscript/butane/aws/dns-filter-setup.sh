@@ -65,10 +65,8 @@ if ! jq -e '.dns == ["172.17.0.1"]' "${DAEMON_JSON}" >/dev/null 2>&1; then
     systemctl restart docker.service
 fi
 
-# Resolves allowlist.conf.tmpl (downloaded alongside this script) for this instance's own region
-# and WSM environment, so one image works across every account/region/environment without a
-# per-account build. Every boot, not gated on first-boot: dns-filter.service's bind-mount is
-# static, so this file must exist by the time it starts regardless of mode.
+# Resolves the allowlist template for this instance's region and WSM environment. Every boot,
+# since dns-filter.service's bind-mount is static regardless of mode.
 IMDS_TOKEN="$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)"
 REGION="$(wget --header "X-aws-ec2-metadata-token: ${IMDS_TOKEN}" -q -O - http://169.254.169.254/latest/meta-data/placement/region)"
 WSM_URL="$(get_service_url "wsm" "$(get_metadata_value "terra-cli-server" "prod")")"

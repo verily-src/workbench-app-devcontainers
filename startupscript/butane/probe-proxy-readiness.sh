@@ -55,10 +55,9 @@ fi
 status="$(get_guest_attribute "startup_script/status" "")"
 isSuccess="false"
 if [[ "${status}" != "ERROR" ]]; then
-    # Switch the boot-time DNS filter to restricted mode. Gated on the flag file
-    # dns-filter-setup.service writes for airlocked instances, not validate_airlock_snapshot above
-    # (an unrelated, pre-existing mechanism). Runs before the COMPLETE status write below: if the
-    # switch fails, errexit stops the script here rather than marking the VM ready while still open.
+    # Redundant with the switch in start-proxy-agent.sh (the primary one, since it runs before
+    # the proxy is reachable at all) - harmless to repeat, and still needed to persist the mode
+    # below in case that earlier switch didn't run for some reason.
     if [[ -f /home/core/airlock-enabled ]]; then
         docker kill -s SIGUSR1 dns-filter
         # Also persists the mode for future boots: dns-filter-setup.sh only initializes this file

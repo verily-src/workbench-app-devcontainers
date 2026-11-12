@@ -11,6 +11,8 @@ set -o xtrace
 
 # shellcheck source=/dev/null
 source /home/core/metadata-utils.sh
+# shellcheck source=/dev/null
+source /home/core/service-utils.sh
 
 # A transient read failure (e.g. a flaky docker pull of the aws-cli image) must fail closed, not
 # be treated as "not airlocked" - get_system_tag_checked's exit status tells the two apart.
@@ -62,6 +64,22 @@ if ! jq -e '.dns == ["172.17.0.1"]' "${DAEMON_JSON}" >/dev/null 2>&1; then
     # thing that's run so far is the aws-cli container used by the tag read, already exited.
     systemctl restart docker.service
 fi
+
+# Resolves allowlist.conf.tmpl (downloaded alongside this script) for this instance's own region
+# and WSM environment, so one image works across every account/region/environment without a
+# per-account build. Every boot, not gated on first-boot: dns-filter.service's bind-mount is
+# static, so this file must exist by the time it starts regardless of mode.
+IMDS_TOKEN="$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)"
+REGION="$(wget --header "X-aws-ec2-metadata-token: ${IMDS_TOKEN}" -q -O - http://169.254.169.254/latest/meta-data/placement/region)"
+WSM_URL="$(get_service_url "wsm" "$(get_metadata_value "terra-cli-server" "prod")")"
+WSM_HOST="${WSM_URL#https://}"
+WSM_HOST="${WSM_HOST%%/*}"
+
+ALLOWLIST_TMP="$(mktemp /home/core/allowlist.conf.XXXXXX)"
+sed "s/\${REGION}/${REGION}/g" /home/core/allowlist.conf.tmpl > "${ALLOWLIST_TMP}"
+echo "server=/${WSM_HOST}/169.254.169.253" >> "${ALLOWLIST_TMP}"
+chmod 0644 "${ALLOWLIST_TMP}"
+mv "${ALLOWLIST_TMP}" /home/core/allowlist.conf
 
 # Blocks direct queries to the real resolver, bypassing the filter. Applied here, not deferred to
 # probe-proxy-readiness.sh: Docker can restart already-existing containers (application-server,

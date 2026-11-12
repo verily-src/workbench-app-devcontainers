@@ -39,6 +39,7 @@ if [ "$CLOUD" = "aws" ]; then
   download /opt/bin/docker-credential-workbench-ecr "aws/credential-helper.sh"
   download /home/core/dns-filter-setup.sh "aws/dns-filter-setup.sh"
   download /home/core/dns-filter-nft-preload.sh "aws/dns-filter-nft-preload.sh"
+  download /home/core/allowlist.conf.tmpl "aws/allowlist.conf.tmpl" 0644
 fi
 
 # Common scripts

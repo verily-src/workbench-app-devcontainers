@@ -55,6 +55,14 @@ fi
 status="$(get_guest_attribute "startup_script/status" "")"
 isSuccess="false"
 if [[ "${status}" != "ERROR" ]]; then
+    # Unreachable without the switch in start-proxy-agent.sh already having succeeded: this
+    # service only runs via devcontainer.service's OnSuccess=, so devcontainer.service (which
+    # includes that switch, under errexit) must have already completed. Kept as a guard against
+    # future changes to that trigger wiring.
+    if [[ -f /home/core/airlock-enabled ]]; then
+        docker kill -s SIGUSR1 dns-filter
+        echo "START_MODE=restricted" > /home/core/dns-filter.env
+    fi
     set_metadata "startup_script/status" "COMPLETE"
     isSuccess="true"
 fi

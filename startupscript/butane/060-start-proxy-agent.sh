@@ -66,6 +66,15 @@ fi
 # Remove any existing proxy agent container
 docker rm -f "proxy-agent" 2>/dev/null || true
 
+# Switches the filter to restricted before the proxy (the only thing reachable from outside)
+# starts, so there's no window where the workspace is live but the filter is still open. Also
+# persists the mode for future boots: dns-filter-setup.sh only initializes this file to "open" if
+# it doesn't exist yet, so once this succeeds, every later boot starts the filter already restricted.
+if [[ -f /home/core/airlock-enabled ]]; then
+    docker kill -s SIGUSR1 dns-filter
+    echo "START_MODE=restricted" > /home/core/dns-filter.env
+fi
+
 docker run \
   --detach \
   --log-opt max-size=10m \

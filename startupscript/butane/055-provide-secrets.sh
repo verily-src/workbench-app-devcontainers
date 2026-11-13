@@ -12,7 +12,7 @@
 # exposes secrets as environment variables or file descriptors.
 #
 # Usage:
-#   ./provide-secrets.sh <gcp/aws>
+#   ./provide-secrets.sh <gcp/aws/azure>
 #
 # Prerequisites:
 #   - /home/core/secrets.json (created by parse-devcontainer.sh)
@@ -27,7 +27,7 @@ set -o pipefail
 set -o xtrace
 
 if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 <gcp/aws>"
+  echo "Usage: $0 <gcp/aws/azure>"
   exit 1
 fi
 
@@ -111,6 +111,8 @@ if [[ "${CLOUD}" == "gcp" ]]; then
   RESOURCE_PATH="resources/controlled/gcp/gce-instances"
 elif [[ "${CLOUD}" == "aws" ]]; then
   RESOURCE_PATH="resources/controlled/aws/instances"
+elif [[ "${CLOUD}" == "azure" ]]; then
+  RESOURCE_PATH="resources/controlled/azure/instances"
 else
   >&2 echo "ERROR: Unsupported cloud: ${CLOUD}"
   exit 1

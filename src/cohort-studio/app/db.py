@@ -45,6 +45,22 @@ def _resolve_lock(resource_id: str) -> threading.Lock:
         return _conn_string_locks.setdefault(resource_id, threading.Lock())
 
 
+class ConnectionStringError(RuntimeError):
+    """`wb resource resolve` failed. The message carries the CLI's own reason
+    (e.g. "not authorized to read workspace X"), not the command line."""
+
+    def __init__(self, resource_id: str, cause: subprocess.CalledProcessError):
+        text = (cause.stderr or cause.stdout or "").strip()
+        reason = next((ln.removeprefix("[ERROR]").strip()
+                       for ln in text.splitlines() if ln.strip()), "")
+        super().__init__(
+            f"Could not get credentials for {resource_id}: "
+            f"{reason or f'wb exited with status {cause.returncode}'}")
+
+
+CONNECT_TIMEOUT_S = 10
+
+
 def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ",
                               retries: int = 3) -> str:
     if resource_id in _conn_string_cache:
@@ -81,7 +97,7 @@ def _resolve_connection_string(resource_id: str, access_mode: str, retries: int)
             last_err = e
             logger.warning("wb resource resolve attempt %d/%d failed for %s: %s",
                            attempt + 1, retries, resource_id, e.stderr or e.stdout)
-    raise last_err
+    raise ConnectionStringError(resource_id, last_err) from last_err
 
 
 def warm_connection_string(resource_id: str):
@@ -523,12 +539,14 @@ def get_engine_for_resource(resource_id: str) -> Engine:
         import psycopg
         if resource_id in _conn_string_cache:
             try:
-                return psycopg.connect(_conn_string_cache[resource_id], autocommit=False)
+                return psycopg.connect(_conn_string_cache[resource_id], autocommit=False,
+                                       connect_timeout=CONNECT_TIMEOUT_S)
             except Exception:
                 logger.info("Cached connection string expired, refreshing for %s", resource_id)
                 _conn_string_cache.pop(resource_id, None)
         conn_str = resolve_connection_string(resource_id)
-        return psycopg.connect(conn_str, autocommit=False)
+        return psycopg.connect(conn_str, autocommit=False,
+                               connect_timeout=CONNECT_TIMEOUT_S)
 
     engine = create_engine(
         "postgresql+psycopg://",

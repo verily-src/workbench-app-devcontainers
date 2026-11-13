@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import threading
 import time
 from decimal import Decimal
@@ -20,6 +21,10 @@ TIMEOUT_MS = 15_000
 # Above this many estimated rows an unfiltered open must not scan the whole table: totals come
 # from the planner's estimate and charts are drawn from the first CHART_SAMPLE_ROWS rows.
 LARGE_ROWS = 5_000_000
+# A filter on an unindexed column of a very large table is one full scan. The default limit is
+# too short for that, so large sources get a longer one. The app proxy has been seen to allow
+# at least a minute, so stay under that.
+LARGE_TIMEOUT_MS = int(os.environ.get("STUDIO_LARGE_QUERY_TIMEOUT_MS", "55000"))
 CHART_SAMPLE_ROWS = 200_000
 JOIN_PROFILE_BUDGET_S = 3.0
 PAGE_SIZE_MAX = 1000
@@ -624,6 +629,8 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         out = {"scope": "database", "sampled": False}
         estimate = _estimated_rows(conn, live_source) if summary else None
         large = estimate is not None and estimate >= LARGE_ROWS
+        if large:
+            conn.exec_driver_sql(f"SET LOCAL statement_timeout = {LARGE_TIMEOUT_MS}")
         if summary and large:
             # Counting every row (and distinct entities) of a very large table cannot finish
             # inside the time limit. Show the planner's estimate for the total; only an

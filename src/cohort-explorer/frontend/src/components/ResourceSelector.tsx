@@ -1,0 +1,368 @@
+import { useEffect, useState } from "react";
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CircularProgress,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import StorageIcon from "@mui/icons-material/Storage";
+import type { AuroraTable, Datasource, JoinStep, S3File, S3Folder } from "../api";
+import { connectResource, fetchDatasources, listS3Files, refreshDatasources } from "../api";
+import JoinBuilder from "./JoinBuilder";
+import TableSelect from "./TableSelect";
+
+export interface ConnectionMeta {
+  sourceType: "file" | "aurora" | "join";
+  folderId?: string;
+  s3Path?: string;
+  table?: string;
+  sourceName?: string;
+  join?: { resource_id: string; steps: JoinStep[] };
+}
+
+interface Props {
+  onConnected: (resourceId: string, meta?: ConnectionMeta) => void;
+}
+
+export default function ResourceSelector({ onConnected }: Props) {
+  const [resources, setResources] = useState<Datasource[]>([]);
+  const [s3Folders, setS3Folders] = useState<S3Folder[]>([]);
+  const [selected, setSelected] = useState("__file__");
+  const [selectedFolder, setSelectedFolder] = useState("");
+  const [selectedFile, setSelectedFile] = useState("");
+  const [selectedTable, setSelectedTable] = useState("");
+  const [auroraMode, setAuroraMode] = useState<"table" | "join">("table");
+  const [joinSteps, setJoinSteps] = useState<JoinStep[] | null>(null);
+  const [s3Files, setS3Files] = useState<S3File[]>([]);
+  const [auroraTables, setAuroraTables] = useState<AuroraTable[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isFileMode = selected === "__file__";
+  const isAuroraMode = resources.some((r) => r.id === selected);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout>;
+
+    const load = async () => {
+      try {
+        const data = await fetchDatasources();
+        if (cancelled) return;
+        setResources(data.resources);
+        setS3Folders(data.s3_folders ?? []);
+        if (data.active) {
+          setSelected(data.active);
+          const active = data.resources.find((r) => r.id === data.active);
+          if (active?.tables) {
+            setAuroraTables(active.tables);
+            if (active.tables.length === 1) setSelectedTable(active.tables[0].name);
+          }
+        }
+        const firstFolder = data.s3_folders?.[0]?.id;
+        if (firstFolder) setSelectedFolder(firstFolder);
+        if (!data.ready) {
+          retryTimer = setTimeout(load, 5000);
+          return;
+        }
+        const effectiveSelected = data.active ?? "__file__";
+        if (effectiveSelected === "__file__" && firstFolder) {
+          setLoadingFiles(true);
+          listS3Files(firstFolder)
+            .then((files) => { if (!cancelled) setS3Files(files); })
+            .catch(() => { if (!cancelled) setS3Files([]); })
+            .finally(() => { if (!cancelled) setLoadingFiles(false); });
+        }
+      } catch {
+        if (cancelled) return;
+        retryTimer = setTimeout(load, 5000);
+        return;
+      }
+      setLoading(false);
+    };
+    load();
+
+    return () => { cancelled = true; clearTimeout(retryTimer); };
+  }, []);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const data = await refreshDatasources();
+      setResources(data.resources);
+      setS3Folders(data.s3_folders ?? []);
+      if (isAuroraMode) {
+        const resource = data.resources.find((r) => r.id === selected);
+        setAuroraTables(resource?.tables ?? []);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleFolderChange = async (folderId: string) => {
+    setSelectedFolder(folderId);
+    setSelectedFile("");
+    if (isFileMode && folderId) {
+      setLoadingFiles(true);
+      try {
+        const files = await listS3Files(folderId);
+        setS3Files(files);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to list files");
+        setS3Files([]);
+      } finally {
+        setLoadingFiles(false);
+      }
+    }
+  };
+
+  const handleDatasourceChange = async (value: string) => {
+    setSelected(value);
+    setSelectedTable("");
+    setAuroraTables([]);
+    setAuroraMode("table");
+    setJoinSteps(null);
+    if (value === "__file__" && selectedFolder) {
+      setLoadingFiles(true);
+      try {
+        const files = await listS3Files(selectedFolder);
+        setS3Files(files);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to list files");
+        setS3Files([]);
+      } finally {
+        setLoadingFiles(false);
+      }
+    } else if (value !== "__local__" && value !== "__file__") {
+      const resource = resources.find((r) => r.id === value);
+      const tables = resource?.tables ?? [];
+      setAuroraTables(tables);
+      if (tables.length === 1) setSelectedTable(tables[0].name);
+    }
+  };
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    setError(null);
+    try {
+      if (isFileMode) {
+        await connectResource("__local__", selectedFolder || undefined);
+        const fileName = selectedFile.split("/").pop() ?? "file";
+        onConnected("__local__", {
+          sourceType: "file",
+          folderId: selectedFolder,
+          s3Path: selectedFile,
+          sourceName: fileName,
+        });
+      } else if (isAuroraMode && auroraMode === "join" && joinSteps) {
+        await connectResource(selected, selectedFolder || undefined);
+        onConnected(selected, {
+          sourceType: "join",
+          folderId: selectedFolder,
+          join: { resource_id: selected, steps: joinSteps },
+          sourceName: joinSteps.map((s) => s.table).join(" + "),
+        });
+      } else if (isAuroraMode) {
+        await connectResource(selected, selectedFolder || undefined);
+        onConnected(selected, {
+          sourceType: "aurora",
+          folderId: selectedFolder,
+          table: selectedTable,
+          sourceName: selectedTable || selected,
+        });
+      } else {
+        await connectResource(selected, selectedFolder || undefined);
+        onConnected(selected);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Connection failed");
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const canConnect = (() => {
+    if (connecting) return false;
+    if (isFileMode) return !!selectedFile;
+    if (isAuroraMode && auroraMode === "join") return !!joinSteps && joinSteps.length >= 2;
+    if (isAuroraMode) return !!selectedTable;
+    return true;
+  })();
+
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100vh", gap: 2 }}>
+        <CircularProgress />
+        <Typography variant="body2" color="text.secondary">
+          Connecting to workspace resources...
+        </Typography>
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        height: "100vh",
+        bgcolor: "grey.50",
+      }}
+    >
+      <Card sx={{ minWidth: 400, maxWidth: 500 }}>
+        <CardContent sx={{ p: 4 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 3 }}>
+            <StorageIcon color="primary" />
+            <Typography variant="h5" sx={{ fontWeight: 600, fontFamily: "'Poppins', sans-serif" }}>
+              Cohort Explorer
+            </Typography>
+          </Box>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Connect to an Aurora database or load a TSV/CSV from S3.
+          </Typography>
+
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
+            <FormControl fullWidth>
+              <InputLabel>Datasource</InputLabel>
+              <Select
+                value={selected}
+                label="Datasource"
+                onChange={(e) => handleDatasourceChange(e.target.value)}
+              >
+                <MenuItem value="__file__">
+                  Load from file (S3)
+                </MenuItem>
+                {resources.map((r) => (
+                  <MenuItem key={r.id} value={r.id}>
+                    {r.name}
+                    {r.database ? ` — ${r.database}` : ""}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Tooltip title="Refresh resource list">
+              <IconButton onClick={handleRefresh} disabled={refreshing} size="small">
+                {refreshing ? <CircularProgress size={20} /> : <RefreshIcon />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          {isAuroraMode && (
+            <ToggleButtonGroup
+              value={auroraMode}
+              exclusive
+              size="small"
+              fullWidth
+              sx={{ mb: 2 }}
+              onChange={(_, value) => {
+                if (!value) return;
+                setAuroraMode(value);
+                setJoinSteps(null);
+              }}
+            >
+              <ToggleButton value="table">Single table</ToggleButton>
+              <ToggleButton value="join">Join tables</ToggleButton>
+            </ToggleButtonGroup>
+          )}
+
+          {isAuroraMode && auroraMode === "table" && (
+            <Box sx={{ mb: 2 }}>
+              <TableSelect
+                label="Table / View"
+                tables={auroraTables}
+                value={selectedTable}
+                onChange={setSelectedTable}
+              />
+            </Box>
+          )}
+
+          {isAuroraMode && auroraMode === "join" && (
+            <JoinBuilder resourceId={selected} tables={auroraTables} onChange={setJoinSteps} />
+          )}
+
+          {s3Folders.length > 0 && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>{isFileMode ? "S3 folder" : "Cohort storage folder"}</InputLabel>
+              <Select
+                value={selectedFolder}
+                label={isFileMode ? "S3 folder" : "Cohort storage folder"}
+                onChange={(e) => handleFolderChange(e.target.value)}
+              >
+                {s3Folders.map((f) => (
+                  <MenuItem key={f.id} value={f.id}>
+                    {f.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
+          {isFileMode && (
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>File</InputLabel>
+              <Select
+                value={selectedFile}
+                label="File"
+                onChange={(e) => setSelectedFile(e.target.value)}
+                disabled={loadingFiles}
+              >
+                {loadingFiles ? (
+                  <MenuItem disabled>Loading files...</MenuItem>
+                ) : s3Files.length === 0 ? (
+                  <MenuItem disabled>No TSV/CSV/TXT files found</MenuItem>
+                ) : (
+                  s3Files.map((f) => (
+                    <MenuItem key={f.s3_path} value={f.s3_path}>
+                      {f.name} ({formatSize(f.size)})
+                    </MenuItem>
+                  ))
+                )}
+              </Select>
+            </FormControl>
+          )}
+
+          {error && (
+            <Typography variant="body2" color="error" sx={{ mb: 2 }}>
+              {error}
+            </Typography>
+          )}
+
+          <Button
+            variant="contained"
+            fullWidth
+            onClick={handleConnect}
+            disabled={!canConnect}
+          >
+            {connecting ? "Connecting..." : "Connect"}
+          </Button>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+}

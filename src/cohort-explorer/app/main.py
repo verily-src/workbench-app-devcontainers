@@ -1,0 +1,1037 @@
+import csv
+import io
+import json
+import logging
+import os
+import subprocess
+import tempfile
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import BigInteger, Column, Float, MetaData, Table, cast, distinct, func, select, text
+from sqlalchemy.orm import Session
+from sqlalchemy.types import NullType
+
+from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
+from db import are_tables_ready, get_active_resource_id, get_cached_tables, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
+from dynamic_model import DynamicBase, TEXT_STORAGE_TYPES, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_entity_column, get_mapping_for_column, get_pk_name, get_range_filters, load_schema_from_disk, set_active_join_mapping, set_active_mapping
+from joins import JoinError, JoinStep, build_select, row_growth_preview, validate_join
+from models import Base, Sample
+from schema import ColumnMapping, get_aurora_storage_types, infer_from_aurora, infer_from_csv, infer_from_join, list_aurora_columns, load_mapping_csv, mappings_to_dicts, save_mapping_csv
+from seed import seed_dynamic, seed_from_tsv
+from starlette.requests import Request
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Cohort Explorer")
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+def _get_model():
+    return get_active_model() or Sample
+
+
+def _get_pk(model):
+    return getattr(model, get_pk_name()) if get_active_model() else model.id
+
+
+def _is_text_backed_numeric(column: str) -> bool:
+    mapping = get_mapping_for_column(column)
+    return bool(
+        mapping
+        and mapping["type"] in {"integer", "float"}
+        and mapping.get("storage_type") in TEXT_STORAGE_TYPES
+    )
+
+
+def _query_column_with(col_fn, column: str):
+    value = col_fn(column)
+    if not _is_text_backed_numeric(column):
+        return value
+    mapping = get_mapping_for_column(column)
+    target_type = BigInteger if mapping["type"] == "integer" else Float
+    return cast(func.nullif(value, ""), target_type)
+
+
+def _query_column(model, column: str):
+    return _query_column_with(lambda name: getattr(model, name), column)
+
+
+def _row_value(row, column: str):
+    value = getattr(row, column)
+    if not _is_text_backed_numeric(column):
+        return value
+    if value in {None, ""}:
+        return None
+    mapping = get_mapping_for_column(column)
+    return int(value) if mapping["type"] == "integer" else float(value)
+
+
+def _apply_filters_with(stmt, col_fn, params: dict, exclude: str | None = None):
+    for col_name in get_categorical_filters():
+        if col_name == exclude:
+            continue
+        values = params.get(col_name)
+        if values:
+            col = col_fn(col_name)
+            value_list = values if isinstance(values, list) else [values]
+            has_null = "__null__" in value_list
+            non_null_values = [v for v in value_list if v != "__null__"]
+            if has_null and non_null_values:
+                stmt = stmt.where(col.in_(non_null_values) | col.is_(None))
+            elif has_null:
+                stmt = stmt.where(col.is_(None))
+            elif non_null_values:
+                stmt = stmt.where(col.in_(non_null_values))
+
+    for col_name in get_range_filters():
+        col = _query_column_with(col_fn, col_name)
+        min_val = params.get(f"{col_name}_min")
+        max_val = params.get(f"{col_name}_max")
+        if min_val is not None:
+            stmt = stmt.where(col >= float(min_val))
+        if max_val is not None:
+            stmt = stmt.where(col <= float(max_val))
+
+    return stmt
+
+
+def _apply_filters(stmt, params: dict, exclude: str | None = None):
+    model = _get_model()
+    return _apply_filters_with(stmt, lambda name: getattr(model, name), params, exclude)
+
+
+def _extract_filter_params(request: Request) -> dict:
+    params: dict = {}
+    for col_name in get_categorical_filters():
+        values = request.query_params.getlist(col_name)
+        if values:
+            params[col_name] = values
+    for col_name in get_range_filters():
+        for suffix in ("_min", "_max"):
+            val = request.query_params.get(f"{col_name}{suffix}")
+            if val is not None:
+                params[f"{col_name}{suffix}"] = float(val)
+    return params
+
+
+# Path to the Workbench CLI context file. Every `wb` invocation rewrites this
+# shared, unlocked file, so we NEVER poll it with `wb` -- we read it directly.
+_WORKBENCH_CONTEXT = Path.home() / ".workbench" / "context.json"
+
+# Set once the workspace context is present; gates all wb-dependent startup work.
+_workspace_ready = threading.Event()
+
+
+def _workspace_is_set() -> bool:
+    """True if context.json currently names a workspace.
+
+    Read the file directly rather than shelling out to `wb`: the CLI rewrites
+    context.json on every invocation (it caches resources there), so polling
+    with `wb` would itself race the platform startup script's `wb workspace set`
+    and could clobber it -- the exact failure this gate exists to avoid.
+    """
+    try:
+        data = json.loads(_WORKBENCH_CONTEXT.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+    ws = data.get("workspace") or {}
+    return bool(ws.get("userFacingId") or ws.get("uuid"))
+
+
+def _await_workspace_then_warm(max_wait: float = 600, poll_interval: float = 3):
+    """Wait for the workspace context, then run all wb-dependent startup work.
+
+    On a fresh VM the app's uvicorn process starts before the postCreate script
+    installs the CLI and runs `wb workspace set`. Firing our own `wb` calls in
+    that window races (and clobbers) that set, because every `wb` command
+    rewrites the shared context.json. So we wait -- reading the file, issuing no
+    `wb` calls -- until the workspace is present, then warm everything.
+    """
+    deadline = time.monotonic() + max_wait
+    ready = False
+    while time.monotonic() < deadline:
+        if _workspace_is_set():
+            ready = True
+            break
+        time.sleep(poll_interval)
+    if ready:
+        logger.info("Workspace context present; starting wb-dependent warmup.")
+    else:
+        logger.error(
+            "Workspace context still absent after %ss; warming anyway "
+            "(datasources may be empty).", int(max_wait))
+    _workspace_ready.set()
+
+    _ensure_aws_config()
+    warm_resource_cache()
+    threading.Thread(target=_warm_s3_files, daemon=True).start()
+    cohort_folder = os.environ.get("COHORT_STORAGE_FOLDER_ID") or "GTEx_files"
+    init_cohorts(cohort_folder)
+
+
+def _ensure_aws_config():
+    if os.environ.get("AWS_CONFIG_FILE"):
+        return
+    try:
+        subprocess.run(
+            ["wb", "workspace", "configure-aws"],
+            capture_output=True, text=True, check=True, timeout=120,
+        )
+        logger.info("Configured AWS profiles via wb workspace configure-aws")
+    except Exception as e:
+        logger.warning("Failed to configure AWS profiles: %s", e)
+    import glob
+    matches = glob.glob(os.path.expanduser("~/.workbench/aws/*.conf"))
+    if matches:
+        os.environ["AWS_CONFIG_FILE"] = matches[0]
+        logger.info("Set AWS_CONFIG_FILE to %s", matches[0])
+
+
+def _warm_s3_files():
+    from db import _resource_cache_ready, list_s3_folders
+    _resource_cache_ready.wait(timeout=180)
+    folders = list_s3_folders()
+    for folder in folders:
+        try:
+            _fetch_s3_files(folder["id"])
+        except Exception as e:
+            logger.warning("Failed to warm S3 files for %s: %s", folder["id"], e)
+
+
+@app.on_event("startup")
+def startup():
+    # Work that doesn't need the CLI runs immediately.
+    engine = get_sqlite_engine()
+    Base.metadata.create_all(engine)
+    logger.info("SQLite tables ensured")
+    load_schema_from_disk()
+    # Everything that shells out to `wb` is deferred behind the workspace gate
+    # so we don't race the platform startup script and clobber context.json.
+    threading.Thread(target=_await_workspace_then_warm, daemon=True).start()
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/ready")
+def ready() -> dict[str, bool]:
+    """App readiness for the frontend: the workspace context must be present
+    before datasources can be listed. /api/health stays a plain liveness check
+    so the platform proxy-readiness probe is unaffected."""
+    return {"workspace": _workspace_ready.is_set(), "tables": are_tables_ready()}
+
+
+@app.get("/api/datasources")
+def get_datasources() -> dict:
+    aurora = list_aurora_resources(wait=True)
+    for r in aurora:
+        r["tables"] = get_cached_tables(r["id"])
+    s3_folders = list_s3_folders()
+    active = get_active_resource_id()
+    return {
+        "resources": aurora,
+        "s3_folders": s3_folders,
+        "active": active,
+        "has_local": True,
+        "ready": are_tables_ready(),
+    }
+
+
+@app.post("/api/datasources/refresh")
+def refresh_datasources() -> dict:
+    warm_resource_cache()
+    aurora = list_aurora_resources(wait=True)
+    for r in aurora:
+        r["tables"] = get_cached_tables(r["id"])
+    s3_folders = list_s3_folders()
+    active = get_active_resource_id()
+    return {
+        "resources": aurora,
+        "s3_folders": s3_folders,
+        "active": active,
+        "has_local": True,
+        "ready": are_tables_ready(),
+    }
+
+
+_s3_files_cache: dict[str, list[dict]] = {}
+_s3_files_last_refresh: dict[str, float] = {}
+_S3_FILES_COOLDOWN = 60.0
+
+
+def _fetch_s3_files(folder_id: str) -> list[dict]:
+    bucket_path = subprocess.run(
+        ["wb", "resource", "resolve", "--id", folder_id],
+        capture_output=True, text=True, check=True, timeout=120,
+    ).stdout.strip().rstrip("/")
+
+    result = subprocess.run(
+        ["aws", "s3", "ls", "--profile", folder_id, f"{bucket_path}/"],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        logger.warning("aws s3 ls failed for %s: %s", folder_id, result.stderr)
+        return []
+
+    files = []
+    for line in result.stdout.strip().split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        key = parts[3]
+        if key.lower().endswith((".tsv", ".csv", ".txt")):
+            size = int(parts[2])
+            files.append({
+                "key": key,
+                "name": key.split("/")[-1],
+                "size": size,
+                "s3_path": f"{bucket_path}/{key}",
+            })
+    # Never overwrite a non-empty cache with an empty result. A transient
+    # rc=0-but-empty listing (SAM/creds hiccup) must not blank a good list.
+    if files or folder_id not in _s3_files_cache:
+        _s3_files_cache[folder_id] = files
+        logger.info("Cached %d S3 files for %s", len(files), folder_id)
+    else:
+        logger.warning("Skipped caching empty S3 listing for %s (kept %d cached)",
+                       folder_id, len(_s3_files_cache[folder_id]))
+    return _s3_files_cache.get(folder_id, files)
+
+
+def _refresh_s3_files(folder_id: str):
+    try:
+        _fetch_s3_files(folder_id)
+    except Exception as e:
+        logger.warning("Background S3 refresh failed for %s: %s", folder_id, e)
+
+
+@app.get("/api/s3/files")
+def list_s3_files(folder_id: str = Query(...)) -> list[dict]:
+    if folder_id in _s3_files_cache:
+        now = time.monotonic()
+        if now - _s3_files_last_refresh.get(folder_id, 0.0) > _S3_FILES_COOLDOWN:
+            _s3_files_last_refresh[folder_id] = now
+            threading.Thread(target=_refresh_s3_files, args=(folder_id,), daemon=True).start()
+        return _s3_files_cache[folder_id]
+    try:
+        _s3_files_last_refresh[folder_id] = time.monotonic()
+        return _fetch_s3_files(folder_id)
+    except Exception as e:
+        logger.error("Failed to list S3 files: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+def _steps_from_body(raw_steps: list[dict]) -> list[JoinStep]:
+    if not raw_steps:
+        raise HTTPException(status_code=400, detail="A join needs at least one table")
+    try:
+        return [JoinStep(**s) for s in raw_steps]
+    except TypeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid join step: {e}") from e
+
+
+@app.get("/api/aurora/{resource_id}/tables/{table}/columns")
+def api_aurora_table_columns(resource_id: str, table: str, schema: str = Query("public")) -> list[dict]:
+    try:
+        return list_aurora_columns(resource_id, table, schema=schema)
+    except Exception as e:
+        logger.error("Failed to list columns for %s.%s: %s", resource_id, table, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/joins/validate")
+def api_validate_join(body: dict) -> dict:
+    resource_id = body.get("resource_id", "")
+    steps = _steps_from_body(body.get("steps", []))
+    try:
+        validate_join(resource_id, steps)
+        return {"valid": True}
+    except JoinError as e:
+        return {"valid": False, "error": str(e)}
+    except Exception as e:
+        logger.error("Join validation failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/joins/preview")
+def api_preview_join(body: dict) -> list[dict]:
+    resource_id = body.get("resource_id", "")
+    steps = _steps_from_body(body.get("steps", []))
+    try:
+        validate_join(resource_id, steps)
+        return row_growth_preview(resource_id, steps)
+    except JoinError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error("Join preview failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/schema/infer")
+def api_infer_schema(body: dict) -> dict:
+    source_type = body.get("source_type")
+    folder_id = body.get("folder_id")
+    try:
+        if source_type == "file":
+            s3_path = body.get("s3_path", "")
+            local_path = Path(tempfile.gettempdir()) / Path(s3_path).name
+            profile_args = ["--profile", folder_id] if folder_id else []
+            subprocess.run(
+                ["aws", "s3", "cp", *profile_args, s3_path, str(local_path)],
+                capture_output=True, text=True, check=True, timeout=120,
+            )
+            mappings = infer_from_csv(str(local_path))
+        elif source_type == "aurora":
+            resource_id = body.get("resource_id", "")
+            table = body.get("table", "")
+            mappings = infer_from_aurora(resource_id, table)
+        elif source_type == "join":
+            join_body = body.get("join", {})
+            resource_id = body.get("resource_id") or join_body.get("resource_id", "")
+            steps = _steps_from_body(join_body.get("steps", []))
+            validate_join(resource_id, steps)
+            select_sql, output_columns = build_select(resource_id, steps)
+            mappings = infer_from_join(resource_id, select_sql, output_columns)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown source_type: {source_type}")
+        return {"mappings": mappings_to_dicts(mappings)}
+    except HTTPException:
+        raise
+    except JoinError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error("Schema inference failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/schema/confirm")
+def api_confirm_schema(body: dict) -> dict:
+    mappings_raw = [dict(mapping) for mapping in body.get("mappings", [])]
+    folder_id = body.get("folder_id")
+    source_name = body.get("source_name", "schema")
+    table_name = body.get("table_name", "data")
+    entity_column = body.get("entity_column") or None
+    join_body = body.get("join")
+    resource_id = get_active_resource_id()
+    is_aurora = resource_id is not None
+
+    if entity_column and entity_column not in {m["column"] for m in mappings_raw}:
+        raise HTTPException(status_code=400, detail=f"Unknown entity column: {entity_column}")
+
+    if join_body:
+        steps = _steps_from_body(join_body.get("steps", []))
+        try:
+            # Re-derive the join and its column storage types fresh here rather
+            # than trusting the earlier /infer response: stale browser state
+            # must not reintroduce the Aurora numeric-text failure.
+            select_sql, output_columns = build_select(resource_id, steps)
+        except JoinError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        storage_types = {c["output"]: c["pg_type"] for c in output_columns}
+        for mapping in mappings_raw:
+            mapping["storage_type"] = storage_types.get(mapping["column"])
+        mappings = [ColumnMapping(**mapping) for mapping in mappings_raw]
+        try:
+            set_active_join_mapping(
+                mappings_raw, select_sql, resource_id,
+                table_name=table_name, entity_column=entity_column,
+            )
+        except Exception as e:
+            logger.error("Join model build failed: %s", e, exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Could not build join model: {e}") from e
+        return {"confirmed": True, "columns": len(mappings), "seeded": 0}
+
+    if resource_id:
+        storage_types = get_aurora_storage_types(resource_id, table_name)
+        for mapping in mappings_raw:
+            mapping["storage_type"] = storage_types.get(mapping["column"])
+
+    mappings = [ColumnMapping(**mapping) for mapping in mappings_raw]
+
+    if folder_id:
+        try:
+            local_csv = Path(tempfile.gettempdir()) / f"{source_name}.columns.csv"
+            save_mapping_csv(str(local_csv), mappings)
+
+            bucket_path = subprocess.run(
+                ["wb", "resource", "resolve", "--id", folder_id],
+                capture_output=True, text=True, check=True, timeout=120,
+            ).stdout.strip().rstrip("/")
+
+            subprocess.run(
+                ["aws", "s3", "cp", "--profile", folder_id, str(local_csv),
+                 f"{bucket_path}/{source_name}.columns.csv"],
+                capture_output=True, text=True, check=True, timeout=120,
+            )
+            local_csv.unlink(missing_ok=True)
+            logger.info("Saved mapping CSV to S3 for %s", source_name)
+        except Exception as e:
+            logger.warning("Failed to save mapping CSV to S3: %s", e)
+
+    set_active_mapping(mappings_raw, table_name=table_name, needs_pk=not is_aurora, entity_column=entity_column)
+
+    seeded = 0
+    if not is_aurora:
+        engine = get_sqlite_engine()
+        DynamicBase.metadata.drop_all(engine)
+        DynamicBase.metadata.create_all(engine)
+        file_path = body.get("file_path")
+        if file_path:
+            from sqlalchemy.orm import Session as SaSession
+            with SaSession(engine) as db:
+                seeded = seed_dynamic(db, file_path, get_active_model(), mappings_raw, profile=folder_id)
+
+    return {"confirmed": True, "columns": len(mappings), "seeded": seeded}
+
+
+@app.get("/api/schema/active")
+def api_active_schema() -> dict:
+    mapping = get_active_mapping()
+    return {"mappings": mapping or []}
+
+
+@app.post("/api/connect")
+def connect_resource(
+    resource_id: str = Query(...),
+    cohort_folder: str | None = Query(None),
+    seed_from: str | None = Query(None),
+) -> dict:
+    if resource_id == "__local__":
+        set_active_resource(None)
+    else:
+        try:
+            set_active_resource(resource_id)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Connection failed: {e}") from e
+
+    if cohort_folder:
+        init_cohorts(cohort_folder)
+
+    if seed_from:
+        engine = get_sqlite_engine()
+        Base.metadata.create_all(engine)
+        from sqlalchemy.orm import Session as SaSession
+        with SaSession(engine) as db:
+            count = seed_from_tsv(db, seed_from)
+        set_active_resource(None)
+        return {"connected": "local (SQLite)", "seeded": count}
+
+    return {"connected": resource_id if resource_id != "__local__" else "local (SQLite)"}
+
+
+@app.get("/api/samples")
+def get_samples(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    try:
+        model = _get_model()
+        columns = get_all_columns()
+        filters = _extract_filter_params(request)
+        limit = int(request.query_params.get("limit", "1000"))
+        stmt = select(model)
+        stmt = _apply_filters(stmt, filters)
+        first_col = columns[0] if columns else "id"
+        stmt = stmt.order_by(getattr(model, first_col)).limit(limit)
+        rows = db.execute(stmt).scalars().all()
+        pk = get_pk_name()
+        return [
+            {pk: getattr(s, pk), **{col: _row_value(s, col) for col in columns}}
+            for s in rows
+        ]
+    except Exception as e:
+        logger.error("Failed to fetch samples: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+_FILTERS_TEMP_TABLE = "_cohort_explorer_filters_base"
+
+
+def _materialize_filters_base(db: Session, model, columns: set[str]) -> Table:
+    """Snapshot the active model's rows into a temp table for this request.
+
+    get_filters runs one query per filterable column. For a plain Aurora
+    table that's cheap, but a join-backed model's __table__ is the whole
+    multi-way JOIN -- querying it once per column re-runs that join once per
+    column. Running the join exactly once into a temp table and querying
+    that instead keeps the per-request cost flat as the join grows.
+    """
+    compiled = select(model).compile(dialect=db.get_bind().dialect, compile_kwargs={"literal_binds": True})
+    db.execute(text(f'DROP TABLE IF EXISTS "{_FILTERS_TEMP_TABLE}"'))
+    db.execute(text(f'CREATE TEMPORARY TABLE "{_FILTERS_TEMP_TABLE}" AS {compiled}'))
+    return Table(_FILTERS_TEMP_TABLE, MetaData(), *(Column(name, NullType()) for name in columns))
+
+
+@app.get("/api/filters")
+def get_filters(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        model = _get_model()
+        filters = _extract_filter_params(request)
+        result: dict = {}
+
+        has_filters = bool(filters)
+        max_cat = int(request.query_params.get("max_filters", "20"))
+        categorical_cols = get_categorical_filters()[:max_cat]
+        range_cols = get_range_filters()
+        pk_name = get_pk_name()
+
+        base = _materialize_filters_base(db, model, {pk_name, *categorical_cols, *range_cols})
+        try:
+            def col_fn(name: str):
+                return base.c[name]
+
+            pk = base.c[pk_name]
+
+            for col_name in categorical_cols:
+                col = col_fn(col_name)
+                if has_filters:
+                    cross_stmt = _apply_filters_with(select(pk), col_fn, filters, exclude=col_name)
+                    cross_ids = cross_stmt.subquery()
+                    values_stmt = (
+                        select(col, func.count(pk))
+                        .where(pk.in_(select(cross_ids.c[pk_name])))
+                        .group_by(col)
+                        .order_by(col)
+                    )
+                else:
+                    values_stmt = (
+                        select(col, func.count(pk))
+                        .group_by(col)
+                        .order_by(col)
+                    )
+                rows = db.execute(values_stmt).all()
+                options = []
+                for val, cnt in rows:
+                    options.append({
+                        "value": val if val is not None else "__null__",
+                        "label": val if val is not None else "Unknown",
+                        "count": cnt,
+                    })
+                result[col_name] = options
+
+            for col_name in range_cols:
+                col = _query_column_with(col_fn, col_name)
+                if has_filters:
+                    all_stmt = _apply_filters_with(select(pk), col_fn, filters)
+                    filtered_ids = all_stmt.subquery()
+                    range_stmt = (
+                        select(func.min(col), func.max(col))
+                        .where(pk.in_(select(filtered_ids.c[pk_name])))
+                        .where(col.isnot(None))
+                    )
+                else:
+                    range_stmt = (
+                        select(func.min(col), func.max(col))
+                        .where(col.isnot(None))
+                    )
+                row = db.execute(range_stmt).one()
+                result[col_name] = {
+                    "min": float(row[0]) if row[0] is not None else None,
+                    "max": float(row[1]) if row[1] is not None else None,
+                }
+
+            return result
+        finally:
+            db.execute(text(f'DROP TABLE IF EXISTS "{_FILTERS_TEMP_TABLE}"'))
+            db.commit()
+    except Exception as e:
+        logger.error("Failed to fetch filters: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/counts")
+def get_counts(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    model = _get_model()
+    filters = _extract_filter_params(request)
+    stmt = select(model)
+    stmt = _apply_filters(stmt, filters)
+    filtered = stmt.subquery()
+
+    pk_col = get_pk_name()
+    count_exprs = [func.count(filtered.c[pk_col]).label("samples")]
+
+    entity_col = get_entity_column()
+    if entity_col and entity_col in filtered.c:
+        count_exprs.append(func.count(distinct(filtered.c[entity_col])).label("entities"))
+    # Legacy GTEx hardcodes, kept only for the static Sample fallback model
+    # (no dynamic schema active, so there's no user-chosen entity column).
+    elif hasattr(filtered.c, "subject_id"):
+        count_exprs.append(func.count(distinct(filtered.c.subject_id)).label("subjects"))
+    if not entity_col and hasattr(filtered.c, "fastq1_path"):
+        count_exprs.append(func.count(filtered.c.fastq1_path).label("fastq_pairs"))
+
+    row = db.execute(select(*count_exprs)).one()
+    result = {"samples": row.samples}
+    if hasattr(row, "entities"):
+        mapping = get_mapping_for_column(entity_col)
+        result["entities"] = row.entities
+        result["entity_label"] = mapping["label"] if mapping else entity_col
+    if hasattr(row, "subjects"):
+        result["subjects"] = row.subjects
+    if hasattr(row, "fastq_pairs"):
+        result["fastq_pairs"] = row.fastq_pairs
+    return result
+
+
+@app.post("/api/seed")
+def seed_data(
+    path: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> dict:
+    tsv_path = path or os.environ.get("TSV_PATH", "/workspace/GTEx_V8_sample_manifest_metadata.tsv")
+    try:
+        count = seed_from_tsv(db, tsv_path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=f"Permission denied: {tsv_path}") from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Seed error: {e}") from e
+    return {"seeded": count}
+
+
+@app.get("/api/export")
+def export_csv(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    model = _get_model()
+    columns = get_all_columns()
+    filters = _extract_filter_params(request)
+    stmt = select(model)
+    stmt = _apply_filters(stmt, filters)
+    first_col = columns[0] if columns else "id"
+    stmt = stmt.order_by(getattr(model, first_col))
+    rows = db.execute(stmt).scalars().all()
+
+    output = io.StringIO()
+    output.write("\t".join(columns) + "\n")
+    for s in rows:
+        vals = [str(getattr(s, col) or "") for col in columns]
+        output.write("\t".join(vals) + "\n")
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/tab-separated-values",
+        headers={"Content-Disposition": "attachment; filename=cohort_export.tsv"},
+    )
+
+
+@app.get("/api/cohorts")
+def api_list_cohorts(datasource: str = Query("")) -> list[dict]:
+    return list_cohorts(datasource=datasource)
+
+
+@app.get("/api/cohorts/{name}")
+def api_get_cohort(name: str) -> dict:
+    cohort = get_cohort(name)
+    if not cohort:
+        raise HTTPException(status_code=404, detail=f"Cohort not found: {name}")
+    return cohort
+
+
+@app.post("/api/cohorts")
+def api_save_cohort(body: dict) -> dict:
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Cohort name is required")
+    return save_cohort(
+        name=name,
+        description=body.get("description", ""),
+        filters=body.get("filters", {}),
+        sample_count=body.get("sampleCount", 0),
+        datasource=body.get("datasource", ""),
+    )
+
+
+@app.delete("/api/cohorts/{name}")
+def api_delete_cohort(name: str) -> dict:
+    if not delete_cohort(name):
+        raise HTTPException(status_code=404, detail=f"Cohort not found: {name}")
+    return {"deleted": name}
+
+
+@app.get("/api/cohorts/{name}/exists")
+def api_cohort_exists(name: str) -> dict:
+    return {"exists": cohort_exists(name)}
+
+
+_wdl_inputs_cache: dict[str, list[dict]] = {}
+_workflows_cache: list[dict] | None = None
+_workflow_jobs: dict[str, dict] = {}
+
+
+def _fetch_wdl_inputs(workflow_id: str) -> list[dict]:
+    if workflow_id in _wdl_inputs_cache:
+        return _wdl_inputs_cache[workflow_id]
+    try:
+        result = subprocess.run(
+            ["wb", "workflow", "describe", f"--workflow={workflow_id}", "--format", "json"],
+            capture_output=True, text=True, check=True, timeout=120,
+        )
+        wf = json.loads(result.stdout)
+        inputs = wf.get("inputs") or []
+        for inp in inputs:
+            inp["short_name"] = inp["name"].split(".")[-1]
+        _wdl_inputs_cache[workflow_id] = inputs
+        return inputs
+    except Exception as e:
+        logger.warning("Failed to fetch WDL inputs for %s: %s", workflow_id, e)
+        return []
+
+
+@app.get("/api/workflows")
+def list_workflows() -> dict:
+    global _workflows_cache
+    if _workflows_cache is None:
+        try:
+            result = subprocess.run(
+                ["wb", "workflow", "list", "--format", "json"],
+                capture_output=True, text=True, check=True, timeout=120,
+            )
+            _workflows_cache = json.loads(result.stdout)
+        except Exception as e:
+            logger.error("Failed to list workflows: %s", e)
+            raise HTTPException(status_code=500, detail=str(e)) from e
+    workflows = [
+        {"id": w["id"], "name": w.get("displayName") or w["id"], "description": w.get("description")}
+        for w in (_workflows_cache or [])
+    ]
+    return {"workflows": workflows, "s3_folders": list_s3_folders()}
+
+
+@app.get("/api/workflows/{name}/inputs")
+def get_workflow_inputs(name: str) -> dict:
+    return {"inputs": _fetch_wdl_inputs(name)}
+
+
+def _build_workflow_rows(
+    samples: list, inputs: list[dict], bindings: dict[str, dict],
+) -> tuple[list[dict], list[str]]:
+    """Return (rows, csv_columns) for the batch CSV.
+
+    Every bound input becomes a CSV column. Static values are written
+    same-valued to every row (gotcha #1: --inputs is inert for batch runs).
+    """
+    csv_columns: list[str] = []
+    static_values: dict[str, str] = {}
+    cohort_columns: dict[str, str] = {}
+
+    for inp in inputs:
+        short = inp["short_name"]
+        binding = bindings.get(short)
+        if not binding:
+            continue
+        mode = binding.get("mode")
+        value = binding.get("value", "")
+        if mode == "cohort" and value:
+            csv_columns.append(short)
+            cohort_columns[short] = value
+        elif mode == "static" and value != "":
+            csv_columns.append(short)
+            static_values[short] = value
+
+    rows: list[dict] = []
+    for s in samples:
+        row: dict = {}
+        skip = False
+        for csv_col, model_col in cohort_columns.items():
+            val = getattr(s, model_col, None)
+            if val is None or val == "":
+                skip = True
+                break
+            row[csv_col] = str(val)
+        if skip:
+            continue
+        for csv_col, static_val in static_values.items():
+            row[csv_col] = static_val
+        rows.append(row)
+    return rows, csv_columns
+
+
+@app.post("/api/workflows/{name}/prepare")
+def prepare_workflow(
+    name: str,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        bindings = body.get("bindings") or {}
+        inputs = _fetch_wdl_inputs(name)
+
+        model = _get_model()
+        filters = _extract_filter_params(request)
+        stmt = select(model)
+        stmt = _apply_filters(stmt, filters)
+        samples = db.execute(stmt).scalars().all()
+
+        rows, csv_columns = _build_workflow_rows(samples, inputs, bindings)
+        return {
+            "sample_count": len(samples),
+            "row_count": len(rows),
+            "skipped": len(samples) - len(rows),
+            "csv_columns": csv_columns,
+            "preview": rows[:5],
+        }
+    except Exception as e:
+        logger.error("prepare_workflow failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+def _run_workflow_in_background(
+    job_id: str, workflow_id: str, rows: list[dict], csv_columns: list[str],
+    csv_filename: str, mapping_filename: str, timestamp: str,
+    input_bucket_id: str, output_bucket_id: str, output_path: str,
+    full_name_by_short: dict[str, str],
+):
+    local_csv = None
+    local_mapping = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            writer = csv.DictWriter(f, fieldnames=csv_columns)
+            writer.writeheader()
+            writer.writerows(rows)
+            local_csv = f.name
+
+        mapping = {full_name_by_short[c]: c for c in csv_columns}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(mapping, f)
+            local_mapping = f.name
+
+        bucket_path = subprocess.run(
+            ["wb", "resource", "resolve", "--id", input_bucket_id],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip().rstrip("/")
+
+        for src, dst in [(local_csv, csv_filename), (local_mapping, mapping_filename)]:
+            subprocess.run(
+                ["aws", "s3", "cp", "--profile", input_bucket_id,
+                 src, f"{bucket_path}/{dst}"],
+                capture_output=True, text=True, check=True,
+            )
+
+        mapping_uri = f"{bucket_path}/{mapping_filename}"
+        cmd = [
+            "wb", "workflow", "job", "run",
+            f"--workflow={workflow_id}",
+            f"--batch-input-bucket-id={input_bucket_id}",
+            f"--batch-input-csv-path={csv_filename}",
+            f"--column-mapping-uri={mapping_uri}",
+            f"--output-bucket-id={output_bucket_id}",
+            f"--output-path={output_path}",
+            f"--job-id={job_id}",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+        _workflow_jobs[job_id] = {"status": "submitted", "output": result.stdout.strip()}
+        logger.info("Workflow job %s submitted successfully", job_id)
+
+    except subprocess.CalledProcessError as e:
+        _workflow_jobs[job_id] = {"status": "failed", "error": e.stderr or e.stdout}
+        logger.error("Workflow job %s failed: %s", job_id, e.stderr or e.stdout)
+    except Exception as e:
+        _workflow_jobs[job_id] = {"status": "failed", "error": str(e)}
+        logger.error("Workflow job %s error: %s", job_id, e)
+    finally:
+        for p in (local_csv, local_mapping):
+            if p:
+                Path(p).unlink(missing_ok=True)
+
+
+@app.post("/api/workflows/{name}/submit")
+def submit_workflow(
+    name: str,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        bindings = body.get("bindings") or {}
+        input_bucket_id = body.get("input_bucket_id")
+        output_bucket_id = body.get("output_bucket_id")
+        if not input_bucket_id or not output_bucket_id:
+            raise HTTPException(status_code=400, detail="input_bucket_id and output_bucket_id are required")
+
+        inputs = _fetch_wdl_inputs(name)
+        full_name_by_short = {inp["short_name"]: inp["name"] for inp in inputs}
+
+        missing_required = [
+            inp["short_name"] for inp in inputs
+            if inp.get("isRequired") and not (bindings.get(inp["short_name"]) or {}).get("value")
+        ]
+        if missing_required:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing bindings for required inputs: {', '.join(missing_required)}",
+            )
+
+        model = _get_model()
+        filters = _extract_filter_params(request)
+        stmt = select(model)
+        stmt = _apply_filters(stmt, filters)
+        samples = db.execute(stmt).scalars().all()
+
+        rows, csv_columns = _build_workflow_rows(samples, inputs, bindings)
+        if not rows:
+            raise HTTPException(status_code=400, detail="No rows to submit — check that bound cohort columns have values")
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        job_id = f"cohort-{name}-{timestamp}"
+        csv_filename = f"workflow_inputs/batch_{timestamp}.csv"
+        mapping_filename = f"workflow_inputs/mapping_{timestamp}.json"
+        output_path = body.get("output_path", f"workflow_outputs/{name}/{timestamp}")
+
+        _workflow_jobs[job_id] = {"status": "submitting"}
+
+        thread = threading.Thread(
+            target=_run_workflow_in_background,
+            args=(job_id, name, rows, csv_columns, csv_filename, mapping_filename, timestamp,
+                  input_bucket_id, output_bucket_id, output_path, full_name_by_short),
+            daemon=True,
+        )
+        thread.start()
+
+        return {
+            "job_id": job_id,
+            "rows_submitted": len(rows),
+            "status": "submitting",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("submit_workflow failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/workflows/jobs/{job_id}")
+def workflow_job_status(job_id: str) -> dict:
+    if job_id not in _workflow_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job_id": job_id, **_workflow_jobs[job_id]}
+
+
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    def serve_spa(full_path: str) -> FileResponse:
+        return FileResponse(STATIC_DIR / "index.html")

@@ -1,0 +1,470 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Box, CircularProgress, CssBaseline, Snackbar, Typography } from "@mui/material";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { Allotment } from "allotment";
+import "allotment/dist/style.css";
+import FilterPanel from "./components/FilterPanel.tsx";
+import DataGrid from "./components/DataGrid.tsx";
+import SummaryBar from "./components/SummaryBar.tsx";
+import ChartDashboard from "./components/charts/ChartDashboard.tsx";
+import ResourceSelector from "./components/ResourceSelector.tsx";
+import ConnectionError from "./components/ConnectionError.tsx";
+import { connectResource, fetchActiveSchema, fetchCounts, fetchFilters, fetchReady, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
+import type { ColumnMapping, JoinConfig } from "./api.ts";
+import SchemaReview from "./components/SchemaReview.tsx";
+import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, SampleRow } from "./types.ts";
+import { DEFAULT_CHART_TYPE, buildEmptyFilters, buildFieldMeta } from "./types.ts";
+
+const STORAGE_KEY = "cohort-explorer-state";
+
+function saveState(resourceId: string, filters: FilterState, tableName?: string) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceId, filters, tableName }));
+}
+
+function loadSavedState(): { resourceId: string; filters: FilterState; tableName?: string } | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.resourceId && parsed?.filters) return parsed;
+  } catch { /* corrupt data */ }
+  return null;
+}
+
+const theme = createTheme({
+  palette: {
+    primary: { main: "#087a6a", dark: "#054f45", light: "#84bdb5" },
+    background: { default: "#F5F6F7" },
+    text: { primary: "#212529", secondary: "rgba(0,0,0,0.6)" },
+  },
+  typography: {
+    fontFamily: "'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+  },
+  shape: { borderRadius: 6 },
+});
+
+function filtersEqual(a: FilterState, b: FilterState): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+export default function App() {
+  const [connected, setConnected] = useState(false);
+  const [resourceId, setResourceId] = useState<string>("__local__");
+  const [mappings, setMappings] = useState<ColumnMapping[]>([]);
+  const [pending, setPending] = useState<FilterState>({});
+  const [applied, setApplied] = useState<FilterState>({});
+  const [available, setAvailable] = useState<FiltersResponse | null>(null);
+  const [rows, setRows] = useState<SampleRow[]>([]);
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [restoring, setRestoring] = useState(true);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([]);
+
+  const emptyFilters = useMemo(() => buildEmptyFilters(mappings), [mappings]);
+  const fieldMeta = useMemo(() => buildFieldMeta(mappings), [mappings]);
+  const [filterPaneVisible, setFilterPaneVisible] = useState(true);
+  const [gridPaneVisible, setGridPaneVisible] = useState(true);
+  const [activeCohort, setActiveCohort] = useState<string | null>(null);
+  const [schemaStep, setSchemaStep] = useState<"none" | "inferring" | "reviewing">("none");
+  const [schemaMappings, setSchemaMappings] = useState<ColumnMapping[]>([]);
+  const [schemaSourceName, setSchemaSourceName] = useState("");
+  const [schemaTableName, setSchemaTableName] = useState<string | undefined>();
+  const [schemaFilePath, setSchemaFilePath] = useState<string | undefined>();
+  const [schemaFolderId, setSchemaFolderId] = useState<string | undefined>();
+  const [schemaJoin, setSchemaJoin] = useState<JoinConfig | undefined>();
+  const initialized = useRef(false);
+  const fetchIdRef = useRef(0);
+
+  // Poll backend readiness: the workspace context must be present before any
+  // resource listing happens. See /api/ready and the backend startup gate.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      while (!cancelled) {
+        try {
+          const r = await fetchReady();
+          if (r.workspace) {
+            if (!cancelled) setWorkspaceReady(true);
+            return;
+          }
+        } catch { /* backend not up yet, keep polling */ }
+        await new Promise((res) => setTimeout(res, 3000));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceReady) return;
+    const saved = loadSavedState();
+    if (!saved) { setRestoring(false); return; }
+    connectResource(saved.resourceId)
+      .then(async () => {
+        setResourceId(saved.resourceId);
+        if (saved.tableName) setSchemaTableName(saved.tableName);
+        try {
+          const schema = await fetchActiveSchema();
+          if (schema.mappings.length > 0) {
+            setMappings(schema.mappings);
+            const meta = buildFieldMeta(schema.mappings);
+            const firstCat = meta.find((f) => f.dataType === "categorical");
+            setChartConfigs(firstCat ? [{ id: "default", fieldKey: firstCat.key, chartType: "bar" }] : []);
+          }
+        } catch { /* no saved schema, filters/grid will be empty */ }
+        setPending(saved.filters);
+        setApplied(saved.filters);
+        setConnected(true);
+      })
+      .catch((e) => {
+        console.warn("Auto-reconnect failed, showing selector:", e);
+      })
+      .finally(() => setRestoring(false));
+  }, [workspaceReady]);
+
+  const dirty = !filtersEqual(pending, applied);
+
+  const loadData = useCallback(async (f: FilterState) => {
+    const fetchId = ++fetchIdRef.current;
+    setLoading(true);
+    try {
+      const [samplesData, filtersData, countsData] = await Promise.all([
+        fetchSamples(f),
+        fetchFilters(f),
+        fetchCounts(f),
+      ]);
+      if (fetchId !== fetchIdRef.current) return;
+      setRows(samplesData);
+      setAvailable(filtersData);
+      setCounts(countsData);
+      setError(null);
+    } catch (e) {
+      if (fetchId !== fetchIdRef.current) return;
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      if (fetchId === fetchIdRef.current) setLoading(false);
+    }
+  }, []);
+
+  const initializeData = useCallback(async () => {
+    if (initialized.current) return;
+    initialized.current = true;
+
+    let needsSeed = false;
+    try {
+      const countsData = await fetchCounts(emptyFilters);
+      needsSeed = countsData.samples === 0;
+    } catch {
+      needsSeed = true;
+    }
+
+    if (needsSeed && resourceId === "__local__") {
+      setSeeding(true);
+      try {
+        const result = await seedData();
+        if (result.seeded === 0) {
+          setError("No local data found. Try selecting an Aurora datasource instead.");
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Seed failed");
+      }
+      setSeeding(false);
+    }
+
+    await loadData(applied);
+  }, [loadData, applied, resourceId]);
+
+  useEffect(() => {
+    if (connected) initializeData();
+  }, [connected, initializeData]);
+
+  const handleApply = useCallback(() => {
+    setApplied(pending);
+    setActiveCohort(null);
+    loadData(pending);
+    saveState(resourceId, pending, schemaTableName);
+  }, [pending, loadData, resourceId]);
+
+  const handleReset = useCallback(() => {
+    setPending(emptyFilters);
+    setApplied(emptyFilters);
+    setActiveCohort(null);
+    loadData(emptyFilters);
+    saveState(resourceId, emptyFilters, schemaTableName);
+  }, [loadData, resourceId, emptyFilters]);
+
+  const handleDisconnect = useCallback(() => {
+    setConnected(false);
+    setResourceId("__local__");
+    setMappings([]);
+    setPending({});
+    setApplied({});
+    setAvailable(null);
+    setRows([]);
+    setCounts(null);
+    setError(null);
+    setLoading(true);
+    setActiveCohort(null);
+    initialized.current = false;
+    localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  const handleLoadCohort = useCallback(async (name: string) => {
+    try {
+      const cohort = await getCohort(name);
+      setPending(cohort.filters);
+      setApplied(cohort.filters);
+      setActiveCohort(name);
+      loadData(cohort.filters);
+      saveState(resourceId, cohort.filters, schemaTableName);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load cohort");
+    }
+  }, [loadData, resourceId]);
+
+  const handleCohortSaved = useCallback((name: string) => {
+    setActiveCohort(name);
+  }, []);
+
+  const handleChartFilter = useCallback(
+    (fieldKey: string, value: string | { min: number; max: number }) => {
+      let newPending: FilterState;
+      if (typeof value === "string") {
+        const current = (pending as unknown as Record<string, string[]>)[fieldKey] ?? [];
+        const updated = current.includes(value)
+          ? current.filter((v) => v !== value)
+          : [...current, value];
+        newPending = { ...pending, [fieldKey]: updated };
+      } else {
+        newPending = {
+          ...pending,
+          [`${fieldKey}_min`]: value.min,
+          [`${fieldKey}_max`]: value.max,
+        };
+      }
+      setPending(newPending);
+      setApplied(newPending);
+      loadData(newPending);
+      saveState(resourceId, newPending, schemaTableName);
+    },
+    [pending, loadData, resourceId],
+  );
+
+  const handleAddChart = useCallback((fieldKey: string, chartType?: ChartType, field2Key?: string) => {
+    const meta = fieldMeta.find((f) => f.key === fieldKey);
+    const resolvedType = chartType ?? (meta ? DEFAULT_CHART_TYPE[meta.dataType] : "bar");
+    setChartConfigs((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), fieldKey, chartType: resolvedType, field2Key },
+    ]);
+  }, [fieldMeta]);
+
+  const handleRemoveChart = useCallback((id: string) => {
+    setChartConfigs((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  const handleUpdateChart = useCallback(
+    (id: string, updates: Partial<Pick<ChartConfig, "fieldKey" | "chartType" | "field2Key">>) => {
+      setChartConfigs((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      );
+    },
+    [],
+  );
+
+  if (!workspaceReady) {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100vh", gap: 2 }}>
+        <CircularProgress />
+        <Typography variant="body2" color="text.secondary">Connecting to workspace…</Typography>
+      </Box>
+    );
+  }
+
+  if (restoring) {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "100vh", gap: 2 }}>
+        <CircularProgress />
+        <Typography variant="body2" color="text.secondary">Restoring session...</Typography>
+      </Box>
+    );
+  }
+
+  if (schemaStep === "inferring") {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: 2 }}>
+          <CircularProgress />
+          <Typography variant="body2" color="text.secondary">Analyzing schema...</Typography>
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
+  if (schemaStep === "reviewing") {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <SchemaReview
+          mappings={schemaMappings}
+          sourceName={schemaSourceName}
+          tableName={schemaTableName}
+          filePath={schemaFilePath}
+          folderId={schemaFolderId}
+          join={schemaJoin}
+          onConfirmed={(confirmed) => {
+            setMappings(confirmed);
+            const empty = buildEmptyFilters(confirmed);
+            setPending(empty);
+            setApplied(empty);
+            const meta = buildFieldMeta(confirmed);
+            const firstCat = meta.find((f) => f.dataType === "categorical");
+            setChartConfigs(firstCat ? [{ id: "default", fieldKey: firstCat.key, chartType: "bar" }] : []);
+            setSchemaStep("none");
+            setConnected(true);
+            saveState(resourceId, empty, schemaTableName);
+          }}
+          onBack={() => {
+            setSchemaStep("none");
+            setResourceId("__local__");
+            setSchemaJoin(undefined);
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
+
+  if (!connected) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <ResourceSelector onConnected={async (id, meta) => {
+          setResourceId(id);
+          if (!meta?.sourceType) {
+            setConnected(true);
+            saveState(id, emptyFilters);
+            return;
+          }
+          setSchemaFolderId(meta.folderId);
+          setSchemaJoin(meta.join);
+          setSchemaStep("inferring");
+          try {
+            const result = await inferSchema({
+              source_type: meta.sourceType,
+              s3_path: meta.s3Path,
+              folder_id: meta.folderId,
+              resource_id: meta.sourceType === "aurora" ? id : undefined,
+              table: meta.table,
+              join: meta.join,
+            });
+            setSchemaMappings(result.mappings);
+            setSchemaSourceName(meta.sourceName ?? "schema");
+            setSchemaTableName(meta.sourceType === "join" ? "joined" : meta.sourceType === "aurora" ? meta.table : "data");
+            setSchemaFilePath(meta.sourceType === "file" ? meta.s3Path : undefined);
+            setSchemaStep("reviewing");
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Schema inference failed");
+            setSchemaStep("none");
+          }
+        }} />
+      </ThemeProvider>
+    );
+  }
+
+  if (seeding) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100vh",
+          gap: 2,
+        }}
+      >
+        <CircularProgress />
+        <Box>Loading data...</Box>
+      </Box>
+    );
+  }
+
+  const hasData = rows.length > 0 || available !== null;
+  const blockingError = error && !hasData;
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+        <SummaryBar
+          counts={counts}
+          filters={applied}
+          loading={loading}
+          onDisconnect={handleDisconnect}
+          filterPaneVisible={filterPaneVisible}
+          gridPaneVisible={gridPaneVisible}
+          onToggleFilterPane={() => setFilterPaneVisible((v) => !v)}
+          onToggleGridPane={() => setGridPaneVisible((v) => !v)}
+          activeCohort={activeCohort}
+          datasource={schemaTableName ? `${resourceId}:${schemaTableName}` : resourceId}
+          mappings={mappings}
+          onLoadCohort={handleLoadCohort}
+          onCohortSaved={handleCohortSaved}
+        />
+        <Box sx={{ flex: 1, overflow: "hidden" }}>
+          <Allotment defaultSizes={[280, 1000]} snap>
+            <Allotment.Pane minSize={150} maxSize={500} visible={filterPaneVisible}>
+              <FilterPanel
+                available={available}
+                filters={pending}
+                mappings={mappings}
+                onChange={setPending}
+                dirty={dirty}
+                onApply={handleApply}
+                onReset={handleReset}
+              />
+            </Allotment.Pane>
+            <Allotment.Pane>
+              {blockingError ? (
+                <ConnectionError
+                  message={error}
+                  onRetry={() => loadData(applied)}
+                  onDisconnect={handleDisconnect}
+                />
+              ) : (
+                <Allotment vertical defaultSizes={[300, 500]} snap>
+                  <Allotment.Pane minSize={100}>
+                    <ChartDashboard
+                      chartConfigs={chartConfigs}
+                      available={available}
+                      rows={rows}
+                      applied={applied}
+                      fieldMeta={fieldMeta}
+                      onChartFilter={handleChartFilter}
+                      onAddChart={handleAddChart}
+                      onRemoveChart={handleRemoveChart}
+                      onUpdateChart={handleUpdateChart}
+                    />
+                  </Allotment.Pane>
+                  <Allotment.Pane minSize={100} visible={gridPaneVisible}>
+                    <DataGrid rows={rows} loading={loading} error={error} mappings={mappings} />
+                  </Allotment.Pane>
+                </Allotment>
+              )}
+            </Allotment.Pane>
+          </Allotment>
+        </Box>
+      </Box>
+      {error && hasData && (
+        <Snackbar open autoHideDuration={6000} onClose={() => setError(null)}>
+          <Alert severity="error" onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </Snackbar>
+      )}
+    </ThemeProvider>
+  );
+}

@@ -85,3 +85,29 @@ normal CLI behavior.
 
 The existing Dev Container CLI and JSON-comment parser require Node.
 Snapshot orchestration uses Bash, Docker and jq.
+
+## Share-enabled VMs
+
+WSM tags VMs whose apps can be shared with the GCE network tag
+`share-enabled-app` and runs them as the workspace's read-only
+`shared-apps-reader` service account. `is_share_enabled_vm` in
+`gcp/metadata-utils.sh` reads the tag from the metadata server and reports
+unreadable tags as unknown. EC2 instances are never share-enabled.
+
+On share-enabled VMs, `060-start-proxy-agent.sh` points the agent's `--host` at the
+proxy target's IPv4 address on `app-network` and the container side of its first
+published port, read with `docker inspect`. The agent runs on the host network, so
+it reaches any port the container listens on over the bridge, and a request's
+`X-App-Port` goes to that port on the container, never on the VM. Shared ports
+need no publishing, but the app must listen on the container's interface
+(`0.0.0.0`), not only on loopback. The script doesn't start the agent if the
+address is missing, loopback or link-local, if no port is published, or if the
+proxy target is a separate frontend such as the virtual browser. It reruns on
+every boot and Docker restart, which picks up a changed address. Other VMs keep
+`localhost` and the published host port. On any VM, the script doesn't start the
+agent while the tags can't be read; systemd reruns the unit until they can.
+
+`035-register-key.sh` retries a 403 from `registerKey` for about two minutes on
+share-enabled VMs, since WSM stores the VM's instance ID just after creating it.
+Other statuses, other VMs, and VMs whose tags can't be read fail on the first
+refusal as before.

@@ -12,6 +12,7 @@ setup() {
     touch "${CORE}/first-boot" "${CORE}/calls"
     cat > "${CORE}/metadata-utils.sh" <<'SH'
 get_metadata_value() { echo prod; }
+is_share_enabled_vm() { return 1; }
 get_guest_attribute() { cat /home/core/status; }
 set_metadata() {
     printf '%s %s\n' "$1" "$2" >> /home/core/calls

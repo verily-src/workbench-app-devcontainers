@@ -1,0 +1,74 @@
+services:
+  app:
+    container_name: "application-server"
+    image: "caddy:2.11-alpine"
+    restart: always
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+    ports:
+      - 8080:8080
+    networks:
+      - app-network
+      - internal
+
+  generator:
+    build:
+      context: ./app
+    container_name: "generator"
+    restart: always
+    depends_on:
+      app:
+        condition: service_started
+      db:
+        condition: service_healthy
+    environment:
+      PORT: "8080"
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      DB_NAME: "program_generator"
+      DB_USER: "pguser"
+      DB_PASSWORD: "pgpass"
+      VERTEX_PROJECT: "${VERTEX_PROJECT:-wb-agile-aubergine-8187}"
+      VERTEX_REGION: "${VERTEX_REGION:-us-east5}"
+      FHIR_STORE: "projects/prj-d-1v-ucd/locations/us-west1/datasets/operational-healthcare-dataset/fhirStores/operational-fhir-store"
+      GCS_BUCKET: "econsent-pdf-pilot-dev-oneverily-prj-d-1v-ucd"
+      ENV_BASE_URL: "https://dev-stable.one.verily.com"
+    volumes:
+      - templates:/workspace/templates
+    networks:
+      - internal
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+  db:
+    image: "postgres:18-alpine"
+    restart: always
+    environment:
+      POSTGRES_USER: "pguser"
+      POSTGRES_PASSWORD: "pgpass"
+      POSTGRES_DB: "program_generator"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  caddy_data:
+  pg_data:
+  templates:
+
+networks:
+  app-network:
+    external: true
+  internal:

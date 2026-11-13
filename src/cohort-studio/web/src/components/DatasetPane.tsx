@@ -1,3 +1,4 @@
+import { SaveCohort } from "./SaveCohort";
 import { useEffect, useId, useState } from "react";
 import { api } from "../api";
 import type { ExportJob, OpenResult } from "../api";
@@ -416,6 +417,7 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
           Export PDF
         </button>
         <SaveToAurora dataset={dataset} />
+        <SaveCohort dataset={scoped} />
         </>}
         </Popover>
       </div>

@@ -55,6 +55,7 @@ import disconnect_watch
 import view_jobs
 import data_jobs
 import workflows
+import cohort_save
 import column_settings
 import live_query
 import query_cache
@@ -1603,6 +1604,58 @@ def start_export(dataset_id: str, req: StartExportRequest):
         raise HTTPException(429, str(e))
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+class SaveCohortRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    filters: list[Filter] = Field(default_factory=list, max_length=200)
+    entity_column: str = Field(min_length=1, max_length=256)
+    target_schema: str = Field(default="result", min_length=1, max_length=63)
+    target_table: str = Field(default="cohort", min_length=1, max_length=63)
+    cohort_definition_id: int = Field(ge=1, le=2_147_483_647)
+    cohort_name: str = Field(min_length=1, max_length=256)
+    date_column: str | None = Field(default=None, max_length=256)
+
+
+@app.get("/api/datasets/{dataset_id}/cohort-targets")
+def cohort_targets(dataset_id: str):
+    """Cohort-shaped tables this dataset's database offers as save destinations."""
+    try:
+        ds = datasets.get(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    live = ds.get("live_source")
+    if not live:
+        raise HTTPException(400, "Saving a cohort needs a live Aurora source. Open the table Live.")
+    try:
+        return {"targets": cohort_save.list_targets(live), "columns": list(cohort_save.COHORT_COLUMNS)}
+    except Exception as e:
+        raise HTTPException(504 if "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
+
+
+@app.post("/api/datasets/{dataset_id}/save-cohort")
+def save_cohort(dataset_id: str, req: SaveCohortRequest):
+    """Insert one row per person matching the filters into an existing cohort table."""
+    try:
+        ds = datasets.get(dataset_id)
+    except datasets.DatasetNotFound:
+        raise HTTPException(404, "Dataset expired or unknown — reload it.")
+    live = ds.get("live_source")
+    if not live:
+        raise HTTPException(400, "Saving a cohort needs a live Aurora source. Open the table Live.")
+    try:
+        saved = cohort_save.save(live, [f.model_dump() for f in req.filters], req.entity_column,
+                                 req.target_schema, req.target_table, req.cohort_definition_id,
+                                 req.cohort_name, req.date_column)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(504 if "statement timeout" in str(e) else 502,
+                            str(e).split("\n")[0][:300])
+    _after_table_write(live["resource_id"])
+    return {"saved": saved, "schema": req.target_schema, "table": req.target_table,
+            "cohort_definition_id": req.cohort_definition_id}
+
 
 @app.get("/api/exports/{job_id}")
 def export_status(job_id: str):

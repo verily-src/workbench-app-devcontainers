@@ -664,6 +664,18 @@ export const api = {
     request<{ extract: ExtractInfo | null }>(
       `/api/extracts/info?${new URLSearchParams({ resource_id: resourceId, table })}`),
 
+  /** Cohort-shaped tables the dataset's database offers as save destinations. */
+  cohortTargets: (datasetId: string) =>
+    request<{ targets: { schema: string; table: string; can_insert: boolean }[]; columns: string[] }>(
+      `/api/datasets/${encodeURIComponent(datasetId)}/cohort-targets`),
+
+  /** Insert one row per person matching the filters into an existing cohort table. */
+  saveCohort: (datasetId: string, body: {
+    filters: Filter[]; entity_column: string; target_schema: string; target_table: string;
+    cohort_definition_id: number; cohort_name: string; date_column?: string | null;
+  }) => request<{ saved: number; schema: string; table: string; cohort_definition_id: number }>(
+    `/api/datasets/${encodeURIComponent(datasetId)}/save-cohort`, post(body)),
+
   ask: (datasetId: string, question: string, filters: Filter[]) =>
     request<{ filters: Filter[]; explanation: string }>(
       `/api/datasets/${datasetId}/ask`, post({ question, filters })),

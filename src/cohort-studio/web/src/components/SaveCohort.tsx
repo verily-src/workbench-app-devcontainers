@@ -18,7 +18,6 @@ export function SaveCohort({ dataset }: { dataset: Dataset }) {
 
   const entity = dataset.entityColumn;
   const people = dataset.result?.entity?.filtered;
-  const estimated = Boolean(dataset.result?.estimated);
   const dateColumns = dataset.columns.filter((c) => c.filter_kind === "date");
   const id = Number(cohortId);
   const target = targets.find((t) => `${t.schema}.${t.table}` === targetKey);
@@ -96,7 +95,7 @@ export function SaveCohort({ dataset }: { dataset: Dataset }) {
       </label>
       {!confirming ? (
         <button className="primary" disabled={!valid || busy} onClick={() => setConfirming(true)}>
-          Save {people != null ? `${estimated ? "~" : ""}${people.toLocaleString()} people` : "cohort"}
+          Save {people != null ? `${people.toLocaleString()} people` : "cohort"}
         </button>
       ) : (
         <div role="group" aria-label="Confirm save">

@@ -119,3 +119,59 @@ def _check_exclude_flag(exclude):
     """Raise OmopSpecError unless exclude is exactly True or False."""
     if type(exclude) is not bool:
         raise OmopSpecError(EXCLUDE_NOT_BOOLEAN_MESSAGE)
+
+
+# ---- building the person list SQL ----
+
+
+def build_person_list_sql(spec):
+    """Return a SELECT that lists one row per person who passes every rule in the spec.
+
+    The spec is checked with parse_spec first, so SQL is never built from unchecked input.
+    The SQL is plain text with no bound parameters, because the app saves it to disk and runs
+    it again after a restart. Concept IDs are written as integers that parse_spec has checked.
+    """
+    clean_spec = parse_spec(spec)
+    schema = _quote_name(clean_spec["schema"])
+    rule_clauses = [_build_rule_clause(schema, rule) for rule in clean_spec["criteria"]]
+
+    return (
+        "SELECT p.person_id AS _rowid,\n"
+        "       p.person_id,\n"
+        f"       {_build_concept_name_lookup(schema, 'gender_concept_id')} AS gender,\n"
+        f"       {_build_concept_name_lookup(schema, 'race_concept_id')} AS race,\n"
+        f"       {_build_concept_name_lookup(schema, 'ethnicity_concept_id')} AS ethnicity,\n"
+        "       p.year_of_birth\n"
+        f'FROM {schema}."person" p\n'
+        "WHERE " + "\n  AND ".join(rule_clauses)
+    )
+
+
+def _quote_name(name):
+    """Put double quotes around a schema, table or column name. The name is already checked."""
+    return f'"{name}"'
+
+
+def _build_rule_clause(quoted_schema, rule):
+    """Return the WHERE clause for one rule: EXISTS for "Has", NOT EXISTS for "Does not have"."""
+    domain = OMOP_DOMAINS[rule["domain"]]
+    event_table = _quote_name(domain["table"])
+    concept_column = _quote_name(domain["concept_column"])
+    concept_ids = ", ".join(str(concept_id) for concept_id in rule["concept_ids"])
+    keyword = "NOT EXISTS" if rule["exclude"] else "EXISTS"
+    return (
+        f"{keyword} (SELECT 1 FROM {quoted_schema}.{event_table} e "
+        f"WHERE e.person_id = p.person_id AND e.{concept_column} IN ({concept_ids}))"
+    )
+
+
+def _build_concept_name_lookup(quoted_schema, person_column):
+    """Return a sub-select that turns a person's concept code into its name.
+
+    It gives an empty value (NULL) when the code has no row in "concept", so the person
+    is kept in the list.
+    """
+    return (
+        f'(SELECT c.concept_name FROM {quoted_schema}."concept" c '
+        f"WHERE c.concept_id = p.{person_column})"
+    )

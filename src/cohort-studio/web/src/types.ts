@@ -148,9 +148,11 @@ export interface ChartResult {
 export interface QueryResult {
   total: number;
   filtered: number;
-  entity?: { column: string; total: number; filtered: number } | null;
+  entity?: { column: string; total: number | null; filtered: number } | null;
   scope: "database" | "loaded";
   sampled?: boolean;
+  /** Row totals are the planner's estimate (very large live tables), not an exact count. */
+  estimated?: boolean;
   cache?: { hit: boolean; as_of: string; ttl_seconds: number };
   columns?: ColumnProfile[];
   charts: (ChartResult | null)[];

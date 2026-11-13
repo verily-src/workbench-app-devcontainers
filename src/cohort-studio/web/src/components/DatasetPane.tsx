@@ -287,9 +287,10 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
   const entityCount = result?.entity;
   const scopeLabel = scope === "database" ? "full database" : result?.sampled ? "capped loaded sample" : "in memory";
   const countLabel = result ? (dataset.entityColumn && entityCount
-    ? `${entityCount.filtered.toLocaleString()} of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+    ? `${entityCount.filtered.toLocaleString()}${entityCount.total == null ? "" : ` of ${entityCount.total.toLocaleString()}`} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+    : result.estimated && result.filtered === result.total ? `~${result.filtered.toLocaleString()} rows`
     : result.filtered === result.total ? `${result.filtered.toLocaleString()} rows`
-      : `${result.filtered.toLocaleString()} of ${result.total.toLocaleString()} rows`) : "Count unavailable";
+      : `${result.filtered.toLocaleString()} of ${result.estimated ? "~" : ""}${result.total.toLocaleString()} rows`) : "Count unavailable";
   const databaseScoped = scope === "database";
   const largeDataset = Boolean(result && (result.total >= 100_000 || result.sampled));
   const exportStatus = exportJob?.status.toLowerCase();
@@ -650,11 +651,12 @@ export function DatasetPane({ dataset, dashboardFilters = NO_FILTERS, palette, o
         <section className="chart-builder-stats" aria-label="Dataset statistics">
           <h3>Data</h3>
           <span className="hero cohort-size" aria-label="Cohort size">
-            <span className="count">{result ? (dataset.entityColumn && entityCount
+            <span className="count">{result ? (result.estimated && !(dataset.entityColumn && entityCount) && result.filtered === result.total ? "~" : "")
+              + (dataset.entityColumn && entityCount
               ? entityCount.filtered.toLocaleString() : result.filtered.toLocaleString()) : "…"}</span>
             <span className="detail">{dataset.entityColumn && entityCount
-              ? `of ${entityCount.total.toLocaleString()} unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
-              : result && result.filtered === result.total ? "rows" : `of ${result?.total.toLocaleString() ?? "…"} rows`}
+              ? `${entityCount.total == null ? "" : `of ${entityCount.total.toLocaleString()} `}unique ${dataset.columns.find((c) => c.name === entityCount.column)?.label || entityCount.column}`
+              : result && result.filtered === result.total ? "rows" : `of ${result?.estimated ? "~" : ""}${result?.total.toLocaleString() ?? "…"} rows`}
               {" · "}{scopeLabel}</span>
           </span>
           <label className="entity-select">Count unique

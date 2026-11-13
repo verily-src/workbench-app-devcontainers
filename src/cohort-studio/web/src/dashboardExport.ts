@@ -38,10 +38,11 @@ export function cohortLine(dataset: Dataset): string {
   const e = dataset.entityColumn ? r.entity : null;
   if (e) {
     const label = dataset.columns.find((c) => c.name === e.column)?.label || e.column;
-    return `${e.filtered.toLocaleString()} of ${e.total.toLocaleString()} unique ${label} · ${scope}`;
+    return `${e.filtered.toLocaleString()}${e.total == null ? "" : ` of ${e.total.toLocaleString()}`} unique ${label} · ${scope}`;
   }
-  return r.filtered === r.total ? `${r.filtered.toLocaleString()} rows · ${scope}`
-    : `${r.filtered.toLocaleString()} of ${r.total.toLocaleString()} rows · ${scope}`;
+  const approx = r.estimated ? "~" : "";
+  return r.filtered === r.total ? `${approx}${r.filtered.toLocaleString()} rows · ${scope}`
+    : `${r.filtered.toLocaleString()} of ${approx}${r.total.toLocaleString()} rows · ${scope}`;
 }
 
 /** Warnings an exported image must carry so it is not read as more than it is. */

@@ -1,3 +1,4 @@
+import logging
 import math
 import threading
 import time
@@ -13,7 +14,13 @@ import chart_measures
 import database as db
 import filter_rules
 
+logger = logging.getLogger(__name__)
+
 TIMEOUT_MS = 15_000
+# Above this many estimated rows an unfiltered open must not scan the whole table: totals come
+# from the planner's estimate and charts are drawn from the first CHART_SAMPLE_ROWS rows.
+LARGE_ROWS = 5_000_000
+CHART_SAMPLE_ROWS = 200_000
 JOIN_PROFILE_BUDGET_S = 3.0
 PAGE_SIZE_MAX = 1000
 CATEGORICAL_VALUES_LIMIT = 50
@@ -160,7 +167,30 @@ def _as_ints(values: list[str]) -> list[int] | None:
 
 
 def _query(conn, live_source: dict, sql: str, params: dict):
-    return conn.execute(text(sql), {**live_source.get("params", {}), **params})
+    try:
+        return conn.execute(text(sql), {**live_source.get("params", {}), **params})
+    except Exception as exc:
+        if "statement timeout" in str(exc) or "canceling statement" in str(exc):
+            # Name the query that ran too long; the browser only sees a bare 504.
+            logger.warning("Live query timed out after %d ms (%s): %.300s",
+                           TIMEOUT_MS, live_source.get("resource_id"), " ".join(str(sql).split()))
+        raise
+
+
+def _estimated_rows(conn, live_source: dict) -> int | None:
+    """Planner row estimate for the source; instant, no scan. None when unavailable."""
+    savepoint = conn.begin_nested()
+    try:
+        plan = _query(conn, live_source,
+                      f"EXPLAIN (FORMAT JSON) SELECT 1 FROM ({live_source['sql']}) AS live", {}).scalar()
+        savepoint.commit()
+        if isinstance(plan, str):
+            import json
+            plan = json.loads(plan)
+        return int(plan[0]["Plan"]["Plan Rows"])
+    except Exception:
+        savepoint.rollback()
+        return None
 
 
 def _numeric_columns(conn, live_source: dict, names) -> dict[str, int]:
@@ -397,9 +427,25 @@ def _profile_columns(live_source: dict, profiles: list[dict], *, bounded_join: b
                                    numeric_columns.get(entry["name"]))
                 parts += [f"MIN({numeric})", f"MAX({numeric})"]
             check_budget()
-            values = _query(conn, live_source,
-                            f"SELECT {', '.join(parts)} FROM {table}", {}).one()
-            for i, entry in enumerate(ranges):
+            savepoint = conn.begin_nested()
+            try:
+                values = _query(conn, live_source,
+                                f"SELECT {', '.join(parts)} FROM {table}", {}).one()
+                savepoint.commit()
+            except Exception as exc:
+                savepoint.rollback()
+                query_cancellation.check()
+                if bounded_join:
+                    raise
+                if "statement timeout" not in str(exc) and "canceling statement" not in str(exc):
+                    raise
+                # On a very large table the full-scan MIN/MAX can exceed the time limit. The
+                # columns keep the min/max from the loaded sample instead of failing the open.
+                logger.warning("Range profile timed out after %d ms for %s; "
+                               "keeping sample bounds for %d column(s).",
+                               TIMEOUT_MS, live_source.get("resource_id"), len(ranges))
+                values = None
+            for i, entry in enumerate(ranges if values is not None else ()):
                 low, high = values[2 * i], values[2 * i + 1]
                 if low is not None and high is not None:
                     entry["min"], entry["max"] = float(low), float(high)
@@ -576,7 +622,42 @@ def _execute_query(live_source: dict, filters: list[dict], chart_specs: list[dic
         where, params = _where(filters, columns, numeric_types)
         has_filters = where != "TRUE"
         out = {"scope": "database", "sampled": False}
-        if summary:
+        estimate = _estimated_rows(conn, live_source) if summary else None
+        large = estimate is not None and estimate >= LARGE_ROWS
+        if summary and large:
+            # Counting every row (and distinct entities) of a very large table cannot finish
+            # inside the time limit. Show the planner's estimate for the total; only an
+            # applied filter gets an exact count, which an index on the filtered column can serve.
+            filtered = estimate
+            if has_filters:
+                filtered = int(_query(conn, live_source,
+                                      f"SELECT COUNT(*) FROM {table} WHERE {where}", params).scalar_one())
+            out.update(total=estimate, filtered=filtered, estimated=True)
+            if entity_column is not None and has_filters:
+                col = f"live.{_q(columns[entity_column])}"
+                distinct = int(_query(conn, live_source,
+                                      f"SELECT COUNT(DISTINCT {col}) FROM {table} WHERE {where}",
+                                      params).scalar_one())
+                out["entity"] = {"column": entity_column, "total": None,
+                                 "filtered": distinct}
+            chart_source = live_source
+            if not has_filters:
+                # An unfiltered chart over the whole table is a full scan per chart. Draw it from
+                # a bounded slice and say so.
+                chart_source = {**live_source,
+                                "sql": f"SELECT * FROM ({live_source['sql']}) AS s "
+                                       f"LIMIT {CHART_SAMPLE_ROWS}"}
+            charts = []
+            for chart in chart_specs:
+                drawn = category_text.normalize_chart(
+                    _chart(conn, chart_source, chart, where, params, columns, numeric_types,
+                           has_filters, None if chart_source is not live_source else base_cache),
+                    numeric_types)
+                if chart_source is not live_source and isinstance(drawn, dict):
+                    drawn["sampled"] = True
+                charts.append(drawn)
+            out["charts"] = charts
+        elif summary:
             aggregates = ["COUNT(*)"]
             if has_filters:
                 aggregates.append(f"COUNT(*) FILTER (WHERE {where})")

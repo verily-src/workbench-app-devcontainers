@@ -102,8 +102,8 @@ def _explain_db_error(exc: Exception, schema: str, table: str) -> Exception:
         constraint = getattr(getattr(original, "diag", None), "constraint_name", None) or "a unique constraint"
         return CohortSaveError(
             f"{schema}.{table} rejected the rows because of {constraint}. A cohort has one row per "
-            "person, so its primary key must include subject_id (for example "
-            "cohort_definition_id, subject_id, cohort_start_date).")
+            "person, so its primary key must include subject_id: use (cohort_definition_id, subject_id). "
+            "Don't add the start date to the key unless every row will have one; key columns can't be empty.")
     if state == "23503":
         return CohortSaveError(
             f"A person in this cohort isn't in the table {schema}.{table} refers to (a foreign key failed).")

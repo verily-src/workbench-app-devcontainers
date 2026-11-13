@@ -912,6 +912,7 @@ export default function App() {
           : undefined}>
         {activeDs ? (
           <FilterPanel key={activeDs.id}
+            deferApply
             columns={activeDs.columns}
             filters={[...activeDs.filters.filter((f) => !activeDashboard.some((d) => d.column === f.column)), ...activeDashboard]}
             dashboardColumns={new Set(activeDashboard.map((f) => f.column))}

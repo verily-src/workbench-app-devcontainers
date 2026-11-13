@@ -6,6 +6,9 @@ interface Props {
   columns: ColumnProfile[];
   filters: Filter[];
   onChange: (filters: Filter[]) => void;
+  /** Hold edits locally until the user presses Apply. Each applied change can be a full scan of
+   *  a very large table, so a checkbox should not start one on its own. */
+  deferApply?: boolean;
   /** Tab parameters a bound can follow. */
   parameters?: Parameter[];
   /** Move an active filter to dashboard level (every tab with this column). */
@@ -167,8 +170,16 @@ function DateFilter({ col, active, onChange, parameters = [] }: {
   );
 }
 
-export function FilterPanel({ columns, filters, onChange, parameters = [], onApplyToAll, dashboardColumns,
-  tabFilters, onClearTabFilter }: Props) {
+export function FilterPanel({ columns, filters: committed, onChange: commit, deferApply = false, parameters = [],
+  onApplyToAll, dashboardColumns, tabFilters, onClearTabFilter }: Props) {
+  // With deferApply, edits go to a local draft and only Apply sends them on. The draft follows
+  // the committed filters when they change elsewhere (a chip removed, Clear all, a saved cohort).
+  const [draft, setDraft] = useState<Filter[]>(committed);
+  const committedKey = JSON.stringify(committed);
+  useEffect(() => { setDraft(committed); }, [committedKey]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const filters = deferApply ? draft : committed;
+  const onChange = deferApply ? setDraft : commit;
+  const dirty = deferApply && JSON.stringify(draft) !== committedKey;
   const numberParams = parameters.filter((p) => p.kind === "number");
   const byColumn = new Map(filters.map((f) => [f.column, f]));
   // Groups the user opened stay open while their filter is edited or cleared.
@@ -213,6 +224,14 @@ export function FilterPanel({ columns, filters, onChange, parameters = [], onApp
 
   return (
     <>
+      {dirty && (
+        <div className="filter-apply-bar" role="group" aria-label="Pending filter changes"
+             style={{ display: "flex", gap: 8, alignItems: "center", margin: "0 0 10px" }}>
+          <button type="button" className="primary" onClick={() => commit(draft)}>Apply filters</button>
+          <button type="button" className="link" onClick={() => setDraft(committed)}>Discard</button>
+          <span className="settings-hint">Not applied yet</span>
+        </div>
+      )}
       {columns.some((c) => c.profile_sampled && c.filter_kind === "none") &&
         <div className="settings-hint">Preview rows can miss fields. Use Dataset settings → Columns to enable a filter.</div>}
       {filterable.map((col) => {

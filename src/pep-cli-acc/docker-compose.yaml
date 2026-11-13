@@ -1,0 +1,28 @@
+version: "2.4"
+services:
+  app:
+    container_name: "application-server"
+    image: "gitlabregistry.pep.cs.ru.nl/pep-public/core/ppp-acc"
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/home/ubuntu:cached
+    ports:
+      - "8080:8080"
+    environment:
+      USER: "root"
+      DEFAULT_WORKSPACE: "/config"
+      SUDO_PASSWORD: "pwd"
+    networks:
+      - app-network
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

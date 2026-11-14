@@ -80,3 +80,11 @@ def omop_database(postgres_server):
         for statement in OMOP_FIXTURE_STATEMENTS:
             connection.execute(statement)
     yield postgres_server
+
+
+@pytest.fixture
+def omop_connection(omop_database):
+    """Open a connection to the OMOP test database. Undo anything the test changed."""
+    with psycopg.connect(omop_database) as connection:
+        yield connection
+        connection.rollback()

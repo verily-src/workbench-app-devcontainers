@@ -72,7 +72,7 @@ def _parse_one_rule(rule):
     _check_no_unexpected_keys(rule, RULE_KEYS)
 
     domain = rule.get("domain")
-    _check_domain_name(domain)
+    check_domain_name(domain)
 
     concept_ids = rule.get("concept_ids")
     _check_concept_ids(concept_ids)
@@ -90,7 +90,7 @@ def _check_no_unexpected_keys(data, allowed_keys):
             raise OmopSpecError(f"Unexpected field: {key}.")
 
 
-def _check_domain_name(domain):
+def check_domain_name(domain):
     """Raise OmopSpecError unless the domain is one of the names in OMOP_DOMAINS."""
     if not isinstance(domain, str) or domain not in OMOP_DOMAINS:
         raise OmopSpecError(_build_unknown_domain_message())
@@ -132,7 +132,7 @@ def build_person_list_sql(spec):
     it again after a restart. Concept IDs are written as integers that parse_spec has checked.
     """
     clean_spec = parse_spec(spec)
-    schema = _quote_name(clean_spec["schema"])
+    schema = quote_name(clean_spec["schema"])
     rule_clauses = [_build_rule_clause(schema, rule) for rule in clean_spec["criteria"]]
 
     return (
@@ -147,7 +147,7 @@ def build_person_list_sql(spec):
     )
 
 
-def _quote_name(name):
+def quote_name(name):
     """Put double quotes around a schema, table or column name. The name is already checked."""
     return f'"{name}"'
 
@@ -155,8 +155,8 @@ def _quote_name(name):
 def _build_rule_clause(quoted_schema, rule):
     """Return the WHERE clause for one rule: EXISTS for "Has", NOT EXISTS for "Does not have"."""
     domain = OMOP_DOMAINS[rule["domain"]]
-    event_table = _quote_name(domain["table"])
-    concept_column = _quote_name(domain["concept_column"])
+    event_table = quote_name(domain["table"])
+    concept_column = quote_name(domain["concept_column"])
     concept_ids = ", ".join(str(concept_id) for concept_id in rule["concept_ids"])
     keyword = "NOT EXISTS" if rule["exclude"] else "EXISTS"
     return (

@@ -52,7 +52,12 @@ def wait_connection_string(resource_id: str, timeout: float = 120):
         event.wait(timeout=timeout)
 
 
-def resolve_connection_string(resource_id: str, access_mode: str = "WRITE_READ", retries: int = 3) -> str:
+# The app only reads Aurora data. With READ_ONLY, the database itself refuses any write.
+# Every Aurora connection uses this default: the pre-warm, the retry, and schema.py.
+AURORA_ACCESS_MODE = "READ_ONLY"
+
+
+def resolve_connection_string(resource_id: str, access_mode: str = AURORA_ACCESS_MODE, retries: int = 3) -> str:
     if resource_id in _conn_string_cache:
         return _conn_string_cache[resource_id]
     last_err = None

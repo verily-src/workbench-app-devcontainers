@@ -13,9 +13,8 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import BigInteger, Column, Float, MetaData, Table, cast, distinct, func, select, text
+from sqlalchemy import BigInteger, Float, cast, distinct, func, select
 from sqlalchemy.orm import Session
-from sqlalchemy.types import NullType
 
 from cohorts import cohort_exists, delete_cohort, get_cohort, init_cohorts, list_cohorts, save_cohort
 from db import are_tables_ready, get_active_resource_id, get_cached_tables, get_db, get_sqlite_engine, list_aurora_resources, list_s3_folders, set_active_resource, warm_resource_cache
@@ -555,24 +554,6 @@ def get_samples(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-_FILTERS_TEMP_TABLE = "_cohort_explorer_filters_base"
-
-
-def _materialize_filters_base(db: Session, model, columns: set[str]) -> Table:
-    """Snapshot the active model's rows into a temp table for this request.
-
-    get_filters runs one query per filterable column. For a plain Aurora
-    table that's cheap, but a join-backed model's __table__ is the whole
-    multi-way JOIN -- querying it once per column re-runs that join once per
-    column. Running the join exactly once into a temp table and querying
-    that instead keeps the per-request cost flat as the join grows.
-    """
-    compiled = select(model).compile(dialect=db.get_bind().dialect, compile_kwargs={"literal_binds": True})
-    db.execute(text(f'DROP TABLE IF EXISTS "{_FILTERS_TEMP_TABLE}"'))
-    db.execute(text(f'CREATE TEMPORARY TABLE "{_FILTERS_TEMP_TABLE}" AS {compiled}'))
-    return Table(_FILTERS_TEMP_TABLE, MetaData(), *(Column(name, NullType()) for name in columns))
-
-
 @app.get("/api/filters")
 def get_filters(
     request: Request,
@@ -589,65 +570,60 @@ def get_filters(
         range_cols = get_range_filters()
         pk_name = get_pk_name()
 
-        base = _materialize_filters_base(db, model, {pk_name, *categorical_cols, *range_cols})
-        try:
-            def col_fn(name: str):
-                return base.c[name]
+        def col_fn(name: str):
+            return getattr(model, name)
 
-            pk = base.c[pk_name]
+        pk = col_fn(pk_name)
 
-            for col_name in categorical_cols:
-                col = col_fn(col_name)
-                if has_filters:
-                    cross_stmt = _apply_filters_with(select(pk), col_fn, filters, exclude=col_name)
-                    cross_ids = cross_stmt.subquery()
-                    values_stmt = (
-                        select(col, func.count(pk))
-                        .where(pk.in_(select(cross_ids.c[pk_name])))
-                        .group_by(col)
-                        .order_by(col)
-                    )
-                else:
-                    values_stmt = (
-                        select(col, func.count(pk))
-                        .group_by(col)
-                        .order_by(col)
-                    )
-                rows = db.execute(values_stmt).all()
-                options = []
-                for val, cnt in rows:
-                    options.append({
-                        "value": val if val is not None else "__null__",
-                        "label": val if val is not None else "Unknown",
-                        "count": cnt,
-                    })
-                result[col_name] = options
+        for col_name in categorical_cols:
+            col = col_fn(col_name)
+            if has_filters:
+                cross_stmt = _apply_filters_with(select(pk), col_fn, filters, exclude=col_name)
+                cross_ids = cross_stmt.subquery()
+                values_stmt = (
+                    select(col, func.count(pk))
+                    .where(pk.in_(select(cross_ids.c[pk_name])))
+                    .group_by(col)
+                    .order_by(col)
+                )
+            else:
+                values_stmt = (
+                    select(col, func.count(pk))
+                    .group_by(col)
+                    .order_by(col)
+                )
+            rows = db.execute(values_stmt).all()
+            options = []
+            for val, cnt in rows:
+                options.append({
+                    "value": val if val is not None else "__null__",
+                    "label": val if val is not None else "Unknown",
+                    "count": cnt,
+                })
+            result[col_name] = options
 
-            for col_name in range_cols:
-                col = _query_column_with(col_fn, col_name)
-                if has_filters:
-                    all_stmt = _apply_filters_with(select(pk), col_fn, filters)
-                    filtered_ids = all_stmt.subquery()
-                    range_stmt = (
-                        select(func.min(col), func.max(col))
-                        .where(pk.in_(select(filtered_ids.c[pk_name])))
-                        .where(col.isnot(None))
-                    )
-                else:
-                    range_stmt = (
-                        select(func.min(col), func.max(col))
-                        .where(col.isnot(None))
-                    )
-                row = db.execute(range_stmt).one()
-                result[col_name] = {
-                    "min": float(row[0]) if row[0] is not None else None,
-                    "max": float(row[1]) if row[1] is not None else None,
-                }
+        for col_name in range_cols:
+            col = _query_column_with(col_fn, col_name)
+            if has_filters:
+                all_stmt = _apply_filters_with(select(pk), col_fn, filters)
+                filtered_ids = all_stmt.subquery()
+                range_stmt = (
+                    select(func.min(col), func.max(col))
+                    .where(pk.in_(select(filtered_ids.c[pk_name])))
+                    .where(col.isnot(None))
+                )
+            else:
+                range_stmt = (
+                    select(func.min(col), func.max(col))
+                    .where(col.isnot(None))
+                )
+            row = db.execute(range_stmt).one()
+            result[col_name] = {
+                "min": float(row[0]) if row[0] is not None else None,
+                "max": float(row[1]) if row[1] is not None else None,
+            }
 
-            return result
-        finally:
-            db.execute(text(f'DROP TABLE IF EXISTS "{_FILTERS_TEMP_TABLE}"'))
-            db.commit()
+        return result
     except Exception as e:
         logger.error("Failed to fetch filters: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e

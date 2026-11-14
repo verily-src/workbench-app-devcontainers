@@ -1,13 +1,10 @@
-"""get_filters used to run one query per filterable column. Against a plain
-Aurora table that's cheap, but a join-backed model's __table__ is the whole
-multi-way JOIN, so every one of those per-column queries re-ran the entire
-join from scratch -- the more tables joined, the more that cost multiplied,
-until it blew past the frontend's request timeout.
+"""get_filters on a join-backed model and on a plain table.
 
-These tests exercise get_filters against a real (SQLite) 3-table fan-out
-join and check that results match the pre-refactor per-column semantics
-exactly -- categorical counts, cross-filter exclusion, and a text-backed
-numeric range -- while only materializing the join once per request.
+These tests run get_filters against a real (SQLite) 3-table fan-out join and check
+categorical counts, cross-filter exclusion, and a text-backed numeric range.
+
+get_filters does not copy the join into a temporary table. The Workbench read-only
+database role is not allowed to create one (see test_aurora_read_only.py).
 """
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
@@ -105,9 +102,7 @@ def test_get_filters_on_join_applies_cross_filter_exclusion(monkeypatch, tmp_pat
 
 
 def test_get_filters_on_join_is_repeatable_on_same_session(monkeypatch, tmp_path):
-    """The temp table used to materialize the join must not leak across
-    requests on a pooled connection -- calling get_filters twice on the same
-    session must not fail with "table already exists"."""
+    """Calling get_filters twice on the same session gives the same answer."""
     import dynamic_model
     import main
 
@@ -123,8 +118,7 @@ def test_get_filters_on_join_is_repeatable_on_same_session(monkeypatch, tmp_path
 
 
 def test_get_filters_on_plain_single_table_still_works(monkeypatch, tmp_path):
-    """Non-join sources also go through the new materialized-base path;
-    confirm that doesn't change their (already correct) behavior."""
+    """A plain single table gives correct filter options."""
     import dynamic_model
     import main
     from sqlalchemy import create_engine

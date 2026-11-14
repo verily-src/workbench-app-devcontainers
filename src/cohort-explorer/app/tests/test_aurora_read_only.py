@@ -2,6 +2,9 @@ import subprocess
 
 import psycopg
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from starlette.requests import Request
 
 import db
 from omop_concept_search import search_concepts
@@ -59,10 +62,15 @@ def test_connection_pre_warm_uses_read_only_access(fake_wb_run):
 
 @pytest.fixture
 def reader_connection(omop_database):
-    """Connect as a database user that has only SELECT rights on the omop schema."""
+    """Connect as a database user that has only SELECT rights on the omop schema.
+
+    Like the real Workbench read-only role, this user cannot create temporary tables.
+    Postgres allows that to everyone by default, so the right is taken away here.
+    """
     with psycopg.connect(omop_database, autocommit=True) as admin:
         admin.execute(f"DROP ROLE IF EXISTS {READ_ONLY_ROLE}")
         admin.execute(f"CREATE ROLE {READ_ONLY_ROLE} LOGIN")
+        admin.execute("REVOKE TEMPORARY ON DATABASE postgres FROM PUBLIC")
         admin.execute(f"GRANT USAGE ON SCHEMA omop TO {READ_ONLY_ROLE}")
         admin.execute(f"GRANT SELECT ON ALL TABLES IN SCHEMA omop TO {READ_ONLY_ROLE}")
     reader_url = omop_database.replace("postgres@", f"{READ_ONLY_ROLE}@")
@@ -71,6 +79,7 @@ def reader_connection(omop_database):
     with psycopg.connect(omop_database, autocommit=True) as admin:
         admin.execute(f"DROP OWNED BY {READ_ONLY_ROLE}")
         admin.execute(f"DROP ROLE {READ_ONLY_ROLE}")
+        admin.execute("GRANT TEMPORARY ON DATABASE postgres TO PUBLIC")
 
 
 def test_read_only_user_can_search_concepts(reader_connection):
@@ -87,11 +96,43 @@ def test_read_only_user_can_list_people(reader_connection):
     assert sorted(row[1] for row in rows) == [1, 2, 4]
 
 
-def test_read_only_user_can_make_a_temporary_table(reader_connection):
-    # /api/filters copies the cohort into a temporary table, once per request.
-    reader_connection.execute("CREATE TEMPORARY TABLE copy_of_people AS SELECT * FROM omop.person")
-    rows = reader_connection.execute("SELECT count(*) FROM copy_of_people").fetchall()
-    assert rows == [(6,)]
+def test_read_only_user_cannot_make_a_temporary_table(reader_connection):
+    # This is what the real Workbench read-only role does: it refuses temporary tables.
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        reader_connection.execute("CREATE TEMPORARY TABLE copy_of_people AS SELECT * FROM omop.person")
+
+
+def test_filters_work_for_read_only_user_without_temporary_tables(
+    omop_database, reader_connection, monkeypatch, tmp_path
+):
+    import dynamic_model
+    import main
+
+    monkeypatch.setattr(dynamic_model, "_SCHEMA_FILE", tmp_path / "schema.json")
+    spec = {
+        "schema": "omop",
+        "criteria": [{"domain": "condition", "concept_ids": [201826], "exclude": False}],
+    }
+    mappings = [
+        {"column": "person_id", "type": "integer", "filter": "none", "label": "Person"},
+        {"column": "gender", "type": "text", "filter": "categorical", "label": "Gender"},
+        {"column": "year_of_birth", "type": "integer", "filter": "range", "label": "Year of birth"},
+    ]
+    dynamic_model.set_active_join_mapping(
+        mappings, build_person_list_sql(spec), "test-resource",
+        table_name="omop:omop", entity_column="person_id",
+    )
+    reader_url = omop_database.replace("postgres@", f"{READ_ONLY_ROLE}@")
+    engine = create_engine(reader_url.replace("postgresql://", "postgresql+psycopg://"))
+
+    with Session(engine) as session:
+        result = main.get_filters(Request({"type": "http", "query_string": b""}), session)
+
+    assert result["gender"] == [
+        {"value": "Female", "label": "Female", "count": 2},
+        {"value": "Male", "label": "Male", "count": 1},
+    ]
+    assert result["year_of_birth"] == {"min": 1950.0, "max": 1980.0}
 
 
 def test_read_only_user_cannot_drop_a_table(reader_connection):

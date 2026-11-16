@@ -51,22 +51,12 @@ readonly LSB_RELEASE
 # Download the official PostgreSQL signing key
 echo "Downloading PostgreSQL signing key..."
 # The server sometimes stalls and drops the connection, so bound each attempt
-# and retry. A loop is used because older curl lacks --retry-all-errors.
-key_downloaded="false"
-for attempt in 1 2 3 4 5; do
-    if curl -fsSL --connect-timeout 10 --max-time 30 \
-        https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-        --output /usr/share/keyrings/postgresql-keyring.asc; then
-        key_downloaded="true"
-        break
-    fi
-    echo "Key download attempt ${attempt} failed."
-    sleep 3
-done
-if [[ "${key_downloaded}" != "true" ]]; then
-    echo "Error: failed to download the PostgreSQL signing key." >&2
-    exit 1
-fi
+# and retry.
+curl -fsSL \
+    --connect-timeout 10 --max-time 30 \
+    --retry 5 --retry-delay 3 --retry-all-errors \
+    https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    --output /usr/share/keyrings/postgresql-keyring.asc
 
 # Add the PostgreSQL Apt repository to the sources list
 echo "Adding PostgreSQL repository..."

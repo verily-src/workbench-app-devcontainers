@@ -1,6 +1,6 @@
 services:
   app:
-    image: us-docker.pkg.dev/verily-workbench/workbench-images/base:latest
+    image: us-west2-docker.pkg.dev/verily-workbench/workbench-images/base:latest
     command: sleep infinity
     network_mode: host
     volumes:

@@ -10,7 +10,7 @@
   },
   "forwardPorts": [8502],
   "portsAttributes": {
-    "8501": {
+    "8502": {
       "label": "Harmony Dashboard",
       "onAutoForward": "ignore"
     }

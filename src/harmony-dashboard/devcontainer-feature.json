@@ -1,0 +1,42 @@
+{
+  "id": "harmony-dashboard",
+  "version": "1.0.0",
+  "name": "Harmony Data Harmonization Dashboard",
+  "description": "Installs and launches the Harmony Streamlit dashboard for agentic clinical data harmonization.",
+  "options": {
+    "port": {
+      "type": "string",
+      "default": "8502",
+      "description": "Port on which the Streamlit server listens."
+    },
+    "gcsBucket": {
+      "type": "string",
+      "default": "anschutz-pancreatic-cancer-ds-bucket-wb-golden-parsnip-6065",
+      "description": "GCS bucket containing harmonization run artifacts."
+    },
+    "gcsRootPrefix": {
+      "type": "string",
+      "default": "experimental/run_artifacts",
+      "description": "Root prefix inside the GCS bucket containing mapping/ and audit/ folders."
+    },
+    "datasetName": {
+      "type": "string",
+      "default": "WP1 Data",
+      "description": "Display name of the dataset shown in the dashboard header."
+    },
+    "datasetSubtitle": {
+      "type": "string",
+      "default": "Pancreatic Cancer Dataset | Agentic FHIR Harmonization",
+      "description": "Subtitle shown beneath the dataset name."
+    },
+    "localPath": {
+      "type": "string",
+      "default": "",
+      "description": "Optional local or gcsfuse-mounted root path overriding GCS."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/python"
+  ],
+  "postStartCommand": "/usr/local/bin/start-harmony-dashboard.sh"
+}

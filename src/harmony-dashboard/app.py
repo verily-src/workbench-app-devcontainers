@@ -33,6 +33,7 @@ DATASET_SUBTITLE = os.environ.get("HARMONY_DATASET_SUBTITLE", "Agentic FHIR Harm
 
 st.set_page_config(
     page_title=f"{DATASET_NAME} | Agentic Data Harmonization",
+    page_icon="🧩",
     layout="wide",
     initial_sidebar_state="expanded",
 )

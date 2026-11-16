@@ -3,11 +3,6 @@
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "workspaceFolder": "/home/jupyter",
-  "features": {
-    "./harmony-dashboard": {
-      "port": "8502"
-    }
-  },
   "forwardPorts": [8502],
   "portsAttributes": {
     "8502": {
@@ -15,5 +10,6 @@
       "onAutoForward": "ignore"
     }
   },
-  "postStartCommand": "/usr/local/bin/start-harmony-dashboard.sh"
+  "postCreateCommand": "bash /app/setup.sh",
+  "postStartCommand": "bash /app/start.sh"
 }

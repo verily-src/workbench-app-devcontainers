@@ -11,14 +11,21 @@ function get_tag() (
     echo "usage: get_tag <prefix> <tag> <default-value>"
     exit 1
   fi
-  local tag_key="$1":"$2"
+  local tag_key="$2"
+  if [[ -n "$1" ]]; then
+    tag_key="$1":"$2"
+  fi
 
   local token
   token=$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
   local tag_value
-  tag_value="$(docker run --rm --network host \
+  # Overrides the daemon-wide DNS default, which --network host does not exempt this container
+  # from (Docker still injects its own /etc/resolv.conf via the container's mount namespace). On a
+  # reboot of an already-airlocked instance, that default already points at the DNS filter, which
+  # hasn't started yet at this point in boot - without this override, the call fails outright.
+  tag_value="$(docker run --rm --network host --dns=169.254.169.253 \
     public.ecr.aws/aws-cli/aws-cli \
     ec2 describe-tags \
     --filters "Name=resource-id,Values=${id}" "Name=key,Values=${tag_key}" \
@@ -44,6 +51,33 @@ function get_guest_attribute() {
   get_tag "vwbapp" "${1}" "${2}"
 }
 readonly -f get_guest_attribute
+
+# Reads an unprefixed, WSM-internal tag (e.g. "network-policy") and, unlike get_tag, returns the
+# describe-tags call's own exit status - so a caller like an airlock decision can fail closed on a
+# transient read failure instead of treating it the same as a confirmed-absent tag.
+function get_system_tag_checked() (
+  { set +o xtrace; } 2>/dev/null
+  local tag_key="$1"
+  local token
+  token=$(wget --method=PUT --header "X-aws-ec2-metadata-token-ttl-seconds:600" -q -O - http://169.254.169.254/latest/api/token)
+  local id
+  id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
+  local tag_value
+  # --dns override: see the comment on the equivalent call in get_tag above.
+  tag_value="$(docker run --rm --network host --dns=169.254.169.253 \
+    public.ecr.aws/aws-cli/aws-cli \
+    ec2 describe-tags \
+    --filters "Name=resource-id,Values=${id}" "Name=key,Values=${tag_key}" \
+    --query "Tags[0].Value" --output text 2>/dev/null)"
+  local status=$?
+  if [[ "${tag_value}" == "None" ]]; then
+    echo "${2}"
+  else
+    echo "${tag_value}"
+  fi
+  return "${status}"
+)
+readonly -f get_system_tag_checked
 
 
 # Sets tags on the EC2 instance with the given key and value. Tags set from the instance is prfixed with vwbapp:
@@ -72,7 +106,8 @@ function set_metadata() (
   local id
   id=$(wget --header "X-aws-ec2-metadata-token: ${token}" -q -O - http://169.254.169.254/latest/meta-data/instance-id)
 
-  docker run --rm --network host \
+  # --dns override: see the comment on the equivalent call in get_tag above.
+  docker run --rm --network host --dns=169.254.169.253 \
     public.ecr.aws/aws-cli/aws-cli \
     ec2 create-tags \
       --resources "${id}" \

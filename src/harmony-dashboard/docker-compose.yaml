@@ -1,0 +1,16 @@
+services:
+  app:
+    image: us-docker.pkg.dev/verily-workbench/workbench-images/base:latest
+    command: sleep infinity
+    network_mode: host
+    volumes:
+      - /home/jupyter:/home/jupyter
+    environment:
+      - GCS_BUCKET=${GCS_BUCKET:-anschutz-pancreatic-cancer-ds-bucket-wb-golden-parsnip-6065}
+      - GCS_ROOT_PREFIX=${GCS_ROOT_PREFIX:-experimental/run_artifacts}
+      - HARMONY_DATASET_NAME=${HARMONY_DATASET_NAME:-WP1 Data}
+      - HARMONY_DATASET_SUBTITLE=${HARMONY_DATASET_SUBTITLE:-Pancreatic Cancer Dataset | Agentic FHIR Harmonization}
+      - HARMONY_LOCAL_PATH=${HARMONY_LOCAL_PATH:-}
+      - HARMONY_GCS_PATH=${HARMONY_GCS_PATH:-}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+      - HARMONY_PORT=${HARMONY_PORT:-8502}

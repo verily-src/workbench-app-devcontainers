@@ -1,0 +1,18 @@
+{
+  "name": "Data Harmonization Dashboard",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "app",
+  "workspaceFolder": "/home/jupyter",
+  "features": {
+    "./harmony-dashboard": {
+      "port": "8502"
+    }
+  },
+  "forwardPorts": [8502],
+  "portsAttributes": {
+    "8501": {
+      "label": "Harmony Dashboard",
+      "onAutoForward": "ignore"
+    }
+  }
+}

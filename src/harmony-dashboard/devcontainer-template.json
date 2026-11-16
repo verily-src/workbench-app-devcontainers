@@ -1,0 +1,7 @@
+{
+  "id": "harmony-dashboard",
+  "version": "1.0.0",
+  "name": "Harmony Data Harmonization Dashboard",
+  "description": "Interactive Streamlit dashboard for monitoring agentic EPIC-to-FHIR mapping, audit, and remediation runs.",
+  "options": {}
+}

@@ -1,5 +1,5 @@
 {
-  "name": "Data Harmonization Dashboard",
+  "name": "Harmony Data Harmonization Dashboard",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "workspaceFolder": "/home/jupyter",
@@ -14,5 +14,6 @@
       "label": "Harmony Dashboard",
       "onAutoForward": "ignore"
     }
-  }
+  },
+  "postStartCommand": "/usr/local/bin/start-harmony-dashboard.sh"
 }

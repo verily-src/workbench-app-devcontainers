@@ -50,8 +50,6 @@ readonly LSB_RELEASE
 
 # Download the official PostgreSQL signing key
 echo "Downloading PostgreSQL signing key..."
-# The server sometimes stalls and drops the connection, so bound each attempt
-# and retry.
 curl -fsSL \
     --connect-timeout 10 --max-time 30 \
     --retry 5 --retry-delay 3 --retry-all-errors \

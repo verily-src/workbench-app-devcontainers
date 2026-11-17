@@ -50,7 +50,10 @@ readonly LSB_RELEASE
 
 # Download the official PostgreSQL signing key
 echo "Downloading PostgreSQL signing key..."
-curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+curl -fsSL \
+    --connect-timeout 10 --max-time 30 \
+    --retry 5 --retry-delay 3 --retry-all-errors \
+    https://www.postgresql.org/media/keys/ACCC4CF8.asc \
     --output /usr/share/keyrings/postgresql-keyring.asc
 
 # Add the PostgreSQL Apt repository to the sources list

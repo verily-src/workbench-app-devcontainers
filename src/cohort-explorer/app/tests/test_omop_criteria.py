@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from omop_criteria import OmopSpecError, check_schema_name, parse_spec
+from omop_criteria import OmopSpecError, check_schema_name, parse_spec, quote_name
 from omop_domains import OMOP_DOMAINS
 
 # The exact messages below are copied from section 4.6 of omop-poc-spec.md on purpose.
@@ -68,6 +68,25 @@ def test_unsafe_schema_names_rejected_with_message(name):
     with pytest.raises(OmopSpecError) as error:
         check_schema_name(name)
     assert str(error.value) == SCHEMA_MESSAGE
+
+
+def test_quote_name_wraps_name_in_double_quotes():
+    assert quote_name("omop") == '"omop"'
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param('a"b', id="double-quote-inside"),
+        pytest.param("a\x00b", id="nul-character-inside"),
+        pytest.param("", id="empty-name"),
+        pytest.param(None, id="not-text-none"),
+        pytest.param(5, id="not-text-number"),
+    ],
+)
+def test_quote_name_refuses_unsafe_names(name):
+    with pytest.raises(ValueError):
+        quote_name(name)
 
 
 def test_every_domain_has_table_and_concept_column():

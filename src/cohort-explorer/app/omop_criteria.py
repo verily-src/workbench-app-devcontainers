@@ -158,7 +158,13 @@ def build_person_list_sql(spec):
 
 
 def quote_name(name):
-    """Put double quotes around a schema, table or column name. The name is already checked."""
+    """Put double quotes around a schema, table or column name.
+
+    Raise ValueError for a name that cannot be quoted safely. This is a mistake in the code
+    that called it, not a mistake by the user: the user's input is checked earlier.
+    """
+    if not isinstance(name, str) or name == "" or '"' in name or "\x00" in name:
+        raise ValueError(f"Cannot quote an unsafe name: {name!r}")
     return f'"{name}"'
 
 

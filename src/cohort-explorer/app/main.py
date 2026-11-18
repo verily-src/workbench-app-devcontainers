@@ -21,7 +21,7 @@ from db import are_tables_ready, get_active_resource_id, get_cached_tables, get_
 from dynamic_model import DynamicBase, TEXT_STORAGE_TYPES, clear_schema, get_active_mapping, get_active_model, get_all_columns, get_categorical_filters, get_entity_column, get_mapping_for_column, get_pk_name, get_range_filters, load_schema_from_disk, set_active_join_mapping, set_active_mapping
 from joins import JoinError, JoinStep, build_select, row_growth_preview, validate_join
 from models import Base, Sample
-from omop_cohort import activate_omop_cohort
+from omop_cohort import activate_omop_cohort, find_omop_concepts
 from omop_criteria import OmopSpecError
 from schema import ColumnMapping, get_aurora_storage_types, infer_from_aurora, infer_from_csv, infer_from_join, list_aurora_columns, load_mapping_csv, mappings_to_dicts, save_mapping_csv
 from seed import seed_dynamic, seed_from_tsv
@@ -510,6 +510,20 @@ def create_omop_cohort(body: dict) -> dict:
     except OmopSpecError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"count": people_count}
+
+
+@app.get("/api/omop/concepts")
+def search_omop_concepts(
+    resource_id: str = Query(""),
+    schema: str = Query(""),
+    domain: str = Query(""),
+    q: str = Query(""),
+) -> list:
+    """Search concepts by name in one domain. Return a list of {concept_id, name, vocabulary, persons}."""
+    try:
+        return find_omop_concepts(resource_id, schema, domain, q)
+    except OmopSpecError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @app.post("/api/connect")

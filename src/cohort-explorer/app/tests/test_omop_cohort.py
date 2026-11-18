@@ -277,3 +277,75 @@ def test_cohort_works_for_read_only_user(omop_app_as_reader):
         filters = main.get_filters(a_plain_request(), session)
     assert sorted(row["person_id"] for row in rows) == [1, 2]
     assert [option["value"] for option in filters["gender"]] == ["Female", "Male"]
+
+
+# ---- the concept search endpoint (AC25, AC36) ----
+
+UNKNOWN_DOMAIN_MESSAGE = "Choose a valid OMOP domain. Current valid choices: condition, drug."
+METFORMIN_RESULTS = [
+    {"concept_id": 40000001, "name": "Metformin 500 MG Oral Tablet", "vocabulary": "RxNorm", "persons": 2},
+    {"concept_id": 40000002, "name": "Metformin 1000 MG Oral Tablet", "vocabulary": "RxNorm", "persons": 1},
+]
+
+
+def search_concepts_endpoint(resource_id="test-resource", schema="omop", domain="drug", q="metformin"):
+    return main.search_omop_concepts(resource_id=resource_id, schema=schema, domain=domain, q=q)
+
+
+def search_and_expect_rejection(**request):
+    """Make the search, expect HTTP 400, and return the message."""
+    with pytest.raises(HTTPException) as error:
+        search_concepts_endpoint(**request)
+    assert error.value.status_code == 400
+    return error.value.detail
+
+
+def test_search_endpoint_returns_matching_concepts(omop_app):
+    assert search_concepts_endpoint() == METFORMIN_RESULTS
+
+
+def test_search_endpoint_rejects_missing_database_choice(omop_app):
+    assert search_and_expect_rejection(resource_id="") == NO_DATABASE_MESSAGE
+
+
+def test_search_endpoint_rejects_unsafe_schema_name(omop_app):
+    assert search_and_expect_rejection(schema='omop"; DROP TABLE person;--') == SCHEMA_MESSAGE
+
+
+def test_search_endpoint_rejects_unknown_domain(omop_app):
+    assert search_and_expect_rejection(domain="procedure") == UNKNOWN_DOMAIN_MESSAGE
+
+
+def test_search_endpoint_rejects_database_that_is_not_omop(omop_app):
+    assert search_and_expect_rejection(schema="no_such_schema") == (
+        "This database does not look like OMOP data. "
+        "Table concept was not found in schema no_such_schema."
+    )
+
+
+def test_search_endpoint_rejects_unreachable_database(omop_app, monkeypatch):
+    def fail_to_connect(resource_id):
+        raise psycopg.OperationalError("connection refused")
+
+    monkeypatch.setattr(omop_cohort, "_connect_aurora", fail_to_connect)
+    assert search_and_expect_rejection() == CANNOT_CONNECT_MESSAGE
+
+
+def test_search_endpoint_does_not_change_the_active_cohort(omop_app, tmp_path):
+    request_cohort(diabetes_and_metformin_spec(), resource_id="first-resource")
+    before = saved_schema_text(tmp_path)
+
+    search_concepts_endpoint(resource_id="second-resource")
+
+    assert saved_schema_text(tmp_path) == before
+    assert db.get_active_resource_id() == "first-resource"
+
+
+def test_search_endpoint_does_not_change_omop_tables(omop_app, omop_database):
+    rows_before = count_all_omop_rows(omop_database)
+    search_concepts_endpoint()
+    assert count_all_omop_rows(omop_database) == rows_before
+
+
+def test_search_endpoint_works_for_read_only_user(omop_app_as_reader):
+    assert search_concepts_endpoint() == METFORMIN_RESULTS

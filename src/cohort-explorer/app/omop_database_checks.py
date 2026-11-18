@@ -7,7 +7,7 @@ import psycopg
 from omop_criteria import OmopSpecError, check_schema_name, parse_spec
 from omop_domains import OMOP_DOMAINS
 
-COUNT_TIME_LIMIT_SECONDS = 10
+COUNT_TIME_LIMIT_SECONDS = 15
 
 COUNT_TOO_SLOW_MESSAGE = "This cohort is too large to count. Add more rules and try again."
 

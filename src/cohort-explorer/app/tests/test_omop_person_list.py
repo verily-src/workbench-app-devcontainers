@@ -67,6 +67,13 @@ def test_bad_spec_raises_before_sql_is_built():
         build_person_list_sql(spec)
 
 
+def test_huge_concept_id_rejected_before_sql_is_built():
+    # Turning a 5,000-digit number into text would crash with a plain ValueError.
+    spec = make_spec(("drug", [10**5000], False))
+    with pytest.raises(OmopSpecError):
+        build_person_list_sql(spec)
+
+
 def test_sql_has_no_colon_for_sqlalchemy_text():
     # SQLAlchemy text() reads ":name" as a bound parameter. The app wraps this SQL in text().
     assert ":" not in build_person_list_sql(make_spec(has_diabetes(), lacks_metformin()))

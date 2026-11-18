@@ -173,6 +173,24 @@ def test_concept_ids_that_are_not_whole_numbers_rejected(bad_id):
     assert_spec_rejected(spec, "Concept IDs must be whole numbers.")
 
 
+def test_concept_ids_at_database_limits_accepted():
+    spec = make_spec(criteria=[make_rule(concept_ids=[-2147483648, 2147483647])])
+    assert parse_spec(spec)["criteria"][0]["concept_ids"] == [-2147483648, 2147483647]
+
+
+@pytest.mark.parametrize(
+    "too_big_or_small",
+    [
+        pytest.param(2147483648, id="just-above-the-limit"),
+        pytest.param(-2147483649, id="just-below-the-limit"),
+        pytest.param(10**5000, id="number-with-5000-digits"),
+    ],
+)
+def test_concept_ids_outside_database_range_rejected(too_big_or_small):
+    spec = make_spec(criteria=[make_rule(concept_ids=[too_big_or_small])])
+    assert_spec_rejected(spec, "Concept IDs must be between -2147483648 and 2147483647.")
+
+
 @pytest.mark.parametrize("bad_flag", ["yes", 1, 0, None])
 def test_exclude_flag_that_is_not_true_or_false_rejected(bad_flag):
     spec = make_spec(criteria=[make_rule(exclude=bad_flag)])

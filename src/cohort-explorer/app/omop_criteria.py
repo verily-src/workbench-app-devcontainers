@@ -15,6 +15,11 @@ SCHEMA_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,62}")
 MAX_RULES = 12
 MAX_CONCEPT_IDS = 500
 
+# OMOP concept IDs are 32-bit integers. A bigger number can never match a concept, and a number
+# with thousands of digits makes Python's str() fail when the SQL is built.
+LOWEST_CONCEPT_ID = -2_147_483_648
+HIGHEST_CONCEPT_ID = 2_147_483_647
+
 SPEC_KEYS = {"schema", "criteria"}
 RULE_KEYS = {"domain", "concept_ids", "exclude"}
 
@@ -28,6 +33,9 @@ TOO_MANY_RULES_MESSAGE = f"Use at most {MAX_RULES} rules."
 NO_CONCEPTS_MESSAGE = "Pick at least one item for every rule."
 TOO_MANY_CONCEPTS_MESSAGE = f"Too many items picked in one rule. Use at most {MAX_CONCEPT_IDS}."
 CONCEPT_NOT_WHOLE_NUMBER_MESSAGE = "Concept IDs must be whole numbers."
+CONCEPT_OUT_OF_RANGE_MESSAGE = (
+    f"Concept IDs must be between {LOWEST_CONCEPT_ID} and {HIGHEST_CONCEPT_ID}."
+)
 EXCLUDE_NOT_BOOLEAN_MESSAGE = "The Has / Does not have choice must be true or false."
 
 
@@ -102,7 +110,7 @@ def _build_unknown_domain_message():
 
 
 def _check_concept_ids(concept_ids):
-    """Raise OmopSpecError unless concept_ids is a list of 1 to MAX_CONCEPT_IDS whole numbers."""
+    """Raise OmopSpecError unless concept_ids is 1 to MAX_CONCEPT_IDS whole numbers in range."""
     if concept_ids is None or concept_ids == []:
         raise OmopSpecError(NO_CONCEPTS_MESSAGE)
     if not isinstance(concept_ids, list):
@@ -113,6 +121,8 @@ def _check_concept_ids(concept_ids):
         # type() is int, not isinstance: True and False are ints in Python, and must not pass.
         if type(concept_id) is not int:
             raise OmopSpecError(CONCEPT_NOT_WHOLE_NUMBER_MESSAGE)
+        if not LOWEST_CONCEPT_ID <= concept_id <= HIGHEST_CONCEPT_ID:
+            raise OmopSpecError(CONCEPT_OUT_OF_RANGE_MESSAGE)
 
 
 def _check_exclude_flag(exclude):

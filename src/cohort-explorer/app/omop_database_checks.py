@@ -9,7 +9,12 @@ from omop_domains import OMOP_DOMAINS
 
 COUNT_TIME_LIMIT_SECONDS = 15
 
-COUNT_TOO_SLOW_MESSAGE = "This cohort is too large to count. Add more rules and try again."
+# The message says "took longer", not "too large": a cold database can be slow for a small
+# cohort too.
+COUNT_TOO_SLOW_MESSAGE = (
+    f"The count took longer than {COUNT_TIME_LIMIT_SECONDS} seconds and was stopped. "
+    "Try again, or add more rules."
+)
 
 
 def list_tables_needed_by_spec(spec):

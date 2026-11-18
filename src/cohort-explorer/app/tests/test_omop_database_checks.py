@@ -11,7 +11,9 @@ SCHEMA_MESSAGE = (
     "The schema name may use only letters, digits and underscores, "
     "and must start with a letter or underscore."
 )
-TOO_SLOW_MESSAGE = "This cohort is too large to count. Add more rules and try again."
+TOO_SLOW_MESSAGE = (
+    "The count took longer than 15 seconds and was stopped. Try again, or add more rules."
+)
 A_QUERY_THAT_TAKES_TWO_SECONDS = "SELECT 1 FROM pg_sleep(2)"
 
 

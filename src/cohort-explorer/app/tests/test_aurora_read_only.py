@@ -11,9 +11,6 @@ from omop_concept_search import search_concepts
 from omop_criteria import build_person_list_sql
 from omop_database_checks import check_tables_exist, count_people_with_time_limit
 
-READ_ONLY_ROLE = "omop_reader"
-
-
 # ---- the command the app runs to get a connection (no database needed) ----
 
 
@@ -61,28 +58,6 @@ def test_connection_pre_warm_uses_read_only_access(fake_wb_run):
 # ---- what a read-only database user can and cannot do (against the test database) ----
 
 
-@pytest.fixture
-def reader_connection(omop_database):
-    """Connect as a database user that has only SELECT rights on the omop schema.
-
-    Like the real Workbench read-only role, this user cannot create temporary tables.
-    Postgres allows that to everyone by default, so the right is taken away here.
-    """
-    with psycopg.connect(omop_database, autocommit=True) as admin:
-        admin.execute(f"DROP ROLE IF EXISTS {READ_ONLY_ROLE}")
-        admin.execute(f"CREATE ROLE {READ_ONLY_ROLE} LOGIN")
-        admin.execute("REVOKE TEMPORARY ON DATABASE postgres FROM PUBLIC")
-        admin.execute(f"GRANT USAGE ON SCHEMA omop TO {READ_ONLY_ROLE}")
-        admin.execute(f"GRANT SELECT ON ALL TABLES IN SCHEMA omop TO {READ_ONLY_ROLE}")
-    reader_url = omop_database.replace("postgres@", f"{READ_ONLY_ROLE}@")
-    with psycopg.connect(reader_url) as connection:
-        yield connection
-    with psycopg.connect(omop_database, autocommit=True) as admin:
-        admin.execute(f"DROP OWNED BY {READ_ONLY_ROLE}")
-        admin.execute(f"DROP ROLE {READ_ONLY_ROLE}")
-        admin.execute("GRANT TEMPORARY ON DATABASE postgres TO PUBLIC")
-
-
 def test_read_only_user_can_search_concepts(reader_connection):
     results = search_concepts(reader_connection, "omop", "drug", "metformin")
     assert [r["concept_id"] for r in results] == [40000001, 40000002]
@@ -104,7 +79,7 @@ def test_read_only_user_cannot_make_a_temporary_table(reader_connection):
 
 
 def test_filters_work_for_read_only_user_without_temporary_tables(
-    omop_database, reader_connection, monkeypatch, tmp_path
+    reader_url, reader_connection, monkeypatch, tmp_path
 ):
     import dynamic_model
     import main
@@ -123,7 +98,6 @@ def test_filters_work_for_read_only_user_without_temporary_tables(
         mappings, build_person_list_sql(spec), "test-resource",
         table_name="omop:omop", entity_column="person_id",
     )
-    reader_url = omop_database.replace("postgres@", f"{READ_ONLY_ROLE}@")
     engine = create_engine(reader_url.replace("postgresql://", "postgresql+psycopg://"))
 
     with Session(engine) as session:

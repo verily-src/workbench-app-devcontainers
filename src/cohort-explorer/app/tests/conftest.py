@@ -88,3 +88,34 @@ def omop_connection(omop_database):
     with psycopg.connect(omop_database) as connection:
         yield connection
         connection.rollback()
+
+
+READ_ONLY_ROLE = "omop_reader"
+
+
+@pytest.fixture
+def reader_url(omop_database):
+    """Create a database user that has only SELECT rights on the omop schema.
+
+    Like the real Workbench read-only role, this user cannot create temporary tables.
+    Postgres allows that to everyone by default, so the right is taken away here.
+    Yield the connection string for that user, and remove the user after the test.
+    """
+    with psycopg.connect(omop_database, autocommit=True) as admin:
+        admin.execute(f"DROP ROLE IF EXISTS {READ_ONLY_ROLE}")
+        admin.execute(f"CREATE ROLE {READ_ONLY_ROLE} LOGIN")
+        admin.execute("REVOKE TEMPORARY ON DATABASE postgres FROM PUBLIC")
+        admin.execute(f"GRANT USAGE ON SCHEMA omop TO {READ_ONLY_ROLE}")
+        admin.execute(f"GRANT SELECT ON ALL TABLES IN SCHEMA omop TO {READ_ONLY_ROLE}")
+    yield omop_database.replace("postgres@", f"{READ_ONLY_ROLE}@")
+    with psycopg.connect(omop_database, autocommit=True) as admin:
+        admin.execute(f"DROP OWNED BY {READ_ONLY_ROLE}")
+        admin.execute(f"DROP ROLE {READ_ONLY_ROLE}")
+        admin.execute("GRANT TEMPORARY ON DATABASE postgres TO PUBLIC")
+
+
+@pytest.fixture
+def reader_connection(reader_url):
+    """Open a connection as the read-only database user."""
+    with psycopg.connect(reader_url) as connection:
+        yield connection

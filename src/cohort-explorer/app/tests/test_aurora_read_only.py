@@ -9,6 +9,7 @@ from starlette.requests import Request
 import db
 from omop_concept_search import search_concepts
 from omop_criteria import build_person_list_sql
+from omop_database_checks import check_tables_exist, count_people_with_time_limit
 
 READ_ONLY_ROLE = "omop_reader"
 
@@ -133,6 +134,16 @@ def test_filters_work_for_read_only_user_without_temporary_tables(
         {"value": "Male", "label": "Male", "count": 1},
     ]
     assert result["year_of_birth"] == {"min": 1950.0, "max": 1980.0}
+
+
+def test_read_only_user_can_check_tables_and_count_people(reader_connection):
+    # The time limit uses set_config, which needs no special database right.
+    check_tables_exist(reader_connection, "omop", ["person", "concept", "drug_exposure"])
+    spec = {
+        "schema": "omop",
+        "criteria": [{"domain": "condition", "concept_ids": [201826], "exclude": False}],
+    }
+    assert count_people_with_time_limit(reader_connection, build_person_list_sql(spec)) == 3
 
 
 def test_read_only_user_cannot_drop_a_table(reader_connection):

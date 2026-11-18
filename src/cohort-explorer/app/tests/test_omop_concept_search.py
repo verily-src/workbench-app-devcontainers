@@ -1,5 +1,6 @@
 import pytest
 
+import omop_concept_search
 from omop_concept_search import _build_like_pattern, search_concepts
 from omop_criteria import OmopSpecError
 
@@ -9,6 +10,9 @@ SCHEMA_MESSAGE = (
     "and must start with a letter or underscore."
 )
 TOO_LONG_MESSAGE = "Search text is limited to 200 characters."
+TOO_SLOW_MESSAGE = (
+    "The search took longer than 15 seconds and was stopped. Try more specific words."
+)
 
 METFORMIN_500 = {
     "concept_id": 40000001,
@@ -156,3 +160,31 @@ def test_search_returns_at_most_50_results(omop_connection, sixty_drugs):
 
 def test_blank_search_returns_at_most_10_results(omop_connection, sixty_drugs):
     assert len(search_concepts(omop_connection, "omop_many", "drug", "")) == 10
+
+
+# ---- the time limit (AC44) ----
+
+
+@pytest.fixture
+def search_that_takes_two_seconds(monkeypatch):
+    """Make every search run a slow query, and shorten the limit so the test stays fast."""
+    monkeypatch.setattr(
+        omop_concept_search, "_build_search_sql", lambda *arguments: ("SELECT 1 FROM pg_sleep(2)", [])
+    )
+    monkeypatch.setattr(omop_concept_search, "SEARCH_TIME_LIMIT_SECONDS", 0.2)
+
+
+def test_search_time_limit_is_15_seconds():
+    assert omop_concept_search.SEARCH_TIME_LIMIT_SECONDS == 15
+
+
+def test_slow_search_rejected_with_reason(omop_connection, search_that_takes_two_seconds):
+    with pytest.raises(OmopSpecError) as error:
+        search_concepts(omop_connection, "omop", "drug", "metformin")
+    assert str(error.value) == TOO_SLOW_MESSAGE
+
+
+def test_connection_usable_after_slow_search(omop_connection, search_that_takes_two_seconds):
+    with pytest.raises(OmopSpecError):
+        search_concepts(omop_connection, "omop", "drug", "metformin")
+    assert omop_connection.execute("SELECT 1").fetchall() == [(1,)]

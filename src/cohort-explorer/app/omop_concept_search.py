@@ -10,6 +10,7 @@ from omop_criteria import (
     check_schema_name,
     quote_name,
 )
+from omop_database_checks import run_query_with_time_limit
 from omop_domains import OMOP_DOMAINS
 
 MAX_SEARCH_CHARS = 200
@@ -17,7 +18,14 @@ MAX_SEARCH_WORDS = 8
 MAX_RESULTS = 50
 MAX_RESULTS_FOR_BLANK_SEARCH = 10
 
+# Searching a large vocabulary can take long. This is below the 30 seconds the frontend waits.
+SEARCH_TIME_LIMIT_SECONDS = 15
+
 SEARCH_TOO_LONG_MESSAGE = f"Search text is limited to {MAX_SEARCH_CHARS} characters."
+SEARCH_TOO_SLOW_MESSAGE = (
+    f"The search took longer than {SEARCH_TIME_LIMIT_SECONDS} seconds and was stopped. "
+    "Try more specific words."
+)
 
 
 def search_concepts(connection, schema, domain, search_text):
@@ -34,7 +42,9 @@ def search_concepts(connection, schema, domain, search_text):
     words = _split_search_text(search_text)
 
     sql, parameters = _build_search_sql(schema, domain, words)
-    rows = connection.execute(sql, parameters).fetchall()
+    rows = run_query_with_time_limit(
+        connection, sql, parameters, SEARCH_TIME_LIMIT_SECONDS, SEARCH_TOO_SLOW_MESSAGE
+    )
     return [
         {"concept_id": row[0], "name": row[1], "vocabulary": row[2], "persons": row[3]}
         for row in rows

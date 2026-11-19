@@ -160,6 +160,10 @@ def list_aurora_resources(wait: bool = False) -> list[dict]:
         if "AURORA_DATABASE" not in rtype:
             continue
         db_data = r if rtype == "AWS_AURORA_DATABASE" else r.get("referencedResource", r)
+        if db_data is None:
+            # A reference whose target cannot be read has no database details. Skip it.
+            logger.warning("Skipping %s: its referenced resource is empty", r.get("id"))
+            continue
         aurora.append({
             "id": r.get("id"),
             "name": r.get("id"),

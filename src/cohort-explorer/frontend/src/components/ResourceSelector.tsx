@@ -20,6 +20,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import type { AuroraTable, Datasource, JoinStep, S3File, S3Folder } from "../api";
 import { connectResource, fetchDatasources, listS3Files, refreshDatasources } from "../api";
 import JoinBuilder from "./JoinBuilder";
+import OmopCohortPanel from "./OmopCohortPanel";
 import TableSelect from "./TableSelect";
 
 export interface ConnectionMeta {
@@ -33,16 +34,18 @@ export interface ConnectionMeta {
 
 interface Props {
   onConnected: (resourceId: string, meta?: ConnectionMeta) => void;
+  // Called when the user clicks "Open in Explorer" in the OMOP cohort builder.
+  onOmopCohortReady?: (resourceId: string, schema: string, cohortFolder: string) => void;
 }
 
-export default function ResourceSelector({ onConnected }: Props) {
+export default function ResourceSelector({ onConnected, onOmopCohortReady }: Props) {
   const [resources, setResources] = useState<Datasource[]>([]);
   const [s3Folders, setS3Folders] = useState<S3Folder[]>([]);
   const [selected, setSelected] = useState("__file__");
   const [selectedFolder, setSelectedFolder] = useState("");
   const [selectedFile, setSelectedFile] = useState("");
   const [selectedTable, setSelectedTable] = useState("");
-  const [auroraMode, setAuroraMode] = useState<"table" | "join">("table");
+  const [auroraMode, setAuroraMode] = useState<"table" | "join" | "omop">("table");
   const [joinSteps, setJoinSteps] = useState<JoinStep[] | null>(null);
   const [s3Files, setS3Files] = useState<S3File[]>([]);
   const [auroraTables, setAuroraTables] = useState<AuroraTable[]>([]);
@@ -288,6 +291,7 @@ export default function ResourceSelector({ onConnected }: Props) {
             >
               <ToggleButton value="table">Single table</ToggleButton>
               <ToggleButton value="join">Join tables</ToggleButton>
+              <ToggleButton value="omop">OMOP cohort builder</ToggleButton>
             </ToggleButtonGroup>
           )}
 
@@ -323,6 +327,17 @@ export default function ResourceSelector({ onConnected }: Props) {
             </FormControl>
           )}
 
+          {isAuroraMode && auroraMode === "omop" && (
+            <Box sx={{ mb: 2 }}>
+              {/* The key makes a new database start with fresh rules. */}
+              <OmopCohortPanel
+                key={selected}
+                resourceId={selected}
+                onOpenInExplorer={(schema) => onOmopCohortReady?.(selected, schema, selectedFolder)}
+              />
+            </Box>
+          )}
+
           {isFileMode && (
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel>File</InputLabel>
@@ -353,14 +368,16 @@ export default function ResourceSelector({ onConnected }: Props) {
             </Typography>
           )}
 
-          <Button
-            variant="contained"
-            fullWidth
-            onClick={handleConnect}
-            disabled={!canConnect}
-          >
-            {connecting ? "Connecting..." : "Connect"}
-          </Button>
+          {!(isAuroraMode && auroraMode === "omop") && (
+            <Button
+              variant="contained"
+              fullWidth
+              onClick={handleConnect}
+              disabled={!canConnect}
+            >
+              {connecting ? "Connecting..." : "Connect"}
+            </Button>
+          )}
         </CardContent>
       </Card>
     </Box>

@@ -35,7 +35,8 @@ export interface ConnectionMeta {
 interface Props {
   onConnected: (resourceId: string, meta?: ConnectionMeta) => void;
   // Called when the user clicks "Open in Explorer" in the OMOP cohort builder.
-  onOmopCohortReady?: (resourceId: string, schema: string, cohortFolder: string) => void;
+  // It may return a promise. A rejection shows its message in the panel.
+  onOmopCohortReady?: (resourceId: string, schema: string, cohortFolder: string) => void | Promise<void>;
 }
 
 export default function ResourceSelector({ onConnected, onOmopCohortReady }: Props) {
@@ -333,7 +334,7 @@ export default function ResourceSelector({ onConnected, onOmopCohortReady }: Pro
               <OmopCohortPanel
                 key={selected}
                 resourceId={selected}
-                onOpenInExplorer={(schema) => onOmopCohortReady?.(selected, schema, selectedFolder)}
+                onOpenInExplorer={async (schema) => { await onOmopCohortReady?.(selected, schema, selectedFolder); }}
               />
             </Box>
           )}

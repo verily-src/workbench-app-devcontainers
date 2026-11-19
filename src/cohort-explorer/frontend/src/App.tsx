@@ -195,6 +195,28 @@ export default function App() {
     saveState(resourceId, emptyFilters, schemaTableName);
   }, [loadData, resourceId, emptyFilters]);
 
+  // The cohort is already the backend's active model (the "Find people" request did that).
+  // This reads it back and shows it. The mappings must be set before connected, because the
+  // empty filters are worked out from them.
+  const handleOmopCohortReady = useCallback(async (id: string, schema: string, cohortFolder: string) => {
+    if (cohortFolder) await connectResource(id, cohortFolder);
+    const active = await fetchActiveSchema();
+    if (active.mappings.length === 0) {
+      throw new Error("The cohort was not found. Click Find people again.");
+    }
+    const empty = buildEmptyFilters(active.mappings);
+    const tableName = `omop:${schema}`;
+    const firstCat = buildFieldMeta(active.mappings).find((f) => f.dataType === "categorical");
+    setResourceId(id);
+    setMappings(active.mappings);
+    setPending(empty);
+    setApplied(empty);
+    setChartConfigs(firstCat ? [{ id: "default", fieldKey: firstCat.key, chartType: "bar" }] : []);
+    setSchemaTableName(tableName);
+    setConnected(true);
+    saveState(id, empty, tableName);
+  }, []);
+
   const handleDisconnect = useCallback(() => {
     setConnected(false);
     setResourceId("__local__");
@@ -341,7 +363,7 @@ export default function App() {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <ResourceSelector onConnected={async (id, meta) => {
+        <ResourceSelector onOmopCohortReady={handleOmopCohortReady} onConnected={async (id, meta) => {
           setResourceId(id);
           if (!meta?.sourceType) {
             setConnected(true);

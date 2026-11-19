@@ -10,7 +10,7 @@ const DEFAULT_SCHEMA = "omop";
 
 interface Props {
   resourceId: string;
-  onOpenInExplorer: (schema: string) => void;
+  onOpenInExplorer: (schema: string) => void | Promise<void>;
 }
 
 function describeMatch(count: number): string {
@@ -50,6 +50,15 @@ export default function OmopCohortPanel({ resourceId, onOpenInExplorer }: Props)
       setErrorMessage(error instanceof Error ? error.message : "Could not find people.");
     } finally {
       setIsFinding(false);
+    }
+  };
+
+  const openInExplorer = async () => {
+    setErrorMessage(null);
+    try {
+      await onOpenInExplorer(schema);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not open the explorer.");
     }
   };
 
@@ -104,7 +113,7 @@ export default function OmopCohortPanel({ resourceId, onOpenInExplorer }: Props)
             fullWidth
             sx={{ mt: 1 }}
             disabled={matchCount === 0}
-            onClick={() => onOpenInExplorer(schema)}
+            onClick={openInExplorer}
           >
             Open in Explorer
           </Button>

@@ -91,6 +91,16 @@ describe("OmopCohortPanel", () => {
     expect(onOpenInExplorer).toHaveBeenCalledWith("omop");
   });
 
+  it("shows the message when the explorer cannot be opened", async () => {
+    const onOpenInExplorer = vi.fn().mockRejectedValue(new Error("The cohort was not found. Click Find people again."));
+    showPanel(onOpenInExplorer);
+    await pickDiabetesAndFindPeople();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open in Explorer" }));
+
+    expect(await screen.findByText("The cohort was not found. Click Find people again.")).toBeTruthy();
+  });
+
   it("turns Open in Explorer off when nobody matches", async () => {
     createCohortMock.mockResolvedValue({ count: 0 });
     showPanel();

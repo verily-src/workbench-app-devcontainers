@@ -1,0 +1,13 @@
+[server]
+headless = true
+# The page is served through the Workbench proxy, so the browser's origin is
+# the Workbench host. Streamlit refuses the page's live connection from any
+# origin that is not listed here.
+corsAllowedOrigins = ["https://workbench.verily.com"]
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Hides Streamlit's "Deploy" button and developer menu.
+toolbarMode = "minimal"

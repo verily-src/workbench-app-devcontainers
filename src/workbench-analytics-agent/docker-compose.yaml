@@ -1,0 +1,20 @@
+services:
+  app:
+    # The container name must be "application-server"
+    container_name: "application-server"
+    # The app code is baked into the image; nothing is mounted over it.
+    build:
+      context: ./app
+    restart: always
+    # The port specified here will be forwarded and accessible from the
+    # Workbench UI.
+    ports:
+      - 8501:8501
+    networks:
+      - app-network
+
+networks:
+  # The Docker network must be named "app-network". This is an external network
+  # that is created outside of this docker-compose file.
+  app-network:
+    external: true

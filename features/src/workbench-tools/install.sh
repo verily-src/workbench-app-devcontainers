@@ -187,6 +187,7 @@ chown -R "${USERNAME}:" "${LIBRARIES_ENV_DIR}"
         # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
         printf 'export PATH="$PATH:%s"\n' "${DSUB_ENV_DIR}/bin"
         printf "alias dsub_activate='env_activate %s'\n" "${DSUB_ENV_DIR}"
+        echo "alias dsub_deactivate='env_deactivate'"
     fi
 
     # Like venv's activate: put an env's python and pip first on the PATH

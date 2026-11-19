@@ -16,6 +16,7 @@ from omop_criteria import (
     build_person_list_sql,
     check_domain_name,
     check_schema_name,
+    get_summary_column_names,
     parse_spec,
 )
 from omop_database_checks import (
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 NO_DATABASE_MESSAGE = "Choose a database first."
 CANNOT_CONNECT_MESSAGE = "Could not connect to the database. Check the database choice and try again."
 
-# The columns the person list SQL returns, in this order (omop-poc-spec.md section 4.5).
+# The first columns the person list SQL returns, in this order (omop-poc-spec.md section 4.5).
 # The row ID column _rowid is not listed: the model adds it itself.
 OMOP_COLUMN_MAPPINGS = [
     {"column": "person_id", "type": "integer", "filter": "none", "label": "Person"},
@@ -40,6 +41,19 @@ OMOP_COLUMN_MAPPINGS = [
     {"column": "ethnicity", "type": "text", "filter": "categorical", "label": "Ethnicity"},
     {"column": "year_of_birth", "type": "integer", "filter": "range", "label": "Year of birth"},
 ]
+
+
+def build_column_mappings(clean_spec):
+    """Return the base columns, then two summary columns for each "Has" rule."""
+    mappings = [dict(mapping) for mapping in OMOP_COLUMN_MAPPINGS]
+    for rule_number, rule in enumerate(clean_spec["criteria"], start=1):
+        if rule["exclude"]:
+            continue
+        items, first_date = get_summary_column_names(rule_number)
+        label = f"{rule['domain'].capitalize()} (rule {rule_number})"
+        mappings.append({"column": items, "type": "text", "filter": "none", "label": f"{label}: items"})
+        mappings.append({"column": first_date, "type": "text", "filter": "none", "label": f"{label}: first date"})
+    return mappings
 
 
 def activate_omop_cohort(resource_id, spec):
@@ -57,7 +71,7 @@ def activate_omop_cohort(resource_id, spec):
 
     set_active_resource(resource_id)
     set_active_join_mapping(
-        [dict(mapping) for mapping in OMOP_COLUMN_MAPPINGS],
+        build_column_mappings(clean_spec),
         person_list_sql,
         resource_id,
         table_name=f"omop:{clean_spec['schema']}",

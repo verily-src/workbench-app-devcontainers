@@ -124,9 +124,31 @@ def test_active_model_is_the_omop_model(omop_app, tmp_path):
     assert saved["table_name"] == "omop:omop"
     assert saved["entity_column"] == "person_id"
     assert [mapping["column"] for mapping in saved["mappings"]] == [
-        "person_id", "gender", "race", "ethnicity", "year_of_birth"
+        "person_id", "gender", "race", "ethnicity", "year_of_birth",
+        "rule1_items", "rule1_first_date",
+        "rule2_items", "rule2_first_date",
     ]
     assert db.get_active_resource_id() == "test-resource"
+
+
+def test_summary_columns_get_readable_labels(omop_app, tmp_path):
+    request_cohort(diabetes_and_metformin_spec())
+    saved = json.loads(saved_schema_text(tmp_path))
+    labels = [mapping["label"] for mapping in saved["mappings"]][5:]
+    assert labels == [
+        "Condition (rule 1): items", "Condition (rule 1): first date",
+        "Drug (rule 2): items", "Drug (rule 2): first date",
+    ]
+
+
+def test_samples_include_the_summary_values(omop_app):
+    request_cohort(diabetes_and_metformin_spec())
+    with active_session() as session:
+        rows = main.get_samples(a_plain_request(), session)
+    person_one = next(row for row in rows if row["person_id"] == 1)
+    assert person_one["rule1_items"] == "Type 2 diabetes mellitus"
+    assert person_one["rule1_first_date"] == "2020-01-10"
+    assert person_one["rule2_items"] == "Metformin 500 MG Oral Tablet"
 
 
 def test_samples_return_the_matching_people(omop_app):

@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/nemo@sha256:f96daf8b2f07a4f8fb20e754f91b507e507ceb9119943027a4d43d7ca15e3896 AS base
+FROM nvcr.io/nvidia/nemo@sha256:3d387b96f4a984778616c8e283136289df25aa5b521ecf07e2e68f7b0e28580b AS base
 
 ARG NB_USER=jupyter
 ARG NB_UID=1010

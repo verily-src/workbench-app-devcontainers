@@ -148,12 +148,14 @@ else
     mamba create --prefix "${LIBRARIES_ENV_DIR}" -y "${CONDA_PACKAGES_LIBRARIES[@]}"
 fi
 
-# Install dsub via pip if on GCP. The conda version is outdated.
-# dsub is installed in LIBRARIES_ENV_DIR because it can be used as a Python
-# library, and users may want to install additional packages alongside it.
+# Install dsub via pip in its own environment if on GCP (the conda version is
+# outdated). It pins old Google libraries that conflict with the libraries env.
 # PYTHONNOUSERSITE=1 prevents pip from seeing/modifying packages in user site-packages.
+readonly DSUB_ENV_DIR="${WORKBENCH_TOOLS_DIR}/dsub"
 if [[ "${CLOUD}" == "gcp" ]]; then
-    PYTHONNOUSERSITE=1 "${LIBRARIES_ENV_DIR}/bin/pip" install dsub
+    echo "Building Environment 4 (dsub)..."
+    mamba create --prefix "${DSUB_ENV_DIR}" -y "conda-forge::python" "conda-forge::pip"
+    PYTHONNOUSERSITE=1 "${DSUB_ENV_DIR}/bin/pip" install dsub
 fi
 
 # Force the perl and python scripts to use the correct perl/python
@@ -179,6 +181,41 @@ chown -R "${USERNAME}:" "${LIBRARIES_ENV_DIR}"
     # Set PATH to include workbench-tools binaries
     # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
     printf 'export PATH="$PATH:%s"\n' "${SAMTOOLS_ENV_DIR}/bin:${BINARIES_ENV_DIR}/bin"
+
+    # Append dsub's env to the PATH so its python and pip don't shadow the user's
+    if [[ "${CLOUD}" == "gcp" ]]; then
+        # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
+        printf 'export PATH="$PATH:%s"\n' "${DSUB_ENV_DIR}/bin"
+        printf "alias dsub_activate='env_activate %s'\n" "${DSUB_ENV_DIR}"
+    fi
+
+    # Like venv's activate: put an env's python and pip first on the PATH
+    cat <<'EOF'
+env_activate() {
+    local dir="${1:-}"
+    if [[ -z "${dir}" || ! -d "${dir}/bin" ]]; then
+        echo "usage: env_activate <path to environment>" >&2
+        return 1
+    fi
+    env_deactivate
+    _OLD_ENV_PATH="${PATH}"
+    _OLD_ENV_PS1="${PS1:-}"
+    export PATH="${dir}/bin:${PATH}"
+    PS1="(${dir}) ${PS1:-}"
+    hash -r 2>/dev/null
+    echo "Activated environment at ${dir}. To deactivate, run 'env_deactivate'."
+}
+
+env_deactivate() {
+    if [[ -z "${_OLD_ENV_PATH:-}" ]]; then
+        return 0
+    fi
+    export PATH="${_OLD_ENV_PATH}"
+    PS1="${_OLD_ENV_PS1}"
+    unset _OLD_ENV_PATH _OLD_ENV_PS1
+    hash -r 2>/dev/null
+}
+EOF
 
     # Set CROMWELL_JAR environment variable
     printf 'export CROMWELL_JAR="%s"\n' "${BINARIES_ENV_DIR}/share/cromwell/cromwell.jar"

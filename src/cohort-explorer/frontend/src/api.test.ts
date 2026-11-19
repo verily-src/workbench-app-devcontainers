@@ -147,3 +147,72 @@ describe("exportUrl", () => {
     expect(url).toMatch(/^\/proxy\/8080\/api\/export/);
   });
 });
+
+describe("OMOP concept search request", () => {
+  it("sends the database, schema, domain and search text as query parameters", async () => {
+    const fetchSpy = mockFetch({ json: () => Promise.resolve([]) });
+
+    await api.searchOmopConcepts("my-db", "omop", "drug", "metformin 500");
+
+    const url = new URL(fetchSpy.mock.calls[0][0] as string, "http://localhost");
+    expect(url.pathname).toBe("/proxy/8080/api/omop/concepts");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      resource_id: "my-db",
+      schema: "omop",
+      domain: "drug",
+      q: "metformin 500",
+    });
+  });
+
+  it("escapes characters that would break the query string", async () => {
+    const fetchSpy = mockFetch({ json: () => Promise.resolve([]) });
+
+    await api.searchOmopConcepts("my-db", "omop", "drug", "a&b=c");
+
+    const url = new URL(fetchSpy.mock.calls[0][0] as string, "http://localhost");
+    expect(url.searchParams.get("q")).toBe("a&b=c");
+  });
+
+  it("returns the list the backend sends", async () => {
+    const results = [{ concept_id: 40000001, name: "Metformin 500 MG Oral Tablet", vocabulary: "RxNorm", persons: 2 }];
+    mockFetch({ json: () => Promise.resolve(results) });
+
+    expect(await api.searchOmopConcepts("my-db", "omop", "drug", "metformin")).toEqual(results);
+  });
+
+  it("throws the plain message the backend sends", async () => {
+    mockFetch({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ detail: "Choose a database first." }),
+    });
+
+    await expect(api.searchOmopConcepts("", "omop", "drug", "x")).rejects.toThrow("Choose a database first.");
+  });
+});
+
+describe("OMOP cohort request", () => {
+  const spec = { schema: "omop", criteria: [{ domain: "condition", concept_ids: [201826], exclude: false }] };
+
+  it("posts the database and the spec as JSON", async () => {
+    const fetchSpy = mockFetch({ json: () => Promise.resolve({ count: 2 }) });
+
+    const result = await api.createOmopCohort("my-db", spec);
+
+    expect(result).toEqual({ count: 2 });
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/proxy/8080/api/omop/cohort");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ resource_id: "my-db", spec });
+  });
+
+  it("throws the plain message the backend sends", async () => {
+    mockFetch({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ detail: "Could not connect to the database. Check the database choice and try again." }),
+    });
+
+    await expect(api.createOmopCohort("my-db", spec)).rejects.toThrow("Could not connect to the database.");
+  });
+});

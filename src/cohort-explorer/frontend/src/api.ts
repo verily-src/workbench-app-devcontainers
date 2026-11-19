@@ -186,6 +186,53 @@ export async function fetchActiveSchema(): Promise<{ mappings: ColumnMapping[] }
   return res.json();
 }
 
+export interface OmopConcept {
+  concept_id: number;
+  name: string;
+  vocabulary: string;
+  persons: number;
+}
+
+export interface OmopRule {
+  domain: string;
+  concept_ids: number[];
+  exclude: boolean;
+}
+
+export interface OmopSpec {
+  schema: string;
+  criteria: OmopRule[];
+}
+
+// The backend limits the search itself to 15 seconds, so the default 30 second wait is enough.
+export async function searchOmopConcepts(
+  resourceId: string,
+  schema: string,
+  domain: string,
+  searchText: string,
+): Promise<OmopConcept[]> {
+  const params = new URLSearchParams({
+    resource_id: resourceId,
+    schema,
+    domain,
+    q: searchText,
+  });
+  const res = await fetchWithTimeout(`${BASE}/api/omop/concepts?${params}`);
+  if (!res.ok) await extractError(res, "Concept search failed");
+  return res.json();
+}
+
+// Returns how many people match. The backend also makes this cohort the active one.
+export async function createOmopCohort(resourceId: string, spec: OmopSpec): Promise<{ count: number }> {
+  const res = await fetchWithTimeout(`${BASE}/api/omop/cohort`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resource_id: resourceId, spec }),
+  });
+  if (!res.ok) await extractError(res, "Could not build the cohort");
+  return res.json();
+}
+
 export interface CohortSummary {
   name: string;
   description: string;

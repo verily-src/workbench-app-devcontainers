@@ -75,8 +75,8 @@
     "filter": "src\\/playground\\/playground\\/Dockerfile"
   },
   "nvcr.io/nvidia/nemo": {
-    "tag": "25.07.nemotron-nano-v2",
-    "installed": "sha256:f96daf8b2f07a4f8fb20e754f91b507e507ceb9119943027a4d43d7ca15e3896",
+    "tag": "26.10",
+    "installed": "sha256:3d387b96f4a984778616c8e283136289df25aa5b521ecf07e2e68f7b0e28580b",
     "filter": "src\\/.*\\/Dockerfile"
   },
   "nvcr.io/nvidia/clara/clara-parabricks": {

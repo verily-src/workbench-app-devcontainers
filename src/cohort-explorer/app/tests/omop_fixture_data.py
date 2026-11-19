@@ -22,8 +22,8 @@ OMOP_FIXTURE_STATEMENTS = [
         domain_id text,
         vocabulary_id text
     )""",
-    "CREATE TABLE omop.condition_occurrence (person_id integer, condition_concept_id integer)",
-    "CREATE TABLE omop.drug_exposure (person_id integer, drug_concept_id integer)",
+    "CREATE TABLE omop.condition_occurrence (person_id integer, condition_concept_id integer, condition_start_date date)",
+    "CREATE TABLE omop.drug_exposure (person_id integer, drug_concept_id integer, drug_exposure_start_date date)",
     """INSERT INTO omop.person VALUES
         (1, 8507, 8527, 38003564, 1950),
         (2, 8532, 8516, 38003564, 1960),
@@ -45,7 +45,9 @@ OMOP_FIXTURE_STATEMENTS = [
         (40000003, 'Lisinopril 10 MG Oral Tablet', 'Drug', 'RxNorm'),
         (1503297, 'Metformin', 'Drug', 'RxNorm')""",
     """INSERT INTO omop.condition_occurrence VALUES
-        (1, 201826), (1, 201826), (2, 201826), (2, 320128), (3, 320128), (4, 201826)""",
+        (1, 201826, '2020-01-10'), (1, 201826, '2021-03-05'), (2, 201826, '2019-06-01'),
+        (2, 320128, '2018-02-02'), (3, 320128, '2017-07-07'), (4, 201826, '2022-04-04')""",
     """INSERT INTO omop.drug_exposure VALUES
-        (1, 40000001), (2, 40000002), (3, 40000001), (4, 40000003)""",
+        (1, 40000001, '2020-02-01'), (2, 40000002, '2019-07-01'), (3, 40000001, '2018-03-03'),
+        (4, 40000003, '2022-05-05')""",
 ]

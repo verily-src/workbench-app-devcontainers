@@ -89,9 +89,9 @@ def test_quote_name_refuses_unsafe_names(name):
         quote_name(name)
 
 
-def test_every_domain_has_table_and_concept_column():
+def test_every_domain_has_table_concept_column_and_date_column():
     for domain, entry in OMOP_DOMAINS.items():
-        assert set(entry) == {"table", "concept_column"}, domain
+        assert set(entry) == {"table", "concept_column", "date_column"}, domain
 
 
 # ---- a correct spec (AC1) ----

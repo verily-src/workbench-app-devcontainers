@@ -143,17 +143,43 @@ def build_person_list_sql(spec):
     """
     clean_spec = parse_spec(spec)
     schema = quote_name(clean_spec["schema"])
-    rule_clauses = [_build_rule_clause(schema, rule) for rule in clean_spec["criteria"]]
+    rules = clean_spec["criteria"]
+    rule_clauses = [_build_rule_clause(schema, rule) for rule in rules]
 
+    summary_selects = []
+    summary_joins = []
+    for rule_number, rule in enumerate(rules, start=1):
+        if rule["exclude"]:
+            continue
+        items, first_date = get_summary_column_names(rule_number)
+        summary_selects.append(
+            f"       r{rule_number}.items AS {items}, r{rule_number}.first_date AS {first_date}"
+        )
+        summary_joins.append(_build_summary_join(schema, rule, rule_number))
+
+    select_lines = [
+        "       p.person_id AS _rowid",
+        "       p.person_id",
+        f"       {_build_concept_name_lookup(schema, 'gender_concept_id')} AS gender",
+        f"       {_build_concept_name_lookup(schema, 'race_concept_id')} AS race",
+        f"       {_build_concept_name_lookup(schema, 'ethnicity_concept_id')} AS ethnicity",
+        "       p.year_of_birth",
+        *summary_selects,
+    ]
     return (
-        "SELECT p.person_id AS _rowid,\n"
-        "       p.person_id,\n"
-        f"       {_build_concept_name_lookup(schema, 'gender_concept_id')} AS gender,\n"
-        f"       {_build_concept_name_lookup(schema, 'race_concept_id')} AS race,\n"
-        f"       {_build_concept_name_lookup(schema, 'ethnicity_concept_id')} AS ethnicity,\n"
-        "       p.year_of_birth\n"
+        "SELECT " + ",\n".join(select_lines).lstrip() + "\n"
         f'FROM {schema}."person" p\n'
-        "WHERE " + "\n  AND ".join(rule_clauses)
+        + "".join(summary_joins)
+        + "WHERE "
+        + "\n  AND ".join(rule_clauses)
+    )
+
+
+def get_summary_column_names(rule_number):
+    """Return the two summary column names of a "Has" rule: items and first date."""
+    return (
+        f"rule{rule_number}_items",
+        f"rule{rule_number}_first_date",
     )
 
 
@@ -178,6 +204,27 @@ def _build_rule_clause(quoted_schema, rule):
     return (
         f"{keyword} (SELECT 1 FROM {quoted_schema}.{event_table} e "
         f"WHERE e.person_id = p.person_id AND e.{concept_column} IN ({concept_ids}))"
+    )
+
+
+def _build_summary_join(quoted_schema, rule, rule_number):
+    """Return a LEFT JOIN LATERAL that summarizes one person's records for a "Has" rule.
+
+    The aggregate always returns exactly one row, so the join never repeats a person.
+    """
+    domain = OMOP_DOMAINS[rule["domain"]]
+    event_table = quote_name(domain["table"])
+    concept_column = quote_name(domain["concept_column"])
+    date_column = quote_name(domain["date_column"])
+    concept_ids = ", ".join(str(concept_id) for concept_id in rule["concept_ids"])
+    return (
+        "LEFT JOIN LATERAL (\n"
+        "    SELECT string_agg(DISTINCT c.concept_name, '; ' ORDER BY c.concept_name) AS items,\n"
+        f"           CAST(min(e.{date_column}) AS text) AS first_date\n"
+        f"    FROM {quoted_schema}.{event_table} e\n"
+        f'    JOIN {quoted_schema}."concept" c ON c.concept_id = e.{concept_column}\n'
+        f"    WHERE e.person_id = p.person_id AND e.{concept_column} IN ({concept_ids})\n"
+        f") r{rule_number} ON true\n"
     )
 
 

@@ -123,8 +123,9 @@ def test_does_not_have_rule_works_alone(connection):
     assert person_ids(connection, spec) == [3, 5, 6]
 
 
-def test_person_list_has_fixed_columns_in_order(connection):
-    column_names, rows = run_person_list(connection, make_spec(has_diabetes()))
+def test_person_list_has_fixed_base_columns_in_order(connection):
+    spec = make_spec(("condition", [TYPE_2_DIABETES], True))
+    column_names, rows = run_person_list(connection, spec)
     assert column_names == [
         "_rowid", "person_id", "gender", "race", "ethnicity", "year_of_birth"
     ]
@@ -143,3 +144,63 @@ def test_person_with_unnamed_code_is_kept_with_empty_name(connection):
     _, rows = run_person_list(connection, spec)
     race_by_person = {row[1]: row[3] for row in rows}
     assert race_by_person[6] is None
+
+
+# ---- summary columns for each "Has" rule (AC47, AC48, AC49) ----
+
+
+def summary_by_person(connection, spec):
+    """Return {person_id: {column name: value}} for the summary columns only."""
+    column_names, rows = run_person_list(connection, spec)
+    return {
+        row[1]: dict(zip(column_names[6:], row[6:]))
+        for row in rows
+    }
+
+
+def test_has_rule_adds_three_summary_columns(connection):
+    column_names, _ = run_person_list(connection, make_spec(has_diabetes()))
+    assert column_names[6:] == ["rule1_items", "rule1_first_date"]
+
+
+def test_does_not_have_rule_adds_no_summary_columns(connection):
+    column_names, _ = run_person_list(connection, make_spec(has_diabetes(), lacks_metformin()))
+    assert column_names[6:] == ["rule1_items", "rule1_first_date"]
+
+
+def test_summary_columns_are_numbered_by_position_among_all_rules(connection):
+    spec = make_spec(lacks_metformin(), has_diabetes())
+    column_names, _ = run_person_list(connection, spec)
+    assert column_names[6:] == ["rule2_items", "rule2_first_date"]
+
+
+def test_summary_shows_name_and_first_date(connection):
+    summary = summary_by_person(connection, make_spec(has_diabetes()))
+    assert summary[1] == {
+        "rule1_items": "Type 2 diabetes mellitus", "rule1_first_date": "2020-01-10",
+    }
+    assert summary[2] == {
+        "rule1_items": "Type 2 diabetes mellitus", "rule1_first_date": "2019-06-01",
+    }
+
+
+def test_summary_items_are_the_picked_concepts_the_person_has(connection):
+    summary = summary_by_person(connection, make_spec(has_metformin()))
+    assert summary[2]["rule1_items"] == "Metformin 1000 MG Oral Tablet"
+    assert summary[1]["rule1_items"] == "Metformin 500 MG Oral Tablet"
+    assert summary[3]["rule1_items"] == "Metformin 500 MG Oral Tablet"
+
+
+def test_summary_joins_several_items_alphabetically(connection):
+    # Person 2 has both conditions. Type 2 diabetes comes after Essential hypertension.
+    spec = make_spec(("condition", [TYPE_2_DIABETES, 320128], False))
+    summary = summary_by_person(connection, spec)
+    assert summary[2]["rule1_items"] == "Essential hypertension; Type 2 diabetes mellitus"
+    assert summary[2]["rule1_first_date"] == "2018-02-02"
+
+
+def test_summary_columns_do_not_repeat_or_drop_people(connection):
+    spec = make_spec(has_diabetes(), has_metformin())
+    _, rows = run_person_list(connection, spec)
+    assert sorted(row[1] for row in rows) == [1, 2]
+    assert len(rows) == 2

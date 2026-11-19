@@ -215,6 +215,39 @@ def test_slow_count_rejected_and_previous_cohort_kept(omop_app, tmp_path, monkey
     assert db.get_active_resource_id() == "first-resource"
 
 
+@pytest.fixture
+def omop_schema_without_dates(omop_database):
+    """A schema with all four OMOP tables, but no start date columns. Removed after the test."""
+    with psycopg.connect(omop_database, autocommit=True) as admin:
+        admin.execute("CREATE SCHEMA omop_no_dates")
+        admin.execute("CREATE TABLE omop_no_dates.person (person_id integer)")
+        admin.execute("CREATE TABLE omop_no_dates.concept (concept_id integer)")
+        admin.execute(
+            "CREATE TABLE omop_no_dates.condition_occurrence (person_id integer, condition_concept_id integer)"
+        )
+    yield
+    with psycopg.connect(omop_database, autocommit=True) as admin:
+        admin.execute("DROP SCHEMA omop_no_dates CASCADE")
+
+
+def test_database_without_date_column_rejected_and_previous_cohort_kept(
+    omop_app, tmp_path, omop_schema_without_dates
+):
+    request_cohort(diabetes_and_metformin_spec(), resource_id="first-resource")
+    before = saved_schema_text(tmp_path)
+
+    message = request_and_expect_rejection(
+        make_spec(("condition", [201826], False), schema="omop_no_dates"), "second-resource"
+    )
+
+    assert message == (
+        "This database does not look like OMOP data. "
+        "Column condition_start_date was not found in table condition_occurrence of schema omop_no_dates."
+    )
+    assert saved_schema_text(tmp_path) == before
+    assert db.get_active_resource_id() == "first-resource"
+
+
 @pytest.mark.parametrize("resource_id", [None, "", "   "])
 def test_missing_database_choice_rejected(omop_app, resource_id):
     assert request_and_expect_rejection(diabetes_and_metformin_spec(), resource_id) == NO_DATABASE_MESSAGE

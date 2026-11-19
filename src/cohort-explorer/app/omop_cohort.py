@@ -20,8 +20,11 @@ from omop_criteria import (
     parse_spec,
 )
 from omop_database_checks import (
+    check_columns_exist,
     check_tables_exist,
     count_people_with_time_limit,
+    list_event_columns_needed_by_search,
+    list_event_columns_needed_by_spec,
     list_tables_needed_by_spec,
 )
 from omop_domains import OMOP_DOMAINS
@@ -94,6 +97,7 @@ def find_omop_concepts(resource_id, schema, domain, search_text):
     with connection:
         tables_needed = ["concept", OMOP_DOMAINS[domain]["table"]]
         check_tables_exist(connection, schema, tables_needed)
+        check_columns_exist(connection, schema, list_event_columns_needed_by_search(domain))
         return search_concepts(connection, schema, domain, search_text)
 
 
@@ -103,6 +107,9 @@ def _check_database_and_count_people(resource_id, clean_spec, person_list_sql):
     with connection:
         check_tables_exist(
             connection, clean_spec["schema"], list_tables_needed_by_spec(clean_spec)
+        )
+        check_columns_exist(
+            connection, clean_spec["schema"], list_event_columns_needed_by_spec(clean_spec)
         )
         return count_people_with_time_limit(connection, person_list_sql)
 

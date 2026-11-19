@@ -2,8 +2,11 @@ import pytest
 
 from omop_criteria import OmopSpecError, build_person_list_sql
 from omop_database_checks import (
+    check_columns_exist,
     check_tables_exist,
     count_people_with_time_limit,
+    list_event_columns_needed_by_search,
+    list_event_columns_needed_by_spec,
     list_tables_needed_by_spec,
 )
 
@@ -98,6 +101,75 @@ def test_view_counts_as_a_table(omop_connection):
 def test_table_check_rejects_unsafe_schema_name(omop_connection):
     with pytest.raises(OmopSpecError) as error:
         check_tables_exist(omop_connection, 'omop"; DROP TABLE person;--', ["person"])
+    assert str(error.value) == SCHEMA_MESSAGE
+
+
+# ---- which event columns a spec reads (no database needed) ----
+
+
+def test_has_rule_needs_person_concept_and_date_columns():
+    spec = make_spec(("condition", [201826], False))
+    assert list_event_columns_needed_by_spec(spec) == [
+        ("condition_occurrence", "person_id"),
+        ("condition_occurrence", "condition_concept_id"),
+        ("condition_occurrence", "condition_start_date"),
+    ]
+
+
+def test_does_not_have_rule_does_not_need_the_date_column():
+    spec = make_spec(("drug", [40000001], True))
+    assert list_event_columns_needed_by_spec(spec) == [
+        ("drug_exposure", "person_id"),
+        ("drug_exposure", "drug_concept_id"),
+    ]
+
+
+def test_each_event_column_is_listed_once():
+    spec = make_spec(("condition", [201826], False), ("condition", [320128], False))
+    assert len(list_event_columns_needed_by_spec(spec)) == 3
+
+
+def test_search_needs_person_and_concept_columns_only():
+    assert list_event_columns_needed_by_search("drug") == [
+        ("drug_exposure", "person_id"),
+        ("drug_exposure", "drug_concept_id"),
+    ]
+
+
+# ---- the column check (against the test database) ----
+
+
+def test_all_event_columns_present_passes(omop_connection):
+    spec = make_spec(("condition", [201826], False), ("drug", [40000001], False))
+    check_columns_exist(omop_connection, "omop", list_event_columns_needed_by_spec(spec))
+
+
+def test_missing_date_column_named_in_message(omop_connection):
+    omop_connection.execute("CREATE SCHEMA omop_no_dates")
+    omop_connection.execute(
+        "CREATE TABLE omop_no_dates.condition_occurrence (person_id integer, condition_concept_id integer)"
+    )
+    spec = make_spec(("condition", [201826], False))
+    with pytest.raises(OmopSpecError) as error:
+        check_columns_exist(omop_connection, "omop_no_dates", list_event_columns_needed_by_spec(spec))
+    assert str(error.value) == (
+        "This database does not look like OMOP data. "
+        "Column condition_start_date was not found in table condition_occurrence of schema omop_no_dates."
+    )
+
+
+def test_missing_date_column_is_fine_for_a_does_not_have_rule(omop_connection):
+    omop_connection.execute("CREATE SCHEMA omop_no_dates")
+    omop_connection.execute(
+        "CREATE TABLE omop_no_dates.condition_occurrence (person_id integer, condition_concept_id integer)"
+    )
+    spec = make_spec(("condition", [201826], True))
+    check_columns_exist(omop_connection, "omop_no_dates", list_event_columns_needed_by_spec(spec))
+
+
+def test_column_check_rejects_unsafe_schema_name(omop_connection):
+    with pytest.raises(OmopSpecError) as error:
+        check_columns_exist(omop_connection, 'omop"; DROP TABLE person;--', [("person", "person_id")])
     assert str(error.value) == SCHEMA_MESSAGE
 
 

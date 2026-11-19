@@ -4,7 +4,7 @@ Both checks give a plain message (OmopSpecError) that is safe to show the user.
 """
 import psycopg
 
-from omop_criteria import OmopSpecError, check_schema_name, parse_spec
+from omop_criteria import OmopSpecError, check_domain_name, check_schema_name, parse_spec
 from omop_domains import OMOP_DOMAINS
 
 COUNT_TIME_LIMIT_SECONDS = 15
@@ -31,6 +31,33 @@ def list_tables_needed_by_spec(spec):
     return tables
 
 
+def list_event_columns_needed_by_spec(spec):
+    """Return (table, column) pairs that the rules read in the event tables, each pair once.
+
+    Every rule reads person_id and the concept column. Only a "Has" rule reads the start date,
+    for the first date summary column.
+    """
+    clean_spec = parse_spec(spec)
+    pairs = []
+    for rule in clean_spec["criteria"]:
+        domain = OMOP_DOMAINS[rule["domain"]]
+        columns = ["person_id", domain["concept_column"]]
+        if not rule["exclude"]:
+            columns.append(domain["date_column"])
+        for column in columns:
+            pair = (domain["table"], column)
+            if pair not in pairs:
+                pairs.append(pair)
+    return pairs
+
+
+def list_event_columns_needed_by_search(domain):
+    """Return (table, column) pairs that a concept search reads in the domain's event table."""
+    check_domain_name(domain)
+    entry = OMOP_DOMAINS[domain]
+    return [(entry["table"], "person_id"), (entry["table"], entry["concept_column"])]
+
+
 def check_tables_exist(connection, schema, table_names):
     """Raise OmopSpecError, naming the first table in table_names that the schema lacks.
 
@@ -49,6 +76,28 @@ def check_tables_exist(connection, schema, table_names):
             raise OmopSpecError(
                 "This database does not look like OMOP data. "
                 f"Table {table_name} was not found in schema {schema}."
+            )
+
+
+def check_columns_exist(connection, schema, table_columns):
+    """Raise OmopSpecError, naming the first (table, column) pair that the schema lacks.
+
+    The tables must exist already (check_tables_exist). A view counts as a table.
+    """
+    check_schema_name(schema)
+    rows = connection.execute(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = %s AND (table_name, column_name) IN "
+        "(SELECT * FROM unnest(%s::text[], %s::text[]))",
+        [schema, [table for table, _ in table_columns], [column for _, column in table_columns]],
+    ).fetchall()
+
+    found_pairs = {(row[0], row[1]) for row in rows}
+    for table_name, column_name in table_columns:
+        if (table_name, column_name) not in found_pairs:
+            raise OmopSpecError(
+                "This database does not look like OMOP data. "
+                f"Column {column_name} was not found in table {table_name} of schema {schema}."
             )
 
 

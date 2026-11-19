@@ -19,6 +19,7 @@ _resource_cache_lock = threading.Lock()
 _resource_cache_ready = threading.Event()
 _last_refresh = 0.0
 _REFRESH_COOLDOWN = 60.0
+WARM_UP_TIME_LIMIT_SECONDS = 30.0
 
 _conn_string_cache: dict[str, str] = {}
 _conn_string_events: dict[str, threading.Event] = {}
@@ -127,8 +128,11 @@ def _warm_all_aurora_tables():
         t = threading.Thread(target=_warm_resource_tables, args=(r["id"],), daemon=True)
         t.start()
         threads.append(t)
+    # One database that cannot be reached must not keep the page waiting. After the limit,
+    # the app is ready anyway. A slow database fills in its tables later if it answers.
+    deadline = time.monotonic() + WARM_UP_TIME_LIMIT_SECONDS
     for t in threads:
-        t.join(timeout=120)
+        t.join(timeout=max(0.0, deadline - time.monotonic()))
     _tables_ready.set()
     logger.info("All Aurora tables warmed: %d resources", len(aurora))
 

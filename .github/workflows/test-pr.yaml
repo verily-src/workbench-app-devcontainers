@@ -106,6 +106,8 @@ jobs:
                 - 'src/aou-common/**'
                 - 'src/workbench-jupyter-parabricks/**'
             ubuntu-example: {}
+            mdv:
+              maximize_build_space: true
     outputs:
       apps: ${{ steps.output.outputs.apps }}
     steps:

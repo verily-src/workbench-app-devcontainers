@@ -55,7 +55,40 @@ gemini mcp add --scope user --transport http wb http://127.0.0.1:9242
 pgrep -f 'wb-mcp-server -http'
 ```
 
+## Tool Groups
+
+Clients send every listed tool's definition to the model with each request. All 116 tools come to about
+15,000 tokens, so the server lists only the **core** group by default: 13 tools (about 1,500 tokens) on GCP.
+
+| Group | Tools for |
+|---|---|
+| `core` (always on) | Status, resources, data collections, app URLs, BigQuery/GCS (GCP) or S3/Aurora (AWS), `wb_execute`, `wb_help` |
+| `workflows` | Running, cancelling and debugging workflows: tasks, logs, traces, costs |
+| `dataexplorer` | Underlays, studies, cohort building, filters, cohort export |
+| `apps` | Creating, deleting, starting and stopping apps |
+| `admin` | Workspaces, resources, folders, users, groups, pods, organizations, servers |
+| `legacy` | Notebook and cluster tools, and duplicates of other tools (`wb_workspace_list`, `folder_list_tree`, `server_status`, `auth_status`, `version`, `resource_open_console`) |
+
+AWS-only tools are hidden in GCP workspaces and GCP-only tools in AWS workspaces. If the workspace's cloud
+isn't known (e.g. `wb status` failed at startup), both are listed.
+
+Enable more groups, as a comma-separated list (`all` for every group):
+
+| Where | How |
+|---|---|
+| One HTTP client | Add `?toolsets=` to its server URL, e.g. `claude mcp add --transport http wb "http://127.0.0.1:9242/?toolsets=core,dataexplorer"` |
+| The whole server | Feature option `toolsets`, or `WB_MCP_TOOLSETS` when running `start-server.sh` |
+| stdio | `wb-mcp-server -toolsets=core,workflows` |
+
+Calling a tool outside the enabled groups returns an error that names its group. Models can call
+`wb_help` with topic `toolsets` to see the groups and these instructions, and the long Data Explorer
+guides are `wb_help` topics (`cohorts`, `export`, `data-collections`) instead of tool descriptions.
+
+Each tool call is logged (tool name, duration, error flag; not arguments) to `/tmp/wb-mcp-server.log`.
+
 ## Quick Examples
+
+The schema and cohort examples need the `dataexplorer` group.
 
 ### Find Available Data
 
@@ -92,9 +125,27 @@ Uses `filter_build_attribute`, `filter_build_relationship`, `filter_build_boolea
 ## Internals
 
 ### Authentication
-- Auto-fetches bearer token from `wb auth print-access-token`
-- Refreshes every 55 minutes
-- Gets API URLs from `wb status`
+- Fetches a bearer token from `wb auth print-access-token` and caches it for 30 minutes
+- Fetches a new token early if an API call returns 401
+- Gets API URLs, the workspace UUID and its Google project from `wb status` at startup
+
+### Latency
+Each `wb` CLI call starts a JVM and takes several seconds, so the server avoids it where it can:
+- `wb_status` is served from a 5-minute cache (filled at startup), and `app_list` from a 30-second cache.
+  Any tool call that may change workspace state clears these caches.
+- Before each tool call, the server reads `~/.workbench/context.json` (which `wb` updates). If the server or
+  workspace changed, for example after `wb workspace set` or `wb workspace create` in a terminal, the server
+  uses the new workspace's UUID and Google project and clears the caches.
+- Workspace IDs are resolved to UUIDs once and cached.
+- `bq_execute`, `bq_query`, `gcloud_execute` and `gsutil_execute` run `bq`/`gcloud`/`gsutil` directly in the
+  workspace's Google project, not through `wb`. Arguments are split like shell words (quotes and backslashes
+  are honored) but never run through a shell. If the CLI isn't installed, or the command uses a
+  `$WORKBENCH_*` variable that isn't set in the server's environment, the call falls back to `wb <tool>`.
+
+### BigQuery
+- `bq_query` takes GoogleSQL in its `sql` argument and returns CSV.
+- `bq_execute` takes `bq` arguments (`ls`, `show --schema project:dataset.table`, ...). Bare SQL sent to
+  `bq_execute` is run as a query.
 
 ### Data Collections
 Data collection workspaces contain underlays (data models):

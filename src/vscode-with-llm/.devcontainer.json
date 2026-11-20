@@ -30,7 +30,8 @@
     },
     "./.devcontainer/features/wb-mcp-server": {
       "username": "abc",
-      "userHomeDir": "/config"
+      "userHomeDir": "/config",
+      "toolsets": "all"
     },
     "./.devcontainer/features/llm-context": {
       "username": "abc",

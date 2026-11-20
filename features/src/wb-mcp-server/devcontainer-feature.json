@@ -18,6 +18,11 @@
       "type": "string",
       "default": "9242",
       "description": "Port for the HTTP MCP server"
+    },
+    "toolsets": {
+      "type": "string",
+      "default": "core",
+      "description": "Comma-separated tool groups listed by default: core (always on), workflows, dataexplorer, apps, admin, legacy, or all. Clients can add groups with ?toolsets= in the server URL."
     }
   },
   "installsAfter": [

@@ -15,6 +15,9 @@ fi
 readonly USER_HOME_DIR
 
 readonly WB_MCP_PORT="${PORT:-"9242"}"
+# Tool groups enabled by default (core is always on). Letters and commas only.
+WB_MCP_TOOLSETS="$(printf '%s' "${TOOLSETS:-"core"}" | tr -cd 'a-zA-Z,')"
+readonly WB_MCP_TOOLSETS
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
@@ -88,12 +91,14 @@ mkdir -p "${WB_MCP_DIR}"
 # Copy source files to temporary build directory
 BUILD_DIR="${WORKDIR}/wb-mcp-server"
 mkdir -p "${BUILD_DIR}"
-cp "${FEATURE_DIR}/main.go" "${BUILD_DIR}/"
+for src in "${FEATURE_DIR}"/*.go; do
+    [[ "${src}" == *_test.go ]] || cp "${src}" "${BUILD_DIR}/"
+done
 cp "${FEATURE_DIR}/go.mod" "${BUILD_DIR}/"
 
 # Build the Go binary
 cd "${BUILD_DIR}"
-go build -o "${WB_MCP_BIN}" main.go
+go build -o "${WB_MCP_BIN}" .
 
 # Make it executable
 chmod +x "${WB_MCP_BIN}"
@@ -106,7 +111,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${WB_MCP_BIN} -http -port ${WB_MCP_PORT}
+ExecStart=${WB_MCP_BIN} -http -port ${WB_MCP_PORT} -toolsets ${WB_MCP_TOOLSETS}
 Restart=on-failure
 User=${USERNAME}
 StandardOutput=journal
@@ -124,6 +129,8 @@ cat > "${WB_MCP_DIR}/start-server.sh" <<EOF
 
 WB_MCP_BIN="/opt/wb-mcp-server/wb-mcp-server"
 PORT="\${WB_MCP_PORT:-9242}"
+# Tool groups listed by default; clients can add more with ?toolsets= in their server URL.
+TOOLSETS="\$(printf '%s' "\${WB_MCP_TOOLSETS:-${WB_MCP_TOOLSETS}}" | tr -cd 'a-zA-Z,')"
 LOGFILE="/tmp/wb-mcp-server.log"
 RUN_USER="${USERNAME}"
 
@@ -135,11 +142,11 @@ fi
 
 # Start server as the correct user (who has wb auth tokens)
 if [ "\$(id -u)" = "0" ] && [ "\${RUN_USER}" != "root" ]; then
-    su - "\${RUN_USER}" -c "nohup \${WB_MCP_BIN} -http -port \${PORT} >> \${LOGFILE} 2>&1 &"
+    su - "\${RUN_USER}" -c "nohup \${WB_MCP_BIN} -http -port \${PORT} -toolsets '\${TOOLSETS}' >> \${LOGFILE} 2>&1 &"
 else
-    nohup "\${WB_MCP_BIN}" -http -port "\${PORT}" >> "\${LOGFILE}" 2>&1 &
+    nohup "\${WB_MCP_BIN}" -http -port "\${PORT}" -toolsets "\${TOOLSETS}" >> "\${LOGFILE}" 2>&1 &
 fi
-echo "Started wb-mcp-server on port \${PORT} as \${RUN_USER}"
+echo "Started wb-mcp-server on port \${PORT} as \${RUN_USER} (tool groups: \${TOOLSETS})"
 echo "Logs: \${LOGFILE}"
 EOF
 
@@ -212,6 +219,7 @@ cat > "${CLAUDE_LOCAL_SETTINGS}" <<'PERMS_EOF'
       "mcp__wb__aurora_describe_table",
       "mcp__wb__aurora_resolve_connection",
       "mcp__wb__wb_status",
+      "mcp__wb__wb_help",
       "mcp__wb__workspace_get",
       "mcp__wb__workspace_list_resources",
       "mcp__wb__workspace_list_data_collections",

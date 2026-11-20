@@ -72,6 +72,10 @@ wb workflow job run --workflow=<WORKFLOW_ID> \
 
 ## Troubleshooting Nextflow Jobs in Workbench
 
+### Faster: MCP Workflow Tools
+
+If the `workflow_*` MCP tools are in your tool list (the `workflows` tool group), they are faster than the `wb` CLI for these steps: `workflow_job_list` and `workflow_job_describe` (jobs), `workflow_task_list` and `workflow_task_get` (tasks), `workflow_run_logs` (logs), `workflow_run_trace` (Nextflow trace) and `workflow_run_costs` (GCP costs). The task, log, trace and cost tools need the workspace UUID (`uuid` in `wb status --format=json`) and API run and task UUIDs. Otherwise, use the CLI commands below.
+
 ### Quick Diagnosis
 
 ```bash

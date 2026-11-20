@@ -16,6 +16,25 @@ Do say: "I checked the logs and found an OOM error. The task requested 8GB but n
 
 ---
 
+## Faster: MCP Workflow Tools
+
+Each `wb` CLI call below takes several seconds. If the `workflow_*` MCP tools are in your tool list (the `workflows` tool group), use them for the same steps instead:
+
+| Step | MCP tool |
+|------|----------|
+| Find failed jobs | `workflow_job_list` |
+| Job details and error message | `workflow_job_describe` |
+| Failed tasks | `workflow_task_list` (filter by status) |
+| One task's details | `workflow_task_get` |
+| Logs, for the run or one task | `workflow_run_logs` |
+| Inputs | `workflow_inputs_get` |
+| Child-run counts for a batch | `workflow_batch_status_counts` |
+| Costs (GCP) | `workflow_run_costs` |
+
+The `workflow_inputs_get`, `workflow_task_*`, `workflow_run_*` and `workflow_batch_status_counts` tools need the workspace UUID (`uuid` in `wb status --format=json`) and API run and task UUIDs, not CLI display names or engine job IDs. If these tools aren't in your tool list, use the CLI commands below.
+
+---
+
 ## Quick Diagnosis (Start Here)
 
 ```bash

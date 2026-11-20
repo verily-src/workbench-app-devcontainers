@@ -137,7 +137,7 @@ After presenting results, ask:
 > "Do any of these look useful? Would you like to refine the search or explore a specific collection in more detail?"
 
 If the user wants deeper detail on a specific collection:
-- Use `underlayName` with `mcp__wb__underlay_list_entities` to explore the data schema
+- Use `underlayName` with `mcp__wb__underlay_list_entities` to explore the data schema. This tool is in the `dataexplorer` tool group, which is off by default; if it isn't in your tool list, use the `dataDictionary` links instead, and `wb_help` with topic `toolsets` tells the user how to enable the group
 - Reference `usageExamples` for sample queries
 - Reference `dataDictionary` for table/field documentation
 

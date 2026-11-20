@@ -176,15 +176,19 @@ fetch_apps() {
 }
 
 # Generate embedded JSON (returns JSON to stdout, doesn't write to file)
+# Resources listed in CLAUDE.md. Larger workspaces get a pointer to workspace_list_resources,
+# since this file is sent to the model with every request.
+MAX_LISTED_RESOURCES=50
+MAX_LISTED_BUCKETS=20
+
 generate_embedded_json() {
     local resources="$1"
 
-    # Build both maps in a single jq invocation so no intermediate bash variables
-    # are passed via --argjson (which is sensitive to embedded newlines and encoding
-    # edge cases on some jq versions).  A jq `def` avoids repeating the path expression.
     # `(if type == "array" then . else [] end)` guards against non-array input.
+    # The environment variable for a resource is WORKBENCH_<id> with "-" replaced by "_",
+    # so only the paths are listed.
     local result
-    result=$(printf '%s' "${resources:-[]}" | jq -c '
+    result=$(printf '%s' "${resources:-[]}" | jq -c --argjson max "${MAX_LISTED_RESOURCES}" '
         def cloud_path:
             if .resourceType == "GCS_BUCKET"              then "gs://\(.bucketName)"
             elif .resourceType == "AWS_S3_STORAGE_FOLDER" then "s3://\(.bucketName // "unknown")/\(.prefix // "")"
@@ -194,17 +198,17 @@ generate_embedded_json() {
             elif .resourceType == "GIT_REPO"              then .gitRepoUrl
             elif .resourceType == "GCS_OBJECT"            then "gs://\(.bucketName)/\(.objectName // "")"
             else null end;
-        (if type == "array" then . else [] end) |
-        {
-            "resourcePaths": (map({key: .id,                                      value: cloud_path}) | map(select(.value != null)) | from_entries),
-            "envVars":       (map({key: ("WORKBENCH_" + (.id | gsub("-";"_"))), value: cloud_path}) | map(select(.value != null)) | from_entries)
-        }
+        (if type == "array" then . else [] end)
+        | map({key: .id, value: cloud_path}) | map(select(.value != null))
+        | {"resourcePaths": (.[:$max] | from_entries)}
+          + (if length > $max then {"notListed": (length - $max), "listAll": "workspace_list_resources"} else {} end)
     ' 2>/dev/null | head -1)
 
-    printf '%s\n' "${result:-{\"resourcePaths\":{},\"envVars\":{}}}"
+    # A variable, because a literal "{...}" default inside ${result:-...} ends at its first "}".
+    local empty='{"resourcePaths":{}}'
+    printf '%s\n' "${result:-$empty}"
 }
 
-# Generate bucket list for data persistence section
 generate_bucket_list() {
     local resources="$1"
     local cloud_platform="${2:-GCP}"
@@ -225,7 +229,10 @@ generate_bucket_list() {
 
         echo "| Bucket Name | Resource ID | Description |"
         echo "|-------------|-------------|-------------|"
-        echo "$buckets" | jq -r '.[] | "| `s3://\(.bucketName // "unknown")/\(.prefix // "")` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
+        echo "$buckets" | jq -r --argjson max "${MAX_LISTED_BUCKETS}" '.[:$max][] | "| `s3://\(.bucketName // "unknown")/\(.prefix // "")` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
+        if [ "$count" -gt "${MAX_LISTED_BUCKETS}" ]; then
+            echo "| … | $((count - MAX_LISTED_BUCKETS)) more | Use \`workspace_list_resources\` |"
+        fi
     else
         # GCP
         local buckets
@@ -243,7 +250,10 @@ generate_bucket_list() {
 
         echo "| Bucket Name | Resource ID | Description |"
         echo "|-------------|-------------|-------------|"
-        echo "$buckets" | jq -r '.[] | "| `gs://\(.bucketName // "unknown")/` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
+        echo "$buckets" | jq -r --argjson max "${MAX_LISTED_BUCKETS}" '.[:$max][] | "| `gs://\(.bucketName // "unknown")/` | `\(.id // "—")` | \(.description // "—" | if . == "" then "—" else . end) |"' 2>/dev/null || true
+        if [ "$count" -gt "${MAX_LISTED_BUCKETS}" ]; then
+            echo "| … | $((count - MAX_LISTED_BUCKETS)) more | Use \`workspace_list_resources\` |"
+        fi
     fi
 }
 
@@ -276,7 +286,7 @@ generate_claude_md() {
     
     # Set platform-specific template content (generator branches; output file is clean, no conditionals)
     local storage_bucket_type storage_save_cmd resource_table_rows
-    local mcp_data_resources_rows cloud_cli_section cloud_path_hint env_var_example
+    local mcp_default_tools_rows cloud_cli_section cloud_path_hint env_var_example
     local data_preview_query_section create_resources_section
     if [ "$ws_cloud" = "AWS" ]; then
         storage_bucket_type="S3 bucket"
@@ -286,14 +296,19 @@ generate_claude_md() {
 | `AWS_AURORA_DATABASE_REFERENCE` | Aurora DB reference (external) | `wb resource add-ref aurora-database` |
 | `GIT_REPO` | Git repository reference | `wb resource add-ref git-repo` |'
 
-        mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+        # BEGIN default MCP tools (core group; TestLLMContextToolReferences in wb-mcp-server checks these)
+        mcp_default_tools_rows='| `wb_status` | `wb status` | Current workspace, server and user |
 | `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
+| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+| `platform_list_data_collections` | N/A | Search data collections across all of Workbench (read `DATA_DISCOVERY.md` first) |
 | `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
-| `list_files` | `aws s3 ls` | List files in an S3 storage folder |
-| `read_file` | `aws s3 cp <key> -` | Read contents of a file from S3 |
-| `resource_create_bucket` | `wb resource create s3-storage-folder` | Create a new S3 storage folder |
-| `resource_delete` | `wb resource delete` | Delete a resource |
-| `resource_check_access` | — | Check if IAM role has access to a resource |'
+| `app_list` / `app_get_url` | `wb app list` | List apps; get a running app'"'"'s proxy URL |
+| `s3_list_objects` | `aws s3 ls` | List files in an S3 storage folder |
+| `s3_read_file` | `aws s3 cp <key> -` | Read contents of a file from S3 |
+| `aurora_query` / `aurora_list_tables` / `aurora_describe_table` | `psql` | Query and inspect Aurora databases |
+| `wb_execute` | `wb ...` | Any `wb` command, without the `wb` prefix |
+| `wb_help` | — | Guides: `toolsets`, `cohorts`, `export`, `data-collections` |'
+        # END default MCP tools
 
         cloud_cli_section='### Cloud CLIs
 
@@ -390,23 +405,22 @@ wb resource add-ref aurora-database --name external-db
 | `GCS_OBJECT` | Individual GCS file reference | `wb resource add-ref gcs-object` |
 | `BQ_TABLE` | BigQuery table reference | `wb resource add-ref bq-table` |'
 
-        mcp_data_resources_rows='| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+        # BEGIN default MCP tools (core group; TestLLMContextToolReferences in wb-mcp-server checks these)
+        mcp_default_tools_rows='| `wb_status` | `wb status` | Current workspace, server and user |
 | `workspace_list_resources` | `wb resource list` | List all resources in the workspace |
+| `workspace_list_data_collections` | N/A | **List data collections and their resources** |
+| `platform_list_data_collections` | N/A | Search data collections across all of Workbench (read `DATA_DISCOVERY.md` first) |
 | `resource_list_tree` | `wb resource list-tree` | List resources organized by folder |
-| `bq_execute` | `bq query` | Run SQL queries against BigQuery |
-| `list_files` | `gcloud storage ls` | List files in a GCS bucket |
-| `read_file` | `gcloud storage cat` | Read contents of a file |
-| `resource_create_bucket` | `wb resource create gcs-bucket` | Create a new GCS bucket |
-| `resource_delete` | `wb resource delete` | Delete a resource |
-| `resource_check_access` | — | Check if service account has access to a resource |
-| `resource_mount` / `resource_unmount` | — | Mount/unmount a GCS bucket |'
+| `app_list` / `app_get_url` | `wb app list` | List apps; get a running app'"'"'s proxy URL |
+| `bq_query` | `bq query` | Run SQL against BigQuery (`sql` argument) |
+| `bq_execute` | `bq ls` / `bq show` | Other `bq` commands (`ls`, `show --schema`, `head`) |
+| `gsutil_execute` | `gsutil ls` / `gsutil cat` | List or read files in a GCS bucket (e.g. `ls gs://<bucket>/`) |
+| `gcloud_execute` | `gcloud ...` | Any other `gcloud` command |
+| `wb_execute` | `wb ...` | Any `wb` command, without the `wb` prefix |
+| `wb_help` | — | Guides: `toolsets`, `cohorts`, `export`, `data-collections` |'
+        # END default MCP tools
 
-        cloud_cli_section='### Cloud CLIs (via MCP)
-
-| MCP Tool | Description |
-|----------|-------------|
-| `gcloud_execute` | Run any `gcloud` command |
-| `bq_execute` | Run any `bq` SQL query |'
+        cloud_cli_section=''
 
         cloud_path_hint='# Look for: bucketName, projectId+datasetId, gitRepoUrl'
 
@@ -547,45 +561,27 @@ ${bucket_list}
 | **MCP Tools** | List/query operations — structured responses, no shell needed |
 | **CLI (\`wb\`)** | Complex operations or anything not covered by MCP |
 
-### Data & Resources
+### Default Tools
 
 | MCP Tool | CLI Equivalent | Description |
 |----------|----------------|-------------|
-${mcp_data_resources_rows}
+${mcp_default_tools_rows}
 
-### Apps & Workflows
+### More Tool Groups (Off by Default)
 
-| MCP Tool | CLI Equivalent | Description |
-|----------|----------------|-------------|
-| \`app_list\` | \`wb app list\` | List running apps |
-| \`app_create\` | \`wb app create\` | Create a new custom app |
-| \`app_get_url\` | — | Get the proxy URL for a running app |
-| \`app_start\` / \`app_stop\` | \`wb app start/stop\` | Start or stop an app |
-| \`workflow_list\` | \`wb workflow list\` | List available workflows |
-| \`workflow_job_run\` | \`wb workflow run\` | Submit a WDL/Nextflow workflow |
-| \`workflow_job_list\` | \`wb workflow job list\` | List workflow job runs |
-| \`workflow_job_describe\` | \`wb workflow job describe\` | Get details of a specific job run |
-| \`workflow_job_cancel\` | \`wb workflow job cancel\` | Cancel a running job |
-| \`get_workflow_status\` | \`wb workflow describe\` | Check status of a workflow run |
+| Group | For | Example tools |
+|-------|-----|---------------|
+| workflows | Running, cancelling and debugging workflows: tasks, logs, traces, costs | \`workflow_job_run\`, \`workflow_run_logs\` |
+| dataexplorer | Underlay schemas, studies, building and exporting cohorts | \`underlay_list\`, \`cohort_create_in_workspace\` |
+| apps | Creating, deleting, starting and stopping apps | \`app_create\`, \`app_start\` |
+| admin | Workspaces, resources, folders, users, groups | \`resource_create_bucket\`, \`resource_delete\` |
+| legacy | Notebook and cluster tools, older duplicates | — |
 
-### Data Explorer
-
-| MCP Tool | Description |
-|----------|-------------|
-| \`underlay_list\` | List available data underlays (datasets in the Data Explorer catalog) |
-| \`underlay_get_schema\` | Get the schema for a specific underlay |
-| \`underlay_list_entities\` | List entity types in an underlay (e.g. person, condition) |
-| \`data_sample_instances\` | Sample rows from an entity within a cohort |
-| \`data_query_hints\` | Get value hints for filtering an entity attribute |
-| \`study_list\` | List studies available in Data Explorer |
-| \`study_list_cohorts\` | List cohorts within a study |
-| \`cohort_create_in_workspace\` | Create a cohort in the workspace |
-| \`cohort_count_instances\` | Count members in a cohort |
-| \`export_cohort\` | Export cohort data to a bucket |
+Only call tools that are in your tool list; don't guess names. If a task needs a tool from a group that's off, use the \`wb\` CLI instead (through \`wb_execute\` or the terminal), or tell the user how to enable the group: \`wb_help\` with topic \`toolsets\` explains.
 
 ${cloud_cli_section}
 
-**Not available via MCP (use CLI):** \`wb workspace set\`, \`wb auth login\`, \`wb workflow logs\`
+**Terminal only:** \`wb workspace set\`, \`wb auth login\`
 
 ## CLI Quick Reference
 
@@ -724,19 +720,6 @@ file:///home/jupyter/dashboard.html      ← JavaScript blocked
 
 ## Available Skills
 
-### Workbench Skills
-
-Read these directly — no index needed:
-
-| Topic | Skill File | When to Use |
-|-------|------------|-------------|
-| **🔍 Data discovery** | \`DATA_DISCOVERY.md\` | Find data collections inside or across all of Workbench |
-| **🚨 Dashboards, Web UIs** | \`DASHBOARD_BUILDER.md\` | Dashboard, Flask, Streamlit, web UI, plots on a port |
-| Building custom apps | \`CUSTOM_APP.md\` | Deployable Workbench apps |
-| App templates | \`APP_TEMPLATES.md\` | Pre-built templates for dashboards, APIs, file processors |
-| **WDL workflow debugging** | \`WDL_WORKFLOW_TROUBLESHOOT.md\` | Failed WDL jobs, Cromwell logs, memory/disk issues |
-| **Nextflow workflows** | \`NEXTFLOW_WORKFLOW.md\` | Nextflow authoring, launching, and troubleshooting |
-
 ### Scientific Skills
 
 > **📚 Read \`~/.claude/skills/SCIENTIFIC_SKILLS_INDEX.md\` first** to navigate scientific domain skills.
@@ -749,53 +732,16 @@ Read these directly — no index needed:
 | 📊 Data Analysis | \`scientific/DATA_ANALYSIS.md\` | sklearn, statsmodels, plotly, seaborn |
 | 🏥 Clinical | \`scientific/CLINICAL.md\` | clinicaltrials.gov, pubmed, lifelines |
 
-### ⚡ Skill Trigger Guide
+### When to Read a Skill
 
-**ALWAYS read \`DATA_DISCOVERY.md\` BEFORE calling \`platform_list_data_collections\`.** The skill controls the full discovery flow including scope clarification, result presentation, and how to add a collection to the workspace.
-
-Trigger \`DATA_DISCOVERY.md\` whenever the user is searching for data collections platform-wide:
-- "find data collections" / "search for data collections" / "find data collections with [keyword]"
-- "find data collections across Workbench" / "search all data collections I have access to"
-- "what data collections can I add?" / "data collections I haven't added yet"
-- "find a data collection related to [topic / disease / gene / modality]"
-- "are there data collections about [topic]?" / "find data collections that have [keyword]"
-- Do NOT use this skill for workspace-scoped questions — call \`workspace_list_data_collections\` directly instead
-
-**ALWAYS read \`DASHBOARD_BUILDER.md\` FIRST when user says ANY of these:**
-- "create a dashboard"
-- "visualize data" / "show me a chart" / "display data"
-- "build a Flask app" / "run Flask" / "Flask server"
-- "Streamlit" / "Plotly" / "interactive chart"
-- "run on port" / "serve HTML" / "web page"
-- "show in browser" / "open in new tab"
-- Any request to display data interactively
-
-**Read \`CUSTOM_APP.md\` when:**
-- "build a deployable app" / "create a custom app"
-- "API service" / "backend" / "from scratch"
-
-**Read \`APP_TEMPLATES.md\` when:**
-- "dashboard template" / "starter template" / "pre-built app"
-- "what templates are available" / "which template should I use"
-
-**Read \`WDL_WORKFLOW_TROUBLESHOOT.md\` when the workflow is WDL/Cromwell-based:**
-- "troubleshoot my workflow" / "fix my workflow" / "workflow failed" / "workflow error"
-- "troubleshoot my job" / "my job failed" / "workflow job failed"
-- "job failed" / "task failed" / "out of memory" / "check logs" / "why did it fail"
-- If workflow type is ambiguous, check \`wb workflow list\` to confirm WDL before reading
-- Does NOT apply when user mentions Nextflow or nf-core — use \`NEXTFLOW_WORKFLOW.md\` instead
-
-**Read \`NEXTFLOW_WORKFLOW.md\` when the workflow is Nextflow-based:**
-- User explicitly mentions "nextflow" / "nf-core" / "nextflow module" / "nextflow run"
-- "create a Nextflow pipeline" / "run a Nextflow workflow" / "write a Nextflow pipeline"
-- "Nextflow failed" / "troubleshoot my Nextflow job" / "my Nextflow pipeline failed"
-
-**Read \`SCIENTIFIC_SKILLS_INDEX.md\` then the relevant domain file when user mentions:**
-- "single-cell" / "RNA-seq" / "scanpy" / "differential expression"
-- "molecule" / "SMILES" / "drug" / "RDKit" / "ChEMBL"
-- "gene" / "protein" / "variant" / "UniProt" / "Ensembl" / "PDB"
-- "machine learning" / "sklearn" / "statistics"
-- "clinical trial" / "PubMed" / "survival analysis"
+Read the skill file in \`~/.claude/skills/\` **before** starting these tasks:
+- **\`DATA_DISCOVERY.md\`**: before calling \`platform_list_data_collections\`, and whenever the user searches for data collections across Workbench ("find data collections about <topic>", "what can I add?"). For collections already in this workspace, call \`workspace_list_data_collections\` directly.
+- **\`DASHBOARD_BUILDER.md\`**: any dashboard, chart, Flask/Streamlit/Plotly app, web page, or anything served on a port or shown in a browser.
+- **\`CUSTOM_APP.md\`**: a deployable custom app, API service or backend built from scratch.
+- **\`APP_TEMPLATES.md\`**: starter templates for dashboards, APIs and file processors.
+- **\`WDL_WORKFLOW_TROUBLESHOOT.md\`**: a failed WDL/Cromwell job ("workflow failed", "task failed", "out of memory", "check logs"). If the workflow type is unclear, check \`wb workflow list\` first.
+- **\`NEXTFLOW_WORKFLOW.md\`**: writing, running or troubleshooting Nextflow or nf-core pipelines.
+- **\`SCIENTIFIC_SKILLS_INDEX.md\`**, then the domain file: single-cell/RNA-seq, molecules/drugs, genes/proteins/variants, machine learning/statistics, clinical trials/PubMed/survival analysis.
 
 ---
 
@@ -809,7 +755,8 @@ ${embedded_json}
 
 **Usage:**
 - \`resourcePaths["my-bucket"]\` → exact cloud storage/database path
-- \`envVars["WORKBENCH_my_bucket"]\` → environment variable value
+- Environment variable: \`$WORKBENCH_<resource id>\` with \`-\` replaced by \`_\` (e.g. \`$WORKBENCH_my_bucket\`)
+- \`notListed\` (large workspaces only): how many resources were left out; call \`workspace_list_resources\` for all
 
 To refresh after workspace changes:
 \`\`\`bash

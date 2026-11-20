@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSpec, everyRuleHasPickedItem, makeEmptyRule } from "./omopRules";
+import { buildSpec, everyRuleHasPickedItem, makeEmptyRule, summarizeRules } from "./omopRules";
 
 const METFORMIN_500 = { concept_id: 40000001, name: "Metformin 500 MG Oral Tablet", vocabulary: "RxNorm", persons: 2 };
 const METFORMIN_1000 = { concept_id: 40000002, name: "Metformin 1000 MG Oral Tablet", vocabulary: "RxNorm", persons: 1 };
@@ -37,5 +37,19 @@ describe("omop rules", () => {
     const filled = { ...makeEmptyRule(), picked: [DIABETES] };
     expect(everyRuleHasPickedItem([filled])).toBe(true);
     expect(everyRuleHasPickedItem([filled, makeEmptyRule()])).toBe(false);
+  });
+
+  it("describes a Has rule with its domain and the names of its items", () => {
+    const rule = { ...makeEmptyRule(), picked: [DIABETES] };
+
+    expect(summarizeRules([rule])).toEqual([{ heading: "Has Condition", names: ["Type 2 diabetes mellitus"] }]);
+  });
+
+  it("describes a Does not have rule with its domain and the names of its items", () => {
+    const rule = { ...makeEmptyRule(), exclude: true, domain: "drug", picked: [METFORMIN_500, METFORMIN_1000] };
+
+    expect(summarizeRules([rule])).toEqual([
+      { heading: "Does not have Drug", names: ["Metformin 500 MG Oral Tablet", "Metformin 1000 MG Oral Tablet"] },
+    ]);
   });
 });

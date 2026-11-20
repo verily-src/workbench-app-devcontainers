@@ -9,6 +9,8 @@ import SummaryBar from "./components/SummaryBar.tsx";
 import ChartDashboard from "./components/charts/ChartDashboard.tsx";
 import ResourceSelector from "./components/ResourceSelector.tsx";
 import ConnectionError from "./components/ConnectionError.tsx";
+import CohortCriteria from "./components/CohortCriteria.tsx";
+import type { CriteriaLine } from "./omopRules.ts";
 import { connectResource, fetchActiveSchema, fetchCounts, fetchFilters, fetchReady, fetchSamples, getCohort, inferSchema, seedData } from "./api.ts";
 import type { ColumnMapping, JoinConfig } from "./api.ts";
 import SchemaReview from "./components/SchemaReview.tsx";
@@ -16,6 +18,17 @@ import type { ChartConfig, ChartType, Counts, FilterState, FiltersResponse, Samp
 import { DEFAULT_CHART_TYPE, buildEmptyFilters, buildFieldMeta } from "./types.ts";
 
 const STORAGE_KEY = "cohort-explorer-state";
+// The rules that built an OMOP cohort, in plain words. Kept apart from STORAGE_KEY, which other
+// code rewrites whenever the filters change.
+const CRITERIA_STORAGE_KEY = "cohort-explorer-criteria";
+
+function loadSavedCriteria(): CriteriaLine[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CRITERIA_STORAGE_KEY) ?? "[]");
+    if (Array.isArray(parsed)) return parsed;
+  } catch { /* corrupt data */ }
+  return [];
+}
 
 function saveState(resourceId: string, filters: FilterState, tableName?: string) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceId, filters, tableName }));
@@ -72,6 +85,7 @@ export default function App() {
   const [schemaMappings, setSchemaMappings] = useState<ColumnMapping[]>([]);
   const [schemaSourceName, setSchemaSourceName] = useState("");
   const [schemaTableName, setSchemaTableName] = useState<string | undefined>();
+  const [criteria, setCriteria] = useState<CriteriaLine[]>([]);
   const [schemaFilePath, setSchemaFilePath] = useState<string | undefined>();
   const [schemaFolderId, setSchemaFolderId] = useState<string | undefined>();
   const [schemaJoin, setSchemaJoin] = useState<JoinConfig | undefined>();
@@ -105,6 +119,7 @@ export default function App() {
       .then(async () => {
         setResourceId(saved.resourceId);
         if (saved.tableName) setSchemaTableName(saved.tableName);
+        if (saved.tableName?.startsWith("omop:")) setCriteria(loadSavedCriteria());
         try {
           const schema = await fetchActiveSchema();
           if (schema.mappings.length > 0) {
@@ -198,7 +213,7 @@ export default function App() {
   // The cohort is already the backend's active model (the "Find people" request did that).
   // This reads it back and shows it. The mappings must be set before connected, because the
   // empty filters are worked out from them.
-  const handleOmopCohortReady = useCallback(async (id: string, schema: string, cohortFolder: string) => {
+  const handleOmopCohortReady = useCallback(async (id: string, schema: string, cohortFolder: string, cohortCriteria: CriteriaLine[]) => {
     if (cohortFolder) await connectResource(id, cohortFolder);
     const active = await fetchActiveSchema();
     if (active.mappings.length === 0) {
@@ -213,8 +228,10 @@ export default function App() {
     setApplied(empty);
     setChartConfigs(firstCat ? [{ id: "default", fieldKey: firstCat.key, chartType: "bar" }] : []);
     setSchemaTableName(tableName);
+    setCriteria(cohortCriteria);
     setConnected(true);
     saveState(id, empty, tableName);
+    localStorage.setItem(CRITERIA_STORAGE_KEY, JSON.stringify(cohortCriteria));
   }, []);
 
   const handleDisconnect = useCallback(() => {
@@ -230,7 +247,9 @@ export default function App() {
     setLoading(true);
     setActiveCohort(null);
     initialized.current = false;
+    setCriteria([]);
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(CRITERIA_STORAGE_KEY);
   }, []);
 
   const handleLoadCohort = useCallback(async (name: string) => {
@@ -439,15 +458,20 @@ export default function App() {
         <Box sx={{ flex: 1, overflow: "hidden" }}>
           <Allotment defaultSizes={[280, 1000]} snap>
             <Allotment.Pane minSize={150} maxSize={500} visible={filterPaneVisible}>
-              <FilterPanel
-                available={available}
-                filters={pending}
-                mappings={mappings}
-                onChange={setPending}
-                dirty={dirty}
-                onApply={handleApply}
-                onReset={handleReset}
-              />
+              <Box sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+                <CohortCriteria criteria={criteria} />
+                <Box sx={{ flex: 1, minHeight: 0 }}>
+                  <FilterPanel
+                    available={available}
+                    filters={pending}
+                    mappings={mappings}
+                    onChange={setPending}
+                    dirty={dirty}
+                    onApply={handleApply}
+                    onReset={handleReset}
+                  />
+                </Box>
+              </Box>
             </Allotment.Pane>
             <Allotment.Pane>
               {blockingError ? (

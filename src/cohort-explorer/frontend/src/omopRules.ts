@@ -41,3 +41,19 @@ export function buildSpec(schema: string, rules: RuleDraft[]): OmopSpec {
     })),
   };
 }
+
+// One rule in plain words, for the Explorer screen. For example the heading "Has Condition"
+// and the names of the items. It holds only text, so it can be saved in the browser.
+export interface CriteriaLine {
+  heading: string;
+  names: string[];
+}
+
+export function summarizeRules(rules: RuleDraft[]): CriteriaLine[] {
+  return rules.map((rule) => {
+    const domainChoice = DOMAIN_CHOICES.find((choice) => choice.value === rule.domain);
+    const domainLabel = domainChoice ? domainChoice.label : rule.domain;
+    const verb = rule.exclude ? "Does not have" : "Has";
+    return { heading: `${verb} ${domainLabel}`, names: rule.picked.map((concept) => concept.name) };
+  });
+}

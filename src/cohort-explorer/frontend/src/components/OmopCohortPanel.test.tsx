@@ -82,13 +82,15 @@ describe("OmopCohortPanel", () => {
     expect(await screen.findByText("1 person matches")).toBeTruthy();
   });
 
-  it("opens the explorer with the schema name when Open in Explorer is clicked", async () => {
+  it("opens the explorer with the schema name and the rules in plain words when Open in Explorer is clicked", async () => {
     const onOpenInExplorer = showPanel();
     await pickDiabetesAndFindPeople();
 
     await userEvent.click(await screen.findByRole("button", { name: "Open in Explorer" }));
 
-    expect(onOpenInExplorer).toHaveBeenCalledWith("public");
+    expect(onOpenInExplorer).toHaveBeenCalledWith("public", [
+      { heading: "Has Condition", names: ["Type 2 diabetes mellitus"] },
+    ]);
   });
 
   it("shows the message when the explorer cannot be opened", async () => {

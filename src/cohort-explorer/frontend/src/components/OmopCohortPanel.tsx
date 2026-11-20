@@ -2,15 +2,15 @@ import { useState } from "react";
 import { Accordion, AccordionDetails, AccordionSummary, Box, Button, TextField, Typography } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { createOmopCohort } from "../api";
-import { buildSpec, everyRuleHasPickedItem, makeEmptyRule } from "../omopRules";
-import type { RuleDraft } from "../omopRules";
+import { buildSpec, everyRuleHasPickedItem, makeEmptyRule, summarizeRules } from "../omopRules";
+import type { CriteriaLine, RuleDraft } from "../omopRules";
 import OmopRuleList from "./OmopRuleList";
 
 const DEFAULT_SCHEMA = "public";
 
 interface Props {
   resourceId: string;
-  onOpenInExplorer: (schema: string) => void | Promise<void>;
+  onOpenInExplorer: (schema: string, criteria: CriteriaLine[]) => void | Promise<void>;
 }
 
 function describeMatch(count: number): string {
@@ -56,7 +56,7 @@ export default function OmopCohortPanel({ resourceId, onOpenInExplorer }: Props)
   const openInExplorer = async () => {
     setErrorMessage(null);
     try {
-      await onOpenInExplorer(schema);
+      await onOpenInExplorer(schema, summarizeRules(rules));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Could not open the explorer.");
     }

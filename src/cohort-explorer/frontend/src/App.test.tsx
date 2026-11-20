@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import type { CriteriaLine } from "./omopRules";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 
@@ -16,9 +17,16 @@ vi.mock("./api", () => ({
 }));
 import { connectResource, fetchActiveSchema, fetchCounts, fetchFilters, fetchReady, fetchSamples } from "./api";
 
+type OpenCohort = (id: string, schema: string, folder: string, criteria: CriteriaLine[]) => Promise<void>;
+
+const CRITERIA: CriteriaLine[] = [
+  { heading: "Has Condition", names: ["Type 2 diabetes mellitus"] },
+  { heading: "Does not have Drug", names: ["Metformin 500 MG Oral Tablet"] },
+];
+
 // Stand-ins for the screens, so the test checks only what App hands to them.
 vi.mock("./components/ResourceSelector", () => ({
-  default: (props: { onOmopCohortReady: (id: string, schema: string, folder: string) => Promise<void> }) => (
+  default: (props: { onOmopCohortReady: OpenCohort }) => (
     <StubSelector onOpen={props.onOmopCohortReady} />
   ),
 }));
@@ -29,7 +37,12 @@ vi.mock("./components/FilterPanel", () => ({
 }));
 vi.mock("./components/DataGrid", () => ({ default: () => <div /> }));
 vi.mock("./components/SummaryBar", () => ({
-  default: (props: { datasource: string }) => <div data-testid="datasource">{props.datasource}</div>,
+  default: (props: { datasource: string; onDisconnect: () => void }) => (
+    <div>
+      <div data-testid="datasource">{props.datasource}</div>
+      <button onClick={props.onDisconnect}>Disconnect</button>
+    </div>
+  ),
 }));
 vi.mock("./components/charts/ChartDashboard", () => ({
   default: (props: { chartConfigs: { fieldKey: string }[] }) => (
@@ -43,14 +56,14 @@ vi.mock("allotment", () => {
 });
 
 import { useState } from "react";
-function StubSelector({ onOpen }: { onOpen: (id: string, schema: string, folder: string) => Promise<void> }) {
+function StubSelector({ onOpen }: { onOpen: OpenCohort }) {
   const [message, setMessage] = useState("");
   return (
     <div>
-      <button onClick={() => onOpen("my-db", "omop", "folder-1").catch((e) => setMessage(e.message))}>
+      <button onClick={() => onOpen("my-db", "omop", "folder-1", CRITERIA).catch((e) => setMessage(e.message))}>
         open with folder
       </button>
-      <button onClick={() => onOpen("my-db", "cdm", "").catch((e) => setMessage(e.message))}>open without folder</button>
+      <button onClick={() => onOpen("my-db", "cdm", "", CRITERIA).catch((e) => setMessage(e.message))}>open without folder</button>
       <div data-testid="selector-message">{message}</div>
     </div>
   );
@@ -137,5 +150,56 @@ describe("App opening an OMOP cohort", () => {
       "The cohort was not found. Click Find people again.",
     );
     expect(screen.queryByTestId("filter-panel")).toBeNull();
+  });
+});
+
+describe("App showing the criteria of an OMOP cohort", () => {
+  function criteriaLines() {
+    return screen.getAllByRole("listitem").map((item) => item.textContent);
+  }
+
+  it("shows each rule in plain words after Open in Explorer", async () => {
+    render(<App />);
+    await clickOpen("open with folder");
+
+    await screen.findByTestId("filter-panel");
+    expect(criteriaLines()).toEqual([
+      "Has Condition: Type 2 diabetes mellitus",
+      "Does not have Drug: Metformin 500 MG Oral Tablet",
+    ]);
+  });
+
+  it("shows the criteria again after a reload", async () => {
+    const firstScreen = render(<App />);
+    await clickOpen("open with folder");
+    await screen.findByTestId("filter-panel");
+    firstScreen.unmount();
+
+    render(<App />);
+
+    await screen.findByTestId("filter-panel");
+    expect(criteriaLines()).toHaveLength(2);
+  });
+
+  it("forgets the saved criteria when the user disconnects", async () => {
+    render(<App />);
+    await clickOpen("open with folder");
+    await screen.findByTestId("filter-panel");
+
+    await userEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(localStorage.getItem("cohort-explorer-criteria")).toBeNull();
+  });
+
+  it("shows no criteria when the saved connection is not an OMOP cohort", async () => {
+    localStorage.setItem("cohort-explorer-criteria", JSON.stringify(CRITERIA));
+    localStorage.setItem(
+      "cohort-explorer-state",
+      JSON.stringify({ resourceId: "my-db", filters: {}, tableName: "orders" }),
+    );
+    render(<App />);
+
+    await screen.findByTestId("filter-panel");
+    expect(screen.queryByText("Cohort criteria")).toBeNull();
   });
 });

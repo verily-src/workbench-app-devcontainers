@@ -19,6 +19,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import StorageIcon from "@mui/icons-material/Storage";
 import type { AuroraTable, Datasource, JoinStep, S3File, S3Folder } from "../api";
 import { connectResource, fetchDatasources, listS3Files, refreshDatasources } from "../api";
+import type { CriteriaLine } from "../omopRules";
 import JoinBuilder from "./JoinBuilder";
 import OmopCohortPanel from "./OmopCohortPanel";
 import TableSelect from "./TableSelect";
@@ -36,7 +37,12 @@ interface Props {
   onConnected: (resourceId: string, meta?: ConnectionMeta) => void;
   // Called when the user clicks "Open in Explorer" in the OMOP cohort builder.
   // It may return a promise. A rejection shows its message in the panel.
-  onOmopCohortReady?: (resourceId: string, schema: string, cohortFolder: string) => void | Promise<void>;
+  onOmopCohortReady?: (
+    resourceId: string,
+    schema: string,
+    cohortFolder: string,
+    criteria: CriteriaLine[],
+  ) => void | Promise<void>;
 }
 
 export default function ResourceSelector({ onConnected, onOmopCohortReady }: Props) {
@@ -334,7 +340,7 @@ export default function ResourceSelector({ onConnected, onOmopCohortReady }: Pro
               <OmopCohortPanel
                 key={selected}
                 resourceId={selected}
-                onOpenInExplorer={async (schema) => { await onOmopCohortReady?.(selected, schema, selectedFolder); }}
+                onOpenInExplorer={async (schema, criteria) => { await onOmopCohortReady?.(selected, schema, selectedFolder, criteria); }}
               />
             </Box>
           )}

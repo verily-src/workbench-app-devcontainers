@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Writes the effective sandbox policy: policy.yaml, the harness, and data access.
+
+usage: render-policy.py <policy.yaml> <data-access.yaml> <harness.yaml>   (policy goes to stdout)
+
+The harness's binaries become the programs allowed to call Ollama's chat API (the
+local_models rule). When data access is off, nothing else is added. When it is on, two
+network rules are added, both limited to one Python interpreter and bound to the
+OpenShell credential provider so the proxy supplies the token:
+
+  data_bigquery   jobs and queries only in the execution project (SQL text is not
+                  visible to OpenShell rules, see the README), lookups only in
+                  the listed datasets. No DELETE, PATCH or PUT, no insertAll,
+                  no uploads: anything not listed is denied.
+  data_storage    GET only, on the listed buckets.
+"""
+import re
+import sys
+
+import yaml
+
+import harness as harness_definition
+
+PROJECT = re.compile(r"^[a-z][a-z0-9.:-]{4,60}[a-z0-9]$")
+DATASET = re.compile(r"^[A-Za-z0-9_]{1,1024}$")
+BUCKET = re.compile(r"^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$")
+PROVIDER = re.compile(r"^[A-Za-z0-9._-]{1,63}$")
+
+
+def fail(message):
+    sys.exit(f"render-policy: {message}")
+
+
+def checked(pattern, value, what):
+    if not isinstance(value, str) or not pattern.match(value):
+        fail(f"invalid {what}: {value!r}")
+    return value
+
+
+def allow(method, path):
+    return {"allow": {"method": method, "path": path}}
+
+
+def endpoint(host, provider, rules):
+    return {
+        "host": host,
+        "port": 443,
+        "protocol": "rest",
+        "enforcement": "enforce",
+        "rules": rules,
+        "credential_binding": {"provider": provider},
+    }
+
+
+def bigquery_rule(config, provider, project):
+    base = "/bigquery/v2/projects"
+    rules = [
+        allow("POST", f"{base}/{project}/jobs"),
+        allow("POST", f"{base}/{project}/queries"),
+        allow("GET", f"{base}/{project}/jobs/**"),
+        allow("GET", f"{base}/{project}/queries/**"),
+    ]
+    for entry in (config.get("bigquery") or {}).get("datasets") or []:
+        dataset_project = checked(PROJECT, entry.get("project"), "BigQuery dataset project")
+        dataset = checked(DATASET, entry.get("dataset"), "BigQuery dataset")
+        path = f"{base}/{dataset_project}/datasets/{dataset}"
+        rules += [allow("GET", path), allow("GET", f"{path}/**")]
+    return rules
+
+
+def storage_rules(config):
+    rules = []
+    for bucket in (config.get("storage") or {}).get("buckets") or []:
+        checked(BUCKET, bucket, "bucket name")
+        rules += [
+            allow("GET", f"/storage/v1/b/{bucket}"),
+            allow("GET", f"/storage/v1/b/{bucket}/o"),
+            allow("GET", f"/storage/v1/b/{bucket}/o/**"),
+            allow("GET", f"/download/storage/v1/b/{bucket}/o/**"),
+            allow("GET", f"/{bucket}/**"),
+        ]
+    return rules
+
+
+def main():
+    if len(sys.argv) != 4:
+        fail(__doc__.split("\n")[2])
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        policy = yaml.safe_load(handle)
+    with open(sys.argv[2], encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    harness = harness_definition.load(sys.argv[3])
+
+    local_models = (policy.get("network_policies") or {}).get("local_models")
+    if not local_models:
+        fail("policy.yaml has no local_models rule: it is where the harness reaches the local models")
+    # curl stays so `selftest` can check the path rules.
+    local_models["binaries"] = [{"path": path} for path in harness["binaries"] + ["/usr/bin/curl"]]
+
+    if config.get("enabled") is True:
+        provider = checked(PROVIDER, config.get("provider") or "wb-gcp", "provider name")
+        project = checked(PROJECT, config.get("project_id"), "project_id (set it in data-access.yaml)")
+        python = config.get("python") or "/usr/bin/python3.11"
+        if not isinstance(python, str) or not python.startswith("/"):
+            fail(f"python must be an absolute path: {python!r}")
+        network = policy.setdefault("network_policies", {})
+        for name in ("data_bigquery", "data_storage"):
+            if name in network:
+                fail(f"policy.yaml already defines {name}; remove it, data-access.yaml generates it")
+        network["data_bigquery"] = {
+            "name": "data_bigquery",
+            "endpoints": [endpoint("bigquery.googleapis.com", provider,
+                                   bigquery_rule(config, provider, project))],
+            "binaries": [{"path": python}],
+        }
+        buckets = storage_rules(config)
+        if buckets:
+            network["data_storage"] = {
+                "name": "data_storage",
+                "endpoints": [endpoint("storage.googleapis.com", provider, buckets)],
+                "binaries": [{"path": python}],
+            }
+
+    sys.stdout.write("# Generated by render-policy.py from policy.yaml, data-access.yaml and harness.yaml. Do not edit.\n")
+    yaml.safe_dump(policy, sys.stdout, sort_keys=False, default_flow_style=False)
+
+
+main()

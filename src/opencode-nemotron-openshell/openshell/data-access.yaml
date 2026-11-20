@@ -1,0 +1,42 @@
+# Data access for the sandboxed agent: which Google Cloud data it may reach, on
+# top of what the human user can reach. Off by default, so the sandbox keeps the
+# network-only policy in policy.yaml and holds no cloud identity.
+#
+# On first start this file is copied to /config/openshell/data-access.yaml,
+# which persists across restarts and is yours to edit. After editing:
+#   - `opencode-sandbox policy` applies the rules to the running sandbox;
+#   - `opencode-sandbox reset --yes` is needed the first time you turn this on,
+#     because a credential provider can only be attached to a new sandbox.
+#
+# How it works (README, "Data access"): the sandbox never holds a Google token.
+# OpenShell's `google-cloud` provider keeps it at the gateway, hands the sandbox
+# a placeholder, and the proxy swaps in the real token only on requests that the
+# rules below allow. Rules are generated into policy.effective.yaml by
+# render-policy.py; policy.yaml stays as you wrote it.
+#
+# Workbench still applies first: the agent acts as you, so your IAM roles,
+# read-only resource settings and data collection policies bind it too. These
+# rules only remove access the agent shouldn't have even though you do.
+enabled: false
+
+# Name of the OpenShell credential provider, created from this app's Application
+# Default Credentials.
+provider: wb-gcp
+
+# Project that runs and bills queries. Blank: $GOOGLE_CLOUD_PROJECT.
+project_id: ""
+
+bigquery:
+  # Datasets the agent may look up (list tables, read schemas and rows).
+  # Example:
+  #   - {project: my-workspace-project, dataset: synthetic_allofus}
+  datasets: []
+
+storage:
+  # Buckets the agent may read (GET only: list and download, never write).
+  # Example: [synthetic-allofus-poc-my-workspace-project]
+  buckets: []
+
+# Real path of the Python interpreter in the sandbox image. Only this program
+# reaches Google; `curl` and anything else stays blocked.
+python: /usr/bin/python3.11

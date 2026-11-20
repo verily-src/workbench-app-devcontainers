@@ -1,0 +1,46 @@
+# Default harness: OpenCode, pinned in sandbox-image/Dockerfile.
+#
+# A harness is the agent program the sandbox runs. On first start this file is
+# copied to /config/openshell/harness.yaml, which is the active harness. To use
+# another one: `agent-sandbox harness <name>`, then `agent-sandbox reset --yes`.
+# README, "Harness", explains each field.
+name: opencode
+
+# Image the sandbox is created from. The framework builds this one; a harness
+# that needs another image builds and tags it on the VM.
+image: opencode-agent-sandbox:0.2
+
+# Real paths (not symlinks) of the programs that may call Ollama's chat API.
+# render-policy.py puts them in the policy's local_models rule.
+binaries:
+  - /opt/opencode/.opencode/bin/opencode
+
+workdir: /sandbox/work
+
+# Added to the sandbox process environment. These turn off every OpenCode
+# feature that would reach the internet; `sandbox exec` doesn't pass the
+# image's own environment, so they are set here.
+env:
+  OPENCODE_DISABLE_AUTOUPDATE: "true"
+  OPENCODE_DISABLE_MODELS_FETCH: "true"
+  OPENCODE_DISABLE_LSP_DOWNLOAD: "true"
+  OPENCODE_DISABLE_DEFAULT_PLUGINS: "true"
+  OPENCODE_DISABLE_SHARE: "true"
+  OPENCODE_DISABLE_CLAUDE_CODE: "true"
+
+# Program to start. Arguments you give `opencode` are appended.
+command: [opencode]
+
+# Optional. The hook runs in the app (not the sandbox) and prints the harness's
+# configuration; the framework passes it into the sandbox in this variable. It
+# gets OLLAMA_BASE_URL, AGENT_MODEL and AGENT_CONTEXT_LENGTH in its environment.
+# A relative path is relative to the framework directory.
+config:
+  hook: openshell/harnesses/opencode-config.sh
+  env: OPENCODE_CONFIG_CONTENT
+
+# Optional. `agent-sandbox selftest` runs the command with these arguments and
+# checks the output against this grep -E pattern.
+selftest:
+  args: [run, --format, json, "Reply with exactly one word: ready"]
+  expect: '"type":"step_finish".*"reason":"stop"'

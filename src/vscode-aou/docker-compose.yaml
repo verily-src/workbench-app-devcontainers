@@ -1,0 +1,44 @@
+include:
+  - ../aou-common/aou-common-compose.yaml
+services:
+  app:
+    container_name: "application-server"
+    shm_size: "${templateOption:shmSize}"
+    mem_limit: "${templateOption:memoryLimit}"
+    build:
+      context: .
+      additional_contexts:
+        load-envs: service:aou-common-load-envs
+    restart: always
+    volumes:
+      - .:/workspace:cached
+      - work:/config:cached
+    tmpfs:
+      - /config/workspace:uid=911,gid=911
+    ports:
+      - "8443:8443"
+    environment:
+      USER: "abc"
+      DEFAULT_WORKSPACE: "/config"
+    networks:
+      - app-network
+    depends_on:
+      - wondershaper
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+  wondershaper:
+    container_name: "wondershaper"
+    image: "us-west2-docker.pkg.dev/shared-pub-buckets-94mvrf/workbench-artifacts/app-wondershaper@sha256:896eb0c4e1233a14284d326c4742aa0544a49b74c545c503a8e6a44ee3b9745e"
+    restart: always
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+networks:
+  app-network:
+    external: true
+volumes:
+  work:

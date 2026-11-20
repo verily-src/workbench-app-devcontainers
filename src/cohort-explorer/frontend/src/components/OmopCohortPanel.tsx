@@ -6,7 +6,7 @@ import { buildSpec, everyRuleHasPickedItem, makeEmptyRule } from "../omopRules";
 import type { RuleDraft } from "../omopRules";
 import OmopRuleList from "./OmopRuleList";
 
-const DEFAULT_SCHEMA = "omop";
+const DEFAULT_SCHEMA = "public";
 
 interface Props {
   resourceId: string;

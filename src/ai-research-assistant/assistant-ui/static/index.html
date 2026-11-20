@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NVIDIA AI Research Assistant</title>
+  <!-- Every path is relative: Workbench serves the app under a proxy path. -->
+  <link rel="stylesheet" href="static/theme.css">
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-title" id="title">NVIDIA AI Research Assistant</span>
+      <span class="brand-on">on <strong>Verily Pre</strong></span>
+    </div>
+    <div class="topbar-right">
+      <span class="pill" id="model-pill" title="The model answering" hidden>model</span>
+      <span class="pill pill-status" id="conn-pill" hidden>connecting</span>
+      <button class="btn btn-light" id="new-session" type="button" hidden>New session</button>
+    </div>
+  </header>
+
+  <section class="gate" id="gate" hidden>
+    <h1 id="gate-title"></h1>
+    <p id="gate-message"></p>
+  </section>
+
+  <!-- Hidden until the settings say this person is let in (app.js start), so the gate page does
+       not flash the assistant first. -->
+  <div class="layout" id="layout" hidden>
+    <nav class="rail" aria-label="Sessions">
+      <h2>Sessions</h2>
+      <ul id="sessions" class="session-list"></ul>
+    </nav>
+
+    <main class="chat">
+      <div class="scroll" id="scroll">
+        <section class="welcome" id="welcome">
+          <h1>What cohort would you like to study?</h1>
+          <p>Start from one of these, or describe your own.</p>
+          <div class="chips chips-start" id="starters"></div>
+        </section>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div id="prompts" class="prompts"></div>
+        <div id="working" class="working" hidden><span class="spinner"></span><span id="working-text">Working</span></div>
+        <div id="error" class="error" hidden></div>
+      </div>
+
+      <footer class="composer">
+        <div class="chips chips-next" id="next-steps" hidden></div>
+        <form id="form">
+          <textarea id="input" rows="1" placeholder="Ask about your data, or describe a cohort"></textarea>
+          <button class="btn btn-primary" id="send" type="submit">Send</button>
+          <button class="btn btn-outline" id="stop" type="button" hidden>Stop</button>
+        </form>
+      </footer>
+    </main>
+
+    <aside class="side" aria-label="What the assistant can use">
+      <h2>Tools</h2>
+      <ul id="servers" class="server-list"></ul>
+      <h2>Used in this session</h2>
+      <ul id="used" class="used-list"><li class="muted">Nothing yet</li></ul>
+      <h2>Where the assistant runs</h2>
+      <ul id="about" class="about-list"></ul>
+    </aside>
+  </div>
+
+  <script src="static/vendor/marked.min.js"></script>
+  <script src="static/vendor/purify.min.js"></script>
+  <script src="static/app.js"></script>
+</body>
+</html>

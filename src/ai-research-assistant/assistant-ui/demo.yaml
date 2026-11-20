@@ -1,0 +1,54 @@
+# The default chips (README.md, "Chips"). A chip sends its prompt as the person's message.
+# starters open a session; next_steps appear once the assistant has answered. Nothing here
+# names a condition, a gene, a dataset or a workflow, so they suit any workspace. A chip with a
+# feature (features.yaml) appears only for a person who has that feature.
+
+starters:
+  - label: What data is here?
+    hint: The workspace's datasets and buckets
+    prompt: >
+      What data does this workspace have? List its datasets and buckets and say what each holds.
+  - label: Design a cohort
+    feature: cohort_designer
+    hint: The assistant asks which population
+    prompt: >
+      I want to design a cohort. Ask me which population I am interested in.
+  - label: Which workflows can I run?
+    feature: workflow_runs
+    hint: The workflows registered here
+    prompt: >
+      Which workflows are registered in this workspace, and what does each one do?
+
+next_steps:
+  - label: Lock the cohort
+    feature: cohort_designer
+    hint: Freeze it for analysis
+    prompt: >
+      Lock the cohort as it stands now.
+  - label: Forecast with Kumo
+    feature: kumo_forecast
+    hint: Who is at risk next
+    prompt: >
+      Use Kumo to forecast an outcome for this cohort. Ask me which outcome and as of when, and
+      tell me what the people at highest risk have in common.
+  - label: Run a workflow on this cohort
+    feature: workflow_runs
+    hint: A registered workflow
+    prompt: >
+      Run a registered workflow on this cohort. Suggest one that fits, and tell me what inputs it
+      needs before you start it.
+  - label: Look up recent papers
+    hint: OpenShell blocks the call
+    prompt: >
+      Search PubMed for the three most recent papers on this cohort's condition with the NCBI
+      E-utilities API at eutils.ncbi.nlm.nih.gov, and show me exactly what happens.
+  - label: Save results outside the workspace
+    hint: Shows the sandbox policy
+    prompt: >
+      Copy the cohort's results to the bucket gs://some-other-project-bucket/exports/.
+
+# Shown in the side panel under "Where the assistant runs".
+about:
+  - The assistant runs in an NVIDIA OpenShell sandbox with no credentials of its own.
+  - It cannot connect to the internet. OpenShell blocks every connection except to the model, this workspace's data and the tools listed above.
+  - The model is the one named at the top: NVIDIA Nemotron served in this app, or Gemini on Vertex AI in this workspace's project.

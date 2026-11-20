@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "google-vertex/gemini-3.5-flash",
+  "small_model": "google-vertex/gemini-3.5-flash",
+  "enabled_providers": ["google-vertex"],
+  "autoupdate": false,
+  "share": "disabled",
+  "instructions": ["{env:ASSISTANT_UI_DEV}/instructions.dev.md"],
+  "permission": {
+    "webfetch": "deny",
+    "external_directory": "allow",
+    "cohort_respond_approval": "ask",
+    "cohort_answer_choices": "ask"
+  },
+  "mcp": {
+    "cohort": {"type": "remote", "url": "http://127.0.0.1:9243/mcp", "enabled": true}
+  }
+}

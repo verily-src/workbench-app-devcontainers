@@ -1,0 +1,70 @@
+{
+    "name": "AI Research Assistant",
+    "dockerComposeFile": "docker-compose.yaml",
+    "service": "app",
+    "shutdownAction": "none",
+    "workspaceFolder": "/workspace",
+    "postCreateCommand":
+        "./startupscript/post-startup.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\" && ./sudo-passwordless.sh abc && ./start-services.sh abc /config",
+    "postStartCommand":
+        "./startupscript/remount-on-restart.sh abc /config \"${templateOption:cloud}\" \"${templateOption:login}\" && ./start-services.sh abc /config",
+    "features": {
+        "ghcr.io/devcontainers/features/aws-cli@sha256:d6dee5e399eaee4090b5847afb7516ae7b52a066a863cc29120f66bea9f2d580": {},
+        "ghcr.io/joshuanianji/devcontainer-features/google-cloud-cli@sha256:e3af02f936916198f58ef4088d3be608372246d208f6f627c902ce62a8ae12ec": {},
+        "./.devcontainer/features/workbench-tools": {
+            "cloud": "${templateOption:cloud}",
+            "username": "abc",
+            "userHomeDir": "/config"
+        },
+        "./.devcontainer/features/wb-mcp-server": {
+            "username": "abc",
+            "userHomeDir": "/config",
+            "bindAddress": "0.0.0.0",
+            "toolsets": "core,workflows"
+        },
+        "./.devcontainer/features/vllm-model": {
+            "username": "abc",
+            "userHomeDir": "/config"
+        },
+        "./.devcontainer/features/vertex-model": {},
+        "./.devcontainer/features/ai-policy": {},
+        "./.devcontainer/features/agent-sandbox": {
+            "username": "abc",
+            "userHomeDir": "/config"
+        },
+        "./.devcontainer/features/opencode-harness": {
+            "username": "abc",
+            "userHomeDir": "/config"
+        },
+        "./.devcontainer/features/cohort-designer": {
+            "username": "abc",
+            "userHomeDir": "/config",
+            "bindAddress": "0.0.0.0"
+        },
+        "./.devcontainer/features/kumo-forecast": {
+            "username": "abc",
+            "userHomeDir": "/config",
+            "bindAddress": "0.0.0.0"
+        }
+    },
+    "remoteUser": "root",
+    "customizations": {
+        "workbench": {
+            "opens": {
+                "extensions": [
+                    ".py",
+                    ".ipynb",
+                    ".sh",
+                    ".md",
+                    ".html",
+                    ".csv",
+                    ".json",
+                    ".jsonc",
+                    ".yaml",
+                    ".yml"
+                ],
+                "fileUrlSuffix": "ide/?payload=[[\"openFile\",\"vscode-remote:///config/{path}\"]]"
+            }
+        }
+    }
+}

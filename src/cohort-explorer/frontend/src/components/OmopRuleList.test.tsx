@@ -126,6 +126,30 @@ describe("OmopRuleList", () => {
     expect((removeRuleButtons()[0] as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("says a Has rule matches people with any of the items", () => {
+    render(<RuleListWithSpec />);
+
+    expect(screen.getByText("Matches people who have any of these items.")).toBeTruthy();
+  });
+
+  it("says a Does not have rule matches people with none of the items", async () => {
+    render(<RuleListWithSpec />);
+
+    await userEvent.selectOptions(screen.getByLabelText("Rule"), "exclude");
+
+    expect(screen.getByText("Matches people who have none of these items.")).toBeTruthy();
+    expect(screen.queryByText("Matches people who have any of these items.")).toBeNull();
+  });
+
+  it("says people must match every rule only when there are two or more rules", async () => {
+    render(<RuleListWithSpec />);
+    expect(screen.queryByText("People must match every rule.")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add rule" }));
+
+    expect(screen.getByText("People must match every rule.")).toBeTruthy();
+  });
+
   it("removes the chosen rule row", async () => {
     render(<RuleListWithSpec />);
     await userEvent.click(screen.getByRole("button", { name: "Add rule" }));

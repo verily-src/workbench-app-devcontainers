@@ -1,4 +1,4 @@
-import { Button } from "@mui/material";
+import { Button, Typography } from "@mui/material";
 import { MAX_RULES, makeEmptyRule } from "../omopRules";
 import type { RuleDraft } from "../omopRules";
 import OmopRuleRow from "./OmopRuleRow";
@@ -32,6 +32,11 @@ export default function OmopRuleList({ rules, resourceId, schema, onChange }: Pr
           onRemove={() => removeRule(rule.id)}
         />
       ))}
+      {rules.length > 1 && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          People must match every rule.
+        </Typography>
+      )}
       <Button size="small" disabled={rules.length >= MAX_RULES} onClick={() => onChange([...rules, makeEmptyRule()])}>
         Add rule
       </Button>

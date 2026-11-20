@@ -87,10 +87,14 @@ export default function OmopRuleRow({ rule, resourceId, schema, canRemove, onCha
         ))}
       </Box>
       {isFull && (
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
           A rule can hold up to {MAX_CONCEPT_IDS} items.
         </Typography>
       )}
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+        {rule.exclude ? "Matches people who have none of these items." : "Matches people who have any of these items."}
+      </Typography>
+
     </Box>
   );
 }

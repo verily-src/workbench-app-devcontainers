@@ -131,12 +131,27 @@ Uses `filter_build_attribute`, `filter_build_relationship`, `filter_build_boolea
 
 ### Latency
 Each `wb` CLI call starts a JVM and takes several seconds, so the server avoids it where it can:
-- `wb_status` is served from a 5-minute cache (filled at startup), and `app_list` from a 30-second cache.
-  Any tool call that may change workspace state clears these caches.
+- `wb_status` is served from a 30-minute cache (filled at startup, retried every 20 seconds for 15
+  minutes while wb is not installed or logged in yet); for a day after that, the old
+  result is answered at once while a new one is fetched in the background. `app_list` is served from
+  a 30-second cache. Any tool call that may change workspace state clears the `app_list` cache, not
+  `wb_status`'s.
+- `workspace_list_data_collections` names each collection from a list of every data collection
+  the user can read, fetched at startup and kept for an hour; a collection missing from it is
+  fetched again, at most once a minute.
 - Before each tool call, the server reads `~/.workbench/context.json` (which `wb` updates). If the server or
   workspace changed, for example after `wb workspace set` or `wb workspace create` in a terminal, the server
   uses the new workspace's UUID and Google project and clears the caches.
 - Workspace IDs are resolved to UUIDs once and cached.
+- `workflow_list` and `workflow_describe` are cached for 10 minutes; a state-changing call (such
+  as `workflow_create`) clears them.
+- `workflow_job_describe` and `workflow_job_list` (the newest 10 runs) call the workflow manager's
+  API, about 3 seconds against 9 to 11 for the CLI, which they fall back to on any error.
+- `workflow_job_run` answers within 40 seconds; a submission still running then goes on in the
+  background, and the answer says to check `workflow_job_list`. The same run (workflow, inputs,
+  params file, profile and outputs; not the description or job ID) asked for again within 15
+  minutes waits on that submission or gets its answer, and is not submitted again. A failed
+  submission can be retried at once.
 - `bq_execute`, `bq_query`, `gcloud_execute` and `gsutil_execute` run `bq`/`gcloud`/`gsutil` directly in the
   workspace's Google project, not through `wb`. Arguments are split like shell words (quotes and backslashes
   are honored) but never run through a shell. If the CLI isn't installed, or the command uses a

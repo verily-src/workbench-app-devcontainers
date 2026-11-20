@@ -35,6 +35,9 @@ func fakeWb(t *testing.T, script string) string {
 		workspaceIdCache = map[string]string{}
 		toolResultCache = map[string]cachedResult{}
 		cacheMu.Unlock()
+		collectionNamesMu.Lock()
+		collectionNamesCache, collectionNamesFetched = nil, time.Time{}
+		collectionNamesMu.Unlock()
 	}
 	reset()
 	oldClient := httpClient
@@ -89,6 +92,90 @@ func TestCallToolClearsCacheOnStateChange(t *testing.T) {
 	callEnabledTool(CallToolParams{Name: "wb_execute", Arguments: map[string]interface{}{"command": "resource list"}}, all)
 	if isCached("app_list") {
 		t.Fatal("wb_execute did not clear the cache")
+	}
+	if !isCached("wb_status") {
+		t.Fatal("wb_execute cleared wb_status, which a state change does not affect")
+	}
+}
+
+func TestStaleStatusIsAnsweredAtOnceAndRefreshedBehind(t *testing.T) {
+	dir := fakeWb(t, `case "$*" in
+ 'status --format=json') sleep 1; echo '{"workspace":{"id":"ws-a","uuid":"`+workspaceA+`"},"fresh":true}' ;;
+esac
+`)
+	writeWorkspaceContext(t, dir, workspaceContext(workspaceA, "project-a"))
+	syncWorkspaceContext()
+	cacheMu.Lock()
+	toolResultCache["wb_status"] = cachedResult{output: "stale status", expires: time.Now().Add(-time.Minute)}
+	cacheMu.Unlock()
+
+	start := time.Now()
+	out, err := statusResult()
+	if err != nil || out != "stale status" || time.Since(start) > 500*time.Millisecond {
+		t.Fatalf("statusResult = %q %v in %v, want the stale status at once", out, err, time.Since(start))
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if out, _ := statusResult(); strings.Contains(out, `"fresh":true`) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("the stale status was not refreshed in the background")
+}
+
+func TestStatusTooOldIsFetchedNow(t *testing.T) {
+	dir := fakeWb(t, `echo '{"workspace":{"id":"ws-a","uuid":"`+workspaceA+`"},"fresh":true}'`+"\n")
+	writeWorkspaceContext(t, dir, workspaceContext(workspaceA, "project-a"))
+	syncWorkspaceContext()
+	cacheMu.Lock()
+	toolResultCache["wb_status"] = cachedResult{output: "ancient", expires: time.Now().Add(-statusStaleMax - time.Minute)}
+	cacheMu.Unlock()
+	if out, err := statusResult(); err != nil || !strings.Contains(out, `"fresh":true`) {
+		t.Fatalf("statusResult = %q %v, want a fresh status", out, err)
+	}
+}
+
+func TestDataCollectionNamesAreCachedAndRefetchedForAnUnknownOne(t *testing.T) {
+	fakeWb(t, "echo ok\n")
+	calls := 0
+	names := map[string]string{"c1": "Collection One"}
+	old := fetchCollectionNames
+	fetchCollectionNames = func() (map[string]string, error) {
+		calls++
+		out := map[string]string{}
+		for k, v := range names {
+			out[k] = v
+		}
+		return out, nil
+	}
+	t.Cleanup(func() { fetchCollectionNames = old })
+
+	if got := dataCollectionNames([]string{"c1"}); got["c1"] != "Collection One" || calls != 1 {
+		t.Fatalf("names = %v after %d fetches", got, calls)
+	}
+	dataCollectionNames([]string{"c1"})
+	if calls != 1 {
+		t.Fatalf("a known collection was fetched again (%d fetches)", calls)
+	}
+	// A collection added since: not fetched again within collectionNamesRetry, then fetched.
+	names["c2"] = "Collection Two"
+	if got := dataCollectionNames([]string{"c2"}); got["c2"] != "" || calls != 1 {
+		t.Fatalf("refetched within the retry interval: %v, %d fetches", got, calls)
+	}
+	collectionNamesMu.Lock()
+	collectionNamesFetched = time.Now().Add(-collectionNamesRetry)
+	collectionNamesMu.Unlock()
+	if got := dataCollectionNames([]string{"c2"}); got["c2"] != "Collection Two" || calls != 2 {
+		t.Fatalf("names = %v after %d fetches, want c2 fetched", got, calls)
+	}
+	// A failed fetch keeps the cached names.
+	fetchCollectionNames = func() (map[string]string, error) { return nil, fmt.Errorf("down") }
+	collectionNamesMu.Lock()
+	collectionNamesFetched = time.Now().Add(-collectionNamesTTL)
+	collectionNamesMu.Unlock()
+	if got := dataCollectionNames(nil); got["c1"] != "Collection One" {
+		t.Fatalf("a failed fetch lost the cache: %v", got)
 	}
 }
 
@@ -170,5 +257,68 @@ printf 'token-%s' "$n"
 	cacheMu.Unlock()
 	if token, err := getToken(); err != nil || token != "token-3" {
 		t.Fatalf("expired token: got %q %v, want token-3", token, err)
+	}
+}
+
+func TestRegisteredWorkflowsAreCachedUntilAStateChange(t *testing.T) {
+	dir := fakeWb(t, `case "$*" in
+ 'workflow list'*|'workflow describe'*) echo "$*" >> "$WORKBENCH_CONTEXT_PARENT_DIR/calls"; echo listed ;;
+esac
+`)
+	writeWorkspaceContext(t, dir, workspaceContext(workspaceA, "project-a"))
+	syncWorkspaceContext()
+	all, _ := parseToolsets("all")
+	calls := func() int {
+		data, _ := os.ReadFile(filepath.Join(dir, "calls"))
+		return strings.Count(string(data), "\n")
+	}
+	list := CallToolParams{Name: "workflow_list", Arguments: map[string]interface{}{"workspaceId": "ws-a"}}
+	describe := CallToolParams{Name: "workflow_describe", Arguments: map[string]interface{}{"workspaceId": "ws-a", "workflowId": "wf"}}
+	for i := 0; i < 2; i++ {
+		callEnabledTool(list, all)
+		callEnabledTool(describe, all)
+	}
+	if n := calls(); n != 2 {
+		t.Fatalf("wb ran %d times for two calls each, want 2", n)
+	}
+	callEnabledTool(CallToolParams{Name: "workflow_create", Arguments: map[string]interface{}{"workspaceId": "ws-a"}}, all)
+	callEnabledTool(list, all)
+	if n := calls(); n != 3 {
+		t.Fatalf("after workflow_create, wb ran %d times, want the list read again", n)
+	}
+}
+
+func TestCachesAreWarmedOnceWbAnswers(t *testing.T) {
+	// wb fails until a marker file exists, as when the server starts before wb is installed.
+	dir := fakeWb(t, `[ -f "$WORKBENCH_CONTEXT_PARENT_DIR/ready" ] || exit 1
+echo '{"workspace":{"id":"ws-a","uuid":"`+workspaceA+`"},"warm":true}'
+`)
+	fetched := 0
+	old := fetchCollectionNames
+	fetchCollectionNames = func() (map[string]string, error) {
+		if _, err := os.Stat(filepath.Join(dir, "ready")); err != nil {
+			return nil, fmt.Errorf("not ready")
+		}
+		fetched++
+		return map[string]string{"c1": "One"}, nil
+	}
+	oldRetry, oldTries := warmRetry, warmTries
+	warmRetry, warmTries = 50*time.Millisecond, 100
+	t.Cleanup(func() { fetchCollectionNames, warmRetry, warmTries = old, oldRetry, oldTries })
+
+	done := make(chan struct{})
+	go func() { warmCaches(true); close(done) }()
+	time.Sleep(200 * time.Millisecond)
+	if isCached("wb_status") {
+		t.Fatal("cached a status before wb answered")
+	}
+	os.WriteFile(filepath.Join(dir, "ready"), nil, 0600)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("warmCaches did not finish once wb answered")
+	}
+	if out, _ := statusResult(); !strings.Contains(out, `"warm":true`) || fetched != 1 {
+		t.Fatalf("status %q, names fetched %d times", out, fetched)
 	}
 }

@@ -15,6 +15,9 @@ fi
 readonly USER_HOME_DIR
 
 readonly WB_MCP_PORT="${PORT:-"9242"}"
+# The address the daemon listens on. 127.0.0.1 keeps it to this container; 0.0.0.0 lets the
+# container publish the port (an app that gives sandboxed agents the tools does that).
+readonly WB_MCP_BIND_ADDRESS="${BINDADDRESS:-"127.0.0.1"}"
 # Tool groups enabled by default (core is always on). Letters and commas only.
 WB_MCP_TOOLSETS="$(printf '%s' "${TOOLSETS:-"core"}" | tr -cd 'a-zA-Z,')"
 readonly WB_MCP_TOOLSETS
@@ -111,7 +114,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${WB_MCP_BIN} -http -port ${WB_MCP_PORT} -toolsets ${WB_MCP_TOOLSETS}
+ExecStart=${WB_MCP_BIN} -http -bind ${WB_MCP_BIND_ADDRESS} -port ${WB_MCP_PORT} -toolsets ${WB_MCP_TOOLSETS}
 Restart=on-failure
 User=${USERNAME}
 StandardOutput=journal
@@ -130,6 +133,7 @@ cat > "${WB_MCP_DIR}/start-server.sh" <<EOF
 WB_MCP_BIN="/opt/wb-mcp-server/wb-mcp-server"
 PORT="\${WB_MCP_PORT:-9242}"
 # Tool groups listed by default; clients can add more with ?toolsets= in their server URL.
+BIND="\${WB_MCP_BIND:-${WB_MCP_BIND_ADDRESS}}"
 TOOLSETS="\$(printf '%s' "\${WB_MCP_TOOLSETS:-${WB_MCP_TOOLSETS}}" | tr -cd 'a-zA-Z,')"
 LOGFILE="/tmp/wb-mcp-server.log"
 RUN_USER="${USERNAME}"
@@ -142,11 +146,11 @@ fi
 
 # Start server as the correct user (who has wb auth tokens)
 if [ "\$(id -u)" = "0" ] && [ "\${RUN_USER}" != "root" ]; then
-    su - "\${RUN_USER}" -c "nohup \${WB_MCP_BIN} -http -port \${PORT} -toolsets '\${TOOLSETS}' >> \${LOGFILE} 2>&1 &"
+    su - "\${RUN_USER}" -c "nohup \${WB_MCP_BIN} -http -bind \${BIND} -port \${PORT} -toolsets '\${TOOLSETS}' >> \${LOGFILE} 2>&1 &"
 else
-    nohup "\${WB_MCP_BIN}" -http -port "\${PORT}" -toolsets "\${TOOLSETS}" >> "\${LOGFILE}" 2>&1 &
+    nohup "\${WB_MCP_BIN}" -http -bind "\${BIND}" -port "\${PORT}" -toolsets "\${TOOLSETS}" >> "\${LOGFILE}" 2>&1 &
 fi
-echo "Started wb-mcp-server on port \${PORT} as \${RUN_USER} (tool groups: \${TOOLSETS})"
+echo "Started wb-mcp-server on \${BIND}:\${PORT} as \${RUN_USER} (tool groups: \${TOOLSETS})"
 echo "Logs: \${LOGFILE}"
 EOF
 

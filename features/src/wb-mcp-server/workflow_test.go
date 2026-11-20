@@ -243,3 +243,135 @@ func TestWorkflowArgumentUsesSchemaBounds(t *testing.T) {
 		}
 	}
 }
+
+func argsEqual(a, b []string) bool {
+	return strings.Join(a, "\x00") == strings.Join(b, "\x00")
+}
+
+func TestWorkflowJobRunArgs(t *testing.T) {
+	required := map[string]interface{}{"workspaceId": "ws", "workflowId": "wf", "outputBucketId": "out"}
+	with := func(extra map[string]interface{}) map[string]interface{} {
+		m := map[string]interface{}{}
+		for k, v := range required {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	base := []string{"workflow", "job", "run", "--workspace=ws", "--workflow=wf", "--output-bucket-id=out"}
+
+	t.Run("required only", func(t *testing.T) {
+		got, err := workflowJobRunArgs(required)
+		if err != nil || !argsEqual(got, base) {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
+	t.Run("every optional field", func(t *testing.T) {
+		got, err := workflowJobRunArgs(with(map[string]interface{}{
+			"jobId": "j", "description": "d", "outputPath": "o/", "inputsUri": "gs://x/in.json",
+			"profile": "gpu", "paramsFileBucketId": "cfg", "paramsFilePath": "p/params.yaml",
+		}))
+		want := append(append([]string{}, base...), "--job-id=j", "--description=d", "--output-path=o/",
+			"--inputs-uri=gs://x/in.json", "--profile=gpu", "--params-file-bucket-id=cfg", "--params-file-path=p/params.yaml")
+		if err != nil || !argsEqual(got, want) {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
+	t.Run("inputs object", func(t *testing.T) {
+		got, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": map[string]interface{}{"a": 1.0}}))
+		want := append(append([]string{}, base...), `--inputs={"a":1}`)
+		if err != nil || !argsEqual(got, want) {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
+	t.Run("params file needs both halves", func(t *testing.T) {
+		for _, extra := range []map[string]interface{}{{"paramsFileBucketId": "cfg"}, {"paramsFilePath": "p.yaml"}} {
+			got, err := workflowJobRunArgs(with(extra))
+			if err == nil || got != nil || !strings.Contains(err.Error(), "both needed") {
+				t.Fatalf("got %v, %v", got, err)
+			}
+		}
+	})
+	t.Run("inputs and inputsUri are exclusive", func(t *testing.T) {
+		_, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": map[string]interface{}{}, "inputsUri": "gs://x/y"}))
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+	})
+	t.Run("missing required", func(t *testing.T) {
+		if _, err := workflowJobRunArgs(map[string]interface{}{"workspaceId": "ws"}); err == nil {
+			t.Fatal("expected an error")
+		}
+	})
+}
+
+func TestWorkflowCreateArgs(t *testing.T) {
+	required := map[string]interface{}{"workspaceId": "ws", "workflowId": "wf", "bucketId": "b", "path": "p/main.nf"}
+	base := []string{"workflow", "create", "--workspace=ws", "--workflow=wf", "--bucket-id=b", "--path=p/main.nf"}
+	got, err := workflowCreateArgs(required)
+	if err != nil || !argsEqual(got, base) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	full := map[string]interface{}{"displayName": "N", "description": "D", "workflowType": "NEXTFLOW"}
+	for k, v := range required {
+		full[k] = v
+	}
+	got, err = workflowCreateArgs(full)
+	want := append(append([]string{}, base...), "--display-name=N", "--description=D", "--workflow-type=NEXTFLOW")
+	if err != nil || !argsEqual(got, want) {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if _, err := workflowCreateArgs(map[string]interface{}{"workspaceId": "ws"}); err == nil {
+		t.Fatal("expected an error")
+	}
+}
+
+func TestWorkflowArgumentsTakeUUIDsTheCLIDoesNot(t *testing.T) {
+	const ws = "44444444-4444-4444-8444-444444444444"
+	const bucket = "55555555-5555-4555-8555-555555555555"
+	dir := t.TempDir()
+	script := `#!/bin/sh
+case "$*" in
+ 'status --format=json') printf '%s' '{"workspace":{"id":"my-ws","uuid":"` + ws + `"}}' ;;
+ 'resource list --workspace=my-ws --format=json') printf '%s' '[{"id":"output","uuid":"` + bucket + `"},{"id":"params","uuid":"66666666-6666-4666-8666-666666666666"}]' ;;
+ *) exit 99 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(dir, "wb"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	clearToolResultCache()
+	cacheMu.Lock()
+	delete(workspaceIdCache, "my-ws")
+	cacheMu.Unlock()
+
+	given := map[string]interface{}{"workspaceId": ws, "workflowId": "wf", "outputBucketId": bucket,
+		"paramsFileBucketId": "66666666-6666-4666-8666-666666666666", "paramsFilePath": "p.yaml"}
+	args, err := workflowJobRunArgs(withCLIIDs(given, "outputBucketId", "paramsFileBucketId"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "workflow job run --workspace=my-ws --workflow=wf --output-bucket-id=output --params-file-bucket-id=params --params-file-path=p.yaml"
+	if got := strings.Join(args, " "); got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+	if given["workspaceId"] != ws {
+		t.Fatal("the caller's arguments were changed")
+	}
+	// The tools that take only a workspace (workflow_list, workflow_describe, ...) convert it too.
+	if got := withCLIIDs(map[string]interface{}{"workspaceId": ws, "jobId": "j"}); got["workspaceId"] != "my-ws" || got["jobId"] != "j" {
+		t.Fatalf("workspace not converted: %v", got)
+	}
+	// IDs pass through untouched, and a UUID nothing matches is left for the CLI to refuse.
+	same := withCLIIDs(map[string]interface{}{"workspaceId": "my-ws", "outputBucketId": "output"}, "outputBucketId")
+	if same["workspaceId"] != "my-ws" || same["outputBucketId"] != "output" {
+		t.Fatalf("IDs changed: %v", same)
+	}
+	unknown := "77777777-7777-4777-8777-777777777777"
+	if got := withCLIIDs(map[string]interface{}{"workspaceId": "my-ws", "bucketId": unknown}, "bucketId"); got["bucketId"] != unknown {
+		t.Fatalf("an unknown UUID changed: %v", got)
+	}
+}

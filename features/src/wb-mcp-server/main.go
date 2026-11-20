@@ -117,8 +117,11 @@ const (
 	// Access tokens live for about an hour; a 401 also forces a refresh.
 	tokenTTL = 30 * time.Minute
 	// wb status rarely changes. syncWorkspaceContext picks up workspace switches.
-	statusTTL  = 5 * time.Minute
+	statusTTL  = 30 * time.Minute
 	appListTTL = 30 * time.Second
+	// The workspace's registered workflows (workflow_list, workflow_describe): they change only by
+	// a state-changing call such as workflow_create, which clears the cache.
+	workflowTTL = 10 * time.Minute
 )
 
 type cachedResult struct {
@@ -841,12 +844,13 @@ var wbTools = []Tool{
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"workspaceId": map[string]interface{}{"type": "string", "description": "Workspace ID"},
-				"workflowId":  map[string]interface{}{"type": "string", "description": "Workflow ID"},
-				"bucketId":    map[string]interface{}{"type": "string", "description": "BUCKET NAME (not UUID) - e.g., 'cohort_exports'. Get from workspace_list_resources metadata.name field."},
-				"path":        map[string]interface{}{"type": "string", "description": "Path to workflow definition file in bucket (e.g., 'workflows/myworkflow.wdl')"},
-				"displayName": map[string]interface{}{"type": "string", "description": "Workflow display name"},
-				"description": map[string]interface{}{"type": "string", "description": "Description of the workflow"},
+				"workspaceId":  map[string]interface{}{"type": "string", "description": "Workspace ID"},
+				"workflowId":   map[string]interface{}{"type": "string", "description": "Workflow ID"},
+				"bucketId":     map[string]interface{}{"type": "string", "description": "Resource ID of a bucket resource in the workspace that holds the workflow definition (from workspace_list_resources), not the cloud bucket name."},
+				"path":         map[string]interface{}{"type": "string", "description": "Path to workflow definition file in bucket (e.g., 'workflows/myworkflow.wdl')"},
+				"displayName":  map[string]interface{}{"type": "string", "description": "Workflow display name"},
+				"description":  map[string]interface{}{"type": "string", "description": "Description of the workflow"},
+				"workflowType": map[string]interface{}{"type": "string", "enum": []string{"WDL", "NEXTFLOW"}, "description": "Workflow language: WDL or NEXTFLOW. For NEXTFLOW, path is the pipeline's main script or its directory in the bucket."},
 			},
 			Required: []string{"workspaceId", "workflowId", "bucketId", "path"},
 		},
@@ -885,17 +889,21 @@ var wbTools = []Tool{
 	},
 	{
 		Name:        "workflow_job_run",
-		Description: "Start a workflow job. Use this to execute a workflow with specific inputs.",
+		Description: "Start a workflow job. Use this to execute a workflow with specific inputs. Call it once per run: the same run asked for again within 15 minutes is not submitted again. For WDL, pass inputs (an object) or inputsUri. For Nextflow, the parameters usually go in a params file (YAML or JSON) in a workspace bucket: pass paramsFileBucketId and paramsFilePath together, and a profile if the pipeline needs one.",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
-				"workspaceId":    map[string]interface{}{"type": "string", "description": "Workspace ID"},
-				"workflowId":     map[string]interface{}{"type": "string", "description": "Workflow ID"},
-				"outputBucketId": map[string]interface{}{"type": "string", "description": "BUCKET NAME (not UUID) for outputs - e.g., 'cohort_exports'"},
-				"jobId":          map[string]interface{}{"type": "string", "description": "Optional job ID"},
-				"description":    map[string]interface{}{"type": "string", "description": "Job description"},
-				"outputPath":     map[string]interface{}{"type": "string", "description": "Output path in bucket"},
-				"inputs":         map[string]interface{}{"type": "object", "description": "Job inputs as key-value pairs"},
+				"workspaceId":        map[string]interface{}{"type": "string", "description": "Workspace ID"},
+				"workflowId":         map[string]interface{}{"type": "string", "description": "Workflow ID"},
+				"outputBucketId":     map[string]interface{}{"type": "string", "description": "Resource ID of a bucket resource in the workspace where outputs are written (from workspace_list_resources), not the cloud bucket name."},
+				"jobId":              map[string]interface{}{"type": "string", "description": "Optional job ID"},
+				"description":        map[string]interface{}{"type": "string", "description": "Job description"},
+				"outputPath":         map[string]interface{}{"type": "string", "description": "Output path in bucket"},
+				"inputs":             map[string]interface{}{"type": "object", "description": "Job inputs as key-value pairs. Not allowed together with inputsUri."},
+				"inputsUri":          map[string]interface{}{"type": "string", "description": "URI of a file holding the job inputs. Not allowed together with inputs."},
+				"profile":            map[string]interface{}{"type": "string", "description": "Nextflow profile to run with (for example 'gpu')."},
+				"paramsFileBucketId": map[string]interface{}{"type": "string", "description": "Resource ID of the bucket resource that holds the Nextflow params file. Needs paramsFilePath."},
+				"paramsFilePath":     map[string]interface{}{"type": "string", "description": "Path of the Nextflow params file (YAML or JSON) in that bucket. Needs paramsFileBucketId."},
 			},
 			Required: []string{"workspaceId", "workflowId", "outputBucketId"},
 		},
@@ -1487,7 +1495,7 @@ var workflowDiagnostics = []workflowDiagnostic{
 	{
 		tool: Tool{
 			Name:        "workflow_inputs_get",
-			Description: "Get parsed input definitions for a workflow resource UUID.",
+			Description: "Get parsed input definitions for a workflow resource UUID. WDL workflows only: for a Nextflow workflow, read the pipeline's nextflow_schema.json and its params from the workflow's bucket source (workflow_describe).",
 			InputSchema: InputSchema{
 				Type: "object",
 				Properties: map[string]interface{}{
@@ -1774,6 +1782,10 @@ func initializeConfig() error {
 		dataExplorerURL = "https://workbench.verily.com/api/de"
 	}
 
+	// wb_status and the data collections' names take seconds; fetch them before the first call
+	// needs them. At app start wb may not be installed or logged in yet, so keep trying.
+	go warmCaches(err != nil)
+
 	fmt.Fprintf(os.Stderr, "Initialized - Workspace: %s, DataExplorer: %s\n", workspaceBaseURL, dataExplorerURL)
 	return nil
 }
@@ -1893,9 +1905,16 @@ func syncWorkspaceContext() {
 	toolResultCache = map[string]cachedResult{}
 }
 
+// clearToolResultCache drops the cached results a state-changing call could make stale. wb_status
+// is kept: it says which server, user and workspace these are, which such a call does not change
+// (a workspace switch is seen in the context file, and syncWorkspaceContext clears everything).
 func clearToolResultCache() {
 	cacheMu.Lock()
+	status, ok := toolResultCache["wb_status"]
 	toolResultCache = map[string]cachedResult{}
+	if ok {
+		toolResultCache["wb_status"] = status
+	}
 	cacheMu.Unlock()
 }
 
@@ -2481,11 +2500,16 @@ func handleCallTool(params CallToolParams) CallToolResult {
 		}
 	}
 
-	if !readOnlyTools[params.Name] {
-		// The call may change workspace state, so cached results could go stale.
+	// A call that may change workspace state makes cached results stale. Clear them again once it
+	// returns too: a read that ran during a slow call could have cached the old state.
+	changes := !readOnlyTools[params.Name]
+	if changes {
 		clearToolResultCache()
 	}
 	result := callTool(params)
+	if changes {
+		clearToolResultCache()
+	}
 	for i := range result.Content {
 		result.Content[i].Text = cleanToolOutput(result.Content[i].Text)
 	}
@@ -2498,7 +2522,7 @@ func callTool(params CallToolParams) CallToolResult {
 
 	switch params.Name {
 	case "wb_status":
-		output, err = cachedToolCall("wb_status", statusTTL, refreshStatus)
+		output, err = statusResult()
 	case "wb_workspace_list":
 		args := []string{"workspace", "list"}
 		if format, ok := params.Arguments["format"].(string); ok && format == "json" {
@@ -3550,38 +3574,17 @@ func callTool(params CallToolParams) CallToolResult {
 			resourcesList = []interface{}{}
 		}
 
-		// Build a UUID → display name map with a single batch API call.
-		// This avoids the N+1 sequential lookups (one per collection) that caused timeouts.
-		collectionNames := make(map[string]string) // uuid → display name
-		batchBody := map[string]interface{}{
-			"limit":  1000,
-			"offset": 0,
-			"properties": []map[string]string{
-				{"key": "terra-type", "value": "data-collection"},
-			},
-		}
-		if batchResp, batchErr := makeAPIRequest("POST", workspaceBaseURL+"/api/workspaces/v2/filtered", batchBody); batchErr == nil {
-			var batchData map[string]interface{}
-			if json.Unmarshal(batchResp, &batchData) == nil {
-				if wsList, ok := batchData["workspaces"].([]interface{}); ok {
-					for _, w := range wsList {
-						ws, ok := w.(map[string]interface{})
-						if !ok {
-							continue
-						}
-						uuid, _ := ws["id"].(string)
-						displayName, _ := ws["displayName"].(string)
-						if displayName == "" {
-							displayName, _ = ws["userFacingId"].(string)
-						}
-						if uuid != "" && displayName != "" {
-							collectionNames[uuid] = displayName
-						}
-					}
+		// The collections' display names, cached (collectionNames in collections.go); a group whose
+		// name is not known is keyed by its UUID.
+		var sourceIds []string
+		for _, r := range resourcesList {
+			if resource, ok := r.(map[string]interface{}); ok {
+				if id := lineageSource(resource); id != "" {
+					sourceIds = append(sourceIds, id)
 				}
 			}
 		}
-		// Fall back gracefully: if the batch call fails, groups will be keyed by UUID
+		collectionNames := dataCollectionNames(sourceIds)
 
 		// Group resources by data collection, using display name where available
 		dataCollections := make(map[string]map[string]interface{})
@@ -3881,68 +3884,50 @@ func callTool(params CallToolParams) CallToolResult {
 		output, err = executeWbCommand([]string{"cluster", "launch", "--id=" + clusterId})
 
 	case "workflow_list":
-		workspaceId, reqErr := requireString(params.Arguments, "workspaceId")
+		workspaceId, reqErr := requireString(withCLIIDs(params.Arguments), "workspaceId")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		output, err = executeWbCommand([]string{"workflow", "list", "--workspace=" + workspaceId})
+		output, err = cachedToolCall("workflow_list:"+workspaceId, workflowTTL, func() (string, error) {
+			return executeWbCommand([]string{"workflow", "list", "--workspace=" + workspaceId})
+		})
 
 	case "workflow_create":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "workflowId", "bucketId", "path")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
-		}
-		workspaceId, workflowId, bucketId, path := vals[0], vals[1], vals[2], vals[3]
-		args := []string{"workflow", "create", "--workspace=" + workspaceId, "--workflow=" + workflowId, "--bucket-id=" + bucketId, "--path=" + path}
-		if displayName, ok := params.Arguments["displayName"].(string); ok {
-			args = append(args, "--display-name="+displayName)
-		}
-		if description, ok := params.Arguments["description"].(string); ok {
-			args = append(args, "--description="+description)
+		args, argErr := workflowCreateArgs(withCLIIDs(params.Arguments, "bucketId"))
+		if argErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + argErr.Error()}}, IsError: true}
 		}
 		output, err = executeWbCommand(args)
 
 	case "workflow_describe":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "workflowId")
+		vals, reqErr := requireStrings(withCLIIDs(params.Arguments), "workspaceId", "workflowId")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		output, err = executeWbCommand([]string{"workflow", "describe", "--workspace=" + vals[0], "--workflow=" + vals[1]})
+		output, err = cachedToolCall("workflow_describe:"+vals[0]+"/"+vals[1], workflowTTL, func() (string, error) {
+			return executeWbCommand([]string{"workflow", "describe", "--workspace=" + vals[0], "--workflow=" + vals[1]})
+		})
 
 	case "workflow_job_list":
-		output, err = executeWbCommand([]string{"workflow", "job", "list"})
+		output, err = listRuns()
 
 	case "workflow_job_describe":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "jobId")
+		vals, reqErr := requireStrings(withCLIIDs(params.Arguments), "workspaceId", "jobId")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		output, err = executeWbCommand([]string{"workflow", "job", "describe", "--workspace=" + vals[0], "--job-id=" + vals[1]})
+		output, err = describeRun(vals[0], vals[1])
 
 	case "workflow_job_run":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "workflowId", "outputBucketId")
-		if reqErr != nil {
-			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
+		arguments := withCLIIDs(params.Arguments, "outputBucketId", "paramsFileBucketId")
+		args, argErr := workflowJobRunArgs(arguments)
+		if argErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + argErr.Error()}}, IsError: true}
 		}
-		workspaceId, workflowId, outputBucketId := vals[0], vals[1], vals[2]
-		args := []string{"workflow", "job", "run", "--workspace=" + workspaceId, "--workflow=" + workflowId, "--output-bucket-id=" + outputBucketId}
-		if jobId, ok := params.Arguments["jobId"].(string); ok {
-			args = append(args, "--job-id="+jobId)
-		}
-		if description, ok := params.Arguments["description"].(string); ok {
-			args = append(args, "--description="+description)
-		}
-		if outputPath, ok := params.Arguments["outputPath"].(string); ok {
-			args = append(args, "--output-path="+outputPath)
-		}
-		if inputs, ok := params.Arguments["inputs"].(map[string]interface{}); ok {
-			inputsJSON, _ := json.Marshal(inputs)
-			args = append(args, "--inputs="+string(inputsJSON))
-		}
-		output, err = executeWbCommand(args)
+		output, err = submitWorkflowJob(arguments, args)
 
 	case "workflow_job_cancel":
-		vals, reqErr := requireStrings(params.Arguments, "workspaceId", "jobId")
+		vals, reqErr := requireStrings(withCLIIDs(params.Arguments), "workspaceId", "jobId")
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
@@ -4339,11 +4324,22 @@ func buildLiteral(dataType string, value interface{}) map[string]interface{} {
 func handleRequest(req JSONRPCRequest, enabled map[string]bool) JSONRPCResponse {
 	switch req.Method {
 	case "initialize":
+		// Answer with the revision the client asked for when this server supports it (the
+		// tools-only surface is the same in all of them), so a client, or a proxy inspecting
+		// the traffic such as NVIDIA OpenShell, sees a revision it knows on later requests.
+		protocolVersion := "2025-03-26"
+		var params InitializeParams
+		if err := json.Unmarshal(req.Params, &params); err == nil {
+			switch params.ProtocolVersion {
+			case "2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25":
+				protocolVersion = params.ProtocolVersion
+			}
+		}
 		return JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result: InitializeResult{
-				ProtocolVersion: "2024-11-05",
+				ProtocolVersion: protocolVersion,
 				Capabilities:    map[string]interface{}{"tools": map[string]interface{}{}},
 				ServerInfo:      ServerInfo{Name: "wb-mcp-server", Version: "2.0.0"},
 			},
@@ -4407,10 +4403,10 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // Run server in HTTP mode
-func runHTTPServer(port string) {
+func runHTTPServer(bind, port string) {
 	http.HandleFunc("/", handleHTTP)
 
-	addr := "127.0.0.1:" + port
+	addr := bind + ":" + port
 	log.Printf("Starting HTTP MCP server on %s (port arg: %q)\n", addr, port)
 	enabled, _ := parseToolsets(defaultToolsets)
 	log.Printf("Ready - %d of %d tools available by default (tool groups: %s; clients can add ?toolsets=)\n",
@@ -4453,9 +4449,11 @@ func runStdioServer() {
 func main() {
 	var httpMode bool
 	var port string
+	var bind string
 
 	flag.BoolVar(&httpMode, "http", false, "Run in HTTP mode instead of stdio")
 	flag.StringVar(&port, "port", "9242", "Port for HTTP server")
+	flag.StringVar(&bind, "bind", "127.0.0.1", "Address the HTTP server listens on (0.0.0.0 to let the container's port be published)")
 	toolsets := os.Getenv("WB_MCP_TOOLSETS")
 	if toolsets == "" {
 		toolsets = groupCore
@@ -4476,7 +4474,7 @@ func main() {
 	}
 
 	if httpMode {
-		runHTTPServer(port)
+		runHTTPServer(bind, port)
 	} else {
 		runStdioServer()
 	}

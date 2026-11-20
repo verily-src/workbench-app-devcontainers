@@ -1,0 +1,21 @@
+{
+  "id": "vllm-model",
+  "version": "2.0.0",
+  "name": "Local model served by vLLM (2x H100)",
+  "description": "Serves nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4, text only, across two H100 80 GB GPUs: a released vLLM with prebuilt FlashInfer kernels in /opt/vllm, the CUDA 13.0 toolkit FlashInfer compiles one kernel with, and the script that downloads the weights and starts the server. Debian-based images on x86_64 with an NVIDIA driver 580 or newer.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user. The server runs as this user at start-up (start-vllm.sh)."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user: where the weights, caches and log live (APP_USER_HOME at run time)."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
+}

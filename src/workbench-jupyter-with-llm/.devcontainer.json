@@ -31,7 +31,8 @@
     },
     "./.devcontainer/features/wb-mcp-server": {
       "username": "jupyter",
-      "userHomeDir": "/home/jupyter"
+      "userHomeDir": "/home/jupyter",
+      "toolsets": "all"
     },
     "./.devcontainer/features/llm-context": {
       "username": "jupyter",

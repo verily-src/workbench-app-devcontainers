@@ -1,0 +1,27 @@
+{
+  "id": "opencode-harness",
+  "version": "1.0.0",
+  "name": "OpenCode harness for the agent sandbox",
+  "description": "OpenCode as a harness of the agent-sandbox feature: the harness definition and its config hook (the local model, the Workbench MCP server when the policy allows it), the `opencode` command that always starts OpenCode in the sandbox, and the Dockerfile of the sandbox image the app's compose file builds.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user."
+    },
+    "installLauncher": {
+      "type": "boolean",
+      "default": true,
+      "description": "Install the `opencode` command (false on the sandbox-broker, which only needs the harness files)."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "./.devcontainer/features/agent-sandbox"
+  ]
+}

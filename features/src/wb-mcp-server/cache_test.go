@@ -322,3 +322,97 @@ echo '{"workspace":{"id":"ws-a","uuid":"`+workspaceA+`"},"warm":true}'
 		t.Fatalf("status %q, names fetched %d times", out, fetched)
 	}
 }
+
+// blockedRead runs cachedToolCall("k") with an fn that returns result once released, and returns
+// a function that releases it and waits for the call to return.
+func blockedRead(t *testing.T, result string) (release func()) {
+	t.Helper()
+	started, unblock, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		out, err := cachedToolCall("k", time.Hour, func() (string, error) {
+			close(started)
+			<-unblock
+			return result, nil
+		})
+		if err != nil || out != result {
+			t.Errorf("blocked read = %q, %v", out, err)
+		}
+	}()
+	<-started
+	return func() {
+		close(unblock)
+		<-done
+	}
+}
+
+func TestReadInFlightDuringAClearIsNotCached(t *testing.T) {
+	fakeWb(t, "echo ok\n")
+	release := blockedRead(t, "old list")
+	clearToolResultCache() // a mutating call runs while the read is in flight
+	release()
+	if isCached("k") {
+		t.Fatal("a read that began before a clear stored its result")
+	}
+	out, _ := cachedToolCall("k", time.Hour, func() (string, error) { return "new list", nil })
+	if out != "new list" {
+		t.Fatalf("read after the clear = %q, want a fresh result", out)
+	}
+	// A read that begins after the clear is cached.
+	if !isCached("k") {
+		t.Fatal("a read after the clear was not cached")
+	}
+}
+
+func TestReadInFlightDuringAWorkspaceSwitchIsNotCached(t *testing.T) {
+	dir := fakeWb(t, "echo ok\n")
+	writeWorkspaceContext(t, dir, workspaceContext(workspaceA, "project-a"))
+	syncWorkspaceContext()
+	release := blockedRead(t, "result for A")
+	writeWorkspaceContext(t, dir, workspaceContext(workspaceB, "project-b"))
+	syncWorkspaceContext()
+	release()
+	if isCached("k") {
+		t.Fatal("a read that began in workspace A stored its result after the switch to B")
+	}
+}
+
+func TestStatusRefreshInFlightDuringAWorkspaceSwitchKeepsTheNewWorkspace(t *testing.T) {
+	dir := fakeWb(t, `case "$*" in
+ 'status --format=json') touch "$WORKBENCH_CONTEXT_PARENT_DIR/started"; sleep 1; echo '{"workspace":{"id":"ws-a","uuid":"`+workspaceA+`","googleProjectId":"project-a","cloudPlatform":"GCP"}}' ;;
+esac
+`)
+	writeWorkspaceContext(t, dir, workspaceContext(workspaceA, "project-a"))
+	syncWorkspaceContext()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		refreshStatus()
+	}()
+	for i := 0; i < 100; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "started")); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	writeWorkspaceContext(t, dir, workspaceContext(workspaceB, "project-b"))
+	syncWorkspaceContext()
+	<-done
+	cacheMu.Lock()
+	uuid, project := cachedWorkspaceUUID, cachedGoogleProject
+	cacheMu.Unlock()
+	if uuid != workspaceB || project != "project-b" {
+		t.Fatalf("workspace after the switch = %q %q, want B's", uuid, project)
+	}
+	if isCached("wb_status") {
+		t.Fatal("a status for workspace A was cached after the switch to B")
+	}
+}
+
+func TestRefreshStatusErrorIncludesStderr(t *testing.T) {
+	fakeWb(t, "echo 'not logged in' >&2; exit 3\n")
+	_, err := refreshStatus()
+	if err == nil || !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "not logged in") {
+		t.Fatalf("error = %v, want the exit status and stderr", err)
+	}
+}

@@ -42,20 +42,20 @@ Workflows must be registered in the workspace before they can be run.
 wb workflow list
 
 # Run a Nextflow workflow (registered in workspace)
-wb workflow job run --workflow=<WORKFLOW_ID> --inputs=<INPUTS_JSON>
+wb workflow job run --workflow=<WORKFLOW_ID> --output-bucket-id=<OUTPUT_BUCKET_ID> --inputs=<INPUTS_JSON>
 
 # Check job status
-wb workflow job list --format=json | jq '.[] | {id, status, workflowName}'
+wb workflow job list --format=json | jq '.[] | {runId, status, displayName}'
 
 # Get job details
-wb workflow job describe --job=<JOB_ID> --format=json
+wb workflow job describe --job-id=<JOB_ID> --format=json
 ```
 
 ### Input JSON for Nextflow
 
 Nextflow inputs follow the same pattern as WDL — pass a JSON file or inline JSON:
 ```bash
-wb workflow job run --workflow=<WORKFLOW_ID> \
+wb workflow job run --workflow=<WORKFLOW_ID> --output-bucket-id=<OUTPUT_BUCKET_ID> \
   --inputs='{"input": "gs://my-bucket/reads/*.fq.gz", "outdir": "gs://my-bucket/results/"}'
 ```
 
@@ -64,7 +64,7 @@ wb workflow job run --workflow=<WORKFLOW_ID> \
 Nextflow writes outputs to the `outdir` parameter. Always point `outdir` to a GCS bucket — local app storage is ephemeral:
 ```bash
 # Use an environment variable for the bucket path
-wb workflow job run --workflow=<WORKFLOW_ID> \
+wb workflow job run --workflow=<WORKFLOW_ID> --output-bucket-id=<OUTPUT_BUCKET_ID> \
   --inputs="{\"outdir\": \"${WORKBENCH_my_bucket}/nextflow-results/\"}"
 ```
 
@@ -80,16 +80,16 @@ If the `workflow_*` MCP tools are in your tool list (the `workflows` tool group)
 
 ```bash
 # 1. Find failed jobs
-wb workflow job list --format=json | jq -r '.[] | select(.status=="FAILED") | "\(.id)\t\(.workflowName)\t\(.startTime)"'
+wb workflow job list --format=json | jq -r '.[] | select(.status=="FAILED") | "\(.runId)\t\(.displayName)\t\(.createdDate)"'
 
 # 2. Get error message
-wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage // "No message"'
+wb workflow job describe --job-id=<JOB_ID> --format=json | jq -r '.statusMessage // "No message"'
 
 # 3. Find failed task
-wb workflow job task list --job=<JOB_ID> --format=json | jq -r '.[] | select(.status=="FAILED") | .name'
+wb workflow job task list --job-id=<JOB_ID> --status=FAILED --format=json
 
 # 4. Get task logs
-wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json | jq '{stderr, stdout, exitCode, failureMessage}'
+wb workflow job task describe --task-id=<TASK_UUID> --format=json
 ```
 
 ### Nextflow-Specific Log Locations
@@ -118,7 +118,7 @@ gs://<execution-bucket>/<run-id>/work/<ab>/<cdef1234>/
 
 ```bash
 # Get the work directory from the task describe
-EXEC_DIR=$(wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json | jq -r '.executionDirectory // empty')
+EXEC_DIR=$(wb workflow job task describe --task-id=<TASK_UUID> --format=json | jq -r '.executionDirectory // empty')
 
 # Read the failed task script and logs
 echo "=== script ===" && gsutil cat "$EXEC_DIR/.command.sh" 2>/dev/null
@@ -195,7 +195,7 @@ gsutil ls gs://<bucket>/ 2>&1 | head -5
 ### Re-run After Fix
 
 ```bash
-wb workflow job run --workflow=<WORKFLOW_ID> --inputs=<INPUTS_JSON>
+wb workflow job run --workflow=<WORKFLOW_ID> --output-bucket-id=<OUTPUT_BUCKET_ID> --inputs=<INPUTS_JSON>
 ```
 
 Use `-resume` in your `nextflow.config` to skip already-completed tasks:

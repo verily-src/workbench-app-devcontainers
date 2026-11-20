@@ -54,3 +54,28 @@ esac
 		t.Fatalf("describe = %q, want the CLI's answer", r.Content[0].Text)
 	}
 }
+
+func TestWorkflowJobListLimit(t *testing.T) {
+	fakeWorkflowCLI(t)
+	setCurrentWorkspaceUUID(testWorkspace)
+	var queries []string
+	httpClient = &http.Client{Transport: workflowTransport(func(r *http.Request) (*http.Response, error) {
+		queries = append(queries, r.URL.RawQuery)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{}`)), Header: http.Header{}}, nil
+	})}
+	all, _ := parseToolsets("all")
+
+	r := callEnabledTool(CallToolParams{Name: "workflow_job_list", Arguments: map[string]interface{}{"limit": 25.0}}, all)
+	if r.IsError || len(queries) != 1 || queries[0] != "limit=25&workspaceId="+testWorkspace {
+		t.Fatalf("limit 25: %+v, queries %v", r, queries)
+	}
+	for _, bad := range []interface{}{0.0, -1.0, 1001.0, 2.5, "10"} {
+		r = callEnabledTool(CallToolParams{Name: "workflow_job_list", Arguments: map[string]interface{}{"limit": bad}}, all)
+		if !r.IsError || !strings.Contains(r.Content[0].Text, "limit") {
+			t.Fatalf("limit %v: %+v, want an error", bad, r)
+		}
+	}
+	if len(queries) != 1 {
+		t.Fatalf("an invalid limit reached the API: %v", queries)
+	}
+}

@@ -22,12 +22,12 @@
     "toolsets": {
       "type": "string",
       "default": "core",
-      "description": "Comma-separated tool groups listed by default: core (always on), workflows, dataexplorer, apps, admin, legacy, or all. Clients can add groups with ?toolsets= in the server URL."
+      "description": "Comma-separated tool groups listed by default: core (always on), workflows, dataexplorer, apps, admin, legacy, or all. With a loopback bindAddress, clients can add groups with ?toolsets= in the server URL; with any other bindAddress these groups are the most a client gets and ?toolsets= can only narrow them."
     },
     "bindAddress": {
       "type": "string",
       "default": "127.0.0.1",
-      "description": "Address the HTTP MCP server listens on. 127.0.0.1 (default) keeps it to this container; 0.0.0.0 lets the container publish the port, for example to sandboxed agents on the same VM. WB_MCP_BIND overrides it at start."
+      "description": "Address the HTTP MCP server listens on. 127.0.0.1 (default) keeps it to this container; 0.0.0.0 lets the container publish the port, for example to sandboxed agents on the same VM. WB_MCP_BIND overrides it at start. With any other address, the toolsets option is the most a client can enable."
     }
   },
   "installsAfter": [

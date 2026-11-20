@@ -13,7 +13,7 @@
 # Prerequisites:
 #   - Workbench CLI (wb) installed and authenticated
 #   - jq installed for JSON processing
-#   - Active workspace set (wb workspace set <workspace-id>)
+#   - Active workspace set (wb workspace set --id=<workspace-id>)
 #
 # CLI JSON Field Reference:
 #   Workspace (UFWorkspaceLight.java):
@@ -92,7 +92,7 @@ check_prerequisites() {
     if ! wb workspace describe --format=json &> /dev/null; then
         log_error "No workspace set or not authenticated. Please run:"
         log_error "  wb auth login   (GCP: add --mode=APP_DEFAULT_CREDENTIALS inside Workbench apps)"
-        log_error "  wb workspace set <workspace-id>"
+        log_error "  wb workspace set --id=<workspace-id>"
         exit 1
     fi
     
@@ -117,6 +117,9 @@ install_skills() {
         log_warn "Skill source directory not found at ${source_skills}, skipping skill installation"
         return
     fi
+
+    # Remove the skill file that WDL_WORKFLOW_TROUBLESHOOT.md replaces
+    rm -f "${SKILLS_DIR}/WORKFLOW_TROUBLESHOOT.md"
 
     # Copy all base skill files
     for skill_file in "${source_skills}"/*.md; do
@@ -222,7 +225,7 @@ generate_bucket_list() {
         if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
             echo "*No S3 buckets in this workspace.* Create one with:"
             echo '```bash'
-            echo 'wb resource create s3-storage-folder --name my-storage --description "Storage for results"'
+            echo 'wb resource create s3-storage-folder --id=my-storage --description "Storage for results"'
             echo '```'
             return
         fi
@@ -243,7 +246,7 @@ generate_bucket_list() {
         if [ "$count" -eq 0 ] || [ "$count" = "0" ]; then
             echo "*No GCS buckets in this workspace.* Create one with:"
             echo '```bash'
-            echo 'wb resource create gcs-bucket --name my-storage --description "Storage for results"'
+            echo 'wb resource create gcs-bucket --id=my-storage --description "Storage for results"'
             echo '```'
             return
         fi
@@ -387,13 +390,13 @@ conn.close()
 
         create_resources_section='```bash
 # S3 storage folder
-wb resource create s3-storage-folder --name my-storage --description "My storage folder"
+wb resource create s3-storage-folder --id=my-storage --description "My storage folder"
 
 # Aurora PostgreSQL database
-wb resource create aurora-database --name my-db --description "My database"
+wb resource create aurora-database --id=my-db --database-name=<DATABASE_NAME> --description "My database"
 
 # Reference an external Aurora database
-wb resource add-ref aurora-database --name external-db
+wb resource add-ref aurora-database --id=external-db --source-workspace-id=<WORKSPACE_ID> --source-resource-id=<RESOURCE_ID>
 ```'
 
     else
@@ -459,13 +462,13 @@ df = pd.read_parquet("gs://bucket-name/path/file.parquet")
 
         create_resources_section='```bash
 # GCS bucket
-wb resource create gcs-bucket --name my-bucket --description "My bucket"
+wb resource create gcs-bucket --id=my-bucket --description "My bucket"
 
 # BigQuery dataset
-wb resource create bq-dataset --name my-dataset --description "My dataset"
+wb resource create bq-dataset --id=my-dataset --description "My dataset"
 
 # Reference external GCS bucket
-wb resource add-ref gcs-bucket --name external-data --bucket-name existing-bucket
+wb resource add-ref gcs-bucket --id=external-data --bucket-name=existing-bucket
 ```'
     fi
 
@@ -577,7 +580,7 @@ ${mcp_default_tools_rows}
 | admin | Workspaces, resources, folders, users, groups | \`resource_create_bucket\`, \`resource_delete\` |
 | legacy | Notebook and cluster tools, older duplicates | — |
 
-Only call tools that are in your tool list; don't guess names. If a task needs a tool from a group that's off, use the \`wb\` CLI instead (through \`wb_execute\` or the terminal), or tell the user how to enable the group: \`wb_help\` with topic \`toolsets\` explains.
+Only call tools that are in your tool list; don't guess names. Most groups have \`wb\` CLI equivalents, so if a tool from a group that's off is needed, use the CLI (through \`wb_execute\` or the terminal). These have no CLI equivalent: the Data Explorer tools (group \`dataexplorer\`; direct API calls) and \`workflow_run_logs\`, \`workflow_run_trace\`, \`workflow_run_costs\` and \`workflow_task_get\`. For those, ask the user to enable the group: the MCP server feature's \`toolsets\` option, or \`?toolsets=\` in the server URL (\`wb_help\` with topic \`toolsets\` explains).
 
 ${cloud_cli_section}
 
@@ -589,22 +592,22 @@ ${cloud_cli_section}
 # Workspace
 wb workspace describe          # Current workspace details
 wb workspace list              # All your workspaces
-wb workspace set <id>          # Switch workspace
+wb workspace set --id=<id>     # Switch workspace
 
 # Resources
 wb resource list               # List resources
-wb resource describe <name>    # Resource details
-wb resource delete <name>      # Delete resource
+wb resource describe --id=<name>   # Resource details
+wb resource delete --id=<name>     # Delete resource
 
 # Workflows
 wb workflow list               # List workflows
-wb workflow run <id>           # Run workflow
-wb workflow describe <run-id>  # Run status
-wb workflow logs <run-id>      # Run logs
+wb workflow describe --workflow=<id>   # Workflow details
+wb workflow job list                   # List jobs
+wb workflow job describe --job-id=<id> # Job status
 
 # Apps
 wb app list                    # List running apps
-wb app describe <name>         # App details
+wb app describe --id=<name>      # App details
 
 # Auth
 wb auth status                 # Check authentication
@@ -634,7 +637,7 @@ wb resource list --format=json | jq '.[] | {name: .id, type: .resourceType}'
 ### Get the Cloud Path for a Resource
 
 \`\`\`bash
-wb resource describe <resource-name> --format=json
+wb resource describe --id=<resource-name> --format=json
 ${cloud_path_hint}
 \`\`\`
 
@@ -657,13 +660,13 @@ ${data_preview_query_section}
 wb workflow list
 
 # Run a workflow
-wb workflow run <workflow-id> --input param=value
+wb workflow job run --workflow=<workflow-id> --output-bucket-id=<bucket-id> --inputs='{"param": "value"}'
 
-# Check status  
-wb workflow describe <run-id>
+# Check status
+wb workflow job describe --job-id=<job-id>
 
-# View logs
-wb workflow logs <run-id>
+# List the tasks of a job
+wb workflow job task list --job-id=<job-id>
 \`\`\`
 
 ---
@@ -747,7 +750,7 @@ Read the skill file in \`~/.claude/skills/\` **before** starting these tasks:
 
 ## Quick Reference (Machine-Readable)
 
-Use this JSON for exact resource paths and environment variables:
+Use this JSON for the exact cloud path of each resource:
 
 \`\`\`json
 ${embedded_json}
@@ -755,8 +758,8 @@ ${embedded_json}
 
 **Usage:**
 - \`resourcePaths["my-bucket"]\` → exact cloud storage/database path
-- Environment variable: \`$WORKBENCH_<resource id>\` with \`-\` replaced by \`_\` (e.g. \`$WORKBENCH_my_bucket\`)
-- \`notListed\` (large workspaces only): how many resources were left out; call \`workspace_list_resources\` for all
+- The JSON has no environment variables; each resource is also set as \`\$WORKBENCH_<resource id>\` with \`-\` replaced by \`_\` (e.g. \`\$WORKBENCH_my_bucket\`)
+- \`notListed\` and \`listAll\` (large workspaces only): how many resources were left out, and the tool that lists all of them (\`workspace_list_resources\`)
 
 To refresh after workspace changes:
 \`\`\`bash

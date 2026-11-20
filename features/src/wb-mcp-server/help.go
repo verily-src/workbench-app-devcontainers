@@ -9,7 +9,8 @@ import (
 // Guides for wb_help. These used to be part of the tool descriptions, which are
 // sent with every model request; here they cost tokens only when a model asks.
 var helpTopics = map[string]string{
-	"cohorts": `BUILDING A COHORT (tools in the "dataexplorer" group)
+	"cohorts": `BUILDING A COHORT (tools in the "dataexplorer" group, which has no wb CLI equivalent; if the tools are
+not listed, the user must enable the group: see wb_help topic "toolsets")
 
 WORKFLOW
 1. underlay_list_criteria_selectors(underlayName) -> selectors.
@@ -74,7 +75,8 @@ selectionData BY PLUGIN (a JSON string inside the criterion)
 The filter_build_* tools build Data Explorer filter JSON (attribute, relationship, boolean logic,
 hierarchy) for tools that take filters.`,
 
-	"export": `EXPORTING A COHORT (tools in the "dataexplorer" group)
+	"export": `EXPORTING A COHORT (tools in the "dataexplorer" group, which has no wb CLI equivalent; if the tools are
+not listed, the user must enable the group: see wb_help topic "toolsets")
 
 1. export_list_models(underlayName) -> export models. Each has name (use it as exportModel),
    displayName, description and numPrimaryEntityCap (the most entities it can export).

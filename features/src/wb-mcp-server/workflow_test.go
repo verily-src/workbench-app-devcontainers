@@ -286,6 +286,43 @@ func TestWorkflowJobRunArgs(t *testing.T) {
 			t.Fatalf("got %v, %v", got, err)
 		}
 	})
+	t.Run("inputs as a JSON string", func(t *testing.T) {
+		got, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": `{"a": 1}`}))
+		want := append(append([]string{}, base...), `--inputs={"a":1}`)
+		if err != nil || !argsEqual(got, want) {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
+	t.Run("inputs that are not an object", func(t *testing.T) {
+		for _, bad := range []interface{}{`[1,2]`, `not json`, `null`, "7", []interface{}{"a"}, nil, 3.0, true} {
+			got, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": bad}))
+			if err == nil || got != nil || !strings.Contains(err.Error(), "JSON object") {
+				t.Fatalf("inputs %#v: got %v, %v", bad, got, err)
+			}
+		}
+	})
+	t.Run("empty inputs string means no inputs", func(t *testing.T) {
+		got, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": " "}))
+		if err != nil || !argsEqual(got, base) {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
+	t.Run("string fields that are not strings", func(t *testing.T) {
+		for _, key := range []string{"inputsUri", "jobId", "outputPath", "description"} {
+			for _, bad := range []interface{}{1.0, nil, map[string]interface{}{}, true} {
+				got, err := workflowJobRunArgs(with(map[string]interface{}{key: bad}))
+				if err == nil || got != nil || !strings.Contains(err.Error(), key+" must be a string") {
+					t.Fatalf("%s %#v: got %v, %v", key, bad, got, err)
+				}
+			}
+		}
+	})
+	t.Run("empty strings are absent", func(t *testing.T) {
+		got, err := workflowJobRunArgs(with(map[string]interface{}{"jobId": "", "description": "", "outputPath": "", "inputsUri": ""}))
+		if err != nil || !argsEqual(got, base) {
+			t.Fatalf("got %v, %v", got, err)
+		}
+	})
 	t.Run("params file needs both halves", func(t *testing.T) {
 		for _, extra := range []map[string]interface{}{{"paramsFileBucketId": "cfg"}, {"paramsFilePath": "p.yaml"}} {
 			got, err := workflowJobRunArgs(with(extra))

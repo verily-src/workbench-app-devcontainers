@@ -17,9 +17,17 @@ readonly USER_HOME_DIR
 readonly WB_MCP_PORT="${PORT:-"9242"}"
 # The address the daemon listens on. 127.0.0.1 keeps it to this container; 0.0.0.0 lets the
 # container publish the port (an app that gives sandboxed agents the tools does that).
+# It goes into the generated start script, so it must be an IP address or host name.
 readonly WB_MCP_BIND_ADDRESS="${BINDADDRESS:-"127.0.0.1"}"
-# Tool groups enabled by default (core is always on). Letters and commas only.
+if [[ ! "${WB_MCP_BIND_ADDRESS}" =~ ^[A-Za-z0-9.:_-]+$ ]]; then
+    echo "ERROR: bindAddress '${WB_MCP_BIND_ADDRESS}' is not valid: use an IPv4 or IPv6 address or a host name (letters, digits, '.', ':', '_', '-')." >&2
+    exit 1
+fi
+# Tool groups enabled by default (core is always on). Letters and commas only; core if none remain.
 WB_MCP_TOOLSETS="$(printf '%s' "${TOOLSETS:-"core"}" | tr -cd 'a-zA-Z,')"
+if [[ -z "${WB_MCP_TOOLSETS//,/}" ]]; then
+    WB_MCP_TOOLSETS="core"
+fi
 readonly WB_MCP_TOOLSETS
 
 export DEBIAN_FRONTEND=noninteractive
@@ -132,9 +140,16 @@ cat > "${WB_MCP_DIR}/start-server.sh" <<EOF
 
 WB_MCP_BIN="/opt/wb-mcp-server/wb-mcp-server"
 PORT="\${WB_MCP_PORT:-9242}"
-# Tool groups listed by default; clients can add more with ?toolsets= in their server URL.
-BIND="\${WB_MCP_BIND:-${WB_MCP_BIND_ADDRESS}}"
+# Tool groups listed by default; with a loopback BIND, clients can add more with ?toolsets= in their server URL; otherwise these are the most a client gets.
+BIND="\$(printf '%s' "\${WB_MCP_BIND:-${WB_MCP_BIND_ADDRESS}}" | tr -cd 'A-Za-z0-9.:_-')"
 TOOLSETS="\$(printf '%s' "\${WB_MCP_TOOLSETS:-${WB_MCP_TOOLSETS}}" | tr -cd 'a-zA-Z,')"
+if [ -z "\${BIND}" ]; then
+    echo "WB_MCP_BIND must be an IP address or host name" >&2
+    exit 1
+fi
+if [ -z "\${TOOLSETS//,/}" ]; then
+    TOOLSETS="core"
+fi
 LOGFILE="/tmp/wb-mcp-server.log"
 RUN_USER="${USERNAME}"
 

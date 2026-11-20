@@ -39,16 +39,16 @@ The `workflow_inputs_get`, `workflow_task_*`, `workflow_run_*` and `workflow_bat
 
 ```bash
 # 1. Find failed jobs
-wb workflow job list --format=json | jq -r '.[] | select(.status=="FAILED") | "\(.id)\t\(.workflowName)\t\(.startTime)"'
+wb workflow job list --format=json | jq -r '.[] | select(.status=="FAILED") | "\(.runId)\t\(.displayName)\t\(.createdDate)"'
 
 # 2. Get error message (replace JOB_ID)
-wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage // "No message"'
+wb workflow job describe --job-id=<JOB_ID> --format=json | jq -r '.statusMessage // "No message"'
 
 # 3. Find failed task
-wb workflow job task list --job=<JOB_ID> --format=json | jq -r '.[] | select(.status=="FAILED") | .name'
+wb workflow job task list --job-id=<JOB_ID> --status=FAILED --format=json
 
 # 4. Get task error + logs
-wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json | jq '{stderr, stdout, exitCode, failureMessage}'
+wb workflow job task describe --task-id=<TASK_UUID> --format=json
 ```
 
 **After running these 4 commands, you'll know:** which job failed, why, which task, and where logs are.
@@ -61,13 +61,13 @@ wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json | 
 
 ```bash
 # List all failed jobs
-wb workflow job list --format=json | jq '.[] | select(.status == "FAILED") | {id, workflowName, status, startTime, endTime}'
+wb workflow job list --format=json | jq '.[] | select(.status == "FAILED") | {runId, displayName, status, createdDate, endTime}'
 ```
 
 **For batch jobs:**
 ```bash
 # List failed sub-jobs within a batch
-wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.status == "FAILED") | {id, status}'
+wb workflow job list --batch-job-id=<BATCH_JOB_ID> --status=FAILED --format=json | jq '.[] | {runId, displayName, status}'
 ```
 
 **Ask user:** Confirm which job ID to investigate (if multiple failed jobs).
@@ -78,19 +78,19 @@ wb workflow job batch list --job=<JOB_ID> --format=json | jq '.[] | select(.stat
 
 ```bash
 # Full job metadata
-wb workflow job describe --job=<JOB_ID> --format=json
+wb workflow job describe --job-id=<JOB_ID> --format=json
 ```
 
 **Key fields to extract:**
 ```bash
 # Error message
-wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.failureMessage'
+wb workflow job describe --job-id=<JOB_ID> --format=json | jq -r '.statusMessage'
 
 # Inputs used
-wb workflow job describe --job=<JOB_ID> --format=json | jq '.inputs'
+wb workflow job describe --job-id=<JOB_ID> --format=json | jq '.inputs'
 
-# Outputs (if any)
-wb workflow job describe --job=<JOB_ID> --format=json | jq '.outputs'
+# Output location
+wb workflow job describe --job-id=<JOB_ID> --format=json | jq '{outputBucketPath, resultUri}'
 ```
 
 ---
@@ -99,22 +99,13 @@ wb workflow job describe --job=<JOB_ID> --format=json | jq '.outputs'
 
 ```bash
 # List all tasks with status
-wb workflow job task list --job=<JOB_ID> --format=json | jq '.[] | {name, status, exitCode}'
+wb workflow job task list --job-id=<JOB_ID> --format=json
 
 # Get failed task details
-wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json
+wb workflow job task describe --task-id=<TASK_UUID> --format=json
 ```
 
-**Extract log URLs:**
-```bash
-# Get stderr and stdout URLs
-TASK_INFO=$(wb workflow job task describe --job=<JOB_ID> --task=<TASK_NAME> --format=json)
-STDERR_URL=$(echo $TASK_INFO | jq -r '.stderr')
-STDOUT_URL=$(echo $TASK_INFO | jq -r '.stdout')
-
-echo "stderr: $STDERR_URL"
-echo "stdout: $STDOUT_URL"
-```
+**Find the log locations:** the `task describe` output points to the task's stdout and stderr files; set them as `STDERR_URL` and `STDOUT_URL` for Step 4. Task IDs are UUIDs; if `task list` does not show them, get them from the `workflow_task_list` MCP tool.
 
 ---
 
@@ -164,7 +155,7 @@ fi
 
 ```bash
 # Get workflow definition to see runtime requirements
-wb workflow describe --workflow=<WORKFLOW_ID> --format=json | jq '.sourceUrl'
+wb workflow describe --workflow=<WORKFLOW_ID> --format=json   # shows the workflow definition location
 
 # Read WDL file
 gcloud storage cat gs://<bucket>/<path>/workflow.wdl | grep -A10 "runtime {"
@@ -253,7 +244,7 @@ runtime {
 **Diagnosis:**
 ```bash
 # Check if input files exist
-wb workflow job describe --job=<JOB_ID> --format=json | jq -r '.inputs | to_entries[] | .value' | while read path; do
+wb workflow job describe --job-id=<JOB_ID> --format=json | jq -r '.inputs | to_entries[] | .value' | while read path; do
   if [[ $path == gs://* ]]; then
     echo -n "$path: " && gcloud storage ls "$path" 2>&1 | head -1
   fi
@@ -294,7 +285,7 @@ Based on diagnosis, recommend one of:
 
 **Re-run after fixing:**
 ```bash
-wb workflow job run --workflow=<WORKFLOW_ID> --inputs=<INPUTS_JSON>
+wb workflow job run --workflow=<WORKFLOW_ID> --output-bucket-id=<OUTPUT_BUCKET_ID> --inputs=<INPUTS_JSON>
 ```
 
 ---
@@ -305,16 +296,16 @@ wb workflow job run --workflow=<WORKFLOW_ID> --inputs=<INPUTS_JSON>
 
 ```bash
 # Failed jobs
-wb workflow job list --format=json | jq '.[] | select(.status=="FAILED") | {id, workflowName}'
+wb workflow job list --format=json | jq '.[] | select(.status=="FAILED") | {runId, displayName}'
 
 # Job error
-wb workflow job describe --job=<ID> --format=json | jq '.failureMessage'
+wb workflow job describe --job-id=<ID> --format=json | jq '.statusMessage'
 
 # Failed tasks
-wb workflow job task list --job=<ID> --format=json | jq '.[] | select(.status=="FAILED") | .name'
+wb workflow job task list --job-id=<ID> --format=json | jq '.[] | select(.status=="FAILED") | .name'
 
 # Task logs
-wb workflow job task describe --job=<ID> --task=<TASK> --format=json | jq '.stderr' | xargs -I{} gcloud storage cat {} | tail -50
+wb workflow job task describe --task-id=<TASK_UUID> --format=json | jq '.stderr' | xargs -I{} gcloud storage cat {} | tail -50
 
 # Memory check
 gcloud batch jobs describe <BATCH_JOB> --format=json | jq '.taskGroups[0].taskSpec.computeResource'

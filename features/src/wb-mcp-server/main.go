@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -94,6 +96,9 @@ type ContentItem struct {
 	Text string `json:"text"`
 }
 
+// serverVersion is the version of the wb-mcp-server feature (devcontainer-feature.json).
+const serverVersion = "2.2.0"
+
 // Global variables
 var (
 	workspaceBaseURL    string
@@ -111,6 +116,10 @@ var (
 	workspaceContextKey string                // server name and workspace UUID last read from the wb context file
 	workspaceIdCache    = map[string]string{} // user-facing ID -> UUID
 	toolResultCache     = map[string]cachedResult{}
+	// cacheGeneration counts the events that make results in flight stale: clearing the cache and
+	// a change of workspace or server. A call that began in an earlier generation does not store
+	// its result.
+	cacheGeneration uint64
 )
 
 const (
@@ -130,9 +139,9 @@ type cachedResult struct {
 }
 
 // readOnlyTools don't change Workbench state, so calling them keeps cached results.
-// Any other tool call clears toolResultCache. Apart from the cloud CLI passthroughs
-// (which can't change the cached Workbench results), keep in sync with the auto-allow
-// list in install.sh.
+// Any other tool call clears toolResultCache. The auto-allow list in install.sh is a
+// separate list, of tools Claude Code runs without asking. It also names tools that are
+// not listed here (aurora_query, aurora_resolve_connection, resource_open_console).
 var readOnlyTools = map[string]bool{
 	"bq_query": true, "bq_execute": true, "gcloud_execute": true, "gsutil_execute": true,
 	"wb_status": true, "wb_workspace_list": true, "workspace_get": true,
@@ -869,10 +878,12 @@ var wbTools = []Tool{
 	},
 	{
 		Name:        "workflow_job_list",
-		Description: "List all workflow jobs. Use this to see job history, status, and details.",
+		Description: "List the most recent workflow jobs in the current workspace (10 unless limit is given). Use this to see job history, status, and details.",
 		InputSchema: InputSchema{
-			Type:       "object",
-			Properties: map[string]interface{}{},
+			Type: "object",
+			Properties: map[string]interface{}{
+				"limit": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 1000, "description": "Number of most recent jobs to return (default 10, at most 1000)"},
+			},
 		},
 	},
 	{
@@ -889,7 +900,7 @@ var wbTools = []Tool{
 	},
 	{
 		Name:        "workflow_job_run",
-		Description: "Start a workflow job. Use this to execute a workflow with specific inputs. Call it once per run: the same run asked for again within 15 minutes is not submitted again. For WDL, pass inputs (an object) or inputsUri. For Nextflow, the parameters usually go in a params file (YAML or JSON) in a workspace bucket: pass paramsFileBucketId and paramsFilePath together, and a profile if the pipeline needs one.",
+		Description: "Start a workflow job. Use this to execute a workflow with specific inputs. Call it once per run: the same run (and the same jobId, if one is given) asked for again within 15 minutes is not submitted again. For WDL, pass inputs (an object) or inputsUri. For Nextflow, the parameters usually go in a params file (YAML or JSON) in a workspace bucket: pass paramsFileBucketId and paramsFilePath together, and a profile if the pipeline needs one.",
 		InputSchema: InputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -970,7 +981,7 @@ var wbTools = []Tool{
 			Type: "object",
 			Properties: map[string]interface{}{
 				"sql":     map[string]interface{}{"type": "string", "description": "GoogleSQL query text, not a bq command line"},
-				"maxRows": map[string]interface{}{"type": "integer", "description": "Maximum rows to return (default 100)"},
+				"maxRows": map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 10000, "description": "Maximum rows to return (default 100, at most 10000)"},
 			},
 			Required: []string{"sql"},
 		},
@@ -1793,8 +1804,15 @@ func initializeConfig() error {
 // refreshStatus runs `wb status --format=json`, records the current workspace's
 // UUID and Google project, and caches the output for wb_status.
 func refreshStatus() (string, error) {
+	cacheMu.Lock()
+	generation := cacheGeneration
+	cacheMu.Unlock()
 	out, err := exec.Command("wb", "status", "--format=json").Output()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(bytes.TrimSpace(exitErr.Stderr)) > 0 {
+			err = fmt.Errorf("%w: %s", err, bytes.TrimSpace(exitErr.Stderr))
+		}
 		return string(out), err
 	}
 	var status struct {
@@ -1810,6 +1828,10 @@ func refreshStatus() (string, error) {
 	}
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
+	if generation != cacheGeneration {
+		// The workspace or cache changed while wb ran; this output may describe the old state.
+		return string(out), nil
+	}
 	if isUUID(status.Workspace.UUID) {
 		// The workspace may have changed since the last refresh.
 		cachedWorkspaceUUID = status.Workspace.UUID
@@ -1831,11 +1853,15 @@ func cachedToolCall(key string, ttl time.Duration, fn func() (string, error)) (s
 		cacheMu.Unlock()
 		return r.output, nil
 	}
+	generation := cacheGeneration
 	cacheMu.Unlock()
 	out, err := fn()
 	if err == nil {
 		cacheMu.Lock()
-		toolResultCache[key] = cachedResult{output: out, expires: time.Now().Add(ttl)}
+		// A clear or workspace change since fn started makes out stale.
+		if generation == cacheGeneration {
+			toolResultCache[key] = cachedResult{output: out, expires: time.Now().Add(ttl)}
+		}
 		cacheMu.Unlock()
 	}
 	return out, err
@@ -1903,6 +1929,7 @@ func syncWorkspaceContext() {
 		}
 	}
 	toolResultCache = map[string]cachedResult{}
+	cacheGeneration++
 }
 
 // clearToolResultCache drops the cached results a state-changing call could make stale. wb_status
@@ -1912,6 +1939,7 @@ func clearToolResultCache() {
 	cacheMu.Lock()
 	status, ok := toolResultCache["wb_status"]
 	toolResultCache = map[string]cachedResult{}
+	cacheGeneration++
 	if ok {
 		toolResultCache["wb_status"] = status
 	}
@@ -2154,6 +2182,9 @@ func makeAPIRequest(method, url string, body interface{}) ([]byte, error) {
 	return respBody, nil
 }
 
+// maxAPIResponseBytes bounds the response body doAPIRequest reads.
+const maxAPIResponseBytes = 16 << 20
+
 func doAPIRequest(method, url string, body interface{}) ([]byte, int, error) {
 	token, err := getToken()
 	if err != nil {
@@ -2183,15 +2214,24 @@ func doAPIRequest(method, url string, body interface{}) ([]byte, int, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes+1))
 	if err != nil {
 		return nil, resp.StatusCode, err
+	}
+	if len(respBody) > maxAPIResponseBytes {
+		return nil, resp.StatusCode, fmt.Errorf("response from %s is larger than %d MB", url, maxAPIResponseBytes>>20)
 	}
 	return respBody, resp.StatusCode, nil
 }
 
 func executeWbCommand(args []string) (string, error) {
-	cmd := exec.Command("wb", args...)
+	return executeWbCommandContext(context.Background(), args)
+}
+
+// executeWbCommandContext is executeWbCommand, stopping wb when ctx ends.
+func executeWbCommandContext(ctx context.Context, args []string) (string, error) {
+	cmd := exec.CommandContext(ctx, "wb", args...)
+	cmd.WaitDelay = 5 * time.Second // after ctx ends, don't wait on child processes that keep the output open
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
@@ -2300,12 +2340,63 @@ func referencesUndefinedWorkbenchVar(command string) bool {
 
 // isSQL reports whether a bq_execute command is a bare SQL query rather than a
 // bq subcommand.
+// Leading whitespace, comments (-- and /* */) and opening parentheses are skipped.
 func isSQL(command string) bool {
-	first := strings.ToUpper(strings.Fields(command + " x")[0])
-	return first == "SELECT" || first == "WITH" || strings.HasPrefix(first, "(SELECT")
+	s := command
+	for {
+		s = strings.TrimLeft(s, " \t\r\n(")
+		switch {
+		case strings.HasPrefix(s, "--"):
+			end := strings.IndexByte(s, '\n')
+			if end < 0 {
+				return false
+			}
+			s = s[end+1:]
+		case strings.HasPrefix(s, "/*"):
+			end := strings.Index(s[2:], "*/")
+			if end < 0 {
+				return false
+			}
+			s = s[end+4:]
+		default:
+			first := strings.ToUpper(strings.Fields(s + " x")[0])
+			return first == "SELECT" || first == "WITH"
+		}
+	}
+}
+
+// bqSQLArg returns sql as an argument the bq CLI reads as the query. bq takes text that starts
+// with "-" (such as a leading "-- comment" line) for a flag, so a newline goes first.
+func bqSQLArg(sql string) string {
+	if strings.HasPrefix(strings.TrimLeft(sql, " \t\r\n"), "-") {
+		return "\n" + sql
+	}
+	return sql
+}
+
+const (
+	defaultBQMaxRows = 100
+	maxBQMaxRows     = 10000
+)
+
+// bqMaxRows converts the maxRows argument (a JSON number) to a row count between 1 and
+// maxBQMaxRows. A missing, zero or non-numeric value gives defaultBQMaxRows.
+func bqMaxRows(v interface{}) int {
+	n, ok := v.(float64)
+	if !ok || math.IsNaN(n) || n == 0 {
+		return defaultBQMaxRows
+	}
+	if n < 1 {
+		return 1
+	}
+	if n > maxBQMaxRows {
+		return maxBQMaxRows
+	}
+	return int(n)
 }
 
 func executeBQQuery(sql string, maxRows int) (string, error) {
+	sql = bqSQLArg(sql)
 	args := []string{"query", "--use_legacy_sql=false", "--format=csv", fmt.Sprintf("--max_rows=%d", maxRows), sql}
 	if _, err := exec.LookPath("bq"); err != nil {
 		// wb joins its arguments and runs them through a shell, so the query must be quoted.
@@ -2534,7 +2625,11 @@ func callTool(params CallToolParams) CallToolResult {
 		if !ok {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: 'command' required"}}, IsError: true}
 		}
-		output, err = executeWbCommand(strings.Fields(command))
+		args, splitErr := splitCommandLine(command)
+		if splitErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: could not parse command: " + splitErr.Error()}}, IsError: true}
+		}
+		output, err = executeWbCommand(args)
 
 	case "workspace_list_all":
 		limit, offset := 100, 0
@@ -3909,7 +4004,11 @@ func callTool(params CallToolParams) CallToolResult {
 		})
 
 	case "workflow_job_list":
-		output, err = listRuns()
+		limit, limitErr := runListLimitArg(params.Arguments)
+		if limitErr != nil {
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + limitErr.Error()}}, IsError: true}
+		}
+		output, err = listRuns(limit)
 
 	case "workflow_job_describe":
 		vals, reqErr := requireStrings(withCLIIDs(params.Arguments), "workspaceId", "jobId")
@@ -3962,11 +4061,7 @@ func callTool(params CallToolParams) CallToolResult {
 		if reqErr != nil {
 			return CallToolResult{Content: []ContentItem{{Type: "text", Text: "Error: " + reqErr.Error()}}, IsError: true}
 		}
-		maxRows := 100
-		if v, ok := params.Arguments["maxRows"].(float64); ok && v > 0 {
-			maxRows = int(v)
-		}
-		output, err = executeBQQuery(sql, maxRows)
+		output, err = executeBQQuery(sql, bqMaxRows(params.Arguments["maxRows"]))
 
 	case "bq_execute":
 		command, reqErr := requireString(params.Arguments, "command")
@@ -3975,7 +4070,7 @@ func callTool(params CallToolParams) CallToolResult {
 		}
 		if isSQL(command) {
 			// Models often send raw SQL here; run it as a query rather than fail.
-			output, err = executeBQQuery(command, 100)
+			output, err = executeBQQuery(command, defaultBQMaxRows)
 			break
 		}
 		output, err = executeCloudCLI("bq", command)
@@ -4341,7 +4436,7 @@ func handleRequest(req JSONRPCRequest, enabled map[string]bool) JSONRPCResponse 
 			Result: InitializeResult{
 				ProtocolVersion: protocolVersion,
 				Capabilities:    map[string]interface{}{"tools": map[string]interface{}{}},
-				ServerInfo:      ServerInfo{Name: "wb-mcp-server", Version: "2.0.0"},
+				ServerInfo:      ServerInfo{Name: "wb-mcp-server", Version: serverVersion},
 			},
 		}
 	case "notifications/initialized":
@@ -4391,11 +4486,9 @@ func handleHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Each client can choose its tool groups in its server URL, e.g. /?toolsets=core,workflows.
-	spec := defaultToolsets
-	if q := r.URL.Query().Get("toolsets"); q != "" {
-		spec = q
-	}
-	enabled, _ := parseToolsets(spec)
+	// On loopback the clients are the user's own, so any group can be asked for; on another
+	// address the server's configured groups are the most a client gets and the URL only narrows.
+	enabled := requestToolsets(r.URL.Query().Get("toolsets"))
 	response := handleRequest(req, enabled)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -4407,10 +4500,11 @@ func runHTTPServer(bind, port string) {
 	http.HandleFunc("/", handleHTTP)
 
 	addr := bind + ":" + port
+	listensOnLoopback = isLoopbackBind(bind)
 	log.Printf("Starting HTTP MCP server on %s (port arg: %q)\n", addr, port)
 	enabled, _ := parseToolsets(defaultToolsets)
-	log.Printf("Ready - %d of %d tools available by default (tool groups: %s; clients can add ?toolsets=)\n",
-		len(listTools(enabled, currentCloudPlatform())), len(wbTools), enabledGroupNames(enabled))
+	log.Printf("Ready - %d of %d tools available by default (tool groups: %s; %s)\n",
+		len(listTools(enabled, currentCloudPlatform())), len(wbTools), enabledGroupNames(enabled), toolsetsQueryPolicy())
 
 	log.Printf("About to call ListenAndServe with addr: %q\n", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
@@ -4467,7 +4561,7 @@ func main() {
 	serverPort = port
 
 	log.SetOutput(os.Stderr)
-	log.Println("Workbench MCP Server v2.0 starting...")
+	log.Printf("Workbench MCP Server v%s starting...", serverVersion)
 
 	if err := initializeConfig(); err != nil {
 		log.Fatalf("Error initializing: %v\n", err)

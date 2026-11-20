@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 )
@@ -32,6 +33,29 @@ func workflowCreateArgs(arguments map[string]interface{}) ([]string, error) {
 	return args, nil
 }
 
+// workflowInputsObject returns the inputs argument as an object. A string holding a JSON object
+// is parsed, since models often send inputs that way. An absent argument or "" means no inputs;
+// any other value (null, an array, a number) is an error.
+func workflowInputsObject(arguments map[string]interface{}) (map[string]interface{}, bool, error) {
+	v, present := arguments["inputs"]
+	if !present {
+		return nil, false, nil
+	}
+	switch inputs := v.(type) {
+	case map[string]interface{}:
+		return inputs, true, nil
+	case string:
+		if strings.TrimSpace(inputs) == "" {
+			return nil, false, nil
+		}
+		var parsed map[string]interface{}
+		if json.Unmarshal([]byte(inputs), &parsed) == nil && parsed != nil {
+			return parsed, true, nil
+		}
+	}
+	return nil, false, errors.New("inputs must be a JSON object of workflow input names to values")
+}
+
 // workflowJobRunArgs builds the `wb workflow job run` command line.
 func workflowJobRunArgs(arguments map[string]interface{}) ([]string, error) {
 	vals, err := requireStrings(arguments, "workspaceId", "workflowId", "outputBucketId")
@@ -43,19 +67,29 @@ func workflowJobRunArgs(arguments map[string]interface{}) ([]string, error) {
 	if hasBucket != hasPath {
 		return nil, errors.New("paramsFileBucketId and paramsFilePath are both needed for a params file")
 	}
-	inputs, hasInputs := arguments["inputs"].(map[string]interface{})
+	for _, key := range []string{"inputsUri", "jobId", "outputPath", "description"} {
+		if v, present := arguments[key]; present {
+			if _, isString := v.(string); !isString {
+				return nil, fmt.Errorf("%s must be a string", key)
+			}
+		}
+	}
+	inputs, hasInputs, err := workflowInputsObject(arguments)
+	if err != nil {
+		return nil, err
+	}
 	inputsURI, hasInputsURI := optionalString(arguments, "inputsUri")
 	if hasInputs && hasInputsURI {
 		return nil, errors.New("give inputs or inputsUri, not both")
 	}
 	args := []string{"workflow", "job", "run", "--workspace=" + vals[0], "--workflow=" + vals[1], "--output-bucket-id=" + vals[2]}
-	if v, ok := arguments["jobId"].(string); ok {
+	if v, ok := optionalString(arguments, "jobId"); ok {
 		args = append(args, "--job-id="+v)
 	}
-	if v, ok := arguments["description"].(string); ok {
+	if v, ok := optionalString(arguments, "description"); ok {
 		args = append(args, "--description="+v)
 	}
-	if v, ok := arguments["outputPath"].(string); ok {
+	if v, ok := optionalString(arguments, "outputPath"); ok {
 		args = append(args, "--output-path="+v)
 	}
 	if hasInputs {

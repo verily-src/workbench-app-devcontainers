@@ -14,6 +14,11 @@ source /home/core/metadata-utils.sh
 # shellcheck source=/dev/null
 source /home/core/service-utils.sh
 
+# dns-filter.service Requires= this script's unit, but a dependency failure never puts
+# devcontainer.service itself into the "failed" state, so its OnFailure= handler never runs.
+# Report the error here directly instead of relying on that chain.
+trap 'set_metadata "startup_script/status" "ERROR"; set_metadata "startup_script/message" "Failed to configure the boot-time DNS filter on the VM. Please try recreating the VM."' ERR
+
 # A transient read failure (e.g. a flaky docker pull of the aws-cli image) must fail closed, not
 # be treated as "not airlocked" - get_system_tag_checked's exit status tells the two apart.
 NETWORK_POLICY=""
@@ -32,6 +37,9 @@ done
 
 if [[ "${READ_OK}" != "true" ]]; then
     echo "Failed to read the network-policy tag after 3 attempts; failing closed." >&2
+    # A bare exit doesn't fire the ERR trap above, so report the failure directly.
+    set_metadata "startup_script/status" "ERROR"
+    set_metadata "startup_script/message" "Failed to configure the boot-time DNS filter on the VM. Please try recreating the VM."
     exit 1
 fi
 

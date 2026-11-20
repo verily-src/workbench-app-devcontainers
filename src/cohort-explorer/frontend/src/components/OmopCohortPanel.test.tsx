@@ -68,7 +68,7 @@ describe("OmopCohortPanel", () => {
     await pickDiabetesAndFindPeople();
 
     expect(createCohortMock).toHaveBeenCalledWith("my-db", {
-      schema: "omop",
+      schema: "public",
       criteria: [{ domain: "condition", concept_ids: [201826], exclude: false }],
     });
     expect(await screen.findByText("2 people match")).toBeTruthy();
@@ -88,7 +88,7 @@ describe("OmopCohortPanel", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Open in Explorer" }));
 
-    expect(onOpenInExplorer).toHaveBeenCalledWith("omop");
+    expect(onOpenInExplorer).toHaveBeenCalledWith("public");
   });
 
   it("shows the message when the explorer cannot be opened", async () => {
@@ -131,9 +131,9 @@ describe("OmopCohortPanel", () => {
     expect(screen.queryByRole("button", { name: "Open in Explorer" })).toBeNull();
   });
 
-  it("shows the schema name omop in the Advanced section", () => {
+  it("shows the schema name public in the Advanced section", () => {
     showPanel();
-    expect((screen.getByLabelText("Schema name") as HTMLInputElement).value).toBe("omop");
+    expect((screen.getByLabelText("Schema name") as HTMLInputElement).value).toBe("public");
   });
 
   it("sends a changed schema name", async () => {

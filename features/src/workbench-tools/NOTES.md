@@ -14,16 +14,9 @@
 _*: These need to be built from source and will only be included if
 `installFromSource` is set to `true` or `cloud` is set to `gcp`._
 
-## Environments
+## dsub
 
-Tools are installed in separate conda environments under
-`/opt/workbench-tools`. To install extra packages into one, put its `python` and
-`pip` first on the `PATH`:
-
-```bash
-env_activate /opt/workbench-tools/<environment>
-env_deactivate  # undo
-```
-
-On GCP, dsub lives in its own environment because it pins old Google libraries.
-Use `dsub_activate` and `dsub_deactivate` as shortcuts for it.
+On GCP, dsub is installed in its own venv (`/opt/workbench-tools/dsub`) because
+it pins old Google libraries that conflict with other packages. Run
+`dsub_activate` to activate it (for example, to install extra packages) and
+`deactivate` to leave it.

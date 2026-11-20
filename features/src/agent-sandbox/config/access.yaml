@@ -1,0 +1,14 @@
+# Who may use the app (the ai-policy README, "Access and features"). Part of the image; the app
+# only reads these groups' membership, it never changes them. Being in either group admits a
+# person; the alpha group also turns on the alpha features in features.yaml. Nothing at run time
+# replaces these groups.
+version: 1
+
+# The Workbench organization the groups belong to.
+org: verily
+
+tiers:
+  beta:
+    group: ai-research-assistant-beta
+  alpha:
+    group: ai-research-assistant-alpha

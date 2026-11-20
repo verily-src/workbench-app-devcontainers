@@ -1,0 +1,10 @@
+{
+  "id": "ai-policy",
+  "version": "1.0.0",
+  "name": "AI policy compiler",
+  "description": "Compiles an administrator's ai-policy.yaml (what data the sandboxed agent may read and write, which Workbench tools it may call) with the workspace's resources and the app's base sandbox policy into the NVIDIA OpenShell policy its agent sandbox runs under. Installs workspace-data.py and render-policy.py in /opt/ai-policy.",
+  "options": {},
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
+}

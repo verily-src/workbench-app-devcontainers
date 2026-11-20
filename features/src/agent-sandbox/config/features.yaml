@@ -1,0 +1,23 @@
+# Each feature's minimum tier (access.yaml) and what it controls (the ai-policy README, "Access
+# and features"). A feature that is off for a person drops its MCP servers and Workbench tool
+# groups from the sandbox policy, and the app does not start what only it uses.
+version: 1
+
+features:
+  cohort_designer:
+    tier: beta
+    description: Design and lock cohorts on the workspace's datasets.
+    servers: [cohort]
+  workflow_runs:
+    tier: beta
+    description: List, run and follow the workspace's registered workflows.
+    tool_groups: [workflows]
+  kumo_forecast:
+    tier: beta
+    description: Forecast outcomes for a locked cohort with Kumo.
+    servers: [forecast]
+  vertex_model:
+    tier: alpha
+    description: >-
+      Vertex AI models (the workspace's Nemotron endpoint, else Gemini) when the app has no GPU
+      for the local model. Off inside a data perimeter.

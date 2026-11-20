@@ -1,0 +1,38 @@
+{
+  "id": "agent-sandbox",
+  "version": "1.0.0",
+  "name": "Agent sandbox (NVIDIA OpenShell)",
+  "description": "Runs an AI agent (a harness, installed by a harness feature such as opencode-harness) in an NVIDIA OpenShell sandbox that holds no credentials and reaches only the local model, the workspace's data and the Workbench tools, as the administrator's ai-policy.yaml allows. Installs the openshell CLI, the agent-sandbox command, the base policy files and the sandbox-broker scripts in /opt/agent-sandbox. Needs the ai-policy feature, and an app whose compose file runs the OpenShell gateway and the broker.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user, who runs the sandbox commands."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user: where the sandbox state (openshell/) and downloads live (APP_USER_HOME at run time)."
+    },
+    "role": {
+      "type": "string",
+      "default": "app",
+      "enum": ["app", "broker"],
+      "description": "app: the container the user works in; every command is sent to the broker named in AGENT_BROKER. broker: the sandbox-broker image, which also gets sshd and runs the commands against the gateway."
+    },
+    "openshellVersion": {
+      "type": "string",
+      "default": "0.1.4",
+      "description": "NVIDIA OpenShell CLI release to install. The app's gateway and sandbox runtime images must be the same release."
+    },
+    "openshellSha256": {
+      "type": "string",
+      "default": "2b65178e62e1ece1d90d482555e9f1f98ff0296e058409b33418104b6333df07",
+      "description": "SHA-256 of the openshell-x86_64-unknown-linux-musl.tar.gz archive of that release."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "./.devcontainer/features/ai-policy"
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "id": "kumo-forecast",
+  "version": "0.0.1",
+  "name": "Kumo Forecast",
+  "description": "Installs NVIDIA Kumo Relational (structured-data-models) and serves it as an MCP server on port 9244: it forecasts an outcome (a second locked cohort) for the cohorts the cohort designer locks, over the tables of the cohort's dataset that the agent chooses, compares with classical baselines and writes the highest-risk members to a controlled bucket. With the agent-sandbox feature, the sandboxed agent drives it.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user."
+    },
+    "port": {
+      "type": "string",
+      "default": "9244",
+      "description": "Port for the forecast MCP server"
+    },
+    "bindAddress": {
+      "type": "string",
+      "default": "127.0.0.1",
+      "description": "Address the server listens on. 127.0.0.1 (default) keeps it to this container; 0.0.0.0 lets the container publish the port to sandboxed agents on the same VM. KUMO_FORECAST_BIND overrides it at start."
+    },
+    "role": {
+      "type": "string",
+      "default": "app",
+      "proposals": ["app", "broker"],
+      "description": "app: the model and its server. broker: only the catalog the sandbox-broker renders the policy from."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "./.devcontainer/features/workbench-tools",
+    "./.devcontainer/features/agent-sandbox",
+    "./.devcontainer/features/cohort-designer"
+  ]
+}

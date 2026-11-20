@@ -1,0 +1,14 @@
+# Kumo Relational and its sampler. pyg-lib comes from PyG's own index (install.sh passes
+# --find-links) and must match torch's version; its CPU build serves the sampler on any GPU.
+structured-data-models==0.2.1
+torch==2.13.0
+pyg-lib==0.8.0+pt213cpu
+torchmetrics==1.9.0
+# The server and the data, at the designer's versions where it pins them (cohort-designer).
+fastmcp==3.4.5
+google-cloud-bigquery==3.42.1
+google-cloud-bigquery-storage
+db-dtypes
+pandas==2.3.3
+pyarrow==25.0.0
+scikit-learn==1.9.1

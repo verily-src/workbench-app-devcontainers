@@ -1,0 +1,67 @@
+{
+ "format": 1,
+ "compiler": 1,
+ "session_id": "20261111-100456",
+ "locks": [
+  {
+   "version": 1,
+   "locked_at": "2026-11-11T22:57:11+00:00",
+   "executor": {
+    "engine": "bigquery",
+    "source": [
+     "billing:wb-work-5678",
+     "data:wb-data-1234"
+    ]
+   },
+   "statement": {
+    "sql": "SELECT p.person_id AS cohort_key, MIN(c.condition_start_date) AS index_date FROM `wb-data-1234`.`omop`.`condition_occurrence` c JOIN `wb-data-1234`.`omop`.`person` p USING (person_id) WHERE c.condition_concept_id = 320128 GROUP BY p.person_id",
+    "stamp": "s",
+    "bytes_estimated": 1024
+   },
+   "export": {
+    "params": {
+     "format": "members",
+     "cohort_definition_id": 1
+    },
+    "columns": [
+     {
+      "name": "cohort_key",
+      "type": "integer",
+      "meaning": "key",
+      "grain": "stay",
+      "column": "visit_occurrence_id"
+     }
+    ]
+   },
+   "evidence": {
+    "tables": [
+     {
+      "table": {
+       "name": "wb-data-1234.omop.person",
+       "read": {}
+      },
+      "state": "columns"
+     },
+     {
+      "table": {
+       "name": "wb-data-1234.omop.condition_occurrence",
+       "read": {}
+      },
+      "state": "columns"
+     }
+    ],
+    "keys": [],
+    "resolutions": [],
+    "zone": null
+   }
+  }
+ ],
+ "messages": [
+  {
+   "number": 1,
+   "turn": 1,
+   "author": "driver (relayed)",
+   "text": "Adults with hypertension."
+  }
+ ]
+}

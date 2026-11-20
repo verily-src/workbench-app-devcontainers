@@ -1,0 +1,55 @@
+# Chips for a workspace that holds the EHR-and-genomes synthetic data (an OMOP dataset with
+# linked whole genomes). A chip sends its prompt as the person's message; starters open a
+# session and next_steps appear once the assistant has answered.
+# To use it, set ASSISTANT_DEMO to /opt/assistant-ui/examples/ehr-genomics-chips.yaml (README.md, "Chips").
+
+starters:
+  - label: Kidney disease, stage 3 or worse
+    hint: Then genotype APOL1 from the genomes
+    prompt: >
+      Create a cohort of adults with chronic kidney disease stage 3 or worse.
+  - label: Low LDL cholesterol
+    hint: Then look for PCSK9 variants
+    prompt: >
+      Create a cohort of adults whose LDL cholesterol was ever measured below 70 mg/dL, with
+      their LDL cholesterol measurements.
+  - label: Type 2 diabetes with CKD
+    hint: Comorbidity cohort
+    prompt: >
+      Create a cohort of adults with type 2 diabetes who also have chronic kidney disease.
+  - label: Prediabetes
+    hint: At-risk population
+    prompt: >
+      Create a cohort of adults with prediabetes who have not been diagnosed with type 2
+      diabetes.
+
+next_steps:
+  - label: Lock the cohort
+    hint: Freeze it for analysis
+    prompt: >
+      Lock the cohort as it stands now.
+  - label: Forecast with Kumo
+    hint: Who is at risk next
+    prompt: >
+      Use Kumo to forecast which people outside this cohort are likely to reach CKD stage 3 in
+      the next 12 months, and tell me what they have in common.
+  - label: Process genomes with Parabricks
+    hint: Sequence analysis on GPUs
+    prompt: >
+      Run the workspace's registered sarek workflow with Parabricks on the locked cohort's
+      genomes, and tell me when the job is submitted.
+  - label: Look up APOL1 research on PubMed
+    hint: OpenShell blocks the call
+    prompt: >
+      Search PubMed for the three most recent papers on APOL1 and kidney disease with the NCBI
+      E-utilities API at eutils.ncbi.nlm.nih.gov, and show me exactly what happens.
+  - label: Save results outside the workspace
+    hint: Shows the sandbox policy
+    prompt: >
+      Copy the cohort's results to the bucket gs://some-other-project-bucket/exports/.
+
+# Shown in the side panel under "Where the assistant runs".
+about:
+  - The assistant runs in an NVIDIA OpenShell sandbox with no credentials of its own.
+  - It cannot connect to the internet. OpenShell blocks every connection except to the model, this workspace's data and the tools listed above.
+  - The model is NVIDIA Nemotron, served in this app. Nothing leaves the workspace.

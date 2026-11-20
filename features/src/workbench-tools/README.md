@@ -35,6 +35,13 @@ Installs common tools for Workbench Apps. Currently it only supports Debian-base
 _*: These need to be built from source and will only be included if
 `installFromSource` is set to `true` or `cloud` is set to `gcp`._
 
+## dsub
+
+On GCP, dsub is installed in its own venv (`/opt/workbench-tools/dsub`) because
+it pins old Google libraries that conflict with other packages. Run
+`dsub_activate` to activate it (for example, to install extra packages) and
+`deactivate` to leave it.
+
 
 ---
 

@@ -148,12 +148,14 @@ else
     mamba create --prefix "${LIBRARIES_ENV_DIR}" -y "${CONDA_PACKAGES_LIBRARIES[@]}"
 fi
 
-# Install dsub via pip if on GCP. The conda version is outdated.
-# dsub is installed in LIBRARIES_ENV_DIR because it can be used as a Python
-# library, and users may want to install additional packages alongside it.
+# Install dsub via pip in its own venv if on GCP (the conda version is
+# outdated). It pins old Google libraries that conflict with the libraries env.
 # PYTHONNOUSERSITE=1 prevents pip from seeing/modifying packages in user site-packages.
+readonly DSUB_ENV_DIR="${WORKBENCH_TOOLS_DIR}/dsub"
 if [[ "${CLOUD}" == "gcp" ]]; then
-    PYTHONNOUSERSITE=1 "${LIBRARIES_ENV_DIR}/bin/pip" install dsub
+    echo "Building dsub venv..."
+    "${BINARIES_ENV_DIR}/bin/python" -m venv "${DSUB_ENV_DIR}"
+    PYTHONNOUSERSITE=1 "${DSUB_ENV_DIR}/bin/pip" install dsub
 fi
 
 # Force the perl and python scripts to use the correct perl/python
@@ -179,6 +181,13 @@ chown -R "${USERNAME}:" "${LIBRARIES_ENV_DIR}"
     # Set PATH to include workbench-tools binaries
     # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
     printf 'export PATH="$PATH:%s"\n' "${SAMTOOLS_ENV_DIR}/bin:${BINARIES_ENV_DIR}/bin"
+
+    # Append dsub's env to the PATH so its python and pip don't shadow the user's
+    if [[ "${CLOUD}" == "gcp" ]]; then
+        # shellcheck disable=SC2016 # we want $PATH to be evaluated at runtime
+        printf 'export PATH="$PATH:%s"\n' "${DSUB_ENV_DIR}/bin"
+        printf "alias dsub_activate='source %s/bin/activate'\n" "${DSUB_ENV_DIR}"
+    fi
 
     # Set CROMWELL_JAR environment variable
     printf 'export CROMWELL_JAR="%s"\n' "${BINARIES_ENV_DIR}/share/cromwell/cromwell.jar"

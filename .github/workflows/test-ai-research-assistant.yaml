@@ -1,0 +1,67 @@
+name: "CI - Test the AI Research Assistant template and its features"
+on:
+  pull_request:
+    paths:
+      - 'src/ai-research-assistant/**'
+      - 'features/src/vllm-model/**'
+      - 'features/src/ai-policy/**'
+      - 'features/src/agent-sandbox/**'
+      - 'features/src/opencode-harness/**'
+      - 'features/src/cohort-designer/**'
+      - 'features/src/kumo-forecast/**'
+      - 'features/src/vertex-model/**'
+      - 'features/src/wb-mcp-server/**'
+      - 'tests/ai-research-assistant/**'
+      - 'tests/vllm-model/**'
+      - 'tests/ai-policy/**'
+      - 'tests/agent-sandbox/**'
+      - 'tests/opencode-harness/**'
+      - 'tests/cohort-designer/**'
+      - 'tests/kumo-forecast/**'
+      - 'tests/vertex-model/**'
+      - '.github/workflows/test-ai-research-assistant.yaml'
+  push:
+    branches: [master]
+    paths:
+      - 'src/ai-research-assistant/**'
+      - 'features/src/vllm-model/**'
+      - 'features/src/ai-policy/**'
+      - 'features/src/agent-sandbox/**'
+      - 'features/src/opencode-harness/**'
+      - 'features/src/cohort-designer/**'
+      - 'features/src/kumo-forecast/**'
+      - 'features/src/vertex-model/**'
+      - 'features/src/wb-mcp-server/**'
+      - 'tests/ai-research-assistant/**'
+      - 'tests/vllm-model/**'
+      - 'tests/ai-policy/**'
+      - 'tests/agent-sandbox/**'
+      - 'tests/opencode-harness/**'
+      - 'tests/cohort-designer/**'
+      - 'tests/kumo-forecast/**'
+      - 'tests/vertex-model/**'
+      - '.github/workflows/test-ai-research-assistant.yaml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check shell scripts
+        run: |
+          shellcheck src/ai-research-assistant/*.sh \
+            features/src/vllm-model/*.sh \
+            features/src/ai-policy/*.sh \
+            features/src/agent-sandbox/*.sh features/src/agent-sandbox/broker/*.sh \
+            features/src/opencode-harness/*.sh features/src/opencode-harness/harnesses/*.sh \
+            features/src/cohort-designer/*.sh features/src/kumo-forecast/*.sh \
+            features/src/vertex-model/*.sh
+      - name: Test the features and the template without a GPU
+        run: |
+          # The access-gate tests need the assistant UI's requirements; the Kumo forecast tests need
+          # pandas, numpy and scikit-learn at the feature's versions (not torch or the Kumo SDK).
+          python3 -m pip install --quiet -r src/ai-research-assistant/assistant-ui/requirements.txt \
+            pandas==2.3.3 numpy scikit-learn==1.9.1 pyarrow==25.0.0
+          for suite in vllm-model ai-policy agent-sandbox opencode-harness cohort-designer kumo-forecast vertex-model ai-research-assistant; do
+            python3 -m unittest discover -s "tests/${suite}" -v
+          done

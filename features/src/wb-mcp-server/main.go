@@ -8,9 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -1723,6 +1728,271 @@ WORKFLOW:
 	},
 }
 
+// Workflow diagnostics use the Workflow Manager contract, not CLI job aliases.
+// IDs are API UUIDs; requiring them avoids resolving names against stale bridge context.
+type workflowDiagnostic struct {
+	tool   Tool
+	method string
+	path   string
+}
+
+var workflowDiagnostics = []workflowDiagnostic{
+	{
+		tool: Tool{
+			Name:        "workflow_inputs_get",
+			Description: "Get parsed input definitions for a workflow resource UUID.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"workspaceId": map[string]interface{}{"type": "string", "format": "uuid", "description": "Workspace ID (UUID, not a user-facing name)"},
+					"workflowId":  map[string]interface{}{"type": "string", "format": "uuid", "description": "The WSM resource ID of the flexible resource representing the workflow (UUID, not a user-facing name)"},
+				},
+				Required: []string{"workspaceId", "workflowId"},
+			},
+		},
+		method: "GET",
+		path:   "/api/workflows/v1/{workflowId}/inputs",
+	},
+	{
+		tool: Tool{
+			Name:        "workflow_task_list",
+			Description: "List tasks in a run, with filters and pagination. Returns the backend page token.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"workspaceId": map[string]interface{}{"type": "string", "format": "uuid", "description": "Workspace ID (UUID, not a user-facing name)"},
+					"runId":       map[string]interface{}{"type": "string", "format": "uuid", "description": "ID of the run (UUID, not a user-facing name)"},
+					"status": map[string]interface{}{"type": "string", "enum": []interface{}{"PENDING", "STARTING", "RUNNING", "SKIPPED", "QUEUE_IN_ENGINE", "STOPPING", "COMPLETED", "CANCELLED", "FAILED", "DELETED"},
+						"description": "Filter runs by their status"},
+					"startTime": map[string]interface{}{"type": "string", "format": "date-time", "description": "Filter runs by their start time"},
+					"endTime":   map[string]interface{}{"type": "string", "format": "date-time", "description": "Filter runs by their end time"},
+					"pageToken": map[string]interface{}{"type": "string", "description": "Page token for pagination"},
+					"limit":     map[string]interface{}{"type": "integer", "default": 1000, "description": "Limit for pagination", "minimum": 1, "maximum": 1000},
+					"search":    map[string]interface{}{"type": "string", "description": "Search string matched across task name and status"},
+					"sortField": map[string]interface{}{"type": "string", "enum": []interface{}{"display_name", "status", "created_date"},
+						"default": "created_date", "description": "Column to sort tasks by"},
+					"sortDirection": map[string]interface{}{"type": "string", "enum": []interface{}{"ASC", "DESC"},
+						"default": "DESC", "description": "Sort direction"},
+				},
+				Required: []string{"workspaceId", "runId"},
+			},
+		},
+		method: "GET",
+		path:   "/api/runs/v1/{runId}/tasks",
+	},
+	{
+		tool: Tool{
+			Name:        "workflow_task_get",
+			Description: "Get a task by task UUID.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"workspaceId": map[string]interface{}{"type": "string", "format": "uuid", "description": "Workspace ID (UUID, not a user-facing name)"},
+					"taskId":      map[string]interface{}{"type": "string", "format": "uuid", "description": "ID of the run task (UUID, not a user-facing name)"},
+				},
+				Required: []string{"workspaceId", "taskId"},
+			},
+		},
+		method: "GET",
+		path:   "/api/runs/v1/tasks/{taskId}",
+	},
+	{
+		tool: Tool{
+			Name:        "workflow_run_logs",
+			Description: "Get a page of run or task log messages. Returns the backend page token.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"workspaceId": map[string]interface{}{"type": "string", "format": "uuid", "description": "Workspace ID (UUID, not a user-facing name)"},
+					"runId":       map[string]interface{}{"type": "string", "format": "uuid", "description": "ID of the run (UUID, not a user-facing name)"},
+					"taskId":      map[string]interface{}{"type": "string", "format": "uuid", "description": "ID of the run task (UUID, not a user-facing name)"},
+					"limit":       map[string]interface{}{"type": "integer", "default": 1000, "description": "Limit for pagination", "minimum": 1, "maximum": 2147483647},
+					"pageToken":   map[string]interface{}{"type": "string", "description": "Page token for pagination"},
+				},
+				Required: []string{"workspaceId", "runId"},
+			},
+		},
+		method: "GET",
+		path:   "/api/runs/v1/{runId}/logs",
+	},
+	{
+		tool: Tool{
+			Name:        "workflow_run_trace",
+			Description: "Get Nextflow trace data for a run.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"workspaceId": map[string]interface{}{"type": "string", "format": "uuid", "description": "Workspace ID (UUID, not a user-facing name)"},
+					"runId":       map[string]interface{}{"type": "string", "format": "uuid", "description": "ID of the run (UUID, not a user-facing name)"},
+				},
+				Required: []string{"workspaceId", "runId"},
+			},
+		},
+		method: "GET",
+		path:   "/api/runs/v1/{runId}/trace",
+	},
+	{
+		tool: Tool{
+			Name:        "workflow_run_costs",
+			Description: "Get GCP-attributed costs for 1-1000 run UUIDs. This does not report AWS costs.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"workspaceId": map[string]interface{}{"type": "string", "format": "uuid", "description": "Workspace ID (UUID, not a user-facing name)"},
+					"runIds": map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string", "format": "uuid"},
+						"minItems": 1, "maxItems": 1000, "description": "Run UUIDs to price"},
+				},
+				Required: []string{"workspaceId", "runIds"},
+			},
+		},
+		method: "POST",
+		path:   "/api/runs/v1/costs",
+	},
+	{
+		tool: Tool{
+			Name:        "workflow_batch_status_counts",
+			Description: "Get child-run status counts for a batch run UUID.",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"workspaceId": map[string]interface{}{"type": "string", "format": "uuid", "description": "Workspace ID (UUID, not a user-facing name)"},
+					"runId":       map[string]interface{}{"type": "string", "format": "uuid", "description": "ID of the run (UUID, not a user-facing name)"},
+				},
+				Required: []string{"workspaceId", "runId"},
+			},
+		},
+		method: "GET",
+		path:   "/api/runs/v1/{runId}/statusCounts",
+	},
+}
+
+func init() {
+	for _, diagnostic := range workflowDiagnostics {
+		wbTools = append(wbTools, diagnostic.tool)
+	}
+}
+
+var workflowUUID = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// Validate before executing wb or sending any HTTP requests. MCP clients need not
+// enforce inputSchema, so the server checks the same constraints here.
+func workflowArgument(value interface{}, schema map[string]interface{}) (string, error) {
+	switch schema["type"] {
+	case "string":
+		s, ok := value.(string)
+		if !ok || strings.TrimSpace(s) == "" {
+			return "", fmt.Errorf("must be a nonempty string")
+		}
+		if schema["format"] == "uuid" && !workflowUUID.MatchString(s) {
+			return "", fmt.Errorf("must be a UUID")
+		}
+		if schema["format"] == "date-time" {
+			if _, err := time.Parse(time.RFC3339, s); err != nil {
+				return "", fmt.Errorf("must be an RFC3339 timestamp")
+			}
+		}
+		if choices, ok := schema["enum"].([]interface{}); ok {
+			found := false
+			for _, choice := range choices {
+				if s == choice {
+					found = true
+				}
+			}
+			if !found {
+				return "", fmt.Errorf("must be one of %v", choices)
+			}
+		}
+		return s, nil
+	case "integer":
+		n, ok := value.(float64)
+		if !ok || math.IsNaN(n) || math.IsInf(n, 0) || n != math.Trunc(n) {
+			return "", fmt.Errorf("must be an integer")
+		}
+		// Bounds come from the tool schema: task and log endpoints can differ.
+		if minimum, ok := schema["minimum"].(int); ok && n < float64(minimum) {
+			return "", fmt.Errorf("must be at least %d", minimum)
+		}
+		if maximum, ok := schema["maximum"].(int); ok && n > float64(maximum) {
+			return "", fmt.Errorf("must be at most %d", maximum)
+		}
+		return strconv.FormatFloat(n, 'f', 0, 64), nil
+	}
+	return "", fmt.Errorf("unsupported argument type")
+}
+
+func callWorkflowDiagnostic(d workflowDiagnostic, args map[string]interface{}) ([]byte, error) {
+	for _, key := range d.tool.InputSchema.Required {
+		if _, ok := args[key]; !ok {
+			return nil, fmt.Errorf("missing required parameter: %s", key)
+		}
+	}
+	path := d.path
+	query := url.Values{}
+	var body interface{}
+	for key, value := range args {
+		rawSchema, ok := d.tool.InputSchema.Properties[key]
+		if !ok {
+			return nil, fmt.Errorf("unknown parameter: %s", key)
+		}
+		schema := rawSchema.(map[string]interface{})
+		if key == "runIds" {
+			ids, ok := value.([]interface{})
+			if !ok || len(ids) < 1 || len(ids) > 1000 {
+				return nil, fmt.Errorf("runIds must contain 1-1000 UUIDs")
+			}
+			for _, id := range ids {
+				if _, err := workflowArgument(id, schema["items"].(map[string]interface{})); err != nil {
+					return nil, fmt.Errorf("runIds: %w", err)
+				}
+			}
+			body = map[string]interface{}{"runIds": ids}
+			continue
+		}
+		text, err := workflowArgument(value, schema)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", key, err)
+		}
+		placeholder := "{" + key + "}"
+		if strings.Contains(path, placeholder) {
+			path = strings.ReplaceAll(path, placeholder, url.PathEscape(text))
+		} else {
+			query.Set(key, text)
+		}
+	}
+	// Read the same persisted context as wb; UFServer in `wb status` omits
+	// workflowManagerUri. Never fall back to production when context is missing.
+	parent := os.Getenv("WORKBENCH_CONTEXT_PARENT_DIR")
+	if strings.TrimSpace(parent) == "" {
+		var err error
+		parent, err = os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("cannot find Workbench context: %w", err)
+		}
+	}
+	contextJSON, err := os.ReadFile(filepath.Join(parent, ".workbench", "context.json"))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read Workbench context: %w", err)
+	}
+	var status struct {
+		Server struct {
+			WorkflowManagerURI string `json:"workflowManagerUri"`
+			IAPAudience        string `json:"iapAudience"`
+		} `json:"server"`
+	}
+	if err := json.Unmarshal(contextJSON, &status); err != nil {
+		return nil, fmt.Errorf("invalid Workbench context JSON: %w", err)
+	}
+	if status.Server.IAPAudience != "" {
+		return nil, fmt.Errorf("workflow diagnostics do not yet support IAP-protected servers")
+	}
+	base, err := url.Parse(status.Server.WorkflowManagerURI)
+	if err != nil || base == nil || base.Host == "" || (base.Scheme != "https" && base.Scheme != "http") || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+		return nil, fmt.Errorf("Workbench context must provide a valid server.workflowManagerUri")
+	}
+	endpoint := strings.TrimRight(base.String(), "/") + path + "?" + query.Encode()
+	return makeAPIRequest(d.method, endpoint, body)
+}
+
 func initializeConfig() error {
 	// Default to production Verily URLs
 	workspaceBaseURL = "https://workbench.verily.com/api/wsm"
@@ -2104,6 +2374,16 @@ func requireStrings(args map[string]interface{}, keys ...string) ([]string, erro
 }
 
 func handleCallTool(params CallToolParams) CallToolResult {
+	for _, diagnostic := range workflowDiagnostics {
+		if params.Name == diagnostic.tool.Name {
+			output, err := callWorkflowDiagnostic(diagnostic, params.Arguments)
+			if err != nil {
+				return CallToolResult{Content: []ContentItem{{Type: "text", Text: err.Error()}}, IsError: true}
+			}
+			return CallToolResult{Content: []ContentItem{{Type: "text", Text: string(output)}}}
+		}
+	}
+
 	var output string
 	var err error
 

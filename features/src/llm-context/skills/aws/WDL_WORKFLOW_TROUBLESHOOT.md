@@ -1,6 +1,6 @@
 # WDL Workflow Troubleshooting Skill (AWS)
 
-**Trigger:** User asks to troubleshoot, debug, or fix a failed workflow.
+**Trigger:** User asks to troubleshoot, debug, or fix a failed **WDL** workflow. If the workflow type is unknown, check `wb workflow list` to confirm it is WDL before proceeding. For Nextflow workflows, read `NEXTFLOW_WORKFLOW.md` instead.
 
 ## Behavior
 

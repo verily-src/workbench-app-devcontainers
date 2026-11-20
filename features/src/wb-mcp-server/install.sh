@@ -62,7 +62,8 @@ fi
 check_packages \
     ca-certificates \
     curl \
-    git
+    git \
+    postgresql-client
 
 # Check if Go is installed
 if ! command -v go &> /dev/null; then

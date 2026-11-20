@@ -168,3 +168,36 @@ tail -f /tmp/wb-mcp-server.log
 - Workbench CLI (`wb`) installed
 - Authenticated (`wb auth login`)
 - Access to data collections and workspaces
+
+## Workflow diagnostics
+
+These seven read-only tools call Workflow Manager directly:
+
+| Tool | Purpose |
+| --- | --- |
+| `workflow_inputs_get` | Parsed inputs for a workflow resource |
+| `workflow_task_list` | Tasks with status/time/search filters, sorting and pagination |
+| `workflow_task_get` | Details of one task |
+| `workflow_run_logs` | Paginated run logs, optionally restricted to a task |
+| `workflow_run_trace` | Nextflow trace data |
+| `workflow_run_costs` | GCP-attributed costs for 1–1000 runs |
+| `workflow_batch_status_counts` | Counts of child runs by status |
+
+All require an explicit `workspaceId` UUID. Workflow, run and task IDs also use
+API UUIDs, not CLI display names or engine-native job IDs. Paginated tools return
+the backend response unchanged; pass its next-page token as `pageToken`.
+
+The endpoint is read on each call from `server.workflowManagerUri` in
+`~/.workbench/context.json`, honoring `WORKBENCH_CONTEXT_PARENT_DIR`. Authentication
+uses `wb auth print-access-token`. Missing context fails explicitly; there is no
+production fallback. IAP-protected servers are not supported by these new tools.
+
+Example MCP tool arguments for logs:
+
+```json
+{"name":"workflow_run_logs","arguments":{"workspaceId":"11111111-1111-4111-8111-111111111111","runId":"22222222-2222-4222-8222-222222222222","limit":100}}
+```
+
+Run local tests with `go test ./...` from this directory. Tests use a temporary CLI
+context, a fake `wb` executable and an HTTP transport stub; they do not access
+Workbench or verify deployment-specific permissions and engine support.

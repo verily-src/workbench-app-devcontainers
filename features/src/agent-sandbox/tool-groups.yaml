@@ -1,0 +1,138 @@
+# The Workbench MCP server's tools (features/src/wb-mcp-server), in the server's own groups
+# (toolsets.go). This is a catalog, not policy: ai-policy.yaml names groups from here in
+# tools.allow, and tools in tools.deny. render-policy.py writes the allowed names into the
+# sandbox's workbench_tools rule, and OpenShell checks every call's tool name against it. A
+# tool in no group is not callable; a tool added to the server must be added here.
+# tests/ai-policy checks the two agree. Which groups the agent may call is decided by
+# ai-policy.yaml's tools.allow, and the sandbox enforces it on every call. The server's own
+# default toolset (and ?toolsets= in its URL) only changes what it lists, not what is allowed.
+groups:
+  core:
+    - wb_status
+    - wb_help
+    - wb_execute
+    - workspace_list_resources
+    - workspace_list_data_collections
+    - platform_list_data_collections
+    - resource_list_tree
+    - app_list
+    - app_get_url
+    - bq_query
+    - bq_execute
+    - gcloud_execute
+    - gsutil_execute
+    - s3_list_objects
+    - s3_read_file
+    - aurora_query
+    - aurora_list_tables
+    - aurora_describe_table
+  workflows:
+    - workflow_list
+    - workflow_describe
+    - workflow_create
+    - workflow_job_list
+    - workflow_job_describe
+    - workflow_job_run
+    - workflow_job_cancel
+    - workflow_inputs_get
+    - workflow_task_list
+    - workflow_task_get
+    - workflow_run_logs
+    - workflow_run_trace
+    - workflow_run_costs
+    - workflow_batch_status_counts
+    - cromwell_generate_config
+  dataexplorer:
+    - underlay_list
+    - underlay_get_schema
+    - underlay_list_entities
+    - underlay_get_entity
+    - underlay_list_criteria_selectors
+    - data_query_hints
+    - data_sample_instances
+    - study_list
+    - study_list_cohorts
+    - cohort_create_in_workspace
+    - cohort_update_criteria
+    - cohort_count_instances
+    - export_list_models
+    - export_describe
+    - export_preview
+    - export_cohort
+    - filter_build_attribute
+    - filter_build_relationship
+    - filter_build_boolean_logic
+    - filter_build_hierarchy
+  apps:
+    - app_create
+    - app_delete
+    - app_start
+    - app_stop
+  admin:
+    - workspace_get
+    - workspace_list_all
+    - workspace_create
+    - workspace_delete
+    - workspace_update
+    - workspace_duplicate
+    - workspace_set_property
+    - workspace_delete_property
+    - workspace_add_user
+    - workspace_remove_user
+    - workspace_list_users
+    - workspace_configure_aws
+    - resource_create_bucket
+    - resource_create_bq_dataset
+    - resource_create_aurora_database
+    - resource_create_s3_folder
+    - resource_create_s3_external_bucket
+    - resource_delete
+    - resource_update
+    - resource_add_reference
+    - resource_move
+    - resource_check_access
+    - resource_mount
+    - resource_unmount
+    - resolve
+    - folder_create
+    - folder_delete
+    - folder_update
+    - aurora_resolve_connection
+    - s3_write_file
+    - s3_copy
+    - git_execute
+    - group_create
+    - group_delete
+    - group_list
+    - group_describe
+    - group_add_user
+    - group_remove_user
+    - pod_list
+    - pod_describe
+    - pod_role_list
+    - pod_role_grant
+    - pod_role_revoke
+    - organization_list
+    - server_list
+    - server_set
+    - server_list_regions
+  legacy:
+    - notebook_start
+    - notebook_stop
+    - notebook_launch
+    - cluster_start
+    - cluster_stop
+    - cluster_launch
+    - wb_workspace_list
+    - folder_list_tree
+    - server_status
+    - auth_status
+    - version
+    - resource_open_console
+
+# Tools the harness asks the person about before each call: each starts or stops paid compute
+# or registers something in the workspace.
+ask:
+  - workflow_create
+  - workflow_job_run
+  - workflow_job_cancel

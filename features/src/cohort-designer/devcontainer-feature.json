@@ -1,0 +1,52 @@
+{
+  "id": "cohort-designer",
+  "version": "0.1.0",
+  "name": "Cohort Designer",
+  "description": "Installs the cohort designer agent (a single binary, fetched from its release) and serves it as an MCP server on port 9243, on the app's local model and the workspace's BigQuery datasets. With the agent-sandbox feature, the sandboxed agent drives it.",
+  "options": {
+    "username": {
+      "type": "string",
+      "default": "root",
+      "description": "Username of the container user."
+    },
+    "userHomeDir": {
+      "type": "string",
+      "default": "/root",
+      "description": "Home directory of the container user."
+    },
+    "port": {
+      "type": "string",
+      "default": "9243",
+      "description": "Port for the designer's MCP server"
+    },
+    "bindAddress": {
+      "type": "string",
+      "default": "127.0.0.1",
+      "description": "Address the server listens on. 127.0.0.1 (default) keeps it to this container; 0.0.0.0 lets the container publish the port to sandboxed agents on the same VM. COHORT_DESIGNER_BIND overrides it at start."
+    },
+    "role": {
+      "type": "string",
+      "default": "app",
+      "proposals": [
+        "app",
+        "broker"
+      ],
+      "description": "app: the designer and its server. broker: only the catalog the sandbox-broker renders the policy from."
+    },
+    "release": {
+      "type": "string",
+      "default": "gs://cda-wb-beaming-kiwi-9470/cohort-designer/0.1.0/cohort-designer-linux-x86_64",
+      "description": "Where the designer's binary is: gs://bucket/object (read as the VM's service account) or an https:// URL."
+    },
+    "sha256": {
+      "type": "string",
+      "default": "9ea81d7f92fca2858f6af27dc4d7bedce3af1227a91f640f01007206bf2ca99e",
+      "description": "The binary's sha256. A download that does not match is not installed."
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "./.devcontainer/features/workbench-tools",
+    "./.devcontainer/features/agent-sandbox"
+  ]
+}

@@ -1,0 +1,72 @@
+# The cohort designer's MCP server, as the sandbox sees it (the agent-sandbox README, "Other
+# MCP servers"): the tools the policy may allow, the ones the harness asks the person before
+# calling, and what the agent is told. The tools are the ones the released binary's server
+# offers: the designer's own, with wait_for_reply and new_cohort added and reset_session,
+# read_events and get_choices withheld.
+name: cohort
+title: Cohort designer
+tools:
+  - new_cohort
+  - send_message
+  - wait_for_reply
+  - get_status
+  - answer_choices
+  - respond_approval
+  - get_cohort_definition
+  - get_results
+# An approval settles what a lock freezes or what an edit removes, and a choice settles how
+# the definition reads the request. The person decides both, in the harness's own permission
+# prompt: on its first run the driving model answered a choice itself and marked the answer
+# as the person's.
+ask:
+  - respond_approval
+  - answer_choices
+instructions: |
+  The `cohort` MCP server is a cohort designer: another agent, running in the app with the
+  user's own data access, that turns a research question into a checked cohort definition over
+  the workspace's BigQuery data and counts it. Whenever the user wants a cohort, a study
+  population, inclusion or exclusion criteria, or a count of patients meeting criteria, use
+  it and nothing else: to design a cohort, do not explore the data yourself, do not use the
+  Workbench tools, and do not write SQL. The designer does all of that.
+
+  It holds one conversation, shared by every chat, and it is slow: one reply often takes
+  several minutes. Do this:
+
+  0. If this chat has not sent the designer a message yet, call `cohort_new_cohort` first,
+     once, so the cohort starts empty instead of carrying another chat's definition. Call it
+     again only when the user asks for a cohort that is not the current one, and never while
+     you wait on a reply.
+  1. `cohort_send_message` with the user's request in their own words and `relayed: true`.
+     Send it once. It returns at once with status `working`.
+  2. `cohort_wait_for_reply`. While it returns status `working`, call it again, and keep
+     calling it for as long as it takes. `working` is progress. Never send the message again
+     and never call another tool while the designer works.
+  3. Status `idle`: give the user the `reply` exactly as written, numbers unchanged, then
+     stop and wait for the user. If there is `choices`, show its text too, and stop: the
+     choices are the user's to make, even when one reading looks obvious. Only after the user
+     has answered, send their picks with `cohort_answer_choices` and `relayed: true`, then go
+     to step 2. The user is asked to allow that call. If there is `error`, tell the user the
+     error and stop.
+  4. Status `awaiting_approval`: show the user the `approval_request` lines exactly, ask
+     "Approve or deny?", and stop. Wait for the user's answer. Only then call
+     `cohort_respond_approval` with its `id`, `approve` set to what the user said, and as
+     `note` only the user's own words. You never decide an approval yourself and never deny
+     one on your own reading of the definition: if something in it looks wrong to you, say so
+     to the user in one sentence and let them decide. The user is asked to allow that call.
+     Then go to step 2.
+
+  If a call fails with a connection error ("socket connection was closed"), make the same
+  call once more. Never repeat `cohort_send_message`, `cohort_answer_choices`
+  or `cohort_respond_approval` once it has returned.
+
+  What the user says next goes to the designer the same way: step 1, then step 2.
+  `cohort_get_results` (with `which`, such as `summary` or `funnel`) and
+  `cohort_get_cohort_definition` read the current counts and definition when the user asks
+  for them. `cohort_get_status` says in one line whether the designer is working; you do not
+  need it for the steps above.
+
+  Using a locked cohort elsewhere. To run a workflow on a cohort's members or analyse them,
+  the cohort must be locked. `cohort_get_results` with `which: "export"` gives its SQL. Run
+  that SQL from your own Python, as `/sandbox/data-access.md` describes, and build what the
+  next step needs from the rows (a workflow's samplesheet, for example). Don't print the
+  members' ids to the user. Give counts.

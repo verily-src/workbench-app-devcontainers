@@ -11,12 +11,22 @@ set -o errexit
 set -o nounset
 
 readonly TEMPLATE_ID="$1"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+readonly REPO_ROOT
+readonly CLI_VERSION="${DEVCONTAINER_CLI_VERSION:-}"
+if [[ -n "${CLI_VERSION}" && ! "${CLI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "DEVCONTAINER_CLI_VERSION must be an exact version" >&2
+    exit 2
+fi
 
 # include hidden files because devcontainer configs
 # are in .devcontainer/ or .devcontainer.json file.
 shopt -s dotglob
 
 readonly SRC_DIR="/tmp/${TEMPLATE_ID}"
+if [[ "${TEMPLATE_ID}" == dc-access-logging-app ]]; then
+    export DC_ACCESS_ENV=test
+fi
 cp -LR "src/." "/tmp"
 
 pushd "${SRC_DIR}"
@@ -72,8 +82,19 @@ fi
 # Install Devcontainer CLI
 ############################
 export DOCKER_BUILDKIT=1
+export BUILDX_BAKE_ENTITLEMENTS_FS=0
 echo "(*) Installing @devcontainer/cli"
-npm install -g @devcontainers/cli
+if [[ -n "${CLI_VERSION}" ]]; then
+    CLI_DIR="$(mktemp -d)"
+    readonly CLI_DIR
+    npm install --prefix "${CLI_DIR}" "@devcontainers/cli@${CLI_VERSION}"
+else
+    readonly CLI_DIR="${REPO_ROOT}/startupscript/butane"
+    npm ci --prefix "${CLI_DIR}"
+fi
+export PATH="${CLI_DIR}/node_modules/.bin:${PATH}"
+expected_cli="${CLI_VERSION:-$(jq -r '.packages["node_modules/@devcontainers/cli"].version' "${CLI_DIR}/package-lock.json")}"
+[[ "$(devcontainer --version)" == "${expected_cli}" ]]
 
 #################################
 # Workbench application specific

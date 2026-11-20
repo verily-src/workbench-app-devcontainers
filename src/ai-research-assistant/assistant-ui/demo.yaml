@@ -51,4 +51,4 @@ next_steps:
 about:
   - The assistant runs in an NVIDIA OpenShell sandbox with no credentials of its own.
   - It cannot connect to the internet. OpenShell blocks every connection except to the model, this workspace's data and the tools listed above.
-  - The model is the one named at the top: NVIDIA Nemotron served in this app, or Gemini on Vertex AI in this workspace's project.
+  - The model is served inside this workspace, so prompts and data are not sent to an outside AI service.

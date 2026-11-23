@@ -2,7 +2,7 @@
 
 Prototype Streamlit app for asking plain-language analytics questions from inside a Verily Workbench workspace. Each user launches their own copy of the app.
 
-**Current state:** the page has a question box and an **Ask** button, and shows the question back. It is not connected to data or to a model yet.
+**Current state:** a chat-style page. You ask a question and it appears in a conversation thread, followed by a reply saying the app cannot answer yet. It is not connected to data or to a model.
 
 ## Files
 
@@ -15,6 +15,8 @@ Prototype Streamlit app for asking plain-language analytics questions from insid
 | `app/requirements.txt` | Pinned Python dependencies. |
 | `app/.streamlit/config.toml` | Streamlit settings, including the browser origin the app accepts connections from. |
 | `app/main.py` | The page. |
+| `app/style.css` | Page styling. |
+| `app/static/fonts/` | Newsreader font files (SIL Open Font License), served with the app. |
 
 The app code is copied into the image at build time. Nothing is mounted over it, and no Workbench startup scripts run, so the container has no bucket mounts and no `wb` CLI.
 
@@ -46,9 +48,9 @@ Workbench clones the repository and builds the image on the app's VM. The build 
 ## Check that it starts and restarts
 
 1. The app reaches the running state and the page loads from the Workbench app link.
-2. Type a question and select **Ask**. The page shows "Question received" and the question. This also proves the page's live connection works through the Workbench proxy.
+2. Type a question and press Enter. Your question appears in the thread, followed by a reply saying the app cannot answer yet. This also proves the page's live connection works through the Workbench proxy.
 3. Note the "App started" time at the bottom of the page.
-4. Stop the app, start it again, and reopen it. The page loads, **Ask** still works, and the "App started" time is later than before.
+4. Stop the app, start it again, and reopen it. The page loads, asking a question still works, and the "App started" time is later than before.
 
 ## Troubleshooting
 

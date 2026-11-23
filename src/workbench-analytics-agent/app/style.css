@@ -1,0 +1,294 @@
+/* Workbench Analytics Agent: page styling.
+   Colours match the [theme] table in .streamlit/config.toml. */
+
+:root {
+  --wb-paper: #F6F2E9;
+  --wb-card: #FFFEFA;
+  --wb-ink: #2A2620;
+  --wb-muted: #7A7264;
+  --wb-line: #DCD4C3;
+  --wb-bubble: #E9E2D1;
+  --wb-green: #1F6B57;
+  --wb-green-deep: #17503F;
+  --wb-serif: "Newsreader", Georgia, serif;
+  --wb-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7' fill='%231F6B57'/%3E%3Crect x='6' y='12.5' width='3' height='5.5' rx='1.2' fill='%23F6F2E9'/%3E%3Crect x='10.5' y='9' width='3' height='9' rx='1.2' fill='%23F6F2E9'/%3E%3Crect x='15' y='6' width='3' height='12' rx='1.2' fill='%23F6F2E9'/%3E%3C/svg%3E");
+}
+
+/* ---------- Page ---------- */
+
+[data-testid="stApp"] {
+  background:
+    radial-gradient(60rem 30rem at 50% -6rem, #FFFDF8 0%, rgba(255, 253, 248, 0) 70%),
+    var(--wb-paper);
+}
+
+[data-testid="stHeader"] {
+  background: transparent;
+}
+
+[data-testid="stMainBlockContainer"] {
+  max-width: 46rem;
+  padding-top: 1.75rem;
+  padding-bottom: 7rem;
+}
+
+/* ---------- Top bar ---------- */
+
+.wb-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--wb-ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.wb-mark {
+  width: 1.45rem;
+  height: 1.45rem;
+  flex: none;
+  background: center / contain no-repeat var(--wb-mark);
+}
+
+.st-key-new_chat button {
+  background: transparent;
+  border: 1px solid var(--wb-line);
+  color: var(--wb-muted);
+  font-size: 0.82rem;
+  min-height: 0;
+  padding: 0.3rem 0.85rem;
+  white-space: nowrap;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.st-key-new_chat button:hover,
+.st-key-new_chat button:focus-visible {
+  background: var(--wb-card);
+  border-color: var(--wb-green);
+  color: var(--wb-ink);
+}
+
+/* ---------- Landing view ---------- */
+
+.st-key-hero {
+  margin-top: 15vh;
+  gap: 0;
+}
+
+.st-key-hero h1 {
+  font-size: clamp(2.3rem, 5.2vw, 3.3rem);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  text-align: center;
+  padding: 0 0 1.4rem;
+  animation: wb-rise 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.st-key-hero h1 em {
+  color: var(--wb-green);
+}
+
+.st-key-hero [data-testid="stMarkdown"] p {
+  color: var(--wb-muted);
+  font-size: 1.02rem;
+  text-align: center;
+  margin: 0;
+  padding-bottom: 2.8rem;
+  animation: wb-rise 520ms 70ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.st-key-hero_input {
+  animation: wb-rise 520ms 140ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.st-key-examples {
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+  animation: wb-rise 520ms 210ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.st-key-examples button {
+  background: transparent;
+  border: 1px solid var(--wb-line);
+  color: #5F584B;
+  font-size: 0.84rem;
+  min-height: 0;
+  padding: 0.38rem 0.95rem;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease,
+    transform 150ms ease;
+}
+
+.st-key-examples button:hover,
+.st-key-examples button:focus-visible {
+  background: var(--wb-card);
+  border-color: var(--wb-green);
+  color: var(--wb-ink);
+  transform: translateY(-1px);
+}
+
+.st-key-examples button p {
+  font-size: inherit;
+}
+
+/* ---------- Question box (both views) ---------- */
+
+[data-testid="stChatInput"] > div {
+  background: var(--wb-card);
+  border: 1px solid var(--wb-line);
+  border-radius: 1.4rem;
+  padding: 0.85rem 0.75rem 0.85rem 1.2rem;
+  box-shadow:
+    0 1px 2px rgba(42, 38, 32, 0.04),
+    0 14px 34px -16px rgba(42, 38, 32, 0.22);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+[data-testid="stChatInput"] > div:focus-within {
+  border-color: rgba(31, 107, 87, 0.55);
+  box-shadow:
+    0 0 0 4px rgba(31, 107, 87, 0.1),
+    0 14px 34px -16px rgba(42, 38, 32, 0.22);
+}
+
+/* Streamlit sizes this box in script and gets the first measurement wrong
+   when the box sits inside a container, so the browser sizes it instead. */
+[data-testid="stChatInputTextArea"] {
+  height: auto !important;
+  min-height: 1.75rem;
+  field-sizing: content;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--wb-ink);
+}
+
+[data-testid="stChatInputTextArea"]::placeholder {
+  color: #9A9283;
+}
+
+[data-testid="stChatInputSubmitButton"] {
+  background: var(--wb-green);
+  color: var(--wb-paper);
+  border-radius: 50%;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+[data-testid="stChatInputSubmitButton"] svg {
+  color: inherit;
+}
+
+[data-testid="stChatInputSubmitButton"]:hover:not(:disabled) {
+  background: var(--wb-green-deep);
+  transform: translateY(-1px);
+}
+
+[data-testid="stChatInputSubmitButton"]:disabled {
+  background: #E6DFCF;
+  color: #A39B8B;
+}
+
+/* ---------- Conversation view ---------- */
+
+.st-key-topbar {
+  margin-bottom: 1.1rem;
+}
+
+[data-testid="stChatMessage"] {
+  background: transparent;
+  padding: 0.3rem 0;
+  gap: 0.8rem;
+  animation: wb-rise 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Questions: a bubble on the right, without an avatar. */
+[data-testid="stChatMessageAvatarUser"] {
+  display: none;
+}
+
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+  justify-content: flex-end;
+}
+
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"])
+  [data-testid="stChatMessageContent"] {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 80%;
+  margin: 0 0 0 auto;
+  background: var(--wb-bubble);
+  border-radius: 1.25rem 1.25rem 0.4rem 1.25rem;
+  padding: 0.6rem 1rem;
+}
+
+[data-testid="stChatMessageContent"] [data-testid="stText"] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Replies: the app's mark, then serif text straight on the page. */
+[data-testid="stChatMessageAvatarAssistant"] {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: 0.2rem;
+  border-radius: 0;
+  background: center / contain no-repeat var(--wb-mark);
+}
+
+[data-testid="stChatMessageAvatarAssistant"] > * {
+  display: none;
+}
+
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarAssistant"])
+  [data-testid="stMarkdownContainer"] p {
+  font-family: var(--wb-serif);
+  font-size: 1.14rem;
+  line-height: 1.6;
+}
+
+/* The question box pinned under the thread. */
+[data-testid="stBottom"] > div {
+  background: linear-gradient(
+    to bottom,
+    rgba(246, 242, 233, 0) 0,
+    var(--wb-paper) 1.75rem
+  );
+}
+
+[data-testid="stBottomBlockContainer"] {
+  max-width: 46rem;
+  padding-top: 1.75rem;
+  padding-bottom: 2rem;
+}
+
+/* ---------- Footnote ---------- */
+
+.st-key-footnote {
+  margin-top: 2.2rem;
+}
+
+.st-key-footnote [data-testid="stCaptionContainer"] p {
+  color: #9A9283;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes wb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

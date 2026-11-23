@@ -4,6 +4,8 @@ headless = true
 # the Workbench host. Streamlit refuses the page's live connection from any
 # origin that is not listed here.
 corsAllowedOrigins = ["https://workbench.verily.com"]
+# Serves the font files in static/ alongside the app.
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false
@@ -11,3 +13,27 @@ gatherUsageStats = false
 [client]
 # Hides Streamlit's "Deploy" button and developer menu.
 toolbarMode = "minimal"
+
+[theme]
+base = "light"
+primaryColor = "#1F6B57"
+backgroundColor = "#F6F2E9"
+secondaryBackgroundColor = "#ECE6D8"
+textColor = "#2A2620"
+borderColor = "#DCD4C3"
+headingFont = "Newsreader, Georgia, serif"
+headingFontWeights = 400
+baseRadius = "0.9rem"
+buttonRadius = "full"
+
+[[theme.fontFaces]]
+family = "Newsreader"
+url = "app/static/fonts/newsreader-400.woff2"
+weight = "400"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Newsreader"
+url = "app/static/fonts/newsreader-400-italic.woff2"
+weight = "400"
+style = "italic"

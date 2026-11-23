@@ -1,0 +1,10 @@
+{
+  "id": "vertex-model",
+  "version": "0.0.1",
+  "name": "Vertex AI model behind vLLM's API",
+  "description": "An OpenAI-compatible server on vLLM's port that answers from Vertex AI in the workspace's project, as the VM's service account: with a Gemini model, or with a model such as Nemotron that the workspace serves on a Vertex AI endpoint of its own. Lets the app run without a GPU: OpenCode keeps the address it uses with vLLM.",
+  "options": {},
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
+}

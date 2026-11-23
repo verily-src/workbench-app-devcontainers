@@ -1,4 +1,4 @@
-/* Workbench Analytics Agent: page styling.
+/* Ask Workbench: page styling.
    Colours and type follow the Verily brand palette and match the [theme]
    table in .streamlit/config.toml. */
 
@@ -14,7 +14,7 @@
   --wb-green-line: #ADD0CB;
   --wb-pop: #D4E585;
   --wb-display: "Poppins", Arial, sans-serif;
-  --wb-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23087A6A'/%3E%3Crect x='6' y='12.5' width='3' height='5.5' rx='1' fill='%23FFFFFF'/%3E%3Crect x='10.5' y='9' width='3' height='9' rx='1' fill='%23FFFFFF'/%3E%3Crect x='15' y='6' width='3' height='12' rx='1' fill='%23D4E585'/%3E%3C/svg%3E");
+  --wb-verily-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23087A6A' d='M13.2099 15.3486C15.0837 13.4747 18.9299 9.23756 20.7974 7.19685C21.1677 6.79157 21.8877 7.05381 21.8877 7.60372V16.45H3V7.18573L12.1212 7.16189V14.8988C12.1212 15.4662 12.8078 15.7523 13.2099 15.3502V15.3486Z'/%3E%3C/svg%3E");
 }
 
 ::selection {
@@ -43,18 +43,22 @@
 .wb-brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  color: var(--wb-ink);
-  font-size: 0.9rem;
-  font-weight: 600;
-  letter-spacing: 0.005em;
+  gap: 0.5rem;
 }
 
-.wb-mark {
-  width: 1.5rem;
-  height: 1.5rem;
+/* The Verily icon, in its own colour and proportions. */
+.wb-verily-icon {
+  width: 2rem;
+  height: 2rem;
   flex: none;
-  background: center / contain no-repeat var(--wb-mark);
+  background: center / contain no-repeat var(--wb-verily-icon);
+}
+
+.wb-app-name {
+  color: var(--wb-green-dark);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5rem;
 }
 
 .st-key-new_chat button {
@@ -273,16 +277,8 @@
   overflow-wrap: anywhere;
 }
 
-/* Replies: the app's mark, then text straight on the page. */
+/* Replies: plain text straight on the page, without an avatar. */
 [data-testid="stChatMessageAvatarAssistant"] {
-  width: 1.6rem;
-  height: 1.6rem;
-  margin-top: 0.1rem;
-  border-radius: 0;
-  background: center / contain no-repeat var(--wb-mark);
-}
-
-[data-testid="stChatMessageAvatarAssistant"] > * {
   display: none;
 }
 

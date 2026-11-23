@@ -1,4 +1,4 @@
-"""Workbench Analytics Agent: chat page.
+"""Ask Workbench: chat page.
 
 The user asks a question and it appears in a conversation thread. Answering
 is not connected yet, so every reply says so.
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 
-APP_NAME = "Workbench Analytics Agent"
+APP_NAME = "Ask Workbench"
 
 NOT_CONNECTED_REPLY = (
     "I have your question, but I can't answer it yet. "
@@ -24,8 +24,8 @@ EXAMPLE_QUESTIONS = [
 
 BRAND_HTML = f"""
 <div class="wb-brand">
-  <span class="wb-mark" aria-hidden="true"></span>
-  <span>{APP_NAME}</span>
+  <span class="wb-verily-icon" role="img" aria-label="Verily"></span>
+  <span class="wb-app-name">{APP_NAME}</span>
 </div>
 """
 

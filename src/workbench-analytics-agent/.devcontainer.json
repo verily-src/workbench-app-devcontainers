@@ -1,5 +1,5 @@
 {
-  "name": "Workbench Analytics Agent",
+  "name": "Ask Workbench",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

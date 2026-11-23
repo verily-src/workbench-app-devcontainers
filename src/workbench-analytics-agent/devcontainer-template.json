@@ -1,6 +1,6 @@
 {
   "id": "workbench-analytics-agent",
   "version": "0.1.0",
-  "name": "Workbench Analytics Agent",
+  "name": "Ask Workbench",
   "description": "Streamlit page for asking plain-language analytics questions in a Workbench workspace (prototype)"
 }

@@ -1,4 +1,4 @@
-FROM lscr.io/linuxserver/code-server@sha256:7bd334657f13505abc1e20afeeee5670ad8f818e68853c810889184e597f3051
+FROM lscr.io/linuxserver/code-server@sha256:ec8f01d91c93a5d615224a306914c3ea9190c6237f876383591bca676a24fa67
 
 # What this app adds to code-server itself. The local model (vLLM), the policy compiler, the
 # sandbox commands and the OpenCode harness are devcontainer features (.devcontainer.json),

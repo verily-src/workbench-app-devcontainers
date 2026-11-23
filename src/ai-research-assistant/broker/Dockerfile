@@ -5,7 +5,7 @@
 # .devcontainer/features/ (startupscript/butane/050-parse-devcontainer.sh), so it carries the
 # same feature files as the app image: the policy compiler, the sandbox commands in the broker
 # role (which adds sshd), and the harness files (the config hook runs here).
-FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
+FROM debian@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
 COPY .devcontainer/features/ai-policy /tmp/features/ai-policy
 COPY .devcontainer/features/agent-sandbox /tmp/features/agent-sandbox

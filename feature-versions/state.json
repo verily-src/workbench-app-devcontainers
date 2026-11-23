@@ -92,7 +92,7 @@
   "debian": {
     "tag": "13.6-slim",
     "installed": "sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132",
-    "filter": "src\\/pgweb\\/Dockerfile"
+    "filter": "src\\/(pgweb|ai-research-assistant\\/broker)\\/Dockerfile"
   },
   "mikefarah/yq": {
     "tag": "4",

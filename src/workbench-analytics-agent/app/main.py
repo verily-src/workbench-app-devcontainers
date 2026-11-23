@@ -81,7 +81,7 @@ with st.container(horizontal=True, vertical_alignment="center", key="topbar"):
 if not messages:
     # Landing view: greeting, question box and a few example questions.
     with st.container(key="hero"):
-        st.html('<p class="wb-eyebrow">Verily Workbench</p>')
+        st.html('<p class="wb-eyebrow">Self-serve analytics</p>')
         st.title("What would you like to *know*?", anchor=False)
         st.markdown("Ask about your data in plain language.")
         question = st.chat_input("Ask a question", key="hero_input")

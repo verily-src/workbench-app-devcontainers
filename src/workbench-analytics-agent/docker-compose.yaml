@@ -6,6 +6,13 @@ services:
     build:
       context: ./app
     restart: always
+    environment:
+      # Where the app looks for newer code each time it starts. Set
+      # ASK_WORKBENCH_REF to a tag or commit to pin a version, or to an empty
+      # string to always run the copy built into the image.
+      ASK_WORKBENCH_REPO: "verily-src/workbench-app-devcontainers"
+      ASK_WORKBENCH_REF: "refs/heads/ONEVERILY-151201-workbench-analytics-agent"
+      ASK_WORKBENCH_PATH: "src/workbench-analytics-agent/app"
     # The port specified here will be forwarded and accessible from the
     # Workbench UI.
     ports:

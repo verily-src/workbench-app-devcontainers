@@ -13,5 +13,6 @@ RUN chown -R appuser:appuser /app
 EXPOSE 8501
 USER appuser
 
-# Other Streamlit settings live in .streamlit/config.toml.
-CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# launcher.py fetches the latest copy of the app, then starts Streamlit.
+# Streamlit settings live in .streamlit/config.toml.
+CMD ["python", "launcher.py"]

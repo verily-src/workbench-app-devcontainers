@@ -4,6 +4,7 @@ The user asks a question and it appears in a conversation thread. Answering
 is not connected yet, so every reply says so.
 """
 
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -37,6 +38,17 @@ st.html(Path(__file__).with_name("style.css"))
 def app_started_at() -> datetime:
     """Time this server process started. It changes only when the app restarts."""
     return datetime.now(timezone.utc)
+
+
+def version_note() -> str:
+    """What launcher.py reported about the copy of the app that is running."""
+    version = os.environ.get("ASK_WORKBENCH_VERSION", "")
+    if version:
+        return f" · version {version}"
+    problem = os.environ.get("ASK_WORKBENCH_UPDATE_PROBLEM", "")
+    if problem:
+        return f" · built-in version ({problem})"
+    return ""
 
 
 def ask(question: str) -> None:
@@ -97,4 +109,6 @@ else:
         st.rerun()
 
 with st.container(key="footnote"):
-    st.caption(f"App started {app_started_at():%Y-%m-%d %H:%M:%S} UTC")
+    st.caption(
+        f"App started {app_started_at():%Y-%m-%d %H:%M:%S} UTC{version_note()}"
+    )

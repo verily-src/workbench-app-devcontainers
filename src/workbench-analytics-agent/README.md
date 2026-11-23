@@ -14,11 +14,12 @@ Prototype Streamlit app for asking plain-language analytics questions from insid
 | `app/Dockerfile` | Python 3.11 image that installs the requirements and runs Streamlit as a non-root user. |
 | `app/requirements.txt` | Pinned Python dependencies. |
 | `app/.streamlit/config.toml` | Streamlit settings, including the browser origin the app accepts connections from. |
+| `app/launcher.py` | Container entry point. Fetches the latest copy of the app, then starts Streamlit. |
 | `app/main.py` | The page. |
 | `app/style.css` | Page styling. |
 | `app/static/fonts/` | Poppins and Inter font files (SIL Open Font License), served with the app. |
 
-The app code is copied into the image at build time. Nothing is mounted over it, and no Workbench startup scripts run, so the container has no bucket mounts and no `wb` CLI.
+The app code is copied into the image at build time, and refreshed from GitHub each time the container starts (see below). Nothing is mounted over it, and no Workbench startup scripts run, so the container has no bucket mounts and no `wb` CLI.
 
 ## Run locally
 
@@ -44,6 +45,18 @@ Open http://localhost:8501.
 3. Create the app, wait until it is running, then open it.
 
 Workbench clones the repository and builds the image on the app's VM. The build needs to reach GitHub, Docker Hub (base image) and PyPI (Python packages).
+
+## Updating a running app
+
+Workbench builds the image once, when the app is created, and a stop and start does not rebuild it. To avoid recreating the app for every change, the container downloads the latest copy of `app/` from the branch each time it starts and runs that copy.
+
+- **To pick up a change:** push it to the branch, then stop and start the app in Workbench.
+- **What is picked up:** the page, styling, fonts, Streamlit settings and Python packages.
+- **What still needs a new app:** changes to `Dockerfile`, `docker-compose.yaml`, `.devcontainer.json` or `launcher.py`.
+- **Which version is running:** the line at the bottom of the page shows the commit, for example `version 0800aba`.
+- **If GitHub cannot be reached:** the app runs the copy built into the image, and the bottom line says `built-in version` with the reason.
+
+The branch, repository and folder are set in `docker-compose.yaml`. Set `ASK_WORKBENCH_REF` to a tag or commit to pin a version, or to an empty string to turn updates off.
 
 ## Check that it starts and restarts
 

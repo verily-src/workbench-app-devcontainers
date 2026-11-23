@@ -1,4 +1,4 @@
-# Ask Workbench
+# Verily Product Analytics Agent
 
 Prototype Streamlit app for asking plain-language analytics questions from inside a Verily Workbench workspace. Each user launches their own copy of the app.
 

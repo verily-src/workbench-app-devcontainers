@@ -1,5 +1,5 @@
 {
-  "name": "Ask Workbench",
+  "name": "Verily Product Analytics Agent",
   "dockerComposeFile": "docker-compose.yaml",
   "service": "app",
   "shutdownAction": "none",

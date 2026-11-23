@@ -1,4 +1,4 @@
-"""Ask Workbench: container entry point.
+"""Verily Product Analytics Agent: container entry point.
 
 Workbench builds the image once, when the app is created, and never rebuilds
 it. So that a stop and start is enough to pick up changes, this script

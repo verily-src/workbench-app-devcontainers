@@ -16,7 +16,7 @@ Prototype Streamlit app for asking plain-language analytics questions from insid
 | `app/.streamlit/config.toml` | Streamlit settings, including the browser origin the app accepts connections from. |
 | `app/main.py` | The page. |
 | `app/style.css` | Page styling. |
-| `app/static/fonts/` | Newsreader font files (SIL Open Font License), served with the app. |
+| `app/static/fonts/` | Poppins and Inter font files (SIL Open Font License), served with the app. |
 
 The app code is copied into the image at build time. Nothing is mounted over it, and no Workbench startup scripts run, so the container has no bucket mounts and no `wb` CLI.
 

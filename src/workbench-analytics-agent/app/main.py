@@ -18,7 +18,7 @@ NOT_CONNECTED_REPLY = (
 
 EXAMPLE_QUESTIONS = [
     "How many active users last month?",
-    "Which week had most sign-ups?",
+    "Busiest week for sign-ups?",
     "Is activity up this quarter?",
 ]
 
@@ -67,7 +67,8 @@ with st.container(horizontal=True, vertical_alignment="center", key="topbar"):
 if not messages:
     # Landing view: greeting, question box and a few example questions.
     with st.container(key="hero"):
-        st.title("What would you like to *know?*", anchor=False)
+        st.html('<p class="wb-eyebrow">Verily Workbench</p>')
+        st.title("What would you like to *know*?", anchor=False)
         st.markdown("Ask about your data in plain language.")
         question = st.chat_input("Ask a question", key="hero_input")
         with st.container(

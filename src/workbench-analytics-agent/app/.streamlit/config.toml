@@ -16,24 +16,43 @@ toolbarMode = "minimal"
 
 [theme]
 base = "light"
-primaryColor = "#1F6B57"
-backgroundColor = "#F6F2E9"
-secondaryBackgroundColor = "#ECE6D8"
-textColor = "#2A2620"
-borderColor = "#DCD4C3"
-headingFont = "Newsreader, Georgia, serif"
-headingFontWeights = 400
-baseRadius = "0.9rem"
+primaryColor = "#087A6A"
+backgroundColor = "#F2EFE8"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#2A2A2A"
+borderColor = "#D3D0C8"
+font = "Inter, Arial, sans-serif"
+headingFont = "Poppins, Arial, sans-serif"
+headingFontWeights = 300
+baseRadius = "0.5rem"
 buttonRadius = "full"
 
 [[theme.fontFaces]]
-family = "Newsreader"
-url = "app/static/fonts/newsreader-400.woff2"
+family = "Poppins"
+url = "app/static/fonts/poppins-300.woff2"
+weight = "300"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Poppins"
+url = "app/static/fonts/poppins-400.woff2"
 weight = "400"
 style = "normal"
 
 [[theme.fontFaces]]
-family = "Newsreader"
-url = "app/static/fonts/newsreader-400-italic.woff2"
+family = "Inter"
+url = "app/static/fonts/inter-400.woff2"
 weight = "400"
-style = "italic"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-500.woff2"
+weight = "500"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-600.woff2"
+weight = "600"
+style = "normal"

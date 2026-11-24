@@ -8,7 +8,13 @@ export const MAX_CONCEPT_IDS = 500;
 export const DOMAIN_CHOICES = [
   { value: "condition", label: "Condition" },
   { value: "drug", label: "Drug" },
+  { value: "observation", label: "Observation" },
+  { value: "procedure", label: "Procedure" },
+  { value: "measurement", label: "Measurement" },
 ];
+
+// A rule on one of these matches any recorded row for the item. The value is not checked.
+export const DOMAINS_THAT_IGNORE_VALUES = ["observation", "measurement"];
 
 // One rule as the user is building it. It keeps the whole concept, not only its ID,
 // so the screen can show the name of each picked item.

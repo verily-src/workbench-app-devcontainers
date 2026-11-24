@@ -41,7 +41,7 @@ describe("OmopCohortPanel", () => {
   it("shows the title and one empty rule", () => {
     showPanel();
 
-    expect(screen.getByText("Build a cohort by condition and drug")).toBeTruthy();
+    expect(screen.getByText("Build a cohort")).toBeTruthy();
     expect(screen.getAllByLabelText("Search by name")).toHaveLength(1);
   });
 

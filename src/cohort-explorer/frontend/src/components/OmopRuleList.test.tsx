@@ -150,6 +150,33 @@ describe("OmopRuleList", () => {
     expect(screen.getByText("People must match every rule.")).toBeTruthy();
   });
 
+  it("offers condition, drug, observation, procedure and measurement as domains", () => {
+    render(<RuleListWithSpec />);
+
+    const options = Array.from((screen.getByLabelText("Domain") as HTMLSelectElement).options);
+    expect(options.map((option) => option.value)).toEqual([
+      "condition",
+      "drug",
+      "observation",
+      "procedure",
+      "measurement",
+    ]);
+  });
+
+  it("says any recorded value counts for observation and measurement only", async () => {
+    render(<RuleListWithSpec />);
+    const anyValueLine = "Any recorded value counts.";
+
+    for (const domain of ["observation", "measurement"]) {
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), domain);
+      expect(screen.getByText(anyValueLine)).toBeTruthy();
+    }
+    for (const domain of ["condition", "drug", "procedure"]) {
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), domain);
+      expect(screen.queryByText(anyValueLine)).toBeNull();
+    }
+  });
+
   it("removes the chosen rule row", async () => {
     render(<RuleListWithSpec />);
     await userEvent.click(screen.getByRole("button", { name: "Add rule" }));

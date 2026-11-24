@@ -45,6 +45,16 @@ describe("omop rules", () => {
     expect(summarizeRules([rule])).toEqual([{ heading: "Has Condition", names: ["Type 2 diabetes mellitus"] }]);
   });
 
+  it("describes a rule from each new domain with its label", () => {
+    const rules = ["observation", "procedure", "measurement"].map((domain) => ({ ...makeEmptyRule(), domain }));
+
+    expect(summarizeRules(rules).map((line) => line.heading)).toEqual([
+      "Has Observation",
+      "Has Procedure",
+      "Has Measurement",
+    ]);
+  });
+
   it("describes a Does not have rule with its domain and the names of its items", () => {
     const rule = { ...makeEmptyRule(), exclude: true, domain: "drug", picked: [METFORMIN_500, METFORMIN_1000] };
 

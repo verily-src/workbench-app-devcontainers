@@ -45,7 +45,7 @@ describe("ResourceSelector OMOP cohort builder", () => {
     render(<ResourceSelector onConnected={vi.fn()} />);
     await userEvent.click(await screen.findByRole("button", { name: "OMOP cohort builder" }));
 
-    expect(screen.getByText("Build a cohort by condition and drug")).toBeTruthy();
+    expect(screen.getByText("Build a cohort")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
   });
 
@@ -53,7 +53,7 @@ describe("ResourceSelector OMOP cohort builder", () => {
     render(<ResourceSelector onConnected={vi.fn()} />);
 
     expect(await screen.findByRole("button", { name: "Connect" })).toBeTruthy();
-    expect(screen.queryByText("Build a cohort by condition and drug")).toBeNull();
+    expect(screen.queryByText("Build a cohort")).toBeNull();
   });
 
   it("sends the chosen database to the cohort request", async () => {

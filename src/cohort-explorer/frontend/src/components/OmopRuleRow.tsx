@@ -2,7 +2,7 @@ import { Box, Chip, IconButton, TextField, Typography } from "@mui/material";
 import CancelIcon from "@mui/icons-material/Cancel";
 import DeleteIcon from "@mui/icons-material/Delete";
 import type { OmopConcept } from "../api";
-import { DOMAIN_CHOICES, MAX_CONCEPT_IDS } from "../omopRules";
+import { DOMAINS_THAT_IGNORE_VALUES, DOMAIN_CHOICES, MAX_CONCEPT_IDS } from "../omopRules";
 import type { RuleDraft } from "../omopRules";
 import ConceptSearchBox from "./ConceptSearchBox";
 
@@ -94,7 +94,11 @@ export default function OmopRuleRow({ rule, resourceId, schema, canRemove, onCha
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
         {rule.exclude ? "Matches people who have none of these items." : "Matches people who have any of these items."}
       </Typography>
-
+      {DOMAINS_THAT_IGNORE_VALUES.includes(rule.domain) && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          Any recorded value counts.
+        </Typography>
+      )}
     </Box>
   );
 }

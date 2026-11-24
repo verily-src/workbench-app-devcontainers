@@ -67,7 +67,7 @@ export default function OmopCohortPanel({ resourceId, onOpenInExplorer }: Props)
   return (
     <Box>
       <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>
-        Build a cohort by condition and drug
+        Build a cohort
       </Typography>
 
       <OmopRuleList rules={rules} resourceId={resourceId} schema={schema} onChange={changeRules} />

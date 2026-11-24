@@ -46,15 +46,16 @@ MEMBER_ROLES = {"MEMBER", "ADMIN"}
 # Where the agent-sandbox feature installs them: the image's files, never the environment's.
 DEFAULT_CONFIG = "/opt/agent-sandbox/config"
 
-DENIED_MESSAGE = ("The AI Research Assistant is in beta. It's open to a set list of users while we "
-                  "test it, and general availability is coming soon.")
-ERROR_MESSAGE = "We couldn't verify your access to the AI Research Assistant. Retrying."
-CONFIG_ERROR_MESSAGE = ("The AI Research Assistant's access configuration is invalid, so it is off for everyone. "
-                        "Ask the app's maintainers to fix it.")
-NO_GPU_MESSAGE = ("This app configuration can't run the assistant's model: it needs the GPU setup "
-                  "(two NVIDIA H100 80 GB GPUs), or a Nemotron endpoint on Vertex AI in the workspace's "
-                  "project (the vertex-model README). Create the app with that machine type, or ask "
-                  "the workspace's owner for the endpoint.")
+# The page sets "All of Us" in italics (assistant-ui/static/app.js, gate).
+DENIED_MESSAGE = ("This application is currently undergoing testing and is not yet available to All of Us "
+                  "researchers. Thank you for your patience as we work to ensure a high-quality user "
+                  "experience. Broader access is planned for a future release with more information on "
+                  "availability and access to be shared in future communications.")
+ERROR_MESSAGE = "We couldn't verify your access to the Research Assistant. Retrying."
+# The access configuration is invalid, so the app is off for everyone (the error says why).
+CONFIG_ERROR_TITLE = "The Research Assistant is unavailable"
+CONFIG_ERROR_MESSAGE = "The Research Assistant is currently unavailable. Please try again later."
+NO_GPU_MESSAGE = "The Research Assistant can't run on this app's current configuration."
 
 
 class InvalidConfig(Exception):
@@ -413,7 +414,7 @@ def main(argv=None):
                 # Fail closed where every reader looks, not only in this command's output.
                 write_state(args.state, {"version": 1, "checked_at": now(), "status": "error", "tier": None,
                                          "error": f"invalid access configuration: {str(exc)[:300]}",
-                                         "message": CONFIG_ERROR_MESSAGE, "features": {},
+                                         "title": CONFIG_ERROR_TITLE, "message": CONFIG_ERROR_MESSAGE, "features": {},
                                          "off": {"servers": [], "tool_groups": []}})
                 raise
             except Exception as exc:  # noqa: BLE001 - anything else is retried (exit 2), closed

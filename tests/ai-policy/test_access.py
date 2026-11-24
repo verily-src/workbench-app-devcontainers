@@ -345,7 +345,7 @@ class ResolveTests(unittest.TestCase):
         result, state = self.resolve(self.answering("other"))
         self.assertEqual(result.returncode, 0)
         self.assertEqual((state["status"], state["tier"]), ("ok", None))
-        self.assertIn("is in beta", state["message"])
+        self.assertIn("not yet available", state["message"])
         self.assertFalse(any(state["features"].values()))
 
     def test_the_environment_cannot_admit_anyone(self):
@@ -377,7 +377,7 @@ class ResolveTests(unittest.TestCase):
         # Dropped to beta: Gemini is an alpha feature, so no model, and the page says why.
         _, state = self.resolve(self.answering("b-group"))
         self.assertIsNone(state["model"]["backend"])
-        self.assertIn("GPU setup", state["model"]["message"])
+        self.assertIn("current configuration", state["model"]["message"])
         vllm = {"backend": "vllm", "name": "nvidia/super", "reason": "r", "message": ""}
         access.write_state(self.state, {"status": "ok", "tier": "alpha", "model": vllm})
         _, state = self.resolve(self.answering("b-group"))
@@ -389,6 +389,7 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertEqual((state["status"], state["tier"]), ("error", None))
         self.assertIn("gamma", state["error"])
+        self.assertEqual(state["title"], access.CONFIG_ERROR_TITLE)
 
 
 class ModelTests(unittest.TestCase):
@@ -426,7 +427,7 @@ class ModelTests(unittest.TestCase):
         self.assertEqual((model["backend"], model["name"]), ("vertex", "gemini-3.5-flash"))
         model = self.choose(self.beta, "NVIDIA A100-SXM4-40GB, 40960\nNVIDIA A100-SXM4-40GB, 40960")
         self.assertIsNone(model["backend"])
-        self.assertIn("GPU setup", model["message"])
+        self.assertIn("current configuration", model["message"])
         self.assertIsNone(self.choose(self.alpha, vertex="")["backend"], "no Vertex model named")
 
     def test_the_local_model_needs_two_gpus_of_79000_mib(self):
@@ -456,7 +457,7 @@ class ModelTests(unittest.TestCase):
             self.assertEqual(run("model", "--gpus", "").stdout.strip(), "none")
             result = run("model-name")
             self.assertEqual(result.returncode, 1)
-            self.assertIn("GPU setup", result.stderr)
+            self.assertIn("current configuration", result.stderr)
 
 
 if __name__ == "__main__":

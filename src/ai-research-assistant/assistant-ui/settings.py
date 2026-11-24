@@ -89,17 +89,17 @@ def access_view(path):
             raise ValueError("not a mapping")
     except (OSError, ValueError):
         return {"state": "checking", "title": "Checking your access",
-                "message": "The app is checking your access to the AI Research Assistant.", "features": {}}
+                "message": "The app is checking your access to the Research Assistant.", "features": {}}
     features = {k: v is True for k, v in (state.get("features") or {}).items()}
     if state.get("status") != "ok":
-        return {"state": "error", "title": "Checking your access",
+        return {"state": "error", "title": str(state.get("title") or "Checking your access"),
                 "message": str(state.get("message") or "We couldn't verify your access. Retrying."), "features": {}}
     if not state.get("tier"):
-        return {"state": "denied", "title": "AI Research Assistant beta",
+        return {"state": "denied", "title": "Thanks for Your Interest in the Research Assistant",
                 "message": str(state.get("message") or ""), "features": {}}
     model = state.get("model")
     if isinstance(model, dict) and not model.get("backend"):
-        return {"state": "no_model", "title": "This app can't run the assistant",
+        return {"state": "no_model", "title": "The Research Assistant is unavailable",
                 "message": str(model.get("message") or ""), "features": features}
     return {"state": "ok", "title": "", "message": "", "features": features}
 
@@ -117,7 +117,7 @@ def page_config(env=None):
     if on is not None:
         for group in ("starters", "next_steps"):
             demo[group] = [c for c in demo[group] if not c["feature"] or on.get(c["feature"])]
-    return {"title": env.get("ASSISTANT_TITLE", "NVIDIA AI Research Assistant"),
+    return {"title": env.get("ASSISTANT_TITLE", "Research Assistant"),
             "input": mode, "access": access, **demo}
 
 

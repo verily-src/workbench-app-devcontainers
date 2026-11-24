@@ -256,7 +256,7 @@ start_once() {
     else
       echo "The assistant did not start: its model is not running. Run start-services.sh again to retry." >&2
       sudo -H -u "${USER_NAME}" python3 "${ACCESS}" model-failed --state "${ACCESS_STATE}" \
-        --message "The assistant's model did not start. Its start log says why; restarting the app tries again." || true
+        --message "The Research Assistant couldn't start. Please try again later." || true
       exit 1
     fi
   ) 9> "${LOCKS}/start.lock"

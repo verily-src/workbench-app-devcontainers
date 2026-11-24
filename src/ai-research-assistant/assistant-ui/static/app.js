@@ -1,4 +1,4 @@
-// The page of the NVIDIA AI Research Assistant (../README.md). It talks to OpenCode through
+// The page of the Research Assistant (../README.md). It talks to OpenCode through
 // this app's server: oc/<path> is OpenCode's HTTP API, events is a websocket carrying its
 // event stream. Every path is relative, because Workbench serves the app under a proxy path.
 //
@@ -699,16 +699,32 @@
   // ---- Start ------------------------------------------------------------------------------
 
   // The page for a person the app does not let in (yet): the access state's title and message.
+  // The message is text; "All of Us" in it, the program's name, is set in italics.
   // It asks again every 30 s and reloads once the answer changes.
   function gate(config) {
     var access = config.access;
     $("gate").hidden = false;
-    $("gate-title").textContent = access.title; $("gate-message").textContent = access.message;
+    $("gate-title").textContent = access.title;
+    access.message.split(/(All of Us)/).forEach(function (part, i) {
+      $("gate-message").append(i % 2 ? el("em", null, part) : document.createTextNode(part));
+    });
     setInterval(function () {
       fetch("api/config").then(function (r) { return r.json(); }).then(function (next) {
         if (next.access.state !== access.state || next.access.message !== access.message) location.reload();
       }).catch(function () {});
     }, 30000);
+  }
+
+  // The model's name as the page shows it: the provider dropped, Nemotron by its own name rather
+  // than its repository id (nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4), and Gemini's id
+  // in words (gemini-3.5-flash is Gemini 3.5 Flash).
+  function modelName(model) {
+    if (/nemotron-3\.5-super-vl/i.test(model)) return "Nemotron 3.5 Super VL";
+    var gemini = /(?:^|\/)(gemini-[a-z0-9.-]+)$/i.exec(model);
+    if (gemini) {
+      return gemini[1].split("-").map(function (word) { return word.charAt(0).toUpperCase() + word.slice(1); }).join(" ");
+    }
+    return model.split("/").slice(1).join("/") || model;
   }
 
   function start(config) {
@@ -727,8 +743,9 @@
 
     oc("config").then(function (cfg) {
       var model = (cfg && cfg.model) || "";
-      $("model-pill").textContent = model.split("/").slice(1).join("/") || model || "model";
-      $("model-pill").title = "The model answering: " + model;
+      var name = modelName(model);
+      $("model-pill").textContent = name || "model";
+      $("model-pill").title = "The model answering: " + name;
     }).catch(function () { $("model-pill").textContent = "model unavailable"; });
 
     var input = $("input");

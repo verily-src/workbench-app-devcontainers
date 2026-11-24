@@ -10,7 +10,7 @@ the vertex-model feature), else Gemini (`VERTEX_MODEL`). Neither is offered insi
 perimeter.
 
 The app is open to the members of two Workbench groups, beta and alpha; everyone else sees a page
-saying the assistant is in beta. Both groups get the cohort designer, workflow runs and Kumo
+saying the assistant is not yet available. Both groups get the cohort designer, workflow runs and Kumo
 forecasts; alpha members also get the Vertex AI models. See "Access" below.
 
 People are trusted more than agents. You keep your Workbench credentials in code-server. The
@@ -81,7 +81,7 @@ At start, the app checks the person's Workbench groups (`wb group list`) against
 | `kumo_forecast` | beta | The Kumo forecast MCP server |
 | `vertex_model` | alpha | Gemini on Vertex AI when the machine cannot run Nemotron |
 
-A person in neither group gets the beta page, and no sandbox is created. If the check cannot be
+A person in neither group gets the "not yet available" page, and no sandbox is created. If the check cannot be
 made (wb slow or not logged in), the page says so. Until the person is admitted, the app rechecks
 in the background every five minutes (two while the check cannot be made) and then starts the
 assistant, so someone added to a group does not restart the app; the page reloads within 30
@@ -199,9 +199,9 @@ tail -f ~/vllm-server.log ~/.vertex-model/server.log /tmp/wb-mcp-server.log ~/.c
 
 | Symptom | Check |
 |---|---|
-| The page says the assistant is in beta | `jq '.groups, .tier' /config/.ara/access.json`: the groups checked and the tier found. After being added to a group, the assistant starts within about five minutes; `tail ~/ai-research-assistant-access.log` |
+| The page says the assistant is not yet available ("Thanks for Your Interest") | `jq '.groups, .tier' /config/.ara/access.json`: the groups checked and the tier found. After being added to a group, the assistant starts within about five minutes; `tail ~/ai-research-assistant-access.log` |
 | The page says it couldn't verify access | `jq .error /config/.ara/access.json`; `wb auth status`; `tail ~/ai-research-assistant-access.log` |
-| The page says this app configuration can't run the model | `jq .model /config/.ara/access.json`; `nvidia-smi`. Without two H100 80 GB GPUs only alpha users get a model (the workspace's endpoint, else Gemini) |
+| The page says the assistant can't run on this app's current configuration, or couldn't start | `jq .model /config/.ara/access.json`; `nvidia-smi`. Without two H100 80 GB GPUs only alpha users get a model (the workspace's endpoint, else Gemini) |
 | A tool server shows failed in the side panel | OpenCode connects once; start-services.sh reconnects failed servers at start. By hand: `curl -X POST -d '{}' http://sandbox-broker:4096/mcp/<name>/connect` in a code-server terminal |
 | Kumo or the workflow tools are missing | `jq .features /config/.ara/access.json`: they are beta features, on for both groups |
 | `the OpenShell gateway is not reachable` | On the VM: `docker logs openshell-gateway` |

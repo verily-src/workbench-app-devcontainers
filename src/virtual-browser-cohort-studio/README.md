@@ -43,6 +43,12 @@ your browser
 ## Differences from plain Cohort Studio
 
 - No file downloads to your laptop. CSV export and other download actions do nothing.
+  - **Known quirk:** clicking an export link briefly shows Chromium's "Download started. To see it,
+    press Esc." notice. No file is saved: the policy sets `DownloadRestrictions: 3` (block all
+    downloads), and pressing Esc shows nothing. Verified in `test-aws-ws`: no file reached the
+    laptop. The notice is misleading and should say the download was blocked; not fixed yet.
+  - To get data out of Studio for use inside the workspace, use **Write CSV** in the Run workflow
+    dialog. It writes to S3 from the server and does not involve the browser.
 - The proxy port is `3000` (the browser), not `8080`.
 - The MCP server at `/mcp` is not reachable from your laptop or through the proxy. Agents reach it
   only inside the VM:

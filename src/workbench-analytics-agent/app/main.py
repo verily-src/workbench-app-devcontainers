@@ -5,7 +5,10 @@ is not connected yet, so every reply says so. A "Data connection" dialog shows
 which identity the app queries as and checks that it can read a dataset.
 """
 
+import json
 import os
+import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -52,12 +55,34 @@ def app_started_at() -> datetime:
 def version_note() -> str:
     """What launcher.py reported about the copy of the app that is running."""
     version = os.environ.get("ASK_WORKBENCH_VERSION", "")
+    problem = os.environ.get("ASK_WORKBENCH_UPDATE_PROBLEM", "")
+    if version and problem:
+        return f" · version {version} (not updated: {problem})"
     if version:
         return f" · version {version}"
-    problem = os.environ.get("ASK_WORKBENCH_UPDATE_PROBLEM", "")
     if problem:
         return f" · built-in version ({problem})"
     return ""
+
+
+def can_update() -> bool:
+    """True when launcher.py started this app and has somewhere to update from."""
+    started_by_launcher = (
+        "ASK_WORKBENCH_VERSION" in os.environ
+        or "ASK_WORKBENCH_UPDATE_PROBLEM" in os.environ
+    )
+    return started_by_launcher and bool(os.environ.get("ASK_WORKBENCH_REF", "").strip())
+
+
+def relaunch_with_latest_code() -> None:
+    """Replace this server with a fresh run of launcher.py.
+
+    launcher.py downloads the newest code and starts the app again, in the
+    same container. The browser reconnects by itself once the app is back.
+    """
+    launcher = Path(__file__).with_name("launcher.py")
+    extra_args = json.loads(os.environ.get("ASK_WORKBENCH_EXTRA_ARGS", "[]"))
+    os.execv(sys.executable, [sys.executable, str(launcher), *extra_args])
 
 
 @st.cache_resource(show_spinner=False)
@@ -190,3 +215,15 @@ with st.container(key="footnote"):
     st.caption(
         f"App started {app_started_at():%Y-%m-%d %H:%M:%S} UTC{version_note()}"
     )
+    if can_update():
+        if st.session_state.get("updating"):
+            st.caption("Updating. This page reconnects in a few seconds.")
+            time.sleep(1)  # let the line above reach the browser first
+            try:
+                relaunch_with_latest_code()
+            except OSError as error:
+                st.session_state.updating = False
+                st.error(f"The update could not start: {error}")
+        elif st.button("Update to the latest version", type="tertiary", key="update_app"):
+            st.session_state.updating = True
+            st.rerun()

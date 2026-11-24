@@ -313,6 +313,23 @@
   margin-top: 2.2rem;
 }
 
+.st-key-footnote {
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.st-key-update_app button {
+  min-height: 0;
+  padding: 0;
+  color: var(--wb-green-dark);
+}
+
+.st-key-update_app button p {
+  font-size: 0.72rem;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .st-key-footnote [data-testid="stCaptionContainer"] p {
   color: var(--wb-muted);
   font-size: 0.72rem;

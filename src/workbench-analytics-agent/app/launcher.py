@@ -4,7 +4,10 @@ Workbench builds the image once, when the app is created, and never rebuilds
 it. So that a stop and start is enough to pick up changes, this script
 downloads the latest copy of the app from GitHub each time the container
 starts and runs Streamlit from that copy. If that fails for any reason, it
-runs the copy built into the image instead.
+runs the copy it started from instead.
+
+The page's "Update" control runs this script again from the copy that is
+already running, which fetches newer code without restarting the machine.
 
 Settings (environment variables, set in docker-compose.yaml):
   ASK_WORKBENCH_REPO  GitHub repository, as "owner/name".
@@ -15,6 +18,7 @@ Settings (environment variables, set in docker-compose.yaml):
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -27,6 +31,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path, PurePosixPath
 
+# The copy of the app this script sits in: the image's copy on a normal
+# start, or the copy already running when the page asks for an update.
 BUILT_IN_DIR = Path(__file__).resolve().parent
 LIVE_ROOT = Path(
     os.environ.get("ASK_WORKBENCH_LIVE_DIR") or Path.home() / ".ask-workbench" / "live"
@@ -123,12 +129,10 @@ def requirement_lines(path: Path) -> list[str]:
     return [line for line in lines if line and not line.startswith("#")]
 
 
-def install_packages_if_changed(app_dir: Path) -> None:
-    """Install the app's packages when they differ from the ones in the image."""
+def install_packages_if_changed(app_dir: Path, installed: list[str]) -> None:
+    """Install the app's packages when they differ from the `installed` list."""
     requirements = app_dir / "requirements.txt"
-    if requirement_lines(requirements) == requirement_lines(
-        BUILT_IN_DIR / "requirements.txt"
-    ):
+    if requirement_lines(requirements) == installed:
         return
     marker = app_dir / ".packages-installed"
     if marker.is_file():
@@ -160,6 +164,8 @@ def latest_app(repo: str, ref: str, subpath: str) -> tuple[Path, str]:
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo) or not re.fullmatch(r"[\w./-]+", ref):
         raise UpdateError("the update settings are not valid")
     url = f"https://codeload.github.com/{repo}/tar.gz/{ref}"
+    # Read now: the copy this script started from may be removed further down.
+    installed = requirement_lines(BUILT_IN_DIR / "requirements.txt")
 
     LIVE_ROOT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=LIVE_ROOT, prefix="download-") as work:
@@ -178,31 +184,41 @@ def latest_app(repo: str, ref: str, subpath: str) -> tuple[Path, str]:
             shutil.rmtree(final, ignore_errors=True)
             os.replace(staging, final)
 
+    # Packages first: if they cannot be installed, the copy this script
+    # started from must still be there to fall back to.
+    install_packages_if_changed(final, installed)
+
     for other in LIVE_ROOT.iterdir():
         if other != final:
             shutil.rmtree(other, ignore_errors=True)
-
-    install_packages_if_changed(final)
     return final, commit
+
+
+def fall_back(problem: str) -> tuple[Path, dict[str, str]]:
+    """Run the copy this script started from, and tell the page why."""
+    log(f"running the copy already here: {problem}")
+    page_info = {"ASK_WORKBENCH_UPDATE_PROBLEM": problem}
+    # A copy fetched earlier sits in a folder named after its commit.
+    if BUILT_IN_DIR.parent == LIVE_ROOT and re.fullmatch(r"[0-9a-f]{40}", BUILT_IN_DIR.name):
+        page_info["ASK_WORKBENCH_VERSION"] = BUILT_IN_DIR.name[:7]
+    return BUILT_IN_DIR, page_info
 
 
 def choose_app() -> tuple[Path, dict[str, str]]:
     """Decide which copy of the app to run and what to tell the page about it."""
     ref = os.environ.get("ASK_WORKBENCH_REF", "").strip()
     if not ref:
-        log("updates are off; running the built-in copy")
-        return BUILT_IN_DIR, {"ASK_WORKBENCH_UPDATE_PROBLEM": "updates are off"}
+        return fall_back("updates are off")
 
     repo = os.environ.get("ASK_WORKBENCH_REPO", "").strip()
     subpath = os.environ.get("ASK_WORKBENCH_PATH", "").strip()
     try:
         app_dir, commit = latest_app(repo, ref, subpath)
     except UpdateError as error:
-        log(f"running the built-in copy: {error}")
-        return BUILT_IN_DIR, {"ASK_WORKBENCH_UPDATE_PROBLEM": str(error)}
+        return fall_back(str(error))
     except Exception as error:  # never let an update problem stop the app
-        log(f"running the built-in copy: unexpected error: {error!r}")
-        return BUILT_IN_DIR, {"ASK_WORKBENCH_UPDATE_PROBLEM": "the update failed"}
+        log(f"unexpected error: {error!r}")
+        return fall_back("the update failed")
 
     version = commit[:7] if commit else "latest"
     log(f"running version {version} from {repo}")
@@ -214,6 +230,8 @@ def main() -> None:
     os.environ.pop("ASK_WORKBENCH_VERSION", None)
     os.environ.pop("ASK_WORKBENCH_UPDATE_PROBLEM", None)
     os.environ.update(page_info)
+    # Kept so the page's Update control can start this script the same way.
+    os.environ["ASK_WORKBENCH_EXTRA_ARGS"] = json.dumps(sys.argv[1:])
     os.chdir(app_dir)
     # Arguments after the script name are passed on, so a local run can
     # override the port or address.

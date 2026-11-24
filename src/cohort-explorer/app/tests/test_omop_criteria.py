@@ -11,7 +11,10 @@ SCHEMA_MESSAGE = (
     "The schema name may use only letters, digits and underscores, "
     "and must start with a letter or underscore."
 )
-UNKNOWN_DOMAIN_MESSAGE = "Choose a valid OMOP domain. Current valid choices: condition, drug."
+UNKNOWN_DOMAIN_MESSAGE = (
+    "Choose a valid OMOP domain. "
+    "Current valid choices: condition, drug, observation, procedure, measurement."
+)
 
 
 def make_spec(**changes):
@@ -94,6 +97,37 @@ def test_every_domain_has_table_concept_column_and_date_column():
         assert set(entry) == {"table", "concept_column", "date_column"}, domain
 
 
+def test_domains_use_the_standard_omop_table_and_column_names():
+    assert OMOP_DOMAINS == {
+        "condition": {
+            "table": "condition_occurrence",
+            "concept_column": "condition_concept_id",
+            "date_column": "condition_start_date",
+        },
+        "drug": {
+            "table": "drug_exposure",
+            "concept_column": "drug_concept_id",
+            "date_column": "drug_exposure_start_date",
+        },
+        "observation": {
+            "table": "observation",
+            "concept_column": "observation_concept_id",
+            "date_column": "observation_date",
+        },
+        "procedure": {
+            "table": "procedure_occurrence",
+            "concept_column": "procedure_concept_id",
+            "date_column": "procedure_date",
+        },
+        "measurement": {
+            "table": "measurement",
+            "concept_column": "measurement_concept_id",
+            "date_column": "measurement_date",
+        },
+    }
+    assert list(OMOP_DOMAINS) == ["condition", "drug", "observation", "procedure", "measurement"]
+
+
 # ---- a correct spec (AC1) ----
 
 
@@ -132,7 +166,7 @@ def test_spec_that_is_not_an_object_rejected(spec):
 
 
 def test_unknown_domain_rejected_with_list_of_choices():
-    spec = make_spec(criteria=[make_rule(domain="procedure")])
+    spec = make_spec(criteria=[make_rule(domain="visit")])
     assert_spec_rejected(spec, UNKNOWN_DOMAIN_MESSAGE)
 
 
@@ -244,22 +278,24 @@ def test_injection_text_as_concept_id_rejected():
 
 
 @pytest.fixture
-def procedure_domain_added(monkeypatch):
-    """Add a procedure domain to the one dictionary, and change no other code."""
+def visit_domain_added(monkeypatch):
+    """Add a visit domain to the one dictionary, and change no other code."""
     monkeypatch.setitem(
         OMOP_DOMAINS,
-        "procedure",
-        {"table": "procedure_occurrence", "concept_column": "procedure_concept_id"},
+        "visit",
+        {"table": "visit_occurrence", "concept_column": "visit_concept_id"},
     )
 
 
-def test_added_domain_passes_spec_check(procedure_domain_added):
-    spec = make_spec(criteria=[make_rule(domain="procedure")])
-    assert parse_spec(spec)["criteria"][0]["domain"] == "procedure"
-
-
-def test_added_domain_listed_in_unknown_domain_message(procedure_domain_added):
+def test_added_domain_passes_spec_check(visit_domain_added):
     spec = make_spec(criteria=[make_rule(domain="visit")])
+    assert parse_spec(spec)["criteria"][0]["domain"] == "visit"
+
+
+def test_added_domain_listed_in_unknown_domain_message(visit_domain_added):
+    spec = make_spec(criteria=[make_rule(domain="death")])
     assert_spec_rejected(
-        spec, "Choose a valid OMOP domain. Current valid choices: condition, drug, procedure."
+        spec,
+        "Choose a valid OMOP domain. "
+        "Current valid choices: condition, drug, observation, procedure, measurement, visit.",
     )

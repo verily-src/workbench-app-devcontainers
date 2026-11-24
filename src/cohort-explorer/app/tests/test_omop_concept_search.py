@@ -4,7 +4,10 @@ import omop_concept_search
 from omop_concept_search import _build_like_pattern, search_concepts
 from omop_criteria import OmopSpecError
 
-UNKNOWN_DOMAIN_MESSAGE = "Choose a valid OMOP domain. Current valid choices: condition, drug."
+UNKNOWN_DOMAIN_MESSAGE = (
+    "Choose a valid OMOP domain. "
+    "Current valid choices: condition, drug, observation, procedure, measurement."
+)
 SCHEMA_MESSAGE = (
     "The schema name may use only letters, digits and underscores, "
     "and must start with a letter or underscore."
@@ -114,9 +117,10 @@ def test_search_text_with_nul_character_ignores_it(omop_connection):
 
 
 def test_sql_in_search_text_changes_nothing(omop_connection):
+    concept_count_before = omop_connection.execute("SELECT count(*) FROM omop.concept").fetchall()
     assert search_concepts(omop_connection, "omop", "drug", "'; DROP TABLE concept;--") == []
-    rows = omop_connection.execute("SELECT count(*) FROM omop.concept").fetchall()
-    assert rows == [(12,)]
+    concept_count_after = omop_connection.execute("SELECT count(*) FROM omop.concept").fetchall()
+    assert concept_count_after == concept_count_before
 
 
 def test_result_has_exactly_four_fields(omop_connection):
@@ -126,7 +130,7 @@ def test_result_has_exactly_four_fields(omop_connection):
 
 def test_unknown_domain_rejected(omop_connection):
     with pytest.raises(OmopSpecError) as error:
-        search_concepts(omop_connection, "omop", "procedure", "x")
+        search_concepts(omop_connection, "omop", "visit", "x")
     assert str(error.value) == UNKNOWN_DOMAIN_MESSAGE
 
 
@@ -188,3 +192,23 @@ def test_connection_usable_after_slow_search(omop_connection, search_that_takes_
     with pytest.raises(OmopSpecError):
         search_concepts(omop_connection, "omop", "drug", "metformin")
     assert omop_connection.execute("SELECT 1").fetchall() == [(1,)]
+
+
+# ---- the observation, procedure and measurement domains (AC55) ----
+
+
+def test_search_lists_the_concepts_of_each_new_domain(omop_connection):
+    assert found_ids(omop_connection, "observation", "smoker") == [4100001, 4100002]
+    assert found_ids(omop_connection, "procedure", "scopy") == [4000001]
+    assert found_ids(omop_connection, "measurement", "hemoglobin") == [4200001]
+
+
+def test_new_domain_search_stays_inside_its_domain(omop_connection):
+    assert found_ids(omop_connection, "measurement", "colonoscopy") == []
+    assert found_ids(omop_connection, "procedure", "hemoglobin") == []
+
+
+def test_blank_search_lists_most_common_measurements(omop_connection):
+    # Hemoglobin A1c: persons 1 and 3. Body mass index: person 2.
+    assert found_ids(omop_connection, "measurement", "") == [4200001, 4200002]
+

@@ -336,7 +336,10 @@ def test_cohort_works_for_read_only_user(omop_app_as_reader):
 
 # ---- the concept search endpoint (AC25, AC36) ----
 
-UNKNOWN_DOMAIN_MESSAGE = "Choose a valid OMOP domain. Current valid choices: condition, drug."
+UNKNOWN_DOMAIN_MESSAGE = (
+    "Choose a valid OMOP domain. "
+    "Current valid choices: condition, drug, observation, procedure, measurement."
+)
 METFORMIN_RESULTS = [
     {"concept_id": 40000001, "name": "Metformin 500 MG Oral Tablet", "vocabulary": "RxNorm", "persons": 2},
     {"concept_id": 40000002, "name": "Metformin 1000 MG Oral Tablet", "vocabulary": "RxNorm", "persons": 1},
@@ -368,7 +371,7 @@ def test_search_endpoint_rejects_unsafe_schema_name(omop_app):
 
 
 def test_search_endpoint_rejects_unknown_domain(omop_app):
-    assert search_and_expect_rejection(domain="procedure") == UNKNOWN_DOMAIN_MESSAGE
+    assert search_and_expect_rejection(domain="visit") == UNKNOWN_DOMAIN_MESSAGE
 
 
 def test_search_endpoint_rejects_database_that_is_not_omop(omop_app):

@@ -48,7 +48,7 @@ def test_tables_needed_list_each_event_table_once():
 
 def test_tables_needed_rejects_bad_spec():
     with pytest.raises(OmopSpecError):
-        list_tables_needed_by_spec(make_spec(("procedure", [1], False)))
+        list_tables_needed_by_spec(make_spec(("visit", [1], False)))
 
 
 # ---- the table check (against the test database) ----

@@ -15,4 +15,19 @@ OMOP_DOMAINS = {
         "concept_column": "drug_concept_id",
         "date_column": "drug_exposure_start_date",
     },
+    "observation": {
+        "table": "observation",
+        "concept_column": "observation_concept_id",
+        "date_column": "observation_date",
+    },
+    "procedure": {
+        "table": "procedure_occurrence",
+        "concept_column": "procedure_concept_id",
+        "date_column": "procedure_date",
+    },
+    "measurement": {
+        "table": "measurement",
+        "concept_column": "measurement_concept_id",
+        "date_column": "measurement_date",
+    },
 }

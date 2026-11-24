@@ -6,6 +6,7 @@ from omop_criteria import OmopSpecError, build_person_list_sql
 # Concept IDs from the test data in omop_fixture_data.py.
 TYPE_2_DIABETES = 201826
 METFORMIN_500, METFORMIN_1000 = 40000001, 40000002
+COLONOSCOPY, SMOKER, HEMOGLOBIN_A1C = 4000001, 4100001, 4200001
 
 
 def make_spec(*rules):
@@ -204,3 +205,34 @@ def test_summary_columns_do_not_repeat_or_drop_people(connection):
     _, rows = run_person_list(connection, spec)
     assert sorted(row[1] for row in rows) == [1, 2]
     assert len(rows) == 2
+
+
+# ---- the observation, procedure and measurement domains (AC55) ----
+
+
+def test_has_observation_finds_the_people_with_it(connection):
+    assert person_ids(connection, make_spec(("observation", [SMOKER], False))) == [1, 4]
+
+
+def test_has_procedure_finds_the_people_with_it(connection):
+    assert person_ids(connection, make_spec(("procedure", [COLONOSCOPY], False))) == [1, 2]
+
+
+def test_has_measurement_finds_each_person_once(connection):
+    # Person 1 has two measurements of the same item, and must still appear once.
+    assert person_ids(connection, make_spec(("measurement", [HEMOGLOBIN_A1C], False))) == [1, 3]
+
+
+def test_does_not_have_procedure_finds_the_other_people(connection):
+    assert person_ids(connection, make_spec(("procedure", [COLONOSCOPY], True))) == [3, 4, 5, 6]
+
+
+def test_measurement_summary_shows_the_earliest_date(connection):
+    summary = summary_by_person(connection, make_spec(("measurement", [HEMOGLOBIN_A1C], False)))
+    assert summary[1] == {"rule1_items": "Hemoglobin A1c", "rule1_first_date": "2020-04-04"}
+
+
+def test_rules_from_different_new_domains_mean_both(connection):
+    spec = make_spec(("observation", [SMOKER], False), ("measurement", [HEMOGLOBIN_A1C], False))
+    assert person_ids(connection, spec) == [1]
+

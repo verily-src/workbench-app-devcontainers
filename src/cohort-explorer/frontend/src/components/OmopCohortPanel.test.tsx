@@ -74,6 +74,44 @@ describe("OmopCohortPanel", () => {
     expect(await screen.findByText("2 people match")).toBeTruthy();
   });
 
+  it("sends the value range of a measurement rule with the request", async () => {
+    showPanel();
+    await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+    await pickDiabetes();
+    await userEvent.type(screen.getByLabelText("Lowest value"), "5.5");
+    await userEvent.type(screen.getByLabelText("Highest value"), "7.7");
+
+    await userEvent.click(findPeopleButton());
+
+    expect(createCohortMock).toHaveBeenCalledWith("my-db", {
+      schema: "public",
+      criteria: [{ domain: "measurement", concept_ids: [201826], exclude: false, value_min: 5.5, value_max: 7.7 }],
+    });
+  });
+
+  it("turns Find people off while the lowest value is above the highest", async () => {
+    showPanel();
+    await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+    await pickDiabetes();
+
+    await userEvent.type(screen.getByLabelText("Lowest value"), "8");
+    await userEvent.type(screen.getByLabelText("Highest value"), "7");
+
+    expect(findPeopleButton().disabled).toBe(true);
+  });
+
+  it("turns Find people on again once the range is fixed", async () => {
+    showPanel();
+    await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+    await pickDiabetes();
+    await userEvent.type(screen.getByLabelText("Lowest value"), "8");
+    await userEvent.type(screen.getByLabelText("Highest value"), "7");
+
+    await userEvent.clear(screen.getByLabelText("Lowest value"));
+
+    expect(findPeopleButton().disabled).toBe(false);
+  });
+
   it("says 1 person matches for a count of one", async () => {
     createCohortMock.mockResolvedValue({ count: 1 });
     showPanel();

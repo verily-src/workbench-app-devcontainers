@@ -13,13 +13,21 @@ interface Props {
   // Results with these IDs are greyed out, so the same item cannot be picked twice.
   pickedIds: number[];
   onPick: (concept: OmopConcept) => void;
+  // Turns the search box off, for a rule that cannot hold more items.
+  disabled?: boolean;
 }
 
 function describePersons(count: number): string {
   return count === 1 ? "1 person" : `${count} people`;
 }
 
-export default function ConceptSearchBox({ resourceId, schema, domain, pickedIds, onPick }: Props) {
+// " · values 35.5 to 40.5" for a measurement that has numbers, otherwise nothing.
+function describeValues(concept: OmopConcept): string {
+  if (concept.value_min == null || concept.value_max == null) return "";
+  return ` · values ${concept.value_min} to ${concept.value_max}`;
+}
+
+export default function ConceptSearchBox({ resourceId, schema, domain, pickedIds, onPick, disabled = false }: Props) {
   const [text, setText] = useState("");
   const [hasFocus, setHasFocus] = useState(false);
   const [results, setResults] = useState<OmopConcept[]>([]);
@@ -66,6 +74,7 @@ export default function ConceptSearchBox({ resourceId, schema, domain, pickedIds
         size="small"
         fullWidth
         label="Search by name"
+        disabled={disabled}
         value={text}
         onChange={(event) => setText(event.target.value)}
         onFocus={() => setHasFocus(true)}
@@ -99,6 +108,7 @@ export default function ConceptSearchBox({ resourceId, schema, domain, pickedIds
                 <Typography variant="body2">{concept.name}</Typography>
                 <Typography variant="caption" color="text.secondary">
                   {concept.concept_id} · {describePersons(concept.persons)}
+                  {describeValues(concept)}
                   {pickedIds.includes(concept.concept_id) && " · added"}
                 </Typography>
               </Box>

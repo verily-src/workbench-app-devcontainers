@@ -74,6 +74,34 @@ describe("ConceptSearchBox", () => {
     expect(screen.getByText("40000002 · 1 person")).toBeTruthy();
   });
 
+  it("shows the lowest and highest number of a measurement in its result row", async () => {
+    searchMock.mockResolvedValue([
+      { concept_id: 4200001, name: "Hemoglobin A1c", vocabulary: "LOINC", persons: 2, value_min: 5.2, value_max: 7.4 },
+    ]);
+    showSearchBox();
+    await userEvent.click(searchBox());
+
+    expect(await screen.findByText("4200001 · 2 people · values 5.2 to 7.4")).toBeTruthy();
+  });
+
+  it("shows no numbers for a result without any", async () => {
+    searchMock.mockResolvedValue([
+      { concept_id: 4200003, name: "Throat culture", vocabulary: "LOINC", persons: 1, value_min: null, value_max: null },
+    ]);
+    showSearchBox();
+    await userEvent.click(searchBox());
+
+    expect(await screen.findByText("4200003 · 1 person")).toBeTruthy();
+  });
+
+  it("turns the search box off when it is disabled", () => {
+    render(
+      <ConceptSearchBox resourceId="my-db" schema="omop" domain="measurement" pickedIds={[]} onPick={vi.fn()} disabled />,
+    );
+
+    expect((searchBox() as HTMLInputElement).disabled).toBe(true);
+  });
+
   it("passes the clicked result to onPick", async () => {
     const onPick = showSearchBox();
     await userEvent.click(searchBox());

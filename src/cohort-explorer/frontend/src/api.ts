@@ -191,12 +191,18 @@ export interface OmopConcept {
   name: string;
   vocabulary: string;
   persons: number;
+  // Only for a measurement: the lowest and highest number in the data. null when it has no numbers.
+  value_min?: number | null;
+  value_max?: number | null;
 }
 
 export interface OmopRule {
   domain: string;
   concept_ids: number[];
   exclude: boolean;
+  // Only for a measurement rule with exactly one item. A missing bound means no limit on that side.
+  value_min?: number;
+  value_max?: number;
 }
 
 export interface OmopSpec {

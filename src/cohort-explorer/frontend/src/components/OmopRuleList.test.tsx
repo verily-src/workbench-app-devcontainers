@@ -177,6 +177,146 @@ describe("OmopRuleList", () => {
     }
   });
 
+  describe("value range of a measurement rule", () => {
+    async function chooseMeasurementAndPickOne() {
+      render(<RuleListWithSpec />);
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+      await searchAndPick("Metformin 500 MG Oral Tablet");
+    }
+
+    it("shows no range boxes before an item is picked", async () => {
+      render(<RuleListWithSpec />);
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+
+      expect(screen.queryByLabelText("Lowest value")).toBeNull();
+    });
+
+    it("shows the range boxes for a measurement rule with exactly one item", async () => {
+      await chooseMeasurementAndPickOne();
+
+      expect(screen.getByLabelText("Lowest value")).toBeTruthy();
+      expect(screen.getByLabelText("Highest value")).toBeTruthy();
+    });
+
+    it("turns the search box off once one measurement is picked, and says why", async () => {
+      await chooseMeasurementAndPickOne();
+
+      expect((searchBoxes()[0] as HTMLInputElement).disabled).toBe(true);
+      expect(screen.getByText("A measurement rule holds one item. Remove it to pick another, or add another rule.")).toBeTruthy();
+    });
+
+    it("turns the search box on again when the measurement is removed", async () => {
+      await chooseMeasurementAndPickOne();
+
+      await userEvent.click(screen.getByLabelText("Remove Metformin 500 MG Oral Tablet"));
+
+      expect((searchBoxes()[0] as HTMLInputElement).disabled).toBe(false);
+    });
+
+    it("keeps the search box on after a pick in a domain that holds many items", async () => {
+      render(<RuleListWithSpec />);
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "drug");
+      await searchAndPick("Metformin 500 MG Oral Tablet");
+
+      expect((searchBoxes()[0] as HTMLInputElement).disabled).toBe(false);
+      expect(screen.queryByText(/rule holds one item/)).toBeNull();
+    });
+
+    it("shows what the data holds for the picked measurement, and leaves the boxes empty", async () => {
+      searchMock.mockResolvedValue([
+        { concept_id: 4200001, name: "Hemoglobin A1c", vocabulary: "LOINC", persons: 2, value_min: 5.2, value_max: 7.4 },
+      ]);
+      render(<RuleListWithSpec />);
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+      await searchAndPick("Hemoglobin A1c");
+
+      expect(screen.getByText("Results in this data run from 5.2 to 7.4. Leave a box empty for no limit.")).toBeTruthy();
+      const lowest = screen.getByLabelText("Lowest value") as HTMLInputElement;
+      const highest = screen.getByLabelText("Highest value") as HTMLInputElement;
+      expect([lowest.value, highest.value]).toEqual(["", ""]);
+      expect([lowest.placeholder, highest.placeholder]).toEqual(["5.2", "7.4"]);
+      expect("value_min" in shownSpec().criteria[0]).toBe(false);
+    });
+
+    it("says when the picked measurement has no numbers in the data", async () => {
+      searchMock.mockResolvedValue([
+        { concept_id: 4200003, name: "Throat culture", vocabulary: "LOINC", persons: 1, value_min: null, value_max: null },
+      ]);
+      render(<RuleListWithSpec />);
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+      await searchAndPick("Throat culture");
+
+      expect(screen.getByText("This item has no numeric results in this data.")).toBeTruthy();
+    });
+
+    it("shows no range boxes for another domain", async () => {
+      render(<RuleListWithSpec />);
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "drug");
+      await searchAndPick("Metformin 500 MG Oral Tablet");
+
+      expect(screen.queryByLabelText("Lowest value")).toBeNull();
+    });
+
+    it("sends the typed range in the spec as numbers", async () => {
+      await chooseMeasurementAndPickOne();
+
+      await userEvent.type(screen.getByLabelText("Lowest value"), "5.5");
+      await userEvent.type(screen.getByLabelText("Highest value"), "7.7");
+
+      expect(shownSpec().criteria[0]).toMatchObject({ value_min: 5.5, value_max: 7.7 });
+    });
+
+    it("says in words what the rule matches", async () => {
+      await chooseMeasurementAndPickOne();
+      expect(screen.getByText("Any recorded value counts.")).toBeTruthy();
+
+      await userEvent.type(screen.getByLabelText("Lowest value"), "5.5");
+      await userEvent.type(screen.getByLabelText("Highest value"), "7.7");
+
+      expect(screen.getByText("Matches people who have a result between 5.5 and 7.7.")).toBeTruthy();
+      expect(screen.queryByText("Any recorded value counts.")).toBeNull();
+    });
+
+    it("says no result for a Does not have rule with a range", async () => {
+      await chooseMeasurementAndPickOne();
+      await userEvent.selectOptions(screen.getByLabelText("Rule"), "exclude");
+
+      await userEvent.type(screen.getByLabelText("Highest value"), "9");
+
+      expect(screen.getByText("Matches people who have no result of at most 9.")).toBeTruthy();
+    });
+
+    it("shows a message when the lowest value is above the highest", async () => {
+      await chooseMeasurementAndPickOne();
+
+      await userEvent.type(screen.getByLabelText("Lowest value"), "8");
+      await userEvent.type(screen.getByLabelText("Highest value"), "7");
+
+      expect(screen.getByText("The lowest value must not be higher than the highest value.")).toBeTruthy();
+    });
+
+    it("clears the range when the domain changes", async () => {
+      await chooseMeasurementAndPickOne();
+      await userEvent.type(screen.getByLabelText("Lowest value"), "5");
+
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "drug");
+      await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+      await searchAndPick("Metformin 500 MG Oral Tablet");
+
+      expect((screen.getByLabelText("Lowest value") as HTMLInputElement).value).toBe("");
+    });
+
+    it("clears the range when the picked item is removed", async () => {
+      await chooseMeasurementAndPickOne();
+      await userEvent.type(screen.getByLabelText("Lowest value"), "5");
+
+      await userEvent.click(screen.getByLabelText("Remove Metformin 500 MG Oral Tablet"));
+      await searchAndPick("Metformin 1000 MG Oral Tablet");
+
+      expect((screen.getByLabelText("Lowest value") as HTMLInputElement).value).toBe("");
+    });
+  });
+
   it("removes the chosen rule row", async () => {
     render(<RuleListWithSpec />);
     await userEvent.click(screen.getByRole("button", { name: "Add rule" }));

@@ -23,6 +23,7 @@ export default function CohortCriteria({ criteria }: Props) {
           return (
             <Typography component="li" variant="body2" key={lineNumber} sx={{ mb: 0.5 }}>
               <strong>{line.heading}:</strong> {shownNames.join(", ")}
+              {line.valueRange && ` (result ${line.valueRange})`}
               {hiddenCount > 0 && (
                 <>
                   {" "}

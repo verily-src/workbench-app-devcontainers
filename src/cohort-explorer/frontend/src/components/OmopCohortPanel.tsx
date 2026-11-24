@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Accordion, AccordionDetails, AccordionSummary, Box, Button, TextField, Typography } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { createOmopCohort } from "../api";
-import { buildSpec, everyRuleHasPickedItem, makeEmptyRule, summarizeRules } from "../omopRules";
+import { buildSpec, everyRuleHasPickedItem, everyValueRangeIsValid, makeEmptyRule, summarizeRules } from "../omopRules";
 import type { CriteriaLine, RuleDraft } from "../omopRules";
 import OmopRuleList from "./OmopRuleList";
 
@@ -62,7 +62,7 @@ export default function OmopCohortPanel({ resourceId, onOpenInExplorer }: Props)
     }
   };
 
-  const canFindPeople = everyRuleHasPickedItem(rules) && !isFinding;
+  const canFindPeople = everyRuleHasPickedItem(rules) && everyValueRangeIsValid(rules) && !isFinding;
 
   return (
     <Box>

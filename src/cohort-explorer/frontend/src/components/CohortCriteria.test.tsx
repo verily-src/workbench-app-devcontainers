@@ -24,6 +24,16 @@ describe("CohortCriteria", () => {
     ]);
   });
 
+  it("shows the value range of a measurement rule", () => {
+    render(
+      <CohortCriteria
+        criteria={[{ heading: "Has Measurement", names: ["Hemoglobin A1c"], valueRange: "between 6.5 and 9" }]}
+      />,
+    );
+
+    expect(lines()).toEqual(["Has Measurement: Hemoglobin A1c (result between 6.5 and 9)"]);
+  });
+
   it("shows nothing when there are no rules", () => {
     render(<CohortCriteria criteria={[]} />);
 

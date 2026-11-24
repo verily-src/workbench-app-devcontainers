@@ -88,12 +88,19 @@ def data_connection_dialog() -> None:
 
     if st.button("Check connection", type="primary", key="check_connection"):
         st.session_state.pop("tables", None)
-        try:
-            with st.spinner("Checking"):
-                st.session_state.tables = data.list_tables(client, dataset)
-            st.session_state.dataset = dataset
-        except data.DataError as error:
-            st.error(str(error))
+        if not dataset:
+            st.info(
+                "Enter a dataset first, written as project.dataset. Once the "
+                "data has been added to your workspace, its path is listed in "
+                "the workspace's resources."
+            )
+        else:
+            try:
+                with st.spinner("Checking"):
+                    st.session_state.tables = data.list_tables(client, dataset)
+                st.session_state.dataset = dataset
+            except data.DataError as error:
+                st.error(str(error))
 
     tables = st.session_state.get("tables")
     if tables is None or st.session_state.get("dataset") != dataset:

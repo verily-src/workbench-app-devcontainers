@@ -18,6 +18,7 @@ Prototype Streamlit app for asking plain-language analytics questions from insid
 | `app/main.py` | The page. |
 | `app/data.py` | BigQuery access: the connection, two built-in queries, and the limits every query runs under. |
 | `tests/test_data.py` | Tests for `app/data.py`, using a stand-in for BigQuery. |
+| `tests/test_launcher.py` | Tests for `app/launcher.py`. They do not use the network. |
 | `app/style.css` | Page styling. |
 | `app/static/fonts/` | Poppins and Inter font files (SIL Open Font License), served with the app. |
 
@@ -70,11 +71,11 @@ app/.venv/bin/python -m unittest discover -s tests
 
 Workbench builds the image once, when the app is created, and a stop and start does not rebuild it. To avoid recreating the app for every change, the container downloads the latest copy of `app/` from the branch each time it starts and runs that copy.
 
-- **To pick up a change:** push it to the branch, then stop and start the app in Workbench.
+- **To pick up a change:** push it to the branch, then select **Update to the latest version** at the bottom of the page. The app fetches the new code and restarts itself; the machine keeps running. Stopping and starting the app in Workbench does the same thing, more slowly.
 - **What is picked up:** the page, styling, fonts, Streamlit settings and Python packages.
 - **What still needs a new app:** changes to `Dockerfile`, `docker-compose.yaml`, `.devcontainer.json` or `launcher.py`.
 - **Which version is running:** the line at the bottom of the page shows the commit, for example `version 0800aba`.
-- **If GitHub cannot be reached:** the app runs the copy built into the image, and the bottom line says `built-in version` with the reason.
+- **If the update fails:** the app keeps running the copy it had, and the bottom line gives the reason, for example `version 0800aba (not updated: could not reach GitHub)`.
 
 The branch, repository and folder are set in `docker-compose.yaml`. Set `ASK_WORKBENCH_REF` to a tag or commit to pin a version, or to an empty string to turn updates off.
 

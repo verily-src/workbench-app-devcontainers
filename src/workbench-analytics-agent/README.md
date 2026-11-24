@@ -104,4 +104,5 @@ docker logs application-server 2>&1 | tail -50
 | Clone fails | The VM cannot reach GitHub, or the branch or folder is wrong. |
 | Build fails pulling `python:3.11-slim` or during `pip install` | The workspace's network policy blocks Docker Hub or PyPI. |
 | Container restarts in a loop | The app crashes on start. `docker logs application-server` shows why. |
+| Page does not come back after **Update to the latest version** | Refresh the page. If the app is still not there, stop and start it in Workbench, which always brings it back. |
 | Page stays on "Please wait" | Streamlit refused the page's live connection. `docker logs application-server` shows `Rejecting WebSocket connection with disallowed Origin or Host header` and the origin the browser used. Add that origin to `corsAllowedOrigins` in `app/.streamlit/config.toml`. |

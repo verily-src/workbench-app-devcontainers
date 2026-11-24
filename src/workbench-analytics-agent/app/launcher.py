@@ -225,7 +225,22 @@ def choose_app() -> tuple[Path, dict[str, str]]:
     return app_dir, {"ASK_WORKBENCH_VERSION": version}
 
 
+def close_inherited_files() -> None:
+    """Close anything left open by the program that started this script.
+
+    When the page's Update control re-runs this script, the old server's
+    listening socket is still open in this process, because Streamlit marks it
+    to survive a re-run. The new server cannot use the port until it is closed.
+    """
+    try:
+        limit = os.sysconf("SC_OPEN_MAX")
+    except (AttributeError, ValueError, OSError):
+        limit = 4096
+    os.closerange(3, min(max(limit, 4096), 65536))
+
+
 def main() -> None:
+    close_inherited_files()
     app_dir, page_info = choose_app()
     os.environ.pop("ASK_WORKBENCH_VERSION", None)
     os.environ.pop("ASK_WORKBENCH_UPDATE_PROBLEM", None)

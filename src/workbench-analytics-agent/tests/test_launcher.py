@@ -182,6 +182,28 @@ class LatestAppTests(LauncherTestCase):
         self.assertIsNone(self.downloaded_url)
 
 
+class StartUpTests(unittest.TestCase):
+    def test_inherited_files_are_closed_but_standard_streams_are_kept(self):
+        with mock.patch.object(launcher.os, "closerange") as closerange:
+            launcher.close_inherited_files()
+        first, last = closerange.call_args.args
+        self.assertEqual(first, 3)
+        self.assertGreaterEqual(last, 4096)
+
+    def test_main_closes_inherited_files_before_anything_else(self):
+        order = []
+        with mock.patch.object(launcher, "close_inherited_files", lambda: order.append("close")), \
+                mock.patch.object(launcher, "choose_app", lambda: order.append("choose") or (Path("."), {})), \
+                mock.patch.object(launcher.os, "chdir"), \
+                mock.patch.object(launcher.os, "execv") as execv, \
+                mock.patch.object(launcher.sys, "argv", ["launcher.py", "--server.port=9999"]), \
+                mock.patch.dict(os.environ, {}, clear=False):
+            launcher.main()
+            self.assertEqual(os.environ["ASK_WORKBENCH_EXTRA_ARGS"], '["--server.port=9999"]')
+        self.assertEqual(order, ["close", "choose"])
+        self.assertEqual(execv.call_args.args[1][-1], "--server.port=9999")
+
+
 class ChooseAppTests(LauncherTestCase):
     def settings(self, ref=REF):
         return mock.patch.dict(os.environ, {"ASK_WORKBENCH_REPO": REPO, "ASK_WORKBENCH_REF": ref, "ASK_WORKBENCH_PATH": SUBPATH})

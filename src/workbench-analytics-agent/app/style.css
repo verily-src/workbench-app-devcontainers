@@ -61,7 +61,8 @@
   line-height: 1.5rem;
 }
 
-.st-key-new_chat button {
+.st-key-new_chat button,
+.st-key-open_data button {
   background: transparent;
   border: 1px solid var(--wb-green);
   color: var(--wb-green-dark);
@@ -74,13 +75,16 @@
 }
 
 .st-key-new_chat button:hover,
-.st-key-new_chat button:focus-visible {
+.st-key-new_chat button:focus-visible,
+.st-key-open_data button:hover,
+.st-key-open_data button:focus-visible {
   background: var(--wb-green-tint);
   border-color: var(--wb-green-dark);
   color: var(--wb-green-dark);
 }
 
-.st-key-new_chat button p {
+.st-key-new_chat button p,
+.st-key-open_data button p {
   font-size: inherit;
   font-weight: inherit;
 }

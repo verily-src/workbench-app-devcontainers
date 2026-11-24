@@ -1,7 +1,8 @@
 """Verily Product Analytics Agent: chat page.
 
 The user asks a question and it appears in a conversation thread. Answering
-is not connected yet, so every reply says so.
+is not connected yet, so every reply says so. A "Data connection" dialog shows
+which identity the app queries as and checks that it can read a dataset.
 """
 
 import os
@@ -10,14 +11,20 @@ from pathlib import Path
 
 import streamlit as st
 
+import data
+
 APP_NAME = "Verily Product Analytics Agent"
 # Shown beside the Verily icon, which already stands for the word "Verily".
 APP_NAME_BESIDE_ICON = APP_NAME.removeprefix("Verily ")
 
 NOT_CONNECTED_REPLY = (
     "I have your question, but I can't answer it yet. "
-    "This app isn't connected to data or a model."
+    "Questions aren't linked to the data or a model yet."
 )
+
+# Optional starting value for the dataset box. The dataset is never written in
+# this repository; each person enters the one their workspace gives them.
+DEFAULT_DATASET = os.environ.get("ASK_WORKBENCH_DATASET", "")
 
 EXAMPLE_QUESTIONS = [
     "How many active users last month?",
@@ -53,6 +60,66 @@ def version_note() -> str:
     return ""
 
 
+@st.cache_resource(show_spinner=False)
+def data_connection():
+    """One BigQuery client for the app. A failure is raised, not remembered."""
+    return data.connect()
+
+
+@st.dialog("Data connection")
+def data_connection_dialog() -> None:
+    """Show who the app queries as, and check that it can read a dataset."""
+    try:
+        client, info = data_connection()
+    except data.DataError as error:
+        st.error(str(error))
+        return
+
+    st.text(f"Queries run as: {info.identity}")
+    st.text(f"Billed to project: {info.project}")
+
+    dataset = st.text_input(
+        "Dataset",
+        value=st.session_state.get("dataset", DEFAULT_DATASET),
+        placeholder="project.dataset",
+        help="The dataset to read, as listed in your workspace's resources.",
+        key="dataset_input",
+    ).strip()
+
+    if st.button("Check connection", type="primary", key="check_connection"):
+        st.session_state.pop("tables", None)
+        try:
+            with st.spinner("Checking"):
+                st.session_state.tables = data.list_tables(client, dataset)
+            st.session_state.dataset = dataset
+        except data.DataError as error:
+            st.error(str(error))
+
+    tables = st.session_state.get("tables")
+    if tables is None or st.session_state.get("dataset") != dataset:
+        return
+
+    if not tables:
+        st.warning("Connected, but the dataset has no tables or views.")
+        return
+    st.success(f"Connected. Found {len(tables)} tables and views.")
+    st.dataframe(tables, hide_index=True, height=210)
+
+    table = st.selectbox(
+        "Count the rows in", [row["name"] for row in tables], key="count_table"
+    )
+    if st.button("Count rows", key="count_rows"):
+        try:
+            with st.spinner("Counting"):
+                result = data.count_rows(client, dataset, table)
+        except data.DataError as error:
+            st.error(str(error))
+        else:
+            st.metric(f"Rows in {table}", f"{result.rows[0]['row_count']:,}")
+            st.caption(f"Query read {result.bytes_processed:,} bytes.")
+            st.code(result.sql, language="sql")
+
+
 def ask(question: str) -> None:
     """Add the question and the placeholder reply to the conversation."""
     question = question.strip()
@@ -75,6 +142,8 @@ messages = st.session_state.messages
 
 with st.container(horizontal=True, vertical_alignment="center", key="topbar"):
     st.html(BRAND_HTML)
+    if st.button("Data connection", key="open_data"):
+        data_connection_dialog()
     if messages:
         st.button("New chat", on_click=start_new_chat, key="new_chat")
 

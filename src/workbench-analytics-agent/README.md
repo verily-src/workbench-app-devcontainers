@@ -2,7 +2,7 @@
 
 Prototype Streamlit app for asking plain-language analytics questions from inside a Verily Workbench workspace. Each user launches their own copy of the app.
 
-**Current state:** a chat-style page. You ask a question and it appears in a conversation thread, followed by a reply saying the app cannot answer yet. It is not connected to data or to a model.
+**Current state:** a chat-style page. You ask a question and it appears in a conversation thread, followed by a reply saying the app cannot answer yet. A **Data connection** dialog shows which identity the app queries as and checks that it can read a BigQuery dataset. Questions are not linked to the data or to a model yet.
 
 ## Files
 
@@ -16,6 +16,8 @@ Prototype Streamlit app for asking plain-language analytics questions from insid
 | `app/.streamlit/config.toml` | Streamlit settings, including the browser origin the app accepts connections from. |
 | `app/launcher.py` | Container entry point. Fetches the latest copy of the app, then starts Streamlit. |
 | `app/main.py` | The page. |
+| `app/data.py` | BigQuery access: the connection, two built-in queries, and the limits every query runs under. |
+| `tests/test_data.py` | Tests for `app/data.py`, using a stand-in for BigQuery. |
 | `app/style.css` | Page styling. |
 | `app/static/fonts/` | Poppins and Inter font files (SIL Open Font License), served with the app. |
 
@@ -45,6 +47,24 @@ Open http://localhost:8501.
 3. Create the app, wait until it is running, then open it.
 
 Workbench clones the repository and builds the image on the app's VM. The build needs to reach GitHub, Docker Hub (base image) and PyPI (Python packages).
+
+## Data connection
+
+Open **Data connection** in the top bar.
+
+- **Identity.** The app queries BigQuery with the credentials its environment already has. In Workbench that is the service account Workbench creates for the person who launched the app, so they see only data they have been given access to. Queries are billed to the workspace's project.
+- **Dataset.** Enter the dataset as `project.dataset`. It is kept for the browser session only and is never written to this repository.
+- **Check connection** lists the dataset's tables and views. **Count rows** counts one of them. These are the only two queries the app runs for now, and neither names a dataset or table in code.
+- **Limits.** Every query is checked before it runs. Anything that is not a plain `SELECT` is refused, a query that would read more than 5 GB never starts, a query is stopped after 30 seconds, and at most 500 rows are shown.
+- **No access.** If the identity cannot read the dataset or table, the dialog says so instead of showing an error trace.
+
+Keep dataset names, table names, queries that name them, and results out of this repository. It is public.
+
+Run the tests from this folder:
+
+```bash
+app/.venv/bin/python -m unittest discover -s tests
+```
 
 ## Updating a running app
 

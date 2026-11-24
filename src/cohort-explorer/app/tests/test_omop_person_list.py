@@ -6,7 +6,7 @@ from omop_criteria import OmopSpecError, build_person_list_sql
 # Concept IDs from the test data in omop_fixture_data.py.
 TYPE_2_DIABETES = 201826
 METFORMIN_500, METFORMIN_1000 = 40000001, 40000002
-COLONOSCOPY, SMOKER, HEMOGLOBIN_A1C = 4000001, 4100001, 4200001
+COLONOSCOPY, SMOKER, HEMOGLOBIN_A1C, BODY_MASS_INDEX = 4000001, 4100001, 4200001, 4200002
 
 
 def make_spec(*rules):
@@ -235,4 +235,86 @@ def test_measurement_summary_shows_the_earliest_date(connection):
 def test_rules_from_different_new_domains_mean_both(connection):
     spec = make_spec(("observation", [SMOKER], False), ("measurement", [HEMOGLOBIN_A1C], False))
     assert person_ids(connection, spec) == [1]
+
+
+# ---- the value range of a measurement rule (AC56) ----
+# Hemoglobin A1c results: person 1 has 6.1 (2020-04-04) and 7.4 (2021-04-04); person 3 has 5.2.
+# Body mass index: person 2 has 27.5; person 4 has a row with no number.
+
+
+def make_range_spec(value_min=None, value_max=None, item=HEMOGLOBIN_A1C, exclude=False):
+    spec = make_spec(("measurement", [item], exclude))
+    spec["criteria"][0]["value_min"] = value_min
+    spec["criteria"][0]["value_max"] = value_max
+    return spec
+
+
+def test_range_keeps_people_with_a_result_inside_it(connection):
+    assert person_ids(connection, make_range_spec(6.0, 6.5)) == [1]
+
+
+def test_range_needs_one_result_inside_not_just_a_lowest_and_highest_around_it(connection):
+    # Person 1 has 6.1 and 7.4. Both are outside 6.5 to 7.0, even though the window sits between them.
+    assert person_ids(connection, make_range_spec(6.5, 7.0)) == []
+
+
+def test_range_with_only_a_lowest_value(connection):
+    assert person_ids(connection, make_range_spec(value_min=7.0)) == [1]
+
+
+def test_range_with_only_a_highest_value(connection):
+    assert person_ids(connection, make_range_spec(value_max=5.5)) == [3]
+
+
+def test_range_bounds_include_the_boundary_values(connection):
+    assert person_ids(connection, make_range_spec(5.2, 5.2)) == [3]
+
+
+def test_range_wide_enough_keeps_everyone_with_a_number(connection):
+    assert person_ids(connection, make_range_spec(0, 100)) == [1, 3]
+
+
+def test_row_with_no_number_never_matches_a_range(connection):
+    # Person 4 has a body mass index row with no number, so even a very wide range leaves it out.
+    assert person_ids(connection, make_range_spec(0, 1000, item=BODY_MASS_INDEX)) == [2]
+
+
+def test_without_a_range_a_row_with_no_number_still_counts(connection):
+    assert person_ids(connection, make_range_spec(item=BODY_MASS_INDEX)) == [2, 4]
+
+
+def test_does_not_have_with_a_range_means_no_result_inside_it(connection):
+    # Person 1 has a result inside 6.0 to 6.5, so only person 1 is left out.
+    assert person_ids(connection, make_range_spec(6.0, 6.5, exclude=True)) == [2, 3, 4, 5, 6]
+
+
+def test_summary_first_date_comes_from_the_results_inside_the_range(connection):
+    summary = summary_by_person(connection, make_range_spec(7.0, 8.0))
+    assert summary[1]["rule1_first_date"] == "2021-04-04"
+
+
+def test_range_does_not_repeat_or_drop_people(connection):
+    # Person 1 has two results inside the range, and must still appear once.
+    assert person_ids(connection, make_range_spec(6.0, 8.0)) == [1]
+
+
+def test_range_adds_no_summary_columns(connection):
+    column_names, _ = run_person_list(connection, make_range_spec(6.0, 8.0))
+    assert column_names[6:] == ["rule1_items", "rule1_first_date"]
+
+
+def test_range_is_written_into_the_rule_clause_and_summary_join():
+    sql = build_person_list_sql(make_range_spec(5.5, 7.7))
+    assert sql.count('e."value_as_number" >= 5.5 AND e."value_as_number" <= 7.7') == 2
+
+
+def test_range_numbers_are_written_as_floats_in_plain_sql_text():
+    sql = build_person_list_sql(make_range_spec(1e-7, 5))
+    assert 'e."value_as_number" >= 1e-07' in sql
+    assert 'e."value_as_number" <= 5.0' in sql
+    assert ":" not in sql
+
+
+def test_rule_without_a_range_has_no_value_condition():
+    assert "value_as_number" not in build_person_list_sql(make_range_spec())
 

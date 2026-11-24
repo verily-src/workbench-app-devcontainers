@@ -93,8 +93,14 @@ def test_quote_name_refuses_unsafe_names(name):
 
 
 def test_every_domain_has_table_concept_column_and_date_column():
+    required_keys = {"table", "concept_column", "date_column"}
     for domain, entry in OMOP_DOMAINS.items():
-        assert set(entry) == {"table", "concept_column", "date_column"}, domain
+        assert required_keys <= set(entry) <= required_keys | {"value_column"}, domain
+
+
+def test_only_measurement_has_a_value_column():
+    domains_with_value_column = [domain for domain, entry in OMOP_DOMAINS.items() if "value_column" in entry]
+    assert domains_with_value_column == ["measurement"]
 
 
 def test_domains_use_the_standard_omop_table_and_column_names():
@@ -123,6 +129,7 @@ def test_domains_use_the_standard_omop_table_and_column_names():
             "table": "measurement",
             "concept_column": "measurement_concept_id",
             "date_column": "measurement_date",
+            "value_column": "value_as_number",
         },
     }
     assert list(OMOP_DOMAINS) == ["condition", "drug", "observation", "procedure", "measurement"]
@@ -131,9 +138,12 @@ def test_domains_use_the_standard_omop_table_and_column_names():
 # ---- a correct spec (AC1) ----
 
 
-def test_correct_spec_accepted_unchanged():
+def test_correct_spec_accepted_with_no_value_range():
     spec = make_spec()
-    assert parse_spec(spec) == spec
+    clean_spec = parse_spec(spec)
+    assert clean_spec["schema"] == spec["schema"]
+    for clean_rule, rule in zip(clean_spec["criteria"], spec["criteria"]):
+        assert clean_rule == {**rule, "value_min": None, "value_max": None}
 
 
 def test_missing_exclude_flag_becomes_false():
@@ -272,6 +282,122 @@ def test_missing_schema_in_spec_rejected():
 def test_injection_text_as_concept_id_rejected():
     spec = make_spec(criteria=[make_rule(concept_ids=["1); DROP TABLE person;--"])])
     assert_spec_rejected(spec, "Concept IDs must be whole numbers.")
+
+
+# ---- the value range of a measurement rule (AC56) ----
+
+A1C = 4200001
+
+
+def measurement_rule(**changes):
+    return make_rule(**{"domain": "measurement", "concept_ids": [A1C], **changes})
+
+
+def clean_measurement_rule(**changes):
+    return parse_spec(make_spec(criteria=[measurement_rule(**changes)]))["criteria"][0]
+
+
+def test_range_with_both_bounds_accepted():
+    rule = clean_measurement_rule(value_min=5.5, value_max=7.7)
+    assert (rule["value_min"], rule["value_max"]) == (5.5, 7.7)
+
+
+def test_range_with_only_a_lowest_value_accepted():
+    rule = clean_measurement_rule(value_min=6.5)
+    assert (rule["value_min"], rule["value_max"]) == (6.5, None)
+
+
+def test_range_with_only_a_highest_value_accepted():
+    rule = clean_measurement_rule(value_max=9)
+    assert (rule["value_min"], rule["value_max"]) == (None, 9.0)
+
+
+def test_range_with_equal_bounds_accepted():
+    rule = clean_measurement_rule(value_min=7, value_max=7)
+    assert (rule["value_min"], rule["value_max"]) == (7.0, 7.0)
+
+
+def test_whole_number_bounds_become_floats():
+    rule = clean_measurement_rule(value_min=5, value_max=8)
+    assert type(rule["value_min"]) is float and type(rule["value_max"]) is float
+
+
+def test_negative_bounds_accepted():
+    assert clean_measurement_rule(value_min=-3.5)["value_min"] == -3.5
+
+
+def test_does_not_have_rule_may_have_a_range():
+    rule = clean_measurement_rule(exclude=True, value_min=6.5)
+    assert rule["exclude"] is True and rule["value_min"] == 6.5
+
+
+def test_rule_without_a_range_has_empty_bounds():
+    rule = clean_measurement_rule()
+    assert (rule["value_min"], rule["value_max"]) == (None, None)
+
+
+def test_explicit_none_bounds_mean_no_range():
+    rule = clean_measurement_rule(value_min=None, value_max=None)
+    assert (rule["value_min"], rule["value_max"]) == (None, None)
+
+
+def test_lowest_value_above_highest_rejected():
+    spec = make_spec(criteria=[measurement_rule(value_min=8, value_max=7)])
+    assert_spec_rejected(spec, "The lowest value must not be higher than the highest value.")
+
+
+@pytest.mark.parametrize(
+    "bound", ["5", True, False, [5], {"a": 1}, float("nan"), float("inf"), float("-inf"), 10**400]
+)
+def test_bound_that_is_not_a_finite_number_rejected(bound):
+    spec = make_spec(criteria=[measurement_rule(value_min=bound)])
+    assert_spec_rejected(spec, "The lowest and highest value must be numbers.")
+
+
+def test_highest_value_that_is_not_a_number_rejected():
+    spec = make_spec(criteria=[measurement_rule(value_max="high")])
+    assert_spec_rejected(spec, "The lowest and highest value must be numbers.")
+
+
+@pytest.mark.parametrize("domain", ["condition", "drug", "observation", "procedure"])
+def test_range_on_a_domain_without_a_value_column_rejected(domain):
+    spec = make_spec(criteria=[make_rule(domain=domain, value_min=1)])
+    assert_spec_rejected(spec, "A value range applies to measurements only.")
+
+
+# ---- a measurement rule holds exactly one item (AC56) ----
+
+ONE_ITEM_MESSAGE = "A measurement rule can hold only one item."
+
+
+def test_measurement_rule_with_two_items_rejected():
+    spec = make_spec(criteria=[measurement_rule(concept_ids=[A1C, 4200002])])
+    assert_spec_rejected(spec, ONE_ITEM_MESSAGE)
+
+
+def test_measurement_rule_with_two_items_and_a_range_rejected():
+    spec = make_spec(criteria=[measurement_rule(concept_ids=[A1C, 4200002], value_min=1)])
+    assert_spec_rejected(spec, ONE_ITEM_MESSAGE)
+
+
+def test_does_not_have_measurement_rule_with_two_items_rejected():
+    spec = make_spec(criteria=[measurement_rule(concept_ids=[A1C, 4200002], exclude=True)])
+    assert_spec_rejected(spec, ONE_ITEM_MESSAGE)
+
+
+def test_measurement_rule_with_one_item_accepted():
+    assert clean_measurement_rule()["concept_ids"] == [A1C]
+
+
+def test_measurement_rule_with_no_item_gets_the_usual_message():
+    spec = make_spec(criteria=[measurement_rule(concept_ids=[])])
+    assert_spec_rejected(spec, "Pick at least one item for every rule.")
+
+
+@pytest.mark.parametrize("domain", ["condition", "drug", "observation", "procedure"])
+def test_other_domains_may_hold_several_items(domain):
+    spec = make_spec(criteria=[make_rule(domain=domain, concept_ids=[1, 2, 3])])
+    assert parse_spec(spec)["criteria"][0]["concept_ids"] == [1, 2, 3]
 
 
 # ---- domains live in one place (AC42) ----

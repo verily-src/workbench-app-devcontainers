@@ -26,7 +26,7 @@ OMOP_FIXTURE_STATEMENTS = [
     "CREATE TABLE omop.drug_exposure (person_id integer, drug_concept_id integer, drug_exposure_start_date date)",
     "CREATE TABLE omop.procedure_occurrence (person_id integer, procedure_concept_id integer, procedure_date date)",
     "CREATE TABLE omop.observation (person_id integer, observation_concept_id integer, observation_date date)",
-    "CREATE TABLE omop.measurement (person_id integer, measurement_concept_id integer, measurement_date date)",
+    "CREATE TABLE omop.measurement (person_id integer, measurement_concept_id integer, measurement_date date, value_as_number numeric)",
     """INSERT INTO omop.person VALUES
         (1, 8507, 8527, 38003564, 1950),
         (2, 8532, 8516, 38003564, 1960),
@@ -64,6 +64,7 @@ OMOP_FIXTURE_STATEMENTS = [
     """INSERT INTO omop.observation VALUES
         (1, 4100001, '2020-03-03'), (2, 4100002, '2019-09-09'), (4, 4100001, '2022-02-02')""",
     """INSERT INTO omop.measurement VALUES
-        (1, 4200001, '2020-04-04'), (1, 4200001, '2021-04-04'), (3, 4200001, '2017-06-06'),
-        (2, 4200002, '2019-02-02')""",
+        (1, 4200001, '2020-04-04', 6.1), (1, 4200001, '2021-04-04', 7.4),
+        (3, 4200001, '2017-06-06', 5.2), (2, 4200002, '2019-02-02', 27.5),
+        (4, 4200002, '2022-06-06', NULL)""",
 ]

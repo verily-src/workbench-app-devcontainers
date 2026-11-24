@@ -209,6 +209,48 @@ def test_new_domain_search_stays_inside_its_domain(omop_connection):
 
 
 def test_blank_search_lists_most_common_measurements(omop_connection):
-    # Hemoglobin A1c: persons 1 and 3. Body mass index: person 2.
-    assert found_ids(omop_connection, "measurement", "") == [4200001, 4200002]
+    # Both items have 2 persons (hemoglobin A1c: 1 and 3, body mass index: 2 and 4). The names decide.
+    assert found_ids(omop_connection, "measurement", "") == [4200002, 4200001]
+
+
+# ---- the lowest and highest number of a measurement (AC57) ----
+
+
+def search_result(connection, domain, search_text, concept_id):
+    results = search_concepts(connection, "omop", domain, search_text)
+    return next(result for result in results if result["concept_id"] == concept_id)
+
+
+def test_measurement_result_shows_the_lowest_and_highest_number_in_the_data(omop_connection):
+    result = search_result(omop_connection, "measurement", "hemoglobin", 4200001)
+    assert (result["value_min"], result["value_max"]) == (5.2, 7.4)
+
+
+def test_numbers_are_floats(omop_connection):
+    result = search_result(omop_connection, "measurement", "hemoglobin", 4200001)
+    assert type(result["value_min"]) is float and type(result["value_max"]) is float
+
+
+def test_row_with_no_number_is_ignored_in_the_lowest_and_highest(omop_connection):
+    # Body mass index: person 2 has 27.5, person 4 has a row with no number.
+    result = search_result(omop_connection, "measurement", "body mass", 4200002)
+    assert (result["value_min"], result["value_max"]) == (27.5, 27.5)
+
+
+def test_measurement_with_only_empty_numbers_has_no_lowest_or_highest(omop_connection):
+    omop_connection.execute("INSERT INTO omop.concept VALUES (4200003, 'Throat culture', 'Measurement', 'LOINC')")
+    omop_connection.execute("INSERT INTO omop.measurement VALUES (1, 4200003, '2020-01-01', NULL)")
+    result = search_result(omop_connection, "measurement", "throat", 4200003)
+    assert (result["value_min"], result["value_max"]) == (None, None)
+
+
+def test_measurement_result_has_exactly_six_fields(omop_connection):
+    results = search_concepts(omop_connection, "omop", "measurement", "")
+    expected = {"concept_id", "name", "vocabulary", "persons", "value_min", "value_max"}
+    assert all(set(result) == expected for result in results)
+
+
+def test_drug_result_still_has_exactly_four_fields(omop_connection):
+    results = search_concepts(omop_connection, "omop", "drug", "")
+    assert all(set(result) == {"concept_id", "name", "vocabulary", "persons"} for result in results)
 

@@ -4,7 +4,7 @@ Both checks give a plain message (OmopSpecError) that is safe to show the user.
 """
 import psycopg
 
-from omop_criteria import OmopSpecError, check_domain_name, check_schema_name, parse_spec
+from omop_criteria import OmopSpecError, check_domain_name, check_schema_name, has_value_range, parse_spec
 from omop_domains import OMOP_DOMAINS
 
 COUNT_TIME_LIMIT_SECONDS = 15
@@ -35,7 +35,7 @@ def list_event_columns_needed_by_spec(spec):
     """Return (table, column) pairs that the rules read in the event tables, each pair once.
 
     Every rule reads person_id and the concept column. Only a "Has" rule reads the start date,
-    for the first date summary column.
+    for the first date summary column. A rule with a value range also reads the value column.
     """
     clean_spec = parse_spec(spec)
     pairs = []
@@ -44,6 +44,8 @@ def list_event_columns_needed_by_spec(spec):
         columns = ["person_id", domain["concept_column"]]
         if not rule["exclude"]:
             columns.append(domain["date_column"])
+        if has_value_range(rule):
+            columns.append(domain["value_column"])
         for column in columns:
             pair = (domain["table"], column)
             if pair not in pairs:
@@ -52,10 +54,16 @@ def list_event_columns_needed_by_spec(spec):
 
 
 def list_event_columns_needed_by_search(domain):
-    """Return (table, column) pairs that a concept search reads in the domain's event table."""
+    """Return (table, column) pairs that a concept search reads in the domain's event table.
+
+    A domain with a value column is also searched for its lowest and highest number.
+    """
     check_domain_name(domain)
     entry = OMOP_DOMAINS[domain]
-    return [(entry["table"], "person_id"), (entry["table"], entry["concept_column"])]
+    pairs = [(entry["table"], "person_id"), (entry["table"], entry["concept_column"])]
+    if "value_column" in entry:
+        pairs.append((entry["table"], entry["value_column"]))
+    return pairs
 
 
 def check_tables_exist(connection, schema, table_names):

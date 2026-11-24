@@ -151,6 +151,47 @@ def test_samples_include_the_summary_values(omop_app):
     assert person_one["rule2_items"] == "Metformin 500 MG Oral Tablet"
 
 
+# ---- the value range of a measurement rule (AC56) ----
+
+
+def test_range_cohort_counts_only_people_with_a_result_inside_it(omop_app):
+    # Person 1 has 6.1 and 7.4, person 3 has 5.2. Only person 1 has a result from 6.0 to 6.5.
+    assert request_cohort(a1c_range_spec(6.0, 6.5)) == {"count": 1}
+
+
+def test_range_cohort_with_no_matching_result_is_empty(omop_app):
+    assert request_cohort(a1c_range_spec(6.5, 7.0)) == {"count": 0}
+
+
+def test_range_cohort_rows_are_the_people_inside_the_range(omop_app):
+    request_cohort(a1c_range_spec(value_max=5.5))
+    with active_session() as session:
+        rows = main.get_samples(a_plain_request(), session)
+    assert [row["person_id"] for row in rows] == [3]
+
+
+def test_range_adds_no_columns_to_the_explorer(omop_app, tmp_path):
+    request_cohort(a1c_range_spec(6.0, 8.0))
+    saved = json.loads(saved_schema_text(tmp_path))
+    assert [mapping["column"] for mapping in saved["mappings"]][5:] == ["rule1_items", "rule1_first_date"]
+
+
+def test_range_that_is_backwards_rejected_with_a_plain_message(omop_app):
+    message = request_and_expect_rejection(a1c_range_spec(8, 7))
+    assert message == "The lowest value must not be higher than the highest value."
+
+
+def test_two_measurements_in_one_rule_rejected_with_a_plain_message(omop_app):
+    message = request_and_expect_rejection(make_spec(("measurement", [4200001, 4200002], False)))
+    assert message == "A measurement rule can hold only one item."
+
+
+def test_range_on_a_condition_rejected_with_a_plain_message(omop_app):
+    spec = make_spec(("condition", [201826], False))
+    spec["criteria"][0]["value_min"] = 1
+    assert request_and_expect_rejection(spec) == "A value range applies to measurements only."
+
+
 def test_samples_return_the_matching_people(omop_app):
     request_cohort(diabetes_and_metformin_spec())
     with active_session() as session:
@@ -243,6 +284,45 @@ def test_database_without_date_column_rejected_and_previous_cohort_kept(
     assert message == (
         "This database does not look like OMOP data. "
         "Column condition_start_date was not found in table condition_occurrence of schema omop_no_dates."
+    )
+    assert saved_schema_text(tmp_path) == before
+    assert db.get_active_resource_id() == "first-resource"
+
+
+@pytest.fixture
+def omop_schema_without_values(omop_database):
+    """A schema with the tables a measurement rule needs, but no value column. Removed after the test."""
+    with psycopg.connect(omop_database, autocommit=True) as admin:
+        admin.execute("CREATE SCHEMA omop_no_values")
+        admin.execute("CREATE TABLE omop_no_values.person (person_id integer)")
+        admin.execute("CREATE TABLE omop_no_values.concept (concept_id integer)")
+        admin.execute(
+            "CREATE TABLE omop_no_values.measurement "
+            "(person_id integer, measurement_concept_id integer, measurement_date date)"
+        )
+    yield
+    with psycopg.connect(omop_database, autocommit=True) as admin:
+        admin.execute("DROP SCHEMA omop_no_values CASCADE")
+
+
+def a1c_range_spec(value_min=None, value_max=None, schema="omop"):
+    spec = make_spec(("measurement", [4200001], False), schema=schema)
+    spec["criteria"][0]["value_min"] = value_min
+    spec["criteria"][0]["value_max"] = value_max
+    return spec
+
+
+def test_database_without_value_column_rejected_when_a_range_is_set(
+    omop_app, tmp_path, omop_schema_without_values
+):
+    request_cohort(diabetes_and_metformin_spec(), resource_id="first-resource")
+    before = saved_schema_text(tmp_path)
+
+    message = request_and_expect_rejection(a1c_range_spec(6.5, schema="omop_no_values"), "second-resource")
+
+    assert message == (
+        "This database does not look like OMOP data. "
+        "Column value_as_number was not found in table measurement of schema omop_no_values."
     )
     assert saved_schema_text(tmp_path) == before
     assert db.get_active_resource_id() == "first-resource"

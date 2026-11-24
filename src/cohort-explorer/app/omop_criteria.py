@@ -2,6 +2,7 @@
 
 This file grows over several commits. The full contract is in omop-poc-spec.md.
 """
+import math
 import re
 
 from omop_domains import OMOP_DOMAINS
@@ -21,7 +22,7 @@ LOWEST_CONCEPT_ID = -2_147_483_648
 HIGHEST_CONCEPT_ID = 2_147_483_647
 
 SPEC_KEYS = {"schema", "criteria"}
-RULE_KEYS = {"domain", "concept_ids", "exclude"}
+RULE_KEYS = {"domain", "concept_ids", "exclude", "value_min", "value_max"}
 
 SCHEMA_NAME_MESSAGE = (
     "The schema name may use only letters, digits and underscores, "
@@ -37,6 +38,9 @@ CONCEPT_OUT_OF_RANGE_MESSAGE = (
     f"Concept IDs must be between {LOWEST_CONCEPT_ID} and {HIGHEST_CONCEPT_ID}."
 )
 EXCLUDE_NOT_BOOLEAN_MESSAGE = "The Has / Does not have choice must be true or false."
+VALUE_NOT_NUMBER_MESSAGE = "The lowest and highest value must be numbers."
+VALUE_WRONG_DOMAIN_MESSAGE = "A value range applies to measurements only."
+VALUE_BACKWARDS_MESSAGE = "The lowest value must not be higher than the highest value."
 
 
 class OmopSpecError(ValueError):
@@ -84,11 +88,22 @@ def _parse_one_rule(rule):
 
     concept_ids = rule.get("concept_ids")
     _check_concept_ids(concept_ids)
+    _check_one_item_where_values_apply(domain, concept_ids)
 
     exclude = rule.get("exclude", False)
     _check_exclude_flag(exclude)
 
-    return {"domain": domain, "concept_ids": list(concept_ids), "exclude": exclude}
+    value_min = _check_value_bound(rule.get("value_min"))
+    value_max = _check_value_bound(rule.get("value_max"))
+    _check_value_range(domain, value_min, value_max)
+
+    return {
+        "domain": domain,
+        "concept_ids": list(concept_ids),
+        "exclude": exclude,
+        "value_min": value_min,
+        "value_max": value_max,
+    }
 
 
 def _check_no_unexpected_keys(data, allowed_keys):
@@ -123,6 +138,42 @@ def _check_concept_ids(concept_ids):
             raise OmopSpecError(CONCEPT_NOT_WHOLE_NUMBER_MESSAGE)
         if not LOWEST_CONCEPT_ID <= concept_id <= HIGHEST_CONCEPT_ID:
             raise OmopSpecError(CONCEPT_OUT_OF_RANGE_MESSAGE)
+
+
+def _check_value_bound(bound):
+    """Return None, or the bound as a float. Raise OmopSpecError unless it is a finite number."""
+    if bound is None:
+        return None
+    # type() is checked, not isinstance: True and False are ints in Python, and must not pass.
+    if type(bound) not in (int, float):
+        raise OmopSpecError(VALUE_NOT_NUMBER_MESSAGE)
+    try:
+        bound_as_float = float(bound)
+    except OverflowError as error:  # an integer too large for a float
+        raise OmopSpecError(VALUE_NOT_NUMBER_MESSAGE) from error
+    if not math.isfinite(bound_as_float):
+        raise OmopSpecError(VALUE_NOT_NUMBER_MESSAGE)
+    return bound_as_float
+
+
+def _check_one_item_where_values_apply(domain, concept_ids):
+    """Raise OmopSpecError unless a rule on a domain with a value column holds exactly one item.
+
+    Numbers of different measurements (a temperature and an antibody level) cannot be put in
+    one range, so each measurement gets its own rule.
+    """
+    if "value_column" in OMOP_DOMAINS[domain] and len(concept_ids) != 1:
+        raise OmopSpecError(f"A {domain} rule can hold only one item.")
+
+
+def _check_value_range(domain, value_min, value_max):
+    """Raise OmopSpecError if a value range is set where it cannot be used, or is backwards."""
+    if value_min is None and value_max is None:
+        return
+    if "value_column" not in OMOP_DOMAINS[domain]:
+        raise OmopSpecError(VALUE_WRONG_DOMAIN_MESSAGE)
+    if value_min is not None and value_max is not None and value_min > value_max:
+        raise OmopSpecError(VALUE_BACKWARDS_MESSAGE)
 
 
 def _check_exclude_flag(exclude):
@@ -203,8 +254,31 @@ def _build_rule_clause(quoted_schema, rule):
     keyword = "NOT EXISTS" if rule["exclude"] else "EXISTS"
     return (
         f"{keyword} (SELECT 1 FROM {quoted_schema}.{event_table} e "
-        f"WHERE e.person_id = p.person_id AND e.{concept_column} IN ({concept_ids}))"
+        f"WHERE e.person_id = p.person_id AND e.{concept_column} IN ({concept_ids})"
+        f"{_build_value_range_conditions(rule)})"
     )
+
+
+def _build_value_range_conditions(rule):
+    """Return " AND e.<value> >= <low> AND e.<value> <= <high>", or "" when the rule has no range.
+
+    The numbers are floats that parse_spec has checked to be finite, so repr() is safe SQL text.
+    A row with no number never matches, because NULL is neither >= nor <= anything.
+    """
+    if not has_value_range(rule):
+        return ""
+    value_column = quote_name(OMOP_DOMAINS[rule["domain"]]["value_column"])
+    conditions = ""
+    if rule["value_min"] is not None:
+        conditions += f" AND e.{value_column} >= {rule['value_min']!r}"
+    if rule["value_max"] is not None:
+        conditions += f" AND e.{value_column} <= {rule['value_max']!r}"
+    return conditions
+
+
+def has_value_range(rule):
+    """Say whether a clean rule has a lowest value, a highest value, or both."""
+    return rule["value_min"] is not None or rule["value_max"] is not None
 
 
 def _build_summary_join(quoted_schema, rule, rule_number):
@@ -223,7 +297,8 @@ def _build_summary_join(quoted_schema, rule, rule_number):
         f"           CAST(min(e.{date_column}) AS text) AS first_date\n"
         f"    FROM {quoted_schema}.{event_table} e\n"
         f'    JOIN {quoted_schema}."concept" c ON c.concept_id = e.{concept_column}\n'
-        f"    WHERE e.person_id = p.person_id AND e.{concept_column} IN ({concept_ids})\n"
+        f"    WHERE e.person_id = p.person_id AND e.{concept_column} IN ({concept_ids})"
+        f"{_build_value_range_conditions(rule)}\n"
         f") r{rule_number} ON true\n"
     )
 

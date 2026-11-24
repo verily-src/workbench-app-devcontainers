@@ -124,6 +124,32 @@ def test_does_not_have_rule_does_not_need_the_date_column():
     ]
 
 
+def test_measurement_rule_with_a_range_also_needs_the_value_column():
+    spec = make_spec(("measurement", [4200001], False))
+    spec["criteria"][0]["value_min"] = 6.5
+    assert list_event_columns_needed_by_spec(spec) == [
+        ("measurement", "person_id"),
+        ("measurement", "measurement_concept_id"),
+        ("measurement", "measurement_date"),
+        ("measurement", "value_as_number"),
+    ]
+
+
+def test_does_not_have_measurement_rule_with_a_range_needs_the_value_column():
+    spec = make_spec(("measurement", [4200001], True))
+    spec["criteria"][0]["value_max"] = 9
+    assert list_event_columns_needed_by_spec(spec) == [
+        ("measurement", "person_id"),
+        ("measurement", "measurement_concept_id"),
+        ("measurement", "value_as_number"),
+    ]
+
+
+def test_measurement_rule_without_a_range_does_not_need_the_value_column():
+    spec = make_spec(("measurement", [4200001], False))
+    assert ("measurement", "value_as_number") not in list_event_columns_needed_by_spec(spec)
+
+
 def test_each_event_column_is_listed_once():
     spec = make_spec(("condition", [201826], False), ("condition", [320128], False))
     assert len(list_event_columns_needed_by_spec(spec)) == 3
@@ -133,6 +159,14 @@ def test_search_needs_person_and_concept_columns_only():
     assert list_event_columns_needed_by_search("drug") == [
         ("drug_exposure", "person_id"),
         ("drug_exposure", "drug_concept_id"),
+    ]
+
+
+def test_measurement_search_also_needs_the_value_column():
+    assert list_event_columns_needed_by_search("measurement") == [
+        ("measurement", "person_id"),
+        ("measurement", "measurement_concept_id"),
+        ("measurement", "value_as_number"),
     ]
 
 
@@ -165,6 +199,32 @@ def test_missing_date_column_is_fine_for_a_does_not_have_rule(omop_connection):
     )
     spec = make_spec(("condition", [201826], True))
     check_columns_exist(omop_connection, "omop_no_dates", list_event_columns_needed_by_spec(spec))
+
+
+def test_missing_value_column_named_in_message_when_a_range_is_set(omop_connection):
+    omop_connection.execute("CREATE SCHEMA omop_no_values")
+    omop_connection.execute(
+        "CREATE TABLE omop_no_values.measurement "
+        "(person_id integer, measurement_concept_id integer, measurement_date date)"
+    )
+    spec = make_spec(("measurement", [4200001], False))
+    spec["criteria"][0]["value_min"] = 6.5
+    with pytest.raises(OmopSpecError) as error:
+        check_columns_exist(omop_connection, "omop_no_values", list_event_columns_needed_by_spec(spec))
+    assert str(error.value) == (
+        "This database does not look like OMOP data. "
+        "Column value_as_number was not found in table measurement of schema omop_no_values."
+    )
+
+
+def test_missing_value_column_is_fine_without_a_range(omop_connection):
+    omop_connection.execute("CREATE SCHEMA omop_no_values")
+    omop_connection.execute(
+        "CREATE TABLE omop_no_values.measurement "
+        "(person_id integer, measurement_concept_id integer, measurement_date date)"
+    )
+    spec = make_spec(("measurement", [4200001], False))
+    check_columns_exist(omop_connection, "omop_no_values", list_event_columns_needed_by_spec(spec))
 
 
 def test_column_check_rejects_unsafe_schema_name(omop_connection):

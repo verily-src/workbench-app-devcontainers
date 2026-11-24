@@ -35,7 +35,8 @@ def search_concepts(connection, schema, domain, search_text):
     the concept name, in any case. A blank search text returns the most common concepts.
     Each result is a dictionary with the keys concept_id, name, vocabulary and persons
     (how many different people have that concept). The most common concepts come first,
-    then the names in alphabetical order.
+    then the names in alphabetical order. For a domain with a value column (measurement), each
+    result also has value_min and value_max: the lowest and highest number in the data, or None.
     """
     check_schema_name(schema)
     check_domain_name(domain)
@@ -45,10 +46,15 @@ def search_concepts(connection, schema, domain, search_text):
     rows = run_query_with_time_limit(
         connection, sql, parameters, SEARCH_TIME_LIMIT_SECONDS, SEARCH_TOO_SLOW_MESSAGE
     )
-    return [
-        {"concept_id": row[0], "name": row[1], "vocabulary": row[2], "persons": row[3]}
-        for row in rows
-    ]
+    domain_has_values = "value_column" in OMOP_DOMAINS[domain]
+    results = []
+    for row in rows:
+        result = {"concept_id": row[0], "name": row[1], "vocabulary": row[2], "persons": row[3]}
+        if domain_has_values:
+            result["value_min"] = row[4]
+            result["value_max"] = row[5]
+        results.append(result)
+    return results
 
 
 def _split_search_text(search_text):
@@ -75,9 +81,17 @@ def _build_search_sql(schema, domain, words):
     where_line = f"WHERE {name_tests}\n" if words else ""
     limit = MAX_RESULTS if words else MAX_RESULTS_FOR_BLANK_SEARCH
 
+    value_selects = ""
+    if "value_column" in entry:
+        value_column = quote_name(entry["value_column"])
+        value_selects = (
+            f", CAST(MIN(e.{value_column}) AS double precision) AS value_min"
+            f", CAST(MAX(e.{value_column}) AS double precision) AS value_max"
+        )
+
     sql = (
         "SELECT c.concept_id, c.concept_name, c.vocabulary_id, "
-        "COUNT(DISTINCT e.person_id) AS persons\n"
+        f"COUNT(DISTINCT e.person_id) AS persons{value_selects}\n"
         f'FROM {quoted_schema}."concept" c\n'
         f"JOIN {quoted_schema}.{event_table} e ON e.{concept_column} = c.concept_id\n"
         f"{where_line}"

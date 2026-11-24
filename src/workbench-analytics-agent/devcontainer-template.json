@@ -1,6 +1,6 @@
 {
   "id": "workbench-analytics-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Verily Product Analytics Agent",
   "description": "Streamlit page for asking plain-language analytics questions in a Workbench workspace (prototype)"
 }

@@ -62,7 +62,8 @@ local development (`dev/run-dev.sh` sets it).
 `demo.yaml` has two lists, `starters` and `next_steps`. Each chip is a `label`, a `prompt`
 (sent as the person's message, word for word), an optional `hint` and an optional `feature`
 (a name from `features.yaml`): such a chip appears only when the access state has that feature
-on. `about` is the text of
+on. An optional `source` is sent with the prompt as a synthetic part of the same message: the
+agent reads it (an approved text to answer from, for example) and the page does not draw it. `about` is the text of
 the side panel's last section. A chip without a label or a prompt stops the server at start.
 
 The default chips name no condition, gene, dataset or workflow. `examples/ehr-genomics-chips.yaml`

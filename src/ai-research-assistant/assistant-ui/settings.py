@@ -59,7 +59,9 @@ def body_refusal(method, path, body):
 
 
 def load_demo(path=None):
-    """The chips file, checked: a list of starters and of next steps, each a label and a prompt."""
+    """The chips file, checked: a list of starters and of next steps, each a label and a prompt.
+    A chip's optional source is sent with its prompt as context the agent reads and the page does
+    not show (an approved text for the agent to answer from)."""
     path = Path(path or DEMO_FILE)
     data = yaml.safe_load(path.read_text()) or {}
     demo = {}
@@ -69,7 +71,8 @@ def load_demo(path=None):
             if not isinstance(chip, dict) or not chip.get("label") or not chip.get("prompt"):
                 raise ValueError(f"{path}: every chip in {group} needs a label and a prompt")
         demo[group] = [{"label": str(c["label"]), "prompt": str(c["prompt"]).strip(),
-                        "hint": str(c.get("hint", "")), "feature": str(c.get("feature", ""))} for c in chips]
+                        "hint": str(c.get("hint", "")), "feature": str(c.get("feature", "")),
+                        "source": str(c.get("source", "")).strip()} for c in chips]
     demo["about"] = [str(line) for line in data.get("about") or []]
     return demo
 

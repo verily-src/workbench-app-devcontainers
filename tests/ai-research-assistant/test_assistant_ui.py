@@ -75,6 +75,19 @@ class ChipsFileTests(unittest.TestCase):
         self.assertIn("members of this cohort", forecast[0]["prompt"])
         self.assertNotIn("outside", forecast[0]["prompt"])
 
+    def test_a_chip_source_is_loaded_and_sent_as_a_part_the_page_does_not_draw(self):
+        demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")
+        sourced = [c for c in demo["starters"] if c["source"]]
+        self.assertEqual([c["label"] for c in sourced],
+                         ["What is the Verily Pre platform?", "How does Verily Pre govern data?"])
+        for chip in sourced:
+            self.assertIn("approved description", chip["source"])
+            self.assertNotIn("Verily Pre is the governed", chip["prompt"])
+        self.assertEqual(settings.load_demo(UI / "demo.yaml")["starters"][0]["source"], "")
+        script = (UI / "static" / "app.js").read_text()
+        self.assertIn('parts.push({ type: "text", text: source, synthetic: true })', script)
+        self.assertIn('p.type === "text" && !p.synthetic', script)
+
     def test_the_image_carries_the_examples(self):
         self.assertIn("COPY examples ./examples", (UI / "Dockerfile").read_text())
 

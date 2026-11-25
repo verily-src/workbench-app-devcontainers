@@ -231,7 +231,8 @@
 
   // ---- Sending ----------------------------------------------------------------------------
 
-  function send(text, title) {
+  // source: a chip's context for the agent, sent as a synthetic part, which the page does not draw.
+  function send(text, title, source) {
     text = (text || "").trim();
     if (!text || state.busy) return;
     showError(""); setBusy(true);
@@ -244,7 +245,9 @@
         refreshSessionsSoon(); return session.id;
       });
     ready.then(function (sid) {
-      return oc("session/" + sid + "/prompt_async", { parts: [{ type: "text", text: text }] });
+      var parts = [{ type: "text", text: text }];
+      if (source) parts.push({ type: "text", text: source, synthetic: true });
+      return oc("session/" + sid + "/prompt_async", { parts: parts });
     }).catch(function (error) { setBusy(false); showError(error.message); });
   }
 
@@ -734,10 +737,10 @@
     ["layout", "new-session", "conn-pill", "model-pill"].forEach(function (id) { $(id).hidden = false; });
     if (config.input === "chips") document.body.classList.add("chips-only");
     config.starters.forEach(function (item) {
-      $("starters").append(chip(item, function (picked) { send(picked.prompt, picked.label); }));
+      $("starters").append(chip(item, function (picked) { send(picked.prompt, picked.label, picked.source); }));
     });
     config.next_steps.forEach(function (item) {
-      $("next-steps").append(chip(item, function (picked) { send(picked.prompt); }));
+      $("next-steps").append(chip(item, function (picked) { send(picked.prompt, null, picked.source); }));
     });
     config.about.forEach(function (line) { $("about").append(el("li", null, line)); });
 

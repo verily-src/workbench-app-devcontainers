@@ -1,0 +1,9 @@
+#!/bin/bash
+set -o errexit
+set -o nounset
+set -o pipefail
+case "$*" in
+    'workspace describe --format=json') printf '%s\n' '{"id":"dependency-fixture","name":"Dependency fixture","cloudPlatform":"GCP","highestRole":"OWNER","googleProjectId":"synthetic-project","orgId":"synthetic-org","properties":{}}' ;;
+    'resource list --format=json'|'workflow list --format=json'|'app list --format=json') printf '[]\n' ;;
+    *) echo 'Unsupported synthetic wb command' >&2; exit 2 ;;
+esac

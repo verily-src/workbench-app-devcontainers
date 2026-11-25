@@ -46,10 +46,10 @@ class AllowedCallsTests(unittest.TestCase):
 
 class ChipsFileTests(unittest.TestCase):
     def test_the_chips_files_load_with_starters_and_next_steps(self):
-        for path in (UI / "demo.yaml", UI / "examples" / "ehr-genomics-chips.yaml"):
+        for path, starters in ((UI / "demo.yaml", 3), (UI / "examples" / "ehr-genomics-chips.yaml", 2)):
             with self.subTest(path=path.name):
                 demo = settings.load_demo(path)
-                self.assertGreaterEqual(len(demo["starters"]), 3)
+                self.assertGreaterEqual(len(demo["starters"]), starters)
                 self.assertGreaterEqual(len(demo["next_steps"]), 3)
                 for chip in demo["starters"] + demo["next_steps"]:
                     self.assertTrue(chip["label"] and chip["prompt"])
@@ -67,6 +67,13 @@ class ChipsFileTests(unittest.TestCase):
         self.assertIn("registered sarek workflow with Parabricks", text)
         self.assertNotIn("Who carries APOL1", text)
         self.assertIn("ASSISTANT_DEMO", text)
+
+    def test_the_ehr_genomics_chips_forecast_the_cohorts_own_members_in_one_step(self):
+        demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")
+        forecast = [c for c in demo["next_steps"] if c["feature"] == "kumo_forecast"]
+        self.assertEqual(len(forecast), 1)
+        self.assertIn("members of this cohort", forecast[0]["prompt"])
+        self.assertNotIn("outside", forecast[0]["prompt"])
 
     def test_the_image_carries_the_examples(self):
         self.assertIn("COPY examples ./examples", (UI / "Dockerfile").read_text())

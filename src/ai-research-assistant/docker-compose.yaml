@@ -109,6 +109,9 @@ services:
       PORT: "9002"
       # "chips" hides the text box, so the page offers only the suggested prompts.
       ASSISTANT_INPUT: "free"
+      # The chips: the EHR-and-genomes story (assistant-ui/README.md, "Chips"). Unset, the
+      # generic chips in assistant-ui/demo.yaml.
+      ASSISTANT_DEMO: "/opt/assistant-ui/examples/ehr-genomics-chips.yaml"
       # Who may use the assistant: the page says so to anyone it does not admit.
       ASSISTANT_ACCESS: "/ara/access.json"
     volumes:

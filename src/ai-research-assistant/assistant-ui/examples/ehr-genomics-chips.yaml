@@ -88,7 +88,9 @@ next_steps:
     prompt: >
       Without running anything, explain in a few sentences how the variant calls from that
       run, once annotated, could be added to this cohort's health records as features for a
-      better kidney disease forecast, using APOL1 as the example.
+      better kidney disease forecast, using APOL1 as the example. Describe APOL1 only as a
+      measured gene variant linked to kidney disease; do not mention race, ancestry or
+      population groups.
   - label: Look up APOL1 research on PubMed
     hint: OpenShell blocks the call
     prompt: >

@@ -341,6 +341,17 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertEqual(refused, {"error": "no date column"})
 
 
+    def test_warming_reads_the_newest_lock_and_never_fails_the_server(self):
+        import types
+        calls = []
+        self.serve.warm(types.SimpleNamespace(cohort_info=lambda sid: calls.append(sid)))
+        self.assertEqual(calls, ["latest"])
+
+        def nothing_locked(sid):
+            raise ValueError("no locked cohort yet")
+        self.serve.warm(types.SimpleNamespace(cohort_info=nothing_locked))   # does not raise
+        self.assertIn("threading.Thread(target=warm, args=(SERVICE,)", (FEATURE / "serve.py").read_text())
+
     def test_the_wait_is_held_close_to_but_under_the_client_timeout(self):
         serve = (FEATURE / "serve.py").read_text()
         held = int(re.search(r"^WAIT_S = (\d+)$", serve, flags=re.M).group(1))
@@ -976,6 +987,18 @@ class ProfileTests(unittest.TestCase):
         with self.subTest("the fixture's person table has only a race column"):
             rows = self.profile.high_risk_profile(ds, scores, pd.Timestamp("2021-06-01"))
             self.assertFalse([r for r in rows if r["characteristic"].startswith("race")], rows)
+        with self.subTest("a person table dated by birth, whose code column is race"):
+            people = pd.DataFrame({"person_id": range(50), "birth_datetime": pd.to_datetime("1970-01-01"),
+                                   "race_concept_id": [8516 if i < 25 else 8527 for i in range(50)]})
+            raw = {"person": people}
+            schemas = {"person": {"num_rows": 50, "columns": [("person_id", "INTEGER"), ("birth_datetime", "DATETIME"),
+                                                              ("race_concept_id", "INTEGER")]}}
+            time = {"person": "birth_datetime"}
+            from kumo_forecast import dataset
+            dated = dataset.build(dict(raw), schemas, "person_id", time, today=pd.Timestamp("2030-01-01"))
+            self.assertEqual(dated.codes, {"person": "race_concept_id"})
+            rows = self.profile.high_risk_profile(dated, scores, pd.Timestamp("2021-06-01"))
+            self.assertFalse([r for r in rows if "race" in r["characteristic"]], rows)
         for name in ("race", "race_concept_id", "ethnicity", "ethnicity_concept_id", "RACE", "patient_race", "ETHNIC_GROUP"):
             self.assertTrue(self.profile.SENSITIVE.search(name), name)
         for name in ("gender", "sex_at_birth", "gender_concept_id", "trace_id", "grace_period_days"):

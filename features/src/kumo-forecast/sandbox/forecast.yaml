@@ -41,7 +41,8 @@ instructions: |
   3. Before `forecast_forecast_risk`, look at `tables` in the answer of step 1. Choose the ones
      that record what happened to people and when, and that bear on the outcome. Leave out
      tables that copy or index other tables, and tables of file locations. Tell the person which
-     tables you chose and why, in one line, and pass them as `tables`. Then
+     tables you chose and why, in one line, and pass them as `tables`; when the user asks for
+     all of the dataset's tables, pass no `tables` (the graph step 1 built is reused). Then
      `forecast_forecast_risk` with `outcome`, `as_of` (YYYY-MM-DD, optional: the default is the
      data end less `horizon_days`, so the outcome can be checked) and `horizon_days` (30 to
      1825). It takes about a minute. Report the members at risk, the `as_of` date it used, the

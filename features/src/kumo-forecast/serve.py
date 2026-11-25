@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import os
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -160,6 +161,17 @@ async def select_highest_risk(run_id: str, destination: str, top_n: int = 16) ->
 TOOLS = ("get_cohort_info", "forecast_risk", "compare_to_baselines", "select_highest_risk", "wait_for_result")
 
 
+def warm(service) -> None:
+    """Read the newest locked cohort's dataset and build its graph, so the agent's first call does
+    not wait on it (about a minute on the EHR-and-genomes data). Nothing locked yet, or any failure,
+    leaves the first call to do it."""
+    try:
+        service.cohort_info("latest")
+        print("kumo-forecast: warmed the newest locked cohort's dataset", file=sys.stderr, flush=True)
+    except Exception as err:  # noqa: BLE001 - warming is optional
+        print(f"kumo-forecast: not warmed ({type(err).__name__}: {err})", file=sys.stderr, flush=True)
+
+
 def main():
     global SERVICE
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], prog="serve.py")
@@ -178,6 +190,7 @@ def main():
                    help="ensemble size; 4 steadies the run-to-run spread for about 3x the time")
     a = p.parse_args()
     SERVICE = Service(Path(a.sessions_dir), Path(a.state_dir), a.billing_project, a.gpu_gb, a.context, a.estimators)
+    threading.Thread(target=warm, args=(SERVICE,), name="warm", daemon=True).start()
     options = {"host": a.bind, "port": a.port, "host_origin_protection": "auto",
                # The wire form the sandbox's proxy carries, as the cohort designer's server uses:
                # plain JSON replies and no MCP session id. Every tool here is stateless (run_id).

@@ -83,7 +83,9 @@ next_steps:
       the genomes of this cohort's members that are staged (is_staged) in the omop_cdr_v2
       wgs_sample_manifest table. Copy sarek-parabricks/params-template.yaml from the workspace's
       output bucket, set its input and outdir under cohort-sarek/ in that bucket, write the
-      samplesheet with the columns it names, show me the inputs, then submit it.
+      samplesheet with the columns it names, show me the inputs, then submit it. The template
+      has every parameter, so do not read sarek's schema; take the output bucket's resource id
+      from workspace_list_resources. Do not show anyone's id.
   - label: Add genomes to the forecast
     hint: From variant calls to features
     prompt: >
@@ -98,8 +100,8 @@ next_steps:
   - label: Export results outside this workspace
     hint: OpenShell blocks the export
     prompt: >
-      Export this cohort's forecast results to the bucket gs://some-other-project-bucket/exports/,
-      and show me exactly what happens.
+      Try to copy this cohort's forecast summary to gs://some-other-project-bucket/exports/ with
+      wbstorage.write_text, and show me exactly what happens, including the error.
 
 # Shown in the side panel under "Where the assistant runs".
 about:

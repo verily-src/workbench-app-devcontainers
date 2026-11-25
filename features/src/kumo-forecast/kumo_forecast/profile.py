@@ -70,6 +70,8 @@ def high_risk_profile(ds: Dataset, scores: pd.DataFrame, as_of: pd.Timestamp,
         last = d[d[ds.time[sname]] <= as_of].sort_values(ds.time[sname]).groupby(key)[value].last()
         both(f"median latest {info['name']} ({info['source']})", lambda ids, last=last: _median(last.reindex(ids)))
     for name, code in ds.codes.items():
+        if SENSITIVE.search(code):
+            continue    # a person table dated by birth has race as its code column
         d = ds.raw[name]
         d = d[(d[ds.raw_time[name]] <= as_of) & d[key].isin(s[key])].drop_duplicates([key, code])
         top_share = d[d[key].isin(top)][code].value_counts() / max(len(top), 1)

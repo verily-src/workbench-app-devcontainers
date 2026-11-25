@@ -51,3 +51,37 @@ containers_ready() {
         length > 0 and all(.[];
             .State.Running and ((.State.Health.Status // "healthy") == "healthy"))' <<< "${containers}" > /dev/null
 }
+
+# Prints "<ip>:<port>" for share-enabled VMs: the container's IPv4 address on
+# app-network and the container side of its first published port. The proxy agent
+# dials the container there, so X-App-Port reaches the container's ports and never
+# the VM's own. Fails if the address is missing, loopback or link-local.
+share_enabled_host() {
+    local container="$1" inspect ip port
+    inspect=$(docker inspect "${container}") || return
+    ip=$(jq -r '.[0].NetworkSettings.Networks["app-network"].IPAddress // empty' <<< "${inspect}") || return
+    # The same binding the default --host uses, keyed by its container port.
+    port=$(jq -r '[.[0].NetworkSettings.Ports // {} | to_entries[]
+        | select(any(.value[]?; .HostIp == "0.0.0.0" or .HostIp == "::"))
+        | .key | split("/")[0]] | first // empty' <<< "${inspect}") || return
+    if ! is_container_ipv4 "${ip}"; then
+        echo "Error: ${container} has no usable IPv4 address on app-network (got '${ip}')" >&2
+        return 1
+    fi
+    if [[ -z "${port}" ]]; then
+        echo "Error: ${container} publishes no port" >&2
+        return 1
+    fi
+    printf '%s:%s\n' "${ip}" "${port}"
+}
+
+# Returns 0 for a dotted IPv4 address that isn't unspecified, loopback or link-local.
+is_container_ipv4() {
+    local octet
+    [[ "$1" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+    for octet in "${BASH_REMATCH[@]:1}"; do
+        (( 10#${octet} <= 255 )) || return 1
+    done
+    local first=$((10#${BASH_REMATCH[1]})) second=$((10#${BASH_REMATCH[2]}))
+    (( first != 0 && first != 127 && !(first == 169 && second == 254) ))
+}

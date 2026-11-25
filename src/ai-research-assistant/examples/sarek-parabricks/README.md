@@ -30,7 +30,8 @@ module in sarek carries the label `process_gpu`.
 
 The samplesheet, for CRAMs, has the columns `patient,sex,status,sample,cram,crai`: one row per
 sample, `status` 0 for a normal sample, `sex` as `XX`, `XY` or `NA`, and `cram` and `crai` as
-`gs://` URLs.
+`gs://` URLs. `patient` and `sample` must be text: a numeric id (a `person_id`) fails sarek's
+input validation, so use a text id such as the genome's `research_id`.
 
 The params file:
 

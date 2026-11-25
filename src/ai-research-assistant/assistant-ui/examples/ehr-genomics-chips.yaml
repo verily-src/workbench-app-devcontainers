@@ -83,9 +83,10 @@ next_steps:
       the genomes of this cohort's members that are staged (is_staged) in the omop_cdr_v2
       wgs_sample_manifest table. Copy sarek-parabricks/params-template.yaml from the workspace's
       output bucket, set its input and outdir under cohort-sarek/ in that bucket, write the
-      samplesheet with the columns it names, show me the inputs, then submit it. The template
-      has every parameter, so do not read sarek's schema; take the output bucket's resource id
-      from workspace_list_resources. Do not show anyone's id.
+      samplesheet with the columns it names (patient and sample are each genome's research_id),
+      show me the inputs, then submit it. The template has every parameter, so do not read
+      sarek's schema; take the output bucket's resource id from workspace_list_resources. Do not
+      show anyone's person_id.
   - label: Add genomes to the forecast
     hint: From variant calls to features
     prompt: >

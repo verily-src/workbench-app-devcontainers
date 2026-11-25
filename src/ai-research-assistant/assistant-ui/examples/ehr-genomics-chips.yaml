@@ -24,10 +24,6 @@ starters:
       diagnosis (condition concept 201826) who were 18 or older, in whole years, at their first
       one, each dated by that first diagnosis. Read times in UTC and keep your built readings for
       anything else.
-  - label: What data is here?
-    hint: The workspace's datasets and buckets
-    prompt: >
-      What data does this workspace have? List its datasets and buckets and say what each holds.
   - label: What is the Verily Pre platform?
     hint: The platform in brief
     prompt: >

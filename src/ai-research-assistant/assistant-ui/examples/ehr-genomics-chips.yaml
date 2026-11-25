@@ -29,8 +29,8 @@ starters:
     prompt: >
       What is the Verily Pre platform?
     source: |
-      Answer the question above from this approved description of Verily Pre only, in a few
-      sentences that keep its wording. Add no other claims, and do not call any tools.
+      Answer the question above with the approved description below, word for word and in
+      full, every sentence, and nothing else. Do not call any tools.
 
       Verily Pre is the governed intelligence platform for precision health. It transforms
       multimodal health data into insights, models and actions that make healthcare more
@@ -47,10 +47,10 @@ starters:
     prompt: >
       How does Verily Pre implement data governance?
     source: |
-      Answer the question above from this approved description of governance in Verily Pre
-      only, in a few sentences that keep its wording. Add no other claims, and do not call any
-      tools. You may add one sentence on how this session shows it: you run in an OpenShell
-      sandbox that only reaches this workspace's data and approved tools.
+      Answer the question above with the approved description below, word for word and in
+      full, every sentence. Then add this sentence as it is: "In this session, the assistant runs
+      in an OpenShell sandbox that reaches only this workspace's data and approved tools." Add
+      nothing else, and do not call any tools.
 
       Governance is enforced at the runtime boundary (workspaces, compute and egress) and at the
       metadata layer, so agents work only with data they're approved to use. Every change
@@ -61,8 +61,8 @@ starters:
     prompt: >
       Which NVIDIA tech is integrated in the Verily Pre platform?
     source: |
-      Answer the question above from this approved description only, in a few sentences that
-      keep its wording. Add no other claims, and do not call any tools.
+      Answer the question above with the approved description below, word for word and in
+      full, every sentence, and nothing else. Do not call any tools.
 
       Researchers using Verily's Pre platform will be able to leverage NVIDIA's AI libraries and
       frameworks, including OpenShell, CUDA-X, Nemotron, Kumo, NeMo, Parabricks, RAPIDS, and

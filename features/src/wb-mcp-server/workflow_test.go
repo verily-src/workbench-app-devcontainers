@@ -372,7 +372,7 @@ func TestWorkflowArgumentsTakeUUIDsTheCLIDoesNot(t *testing.T) {
 	script := `#!/bin/sh
 case "$*" in
  'status --format=json') printf '%s' '{"workspace":{"id":"my-ws","uuid":"` + ws + `"}}' ;;
- 'resource list --workspace=my-ws --format=json') printf '%s' '[{"id":"output","uuid":"` + bucket + `","bucketName":"output-wb-calm-fox-1234"},{"id":"params","uuid":"66666666-6666-4666-8666-666666666666","bucketName":"params-wb-calm-fox-1234"},{"id":"save-to-workbench","uuid":"88888888-8888-4888-8888-888888888888","bucketName":"save-to-workbench-wb-calm-fox-1234"}]' ;;
+ 'resource list --workspace=my-ws --format=json') printf '%s' '[{"id":"output","uuid":"` + bucket + `","bucketName":"acme-output"},{"id":"params","uuid":"66666666-6666-4666-8666-666666666666","bucketName":"acme-params"},{"id":"save-to-workbench","uuid":"88888888-8888-4888-8888-888888888888","bucketName":"acme-save-to-workbench"}]' ;;
  *) exit 99 ;;
 esac
 `
@@ -410,8 +410,8 @@ esac
 	// The cloud bucket name, with or without gs:// and a trailing slash, names its resource; a
 	// hyphenated resource ID that is no bucket's name passes through.
 	for given, want := range map[string]string{
-		"gs://output-wb-calm-fox-1234": "output", "gs://params-wb-calm-fox-1234/": "params",
-		"output-wb-calm-fox-1234": "output", "save-to-workbench": "save-to-workbench",
+		"gs://acme-output": "output", "gs://acme-params/": "params",
+		"acme-output": "output", "save-to-workbench": "save-to-workbench",
 		"gs://elsewhere-bucket": "gs://elsewhere-bucket",
 	} {
 		got := withCLIIDs(map[string]interface{}{"workspaceId": "my-ws", "outputBucketId": given}, "outputBucketId")

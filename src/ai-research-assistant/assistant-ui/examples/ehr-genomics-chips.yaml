@@ -81,8 +81,8 @@ next_steps:
       output bucket, set its input and outdir under cohort-sarek/ in that bucket, write the
       samplesheet with the columns it names (patient and sample are each genome's research_id),
       show me the inputs, then submit it. The template has every parameter, so do not read
-      sarek's schema; take the output bucket's resource id from workspace_list_resources. Do not
-      show anyone's person_id.
+      sarek's schema, and name the output bucket by its gs:// name in workflow_job_run (no resource
+      lookup is needed). Do not show anyone's person_id.
   - label: Add genomes to the forecast
     hint: From variant calls to features
     prompt: >

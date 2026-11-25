@@ -137,25 +137,29 @@ func cliWorkspaceID(workspace string) string {
 }
 
 // cliResourceID returns the resource ID that the wb CLI's --*-bucket-id flags take (the `id` of
-// `wb resource list`, such as "output"), given a resource's ID or UUID: workspace_list_resources
-// shows both, and the CLI finds no resource by its UUID. A UUID it cannot match is returned as given.
+// `wb resource list`, such as "output"), given a resource's ID, its UUID, or its cloud bucket name
+// (with or without gs://): workspace_list_resources shows the first two, the sandboxed agent knows
+// the bucket names, and the CLI finds a resource only by its ID. A value it cannot match is
+// returned as given.
 func cliResourceID(workspace, resource string) string {
-	if !isUUID(resource) {
-		return resource
+	bucketName := strings.TrimSuffix(strings.TrimPrefix(resource, "gs://"), "/")
+	if !isUUID(resource) && !strings.HasPrefix(resource, "gs://") && !strings.ContainsAny(resource, "-.") {
+		return resource // a plain resource ID; anything that may be a UUID or a bucket name is looked up
 	}
 	out, err := exec.Command("wb", "resource", "list", "--workspace="+workspace, "--format=json").Output()
 	if err != nil {
 		return resource
 	}
 	var listed []struct {
-		ID   string `json:"id"`
-		UUID string `json:"uuid"`
+		ID         string `json:"id"`
+		UUID       string `json:"uuid"`
+		BucketName string `json:"bucketName"`
 	}
 	if json.Unmarshal(out, &listed) != nil {
 		return resource
 	}
 	for _, r := range listed {
-		if strings.EqualFold(r.UUID, resource) && r.ID != "" {
+		if r.ID != "" && (strings.EqualFold(r.UUID, resource) || (r.BucketName != "" && r.BucketName == bucketName)) {
 			return r.ID
 		}
 	}

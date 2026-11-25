@@ -1,7 +1,8 @@
 # Chips for a workspace that holds the EHR-and-genomes synthetic data (an OMOP dataset,
 # omop_cdr_v2, with linked whole genomes in genomics_v2) and the registered sarek workflow
 # nf-core-sarek-3-11-0. One story: a cohort of adults with type 2 diabetes, a Kumo forecast of
-# kidney disease among them, Parabricks on their genomes, and what the variants would add.
+# kidney disease among them, Parabricks on their genomes, and what the variants would add; and a
+# question about Workbench, answered from its documentation.
 # A chip sends its prompt as the person's message; starters open a session and next_steps
 # appear once the assistant has answered. A chip with a feature (features.yaml) appears only for
 # a person who has that feature.
@@ -18,6 +19,11 @@ starters:
     hint: The workspace's datasets and buckets
     prompt: >
       What data does this workspace have? List its datasets and buckets and say what each holds.
+  - label: How do I share this workspace?
+    hint: Answered from the Workbench docs
+    prompt: >
+      How do I share this workspace with a collaborator, and what can each role do? Link the
+      Workbench documentation you used.
 
 next_steps:
   - label: Lock the cohort

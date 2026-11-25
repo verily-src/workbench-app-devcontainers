@@ -136,22 +136,20 @@ export default function OmopRuleRow({ rule, resourceId, schema, canRemove, onCha
         <Box sx={{ display: "flex", gap: 1, mt: 1 }}>
           <TextField
             size="small"
-            type="number"
             label="Lowest value"
             placeholder={rule.picked[0].value_min == null ? undefined : String(rule.picked[0].value_min)}
             value={rule.valueMin}
             onChange={(event) => onChange({ ...rule, valueMin: event.target.value })}
-            slotProps={{ htmlInput: { step: "any" }, inputLabel: { shrink: true } }}
+            slotProps={{ htmlInput: { inputMode: "decimal" }, inputLabel: { shrink: true } }}
             error={valueRangeProblem !== null}
           />
           <TextField
             size="small"
-            type="number"
             label="Highest value"
             placeholder={rule.picked[0].value_max == null ? undefined : String(rule.picked[0].value_max)}
             value={rule.valueMax}
             onChange={(event) => onChange({ ...rule, valueMax: event.target.value })}
-            slotProps={{ htmlInput: { step: "any" }, inputLabel: { shrink: true } }}
+            slotProps={{ htmlInput: { inputMode: "decimal" }, inputLabel: { shrink: true } }}
             error={valueRangeProblem !== null}
           />
         </Box>

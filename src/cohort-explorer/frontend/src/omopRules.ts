@@ -30,10 +30,15 @@ export function canHaveValueRange(rule: RuleDraft): boolean {
   return DOMAINS_WITH_VALUE_COLUMN.includes(rule.domain) && rule.picked.length === 1;
 }
 
+// Plain decimal numbers only, such as -3, 5.5, .5 or 1e2. Number() alone would also accept 0x10.
+const NUMBER_PATTERN = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+
 // null means the box is empty. NaN means the text is not a finite number.
 function readBound(text: string): number | null {
-  if (text.trim() === "") return null;
-  const bound = Number(text);
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  if (!NUMBER_PATTERN.test(trimmed)) return Number.NaN;
+  const bound = Number(trimmed);
   return Number.isFinite(bound) ? bound : Number.NaN;
 }
 
@@ -105,8 +110,9 @@ export function buildSpec(schema: string, rules: RuleDraft[]): OmopSpec {
       };
       const lowest = canHaveValueRange(rule) ? readBound(rule.valueMin) : null;
       const highest = canHaveValueRange(rule) ? readBound(rule.valueMax) : null;
-      if (lowest !== null) spec_rule.value_min = lowest;
-      if (highest !== null) spec_rule.value_max = highest;
+      // A bound that is not a number is left out. The screen already turns Find people off for it.
+      if (lowest !== null && !Number.isNaN(lowest)) spec_rule.value_min = lowest;
+      if (highest !== null && !Number.isNaN(highest)) spec_rule.value_max = highest;
       return spec_rule;
     }),
   };

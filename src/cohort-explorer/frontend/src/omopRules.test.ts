@@ -132,6 +132,18 @@ describe("omop rules", () => {
       expect(findValueRangeProblem(a1cRule("", "1e999"))).toBe("Enter the values as numbers.");
     });
 
+    it.each(["--", "-", "e", "abc", "5-3", "0x10", "1e999", "1,5", "5 5", "NaN", "Infinity"])(
+      "says %s is not a number",
+      (text) => {
+        expect(findValueRangeProblem(a1cRule(text, ""))).toBe("Enter the values as numbers.");
+        expect(findValueRangeProblem(a1cRule("", text))).toBe("Enter the values as numbers.");
+      },
+    );
+
+    it.each(["5.5", "-3", "-3.5", ".5", "5.", "1e2", "+4", "0", " 7 "])("accepts %s as a number", (text) => {
+      expect(findValueRangeProblem(a1cRule(text, ""))).toBeNull();
+    });
+
     it("finds no problem for a rule that cannot have a range", () => {
       expect(findValueRangeProblem({ ...a1cRule("9", "1"), domain: "drug" })).toBeNull();
     });

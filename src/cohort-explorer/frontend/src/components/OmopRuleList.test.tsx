@@ -286,6 +286,16 @@ describe("OmopRuleList", () => {
       expect(screen.getByText("Matches people who have no result of at most 9.")).toBeTruthy();
     });
 
+    it("shows a message, and does not read it as no limit, when the text is not a number", async () => {
+      await chooseMeasurementAndPickOne();
+
+      await userEvent.type(screen.getByLabelText("Lowest value"), "--");
+
+      expect((screen.getByLabelText("Lowest value") as HTMLInputElement).value).toBe("--");
+      expect(screen.getByText("Enter the values as numbers.")).toBeTruthy();
+      expect("value_min" in shownSpec().criteria[0]).toBe(false);
+    });
+
     it("shows a message when the lowest value is above the highest", async () => {
       await chooseMeasurementAndPickOne();
 

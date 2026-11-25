@@ -100,6 +100,16 @@ describe("OmopCohortPanel", () => {
     expect(findPeopleButton().disabled).toBe(true);
   });
 
+  it("turns Find people off while a bound is not a number", async () => {
+    showPanel();
+    await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");
+    await pickDiabetes();
+
+    await userEvent.type(screen.getByLabelText("Highest value"), "--");
+
+    expect(findPeopleButton().disabled).toBe(true);
+  });
+
   it("turns Find people on again once the range is fixed", async () => {
     showPanel();
     await userEvent.selectOptions(screen.getByLabelText("Domain"), "measurement");

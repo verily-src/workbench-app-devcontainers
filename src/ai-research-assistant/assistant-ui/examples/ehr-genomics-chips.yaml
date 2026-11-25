@@ -68,10 +68,10 @@ next_steps:
     prompt: >
       Show me the health records Kumo will read for this cohort. First a table of the
       omop_cdr_v2 tables that hold people's history (person, condition_occurrence, measurement,
-      drug_exposure, visit_occurrence), with each one's rows and main columns. Then three
+      drug_exposure, visit_occurrence), with each one's rows and its five most telling columns. Then three
       members of this cohort as short timelines, labelled Patient 1 to 3: their diagnoses, their
       eGFR and HbA1c results, and their prescriptions, by date, with concept names rather than
-      codes. The dataset is synthetic. Use one Python script for all of it.
+      codes. The dataset is synthetic. Show no person_id. Use one Python script for all of it.
   - label: Forecast kidney disease with Kumo
     feature: kumo_forecast
     hint: Who is heading toward CKD, a year ahead
@@ -86,14 +86,14 @@ next_steps:
       Show me the genomic data linked to this cohort. From the omop_cdr_v2 wgs_sample_manifest
       table: how many genomes there are in all and how many belong to this cohort's members,
       their coverage and processing. From the genomics_v2 bucket's cram/ folder (with
-      wbstorage.sizes): the size of one genome's aligned reads (CRAM) and what all of them would
-      add up to. Then the variant calls Parabricks made for one genome:
+      wbstorage.sizes): the size of one genome's aligned reads (CRAM), and an estimate of what the
+      CRAMs of all the genomes in the manifest would add up to. Then the variant calls Parabricks made for one genome:
       cohort-sarek/results/variant_calling/parabricks_deepvariant/ in the output bucket holds a
       VCF. Say how many variants it has in each gene (APOL1 on chr22 from 36,245,000 to
       36,275,000, PCSK9 on chr1 from 55,030,000 to 55,070,000, HFE on chr6 from 26,080,000 to
-      26,105,000), and show five of its PASS rows with CHROM, POS, REF, ALT, QUAL and the
-      genotype, and say what each column means. The genomes are public 1000 Genomes samples.
-      Use one Python script for all of it.
+      26,105,000), and show five of its PASS rows in APOL1 with CHROM, POS, REF, ALT, QUAL and
+      the genotype, and say what each column means. The genomes are public 1000 Genomes
+      samples. Show no person_id. Use one Python script for all of it.
   - label: Call variants with Parabricks
     feature: workflow_runs
     hint: GPU genome analysis, started from chat

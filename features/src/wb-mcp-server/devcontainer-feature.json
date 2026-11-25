@@ -1,6 +1,6 @@
 {
   "id": "wb-mcp-server",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "name": "Workbench MCP Server",
   "description": "Installs an MCP (Model Context Protocol) HTTP server that wraps the wb CLI, enabling AI assistants to interact with Workbench. Runs as a persistent daemon on port 9242, eliminating lazy-loading delays. Auto-configures Claude CLI and Gemini CLI.",
   "options": {
@@ -22,7 +22,12 @@
     "toolsets": {
       "type": "string",
       "default": "core",
-      "description": "Comma-separated tool groups listed by default: core (always on), workflows, dataexplorer, apps, admin, legacy, or all. With a loopback bindAddress, clients can add groups with ?toolsets= in the server URL; with any other bindAddress these groups are the most a client gets and ?toolsets= can only narrow them."
+      "description": "Comma-separated tool groups listed by default: core (always on), workflows, dataexplorer, apps, admin, docs, legacy, or all. With a loopback bindAddress, clients can add groups with ?toolsets= in the server URL; with any other bindAddress these groups are the most a client gets and ?toolsets= can only narrow them."
+    },
+    "docsUrl": {
+      "type": "string",
+      "default": "https://support.workbench.verily.com",
+      "description": "Site whose /docs/ pages the docs tools (group docs) search and read, from a copy built into the image and refreshed daily. Empty turns the docs tools off."
     },
     "bindAddress": {
       "type": "string",

@@ -97,7 +97,7 @@ type ContentItem struct {
 }
 
 // serverVersion is the version of the wb-mcp-server feature (devcontainer-feature.json).
-const serverVersion = "2.2.0"
+const serverVersion = "2.3.0"
 
 // Global variables
 var (
@@ -159,6 +159,7 @@ var readOnlyTools = map[string]bool{
 	"pod_list": true, "pod_describe": true, "organization_list": true, "version": true,
 	"platform_list_data_collections": true, "aurora_list_tables": true,
 	"aurora_describe_table": true, "s3_list_objects": true, "s3_read_file": true,
+	"wb_docs_search": true, "wb_docs_read": true,
 }
 
 // Tool definitions
@@ -2614,6 +2615,10 @@ func callTool(params CallToolParams) CallToolResult {
 	switch params.Name {
 	case "wb_status":
 		output, err = statusResult()
+	case "wb_docs_search":
+		output, err = docsSearchResult(params.Arguments)
+	case "wb_docs_read":
+		output, err = docsReadResult(params.Arguments)
 	case "wb_workspace_list":
 		args := []string{"workspace", "list"}
 		if format, ok := params.Arguments["format"].(string); ok && format == "json" {
@@ -4553,7 +4558,17 @@ func main() {
 		toolsets = groupCore
 	}
 	flag.StringVar(&toolsets, "toolsets", toolsets, "Comma-separated tool groups to enable by default (core is always on; \"all\" for every group). Defaults to $WB_MCP_TOOLSETS, then \"core\"")
+	var docsURL, buildDocs string
+	flag.StringVar(&docsURL, "docs-url", defaultDocsURL, "Site whose /docs/ pages the docs tools search (empty turns them off)")
+	flag.StringVar(&buildDocs, "build-docs-index", "", "Crawl -docs-url, write the docs index to this file and exit")
 	flag.Parse()
+	if buildDocs != "" {
+		if err := buildDocsSnapshot(docsURL, buildDocs); err != nil {
+			log.Fatalf("Docs index: %v", err)
+		}
+		log.Printf("Docs index written to %s (%s)", buildDocs, docs.summary())
+		return
+	}
 	if _, unknown := parseToolsets(toolsets); len(unknown) > 0 {
 		log.Printf("Warning: ignoring unknown tool groups: %s\n", strings.Join(unknown, ", "))
 	}
@@ -4567,6 +4582,7 @@ func main() {
 		log.Fatalf("Error initializing: %v\n", err)
 	}
 
+	startDocs(docsURL)
 	if httpMode {
 		runHTTPServer(bind, port)
 	} else {

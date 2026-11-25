@@ -29,6 +29,12 @@ if [[ -z "${WB_MCP_TOOLSETS//,/}" ]]; then
     WB_MCP_TOOLSETS="core"
 fi
 readonly WB_MCP_TOOLSETS
+# The site the docs tools search; empty turns them off. It goes into the generated start script.
+readonly WB_MCP_DOCS_URL="${DOCSURL-"https://support.workbench.verily.com"}"
+if [[ -n "${WB_MCP_DOCS_URL}" && ! "${WB_MCP_DOCS_URL}" =~ ^https?://[A-Za-z0-9.:_/-]+$ ]]; then
+    echo "ERROR: docsUrl '${WB_MCP_DOCS_URL}' is not valid: use an http(s) URL of letters, digits, '.', ':', '_', '/', '-'." >&2
+    exit 1
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
@@ -114,6 +120,14 @@ go build -o "${WB_MCP_BIN}" .
 # Make it executable
 chmod +x "${WB_MCP_BIN}"
 
+# A copy of the docs index in the image, so the docs tools answer at once and where the site can't
+# be reached. The server refreshes its own copy from the site once a day. Best effort: the build
+# goes on without it, and the server then reads the site at start.
+if [[ -n "${WB_MCP_DOCS_URL}" ]]; then
+    timeout 300 "${WB_MCP_BIN}" -docs-url "${WB_MCP_DOCS_URL}" -build-docs-index "${WB_MCP_DIR}/docs-index.json" \
+        || echo "WARNING: could not build the docs index from ${WB_MCP_DOCS_URL}; the server will read it at start." >&2
+fi
+
 # Create systemd service file for optional automatic startup
 cat > "${WB_MCP_DIR}/wb-mcp-server.service" <<EOF
 [Unit]
@@ -122,7 +136,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${WB_MCP_BIN} -http -bind ${WB_MCP_BIND_ADDRESS} -port ${WB_MCP_PORT} -toolsets ${WB_MCP_TOOLSETS}
+ExecStart=${WB_MCP_BIN} -http -bind ${WB_MCP_BIND_ADDRESS} -port ${WB_MCP_PORT} -toolsets ${WB_MCP_TOOLSETS} -docs-url "${WB_MCP_DOCS_URL}"
 Restart=on-failure
 User=${USERNAME}
 StandardOutput=journal
@@ -152,6 +166,7 @@ if [ -z "\${TOOLSETS//,/}" ]; then
 fi
 LOGFILE="/tmp/wb-mcp-server.log"
 RUN_USER="${USERNAME}"
+DOCS_URL="${WB_MCP_DOCS_URL}"
 
 # Check if already running
 if pgrep -f "\${WB_MCP_BIN} -http" > /dev/null; then
@@ -161,9 +176,9 @@ fi
 
 # Start server as the correct user (who has wb auth tokens)
 if [ "\$(id -u)" = "0" ] && [ "\${RUN_USER}" != "root" ]; then
-    su - "\${RUN_USER}" -c "nohup \${WB_MCP_BIN} -http -bind \${BIND} -port \${PORT} -toolsets '\${TOOLSETS}' >> \${LOGFILE} 2>&1 &"
+    su - "\${RUN_USER}" -c "nohup \${WB_MCP_BIN} -http -bind \${BIND} -port \${PORT} -toolsets '\${TOOLSETS}' -docs-url '\${DOCS_URL}' >> \${LOGFILE} 2>&1 &"
 else
-    nohup "\${WB_MCP_BIN}" -http -bind "\${BIND}" -port "\${PORT}" -toolsets "\${TOOLSETS}" >> "\${LOGFILE}" 2>&1 &
+    nohup "\${WB_MCP_BIN}" -http -bind "\${BIND}" -port "\${PORT}" -toolsets "\${TOOLSETS}" -docs-url "\${DOCS_URL}" >> "\${LOGFILE}" 2>&1 &
 fi
 echo "Started wb-mcp-server on \${BIND}:\${PORT} as \${RUN_USER} (tool groups: \${TOOLSETS})"
 echo "Logs: \${LOGFILE}"
@@ -239,6 +254,8 @@ cat > "${CLAUDE_LOCAL_SETTINGS}" <<'PERMS_EOF'
       "mcp__wb__aurora_resolve_connection",
       "mcp__wb__wb_status",
       "mcp__wb__wb_help",
+      "mcp__wb__wb_docs_search",
+      "mcp__wb__wb_docs_read",
       "mcp__wb__workspace_get",
       "mcp__wb__workspace_list_resources",
       "mcp__wb__workspace_list_data_collections",

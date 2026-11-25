@@ -24,7 +24,7 @@ def read(text: str, groups=GROUPS):
 class SchemaTests(unittest.TestCase):
     def test_the_shipped_file_is_valid(self):
         policy = ai_policy.read_policy(ai_policy.load_file(SHIPPED), GROUPS)
-        self.assertIn("data read: workspace; data write: controlled; tools: core, workflows; denied: wb_execute",
+        self.assertIn("data read: workspace; data write: controlled; tools: core, workflows, docs; denied: wb_execute",
                       ai_policy.describe(policy))
 
     def test_defaults_and_explicit_values(self):

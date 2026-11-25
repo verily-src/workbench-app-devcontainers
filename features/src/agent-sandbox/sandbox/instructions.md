@@ -38,6 +38,13 @@
   marks as writable, or the user downloads them from the sandbox
   (`agent-sandbox download`). Say which files you changed.
 
+## Questions about Workbench
+
+When the user asks how Workbench works (workspaces, sharing, resources, apps, workflows, data
+collections, policies, the `wb` command), search its documentation with `wb_docs_search` and
+answer from the excerpts, linking the pages you used by their URLs. `wb_docs_read` gives a whole
+page or section. If the documentation does not cover it, say so.
+
 ## Running a workflow
 
 When the Workbench workflow tools are present, you can run any workflow registered in the

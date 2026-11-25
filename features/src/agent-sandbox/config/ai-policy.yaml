@@ -12,8 +12,9 @@ data:
 tools:
   # Groups of Workbench tools (tool-groups.yaml) the agent may call: all, none, or a list. The
   # sandbox allows a call only to a tool in these groups, whatever the MCP server offers a client.
-  # The agent gets the core and workflow tools, not the admin, apps, data explorer or legacy ones.
-  allow: [core, workflows]
+  # The agent gets the core, workflow and documentation tools, not the admin, apps, data explorer
+  # or legacy ones.
+  allow: [core, workflows, docs]
   # Never callable: tools that run arbitrary commands as the user, tools that hand out
   # credentials, and bq_execute and bq_query, which would run SQL outside the sandbox's data
   # rules.

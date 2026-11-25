@@ -19,6 +19,7 @@ const (
 	groupApps         = "apps"
 	groupAdmin        = "admin"
 	groupLegacy       = "legacy"
+	groupDocs         = "docs"
 )
 
 // toolGroupDescriptions lists every group, in display order.
@@ -28,6 +29,7 @@ var toolGroupDescriptions = []struct{ name, description string }{
 	{groupDataExplorer, "Underlay schemas, studies, cohort building, filters and cohort export."},
 	{groupApps, "Create, delete, start and stop apps."},
 	{groupAdmin, "Create, update and delete workspaces, resources and folders; users, groups, pods and organizations; servers."},
+	{groupDocs, "Search and read the Workbench documentation (support.workbench.verily.com)."},
 	{groupLegacy, "Notebook and cluster tools, and tools covered by others (wb_workspace_list, folder_list_tree, server_status, auth_status, version, resource_open_console)."},
 }
 
@@ -53,6 +55,9 @@ var toolGroups = map[string]string{
 	"aurora_query":                    groupCore,
 	"aurora_list_tables":              groupCore,
 	"aurora_describe_table":           groupCore,
+
+	"wb_docs_search": groupDocs,
+	"wb_docs_read":   groupDocs,
 
 	"workflow_list":                groupWorkflows,
 	"workflow_describe":            groupWorkflows,
@@ -164,6 +169,7 @@ var toolGroups = map[string]string{
 // reloads an underlay).
 var noCLIEquivalentTools = map[string]bool{
 	"workflow_run_logs": true, "workflow_run_trace": true, "workflow_run_costs": true, "workflow_task_get": true,
+	"wb_docs_search": true, "wb_docs_read": true,
 }
 
 func hasNoCLIEquivalent(tool string) bool {

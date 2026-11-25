@@ -20,7 +20,7 @@
             "username": "abc",
             "userHomeDir": "/config",
             "bindAddress": "0.0.0.0",
-            "toolsets": "core,workflows"
+            "toolsets": "core,workflows,docs"
         },
         "./.devcontainer/features/vllm-model": {
             "username": "abc",

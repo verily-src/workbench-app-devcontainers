@@ -15,7 +15,7 @@ forecasts; alpha members also get the Vertex AI models. See "Access" below.
 
 People are trusted more than agents. You keep your Workbench credentials in code-server. The
 agent runs in a sandbox that holds no credentials and whose network is deny-by-default: it reads
-the workspace's data, writes to what the workspace owns, calls the Workbench core and workflow
+the workspace's data, writes to what the workspace owns, calls the Workbench core, workflow and documentation
 tools except the shells and the credential tools, and reaches nothing else. Every connection it attempts is
 checked and logged. The policy is part of the image; the app user cannot change it.
 
@@ -24,7 +24,7 @@ Template path: `src/ai-research-assistant`.
 ## What the app runs
 
 - The agent (OpenCode) in an OpenShell sandbox.
-- The Workbench MCP server, with its core and workflow tools.
+- The Workbench MCP server, with its core, workflow and documentation tools.
 - The cohort designer and Kumo forecast MCP servers, which are bundled capabilities.
 - Nemotron (Super VL) on vLLM. When the machine has no GPUs for it, the
   [`vertex-model`](../../features/src/vertex-model) feature serves in its place, for alpha users

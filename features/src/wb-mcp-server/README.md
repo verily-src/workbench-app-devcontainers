@@ -58,7 +58,7 @@ pgrep -f 'wb-mcp-server -http'
 
 ## Tool Groups
 
-Clients send every listed tool's definition to the model with each request. All 116 tools come to about
+Clients send every listed tool's definition to the model with each request. All 118 tools come to about
 14,000 tokens, so the server lists only the **core** group by default: 13 tools (about 1,400 tokens) on GCP.
 
 | Group | Tools for |
@@ -68,6 +68,7 @@ Clients send every listed tool's definition to the model with each request. All 
 | `dataexplorer` | Underlays, studies, cohort building, filters, cohort export |
 | `apps` | Creating, deleting, starting and stopping apps |
 | `admin` | Workspaces, resources, folders, users, groups, pods, organizations, servers |
+| `docs` | Searching and reading the Workbench documentation (`wb_docs_search`, `wb_docs_read`) |
 | `legacy` | Notebook and cluster tools, and duplicates of other tools (`wb_workspace_list`, `folder_list_tree`, `server_status`, `auth_status`, `version`, `resource_open_console`) |
 
 AWS-only tools are hidden in GCP workspaces and GCP-only tools in AWS workspaces. If the workspace's cloud
@@ -168,6 +169,20 @@ Each `wb` CLI call starts a JVM and takes several seconds, so the server avoids 
 - `bq_execute` takes `bq` arguments (`ls`, `show --schema project:dataset.table`, ...). Bare SQL sent to
   `bq_execute` (also SQL that starts with a comment or a parenthesis) is run as a query.
 
+### Documentation
+- `wb_docs_search` ranks sections of the documentation site's `/docs/` pages (BM25, with a section's
+  page title and heading weighted above its text) and returns up to 10, at most 2 per page, each with
+  its URL and `#anchor`. `wb_docs_read` returns one indexed page, or one section by its anchor; it
+  reads nothing outside the index.
+- The index is the pages the site's `sitemap.xml` lists under `/docs/`, split at their `h2` and `h3`
+  headings (about 375 pages, 1,900 sections, 1.2 MB). The feature's install builds a copy into the
+  image (`/opt/wb-mcp-server/docs-index.json`); the server loads its cache
+  (`~/.cache/wb-mcp-server/docs-index.json`), else that copy, and refreshes it from the site once a day
+  with conditional requests (`ETag`, `Last-Modified`), four connections at a time. A question never
+  fetches anything.
+- No model or embedding service is used. Feature option `docsUrl` (flag `-docs-url`) names the site;
+  empty turns the tools off. `wb-mcp-server -build-docs-index <file>` writes an index and exits.
+
 ### Data Collections
 Data collection workspaces contain underlays (data models):
 - Data collection workspace ID = underlay ID
@@ -244,6 +259,12 @@ tail -f /tmp/wb-mcp-server.log
 - `?toolsets=` is not an access control on loopback (`127.0.0.0/8`, `::1`, `localhost`): any client
   can enable any group, including `admin`. With any other `bindAddress`, the server's `toolsets`
   setting is the most a client gets, and `?toolsets=` can only narrow it.
+- The docs pages are read as HTML laid out like the Workbench site's (Hugo with Docsy: the content in
+  `div.td-content`, sections at `h2` and `h3` with an `id`). Another layout is read whole, with
+  less of the navigation removed. Search matches words, not meanings: a question in other words
+  than the docs' may need a second query.
+- Where the site can't be reached (a data perimeter, for example), the docs tools answer from the
+  copy built into the image, which is as old as the image.
 
 ## Requirements
 

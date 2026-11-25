@@ -116,6 +116,9 @@ groups:
     - server_list
     - server_set
     - server_list_regions
+  docs:
+    - wb_docs_search
+    - wb_docs_read
   legacy:
     - notebook_start
     - notebook_stop

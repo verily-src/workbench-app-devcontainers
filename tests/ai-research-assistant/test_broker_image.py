@@ -25,8 +25,8 @@ class TemplateWiringTests(unittest.TestCase):
         for name in ("vllm-model", "agent-sandbox", "opencode-harness"):
             self.assertEqual(features[f"./.devcontainer/features/{name}"], {"username": "abc", "userHomeDir": "/config"})
         self.assertEqual(features["./.devcontainer/features/wb-mcp-server"]["bindAddress"], "0.0.0.0")
-        self.assertEqual(features["./.devcontainer/features/wb-mcp-server"]["toolsets"], "core,workflows",
-                         "the agent is offered the workflow tools")
+        self.assertEqual(features["./.devcontainer/features/wb-mcp-server"]["toolsets"], "core,workflows,docs",
+                         "the agent is offered the workflow and documentation tools")
 
     def test_the_broker_image_is_built_from_the_features(self):
         dockerfile = (APP / "broker" / "Dockerfile").read_text()

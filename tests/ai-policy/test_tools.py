@@ -76,11 +76,11 @@ class ToolsRuleTests(unittest.TestCase):
         self.assertEqual(set(summary["tools"]["denied"]), known - set(allowed))
         self.assertEqual(set(summary["tools"]["groups"]), set(self.groups))
 
-    def test_the_shipped_policy_allows_only_core_and_workflow_tools(self):
-        self.assertEqual(self.shipped["tools"]["allow"], ["core", "workflows"])
+    def test_the_shipped_policy_allows_only_core_workflow_and_docs_tools(self):
+        self.assertEqual(self.shipped["tools"]["allow"], ["core", "workflows", "docs"])
         policy, _ = self.rendered(ai={"tools": self.shipped["tools"]})
         allowed = set(policy["network_policies"]["workbench_tools"]["endpoints"][0]["rules"][-1]["allow"]["tool"]["any"])
-        permitted = set(self.groups["core"]) | set(self.groups["workflows"])
+        permitted = set(self.groups["core"]) | set(self.groups["workflows"]) | set(self.groups["docs"])
         for group in ("admin", "apps", "dataexplorer", "legacy"):
             for tool in self.groups[group]:
                 if tool not in permitted:
@@ -160,7 +160,8 @@ class ToolsRuleTests(unittest.TestCase):
 
     def test_the_catalog_covers_exactly_the_servers_tools(self):
         """tool-groups.yaml is this app's view of wb-mcp-server's tools: a tool in no group is not callable."""
-        names = re.findall(r'^\s*Name:\s*"([^"]+)"', MCP_SERVER.read_text(), re.M)
+        source = "".join(p.read_text() for p in sorted(MCP_SERVER.parent.glob("*.go")) if not p.name.endswith("_test.go"))
+        names = re.findall(r'^\s*Name:\s*"([^"]+)"', source, re.M)
         self.assertGreater(len(names), 50)
         grouped = {t for tools in self.groups.values() for t in tools}
         self.assertEqual(set(names) - grouped, set(), "server tools missing from tool-groups.yaml")

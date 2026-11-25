@@ -136,10 +136,11 @@ the `vertex_model` feature (the endpoint and Gemini) is off whatever the tier, s
 to a model service outside the VM. It is also off when the policies cannot be read: no answer, an
 answer for another workspace, or one without a list of policies. The state file holds:
 `status` (`ok`, or `error` when the check could not be made), `tier` (`alpha`, `beta` or none),
-`features` (each on or off), `off` (the servers and tool groups to leave out) and `message` (what
-the page shows a person it does not admit). It exits 0 when the check was made, 2 when it could
+`features` (each on or off), `off` (the servers and tool groups to leave out), `message` (what
+the page shows a person it does not admit) and, for an invalid configuration, `title` (the
+page's heading). It exits 0 when the check was made, 2 when it could
 not be (wb failed, timed out, or anything else went wrong, so it is retried), 1 when the
-configuration is invalid (not retried; the page says to fix it). Both failures write an `error`
+configuration is invalid (not retried; the page says the assistant is unavailable). Both failures write an `error`
 state with every feature off, so nothing reads a stale admission.
 At each start of the app, start-services.sh removes the state file before its first `resolve`, so
 until that finishes (up to 180 s) the page and the broker see no state and refuse; the rechecks

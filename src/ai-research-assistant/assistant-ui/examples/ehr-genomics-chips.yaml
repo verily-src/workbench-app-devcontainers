@@ -50,6 +50,6 @@ next_steps:
 
 # Shown in the side panel under "Where the assistant runs".
 about:
-  - The assistant runs in an NVIDIA OpenShell sandbox with no credentials of its own.
+  - The assistant runs in an OpenShell sandbox with no credentials of its own.
   - It cannot connect to the internet. OpenShell blocks every connection except to the model, this workspace's data and the tools listed above.
-  - The model is NVIDIA Nemotron, served in this app. Nothing leaves the workspace.
+  - The model is Nemotron 3.5 Super VL, served in this app. Nothing leaves the workspace.

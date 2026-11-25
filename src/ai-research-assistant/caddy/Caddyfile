@@ -1,5 +1,5 @@
 # Front door of the app (docker-compose.yaml, services opencode-web and assistant-ui): the
-# NVIDIA AI Research Assistant at the root, code-server under /ide/.
+# Research Assistant at the root, code-server under /ide/.
 {
 	admin off
 	auto_https off

@@ -122,6 +122,8 @@ class AccessTests(unittest.TestCase):
         for state, expected, text in (
                 ("missing", "checking", "checking your access"),
                 ({"status": "error", "tier": None, "message": "We couldn't verify your access. Retrying."}, "error", "Retrying"),
+                ({"status": "error", "tier": None, "title": "Unavailable", "message": "Please try again later."},
+                 "error", "try again later"),
                 ({"status": "ok", "tier": None, "message": "The AI Research Assistant is in beta."}, "denied", "in beta"),
                 ({"status": "ok", "tier": "beta", "features": {}, "model": {"backend": None, "message": "needs the GPU setup"}},
                  "no_model", "GPU setup")):
@@ -130,6 +132,10 @@ class AccessTests(unittest.TestCase):
                 self.assertEqual(access["state"], expected)
                 self.assertIn(text, access["message"])
                 self.assertTrue(access["title"])
+
+    def test_an_error_state_may_name_its_page_title(self):
+        self.assertEqual(self.page({"status": "error", "title": "Unavailable"})["access"]["title"], "Unavailable")
+        self.assertEqual(self.page({"status": "error"})["access"]["title"], "Checking your access")
 
     def test_an_admitted_person_sees_only_the_chips_of_their_features(self):
         features = {"cohort_designer": True, "workflow_runs": True, "kumo_forecast": False, "vertex_model": False}

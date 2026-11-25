@@ -56,8 +56,9 @@ workspace:
   from the workspace's data with your own Python. Write files to a writable bucket from
   `/sandbox/data-access.md` with `wbstorage`. A Nextflow params file must set `outdir` (a gs://
   folder in the output bucket): Workbench passes only the profile and the params file.
-- Confirm: show the user the workflow, the inputs' location, the number of samples or items,
-  and the output location, then call `workflow_job_run`. The user is asked to allow it. Call it
-  once. If the call errors or times out, check `workflow_job_list` before you call it again.
+- Confirm: show the workflow, the inputs' location, the number of samples ("fewer than 20" for
+  1 to 19; never their ids or the samplesheet's rows) and the output location, then call
+  `workflow_job_run`. The user is asked to allow it. Call it once. If the call errors or times
+  out, check `workflow_job_list` before you call it again.
 - Follow: `workflow_job_describe`, and for a failure `workflow_run_logs`. Read outputs from the
   output bucket with `wbstorage`.

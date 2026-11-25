@@ -3,6 +3,8 @@
 # nf-core-sarek-3-11-0. One story: a cohort of adults with type 2 diabetes, a Kumo forecast of
 # kidney disease among them, Parabricks on their genomes, and what the variants would add; and a
 # question about Workbench, answered from its documentation.
+# The forecast is as of 2024-12-01: the data ends 2025-12-30, and a 12-month window must end
+# by then for Kumo to check the forecast against what happened (AUROC).
 # A chip sends its prompt as the person's message; starters open a session and next_steps
 # appear once the assistant has answered. A chip with a feature (features.yaml) appears only for
 # a person who has that feature.
@@ -36,7 +38,7 @@ next_steps:
     hint: Who is heading toward CKD, a year ahead
     prompt: >
       Use Kumo to forecast which members of this cohort will be diagnosed with chronic kidney
-      disease stage 3 within 12 months of 2024-12-31. Tell me how accurate the forecast was and
+      disease stage 3 within 12 months of 2024-12-01. Tell me how accurate the forecast was and
       what the highest-risk members have in common.
   - label: Call variants with Parabricks
     feature: workflow_runs

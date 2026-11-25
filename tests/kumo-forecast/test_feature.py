@@ -62,7 +62,7 @@ class CatalogTests(unittest.TestCase):
         signature = re.search(r"async def forecast_risk\((.*?)\) -> dict:", serve, flags=re.S).group(1)
         self.assertTrue(signature.startswith("outcome: dict"), signature)
         for gone in ("outcome_lock_version", "outcome_session_id", "population"):
-            self.assertNotIn(gone, signature)
+            self.assertIsNone(re.search(rf"\b{gone}\s*:", signature), gone)
         text = " ".join(self.catalog["instructions"].split())
         self.assertIn("Never ask the designer to build or lock a cohort for the outcome", text)
         self.assertNotIn("outcome_lock_version", text)
@@ -1053,6 +1053,25 @@ class ForecastAnswerTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "not a project.dataset.table"):
                     self.svc._with_extra(lc, None, [bad])
         self.assertEqual(self.svc._with_extra(lc, ["person"], None), ("wb-data-1234.omop", ["person"]))
+
+    def test_a_population_table_scores_its_people_instead_of_the_cohort(self):
+        import types
+        pd = self.pd
+        lc = types.SimpleNamespace(key_data_column="person_id", billing_project=None)
+        sent = []
+
+        class Client:
+            def query(self, sql):
+                sent.append(sql)
+                return types.SimpleNamespace(to_dataframe=lambda: pd.DataFrame({"person_id": ["7", "7", "9"]}))
+        self.svc._client = lambda project: Client()
+        people = self.svc._table_members(lc, "wb-work-5678.genomic_results.apol1_genotypes", "INTEGER")
+        self.assertEqual(people.person_id.tolist(), [7, 9])
+        self.assertEqual(sent, ["SELECT DISTINCT `person_id` FROM `wb-work-5678`.`genomic_results`.`apol1_genotypes` "
+                                "WHERE `person_id` IS NOT NULL"])
+        for bad in ("apol1_genotypes", "wb-work-5678.genomic_results.t`; DROP TABLE x; --"):
+            with self.assertRaisesRegex(ValueError, "not a project.dataset.table"):
+                self.svc._table_members(lc, bad, "INTEGER")
 
     def test_a_forecast_needs_an_outcome(self):
         with self.assertRaisesRegex(ValueError, "outcome is required"):

@@ -110,7 +110,8 @@ async def get_cohort_info(cda_session_id: str = "latest", lock_version: int | No
 async def forecast_risk(outcome: dict, as_of: str | None = None, horizon_days: int = 365,
                         cda_session_id: str = "latest", lock_version: int | None = None,
                         time_columns: dict[str, str] | None = None,
-                        tables: list[str] | None = None, extra_tables: list[str] | None = None) -> dict:
+                        tables: list[str] | None = None, extra_tables: list[str] | None = None,
+                        population_table: str | None = None) -> dict:
     """Forecast, for each member of the locked cohort at risk on as_of (YYYY-MM-DD), whether the
     outcome starts within horizon_days (30 to 1825), with NVIDIA Kumo Relational reading the
     dataset's tables in context (no training, no hand-built features). outcome is rows of one of
@@ -127,9 +128,11 @@ async def forecast_risk(outcome: dict, as_of: str | None = None, horizon_days: i
     wait_for_result. tables: the dataset's tables to read (choose from get_cohort_info's tables);
     each must have the cohort's key. Default: all of them. extra_tables: tables of other datasets to
     read too, as "project.dataset.table", each with the cohort's key (a table of genotypes per
-    person, for example); run the forecast with and without them to see what they add."""
+    person, for example); run the forecast with and without them to see what they add.
+    population_table: score everyone in this table ("project.dataset.table", with the cohort's key)
+    instead of the cohort's members, for example everyone with a genome."""
     return await _waited("forecast_risk", SERVICE.forecast, outcome, cda_session_id, as_of, horizon_days,
-                         lock_version, time_columns, tables, extra_tables)
+                         lock_version, time_columns, tables, extra_tables, population_table)
 
 
 @mcp.tool

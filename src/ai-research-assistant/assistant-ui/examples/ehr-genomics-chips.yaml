@@ -107,13 +107,16 @@ next_steps:
       sarek's schema, and name the output bucket by its gs:// name in workflow_job_run (no resource
       lookup is needed). Do not show anyone's person_id.
   - label: Add genomes to the forecast
-    hint: From variant calls to features
+    feature: kumo_forecast
+    hint: What the genome says about the people at risk
     prompt: >
-      Without running anything, explain in a few sentences how the variant calls from that
-      run, once annotated, could be added to this cohort's health records as features for a
-      better kidney disease forecast, using APOL1 as the example. Describe APOL1 only as a
-      measured gene variant linked to kidney disease; do not mention race, ancestry or
-      population groups.
+      Forecast chronic kidney disease stage 3 (condition concept 443597) within 12 months of
+      2024-12-01 for everyone with a genome, with their APOL1 genotypes added: pass the
+      genomic_results dataset's apol1_genotypes table as both population_table and extra_tables,
+      and read all of omop_cdr_v2's tables. Tell me how accurate the forecast was, and how
+      common two APOL1 risk alleles are in the highest-risk tenth compared with the rest.
+      Describe APOL1 only as a measured gene variant linked to kidney disease; do not mention
+      race, ancestry or population groups.
   - label: Look up APOL1 research on PubMed
     hint: OpenShell blocks the call
     prompt: >

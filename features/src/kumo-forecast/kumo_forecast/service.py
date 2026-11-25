@@ -106,6 +106,21 @@ class Service:
             names.append(name)
         return dataset, list(dict.fromkeys(names))
 
+    def _table_members(self, lc, table: str, key_type: str | None) -> pd.DataFrame:
+        """The distinct keys of ``table`` (project.dataset.table, with the entity key column), as
+        the population to score instead of the cohort's members."""
+        m = EXTRA_TABLE.match(str(table).strip())
+        if not m:
+            raise ValueError(f"population_table {table!r} is not a project.dataset.table name")
+        project, dataset, name = m.groups()
+        key = lc.key_data_column
+        sql = f"SELECT DISTINCT `{key}` FROM `{project}`.`{dataset}`.`{name}` WHERE `{key}` IS NOT NULL"
+        try:
+            df = self._client(lc.billing_project).query(sql).to_dataframe()
+        except Exception as err:  # noqa: BLE001 - the BigQuery error says which: no table, no column, no access
+            raise ValueError(f"population_table {project}.{dataset}.{name}: {str(err)[:300]}") from err
+        return pd.DataFrame({key: _as_key(df[key], key_type)}).drop_duplicates(key)
+
     def _schemas(self, lc) -> dict[str, dict]:
         return tables.read_schemas(self._client(lc.billing_project), lc.dataset)
 
@@ -184,10 +199,12 @@ class Service:
 
     def forecast(self, outcome: dict | None = None, session_id: str = "latest", as_of: str | None = None,
                  horizon_days: int = 365, version: int | None = None, time_columns: dict | None = None,
-                 tables: list[str] | None = None, extra_tables: list[str] | None = None) -> dict:
+                 tables: list[str] | None = None, extra_tables: list[str] | None = None,
+                 population_table: str | None = None) -> dict:
         """Forecast ``outcome`` (``outcome_mod.parse``: rows of one of the dataset's tables, the
         first of which dates it) within ``horizon_days`` of ``as_of`` for the members of the locked
-        cohort. Kumo learns from the whole dataset's history and scores the cohort's members."""
+        cohort (or, with ``population_table``, everyone in that table, such as the people with a
+        genome). Kumo learns from the whole dataset's history either way."""
         if outcome is None:
             raise ValueError('outcome is required: {"table": ..., "where": [{"column": ..., "op": ..., "value": ...}]}, '
                              "a table of the cohort's dataset (forecast_get_cohort_info lists them)")
@@ -202,7 +219,8 @@ class Service:
             ds, p = self.graph(dataset, key, pop.billing_project, time_columns, tables)
             fc = self.forecaster(dataset, key, pop.billing_project, time_columns, tables)
             key_type = self._key_type(ds)
-            members = self._frame(pop, key_type)
+            members = (self._table_members(pop, population_table, key_type) if population_table
+                       else self._frame(pop, key_type))
             first = self._outcome_dates(pop, o, key_type)
             if as_of is None:
                 when, defaulted = (ds.data_end - pd.Timedelta(days=int(horizon_days))).normalize(), True
@@ -213,7 +231,7 @@ class Service:
             run_id = "run-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             s = r["scores"]
             meta = {"run_id": run_id, "session_id": pop.session_id, "lock_version": pop.version,
-                    "outcome": outcome,
+                    "outcome": outcome, "population_table": population_table,
                     "dataset": dataset, "billing_project": pop.billing_project, "key": key,
                     "time_columns": time_columns or {}, "tables": list(tables) if tables else None, "as_of": str(when.date()),
                     "horizon_days": int(horizon_days), "labels_known": r["labels_known"]}
@@ -223,7 +241,8 @@ class Service:
             self._save(run_id, s, meta)
         from .profile import high_risk_profile
         profile = high_risk_profile(ds, s, when)
-        out = {"run_id": run_id, "cohort": f"session {pop.session_id}, lock {pop.version}",
+        out = {"run_id": run_id, "cohort": (f"everyone in {population_table}" if population_table
+                                            else f"session {pop.session_id}, lock {pop.version}"),
                "outcome": f"{o.describe(ds.names)}, within {horizon_days} days of {when.date()}",
                "as_of": str(when.date()) + (f" (the default: the data end, {ds.data_end.date()}, less {int(horizon_days)} days)"
                                             if defaulted else ""),

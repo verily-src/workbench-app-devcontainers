@@ -33,6 +33,9 @@ services:
     environment:
       USER: "abc"
       DEFAULT_WORKSPACE: "/config"
+      # Booth demo on synthetic data only: Kumo shows every count instead of masking 1 to 19
+      # (kumo-forecast README). Remove for any app that may read real data.
+      KUMO_FORECAST_SMALL_CELL: "0"
       SUDO_PASSWORD: "pwd"
       # The local model, Nemotron 3.5 Super VL on 2x H100 80 GB, and its settings (the vllm-model
       # feature). Workbench substitutes only a fixed set of template options, so they are set here.

@@ -12,6 +12,10 @@
   command; do not ask the user to authenticate or to run anything for you. Run
   your own code with the bash tool, and use the Workbench tools for Workbench
   itself.
+- A Workbench tool's `workspaceId` is the workspace's `id` from `wb_status` (such as
+  `my-workspace`), never its Google project (`wb-...`).
+- Run code longer than one line, and any SQL, from a file you write first
+  (`cat > /tmp/q.py <<'EOF'`), not with `python -c`: the shell breaks SQL's backticks.
 - If a task needs a destination or a tool that the policy blocks, stop and tell
   the user which one and why. The policy is the administrator's; do not try to
   work around the block.

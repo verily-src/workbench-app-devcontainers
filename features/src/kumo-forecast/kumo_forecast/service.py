@@ -30,7 +30,7 @@ MAX_HORIZON_DAYS = 365 * HISTORY_YEARS
 
 class Service:
     def __init__(self, sessions_dir: Path, state_dir: Path, billing_project: str | None = None,
-                 gpu_gb: float = 5.0, context: int = 3000, estimators: int = 4):
+                 gpu_gb: float = 5.0, context: int = 3000, estimators: int = 2):
         self.sessions_dir, self.state = Path(sessions_dir), Path(state_dir)
         self.billing, self.gpu_gb = billing_project, gpu_gb
         self.context, self.estimators = int(context), int(estimators)

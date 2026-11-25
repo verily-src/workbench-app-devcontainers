@@ -81,7 +81,7 @@ cat > "${INSTALL_DIR}/start-server.sh" <<START
 # state folder. Settings: KUMO_FORECAST_BIND, KUMO_FORECAST_PORT, KUMO_FORECAST_SESSIONS (default
 # ~/.cohort-designer/sessions), KUMO_FORECAST_GPU_GB (the model's GPU memory cap, default 5),
 # KUMO_FORECAST_CONTEXT (labeled histories in context, default 3000), KUMO_FORECAST_ESTIMATORS
-# (default 4), KUMO_FORECAST_MAX_ROWS (the most rows of tables a forecast reads, default 50,000,000),
+# (default 2), KUMO_FORECAST_MAX_ROWS (the most rows of tables a forecast reads, default 50,000,000),
 # KUMO_FORECAST_BILLING_PROJECT, KUMO_FORECAST_SMALL_CELL (default 20; 0 shows every count).
 
 set -o errexit

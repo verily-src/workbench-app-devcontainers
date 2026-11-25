@@ -174,7 +174,7 @@ def main():
                    help="the project BigQuery jobs run in (default: the one the designer used)")
     p.add_argument("--context", type=int, default=int(os.environ.get("KUMO_FORECAST_CONTEXT", "3000")),
                    help="labeled histories the model reads in context; GPU memory grows with it")
-    p.add_argument("--estimators", type=int, default=int(os.environ.get("KUMO_FORECAST_ESTIMATORS", "4")),
+    p.add_argument("--estimators", type=int, default=int(os.environ.get("KUMO_FORECAST_ESTIMATORS", "2")),
                    help="ensemble size; 4 steadies the run-to-run spread for about 3x the time")
     a = p.parse_args()
     SERVICE = Service(Path(a.sessions_dir), Path(a.state_dir), a.billing_project, a.gpu_gb, a.context, a.estimators)

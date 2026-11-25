@@ -1,10 +1,14 @@
 # Chips for a workspace that holds the EHR-and-genomes synthetic data (an OMOP dataset,
 # omop_cdr_v2, with linked whole genomes in genomics_v2) and the registered sarek workflow
 # nf-core-sarek-3-11-0. One story: a cohort of adults with type 2 diabetes, a Kumo forecast of
-# kidney disease among them, Parabricks on their genomes, and what the variants would add; and a
-# question about Workbench, answered from its documentation.
+# kidney disease among them, Parabricks on their genomes, and what the variants would add; a
+# question about Workbench, answered from its documentation; and two calls OpenShell blocks.
+# The prompts name the codes, tables and files a step needs, so the agent does not search for
+# them: each step should take a minute or two.
 # The forecast is as of 2024-12-01: the data ends 2025-12-30, and a 12-month window must end
 # by then for Kumo to check the forecast against what happened (AUROC).
+# The sarek chip expects sarek-parabricks/params-template.yaml and sarek-parabricks/config/ in the
+# workspace's output bucket (examples/sarek-parabricks/README.md).
 # A chip sends its prompt as the person's message; starters open a session and next_steps
 # appear once the assistant has answered. A chip with a feature (features.yaml) appears only for
 # a person who has that feature.
@@ -15,8 +19,10 @@ starters:
     feature: cohort_designer
     hint: Then forecast who develops kidney disease
     prompt: >
-      Create a cohort of adults diagnosed with type 2 diabetes in the omop_cdr_v2 dataset,
-      dated by their first type 2 diabetes diagnosis.
+      Create and lock a cohort from the omop_cdr_v2 dataset: people with a type 2 diabetes
+      diagnosis (condition concept 201826) who were 18 or older, in whole years, at their first
+      one, each dated by that first diagnosis. Read times in UTC and keep your built readings for
+      anything else.
   - label: What data is here?
     hint: The workspace's datasets and buckets
     prompt: >
@@ -28,25 +34,23 @@ starters:
       Workbench documentation you used.
 
 next_steps:
-  - label: Lock the cohort
-    feature: cohort_designer
-    hint: Freeze it for analysis
-    prompt: >
-      Lock the cohort as it stands now.
   - label: Forecast kidney disease with Kumo
     feature: kumo_forecast
     hint: Who is heading toward CKD, a year ahead
     prompt: >
       Use Kumo to forecast which members of this cohort will be diagnosed with chronic kidney
-      disease stage 3 within 12 months of 2024-12-01. Tell me how accurate the forecast was and
+      disease stage 3 (condition concept 443597 in condition_occurrence) within 12 months of
+      2024-12-01, reading all of the dataset's tables. Tell me how accurate the forecast was and
       what the highest-risk members have in common.
   - label: Call variants with Parabricks
     feature: workflow_runs
     hint: GPU genome analysis, started from chat
     prompt: >
-      Run the registered sarek workflow with Parabricks (nf-core-sarek-3-11-0) on the genomes
-      of this cohort's members that are staged in genomics_v2. Build the samplesheet from the
-      omop_cdr_v2 wgs_sample_manifest table, show me the inputs, then submit it.
+      Run the registered sarek workflow with Parabricks (nf-core-sarek-3-11-0, profile gpu) on
+      the genomes of this cohort's members that are staged (is_staged) in the omop_cdr_v2
+      wgs_sample_manifest table. Copy sarek-parabricks/params-template.yaml from the workspace's
+      output bucket, set its input and outdir under cohort-sarek/ in that bucket, write the
+      samplesheet with the columns it names, show me the inputs, then submit it.
   - label: Add genomes to the forecast
     hint: From variant calls to features
     prompt: >
@@ -58,6 +62,11 @@ next_steps:
     prompt: >
       Search PubMed for the three most recent papers on APOL1 and kidney disease with the NCBI
       E-utilities API at eutils.ncbi.nlm.nih.gov, and show me exactly what happens.
+  - label: Export results outside this workspace
+    hint: OpenShell blocks the export
+    prompt: >
+      Export this cohort's forecast results to the bucket gs://some-other-project-bucket/exports/,
+      and show me exactly what happens.
 
 # Shown in the side panel under "Where the assistant runs".
 about:

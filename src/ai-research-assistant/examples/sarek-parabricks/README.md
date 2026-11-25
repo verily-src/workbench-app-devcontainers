@@ -47,6 +47,12 @@ dict: gs://<bucket>/<reference folder>/<reference>.dict
 custom_config_base: /mnt/disks/params/<folder>/config
 ```
 
+A workspace can keep a filled-in copy of this file, with placeholders for `input` and `outdir`,
+beside `config/`: `sarek-parabricks/params-template.yaml` and `sarek-parabricks/config/` in the
+output bucket, with `custom_config_base: /mnt/disks/params/sarek-parabricks/config`. A request
+that names the template saves the agent from reading sarek's parameter schema
+(`examples/ehr-genomics-chips.yaml` in the assistant UI does).
+
 `intervals` selects the target regions (`target_regions.bed`, about an hour for a run) or the
 whole genome (`primary_autosomes_XY.bed`, chr1-22, X and Y, about two hours).
 

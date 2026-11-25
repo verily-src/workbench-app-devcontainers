@@ -4,9 +4,12 @@ entities at risk, in aggregates only (masked counts and rates, medians), as of t
 Built by rule from the schema, for any dataset: for each static categorical column, the shares of
 its three most common values; for each split table, the median last value (None when fewer entities
 than the small-cell threshold have one); for each dated table with a code column, the eight codes
-most over-represented in the top 10%, as shares.
+most over-represented in the top 10%, as shares. Race and ethnicity columns are not described
+(``SENSITIVE``): a forecast's high-risk group is described by its clinical record.
 """
 from __future__ import annotations
+
+import re
 
 import pandas as pd
 
@@ -16,6 +19,7 @@ from .dataset import Dataset
 COMMON_VALUES = 3
 OVER_REPRESENTED = 8
 MAX_DISTINCT = 50
+SENSITIVE = re.compile(r"(?:^|_)(?:race|ethnic)", re.IGNORECASE)
 
 
 def _share(mask: pd.Series) -> str:
@@ -49,7 +53,7 @@ def high_risk_profile(ds: Dataset, scores: pd.DataFrame, as_of: pd.Timestamp,
     for name in ds.static:
         df = ds.raw[name].drop_duplicates(key).set_index(key)
         for c, ty in ds.schemas[name]["columns"]:
-            if c == key or c not in df:
+            if c == key or c not in df or SENSITIVE.search(c):
                 continue
             if not (ty == "STRING" or (ty in schema.INTEGER_TYPES and schema.CODE_NAME.search(c.lower()))):
                 continue

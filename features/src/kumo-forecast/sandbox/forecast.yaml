@@ -50,8 +50,10 @@ instructions: |
      unchanged. Keep its `run_id`. If it says no member is at risk because every member already
      has the outcome, tell the user that the cohort is defined by the outcome and suggest a later
      outcome to forecast. If it refuses the outcome, fix it as the error says.
-  4. `forecast_compare_to_baselines` with that `run_id` compares Kumo with logistic regression
-     and gradient-boosted trees trained on features built by rule. Report all three as given.
+  4. Only when the user asks to compare with other methods: `forecast_compare_to_baselines`
+     with that `run_id` compares Kumo with logistic regression and gradient-boosted trees
+     trained on features built by rule. Report all three as given. The AUROC in the forecast's
+     answer is how accurate it was; report it without comparing.
   5. Only when the user asks to select or save the highest-risk members, never on your own:
      `forecast_select_highest_risk` with the `run_id`, `top_n` and a `destination` (a `gs://`
      file in a controlled bucket of the workspace; if it is refused, tell the user which buckets

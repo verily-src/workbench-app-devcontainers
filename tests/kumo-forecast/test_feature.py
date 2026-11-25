@@ -969,6 +969,19 @@ class ProfileTests(unittest.TestCase):
             self.assertIsNone(r["top_10pct"])     # 5 people
 
 
+    def test_race_and_ethnicity_are_not_described(self):
+        pd = self.pd
+        _, ds = _graph(pd)
+        scores = pd.DataFrame({"person_id": range(50), "risk": [i / 50 for i in range(50)]})
+        with self.subTest("the fixture's person table has only a race column"):
+            rows = self.profile.high_risk_profile(ds, scores, pd.Timestamp("2021-06-01"))
+            self.assertFalse([r for r in rows if r["characteristic"].startswith("race")], rows)
+        for name in ("race", "race_concept_id", "ethnicity", "ethnicity_concept_id", "RACE", "patient_race", "ETHNIC_GROUP"):
+            self.assertTrue(self.profile.SENSITIVE.search(name), name)
+        for name in ("gender", "sex_at_birth", "gender_concept_id", "trace_id", "grace_period_days"):
+            self.assertIsNone(self.profile.SENSITIVE.search(name), name)
+
+
 class ForecastAnswerTests(unittest.TestCase):
     """Service.forecast's answer and its argument checks, with BigQuery and the model stubbed."""
 

@@ -4,6 +4,7 @@
     text = wbstorage.read_text("gs://bucket/folder/file.csv")
     wbstorage.write_text("gs://bucket/results/summary.md", "# Results\\n")
     for name in wbstorage.list_objects("gs://bucket/folder/"): ...
+    for name, size in wbstorage.sizes("gs://bucket/folder/").items(): ...   # bytes
     wbstorage.delete("gs://bucket/results/old.txt")
 
 Why not google.cloud.storage: that client addresses an object as /o/<name> with the slashes in
@@ -75,15 +76,20 @@ def delete(url):
 
 def list_objects(url):
     """The gs:// URLs of the objects under a prefix (gs://bucket/ lists the whole bucket)."""
+    return list(sizes(url))
+
+
+def sizes(url):
+    """{gs:// URL: size in bytes} of the objects under a prefix, from the same listing."""
     bucket, prefix = split(url)
-    found, token = [], None
+    found, token = {}, None
     while True:
         params = {"prefix": prefix, "maxResults": 1000}
         if token:
             params["pageToken"] = token
         page = _check(_http().get(f"{HOST}/storage/v1/b/{bucket}/o", params=params, timeout=120),
                       f"list {url}").json()
-        found += [f"gs://{bucket}/{item['name']}" for item in page.get("items", [])]
+        found.update({f"gs://{bucket}/{item['name']}": int(item.get("size", 0)) for item in page.get("items", [])})
         token = page.get("nextPageToken")
         if not token:
             return found

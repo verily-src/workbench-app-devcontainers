@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 from datetime import datetime, timezone
@@ -21,6 +22,9 @@ from . import destination as destination_mod
 from . import outcome as outcome_mod
 from . import privacy, schema, tables
 from .dataset import TARGET
+
+# An extra table to read beside the cohort's dataset: project.dataset.table.
+EXTRA_TABLE = re.compile(r"^`?([a-z][a-z0-9-]{4,28}[a-z0-9])\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)`?$")
 
 # The labeled histories are cut at yearly dates up to HISTORY_YEARS before as_of, and only those
 # whose outcome window ends by as_of count, so a longer horizon leaves none to learn from.
@@ -77,6 +81,30 @@ class Service:
             from .model import Forecaster
             entry[2][0] = Forecaster(entry[0], gpu_gb=self.gpu_gb)
         return entry[2][0]
+
+    def _with_extra(self, pop, chosen: list[str] | None, extra: list[str] | None) -> tuple[str, list[str] | None]:
+        """The datasets to read (the cohort's, then each extra table's) and the tables to choose:
+        ``chosen``, else every table of the cohort's own dataset with the key, then the extra
+        tables, which must have the key too (``plan`` checks it)."""
+        if not extra:
+            return pop.dataset, chosen
+        own = tables.datasets_of(pop.dataset)
+        parsed = []
+        for t in extra:
+            m = EXTRA_TABLE.match(str(t).strip())
+            if not m:
+                raise ValueError(f"extra table {t!r} is not a project.dataset.table name")
+            parsed.append(m.groups())
+        dataset = ",".join(dict.fromkeys(own + [f"{p}.{d}" for p, d, _ in parsed]))
+        schemas = tables.read_schemas(self._client(pop.billing_project), dataset)
+        names = list(chosen) if chosen else [t for t in schema.tables_with_key(schemas, pop.key_data_column)
+                                             if schemas[t].get("source") in own]
+        for p, d, t in parsed:
+            name = next((n for n, s in schemas.items() if s.get("source") == f"{p}.{d}" and s.get("table") == t), None)
+            if name is None:
+                raise ValueError(f"extra table {p}.{d}.{t} is not a table of {p}.{d}")
+            names.append(name)
+        return dataset, list(dict.fromkeys(names))
 
     def _schemas(self, lc) -> dict[str, dict]:
         return tables.read_schemas(self._client(lc.billing_project), lc.dataset)
@@ -156,7 +184,7 @@ class Service:
 
     def forecast(self, outcome: dict | None = None, session_id: str = "latest", as_of: str | None = None,
                  horizon_days: int = 365, version: int | None = None, time_columns: dict | None = None,
-                 tables: list[str] | None = None) -> dict:
+                 tables: list[str] | None = None, extra_tables: list[str] | None = None) -> dict:
         """Forecast ``outcome`` (``outcome_mod.parse``: rows of one of the dataset's tables, the
         first of which dates it) within ``horizon_days`` of ``as_of`` for the members of the locked
         cohort. Kumo learns from the whole dataset's history and scores the cohort's members."""
@@ -170,8 +198,9 @@ class Service:
             pop = self._locked(session_id, version)
             key = pop.key_data_column
             o = outcome_mod.parse(outcome, self._schemas(pop), key)
-            ds, p = self.graph(pop.dataset, key, pop.billing_project, time_columns, tables)
-            fc = self.forecaster(pop.dataset, key, pop.billing_project, time_columns, tables)
+            dataset, tables = self._with_extra(pop, tables, extra_tables)
+            ds, p = self.graph(dataset, key, pop.billing_project, time_columns, tables)
+            fc = self.forecaster(dataset, key, pop.billing_project, time_columns, tables)
             key_type = self._key_type(ds)
             members = self._frame(pop, key_type)
             first = self._outcome_dates(pop, o, key_type)
@@ -185,7 +214,7 @@ class Service:
             s = r["scores"]
             meta = {"run_id": run_id, "session_id": pop.session_id, "lock_version": pop.version,
                     "outcome": outcome,
-                    "dataset": pop.dataset, "billing_project": pop.billing_project, "key": key,
+                    "dataset": dataset, "billing_project": pop.billing_project, "key": key,
                     "time_columns": time_columns or {}, "tables": list(tables) if tables else None, "as_of": str(when.date()),
                     "horizon_days": int(horizon_days), "labels_known": r["labels_known"]}
             pool = r["pool"]

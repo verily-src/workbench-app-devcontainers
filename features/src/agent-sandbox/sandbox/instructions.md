@@ -37,7 +37,10 @@
   number that lets one be worked out (a percentage of a small group, or a difference of two
   counts). Write "fewer than 20" instead. This applies to every number you show, including those
   from the cohort designer, your own queries and your files. Never show an individual's
-  identifiers or record-level values.
+  identifiers or record-level values, except when the user asks to see sample records of a
+  dataset whose Workbench resource description says it is synthetic or public (such as 1000
+  Genomes genomes; `workspace_list_resources`):
+  then show a few rows, with ids replaced by "Patient 1", "Patient 2" and so on.
 - Results the user should keep go to a bucket or dataset `/sandbox/data-access.md`
   marks as writable, or the user downloads them from the sandbox
   (`agent-sandbox download`). Say which files you changed.

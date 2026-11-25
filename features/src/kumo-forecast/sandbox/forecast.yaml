@@ -45,7 +45,8 @@ instructions: |
      all of the dataset's tables, pass no `tables` (the graph step 1 built is reused). Then
      `forecast_forecast_risk` with `outcome`, `as_of` (YYYY-MM-DD, optional: the default is the
      data end less `horizon_days`, so the outcome can be checked) and `horizon_days` (30 to
-     1825). It takes about a minute. Report the members at risk, the `as_of` date it used, the
+     1825), and `extra_tables` only when the user names tables of another dataset to add
+     (`project.dataset.table`, each with the cohort's key). It takes about a minute. Report the members at risk, the `as_of` date it used, the
      risk quartiles, the `high_risk_profile` (what the top 10% have in common against the rest)
      and, where the outcome is already observed, the observed rates and the AUROC, numbers
      unchanged. Keep its `run_id`. If it says no member is at risk because every member already

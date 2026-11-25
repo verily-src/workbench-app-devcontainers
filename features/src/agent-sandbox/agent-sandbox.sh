@@ -340,7 +340,7 @@ write_agent_data_notes() {
       (if (.data.buckets | length) > 0 then
         "Cloud Storage buckets:",
         (.data.buckets[] | "- `gs://\(.name)`" + (if .write then " (read and write: the workspace owns it)" else " (read-only)" end)), "",
-        "For objects in buckets use the `wbstorage` module of that interpreter, with gs:// URLs: `wbstorage.list_objects(\"gs://bucket/folder/\")`, `wbstorage.read_text(url)` / `read_bytes(url)`, `wbstorage.write_text(url, text)` / `write_bytes(url, data)`, `wbstorage.delete(url)`. Do not use the google.cloud.storage client for objects: it fails here on any object name with a slash in it.\n"
+        "For objects in buckets use the `wbstorage` module of that interpreter, with gs:// URLs: `wbstorage.list_objects(\"gs://bucket/folder/\")`, `wbstorage.sizes(url)` ({url: bytes} of the same listing), `wbstorage.read_text(url)` / `read_bytes(url)`, `wbstorage.write_text(url, text)` / `write_bytes(url, data)`, `wbstorage.delete(url)`. Do not use the google.cloud.storage client for objects: it fails here on any object name with a slash in it.\n"
       else empty end),
       (if .data.write then "Write results the user should keep to a bucket or dataset marked read and write; that is how they leave the sandbox. " else "Nothing can be written to Google Cloud from here. " end)
         + "Anything else is denied by the sandbox policy and logged: other datasets, buckets and projects, writes to read-only data, and any program other than that interpreter. When a request is denied, say so and stop; do not retry other ways."

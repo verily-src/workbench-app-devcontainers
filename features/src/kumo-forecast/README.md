@@ -88,7 +88,7 @@ and `observation` by concept.
 | Tool | Does |
 |---|---|
 | `get_cohort_info` | A locked cohort: its request, size, dataset, entity key, `data_end` and the tables a forecast would read with their time columns |
-| `forecast_risk` | Kumo's forecast for the cohort's members at risk on `as_of`, that the `outcome` starts within `horizon_days` (30 to 1,825), over `tables` (optional). Risk quartiles, what the top 10% have in common against the rest, and where already observed, observed rates and AUROC. Returns a `run_id` |
+| `forecast_risk` | Kumo's forecast for the cohort's members at risk on `as_of`, that the `outcome` starts within `horizon_days` (30 to 1,825), over `tables` (optional) and `extra_tables` (optional: `project.dataset.table` names of other datasets' tables with the entity key, such as a genotype table per person). Risk quartiles, what the top 10% have in common against the rest, and where already observed, observed rates and AUROC. Returns a `run_id` |
 | `compare_to_baselines` | Kumo against logistic regression and gradient-boosted trees on the same rows; the agent calls it only when asked to compare |
 | `select_highest_risk` | The `top_n` highest-risk members, written as `<key>,risk` to a `gs://` file in a controlled bucket resource of the workspace |
 | `wait_for_result` | The answer of a `get_cohort_info`, `forecast_risk` or `compare_to_baselines` call that outlasted 50 seconds and returned a `job_id` |

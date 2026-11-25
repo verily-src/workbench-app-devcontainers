@@ -1024,6 +1024,36 @@ class ForecastAnswerTests(unittest.TestCase):
     def two_lock_service(self):
         return self.service.Service(FIXTURES / "two_locks", Path(self.tmp.name) / "state")
 
+    def test_extra_tables_are_read_beside_the_cohorts_dataset(self):
+        import types
+        from unittest import mock
+        lc = types.SimpleNamespace(dataset="wb-data-1234.omop", key_data_column="person_id", billing_project=None)
+        schemas = {
+            "person": {"columns": [("person_id", "INTEGER")], "source": "wb-data-1234.omop", "table": "person"},
+            "measurement": {"columns": [("person_id", "INTEGER"), ("d", "DATE")], "source": "wb-data-1234.omop",
+                            "table": "measurement"},
+            "concept": {"columns": [("concept_id", "INTEGER")], "source": "wb-data-1234.omop", "table": "concept"},
+            "apol1_genotypes": {"columns": [("person_id", "INTEGER"), ("apol1_risk_alleles", "INTEGER")],
+                                "source": "wb-work-5678.genomic_results", "table": "apol1_genotypes"},
+            "other_person": {"columns": [("person_id", "INTEGER")], "source": "wb-work-5678.genomic_results",
+                             "table": "other_person"},
+        }
+        self.svc._client = lambda project: None
+        with mock.patch.object(self.service.tables, "read_schemas", return_value=schemas) as read:
+            dataset, names = self.svc._with_extra(lc, None, ["wb-work-5678.genomic_results.apol1_genotypes"])
+            self.assertEqual(dataset, "wb-data-1234.omop,wb-work-5678.genomic_results")
+            read.assert_called_once_with(None, dataset)
+            # Every keyed table of the cohort's own dataset, then the extra table, and nothing else of its dataset.
+            self.assertEqual(names, ["person", "measurement", "apol1_genotypes"])
+            self.assertEqual(self.svc._with_extra(lc, ["measurement"], ["`wb-work-5678.genomic_results.apol1_genotypes`"])[1],
+                             ["measurement", "apol1_genotypes"])
+            with self.assertRaisesRegex(ValueError, "is not a table of wb-work-5678.genomic_results"):
+                self.svc._with_extra(lc, None, ["wb-work-5678.genomic_results.missing"])
+            for bad in ("apol1_genotypes", "genomic_results.apol1_genotypes", "wb-work-5678.genomic_results.t; DROP"):
+                with self.assertRaisesRegex(ValueError, "not a project.dataset.table"):
+                    self.svc._with_extra(lc, None, [bad])
+        self.assertEqual(self.svc._with_extra(lc, ["person"], None), ("wb-data-1234.omop", ["person"]))
+
     def test_a_forecast_needs_an_outcome(self):
         with self.assertRaisesRegex(ValueError, "outcome is required"):
             self.svc.forecast()

@@ -1,6 +1,6 @@
 # The Kumo forecast MCP server, as the sandbox sees it (the agent-sandbox README, "Other MCP
 # servers"): the tools the policy may allow and what the agent is told. The tools read the
-# designer's locked cohorts; select_highest_risk writes one file, only to a controlled bucket of
+# designer's locked cohort and the outcome the agent describes; select_highest_risk writes one file, only to a controlled bucket of
 # the workspace, and the harness asks the person before each call of it.
 name: forecast
 title: Kumo forecast
@@ -20,41 +20,39 @@ instructions: |
   wants to know who in a cohort is likely to have an outcome, how well that can be predicted, or
   whom to analyse further.
 
-  The outcome is a cohort too. To forecast, first have the designer define and lock the outcome
-  as a cohort: its members are the entities that have the outcome, and its index date is when
-  the outcome starts (the first diagnosis, the death date, the first admission). Its members must
-  be keyed by the same column as the population cohort's (`entity_key` in
-  `forecast_get_cohort_info`; a study can have two, such as SUBJID and USUBJID): call
-  `forecast_get_cohort_info` on the population first, and name that key in the request. Say all
-  this in the request you send the designer. Then:
+  The cohort is whatever the designer locked; the forecast scores its members. The outcome is
+  not a cohort: describe it to `forecast_forecast_risk` as rows of one of the dataset's tables,
+  and a member has it from the date of its first such row. Never ask the designer to build or
+  lock a cohort for the outcome. Then:
 
   1. `forecast_get_cohort_info` (default `cda_session_id: latest`) says which locked cohort it
      sees, its size, the dataset and the key that identifies its members, the date the data
-     ends and `tables`, every table with that key (rows, time column, columns). If it
-     reports no locked cohort, have the cohort designer lock one first. Once the outcome is
-     locked in the same session it is the newest lock: pass `lock_version` to look at the
-     population's.
-  2. Before `forecast_forecast_risk`, look at `tables` in the answer of step 1. Choose the ones
+     ends and `tables`, every table with that key (rows, time column, columns). If it reports
+     no locked cohort, have the cohort designer lock one first.
+  2. Build the outcome from the user's words, as `{"table": ..., "where": [...]}` on one of
+     those `tables`: each condition is `{"column": ..., "op": ..., "value": ...}` with `op` one of
+     `in`, `=`, `!=`, `<`, `<=`, `>`, `>=` or `between` (value `[low, high]`), and all must hold.
+     A diagnosis is the condition table with its concept or code column `in` the codes; a lab
+     result past a threshold is the measurement table with its concept and a value condition
+     (`value_as_number` `<` 60); a death is the death table with no conditions. Find the codes
+     in the dataset's own vocabulary (in OMOP, the `concept` table) with your own BigQuery query in Python,
+     include the codes for the condition's subtypes when the user means all of them, and tell
+     the person in one line which codes you used.
+  3. Before `forecast_forecast_risk`, look at `tables` in the answer of step 1. Choose the ones
      that record what happened to people and when, and that bear on the outcome. Leave out
      tables that copy or index other tables, and tables of file locations. Tell the person which
      tables you chose and why, in one line, and pass them as `tables`. Then
-     `forecast_forecast_risk` with `outcome_lock_version` (the outcome's lock; add
-     `outcome_session_id` if it is in another session; when the population and the outcome are
-     locks of one session, also pass the population's lock as `lock_version`, which
-     `forecast_get_cohort_info` reports as `lock_version`), `as_of` (YYYY-MM-DD, optional: the
-     default is the data end less `horizon_days`, so the outcome can be checked), `horizon_days`
-     (30 to 1825), and `population`: `cohort` for the cohort's own members, `outside_cohort`
-     when the user asks about entities outside the cohort, or `everyone`. It takes about a minute. Report the
-     members at risk, the `as_of` date it used, the risk quartiles, the `high_risk_profile` (what
-     the top 10% have in common against the rest) and, where the outcome is already observed,
-     the observed rates and the AUROC, numbers unchanged. Keep its `run_id`. If it says no member
-     is at risk because the cohort is defined by the outcome, tell the user that and offer
-     `outside_cohort`. If the answer has a `population_note`, give it to the user as written. If
-     it says the outcome lock has no index date, have the designer lock the outcome again with
-     one.
-  3. `forecast_compare_to_baselines` with that `run_id` compares Kumo with logistic regression
+     `forecast_forecast_risk` with `outcome`, `as_of` (YYYY-MM-DD, optional: the default is the
+     data end less `horizon_days`, so the outcome can be checked) and `horizon_days` (30 to
+     1825). It takes about a minute. Report the members at risk, the `as_of` date it used, the
+     risk quartiles, the `high_risk_profile` (what the top 10% have in common against the rest)
+     and, where the outcome is already observed, the observed rates and the AUROC, numbers
+     unchanged. Keep its `run_id`. If it says no member is at risk because every member already
+     has the outcome, tell the user that the cohort is defined by the outcome and suggest a later
+     outcome to forecast. If it refuses the outcome, fix it as the error says.
+  4. `forecast_compare_to_baselines` with that `run_id` compares Kumo with logistic regression
      and gradient-boosted trees trained on features built by rule. Report all three as given.
-  4. Only when the user asks to select or save the highest-risk members, never on your own:
+  5. Only when the user asks to select or save the highest-risk members, never on your own:
      `forecast_select_highest_risk` with the `run_id`, `top_n` and a `destination` (a `gs://`
      file in a controlled bucket of the workspace; if it is refused, tell the user which buckets
      it names) writes the highest-risk members' keys and scores to that file. Report how many

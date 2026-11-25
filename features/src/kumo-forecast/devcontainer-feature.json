@@ -2,7 +2,7 @@
   "id": "kumo-forecast",
   "version": "0.0.1",
   "name": "Kumo Forecast",
-  "description": "Installs NVIDIA Kumo Relational (structured-data-models) and serves it as an MCP server on port 9244: it forecasts an outcome (a second locked cohort) for the cohorts the cohort designer locks, over the tables of the cohort's dataset that the agent chooses, compares with classical baselines and writes the highest-risk members to a controlled bucket. With the agent-sandbox feature, the sandboxed agent drives it.",
+  "description": "Installs NVIDIA Kumo Relational (structured-data-models) and serves it as an MCP server on port 9244: it forecasts an outcome, described as rows of one of the dataset's tables, for the cohorts the cohort designer locks, over the tables of the cohort's dataset that the agent chooses, compares with classical baselines and writes the highest-risk members to a controlled bucket. With the agent-sandbox feature, the sandboxed agent drives it.",
   "options": {
     "username": {
       "type": "string",

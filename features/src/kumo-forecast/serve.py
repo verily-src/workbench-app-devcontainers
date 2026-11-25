@@ -4,9 +4,10 @@
 It forecasts an outcome for the entities of a cohort the cohort designer locked, with NVIDIA Kumo
 Relational over the tables of the cohort's dataset the agent chooses (default: every table with the
 cohort's key column), compares it with classical baselines, and writes the highest-risk members to a controlled bucket of the
-workspace. The outcome is a second locked cohort whose index date is when the outcome starts. The
-cohorts are read from the designer's session files (kumo_forecast.cohort), so nothing the driving
-model writes is executed and the designer is unchanged.
+workspace. The outcome is described as rows of one of the dataset's tables (kumo_forecast.outcome),
+checked against the schema and sent as query parameters. The cohort is read from the designer's
+session files (kumo_forecast.cohort), so nothing the driving model writes is executed and the
+designer is unchanged.
 
 usage: serve.py --sessions-dir <designer sessions/> --state-dir <dir> [--bind 127.0.0.1]
            [--port 9244] [--allowed-host <name>]... [--gpu-gb 5]
@@ -18,7 +19,6 @@ import sys
 import time
 import uuid
 from pathlib import Path
-from typing import Literal
 
 from fastmcp import FastMCP
 
@@ -106,29 +106,27 @@ async def get_cohort_info(cda_session_id: str = "latest", lock_version: int | No
 
 
 @mcp.tool
-async def forecast_risk(outcome_lock_version: int, outcome_session_id: str | None = None,
-                        as_of: str | None = None, horizon_days: int = 365,
-                        population: Literal["cohort", "outside_cohort", "everyone"] = "cohort",
+async def forecast_risk(outcome: dict, as_of: str | None = None, horizon_days: int = 365,
                         cda_session_id: str = "latest", lock_version: int | None = None,
                         time_columns: dict[str, str] | None = None,
                         tables: list[str] | None = None) -> dict:
-    """Forecast whether the outcome starts within horizon_days (30 to 1825) of as_of (YYYY-MM-DD)
-    for each member at risk on as_of, with NVIDIA Kumo Relational reading the dataset's tables in context
-    (no training, no hand-built features). The outcome is another locked cohort in the designer:
-    its members are the entities that have the outcome and its index date is when it starts
-    (outcome_lock_version, and outcome_session_id if it is not in the population's session). Lock
-    it first, with the designer. population: "cohort" (the locked cohort's members), "outside_cohort"
-    (everyone else in the dataset, for "who outside this cohort is likely to...") or "everyone".
-    as_of defaults to the data end less horizon_days, so the outcome can be checked; the answer
-    says the date used. Returns a run_id for compare_to_baselines and select_highest_risk, risk
-    quartiles, what the top 10% have in common against the rest (high_risk_profile), the tables
-    read, and where the outcome is already observed, the observed rates and the AUROC. Takes
-    about a minute (longer the first time a dataset is read, or without a GPU): past 50 seconds it
-    returns a job_id for wait_for_result. tables: the dataset's tables to read
-    (choose from get_cohort_info's tables); each must have the cohort's key. Default: all of them."""
-    return await _waited("forecast_risk", SERVICE.forecast, cda_session_id, outcome_lock_version,
-                         outcome_session_id, as_of, horizon_days, lock_version, population, time_columns,
-                         tables)
+    """Forecast, for each member of the locked cohort at risk on as_of (YYYY-MM-DD), whether the
+    outcome starts within horizon_days (30 to 1825), with NVIDIA Kumo Relational reading the
+    dataset's tables in context (no training, no hand-built features). outcome is rows of one of
+    the dataset's tables with the cohort's key; a member has it from the date of its first such row:
+    {"table": "condition_occurrence", "where": [{"column": "condition_concept_id", "op": "in",
+    "value": [443597]}]}. op is one of in, =, !=, <, <=, >, >= or between ([low, high]); several
+    conditions must all hold (a lab: the concept, then "value_as_number" "<" 60); no conditions means
+    any row (a death). "time_column" overrides the column that dates the rows. as_of defaults to
+    the data end less horizon_days, so the outcome can be checked; the answer says the date used.
+    Returns a run_id for compare_to_baselines and select_highest_risk, risk quartiles, what the top
+    10% have in common against the rest (high_risk_profile), the tables read, and where the outcome
+    is already observed, the observed rates and the AUROC. Takes about a minute (longer the first
+    time a dataset is read, or without a GPU): past 50 seconds it returns a job_id for
+    wait_for_result. tables: the dataset's tables to read (choose from get_cohort_info's tables);
+    each must have the cohort's key. Default: all of them."""
+    return await _waited("forecast_risk", SERVICE.forecast, outcome, cda_session_id, as_of, horizon_days,
+                         lock_version, time_columns, tables)
 
 
 @mcp.tool

@@ -15,10 +15,25 @@ FEATURE = FEATURES / "kumo-forecast"
 APP = REPO / "src" / "ai-research-assistant"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 URL = "http://host.openshell.internal:9244/mcp"
+OMOP_SCHEMAS = {
+    "person": {"columns": [("person_id", "INTEGER"), ("year_of_birth", "INTEGER")], "source": "wb-data-1234.omop",
+               "table": "person"},
+    "condition_occurrence": {"columns": [("person_id", "INTEGER"), ("condition_concept_id", "INTEGER"),
+                                         ("condition_start_date", "DATE"), ("condition_source_value", "STRING")],
+                             "source": "wb-data-1234.omop", "table": "condition_occurrence"},
+    "measurement": {"columns": [("person_id", "INTEGER"), ("measurement_concept_id", "INTEGER"),
+                                ("measurement_date", "DATE"), ("value_as_number", "FLOAT"), ("abnormal", "BOOLEAN")],
+                    "source": "wb-data-1234.omop", "table": "measurement"},
+    "death": {"columns": [("person_id", "INTEGER"), ("death_date", "DATE")], "source": "wb-data-1234.omop",
+              "table": "death"},
+    "concept": {"columns": [("concept_id", "INTEGER"), ("concept_name", "STRING")], "source": "wb-data-1234.omop",
+                "table": "concept"},
+}
+CKD3 = {"table": "condition_occurrence", "where": [{"column": "condition_concept_id", "op": "in", "value": [443597]}]}
 
 sys.path.insert(0, str(FEATURE))
 sys.path.insert(0, str(FEATURES / "ai-policy"))
-from kumo_forecast import cohort, destination, privacy, schema  # noqa: E402  (standard library only)
+from kumo_forecast import cohort, destination, outcome, privacy, schema  # noqa: E402  (standard library only)
 
 
 class CatalogTests(unittest.TestCase):
@@ -42,22 +57,21 @@ class CatalogTests(unittest.TestCase):
         for tool in self.catalog["tools"]:
             self.assertIn(f"`forecast_{tool}`", self.catalog["instructions"], tool)
 
-    def test_the_agent_is_told_when_to_forecast_outside_the_cohort(self):
-        self.assertIn("`outside_cohort` when the user asks about entities outside the cohort",
-                      " ".join(self.catalog["instructions"].split()))
+    def test_the_forecast_takes_the_outcome_described_and_no_second_lock(self):
         serve = (FEATURE / "serve.py").read_text()
-        offered = re.search(r'population: Literal\[(.*?)\]', serve).group(1).replace('"', "").split(", ")
-        service = (FEATURE / "kumo_forecast" / "service.py").read_text()
-        known = re.findall(r'^\s*(?:POPULATIONS = \{)?"(\w+)": "', service, flags=re.M)
-        self.assertEqual(offered, ["cohort", "outside_cohort", "everyone"])
-        self.assertEqual(sorted(k for k in known if k in offered), sorted(offered))
-
-    def test_the_agent_is_told_to_lock_the_outcome_with_its_onset_as_the_index_date(self):
+        signature = re.search(r"async def forecast_risk\((.*?)\) -> dict:", serve, flags=re.S).group(1)
+        self.assertTrue(signature.startswith("outcome: dict"), signature)
+        for gone in ("outcome_lock_version", "outcome_session_id", "population"):
+            self.assertNotIn(gone, signature)
         text = " ".join(self.catalog["instructions"].split())
-        self.assertIn("first have the designer define and lock the outcome as a cohort", text)
-        self.assertIn("its index date is when the outcome starts", text)
-        self.assertIn("`outcome_lock_version`", text)
+        self.assertIn("Never ask the designer to build or lock a cohort for the outcome", text)
+        self.assertNotIn("outcome_lock_version", text)
         self.assertNotIn("sarek", text.lower())
+
+    def test_the_agent_is_told_every_outcome_operator(self):
+        text = self.catalog["instructions"]
+        for op in outcome.OPS:
+            self.assertIn(f"`{op}`", text, op)
 
     def test_the_agent_is_told_not_to_pass_sql_or_ids(self):
         self.assertIn("never pass it SQL or participant ids", self.catalog["instructions"])
@@ -103,39 +117,9 @@ class CohortTests(unittest.TestCase):
         return data, cohort.locked_cohort(data, 1), cohort.locked_cohort(data, 2)
 
     def test_two_locks_of_a_session_are_read_by_version(self):
-        _, population, outcome = self.two_locks()
-        self.assertEqual((population.version, outcome.version), (1, 2))
-        self.assertIn("443597", outcome.sql)
-        cohort.check_outcome(population, outcome)
-
-    def test_the_same_lock_as_population_and_outcome_is_refused_and_says_what_to_pass(self):
-        _, population, outcome = self.two_locks()
-        with self.assertRaisesRegex(cohort.CohortError, "same cohort .*lock 2.*lock_version.*outcome_lock_version"):
-            cohort.check_outcome(outcome, outcome)
-
-    def test_the_population_defaults_to_the_newest_lock_that_is_not_the_outcome(self):
-        data, _, _ = self.two_locks()
-        self.assertEqual(cohort.population_version(data, 2), 1)
-        self.assertEqual(cohort.population_version(data, 1), 2)
-        data["locks"] = data["locks"][:1]
-        self.assertIsNone(cohort.population_version(data, 1))
-
-    def test_an_outcome_lock_without_an_index_date_is_refused(self):
-        data, population, _ = self.two_locks()
-        data["locks"][1]["export"]["columns"] = [c for c in data["locks"][1]["export"]["columns"]
-                                                 if c["meaning"] != "time_zero_date"]
-        with self.assertRaisesRegex(cohort.CohortError, "lock the outcome with an index date that is when it starts"):
-            cohort.check_outcome(population, cohort.locked_cohort(data, 2))
-
-    def test_locks_that_key_different_columns_or_read_different_datasets_are_refused(self):
-        data, population, _ = self.two_locks()
-        data["locks"][1]["export"]["columns"][0]["column"] = "visit_occurrence_id"
-        with self.assertRaisesRegex(cohort.CohortError, "visit_occurrence_id .* person_id"):
-            cohort.check_outcome(population, cohort.locked_cohort(data, 2))
-        data, population, _ = self.two_locks()
-        data["locks"][1]["evidence"]["tables"][0]["table"]["name"] = "wb-data-1234.other.person"
-        with self.assertRaisesRegex(cohort.CohortError, "reads wb-data-1234.other .* wb-data-1234.omop"):
-            cohort.check_outcome(population, cohort.locked_cohort(data, 2))
+        _, first, second = self.two_locks()
+        self.assertEqual((first.version, second.version), (1, 2))
+        self.assertIn("443597", second.sql)
 
     def without_column(self, grain="patient", tables=("person", "condition_occurrence", "concept")):
         data = cohort.load_session(FIXTURES / "people")
@@ -264,16 +248,6 @@ class StudyAcrossDatasetsTests(unittest.TestCase):
         omop = self.lock(["wb-data-1234.omop.person", "wb-data-1234.vocab.concept"], "person_id")
         self.assertEqual(omop.dataset, "wb-data-1234.omop")
 
-    def test_an_outcome_on_part_of_the_same_data_is_accepted_and_one_on_other_data_refused(self):
-        population = self.lock(["wb-study-1234.crf.MH", "wb-study-1234.screener.DM"])
-        outcome = self.lock(["wb-study-1234.crf.CE"])
-        outcome = cohort.LockedCohort(**{**outcome.__dict__, "index_column": "index_date", "version": 2})
-        cohort.check_outcome(population, outcome)
-        elsewhere = cohort.LockedCohort(**{**outcome.__dict__, "dataset": "wb-other-5678.crf"})
-        with self.assertRaisesRegex(cohort.CohortError, "lock both on the same data"):
-            cohort.check_outcome(population, elsewhere)
-
-
 class BackgroundJobTests(unittest.TestCase):
     """A slow tool answers within the agent's call timeout with a job id, and the same call made
     again waits on the same work (serve.py, with fastmcp and the service stubbed)."""
@@ -383,13 +357,94 @@ class TimeColumnTests(unittest.TestCase):
             schema.time_column(cols, "study_day")
 
 
-class InstructionTests(unittest.TestCase):
-    def test_the_agent_is_told_to_key_the_outcome_like_the_population(self):
-        """A crf + sensordata population was keyed by USUBJID and its outcome by SUBJID: the forecast
-        refused, and designing the outcome again took eight more waits."""
-        text = yaml.safe_load((FEATURE / "sandbox" / "forecast.yaml").read_text())["instructions"]
-        self.assertIn("keyed by the same column as the population cohort", text)
-        self.assertIn("name that key in the request", text)
+class OutcomeTests(unittest.TestCase):
+    """The outcome as the agent describes it: checked against the schema, sent as parameters."""
+
+    def parse(self, spec):
+        return outcome.parse(spec, OMOP_SCHEMAS, "person_id")
+
+    def test_a_diagnosis_is_the_first_row_with_one_of_its_codes(self):
+        o = self.parse(CKD3)
+        self.assertEqual((o.table, o.time_column), ("condition_occurrence", "condition_start_date"))
+        sql, params = outcome.query(o, "person_id")
+        self.assertEqual(sql, "SELECT `person_id` AS `person_id`, MIN(`condition_start_date`) AS outcome_date "
+                              "FROM `wb-data-1234`.`omop`.`condition_occurrence` WHERE `person_id` IS NOT NULL "
+                              "AND `condition_start_date` IS NOT NULL AND `condition_concept_id` IN UNNEST(@v0) "
+                              "GROUP BY `person_id`")
+        self.assertEqual(params, [("v0", "INT64", [443597], True)])
+        self.assertEqual(o.describe({"443597": "Chronic kidney disease stage 3"}),
+                         "the first row of condition_occurrence where condition_concept_id in "
+                         "[443597 (Chronic kidney disease stage 3)], dated by condition_start_date")
+
+    def test_a_lab_past_a_threshold_holds_every_condition(self):
+        o = self.parse({"table": "measurement", "where": [
+            {"column": "measurement_concept_id", "op": "=", "value": "3049187"},
+            {"column": "value_as_number", "op": "<", "value": 60},
+            {"column": "measurement_date", "op": "between", "value": ["2020-01-01", "2025-12-31"]}]})
+        sql, params = outcome.query(o, "person_id")
+        self.assertIn("`measurement_concept_id` = @v0 AND `value_as_number` < @v1 AND "
+                      "`measurement_date` BETWEEN @v2_lo AND @v2_hi", sql)
+        from datetime import date
+        self.assertEqual(params, [("v0", "INT64", 3049187, False), ("v1", "FLOAT64", 60.0, False),
+                                  ("v2_lo", "DATE", date(2020, 1, 1), False),
+                                  ("v2_hi", "DATE", date(2025, 12, 31), False)])
+
+    def test_a_table_with_no_conditions_is_any_row(self):
+        o = self.parse({"table": "death"})
+        self.assertEqual(o.time_column, "death_date")
+        self.assertNotIn("@", outcome.query(o, "person_id")[0])
+        self.assertEqual(o.describe(), "the first row of death, dated by death_date")
+
+    def test_the_time_column_can_be_named_and_must_be_a_date(self):
+        o = self.parse({"table": "measurement", "time_column": "measurement_date"})
+        self.assertEqual(o.time_column, "measurement_date")
+        with self.assertRaisesRegex(schema.SchemaError, "'value_as_number' is FLOAT, not a DATE"):
+            self.parse({"table": "measurement", "time_column": "value_as_number"})
+
+    def test_what_is_not_in_the_schema_is_refused_by_name(self):
+        cases = [
+            ({"table": "diagnoses"}, "'diagnoses' is not in the cohort's dataset; tables with person_id: person, "
+                                     "condition_occurrence, measurement, death"),
+            ({"table": "concept"}, "concept has no person_id column"),
+            ({"table": "person"}, "person has no DATE, DATETIME or TIMESTAMP column"),
+            ({"table": "death", "where": [{"column": "cause; DROP", "op": "=", "value": 1}]},
+             "'cause; DROP' is not a column of death"),
+            ({"table": "death", "where": [{"column": "death_date", "op": "LIKE", "value": "x"}]},
+             "op 'LIKE' is not one of in"),
+            ({"table": "death", "sql": "SELECT 1"}, "unknown fields sql"),
+            ("condition_occurrence", "outcome is an object"),
+        ]
+        for spec, message in cases:
+            with self.assertRaisesRegex(outcome.OutcomeError, re.escape(message)):
+                self.parse(spec)
+
+    def test_values_must_fit_their_column_and_operator(self):
+        def where(column, op, value):
+            return {"table": "measurement" if column != "condition_source_value" else "condition_occurrence",
+                    "where": [{"column": column, "op": op, "value": value}]}
+        cases = [
+            (where("measurement_concept_id", "in", []), "a non-empty list"),
+            (where("measurement_concept_id", "in", ["3049187; --"]), "is not a whole number"),
+            (where("measurement_concept_id", "=", True), "is not a whole number"),
+            (where("measurement_concept_id", "=", [1, 2]), "use in for a list"),
+            (where("value_as_number", "between", [1]), "takes [low, high]"),
+            (where("value_as_number", "<", "sixty"), "is not a number"),
+            (where("condition_source_value", "<", "N18"), "a text column takes op in, = or !="),
+            (where("abnormal", "<", True), "a true/false column takes op = or !="),
+            (where("measurement_date", ">", "last year"), "is not an ISO date"),
+            (where("measurement_concept_id", "in", list(range(outcome.MAX_VALUES + 1))), "at most 1000 values"),
+        ]
+        for spec, message in cases:
+            with self.assertRaisesRegex(outcome.OutcomeError, re.escape(message)):
+                self.parse(spec)
+        too_many = {"table": "death", "where": [{"column": "death_date", "op": ">", "value": "2020-01-01"}] * 11}
+        with self.assertRaisesRegex(outcome.OutcomeError, "at most 10"):
+            self.parse(too_many)
+
+    def test_text_codes_are_sent_as_text(self):
+        o = self.parse({"table": "condition_occurrence",
+                        "where": [{"column": "condition_source_value", "op": "in", "value": ["N18.3", 585]}]})
+        self.assertEqual(outcome.query(o, "person_id")[1], [("v0", "STRING", ["N18.3", "585"], True)])
 
 
 class KeyedTablesTests(unittest.TestCase):
@@ -777,35 +832,6 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(list(rows.person_id), [1])
 
 
-class OutsideTheCohort(unittest.TestCase):
-    """A cohort defined by the outcome still leaves its later cases outside it on as_of."""
-
-    def setUp(self):
-        try:
-            import pandas
-        except ImportError:
-            self.skipTest("needs pandas")
-        self.pd = pandas
-        from kumo_forecast.service import joined_on
-        self.joined_on = joined_on
-
-    def _run(self, onsets):
-        pd = self.pd
-        members = pd.DataFrame({"person_id": [1, 2, 3, 4, 5], "index_date": pd.to_datetime(["2015-01-01"] * 5)})
-        first = pd.Series(pd.to_datetime(list(onsets.values())), index=list(onsets.keys()))
-        return self.joined_on(members, first, pd.Timestamp("2024-06-30"), "person_id")
-
-    def test_members_whose_outcome_comes_later_count_as_outside(self):
-        joined, later = self._run({1: "2020-01-01", 2: "2021-01-01", 3: "2025-03-01", 4: "2025-06-01", 5: "2026-01-01"})
-        self.assertEqual(sorted(joined.person_id), [1, 2])
-        self.assertEqual(later, 3)
-
-    def test_a_cohort_not_defined_by_the_outcome_is_kept_whole(self):
-        joined, later = self._run({1: "2025-03-01"})
-        self.assertEqual(sorted(joined.person_id), [1, 2, 3, 4, 5])
-        self.assertEqual(later, 0)
-
-
 def _graph(pd):
     """A small graph: 50 people with dated measurements from 2020 (codes 1-3, one missing), a
     visit table with no own id, and a person table with a code column holding a missing value."""
@@ -962,32 +988,19 @@ class ForecastAnswerTests(unittest.TestCase):
     def two_lock_service(self):
         return self.service.Service(FIXTURES / "two_locks", Path(self.tmp.name) / "state")
 
-    def test_two_locks_in_one_session_give_the_population_the_other_lock(self):
-        svc = self.two_lock_service()
-        self.assertEqual(svc._population_version("latest", None, None, 2), 1)
-        self.assertEqual(svc._population_version("20261113-101500", None, "20261113-101500", 2), 1)
-        self.assertEqual(svc._population_version("latest", None, None, 1), 2)
-        self.assertEqual(svc._population_version("latest", 2, None, 2), 2)
-        self.assertIsNone(svc._population_version("latest", None, "20261111-000000", 2))
+    def test_a_forecast_needs_an_outcome(self):
+        with self.assertRaisesRegex(ValueError, "outcome is required"):
+            self.svc.forecast()
 
-    def test_a_forecast_whose_population_and_outcome_are_one_lock_is_refused(self):
-        svc = self.two_lock_service()
-        with self.assertRaisesRegex(ValueError, "same cohort .*lock_version"):
-            svc.forecast(outcome_lock_version=2, version=2)
-
-    def test_a_forecast_reads_the_population_from_the_lock_before_the_outcome(self):
+    def test_the_outcome_is_checked_against_the_cohorts_schema_before_any_table_is_read(self):
         import types
-        from unittest import mock
-        svc = self.two_lock_service()
-        seen = []
-
-        def locked(sid, v):
-            seen.append((sid, v))
-            raise RuntimeError("stop")
-        svc._locked = locked
-        with self.assertRaisesRegex(RuntimeError, "stop"):
-            svc.forecast(outcome_lock_version=2)
-        self.assertEqual(seen, [("latest", 1)])
+        lc = types.SimpleNamespace(session_id="s", version=1, key_data_column="person_id", dataset="d",
+                                   billing_project=None)
+        self.svc._locked = lambda sid, v: lc
+        self.svc._schemas = lambda lc: OMOP_SCHEMAS
+        self.svc.graph = lambda *a: self.fail("a refused outcome reads no table")
+        with self.assertRaisesRegex(outcome.OutcomeError, "'diagnoses' is not in the cohort's dataset"):
+            self.svc.forecast(outcome={"table": "diagnoses"})
 
     def test_only_the_latest_table_choice_is_kept_and_an_earlier_one_is_read_again_for_compare(self):
         import types
@@ -1020,7 +1033,7 @@ class ForecastAnswerTests(unittest.TestCase):
     def test_a_horizon_past_the_labeled_history_is_refused(self):
         for days in (29, 1826, 3650):
             with self.assertRaisesRegex(ValueError, "between 30 and 1825"):
-                self.svc.forecast(outcome_lock_version=1, horizon_days=days)
+                self.svc.forecast(outcome=CKD3, horizon_days=days)
 
     def test_the_longest_horizon_still_has_labeled_history_to_learn_from(self):
         pd, s = self.pd, self.service
@@ -1036,22 +1049,22 @@ class ForecastAnswerTests(unittest.TestCase):
         from kumo_forecast.dataset import TARGET
         lc = types.SimpleNamespace(session_id="s", version=1, key_data_column="person_id", dataset="d",
                                    billing_project=None)
-        ds = types.SimpleNamespace(data_end=pd.Timestamp("2026-01-01"), entities=None, tables_read=lambda: {})
+        ds = types.SimpleNamespace(data_end=pd.Timestamp("2026-01-01"), entities=None, tables_read=lambda: {}, names={})
         scores = pd.DataFrame({"person_id": range(40), "cutoff": pd.Timestamp("2025-01-01"),
                                TARGET: "0", "risk": [i / 40 for i in range(40)]})
         result = {"scores": scores, "pool": scores[["person_id", "cutoff", TARGET]], "labels_known": False,
                   "excluded": {"not_yet_in_the_cohort_on_as_of": 3}, "context_rows": 1200,
                   "context_positives": 15, "seconds": 1.0, "device": "cpu", "peak_gpu_gb": None}
         self.svc._locked = lambda sid, v: lc
-        self.svc._population_version = lambda *a: None
+        self.svc._schemas = lambda lc: OMOP_SCHEMAS
+        self.svc._outcome_dates = lambda lc, o, kt: pd.Series(dtype="datetime64[ns]")
         self.svc.graph = lambda *a: (ds, None)
         self.svc.forecaster = lambda *a: types.SimpleNamespace(run=lambda *a, **k: result)
         self.svc._key_type = lambda ds: "INTEGER"
         self.svc._frame = lambda lc, kt: pd.DataFrame({"person_id": range(43),
                                                        "index_date": pd.Timestamp("2020-01-01")})
-        with mock.patch.object(s.cohort_mod, "check_outcome"), \
-                mock.patch("kumo_forecast.profile.high_risk_profile", return_value=[]):
-            out = self.svc.forecast(outcome_lock_version=2, as_of="2025-01-01")
+        with mock.patch("kumo_forecast.profile.high_risk_profile", return_value=[]):
+            out = self.svc.forecast(outcome=CKD3, as_of="2025-01-01")
         self.assertIn("(<20 with the outcome)", out["learned_from"])
         self.assertIn("1,200 labeled histories", out["learned_from"])
         self.assertEqual(out["excluded"], {"not_yet_in_the_cohort_on_as_of": "<20"})
@@ -1064,7 +1077,7 @@ class ForecastAnswerTests(unittest.TestCase):
         from kumo_forecast.dataset import TARGET
         lc = types.SimpleNamespace(session_id="s", version=1, key_data_column="person_id", dataset="d",
                                    billing_project=None)
-        ds = types.SimpleNamespace(data_end=pd.Timestamp("2026-01-01"), entities=None, tables_read=lambda: {})
+        ds = types.SimpleNamespace(data_end=pd.Timestamp("2026-01-01"), entities=None, tables_read=lambda: {}, names={})
         scores = pd.DataFrame({"person_id": range(n), "cutoff": pd.Timestamp("2025-01-01"),
                                TARGET: ["1" if i < events else "0" for i in range(n)],
                                "risk": [i / n for i in range(n)]})
@@ -1072,15 +1085,15 @@ class ForecastAnswerTests(unittest.TestCase):
                   "excluded": {}, "context_rows": 4000, "context_positives": 1000, "seconds": 1.0,
                   "device": "cpu", "peak_gpu_gb": None}
         self.svc._locked = lambda sid, v: lc
-        self.svc._population_version = lambda *a: None
+        self.svc._schemas = lambda lc: OMOP_SCHEMAS
+        self.svc._outcome_dates = lambda lc, o, kt: pd.Series(dtype="datetime64[ns]")
         self.svc.graph = lambda *a: (ds, None)
         self.svc.forecaster = lambda *a: types.SimpleNamespace(run=lambda *a, **k: result)
         self.svc._key_type = lambda ds: "INTEGER"
         self.svc._frame = lambda lc, kt: pd.DataFrame({"person_id": range(n),
                                                        "index_date": pd.Timestamp("2020-01-01")})
-        with mock.patch.object(s.cohort_mod, "check_outcome"), \
-                mock.patch("kumo_forecast.profile.high_risk_profile", return_value=[]):
-            return self.svc.forecast(outcome_lock_version=2, as_of="2025-01-01")
+        with mock.patch("kumo_forecast.profile.high_risk_profile", return_value=[]):
+            return self.svc.forecast(outcome=CKD3, as_of="2025-01-01")
 
     def test_members_without_the_outcome_are_masked_beside_the_members_at_risk(self):
         for events, shown in ((985, ">980"), (981, ">980"), (980, 980), (20, 20), (19, "<20"), (0, 0)):

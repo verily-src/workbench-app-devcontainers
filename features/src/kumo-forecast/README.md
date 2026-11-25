@@ -10,25 +10,29 @@ outcome is named in the code.
 ## How it fits
 
 ```
-sandbox: OpenCode ──MCP──▶ host.openshell.internal:9243/mcp   cohort designer (locks the cohort and the outcome)
+sandbox: OpenCode ──MCP──▶ host.openshell.internal:9243/mcp   cohort designer (locks the cohort)
                   ──MCP──▶ host.openshell.internal:9244/mcp   kumo-forecast (serve.py, as the user)
-                                                                ├─ reads the designer's sessions/ (the locks)
+                                                                ├─ reads the designer's sessions/ (the lock)
                                                                 ├─ BigQuery: the user's credentials
                                                                 ├─ model: Kumo Relational on the freest GPU, capped
                                                                 ├─ writes: one CSV, only to a controlled bucket (gcloud, wb)
                                                                 └─ state: ~/.kumo-forecast/{runs,cache,server.log}
 ```
 
-**The population** is a locked cohort. Its lock's key column says what the members are (the
+**The cohort** is one the designer locked. Its lock's key column says what the members are (the
 `person_key`, or a `key` with the data column it is read from, such as `person_id`): that is the
 *entity key*. The dataset is the one the lock reads. A lock with no key is refused.
 
-**The outcome** is a second locked cohort. Its members are the entities that have the outcome,
-and its index date (`time_zero_date`) is when it starts: the first diagnosis, a death date, a
-first admission. The designer defines it from a request. An outcome lock with no index date, a
-different key column, or a different dataset than the population's is refused, saying which, and so is an outcome that is
-the same lock as the population. When the outcome is a lock of the population's session and no
-`lock_version` is given, the population is that session's newest other lock.
+**The outcome** is described in the call, not locked: rows of one table of the cohort's dataset
+that has the entity key, and conditions on its columns that must all hold, such as
+`{"table": "condition_occurrence", "where": [{"column": "condition_concept_id", "op": "in", "value": [443597]}]}`.
+An entity has the outcome from the date of its first such row, by the table's time column (below)
+or `time_column`. The operators are `in`, `=`, `!=`, `<`, `<=`, `>`, `>=` and `between`; text
+columns take only `in`, `=` and `!=`. With no conditions, any row is the outcome (a `death` table).
+The table and columns must be in the schema, and each value is sent as a BigQuery query
+parameter typed by its column (`kumo_forecast/outcome.py`), so nothing the agent writes is run as
+SQL. The forecast scores the cohort's members; Kumo learns from the labeled histories of everyone
+in the dataset.
 
 **The tables** are the ones the agent passes as `tables` (each must be in the dataset and have
 the entity key column), else every base table of the dataset that has the key column (views are
@@ -59,7 +63,8 @@ and `observation` by concept.
 | File | What it is |
 |---|---|
 | `serve.py` | The MCP server: five tools, HTTP on port 9244 |
-| `kumo_forecast/cohort.py` | Reads the designer's locks and checks the outcome against the population (standard library only) |
+| `kumo_forecast/cohort.py` | Reads the designer's locks (standard library only) |
+| `kumo_forecast/outcome.py` | Checks the outcome against the schema and builds its parameterised query (standard library only) |
 | `kumo_forecast/schema.py` | The time column, code column, entity table, size guard and split naming, over schema dicts (standard library only) |
 | `kumo_forecast/tables.py` | Reads the schemas and tables from BigQuery, cached owner-only per dataset |
 | `kumo_forecast/dataset.py` | The graph in pandas: entity table, splits, who is at risk when |
@@ -83,7 +88,7 @@ and `observation` by concept.
 | Tool | Does |
 |---|---|
 | `get_cohort_info` | A locked cohort: its request, size, dataset, entity key, `data_end` and the tables a forecast would read with their time columns |
-| `forecast_risk` | Kumo's forecast for the members at risk on `as_of`, within `horizon_days` (30 to 1,825), with `outcome_lock_version` (and `outcome_session_id` when it is in another session) and, optionally, `tables`. `population`: the cohort's members, everyone not in the cohort on that date (`outside_cohort`), or everyone. Risk quartiles, what the top 10% have in common against the rest, and where already observed, observed rates and AUROC. Returns a `run_id` |
+| `forecast_risk` | Kumo's forecast for the cohort's members at risk on `as_of`, that the `outcome` starts within `horizon_days` (30 to 1,825), over `tables` (optional). Risk quartiles, what the top 10% have in common against the rest, and where already observed, observed rates and AUROC. Returns a `run_id` |
 | `compare_to_baselines` | Kumo against logistic regression and gradient-boosted trees on the same rows |
 | `select_highest_risk` | The `top_n` highest-risk members, written as `<key>,risk` to a `gs://` file in a controlled bucket resource of the workspace |
 | `wait_for_result` | The answer of a `get_cohort_info`, `forecast_risk` or `compare_to_baselines` call that outlasted 50 seconds and returned a `job_id` |
@@ -106,7 +111,7 @@ copies with `gcloud storage cp` from a mode-600 temporary file, as the server's 
 - **No training, no features.** Kumo Relational (`structured-data-models` 0.2.1, weights
   `nvidia/Kumo-Relational`) reads the tables as they are, linked by the entity key, and learns in
   context from labeled histories.
-- **No leakage by date.** Labeled rows are the population at yearly cutoffs up to five years
+- **No leakage by date.** Labeled rows are the dataset's entities at yearly cutoffs up to five years
   before `as_of` whose outcome window ends on or before `as_of`, which is why `horizon_days` is at
   most 1,825; the sampler shows each row only records dated on or before its cutoff
   (`time_columns`). A forecast needs at least 10 labeled cases.
@@ -138,7 +143,7 @@ With `role: broker` it installs only the catalog.
 
 ## Known limitations
 
-- The population breakdown (the two excluded counts, `members_at_risk` and `population_size`)
+- The cohort breakdown (the two excluded counts, `members_at_risk` and `cohort_members`)
   always adds up, so when exactly one of them is under 20 it can be worked out from the others.
 - Dates must be calendar dates (`DATE`, `DATETIME`, `TIMESTAMP`). A table whose times are a count
   of days from another date (a study day, as in many CRF datasets) is read as static, and a
@@ -155,7 +160,7 @@ With `role: broker` it installs only the catalog.
   date than its row's time column (an end date) is read as it is.
 - The code column of a long table is chosen by name and cardinality; a table whose codes are in
   a column that does not match the naming rule is not split.
-- The outcome is whatever the designer locked: the forecast trusts that its index date is when
-  the outcome starts.
+- An outcome is one table's rows: an outcome that is any of several tables (a diagnosis or a
+  prescription) needs one forecast for each.
 - `index_dates` in `get_cohort_info` gives the earliest and latest member's exact index date, each
   the date of a single person.

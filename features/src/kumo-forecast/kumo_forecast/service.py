@@ -1,4 +1,4 @@
-"""What the MCP tools do: resolve the locked cohorts, run Kumo, compare, select the highest risk.
+"""What the MCP tools do: resolve the locked cohort and the outcome, run Kumo, compare, select the highest risk.
 
 Participant-level results stay on disk, owner-only, under ``<state>/runs``; what goes back to the
 agent is counts and rates, masked below the small-cell threshold (``privacy``), and never a
@@ -18,38 +18,14 @@ import pandas as pd
 from . import cohort as cohort_mod
 from . import dataset as dataset_mod
 from . import destination as destination_mod
+from . import outcome as outcome_mod
 from . import privacy, schema, tables
 from .dataset import TARGET
-
-POPULATIONS = {"cohort": "the cohort's members, from their index date on",
-               "outside_cohort": "everyone in the dataset not in the cohort on the forecast date",
-               "everyone": "everyone in the dataset"}
-
-# A cohort most of whose members have the outcome is defined by it. When its rule reads the whole
-# record, it already holds, on the forecast date, everyone who reaches the outcome later, and
-# "outside the cohort" would hold nobody who does. Such members count as outside until their
-# outcome.
-DEFINED_BY_OUTCOME = 0.8
 
 # The labeled histories are cut at yearly dates up to HISTORY_YEARS before as_of, and only those
 # whose outcome window ends by as_of count, so a longer horizon leaves none to learn from.
 HISTORY_YEARS = 5
 MAX_HORIZON_DAYS = 365 * HISTORY_YEARS
-
-
-def joined_on(members: pd.DataFrame, first: pd.Series, when: pd.Timestamp,
-              key: str) -> tuple[pd.DataFrame, int]:
-    """The members in the cohort on ``when``, and how many were left out because the cohort is
-    defined by the outcome (``first``: its first date per person) and theirs comes after ``when``."""
-    joined = members
-    if "index_date" in members:
-        # A member whose index date is after as_of has not joined yet, and is who "will join" asks about.
-        joined = members[members.index_date.isna() | (members.index_date <= when)]
-    ids = joined[key].drop_duplicates()
-    if ids.empty or ids.isin(first.index).mean() < DEFINED_BY_OUTCOME:
-        return joined, 0
-    later = ids[ids.map(first) > when]
-    return joined[~joined[key].isin(later)], int(len(later))
 
 
 class Service:
@@ -102,22 +78,14 @@ class Service:
             entry[2][0] = Forecaster(entry[0], gpu_gb=self.gpu_gb)
         return entry[2][0]
 
+    def _schemas(self, lc) -> dict[str, dict]:
+        return tables.read_schemas(self._client(lc.billing_project), lc.dataset)
+
     def _locked(self, session_id: str, version: int | None):
         lc = cohort_mod.locked_cohort(cohort_mod.load_session(self.sessions_dir, session_id), version)
         if lc.key_data_column is None:
             lc = cohort_mod.resolve_key(lc, tables.read_schemas(self._client(lc.billing_project), lc.dataset))
         return lc
-
-    def _population_version(self, session_id: str, version: int | None, outcome_session_id: str | None,
-                            outcome_lock_version: int) -> int | None:
-        """``version``, or where the outcome is a lock of the population's own session, that
-        session's newest lock that is not the outcome."""
-        if version is not None:
-            return version
-        data = cohort_mod.load_session(self.sessions_dir, session_id)
-        if outcome_session_id not in (None, data["session_id"]):
-            return None
-        return cohort_mod.population_version(data, outcome_lock_version)
 
     def _frame(self, lc, ds_key_type: str | None) -> pd.DataFrame:
         df = self._client(lc.billing_project).query(lc.sql).to_dataframe()
@@ -125,6 +93,17 @@ class Service:
         if lc.index_column and lc.index_column in df:
             out["index_date"] = pd.to_datetime(df[lc.index_column])
         return out.drop_duplicates(lc.key_data_column)
+
+    def _outcome_dates(self, lc, o: outcome_mod.Outcome, key_type: str | None) -> pd.Series:
+        """Each entity's first outcome date, from one parameterised query of the outcome's table."""
+        from google.cloud import bigquery
+        sql, params = outcome_mod.query(o, lc.key_data_column)
+        qp = [bigquery.ArrayQueryParameter(n, t, v) if array else bigquery.ScalarQueryParameter(n, t, v)
+              for n, t, v, array in params]
+        df = self._client(lc.billing_project).query(
+            sql, job_config=bigquery.QueryJobConfig(query_parameters=qp)).to_dataframe()
+        dates = tables._naive(df["outcome_date"])
+        return pd.Series(dates.to_numpy(), index=_as_key(df[lc.key_data_column], key_type).to_numpy())
 
     def _key_type(self, ds: dataset_mod.Dataset) -> str | None:
         return next((ty for t in ds.raw for n, ty in ds.schemas[t]["columns"] if n == ds.key), None)
@@ -175,55 +154,40 @@ class Service:
                 out["index_dates"] = f"{members.index_date.min().date()} to {members.index_date.max().date()}"
             return out
 
-    def forecast(self, session_id: str = "latest", outcome_lock_version: int | None = None,
-                 outcome_session_id: str | None = None, as_of: str | None = None, horizon_days: int = 365,
-                 version: int | None = None, population: str = "cohort", time_columns: dict | None = None,
+    def forecast(self, outcome: dict | None = None, session_id: str = "latest", as_of: str | None = None,
+                 horizon_days: int = 365, version: int | None = None, time_columns: dict | None = None,
                  tables: list[str] | None = None) -> dict:
-        """``population``: the cohort's members (from their index date on), everyone outside the
-        cohort, or everyone. The outcome is another locked cohort: its members have it, and its
-        index date is when it starts. When the outcome is a lock of the population's session and
-        ``version`` is not given, the population is that session's newest other lock."""
-        if population not in POPULATIONS:
-            raise ValueError(f"population is one of {', '.join(POPULATIONS)}, got {population!r}")
-        if outcome_lock_version is None:
-            raise ValueError("outcome_lock_version is required: lock the outcome in the cohort designer, "
-                             "with an index date that is when it starts")
+        """Forecast ``outcome`` (``outcome_mod.parse``: rows of one of the dataset's tables, the
+        first of which dates it) within ``horizon_days`` of ``as_of`` for the members of the locked
+        cohort. Kumo learns from the whole dataset's history and scores the cohort's members."""
+        if outcome is None:
+            raise ValueError('outcome is required: {"table": ..., "where": [{"column": ..., "op": ..., "value": ...}]}, '
+                             "a table of the cohort's dataset (forecast_get_cohort_info lists them)")
         if not 30 <= int(horizon_days) <= MAX_HORIZON_DAYS:
             raise ValueError(f"horizon_days is between 30 and {MAX_HORIZON_DAYS}: the labeled histories "
                              f"come from up to {HISTORY_YEARS} years before as_of")
         with self._lock:
-            version = self._population_version(session_id, version, outcome_session_id, outcome_lock_version)
             pop = self._locked(session_id, version)
-            out_lc = self._locked(outcome_session_id or pop.session_id, outcome_lock_version)
-            cohort_mod.check_outcome(pop, out_lc)
             key = pop.key_data_column
+            o = outcome_mod.parse(outcome, self._schemas(pop), key)
             ds, p = self.graph(pop.dataset, key, pop.billing_project, time_columns, tables)
             fc = self.forecaster(pop.dataset, key, pop.billing_project, time_columns, tables)
             key_type = self._key_type(ds)
             members = self._frame(pop, key_type)
-            happened = self._frame(out_lc, key_type).dropna(subset=["index_date"])
-            first = happened.groupby(key).index_date.min()
+            first = self._outcome_dates(pop, o, key_type)
             if as_of is None:
                 when, defaulted = (ds.data_end - pd.Timedelta(days=int(horizon_days))).normalize(), True
             else:
                 when, defaulted = pd.Timestamp(as_of), False
-            later = 0
-            if population != "cohort":
-                everyone = ds.entities
-                if population == "outside_cohort":
-                    joined, later = joined_on(members, first, when, key)
-                    members = everyone[~everyone[key].isin(joined[key])]
-                else:
-                    members = everyone
             r = fc.run(first, members, when, int(horizon_days), context=self.context, history_years=HISTORY_YEARS,
                        estimators=self.estimators)
             run_id = "run-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             s = r["scores"]
             meta = {"run_id": run_id, "session_id": pop.session_id, "lock_version": pop.version,
-                    "outcome_session_id": out_lc.session_id, "outcome_lock_version": out_lc.version,
+                    "outcome": outcome,
                     "dataset": pop.dataset, "billing_project": pop.billing_project, "key": key,
                     "time_columns": time_columns or {}, "tables": list(tables) if tables else None, "as_of": str(when.date()),
-                    "horizon_days": int(horizon_days), "labels_known": r["labels_known"], "population": population}
+                    "horizon_days": int(horizon_days), "labels_known": r["labels_known"]}
             pool = r["pool"]
             pool.to_parquet(self.state / "runs" / f"{run_id}.pool.parquet", index=False)
             os.chmod(self.state / "runs" / f"{run_id}.pool.parquet", 0o600)
@@ -231,29 +195,22 @@ class Service:
         from .profile import high_risk_profile
         profile = high_risk_profile(ds, s, when)
         out = {"run_id": run_id, "cohort": f"session {pop.session_id}, lock {pop.version}",
-               "population": POPULATIONS[population],
-               "outcome": f"membership of session {out_lc.session_id}, lock {out_lc.version}, "
-                          f"starting within {horizon_days} days of {when.date()}",
+               "outcome": f"{o.describe(ds.names)}, within {horizon_days} days of {when.date()}",
                "as_of": str(when.date()) + (f" (the default: the data end, {ds.data_end.date()}, less {int(horizon_days)} days)"
                                             if defaulted else ""),
                "model": "NVIDIA Kumo Relational (structured-data-models), in context, no training, no hand-built features",
-               "population_size": privacy.count(int(members[key].nunique())),
+               "cohort_members": privacy.count(int(members[key].nunique())),
                "members_at_risk": privacy.count(len(s)),
                "excluded": {k: privacy.count(v) for k, v in r["excluded"].items()},
                "learned_from": (f"{self.estimators} x {_number(privacy.count(r['context_rows']))} labeled histories "
                                 f"({_number(privacy.count_of(r['context_positives'], r['context_rows']))} with the outcome) "
-                                f"from the population before {when.date()}"),
+                                f"from the whole dataset before {when.date()}"),
                "risk_quartiles": _quartiles(s, r["labels_known"]),
                "high_risk_profile": profile,
                "scores_note": "Scores rank members by risk. The labeled histories are enriched with the outcome "
                               "(up to a quarter), so a score is not a calibrated probability; the observed rates are.",
                "tables_read": ds.tables_read(),
                "runtime": {"seconds": r["seconds"], "device": r["device"], "peak_gpu_gb": r["peak_gpu_gb"]}}
-        if later:
-            out["population_note"] = (
-                f"The cohort is defined by the outcome and reads the whole record, so it already holds the "
-                f"{privacy.count(later)} members who reach it after {when.date()}. They count as outside the cohort "
-                f"on {when.date()}, since they had not had it yet.")
         if r["labels_known"]:
             y, sc = s[TARGET].astype(int).to_numpy(), s.risk.to_numpy()
             from .baselines import auroc

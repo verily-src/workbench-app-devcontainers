@@ -148,29 +148,3 @@ def resolve_key(lc: LockedCohort, schemas: dict[str, dict]) -> LockedCohort:
                           f"and no column named {', '.join(candidates)} is in a table it reads "
                           f"({', '.join(read) or 'none'}); lock a cohort whose key is a stored column")
     return replace(lc, key_data_column=found)
-
-
-def population_version(data: dict, outcome_version: int) -> int | None:
-    """The lock of session ``data`` to use as the population when the outcome is its lock
-    ``outcome_version``: the newest lock that is not the outcome (None if there is none)."""
-    others = [lk.get("version") for lk in data.get("locks") or [] if lk.get("version") != outcome_version]
-    return others[-1] if others else None
-
-
-def check_outcome(population: LockedCohort, outcome: LockedCohort) -> None:
-    """The outcome must be a different lock from the population's, start when the outcome does
-    and key and read the same data as the population's."""
-    if (population.session_id, population.version) == (outcome.session_id, outcome.version):
-        raise CohortError(f"the population and the outcome are the same cohort (session {population.session_id}, "
-                          f"lock {population.version}); pass the population's lock as lock_version "
-                          "(and its session as cda_session_id if it is in another session), and the outcome's "
-                          "as outcome_lock_version")
-    if outcome.index_column is None:
-        raise CohortError("lock the outcome with an index date that is when it starts "
-                          "(the first diagnosis, the death date, the first admission)")
-    if outcome.key_data_column != population.key_data_column:
-        raise CohortError(f"the outcome's members are keyed by {outcome.key_data_column} and the population's by "
-                          f"{population.key_data_column}; lock both on the same key")
-    if not set(outcome.dataset.split(",")) & set(population.dataset.split(",")):
-        raise CohortError(f"the outcome reads {outcome.dataset} and the population reads {population.dataset}; "
-                          "lock both on the same data")

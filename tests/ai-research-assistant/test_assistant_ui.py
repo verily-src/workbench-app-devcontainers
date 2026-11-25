@@ -82,7 +82,8 @@ class ChipsFileTests(unittest.TestCase):
         demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")
         sourced = [c for c in demo["starters"] if c["source"]]
         self.assertEqual([c["label"] for c in sourced],
-                         ["What is the Verily Pre platform?", "How does Verily Pre govern data?"])
+                         ["What is the Verily Pre platform?", "How does Verily Pre govern data?",
+                          "Which NVIDIA tech is integrated in Verily Pre?"])
         for chip in sourced:
             self.assertIn("approved description", chip["source"])
             self.assertNotIn("Verily Pre is the governed", chip["prompt"])

@@ -56,6 +56,19 @@ starters:
       metadata layer, so agents work only with data they're approved to use. Every change
       carries who, what, when and why, from ingestion through agent action, and you can monitor
       utilization for abnormal access patterns by humans or agents.
+  - label: Which NVIDIA tech is integrated in Verily Pre?
+    hint: The NVIDIA stack researchers can use
+    prompt: >
+      Which NVIDIA tech is integrated in the Verily Pre platform?
+    source: |
+      Answer the question above from this approved description only, in a few sentences that
+      keep its wording. Add no other claims, and do not call any tools.
+
+      Researchers using Verily's Pre platform will be able to leverage NVIDIA's AI libraries and
+      frameworks, including OpenShell, CUDA-X, Nemotron, Kumo, NeMo, Parabricks, RAPIDS, and
+      modern GPUs such as B200s. With those tools, researchers can run large scale genomics and
+      data analysis faster, iterate with confidence, and move promising precision health
+      innovations to deployment.
   - label: How do I build a custom app on Verily Pre?
     hint: Answered from the Workbench docs
     prompt: >

@@ -70,10 +70,13 @@ class ChipsFileTests(unittest.TestCase):
 
     def test_the_ehr_genomics_chips_forecast_the_cohorts_own_members_in_one_step(self):
         demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")
-        forecast = [c for c in demo["next_steps"] if c["feature"] == "kumo_forecast"]
-        self.assertEqual(len(forecast), 1)
-        self.assertIn("members of this cohort", forecast[0]["prompt"])
-        self.assertNotIn("outside", forecast[0]["prompt"])
+        chips = {c["label"]: c for c in demo["next_steps"]}
+        forecast = chips["Forecast kidney disease with Kumo"]
+        self.assertIn("members of this cohort", forecast["prompt"])
+        self.assertNotIn("outside", forecast["prompt"])
+        genomes = chips["Add genomes to the forecast"]
+        self.assertIn("population_table", genomes["prompt"])
+        self.assertIn("do not mention", genomes["prompt"])
 
     def test_a_chip_source_is_loaded_and_sent_as_a_part_the_page_does_not_draw(self):
         demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")

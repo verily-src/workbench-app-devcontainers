@@ -1120,6 +1120,17 @@ class ViewTableTests(unittest.TestCase):
         self.assertIn("Metformin (2018-12-27, ×30)", row)
         self.assertIn("eGFR / CKD-EPI: 94 → 82", row, "a | in a name would break the table")
 
+    def test_lab_names_are_shortened_and_race_columns_are_not_listed(self):
+        v = self.views
+        self.assertEqual(v.short_name("Glomerular filtration rate/1.73 sq M.predicted [Volume Rate/Area] in Serum"),
+                         "Glomerular filtration rate")
+        self.assertEqual(v.short_name("Creatinine [Mass/volume] in Serum or Plasma"), "Creatinine")
+        self.assertEqual(v.short_name("Hemoglobin A1c (Glycated)"), "Hemoglobin A1c (Glycated)")
+        self.assertEqual(len(v.short_name("x" * 60)), 40)
+        schemas = {"person": {"num_rows": 3, "columns": [("person_id", "INTEGER"), ("race_concept_id", "INTEGER"),
+                                                         ("ethnicity", "STRING"), ("year_of_birth", "INTEGER")]}}
+        self.assertEqual(v.table_overview(schemas, ["person"], "person_id")[0]["columns"], ["year_of_birth"])
+
     def test_the_genomes_table_has_the_key_figures_then_the_rows_and_their_meanings(self):
         summary = {"genomes": 3202, "of_the_cohort": 275,
                    "cohort_genomes": {"nominal_coverage": {"30": 275}, "is_staged": {"False": 274, "True": 1}},

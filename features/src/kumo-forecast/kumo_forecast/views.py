@@ -27,9 +27,10 @@ def sample_records_allowed() -> bool:
 
 def table_overview(schemas: dict[str, dict], tables: list[str], key: str) -> list[dict]:
     """Each table read: rows, the column that dates it and its first columns after the key."""
+    from .profile import SENSITIVE
     out = []
     for t in tables:
-        cols = [n for n, _ in schemas[t]["columns"] if n != key]
+        cols = [n for n, _ in schemas[t]["columns"] if n != key and not SENSITIVE.search(n)]
         out.append({"table": t, "rows": int(schemas[t].get("num_rows", 0)),
                     "dated_by": schema.time_column(schemas[t]["columns"]),
                     "columns": cols[:SHOWN_COLUMNS] + (["..."] if len(cols) > SHOWN_COLUMNS else [])})
@@ -189,6 +190,13 @@ def _cell(text) -> str:
     return str(text).replace("|", "/").replace("\n", " ")
 
 
+def short_name(name: str, most: int = 40) -> str:
+    """A concept's name without its bracketed detail, at most ``most`` characters
+    ("Glomerular filtration rate/1.73 sq M.predicted [Volume Rate/Area] ..." -> "Glomerular filtration rate")."""
+    name = re.split(r" \[|/[0-9]", str(name))[0].strip()
+    return name if len(name) <= most else name[: most - 1].rstrip() + "…"
+
+
 def _fmt(n) -> str:
     return f"{n:,}" if isinstance(n, int) else str(n)
 
@@ -212,7 +220,7 @@ def records_table(overview: list[dict], people: list[dict]) -> str:
             items = [i for i in p.get(t, []) if "what" in i]
             cells.append(_cell("; ".join(f"{i['what']} ({i['first']}" + (f", ×{i['times']})" if i["times"] > 1 else ")")
                                          for i in items) or "-"))
-        cells.append(_cell("; ".join(f"{v['what']}: {v['first'].split(' on ')[0]} → {v['last'].split(' on ')[0]}"
+        cells.append(_cell("; ".join(f"{short_name(v['what'])}: {v['first'].split(' on ')[0]} → {v['last'].split(' on ')[0]}"
                                      for v in p.get("values", [])) or "-"))
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines)

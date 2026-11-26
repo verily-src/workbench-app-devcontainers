@@ -176,3 +176,71 @@ def vcf_summary(data: bytes, regions: list[tuple[str, str, int, int]], rows: int
         out["variants_per_region"] = {name: n for name, n in per_region.items()}
         out["regions"] = {name: f"{c}:{s:,}-{e:,}" for name, c, s, e in regions}
     return out
+
+
+# ---- tables ---------------------------------------------------------------------------------------
+# The views answer as Markdown tables, built here, so what the page shows does not depend on how a
+# model words it: the assistant page draws a tool answer's "table" under the tool's card.
+
+PATIENT_TABLES = ("condition_occurrence", "drug_exposure", "procedure_occurrence")
+
+
+def _cell(text) -> str:
+    return str(text).replace("|", "/").replace("\n", " ")
+
+
+def _fmt(n) -> str:
+    return f"{n:,}" if isinstance(n, int) else str(n)
+
+
+def records_table(overview: list[dict], people: list[dict]) -> str:
+    """The tables read, then one row per patient: when they joined the cohort, codes of the main
+    event tables (first date, times), and their most recorded values first to last."""
+    lines = ["| Table | Rows | Dated by | Columns |", "|---|---:|---|---|"]
+    for t in overview:
+        lines.append(f"| {t['table']} | {_fmt(t['rows'])} | {t['dated_by'] or '-'} | {_cell(', '.join(t['columns']))} |")
+    tables = [t for t in PATIENT_TABLES if any(t in p for p in people)]
+    if not tables:   # not OMOP: the first two event tables the patients have
+        seen = [k for p in people for k in p if k not in ("label", "in_the_cohort_from", "values")]
+        tables = list(dict.fromkeys(seen))[:2]
+    head = ["Patient", "In the cohort from"] + [t.replace("_occurrence", "s").replace("_exposure", "s").replace("_", " ")
+                                                 for t in tables] + ["Values (first → last)"]
+    lines += ["", "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for p in people:
+        cells = [p["label"], p.get("in_the_cohort_from", "-")]
+        for t in tables:
+            items = [i for i in p.get(t, []) if "what" in i]
+            cells.append(_cell("; ".join(f"{i['what']} ({i['first']}" + (f", ×{i['times']})" if i["times"] > 1 else ")")
+                                         for i in items) or "-"))
+        cells.append(_cell("; ".join(f"{v['what']}: {v['first'].split(' on ')[0]} → {v['last'].split(' on ')[0]}"
+                                     for v in p.get("values", [])) or "-"))
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def genomes_table(summary: dict, vcf: dict | None) -> str:
+    """Key figures of the genomes and the VCF, then the VCF's sample rows with a row saying what
+    each column means."""
+    rows = [("Genomes in the manifest", _fmt(summary["genomes"])),
+            ("Genomes of this cohort's members", _fmt(summary["of_the_cohort"]))]
+    for col, counts in summary.get("cohort_genomes", {}).items():
+        if col.startswith("is_"):
+            continue
+        rows.append((col.replace("_", " ").capitalize(), "; ".join(f"{v} ({_fmt(n)})" for v, n in counts.items())))
+    reads = summary.get("aligned_reads", {})
+    if "one_genome_gb" in reads:
+        rows += [("One genome's aligned reads (CRAM)", f"{reads['one_genome_gb']} GB"),
+                 ("All genomes' aligned reads (estimated)", f"{reads['all_genomes_tb_estimated']} TB")]
+    if vcf:
+        rows += [("Variant calls (VCF) for", vcf.get("sample") or "-"),
+                 ("Variants passing filters", f"{_fmt(vcf['passed'])} ({_fmt(vcf['passed_snps'])} SNPs, "
+                                              f"{_fmt(vcf['passed_indels'])} indels)")]
+        for name, n in vcf.get("variants_per_region", {}).items():
+            rows.append((f"Variants in {name} ({vcf['regions'][name]})", _fmt(n)))
+    lines = ["| | |", "|---|---|"] + [f"| {_cell(a)} | {_cell(b)} |" for a, b in rows]
+    if vcf and vcf.get("rows"):
+        cols = ["CHROM", "POS", "REF", "ALT", "QUAL", "GT"]
+        lines += ["", "| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+        lines += ["| " + " | ".join(_cell(_fmt(r[c]) if c == "POS" else r[c]) for c in cols) + " |" for r in vcf["rows"]]
+        lines.append("| " + " | ".join(f"*{_cell(vcf['columns'][c])}*" for c in cols) + " |")
+    return "\n".join(lines)

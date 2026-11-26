@@ -288,11 +288,11 @@ class Service:
                 if start is not None and pd.notna(start.get(entity)):
                     person["in_the_cohort_from"] = str(pd.Timestamp(start[entity]).date())
                 people.append({**person, **views.timeline(ds, entity)})
-            return {"cohort": f"session {lc.session_id}, lock {lc.version}", "dataset": lc.dataset,
-                    "members": int(members[key].nunique()), "tables": views.table_overview(p.schemas, p.tables, key),
-                    "patients": people,
-                    "note": "Synthetic data. Members are labelled Patient 1, 2, ...; no id is shown. Each table "
-                            "lists codes with their first and last date and how often; values are first and last."}
+            table = views.records_table(views.table_overview(p.schemas, p.tables, key), people)
+            return {"table": table, "cohort": f"session {lc.session_id}, lock {lc.version}",
+                    "members": int(members[key].nunique()),
+                    "note": "The page shows this table under the tool's card. Reply with one short sentence; do "
+                            "not repeat the table. Synthetic data; members are Patient 1, 2, ...; no id is shown."}
 
     def genomes(self, manifest_table: str, vcf_url: str | None = None, regions: str | None = None,
                 session_id: str = "latest", version: int | None = None) -> dict:
@@ -319,9 +319,10 @@ class Service:
         reads = [str(u) for c in df.columns if c.endswith("_uri") for u in df[c].dropna()
                  if str(u).startswith("gs://") and str(u).endswith((".cram", ".bam"))]
         out["aligned_reads"] = views.size_estimate(_gcs_sizes(reads[:20]), int(len(df)))
-        if vcf_url:
-            out["vcf"] = {"url": vcf_url, **views.vcf_summary(_gcs_read(vcf_url), parsed)}
-        return out
+        vcf = views.vcf_summary(_gcs_read(vcf_url), parsed) if vcf_url else None
+        return {"table": views.genomes_table(out, vcf), "genomes": out["genomes"], "of_the_cohort": out["of_the_cohort"],
+                "note": "The page shows this table under the tool's card. Reply with one short sentence; do not "
+                        "repeat the table."}
 
     def forecast_with_genotypes(self, genotype_table: str, outcome: dict | None = None, as_of: str | None = None,
                                 horizon_days: int = 365, session_id: str = "latest",

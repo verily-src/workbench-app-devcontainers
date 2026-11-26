@@ -1095,6 +1095,53 @@ class ViewTests(unittest.TestCase):
             self.assertIn("QUAL", out["columns"])
 
 
+class ViewTableTests(unittest.TestCase):
+    """The views' Markdown tables: built in code, so the page shows the same thing every time."""
+
+    def setUp(self):
+        from kumo_forecast import views
+        self.views = views
+
+    def test_the_records_table_lists_the_tables_then_one_row_per_patient(self):
+        overview = [{"table": "person", "rows": 25000, "dated_by": "birth_datetime", "columns": ["gender_concept_id"]},
+                    {"table": "measurement", "rows": 3355100, "dated_by": "measurement_date", "columns": ["a", "..."]}]
+        people = [{"label": "Patient 1", "in_the_cohort_from": "2018-12-27",
+                   "condition_occurrence": [{"what": "Type 2 diabetes mellitus", "first": "2018-12-27", "last": "2018-12-27", "times": 1}],
+                   "drug_exposure": [{"what": "Metformin", "first": "2018-12-27", "last": "2025-12-22", "times": 30}],
+                   "values": [{"what": "eGFR | CKD-EPI", "first": "94 on 2016-09-08", "last": "82 on 2025-04-11", "times": 12}]}]
+        table = self.views.records_table(overview, people)
+        self.assertEqual(table, self.views.records_table(overview, people))
+        lines = table.splitlines()
+        self.assertEqual(lines[0], "| Table | Rows | Dated by | Columns |")
+        self.assertIn("| measurement | 3,355,100 | measurement_date | a, ... |", lines)
+        self.assertIn("| Patient | In the cohort from | conditions | drugs | Values (first → last) |", lines)
+        row = next(l for l in lines if l.startswith("| Patient 1"))
+        self.assertIn("Type 2 diabetes mellitus (2018-12-27)", row)
+        self.assertIn("Metformin (2018-12-27, ×30)", row)
+        self.assertIn("eGFR / CKD-EPI: 94 → 82", row, "a | in a name would break the table")
+
+    def test_the_genomes_table_has_the_key_figures_then_the_rows_and_their_meanings(self):
+        summary = {"genomes": 3202, "of_the_cohort": 275,
+                   "cohort_genomes": {"nominal_coverage": {"30": 275}, "is_staged": {"False": 274, "True": 1}},
+                   "aligned_reads": {"files_present": 8, "one_genome_gb": 14.7, "all_genomes_tb_estimated": 46.9}}
+        vcf = {"sample": "NA19657", "passed": 150, "passed_snps": 130, "passed_indels": 20,
+               "variants_per_region": {"APOL1": 40}, "regions": {"APOL1": "chr22:36,245,000-36,275,000"},
+               "rows": [{"CHROM": "chr22", "POS": 36245412, "REF": "G", "ALT": "A", "QUAL": "51.7", "GT": "1/1"}],
+               "columns": self.views.VCF_COLUMNS}
+        lines = self.views.genomes_table(summary, vcf).splitlines()
+        for want in ("| Genomes in the manifest | 3,202 |", "| Genomes of this cohort's members | 275 |",
+                     "| Nominal coverage | 30 (275) |", "| All genomes' aligned reads (estimated) | 46.9 TB |",
+                     "| Variants in APOL1 (chr22:36,245,000-36,275,000) | 40 |", "| chr22 | 36,245,412 | G | A | 51.7 | 1/1 |"):
+            self.assertIn(want, lines)
+        self.assertFalse([l for l in lines if "staged" in l.lower()])
+        self.assertTrue(lines[-1].startswith("| *the chromosome* |"))
+
+    def test_the_page_draws_a_tool_answers_table(self):
+        script = (APP / "assistant-ui" / "static" / "app.js").read_text()
+        self.assertIn('typeof output.table === "string"', script)
+        self.assertIn("markdown(table)", script)
+
+
 class ForecastAnswerTests(unittest.TestCase):
     """Service.forecast's answer and its argument checks, with BigQuery and the model stubbed."""
 

@@ -385,9 +385,14 @@
     card.append(body);
 
     var chart = output && typeof output === "object" ? funnel(output.funnel) : null;
-    if (!chart) return card;
+    // A tool that answers with a ready Markdown "table" (the forecast server's data views) is
+    // drawn as it is, so what the page shows does not depend on the model's wording.
+    var table = output && typeof output === "object" && typeof output.table === "string" ? output.table : null;
+    if (!chart && !table) return card;
     var wrap = el("div");
-    wrap.append(card, chart);
+    wrap.append(card);
+    if (chart) wrap.append(chart);
+    if (table) { var view = markdown(table); view.classList.add("tool-table"); wrap.append(view); }
     return wrap;
   }
 

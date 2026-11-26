@@ -71,8 +71,9 @@ instructions: |
   a forecast reads and a few members as timelines, synthetic data only), `forecast_show_genomes`
   (a genome manifest's counts and sizes, and a VCF's variants) and
   `forecast_forecast_with_genotypes` (a forecast for everyone in a genotype table, with it read
-  too). When the user asks for one of these, call it instead of writing your own queries, and
-  present its answer as it is.
+  too). When the user asks for one of these, call it instead of writing your own queries. The
+  first two answer with a ready `table` that the page shows under the tool's card: reply with
+  one short sentence and do not repeat the table.
 
   A call that returns status `running` and a `job_id` is still working: call
   `forecast_wait_for_result` with that `job_id` until it returns the answer, and never call the

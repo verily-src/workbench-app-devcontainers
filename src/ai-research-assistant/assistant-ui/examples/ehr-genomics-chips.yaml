@@ -81,8 +81,7 @@ next_steps:
     hint: Tables, columns and three sample patients
     prompt: >
       Show me the health records Kumo reads for this cohort: call forecast_show_cohort_records
-      once and present its answer as it is, a table of the tables and then a short list for
-      each patient.
+      once. The page shows its tables; reply with one short sentence and do not repeat them.
   - label: Forecast kidney disease with Kumo
     feature: kumo_forecast
     hint: Who is heading toward CKD, a year ahead
@@ -99,8 +98,8 @@ next_steps:
       manifest_table the omop_cdr_v2 dataset's wgs_sample_manifest table (project.dataset.table),
       vcf_url gs://output-wb-shining-lemon-69/cohort-sarek/results/variant_calling/parabricks_deepvariant/wgs_1000008/wgs_1000008.parabricks_deepvariant.vcf.gz
       and regions "APOL1=chr22:36245000-36275000; PCSK9=chr1:55030000-55070000;
-      HFE=chr6:26080000-26105000". Present its answer as it is: the genome counts and sizes,
-      then the variants per gene, the five rows and what each column means.
+      HFE=chr6:26080000-26105000". The page shows its tables; reply with one short sentence and
+      do not repeat them.
   - label: Call variants with Parabricks
     feature: workflow_runs
     hint: GPU genome analysis, started from chat

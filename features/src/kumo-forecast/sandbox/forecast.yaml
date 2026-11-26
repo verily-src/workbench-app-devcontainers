@@ -7,6 +7,9 @@ title: Kumo forecast
 tools:
   - get_cohort_info
   - forecast_risk
+  - show_cohort_records
+  - show_genomes
+  - forecast_with_genotypes
   - compare_to_baselines
   - select_highest_risk
   - wait_for_result
@@ -63,6 +66,13 @@ instructions: |
      file in a controlled bucket of the workspace; if it is refused, tell the user which buckets
      it names) writes the highest-risk members' keys and scores to that file. Report how many
      were selected and where. The person is asked to approve the call. Never print the keys.
+
+  Three tools answer in one call, ready to present: `forecast_show_cohort_records` (the tables
+  a forecast reads and a few members as timelines, synthetic data only), `forecast_show_genomes`
+  (a genome manifest's counts and sizes, and a VCF's variants) and
+  `forecast_forecast_with_genotypes` (a forecast for everyone in a genotype table, with it read
+  too). When the user asks for one of these, call it instead of writing your own queries, and
+  present its answer as it is.
 
   A call that returns status `running` and a `job_id` is still working: call
   `forecast_wait_for_result` with that `job_id` until it returns the answer, and never call the

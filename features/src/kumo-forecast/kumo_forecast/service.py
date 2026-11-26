@@ -20,7 +20,7 @@ from . import cohort as cohort_mod
 from . import dataset as dataset_mod
 from . import destination as destination_mod
 from . import outcome as outcome_mod
-from . import privacy, schema, tables
+from . import privacy, schema, tables, views
 from .dataset import TARGET
 
 # An extra table to read beside the cohort's dataset: project.dataset.table.
@@ -268,6 +268,79 @@ class Service:
             out["observed"] = "not yet: the outcome window runs past the end of the data"
         return out
 
+    def cohort_records(self, session_id: str = "latest", version: int | None = None, patients: int = 3) -> dict:
+        """The tables a forecast reads and ``patients`` members as timelines, for synthetic data."""
+        if not views.sample_records_allowed():
+            raise ValueError("sample records are off on this server (KUMO_FORECAST_SAMPLE_RECORDS=1 turns them on, "
+                             "for synthetic data only)")
+        if not 1 <= int(patients) <= 5:
+            raise ValueError("patients is 1 to 5")
+        with self._lock:
+            lc = self._locked(session_id, version)
+            key = lc.key_data_column
+            ds, p = self.graph(lc.dataset, key, lc.billing_project)
+            members = self._frame(lc, self._key_type(ds))
+            picked = views.pick_members(ds, members[key], int(patients))
+            start = members.set_index(key).index_date if "index_date" in members else None
+            people = []
+            for i, entity in enumerate(picked, 1):
+                person = {"label": f"Patient {i}"}
+                if start is not None and pd.notna(start.get(entity)):
+                    person["in_the_cohort_from"] = str(pd.Timestamp(start[entity]).date())
+                people.append({**person, **views.timeline(ds, entity)})
+            return {"cohort": f"session {lc.session_id}, lock {lc.version}", "dataset": lc.dataset,
+                    "members": int(members[key].nunique()), "tables": views.table_overview(p.schemas, p.tables, key),
+                    "patients": people,
+                    "note": "Synthetic data. Members are labelled Patient 1, 2, ...; no id is shown. Each table "
+                            "lists codes with their first and last date and how often; values are first and last."}
+
+    def genomes(self, manifest_table: str, vcf_url: str | None = None, regions: str | None = None,
+                session_id: str = "latest", version: int | None = None) -> dict:
+        """The cohort's genomes from a manifest table (counts, coverage, file sizes and the total),
+        and a VCF's variants (per region, with a few PASS rows)."""
+        m = EXTRA_TABLE.match(str(manifest_table).strip())
+        if not m:
+            raise ValueError(f"manifest_table {manifest_table!r} is not a project.dataset.table name")
+        parsed = views.parse_regions(regions)
+        if vcf_url is not None and not str(vcf_url).startswith("gs://"):
+            raise ValueError("vcf_url is a gs:// URL of a VCF (.vcf or .vcf.gz)")
+        with self._lock:
+            lc = self._locked(session_id, version)
+            key = lc.key_data_column
+            ds, _ = self.graph(lc.dataset, key, lc.billing_project)
+            key_type = self._key_type(ds)
+            members = self._frame(lc, key_type)[key]
+            project, dataset, name = m.groups()
+            df = self._client(lc.billing_project).query(f"SELECT * FROM `{project}`.`{dataset}`.`{name}`").to_dataframe()
+        if key not in df:
+            raise ValueError(f"{manifest_table} has no {key} column to link genomes to the cohort's members")
+        df[key] = _as_key(df[key], key_type)
+        out = views.manifest_summary(df, key, members)
+        reads = [str(u) for c in df.columns if c.endswith("_uri") for u in df[c].dropna()
+                 if str(u).startswith("gs://") and str(u).endswith((".cram", ".bam"))]
+        out["aligned_reads"] = views.size_estimate(_gcs_sizes(reads[:20]), int(len(df)))
+        if vcf_url:
+            out["vcf"] = {"url": vcf_url, **views.vcf_summary(_gcs_read(vcf_url), parsed)}
+        return out
+
+    def forecast_with_genotypes(self, genotype_table: str, outcome: dict | None = None, as_of: str | None = None,
+                                horizon_days: int = 365, session_id: str = "latest",
+                                version: int | None = None) -> dict:
+        """``forecast`` for everyone in ``genotype_table`` with the table read as well, answered
+        with the accuracy and what the genotype columns look like in the highest-risk tenth."""
+        out = self.forecast(outcome, session_id, as_of, horizon_days, version, None, None,
+                            [genotype_table], genotype_table)
+        project, dataset, name = EXTRA_TABLE.match(str(genotype_table).strip()).groups()
+        built = next(iter(self._graphs.values()))[0]   # the graph the forecast just read (the only one kept)
+        columns = {c for s in built.schemas.values()
+                   if s.get("source") == f"{project}.{dataset}" and s.get("table") == name for c, _ in s["columns"]}
+        rows = [r for r in out["high_risk_profile"] if r["characteristic"].split(":")[0] in columns]
+        return {"run_id": out["run_id"], "population": out["cohort"], "outcome": out["outcome"],
+                "as_of": out["as_of"], "members_at_risk": out["members_at_risk"], "observed": out["observed"],
+                "genotypes_in_the_highest_risk_tenth": rows, "model": out["model"],
+                "note": "Shares are of the highest-risk tenth (top_10pct) and of the rest. The genotype table is "
+                        "read as one more table, so the forecast weighs it with the health records."}
+
     def compare(self, run_id: str) -> dict:
         s, meta = self._load(run_id)
         if not meta["labels_known"]:
@@ -316,6 +389,31 @@ class Service:
             out["observed_outcome_among_selected"] = privacy.rate(k, len(pick))
             out["observed_outcome_among_all_at_risk"] = privacy.rate(int(s[TARGET].astype(int).sum()), len(s))
         return out
+
+
+def _gcs_sizes(urls: list[str]) -> list[int]:
+    """The sizes in bytes of these gs:// objects (those that exist), with gcloud as the server's user."""
+    import subprocess
+    if not urls:
+        return []
+    done = subprocess.run(["gcloud", "storage", "ls", "-l", *urls], capture_output=True, text=True, timeout=120)
+    sizes = []
+    for line in done.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[0].isdigit() and parts[-1].startswith("gs://"):
+            sizes.append(int(parts[0]))
+    return sizes
+
+
+def _gcs_read(url: str, limit: int = 200 * 1024 * 1024) -> bytes:
+    """The bytes of one gs:// object (at most ``limit``), with gcloud as the server's user."""
+    import subprocess
+    done = subprocess.run(["gcloud", "storage", "cat", url], capture_output=True, timeout=300)
+    if done.returncode != 0:
+        raise ValueError(f"cannot read {url}: {done.stderr.decode(errors='replace').strip()[:300]}")
+    if len(done.stdout) > limit:
+        raise ValueError(f"{url} is larger than {limit // (1024 * 1024)} MB; give a VCF of a few regions")
+    return done.stdout
 
 
 def _number(n: int | str) -> str:

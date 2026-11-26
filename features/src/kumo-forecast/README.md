@@ -62,7 +62,7 @@ and `observation` by concept.
 
 | File | What it is |
 |---|---|
-| `serve.py` | The MCP server: five tools, HTTP on port 9244 |
+| `serve.py` | The MCP server: eight tools, HTTP on port 9244 |
 | `kumo_forecast/cohort.py` | Reads the designer's locks (standard library only) |
 | `kumo_forecast/outcome.py` | Checks the outcome against the schema and builds its parameterised query (standard library only) |
 | `kumo_forecast/schema.py` | The time column, code column, entity table, size guard and split naming, over schema dicts (standard library only) |
@@ -71,6 +71,7 @@ and `observation` by concept.
 | `kumo_forecast/model.py` | Kumo Relational over the graph, with the leakage rules below |
 | `kumo_forecast/baselines.py` | Logistic regression and gradient-boosted trees on features built by rule |
 | `kumo_forecast/profile.py` | What the top 10% have in common, by rule |
+| `kumo_forecast/views.py` | The ready answers of show_cohort_records and show_genomes: timelines from the graph, manifest counts, a VCF's summary |
 | `kumo_forecast/destination.py` | The controlled-bucket check for the selection (standard library only) |
 | `kumo_forecast/privacy.py` | Small-cell masking (counts and part-of-whole counts under 20, group rates) |
 | `sandbox/forecast.yaml` | The catalog the sandbox policy is rendered from |
@@ -89,6 +90,9 @@ and `observation` by concept.
 |---|---|
 | `get_cohort_info` | A locked cohort: its request, size, dataset, entity key, `data_end` and the tables a forecast would read with their time columns |
 | `forecast_risk` | Kumo's forecast for the cohort's members at risk on `as_of`, that the `outcome` starts within `horizon_days` (30 to 1,825), over `tables` (optional) and `extra_tables` (optional: `project.dataset.table` names of other datasets' tables with the entity key, such as a genotype table per person). `population_table` (optional, `project.dataset.table`) scores everyone in that table instead of the cohort's members, for example everyone with a genome. Risk quartiles, what the top 10% have in common against the rest, and where already observed, observed rates and AUROC. Returns a `run_id` |
+| `show_cohort_records` | The tables a forecast reads (rows, dating column, first columns) and up to 5 members as timelines, labelled Patient 1, 2, ...: codes by name with first and last date and count per table, and their most recorded values. Off unless `KUMO_FORECAST_SAMPLE_RECORDS=1` (synthetic data only) |
+| `show_genomes` | From a manifest table (one row per genome, the entity key, `*_uri` columns): genomes in all and in the cohort, the cohort's coverage and processing, one genome's aligned-reads size and the total estimated for all; from a VCF (`gs://`): records, PASS SNPs and indels, variants per named region and five PASS rows of the first, with what each column means |
+| `forecast_with_genotypes` | `forecast_risk` for everyone in a genotype table, with the table read too (`population_table` and `extra_tables` in one argument), answered with the accuracy and each genotype's share in the highest-risk tenth against the rest |
 | `compare_to_baselines` | Kumo against logistic regression and gradient-boosted trees on the same rows; the agent calls it only when asked to compare |
 | `select_highest_risk` | The `top_n` highest-risk members, written as `<key>,risk` to a `gs://` file in a controlled bucket resource of the workspace |
 | `wait_for_result` | The answer of a `get_cohort_info`, `forecast_risk` or `compare_to_baselines` call that outlasted 50 seconds and returned a `job_id` |

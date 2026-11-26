@@ -75,8 +75,11 @@ class ChipsFileTests(unittest.TestCase):
         self.assertIn("members of this cohort", forecast["prompt"])
         self.assertNotIn("outside", forecast["prompt"])
         genomes = chips["Add genomes to the forecast"]
-        self.assertIn("population_table", genomes["prompt"])
+        self.assertIn("forecast_forecast_with_genotypes", genomes["prompt"])
         self.assertIn("do not mention", genomes["prompt"])
+        # The data views call their dedicated tools, so the agent writes no queries for them.
+        self.assertIn("forecast_show_cohort_records", chips["Show the health records Kumo reads"]["prompt"])
+        self.assertIn("forecast_show_genomes", chips["Show the genomes"]["prompt"])
 
     def test_a_chip_source_is_loaded_and_sent_as_a_part_the_page_does_not_draw(self):
         demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")

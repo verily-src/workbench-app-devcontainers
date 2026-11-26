@@ -152,7 +152,7 @@ start_assistant() {
 
   # The Kumo forecast server, which reads the designer's locked cohorts. Best effort, as above.
   if feature_on kumo_forecast && ! sudo -H -u "${USER_NAME}" \
-      --preserve-env=KUMO_FORECAST_GPU_GB,KUMO_FORECAST_CONTEXT,KUMO_FORECAST_ESTIMATORS,KUMO_FORECAST_MAX_ROWS,KUMO_FORECAST_BILLING_PROJECT,KUMO_FORECAST_SMALL_CELL \
+      --preserve-env=KUMO_FORECAST_GPU_GB,KUMO_FORECAST_CONTEXT,KUMO_FORECAST_ESTIMATORS,KUMO_FORECAST_MAX_ROWS,KUMO_FORECAST_BILLING_PROJECT,KUMO_FORECAST_SMALL_CELL,KUMO_FORECAST_SAMPLE_RECORDS \
       /opt/kumo-forecast/start-server.sh; then
     echo "The Kumo forecast server is not running; see ${USER_HOME_DIR}/.kumo-forecast/server.log, then run /opt/kumo-forecast/start-server.sh." >&2
   fi

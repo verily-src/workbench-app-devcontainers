@@ -136,6 +136,44 @@ async def forecast_risk(outcome: dict, as_of: str | None = None, horizon_days: i
 
 
 @mcp.tool
+async def show_cohort_records(cda_session_id: str = "latest", lock_version: int | None = None,
+                              patients: int = 3) -> dict:
+    """Show the health records a forecast reads for the locked cohort: each table (rows, the
+    column that dates it, its first columns) and `patients` (1 to 5) members as short timelines,
+    labelled Patient 1, 2, ... (no id): per table, each code by name with its first and last date
+    and how often, and their most recorded values (labs, vitals) first and last. Only on a server
+    that allows sample records (synthetic data). Present the answer as it is: one table of the
+    tables, then one short list per patient."""
+    return await _waited("show_cohort_records", SERVICE.cohort_records, cda_session_id, lock_version, patients)
+
+
+@mcp.tool
+async def show_genomes(manifest_table: str, vcf_url: str | None = None, regions: str | None = None,
+                       cda_session_id: str = "latest", lock_version: int | None = None) -> dict:
+    """Show the genomes linked to the locked cohort. manifest_table ("project.dataset.table", one
+    row per genome, with the cohort's key and *_uri columns) gives how many genomes there are and
+    how many belong to the cohort, their coverage and processing, one genome's aligned-reads size
+    and what all would add up to. vcf_url (gs://, .vcf or .vcf.gz) gives a VCF's variant counts
+    and, with regions ("APOL1=chr22:36245000-36275000; PCSK9=chr1:55030000-55070000"), its
+    variants per region and five PASS rows from the first region, with what each column means."""
+    return await _waited("show_genomes", SERVICE.genomes, manifest_table, vcf_url, regions, cda_session_id,
+                         lock_version)
+
+
+@mcp.tool
+async def forecast_with_genotypes(genotype_table: str, outcome: dict, as_of: str | None = None,
+                                  horizon_days: int = 365, cda_session_id: str = "latest",
+                                  lock_version: int | None = None) -> dict:
+    """forecast_risk for everyone in genotype_table ("project.dataset.table", one row per person
+    with the cohort's key and their genotypes), with that table read beside the health records.
+    outcome, as_of and horizon_days as for forecast_risk. Answers with the accuracy (observed,
+    AUROC) and how each genotype is shared in the highest-risk tenth against the rest. One call
+    does it all: do not call forecast_risk for this."""
+    return await _waited("forecast_with_genotypes", SERVICE.forecast_with_genotypes, genotype_table, outcome,
+                         as_of, horizon_days, cda_session_id, lock_version)
+
+
+@mcp.tool
 async def compare_to_baselines(run_id: str) -> dict:
     """Compare a forecast_risk run with logistic regression and gradient-boosted trees trained on
     features built by rule from the same history: AUROC and the observed rate in each model's top
@@ -145,7 +183,8 @@ async def compare_to_baselines(run_id: str) -> dict:
 
 @mcp.tool
 async def wait_for_result(job_id: str, wait_s: int = 50) -> dict:
-    """The answer of a get_cohort_info, forecast_risk or compare_to_baselines call that returned
+    """The answer of a get_cohort_info, forecast_risk, show_cohort_records, show_genomes,
+    forecast_with_genotypes or compare_to_baselines call that returned
     status 'running' and a job_id: the work goes on after the call returns. Waits up to wait_s
     (at most 50) and returns the answer, or status 'running' again: call it again. Never call the
     original tool again for the same work."""
@@ -163,7 +202,7 @@ async def select_highest_risk(run_id: str, destination: str, top_n: int = 16) ->
     return await _call(SERVICE.select, run_id, destination, top_n)
 
 
-TOOLS = ("get_cohort_info", "forecast_risk", "compare_to_baselines", "select_highest_risk", "wait_for_result")
+TOOLS = ("get_cohort_info", "forecast_risk", "show_cohort_records", "show_genomes", "forecast_with_genotypes", "compare_to_baselines", "select_highest_risk", "wait_for_result")
 
 
 def warm(service) -> None:

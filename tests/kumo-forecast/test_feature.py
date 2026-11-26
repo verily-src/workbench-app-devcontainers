@@ -1005,6 +1005,96 @@ class ProfileTests(unittest.TestCase):
             self.assertIsNone(self.profile.SENSITIVE.search(name), name)
 
 
+class ViewTests(unittest.TestCase):
+    """The ready answers for showing records, genomes and a VCF (kumo_forecast.views)."""
+
+    def setUp(self):
+        try:
+            import pandas
+        except ImportError:
+            self.skipTest("needs pandas")
+        self.pd = pandas
+        from kumo_forecast import views
+        self.views = views
+
+    def test_a_timeline_names_codes_with_dates_and_counts_and_lists_values(self):
+        pd = self.pd
+        _, ds = _graph(pd)
+        t = self.views.timeline(ds, 1)
+        self.assertIn("measurement", t)
+        first = t["measurement"][0]
+        self.assertEqual(set(first), {"what", "first", "last", "times"})
+        self.assertTrue(all(isinstance(v["times"], int) for v in t["measurement"] if "times" in v))
+        self.assertIn("values", t)
+        self.assertRegex(t["values"][0]["first"], r"^[0-9.]+ on 20[0-9]{2}-[0-9]{2}-[0-9]{2}$")
+        self.assertNotIn(1, [v for row in t["measurement"] for v in row.values()], "no id in the timeline")
+
+    def test_members_are_picked_from_those_with_a_history_the_same_ones_each_time(self):
+        pd = self.pd
+        _, ds = _graph(pd)
+        members = pd.Series(list(range(50)) + [999])     # 999 has no record
+        picked = self.views.pick_members(ds, members, 3)
+        self.assertEqual(len(picked), 3)
+        self.assertNotIn(999, picked)
+        self.assertEqual(picked, self.views.pick_members(ds, members, 3))
+
+    def test_sample_records_need_the_server_switch(self):
+        import os
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"KUMO_FORECAST_SAMPLE_RECORDS": "0"}):
+            self.assertFalse(self.views.sample_records_allowed())
+            from kumo_forecast import service
+            import tempfile
+            with tempfile.TemporaryDirectory() as d:
+                svc = service.Service(Path(d) / "s", Path(d) / "state")
+                with self.assertRaisesRegex(ValueError, "sample records are off"):
+                    svc.cohort_records()
+        with mock.patch.dict(os.environ, {"KUMO_FORECAST_SAMPLE_RECORDS": "1"}):
+            self.assertTrue(self.views.sample_records_allowed())
+
+    def test_the_manifest_is_counted_over_the_cohorts_genomes(self):
+        pd = self.pd
+        df = pd.DataFrame({"person_id": [1, 2, 3, 4], "research_id": ["a", "b", "c", "d"],
+                           "nominal_coverage": [30, 30, 30, 30], "processing": ["BWA"] * 4,
+                           "is_staged": [True, False, False, True], "cram_uri": ["gs://b/a.cram", None, None, "gs://b/d.cram"],
+                           "source_sample_id": ["NA1", "NA2", "NA3", "NA4"]})
+        out = self.views.manifest_summary(df, "person_id", pd.Series([1, 2, 9]))
+        self.assertEqual((out["genomes"], out["of_the_cohort"]), (4, 2))
+        self.assertEqual(out["cohort_genomes"]["nominal_coverage"], {"30": 2})
+        self.assertEqual(out["cohort_genomes"]["is_staged"], {"True": 1, "False": 1})
+        self.assertNotIn("cram_uri", out["cohort_genomes"])
+        self.assertNotIn("research_id", out["cohort_genomes"])
+        self.assertEqual(self.views.size_estimate([14_400_000_000, 14_600_000_000], 3202),
+                         {"files_present": 2, "one_genome_gb": 14.5, "all_genomes_tb_estimated": 46.4})
+
+    def test_regions_are_parsed_and_a_bad_one_is_refused(self):
+        self.assertEqual(self.views.parse_regions("APOL1=chr22:36,245,000-36,275,000; PCSK9=chr1:55030000-55070000"),
+                         [("APOL1", "chr22", 36245000, 36275000), ("PCSK9", "chr1", 55030000, 55070000)])
+        self.assertEqual(self.views.parse_regions(None), [])
+        with self.assertRaisesRegex(ValueError, "is not NAME=chrom:start-end"):
+            self.views.parse_regions("APOL1 chr22")
+
+    def test_a_vcf_is_counted_per_region_with_pass_rows_from_the_first(self):
+        import gzip
+        vcf = "\n".join([
+            "##fileformat=VCFv4.2",
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNA19657",
+            "chr22\t36250000\t.\tG\tA\t51.7\tPASS\t.\tGT:GQ\t1/1:50",
+            "chr22\t36251000\t.\tG\tT\t0\tRefCall\t.\tGT:GQ\t0/0:45",
+            "chr22\t36252000\t.\tTC\tT\t30.1\tPASS\t.\tGT:GQ\t0/1:30",
+            "chr1\t55030322\t.\tT\tC\t25.5\tPASS\t.\tGT:GQ\t0/1:25",
+            "chr2\t100\t.\tA\tG\t40\tPASS\t.\tGT:GQ\t0/1:40", ""]).encode()
+        regions = self.views.parse_regions("APOL1=chr22:36245000-36275000; PCSK9=chr1:55030000-55070000")
+        for data in (vcf, gzip.compress(vcf)):
+            out = self.views.vcf_summary(data, regions)
+            self.assertEqual((out["records"], out["passed"], out["passed_snps"], out["passed_indels"]), (5, 4, 3, 1))
+            self.assertEqual(out["variants_per_region"], {"APOL1": 2, "PCSK9": 1})
+            self.assertEqual([r["POS"] for r in out["rows"]], [36250000, 36252000])
+            self.assertEqual(out["rows"][0]["GT"], "1/1")
+            self.assertEqual(out["sample"], "NA19657")
+            self.assertIn("QUAL", out["columns"])
+
+
 class ForecastAnswerTests(unittest.TestCase):
     """Service.forecast's answer and its argument checks, with BigQuery and the model stubbed."""
 

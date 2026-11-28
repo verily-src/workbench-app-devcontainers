@@ -97,7 +97,7 @@ type ContentItem struct {
 }
 
 // serverVersion is the version of the wb-mcp-server feature (devcontainer-feature.json).
-const serverVersion = "2.3.0"
+const serverVersion = "2.3.1"
 
 // Global variables
 var (

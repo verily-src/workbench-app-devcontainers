@@ -286,6 +286,15 @@ func TestWorkflowJobRunArgs(t *testing.T) {
 			t.Fatalf("got %v, %v", got, err)
 		}
 	})
+	t.Run("empty inputs are no inputs", func(t *testing.T) {
+		for _, empty := range []map[string]interface{}{{"inputs": map[string]interface{}{}}, {"inputs": `{}`},
+			{"inputsUri": ""}, {"inputs": map[string]interface{}{}, "inputsUri": ""}} {
+			got, err := workflowJobRunArgs(with(empty))
+			if err != nil || !argsEqual(got, base) {
+				t.Fatalf("%v: got %v, %v", empty, got, err)
+			}
+		}
+	})
 	t.Run("inputs as a JSON string", func(t *testing.T) {
 		got, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": `{"a": 1}`}))
 		want := append(append([]string{}, base...), `--inputs={"a":1}`)
@@ -332,7 +341,7 @@ func TestWorkflowJobRunArgs(t *testing.T) {
 		}
 	})
 	t.Run("inputs and inputsUri are exclusive", func(t *testing.T) {
-		_, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": map[string]interface{}{}, "inputsUri": "gs://x/y"}))
+		_, err := workflowJobRunArgs(with(map[string]interface{}{"inputs": map[string]interface{}{"a": 1.0}, "inputsUri": "gs://x/y"}))
 		if err == nil {
 			t.Fatal("expected an error")
 		}

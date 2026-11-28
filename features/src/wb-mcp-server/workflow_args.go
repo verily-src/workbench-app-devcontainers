@@ -78,6 +78,11 @@ func workflowJobRunArgs(arguments map[string]interface{}) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// An empty inputs object is no inputs: models send {} for "none", and the CLI refuses
+	// --inputs for a Nextflow workflow even when it is empty. (An empty inputsUri is absent already.)
+	if hasInputs && len(inputs) == 0 {
+		hasInputs = false
+	}
 	inputsURI, hasInputsURI := optionalString(arguments, "inputsUri")
 	if hasInputs && hasInputsURI {
 		return nil, errors.New("give inputs or inputsUri, not both")

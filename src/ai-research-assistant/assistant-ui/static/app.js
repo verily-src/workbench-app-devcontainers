@@ -276,11 +276,25 @@
         if (!r.ok) throw new Error("The recorded runs could not be loaded (" + r.status + ").");
         return r.json();
       }).then(function (data) {
-        var steps = new Map();
-        (data.steps || []).forEach(function (step) { steps.set(normalize(step.prompt), step); });
+        var steps = new Map(), times = [];
+        (data.steps || []).forEach(function (step) {
+          steps.set(normalize(step.prompt), step);
+          if (step.recorded_at) times.push(step.recorded_at);
+        });
         state.replay.steps = steps;
+        // Which runs the recording holds: its steps and when they were recorded.
+        var span = times.length ? when(Math.min.apply(null, times)) +
+          (when(Math.max.apply(null, times)) !== when(Math.min.apply(null, times)) ? " to " + when(Math.max.apply(null, times)) : "") : "";
+        $("replay-info").textContent = steps.size + " recorded steps" + (span ? ", recorded " + span : "") + ".";
       }).catch(function (error) { showError(error.message); });
     }
+  }
+
+  // A recording time as the page shows it: "Nov 28, 00:18 UTC".
+  function when(ms) {
+    var d = new Date(ms);
+    return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      hour12: false, timeZone: "UTC" }) + " UTC";
   }
 
   function stopReplay() {
@@ -296,6 +310,7 @@
     var step = steps.get(normalize(text));
     if (!step) return showError("There is no recording of this step. Turn the backup switch off to run it live.");
     if (!isReplay(state.sid)) resetSession("replay-" + (++state.replay.count));
+    $("replay-pill").textContent = "Recorded run" + (step.recorded_at ? " · " + when(step.recorded_at) : "");
     showError(""); setBusy(true);
     // Fresh ids and times, so a step recorded in another session sorts after what is shown.
     var tag = "r" + (++state.replay.count) + "-", now = Date.now(), at = 0, actions = [];
@@ -676,7 +691,11 @@
         if (!isWait(part) || !part.state || part.state.status !== "completed") return null;
         var out = parseJson(part.state.output);
         if (out && out.status === "awaiting_approval") return { kind: "approval", key: part.id, request: out.approval_request || {} };
-        if (out && out.status === "idle" && out.choices && out.choices.text) return { kind: "choices", key: part.id, text: out.choices.text };
+        // Only choices with readings to pick: after the person answers, the designer's next reply
+        // carries a record of the answers ("Recorded from your message 2: ..."), which asks nothing.
+        if (out && out.status === "idle" && out.choices && out.choices.text && parseChoices(out.choices.text).length) {
+          return { kind: "choices", key: part.id, text: out.choices.text };
+        }
         return null;
       }
     }
@@ -843,6 +862,16 @@
       $("next-steps").append(chip(item, function (picked) { send(picked.prompt, null, picked.source); }));
     });
     config.about.forEach(function (line) { $("about").append(el("li", null, line)); });
+    // The chips file's intro: plain text, a title and paragraphs; a paragraph in brackets is a note.
+    if ((config.intro || []).length) {
+      var intro = $("intro");
+      if (config.intro_title) intro.append(el("h2", null, config.intro_title));
+      config.intro.forEach(function (line) {
+        var note = /^\[.*\]$/.test(line);
+        intro.append(el("p", note ? "intro-note" : null, note ? line.slice(1, -1) : line));
+      });
+      intro.hidden = false;
+    }
     if (config.replays) {
       $("replay-box").hidden = false;
       $("replay-switch").addEventListener("change", function () { setReplay($("replay-switch").checked); });

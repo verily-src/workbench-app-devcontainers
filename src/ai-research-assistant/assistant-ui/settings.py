@@ -74,6 +74,9 @@ def load_demo(path=None):
                         "hint": str(c.get("hint", "")), "feature": str(c.get("feature", "")),
                         "source": str(c.get("source", "")).strip()} for c in chips]
     demo["about"] = [str(line) for line in data.get("about") or []]
+    # Shown above the starters on a new session's page: a title and short paragraphs (text).
+    demo["intro_title"] = str(data.get("intro_title") or "")
+    demo["intro"] = [str(line).strip() for line in data.get("intro") or [] if str(line).strip()]
     # Recorded runs the page can play instead of asking the agent (record_replay.py): a JSON
     # file, relative to the chips file or absolute. Not sent to the page; replay_file reads it.
     replays = data.get("replays")
@@ -96,7 +99,7 @@ def load_replays(path):
             isinstance(s, dict) and isinstance(s.get("prompt"), str) and isinstance(s.get("messages"), list)
             for s in steps):
         raise ValueError(f"{path}: expected {{'steps': [{{'prompt': ..., 'messages': [...]}}]}}")
-    return {"version": data.get("version", 1), "steps": steps}
+    return {"version": data.get("version", 1), "recorded": data.get("recorded"), "steps": steps}
 
 
 def access_view(path):

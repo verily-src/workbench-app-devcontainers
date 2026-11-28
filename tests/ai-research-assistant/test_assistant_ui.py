@@ -81,8 +81,13 @@ class ChipsFileTests(unittest.TestCase):
         self.assertIn('"value": [443597]', forecast["prompt"])
         # The data views come with the steps before them, by their dedicated tools, so the agent
         # writes no queries for them and the booth has no chip just for a view.
+        # The records Kumo reads open the forecast step: a cohort need not lead to a forecast.
         starter = next(c for c in demo["starters"] if c["label"] == "Adults with type 2 diabetes")
-        self.assertIn("forecast_show_cohort_records", starter["prompt"])
+        self.assertNotIn("forecast_", starter["prompt"])
+        self.assertLess(forecast["prompt"].index("forecast_show_cohort_records"),
+                        forecast["prompt"].index("forecast_forecast_risk"))
+        self.assertIn("passing only", chips["Call variants with Parabricks"]["prompt"])
+        self.assertIn("takes no inputs", chips["Call variants with Parabricks"]["prompt"])
         sarek = chips["Call variants with Parabricks"]["prompt"]
         self.assertLess(sarek.index("forecast_show_genomes"), sarek.index("registered sarek workflow"))
         self.assertFalse([c for c in demo["next_steps"] if c["label"].startswith("Show the")])
@@ -612,6 +617,40 @@ class RecorderChipFilterTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("record_replay", UI / "record_replay.py")
         rec = importlib.util.module_from_spec(spec); spec.loader.exec_module(rec)
         prompts = rec.chip_prompts(UI / "examples" / "ehr-genomics-chips.yaml")
-        chip = next(p for p in prompts if p.startswith("Use Kumo to forecast"))
+        chip = next(p for p in prompts if "call forecast_forecast_risk once" in p)
         steps = [{"prompt": chip, "messages": []}, {"prompt": "Call cohort_get_status once.", "messages": []}]
         self.assertEqual([s["prompt"] for s in rec.only_chips(steps, prompts)], [chip])
+
+
+class DecisionCardTests(unittest.TestCase):
+    def test_a_record_of_answered_choices_shows_no_choices_card(self):
+        # After the person answers, the designer's next idle reply carries "choices" that only
+        # record the answers; the card would have nothing to send.
+        script = (UI / "static" / "app.js").read_text()
+        self.assertIn("out.choices.text && parseChoices(out.choices.text).length", script)
+
+
+class IntroAndRecordingTimeTests(unittest.TestCase):
+    def test_the_ehr_genomics_chips_open_with_the_health_context(self):
+        demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")
+        self.assertEqual(demo["intro_title"], "Why kidney disease, and why now")
+        text = " ".join(demo["intro"])
+        for fact in ("About 40 million Americans have diabetes", "about 1 in 7 American adults", "9 in 10", "CDC"):
+            self.assertIn(fact, text)
+        for absent in ("All of Us", "NIH"):
+            self.assertNotIn(absent, text)
+        self.assertEqual(settings.load_demo(UI / "demo.yaml")["intro"], [])
+        script = (UI / "static" / "app.js").read_text()
+        self.assertIn('intro.append(el("p", note ? "intro-note" : null', script, "intro lines are drawn as text")
+
+    def test_recorded_steps_carry_their_time_and_session_and_the_page_shows_it(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("record_replay", UI / "record_replay.py")
+        rec = importlib.util.module_from_spec(spec); spec.loader.exec_module(rec)
+        steps = rec.steps_of([{"info": {"id": "m1", "role": "user", "time": {"created": 1764289098000}},
+                               "parts": [{"type": "text", "text": "Go"}]}], "ses_A")
+        self.assertEqual((steps[0]["recorded_at"], steps[0]["session"]), (1764289098000, "ses_A"))
+        self.assertIsInstance(rec.merge(steps)["recorded"], int)
+        script = (UI / "static" / "app.js").read_text()
+        self.assertIn('"Recorded run" + (step.recorded_at ? " · " + when(step.recorded_at) : "")', script)
+        self.assertIn('id="replay-info"', (UI / "static" / "index.html").read_text())

@@ -64,7 +64,9 @@ local development (`dev/run-dev.sh` sets it).
 (a name from `features.yaml`): such a chip appears only when the access state has that feature
 on. An optional `source` is sent with the prompt as a synthetic part of the same message: the
 agent reads it (an approved text to answer from, for example) and the page does not draw it. `about` is the text of
-the side panel's last section. A chip without a label or a prompt stops the server at start.
+the side panel's last section. `intro_title` and `intro` (a list of paragraphs, plain text; one in
+[brackets] is a small note) are shown above the starters on a new session's page. A chip without
+a label or a prompt stops the server at start.
 
 The default chips name no condition, gene, dataset or workflow. `examples/ehr-genomics-chips.yaml`
 holds chips for a workspace with the EHR-and-genomes synthetic data; the image carries it at
@@ -92,6 +94,8 @@ python3 /opt/assistant-ui/record_replay.py --out /tmp/replays.json ses_A ses_B
 python3 /opt/assistant-ui/record_replay.py --out /tmp/replays.json --merge /tmp/replays.json ses_C
 ```
 
+Each step keeps its session and the time it was recorded: the Backup panel says how many steps
+there are and when they were recorded, and the **Recorded run** pill shows the step's time.
 Session ids are the ones OpenCode lists (`/oc/session`). Where two sessions have a step with the
 same prompt, the later one is kept; `--chips <chips file>` keeps only the steps whose prompt is
 one of that file's chips, so test prompts and older wordings are left out. The recorder prints

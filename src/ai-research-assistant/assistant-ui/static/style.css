@@ -63,6 +63,12 @@ ul { list-style: none; margin: 0; padding: 0; }
 .welcome { text-align: center; padding: 3rem 0 1rem; }
 .welcome h1 { font-family: var(--font-display); font-weight: 500; font-size: 1.8rem; color: var(--primary-dark); }
 .welcome p { color: var(--text-muted); margin: 0.5rem 0 1.5rem; }
+.welcome .intro { text-align: left; max-width: 46rem; margin: 0 auto 2rem; padding: 1rem 1.25rem;
+  border-left: 3px solid var(--primary); background: var(--primary-tint); border-radius: 0.5rem; }
+.welcome .intro h2 { font-family: var(--font-display); font-weight: 500; font-size: 1.15rem; margin: 0 0 0.5rem; color: var(--primary-dark); }
+.welcome .intro p { color: var(--text); margin: 0 0 0.6rem; line-height: 1.5; }
+.welcome .intro p:last-child { margin-bottom: 0; }
+.welcome .intro .intro-note { color: var(--text-muted); font-size: 0.85rem; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .chips-start { justify-content: center; }

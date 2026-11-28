@@ -39,6 +39,8 @@
     <main class="chat">
       <div class="scroll" id="scroll">
         <section class="welcome" id="welcome">
+          <!-- Filled from the chips file's intro (intro_title, intro), when it has one. -->
+          <div class="intro" id="intro" hidden></div>
           <h1>What cohort would you like to study?</h1>
           <p>Start from one of these, or describe your own.</p>
           <div class="chips chips-start" id="starters"></div>
@@ -71,6 +73,7 @@
         <h2>Backup</h2>
         <label class="replay-switch"><input type="checkbox" id="replay-switch"> Play recorded runs</label>
         <p class="muted">Chips show a recorded run of their step instead of asking the assistant.</p>
+        <p class="muted" id="replay-info"></p>
       </div>
     </aside>
   </div>

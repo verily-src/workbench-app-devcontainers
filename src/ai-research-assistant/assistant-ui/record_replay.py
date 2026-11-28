@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.request
 
 VERSION = 1
@@ -69,8 +70,9 @@ def user_text(item):
                      if p.get("type") == "text" and not p.get("synthetic")).strip()
 
 
-def steps_of(messages):
-    """A session's messages (OpenCode's session/<id>/message) as steps: {prompt, messages}."""
+def steps_of(messages, session=None):
+    """A session's messages (OpenCode's session/<id>/message) as steps: {prompt, recorded_at (the
+    prompt's time, ms since the epoch), session, messages}."""
     ordered = sorted(messages, key=lambda m: ((m.get("info") or {}).get("time") or {}).get("created") or 0)
     steps = []
     for item in ordered:
@@ -78,7 +80,9 @@ def steps_of(messages):
         if role == "user":
             text = user_text(item)
             if text:
-                steps.append({"prompt": normalize(text), "messages": [trim_message(item)]})
+                created = ((item.get("info") or {}).get("time") or {}).get("created")
+                steps.append({"prompt": normalize(text), "recorded_at": created, "session": session,
+                              "messages": [trim_message(item)]})
             continue
         if steps:
             steps[-1]["messages"].append(trim_message(item))
@@ -92,7 +96,7 @@ def merge(*groups):
     for steps in groups:
         for step in steps:
             kept[step["prompt"]] = step
-    return {"version": VERSION, "steps": list(kept.values())}
+    return {"version": VERSION, "recorded": int(time.time() * 1000), "steps": list(kept.values())}
 
 
 def chip_prompts(path):
@@ -135,7 +139,7 @@ def main(argv=None):
         with open(a.merge) as f:
             groups.append(json.load(f).get("steps") or [])
     for sid in a.sessions:
-        steps = steps_of(fetch(a.base, sid))
+        steps = steps_of(fetch(a.base, sid), sid)
         print(f"{sid}: {len(steps)} steps", file=sys.stderr)
         for step in steps:
             print("  " + describe(step), file=sys.stderr)

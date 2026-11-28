@@ -22,6 +22,24 @@
 
 replays: /ara/replays.json
 
+# Shown above the starters on a new session's page. Figures: CDC (diabetes report card and the
+# 2026 chronic kidney disease report). A paragraph in brackets is a small note.
+intro_title: Why kidney disease, and why now
+intro:
+  - >
+    About 40 million Americans have diabetes, 90 to 95% of it type 2, and about 1 in 3 adults
+    with diabetes also has chronic kidney disease. Diabetes is a leading cause of kidney failure.
+  - >
+    Chronic kidney disease affects about 1 in 7 American adults, roughly 37 million people, and
+    about 9 in 10 of them don't know they have it. Found early, its decline can often be slowed;
+    found late, it can mean dialysis or a transplant.
+  - >
+    Here a researcher finds adults with type 2 diabetes, forecasts with NVIDIA Kumo which of them
+    may reach stage 3 kidney disease within a year, and analyzes their genomes with NVIDIA
+    Parabricks, all in a governed Verily Pre Workbench workspace where the assistant follows the
+    same data rules as the researcher.
+  - "[The patients in this workspace are synthetic. Figures: CDC.]"
+
 starters:
   - label: Adults with type 2 diabetes
     feature: cohort_designer
@@ -30,9 +48,7 @@ starters:
       Create and lock a cohort from the omop_cdr_v2 dataset: people with a type 2 diabetes
       diagnosis (condition concept 201826) who were 18 or older, in whole years, at their first
       one, each dated by that first diagnosis. Read times in UTC and keep your built readings for
-      anything else. Once it is locked, call forecast_show_cohort_records once to show the health
-      records Kumo reads for it; the page shows its table, so end with the cohort's count and one
-      short sentence, and do not repeat the table.
+      anything else.
   - label: What is the Verily Pre platform?
     hint: The platform in brief
     prompt: >
@@ -87,9 +103,11 @@ starters:
 next_steps:
   - label: Forecast kidney disease with Kumo
     feature: kumo_forecast
-    hint: Who is heading toward CKD, a year ahead
+    hint: The records it reads, then who is heading toward CKD
     prompt: >
-      Use Kumo to forecast which members of this cohort will be diagnosed with chronic kidney
+      First show me the health records Kumo reads for this cohort: call
+      forecast_show_cohort_records once; the page shows its table, so do not repeat it. Then use
+      Kumo to forecast which members of this cohort will be diagnosed with chronic kidney
       disease stage 3 within 12 months of 2024-12-01: call forecast_forecast_risk once, with
       outcome {"table": "condition_occurrence", "where": [{"column": "condition_concept_id",
       "op": "in", "value": [443597]}]} and as_of 2024-12-01, reading all of the dataset's tables
@@ -109,20 +127,23 @@ next_steps:
       gpu, workspace nvidia-ai-research-assistant): in one Python step, read
       sarek-parabricks/params-template.yaml from the workspace's output bucket, set its input
       and outdir under cohort-sarek/ in that bucket, and write it and the samplesheet there as
-      they are. Show me the inputs in two lines, then submit with workflow_job_run, naming the
-      output bucket by its gs:// name. Everything needed is above: do not query the data, list
-      or describe workflows, or read sarek's schema. Do not show anyone's person_id.
+      they are. Show me the inputs in two lines, then submit with workflow_job_run, passing only
+      workspaceId, workflowId, profile, description, paramsFileBucketId and paramsFilePath (the
+      output bucket by its gs:// name and cohort-sarek/params.yaml), outputBucketId and
+      outputPath; Nextflow takes no inputs. Everything needed is above: do not check the
+      workspace, query the data, list or describe workflows, or read sarek's schema. Do not show
+      anyone's person_id.
   - label: Add genomes to the forecast
     feature: kumo_forecast
-    hint: What the genome says about the people at risk
+    hint: Health records alone vs with their genotypes
     prompt: >
       Call forecast_forecast_with_genotypes once, with genotype_table the genomic_results
       dataset's apol1_genotypes table (project.dataset.table), to forecast chronic kidney disease
       stage 3 (condition concept 443597 in condition_occurrence) within 12 months of 2024-12-01
-      for everyone with a genome. Tell me how accurate it was, and how common two APOL1 risk
-      alleles are in the highest-risk tenth compared with the rest. Describe APOL1 only as a
-      measured gene variant linked to kidney disease; do not mention race, ancestry or
-      population groups.
+      for everyone with a genome, from the health records alone and with their APOL1 genotypes.
+      The page shows the comparison table, so do not repeat it: in two short sentences, tell me
+      what adding the genotypes changed, numbers as given. Describe APOL1 only as a measured gene
+      variant linked to kidney disease; do not mention race, ancestry or population groups.
   - label: Look up APOL1 research on PubMed
     hint: OpenShell blocks the call
     prompt: >

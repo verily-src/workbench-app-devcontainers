@@ -70,6 +70,42 @@ The default chips name no condition, gene, dataset or workflow. `examples/ehr-ge
 holds chips for a workspace with the EHR-and-genomes synthetic data; the image carries it at
 `/opt/assistant-ui/examples/ehr-genomics-chips.yaml`, so `ASSISTANT_DEMO` can point at that path.
 
+## Recorded runs
+
+A chips file can name recorded runs to fall back on when a live step is slow or fails:
+`replays: <file>.json`, relative to the chips file or absolute. When the file is there, the
+side panel shows a **Backup** switch, "Play recorded runs" (`?replay=1` in the page's URL turns
+it on). With it on, a chip sends nothing to the assistant: the page plays the recorded step
+whose prompt is the chip's (whitespace aside) in a few seconds, with the same tool cards,
+tables and text, and the header shows a **Recorded run** pill. Starters open a new recorded
+session and next steps add to it. A chip with no recorded step shows an error. Stop shows the
+rest of the step at once. Approval and question prompts are not replayed. With the switch off,
+the next chip starts a new live session. A missing file leaves the switch hidden; the server
+serves the file at `api/replay`, behind the same access gate as `/oc`.
+
+To record, run the flow live (each chip once, in one session or several), then in the UI
+container:
+
+```sh
+python3 /opt/assistant-ui/record_replay.py --out /tmp/replays.json ses_A ses_B
+# replace or add steps from another session, keeping the rest:
+python3 /opt/assistant-ui/record_replay.py --out /tmp/replays.json --merge /tmp/replays.json ses_C
+```
+
+Session ids are the ones OpenCode lists (`/oc/session`). Where two sessions have a step with the
+same prompt, the later one is kept; `--chips <chips file>` keeps only the steps whose prompt is
+one of that file's chips, so test prompts and older wordings are left out. The recorder prints
+each step's tool calls, failed calls and duration, so a bad take is easy to spot. A recording
+holds what the session showed, data included: record only data that may be shown, such as
+synthetic data.
+
+A recording holds the workspace's data and names, so it is kept in the workspace, not in the
+image. In the app, `ASSISTANT_REPLAYS_FROM` (docker-compose.yaml) names it as
+`<bucket resource>/<path>`; `start-services.sh` copies it at start to `/config/.ara/replays.json`,
+which this container reads as `/ara/replays.json` (the EHR-and-genomes chips name that path). To
+put a new recording in place, copy it out of the container (`docker cp`), upload it to that path
+in the bucket, and copy it to `/config/.ara/replays.json` in the app container or restart the app.
+
 ## Settings
 
 | Variable | Default | |

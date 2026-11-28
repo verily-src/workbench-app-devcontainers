@@ -27,6 +27,8 @@
     servers: {},             // MCP server name -> status
     busy: false,
     frame: 0,
+    // Recorded runs (the backup switch): steps by prompt, the timers of the step playing.
+    replay: { on: false, steps: null, timers: [], count: 0, finish: null },
   };
 
   // ---- OpenCode ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@
       pill.textContent = "connected"; pill.className = "pill pill-status ok";
       // Whatever happened while the stream was down is read again.
       refreshServers(); refreshSessions();
-      if (state.sid) loadSession(state.sid);
+      if (state.sid && !isReplay(state.sid)) loadSession(state.sid);
     };
     ws.onmessage = function (message) {
       var event;
@@ -165,11 +167,13 @@
   }
 
   function resetSession(sid) {
+    stopReplay();
     state.sid = sid; state.view = (state.view || 0) + 1;
     state.messages.clear(); state.nodes.clear(); state.dirty.clear(); state.open.clear();
     state.permissions.clear(); state.questions.clear();
     $("messages").replaceChildren();
     showError(""); setBusy(false); drawPrompts(); drawUsed(); drawSessions();
+    $("replay-pill").hidden = !isReplay(sid);
   }
 
   function loadSession(sid, retried) {
@@ -235,9 +239,11 @@
   function send(text, title, source) {
     text = (text || "").trim();
     if (!text || state.busy) return;
+    if (state.replay.on) return playReplay(text);
     showError(""); setBusy(true);
     var view = state.view;
-    var ready = state.sid ? Promise.resolve(state.sid) : oc("session", { title: (title || text).slice(0, 60) })
+    // A recorded run is not an OpenCode session: what follows it live starts a new one.
+    var ready = state.sid && !isReplay(state.sid) ? Promise.resolve(state.sid) : oc("session", { title: (title || text).slice(0, 60) })
       .then(function (session) {
         // Shown only if the person is still on the new session's page: one who picked another
         // session meanwhile was pulled back to this one.
@@ -249,6 +255,95 @@
       if (source) parts.push({ type: "text", text: source, synthetic: true });
       return oc("session/" + sid + "/prompt_async", { parts: parts });
     }).catch(function (error) { setBusy(false); showError(error.message); });
+  }
+
+  // ---- Recorded runs ----------------------------------------------------------------------
+  // With the backup switch on, a chip plays the recorded step whose prompt is the chip's
+  // (record_replay.py) into a session of the page's own, "replay-<n>", an id OpenCode never
+  // sends, so its events leave it alone. Nothing is sent to OpenCode. Tool cards run, then
+  // finish; text appears in pieces; the whole step takes a few seconds.
+
+  var REPLAY_TOOL_MS = 900, REPLAY_TEXT_MS = 1200, REPLAY_TEXT_PIECES = 12;
+
+  function isReplay(sid) { return typeof sid === "string" && sid.indexOf("replay-") === 0; }
+  function normalize(text) { return String(text || "").replace(/\s+/g, " ").trim(); }
+
+  function setReplay(on) {
+    state.replay.on = !!on;
+    $("replay-switch").checked = state.replay.on;
+    if (on && !state.replay.steps) {
+      fetch("api/replay", { cache: "no-store" }).then(function (r) {
+        if (!r.ok) throw new Error("The recorded runs could not be loaded (" + r.status + ").");
+        return r.json();
+      }).then(function (data) {
+        var steps = new Map();
+        (data.steps || []).forEach(function (step) { steps.set(normalize(step.prompt), step); });
+        state.replay.steps = steps;
+      }).catch(function (error) { showError(error.message); });
+    }
+  }
+
+  function stopReplay() {
+    state.replay.timers.forEach(clearTimeout);
+    state.replay.timers = []; state.replay.finish = null;
+  }
+
+  function copy(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
+
+  function playReplay(text) {
+    var steps = state.replay.steps;
+    if (!steps) return showError("The recorded runs are still loading. Try again in a moment.");
+    var step = steps.get(normalize(text));
+    if (!step) return showError("There is no recording of this step. Turn the backup switch off to run it live.");
+    if (!isReplay(state.sid)) resetSession("replay-" + (++state.replay.count));
+    showError(""); setBusy(true);
+    // Fresh ids and times, so a step recorded in another session sorts after what is shown.
+    var tag = "r" + (++state.replay.count) + "-", now = Date.now(), at = 0, actions = [];
+    var later = function (ms, fn) { at += ms; actions.push({ at: at, fn: fn }); };
+    step.messages.forEach(function (item, i) {
+      var info = copy(item.info) || {};
+      var id = tag + (info.id || i);
+      info.id = id; info.time = { created: now + i };
+      var parts = (item.parts || []).map(function (part, j) {
+        var p = copy(part); p.id = id + "-" + ("000" + j).slice(-4); p.messageID = id; return p;
+      });
+      later(info.role === "user" ? 0 : 300, function () { message(id).info = info; touch(id); });
+      parts.forEach(function (part) {
+        var held = function () { return message(id).parts; };
+        if (part.type === "tool") {
+          // The designer's repeated waits fold into one card, so each takes a moment only.
+          var done = part.state || {}, wait = isWait(part);
+          later(wait ? 20 : 150, function () {
+            held().set(part.id, Object.assign({}, part, { state: { status: "running", input: done.input } }));
+            touch(id, true);
+          });
+          later(wait ? 60 : REPLAY_TOOL_MS, function () { held().set(part.id, part); touch(id, true); });
+        } else if (part.type === "text" && info.role !== "user") {
+          var full = part.text || "", size = Math.ceil(full.length / REPLAY_TEXT_PIECES) || 1;
+          for (var k = size; k < full.length + size; k += size) {
+            (function (shown) {
+              later(REPLAY_TEXT_MS / REPLAY_TEXT_PIECES, function () {
+                held().set(part.id, Object.assign({}, part, { text: shown })); touch(id);
+              });
+            })(full.slice(0, k));
+          }
+        } else {
+          later(0, function () { held().set(part.id, part); touch(id); });
+        }
+      });
+    });
+    var sid = state.sid;
+    var finish = function () {
+      if (state.sid !== sid) return;
+      stopReplay();
+      actions.forEach(function (a) { if (!a.ran) a.fn(); });
+      setBusy(false);
+    };
+    actions.forEach(function (a) {
+      state.replay.timers.push(setTimeout(function () { a.ran = true; a.fn(); }, a.at));
+    });
+    state.replay.timers.push(setTimeout(finish, at + 200));
+    state.replay.finish = finish;
   }
 
   // ---- Drawing ----------------------------------------------------------------------------
@@ -449,7 +544,7 @@
       if (fresh) state.nodes.set(id, fresh); else state.nodes.delete(id);
     });
     state.dirty.clear();
-    var decision = state.busy || state.permissions.size ? null : pendingDecision();
+    var decision = state.busy || state.permissions.size || isReplay(state.sid) ? null : pendingDecision();
     if ((state.permissions.size && promptInputs() !== state.shownInputs) ||
         (decision ? decision.key : "") !== (state.shownDecision || "")) drawPrompts();
     drawChips(); drawUsed();
@@ -605,7 +700,7 @@
   }
 
   function drawDecision(box) {
-    var decision = state.busy || state.permissions.size ? null : pendingDecision();
+    var decision = state.busy || state.permissions.size || isReplay(state.sid) ? null : pendingDecision();
     state.shownDecision = decision ? decision.key : "";
     if (!decision) return;
     var card = el("div", "ask decision"), actions = el("div", "ask-actions");
@@ -748,6 +843,11 @@
       $("next-steps").append(chip(item, function (picked) { send(picked.prompt, null, picked.source); }));
     });
     config.about.forEach(function (line) { $("about").append(el("li", null, line)); });
+    if (config.replays) {
+      $("replay-box").hidden = false;
+      $("replay-switch").addEventListener("change", function () { setReplay($("replay-switch").checked); });
+      if (new URLSearchParams(location.search).get("replay") === "1") setReplay(true);
+    }
 
     oc("config").then(function (cfg) {
       var model = (cfg && cfg.model) || "";
@@ -768,6 +868,8 @@
       send(input.value); input.value = ""; grow();
     });
     $("stop").addEventListener("click", function () {
+      // Stop on a recorded run shows the rest of the step at once.
+      if (isReplay(state.sid)) { if (state.replay.finish) state.replay.finish(); return; }
       if (state.sid) oc("session/" + state.sid + "/abort", {}).catch(function (error) { showError(error.message); });
     });
     $("new-session").addEventListener("click", function () { resetSession(null); input.focus(); });

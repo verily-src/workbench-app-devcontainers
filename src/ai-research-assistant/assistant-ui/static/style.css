@@ -153,3 +153,9 @@ body.chips-only #input, body.chips-only #send { display: none; }
 .gate { max-width: 36rem; margin: 18vh auto 0; padding: 0 1.5rem; text-align: center; }
 .gate h1 { font-size: 1.5rem; margin-bottom: 0.75rem; }
 .gate p { line-height: 1.5; color: var(--text-muted); }
+
+/* Recorded runs (the backup switch): the pill says the session shown is a recording. */
+.pill-replay { background: var(--warn-tint); color: var(--text); border: 1px solid var(--warn-border); font-weight: 600; }
+.replay-box { margin-top: 1rem; }
+.replay-switch { display: flex; gap: 0.4rem; align-items: center; cursor: pointer; }
+.replay-box p { font-size: 0.78rem; margin: 0.3rem 0 0; }

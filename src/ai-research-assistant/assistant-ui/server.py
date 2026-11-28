@@ -5,6 +5,7 @@ This process serves the page and stands between it and OpenCode:
 
 - /            the page and its files (static/).
 - /api/config  the chips and the page's settings (demo.yaml and the environment).
+- /api/replay  the recorded runs the chips file names (replays:), for the page's backup switch.
 - /oc/<path>   OpenCode's HTTP API, only the calls the page makes (ALLOWED below).
 - /events      a websocket that relays OpenCode's event stream, one event per message.
                Workbench's proxy delivers a server-sent event stream only once it ends, and it
@@ -28,7 +29,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from settings import HERE, access_view, allowed, page_config, sse_events, body_refusal
+from settings import (HERE, access_view, allowed, body_refusal, load_demo, load_replays, page_config,
+                      replay_file, sse_events)
 
 OPENCODE_URL = os.environ.get("OPENCODE_URL", "http://127.0.0.1:4096").rstrip("/")
 
@@ -105,6 +107,24 @@ async def healthz():
 @app.get("/api/config")
 async def config():
     return page_config()
+
+
+@app.get("/api/replay")
+async def replay(request: Request):
+    # Recorded sessions hold what live ones do, so the same gate applies.
+    if cross_site(request.headers):
+        return JSONResponse({"error": "Requests from another site are refused."}, status_code=403)
+    if not let_in():
+        return JSONResponse({"error": "The assistant is not available to you."}, status_code=403)
+    path = replay_file(load_demo(os.environ.get("ASSISTANT_DEMO")))
+    if path is None:
+        return JSONResponse({"error": "No recorded runs are configured."}, status_code=404)
+    try:
+        data = load_replays(path)
+    except (OSError, ValueError) as error:
+        log.warning("recorded runs not loaded: %s", error)
+        return JSONResponse({"error": "The recorded runs could not be read."}, status_code=500)
+    return JSONResponse(data, headers={"Cache-Control": "no-store"})
 
 
 @app.api_route("/oc/{path:path}", methods=["GET", "POST"])

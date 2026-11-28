@@ -152,9 +152,27 @@ start_assistant() {
 
   # The Kumo forecast server, which reads the designer's locked cohorts. Best effort, as above.
   if feature_on kumo_forecast && ! sudo -H -u "${USER_NAME}" \
-      --preserve-env=KUMO_FORECAST_GPU_GB,KUMO_FORECAST_CONTEXT,KUMO_FORECAST_ESTIMATORS,KUMO_FORECAST_MAX_ROWS,KUMO_FORECAST_BILLING_PROJECT,KUMO_FORECAST_SMALL_CELL,KUMO_FORECAST_SAMPLE_RECORDS \
+      --preserve-env=KUMO_FORECAST_GPU_GB,KUMO_FORECAST_CONTEXT,KUMO_FORECAST_ESTIMATORS,KUMO_FORECAST_MAX_ROWS,KUMO_FORECAST_BILLING_PROJECT,KUMO_FORECAST_SMALL_CELL,KUMO_FORECAST_SAMPLE_RECORDS,KUMO_FORECAST_WARM_TABLES,KUMO_FORECAST_GRAPHS \
       /opt/kumo-forecast/start-server.sh; then
     echo "The Kumo forecast server is not running; see ${USER_HOME_DIR}/.kumo-forecast/server.log, then run /opt/kumo-forecast/start-server.sh." >&2
+  fi
+
+  # The page's recorded runs (assistant-ui/README.md, "Recorded runs"), when ASSISTANT_REPLAYS_FROM
+  # names one in a workspace bucket as <bucket resource>/<path>: copied beside the access state,
+  # which the page's container reads as /ara. They hold the workspace's data, so they live in its
+  # bucket, not in the image. Best effort: without them the page has no backup switch.
+  if [[ -n "${ASSISTANT_REPLAYS_FROM:-}" ]]; then
+    local bucket replays
+    replays="$(dirname "${ACCESS_STATE}")/replays.json"
+    if bucket="$(sudo -H -u "${USER_NAME}" wb resource resolve --name "${ASSISTANT_REPLAYS_FROM%%/*}" 2> /dev/null)" &&
+        sudo -H -u "${USER_NAME}" gcloud storage cp -q "${bucket}/${ASSISTANT_REPLAYS_FROM#*/}" "${replays}.new" &&
+        jq -e '.steps | length > 0' "${replays}.new" > /dev/null; then
+      mv "${replays}.new" "${replays}"
+      chmod 644 "${replays}"
+    else
+      rm -f "${replays}.new"
+      echo "The recorded runs (${ASSISTANT_REPLAYS_FROM}) were not copied; the page has no backup switch." >&2
+    fi
   fi
 
   # Create the sandbox and forward its web UI now, so opening the app does not wait on a first

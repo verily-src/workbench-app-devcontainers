@@ -77,9 +77,15 @@ class ChipsFileTests(unittest.TestCase):
         genomes = chips["Add genomes to the forecast"]
         self.assertIn("forecast_forecast_with_genotypes", genomes["prompt"])
         self.assertIn("do not mention", genomes["prompt"])
-        # The data views call their dedicated tools, so the agent writes no queries for them.
-        self.assertIn("forecast_show_cohort_records", chips["Show the health records Kumo reads"]["prompt"])
-        self.assertIn("forecast_show_genomes", chips["Show the genomes"]["prompt"])
+        self.assertIn("call forecast_forecast_risk once", forecast["prompt"])
+        self.assertIn('"value": [443597]', forecast["prompt"])
+        # The data views come with the steps before them, by their dedicated tools, so the agent
+        # writes no queries for them and the booth has no chip just for a view.
+        starter = next(c for c in demo["starters"] if c["label"] == "Adults with type 2 diabetes")
+        self.assertIn("forecast_show_cohort_records", starter["prompt"])
+        sarek = chips["Call variants with Parabricks"]["prompt"]
+        self.assertLess(sarek.index("forecast_show_genomes"), sarek.index("registered sarek workflow"))
+        self.assertFalse([c for c in demo["next_steps"] if c["label"].startswith("Show the")])
 
     def test_a_chip_source_is_loaded_and_sent_as_a_part_the_page_does_not_draw(self):
         demo = settings.load_demo(UI / "examples" / "ehr-genomics-chips.yaml")
@@ -474,3 +480,138 @@ class RequestGuardTests(unittest.TestCase):
         asyncio.run(run())
         self.assertEqual(len(calls), 2)
         self.assertNotIn("cookie", calls[1].headers)
+
+
+import record_replay  # noqa: E402
+
+
+def _session(prompt, answer, created=1000, sid="a"):
+    """OpenCode's session/<id>/message for one step: the chip's message and an answer with a tool."""
+    return [
+        {"info": {"id": f"msg_{sid}1", "role": "user", "time": {"created": created}, "agent": "build"},
+         "parts": [{"id": "prt_1", "type": "text", "text": prompt},
+                   {"id": "prt_2", "type": "text", "text": "approved text", "synthetic": True}]},
+        {"info": {"id": f"msg_{sid}2", "role": "assistant", "time": {"created": created + 1, "completed": created + 9},
+                  "cost": 0.1, "tokens": {"input": 9}, "modelID": "m"},
+         "parts": [{"id": "prt_3", "type": "step-start"},
+                   {"id": "prt_4", "type": "tool", "tool": "forecast_show_genomes", "callID": "c1",
+                    "state": {"status": "completed", "input": {"x": 1}, "output": '{"table": "| a |"}',
+                              "title": "t", "metadata": {"big": "x" * 50}, "time": {"start": 1, "end": 2}}},
+                   {"id": "prt_5", "type": "reasoning", "text": "thinking"},
+                   {"id": "prt_6", "type": "text", "text": answer},
+                   {"id": "prt_7", "type": "step-finish", "tokens": {}}]},
+    ]
+
+
+class RecordedRunTests(unittest.TestCase):
+    def test_a_session_becomes_steps_with_only_what_the_page_draws(self):
+        steps = record_replay.steps_of(_session("Show  the\n genomes ", "Here they are."))
+        self.assertEqual(len(steps), 1)
+        step = steps[0]
+        self.assertEqual(step["prompt"], "Show the genomes")
+        user, answer = step["messages"]
+        self.assertEqual([p["text"] for p in user["parts"]], ["Show  the\n genomes "])  # no synthetic source
+        self.assertEqual([p["type"] for p in answer["parts"]], ["tool", "reasoning", "text"])
+        tool = answer["parts"][0]
+        self.assertEqual(set(tool["state"]), {"status", "input", "output", "time"})
+        self.assertEqual(set(answer["info"]), {"id", "role", "time"})
+
+    def test_steps_split_at_each_message_of_the_person(self):
+        two = _session("First", "one") + _session("Second", "two", created=2000, sid="b")
+        self.assertEqual([s["prompt"] for s in record_replay.steps_of(two[::-1])], ["First", "Second"])
+
+    def test_a_later_recording_of_the_same_prompt_wins_in_its_place(self):
+        old = record_replay.steps_of(_session("A", "old") + _session("B", "b", 2000, "b"))
+        new = record_replay.steps_of(_session("A", "new", 3000, "c"))
+        merged = record_replay.merge(old, new)
+        self.assertEqual([s["prompt"] for s in merged["steps"]], ["A", "B"])
+        self.assertEqual(merged["steps"][0]["messages"][1]["parts"][-1]["text"], "new")
+
+    def test_the_recorder_writes_a_file_the_server_loads(self):
+        folder = Path(tempfile.mkdtemp())
+        with mock.patch.object(record_replay, "fetch", lambda base, sid: _session("Go " + sid, "ok")):
+            record_replay.main(["--out", str(folder / "r.json"), "s1", "s2"])
+            record_replay.main(["--out", str(folder / "r.json"), "--merge", str(folder / "r.json"), "s1"])
+        data = settings.load_replays(folder / "r.json")
+        self.assertEqual([s["prompt"] for s in data["steps"]], ["Go s1", "Go s2"])
+
+    def test_the_page_matches_prompts_as_the_recorder_does(self):
+        script = (UI / "static" / "app.js").read_text()
+        self.assertIn('replace(/\\s+/g, " ").trim()', script)
+        self.assertIn("steps.get(normalize(text))", script)
+
+    def test_the_image_carries_the_recorder(self):
+        self.assertIn("record_replay.py", (UI / "Dockerfile").read_text())
+
+
+class ReplaySettingsTests(unittest.TestCase):
+    def chips(self, folder, extra=""):
+        path = Path(folder) / "chips.yaml"
+        path.write_text("starters:\n  - label: A\n    prompt: Go\n" + extra)
+        return path
+
+    def test_the_replays_file_is_found_beside_the_chips_file_and_not_sent_as_a_path(self):
+        folder = tempfile.mkdtemp()
+        (Path(folder) / "r.json").write_text(json.dumps({"steps": []}))
+        path = self.chips(folder, "replays: r.json\n")
+        self.assertEqual(settings.replay_file(settings.load_demo(path)), Path(folder).resolve() / "r.json")
+        config = settings.page_config({"ASSISTANT_DEMO": str(path), "ASSISTANT_ACCESS": "open"})
+        self.assertIs(config["replays"], True)
+
+    def test_no_replays_or_a_missing_file_offers_none(self):
+        folder = tempfile.mkdtemp()
+        for extra in ("", "replays: missing.json\n"):
+            path = self.chips(folder, extra)
+            self.assertIsNone(settings.replay_file(settings.load_demo(path)))
+            self.assertIs(settings.page_config({"ASSISTANT_DEMO": str(path), "ASSISTANT_ACCESS": "open"})["replays"], False)
+
+    def test_a_malformed_replays_file_is_refused(self):
+        folder = Path(tempfile.mkdtemp())
+        for bad in ({"steps": [{"prompt": 1, "messages": []}]}, [], {"steps": "x"}):
+            (folder / "r.json").write_text(json.dumps(bad))
+            with self.assertRaises(ValueError):
+                settings.load_replays(folder / "r.json")
+
+    def test_the_page_offers_the_switch_and_the_recorded_run_pill(self):
+        page = (UI / "static" / "index.html").read_text()
+        for node in ('id="replay-box"', 'id="replay-switch"', 'id="replay-pill"'):
+            self.assertIn(node, page)
+        self.assertIn('fetch("api/replay"', (UI / "static" / "app.js").read_text())
+
+
+@unittest.skipIf(TestClient is None, "needs fastapi and httpx")
+class ReplayRouteTests(unittest.TestCase):
+    def setUp(self):
+        self.folder = Path(tempfile.mkdtemp())
+        (self.folder / "r.json").write_text(json.dumps({"version": 1, "steps": [{"prompt": "Go", "messages": []}]}))
+        (self.folder / "chips.yaml").write_text("starters:\n  - label: A\n    prompt: Go\nreplays: r.json\n")
+
+    def get(self, chips, access="open", **headers):
+        import server
+        with mock.patch.dict(os.environ, {"ASSISTANT_DEMO": str(chips), "ASSISTANT_ACCESS": access}):
+            with TestClient(server.app) as client:
+                return client.get("/api/replay", headers=headers)
+
+    def test_the_recorded_runs_are_served_when_the_chips_file_names_them(self):
+        r = self.get(self.folder / "chips.yaml")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["steps"][0]["prompt"], "Go")
+
+    def test_none_configured_is_not_found(self):
+        (self.folder / "plain.yaml").write_text("starters:\n  - label: A\n    prompt: Go\n")
+        self.assertEqual(self.get(self.folder / "plain.yaml").status_code, 404)
+
+    def test_the_gate_and_cross_site_rule_apply(self):
+        self.assertEqual(self.get(self.folder / "chips.yaml", access="").status_code, 403)
+        self.assertEqual(self.get(self.folder / "chips.yaml", **{"Sec-Fetch-Site": "cross-site"}).status_code, 403)
+
+
+class RecorderChipFilterTests(unittest.TestCase):
+    def test_only_steps_whose_prompt_is_a_chips_are_kept(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("record_replay", UI / "record_replay.py")
+        rec = importlib.util.module_from_spec(spec); spec.loader.exec_module(rec)
+        prompts = rec.chip_prompts(UI / "examples" / "ehr-genomics-chips.yaml")
+        chip = next(p for p in prompts if p.startswith("Use Kumo to forecast"))
+        steps = [{"prompt": chip, "messages": []}, {"prompt": "Call cohort_get_status once.", "messages": []}]
+        self.assertEqual([s["prompt"] for s in rec.only_chips(steps, prompts)], [chip])

@@ -16,6 +16,7 @@
       <span class="brand-on">on <strong>Verily Pre</strong></span>
     </div>
     <div class="topbar-right">
+      <span class="pill pill-replay" id="replay-pill" title="This session plays a recorded run; nothing is sent to the assistant" hidden>Recorded run</span>
       <span class="pill" id="model-pill" title="The model answering" hidden>model</span>
       <span class="pill pill-status" id="conn-pill" hidden>connecting</span>
       <button class="btn btn-light" id="new-session" type="button" hidden>New session</button>
@@ -65,6 +66,12 @@
       <ul id="used" class="used-list"><li class="muted">Nothing yet</li></ul>
       <h2>Where the assistant runs</h2>
       <ul id="about" class="about-list"></ul>
+      <!-- Shown when the chips file names recorded runs (replays:). -->
+      <div class="replay-box" id="replay-box" hidden>
+        <h2>Backup</h2>
+        <label class="replay-switch"><input type="checkbox" id="replay-switch"> Play recorded runs</label>
+        <p class="muted">Chips show a recorded run of their step instead of asking the assistant.</p>
+      </div>
     </aside>
   </div>
 

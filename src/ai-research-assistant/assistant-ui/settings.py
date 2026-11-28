@@ -74,7 +74,29 @@ def load_demo(path=None):
                         "hint": str(c.get("hint", "")), "feature": str(c.get("feature", "")),
                         "source": str(c.get("source", "")).strip()} for c in chips]
     demo["about"] = [str(line) for line in data.get("about") or []]
+    # Recorded runs the page can play instead of asking the agent (record_replay.py): a JSON
+    # file, relative to the chips file or absolute. Not sent to the page; replay_file reads it.
+    replays = data.get("replays")
+    demo["replays"] = str((path.parent / str(replays)).resolve()) if replays else ""
     return demo
+
+
+def replay_file(demo):
+    """The recorded runs' file of a loaded chips file, or None when it names none or the file is
+    missing (the page then offers no recorded runs; a missing file does not stop the server)."""
+    path = demo.get("replays")
+    return Path(path) if path and Path(path).is_file() else None
+
+
+def load_replays(path):
+    """The recorded runs, checked: {"version", "steps": [{"prompt", "messages"}]}."""
+    data = json.loads(Path(path).read_text())
+    steps = data.get("steps") if isinstance(data, dict) else None
+    if not isinstance(steps, list) or not all(
+            isinstance(s, dict) and isinstance(s.get("prompt"), str) and isinstance(s.get("messages"), list)
+            for s in steps):
+        raise ValueError(f"{path}: expected {{'steps': [{{'prompt': ..., 'messages': [...]}}]}}")
+    return {"version": data.get("version", 1), "steps": steps}
 
 
 def access_view(path):
@@ -120,6 +142,7 @@ def page_config(env=None):
     if on is not None:
         for group in ("starters", "next_steps"):
             demo[group] = [c for c in demo[group] if not c["feature"] or on.get(c["feature"])]
+    demo["replays"] = replay_file(demo) is not None
     return {"title": env.get("ASSISTANT_TITLE", "Research Assistant"),
             "input": mode, "access": access, **demo}
 

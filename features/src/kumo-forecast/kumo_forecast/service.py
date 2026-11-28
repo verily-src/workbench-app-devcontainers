@@ -317,11 +317,19 @@ class Service:
                 if start is not None and pd.notna(start.get(entity)):
                     person["in_the_cohort_from"] = str(pd.Timestamp(start[entity]).date())
                 people.append({**person, **views.timeline(ds, entity)})
-            table = views.records_table(views.table_overview(p.schemas, p.tables, key), people)
+            overview = views.table_overview(p.schemas, p.tables, key)
+            mine = set(members[key])
+            for t in overview:
+                if t["table"] in ds.raw:
+                    t["cohort_rows"] = int(ds.raw[t["table"]][key].isin(mine).sum())
+            table = views.records_table(overview, people, int(len(ds.entities)), int(len(mine)))
             return {"table": table, "cohort": f"session {lc.session_id}, lock {lc.version}",
                     "members": int(members[key].nunique()),
                     "note": "The page shows this table under the tool's card. Reply with one short sentence; do "
-                            "not repeat the table. Synthetic data; members are Patient 1, 2, ...; no id is shown."}
+                            "not repeat the table. Kumo learns from the records of everyone in the dataset (the "
+                            "table's 'All' column) and forecasts for the cohort's members: say it that way. "
+                            "The patients are a few members picked at random. Synthetic data; members are "
+                            "Patient 1, 2, ...; no id is shown."}
 
     def genomes(self, manifest_table: str, vcf_url: str | None = None, regions: str | None = None,
                 session_id: str = "latest", version: int | None = None) -> dict:
@@ -383,21 +391,37 @@ class Service:
     def forecast_with_genotypes(self, genotype_table: str, outcome: dict | None = None, as_of: str | None = None,
                                 horizon_days: int = 365, session_id: str = "latest",
                                 version: int | None = None) -> dict:
-        """``forecast`` for everyone in ``genotype_table`` with the table read as well, answered
-        with the accuracy and what the genotype columns look like in the highest-risk tenth."""
-        out = self.forecast(outcome, session_id, as_of, horizon_days, version, None, None,
-                            [genotype_table], genotype_table)
+        """``forecast`` for everyone in ``genotype_table`` twice, on the same people: from the health
+        records alone, then with the genotype table read as well. Answered with both runs side by
+        side (accuracy, the cases the highest-risk tenth holds, and how each genotype is shared in
+        that tenth against the rest), as a ready table and as numbers."""
+        alone = self.forecast(outcome, session_id, as_of, horizon_days, version, None, None, None, genotype_table)
+        both = self.forecast(outcome, session_id, as_of, horizon_days, version, None, None,
+                             [genotype_table], genotype_table)
         project, dataset, name = EXTRA_TABLE.match(str(genotype_table).strip()).groups()
+        from .profile import high_risk_profile
         with self._lock:
-            built = next(reversed(self._graphs.values()))[0]   # the graph the forecast just read (the latest used)
+            pop = self._locked(session_id, version)
+            read, chosen = self._with_extra(pop, None, [genotype_table])
+            built, _ = self.graph(read, pop.key_data_column, pop.billing_project, None, chosen)   # cached by the run
             columns = {c for s in built.schemas.values()
                        if s.get("source") == f"{project}.{dataset}" and s.get("table") == name for c, _ in s["columns"]}
-        rows = [r for r in out["high_risk_profile"] if r["characteristic"].split(":")[0] in columns]
-        return {"run_id": out["run_id"], "population": out["cohort"], "outcome": out["outcome"],
-                "as_of": out["as_of"], "members_at_risk": out["members_at_risk"], "observed": out["observed"],
-                "genotypes_in_the_highest_risk_tenth": rows, "model": out["model"],
-                "note": "Shares are of the highest-risk tenth (top_10pct) and of the rest. The genotype table is "
-                        "read as one more table, so the forecast weighs it with the health records."}
+            runs = {}
+            for label, out in (("health_records_only", alone), ("with_genotypes", both)):
+                scores, meta = self._load(out["run_id"])
+                # Profiled on the graph with the genotype table, so the records-only run's highest-risk
+                # tenth is described by the same genotype columns.
+                profile = high_risk_profile(built, scores, pd.Timestamp(meta["as_of"]))
+                runs[label] = {"run_id": out["run_id"], "observed": out["observed"],
+                               "highest_risk_tenth": views.tenth_summary(scores, TARGET, meta["labels_known"]),
+                               "genotypes": [r for r in profile if r["characteristic"].split(":")[0] in columns]}
+        return {"table": views.genotype_comparison_table(both["cohort"], both["outcome"], both["members_at_risk"], runs),
+                "population": both["cohort"], "outcome": both["outcome"], "as_of": both["as_of"],
+                "members_at_risk": both["members_at_risk"], **runs, "model": both["model"],
+                "note": "The page shows the table under the tool's card: both forecasts on the same people, the "
+                        "first from the health records alone, the second with the genotype table read as one more "
+                        "table. Reply in two short sentences on what the comparison shows, numbers unchanged; do "
+                        "not repeat the table, and do not call a difference an improvement unless the table shows one."}
 
     def compare(self, run_id: str) -> dict:
         s, meta = self._load(run_id)

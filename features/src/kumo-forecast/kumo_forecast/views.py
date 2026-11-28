@@ -14,7 +14,7 @@ import re
 
 import pandas as pd
 
-from . import schema
+from . import privacy, schema
 
 MOST_PER_TABLE = 6     # codes listed per table in a timeline
 MOST_VALUES = 5        # lab-like values listed per member
@@ -263,21 +263,33 @@ def _year(day: str) -> str:
     return str(day)[:4]
 
 
-def records_table(overview: list[dict], people: list[dict]) -> str:
-    """A headline (tables and rows read), the largest tables by what they hold, then one row per
-    patient: when they joined the cohort, their first diagnoses and medicines by year, and their
-    most recorded lab values first to last."""
+def records_table(overview: list[dict], people: list[dict], everyone: int | None = None,
+                  members: int | None = None) -> str:
+    """A headline (what Kumo learns from and whom it forecasts for), the largest tables by what they
+    hold with their rows for everyone and for the cohort's members, then a few members picked at
+    random: when they joined the cohort, their first diagnoses and medicines by year, and their most
+    recorded lab values first to last. ``everyone``: the people in the data; ``members``: the
+    cohort's; each overview row may hold ``cohort_rows``."""
     total = sum(int(t["rows"]) for t in overview)
     biggest = sorted(overview, key=lambda t: (t["table"] in BACKGROUND_TABLES, -int(t["rows"])))
-    lines = [f"**Kumo reads {len(overview)} tables: {_about(total)} rows of health records, with no hand-built "
-             "features.**", "",
-             "| Records | Rows |", "|---|---:|"]
+    whom = f" for {_fmt(everyone)} people" if everyone else ""
+    head = (f"**Kumo learns from the whole dataset, {len(overview)} tables with {_about(total)} rows of health "
+            f"records{whom}, with no hand-built features"
+            + (f", and forecasts for this cohort's {_fmt(members)} members.**" if members else ".**"))
+    split = members is not None and all("cohort_rows" in t for t in overview)
+    cols = ["Records", f"All {_fmt(everyone)} people" if everyone else "Rows"] + (
+        [f"This cohort's {_fmt(members)}"] if split else [])
+    lines = [head, "", "| " + " | ".join(cols) + " |", "|---|" + "---:|" * (len(cols) - 1)]
+
+    def row(name, rows, cohort):
+        return f"| {_cell(name)} | {_fmt(rows)} |" + (f" {_fmt(cohort)} |" if split else "")
     shown = [t for t in biggest if t["table"] not in BACKGROUND_TABLES][:SHOWN_TABLES]
     for t in shown:
-        lines.append(f"| {_cell(TABLE_NAMES.get(t['table'], t['table']))} | {_fmt(int(t['rows']))} |")
+        lines.append(row(TABLE_NAMES.get(t["table"], t["table"]), int(t["rows"]), t.get("cohort_rows")))
     rest = [t for t in biggest if t not in shown]
     if rest:
-        lines.append(f"| {len(rest)} more tables | {_fmt(sum(int(t['rows']) for t in rest))} |")
+        lines.append(row(f"{len(rest)} more tables", sum(int(t["rows"]) for t in rest),
+                         sum(int(t.get("cohort_rows", 0)) for t in rest)))
     if not people:
         return "\n".join(lines)
     tables = [t for t in PATIENT_TABLES[:2] if any(t in p for p in people)]
@@ -285,8 +297,11 @@ def records_table(overview: list[dict], people: list[dict]) -> str:
         seen = [k for p in people for k in p if k not in ("label", "in_the_cohort_from", "values")]
         tables = list(dict.fromkeys(seen))[:2]
     most = {t: SHOWN_DRUGS if t == "drug_exposure" else SHOWN_CODES for t in tables}
-    head = ["Patient", "In the cohort since"] + [TABLE_NAMES.get(t, t.replace("_", " ")) for t in tables] + ["Labs (first → last)"]
-    lines += ["", "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    some = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five"}.get(len(people), str(len(people)))
+    lines += ["", f"*{some} of the cohort's {_fmt(members) + ' ' if members else ''}members, picked at random, "
+                  "as examples of what a record holds (synthetic patients; no names or ids):*"]
+    head_row = ["Patient", "In the cohort since"] + [TABLE_NAMES.get(t, t.replace("_", " ")) for t in tables] + ["Labs (first → last)"]
+    lines += ["", "| " + " | ".join(head_row) + " |", "|" + "---|" * len(head_row)]
     for p in people:
         cells = [p["label"], _year(p.get("in_the_cohort_from", "-"))]
         for t in tables:
@@ -295,7 +310,6 @@ def records_table(overview: list[dict], people: list[dict]) -> str:
         cells.append(_cell("; ".join(f"{lab_name(v['what'])}: {v['first'].split(' on ')[0]} → {v['last'].split(' on ')[0]}"
                                      for v in p.get("values", [])[:SHOWN_VALUES]) or "-"))
         lines.append("| " + " | ".join(cells) + " |")
-    lines += ["", "*Synthetic patients; no names or ids.*"]
     return "\n".join(lines)
 
 
@@ -332,4 +346,44 @@ def genomes_table(summary: dict, vcf: dict | None) -> str:
         for r in rows[:3]:
             lines.append(f"| {_cell(gene or '-')} | {_cell(r['CHROM'])}:{_fmt(r['POS'])} | "
                          f"{_cell(r['REF'])} → {_cell(r['ALT'])} | {_copies(r['GT'])} |")
+    return "\n".join(lines)
+
+
+def tenth_summary(scores: pd.DataFrame, target: str, labels_known: bool) -> dict:
+    """The highest-risk tenth of a forecast's scores: how many of the cases it holds and its rate
+    against the rest's, where the outcome is known."""
+    s = scores.sort_values("risk", ascending=False)
+    k = max(1, int(round(len(s) * 0.1)))
+    if not labels_known:
+        return {"people": k}
+    y = s[target].astype(int)
+    top, rest = y.iloc[:k], y.iloc[k:]
+    return {"people": k, "cases_in_it": privacy.count(int(top.sum())), "cases": privacy.count(int(y.sum())),
+            "rate": privacy.rate(int(top.sum()), len(top)),
+            "rate_in_the_rest": privacy.rate(int(rest.sum()), len(rest)) if len(rest) else "-"}
+
+
+def genotype_comparison_table(population: str, outcome: str, at_risk, runs: dict) -> str:
+    """Two forecasts on the same people side by side: from the health records alone and with a
+    genotype table too."""
+    a, b = runs["health_records_only"], runs["with_genotypes"]
+    lines = [f"**The same {_fmt(at_risk)} people, forecast twice: {_cell(outcome)}.**", "",
+             "| | Health records only | Health records + genotypes |", "|---|---|---|"]
+
+    def auroc(r):
+        o = r["observed"]
+        return f"{o['auroc']:.3f}" if isinstance(o, dict) and o.get("auroc") is not None else "-"
+    lines.append(f"| Accuracy (AUROC) | {auroc(a)} | {auroc(b)} |")
+    ta, tb = a["highest_risk_tenth"], b["highest_risk_tenth"]
+    if "cases" in ta and "cases" in tb:
+        lines.append(f"| Cases in the highest-risk tenth | {ta['cases_in_it']} of {ta['cases']} | {tb['cases_in_it']} of {tb['cases']} |")
+        lines.append(f"| Rate in the highest-risk tenth vs the rest | {ta['rate']} vs {ta['rate_in_the_rest']} | "
+                     f"{tb['rate']} vs {tb['rate_in_the_rest']} |")
+    rows_b = {r["characteristic"]: r for r in b["genotypes"]}
+    for r in a["genotypes"]:
+        other = rows_b.get(r["characteristic"])
+        label = r["characteristic"].split(": ", 1)[-1]
+        label = label[:1].upper() + label[1:]
+        lines.append(f"| {_cell(label)}: highest-risk tenth vs the rest | {r['top_10pct']} vs {r['rest']} | "
+                     + (f"{other['top_10pct']} vs {other['rest']} |" if other else "- |"))
     return "\n".join(lines)

@@ -1142,13 +1142,21 @@ class ViewTableTests(unittest.TestCase):
                    "values": [{"what": "eGFR | CKD-EPI", "first": "94 on 2016-09-08", "last": "82 on 2025-04-11", "times": 12},
                               {"what": "Glomerular filtration rate/1.73 sq M.predicted [Volume Rate/Area]",
                                "first": "90 on 2016-09-08", "last": "80 on 2025-04-11", "times": 9}]}]
-        table = self.views.records_table(overview, people)
-        self.assertEqual(table, self.views.records_table(overview, people))
+        for t, n in zip(overview, (2388, 300000, 2388, 0)):
+            t["cohort_rows"] = n
+        table = self.views.records_table(overview, people, 25000, 2388)
+        self.assertEqual(table, self.views.records_table(overview, people, 25000, 2388))
         lines = table.splitlines()
-        self.assertEqual(lines[0], "**Kumo reads 4 tables: 3.4 million rows of health records, with no hand-built features.**")
-        self.assertEqual(lines[2:7], ["| Records | Rows |", "|---|---:|", "| Lab results and vitals | 3,355,100 |",
-                                      "| People | 25,000 |", "| lab_notes | 7 |"])
-        self.assertIn("| 1 more tables | 25,000 |", lines, "a bookkeeping table is counted, not named")
+        self.assertEqual(lines[0], "**Kumo learns from the whole dataset, 4 tables with 3.4 million rows of health records "
+                                   "for 25,000 people, with no hand-built features, and forecasts for this cohort's 2,388 members.**")
+        self.assertEqual(lines[2:7], ["| Records | All 25,000 people | This cohort's 2,388 |", "|---|---:|---:|",
+                                      "| Lab results and vitals | 3,355,100 | 300,000 |",
+                                      "| People | 25,000 | 2,388 |", "| lab_notes | 7 | 0 |"])
+        self.assertIn("| 1 more tables | 25,000 | 2,388 |", lines, "a bookkeeping table is counted, not named")
+        self.assertIn("*One of the cohort's 2,388 members, picked at random, as examples of what a record holds "
+                      "(synthetic patients; no names or ids):*", lines)
+        plain = self.views.records_table(overview, [], None, None).splitlines()
+        self.assertEqual(plain[2], "| Records | Rows |", "without the counts, one column of rows")
         self.assertIn("| Patient | In the cohort since | Diagnoses | Prescriptions | Labs (first → last) |", lines)
         row = next(l for l in lines if l.startswith("| Patient 1"))
         self.assertIn("| 2018 |", row)
@@ -1158,6 +1166,32 @@ class ViewTableTests(unittest.TestCase):
         self.assertIn("eGFR / CKD-EPI: 94 → 82", row, "a | in a name would break the table")
         self.assertIn("eGFR: 90 → 80", row)
         self.assertNotIn("1000", table)
+
+    def test_the_genotype_comparison_puts_both_runs_side_by_side(self):
+        import os
+        from unittest import mock
+        try:
+            import pandas as pd
+        except ImportError:
+            self.skipTest("needs pandas")
+        scores = pd.DataFrame({"risk": [0.9, 0.8] + [0.1] * 18, "outcome_within_horizon": ["1", "0"] + ["0"] * 17 + ["1"]})
+        with mock.patch.dict(os.environ, {"KUMO_FORECAST_SMALL_CELL": "0"}):
+            tenth = self.views.tenth_summary(scores, "outcome_within_horizon", True)
+            self.assertEqual((tenth["people"], tenth["cases_in_it"], tenth["cases"]), (2, 1, 2))
+            self.assertEqual((tenth["rate"], tenth["rate_in_the_rest"]), ("50.0%", "5.6%"))
+
+        def run(auroc, top, two):
+            return {"observed": {"auroc": auroc}, "highest_risk_tenth": {"cases_in_it": top, "cases": 33, "rate": "9.5%",
+                                                                       "rate_in_the_rest": "0.2%"},
+                    "genotypes": [{"characteristic": "apol1_genotype: two APOL1 risk alleles", "top_10pct": two, "rest": "3.0%"}]}
+        lines = self.views.genotype_comparison_table("everyone in p.d.t", "CKD 3 within 365 days", 2834,
+                                                     {"health_records_only": run(0.957, 27, "8.1%"),
+                                                      "with_genotypes": run(0.959, 28, "9.5%")}).splitlines()
+        self.assertEqual(lines[0], "**The same 2,834 people, forecast twice: CKD 3 within 365 days.**")
+        for want in ("| | Health records only | Health records + genotypes |", "| Accuracy (AUROC) | 0.957 | 0.959 |",
+                     "| Cases in the highest-risk tenth | 27 of 33 | 28 of 33 |",
+                     "| Two APOL1 risk alleles: highest-risk tenth vs the rest | 8.1% vs 3.0% | 9.5% vs 3.0% |"):
+            self.assertIn(want, lines)
 
     def test_lab_names_are_shortened_and_race_columns_are_not_listed(self):
         v = self.views

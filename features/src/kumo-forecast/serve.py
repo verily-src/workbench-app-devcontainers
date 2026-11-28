@@ -166,11 +166,12 @@ async def show_genomes(manifest_table: str, vcf_url: str | None = None, regions:
 async def forecast_with_genotypes(genotype_table: str, outcome: dict, as_of: str | None = None,
                                   horizon_days: int = 365, cda_session_id: str = "latest",
                                   lock_version: int | None = None) -> dict:
-    """forecast_risk for everyone in genotype_table ("project.dataset.table", one row per person
-    with the cohort's key and their genotypes), with that table read beside the health records.
-    outcome, as_of and horizon_days as for forecast_risk. Answers with the accuracy (observed,
-    AUROC) and how each genotype is shared in the highest-risk tenth against the rest. One call
-    does it all: do not call forecast_risk for this."""
+    """Forecast for everyone in genotype_table ("project.dataset.table", one row per person with
+    the cohort's key and their genotypes) twice, on the same people: from the health records
+    alone, then with the genotype table read beside them. outcome, as_of and horizon_days as for
+    forecast_risk. Answers with a ready table the page draws (both runs side by side: accuracy,
+    the cases the highest-risk tenth holds, each genotype's share in that tenth against the rest)
+    and the same numbers. One call does it all: do not call forecast_risk for this."""
     return await _waited("forecast_with_genotypes", SERVICE.forecast_with_genotypes, genotype_table, outcome,
                          as_of, horizon_days, cda_session_id, lock_version)
 

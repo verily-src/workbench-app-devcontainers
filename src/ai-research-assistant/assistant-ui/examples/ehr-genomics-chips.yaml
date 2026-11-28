@@ -1,7 +1,8 @@
 # Chips for a workspace that holds the EHR-and-genomes synthetic data (an OMOP dataset,
 # omop_cdr_v2, with linked whole genomes in genomics_v2) and the registered sarek workflow
-# nf-core-sarek-3-11-0. One story: a cohort of adults with type 2 diabetes, a Kumo forecast of
-# kidney disease among them, Parabricks on their genomes, and what the variants would add; a
+# nf-core-sarek-3-11-0. One story: a cohort of adults with type 2 diabetes (with the records Kumo
+# reads), a Kumo forecast of kidney disease among them, their genomes and Parabricks on them, and
+# the forecast again with their APOL1 genotypes; a
 # question about Workbench, answered from its documentation; two Verily Pre questions answered from
 # approved text (each chip's source); and two calls OpenShell blocks.
 # The prompts name the codes, tables and files a step needs, so the agent does not search for
@@ -14,6 +15,12 @@
 # appear once the assistant has answered. A chip with a feature (features.yaml) appears only for
 # a person who has that feature.
 # To use it, set ASSISTANT_DEMO to /opt/assistant-ui/examples/ehr-genomics-chips.yaml (README.md, "Chips").
+# replays: recorded runs of every chip, which the page's backup switch plays instead of asking the
+# assistant (README.md, "Recorded runs"). They hold the workspace's data, so they are kept in its
+# output bucket and copied to /ara at start (ASSISTANT_REPLAYS_FROM in docker-compose.yaml). Record
+# them again after changing a chip's prompt.
+
+replays: /ara/replays.json
 
 starters:
   - label: Adults with type 2 diabetes
@@ -23,7 +30,9 @@ starters:
       Create and lock a cohort from the omop_cdr_v2 dataset: people with a type 2 diabetes
       diagnosis (condition concept 201826) who were 18 or older, in whole years, at their first
       one, each dated by that first diagnosis. Read times in UTC and keep your built readings for
-      anything else.
+      anything else. Once it is locked, call forecast_show_cohort_records once to show the health
+      records Kumo reads for it; the page shows its table, so end with the cohort's count and one
+      short sentence, and do not repeat the table.
   - label: What is the Verily Pre platform?
     hint: The platform in brief
     prompt: >
@@ -76,42 +85,33 @@ starters:
       steps, and link the pages you used.
 
 next_steps:
-  - label: Show the health records Kumo reads
-    feature: kumo_forecast
-    hint: Tables, columns and three sample patients
-    prompt: >
-      Show me the health records Kumo reads for this cohort: call forecast_show_cohort_records
-      once. The page shows its tables; reply with one short sentence and do not repeat them.
   - label: Forecast kidney disease with Kumo
     feature: kumo_forecast
     hint: Who is heading toward CKD, a year ahead
     prompt: >
       Use Kumo to forecast which members of this cohort will be diagnosed with chronic kidney
-      disease stage 3 (condition concept 443597 in condition_occurrence) within 12 months of
-      2024-12-01, reading all of the dataset's tables. Tell me how accurate the forecast was and
-      what the highest-risk members have in common.
-  - label: Show the genomes
-    feature: kumo_forecast
-    hint: Their scale, and what Parabricks produces
+      disease stage 3 within 12 months of 2024-12-01: call forecast_forecast_risk once, with
+      outcome {"table": "condition_occurrence", "where": [{"column": "condition_concept_id",
+      "op": "in", "value": [443597]}]} and as_of 2024-12-01, reading all of the dataset's tables
+      (no tables argument; get_cohort_info is not needed). Then, in three short sentences, tell
+      me how accurate the forecast was and what the highest-risk members have in common.
+  - label: Call variants with Parabricks
+    feature: workflow_runs
+    hint: Their genomes, and GPU analysis started from chat
     prompt: >
-      Show me the genomes linked to this cohort: call forecast_show_genomes once, with
+      First show me the genomes linked to this cohort: call forecast_show_genomes once, with
       manifest_table the omop_cdr_v2 dataset's wgs_sample_manifest table (project.dataset.table),
       vcf_url gs://output-wb-shining-lemon-69/cohort-sarek/results/variant_calling/parabricks_deepvariant/wgs_1000008/wgs_1000008.parabricks_deepvariant.vcf.gz
       and regions "APOL1=chr22:36245000-36275000; PCSK9=chr1:55030000-55070000;
-      HFE=chr6:26080000-26105000". The page shows its tables; reply with one short sentence and
-      do not repeat them.
-  - label: Call variants with Parabricks
-    feature: workflow_runs
-    hint: GPU genome analysis, started from chat
-    prompt: >
-      Run the registered sarek workflow with Parabricks (nf-core-sarek-3-11-0, profile gpu) on
-      the genomes of this cohort's members that are staged (is_staged) in the omop_cdr_v2
-      wgs_sample_manifest table. Copy sarek-parabricks/params-template.yaml from the workspace's
-      output bucket, set its input and outdir under cohort-sarek/ in that bucket, write the
-      samplesheet with the columns it names (patient and sample are each genome's research_id),
-      show me the inputs, then submit it. The template has every parameter, so do not read
-      sarek's schema, and name the output bucket by its gs:// name in workflow_job_run (no resource
-      lookup is needed). Do not show anyone's person_id.
+      HFE=chr6:26080000-26105000"; the page shows its table, so do not repeat it. Its answer
+      has `samplesheet`: the cohort's staged genomes as sarek's samplesheet. Then run the
+      registered sarek workflow with Parabricks on them (workflow nf-core-sarek-3-11-0, profile
+      gpu, workspace nvidia-ai-research-assistant): in one Python step, read
+      sarek-parabricks/params-template.yaml from the workspace's output bucket, set its input
+      and outdir under cohort-sarek/ in that bucket, and write it and the samplesheet there as
+      they are. Show me the inputs in two lines, then submit with workflow_job_run, naming the
+      output bucket by its gs:// name. Everything needed is above: do not query the data, list
+      or describe workflows, or read sarek's schema. Do not show anyone's person_id.
   - label: Add genomes to the forecast
     feature: kumo_forecast
     hint: What the genome says about the people at risk

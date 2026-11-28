@@ -341,15 +341,30 @@ class BackgroundJobTests(unittest.TestCase):
         self.assertEqual(refused, {"error": "no date column"})
 
 
-    def test_warming_reads_the_newest_lock_and_never_fails_the_server(self):
+    def test_warming_reads_the_newest_lock_and_the_warm_tables_and_never_fails_the_server(self):
+        import os
         import types
+        from unittest import mock
         calls = []
-        self.serve.warm(types.SimpleNamespace(cohort_info=lambda sid: calls.append(sid)))
-        self.assertEqual(calls, ["latest"])
+        with mock.patch.dict(os.environ, {"KUMO_FORECAST_WARM_TABLES": " g.apol1 , p.d.t,"}):
+            self.serve.warm(types.SimpleNamespace(warm=lambda extra: calls.append(extra) or ["warmed d"]))
+        with mock.patch.dict(os.environ, {"KUMO_FORECAST_WARM_TABLES": ""}):
+            self.serve.warm(types.SimpleNamespace(warm=lambda extra: calls.append(extra) or ["d"]))
+        self.assertEqual(calls, [["g.apol1", "p.d.t"], []])
 
-        def nothing_locked(sid):
-            raise ValueError("no locked cohort yet")
-        self.serve.warm(types.SimpleNamespace(cohort_info=nothing_locked))   # does not raise
+        tries = []
+
+        def locked_on_the_third_look(extra):
+            tries.append(1)
+            if len(tries) < 3:
+                raise ValueError("no locked cohort yet: lock one in the cohort designer first")
+            return ["warmed d"]
+        self.serve.warm(types.SimpleNamespace(warm=locked_on_the_third_look), poll_s=0.01)
+        self.assertEqual(len(tries), 3, "with nothing locked it looks again until a cohort is")
+
+        def broken(extra):
+            raise RuntimeError("BigQuery is down")
+        self.serve.warm(types.SimpleNamespace(warm=broken), poll_s=0.01)   # does not raise or loop
         self.assertIn("threading.Thread(target=warm, args=(SERVICE,)", (FEATURE / "serve.py").read_text())
 
     def test_the_wait_is_held_close_to_but_under_the_client_timeout(self):
@@ -1067,6 +1082,20 @@ class ViewTests(unittest.TestCase):
         self.assertEqual(self.views.size_estimate([14_400_000_000, 14_600_000_000], 3202),
                          {"files_present": 2, "one_genome_gb": 14.5, "all_genomes_tb_estimated": 46.4})
 
+    def test_the_cohorts_staged_genomes_make_sareks_samplesheet_by_research_id(self):
+        pd = self.pd
+        df = pd.DataFrame({"person_id": [1, 2, 3, 4], "research_id": ["wgs_4", "wgs_2", "wgs_3", "wgs_1"],
+                           "is_staged": [True, True, None, True],
+                           "cram_uri": ["gs://b/1.cram", "gs://b/2.cram", None, "gs://b/4.cram"],
+                           "crai_uri": ["gs://b/1.crai", "gs://b/2.crai", None, "gs://b/4.crai"]})
+        staged = self.views.staged_genomes(df, "person_id", pd.Series([1, 2, 3]))
+        self.assertEqual(staged.research_id.tolist(), ["wgs_2", "wgs_4"], "only members, only staged, by research_id")
+        sheet = self.views.samplesheet(staged, "person_id", {1: "XX"})
+        self.assertEqual(sheet.splitlines(), ["patient,sex,status,sample,cram,crai",
+                                              "wgs_2,NA,0,wgs_2,gs://b/2.cram,gs://b/2.crai",
+                                              "wgs_4,XX,0,wgs_4,gs://b/1.cram,gs://b/1.crai"])
+        self.assertIsNone(self.views.staged_genomes(df.drop(columns=["is_staged"]), "person_id", pd.Series([1])))
+
     def test_regions_are_parsed_and_a_bad_one_is_refused(self):
         self.assertEqual(self.views.parse_regions("APOL1=chr22:36,245,000-36,275,000; PCSK9=chr1:55030000-55070000"),
                          [("APOL1", "chr22", 36245000, 36275000), ("PCSK9", "chr1", 55030000, 55070000)])
@@ -1102,23 +1131,33 @@ class ViewTableTests(unittest.TestCase):
         from kumo_forecast import views
         self.views = views
 
-    def test_the_records_table_lists_the_tables_then_one_row_per_patient(self):
+    def test_the_records_table_has_a_headline_the_tables_by_name_then_one_row_per_patient(self):
         overview = [{"table": "person", "rows": 25000, "dated_by": "birth_datetime", "columns": ["gender_concept_id"]},
-                    {"table": "measurement", "rows": 3355100, "dated_by": "measurement_date", "columns": ["a", "..."]}]
+                    {"table": "measurement", "rows": 3355100, "dated_by": "measurement_date", "columns": ["a", "..."]},
+                    {"table": "cb_search_person", "rows": 25000, "dated_by": "dob", "columns": []},
+                    {"table": "lab_notes", "rows": 7, "dated_by": None, "columns": []}]
         people = [{"label": "Patient 1", "in_the_cohort_from": "2018-12-27",
                    "condition_occurrence": [{"what": "Type 2 diabetes mellitus", "first": "2018-12-27", "last": "2018-12-27", "times": 1}],
                    "drug_exposure": [{"what": "Metformin", "first": "2018-12-27", "last": "2025-12-22", "times": 30}],
-                   "values": [{"what": "eGFR | CKD-EPI", "first": "94 on 2016-09-08", "last": "82 on 2025-04-11", "times": 12}]}]
+                   "values": [{"what": "eGFR | CKD-EPI", "first": "94 on 2016-09-08", "last": "82 on 2025-04-11", "times": 12},
+                              {"what": "Glomerular filtration rate/1.73 sq M.predicted [Volume Rate/Area]",
+                               "first": "90 on 2016-09-08", "last": "80 on 2025-04-11", "times": 9}]}]
         table = self.views.records_table(overview, people)
         self.assertEqual(table, self.views.records_table(overview, people))
         lines = table.splitlines()
-        self.assertEqual(lines[0], "| Table | Rows | Dated by | Columns |")
-        self.assertIn("| measurement | 3,355,100 | measurement_date | a, ... |", lines)
-        self.assertIn("| Patient | In the cohort from | conditions | drugs | Values (first → last) |", lines)
+        self.assertEqual(lines[0], "**Kumo reads 4 tables: 3.4 million rows of health records, with no hand-built features.**")
+        self.assertEqual(lines[2:7], ["| Records | Rows |", "|---|---:|", "| Lab results and vitals | 3,355,100 |",
+                                      "| People | 25,000 |", "| lab_notes | 7 |"])
+        self.assertIn("| 1 more tables | 25,000 |", lines, "a bookkeeping table is counted, not named")
+        self.assertIn("| Patient | In the cohort since | Diagnoses | Prescriptions | Labs (first → last) |", lines)
         row = next(l for l in lines if l.startswith("| Patient 1"))
-        self.assertIn("Type 2 diabetes mellitus (2018-12-27)", row)
-        self.assertIn("Metformin (2018-12-27, ×30)", row)
+        self.assertIn("| 2018 |", row)
+        self.assertIn("Type 2 diabetes mellitus (2018)", row)
+        self.assertIn("Metformin (2018)", row)
+        self.assertNotIn("×", row)
         self.assertIn("eGFR / CKD-EPI: 94 → 82", row, "a | in a name would break the table")
+        self.assertIn("eGFR: 90 → 80", row)
+        self.assertNotIn("1000", table)
 
     def test_lab_names_are_shortened_and_race_columns_are_not_listed(self):
         v = self.views
@@ -1131,21 +1170,28 @@ class ViewTableTests(unittest.TestCase):
                                                          ("ethnicity", "STRING"), ("year_of_birth", "INTEGER")]}}
         self.assertEqual(v.table_overview(schemas, ["person"], "person_id")[0]["columns"], ["year_of_birth"])
 
-    def test_the_genomes_table_has_the_key_figures_then_the_rows_and_their_meanings(self):
+    def test_the_genomes_table_has_a_headline_key_figures_then_variants_in_plain_words(self):
         summary = {"genomes": 3202, "of_the_cohort": 275,
                    "cohort_genomes": {"nominal_coverage": {"30": 275}, "is_staged": {"False": 274, "True": 1}},
                    "aligned_reads": {"files_present": 8, "one_genome_gb": 14.7, "all_genomes_tb_estimated": 46.9}}
+        rows = [{"CHROM": "chr22", "POS": 36245412 + i, "REF": "G", "ALT": "A", "QUAL": "51.7", "GT": gt}
+                for i, gt in enumerate(["1/1", "0/1", "0|1", "1/1"])]
         vcf = {"sample": "NA19657", "passed": 150, "passed_snps": 130, "passed_indels": 20,
-               "variants_per_region": {"APOL1": 40}, "regions": {"APOL1": "chr22:36,245,000-36,275,000"},
-               "rows": [{"CHROM": "chr22", "POS": 36245412, "REF": "G", "ALT": "A", "QUAL": "51.7", "GT": "1/1"}],
-               "columns": self.views.VCF_COLUMNS}
+               "variants_per_region": {"APOL1": 40, "PCSK9": 9}, "regions": {"APOL1": "chr22:36,245,000-36,275,000"},
+               "rows": rows, "columns": self.views.VCF_COLUMNS}
         lines = self.views.genomes_table(summary, vcf).splitlines()
-        for want in ("| Genomes in the manifest | 3,202 |", "| Genomes of this cohort's members | 275 |",
-                     "| Nominal coverage | 30 (275) |", "| All genomes' aligned reads (estimated) | 46.9 TB |",
-                     "| Variants in APOL1 (chr22:36,245,000-36,275,000) | 40 |", "| chr22 | 36,245,412 | G | A | 51.7 | 1/1 |"):
+        self.assertEqual(lines[0], "**3,202 whole genomes, 275 of them from this cohort's members.**")
+        for want in ("| One genome | Whole genome, 30x coverage: about 14.7 GB of sequencing reads |",
+                     "| All of them | about 46.9 TB |", "| Parabricks found, in one genome | 40 in APOL1, 9 in PCSK9 |",
+                     "| Gene | Position | Reference → this genome | Copies |",
+                     "| APOL1 | chr22:36,245,412 | G → A | 2 |", "| APOL1 | chr22:36,245,413 | G → A | 1 |",
+                     "| APOL1 | chr22:36,245,414 | G → A | 1 |"):
             self.assertIn(want, lines)
-        self.assertFalse([l for l in lines if "staged" in l.lower()])
-        self.assertTrue(lines[-1].startswith("| *the chromosome* |"))
+        self.assertEqual(len([l for l in lines if l.startswith("| APOL1 |")]), 3)
+        self.assertFalse([l for l in lines if "staged" in l.lower() or "QUAL" in l or "NA19657" in l])
+        no_vcf = self.views.genomes_table({"genomes": 10, "of_the_cohort": 2, "cohort_genomes": {},
+                                           "aligned_reads": {"note": "none"}}, None).splitlines()
+        self.assertIn("| One genome | Whole genome |", no_vcf)
 
     def test_the_page_draws_a_tool_answers_table(self):
         script = (APP / "assistant-ui" / "static" / "app.js").read_text()
@@ -1235,7 +1281,7 @@ class ForecastAnswerTests(unittest.TestCase):
         with self.assertRaisesRegex(outcome.OutcomeError, "'diagnoses' is not in the cohort's dataset"):
             self.svc.forecast(outcome={"table": "diagnoses"})
 
-    def test_only_the_latest_table_choice_is_kept_and_an_earlier_one_is_read_again_for_compare(self):
+    def test_the_two_latest_table_choices_are_kept_and_an_older_one_is_read_again_for_compare(self):
         import types
         from unittest import mock
         svc, built = self.svc, []
@@ -1251,7 +1297,13 @@ class ForecastAnswerTests(unittest.TestCase):
             svc.graph("d", "k", chosen=["a"])
             self.assertEqual(len(built), 1, "the same choice is read once")
             svc.graph("d", "k", chosen=["b"])
-            self.assertEqual(list(svc._graphs), [svc._cache_key("d", "k", None, ["b"])])
+            svc.graph("d", "k", chosen=["a"])
+            self.assertEqual(len(built), 2, "the two latest choices are both kept")
+            svc.graph("d", "k", chosen=["c"])
+            self.assertEqual(list(svc._graphs), [svc._cache_key("d", "k", None, ["a"]), svc._cache_key("d", "k", None, ["c"])],
+                             "the least recently used (b) went")
+            svc.graph("d", "k", chosen=["b"])
+            self.assertEqual(len(built), 4)
             # compare() on a run made with the first choice asks for that choice again, from its metadata
             scores = self.pd.DataFrame({"k": [1, 2], "cutoff": pd_ts, "outcome_within_horizon": ["1", "0"], "risk": [0.9, 0.1]})
             svc._save("run-1", scores, {"dataset": "d", "key": "k", "billing_project": None, "time_columns": {},
@@ -1260,8 +1312,28 @@ class ForecastAnswerTests(unittest.TestCase):
             with mock.patch("kumo_forecast.baselines.compare",
                             return_value=scores.assign(logistic_regression=0.5, gradient_boosting=0.5).astype({"outcome_within_horizon": str})):
                 svc.compare("run-1")
-            self.assertEqual(len(built), 3)
-            self.assertEqual(list(svc._graphs), [svc._cache_key("d", "k", None, ["a"])])
+            self.assertEqual(len(built), 5)
+            self.assertEqual(list(svc._graphs), [svc._cache_key("d", "k", None, ["b"]), svc._cache_key("d", "k", None, ["a"])])
+
+    def test_warm_builds_the_cohorts_model_then_one_with_each_extra_table_in_its_project(self):
+        import types
+        svc, made = self.svc, []
+        svc._locked = lambda sid, version: types.SimpleNamespace(dataset="wb-data-1.omop", key_data_column="person_id",
+                                                                 billing_project="wb-work-2")
+
+        def extra_of(pop, chosen, extra):
+            if extra and extra[0].startswith("bad."):
+                raise ValueError("no such table")
+            return "wb-data-1.omop" + (",x" if extra else ""), extra
+        svc._with_extra = extra_of
+        svc.forecaster = lambda dataset, key, project, overrides, chosen: made.append((dataset, chosen))
+        said = svc.warm(["genomic_results.apol1", "bad.d.t", "q-2.g.t"])
+        self.assertEqual(said[:2], ["warmed wb-data-1.omop", "warmed wb-data-1.omop with wb-work-2.genomic_results.apol1"],
+                         "a bare dataset.table is in the workspace's (billing) project, not the data's")
+        self.assertTrue(said[2].startswith("not warmed wb-data-1.omop with bad.d.t (ValueError"), said[2])
+        self.assertEqual(said[3], "warmed wb-data-1.omop with q-2.g.t", "one failure does not stop the rest")
+        self.assertEqual(made, [("wb-data-1.omop", None), ("wb-data-1.omop,x", ["wb-work-2.genomic_results.apol1"]),
+                                ("wb-data-1.omop,x", ["q-2.g.t"])])
 
     def test_a_horizon_past_the_labeled_history_is_refused(self):
         for days in (29, 1826, 3650):

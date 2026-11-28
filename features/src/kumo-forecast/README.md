@@ -90,8 +90,8 @@ and `observation` by concept.
 |---|---|
 | `get_cohort_info` | A locked cohort: its request, size, dataset, entity key, `data_end` and the tables a forecast would read with their time columns |
 | `forecast_risk` | Kumo's forecast for the cohort's members at risk on `as_of`, that the `outcome` starts within `horizon_days` (30 to 1,825), over `tables` (optional) and `extra_tables` (optional: `project.dataset.table` names of other datasets' tables with the entity key, such as a genotype table per person). `population_table` (optional, `project.dataset.table`) scores everyone in that table instead of the cohort's members, for example everyone with a genome. Risk quartiles, what the top 10% have in common against the rest, and where already observed, observed rates and AUROC. Returns a `run_id` |
-| `show_cohort_records` | The tables a forecast reads (rows, dating column, first columns) and up to 5 members as timelines, labelled Patient 1, 2, ...: codes by name with first and last date and count per table, and their most recorded values. Off unless `KUMO_FORECAST_SAMPLE_RECORDS=1` (synthetic data only) |
-| `show_genomes` | From a manifest table (one row per genome, the entity key, `*_uri` columns): genomes in all and in the cohort, the cohort's coverage and processing, one genome's aligned-reads size and the total estimated for all; from a VCF (`gs://`): records, PASS SNPs and indels, variants per named region and five PASS rows of the first, with what each column means |
+| `show_cohort_records` | A ready table for visitors: how many tables and rows a forecast reads, the largest tables by what they hold (lab results, visits, prescriptions, ...), then up to 5 members (2 by default), labelled Patient 1, 2, ...: the year they joined the cohort, first diagnoses and prescriptions by year, and three lab values first to last. Off unless `KUMO_FORECAST_SAMPLE_RECORDS=1` (synthetic data only) |
+| `show_genomes` | A ready table for visitors. From a manifest table (one row per genome, the entity key, `*_uri` columns): genomes in all and in the cohort, coverage, one genome's aligned-reads size and the total estimated for all; from a VCF (`gs://`): variants per named region, and three variants of the first region as gene, position, change and copies |
 | `forecast_with_genotypes` | `forecast_risk` for everyone in a genotype table, with the table read too (`population_table` and `extra_tables` in one argument), answered with the accuracy and each genotype's share in the highest-risk tenth against the rest |
 | `compare_to_baselines` | Kumo against logistic regression and gradient-boosted trees on the same rows; the agent calls it only when asked to compare |
 | `select_highest_risk` | The `top_n` highest-risk members, written as `<key>,risk` to a `gs://` file in a controlled bucket resource of the workspace |
@@ -131,6 +131,14 @@ copies with `gcloud storage cp` from a mode-600 temporary file, as the server's 
   16 sampled rows per table, a 5 GB GPU memory cap on the GPU with the most free memory.
 - **The high-risk profile** leaves out race and ethnicity columns (a column whose name, or a part of it
   after `_`, starts with `race` or `ethnic`): the top 10% are described by their clinical record.
+
+## Warm start
+
+The server keeps the two most recently used dataset graphs (`KUMO_FORECAST_GRAPHS`), each with its
+model, so a forecast with an extra table does not push out the cohort's own. At start it builds
+the newest locked cohort's graph and model, and one more for each table in
+`KUMO_FORECAST_WARM_TABLES` (comma-separated; `dataset.table` is in the workspace's project, where BigQuery jobs run),
+so the first calls do not wait on reading the data. With nothing locked yet, the first call does it.
 
 ## GPU
 

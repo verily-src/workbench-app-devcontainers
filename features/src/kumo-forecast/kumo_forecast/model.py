@@ -68,6 +68,24 @@ class Forecaster:
         # (out of GPU memory, say) leaves the cached Dataset whole for the next attempt.
         ds.frames.clear()
 
+    def prime(self) -> float:
+        """One small throwaway forecast, so the first real one does not also load the model's
+        weights onto the GPU and compile its kernels. Its labels are made up (half the entities get
+        an outcome on a random day of the history). Returns the seconds it took."""
+        ds, t0 = self.ds, time.time()
+        as_of = (ds.data_end - pd.Timedelta(days=365)).normalize()
+        seen = ds.first_seen.dropna()
+        half = seen.sample(frac=0.5, random_state=0)
+        days = np.random.default_rng(0).integers(0, 5 * 365, len(half))
+        first = pd.Series(as_of - pd.to_timedelta(days, unit="D"), index=half.index)   # made up, in the history
+        rest = seen.index.difference(half.index)            # the other half never has it: at risk
+        members = pd.DataFrame({ds.key: rest[:200]})
+        try:
+            self.run(first, members, as_of, 365, context=256)
+        except ValueError:
+            pass   # too few made-up cases (a small dataset): nothing is primed, and the first forecast loads it
+        return round(time.time() - t0, 1)
+
     def run(self, first: pd.Series, members: pd.DataFrame, as_of: pd.Timestamp, horizon: int = 365,
             context: int = 3000, history_years: int = 5, seed: int = 0, estimators: int = 1,
             neighbors: int = 16) -> dict:

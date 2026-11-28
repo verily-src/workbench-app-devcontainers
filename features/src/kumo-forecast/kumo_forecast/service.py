@@ -11,6 +11,7 @@ import os
 import re
 import tempfile
 import threading
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,7 +43,10 @@ class Service:
             d.mkdir(parents=True, exist_ok=True)
             os.chmod(d, 0o700)
         self._lock = threading.Lock()
-        self._graphs: dict[tuple, tuple] = {}
+        # The graphs read, most recently used last: the cohort's dataset alone and with a genotype
+        # table are both kept, so the steps of one demo do not read each other's out again.
+        self._graphs: OrderedDict[tuple, tuple] = OrderedDict()
+        self.max_graphs = max(1, int(os.environ.get("KUMO_FORECAST_GRAPHS", "2")))
         self._clients: dict[str | None, object] = {}
 
     # ---- plumbing ----------------------------------------------------------------------------
@@ -60,14 +64,18 @@ class Service:
     def graph(self, dataset: str, key: str, project: str | None = None, overrides: dict | None = None,
               chosen: list[str] | None = None):
         """``(Dataset, plan)`` for the chosen tables of a dataset keyed on ``key`` (default: every table
-        with the key), read once. The model is built on first use. Only the most recently used choice
-        is kept; a run that needs an earlier one finds its choice in its own metadata and reads it again."""
+        with the key), read once. The model is built on first use. The ``max_graphs`` most recently
+        used choices are kept; a run that needs an older one finds its choice in its own metadata
+        and reads it again."""
         cache_key = self._cache_key(dataset, key, overrides, chosen)
-        if cache_key not in self._graphs:
+        if cache_key in self._graphs:
+            self._graphs.move_to_end(cache_key)
+        else:
             client = self._client(project)
             schemas = tables.read_schemas(client, dataset)
             p = tables.plan(schemas, key, overrides, chosen)
-            self._graphs.clear()
+            while len(self._graphs) >= self.max_graphs:
+                self._graphs.popitem(last=False)
             raw = tables.load(client, dataset, p, self.state / "cache")
             vocab = tables.vocabulary(client, dataset, schemas)
             self._graphs[cache_key] = (dataset_mod.build(raw, schemas, key, p.time, vocab), p, [None])
@@ -105,6 +113,27 @@ class Service:
                 raise ValueError(f"extra table {p}.{d}.{t} is not a table of {p}.{d}")
             names.append(name)
         return dataset, list(dict.fromkeys(names))
+
+    def warm(self, extra_tables: list[str] | None = None) -> list[str]:
+        """Read the newest locked cohort's dataset and build its model, then the same with each
+        extra table (such as a genotype table; "dataset.table" is in the project BigQuery jobs run
+        in, the workspace's), so no demo step waits on either. Returns what was warmed or why not;
+        one that fails does not stop the others."""
+        done = []
+        with self._lock:
+            pop = self._locked("latest", None)
+            project = pop.billing_project or tables.datasets_of(pop.dataset)[0].split(".")[0]
+            extra_tables = [t if t.count(".") == 2 else f"{project}.{t}" for t in (extra_tables or [])]
+            for extra in [None] + [[t] for t in extra_tables]:
+                what = pop.dataset if extra is None else f"{pop.dataset} with {extra[0]}"
+                try:
+                    dataset, chosen = self._with_extra(pop, None, extra)
+                    fc = self.forecaster(dataset, pop.key_data_column, pop.billing_project, None, chosen)
+                    primed = fc.prime() if hasattr(fc, "prime") else None
+                    done.append(f"warmed {what}" + (f" (primed in {primed} s)" if primed is not None else ""))
+                except Exception as err:  # noqa: BLE001 - warming is optional
+                    done.append(f"not warmed {what} ({type(err).__name__}: {str(err)[:200]})")
+        return done
 
     def _table_members(self, lc, table: str, key_type: str | None) -> pd.DataFrame:
         """The distinct keys of ``table`` (project.dataset.table, with the entity key column), as
@@ -268,7 +297,7 @@ class Service:
             out["observed"] = "not yet: the outcome window runs past the end of the data"
         return out
 
-    def cohort_records(self, session_id: str = "latest", version: int | None = None, patients: int = 3) -> dict:
+    def cohort_records(self, session_id: str = "latest", version: int | None = None, patients: int = 2) -> dict:
         """The tables a forecast reads and ``patients`` members as timelines, for synthetic data."""
         if not views.sample_records_allowed():
             raise ValueError("sample records are off on this server (KUMO_FORECAST_SAMPLE_RECORDS=1 turns them on, "
@@ -320,9 +349,36 @@ class Service:
                  if str(u).startswith("gs://") and str(u).endswith((".cram", ".bam"))]
         out["aligned_reads"] = views.size_estimate(_gcs_sizes(reads[:20]), int(len(df)))
         vcf = views.vcf_summary(_gcs_read(vcf_url), parsed) if vcf_url else None
-        return {"table": views.genomes_table(out, vcf), "genomes": out["genomes"], "of_the_cohort": out["of_the_cohort"],
-                "note": "The page shows this table under the tool's card. Reply with one short sentence; do not "
-                        "repeat the table."}
+        answer = {"table": views.genomes_table(out, vcf), "genomes": out["genomes"], "of_the_cohort": out["of_the_cohort"],
+                  "note": "The page shows this table under the tool's card. Reply with one short sentence; do not "
+                          "repeat the table."}
+        staged = views.staged_genomes(df, key, members)
+        if staged is not None:
+            sheet = views.samplesheet(staged, key, self._sex(lc, staged[key].tolist()))
+            answer["staged_genomes"] = int(len(staged))
+            answer["samplesheet"] = sheet
+            answer["note"] += (" samplesheet is the cohort's staged genomes as sarek's samplesheet (patient,sex,status,"
+                               "sample,cram,crai; patient and sample are each genome's research_id): write it as it is.")
+        return answer
+
+    def _sex(self, lc, keys: list) -> dict:
+        """Each key's sex as sarek reads it (XX, XY), from an OMOP person table's gender_concept_id;
+        {} without one."""
+        schemas = self._schemas(lc)
+        person = next((s for n, s in schemas.items() if (s.get("table") or n) == "person"
+                       and "gender_concept_id" in {c for c, _ in s["columns"]}), None)
+        if person is None or not keys:
+            return {}
+        from google.cloud import bigquery
+        source = person.get("source") or tables.datasets_of(lc.dataset)[0]
+        project, dataset = source.split(".")
+        k = lc.key_data_column
+        job = self._client(lc.billing_project).query(
+            f"SELECT `{k}` AS k, gender_concept_id AS g FROM `{project}`.`{dataset}`.`person` WHERE `{k}` IN UNNEST(@keys)",
+            job_config=bigquery.QueryJobConfig(query_parameters=[bigquery.ArrayQueryParameter(
+                "keys", "INT64" if all(isinstance(x, (int,)) or str(x).isdigit() for x in keys) else "STRING",
+                [int(x) if str(x).isdigit() else str(x) for x in keys])]))
+        return {r["k"]: views.SEX_BY_GENDER_CONCEPT.get(r["g"], "NA") for r in job.result()}
 
     def forecast_with_genotypes(self, genotype_table: str, outcome: dict | None = None, as_of: str | None = None,
                                 horizon_days: int = 365, session_id: str = "latest",
@@ -332,9 +388,10 @@ class Service:
         out = self.forecast(outcome, session_id, as_of, horizon_days, version, None, None,
                             [genotype_table], genotype_table)
         project, dataset, name = EXTRA_TABLE.match(str(genotype_table).strip()).groups()
-        built = next(iter(self._graphs.values()))[0]   # the graph the forecast just read (the only one kept)
-        columns = {c for s in built.schemas.values()
-                   if s.get("source") == f"{project}.{dataset}" and s.get("table") == name for c, _ in s["columns"]}
+        with self._lock:
+            built = next(reversed(self._graphs.values()))[0]   # the graph the forecast just read (the latest used)
+            columns = {c for s in built.schemas.values()
+                       if s.get("source") == f"{project}.{dataset}" and s.get("table") == name for c, _ in s["columns"]}
         rows = [r for r in out["high_risk_profile"] if r["characteristic"].split(":")[0] in columns]
         return {"run_id": out["run_id"], "population": out["cohort"], "outcome": out["outcome"],
                 "as_of": out["as_of"], "members_at_risk": out["members_at_risk"], "observed": out["observed"],

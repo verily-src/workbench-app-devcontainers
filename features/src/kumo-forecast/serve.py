@@ -137,13 +137,12 @@ async def forecast_risk(outcome: dict, as_of: str | None = None, horizon_days: i
 
 @mcp.tool
 async def show_cohort_records(cda_session_id: str = "latest", lock_version: int | None = None,
-                              patients: int = 3) -> dict:
-    """Show the health records a forecast reads for the locked cohort: each table (rows, the
-    column that dates it, its first columns) and `patients` (1 to 5) members as short timelines,
-    labelled Patient 1, 2, ... (no id): per table, each code by name with its first and last date
-    and how often, and their most recorded values (labs, vitals) first and last. Only on a server
-    that allows sample records (synthetic data). Present the answer as it is: one table of the
-    tables, then one short list per patient."""
+                              patients: int = 2) -> dict:
+    """Show the health records a forecast reads for the locked cohort, as a ready table the page
+    draws: how many tables and rows, the largest tables by what they hold, and `patients` (1 to 5)
+    members labelled Patient 1, 2, ... (no id) with their first diagnoses and prescriptions by year
+    and three lab values first to last. Only on a server that allows sample records (synthetic
+    data). Reply with one short sentence; do not repeat the table."""
     return await _waited("show_cohort_records", SERVICE.cohort_records, cda_session_id, lock_version, patients)
 
 
@@ -155,7 +154,10 @@ async def show_genomes(manifest_table: str, vcf_url: str | None = None, regions:
     how many belong to the cohort, their coverage and processing, one genome's aligned-reads size
     and what all would add up to. vcf_url (gs://, .vcf or .vcf.gz) gives a VCF's variant counts
     and, with regions ("APOL1=chr22:36245000-36275000; PCSK9=chr1:55030000-55070000"), its
-    variants per region and five PASS rows from the first region, with what each column means."""
+    variants per region and three variants of the first region in plain words. The page draws
+    the table; reply with one short sentence and do not repeat it. With a manifest that has
+    research_id, cram_uri, crai_uri and is_staged, the answer's samplesheet is the cohort's staged
+    genomes as nf-core/sarek's samplesheet (patient,sex,status,sample,cram,crai), ready to write."""
     return await _waited("show_genomes", SERVICE.genomes, manifest_table, vcf_url, regions, cda_session_id,
                          lock_version)
 
@@ -205,15 +207,25 @@ async def select_highest_risk(run_id: str, destination: str, top_n: int = 16) ->
 TOOLS = ("get_cohort_info", "forecast_risk", "show_cohort_records", "show_genomes", "forecast_with_genotypes", "compare_to_baselines", "select_highest_risk", "wait_for_result")
 
 
-def warm(service) -> None:
-    """Read the newest locked cohort's dataset and build its graph, so the agent's first call does
-    not wait on it (about a minute on the EHR-and-genomes data). Nothing locked yet, or any failure,
-    leaves the first call to do it."""
-    try:
-        service.cohort_info("latest")
-        print("kumo-forecast: warmed the newest locked cohort's dataset", file=sys.stderr, flush=True)
-    except Exception as err:  # noqa: BLE001 - warming is optional
-        print(f"kumo-forecast: not warmed ({type(err).__name__}: {err})", file=sys.stderr, flush=True)
+def warm(service, poll_s: float = 30) -> None:
+    """Read the newest locked cohort's dataset and build its model, and the same with each table
+    in KUMO_FORECAST_WARM_TABLES (comma-separated project.dataset.table, or dataset.table in the
+    workspace's project, such as a genotype table), so the agent's first calls do not wait on
+    them (about a minute each on the EHR-and-genomes data). With nothing locked yet it looks
+    again every ``poll_s`` seconds until a cohort is locked; any other failure leaves the first
+    call to do it."""
+    extra = [t.strip() for t in os.environ.get("KUMO_FORECAST_WARM_TABLES", "").split(",") if t.strip()]
+    while True:
+        try:
+            for done in service.warm(extra):
+                print(f"kumo-forecast: {done}", file=sys.stderr, flush=True)
+            return
+        except Exception as err:  # noqa: BLE001 - warming is optional
+            if "no locked cohort" in str(err) and poll_s:
+                time.sleep(poll_s)
+                continue
+            print(f"kumo-forecast: not warmed ({type(err).__name__}: {err})", file=sys.stderr, flush=True)
+            return
 
 
 def main():

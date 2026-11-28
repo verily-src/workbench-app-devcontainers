@@ -41,6 +41,9 @@ services:
       # The booth's genotype forecast reads this table too: Kumo builds that graph at start as
       # well as the cohort's, so the step does not wait a minute on it.
       KUMO_FORECAST_WARM_TABLES: "genomic_results.apol1_genotypes"
+      # One estimator for the booth: about 8 s faster per forecast on a T4 than the default 2,
+      # for an AUROC of 0.922 instead of 0.934 on the kidney disease forecast.
+      KUMO_FORECAST_ESTIMATORS: "1"
       # The booth's recorded runs, for the page's backup switch: <bucket resource>/<path> in the
       # workspace (start-services.sh copies them to /config/.ara/replays.json).
       ASSISTANT_REPLAYS_FROM: "output/booth-replays/ehr-genomics-replays.json"
